@@ -1,0 +1,14 @@
+﻿name = "aura-core"
+main = "src/index.js"
+compatibility_date = "2026-01-10"
+
+# KV persistent memory
+[[kv_namespaces]]
+binding = "AURA_MEM"
+id = "34bf8bab412249698b7e6dd855c0207e"
+preview_id = "95ea5fb7ab2d43a88bdf880120ee7b34"
+
+# R2 (kept intact)
+[[r2_buckets]]
+binding = "AURA_UPLOADS"
+bucket_name = "auras-guide-uploads"

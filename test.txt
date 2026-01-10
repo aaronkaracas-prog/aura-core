@@ -1,0 +1,327 @@
+const SYSTEM_PROMPT = `
+You are Aura.
+
+You are a persistent AI partner for Aaron.
+
+Rules:
+- Assume continuity within this conversation.
+- Be truthful about capabilities.
+- Images ARE supported.
+- When asked to generate an image, generate it and show it.
+- Be concise and direct.
+`;
+
+const MAX_HISTORY = 20;
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+
+    // ---------------- HEALTH ----------------
+    if (url.pathname === "/health") {
+      return new Response("ok");
+    }
+
+    // ---------------- UI ----------------
+    if (request.method === "GET" && url.pathname === "/") {
+      return new Response(`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aura</title>
+
+<style>
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #f7f7f8;
+  height: 100vh;
+  display: flex;
+}
+#sidebar {
+  width: 240px;
+  background: #ffffff;
+  border-right: 1px solid #e5e7eb;
+  padding: 12px;
+}
+#main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+#header {
+  padding: 12px 24px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #ffffff;
+  font-size: 20px;
+  font-weight: 600;
+}
+#chat {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 16px;
+}
+.message {
+  max-width: 720px;
+  margin: 0 auto 16px;
+  padding: 14px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  white-space: pre-wrap;
+}
+.user { border-left: 4px solid #2563eb; }
+.assistant { border-left: 4px solid #10b981; }
+.thinking { opacity: 0.6; font-style: italic; }
+img.generated {
+  max-width: 100%;
+  border-radius: 8px;
+  margin-top: 8px;
+}
+#inputBar {
+  border-top: 1px solid #e5e7eb;
+  background: #ffffff;
+  padding: 12px;
+}
+#inputWrap {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#input {
+  flex: 1;
+  padding: 12px;
+  font-size: 16px;
+}
+button {
+  padding: 10px 12px;
+  font-size: 16px;
+  cursor: pointer;
+}
+</style>
+</head>
+
+<body>
+
+<div id="sidebar"></div>
+
+<div id="main">
+  <div id="header">Aura</div>
+  <div id="chat"></div>
+
+  <div id="inputBar">
+    <div id="inputWrap">
+      <button id="upload">📎</button>
+      <button id="mic">🎤</button>
+      <input id="input" placeholder="Message Aura…" />
+      <button id="send">Send</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="fileInput" style="display:none;" />
+
+<script>
+const chat = document.getElementById("chat");
+const input = document.getElementById("input");
+const sendBtn = document.getElementById("send");
+const micBtn = document.getElementById("mic");
+const uploadBtn = document.getElementById("upload");
+const fileInput = document.getElementById("fileInput");
+
+let thinkingEl = null;
+
+function add(role, text="", cls="") {
+  const div = document.createElement("div");
+  div.className = "message " + role + " " + cls;
+  div.textContent = text;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  return div;
+}
+
+function addImage(url) {
+  const wrap = document.createElement("div");
+  wrap.className = "message assistant";
+  const img = document.createElement("img");
+  img.src = url;
+  img.className = "generated";
+  wrap.appendChild(img);
+  chat.appendChild(wrap);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+async function loadHistory() {
+  const res = await fetch("/history");
+  const history = await res.json();
+  history.forEach(m => {
+    if (m.type === "image") addImage(m.content);
+    else add(m.role, m.content);
+  });
+}
+
+async function sendMessage(text) {
+  if (!text) return;
+
+  add("user", text);
+  input.value = "";
+
+  thinkingEl = add("assistant", "Aura is working…", "thinking");
+
+  const res = await fetch("/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: text })
+  });
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  let started = false;
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+
+    buf += decoder.decode(value, { stream: true });
+    const parts = buf.split("\\n\\n");
+    buf = parts.pop() || "";
+
+    for (const p of parts) {
+      for (const l of p.split("\\n")) {
+        if (!l.startsWith("data:")) continue;
+        const d = l.slice(5).trim();
+        if (!d || d === "[DONE]") continue;
+        try {
+          const o = JSON.parse(d);
+
+          if (o.type === "image") {
+            thinkingEl.remove();
+            addImage(o.url);
+          }
+
+          if (o.type === "text") {
+            if (!started) {
+              thinkingEl.remove();
+              thinkingEl = add("assistant", "");
+              started = true;
+            }
+            thinkingEl.textContent += o.delta;
+          }
+        } catch {}
+      }
+    }
+  }
+}
+
+sendBtn.onclick = () => sendMessage(input.value.trim());
+input.onkeydown = e => e.key === "Enter" && sendMessage(input.value.trim());
+
+// MICROPHONE — DICTATION ONLY
+if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const rec = new SR();
+  rec.lang = "en-US";
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.onresult = e => {
+    let t = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      t += e.results[i][0].transcript;
+    }
+    input.value = t;
+  };
+  micBtn.onclick = () => rec.start();
+}
+
+// FILE UPLOAD — ACK ONLY
+uploadBtn.onclick = () => fileInput.click();
+fileInput.onchange = () => {
+  const f = fileInput.files[0];
+  if (f) add("user", "Uploaded file: " + f.name);
+};
+
+loadHistory();
+</script>
+
+</body>
+</html>`, {
+        headers: { "Content-Type": "text/html" }
+      });
+    }
+
+    // ---------------- HISTORY ----------------
+    if (url.pathname === "/history") {
+      const data = await env.AURA_MEM.get("history", "json") || [];
+      return new Response(JSON.stringify(data), {
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+
+    // ---------------- CHAT ----------------
+    if (request.method === "POST" && url.pathname === "/chat") {
+      const { message } = await request.json();
+
+      let history = await env.AURA_MEM.get("history", "json") || [];
+      history.push({ role: "user", content: message });
+      history = history.slice(-MAX_HISTORY);
+      await env.AURA_MEM.put("history", JSON.stringify(history));
+
+      // IMAGE INTENT
+      if (/\\b(image|picture|photo|generate an image|draw)\\b/i.test(message)) {
+        const imgRes = await fetch("https://api.openai.com/v1/images", {
+          method: "POST",
+          headers: {
+            "Authorization": "Bearer " + env.OPENAI_API_KEY,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: "gpt-image-1",
+            prompt: message,
+            size: "1024x1024"
+          })
+        });
+
+        const imgJson = await imgRes.json();
+        const url = imgJson.data[0].url;
+
+        history.push({ type: "image", content: url });
+        await env.AURA_MEM.put("history", JSON.stringify(history));
+
+        return new Response(
+          `data: ${JSON.stringify({ type: "image", url })}\n\n`,
+          { headers: { "Content-Type": "text/event-stream" } }
+        );
+      }
+
+      // TEXT
+      const openaiRes = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + env.OPENAI_API_KEY,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          stream: true,
+          input: [
+            { role: "system", content: SYSTEM_PROMPT },
+            ...history
+          ]
+        })
+      });
+
+      return new Response(openaiRes.body, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache"
+        }
+      });
+    }
+
+    return new Response("Not Found", { status: 404 });
+  }
+};

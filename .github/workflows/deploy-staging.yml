@@ -28,5 +28,4 @@ jobs:
         run: npm i -g wrangler@4.58.0
 
       - name: Deploy to Cloudflare Workers (STAGING)
-        run: wrangler deploy --name aura-core-staging --account-id "$CLOUDFLARE_ACCOUNT_ID"
-
+        run: wrangler --account-id "$CLOUDFLARE_ACCOUNT_ID" deploy --name aura-core-staging

@@ -1,14 +1,10 @@
 ﻿name = "aura-core"
 main = "src/index.js"
-compatibility_date = "2026-01-10"
+compatibility_date = "2024-12-01"
 
-# KV persistent memory
+# Wrangler v4+ Node compatibility
+compatibility_flags = ["nodejs_compat"]
+
 [[kv_namespaces]]
-binding = "AURA_MEM"
-id = "34bf8bab412249698b7e6dd855c0207e"
-preview_id = "95ea5fb7ab2d43a88bdf880120ee7b34"
-
-# R2 (kept intact)
-[[r2_buckets]]
-binding = "AURA_UPLOADS"
-bucket_name = "auras-guide-uploads"
+binding = "AURA_KV"
+id = "9c2ba111589e48c6ba5ad1b924ae8809"

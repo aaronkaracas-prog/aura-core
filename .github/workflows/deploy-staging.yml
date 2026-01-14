@@ -8,21 +8,23 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Ensures npm/npx exists and is consistent on the runner
-      - name: Setup Node
+      - name: Setup Node (for npm/npx)
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      # Use Cloudflare’s action, but FORCE a Wrangler version (avoids the npx prompt/cancel issue)
+      # Do NOT use cloudflare/wrangler-action here — your runs are failing at its npx step.
+      # We install wrangler ourselves, then run it directly.
+      - name: Install Wrangler (pinned)
+        run: npm i -g wrangler@4.58.0
+
       - name: Deploy to Cloudflare Workers (STAGING)
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          wranglerVersion: "4.58.0"
-          command: deploy --name aura-core-staging
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: wrangler deploy --name aura-core-staging

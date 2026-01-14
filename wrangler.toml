@@ -1,10 +1,10 @@
-﻿name = "aura-core"
+name = "aura-core-staging"
 main = "src/index.js"
-compatibility_date = "2024-12-01"
+compatibility_date = "2024-01-01"
 
-# Wrangler v4+ Node compatibility
-compatibility_flags = ["nodejs_compat"]
+account_id = "3db0de2c6fce92757e2c4e4f83d7eb16"
 
-[[kv_namespaces]]
-binding = "AURA_KV"
-id = "9c2ba111589e48c6ba5ad1b924ae8809"
+kv_namespaces = [
+  { binding = "AURA_KV", id = "9c2ba111589e48c6ba5ad1b924ae8809" }
+]
+

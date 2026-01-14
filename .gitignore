@@ -1,0 +1,22 @@
+# Secrets
+*.txt
+*.key
+*.env
+
+# Test / temp files
+*.json
+*.wav
+*.png
+*.bak
+
+# UI experiments
+ui/
+ui.html
+core.html
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

@@ -13,7 +13,8 @@ jobs:
       npm_config_yes: "true"
       WRANGLER_SEND_METRICS: "false"
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_curl "https://api.cloudflare.com/client/v4/user/tokens/verify" \
+-H "Authorization: Bearer Viuth8gfnB-uwhtSl1fXUlHUCr7ENcCY-bTo4JtI" }}
 
     steps:
       - name: Checkout

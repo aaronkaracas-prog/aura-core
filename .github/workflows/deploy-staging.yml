@@ -13,15 +13,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node (for npm/npx)
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      # Do NOT use cloudflare/wrangler-action here — your runs are failing at its npx step.
-      # We install wrangler ourselves, then run it directly.
-      - name: Install Wrangler (pinned)
-        run: npm i -g wrangler@4.58.0
+      - name: Install Wrangler
+        run: npm install -g wrangler@4.58.0
 
       - name: Deploy to Cloudflare Workers (STAGING)
         env:

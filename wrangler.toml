@@ -1,10 +1,25 @@
-name = "aura-core-staging"
+name = "aura-core"
 main = "src/index.js"
-compatibility_date = "2024-01-01"
+compatibility_date = "2026-01-21"
+workers_dev = true
 
-account_id = "3db0de2c6fce92757e2c4e4f83d7eb16"
+# Cron trigger (auto-runner)
+[triggers]
+crons = ["*/1 * * * *"]
 
-kv_namespaces = [
-  { binding = "AURA_KV", id = "9c2ba111589e48c6ba5ad1b924ae8809" }
-]
+# Bindings (match what your deploy output shows)
+[[kv_namespaces]]
+binding = "AURA_KV"
+id = "9c2ba111589e48c6ba5ad1b924ae8809"
 
+[[r2_buckets]]
+binding = "AURA_UPLOADS"
+bucket_name = "auras-guide-uploads"
+
+[[services]]
+binding = "AURA_DEPLOYER"
+service = "aura-deployer"
+
+[[services]]
+binding = "AURA_CF"
+service = "aura-cloudflare"

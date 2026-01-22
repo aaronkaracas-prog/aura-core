@@ -1,100 +1,116 @@
+// AURA_DEPLOYER__2026-01-21__STEP_18__PHRASE_GATE_FIXED__TARGET_AWARE
+// Deployer worker that uploads a JS module bundle to Cloudflare Workers via API.
+// Security:
+// - Requires X-Deploy-Key header to match env.DEPLOY_SECRET for all requests.
+// - Requires a promotion phrase ONLY for production deployments.
+//   - Phrase can be supplied via JSON body OR headers (standardized).
+//   - If provided but wrong, returns "promotion_phrase_invalid" (not "required") to end guessing.
 
-function json(data, status = 200, headers = {}) {
-  return new Response(JSON.stringify(data, null, 2), {
+function json(obj, status = 200) {
+  return new Response(JSON.stringify(obj, null, 2), {
     status,
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store",
-      ...headers,
-    },
+    headers: { "Content-Type": "application/json; charset=utf-8" },
   });
 }
 
-/**
- * Decode base64 to Uint8Array (bytes) — no string corruption.
- */
 function b64ToBytes(b64) {
-  const bin = atob(b64);
-  const len = bin.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+  // atob works in Workers
+  const bin = atob(String(b64 || ""));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return bytes;
 }
 
-/**
- * Cloudflare Workers Script Upload API (MODULE):
- * - include `metadata` (application/json) with `main_module`
- * - upload entrypoint as application/javascript+module
- * - preserve bindings
- */
-function makeModuleUploadForm(script_name, bundleBytes, compatibility_date) {
-  const fd = new FormData();
+function makeModuleUploadForm(scriptName, bundleBytes, compatibilityDate) {
+  const form = new FormData();
+  // Cloudflare Workers "modules" upload expects a "main" part (JS module) as Blob.
+  const blob = new Blob([bundleBytes], { type: "application/javascript+module" });
+  form.append("main", blob, "index.js");
 
-  const bindings = [
-    {
-      type: "kv_namespace",
-      name: "AURA_KV",
-      namespace_id: "9c2ba111589e48c6ba5ad1b924ae8809",
-    },
-    {
-      type: "service",
-      name: "AURA_DEPLOYER",
-      service: "aura-deployer",
-    },
-  ];
-
-  const metadataObj = {
+  const meta = {
     main_module: "index.js",
-    compatibility_date: compatibility_date || "2026-01-14",
-    bindings,
   };
+  if (compatibilityDate) meta.compatibility_date = compatibilityDate;
 
-  fd.append(
-    "metadata",
-    new File([JSON.stringify(metadataObj)], "metadata.json", {
-      type: "application/json",
-    })
-  );
+  form.append("metadata", new Blob([JSON.stringify(meta)], { type: "application/json" }), "metadata.json");
+  return form;
+}
 
-  fd.append(
-    "index.js",
-    new File([bundleBytes], "index.js", {
-      type: "application/javascript+module",
-    })
-  );
+function pickTarget(payload) {
+  const t =
+    (payload && (payload.target || payload.env || payload.environment)) ||
+    null;
+  if (!t) return null;
+  const s = String(t).toLowerCase();
+  if (s === "prod" || s === "production") return "prod";
+  if (s === "staging" || s === "stage") return "staging";
+  return s;
+}
 
-  return fd;
+function extractPhraseFromRequest(request, payload) {
+  // Prefer explicit body fields
+  const bodyPhrase =
+    (payload && (payload.promote_phrase || payload.promotion_phrase || payload.promotionPhrase || payload.phrase)) ||
+    null;
+
+  // Also accept headers (Aura-core sends several; deployer standardizes these)
+  const headerPhrase =
+    request.headers.get("X-Promotion-Phrase") ||
+    request.headers.get("X-Promote-Phrase") ||
+    request.headers.get("X-Aura-Phrase") ||
+    request.headers.get("X-Phrase") ||
+    null;
+
+  return bodyPhrase || headerPhrase || null;
+}
+
+function requirePromotionPhrase({ env, request, payload }) {
+  // Require phrase if:
+  // - target explicitly prod, OR
+  // - script_name matches PROD_SCRIPT_NAME
+  const target = pickTarget(payload);
+  const scriptName = payload && payload.script_name ? String(payload.script_name) : "";
+  const isProdByTarget = target === "prod";
+  const isProdByName = !!env.PROD_SCRIPT_NAME && scriptName === env.PROD_SCRIPT_NAME;
+  if (!isProdByTarget && !isProdByName) return { needed: false };
+
+  if (!env.PROMOTE_PHRASE) {
+    return { needed: true, misconfigured: true };
+  }
+
+  const phrase = extractPhraseFromRequest(request, payload);
+  if (!phrase) return { needed: true, present: false, ok: false };
+
+  if (String(phrase) !== String(env.PROMOTE_PHRASE)) {
+    return { needed: true, present: true, ok: false };
+  }
+
+  return { needed: true, present: true, ok: true };
 }
 
 export default {
   async fetch(request, env) {
-    const url = new URL(request.url);
+    try {
+      const url = new URL(request.url);
 
-    if (url.pathname === "/health") {
-      return json({
-        ok: true,
-        service: "aura-deployer",
-        staging_target: env.STAGING_SCRIPT_NAME,
-        prod_target: env.PROD_SCRIPT_NAME,
-        has_deploy_key: !!env.DEPLOY_SECRET,
-        has_cf_api_token: !!env.CF_API_TOKEN,
-        account_id: env.CF_ACCOUNT_ID,
-        version: "AURA_DEPLOYER__2026-01-17__MODULE_BYTES__01",
-      });
-    }
+      if (request.method !== "POST") {
+        return json({ ok: false, error: "method_not_allowed" }, 405);
+      }
 
-    if (url.pathname === "/deploy" && request.method === "POST") {
-      const key = request.headers.get("x-deploy-key") || "";
+      // Auth: deploy secret header
+      const key =
+        request.headers.get("X-Deploy-Key") ||
+        request.headers.get("X-Deploy-Secret") ||
+        "";
+
       if (!env.DEPLOY_SECRET || key !== env.DEPLOY_SECRET) {
-        // Minimal auth diagnostics (does NOT reveal secret values)
-        // Helps verify whether aura-core is actually sending x-deploy-key
         return json(
           {
             ok: false,
             error: "unauthorized",
             auth_diag: {
               header_present: !!key,
-              header_len: key.length,
+              header_len: (key || "").length,
               env_present: !!env.DEPLOY_SECRET,
               env_len: (env.DEPLOY_SECRET || "").length,
               match: !!env.DEPLOY_SECRET && key === env.DEPLOY_SECRET,
@@ -111,26 +127,36 @@ export default {
         return json({ ok: false, error: "invalid_json" }, 400);
       }
 
-      const { script_name, bundle_b64, promote_phrase, compatibility_date } =
-        payload || {};
+      const {
+        script_name,
+        bundle_b64,
+        compatibility_date,
+      } = payload || {};
 
       if (!script_name || !bundle_b64) {
         return json({ ok: false, error: "missing_required_fields" }, 400);
       }
 
-      if (
-        script_name === env.PROD_SCRIPT_NAME &&
-        promote_phrase !== env.PROMOTE_PHRASE
-      ) {
-        return json({ ok: false, error: "promotion_phrase_required" }, 403);
+      // Promotion phrase gate (prod only)
+      const gate = requirePromotionPhrase({ env, request, payload });
+      if (gate.needed) {
+        if (gate.misconfigured) {
+          return json({ ok: false, error: "deployer_misconfigured_missing_PROMOTE_PHRASE" }, 500);
+        }
+        if (!gate.present) {
+          return json({ ok: false, error: "promotion_phrase_required" }, 403);
+        }
+        if (!gate.ok) {
+          return json({ ok: false, error: "promotion_phrase_invalid" }, 403);
+        }
       }
 
       const bundleBytes = b64ToBytes(bundle_b64);
-      const form = makeModuleUploadForm(
-        script_name,
-        bundleBytes,
-        compatibility_date
-      );
+      const form = makeModuleUploadForm(script_name, bundleBytes, compatibility_date);
+
+      if (!env.CF_ACCOUNT_ID || !env.CF_API_TOKEN) {
+        return json({ ok: false, error: "missing_cloudflare_api_config" }, 500);
+      }
 
       const upload = await fetch(
         `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/workers/scripts/${script_name}`,
@@ -163,8 +189,15 @@ export default {
       }
 
       return json({ ok: true, deployed: script_name });
+    } catch (err) {
+      return json(
+        {
+          ok: false,
+          error: "internal_error",
+          message: err && err.message ? String(err.message) : "unknown",
+        },
+        500
+      );
     }
-
-    return json({ ok: false, error: "not_found" }, 404);
   },
 };

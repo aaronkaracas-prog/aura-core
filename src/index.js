@@ -1,10 +1,10 @@
 // C:\Users\Aaron Karacas\aura-worker\aura\src\index.js
-// AURA_CORE__2026-01-26__GITHUB_CI__HEALTH_ENDPOINT__01
+// AURA_CORE__2026-01-24__AUTONOMY_STEP_106__LANDING_KV_HOST_ROOT__CF_DNS_WORKER_ROUTES_JSON__ARKSOLUTIONS_SELF_REPAIR__UI_OK__01
 // Full-file replacement. DO NOT MERGE.
 // Restores /ui + full command set + adds RUN_CITYGUIDE_WORLD_VERIFY (batch) without breaking existing exports.
 
-const BUILD_VERSION = "AURA_CORE__2026-01-25__AUTONOMY_STEP_117__LIFETIME_GROUNDING__01";
-const BUILD_STAMP = "2026-01-25 12:35 PT";
+const BUILD_VERSION = "AURA_CORE__2026-01-24__AUTONOMY_STEP_106__LANDING_KV_HOST_ROOT__CF_DNS_WORKER_ROUTES_JSON__ARKSOLUTIONS_SELF_REPAIR__UI_OK__01";
+const BUILD_STAMP = "2026-01-24 12:45 PT";
 let AURA_ENV = null;
 
 // --- CORS ---
@@ -199,8 +199,6 @@ async function kvGetJson(env, key, fallback=null){
 async function kvPutJson(env, key, obj){
   if (!env || !env.AURA_KV) throw new Error("kv_missing");
   await env.AURA_KV.put(key, JSON.stringify(obj));
-}
-
 
 
 // --- SITE LANDING CONTENT (STEP 106) ---
@@ -230,82 +228,6 @@ function defaultLandingFor(host){
   }
   return null;
 }
-
-
-// --- HOST PROFILE LAYER (STEP 112) ---
-// Purpose: host-specific behavior/copy driven by KV so changing content requires NO redeploy.
-// KV keys (examples): SITE:frontdesk.network, SITE:cityguide.world, SITE:arksystems.us
-function siteProfileKeyForHost(host){
-  const h = normalizeDomain(host);
-  return "SITE:" + h;
-}
-async function getSiteProfileForHost(env, host){
-  if (!env || !env.AURA_KV) return null;
-  const h = normalizeDomain(host);
-  if (!h) return null;
-  // 1) Exact host
-  let obj = await kvGetJson(env, siteProfileKeyForHost(h), null);
-  if (obj) return obj;
-  // 2) If www.* try apex fallback
-  if (h.startsWith("www.")) {
-    const apex = h.replace(/^www\./, "");
-    obj = await kvGetJson(env, siteProfileKeyForHost(apex), null);
-    if (obj) return obj;
-  }
-  return null;
-}
-function profileToLanding(profile, host){
-  // Support either:
-  // - { landing: {title,headline,subhead,bullets,ctas,footer} }
-  // - or directly the landing shape.
-  if (!profile) return null;
-  if (profile.landing && typeof profile.landing === "object") return profile.landing;
-  // Heuristic: if it has a title/headline/ctas, treat as landing.
-  if ("title" in profile || "headline" in profile || "ctas" in profile) return profile;
-  // Fallback: minimal landing from common fields
-  const h = normalizeDomain(host);
-  return {
-    title: String(profile.title || h || "Aura"),
-    headline: String(profile.headline || profile.title || h || "Aura"),
-    subhead: String(profile.description || profile.subhead || ""),
-    bullets: Array.isArray(profile.bullets) ? profile.bullets : [],
-    ctas: Array.isArray(profile.ctas) ? profile.ctas : [],
-    footer: String(profile.footer || "")
-  };
-}
-function renderHealthHtml(host, profile, healthJson){
-  const landing = profileToLanding(profile, host) || { title: host, headline: host, subhead: "" };
-  const esc = (s)=>String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-  const ctas = (landing.ctas||[]).map(c => `<a class="btn" href="${esc(c.href)}">${esc(c.label)}</a>`).join(" ");
-  const stamp = esc(healthJson?.stamp || "");
-  const version = esc(healthJson?.version || "");
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>${esc(landing.title || "Health")}</title>
-<style>
-body{margin:0;font-family:system-ui;background:#0b0f14;color:#e7ecf3}
-.wrap{max-width:920px;margin:0 auto;padding:44px 18px}
-.card{background:#0f1621;border:1px solid #1c2536;border-radius:16px;padding:22px}
-h1{margin:0 0 10px 0;font-size:30px}
-p{opacity:.9;line-height:1.5}
-.small{opacity:.75;font-size:13px;margin-top:10px}
-.btn{display:inline-block;margin-right:10px;margin-top:10px;padding:10px 12px;border-radius:12px;border:1px solid #263553;background:#1b2a41;color:#e7ecf3;text-decoration:none}
-pre{background:#0b0f14;border:1px solid #1c2536;border-radius:12px;padding:12px;overflow:auto}
-</style></head><body>
-<div class="wrap">
-  <div class="card">
-    <h1>${esc(landing.headline || landing.title || host)}</h1>
-    ${landing.subhead ? `<p>${esc(landing.subhead)}</p>` : ``}
-    <div class="small">Host: ${esc(host || "")}</div>
-    <div class="small">Build: ${version}</div>
-    <div class="small">Stamp: ${stamp}</div>
-    <div>${ctas}</div>
-    <h2 style="margin:18px 0 8px 0;font-size:16px;opacity:.9">Raw health JSON</h2>
-    <pre>${esc(JSON.stringify(healthJson || {}, null, 2))}</pre>
-  </div>
-</div>
-</body></html>`;
-}
-
 async function getLandingForRequest(env, host){
   const key = landingKeyForHost(host);
   const obj = await kvGetJson(env, key, null);
@@ -335,6 +257,7 @@ li{margin:8px 0}
 <div>${ctas}</div>
 <div class="small">${esc(obj.footer||"")}</div>
 </div></div></body></html>`;
+}
 }
 
 function normalizeDomain(d){
@@ -964,207 +887,22 @@ async function memSet(env, on){
 }
 async function memAppend(env, entry){
   if (!kvOk(env)) return;
-  const day = (new Date()).toISOString().slice(0,10); // YYYY-MM-DD
-  const cursorKey = `aura:memory:cursor:${day}`;
-  const maxBytes = 45000; // keep well under KV value limits
-  const line = JSON.stringify(entry) + "\n";
-
-  let cursor = { chunk: 0, bytes: 0 };
-  try {
-    const raw = await env.AURA_KV.get(cursorKey);
-    if (raw) cursor = JSON.parse(raw);
-  } catch(e){}
-
-  let chunkKey = `aura:memory:events:${day}:${cursor.chunk}`;
-  let chunk = "";
-  try { chunk = (await env.AURA_KV.get(chunkKey)) || ""; } catch(e){ chunk = ""; }
-
-  // roll chunk if needed
-  if ((chunk.length + line.length) > maxBytes) {
-    cursor.chunk += 1;
-    cursor.bytes = 0;
-    chunkKey = `aura:memory:events:${day}:${cursor.chunk}`;
-    chunk = "";
-  }
-
-  chunk += line;
-  cursor.bytes = chunk.length;
-
-  await env.AURA_KV.put(chunkKey, chunk);
-  await env.AURA_KV.put(cursorKey, JSON.stringify(cursor));
-
-  // maintain a day list index (lifetime)
-  const listKey = "aura:memory:days:list";
-  try {
-    const raw = await env.AURA_KV.get(listKey);
-    let days = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(days)) days = [];
-    if (!days.includes(day)) {
-      days.push(day);
-      if (days.length > 3650) days = days.slice(-3650); // ~10 years index
-      await env.AURA_KV.put(listKey, JSON.stringify(days));
-    }
-  } catch(e){}
+  const key = "aura:memory:events";
+  const line = JSON.stringify(entry);
+  const existing = await env.AURA_KV.get(key);
+  const lines = (existing ? existing.split("\n").filter(Boolean) : []);
+  lines.push(line);
+  // keep last 200 events
+  const trimmed = lines.slice(-200).join("\n");
+  await env.AURA_KV.put(key, trimmed);
 }
-
-async function memDays(env, limit=60){
+async function memExport(env, n=50){
   if (!kvOk(env)) return [];
-  const listKey = "aura:memory:days:list";
-  try {
-    const raw = await env.AURA_KV.get(listKey);
-    let days = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(days)) days = [];
-    // ensure today exists
-    const today = (new Date()).toISOString().slice(0,10);
-    if (!days.includes(today)) {
-      days.push(today);
-      if (days.length > 3650) days = days.slice(-3650);
-      await env.AURA_KV.put(listKey, JSON.stringify(days));
-    }
-    return days.slice(-limit);
-  } catch(e){
-    return [];
-  }
+  const key = "aura:memory:events";
+  const existing = await env.AURA_KV.get(key);
+  const lines = (existing ? existing.split("\n").filter(Boolean) : []);
+  return lines.slice(-Math.max(1, Math.min(200, Number(n)||50)));
 }
-
-async function memTail(env, n=50, daysBack=30){
-  if (!kvOk(env)) return [];
-  const days = (await memDays(env, daysBack)).slice().reverse();
-  const outLines = [];
-  for (const day of days) {
-    // read chunks newest to oldest
-    let cursor = { chunk: 0 };
-    try {
-      const raw = await env.AURA_KV.get(`aura:memory:cursor:${day}`);
-      if (raw) cursor = JSON.parse(raw);
-    } catch(e){}
-    for (let c = cursor.chunk; c >= 0; c--) {
-      const chunkKey = `aura:memory:events:${day}:${c}`;
-      const chunk = await env.AURA_KV.get(chunkKey);
-      if (!chunk) continue;
-      const lines = chunk.split("\n").filter(Boolean);
-      for (let i = lines.length - 1; i >= 0; i--) {
-        outLines.push(lines[i]);
-        if (outLines.length >= n) return outLines.reverse();
-      }
-    }
-  }
-  return outLines.reverse();
-}
-
-async function memSearch(env, query, n=20, daysBack=90){
-  if (!kvOk(env)) return [];
-  const q = String(query || "").trim().toLowerCase();
-  if (!q) return [];
-  const days = (await memDays(env, daysBack)).slice().reverse();
-  const hits = [];
-  for (const day of days) {
-    let cursor = { chunk: 0 };
-    try {
-      const raw = await env.AURA_KV.get(`aura:memory:cursor:${day}`);
-      if (raw) cursor = JSON.parse(raw);
-    } catch(e){}
-    for (let c = cursor.chunk; c >= 0; c--) {
-      const chunkKey = `aura:memory:events:${day}:${c}`;
-      const chunk = await env.AURA_KV.get(chunkKey);
-      if (!chunk) continue;
-      const lines = chunk.split("\n").filter(Boolean);
-      for (const line of lines) {
-        if (line.toLowerCase().includes(q)) hits.push(line);
-        if (hits.length >= n) return hits;
-      }
-    }
-  }
-  return hits;
-}
-
-// --- lightweight "plan + address" memory for conversational continuity ---
-function normPlaceName(s){
-  return String(s||"").trim().toLowerCase().replace(/\s+/g," ").replace(/[^a-z0-9 \-']/g,"");
-}
-async function planSet(env, place){
-  if (!kvOk(env)) return;
-  const v = { place: String(place||"").trim(), norm: normPlaceName(place), ts: new Date().toISOString() };
-  await env.AURA_KV.put("aura:plan:last", JSON.stringify(v));
-}
-async function planGet(env){
-  if (!kvOk(env)) return null;
-  try {
-    const raw = await env.AURA_KV.get("aura:plan:last");
-    return raw ? JSON.parse(raw) : null;
-  } catch(e){ return null; }
-}
-async function placeAddrSet(env, place, addr){
-  if (!kvOk(env)) return;
-  const norm = normPlaceName(place);
-  if (!norm) return;
-  await env.AURA_KV.put(`aura:placeaddr:${norm}`, String(addr||"").trim());
-}
-async function placeAddrGet(env, place){
-  if (!kvOk(env)) return null;
-  const norm = normPlaceName(place);
-  if (!norm) return null;
-  return await env.AURA_KV.get(`aura:placeaddr:${norm}`);
-}
-
-function extractPlanFromText(s){
-  const txt = String(s||"").trim();
-  const m = txt.match(/\b(?:i\s*'?m|i\s+am|we\s*'?re|we\s+are)\s+going\s+to\s+(?:the\s+)?(.+?)\s*$/i);
-  if (!m) return null;
-  let place = m[1].trim();
-  place = place.replace(/[.!?]+$/g,"").trim();
-  if (!place) return null;
-  if (/eat|dinner|lunch|breakfast/i.test(place) && place.split(" ").length <= 3) return null;
-  return place;
-}
-
-function extractAddressFromText(s){
-  const txt = String(s||"");
-  const m = txt.match(/\b(\d{2,6}\s+[A-Za-z0-9 .'-]+?\s+(?:St|Street|Ave|Avenue|Blvd|Boulevard|Rd|Road|Dr|Drive|Hwy|Highway|Way|Ln|Lane|Ct|Court)\b[^.\n]*)/i);
-  return m ? m[1].trim() : null;
-}
-
-function extractDogNameFromLine(line){
-  const txt = String(line||"");
-  let m = txt.match(/\bdog\b[^.\n]{0,80}\b(?:named|name is|called)\s+([A-Za-z][A-Za-z'-]{1,30})/i);
-  if (m) return m[1].trim();
-  m = txt.match(/\bwith my dog\s+([A-Za-z][A-Za-z'-]{1,30})/i);
-  if (m) return m[1].trim();
-  return null;
-}
-
-async function quickAnswerFromMemory(env, userText){
-  const q = String(userText||"").toLowerCase();
-
-  // address of "the restaurant I'm going to"
-  if (q.includes("address") && q.includes("restaurant") && q.includes("going")) {
-    const plan = await planGet(env);
-    if (plan && plan.place) {
-      const addr = await placeAddrGet(env, plan.place);
-      if (addr) return `You are going to ${plan.place}. The address is ${addr}.`;
-
-      // try search for place name that includes an address in the log
-      const hits = await memSearch(env, plan.place, 30, 14);
-      for (const line of hits) {
-        const addr2 = extractAddressFromText(line);
-        if (addr2) return `You are going to ${plan.place}. The address is ${addr2}.`;
-      }
-      return `You are going to ${plan.place}. I do not have the address stored yet.`;
-    }
-  }
-
-  // dog name
-  if (q.includes("dog") && (q.includes("name") || q.includes("called"))) {
-    const hits = await memSearch(env, "dog", 80, 365); // look back up to a year of index
-    for (const line of hits) {
-      const name = extractDogNameFromLine(line);
-      if (name) return `Your dog's name is ${name}.`;
-    }
-  }
-
-  return null;
-}
-
 
 
 
@@ -1208,7 +946,7 @@ async function snapExport(env, name, n=50){
   const recRaw = await env.AURA_KV.get(keyItem);
   if (!recRaw) return { ok:false, reply:"snapshot_export: not_found" };
   const rec = JSON.parse(recRaw);
-  const lines = await memTail(env, n);
+  const lines = await memExport(env, n);
   return { ok:true, reply: JSON.stringify(rec) + "\n" + (lines.length?lines.join("\n"):"") };
 }
 
@@ -2234,7 +1972,7 @@ async function chatRouter(req, env) {
   if (U === "MEMORY_STATUS") { const on = await memIsOn(env); return { ok:true, reply:`Memory log: ${on ? "ON" : "OFF"}.` }; }
   if (U.startsWith("MEMORY_EXPORT:")) {
     const n = Number(t.split(":").slice(1).join(":").trim()) || 50;
-    const lines = await memTail(env, n);
+    const lines = await memExport(env, n);
     return { ok:true, reply: lines.length ? lines.join("\n") : "memory_export: empty" };
   }
 
@@ -2358,16 +2096,8 @@ if (U.startsWith("CF_PAGES_DNS_FIX:")) return await cmdCfPagesDnsFix(env, t.spli
   return { ok: true, reply: t };
 }
 
-function health(req, env, host) {
-  const payload = { ok: true, version: BUILD_VERSION, stamp: BUILD_STAMP };
-  const accept = String(req?.headers?.get("accept")||"").toLowerCase();
-  const wantsHtml = accept.includes("text/html");
-  if (!wantsHtml) return jsonResp(payload);
-  return (async ()=>{
-    const h = normalizeDomain(host || "");
-    const profile = await getSiteProfileForHost(env, h);
-    return html(renderHealthHtml(h, profile, payload));
-  })();
+function health() {
+  return jsonResp({ ok: true, version: BUILD_VERSION, stamp: BUILD_STAMP });
 }
 
 export default {
@@ -2380,14 +2110,12 @@ export default {
 
     if (req.method === "GET" && url.pathname === "/") {
       const host = (url.hostname || "").toLowerCase();
-      // Prefer KV host profile (SITE:<host>) if present; fallback to existing landing KV (site_landing::<host>).
-      const profile = await getSiteProfileForHost(env, host);
-      const landing = profileToLanding(profile, host) || await getLandingForRequest(env, host);
+      const landing = await getLandingForRequest(env, host);
       if (landing) return html(renderLandingHtml(landing));
-      return html(`<script>location.href=\'/ui\'</script>`);
+      return html(`<script>location.href='/ui'</script>`);
     }
     if (req.method === "GET" && url.pathname === "/ui") return html(uiHtml());
-    if (req.method === "GET" && url.pathname === "/health") return await health(req, env, (url.hostname||"").toLowerCase());
+    if (req.method === "GET" && url.pathname === "/health") return health();
 
     
 if (req.method === "POST" && url.pathname === "/chat") {
@@ -2396,248 +2124,10 @@ if (req.method === "POST" && url.pathname === "/chat") {
       t = normalizeCommandInput(t);
       if (!t) return jsonResp({ ok: true, reply: "" });
 
-      // Always-on lifetime memory: capture chat_in + detect simple "plan" statements.
-      try { await memAppend(env, { ts: new Date().toISOString(), type: "chat_in", text: t, build: BUILD_VERSION }); } catch(e) {}
-      try { const p = extractPlanFromText(t); if (p) await planSet(env, p); } catch(e) {}
-
 
       // --- SESSION MEMORY PACK WORKFLOW (server-side, deterministic) ---
       const rawLower = t.toLowerCase();
       const rawTrim = t.trim();
-
-// --- CANON PUT escape hatch ---
-if (/^(CANCEL|CANON_CANCEL)$/i.test(rawTrim)) {
-  try { await canonPendingClear(env); } catch (e) {}
-  return jsonResp({ ok:true, reply:"canon_put: cancelled" });
-}
-
-
-      // --- CANON PUT (two-step): if a prior CANON_PUT:<alias> is awaiting body, treat this message as the body.
-      const pendingCanon = await canonPendingGet(env);
-      if (pendingCanon && rawTrim && !/^CANON_(PUT|GET|LIST):?/i.test(rawTrim) && !/^RECALL_CANON:/i.test(rawTrim)) {
-        await env.AURA_KV.put(canonKey(pendingCanon), rawTrim.trim());
-        await canonPendingClear(env);
-        return jsonResp({ ok:true, reply:`canon_put: ok (${canonAliasNorm(pendingCanon)})`, canon:{ ok:true, reply:`canon_put: ok (${canonAliasNorm(pendingCanon)})` } });
-      }
-
-// --- AUTONOMY COMMAND ROUTER (sealed, deterministic) ---
-// Commands here must NEVER ask questions.
-// Output must be one of:
-// - OK + ACTIONS_TAKEN + VERIFY
-// - NOT WIRED: <single blocker>
-const mLaunch = rawTrim.match(/^LAUNCH_ASSET\s+([a-z0-9.-]+)$/i);
-const mRoute  = rawTrim.match(/^ROUTE_DOMAIN\s+([a-z0-9.-]+)$/i);
-const mEnsure = rawTrim.match(/^ENSURE_DOMAIN_READY\s+([a-z0-9.-]+)$/i);
-const mListRouting = /^LIST_COMMANDS\s+routing$/i.test(rawTrim);
-
-const workerScriptName = (env.CF_WORKER_SCRIPT || env.WORKER_SCRIPT || "aura-core").toString();
-
-async function cfApi(method, path, bodyObj) {
-  if (!env.CF_API_TOKEN) return { ok:false, missing:"CF_API_TOKEN" };
-  const init = {
-    method,
-    headers: {
-      "authorization": `Bearer ${env.CF_API_TOKEN}`,
-      "content-type": "application/json",
-    },
-  };
-  if (bodyObj !== undefined) init.body = JSON.stringify(bodyObj);
-  const res = await fetch(`https://api.cloudflare.com/client/v4${path}`, init);
-  let j = null;
-  try { j = await res.json(); } catch(e) {}
-  return { ok: res.ok && j && j.success, status: res.status, json: j };
-}
-
-async function getZoneIdForApex(apex) {
-  const r = await cfApi("GET", `/zones?name=${encodeURIComponent(apex)}`);
-  if (!r.ok) return { ok:false, err: r.missing ? `NOT WIRED: ${r.missing}` : "NOT WIRED: cf_zone_lookup_failed" };
-  const arr = (r.json && r.json.result) || [];
-  const z = arr[0];
-  if (!z || !z.id) return { ok:false, err:"NOT WIRED: zone_not_found" };
-  return { ok:true, id:z.id };
-}
-
-async function listWorkerRoutes(zoneId) {
-  const r = await cfApi("GET", `/zones/${zoneId}/workers/routes`);
-  if (!r.ok) return { ok:false, err: r.missing ? `NOT WIRED: ${r.missing}` : "NOT WIRED: cf_routes_list_failed" };
-  return { ok:true, routes: (r.json && r.json.result) || [] };
-}
-
-async function listDnsRecords(zoneId, fqdn) {
-  const r = await cfApi("GET", `/zones/${zoneId}/dns_records?per_page=100&name=${encodeURIComponent(fqdn)}`);
-  if (!r.ok) return { ok:false, err: r.missing ? `NOT WIRED: ${r.missing}` : "NOT WIRED: cf_dns_list_failed" };
-  return { ok:true, records: (r.json && r.json.result) || [] };
-}
-
-async function ensureDnsARecord(zoneId, fqdn) {
-  const listed = await listDnsRecords(zoneId, fqdn);
-  if (!listed.ok) return listed;
-  const exists = listed.records.some(rec => (rec && rec.type === "A" && (rec.name||"").toLowerCase() === fqdn.toLowerCase()));
-  if (exists) return { ok:true, already:true };
-  const r = await cfApi("POST", `/zones/${zoneId}/dns_records`, {
-    type: "A",
-    name: fqdn,
-    content: "192.0.2.1",
-    ttl: 1,
-    proxied: true
-  });
-  if (!r.ok) return { ok:false, err: r.missing ? `NOT WIRED: ${r.missing}` : "NOT WIRED: cf_dns_add_failed" };
-  return { ok:true, added:true };
-}
-
-async function isDnsReady(apex) {
-  if (!env.CF_API_TOKEN) return { ok:false, err:"NOT WIRED: route_executor_missing" };
-  const z = await getZoneIdForApex(apex);
-  if (!z.ok) return { ok:false, err:z.err };
-  const fq1 = apex;
-  const fq2 = `www.${apex}`;
-  const a1 = await listDnsRecords(z.id, fq1);
-  if (!a1.ok) return { ok:false, err:a1.err };
-  const a2 = await listDnsRecords(z.id, fq2);
-  if (!a2.ok) return { ok:false, err:a2.err };
-  const hasA = (arr, fq) => arr.some(rec => rec && rec.type === "A" && (rec.name||"").toLowerCase() === fq.toLowerCase());
-  return { ok:true, ready: hasA(a1.records, fq1) && hasA(a2.records, fq2), zoneId: z.id };
-}
-
-async function ensureRoute(zoneId, patternStr) {
-  const listed = await listWorkerRoutes(zoneId);
-  if (!listed.ok) return listed;
-  const exists = listed.routes.some(rt => (rt.pattern || "").toLowerCase() === patternStr.toLowerCase() && (rt.script || "").toLowerCase() === workerScriptName.toLowerCase());
-  if (exists) return { ok:true, already:true };
-  const r = await cfApi("POST", `/zones/${zoneId}/workers/routes`, { pattern: patternStr, script: workerScriptName });
-  if (!r.ok) return { ok:false, err: r.missing ? `NOT WIRED: ${r.missing}` : "NOT WIRED: cf_route_add_failed" };
-  return { ok:true, added:true };
-}
-
-async function isDomainRouted(apex) {
-  // Requires CF API access to inspect routes.
-  if (!env.CF_API_TOKEN) return { ok:false, err:"NOT WIRED: route_executor_missing" };
-  const z = await getZoneIdForApex(apex);
-  if (!z.ok) return { ok:false, err:z.err };
-  const listed = await listWorkerRoutes(z.id);
-  if (!listed.ok) return { ok:false, err:listed.err };
-  const want1 = `${apex}/*`.toLowerCase();
-  const want2 = `www.${apex}/*`.toLowerCase();
-  const has = (p) => listed.routes.some(rt => ((rt.pattern||"").toLowerCase()===p) && ((rt.script||"").toLowerCase()===workerScriptName.toLowerCase()));
-  return { ok:true, routed: has(want1) && has(want2), zoneId: z.id };
-}
-
-
-      function blackLandingHtml(hostname, oneLiner) {
-        const h = (hostname || "").toLowerCase();
-        return `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>${h}</title>
-<style>
-html,body{margin:0;padding:0;background:#000;color:#fff;font-family:system-ui}
-.wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:28px}
-.card{max-width:760px;width:100%;border:1px solid #222;border-radius:18px;padding:26px;background:rgba(0,0,0,.88)}
-h1{margin:0 0 10px 0;font-size:30px;letter-spacing:.2px}
-p{margin:0 0 18px 0;color:#d6d6d6;font-size:16px;line-height:1.5}
-.actions{display:flex;gap:10px;flex-wrap:wrap}
-a.btn{display:inline-block;border:1px solid #333;color:#fff;text-decoration:none;padding:10px 14px;border-radius:12px;background:#111}
-a.btn:hover{border-color:#555}
-.small{margin-top:14px;color:#9a9a9a;font-size:12px}
-</style></head><body>
-<div class="wrap"><div class="card">
-<h1>${h}</h1>
-<p>${oneLiner || ""}</p>
-<div class="actions">
-  <a class="btn" href="/ui">Open Aura</a>
-  <a class="btn" href="/health">Health</a>
-</div>
-<div class="small">Managed by Aura host profile (KV)</div>
-</div></div>
-</body></html>`;
-      }
-
-      function blackHealthHtml(hostname, buildMarker) {
-        const h = (hostname || "").toLowerCase();
-        const ts = new Date().toISOString();
-        return `<!doctype html><html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>health</title>
-<style>
-html,body{margin:0;padding:0;background:#000;color:#fff;font-family:system-ui}
-.wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:28px}
-.card{max-width:760px;width:100%;border:1px solid #222;border-radius:18px;padding:26px;background:rgba(0,0,0,.88)}
-.k{color:#9a9a9a}
-</style></head><body>
-<div class="wrap"><div class="card">
-<div><span class="k">host:</span> ${h}</div>
-<div><span class="k">build:</span> ${buildMarker}</div>
-<div><span class="k">ts:</span> ${ts}</div>
-</div></div>
-</body></html>`;
-      }
-
-      async function writeSiteProfile(hostname, oneLiner) {
-        if (!env.AURA_KV) return { ok:false, err:"NOT WIRED: AURA_KV" };
-        const h = hostname.toLowerCase();
-        const buildMarker = "AURA_CORE__2026-01-25__AUTONOMY_STEP_114__ENSURE_DOMAIN_READY__01";
-        const rootHtml = blackLandingHtml(h, oneLiner);
-        const healthHtml = blackHealthHtml(h, buildMarker);
-        await env.AURA_KV.put(`SITE:${h}`, JSON.stringify({ root_html: rootHtml, health_html: healthHtml }));
-        return { ok:true };
-      }
-
-
-if (mListRouting) {
-  return jsonResp({
-    ok:true,
-    reply: [
-      "routing_commands:",
-      "- ENSURE_DOMAIN_READY <apex>",
-      "- ROUTE_DOMAIN <apex>",
-      "- LAUNCH_ASSET <apex>",
-    ].join("\n"),
-  });
-}
-
-if (mEnsure) {
-  const apex = mEnsure[1].toLowerCase();
-  if (!env.CF_API_TOKEN) return jsonResp({ ok:true, reply:`NOT WIRED: route_executor_missing` });
-  const z = await getZoneIdForApex(apex);
-  if (!z.ok) return jsonResp({ ok:true, reply:z.err });
-  const d1 = await ensureDnsARecord(z.id, apex);
-  if (!d1.ok) return jsonResp({ ok:true, reply:d1.err });
-  const d2 = await ensureDnsARecord(z.id, `www.${apex}`);
-  if (!d2.ok) return jsonResp({ ok:true, reply:d2.err });
-  return jsonResp({ ok:true, reply:`OK\nACTIONS_TAKEN:[DNS_OK ${apex} A@, DNS_OK www.${apex} A]\nVERIFY:[https://${apex}/health, https://www.${apex}/health]` });
-}
-
-if (mRoute) {
-  const apex = mRoute[1].toLowerCase();
-  if (!env.CF_API_TOKEN) return jsonResp({ ok:true, reply:`NOT WIRED: route_executor_missing` });
-  const z = await getZoneIdForApex(apex);
-  if (!z.ok) return jsonResp({ ok:true, reply:z.err });
-  const r1 = await ensureRoute(z.id, `${apex}/*`);
-  if (!r1.ok) return jsonResp({ ok:true, reply:r1.err });
-  const r2 = await ensureRoute(z.id, `www.${apex}/*`);
-  if (!r2.ok) return jsonResp({ ok:true, reply:r2.err });
-  return jsonResp({ ok:true, reply:`OK\nACTIONS_TAKEN:[ROUTE_OK ${apex}/*, ROUTE_OK www.${apex}/*]\nVERIFY:[https://${apex}/health, https://www.${apex}/health]` });
-}
-
-if (mLaunch) {
-  const apex = mLaunch[1].toLowerCase();
-  const dns = await isDnsReady(apex);
-  if (!dns.ok) return jsonResp({ ok:true, reply: dns.err.startsWith("NOT WIRED") ? dns.err : `NOT WIRED: ${dns.err}` });
-  if (!dns.ready) return jsonResp({ ok:true, reply:`NOT WIRED: dns_not_ready (${apex})` });
-  const routed = await isDomainRouted(apex);
-  if (!routed.ok) return jsonResp({ ok:true, reply: routed.err.startsWith("NOT WIRED") ? routed.err : `NOT WIRED: ${routed.err}` });
-  if (!routed.routed) return jsonResp({ ok:true, reply:`NOT WIRED: domain_not_routed (${apex})` });
-
-  const oneLiner = `${apex} — Aura-managed launch page.`;
-  const w1 = await writeSiteProfile(apex, oneLiner);
-  if (!w1.ok) return jsonResp({ ok:true, reply:w1.err });
-  const w2 = await writeSiteProfile(`www.${apex}`, oneLiner);
-  if (!w2.ok) return jsonResp({ ok:true, reply:w2.err });
-
-  return jsonResp({
-    ok:true,
-    reply: `OK\nACTIONS_TAKEN:[KV_SITE_PROFILE_WRITTEN ${apex}, KV_SITE_PROFILE_WRITTEN www.${apex}]\nVERIFY:[https://${apex}/, https://www.${apex}/, https://${apex}/health]`,
-  });
-}
-
-
 
       // 1) MEMORY PACK paste: store + load as authoritative context for this session.
       if (isMemoryPackPaste(rawTrim)) {
@@ -2706,283 +2196,6 @@ if (t.toUpperCase() === "SHOW_BUILD") {
   return jsonResp({ ok:true, reply: `Build: ${BUILD_VERSION} · ${BUILD_STAMP}\nUI wired OK (STEP 11) — mic + uploads enabled` });
 }
 
-// --- CANON LOCKS (KV-backed, operator-managed) ---
-// Purpose: store and retrieve milestone "Canon Locks" as plain text for handoffs.
-// Commands (chat-safe, JSON returns):
-// CANON_PUT:<alias>   (body on following lines)
-// CANON_GET:<alias>   (returns stored text)
-// CANON_LIST          (lists aliases)
-// RECALL_CANON:<alias> or RECALL_CANON:<alias>::FULL  (same as CANON_GET)
-// Notes: Aliases are uppercase-safe; storage key is host-agnostic: "canon:<alias>".
-
-function canonAliasNorm(a){
-  return String(a||"").trim().replace(/\s+/g,"_").toUpperCase();
-}
-function canonKey(alias){
-  return "canon:" + canonAliasNorm(alias);
-}
-
-function canonPendingKey(){ return "aura:canon:pending_alias"; }
-async function canonPendingSet(env, alias){
-  if (!kvOk(env)) return;
-  await env.AURA_KV.put(canonPendingKey(), canonAliasNorm(alias), { expirationTtl: 600 });
-}
-async function canonPendingGet(env){
-  if (!kvOk(env)) return null;
-  return await env.AURA_KV.get(canonPendingKey());
-}
-async function canonPendingClear(env){
-  if (!kvOk(env)) return;
-  await env.AURA_KV.delete(canonPendingKey());
-}
-async function canonPut(env, alias, body){
-  if (!kvOk(env)) return { ok:false, reply:"canon_put: kv_missing" };
-  const a = canonAliasNorm(alias);
-  const b = String(body||"").trim();
-  if (!a) return { ok:false, reply:"canon_put: missing_alias" };
-  if (!b) {
-    // Two-step input: user may send CANON_PUT:<alias> then paste body in the next message.
-    await canonPendingSet(env, a);
-    return { ok:false, reply:"canon_put: awaiting_body" };
-  }
-  await env.AURA_KV.put(canonKey(a), b);
-  await canonPendingClear(env);
-  return { ok:true, reply:`canon_put: ok (${a})` };
-}
-async function canonGet(env, alias){
-  if (!kvOk(env)) return { ok:false, reply:"canon_get: kv_missing" };
-  const a = canonAliasNorm(alias);
-  if (!a) return { ok:false, reply:"canon_get: missing_alias" };
-  const v = await env.AURA_KV.get(canonKey(a));
-  if (!v) return { ok:false, reply:`canon_get: not_found (${a})` };
-  return { ok:true, reply:v, alias:a };
-}
-async function canonList(env){
-  if (!kvOk(env)) return { ok:false, reply:"canon_list: kv_missing" };
-  const res = await env.AURA_KV.list({ prefix:"canon:" });
-  const aliases = (res.keys||[]).map(k => String(k.name||"").replace(/^canon:/,"")).filter(Boolean).sort();
-  return { ok:true, reply: JSON.stringify({ ok:true, canon_aliases: aliases }, null, 2), canon_aliases: aliases };
-}
-
-// CANON_PUT:<alias> with multiline body
-if (/^CANON_PUT:/i.test(t.trim())) {
-  const raw = t.trim();
-  const firstLine = raw.split(/\r?\n/)[0];
-  const alias = firstLine.split(":",2)[1] || "";
-  const body = raw.split(/\r?\n/).slice(1).join("\n");
-  const r = await canonPut(env, alias, body);
-  return jsonResp({ ok:r.ok, reply:r.reply, canon:r });
-}
-
-// CANON_LIST
-if (t.trim().toUpperCase() === "CANON_LIST") {
-  const r = await canonList(env);
-  return jsonResp({ ok:r.ok, reply:r.reply, canon:r });
-}
-
-// CANON_GET:<alias>
-if (/^CANON_GET:/i.test(t.trim())) {
-  const alias = t.trim().split(":",2)[1] || "";
-  const r = await canonGet(env, alias);
-  return jsonResp({ ok:r.ok, reply:r.reply, canon:r });
-}
-
-// RECALL_CANON:<alias> or RECALL_CANON:<alias>::FULL
-if (/^RECALL_CANON:/i.test(t.trim())) {
-  const firstLine = t.trim().split(/\r?\n/)[0];
-  const after = firstLine.slice("RECALL_CANON:".length);
-  const alias = after.split("::")[0];
-  const r = await canonGet(env, alias);
-  return jsonResp({ ok:r.ok, reply:r.reply, canon:r });
-}
-
-
-
-// --- CF COMMANDS IN CHAT (STEP 111: FrontDesk autonomy wiring) ---
-// These commands were previously only available on /aura/command.
-// Now they are also executable from the Aura UI chat input and always return JSON.
-// Supported (minimal set for FrontDesk.Network autonomy proof):
-// CF_TOKEN_VERIFY, CF_TOKEN_PERMS
-// CF_ZONE_SET:<domain>, CF_ZONE_INFO
-// CF_DNS_EXPORT_JSON, CF_WORKER_ROUTES_EXPORT_JSON
-// CF_DNS_ENSURE_WORKER_APEX:<domain>, CF_DNS_ENSURE_WORKER_WWW:<domain>
-// CF_WORKER_ROUTE_ENSURE:<script> <pattern>
-// CF_ENSURE_APEX_AND_WWW:<domain>
-// FRONTDESK_SELF_REPAIR[:domain]
-// PASS_OR_FAIL_FRONTDESK[:domain]
-
-const UCHAT = t.trim().toUpperCase();
-
-// exact
-if (UCHAT === "CF_TOKEN_VERIFY") {
-  const r = await cmdCfTokenVerify(env);
-  return jsonResp({ ok: r.ok, reply: r.reply, cf: r });
-}
-if (UCHAT === "CF_TOKEN_PERMS") {
-  const r = await cmdCfTokenPerms(env);
-  return jsonResp({ ok: r.ok, reply: r.reply, cf: r });
-}
-
-// helpers: accept both "CMD:arg" and "CMD arg" forms
-const chatParts = t.trim().split(/\s+/);
-const chatCmd = (chatParts[0] || "").toUpperCase();
-const chatRest = chatParts.slice(1).join(" ").trim();
-
-if (chatCmd === "CF_ZONE_SET" && chatRest) {
-  const r = await cmdCfZoneSet(env, chatRest);
-  return jsonResp({ ok: r.ok, reply: r.reply, cf: r });
-}
-if (UCHAT.startsWith("CF_ZONE_SET:")) {
-  const r = await cmdCfZoneSet(env, t.split(":").slice(1).join(":"));
-  return jsonResp({ ok: r.ok, reply: r.reply, cf: r });
-}
-
-if (chatCmd === "CF_ZONE_INFO") {
-  const r = await cmdCfZoneInfo(env, chatRest);
-  return jsonResp({ ok: r.ok, reply: r.reply, cf: r });
-}
-if (UCHAT.startsWith("CF_ZONE_INFO:")) {
-  const r = await cmdCfZoneInfo(env, t.split(":").slice(1).join(":"));
-  return jsonResp({ ok: r.ok, reply: r.reply, cf: r });
-}
-
-if (chatCmd === "CF_DNS_EXPORT_JSON") {
-  const r = await cmdCfDnsExportJson(env, chatRest);
-  return jsonResp({ ok: r.ok, reply: r.reply, cf: r });
-}
-if (UCHAT.startsWith("CF_DNS_EXPORT_JSON:")) {
-  const r = await cmdCfDnsExportJson(env, t.split(":").slice(1).join(":"));
-  return jsonResp({ ok: r.ok, reply: r.reply, cf: r });
-}
-
-if (chatCmd === "CF_WORKER_ROUTES_EXPORT_JSON") {
-  const r = await cmdCfWorkerRoutesExportJson(env, chatRest);
-  return jsonResp({ ok: r.ok, reply: r.reply, cf: r });
-}
-if (UCHAT.startsWith("CF_WORKER_ROUTES_EXPORT_JSON:")) {
-  const r = await cmdCfWorkerRoutesExportJson(env, t.split(":").slice(1).join(":"));
-  return jsonResp({ ok: r.ok, reply: r.reply, cf: r });
-}
-
-if (chatCmd === "CF_DNS_ENSURE_WORKER_APEX") {
-  const r = await cmdCfDnsEnsureWorkerApex(env, chatRest);
-  return jsonResp({ ok: r.ok, reply: r.reply, cf: r });
-}
-if (UCHAT.startsWith("CF_DNS_ENSURE_WORKER_APEX:")) {
-  const r = await cmdCfDnsEnsureWorkerApex(env, t.split(":").slice(1).join(":"));
-  return jsonResp({ ok: r.ok, reply: r.reply, cf: r });
-}
-
-if (chatCmd === "CF_DNS_ENSURE_WORKER_WWW") {
-  const r = await cmdCfDnsEnsureWorkerWww(env, chatRest);
-  return jsonResp({ ok: r.ok, reply: r.reply, cf: r });
-}
-if (UCHAT.startsWith("CF_DNS_ENSURE_WORKER_WWW:")) {
-  const r = await cmdCfDnsEnsureWorkerWww(env, t.split(":").slice(1).join(":"));
-  return jsonResp({ ok: r.ok, reply: r.reply, cf: r });
-}
-
-if (UCHAT.startsWith("CF_WORKER_ROUTE_ENSURE:")) {
-  const x = t.split(":").slice(1).join(":").trim().split(/\s+/);
-  const script = x[0] || "";
-  const pattern = x.slice(1).join(" ");
-  const r = await cmdCfWorkerRouteEnsure(env, script, pattern);
-  return jsonResp({ ok: r.ok, reply: r.reply, cf: r });
-}
-if (chatCmd === "CF_WORKER_ROUTE_ENSURE") {
-  const script = chatParts[1] || "";
-  const pattern = chatParts.slice(2).join(" ");
-  const r = await cmdCfWorkerRouteEnsure(env, script, pattern);
-  return jsonResp({ ok: r.ok, reply: r.reply, cf: r });
-}
-
-if (UCHAT.startsWith("CF_ENSURE_APEX_AND_WWW:")) {
-  const r = await cmdCfEnsureApexAndWww(env, t.split(":").slice(1).join(":"));
-  return jsonResp({ ok: r.ok, reply: r.reply, cf: r });
-}
-if (chatCmd === "CF_ENSURE_APEX_AND_WWW") {
-  const r = await cmdCfEnsureApexAndWww(env, chatRest);
-  return jsonResp({ ok: r.ok, reply: r.reply, cf: r });
-}
-
-// --- One-step autonomy proof ---
-async function frontdeskSelfRepair(env, domainArg) {
-  const domain = normalizeDomain(String(domainArg || "frontdesk.network").trim()) || "frontdesk.network";
-  const report = {
-    ok: false,
-    domain,
-    ts: new Date().toISOString(),
-    build: BUILD_VERSION,
-    steps: [],
-    verified: {},
-    routes: null,
-    dns: null
-  };
-
-  function step(name, r) {
-    report.steps.push({ name, ok: !!r?.ok, reply: r?.reply || "", detail: r });
-    return r;
-  }
-
-  // 1) Zone set + info
-  step("CF_ZONE_SET", await cmdCfZoneSet(env, domain));
-  step("CF_ZONE_INFO", await cmdCfZoneInfo(env, ""));
-
-  // 2) Ensure DNS + Routes (worker-only termination)
-  step("CF_DNS_ENSURE_WORKER_APEX", await cmdCfDnsEnsureWorkerApex(env, domain));
-  step("CF_DNS_ENSURE_WORKER_WWW", await cmdCfDnsEnsureWorkerWww(env, domain));
-  step("CF_WORKER_ROUTE_ENSURE_APEX", await cmdCfWorkerRouteEnsure(env, "aura-core", `${domain}/*`));
-  step("CF_WORKER_ROUTE_ENSURE_WWW", await cmdCfWorkerRouteEnsure(env, "aura-core", `www.${domain}/*`));
-
-  // 3) Export state
-  const routes = await cmdCfWorkerRoutesExportJson(env, "");
-  const dns = await cmdCfDnsExportJson(env, "");
-  const routesJson = (() => { try { return routes && routes.reply ? JSON.parse(routes.reply) : null; } catch(e){ return null; } })();
-  const dnsJson = (() => { try { return dns && dns.reply ? JSON.parse(dns.reply) : null; } catch(e){ return null; } })();
-  report.routes = routesJson;
-  report.dns = dnsJson;
-  step("CF_WORKER_ROUTES_EXPORT_JSON", routes);
-  step("CF_DNS_EXPORT_JSON", dns);
-
-  // 4) Verified fetch
-  const v1 = await verifiedFetchUrl(`https://${domain}/health`);
-  const v2 = await verifiedFetchUrl(`https://www.${domain}/health`);
-  report.verified.apex = v1;
-  report.verified.www = v2;
-
-  // PASS logic (strict): both fetches must be 200
-  report.ok = (v1?.http_status === 200) && (v2?.http_status === 200);
-
-  // Persist for quick PASS/FAIL command
-  await kvPutJson(env, "aura:frontdesk:last_report", report);
-
-  return report;
-}
-
-if (UCHAT.startsWith("FRONTDESK_SELF_REPAIR")) {
-  const dom = t.includes(":") ? t.split(":").slice(1).join(":").trim() : chatRest;
-  const r = await frontdeskSelfRepair(env, dom);
-  return jsonResp({ ok: true, reply: JSON.stringify(r, null, 2), frontdesk: r });
-}
-
-if (UCHAT.startsWith("PASS_OR_FAIL_FRONTDESK")) {
-  const dom = t.includes(":") ? t.split(":").slice(1).join(":").trim() : chatRest;
-  let rep = await kvGetJson(env, "aura:frontdesk:last_report");
-  // If no prior report or domain differs, run self-repair now (still safe + deterministic).
-  if (!rep || (dom && normalizeDomain(dom) && rep.domain !== normalizeDomain(dom))) {
-    rep = await frontdeskSelfRepair(env, dom);
-  } else {
-    // refresh verified fetch to avoid stale status
-    const domain = rep.domain || (normalizeDomain(dom) || "frontdesk.network");
-    const v1 = await verifiedFetchUrl(`https://${domain}/health`);
-    const v2 = await verifiedFetchUrl(`https://www.${domain}/health`);
-    rep.verified = { apex: v1, www: v2 };
-    rep.ok = (v1?.http_status === 200) && (v2?.http_status === 200);
-    await kvPutJson(env, "aura:frontdesk:last_report", rep);
-  }
-  return new Response(rep.ok ? "PASS" : "FAIL", { headers: { "content-type": "text/plain; charset=utf-8" } });
-}
-
 
 // --- LANDING CONTENT COMMANDS (STEP 106) ---
 // SET_SITE_LANDING <domain> <json>
@@ -3005,36 +2218,6 @@ if (t.toUpperCase().startsWith("SET_SITE_LANDING")) {
   await kvPutJson(env, key, obj);
   return jsonResp({ ok:true, reply:`Landing updated. storage_key=${key}` });
 }
-
-// --- HOST PROFILE COMMANDS (STEP 112) ---
-// SET_SITE_PROFILE <domain> <json>
-// GET_SITE_PROFILE <domain>
-// Notes:
-// - Stored at KV key SITE:<host>
-// - Profile may include { landing:{...} } or directly landing fields.
-if (t.toUpperCase().startsWith("GET_SITE_PROFILE")) {
-  const parts = t.split(/\s+/);
-  const domain = normalizeDomain(parts[1] || "");
-  if (!domain) return jsonResp({ ok:false, reply:"error: missing domain" });
-  const key = siteProfileKeyForHost(domain);
-  const obj = await kvGetJson(env, key, null);
-  if (!obj) return jsonResp({ ok:false, reply:`not_found: ${key}` });
-  return jsonResp({ ok:true, reply:`ok: ${key}`, key, profile: obj });
-}
-if (t.toUpperCase().startsWith("SET_SITE_PROFILE")) {
-  const parts = t.split(/\s+/);
-  const domain = normalizeDomain(parts[1] || "");
-  const jsonStr = t.split(/\s+/).slice(2).join(" ").trim();
-  if (!domain) return jsonResp({ ok:false, reply:"error: missing domain" });
-  if (!jsonStr) return jsonResp({ ok:false, reply:"error: missing json" });
-  let obj=null;
-  try{ obj = JSON.parse(jsonStr); }catch(e){ return jsonResp({ ok:false, reply:"error: invalid json" }); }
-  const key = siteProfileKeyForHost(domain);
-  await kvPutJson(env, key, obj);
-  return jsonResp({ ok:true, reply:`Site profile updated. storage_key=${key}` });
-}
-
-
 
 if (t.toUpperCase().startsWith("SET_ACTIVE_PROJECT")) {
   const proj = t.split(/\s+/).slice(1).join(" ").trim();
@@ -3161,37 +2344,17 @@ const CAPABILITIES_LOCK = [
   "Admin / deployment / Cloudflare tooling ONLY as explicitly implemented in this worker's command set; never claim OS-level control."
 ].join("\n- ");
 
-let HISTORY_CONTEXT = "";
-try {
-  const tail = await memTail(env, 40, 30);
-  HISTORY_CONTEXT = tail.map((l) => {
-    try {
-      const o = JSON.parse(l);
-      const kind = o.type || "evt";
-      const txt = (o.text || o.reply || "").toString();
-      return `[${kind}] ${txt}`.slice(0, 300);
-    } catch(e){
-      return String(l).slice(0, 300);
-    }
-  }).join("\n");
-} catch(e) {
-  HISTORY_CONTEXT = "";
-}
-
 const prompt =
 `SYSTEM:
 You are Aura, running inside Aura Core (Cloudflare Worker). You are assisting ${op.name}, ${op.role}.
 Hard rules (non-negotiable):
 - You already know the operator is ${op.name}. Never say you "don't know" who they are.
 - Never re-introduce yourself (no "Welcome", no "I'm Aura") unless the operator explicitly asks for an introduction.
-- Cross-session persistence is ON: Aura stores lifetime conversation history + Canon in Aura KV (and other wired stores). When asked, answer from stored history when available.
+- Never claim you remember "everything across sessions" by default. Cross-session persistence exists ONLY when data is explicitly stored in Aura KV (e.g., uploads, operator profile, memory log, snapshots). If asked, explain that plainly.
 - Reduce pointless clarifying questions. If the input is a simple test phrase, respond minimally.
 - List capabilities ONLY from this wired list; do not invent capabilities.
 Wired capabilities (only):
 - ${CAPABILITIES_LOCK}
-
-Recent operator history (lifetime ledger tail):
-${HISTORY_CONTEXT}
 
 Operator input:
 ${t}
@@ -3214,16 +2377,6 @@ Aura response (concise, truthful, no invented capabilities):`;
               }
             }
           } catch(e){}
-
-          // Memory-grounded quick answers (no follow-ups)
-          try {
-            const qa = await quickAnswerFromMemory(env, t);
-            if (qa) {
-              try { await memAppend(env, { ts: new Date().toISOString(), type: "chat_out", text: qa, build: BUILD_VERSION }); } catch(e) {}
-              return jsonResp({ ok: true, reply: qa });
-            }
-          } catch(e){}
-
           const out = await env.AI.run("@cf/meta/llama-3-8b-instruct", {
             prompt,
             max_tokens: 512,
@@ -3234,13 +2387,8 @@ Aura response (concise, truthful, no invented capabilities):`;
           const finalReply = String(reply || "").trim();
           const gatedReply = finalReply;
           try {
-            // If we just produced an address and we have a last plan, store it.
-            const plan = await planGet(env);
-            const addr = extractAddressFromText(gatedReply);
-            if (plan && plan.place && addr) await placeAddrSet(env, plan.place, addr);
-          } catch(e){}
-          try {
-            await memAppend(env, { ts: new Date().toISOString(), type: "chat_out", text: gatedReply, build: BUILD_VERSION });
+            const memOn2 = await memIsOn(env);
+            if (memOn2) await memAppend(env, { ts: new Date().toISOString(), type: "chat_out", text: gatedReply, build: BUILD_VERSION });
           } catch(e){}
           return jsonResp({ ok: true, reply: gatedReply });
         } catch (e) {

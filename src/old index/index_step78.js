@@ -1,11 +1,10 @@
 // C:\Users\Aaron Karacas\aura-worker\aura\src\index.js
-// AURA_CORE__2026-01-24__AUTONOMY_STEP_101__CLAIM_GATE_HOST_SCOPED_KV_TTL__CORE_ALIAS__UI_OK__01
+// AURA_CORE__2026-01-24__AUTONOMY_STEP_78__ZONE_CONTEXT_PERSIST_FIX__01
 // Full-file replacement. DO NOT MERGE.
 // Restores /ui + full command set + adds RUN_CITYGUIDE_WORLD_VERIFY (batch) without breaking existing exports.
 
-const BUILD_VERSION = "AURA_CORE__2026-01-26__UI_SELF_BUNDLE__04";
-const BUILD_STAMP = "2026-01-26 13:10 PT";
-let AURA_ENV = null;
+const BUILD_VERSION = "AURA_CORE__2026-01-24__AUTONOMY_STEP_78__ZONE_CONTEXT_PERSIST_FIX__01";
+const BUILD_STAMP = "2026-01-24 05:40 PT";
 
 // --- CORS ---
 const CORS_HEADERS = {
@@ -16,155 +15,6 @@ const CORS_HEADERS = {
 };
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
 
-
-
-// --- VERIFIED FETCH + CLAIM GATING (STEP 97) ---
-// Aura must never claim a site is live/launched/etc unless VERIFIED_FETCH_URL returns status + first HTML line.
-const CLAIM_WORDS = ["live","deployed","launched","resolving","propagating","successful","verified","up","online","working","reachable","available","accessible"];
-const CLAIM_WORD_RE = new RegExp("\\b(" + CLAIM_WORDS.join("|") + ")\\b", "i");
-
-const VF_KV_PREFIX = "vf:";
-const VF_TTL_MS = 15 * 60 * 1000; // 15 minutes
-
-function extractHostFromText(s){
-  const t = String(s||"");
-  // 1) Try full URL
-  const m = t.match(/https?:\/\/[^\s"'<>]+/i);
-  if (m && m[0]) {
-    try { return new URL(m[0]).hostname.toLowerCase(); } catch(e) {}
-  }
-  // 2) Try bare domain
-  const dm = t.match(/\b([a-z0-9-]+\.)+[a-z]{2,}\b/i);
-  if (dm && dm[0]) return dm[0].toLowerCase();
-  return "";
-}
-
-function promptLooksLikeStatusClaim(prompt){
-  const p = String(prompt||"").toLowerCase();
-  if (!p) return false;
-  // direct status question patterns (covers "is X reachable", "can you reach X", etc.)
-  if (/(is|are)\s+.+\s+(live|up|online|working|reachable|available|accessible)\b/.test(p)) return true;
-  if (/\b(can you|can we|is it)\s+.+\s+(reach|access)\b/.test(p)) return true;
-  // keyword fallback using the claim list
-  return CLAIM_WORDS.some(w => p.includes(w));
-}
-
-async function hasRecentPassingVerifiedFetch(env, host){
-  const h = String(host||"").trim().toLowerCase();
-  if (!h) return false;
-  try{
-    const raw = await env.AURA_KV.get(VF_KV_PREFIX + h);
-    if (!raw) return false;
-    const rec = JSON.parse(raw);
-    const ts = rec && rec.ts ? Date.parse(rec.ts) : 0;
-    if (!ts || (Date.now() - ts) > VF_TTL_MS) return false;
-    return !!(rec.ok === true && typeof rec.http_status === "number" && rec.http_status >= 200 && rec.http_status < 400);
-  } catch(e){
-    return false;
-  }
-}
-
-function looksLikeVerifiedFetch(text){
-  const s = String(text||"").trim();
-  // Allow ONLY explicit VERIFIED_FETCH / NOT WIRED formats, or the strict JSON shape produced by VERIFIED_FETCH_URL.
-  if (s.startsWith("VERIFIED_FETCH") || s.startsWith("NOT WIRED")) return true;
-  if (s.startsWith("{")) {
-    try{
-      const o = JSON.parse(s);
-      return o && typeof o === "object" &&
-        ("ok" in o) && ("url" in o) && ("http_status" in o) && ("first_line_html" in o);
-    }catch(e){ return false; }
-  }
-  return false;
-}
-
-function enforceClaimGate(text){
-  const s = String(text||"").trim();
-  if (!s) return s;
-  if (CLAIM_WORD_RE.test(s) && !looksLikeVerifiedFetch(s)) {
-    // SINGLE-LINE enforcement (no extra notes) to satisfy "ONLY" constraints.
-    return "NOT WIRED: VERIFIED_FETCH REQUIRED";
-  }
-  return s;
-}
-
-function getClaimGateInfo(){
-  return {
-    trigger_words: CLAIM_WORDS.slice(),
-    forced_message: "NOT WIRED: VERIFIED_FETCH REQUIRED",
-    requires_verified_fetch_format: true
-  };
-}
-
-
-async function getVerifiedFetchRecord(env, host){
-  try{
-    if (!env || !env.AURA_KV) return null;
-    const h = String(host||"").trim().toLowerCase();
-    if (!h) return null;
-    const raw = await env.AURA_KV.get(VF_KV_PREFIX + h);
-    if (!raw) return null;
-    let rec=null;
-    try { rec = JSON.parse(raw); } catch(e){ rec=null; }
-    if (!rec || typeof rec !== "object") return null;
-    // Require ok:true + http_status>0
-    if (!rec.ok) return null;
-    const ts = rec.ts ? Date.parse(rec.ts) : NaN;
-    if (!Number.isFinite(ts)) return rec; // if missing ts, still accept within KV TTL
-    const age = Date.now() - ts;
-    if (age < 0) return rec;
-    if (age > VF_TTL_MS) return null;
-    return rec;
-  } catch(e){
-    return null;
-  }
-}
-
-
-
-function normalizeCommandInput(raw){
-  let s = String(raw||"").trim();
-  // Allow operator to prefix prompts with "Aura:" or "Aura," etc.
-  s = s.replace(/^aura\s*[:,-]\s*/i, "");
-  // Common wrapper words
-  s = s.replace(/^run\s+/i, "");
-  s = s.replace(/^please\s+/i, "");
-  return s.trim();
-}
-
-
-async function verifiedFetchUrl(url){
-  const u = String(url||"").trim();
-  if (!u) return { ok:false, url:"", http_status:0, first_line_html:"", error:"missing_url" };
-  let resp=null;
-  try{
-    resp = await fetch(u, { redirect: "follow" });
-    const status = resp.status || 0;
-    let firstLine = "";
-    try{
-      const ct = (resp.headers.get("content-type")||"").toLowerCase();
-      if (ct.includes("text/html") || ct.includes("text/") || ct.includes("application/xhtml")) {
-        const txt = await resp.text();
-        firstLine = String(txt.split(/\r?\n/)[0] || "").trim();
-      } else {
-        // Non-HTML: still return first line as an empty string.
-        firstLine = "";
-      }
-    } catch(e){
-      firstLine = "";
-    }
-    const rec = { ok: !!resp.ok, url: u, http_status: status, first_line_html: firstLine, error: "", ts: new Date().toISOString() };
-    try{
-      const host = extractHostFromText(u);
-      if (host) await AURA_ENV.AURA_KV.put(VF_KV_PREFIX + host, JSON.stringify(rec), { expirationTtl: Math.floor(VF_TTL_MS/1000) });
-    }catch(e){}
-    return { ok: rec.ok, url: rec.url, http_status: rec.http_status, first_line_html: rec.first_line_html, error: rec.error };
-  } catch(e){
-    const rec = { ok:false, url: u, http_status:0, first_line_html:"", error: (e && e.message) ? e.message : String(e) , ts: new Date().toISOString() };
-    try{ const host = extractHostFromText(u); if (host) await AURA_ENV.AURA_KV.put(VF_KV_PREFIX + host, JSON.stringify(rec), { expirationTtl: Math.floor(VF_TTL_MS/1000) }); }catch(e2){}
-    return { ok: rec.ok, url: rec.url, http_status: rec.http_status, first_line_html: rec.first_line_html, error: rec.error };
-  }
-}
 function withCors(headers = {}) {
   return { ...headers, ...CORS_HEADERS };
 }
@@ -220,52 +70,16 @@ button{background:#1b2a44;color:#fff;border:1px solid #263553;border-radius:10px
 const chat=document.getElementById('chat');
 const input=document.getElementById('input');
 const sendBtn=document.getElementById('sendBtn');
-const mic=document.getElementById('mic');
 const up=document.getElementById('up');
 const file=document.getElementById('file');
-let __sendBusy = false;
-let __lastSendText = '';
-let __lastSendAt = 0;
 
-
-let __micActive = false;
-let __micSentHash = '';
-let __micSentAt = 0;
-function __hashDedup(str){
-  let h=0;
-  for(let i=0;i<str.length;i++){ h=((h<<5)-h)+str.charCodeAt(i); h|=0; }
-  return (h>>>0).toString(16);
-}
-function bubble(text, who, node){
+function bubble(t,c){
   const d=document.createElement('div');
-  d.className='b ' + (who||'a');
-  if (node){
-    const wrap=document.createElement('div');
-    wrap.className='nodewrap';
-    wrap.appendChild(node);
-    d.appendChild(wrap);
-    if (text){
-      const cap=document.createElement('div');
-      cap.className='cap';
-      cap.textContent=String(text);
-      d.appendChild(cap);
-    }
-  } else {
-    d.textContent=String(text||'');
-  }
+  d.className='b '+c;
+  d.textContent=String(t ?? '');
   chat.appendChild(d);
   chat.scrollTop=chat.scrollHeight;
 }
-function bubbleImage(srcUrl, altText){
-  const img=document.createElement('img');
-  img.src=srcUrl;
-  img.alt=altText||'image';
-  img.style.maxWidth='100%';
-  img.style.borderRadius='12px';
-  img.style.display='block';
-  bubble(altText||'', 'a', img);
-}
-
 
 async function safeJson(res){
   const ct=(res.headers.get('content-type')||'').toLowerCase();
@@ -274,34 +88,13 @@ async function safeJson(res){
   return { ok:false, error:"non_json_response", status:res.status, body:txt.slice(0,2000) };
 }
 
-async function send(src){
+async function send(){
   const t=input.value.trim();
   if(!t) return;
-  src = src || 'typed';
-  if (__micActive && src !== 'mic') return;
-    if (__sendBusy) return;
-  const __now = Date.now();
-  if (t === __lastSendText && (__now - __lastSendAt) < 1200) return;
-  __lastSendText = t;
-  __lastSendAt = __now;
-  if (src === 'mic'){
-    const h = __hashDedup(t);
-    const norm = (t||"").toLowerCase().replace(/[^a-z0-9\s]/g," ").replace(/\s+/g," ").trim();
-    const prev = (__micSentNorm||"");
-    if (prev && (__now - __micSentAt) < 5000){
-      if (norm === prev) return;
-      if (norm && prev && (norm.includes(prev) || prev.includes(norm))) return;
-    }
-    if (h === __micSentHash && (__now - __micSentAt) < 5000) return;
-    __micSentHash = h;
-    __micSentNorm = norm;
-    __micSentAt = __now;
-  }
   input.value='';
   bubble(t,'me');
 
   try{
-    __sendBusy = true;
     const res = await fetch('/chat', {
       method:'POST',
       headers:{'Content-Type':'text/plain; charset=utf-8'},
@@ -311,47 +104,11 @@ async function send(src){
     bubble(j.reply ?? JSON.stringify(j,null,2),'a');
   } catch(e){
     bubble('UI_ERROR: ' + (e && e.message ? e.message : String(e)),'err');
-  } finally { __sendBusy = false; }
-
-}
-
-sendBtn.addEventListener('click', ()=>send('click'));
-input.addEventListener('keydown', e => { if(e.key==='Enter') send('enter'); });
-
-function abToB64(ab){
-  const bytes = new Uint8Array(ab);
-  let bin = '';
-  const chunk = 0x8000;
-  for (let i=0;i<bytes.length;i+=chunk){
-    bin += String.fromCharCode.apply(null, bytes.subarray(i,i+chunk));
-  }
-  return btoa(bin);
-}
-
-async function uploadFile(f){
-  // Safety: keep uploads small unless R2 is wired.
-  const MAX = 4 * 1024 * 1024; // 4MB
-  if (f.size > MAX){
-    bubble('Upload too large for now (' + f.size + ' bytes). Max ' + MAX + ' bytes.', 'err');
-    return;
-  }
-  const ab = await f.arrayBuffer();
-  const b64 = abToB64(ab);
-  const payload = { name: f.name, type: f.type || 'application/octet-stream', size: f.size, b64 };
-  const res = await fetch('/upload', {
-    method:'POST',
-    headers:{'Content-Type':'application/json; charset=utf-8'},
-    body: JSON.stringify(payload)
-  });
-  const j = await safeJson(res);
-  if (j.ok && j.id){
-    bubble('uploaded: ' + j.name + ' :: id=' + j.id, 'a');
-    // Add a lightweight reference into chat context (no forced sending)
-    input.value = (input.value ? input.value + ' ' : '') + '[file:' + j.id + ']';
-  } else {
-    bubble(j.reply || JSON.stringify(j,null,2), 'err');
   }
 }
+
+sendBtn.addEventListener('click', send);
+input.addEventListener('keydown', e => { if(e.key==='Enter') send(); });
 
 up.addEventListener('click', () => file.click());
 file.addEventListener('change', async () => {
@@ -359,247 +116,21 @@ file.addEventListener('change', async () => {
   if(!f) return;
   bubble('[upload] ' + f.name + ' (' + f.size + ' bytes)','me');
   file.value='';
-  try { await uploadFile(f); } catch(e){ bubble('UPLOAD_ERROR: ' + (e && e.message ? e.message : String(e)), 'err'); }
+  bubble('UPLOAD_NOT_ENABLED_IN_STEP_11_UI','a');
 });
 
-// Mic (Web Speech API). Chrome/Edge support webkitSpeechRecognition.
-let rec=null; let recOn=false;
-let __micFinalText=""; let __micInterimText="";
-function micSupported(){ return !!(window.SpeechRecognition || window.webkitSpeechRecognition); }
-function setMicUi(){ mic.textContent = recOn ? '⏹' : '🎤'; mic.title = recOn ? 'Stop' : 'Mic'; }
-async function toggleMic(){
-  if (!micSupported()) { bubble('Mic not supported in this browser.', 'err'); return; }
-  if (!rec){
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    rec = new SR();
-    rec.continuous = false;
-    rec.interimResults = true;
-    rec.lang = 'en-US';
-    rec.onresult = (e)=>{
-      let interim='';
-      for (let i=e.resultIndex;i<e.results.length;i++){
-        const txt = e.results[i][0].transcript;
-        if (e.results[i].isFinal) __micFinalText += txt;
-        else interim += txt;
-      }
-      __micInterimText = interim;
-      input.value = (__micFinalText + __micInterimText).trim();
-    };
-    rec.onerror = (e)=>{ bubble('MIC_ERROR: ' + (e.error || 'unknown'), 'err'); recOn=false; setMicUi(); };
-    rec.onend = ()=>{
-      // Do NOT auto-send on mic end. Keep transcript in the input so Aaron can review/edit, then press Enter/Send.
-      recOn=false; __micActive=false; setMicUi();
-      sendBtn.disabled = false;
-      // Reset buffers so the next mic run starts clean, but DO NOT wipe the visible input.
-      __micFinalText=""; __micInterimText="";
-    };
-  }
-  if (!recOn){
-    __micFinalText=""; __micInterimText=""; input.value="";
-    recOn=true; __micActive=true; setMicUi();
-    sendBtn.disabled = true;
-    try { rec.start(); } catch(e){ recOn=false; __micActive=false; setMicUi(); sendBtn.disabled=false; bubble('MIC_START_ERROR: ' + (e && e.message ? e.message : String(e)), 'err'); }
-  } else {
-    try { rec.stop(); } catch(e){}
-  }
-}
-mic.addEventListener('click', toggleMic);
-setMicUi();
-
-bubble('UI wired OK (STEP 11) — mic + uploads enabled','a');
+bubble('UI wired OK (STEP 11)','a');
 </script>
 </body></html>`;
-}
-
-
-// --- Upload storage (KV-backed, small files only) ---
-// NOTE: Cloudflare KV is used as a minimal transport so Aaron can stop using ChatGPT.
-// If you later add R2, we can lift size limits and store binary there.
-function b64FromArrayBuffer(buf){
-  let bin = "";
-  const bytes = new Uint8Array(buf);
-  const chunk = 0x8000;
-  for (let i=0;i<bytes.length;i+=chunk){
-    bin += String.fromCharCode.apply(null, bytes.subarray(i,i+chunk));
-  }
-  // btoa expects binary string
-  return btoa(bin);
-}
-
-function toB64(str){
-  const enc = new TextEncoder();
-  const ab = enc.encode(str).buffer;
-  return b64FromArrayBuffer(ab);
-}
-function sha1Hex(str){
-  // lightweight hash for IDs (not crypto security)
-  let h = 0;
-  for (let i=0;i<str.length;i++){
-    h = ((h<<5) - h) + str.charCodeAt(i);
-    h |= 0;
-  }
-  return (h>>>0).toString(16).padStart(8,"0");
-}
-function uploadId(name, size, headB64){
-  const seed = `${Date.now()}|${name||""}|${size||0}|${headB64||""}|${Math.random()}`;
-  return "u_" + sha1Hex(seed) + "_" + Date.now().toString(36);
-}
-async function uploadsIndexGet(env){
-  const k = "aura:uploads:index";
-  const raw = await env.AURA_KV.get(k);
-  return raw ? (JSON.parse(raw)||[]) : [];
-}
-async function uploadsIndexPut(env, list){
-  const k = "aura:uploads:index";
-  const trimmed = Array.isArray(list) ? list.slice(0,200) : [];
-  await env.AURA_KV.put(k, JSON.stringify(trimmed));
-}
-async function uploadStore(env, meta){
-  const id = meta.id;
-  await env.AURA_KV.put("aura:upload:" + id, JSON.stringify(meta));
-  const idx = await uploadsIndexGet(env);
-  const next = [{ id, name: meta.name, type: meta.type, size: meta.size, ts: meta.ts }, ...idx.filter(x=>x && x.id!==id)].slice(0,200);
-  await uploadsIndexPut(env, next);
-}
-async function uploadGet(env, id){
-  const raw = await env.AURA_KV.get("aura:upload:" + id);
-  return raw ? JSON.parse(raw) : null;
-}
-async function uploadDelete(env, id){
-  await env.AURA_KV.delete("aura:upload:" + id);
-  const idx = await uploadsIndexGet(env);
-  await uploadsIndexPut(env, idx.filter(x=>x && x.id!==id));
 }
 
 // --- KV helpers ---
 function kvOk(env) { return !!env.AURA_KV; }
 
-// --- Session Log (KV-backed, tiny ring buffer) ---
-// Purpose: enable "SESSION MEMORY PACK" and continuity without pretending we have magical memory.
-async function sessionLogGet(env){
-  const key = "aura:session:log";
-  const raw = await env.AURA_KV.get(key);
-  return raw ? (JSON.parse(raw)||[]) : [];
-}
-async function sessionLogPut(env, list){
-  const key = "aura:session:log";
-  const trimmed = Array.isArray(list) ? list.slice(-80) : []; // keep last 80 entries max
-  await env.AURA_KV.put(key, JSON.stringify(trimmed));
-}
-async function sessionLogAppend(env, entry){
-  if (!env.AURA_KV) return;
-  try{
-    const log = await sessionLogGet(env);
-    log.push(entry);
-    await sessionLogPut(env, log);
-  } catch(e){}
-}
-async function sessionLastPackGet(env){
-  if (!env.AURA_KV) return null;
-  const raw = await env.AURA_KV.get("aura:session:last_pack");
-  return raw ? String(raw) : null;
-}
-async function sessionLastPackPut(env, pack){
-  if (!env.AURA_KV) return;
-  try{ await env.AURA_KV.put("aura:session:last_pack", String(pack||"")); }catch(e){}
-}
-function makeSessionMemoryPack(anchors, aliases, objective, notes){
-  const topic = anchors?.topic ? String(anchors.topic) : "";
-  const ents = (anchors?.entities && Array.isArray(anchors.entities)) ? anchors.entities.map(String) : [];
-  const aliasPairs = [];
-  if (aliases && typeof aliases === "object"){
-    for (const k of Object.keys(aliases)){
-      if (!k) continue;
-      aliasPairs.push(`${k}→${String(aliases[k])}`);
-    }
-  }
-  const lines = [];
-  if (topic) lines.push(`* Current topic: ${topic}`);
-  if (objective) lines.push(`* Current objective: ${objective}`);
-  if (ents.length) lines.push(`* Active entities: ${ents.join(", ")}`);
-  if (aliasPairs.length) lines.push(`* Alias map: ${aliasPairs.join(", ")}`);
-  if (notes && Array.isArray(notes) && notes.length){
-    for (const n of notes.slice(0,10)) lines.push(`* ${n}`);
-  }
-  return "```\n" + lines.slice(0,20).join("\n") + "\n```";
-}
-function isPriorSessionQuestion(rawLower){
-  if (!rawLower) return false;
-  return rawLower.includes("what did we talk about yesterday") ||
-         rawLower.includes("what did we talk about last session") ||
-         rawLower.includes("yesterday") ||
-         rawLower.includes("last session") ||
-         rawLower.includes("previous session") ||
-         rawLower.includes("earlier today") ||
-         rawLower.includes("what did we talk about");
-}
-function isSessionPackCreate(rawLower){
-  return rawLower.includes("session memory pack") && (rawLower.includes("create") || rawLower.includes("make") || rawLower.includes("generate"));
-}
-function isMemoryPackPaste(rawTrim){
-  return rawTrim.startsWith("MEMORY PACK:") || rawTrim.startsWith("SESSION MEMORY PACK:");
-}
-function parseMemoryPack(raw){
-  const out = { topic:"", objective:"", entities:[], aliases:{} };
-  const s = String(raw||"");
-  const lines = s.split(/\r?\n/).map(x=>x.trim());
-  for (const l of lines){
-    const line = l.replace(/^\*+\s*/,"").trim();
-    if (!line) continue;
-    if (line.toLowerCase().startsWith("current topic:")){
-      out.topic = line.split(":").slice(1).join(":").trim();
-    } else if (line.toLowerCase().startsWith("current objective:")){
-      out.objective = line.split(":").slice(1).join(":").trim();
-    } else if (line.toLowerCase().startsWith("active entities:")){
-      const rest = line.split(":").slice(1).join(":").trim();
-      out.entities = rest ? rest.split(",").map(x=>x.trim()).filter(Boolean) : [];
-    } else if (line.toLowerCase().startsWith("alias map:")){
-      const rest = line.split(":").slice(1).join(":").trim();
-      const pairs = rest.split(",").map(x=>x.trim()).filter(Boolean);
-      for (const p of pairs){
-        const parts = p.split("→");
-        if (parts.length===2){
-          const k = normWord(parts[0]);
-          const v = parts[1].trim();
-          if (k && v) out.aliases[k]=v;
-        }
-      }
-    }
-  }
-  return out;
-}
-
-
-
-// --- Session State (KV-backed) ---
-// Stores lightweight current topic/entities/aliases/objective derived from MEMORY PACK paste.
-// This is explicit persistence via KV, not magical recall.
-async function sessionStateGet(env){
-  if (!env.AURA_KV) return { topic:"", objective:"", entities:[], aliases:{} };
-  const s = await kvGetJson(env, "aura:session:state");
-  if (!s || typeof s !== "object") return { topic:"", objective:"", entities:[], aliases:{} };
-  return {
-    topic: s.topic ? String(s.topic) : "",
-    objective: s.objective ? String(s.objective) : "",
-    entities: Array.isArray(s.entities) ? s.entities.map(String) : [],
-    aliases: (s.aliases && typeof s.aliases === "object") ? s.aliases : {}
-  };
-}
-async function sessionStatePut(env, state){
-  if (!env.AURA_KV) return false;
-  const safe = {
-    topic: state?.topic ? String(state.topic) : "",
-    objective: state?.objective ? String(state.objective) : "",
-    entities: Array.isArray(state?.entities) ? state.entities.map(String).slice(0,25) : [],
-    aliases: (state?.aliases && typeof state.aliases === "object") ? state.aliases : {}
-  };
-  try { await kvPutJson(env, "aura:session:state", safe); return true; } catch(e){ return false; }
-}
 async function kvGetJson(env, key) {
   if (!kvOk(env)) return null;
   const v = await env.AURA_KV.get(key);
-  if (!v) return null;
-  try { return JSON.parse(v); } catch (e) { return null; }
+  return v ? JSON.parse(v) : null;
 }
 
 async function kvPutJson(env, key, obj) {
@@ -608,53 +139,7 @@ async function kvPutJson(env, key, obj) {
   return true;
 }
 
-// --- Operator Identity (KV-backed) ---
-// Stores stable operator identity so Aura does not "forget" Aaron across sessions.
-// This is NOT magical memory. It is explicit persistence via AURA_KV only.
-async function getOperatorProfile(env){
-  const key = "aura:operator:profile";
-  let p = await kvGetJson(env, key);
-  if (!p || typeof p !== "object"){
-    p = {
-      name: "Aaron Karacas",
-      role: "creator/operator of ARK Systems",
-      ts: new Date().toISOString(),
-      build: BUILD_VERSION
-    };
-    // best-effort persist
-    try { await kvPutJson(env, key, p); } catch(e){}
-  }
-  return p;
-
-}
-
-async function githubCtxGet(env){
-  const key = "aura:github:context";
-  const ctx = await kvGetJson(env, key);
-  return (ctx && typeof ctx === "object") ? ctx : null;
-}
-async function githubCtxSet(env, ctx){
-  const key = "aura:github:context";
-  await kvPutJson(env, key, ctx);
-  return true;
-}
-
 // --- helpers ---
-
-function parseKeyValueArgs(s){
-  const out={};
-  const parts=String(s||"").trim().split(/\s+/).filter(Boolean);
-  for (const p of parts){
-    const i=p.indexOf('=');
-    if (i>0){
-      const k=p.slice(0,i).trim();
-      const v=p.slice(i+1).trim();
-      if (k) out[k]=v;
-    }
-  }
-  return out;
-}
-
 function titleCaseWords(s){
   return String(s||"")
     .trim()
@@ -774,12 +259,9 @@ async function cfAccountId(env){
 
 // --- Canonical Redirect (best-effort via Rulesets API) ---
 async function cmdCanonicalRedirectSet(env, args){
-  // Canonical redirect WITHOUT Rulesets API (many tokens lack Rulesets perms).
-  // We implement canonical via the Pages UI (client-side redirect in index.html), deployed through Pages API.
   const zone = await kvGetJson(env, "aura:cf:zone");
   const zoneId = zone?.id;
   if (!zoneId) return { ok:false, reply:"canonical_redirect: no_zone_set (run CF_ZONE_SET:domain)" };
-
   const m = {};
   for (const part of String(args||"").split(/\s+/).filter(Boolean)){
     const [k,v]=part.split("=");
@@ -788,21 +270,45 @@ async function cmdCanonicalRedirectSet(env, args){
   const primary = m.primary, secondary = m.secondary;
   if (!primary || !secondary) return { ok:false, reply:"canonical_redirect: missing primary/secondary (use primary=.. secondary=..)" };
 
-  const rec = { primary, secondary, ts: new Date().toISOString(), mode:"pages_ui_client" };
-  await kvPutJson(env, "aura:cityguide:canonical_redirect", rec);
+  // get entrypoint ruleset for dynamic redirect phase
+  const phase = "http_request_dynamic_redirect";
+  const getPath = `/zones/${zoneId}/rulesets/phases/${phase}/entrypoint`;
+  const got = await cfApi(env, getPath, { method:"GET" });
+  if (!got.ok) return { ok:false, reply:`canonical_redirect: cannot_read_ruleset (${got.status||0})` };
 
-  // Apply immediately by re-deploying the CityGuide UI bundle to Pages (injects redirect script).
-  const dep = await cmdPagesDeployCityGuideUI(env);
-  if (!dep?.ok) {
-    return { ok:false, reply:`canonical_redirect: saved (${secondary} -> ${primary}) but pages_deploy_failed :: ${dep?.reply||"unknown"}` };
-  }
-  return { ok:true, reply:`canonical_redirect: applied (client-side) ${secondary} -> ${primary} :: pages_deploy_ok` };
+  const entryId = got.json?.result?.id;
+  if (!entryId) return { ok:false, reply:"canonical_redirect: entrypoint_missing" };
+
+  const rule = {
+    action: "redirect",
+    expression: `(http.host eq "${secondary}")`,
+    description: `Canonical host redirect ${secondary} -> ${primary}`,
+    action_parameters: {
+      from_value: {
+        status_code: 301,
+        target_url: { expression: `concat("https://${primary}", http.request.uri.path, if(len(http.request.uri.query) > 0, concat("?", http.request.uri.query), ""))` }
+      }
+    },
+    enabled: true
+  };
+
+  const current = got.json?.result;
+  const rules = Array.isArray(current?.rules) ? current.rules : [];
+  const filtered = rules.filter(r => !(r?.description && r.description.includes(`Canonical host redirect ${secondary} -> ${primary}`)));
+  const nextRules = [rule, ...filtered].slice(0, 20);
+  const patchPath = `/zones/${zoneId}/rulesets/${entryId}`;
+  const body = JSON.stringify({ rules: nextRules });
+  const patched = await cfApi(env, patchPath, { method:"PUT", body });
+  if (!patched.ok) return { ok:false, reply:`canonical_redirect: set_fail (${patched.status||0})` };
+
+  await kvPutJson(env, "aura:cityguide:canonical_redirect", { primary, secondary, ts:new Date().toISOString() });
+  return { ok:true, reply:`canonical_redirect_set: ${secondary} -> ${primary} (301)` };
 }
 
 async function cmdCanonicalRedirectStatus(env){
   const rec = await kvGetJson(env, "aura:cityguide:canonical_redirect");
   if (!rec) return { ok:true, reply:"canonical_redirect: not_set" };
-  return { ok:true, reply:`canonical_redirect: ${rec.secondary} -> ${rec.primary} (client-side) ts=${rec.ts}` };
+  return { ok:true, reply:`canonical_redirect: ${rec.secondary} -> ${rec.primary} (301) ts=${rec.ts}` };
 }
 
 // --- Dynamic City Projection ---
@@ -1448,21 +954,10 @@ async function cmdPagesDeployCityGuideUI(env) {
   const form = new FormData();
   // metadata
   form.append("manifest", new Blob([JSON.stringify({})], { type: "application/json" }), "manifest.json");
-  // Build files dynamically so we can inject canonical redirect (if configured).
-  const files = { ...CITYGUIDE_UI_FILES };
-  const canon = await kvGetJson(env, "aura:cityguide:canonical_redirect");
-  if (canon?.primary && canon?.secondary && typeof files["index.html"] === "string") {
-    const js = `<script>(function(){try{var p="__PRIMARY__";var s="__SECONDARY__";if(location.host===s){var u=location.protocol+"//"+p+location.pathname+location.search+location.hash;location.replace(u);}}catch(e){}})();</script>`;
-    const js2 = js.replace("__PRIMARY__", canon.primary).replace("__SECONDARY__", canon.secondary);
-    // Inject as early as possible in <head>
-    files["index.html"] = files["index.html"].replace("<head>", "<head>\n  " + js2 + "\n");
-  }
-
   // files
-  for (const [name, content] of Object.entries(files)) {
+  for (const [name, content] of Object.entries(CITYGUIDE_UI_FILES)) {
     form.append("files", new Blob([content], { type: "application/octet-stream" }), name);
   }
-
 
   const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects/${project}/deployments`;
   const res = await fetch(url, {
@@ -1528,25 +1023,6 @@ async function chatRouter(req, env) {
   if (!t) return { ok: true, reply: "" };
   if (U === "PING") return { ok: true, reply: "pong" };
   if (U === "CAPABILITIES") return await cmdCapabilities(env);
-
-  if (U.startsWith("DECLARE_GITHUB_CONTEXT")) {
-    const ctx = parseKeyValueArgs(t.replace(/^DECLARE_GITHUB_CONTEXT\s*/i,""));
-    ctx.ts = new Date().toISOString();
-    ctx.build = BUILD_VERSION;
-    await githubCtxSet(env, ctx);
-    return { ok:true, reply:"github_context: saved", github: ctx };
-  }
-  if (U === "CONFIRM_GITHUB_CONTEXT") {
-    const ctx = await githubCtxGet(env);
-    if (!ctx) return { ok:false, reply:"github_context: none" };
-    return { ok:true, reply: JSON.stringify(ctx, null, 2), github: ctx };
-  }
-  if (U === "SOURCE_OF_TRUTH") {
-    const ctx = await githubCtxGet(env);
-    if (ctx && ctx.repo) return { ok:true, reply:`source_of_truth: ${ctx.repo} (${ctx.branch||"main"}) ${ctx.authoritative_path||"src/index.js"}` };
-    return { ok:true, reply:'source_of_truth: aaronkaracas-prog/aura-core (main) src/index.js' };
-  }
-
 
   if (U === "MEMORY:ON") { await memSet(env, true); return { ok:true, reply:"Memory log: ON." }; }
   if (U === "MEMORY:OFF") { await memSet(env, false); return { ok:true, reply:"Memory log: OFF." }; }
@@ -1624,32 +1100,13 @@ if (U.startsWith("CF_PAGES_DNS_FIX:")) return await cmdCfPagesDnsFix(env, t.spli
   return { ok: true, reply: t };
 }
 
-
-// --- CANON (KV-backed, minimal) ---
-function canonAliasNorm(a){
-  return String(a||"").trim().replace(/\s+/g,"_").toUpperCase();
-}
-function canonKey(alias){
-  return "canon:" + canonAliasNorm(alias);
-}
-async function canonGet(env, alias){
-  if (!kvOk(env)) return { ok:false, reply:"canon_get: kv_missing" };
-  const a = canonAliasNorm(alias);
-  if (!a) return { ok:false, reply:"canon_get: missing_alias" };
-  const v = await env.AURA_KV.get(canonKey(a));
-  if (!v) return { ok:false, reply:`canon_get: not_found (${a})` };
-  return { ok:true, reply:v, alias:a };
-}
-
 function health() {
   return jsonResp({ ok: true, version: BUILD_VERSION, stamp: BUILD_STAMP });
 }
 
 export default {
   async fetch(req, env) {
-    AURA_ENV = env;
     const url = new URL(req.url);
-    try {
 
     if (req.method === "OPTIONS") return optionsOk();
 
@@ -1657,371 +1114,21 @@ export default {
     if (req.method === "GET" && url.pathname === "/ui") return html(uiHtml());
     if (req.method === "GET" && url.pathname === "/health") return health();
 
-    
-if (req.method === "POST" && url.pathname === "/chat") {
-      const body = await req.text();
-      let t = (body || "").trim();
-      t = normalizeCommandInput(t);
-      if (!t) return jsonResp({ ok: true, reply: "" });
-
-
-      // --- SESSION MEMORY PACK WORKFLOW (server-side, deterministic) ---
-      const rawLower = t.toLowerCase();
-      const rawTrim = t.trim();
-
-      // 1) MEMORY PACK paste: store + load as authoritative context for this session.
-      if (isMemoryPackPaste(rawTrim)) {
-        // Accept both multiline and single-line packs. Persist raw text + parsed state.
-        try { await sessionLastPackPut(env, rawTrim); } catch(e){}
-        try {
-          const parsed = parseMemoryPack(rawTrim);
-          await sessionStatePut(env, parsed);
-        } catch(e){}
-        return jsonResp({ ok: true, reply: "Memory pack loaded." });
-      }
-
-      // 2) Create SESSION MEMORY PACK on demand (under 20 lines, in one code block)
-      if (isSessionPackCreate(rawLower)) {
-        let state = { topic:"", objective:"", entities:[], aliases:{} };
-        try { state = await sessionStateGet(env); } catch(e){}
-        const pack = makeSessionMemoryPack(
-          { topic: state.topic, entities: state.entities },
-          state.aliases,
-          state.objective,
-          [
-            `Build: ${BUILD_VERSION}`,
-            `Stamp: ${BUILD_STAMP}`,
-            "Goal: microphone behavior + session continuity prompts",
-          ]
-        );
-        try { await sessionLastPackPut(env, pack); } catch(e){}
-        return jsonResp({ ok: true, reply: pack });
-      }
-
-      // 3) Prior-session questions: ask for pack (or use most recent pack if present)
-      if (isPriorSessionQuestion(rawLower)) {
-        const last = await sessionLastPackGet(env);
-        if (!last) {
-          return jsonResp({ ok: true, reply:
-            "Paste your most recent SESSION MEMORY PACK (start with 'MEMORY PACK:'), and I'll answer using it. If you don't have it, I can't know what was discussed in prior sessions, but I can generate a pack at the end of each session going forward."
-          });
-        }
-        return jsonResp({ ok: true, reply: `Using your most recent SESSION MEMORY PACK:\n\n${last}` });
-      }
-
-      // Always keep operator commands working (Aura control plane)
-      if (t.toUpperCase() === "PING") return jsonResp({ ok: true, reply: "pong" });
-
-      // --- SELF-BUNDLE (GitHub raw fetch -> KV, staging only) ---
-      if (/^DECLARE_SELF_BUNDLE_TARGET\b/i.test(t)) {
-        await env.AURA_KV.put("aura:self_bundle:target", t);
-        return jsonResp({ ok: true, reply: "self_bundle_target: saved" });
-      }
-
-      if (/^GENERATE_SELF_BUNDLE$/i.test(t)) {
-        const gh = await githubCtxGet(env);
-        if (!gh) return jsonResp({ ok: false, reply: "self_bundle: github_context_none" });
-
-        const owner = gh.owner;
-        const repo = gh.repo;
-        const branch = gh.branch || "main";
-        const path = gh.path || "src/index.js";
-        if (!owner || !repo || !path) return jsonResp({ ok: false, reply: "self_bundle: github_context_incomplete" });
-
-        const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`;
-        const resp = await fetch(rawUrl, { method: "GET" });
-        const txt = await resp.text();
-
-        if (!resp.ok) {
-          return jsonResp({ ok: false, reply: JSON.stringify({ self_bundle: "fetch_failed", http_status: resp.status, url: rawUrl }) });
-        }
-
-        const bundleB64 = toB64(txt);
-        const meta = { ts: new Date().toISOString(), bytes: txt.length, b64_len: bundleB64.length, target: "staging", source: "github_raw", url: rawUrl };
-
-        await env.AURA_KV.put("aura:self_bundle:b64", bundleB64);
-        await env.AURA_KV.put("aura:self_bundle:meta", JSON.stringify(meta));
-
-        return jsonResp({ ok: true, reply: "self_bundle: generated", meta });
-      }
-
-      if (/^SHOW_SELF_BUNDLE_METADATA$/i.test(t)) {
-        const meta = await env.AURA_KV.get("aura:self_bundle:meta");
-        return jsonResp({ ok: true, reply: meta || "self_bundle: none" });
-      }
-
-      if (/^SEND_SELF_BUNDLE_TO_DEPLOYER$/i.test(t)) {
-        const bundle = await env.AURA_KV.get("aura:self_bundle:b64");
-        if (!bundle) return jsonResp({ ok: false, reply: "self_bundle: missing" });
-
-        const deployPayload = { target: "staging", bundle };
-        const key = env.AURA_DEPLOYER_KEY || "";
-        if (!key) return jsonResp({ ok: false, reply: "deployer_key: missing" });
-
-        const headers = { "content-type": "application/json", "X-DEPLOY-KEY": key };
-
-        // Prefer service binding
-        if (env.AURA_DEPLOYER && typeof env.AURA_DEPLOYER.fetch === "function") {
-          const r = await env.AURA_DEPLOYER.fetch("https://aura-deployer/", { method: "POST", headers, body: JSON.stringify(deployPayload) });
-          return jsonResp({ ok: r.ok, reply: (await r.text()).slice(0, 2000) });
-        }
-
-        // Fallback URL
-        const deployUrl = env.AURA_DEPLOYER_URL;
-        if (!deployUrl) return jsonResp({ ok: false, reply: "deployer_url: missing" });
-
-        const r = await fetch(deployUrl, { method: "POST", headers, body: JSON.stringify(deployPayload) });
-        return jsonResp({ ok: r.ok, reply: (await r.text()).slice(0, 2000) });
-      }
-
-      // --- CANON RECALL (KV-backed) ---
-      if (/^RECALL_CANON$/i.test(t)) {
-        const r = await canonGet(env, "ARKSYSTEMS_CURRENT_REALITY");
-        return jsonResp({ ok: r.ok, reply: r.reply, canon: r });
-      }
-      if (/^RECALL_CANON:/i.test(t)) {
-        const alias = t.split(":").slice(1).join(":").trim();
-        const r = await canonGet(env, alias || "ARKSYSTEMS_CURRENT_REALITY");
-        return jsonResp({ ok: r.ok, reply: r.reply, canon: r });
-      }
-
-
-      // --- GITHUB CONTEXT (KV-backed) ---
-      if (/^DECLARE_GITHUB_CONTEXT\b/i.test(t)) {
-        const rest = t.replace(/^DECLARE_GITHUB_CONTEXT\s*/i,"").trim();
-        const ctx = parseKeyValueArgs(rest);
-        ctx.ts = new Date().toISOString();
-        ctx.build = BUILD_VERSION;
-        await githubCtxSet(env, ctx);
-        return jsonResp({ ok:true, reply:"github_context: saved", github: ctx });
-      }
-      if (/^CONFIRM_GITHUB_CONTEXT$/i.test(t)) {
-        const ctx = await githubCtxGet(env);
-        if (!ctx) return jsonResp({ ok:false, reply:"github_context: none" });
-        return jsonResp({ ok:true, reply: JSON.stringify(ctx, null, 2), github: ctx });
-      }
-      if (/^SOURCE_OF_TRUTH$/i.test(t)) {
-        const ctx = await githubCtxGet(env);
-        const msg = (ctx && ctx.repo)
-          ? `source_of_truth: ${ctx.repo} (${ctx.branch||"main"}) ${ctx.authoritative_path||"src/index.js"}`
-          : "source_of_truth: aaronkaracas-prog/aura-core (main) src/index.js";
-        return jsonResp({ ok:true, reply: msg, github: ctx||null });
-      }
-
-      // --- IDENTITY / SELF (simple, deterministic) ---
-      if (/^(IDENTITY|DESCRIBE_SELF|STATE_ROLE|LIST_CAPABILITIES)$/i.test(t)) {
-        const caps = [
-          "PING",
-          "RECALL_CANON",
-          "Operator command routing (this build)",
-          "UI (mic + uploads) (STEP 11)"
-        ];
-        const identity =
-          "I am Aura — the ARK Systems control-plane Worker (aura-core) for Aaron Karacas. " +
-          "I run on Cloudflare Workers and respond to operator commands.";
-        if (/^LIST_CAPABILITIES$/i.test(t)) return jsonResp({ ok:true, reply: caps.join("\\n") });
-        return jsonResp({ ok:true, reply: identity });
-      }
-      if (/^(who are you|what are you)\??$/i.test(t)) {
-        return jsonResp({ ok:true, reply: "I am Aura — the ARK Systems control-plane Worker (aura-core) for Aaron Karacas." });
-      }
-      if (/^(what can you do|help)\??$/i.test(t)) {
-        return jsonResp({ ok:true, reply: "Commands: PING, RECALL_CANON. I also run the Aura UI (/ui) with mic + uploads." });
-      }
-
-
-      // SHOW_CLAIM_GATE  (STEP 97)
-      // Returns JSON: { trigger_words, forced_message, requires_verified_fetch_format }
-      if (t.toUpperCase() === "SHOW_CLAIM_GATE") {
-        const info = getClaimGateInfo();
-        return jsonResp({ ok: true, reply: JSON.stringify(info, null, 2), claim_gate: info });
-      }
-
-
-// VERIFIED_FETCH_URL <url>  (STEP 97)
-// Returns JSON exactly: { ok, url, http_status, first_line_html, error? }
-if (t.toUpperCase().startsWith("VERIFIED_FETCH_URL")) {
-  const parts = t.split(/\s+/);
-  const urlArg = parts.slice(1).join(" ").trim();
-  const r = await verifiedFetchUrl(urlArg);
-  return jsonResp({ ok: true, reply: JSON.stringify(r, null, 2), verified_fetch: r });
-}
-
-
-      
-
-// --- CLAIM GATE (host-scoped) ---
-// Status-claim prompts are blocked unless this host has a recent VERIFIED_FETCH_URL (KV-backed TTL).
-let __claimGateAllow = false;
-if (promptLooksLikeStatusClaim(t)) {
-  const host = extractHostFromText(t);
-  const rec = await getVerifiedFetchRecord(env, host);
-  if (!rec) {
-    return jsonResp({ ok: true, reply: "NOT WIRED: VERIFIED_FETCH REQUIRED" });
-  }
-  __claimGateAllow = true;
-}
-
-// Session log (KV-backed, always-on tiny ring) for SESSION MEMORY PACK workflow.
-      try { if (env.AURA_KV) await sessionLogAppend(env, { ts: new Date().toISOString(), type: "chat_in", text: t, build: BUILD_VERSION }); } catch(e){}
-
-      // Memory log (KV-backed, opt-in) — captures in/out for continuity across sessions.
+    if (req.method === "POST" && url.pathname === "/chat") {
+      const r = await chatRouter(req, env);
       try {
         const memOn = await memIsOn(env);
-        if (memOn) await memAppend(env, { ts: new Date().toISOString(), type: "chat_in", text: t, build: BUILD_VERSION });
-      } catch(e){}
-
-      // LLM-backed chat (Cloudflare Workers AI). No OpenAI keys required.
-      if (env.AI) {
-        // Minimal chat template: Aura is the assistant; stay aligned with Aaron's doctrine.
-        // Identity + capability hard-lock (STEP 84)
-// Important: Aura must NOT claim cross-session memory beyond what is explicitly persisted in KV.
-const op = await getOperatorProfile(env);
-const CAPABILITIES_LOCK = [
-  "Text chat inside Aura UI (/ui -> POST /chat).",
-  "Mic input (browser SpeechRecognition -> text) and single-send de-dupe (client-side).",
-  "File uploads (small files stored in KV) and retrieval via /files and /files/:id.",
-  "Image generation via Workers AI (/image) stored in KV and retrievable via /files/:id (when AI binding is enabled).",
-  "CityGuide exports and tools: /export/cityguide and /export/cityguide/:slug plus CityGuide world commands (where implemented).",
-  "Admin / deployment / Cloudflare tooling ONLY as explicitly implemented in this worker's command set; never claim OS-level control."
-].join("\n- ");
-
-const prompt =
-`SYSTEM:
-You are Aura, running inside Aura Core (Cloudflare Worker). You are assisting ${op.name}, ${op.role}.
-Hard rules (non-negotiable):
-- You already know the operator is ${op.name}. Never say you "don't know" who they are.
-- Never re-introduce yourself (no "Welcome", no "I'm Aura") unless the operator explicitly asks for an introduction.
-- Never claim you remember "everything across sessions" by default. Cross-session persistence exists ONLY when data is explicitly stored in Aura KV (e.g., uploads, operator profile, memory log, snapshots). If asked, explain that plainly.
-- Reduce pointless clarifying questions. If the input is a simple test phrase, respond minimally.
-- List capabilities ONLY from this wired list; do not invent capabilities.
-Wired capabilities (only):
-- ${CAPABILITIES_LOCK}
-
-Operator input:
-${t}
-
-Aura response (concise, truthful, no invented capabilities):`;
-        try {
-
-          // STEP 99: Prompt-intent claim gate (blocks status claims unless a recent passing VERIFIED_FETCH exists for the host)
-          try{
-            const host = extractHostFromText(t);
-            if (promptLooksLikeStatusClaim(t)) {
-              const okHost = host && await hasRecentPassingVerifiedFetch(env, host);
-              if (!okHost) {
-                const forced = "NOT WIRED: VERIFIED_FETCH REQUIRED";
-                try {
-                  const memOnX = await memIsOn(env);
-                  if (memOnX) await memAppend(env, { ts: new Date().toISOString(), type: "chat_out", text: forced, build: BUILD_VERSION });
-                } catch(e){}
-                return jsonResp({ ok: true, reply: forced });
-              }
-            }
-          } catch(e){}
-          const out = await env.AI.run("@cf/meta/llama-3-8b-instruct", {
-            prompt,
-            max_tokens: 512,
-            temperature: 0.3
-          });
-          // Workers AI returns { response: "..." } for many text models.
-          const reply = (out && (out.response || out.output || out.result || out.text)) ? (out.response || out.output || out.result || out.text) : JSON.stringify(out);
-          const finalReply = String(reply || "").trim();
-          const gatedReply = (__claimGateAllow ? finalReply : enforceClaimGate(finalReply));
-          try {
-            const memOn2 = await memIsOn(env);
-            if (memOn2) await memAppend(env, { ts: new Date().toISOString(), type: "chat_out", text: gatedReply, build: BUILD_VERSION });
-          } catch(e){}
-          return jsonResp({ ok: true, reply: gatedReply });
-        } catch (e) {
-          return jsonResp({ ok: false, error: "ai_run_failed", detail: e && e.message ? e.message : String(e) }, 500);
-        }
-      }
-
-      // Fallback: echo (should not happen once AI binding is wired)
-      return jsonResp({ ok: true, reply: t });
+        if (memOn) await memAppend(env, { ts: new Date().toISOString(), type: "out", reply: r.reply ?? "", ok: !!r.ok, build: BUILD_VERSION });
+      } catch (e) {}
+      return jsonResp(r);
     }
-
 
     if (req.method === "GET" && url.pathname === "/export/cityguide") return exportWorld(env);
-    if (req.method === "GET" && url.pathname === "/files") {
-      if (!env.AURA_KV) return jsonResp({ ok:false, error:"kv_missing" }, 500);
-      const idx = await uploadsIndexGet(env);
-      return jsonResp({ ok:true, files: idx, count: idx.length, build: BUILD_VERSION });
-    }
-
-    if (req.method === "GET" && url.pathname.startsWith("/files/")) {
-      if (!env.AURA_KV) return jsonResp({ ok:false, error:"kv_missing" }, 500);
-      const id = url.pathname.split("/").pop();
-      const rec = await uploadGet(env, id);
-      if (!rec) return jsonResp({ ok:false, error:"not_found" }, 404);
-      // Return raw bytes
-      const bin = atob(rec.b64 || "");
-      const bytes = new Uint8Array(bin.length);
-      for (let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
-      return new Response(bytes, { status:200, headers: withCors({
-        "content-type": rec.type || "application/octet-stream",
-        "content-disposition": `inline; filename*=UTF-8''${encodeURIComponent(rec.name||id)}`
-      })});
-    }
-
-    if (req.method === "DELETE" && url.pathname.startsWith("/files/")) {
-      if (!env.AURA_KV) return jsonResp({ ok:false, error:"kv_missing" }, 500);
-      const id = url.pathname.split("/").pop();
-      await uploadDelete(env, id);
-      return jsonResp({ ok:true, deleted: id });
-    }
-
-    if (req.method === "POST" && url.pathname === "/upload") {
-      if (!env.AURA_KV) return jsonResp({ ok:false, error:"kv_missing" }, 500);
-      let j=null;
-      try { j = await req.json(); } catch(e){ j=null; }
-      if (!j || !j.b64 || !j.name) return jsonResp({ ok:false, error:"bad_upload_payload" }, 400);
-      const name = String(j.name||"").slice(0,200);
-      const type = String(j.type||"application/octet-stream").slice(0,100);
-      const size = Number(j.size||0);
-      const b64 = String(j.b64||"");
-      // Hard safety limit (4MB) unless later moved to R2
-      const MAX = 4 * 1024 * 1024;
-      if (size > MAX) return jsonResp({ ok:false, error:"too_large", max: MAX, size }, 413);
-      const id = uploadId(name, size, b64.slice(0,48));
-      const rec = { id, name, type, size, b64, ts: new Date().toISOString(), build: BUILD_VERSION };
-      await uploadStore(env, rec);
-      return jsonResp({ ok:true, id, name, type, size, href:`/files/${id}` });
-    }
-
-    
-    if (req.method === "POST" && url.pathname === "/image") {
-      if (!env.AURA_KV) return jsonResp({ ok:false, error:"kv_missing" }, 500);
-      if (!env.AI) return jsonResp({ ok:false, error:"ai_missing", reply:"AI binding not enabled yet." }, 500);
-      let j=null;
-      try { j = await req.json(); } catch(e){ j=null; }
-      const prompt = j && j.prompt ? String(j.prompt).trim() : "";
-      if (!prompt) return jsonResp({ ok:false, error:"missing_prompt" }, 400);
-
-      try {
-        const imgStream = await env.AI.run("@cf/stabilityai/stable-diffusion-xl-base-1.0", { prompt });
-        // Convert stream to ArrayBuffer so we can store in KV as base64 (small images only for now)
-        const ab = await new Response(imgStream).arrayBuffer();
-        const b64 = b64FromArrayBuffer(ab);
-        const name = "gen_" + Date.now() + ".jpg";
-        const id = uploadId(name, ab.byteLength, b64.slice(0,48));
-        const rec = { id, name, type:"image/jpg", size: ab.byteLength, b64, ts: new Date().toISOString(), build: BUILD_VERSION, gen: { prompt } };
-        await uploadStore(env, rec);
-        return jsonResp({ ok:true, id, name, type: rec.type, href:`/files/${id}` });
-      } catch (e) {
-        return jsonResp({ ok:false, error:"image_gen_failed", detail: e && e.message ? e.message : String(e) }, 500);
-      }
-    }
-
-if (req.method === "GET" && url.pathname.startsWith("/export/cityguide/")) {
+    if (req.method === "GET" && url.pathname.startsWith("/export/cityguide/")) {
       const slug = url.pathname.split("/").pop();
       return exportCity(slug, env);
     }
 
     return jsonResp({ ok: false, error: "not_found" }, 404);
-    } catch (e) {
-      return jsonResp({ ok: false, error: "unhandled_exception", detail: e && e.message ? e.message : String(e), build: BUILD_VERSION }, 500);
-    }
   }
 };

@@ -1,0 +1,11 @@
+name = "aura-cloudflare"
+main = "src/index.js"
+compatibility_date = "2026-01-19"
+workers_dev = true
+
+# Secrets (set via `wrangler secret put`)
+# - CF_API_TOKEN
+# - AURA_CORE_SECRET
+# Vars (set here or via dashboard)
+# - CF_ACCOUNT_ID (optional today; reserved for future)
+# - ALLOWED_ZONES (CSV): e.g. "cityguide.world,auras.guide"

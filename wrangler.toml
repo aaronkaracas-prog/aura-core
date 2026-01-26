@@ -23,3 +23,6 @@ service = "aura-deployer"
 [[services]]
 binding = "AURA_CF"
 service = "aura-cloudflare"
+
+[ai]
+binding = "AI"

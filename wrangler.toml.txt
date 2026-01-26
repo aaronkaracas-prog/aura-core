@@ -1,7 +1,20 @@
-name = "aura-core"
-main = "src/index.js"
-compatibility_date = "2026-01-09"
+$path = "C:\Users\Aaron Karacas\aura-worker\aura\wrangler.toml"
+$t = Get-Content -Raw $path
 
-[[r2_buckets]]
-binding = "AURA_UPLOADS"
-bucket_name = "auras-guide-uploads"
+if ($t -match '^\s*\[ai\]\s*$' -and $t -match '^\s*binding\s*=\s*\"AI\"\s*$') {
+  Write-Host "OK: [ai] binding = ""AI"" already present."
+} else {
+  if ($t -match '^\s*\[ai\]\s*$') {
+    # [ai] exists but binding line may not
+    if ($t -notmatch '^\s*binding\s*=\s*\"AI\"\s*$') {
+      $t = $t -replace '(\[ai\]\s*\r?\n)', "`$1binding = ""AI""`r`n"
+    }
+  } else {
+    # Append a clean [ai] block at the end
+    if (-not $t.EndsWith("`n")) { $t += "`r`n" }
+    $t += "`r`n[ai]`r`nbinding = ""AI""`r`n"
+  }
+
+  Set-Content -Encoding UTF8 -NoNewline $path $t
+  Write-Host "UPDATED: added Workers AI binding."
+}

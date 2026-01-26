@@ -3,8 +3,8 @@
 // Full-file replacement. DO NOT MERGE.
 // Restores /ui + full command set + adds RUN_CITYGUIDE_WORLD_VERIFY (batch) without breaking existing exports.
 
-const BUILD_VERSION = "AURA_CORE__2026-01-26__UI_SELF_BUNDLE__04";
-const BUILD_STAMP = "2026-01-26 13:10 PT";
+const BUILD_VERSION = "AURA_CORE__2026-01-26__GITHUB_CONTEXT__01";
+const BUILD_STAMP = "2026-01-26 19:25 PT";
 let AURA_ENV = null;
 
 // --- CORS ---
@@ -424,12 +424,6 @@ function b64FromArrayBuffer(buf){
   }
   // btoa expects binary string
   return btoa(bin);
-}
-
-function toB64(str){
-  const enc = new TextEncoder();
-  const ab = enc.encode(str).buffer;
-  return b64FromArrayBuffer(ab);
 }
 function sha1Hex(str){
   // lightweight hash for IDs (not crypto security)
@@ -1711,69 +1705,6 @@ if (req.method === "POST" && url.pathname === "/chat") {
 
       // Always keep operator commands working (Aura control plane)
       if (t.toUpperCase() === "PING") return jsonResp({ ok: true, reply: "pong" });
-
-      // --- SELF-BUNDLE (GitHub raw fetch -> KV, staging only) ---
-      if (/^DECLARE_SELF_BUNDLE_TARGET\b/i.test(t)) {
-        await env.AURA_KV.put("aura:self_bundle:target", t);
-        return jsonResp({ ok: true, reply: "self_bundle_target: saved" });
-      }
-
-      if (/^GENERATE_SELF_BUNDLE$/i.test(t)) {
-        const gh = await githubCtxGet(env);
-        if (!gh) return jsonResp({ ok: false, reply: "self_bundle: github_context_none" });
-
-        const owner = gh.owner;
-        const repo = gh.repo;
-        const branch = gh.branch || "main";
-        const path = gh.path || "src/index.js";
-        if (!owner || !repo || !path) return jsonResp({ ok: false, reply: "self_bundle: github_context_incomplete" });
-
-        const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`;
-        const resp = await fetch(rawUrl, { method: "GET" });
-        const txt = await resp.text();
-
-        if (!resp.ok) {
-          return jsonResp({ ok: false, reply: JSON.stringify({ self_bundle: "fetch_failed", http_status: resp.status, url: rawUrl }) });
-        }
-
-        const bundleB64 = toB64(txt);
-        const meta = { ts: new Date().toISOString(), bytes: txt.length, b64_len: bundleB64.length, target: "staging", source: "github_raw", url: rawUrl };
-
-        await env.AURA_KV.put("aura:self_bundle:b64", bundleB64);
-        await env.AURA_KV.put("aura:self_bundle:meta", JSON.stringify(meta));
-
-        return jsonResp({ ok: true, reply: "self_bundle: generated", meta });
-      }
-
-      if (/^SHOW_SELF_BUNDLE_METADATA$/i.test(t)) {
-        const meta = await env.AURA_KV.get("aura:self_bundle:meta");
-        return jsonResp({ ok: true, reply: meta || "self_bundle: none" });
-      }
-
-      if (/^SEND_SELF_BUNDLE_TO_DEPLOYER$/i.test(t)) {
-        const bundle = await env.AURA_KV.get("aura:self_bundle:b64");
-        if (!bundle) return jsonResp({ ok: false, reply: "self_bundle: missing" });
-
-        const deployPayload = { target: "staging", bundle };
-        const key = env.AURA_DEPLOYER_KEY || "";
-        if (!key) return jsonResp({ ok: false, reply: "deployer_key: missing" });
-
-        const headers = { "content-type": "application/json", "X-DEPLOY-KEY": key };
-
-        // Prefer service binding
-        if (env.AURA_DEPLOYER && typeof env.AURA_DEPLOYER.fetch === "function") {
-          const r = await env.AURA_DEPLOYER.fetch("https://aura-deployer/", { method: "POST", headers, body: JSON.stringify(deployPayload) });
-          return jsonResp({ ok: r.ok, reply: (await r.text()).slice(0, 2000) });
-        }
-
-        // Fallback URL
-        const deployUrl = env.AURA_DEPLOYER_URL;
-        if (!deployUrl) return jsonResp({ ok: false, reply: "deployer_url: missing" });
-
-        const r = await fetch(deployUrl, { method: "POST", headers, body: JSON.stringify(deployPayload) });
-        return jsonResp({ ok: r.ok, reply: (await r.text()).slice(0, 2000) });
-      }
-
       // --- CANON RECALL (KV-backed) ---
       if (/^RECALL_CANON$/i.test(t)) {
         const r = await canonGet(env, "ARKSYSTEMS_CURRENT_REALITY");
@@ -2025,3 +1956,12 @@ if (req.method === "GET" && url.pathname.startsWith("/export/cityguide/")) {
     }
   }
 };
+
+
+// --- GitHub Context (passive, reference-only) ---
+const github_context = {
+  mode: "reference_only",
+  precedence: "secondary",
+  writable: false
+};
+

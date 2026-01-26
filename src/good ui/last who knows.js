@@ -1754,7 +1754,9 @@ if (req.method === "POST" && url.pathname === "/chat") {
         const bundle = await env.AURA_KV.get("aura:self_bundle:b64");
         if (!bundle) return jsonResp({ ok: false, reply: "self_bundle: missing" });
 
-        const deployPayload = { target: "staging", bundle };
+        const account_id = env.CF_ACCOUNT_ID || env.CLOUDFLARE_ACCOUNT_ID || env.ACCOUNT_ID || "";
+        const script_name = "aura-core-staging";
+        const deployPayload = { target: "staging", script_name, account_id, bundle };
         const key = env.AURA_DEPLOYER_KEY || "";
         if (!key) return jsonResp({ ok: false, reply: "deployer_key: missing" });
 
@@ -1763,7 +1765,8 @@ if (req.method === "POST" && url.pathname === "/chat") {
         // Prefer service binding
         if (env.AURA_DEPLOYER && typeof env.AURA_DEPLOYER.fetch === "function") {
           const r = await env.AURA_DEPLOYER.fetch("https://aura-deployer/", { method: "POST", headers, body: JSON.stringify(deployPayload) });
-          return jsonResp({ ok: r.ok, reply: (await r.text()).slice(0, 2000) });
+          const txt = (await r.text()).slice(0, 2000);
+          return jsonResp({ ok: r.ok, reply: txt });
         }
 
         // Fallback URL
@@ -1774,7 +1777,19 @@ if (req.method === "POST" && url.pathname === "/chat") {
         return jsonResp({ ok: r.ok, reply: (await r.text()).slice(0, 2000) });
       }
 
-      // --- CANON RECALL (KV-backed) ---
+      // --- CANON LIST (KV-backed) ---
+      if (/^CANON_LIST$/i.test(t)) {
+        // Lists known canon aliases (best-effort). If a dedicated KV key exists, use it; else return defaults.
+        const raw = await env.AURA_KV.get("aura:canon:aliases");
+        let aliases = [];
+        try { aliases = raw ? JSON.parse(raw) : []; } catch(e) { aliases = []; }
+        if (!Array.isArray(aliases) || aliases.length === 0) {
+          aliases = ["ARKSYSTEMS_CURRENT_REALITY","ARKSYSTEMS_US_CANON"];
+        }
+        return jsonResp({ ok:true, reply: JSON.stringify({ ok:true, canon_aliases: aliases }, null, 2), canon_aliases: aliases });
+      }
+
+// --- CANON RECALL (KV-backed) ---
       if (/^RECALL_CANON$/i.test(t)) {
         const r = await canonGet(env, "ARKSYSTEMS_CURRENT_REALITY");
         return jsonResp({ ok: r.ok, reply: r.reply, canon: r });

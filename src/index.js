@@ -3276,6 +3276,9 @@ Aura response (concise, truthful, no invented capabilities):`;
       if (!env.AURA_KV) return jsonResp({ ok:false, error:"kv_missing" }, 500);
       const idx = await uploadsIndexGet(env);
       return jsonResp({ ok:true, files: idx, count: idx.length, build: BUILD_VERSION });
+      // --- FALLBACK RESPONSE (safety) ---
+      return jsonResp({ ok:false, error:"no_handler_matched", input: t, build: BUILD_VERSION });
+
     }
 
     if (req.method === "GET" && url.pathname.startsWith("/files/")) {

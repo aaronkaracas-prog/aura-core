@@ -2,12 +2,22 @@ name: Deploy STAGING (aura-core-staging)
 
 on:
   push:
-    branches: ["staging"]
+    branches:
+      - staging
+      - aura-staging
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aura-core-staging
+  cancel-in-progress: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     env:
       CI: "true"
       WRANGLER_SEND_METRICS: "false"
@@ -15,16 +25,16 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
       - name: Install Wrangler
-        run: npm install -g wrangler@4.58.0
+        run: npm install -g wrangler@4.59.2
 
-      - name: Deploy STAGING
+      - name: Deploy aura-core-staging
         run: wrangler deploy --name aura-core-staging

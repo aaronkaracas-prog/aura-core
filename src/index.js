@@ -138,33 +138,60 @@ async function verifiedFetchUrl(url){
   if (!u) return { ok:false, url:"", http_status:0, first_line_html:"", error:"missing_url" };
   let resp=null;
   try{
+    // Always send a UA (GitHub API + some CDNs require it), and accept any content.
     resp = await fetch(u, { redirect: "follow", headers: { "User-Agent": "AuraCore/auras.guide", "Accept": "*/*" } });
     const status = resp.status || 0;
-    let firstLine = "";
-    let bodyLen = 0;
-    let bodyText = "";
-    let contentType = "";
-    try{
-      const ct = (resp.headers.get("content-type")||"").toLowerCase();
-      contentType = ct;
-      // Always attempt to read body as text so VERIFIED_FETCH can expose body_text for JSON/YAML/etc.
-      const txt = await resp.text();
-      bodyLen = (txt && txt.length) ? txt.length : 0;
-      bodyText = String(txt || "").slice(0, 12000);
-      firstLine = String(String(txt||"").split(/\r?\n/)[0] || "").trim();
-      } catch(e){
-      firstLine = "";
-    }
-    const rec = { ok: !!resp.ok, url: u, http_status: status, first_line_html: firstLine, body_length: bodyLen, body_text: bodyText, content_type: contentType, error: "", ts: new Date().toISOString() };
+
+    // Capture headers useful for debugging + downstream logic.
+    const contentType = (resp.headers.get("content-type")||"").toLowerCase();
+    const contentLengthHeader = resp.headers.get("content-length") || "";
+
+    // Read body as text for ALL responses. Then cap what we store to keep prompts small.
+    let txt = "";
+    try { txt = await resp.text(); } catch(e) { txt = ""; }
+
+    const bodyLen = (txt && txt.length) ? txt.length : 0;
+
+    // Keep this small so Aura can reason over it without hitting token limits.
+    // (Full body is NOT needed for most probes; increase later only if required.)
+    const BODY_CAP = 2000;
+    const bodyText = String(txt || "").slice(0, BODY_CAP);
+
+    const firstLine = String((String(txt||"").split(/\r?\n/)[0] || "")).trim();
+
+    const rec = {
+      ok: !!resp.ok,
+      url: u,
+      http_status: status,
+      first_line_html: firstLine,
+      body_length: bodyLen,
+      body_text: bodyText,
+      content_type: contentType,
+      content_length: contentLengthHeader,
+      error: "",
+      ts: new Date().toISOString()
+    };
+
     try{
       const host = extractHostFromText(u);
       if (host) await AURA_ENV.AURA_KV.put(VF_KV_PREFIX + host, JSON.stringify(rec), { expirationTtl: Math.floor(VF_TTL_MS/1000) });
     }catch(e){}
-    return { ok: rec.ok, url: rec.url, http_status: rec.http_status, first_line_html: rec.first_line_html, body_length: rec.body_length, body_text: rec.body_text, content_type: rec.content_type, error: rec.error };
+
+    return {
+      ok: rec.ok,
+      url: rec.url,
+      http_status: rec.http_status,
+      first_line_html: rec.first_line_html,
+      body_length: rec.body_length,
+      body_text: rec.body_text,
+      content_type: rec.content_type,
+      content_length: rec.content_length,
+      error: rec.error
+    };
   } catch(e){
-    const rec = { ok:false, url: u, http_status:0, first_line_html:"", error: (e && e.message) ? e.message : String(e) , ts: new Date().toISOString() };
+    const rec = { ok:false, url: u, http_status:0, first_line_html:"", error: (e && e.message) ? e.message : String(e), ts: new Date().toISOString() };
     try{ const host = extractHostFromText(u); if (host) await AURA_ENV.AURA_KV.put(VF_KV_PREFIX + host, JSON.stringify(rec), { expirationTtl: Math.floor(VF_TTL_MS/1000) }); }catch(e2){}
-    return { ok: rec.ok, url: rec.url, http_status: rec.http_status, first_line_html: rec.first_line_html, body_length: rec.body_length || 0, body_text: rec.body_text || "", content_type: rec.content_type || "", error: rec.error };
+    return { ok: rec.ok, url: rec.url, http_status: rec.http_status, first_line_html: rec.first_line_html, body_length: rec.body_length || 0, body_text: rec.body_text || "", content_type: rec.content_type || "", content_length: rec.content_length || "", error: rec.error };
   }
 }
 function withCors(headers = {}) {
@@ -1643,35 +1670,6 @@ async function canonGet(env, alias){
   return { ok:true, reply:v, alias:a };
 }
 
-
-async function canonPut(env, alias, value){
-  if (!kvOk(env)) return { ok:false, reply:"canon_put: kv_missing" };
-  const a = canonAliasNorm(alias);
-  if (!a) return { ok:false, reply:"canon_put: missing_alias" };
-  const v = String(value || "");
-  if (!v.trim()) return { ok:false, reply:"canon_put: empty_body" };
-  await env.AURA_KV.put(canonKey(a), v);
-  return { ok:true, reply:"canon_put: ok", alias:a };
-}
-
-async function canonList(env){
-  if (!kvOk(env)) return { ok:false, reply:"canon_list: kv_missing", canon_aliases: [] };
-  const out = [];
-  let cursor = undefined;
-  for (let i=0; i<20; i++){
-    const r = await env.AURA_KV.list({ prefix: "canon:", cursor });
-    const keys = (r && r.keys) ? r.keys : [];
-    for (const k of keys){
-      const name = (k && k.name) ? String(k.name) : "";
-      if (name.startsWith("canon:")) out.push(name.slice("canon:".length));
-    }
-    if (!r || !r.list_complete) { cursor = r && r.cursor ? r.cursor : undefined; }
-    if (r && r.list_complete) break;
-    if (!cursor) break;
-  }
-  return { ok:true, reply:"canon_list: ok", canon_aliases: out };
-}
-
 function health() {
   return jsonResp({ ok: true, version: BUILD_VERSION, stamp: BUILD_STAMP });
 }
@@ -1805,25 +1803,7 @@ if (req.method === "POST" && url.pathname === "/chat") {
         return jsonResp({ ok: r.ok, reply: (await r.text()).slice(0, 2000) });
       }
 
-      
-      // --- CANON LIST / PUT (KV-backed) ---
-      if (/^CANON_LIST$/i.test(t)) {
-        const r = await canonList(env);
-        return jsonResp({ ok: r.ok, reply: r.reply, canon_aliases: r.canon_aliases || [] });
-      }
-      if (/^CANON_PUT:/i.test(t)) {
-        // Inline-only: CANON_PUT:ALIAS <body...>
-        const rest = t.split(":").slice(1).join(":");
-        const parts = rest.trim().split(/\s+/);
-        const alias = (parts.shift() || "").trim();
-        const body = rest.trim().slice(alias.length).trim();
-        if (!alias) return jsonResp({ ok:false, reply:"canon_put: missing_alias" });
-        if (!body) return jsonResp({ ok:false, reply:"canon_put: awaiting_body" });
-        const r = await canonPut(env, alias, body);
-        return jsonResp({ ok: r.ok, reply: r.reply, canon_put: r });
-      }
-
-// --- CANON RECALL (KV-backed) ---
+      // --- CANON RECALL (KV-backed) ---
       if (/^RECALL_CANON$/i.test(t)) {
         const r = await canonGet(env, "ARKSYSTEMS_CURRENT_REALITY");
         return jsonResp({ ok: r.ok, reply: r.reply, canon: r });

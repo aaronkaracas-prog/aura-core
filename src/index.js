@@ -3,8 +3,8 @@
 // Full-file replacement. DO NOT MERGE.
 // Restores /ui + full command set + adds RUN_CITYGUIDE_WORLD_VERIFY (batch) without breaking existing exports.
 
-const BUILD_VERSION = "AURA_CORE__2026-01-26__UI_SELF_BUNDLE__04";
-const BUILD_STAMP = "2026-01-26 13:10 PT";
+const BUILD_VERSION = "AURA_CORE__2026-01-26__UI_SELF_BUNDLE__05__VF_INLINE_FIX__01";
+const BUILD_STAMP = "2026-01-26 18:10 PT";
 let AURA_ENV = null;
 
 // --- CORS ---
@@ -141,11 +141,17 @@ async function verifiedFetchUrl(url){
     resp = await fetch(u, { redirect: "follow" });
     const status = resp.status || 0;
     let firstLine = "";
+    let bodyLen = 0;
+    let bodyText = "";
+    let contentType = "";
     try{
       const ct = (resp.headers.get("content-type")||"").toLowerCase();
+      contentType = ct;
       if (ct.includes("text/html") || ct.includes("text/") || ct.includes("application/xhtml")) {
         const txt = await resp.text();
-        firstLine = String(txt.split(/\r?\n/)[0] || "").trim();
+        bodyLen = (txt && txt.length) ? txt.length : 0;
+        bodyText = String(txt || "").slice(0, 12000);
+        firstLine = String(String(txt||"").split(/\r?\n/)[0] || "").trim();
       } else {
         // Non-HTML: still return first line as an empty string.
         firstLine = "";
@@ -153,16 +159,16 @@ async function verifiedFetchUrl(url){
     } catch(e){
       firstLine = "";
     }
-    const rec = { ok: !!resp.ok, url: u, http_status: status, first_line_html: firstLine, error: "", ts: new Date().toISOString() };
+    const rec = { ok: !!resp.ok, url: u, http_status: status, first_line_html: firstLine, body_length: bodyLen, body_text: bodyText, content_type: contentType, error: "", ts: new Date().toISOString() };
     try{
       const host = extractHostFromText(u);
       if (host) await AURA_ENV.AURA_KV.put(VF_KV_PREFIX + host, JSON.stringify(rec), { expirationTtl: Math.floor(VF_TTL_MS/1000) });
     }catch(e){}
-    return { ok: rec.ok, url: rec.url, http_status: rec.http_status, first_line_html: rec.first_line_html, error: rec.error };
+    return { ok: rec.ok, url: rec.url, http_status: rec.http_status, first_line_html: rec.first_line_html, body_length: rec.body_length, body_text: rec.body_text, content_type: rec.content_type, error: rec.error };
   } catch(e){
     const rec = { ok:false, url: u, http_status:0, first_line_html:"", error: (e && e.message) ? e.message : String(e) , ts: new Date().toISOString() };
     try{ const host = extractHostFromText(u); if (host) await AURA_ENV.AURA_KV.put(VF_KV_PREFIX + host, JSON.stringify(rec), { expirationTtl: Math.floor(VF_TTL_MS/1000) }); }catch(e2){}
-    return { ok: rec.ok, url: rec.url, http_status: rec.http_status, first_line_html: rec.first_line_html, error: rec.error };
+    return { ok: rec.ok, url: rec.url, http_status: rec.http_status, first_line_html: rec.first_line_html, body_length: rec.body_length || 0, body_text: rec.body_text || "", content_type: rec.content_type || "", error: rec.error };
   }
 }
 function withCors(headers = {}) {
@@ -1839,12 +1845,31 @@ if (req.method === "POST" && url.pathname === "/chat") {
 
 
 // VERIFIED_FETCH_URL <url>  (STEP 97)
+// NOTE: URL parsing is STRICT: the URL is the first token after the command.
+// Any remaining text is treated as an optional "follow-up prompt" that will be executed
+// in the SAME request (so VERIFIED_FETCH context cannot expire between messages).
 // Returns JSON exactly: { ok, url, http_status, first_line_html, error? }
+let __inlineVF = null;
+let __inlineVFHost = "";
+let __inlineFollowup = "";
+
 if (t.toUpperCase().startsWith("VERIFIED_FETCH_URL")) {
-  const parts = t.split(/\s+/);
-  const urlArg = parts.slice(1).join(" ").trim();
-  const r = await verifiedFetchUrl(urlArg);
-  return jsonResp({ ok: true, reply: JSON.stringify(r, null, 2), verified_fetch: r });
+  const rest = String(t.slice("VERIFIED_FETCH_URL".length) || "").trim();
+  const parts = rest.split(/\s+/).filter(Boolean);
+  const urlTok = (parts[0] || "").trim();
+  const follow = parts.slice(1).join(" ").trim();
+  const r = await verifiedFetchUrl(urlTok);
+
+  // Always return the fetch result if no follow-up prompt provided.
+  if (!follow) {
+    return jsonResp({ ok: true, reply: JSON.stringify(r, null, 2), verified_fetch: r });
+  }
+
+  // Inline follow-up: keep VF evidence bound to THIS request.
+  __inlineVF = r;
+  __inlineVFHost = extractHostFromText(urlTok);
+  __inlineFollowup = follow;
+  t = normalizeCommandInput(follow);
 }
 
 
@@ -1854,8 +1879,13 @@ if (t.toUpperCase().startsWith("VERIFIED_FETCH_URL")) {
 // Status-claim prompts are blocked unless this host has a recent VERIFIED_FETCH_URL (KV-backed TTL).
 let __claimGateAllow = false;
 if (promptLooksLikeStatusClaim(t)) {
-  const host = extractHostFromText(t);
-  const rec = await getVerifiedFetchRecord(env, host);
+  const host = extractHostFromText(t) || (__inlineVFHost || "");
+  let rec = null;
+  if (__inlineVF && host && __inlineVFHost && host === __inlineVFHost) {
+    rec = __inlineVF;
+  } else {
+    rec = await getVerifiedFetchRecord(env, host);
+  }
   if (!rec) {
     return jsonResp({ ok: true, reply: "NOT WIRED: VERIFIED_FETCH REQUIRED" });
   }
@@ -1886,6 +1916,8 @@ const CAPABILITIES_LOCK = [
   "Admin / deployment / Cloudflare tooling ONLY as explicitly implemented in this worker's command set; never claim OS-level control."
 ].join("\n- ");
 
+const __vfBlock = (__inlineVF ? `\nVERIFIED_FETCH_CONTEXT (this request only):\n${JSON.stringify(__inlineVF)}\n` : "");
+
 const prompt =
 `SYSTEM:
 You are Aura, running inside Aura Core (Cloudflare Worker). You are assisting ${op.name}, ${op.role}.
@@ -1897,7 +1929,7 @@ Hard rules (non-negotiable):
 - List capabilities ONLY from this wired list; do not invent capabilities.
 Wired capabilities (only):
 - ${CAPABILITIES_LOCK}
-
+${__vfBlock}
 Operator input:
 ${t}
 

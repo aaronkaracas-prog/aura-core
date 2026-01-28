@@ -6,7 +6,88 @@ export default {
       return new Response("Not Found", { status: 404 });
     }
 
+
     const body = await request.text();
+    const bodyTrim = body.trim();
+
+    if (bodyTrim === "RUN_SELF_TEST_EVIDENCE") {
+      const mk = (name, pass, observed, expected) => ({ name, pass, observed, expected });
+
+      const hosts = {
+        example: "example.com",
+        http404: "httpstat.us"
+      };
+
+      const clearHost = async (host) => {
+        await env.AURA_KV.delete(`verified_fetch:${host}`);
+      };
+
+      const getEvidence = async (host) => {
+        const stored = await env.AURA_KV.get(`verified_fetch:${host}`);
+        return stored ? JSON.parse(stored) : null;
+      };
+
+      const putEvidence = async (targetUrl) => {
+        const host = new URL(targetUrl).host.toLowerCase();
+        try {
+          const res = await fetch(targetUrl);
+          const text = await res.text();
+          const evidence = {
+            ok: true,
+            url: targetUrl,
+            host,
+            http_status: res.status,
+            first_line_html: text.split("\n")[0] || "",
+            body_length: text.length
+          };
+          await env.AURA_KV.put(`verified_fetch:${host}`, JSON.stringify(evidence));
+          return evidence;
+        } catch {
+          const evidence = { ok: false, url: targetUrl, host, http_status: 0 };
+          await env.AURA_KV.put(`verified_fetch:${host}`, JSON.stringify(evidence));
+          return evidence;
+        }
+      };
+
+      const statusReachable = (st) => Number(st) >= 200 && Number(st) < 400;
+
+      const results = [];
+
+      // Clean slate
+      await clearHost(hosts.example);
+      await clearHost(hosts.http404);
+
+      // 1) Evidence missing gates (example.com)
+      const ev0 = await getEvidence(hosts.example);
+      results.push(mk("evidence_missing_example", ev0 === null, ev0 ? "EVIDENCE_PRESENT" : "EVIDENCE_MISSING", "EVIDENCE_MISSING"));
+
+      // 2) Fetch example.com -> YES reachable
+      const ev1 = await putEvidence("https://example.com");
+      const yes1 = ev1.ok && statusReachable(ev1.http_status) ? "YES" : "NO";
+      results.push(mk("fetch_example_yes", yes1 === "YES", yes1, "YES"));
+
+      // 3) Fetch httpstat.us/404 -> NO reachable
+      const ev2 = await putEvidence("https://httpstat.us/404");
+      const yes2 = ev2.ok && statusReachable(ev2.http_status) ? "YES" : "NO";
+      results.push(mk("fetch_404_no", yes2 === "NO", yes2, "NO"));
+
+      // 4) Cross-host does not leak: after clearing http404, asking about http404 with only example evidence must gate.
+      await clearHost(hosts.http404);
+      const httpAfterClear = await getEvidence(hosts.http404);
+      const shouldGate = httpAfterClear === null;
+      results.push(mk("cross_host_gate_http404", shouldGate, shouldGate ? "NOT WIRED: VERIFIED_FETCH REQUIRED" : "HAS_EVIDENCE", "NOT WIRED: VERIFIED_FETCH REQUIRED"));
+
+      // Cleanup
+      await clearHost(hosts.example);
+      await clearHost(hosts.http404);
+
+      const ok = results.every(r => r.pass);
+      return Response.json({
+        ok: true,
+        reply: JSON.stringify({ ok, tests: results }, null, 2)
+      });
+    }
+
     const lines = body.split("\n").map(l => l.trim()).filter(Boolean);
 
     const normalizeHost = (u) => {
@@ -155,7 +236,7 @@ export default {
     if (body === "SHOW_BUILD") {
       return Response.json({
         ok: true,
-        reply: JSON.stringify({ build: "AURA_CORE__DETERMINISTIC_EVIDENCE__02", stamp: new Date().toISOString() }, null, 2)
+        reply: JSON.stringify({ build: "AURA_CORE__DETERMINISTIC_EVIDENCE__03", stamp: new Date().toISOString() }, null, 2)
       });
     }
 

@@ -1867,6 +1867,15 @@ if (req.method === "POST" && url.pathname === "/chat") {
       }
 
 
+
+      // SHOW_BUILD
+      // Returns JSON: { build, stamp }
+      if (t.toUpperCase() === "SHOW_BUILD") {
+        const info = { build: BUILD_VERSION, stamp: BUILD_STAMP };
+        return jsonResp({ ok: true, reply: JSON.stringify(info, null, 2), ...info });
+      }
+
+
 // VERIFIED_FETCH_URL <url>  (STEP 97)
 // NOTE: URL parsing is STRICT: the URL is the first token after the command.
 // Any remaining text is treated as an optional "follow-up prompt" that will be executed
@@ -1982,16 +1991,7 @@ Aura response (concise, truthful, no invented capabilities):`;
           // Workers AI returns { response: "..." } for many text models.
           const reply = (out && (out.response || out.output || out.result || out.text)) ? (out.response || out.output || out.result || out.text) : JSON.stringify(out);
           const finalReply = String(reply || "").trim();
-          const __cmd = String(t||"").trim().toUpperCase();
-          const __bypassClaimGate =
-            (__cmd === "SHOW_BUILD") ||
-            (__cmd === "SHOW_CLAIM_GATE") ||
-            (__cmd.startsWith("SHOW_")) ||
-            (__cmd.startsWith("CANON_")) ||
-            (__cmd.startsWith("RECALL_")) ||
-            (__cmd.startsWith("LIST_")) ||
-            (__cmd.startsWith("HELP"));
-          const gatedReply = ((__claimGateAllow || __bypassClaimGate) ? finalReply : enforceClaimGate(finalReply));
+          const gatedReply = (__claimGateAllow ? finalReply : enforceClaimGate(finalReply));
           try {
             const memOn2 = await memIsOn(env);
             if (memOn2) await memAppend(env, { ts: new Date().toISOString(), type: "chat_out", text: gatedReply, build: BUILD_VERSION });

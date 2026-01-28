@@ -10,6 +10,31 @@ export default {
     const body = await request.text();
     const bodyTrim = body.trim();
 
+
+    const allowedCommands = [
+      "PING",
+      "SHOW_BUILD",
+      "SHOW_CLAIM_GATE",
+      "SHOW_ALLOWED_COMMANDS",
+      "RUN_SELF_TEST_EVIDENCE",
+      "VERIFIED_FETCH_URL",
+      "CLEAR_VERIFIED_FETCH",
+      "EVIDENCE_PRESENT"
+    ];
+
+    if (bodyTrim === "PING") {
+      return Response.json({ ok: true, reply: "PONG" });
+    }
+
+    if (bodyTrim === "SHOW_ALLOWED_COMMANDS") {
+      return Response.json({ ok: true, reply: JSON.stringify(allowedCommands, null, 2) });
+    }
+
+    // Strict allowlist: if this is a bare command token and not allowed, return UNKNOWN_COMMAND.
+    if (/^[A-Z0-9_]+$/.test(bodyTrim) && !allowedCommands.includes(bodyTrim)) {
+      return Response.json({ ok: true, reply: "UNKNOWN_COMMAND" });
+    }
+
     if (bodyTrim === "RUN_SELF_TEST_EVIDENCE") {
       const mk = (name, pass, observed, expected) => ({ name, pass, observed, expected });
 
@@ -236,7 +261,7 @@ export default {
     if (body === "SHOW_BUILD") {
       return Response.json({
         ok: true,
-        reply: JSON.stringify({ build: "AURA_CORE__DETERMINISTIC_EVIDENCE__03", stamp: new Date().toISOString() }, null, 2)
+        reply: JSON.stringify({ build: "AURA_CORE__DETERMINISTIC_EVIDENCE__04", stamp: new Date().toISOString() }, null, 2)
       });
     }
 

@@ -40,14 +40,26 @@ function extractHostFromText(s){
 }
 
 function promptLooksLikeStatusClaim(prompt){
-  const p = String(prompt||"").toLowerCase();
+  const raw = String(prompt||"").trim();
+  const up = raw.toUpperCase();
+
+  // Never treat internal commands as "status claims"
+  if (up === "PING") return false;
+  if (up.startsWith("SHOW_")) return false;
+  if (up.startsWith("VERIFIED_FETCH")) return false;
+  if (up.startsWith("CANON_")) return false;
+
+  const p = raw.toLowerCase();
   if (!p) return false;
+
   // direct status question patterns (covers "is X reachable", "can you reach X", etc.)
   if (/(is|are)\s+.+\s+(live|up|online|working|reachable|available|accessible)\b/.test(p)) return true;
   if (/\b(can you|can we|is it)\s+.+\s+(reach|access)\b/.test(p)) return true;
-  // keyword fallback using the claim list
-  return CLAIM_WORDS.some(w => p.includes(w));
+
+  // keyword fallback using the claim list (WORD-BOUNDARY SAFE)
+  return CLAIM_WORD_RE.test(p);
 }
+
 
 async function hasRecentPassingVerifiedFetch(env, host){
   const h = String(host||"").trim().toLowerCase();
@@ -1865,8 +1877,6 @@ if (req.method === "POST" && url.pathname === "/chat") {
         const info = getClaimGateInfo();
         return jsonResp({ ok: true, reply: JSON.stringify(info, null, 2), claim_gate: info });
       }
-
-
 
       // SHOW_BUILD
       // Returns JSON: { build, stamp }

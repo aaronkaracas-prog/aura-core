@@ -2,3 +2,16 @@
 src/index-lastgood.js
 src/indexlast.js
 src/working inex files/
+
+# Block huge payloads
+commit.wide.json
+selfdeploy-payload.json
+*.wide.json
+*.payload.json
+
+# Secrets / keys
+open ai keys.txt
+*keys*.txt
+*.key
+*.pem
+*.env

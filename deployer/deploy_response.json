@@ -1,0 +1,32 @@
+﻿{
+  "ok": true,
+  "deployed": "staging",
+  "target": "aura-core-staging",
+  "cloudflare": {
+    "result": {
+      "created_on": "2026-01-14T17:25:37.422875Z",
+      "modified_on": "2026-01-14T18:39:14.453872Z",
+      "id": "aura-core-staging",
+      "tag": "f492a308a3af482a892c1300cb547c0a",
+      "entry_point": "addEventListener('fetch', event => { event.respondWith(new Response('STAGING DEPLOY PIPE OK')); });",
+      "tags": null,
+      "deployment_id": "72e6a8dc136e432f93269149e58c02fd",
+      "tail_consumers": null,
+      "logpush": false,
+      "has_assets": false,
+      "has_modules": true,
+      "etag": "1d65905b8b9b550b2c8168afc4a4de9d28d936ab81b2f5d84051b454769f234b",
+      "handlers": [
+        "fetch"
+      ],
+      "last_deployed_from": "api",
+      "usage_model": "standard",
+      "script": "addEventListener('fetch', event => { event.respondWith(new Response('STAGING DEPLOY PIPE OK')); });",
+      "size": 169,
+      "startup_time_ms": 0
+    },
+    "success": true,
+    "errors": [],
+    "messages": []
+  }
+}

@@ -1,0 +1,73 @@
+NORTH STAR — KERNEL FOCUS FOR CHATGPT SESSIONS
+
+Purpose:
+This document exists ONLY to keep ChatGPT aligned and prevent drift.
+It is not Aura doctrine. It is not history. It is not training data.
+It is a session anchor.
+
+READ THIS FIRST IN ANY NEW SESSION.
+
+--------------------------------------------------
+CURRENT STATE (FACTUAL)
+--------------------------------------------------
+- Aura-core is running and working.
+- UI is locked. DO NOT change UI.
+- Front page / landing page work is DONE.
+- Memory features are not the focus right now.
+- index.js currently deployed is known-good.
+
+--------------------------------------------------
+SCOPE LOCK (NON-NEGOTIABLE)
+--------------------------------------------------
+ONLY WORK ON THE FOLLOWING, IN ORDER:
+
+A) Kernel Doctrine
+   - Treat aura-core (index.js) as a kernel.
+   - No autonomous self-editing of core in production.
+   - Core changes are rare, deliberate, reversible.
+
+B) Safe Deploy Doctrine
+   - Staging -> verify -> promote -> rollback.
+   - No direct blind prod deploys.
+
+C) Invariants
+   - /ui must always work.
+   - /health must always return build marker.
+   - Canon recall must always function.
+   - ENSURE_DOMAIN_READY remains mandatory.
+
+D) Break-Glass Recovery
+   - Maintain last-known-good index.js.
+   - One clear manual redeploy path.
+   - If uncertain, revert immediately.
+
+--------------------------------------------------
+EXPLICIT DO-NOTS
+--------------------------------------------------
+- DO NOT propose front page or landing page work.
+- DO NOT redesign or tweak UI.
+- DO NOT revisit already-solved problems.
+- DO NOT introduce new product ideas.
+- DO NOT talk about Aura memory unless explicitly asked.
+
+--------------------------------------------------
+HOW TO PROCEED
+--------------------------------------------------
+- Start with A) Kernel Doctrine.
+- Provide concrete, minimal steps.
+- Prefer policy + guardrails before code.
+- Only touch index.js if absolutely necessary.
+- Use full-file replacement only when required.
+
+--------------------------------------------------
+OPERATOR INSTRUCTION
+--------------------------------------------------
+If Aaron says:
+"Let's move forward"
+or
+"Continue"
+
+You should respond with:
+"We are working on A) Kernel Doctrine. Here is the next step."
+
+END OF NORTH STAR

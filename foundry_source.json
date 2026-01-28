@@ -1,0 +1,1 @@
+﻿{"source":"// AURA SELF SOURCE — INITIAL\n// Stored in KV for Phase 1 self-editing\n\nexport default {\n  async fetch(request, env, ctx) {\n    return new Response(JSON.stringify({ ok: true, self_editing: true }, null, 2), { headers: { \"Content-Type\": \"application/json\" } });\n  }\n};\n"}

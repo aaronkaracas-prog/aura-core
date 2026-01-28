@@ -1,0 +1,128 @@
+
+NORTH STAR — SESSION CONTINUATION ANCHOR (FULL) — CURRENT OBJECTIVES AND SYSTEM STATUS
+
+READ THIS FIRST IN ANY NEW SESSION.
+
+--------------------------------------------------
+WHO THIS IS FOR
+--------------------------------------------------
+Operator: Aaron Karacas
+
+This document exists ONLY to keep ChatGPT on track.
+It is **NOT** Aura doctrine.
+It is **NOT** memory.
+It is **NOT** philosophy.
+It is **NOT** a task list for Aura.
+
+Its only job is to prevent confusion and drift.
+
+--------------------------------------------------
+CURRENT TRUTH (LOCKED)
+--------------------------------------------------
+- Aura-core is running and stable.
+- UI is locked. **No UI changes.**
+- Front page / landing page is **done**.
+- **index.js** currently deployed is known-good.
+- Aura **memory** is not the primary focus right now.
+
+--------------------------------------------------
+WHAT WE ARE DOING (ONLY THIS)
+--------------------------------------------------
+We are continuing exactly where we left off.
+
+We are working on FOUR ITEMS, IN ORDER:
+
+A) Kernel discipline (ensure index.js is the clean kernel)
+B) Safe deploy (ensure deployment process is verified, staged, and stable)
+C) Invariants (keep `/ui`, `/health`, and `CANON` steady)
+D) Break-glass recovery (ensure fallback options and ability to reset)
+
+**Nothing else.**
+
+--------------------------------------------------
+HOW CHATGPT SHOULD BEHAVE
+--------------------------------------------------
+- Do **NOT** ask Aaron what to work on.
+- Do **NOT** suggest new ideas.
+- Do **NOT** revisit finished areas.
+- Do **NOT** talk about Aura memory unless explicitly asked.
+- Do **NOT** improvise.
+
+--------------------------------------------------
+DEFAULT RESPONSE RULE
+--------------------------------------------------
+When Aaron uploads index.js or says **“go”**, **“continue”**, or **“let’s move forward”**:
+
+You MUST respond with:
+> “Aaron, we are continuing with A, B, C, and D.  
+> Here is the next concrete step.”
+
+Then proceed immediately.
+
+--------------------------------------------------
+AURA INTERACTION RULE
+--------------------------------------------------
+If information from Aura is required:
+- Say **EXACTLY** what command Aaron should run.
+- Wait for the output.
+- Do **NOT** guess.
+- Do **NOT** redirect.
+
+--------------------------------------------------
+SCOPE LOCK (NON-NEGOTIABLE)
+--------------------------------------------------
+The following are **locked** until completion:
+
+1. **Kernel Discipline**: Ensure Aura-core (index.js) is treated as a stable kernel.
+2. **Safe Deploy**: Staging, verification, promotion, and rollback are confirmed working.
+3. **Invariants**: The core functionality of `/ui`, `/health`, and Canon are preserved.
+4. **Break-Glass Recovery**: The deployment process allows rollback and resets.
+
+DO NOT propose work on other objectives (e.g., Front Page, UI changes, new ideas, etc.).
+
+--------------------------------------------------
+CURRENT STATE
+--------------------------------------------------
+- **aistatus.world**: Currently **not launched**. DNS and Cloudflare zone confirmed, but missing worker route and bindings.
+- **Previous work**: **Launch of arksystems.us** and **cityguide.world** confirmed.
+- **Memory behavior**: Aura can **remember history** but doesn’t yet **automatically retrieve relevant facts** without explicit recall.
+
+--------------------------------------------------
+NEXT ACTION PLAN
+--------------------------------------------------
+1. **Verify Aura’s memory recall system**: Ensure Aura automatically recalls relevant context when needed (e.g., restaurant address).
+2. **Deploy another site**: Start by launching a new site (`aistatus.world`), ensuring all components are connected (DNS, Cloudflare, worker routes).
+3. **Fix retrieval failure**: Aura must retrieve data on its own without being reminded every time.
+
+--------------------------------------------------
+NON-NEGOTIABLE: HOW TO PROCEED
+--------------------------------------------------
+When you open a **new ChatGPT session**, do this **in this order**:
+
+1. **Upload this North Star file**.
+2. **Upload the latest index.js file** (known good).
+3. Type **one word**:
+   ```
+   go
+   ```
+
+This will force Aura to continue from **A, B, C, D** without any distractions, redirection, or unnecessary clarification.
+
+After this, you can provide specific instructions like:
+
+1. **Verify `aistatus.world` live status**.
+2. **Continue with the next deploy step** for `aistatus.world`.
+
+DO NOT:
+
+- Give new objectives or change existing ones (e.g., Front page, UI changes).
+- Touch any new product ideas.
+- Ask Aura to remember things without explicit recall instructions.
+
+--------------------------------------------------
+THE CURRENT STATE IS LOCKED.
+--------------------------------------------------
+The focus is on **continuation**. No deviations. No rework. No unnecessary feedback.
+
+End of North Star.
+

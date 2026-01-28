@@ -1,0 +1,865 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Aura</title>
+  <style>
+    :root{
+      --bg:#ffffff;
+      --muted:#6b7280;
+      --line:#e5e7eb;
+      --soft:#f3f4f6;
+      --text:#111827;
+      --blue:#2563eb;
+      --shadow: 0 1px 2px rgba(0,0,0,.06);
+      --radius: 14px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      color:var(--text);
+      background:var(--bg);
+    }
+
+    /* Layout */
+    .app{display:flex; height:100vh; width:100vw; overflow:hidden;}
+    .sidebar{
+      width:280px;
+      border-right:1px solid var(--line);
+      background:#fafafa;
+      display:flex;
+      flex-direction:column;
+    }
+    .sideTop{
+      padding:16px 16px 12px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      border-bottom:1px solid var(--line);
+    }
+    .brand{
+      font-weight:700;
+      font-size:18px;
+      letter-spacing:.2px;
+    }
+    .sideBtn{
+      border:1px solid var(--line);
+      background:#fff;
+      padding:8px 10px;
+      border-radius:10px;
+      cursor:pointer;
+      box-shadow: var(--shadow);
+      font-size:12px;
+    }
+    .sideBtn:active{transform:translateY(1px)}
+    .sideSectionTitle{
+      color:var(--muted);
+      font-weight:700;
+      font-size:12px;
+      padding:14px 16px 6px;
+    }
+    .sideList{padding:0 8px 12px; overflow:auto;}
+    .item{
+      border-radius:12px;
+      padding:10px 12px;
+      margin:6px 8px;
+      cursor:pointer;
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+    .item:hover{background:#fff}
+    .item.active{background:#fff; border:1px solid var(--line)}
+    .item .dot{
+      width:8px;height:8px;border-radius:999px;background:var(--line);
+    }
+    .item .label{font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+    .spacer{flex:1}
+    .sideBottom{
+      border-top:1px solid var(--line);
+      padding:12px 16px;
+      color:var(--muted);
+      font-size:12px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+    }
+
+    .main{
+      flex:1;
+      display:flex;
+      flex-direction:column;
+      height:100%;
+      min-width:0;
+      background:#fff;
+    }
+
+    .header{
+      height:56px;
+      border-bottom:1px solid var(--line);
+      display:flex;
+      align-items:center;
+      padding:0 18px;
+      gap:12px;
+    }
+    .headerTitle{
+      font-weight:700;
+      font-size:18px;
+    }
+    .statusPill{
+      margin-left:auto;
+      font-size:12px;
+      padding:6px 10px;
+      border:1px solid var(--line);
+      border-radius:999px;
+      color:var(--muted);
+      background:#fff;
+      display:flex;
+      align-items:center;
+      gap:8px;
+    }
+    .statusDot{width:8px;height:8px;border-radius:999px;background:#9ca3af;}
+    .statusDot.ok{background:#22c55e;}
+    .statusDot.bad{background:#ef4444;}
+
+    .chat{
+      flex:1;
+      overflow:auto;
+      padding:22px 18px 18px;
+      min-width:0;
+    }
+
+    .row{
+      max-width: 880px;
+      margin:0 auto 16px;
+      display:flex;
+      gap:12px;
+      align-items:flex-start;
+    }
+    .avatar{
+      width:32px;height:32px;border-radius:10px;
+      display:flex;align-items:center;justify-content:center;
+      font-weight:800;font-size:12px;
+      border:1px solid var(--line);
+      background:#fff;
+      flex:0 0 auto;
+    }
+    .bubble{
+      flex:1;
+      border:1px solid var(--line);
+      background:#fff;
+      border-radius: var(--radius);
+      padding:12px 14px;
+      box-shadow: var(--shadow);
+      min-width:0;
+    }
+    .bubble.user{background:#fbfbfb}
+    .meta{
+      color:var(--muted);
+      font-size:12px;
+      margin:2px 0 8px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+    }
+    .text{
+      white-space:pre-wrap;
+      line-height:1.45;
+      font-size:14px;
+      word-break:break-word;
+    }
+    .imgWrap{
+      margin-top:10px;
+      border:1px solid var(--line);
+      border-radius:14px;
+      overflow:hidden;
+      background:#fff;
+    }
+    .imgWrap img{display:block; width:100%; height:auto;}
+
+    .thinking{
+      color:var(--muted);
+      font-size:13px;
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+    .spinner{
+      width:14px;height:14px;border-radius:999px;
+      border:2px solid var(--line);
+      border-top-color: var(--blue);
+      animation: spin .9s linear infinite;
+    }
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    .composerWrap{
+      border-top:1px solid var(--line);
+      padding:14px 16px 18px;
+      background:#fff;
+    }
+    .composer{
+      max-width: 920px;
+      margin:0 auto;
+      display:flex;
+      align-items:flex-end;
+      gap:10px;
+      border:1px solid var(--line);
+      border-radius: 18px;
+      padding:10px 10px 10px 10px;
+      box-shadow: var(--shadow);
+      background:#fff;
+    }
+    .iconBtn{
+      width:36px;height:36px;
+      border-radius:999px;
+      border:1px solid var(--line);
+      background:#fff;
+      cursor:pointer;
+      display:flex;align-items:center;justify-content:center;
+      flex:0 0 auto;
+    }
+    .iconBtn:disabled{opacity:.45; cursor:not-allowed}
+    .iconBtn:active{transform:translateY(1px)}
+    textarea{
+      flex:1;
+      border:none;
+      outline:none;
+      resize:none;
+      font-size:14px;
+      line-height:1.35;
+      padding:8px 6px;
+      min-height:36px;
+      max-height:180px;
+      font-family:inherit;
+    }
+    .sendBtn{
+      padding:9px 14px;
+      border-radius:12px;
+      border:1px solid var(--line);
+      background: var(--blue);
+      color:#fff;
+      cursor:pointer;
+      font-weight:700;
+      box-shadow: var(--shadow);
+      height:36px;
+    }
+    .sendBtn:disabled{opacity:.55; cursor:not-allowed}
+    .hint{
+      max-width:920px;
+      margin:8px auto 0;
+      font-size:12px;
+      color:var(--muted);
+      display:flex;
+      justify-content:center;
+      gap:10px;
+    }
+
+    .toast{
+      position:fixed;
+      bottom:18px;
+      left:50%;
+      transform:translateX(-50%);
+      background:#111827;
+      color:#fff;
+      padding:10px 12px;
+      border-radius:12px;
+      font-size:13px;
+      box-shadow:0 12px 30px rgba(0,0,0,.18);
+      opacity:0;
+      pointer-events:none;
+      transition:opacity .18s ease;
+      max-width:min(720px, calc(100vw - 24px));
+      white-space:pre-wrap;
+    }
+    .toast.show{opacity:1;}
+  </style>
+</head>
+
+<body>
+<div class="app">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sideTop">
+      <div class="brand">Aura</div>
+      <button class="sideBtn" id="btnSettings" title="API settings">Settings</button>
+    </div>
+
+    <div class="sideSectionTitle">CHATS</div>
+    <div class="sideList" id="chatList"></div>
+
+    <div class="sideSectionTitle">PROJECTS</div>
+    <div class="sideList" id="projList">
+      <div class="item"><span class="dot"></span><span class="label">Aura Core</span></div>
+      <div class="item"><span class="dot"></span><span class="label">Malibu.city</span></div>
+    </div>
+
+    <div class="spacer"></div>
+    <div class="sideBottom">
+      <span id="smallStatus">Ready</span>
+      <button class="sideBtn" id="btnNewChat">New chat</button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <div class="header">
+      <div class="headerTitle">Aura</div>
+      <div class="statusPill" id="statusPill" title="Connection status">
+        <span class="statusDot" id="statusDot"></span>
+        <span id="statusText">unknown</span>
+      </div>
+    </div>
+
+    <div class="chat" id="chat"></div>
+
+    <div class="composerWrap">
+      <div class="composer">
+        <button class="iconBtn" id="btnPlus" title="Upload a file">+</button>
+        <textarea id="input" placeholder="Message Aura…" rows="1"></textarea>
+        <button class="iconBtn" id="btnMic" title="Voice input">🎤</button>
+        <button class="sendBtn" id="btnSend">Send</button>
+      </div>
+      <div class="hint">Enter to send • Shift+Enter for new line</div>
+    </div>
+  </main>
+</div>
+
+<input id="fileInput" type="file" style="display:none" />
+
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  // ---------- Config ----------
+  // If you're hosting UI on aura-ui.pages.dev, you likely want API base to be https://auras.guide
+  // You can change it from Settings without touching code.
+  const DEFAULT_API_BASE = location.origin.includes("pages.dev") ? "https://auras.guide" : location.origin;
+
+  // Storage keys
+  const K = {
+    apiBase: "aura_api_base",
+    chats: "aura_chats_v1",
+    active: "aura_active_chat_v1"
+  };
+
+  // ---------- DOM ----------
+  const elChat = document.getElementById("chat");
+  const elInput = document.getElementById("input");
+  const elSend = document.getElementById("btnSend");
+  const elPlus = document.getElementById("btnPlus");
+  const elMic = document.getElementById("btnMic");
+  const elFile = document.getElementById("fileInput");
+  const elChatList = document.getElementById("chatList");
+  const elNewChat = document.getElementById("btnNewChat");
+  const elStatusDot = document.getElementById("statusDot");
+  const elStatusText = document.getElementById("statusText");
+  const elSmallStatus = document.getElementById("smallStatus");
+  const elSettings = document.getElementById("btnSettings");
+  const elToast = document.getElementById("toast");
+
+  // ---------- State ----------
+  let apiBase = localStorage.getItem(K.apiBase) || DEFAULT_API_BASE;
+
+  function uid(){
+    return "c_" + Math.random().toString(16).slice(2) + Date.now().toString(16);
+  }
+
+  function loadChats(){
+    try { return JSON.parse(localStorage.getItem(K.chats) || "[]"); } catch { return []; }
+  }
+  function saveChats(chats){
+    localStorage.setItem(K.chats, JSON.stringify(chats));
+  }
+  function getActiveChatId(){
+    return localStorage.getItem(K.active) || "";
+  }
+  function setActiveChatId(id){
+    localStorage.setItem(K.active, id);
+  }
+
+  function ensureChat(){
+    const chats = loadChats();
+    let activeId = getActiveChatId();
+    let chat = chats.find(c => c.id === activeId);
+
+    if(!chat){
+      chat = { id: uid(), title: "New chat", created: Date.now(), messages: [] };
+      chats.unshift(chat);
+      activeId = chat.id;
+      setActiveChatId(activeId);
+      saveChats(chats);
+    }
+    return chat;
+  }
+
+  function updateChatTitleFromFirstUserMessage(chat){
+    const firstUser = chat.messages.find(m => m.role === "user" && m.text && m.text.trim());
+    if(firstUser){
+      const t = firstUser.text.trim().slice(0, 32);
+      chat.title = t.length < firstUser.text.trim().length ? (t + "…") : t;
+    }
+  }
+
+  function renderSidebar(){
+    const chats = loadChats().sort((a,b)=> (b.created||0)-(a.created||0));
+    const activeId = getActiveChatId();
+    elChatList.innerHTML = "";
+
+    // Top item: New chat (like your screenshot)
+    const topNew = document.createElement("div");
+    topNew.className = "item";
+    topNew.innerHTML = `<span class="dot"></span><span class="label">New chat</span>`;
+    topNew.onclick = () => newChat();
+    elChatList.appendChild(topNew);
+
+    // Existing chats
+    for(const c of chats){
+      const row = document.createElement("div");
+      row.className = "item" + (c.id === activeId ? " active" : "");
+      row.innerHTML = `<span class="dot"></span><span class="label"></span>`;
+      row.querySelector(".label").textContent = c.title || "Chat";
+      row.onclick = () => {
+        setActiveChatId(c.id);
+        renderAll();
+      };
+      elChatList.appendChild(row);
+    }
+  }
+
+  function escapeHtml(s){
+    return (s||"").replace(/[&<>"']/g, ch => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[ch]));
+  }
+
+  function addRow({role, text, imageUrl, metaRight}){
+    const row = document.createElement("div");
+    row.className = "row";
+    const avatar = document.createElement("div");
+    avatar.className = "avatar";
+    avatar.textContent = role === "user" ? "YOU" : "AU";
+
+    const bubble = document.createElement("div");
+    bubble.className = "bubble " + (role === "user" ? "user" : "assistant");
+
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    const left = document.createElement("span");
+    left.textContent = role === "user" ? "You" : "Aura";
+    const right = document.createElement("span");
+    right.textContent = metaRight || "";
+    meta.appendChild(left);
+    meta.appendChild(right);
+
+    const body = document.createElement("div");
+    body.className = "text";
+    body.innerHTML = escapeHtml(text || "");
+
+    bubble.appendChild(meta);
+    bubble.appendChild(body);
+
+    if(imageUrl){
+      const wrap = document.createElement("div");
+      wrap.className = "imgWrap";
+      const img = document.createElement("img");
+      img.src = imageUrl;
+      img.alt = "generated image";
+      wrap.appendChild(img);
+      bubble.appendChild(wrap);
+    }
+
+    row.appendChild(avatar);
+    row.appendChild(bubble);
+    elChat.appendChild(row);
+    elChat.scrollTop = elChat.scrollHeight;
+  }
+
+  function setStatus(kind, text){
+    elStatusDot.classList.remove("ok","bad");
+    if(kind === "ok") elStatusDot.classList.add("ok");
+    if(kind === "bad") elStatusDot.classList.add("bad");
+    elStatusText.textContent = text || "unknown";
+  }
+
+  function toast(msg){
+    elToast.textContent = msg;
+    elToast.classList.add("show");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(()=> elToast.classList.remove("show"), 2200);
+  }
+
+  // ---------- Thinking Indicator ----------
+  let thinkingRow = null;
+  function showThinking(){
+    if(thinkingRow) return;
+    thinkingRow = document.createElement("div");
+    thinkingRow.className = "row";
+    thinkingRow.innerHTML = `
+      <div class="avatar">AU</div>
+      <div class="bubble assistant">
+        <div class="meta"><span>Aura</span><span></span></div>
+        <div class="thinking"><span class="spinner"></span><span>Aura is thinking…</span></div>
+      </div>
+    `;
+    elChat.appendChild(thinkingRow);
+    elChat.scrollTop = elChat.scrollHeight;
+  }
+  function hideThinking(){
+    if(thinkingRow){
+      thinkingRow.remove();
+      thinkingRow = null;
+    }
+  }
+
+  // ---------- API ----------
+  async function ping(){
+    // We do NOT assume a health route exists.
+    // We do a lightweight POST to /chat with a harmless probe and treat any 2xx as "ok".
+    try{
+      const r = await fetch(apiBase.replace(/\/+$/,"") + "/chat", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ input: "ping", conversation_id: "ui_probe" })
+      });
+      if(r.ok){
+        setStatus("ok","connected");
+        return true;
+      }
+      setStatus("bad","error");
+      return false;
+    }catch(e){
+      setStatus("bad","offline");
+      return false;
+    }
+  }
+
+  async function callChat(inputText, conversationId){
+    const url = apiBase.replace(/\/+$/,"") + "/chat";
+    const payload = { input: inputText, conversation_id: conversationId };
+    const r = await fetch(url, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    const ct = (r.headers.get("content-type") || "").toLowerCase();
+    if(!r.ok){
+      const errText = ct.includes("application/json") ? JSON.stringify(await r.json()) : await r.text();
+      throw new Error("Chat error: " + r.status + " " + errText);
+    }
+    if(ct.includes("application/json")){
+      return await r.json();
+    }
+    // If backend returns plain text
+    return { ok:true, role:"assistant", type:"text", text: await r.text() };
+  }
+
+  async function uploadFile(file){
+    // We do NOT assume upload exists; we try /upload with FormData.
+    // If your backend expects raw bytes, this will fail gracefully and show the error.
+    const url = apiBase.replace(/\/+$/,"") + "/upload";
+    const fd = new FormData();
+    fd.append("file", file, file.name);
+
+    const r = await fetch(url, { method:"POST", body: fd });
+    const ct = (r.headers.get("content-type") || "").toLowerCase();
+
+    if(!r.ok){
+      const errText = ct.includes("application/json") ? JSON.stringify(await r.json()) : await r.text();
+      throw new Error("Upload error: " + r.status + " " + errText);
+    }
+    if(ct.includes("application/json")) return await r.json();
+    return { ok:true, text: await r.text() };
+  }
+
+  // ---------- Chat Rendering ----------
+  function renderChat(){
+    elChat.innerHTML = "";
+    const chat = ensureChat();
+    for(const m of chat.messages){
+      addRow(m);
+    }
+    elChat.scrollTop = elChat.scrollHeight;
+  }
+
+  function renderAll(){
+    renderSidebar();
+    renderChat();
+  }
+
+  // ---------- Actions ----------
+  function newChat(){
+    const chats = loadChats();
+    const c = { id: uid(), title: "New chat", created: Date.now(), messages: [] };
+    chats.unshift(c);
+    saveChats(chats);
+    setActiveChatId(c.id);
+    renderAll();
+    elInput.focus();
+  }
+
+  async function send(){
+    const text = (elInput.value || "").trim();
+    if(!text) return;
+
+    elSend.disabled = true;
+    elPlus.disabled = true;
+    elMic.disabled = true;
+
+    const chat = ensureChat();
+    const conversationId = chat.id;
+
+    // Add user message immediately
+    const userMsg = { role:"user", text, metaRight:"" };
+    chat.messages.push(userMsg);
+    updateChatTitleFromFirstUserMessage(chat);
+
+    // Persist + render
+    {
+      const chats = loadChats();
+      const idx = chats.findIndex(c => c.id === chat.id);
+      if(idx >= 0) chats[idx] = chat;
+      saveChats(chats);
+    }
+    renderAll();
+    elInput.value = "";
+    autosize();
+
+    elSmallStatus.textContent = "Sending…";
+    showThinking();
+
+    try{
+      const data = await callChat(text, conversationId);
+
+      // Normalize response
+      // Expected patterns we handle:
+      // 1) { ok:true, role:"assistant", type:"text", text:"..." }
+      // 2) { ok:true, role:"assistant", type:"image", url:"https://..." }
+      // 3) { ok:true, text:"..." } or { ok:true, message:"..." }
+      let assistantText = "";
+      let assistantImage = "";
+
+      if(data && typeof data === "object"){
+        if(data.type === "image" && data.url) assistantImage = data.url;
+        assistantText = data.text || data.message || data.output || data.reply || "";
+        // If it's an image response with no text, keep a small caption
+        if(assistantImage && !assistantText) assistantText = " ";
+      } else {
+        assistantText = String(data || "");
+      }
+
+      hideThinking();
+
+      const assistantMsg = { role:"assistant", text: assistantText, imageUrl: assistantImage, metaRight:"" };
+      chat.messages.push(assistantMsg);
+
+      // Persist
+      const chats = loadChats();
+      const idx = chats.findIndex(c => c.id === chat.id);
+      if(idx >= 0) chats[idx] = chat;
+      saveChats(chats);
+
+      renderAll();
+      elSmallStatus.textContent = "Ready";
+    }catch(e){
+      hideThinking();
+      elSmallStatus.textContent = "Error";
+      toast(String(e.message || e));
+      // Also show error in chat so it's visible
+      const errMsg = { role:"assistant", text: "ERROR:\n" + (e.message || e), metaRight:"" };
+      chat.messages.push(errMsg);
+      const chats = loadChats();
+      const idx = chats.findIndex(c => c.id === chat.id);
+      if(idx >= 0) chats[idx] = chat;
+      saveChats(chats);
+      renderAll();
+    } finally{
+      elSend.disabled = false;
+      elPlus.disabled = false;
+      // mic depends on capability; re-evaluate below
+      elMic.disabled = !speechSupported();
+      elInput.focus();
+    }
+  }
+
+  // ---------- Upload ----------
+  elPlus.addEventListener("click", () => elFile.click());
+  elFile.addEventListener("change", async () => {
+    if(!elFile.files || !elFile.files[0]) return;
+    const file = elFile.files[0];
+    elFile.value = "";
+
+    const chat = ensureChat();
+    const conversationId = chat.id;
+
+    // Show a user-side note
+    const note = `Uploading: ${file.name} (${Math.round(file.size/1024)} KB)`;
+    chat.messages.push({ role:"user", text: note, metaRight:"" });
+    {
+      const chats = loadChats();
+      const idx = chats.findIndex(c => c.id === chat.id);
+      if(idx >= 0) chats[idx] = chat;
+      saveChats(chats);
+    }
+    renderAll();
+
+    elSmallStatus.textContent = "Uploading…";
+    showThinking();
+
+    try{
+      const up = await uploadFile(file);
+      hideThinking();
+
+      // We don't assume exact schema; try common keys
+      const fileId = up.file_id || up.id || up.upload_id || "";
+      const fileUrl = up.url || up.download_url || "";
+
+      let summary = "Upload complete.";
+      if(fileId) summary += "\nfile_id: " + fileId;
+      if(fileUrl) summary += "\nurl: " + fileUrl;
+
+      chat.messages.push({ role:"assistant", text: summary, metaRight:"" });
+
+      // If we got a file_id, also send it to chat automatically as context
+      if(fileId){
+        showThinking();
+        const data = await callChat(`I uploaded a file. file_id=${fileId} filename=${file.name}`, conversationId);
+        hideThinking();
+
+        let assistantText = data.text || data.message || data.output || data.reply || "";
+        let assistantImage = (data.type === "image" && data.url) ? data.url : "";
+        if(assistantImage && !assistantText) assistantText = " ";
+
+        chat.messages.push({ role:"assistant", text: assistantText, imageUrl: assistantImage, metaRight:"" });
+      }
+
+      // Persist
+      const chats = loadChats();
+      const idx = chats.findIndex(c => c.id === chat.id);
+      if(idx >= 0) chats[idx] = chat;
+      saveChats(chats);
+
+      renderAll();
+      elSmallStatus.textContent = "Ready";
+    }catch(e){
+      hideThinking();
+      elSmallStatus.textContent = "Upload error";
+      toast(String(e.message || e));
+      chat.messages.push({ role:"assistant", text: "UPLOAD ERROR:\n" + (e.message || e), metaRight:"" });
+
+      const chats = loadChats();
+      const idx = chats.findIndex(c => c.id === chat.id);
+      if(idx >= 0) chats[idx] = chat;
+      saveChats(chats);
+      renderAll();
+    }
+  });
+
+  // ---------- Mic (Browser speech-to-text) ----------
+  function speechSupported(){
+    return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+  }
+  let recog = null;
+  let listening = false;
+
+  function setupMic(){
+    if(!speechSupported()){
+      elMic.disabled = true;
+      elMic.title = "Voice input not supported in this browser";
+      return;
+    }
+    elMic.disabled = false;
+
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recog = new SR();
+    recog.lang = "en-US";
+    recog.interimResults = true;
+    recog.continuous = false;
+
+    recog.onstart = () => {
+      listening = true;
+      elMic.textContent = "◼";
+      elSmallStatus.textContent = "Listening…";
+    };
+    recog.onend = () => {
+      listening = false;
+      elMic.textContent = "🎤";
+      elSmallStatus.textContent = "Ready";
+    };
+    recog.onerror = (e) => {
+      toast("Mic error: " + (e.error || "unknown"));
+    };
+    recog.onresult = (e) => {
+      let transcript = "";
+      for(let i=e.resultIndex; i<e.results.length; i++){
+        transcript += e.results[i][0].transcript;
+      }
+      // Put transcript into input (do not auto-send)
+      elInput.value = (elInput.value ? (elInput.value + " ") : "") + transcript.trim();
+      autosize();
+    };
+  }
+
+  elMic.addEventListener("click", async () => {
+    if(!recog) return;
+    try{
+      if(!listening) recog.start();
+      else recog.stop();
+    }catch(e){
+      toast(String(e.message || e));
+    }
+  });
+
+  // ---------- UX ----------
+  function autosize(){
+    elInput.style.height = "auto";
+    elInput.style.height = Math.min(elInput.scrollHeight, 180) + "px";
+  }
+  elInput.addEventListener("input", autosize);
+
+  elInput.addEventListener("keydown", (e) => {
+    if(e.key === "Enter" && !e.shiftKey){
+      e.preventDefault();
+      send();
+    }
+  });
+
+  elSend.addEventListener("click", send);
+  elNewChat.addEventListener("click", newChat);
+
+  elSettings.addEventListener("click", async () => {
+    const current = apiBase;
+    const next = prompt(
+      "API Base URL for backend calls (/chat, /upload):\n\nExamples:\nhttps://auras.guide\nhttps://aura-core.<your>.workers.dev\n\nCurrent:",
+      current
+    );
+    if(next && next.trim()){
+      apiBase = next.trim().replace(/\/+$/,"");
+      localStorage.setItem(K.apiBase, apiBase);
+      toast("Saved API base:\n" + apiBase);
+      await ping();
+    }
+  });
+
+  // ---------- Boot ----------
+  function boot(){
+    // Ensure there is an active chat
+    ensureChat();
+    renderAll();
+    setupMic();
+    autosize();
+    ping();
+    setTimeout(ping, 1800);
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>

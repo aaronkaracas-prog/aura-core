@@ -1,0 +1,5 @@
+# Add this binding to your wrangler.toml (under the correct environment if you use envs):
+# This enables Cloudflare Workers AI in the Worker runtime.
+#
+# [ai]
+# binding = "AI"

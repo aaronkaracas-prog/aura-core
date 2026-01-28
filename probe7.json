@@ -1,0 +1,25 @@
+﻿{
+  "script_name":"aura-core",
+  "env":"staging",
+  "bundle_b64":"AA==",
+  "promotion_phrase":"ARK_OK",
+  "query_phrase": true,
+  "extra_phrase_headers": [
+    "X-Promotion",
+    "X-Promote-Phrase",
+    "X-Promote-Token",
+    "X-Deploy-Phrase",
+    "X-Deploy-Token",
+    "X-Deploy-Passphrase",
+    "X-Human-Phrase",
+    "X-Human-Brake",
+    "X-Approval-Phrase",
+    "X-Approval-Token",
+    "X-Operator-Phrase",
+    "X-Operator-Token",
+    "X-Phrase-Gate",
+    "X-Phrase-Key",
+    "X-Gate-Phrase",
+    "X-Gatekeeper-Phrase"
+  ]
+}

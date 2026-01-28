@@ -1,0 +1,111 @@
+AURA SNAPCHAT HANDOFF — 2026-01-26 (PT)
+Owner/Operator: Aaron Karacas
+System: Aura (Cloudflare Worker: aura-core)
+Current Build (Aura UI): AURA_CORE__2026-01-26__UI_SELF_BUNDLE__04 · 2026-01-26 13:10 PT
+UI Status: wired OK (STEP 11) — mic + uploads enabled
+
+0) Working style (how we worked)
+- Two-screen workflow:
+  - This ChatGPT session = engineering coordinator (short, ordered steps; one PowerShell command per block).
+  - Aura (auras.guide UI) = execution + responses.
+- Avoid heavy windows: keep messages short; never paste huge code in chat.
+- When code changes are needed: provide downloadable full-file replacements; Aaron pastes into Notepad and deploys.
+- Aura claim-gate behavior:
+  - “NOT WIRED: VERIFIED_FETCH REQUIRED” triggers if Aura is asked to make “verified/live/success” style claims without a VERIFIED_FETCH.
+  - VERIFIED_FETCH is most reliable using TWO messages:
+    1) VERIFIED_FETCH_URL <url>
+    2) (question / instructions)
+
+1) Major fix completed today (Aura “dummy reset” + Canon writes)
+- Patched aura-core src/index.js and deployed it so Aura can:
+  - Return SOURCE_OF_TRUTH_POLICY (JSON)
+  - Return SELF_UPDATE_PLAN (JSON)
+  - Write/read Canon entries via single-line commands:
+    - CANON_PUT:<key> <value>
+    - RECALL_CANON:<key>
+- Verified in Aura UI:
+  - SOURCE_OF_TRUTH_POLICY returns:
+    repo: aaronkaracas-prog/aura-core
+    branches: main=prod, staging=staging
+    rule: github_branch_intent_wins
+    uncertainty_rule: request_validated_fetch_url_http_status_only
+  - SELF_UPDATE_PLAN returns a sane plan (fetch/validate/stage/publish/rollback)
+  - CANON_PUT:SOURCE_OF_TRUTH_POLICY ...  -> canon_put: ok
+  - RECALL_CANON:SOURCE_OF_TRUTH_POLICY -> returns stored text
+
+2) GitHub-first workflow created (prod deploy)
+- Goal: GitHub is the source of truth; pushes to main deploy aura-core to prod automatically.
+- New file created:
+  .github/workflows/deploy-prod.yml
+- File name: deploy-prod.yml (YML = YAML)
+- Repo already had:
+  .github/workflows/deploy-staging.yml
+
+Required GitHub Secrets (repo → Settings → Secrets and variables → Actions):
+- CLOUDFLARE_API_TOKEN
+- CLOUDFLARE_ACCOUNT_ID
+
+3) Git merge / push recovery (this is the big PowerShell sequence to save)
+Problem:
+- Local main and origin/main diverged heavily; push rejected.
+- Merge was blocked by local changes in src/index.js.
+- Conflict set included: src/index.js, _archive/index.js.bak2, wrangler.toml.txt.
+
+Resolution (final successful sequence):
+1) git fetch origin
+2) git merge origin/main
+   -> produced conflicts
+3) Resolve conflicts by choosing:
+   - src/index.js: keep OURS (local / current working Aura core)
+     git checkout --ours src/index.js
+     git add src/index.js
+   - _archive/index.js.bak2: keep THEIRS (remote archive move)
+     git checkout --theirs _archive/index.js.bak2
+     git add _archive/index.js.bak2
+   - wrangler.toml.txt: keep OURS (local)
+     git checkout --ours wrangler.toml.txt
+     git add wrangler.toml.txt
+4) Commit merge:
+   git commit -m "Merge origin/main into main"
+   -> commit: 6bea6c8
+5) Push succeeded:
+   git push origin main
+   -> origin/main updated: 197fa9d..6bea6c8
+
+Notes:
+- PowerShell error pattern to avoid: typing a path or filename alone runs it as a command (e.g., “deploy-prod.yml”).
+- Line ending warning (LF→CRLF) is normal on Windows.
+
+4) Current repo state (as of successful push)
+- main now contains:
+  - deploy-prod.yml workflow
+  - merged remote changes
+  - local changes carried forward (including the working src/index.js kept as OURS)
+- staging previously pushed successfully to origin/staging (commit: 7e2d044).
+
+5) Where we left off (next actions)
+A) Verify GitHub Actions is visible
+- Visit: https://github.com/aaronkaracas-prog/aura-core/actions
+- Confirm “deploy-prod” workflow appears and runs on pushes to main.
+
+B) Aura: get “deploy complete” signals (claim-gate safe)
+Use two-message fetch method:
+1) VERIFIED_FETCH_URL https://github.com/aaronkaracas-prog/aura-core/actions
+2) Based ONLY on the fetched Actions page:
+   Return ONLY JSON with keys: required_checks, evidence_sources, failure_modes
+
+C) Keep Aura aligned (working commands that now succeed)
+- SOURCE_OF_TRUTH_POLICY
+- SELF_UPDATE_PLAN
+- CANON_PUT:SOURCE_OF_TRUTH_POLICY <text>
+- RECALL_CANON:SOURCE_OF_TRUTH_POLICY
+
+D) If any future divergence occurs
+- Preferred: merge origin/main into local main (no rebase unless explicitly desired)
+- If blocked by local edits: stash or commit, then merge; resolve conflicts with “keep OURS” for src/index.js unless intentionally replacing.
+
+6) Files Aaron can upload next session
+- Latest src/index.js (authoritative working file)
+- Optional: deploy-prod.yml (already in repo, but can be provided if needed)
+
+End of handoff.

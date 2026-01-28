@@ -1,0 +1,34 @@
+﻿{
+  "mode": "EXECUTION",
+  "task": "cf_write_proof",
+  "steps": [
+    {
+      "op": "dns_create_txt",
+      "zone": "auras.guide",
+      "name": "aura-proof",
+      "content": "AURA_DNS_WRITE_OK_2026-01-20T02:24:22Z",
+      "ttl": 120
+    },
+    {
+      "op": "route_add",
+      "pattern": "cityguide.auras.guide/*",
+      "script": "aura-core"
+    },
+    {
+      "op": "dns_readback",
+      "zone": "auras.guide",
+      "name": "aura-proof",
+      "type": "TXT"
+    },
+    {
+      "op": "route_list",
+      "filter": "cityguide.auras.guide/*"
+    },
+    {
+      "op": "dns_delete",
+      "zone": "auras.guide",
+      "name": "aura-proof",
+      "type": "TXT"
+    }
+  ]
+}

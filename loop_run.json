@@ -1,0 +1,5 @@
+{
+  "max_seconds": 10,
+  "max_tasks": 10,
+  "claimer": "loop"
+}

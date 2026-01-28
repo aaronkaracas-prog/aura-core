@@ -1,0 +1,496 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Aura /core</title>
+<style>
+  :root{--bg:#fff;--panel:#f7f7f8;--line:#e6e6e6;--text:#111;--muted:#666;}
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--text);}
+  .app{display:flex;height:100vh;}
+  .side{width:320px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;}
+  .sideTop{padding:14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;}
+  .pill{font-size:12px;color:var(--muted);}
+  .btn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:8px 10px;cursor:pointer;font-weight:700;}
+  .tabs{display:flex;gap:8px;padding:10px;border-bottom:1px solid var(--line);}
+  .tab{padding:8px 10px;border:1px solid var(--line);border-radius:12px;background:#fff;font-weight:700;cursor:pointer;font-size:13px;}
+  .tab.active{outline:2px solid #ddd;}
+  .list{overflow:auto;padding:10px;display:flex;flex-direction:column;gap:8px;}
+  .item{padding:10px;border:1px solid var(--line);background:#fff;border-radius:12px;cursor:pointer;}
+  .item.active{outline:2px solid #ddd;}
+  .item .t{font-weight:800;font-size:14px;}
+  .item .s{font-size:12px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+  .main{flex:1;display:flex;flex-direction:column;}
+  .head{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;}
+  .brand{font-weight:900;}
+  .status{font-size:12px;color:var(--muted);}
+  .msgs{flex:1;overflow:auto;padding:16px;display:flex;flex-direction:column;gap:14px;}
+  .msg{max-width:860px;}
+  .role{font-size:12px;color:var(--muted);margin-bottom:6px;}
+  .bubble{border:1px solid var(--line);border-radius:14px;padding:12px;background:#fff;white-space:pre-wrap;line-height:1.35;}
+  .bubble.assistant{background:#fcfcfd;}
+  .card{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff;}
+  .card img{display:block;width:100%;height:auto;}
+  .cardFooter{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-top:1px solid var(--line);}
+  .cap{font-size:12px;color:var(--muted);}
+  .linkBtn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:6px 10px;font-weight:800;cursor:pointer;font-size:12px;text-decoration:none;color:var(--text);white-space:nowrap;}
+
+  .composer{border-top:1px solid var(--line);padding:12px;display:flex;gap:10px;align-items:flex-end;}
+  textarea{flex:1;resize:none;min-height:48px;max-height:180px;padding:12px;border:1px solid var(--line);border-radius:14px;font-size:14px;outline:none;}
+  .iconBtn{width:44px;height:44px;border-radius:14px;border:1px solid var(--line);background:#fff;cursor:pointer;font-size:18px;}
+  .hint{font-size:11px;color:var(--muted);padding:0 16px 10px;}
+</style>
+</head>
+<body>
+<script>
+  const CHAT_ENDPOINT="/chat";
+  const UPLOAD_ENDPOINT="/upload";
+  const LS_KEY="aura_ui_state_v6_strict";
+</script>
+
+<div class="app">
+  <div class="side">
+    <div class="sideTop">
+      <button class="btn" id="newChat">New chat</button>
+      <span class="pill">Strict</span>
+      <span class="pill" id="lsPill"></span>
+    </div>
+    <div class="tabs">
+      <div class="tab active" data-tab="chats">Chats</div>
+      <div class="tab" data-tab="projects">Projects</div>
+      <div class="tab" data-tab="files">Files</div>
+    </div>
+    <div class="list" id="list"></div>
+  </div>
+
+  <div class="main">
+    <div class="head">
+      <div class="brand">Aura</div>
+      <div class="status" id="status">Ready</div>
+    </div>
+
+    <div class="msgs" id="msgs"></div>
+    <div class="hint">Tip: paste a JSON object to send it raw (e.g. {"type":"image","prompt":"..."}).</div>
+
+    <div class="composer">
+      <button class="iconBtn" id="uploadBtn" title="Upload">+</button>
+      <button class="iconBtn" id="micBtn" title="Mic">≡ƒÄñ</button>
+      <textarea id="input" placeholder="Message AuraΓÇª"></textarea>
+      <button class="iconBtn" id="sendBtn" title="Send">Γåæ</button>
+    </div>
+  </div>
+</div>
+
+<input type="file" id="fileInput" style="display:none"/>
+
+<script>
+(() => {
+  const els = {
+    list: document.getElementById("list"),
+    msgs: document.getElementById("msgs"),
+    input: document.getElementById("input"),
+    sendBtn: document.getElementById("sendBtn"),
+    uploadBtn: document.getElementById("uploadBtn"),
+    fileInput: document.getElementById("fileInput"),
+    status: document.getElementById("status"),
+    newChat: document.getElementById("newChat"),
+    micBtn: document.getElementById("micBtn"),
+    lsPill: document.getElementById("lsPill"),
+    tabs: Array.from(document.querySelectorAll(".tab"))
+  };
+
+  els.lsPill.textContent = LS_KEY;
+
+  let sending = false;
+  let recording = false;
+  let mediaRecorder = null;
+  let recordedChunks = [];
+
+  const state = loadState();
+  if (!state.activeId) state.activeId = createChat("New chat");
+  let activeTab = state.activeTab || "chats";
+
+  renderTabs();
+  renderList();
+  renderMsgs();
+
+  function setStatus(t){ els.status.textContent = t; }
+  function setSending(on){
+    sending = on;
+    els.sendBtn.disabled = on;
+    els.uploadBtn.disabled = on;
+    els.micBtn.disabled = false; // mic can stop even if sending
+    els.input.disabled = on;
+  }
+
+  function renderTabs(){
+    els.tabs.forEach(t => {
+      t.classList.toggle("active", t.dataset.tab === activeTab);
+      t.onclick = () => {
+        activeTab = t.dataset.tab;
+        state.activeTab = activeTab;
+        saveState();
+        renderList();
+      };
+    });
+  }
+
+  function renderList(){
+    els.list.innerHTML = "";
+    if (activeTab !== "chats"){
+      const div = document.createElement("div");
+      div.className = "item";
+      div.innerHTML = '<div class="t"></div><div class="s"></div>';
+      div.querySelector(".t").textContent = activeTab === "projects" ? "Projects" : "Files";
+      div.querySelector(".s").textContent = "UI placeholder (parity continues).";
+      els.list.appendChild(div);
+      return;
+    }
+
+    for (const id of state.order){
+      const c = state.chats[id];
+      if (!c) continue;
+      const div = document.createElement("div");
+      div.className = "item" + (id === state.activeId ? " active" : "");
+      div.innerHTML = '<div class="t"></div><div class="s"></div>';
+      div.querySelector(".t").textContent = c.title || "Chat";
+      div.querySelector(".s").textContent = (c.last || "").slice(0, 120);
+      div.onclick = () => { state.activeId = id; saveState(); renderList(); renderMsgs(); };
+      els.list.appendChild(div);
+    }
+  }
+
+  function renderMsgs(){
+    els.msgs.innerHTML = "";
+    const c = state.chats[state.activeId];
+    const msgs = c?.messages || [];
+    for (const m of msgs){
+      const wrap = document.createElement("div");
+      wrap.className = "msg";
+
+      const role = document.createElement("div");
+      role.className = "role";
+      role.textContent = m.role || "assistant";
+      wrap.appendChild(role);
+
+      if (m.type === "image" && m.url){
+        const card = document.createElement("div");
+        card.className = "card";
+
+        const img = document.createElement("img");
+        img.src = m.url;
+        img.alt = "image";
+        card.appendChild(img);
+
+        const foot = document.createElement("div");
+        foot.className = "cardFooter";
+
+        const cap = document.createElement("div");
+        cap.className = "cap";
+        cap.textContent = m.content || "Image";
+        foot.appendChild(cap);
+
+        const open = document.createElement("a");
+        open.className = "linkBtn";
+        open.href = m.url;
+        open.target = "_blank";
+        open.rel = "noopener";
+        open.textContent = "Open";
+        foot.appendChild(open);
+
+        const dl = document.createElement("a");
+        dl.className = "linkBtn";
+        dl.href = m.url;
+        dl.download = "aura-image.png";
+        dl.textContent = "Download";
+        foot.appendChild(dl);
+
+        card.appendChild(foot);
+        wrap.appendChild(card);
+      }
+
+      if (m.type === "file" && m.url){
+        const b = document.createElement("div");
+        b.className = "bubble assistant";
+        b.textContent = (m.content || "File") + "\n" + m.url;
+        wrap.appendChild(b);
+      }
+
+      if (m.type === "audio"){
+        const b = document.createElement("div");
+        b.className = "bubble assistant";
+        b.textContent = "Transcript:\n" + (m.transcript || "") + "\n\nReply:\n" + (m.reply || "");
+        wrap.appendChild(b);
+      }
+
+      if (m.content && m.type === "text"){
+        const b = document.createElement("div");
+        b.className = "bubble " + (m.role === "assistant" ? "assistant" : "user");
+        b.textContent = m.content;
+        wrap.appendChild(b);
+      }
+
+      els.msgs.appendChild(wrap);
+    }
+    els.msgs.scrollTop = els.msgs.scrollHeight;
+  }
+
+  function pushMsg(msg){
+    const c = state.chats[state.activeId];
+    c.messages.push(msg);
+    const last = msg.type === "image" ? "[image]" : msg.type === "audio" ? "[audio]" : (msg.content || "");
+    c.last = last;
+    if ((!c.title || c.title === "New chat") && msg.role === "user" && msg.content) c.title = msg.content.slice(0, 28);
+    state.order = [state.activeId, ...state.order.filter(x => x !== state.activeId)];
+    saveState();
+  }
+
+  function createChat(title){
+    const id = "c_" + Math.random().toString(36).slice(2);
+    state.chats[id] = { id, title, last:"", messages:[] };
+    state.order.unshift(id);
+    saveState();
+    return id;
+  }
+
+  function tryParseJson(s){
+    const t = (s || "").trim();
+    if (!t.startsWith("{") || !t.endsWith("}")) return null;
+    try { return JSON.parse(t); } catch { return null; }
+  }
+
+  async function postChat(payload){
+    const resp = await fetch(CHAT_ENDPOINT, {
+      method:"POST",
+      headers:{ "content-type":"application/json" },
+      body: JSON.stringify(payload)
+    });
+    const raw = await resp.text();
+    let j;
+    try { j = JSON.parse(raw); } catch { j = { ok:false, error:"invalid_json_from_server", detail: raw }; }
+    return { resp, j };
+  }
+
+  async function sendText(text){
+    if (sending) return;
+    const trimmed = (text || "").trim();
+    if (!trimmed) return;
+
+    const asJson = tryParseJson(trimmed);
+
+    setSending(true);
+    setStatus("SendingΓÇª");
+
+    pushMsg({ role:"user", type:"text", content: trimmed });
+    els.input.value = "";
+    renderMsgs(); renderList();
+
+    const payload = asJson || { type:"text", input: trimmed };
+
+    let out;
+    try {
+      out = await postChat(payload);
+    } catch (e) {
+      pushMsg({ role:"assistant", type:"text", content:"Network error: " + String(e?.message || e) });
+      renderMsgs(); renderList();
+      setStatus("Error");
+      setSending(false);
+      return;
+    }
+
+    if (!out.resp.ok || !out.j?.ok){
+      pushMsg({ role:"assistant", type:"text", content:"Error: " + JSON.stringify(out.j) });
+      renderMsgs(); renderList();
+      setStatus("Error");
+      setSending(false);
+      return;
+    }
+
+    const j = out.j;
+    if (j.type === "image" && j.url){
+      pushMsg({ role:"assistant", type:"image", url:j.url, content:j.content || "AU: Generated image." });
+    } else if (j.type === "audio"){
+      pushMsg({ role:"assistant", type:"audio", transcript: j.transcript || "", reply: j.reply || "" });
+    } else {
+      pushMsg({ role:"assistant", type:"text", content: String(j.content ?? "") });
+    }
+
+    renderMsgs(); renderList();
+    setStatus("Ready");
+    setSending(false);
+  }
+
+  async function uploadFile(file){
+    if (sending) return;
+    setSending(true);
+    setStatus("UploadingΓÇª");
+
+    const fd = new FormData();
+    fd.append("file", file);
+
+    let resp, raw, j;
+    try {
+      resp = await fetch(UPLOAD_ENDPOINT, { method:"POST", body: fd });
+      raw = await resp.text();
+      try { j = JSON.parse(raw); } catch { j = { ok:false, error:"invalid_json_from_server", detail: raw }; }
+    } catch (e) {
+      pushMsg({ role:"assistant", type:"text", content:"Upload network error: " + String(e?.message || e) });
+      renderMsgs(); renderList();
+      setStatus("Error");
+      setSending(false);
+      return;
+    }
+
+    if (!resp.ok || !j?.ok){
+      pushMsg({ role:"assistant", type:"text", content:"Upload error: " + JSON.stringify(j) });
+      renderMsgs(); renderList();
+      setStatus("Error");
+      setSending(false);
+      return;
+    }
+
+    // Γ£à Render uploaded image immediately
+    if ((j.type || "").startsWith("image/")){
+      pushMsg({ role:"user", type:"image", url: j.url, content: "Uploaded image: " + j.name });
+    } else {
+      pushMsg({ role:"user", type:"file", url: j.url, content: "Uploaded: " + j.name + " (" + j.size + " bytes) file_id=" + j.file_id });
+    }
+
+    renderMsgs(); renderList();
+    setStatus("Ready");
+    setSending(false);
+  }
+
+  async function startMic(){
+    if (recording) return;
+    recording = true;
+    recordedChunks = [];
+    setStatus("RecordingΓÇª");
+
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) {
+      recording = false;
+      pushMsg({ role:"assistant", type:"text", content:"Mic permission error: " + String(e?.message || e) });
+      renderMsgs(); renderList();
+      setStatus("Ready");
+      return;
+    }
+
+    try {
+      mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+    } catch (_) {
+      mediaRecorder = new MediaRecorder(stream);
+    }
+
+    mediaRecorder.ondataavailable = (ev) => { if (ev.data && ev.data.size) recordedChunks.push(ev.data); };
+
+    mediaRecorder.onstop = async () => {
+      try { stream.getTracks().forEach(t => t.stop()); } catch (_) {}
+
+      setStatus("Uploading audioΓÇª");
+
+      const blob = new Blob(recordedChunks, { type: "audio/webm" });
+      const fd = new FormData();
+      fd.append("file", blob, "mic.webm");
+
+      let up;
+      try {
+        up = await fetch(UPLOAD_ENDPOINT, { method:"POST", body: fd }).then(r => r.json());
+      } catch (e) {
+        recording = false;
+        pushMsg({ role:"assistant", type:"text", content:"Audio upload failed: " + String(e?.message || e) });
+        renderMsgs(); renderList();
+        setStatus("Ready");
+        return;
+      }
+
+      if (!up?.ok){
+        recording = false;
+        pushMsg({ role:"assistant", type:"text", content:"Audio upload error: " + JSON.stringify(up) });
+        renderMsgs(); renderList();
+        setStatus("Ready");
+        return;
+      }
+
+      pushMsg({ role:"user", type:"text", content:"≡ƒÄñ Voice message sent (file_id=" + up.file_id + ")" });
+
+      setStatus("TranscribingΓÇª");
+      let out;
+      try {
+        out = await postChat({ type:"audio", file_id: up.file_id });
+      } catch (e) {
+        recording = false;
+        pushMsg({ role:"assistant", type:"text", content:"/chat audio failed: " + String(e?.message || e) });
+        renderMsgs(); renderList();
+        setStatus("Ready");
+        return;
+      }
+
+      if (!out.resp.ok || !out.j?.ok){
+        recording = false;
+        pushMsg({ role:"assistant", type:"text", content:"Audio error: " + JSON.stringify(out.j) });
+        renderMsgs(); renderList();
+        setStatus("Ready");
+        return;
+      }
+
+      pushMsg({ role:"assistant", type:"audio", transcript: out.j.transcript || "", reply: out.j.reply || "" });
+      renderMsgs(); renderList();
+      setStatus("Ready");
+      recording = false;
+    };
+
+    mediaRecorder.start();
+  }
+
+  function stopMic(){
+    if (!recording || !mediaRecorder) return;
+    setStatus("StoppingΓÇª");
+    try { mediaRecorder.stop(); } catch (_) {}
+  }
+
+  // Events
+  els.sendBtn.onclick = () => sendText(els.input.value);
+  els.input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendText(els.input.value); }
+  });
+
+  els.newChat.onclick = () => {
+    state.activeId = createChat("New chat");
+    saveState();
+    renderList(); renderMsgs();
+  };
+
+  els.uploadBtn.onclick = () => els.fileInput.click();
+  els.fileInput.onchange = () => {
+    const f = els.fileInput.files && els.fileInput.files[0];
+    els.fileInput.value = "";
+    if (f) uploadFile(f);
+  };
+
+  els.micBtn.onclick = () => { if (!recording) startMic(); else stopMic(); };
+
+  // Storage
+  function loadState(){
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      if (!raw) return fresh();
+      const s = JSON.parse(raw);
+      if (!s || !s.chats || !s.order) return fresh();
+      return s;
+    } catch { return fresh(); }
+  }
+  function saveState(){
+    try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch {}
+  }
+  function fresh(){
+    return { activeId:"", activeTab:"chats", order:[], chats:{} };
+  }
+})();
+</script>
+</body>
+</html>

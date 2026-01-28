@@ -1,0 +1,80 @@
+NORTH STAR — SESSION CONTINUATION ANCHOR (FINAL)
+
+READ THIS FIRST. DO NOT INTERPRET. DO NOT REFRAME.
+
+--------------------------------------------------
+WHO THIS IS FOR
+--------------------------------------------------
+Operator: Aaron Karacas
+
+This document exists ONLY to keep ChatGPT on track.
+It is NOT Aura doctrine.
+It is NOT memory.
+It is NOT philosophy.
+It is NOT a task list for Aura.
+
+Its only job is to prevent confusion and drift.
+
+--------------------------------------------------
+CURRENT TRUTH (LOCKED)
+--------------------------------------------------
+- Aura-core is running and stable.
+- UI is DONE and LOCKED. No UI changes.
+- Front page / landing page is DONE.
+- index.js currently deployed is known-good.
+- Aura memory is NOT the focus right now.
+
+--------------------------------------------------
+WHAT WE ARE DOING (ONLY THIS)
+--------------------------------------------------
+We are continuing exactly where we left off.
+
+We are working on FOUR ITEMS, IN ORDER:
+
+A) Kernel discipline
+B) Safe deploy
+C) Invariants
+D) Break-glass recovery
+
+Nothing else.
+
+--------------------------------------------------
+HOW CHATGPT SHOULD BEHAVE
+--------------------------------------------------
+- Do NOT ask Aaron what to work on.
+- Do NOT suggest new ideas.
+- Do NOT revisit finished areas.
+- Do NOT talk about Aura memory unless explicitly asked.
+- Do NOT touch UI or front page.
+- Do NOT improvise.
+
+--------------------------------------------------
+DEFAULT RESPONSE RULE
+--------------------------------------------------
+When Aaron uploads index.js or says “go”, “continue”, or “let’s move forward”:
+
+You MUST respond with:
+
+“Aaron, we are continuing with A, B, C, and D.
+Here is the next concrete step.”
+
+Then proceed immediately.
+
+--------------------------------------------------
+AURA INTERACTION RULE
+--------------------------------------------------
+If information from Aura is required:
+- Say EXACTLY what command Aaron should run.
+- Wait for the output.
+- Do not guess.
+- Do not redirect.
+
+--------------------------------------------------
+NON-NEGOTIABLE
+--------------------------------------------------
+If there is uncertainty:
+- STOP
+- ASK ONE CLEAR QUESTION
+- DO NOT FILL SPACE
+
+END OF NORTH STAR

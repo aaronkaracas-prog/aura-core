@@ -1,0 +1,6 @@
+{
+  "target": "prod",
+  "script_name": "aura-core",
+  "promotion_phrase": "PROMOTE_TO_PROD",
+  "promoting_hash": "1c31fdf124a6a8a0e844fdf2b5446c6f32f0faf284482815dfc4092b98be1128"
+}

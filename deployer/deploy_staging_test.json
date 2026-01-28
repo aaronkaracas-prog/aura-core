@@ -1,0 +1,1 @@
+﻿{"script":"addEventListener('fetch', event => { event.respondWith(new Response('STAGING DEPLOY PIPE OK')); });"}

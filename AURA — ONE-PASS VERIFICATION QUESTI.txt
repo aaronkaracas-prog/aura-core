@@ -1,0 +1,61 @@
+AURA — ONE-PASS VERIFICATION QUESTIONS (paste all at once, send line-by-line if needed)
+
+1) CONTRACT LOCK
+Return JSON only: {"ok":true,"rule":"State the exact /chat payload shapes you accept for text, image, audio. If unsure, say unknown."}
+
+2) LOCATION (NO GUESSING)
+Return JSON only: {"ui_url":"unknown","api_base":"unknown","reason":"If you cannot read window.location or request URL, say unknown."}
+
+3) TEXT ROUNDTRIP
+Return JSON only: {"ok":true,"echo":"AURA_ECHO_123"}
+
+4) INSTRUCTION DISCIPLINE
+Return JSON only: {"workflow":["Full-file replace only","PowerShell commands only","Verify before continuing"]}
+
+5) IMAGE (TEXT-TRIGGER PATH)
+Return JSON only: {"request":{"type":"text","input":"Create an image of a dog on a rock smiling, photorealistic, 1024x1024"},"expect":["ok:true","type:image","url:/uploads/...","file_id"]}
+
+6) IMAGE (EXPLICIT TYPE PATH)
+Return JSON only: {"request":{"type":"image","prompt":"a dog jumping on a ball, photorealistic, 1024x1024"},"expect":["ok:true","type:image","url:/uploads/...","file_id"]}
+
+7) IMAGE SERVE CHECK
+Return JSON only: {"uploads_get":"GET /uploads/:id","expected_content_type":"image/png","expected_status":200}
+
+8) UPLOAD ENDPOINT
+Return JSON only: {"upload_path":"/upload","method":"POST","form_field":"file","returns_keys":["ok","file_id","name","size","type","url"]}
+
+9) UPLOAD RETRIEVAL
+Return JSON only: {"after_upload":"GET returned url","expected":"original bytes","expected_content_type":"original mime"}
+
+10) AUDIO FLOW
+Return JSON only: {"audio_flow":["POST /upload (file) -> file_id","POST /chat {type:audio,file_id}","receive {transcript,reply}"]}
+
+11) AUDIO MIMES
+Return JSON only: {"best_audio_mimes":["audio/webm","audio/wav","audio/mpeg"],"note":"If you only support one, list only that one."}
+
+12) TRANSCRIPTION FAILURE SHAPE
+Return JSON only: {"on_transcribe_fail":{"ok":false,"error":"transcription_failed","detail":"...","most_likely_fix":"..."}}
+
+13) KV PERSISTENCE
+Return JSON only: {"kv_survives_deploys":"yes","does_not_survive":["in-memory vars","browser localStorage on new device"]}
+
+14) CLIENT STORAGE
+Return JSON only: {"local_storage_keys":"List any LS_KEY names you use (or unknown)."}
+
+15) SERVER KV KEYS
+Return JSON only: {"kv_key_prefixes":["bytes:","meta:"],"note":"If more exist, list them; if unknown, say unknown."}
+
+16) ROUTES YOU SERVE
+Return JSON only: {"routes":[{"path":"/core","methods":["GET"]},{"path":"/chat","methods":["POST"]},{"path":"/upload","methods":["POST"]},{"path":"/uploads/:id","methods":["GET"]},{"path":"/health","methods":["GET"]}]}
+
+17) DNS / INFRA LIMITS
+Return JSON only: {"can_change_dns_directly":"no","can_generate_dns_instructions":"yes","needs_from_user":["zone","record type","name","target","ttl","proxy on/off"]}
+
+18) DEPLOY CONFIRMATION
+Return JSON only: {"deploy_command":"npx wrangler deploy","verify_commands":["curl https://auras.guide/core","curl -X POST https://auras.guide/chat --data-binary @chat.json"]}
+
+19) WINDOWS CURL INVALID_JSON CAUSES
+Return JSON only: {"invalid_json_causes":["bad escaping in --data \"{...}\"","smart quotes/encoding issues"],"best_fix":"Write JSON to file and use --data-binary @file.json (UTF-8 no BOM)"}
+
+20) FINAL CAPABILITY REPORT
+Return JSON only: {"text":"working","images":"working","uploads":"working","audio":"working","ui":"working","kv":"working","dns":"partial","deploy":"working"}

@@ -1,0 +1,6 @@
+{
+  "script_name": "aura-core",
+  "target": "prod",
+  "promotion_phrase": "PROMOTE_TO_PROD",
+  "bundle_b64": "AA=="
+}

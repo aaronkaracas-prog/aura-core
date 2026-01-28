@@ -1,0 +1,71 @@
+SNAPSHOT CAPSULE — ARK SYSTEMS / AURA
+Date: 2026-01-25
+Purpose: Clean resume point with NO repetition.
+
+=== WHAT IS SOLVED (DO NOT REPEAT) ===
+- Cloudflare Workers routes for:
+  - frontdesk.network/*
+  - www.frontdesk.network/*
+  → both correctly point to aura-core
+- SSL is resolved.
+- /health works on:
+  - frontdesk.network
+  - www.frontdesk.network
+- Wrangler OAuth login is confirmed working (NOT token-based).
+- KV, R2, Services bindings are correct and already present.
+- PowerShell + Wrangler deploy pipeline is proven.
+
+=== WHAT WENT WRONG (ROOT CAUSE) ===
+- Aura can STORE intent/config (Canon, modes),
+  but aura-core does NOT yet EXECUTE host-specific behavior from KV.
+- Because of this, every content change forced a redeploy.
+- This created the illusion that infra/tokens/routes were broken.
+- They are NOT broken.
+
+=== WHAT WE ARE BUILDING NEXT (ONE THING ONLY) ===
+A KV-driven HOST PROFILE layer.
+
+Definition:
+- KV key pattern: SITE:<host>
+  Examples:
+    SITE:frontdesk.network
+    SITE:cityguide.world
+    SITE:arksystems.us
+
+Behavior:
+- aura-core reads request.headers.host
+- Loads SITE:<host> from KV
+- Renders landing + human /health from KV
+- NO redeploy for content changes
+
+=== CURRENT OBJECTIVE ===
+Implement Host Profile execution in src/index.js.
+
+=== WHAT AARON WILL PROVIDE IN NEW SESSION ===
+1) Paste:
+   RECALL_CANON:ARKSYSTEMS_CURRENT_REALITY
+
+2) Upload file:
+   C:\Users\Aaron Karacas\aura-worker\aura\src\index.js
+
+=== WHAT THE NEXT SESSION MUST DO (NO DISCUSSION) ===
+- Generate a FULL FILE replacement src/index.js
+- Add Host Profile resolver using KV (AURA_KV)
+- Dual-mode /health:
+  - Browser → human page (from KV)
+  - Script → JSON (unchanged)
+- / route renders from SITE:<host>
+- Provide Aura commands to:
+  - SET_SITE_PROFILE frontdesk.network {...}
+
+=== NON-NEGOTIABLE RULES ===
+- No redoing routes
+- No token changes
+- No infra explanations
+- Full-file replacement only
+- Minimal text, maximum execution
+
+=== ONE-SENTENCE TRUTH ===
+Infra is done. Memory is done. The only missing piece is execution from KV.
+
+END SNAPSHOT

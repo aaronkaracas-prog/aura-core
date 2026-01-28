@@ -1,0 +1,1 @@
+﻿{"script_name":"aura-core-staging","bundle":"export default {\n  async fetch(request, env, ctx) {\n    return new Response('deployer-direct-test', { status: 200 });\n  }\n}"}

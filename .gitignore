@@ -1,22 +1,4 @@
-# Secrets
-*.txt
-*.key
-*.env
-
-# Test / temp files
-*.json
-*.wav
-*.png
-*.bak
-
-# UI experiments
-ui/
-ui.html
-core.html
-
-# Logs
-*.log
-
-# OS
-.DS_Store
-Thumbs.db
+﻿src/index-last.js
+src/index-lastgood.js
+src/indexlast.js
+src/working inex files/

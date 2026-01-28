@@ -1,0 +1,106 @@
+AURA SNAPSHOT — COMPLETE CONTEXT (DO NOT RE-LITIGATE)
+
+Purpose:
+This snapshot is a full, authoritative context handoff. Everything needed to understand the system, current state, and how to proceed is contained here. No reconstruction, no backtracking.
+
+Operator:
+Aaron Karacas
+
+System:
+Aura — Cloudflare Worker (aura-core)
+
+Current Live Build:
+AURA_CORE__2026-01-25__AUTONOMY_STEP_111__FRONTDESK_ONESTEP__CF_CHAT_WIRING__01
+
+Status:
+LIVE, OPERATIONAL, UI WIRED (mic + uploads enabled)
+
+------------------------------------
+CORE REALITY (PROVEN, LOCKED)
+------------------------------------
+
+1) Aura Core
+- aura-core deploys cleanly
+- /health returns correct build marker
+- /ui renders Chat-style interface
+- KV, R2, Deployer, CF bindings present
+- Aura is the active control plane
+
+2) Domains
+- auras.guide: stable UI + verification surface
+- cityguide.world: previously launched, proves end-to-end model
+- arksystems.us:
+  - Nameservers: yichun.ns.cloudflare.com, zoe.ns.cloudflare.com
+  - Routes:
+    - arksystems.us/* → aura-core
+    - www.arksystems.us/* → aura-core
+  - Root / is KV-backed (not redirect)
+  - Landing renders with /ui and /health buttons
+  - Verified LIVE previously via curl --resolve
+  - DONE. Not under active work.
+
+------------------------------------
+CANON SYSTEM (CRITICAL)
+------------------------------------
+
+Aura now has a working Canon system:
+- Canon stored in KV
+- Human-readable
+- Recallable inline
+- Persistent across sessions
+
+Working commands:
+- CANON_PUT:<alias>
+- RECALL_CANON:<alias>
+- CANON_LIST
+
+Primary Living Canon (ACTIVE):
+Alias: ARKSYSTEMS_CURRENT_REALITY
+
+This Canon contains:
+- All proven milestones
+- Exact current development state
+- Rules for how work proceeds
+- It is authoritative and continuously updated
+
+If confusion occurs:
+RECALL_CANON:ARKSYSTEMS_CURRENT_REALITY
+This overrides session memory and summaries.
+
+------------------------------------
+CURRENT DEVELOPMENT STATE (RIGHT NOW)
+------------------------------------
+
+Active work is NOT:
+- arksystems.us
+- cityguide.world
+
+Active work IS:
+- Making Aura lossless across time
+- Preventing solved problems from reappearing
+- Using Canon as the permanent memory layer
+- Preparing to Canon-lock FrontDesk.Network one-step autonomy
+
+Recent change:
+- Canon recall/export was missing
+- Code updated
+- Canon is now visible and verifiable
+
+------------------------------------
+RULES FOR CONTINUATION
+------------------------------------
+
+- Do not re-litigate solved domains
+- Do not redo setup work
+- Proceed forward only
+- Update the Living Canon as state changes
+- Future sessions must ask for Canon recall, not summaries
+
+------------------------------------
+NEXT EXPECTED ACTION
+------------------------------------
+
+Aaron will upload the current index.js next.
+After that, work resumes on FrontDesk.Network one-step autonomy.
+
+END SNAPSHOT

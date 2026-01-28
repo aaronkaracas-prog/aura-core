@@ -1,0 +1,6 @@
+﻿{
+  "ok": false,
+  "error": "cloudflare_put_failed",
+  "status": 400,
+  "detail": "{\n  \"result\": null,\n  \"success\": false,\n  \"errors\": [\n    {\n      \"code\": 10021,\n      \"message\": \"Uncaught SyntaxError: Unexpected identifier 'Object'\\n  at worker.js:1:8\\n\",\n      \"documentation_url\": \"https://developers.cloudflare.com/workers/observability/errors/#validation-errors-10021\"\n    }\n  ],\n  \"messages\": []\n}\n"
+}

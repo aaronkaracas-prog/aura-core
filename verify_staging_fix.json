@@ -1,0 +1,4 @@
+{
+  "mode": "fetch_fallback_local",
+  "health_url": "https://aura-core-staging.aaronkaracas.workers.dev/health"
+}

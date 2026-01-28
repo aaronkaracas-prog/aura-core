@@ -1,0 +1,158 @@
+CANON SNAPSHOT — ARK SYSTEMS — A/B/C DONE + FRONTDESK DNS BLOCKER (TOKEN SCOPE) — 2026-01-25
+Type: Transfer Canon Snapshot (for new session)
+Owner/Operator: Aaron Karacas
+System: Aura (Cloudflare Worker: aura-core)
+Timezone: America/Los_Angeles
+
+==================================================
+0) HOW TO USE THIS SNAPSHOT (FAST)
+==================================================
+1) In Aura UI, run:
+   RECALL_CANON:ARKSYSTEMS_CURRENT_REALITY
+
+2) In Aura UI, run:
+   RECALL_CANON:ARKSYSTEMS_US_CANON   (optional; legacy milestone)
+
+3) Upload Aaron’s current file to the new session:
+   C:\Users\Aaron Karacas\aura-worker\aura\src\index.js
+
+4) Then resume from the “NEXT ACTIONS (LOCKED ORDER)” section below.
+   No re-explaining. No detours. No UI changes.
+
+==================================================
+1) HOW AURA WORKS WITH AARON (LOCKED WORKSTYLE)
+==================================================
+- UI is locked. No redesigns. No layout changes.
+- Minimal talk. Only next steps that Aaron can copy/paste.
+- Full-file replacement only when code changes are required.
+- When giving PowerShell: numbered steps, each command in its own code block.
+- For curl with JSON: never inline JSON; write JSON to a UTF-8 (no BOM) file and use:
+  --data-binary "@file.json"
+- Avoid big screen dumps; keep outputs short and actionable.
+- Aura should proceed autonomously without “are you ready” prompts.
+
+==================================================
+2) CURRENT PROVEN REALITY (AS OF 2026-01-25)
+==================================================
+AURA CORE
+- aura-core deploys cleanly and deterministically.
+- /health returns correct build marker.
+- /ui renders the full chat-style interface.
+- Mic input and file uploads are wired and working (STEP 11 locked).
+- KV, Deployer binding, and service bindings are present and functional.
+- Canon system is KV-backed and recallable.
+
+A/B/C STATUS (THIS SESSION)
+A) Kernel Doctrine — WORKING
+- KERNEL_LOCK works
+- KERNEL_STATUS confirms kernel_locked: true
+
+B) Safe Deploy Wiring — WORKING (non-destructive reachability proof)
+- SAFE_DEPLOY_PING returns status 405 (reachable/restricted) which is treated as success for wiring
+
+C) Invariants — WORKING
+- RUN_INVARIANTS passes with:
+  ui_locked=true
+  kernel_locked=true
+  mandatory_flow intact:
+    ENSURE_DOMAIN_READY
+    ROUTE_DOMAIN
+    LAUNCH_ASSET
+
+CANON APPEND — FIXED + WORKING
+- Previously CANON_APPEND fell through to generic chat path (bad/nonsense response).
+- Fixed by adding real CANON_APPEND handler.
+- Confirmed by RECALL_CANON showing an [APPEND timestamp] entry.
+
+LATEST CONFIRMED BUILD MARKERS (from Aaron’s output)
+- AURA_CORE__2026-01-25__AUTONOMY_STEP_120__SAFE_DEPLOY_PING_REACHABLE__01 (B reachability)
+- AURA_CORE__2026-01-25__AUTONOMY_STEP_121__CANON_APPEND_FIX__01 (Canon append fixed)
+
+==================================================
+3) WHAT WAS FIXED (CRITICAL)
+==================================================
+CLOUDFLARE API AUTH HEADER MALFORMATION FIXED
+- CF_ZONE_SET was failing 400 globally.
+- Root cause: CLOUDFLARE_API_TOKEN secret contained malformed value (commonly “Bearer …” or quoted string).
+- Fix: reset CLOUDFLARE_API_TOKEN to raw token only (no “Bearer”, no quotes).
+- After fix: CF_ZONE_SET:arksystems.us succeeded.
+
+==================================================
+4) WHAT IS BLOCKING RIGHT NOW (FRONTDESK)
+==================================================
+Goal: Launch FrontDesk.Network using locked flow:
+1) ENSURE_DOMAIN_READY frontdesk.network
+2) ROUTE_DOMAIN frontdesk.network
+3) LAUNCH_ASSET frontdesk.network
+
+Current blocker:
+- CF_ZONE_SET:frontdesk.network works (zone exists and can be selected).
+- ENSURE_DOMAIN_READY frontdesk.network fails:
+  NOT WIRED: cf_dns_add_failed
+
+Interpretation:
+- Cloudflare API auth now works.
+- Zone selection works.
+- DNS record creation in that zone is failing.
+
+Most likely root cause:
+- Cloudflare token scope is insufficient for DNS writes.
+  (Earlier wrangler whoami showed zone:read but not DNS edit.)
+- Therefore: Need a token that includes Zone DNS Edit.
+
+Also noted:
+- Error detail is not currently surfaced (still generic cf_dns_add_failed).
+  The fastest path is to fix token scope first.
+
+==================================================
+5) NEXT ACTIONS (LOCKED ORDER) — RESUME HERE
+==================================================
+A) (Already done) Kernel Doctrine verified
+B) (Already done) Safe deploy reachability verified
+C) (Already done) Invariants verified
+D) FrontDesk.Network launch — BLOCKED until Cloudflare token updated
+
+NEXT ACTIONS (Cloudflare Token Scope Fix)
+1) Create a NEW Cloudflare API Token with:
+   - Zone → DNS → Edit
+   - Zone → Zone → Read (or Edit)
+   - Scope: frontdesk.network (or all zones)
+
+2) Set the token (raw token only):
+   wrangler secret put CLOUDFLARE_API_TOKEN
+
+3) Deploy:
+   wrangler deploy
+
+4) Retry readiness:
+   CF_ZONE_SET:frontdesk.network
+   ENSURE_DOMAIN_READY frontdesk.network
+
+5) Once ENSURE_DOMAIN_READY succeeds, proceed immediately:
+   ROUTE_DOMAIN frontdesk.network
+   LAUNCH_ASSET frontdesk.network
+
+==================================================
+6) COMMANDS AARON WILL RUN IN AURA (COPY/PASTE)
+==================================================
+Canonical recall:
+- RECALL_CANON:ARKSYSTEMS_CURRENT_REALITY
+
+FrontDesk flow:
+- CF_ZONE_SET:frontdesk.network
+- ENSURE_DOMAIN_READY frontdesk.network
+- ROUTE_DOMAIN frontdesk.network
+- LAUNCH_ASSET frontdesk.network
+
+==================================================
+7) WHAT NOT TO DO
+==================================================
+- Do NOT change UI.
+- Do NOT ask Aaron lots of questions.
+- Do NOT claim “NOT WIRED” without showing next fix step.
+- Do NOT use Cloudflare dashboard as a workaround unless explicitly forced.
+- Do NOT paste large code blocks without necessity.
+
+==================================================
+END SNAPSHOT
+==================================================

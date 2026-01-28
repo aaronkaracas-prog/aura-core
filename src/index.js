@@ -1682,6 +1682,33 @@ async function canonGet(env, alias){
   return { ok:true, reply:v, alias:a };
 }
 
+async function canonPut(env, alias, body){
+  try{
+    if (!env || !env.AURA_KV) return { ok:false, reply:"canon_put: kv_missing", alias: String(alias||"") };
+    const a = canonAliasNorm(alias);
+    if (!a) return { ok:false, reply:"canon_put: alias_missing", alias:"" };
+    const b = String(body||"").trim();
+    if (!b) return { ok:false, reply:"canon_put: body_missing", alias:a };
+    const rec = { alias: a, body: b, ts: new Date().toISOString() };
+    await env.AURA_KV.put(canonKey(a), JSON.stringify(rec));
+    return { ok:true, reply:"canon_put: ok", alias:a, ts: rec.ts };
+  }catch(e){
+    return { ok:false, reply:"canon_put: error", detail: (e && e.message) ? e.message : String(e), alias: String(alias||"") };
+  }
+}
+
+async function canonList(env){
+  try{
+    if (!env || !env.AURA_KV) return { ok:false, reply:"canon_list: kv_missing", canon_aliases: [] };
+    const r = await env.AURA_KV.list({ prefix: "canon:" });
+    const keys = (r && r.keys) ? r.keys : [];
+    const aliases = keys.map(k => String(k.name||"").slice("canon:".length)).filter(Boolean).sort();
+    return { ok:true, reply: JSON.stringify({ ok:true, canon_aliases: aliases }, null, 2), canon_aliases: aliases };
+  }catch(e){
+    return { ok:false, reply:"canon_list: error", detail: (e && e.message) ? e.message : String(e), canon_aliases: [] };
+  }
+}
+
 function health() {
   return jsonResp({ ok: true, version: BUILD_VERSION, stamp: BUILD_STAMP });
 }
@@ -1816,6 +1843,31 @@ if (req.method === "POST" && url.pathname === "/chat") {
       }
 
       // --- CANON RECALL (KV-backed) ---
+
+      // CANON_LIST
+      // Returns JSON: { ok, canon_aliases: [...] }
+      if (t.toUpperCase() === "CANON_LIST") {
+        const info = await canonList(env);
+        return jsonResp(info);
+      }
+
+      // CANON_PUT:<alias>\n<body>
+      // If body is missing, returns canon_put: awaiting_body
+      if (t.toUpperCase().startsWith("CANON_PUT:")) {
+        const rest = String(t.slice("CANON_PUT:".length) || "");
+        const idxNL = rest.indexOf("\n");
+        let aliasRaw = rest;
+        let body = "";
+        if (idxNL >= 0) {
+          aliasRaw = rest.slice(0, idxNL);
+          body = rest.slice(idxNL + 1);
+        }
+        const alias = canonAliasNorm(aliasRaw.trim());
+        if (!alias) return jsonResp({ ok: true, canon_put: "alias_missing" });
+        if (!String(body||"").trim()) return jsonResp({ ok: true, canon_put: "awaiting_body", alias });
+        const r = await canonPut(env, alias, body);
+        return jsonResp({ ok: r.ok === true, reply: r.reply || "", canon_put: r.ok === true ? "ok" : "error", alias: r.alias || alias, ts: r.ts || "", detail: r.detail || "" });
+      }
       if (/^RECALL_CANON$/i.test(t)) {
         const r = await canonGet(env, "ARKSYSTEMS_CURRENT_REALITY");
         return jsonResp({ ok: r.ok, reply: r.reply, canon: r });

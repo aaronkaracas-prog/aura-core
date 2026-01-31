@@ -1,1 +1,1 @@
-﻿{ "pattern": "frontdesk.network/*", "script": "aura-core" }
+{ "pattern": "frontdesk.network/*", "script": "aura-core" }

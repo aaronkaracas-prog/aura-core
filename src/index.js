@@ -159,7 +159,7 @@ export default {
     // Build / policy markers
     // ----------------------------
 const BUILD =
-      "AURA_CORE__AUTONOMY_LAYERS__EVIDENCE_ALLOWLIST_HOSTCAPS_OPERATOR_INTENT_PAUSE__MEMORY_SUBSTRATE_V1__REGISTRY_AUDIT__11";
+      "AURA_CORE__AUTONOMY_LAYERS__EVIDENCE_ALLOWLIST_HOSTCAPS_OPERATOR_INTENT_PAUSE__MEMORY_SUBSTRATE_V1__REGISTRY_AUDIT__13";
 
     // ----------------------------
     // Operator auth (explicit only)
@@ -192,6 +192,8 @@ const BUILD =
       "SNAPSHOT_STATE",
       "HOST_CAPS_GET",
       "HOST_CAPS_SET",
+      "DEPLOYER_CAPS",
+      "DEPLOYER_CALL",
       "PAUSE",
       "INTENT_ADD",
       "INTENT_GET",
@@ -467,6 +469,57 @@ const memorySchemaV1 = {
 };
 
     const jsonReply = (reply) => Response.json({ ok: true, reply });
+
+// ----------------------------
+// Deployer Autonomy Surface (operator-gated; host-capped)
+// - Exposes ONLY a minimal proxy surface to service bindings.
+// - Does NOT claim success for external effects; callers must verify via VERIFIED_FETCH_URL.
+// Commands:
+//   DEPLOYER_CAPS
+//   DEPLOYER_CALL <json>
+// JSON shape for DEPLOYER_CALL:
+//   {"service":"AURA_DEPLOYER"|"AURA_CF","path":"/admin|/dns|/deploy|...","method":"POST|GET","content_type":"application/json","body":"...raw..."} 
+// ----------------------------
+const __hasService = (env, name) => {
+  try { return Boolean(env && env[name] && typeof env[name].fetch === "function"); } catch { return false; }
+};
+
+const __serviceFetch = async (svc, req) => {
+  // Service binding fetch expects a Request object (URL may be relative).
+  // We use a synthetic base to construct URLs; only pathname matters to the service worker.
+  const base = "https://service.local";
+  const url = new URL(req.path || "/", base);
+  const init = {
+    method: (req.method || "POST").toUpperCase(),
+    headers: {
+      ...(req.headers && typeof req.headers === "object" ? req.headers : {}),
+      ...(req.content_type ? { "content-type": req.content_type } : {})
+    },
+    body: req.body != null ? req.body : undefined
+  };
+  const r = await svc.fetch(new Request(url.toString(), init));
+  const ct = (r.headers.get("content-type") || "").toLowerCase();
+  let out;
+  if (ct.includes("application/json")) out = await r.json();
+  else out = await r.text();
+  return { http_status: r.status, content_type: ct || null, out };
+};
+
+const __deployerCaps = (env) => {
+  const hasDeployer = __hasService(env, "AURA_DEPLOYER");
+  const hasCf = __hasService(env, "AURA_CF");
+  return {
+    ok: hasDeployer || hasCf,
+    bindings: { AURA_DEPLOYER: hasDeployer, AURA_CF: hasCf },
+    surface: [
+      "DEPLOYER_CALL service=AURA_DEPLOYER path/method/body (operator-only)",
+      "DEPLOYER_CALL service=AURA_CF path/method/body (operator-only)"
+    ],
+    requirement: "Caller must verify externally via VERIFIED_FETCH_URL; no implicit 'success' claims."
+  };
+};
+
+
 
     // ----------------------------
     // Strict allowlist: unknown single-token command => UNKNOWN_COMMAND
@@ -1146,7 +1199,45 @@ if (isBatch) {
       continue;
     }
 
-    // Any unknown tokens in a batch are ignored (deterministic).
+    
+
+    if (line === "DEPLOYER_CAPS") {
+      push("DEPLOYER_CAPS", __deployerCaps(env));
+      continue;
+    }
+
+    if (line.startsWith("DEPLOYER_CALL ")) {
+      if (!isOperator) { push("DEPLOYER_CALL", "UNAUTHORIZED"); continue; }
+      const jsonPart = line.slice("DEPLOYER_CALL ".length).trim();
+      const reqObj = safeJsonParse(jsonPart);
+      if (!reqObj || typeof reqObj !== "object") { push("DEPLOYER_CALL", "BAD_REQUEST"); continue; }
+
+      const serviceName = String(reqObj.service || "").trim();
+      if (serviceName !== "AURA_DEPLOYER" && serviceName !== "AURA_CF") { push("DEPLOYER_CALL", "BAD_REQUEST"); continue; }
+      if (!__hasService(env, serviceName)) { push("DEPLOYER_CALL", "DEPLOYER_CAPS_MISSING"); continue; }
+
+      const path = String(reqObj.path || "").trim();
+      if (!path.startsWith("/")) { push("DEPLOYER_CALL", "BAD_REQUEST"); continue; }
+
+      // Enforce host caps: treat this as its own command token (DEPLOYER_CALL already host-capped upstream).
+      // Evidence gating: callers must provide VERIFIED_FETCH_URL separately when making reachability claims.
+      try {
+        const svc = env[serviceName];
+        const resp = await __serviceFetch(svc, {
+          path,
+          method: reqObj.method || "POST",
+          headers: (reqObj.headers && typeof reqObj.headers === "object") ? reqObj.headers : {},
+          content_type: reqObj.content_type || null,
+          body: reqObj.body != null ? reqObj.body : undefined
+        });
+        push("DEPLOYER_CALL", { service: serviceName, path, ...resp });
+      } catch (e) {
+        push("DEPLOYER_CALL", { service: serviceName, path, http_status: 0, error: "EXCEPTION", message: String(e?.message || e) });
+      }
+      continue;
+    }
+
+// Any unknown tokens in a batch are ignored (deterministic).
   }
 
   return jsonReply(JSON.stringify(out, null, 2));
@@ -1223,6 +1314,41 @@ if (isBatch) {
       };
 
       return jsonReply(JSON.stringify(snapshot, null, 2));
+
+    if (hasLine("DEPLOYER_CAPS")) {
+      return jsonReply(JSON.stringify(__deployerCaps(env), null, 2));
+    }
+
+    // DEPLOYER_CALL <json> (single-line only; operator-only)
+    for (const line of lines) {
+      if (!line.startsWith("DEPLOYER_CALL")) continue;
+      if (!isOperator) return jsonReply("UNAUTHORIZED");
+      const jsonPart = line.slice("DEPLOYER_CALL".length).trim();
+      const reqObj = safeJsonParse(jsonPart);
+      if (!reqObj || typeof reqObj !== "object") return jsonReply("BAD_REQUEST");
+
+      const serviceName = String(reqObj.service || "").trim();
+      if (serviceName !== "AURA_DEPLOYER" && serviceName !== "AURA_CF") return jsonReply("BAD_REQUEST");
+      if (!__hasService(env, serviceName)) return jsonReply("DEPLOYER_CAPS_MISSING");
+
+      const path = String(reqObj.path || "").trim();
+      if (!path.startsWith("/")) return jsonReply("BAD_REQUEST");
+
+      try {
+        const svc = env[serviceName];
+        const resp = await __serviceFetch(svc, {
+          path,
+          method: reqObj.method || "POST",
+          headers: (reqObj.headers && typeof reqObj.headers === "object") ? reqObj.headers : {},
+          content_type: reqObj.content_type || null,
+          body: reqObj.body != null ? reqObj.body : undefined
+        });
+        return jsonReply(JSON.stringify({ service: serviceName, path, ...resp }, null, 2));
+      } catch (e) {
+        return jsonReply(JSON.stringify({ service: serviceName, path, http_status: 0, error: "EXCEPTION", message: String(e?.message || e) }, null, 2));
+      }
+    }
+
     }
 
     // ----------------------------
@@ -1372,11 +1498,13 @@ if (isBatch) {
       new RegExp(`\\b(${claimGateTriggerWords.join("|")})\\b`, "i").test(body);
     const hasVerifiedFetchInThisRequest = lines.some((l) => l.startsWith("VERIFIED_FETCH_URL"));
 
-    // Registry commands are explicitly bypassed (they are structured, not "claims").
-    const hasRegistryBypass =
-      lines.some((l) => __registryBypass(l.split(" ")[0]));
+    // Commands explicitly bypassed (structured or introspection; not "claims").
+    const hasClaimGateBypass = lines.some((l) => {
+      const tok = (l.split(" ")[0] || "").trim();
+      return __registryBypass(tok) || tok === "DEPLOYER_CAPS" || tok === "DEPLOYER_CALL";
+    });
 
-    if (claimGateTriggered && !hasVerifiedFetchInThisRequest && !hasRegistryBypass) {
+    if (claimGateTriggered && !hasVerifiedFetchInThisRequest && !hasClaimGateBypass) {
       return jsonReply(claimGateForcedMessage);
     }
 

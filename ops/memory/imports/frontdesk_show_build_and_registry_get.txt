@@ -1,0 +1,3 @@
+HOST frontdesk.network
+SHOW_BUILD
+REGISTRY_GET domains frontdesk.network

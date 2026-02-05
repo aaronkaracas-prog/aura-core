@@ -1,0 +1,2 @@
+HOST frontdesk.network
+REGISTRY_PUT {"type":"domains","item":{"id":"frontdesk.network","domain":"frontdesk.network","status":"ACTIVE","priority":"PHASE1"}}

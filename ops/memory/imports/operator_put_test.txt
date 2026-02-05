@@ -1,0 +1,2 @@
+REGISTRY_PUT
+{"type":"assets","item":{"id":"999","name":"OPERATOR_TEST","pillar":"TEST"}}

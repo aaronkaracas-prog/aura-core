@@ -1,0 +1,3 @@
+HOST frontdesk.network
+HOST_CAPS_GET frontdesk.network
+REGISTRY_LIST domains 5

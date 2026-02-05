@@ -1,0 +1,6 @@
+HOST frontdesk.network
+REGISTRY_PUT domains {
+    "type":  "domains",
+    "id":  "talktoaura.world",
+    "domain":  "talktoaura.world"
+}

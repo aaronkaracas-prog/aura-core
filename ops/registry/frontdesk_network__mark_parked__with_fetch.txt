@@ -1,0 +1,8 @@
+HOST frontdesk.network
+CLEAR_VERIFIED_FETCH https://frontdesk.network
+VERIFIED_FETCH_URL https://frontdesk.network
+CLEAR_VERIFIED_FETCH https://frontdesk.network/lander
+VERIFIED_FETCH_URL https://frontdesk.network/lander
+
+HOST auras.guide
+REGISTRY_PUT {"type":"domains","items":[{"id":"frontdesk.network","domain":"frontdesk.network","status":"PARKED","priority":"PHASE1","proof":"PARKED_LANDER_DETECTED__WSIMG_CAF","evidence":{"http_status":200,"https_status":525,"redirects_to":"/lander","lander_signatures":["img1.wsimg.com/parking-lander","google.com/adsense/domains/caf.js"],"notes":"Parking lander detected; keep parked until Worker route + TLS OK."},"updated_by":"operator"}]}

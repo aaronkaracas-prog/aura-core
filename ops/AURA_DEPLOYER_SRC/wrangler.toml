@@ -1,0 +1,10 @@
+name = "aura-deployer"
+main = "src/index.js"
+compatibility_date = "2026-01-14"
+account_id = "3db0de2c6fce92757e2c4e4f83d7eb16"
+
+[vars]
+STAGING_SCRIPT_NAME = "aura-core-staging"
+PROD_SCRIPT_NAME    = "aura-core"
+PROMOTE_PHRASE      = "PROMOTE_TO_PROD"
+CF_ACCOUNT_ID       = "3db0de2c6fce92757e2c4e4f83d7eb16"

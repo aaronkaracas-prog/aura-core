@@ -1,0 +1,4 @@
+HOST frontdesk.network
+VERIFIED_FETCH_URL http://frontdesk.network
+AUDIT_CLEAR
+AUDIT_GET

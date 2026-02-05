@@ -1,0 +1,1 @@
+REGISTRY_PUT {"type":"domains","id":"frontdesk.network","domain":"frontdesk.network","pillar":"FrontDesk / Business Interface / Intake & Ops","purpose":"calls, intake, screening, routing, ops visibility","priority":"PHASE1","status":"PARKED"}

@@ -1,0 +1,15 @@
+DOMAIN_SWEEP 2026-02-03T13:27:33 total=16 http200=7 not200=9 http_probe=3
+TOP_FAILS (first 10):
+- aurahere.world https= http=530 fallback=
+- talktoaura.world https= http=530 fallback=
+- arksolutions.world https= http=530 fallback=
+- arksystems.us https= http=522 fallback=
+- veritynewsroom.com https= http=530 fallback=
+- talkgenesis.com https= http=530 fallback=
+- firstcontact.systems https= http=530 fallback=
+- needhelp.solutions https= http=530 fallback=
+- permissiontoapproach.com https= http=530 fallback=
+TOP_PROBE (first 10):
+- helloaura.world https=525 http=200 fallback=CF_HTTPS_525_HTTP_PROBE
+- aistatus.world https=525 http=200 fallback=CF_HTTPS_525_HTTP_PROBE
+- frontdesk.network https=525 http=200 fallback=CF_HTTPS_525_HTTP_PROBE

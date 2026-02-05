@@ -1,0 +1,3 @@
+HOST frontdesk.network
+REGISTRY_FILTER {"type":"domains","where":{"status":"PARKED"},"limit":50}
+REGISTRY_FILTER domains status PARKED 50

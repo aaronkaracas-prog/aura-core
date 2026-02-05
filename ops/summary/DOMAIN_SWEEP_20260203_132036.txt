@@ -1,0 +1,7 @@
+DOMAIN_SWEEP 2026-02-03T13:20:36 total=7 http200=4 not200=3 http_probe=1
+TOP_FAILS (first 10):
+- aurahere.world https= http=530 fallback=
+- talktoaura.world https= http=530 fallback=
+- arksolutions.world https= http=530 fallback=
+TOP_PROBE (first 10):
+- helloaura.world https=525 http=200 fallback=CF_HTTPS_525_HTTP_PROBE

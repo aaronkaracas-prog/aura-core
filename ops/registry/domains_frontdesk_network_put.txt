@@ -1,0 +1,3 @@
+HOST frontdesk.network
+REGISTRY_PUT domains
+{"id":"frontdesk.network","domain":"frontdesk.network","pillar":"FrontDesk / Business Interface / Intake & Ops","purpose":"primary public entry","priority":"PHASE1","status":"PARKED"}

@@ -1,0 +1,53 @@
+REGISTRY_PUT
+{"type":"assets","id":"1","name":"ARK Systems - Portfolio governance & ethics","pillar":"CORE / GOVERNANCE"}
+REGISTRY_PUT
+{"type":"assets","id":"2","name":"Aura - Human-first autonomous control-plane intelligence","pillar":"CORE / GOVERNANCE"}
+REGISTRY_PUT
+{"type":"assets","id":"3","name":"Foundry - Creation & emergence engine","pillar":"CORE / GOVERNANCE"}
+REGISTRY_PUT
+{"type":"assets","id":"4","name":"Portfolio Optimization Engine - Asset timing & value","pillar":"CORE / GOVERNANCE"}
+REGISTRY_PUT
+{"type":"assets","id":"5","name":"AI Progress Map - AI growth & trajectory tracking","pillar":"CORE / GOVERNANCE"}
+
+REGISTRY_PUT
+{"type":"assets","id":"6","name":"FrontDesk","pillar":"ACCESS, CONTACT & CONSENT"}
+REGISTRY_PUT
+{"type":"assets","id":"7","name":"FrontDesk.Network","pillar":"ACCESS, CONTACT & CONSENT"}
+REGISTRY_PUT
+{"type":"assets","id":"8","name":"First Contact","pillar":"ACCESS, CONTACT & CONSENT"}
+REGISTRY_PUT
+{"type":"assets","id":"9","name":"Permission to Approach","pillar":"ACCESS, CONTACT & CONSENT"}
+REGISTRY_PUT
+{"type":"assets","id":"10","name":"Handshake","pillar":"ACCESS, CONTACT & CONSENT"}
+REGISTRY_PUT
+{"type":"assets","id":"11","name":"Intent","pillar":"ACCESS, CONTACT & CONSENT"}
+REGISTRY_PUT
+{"type":"assets","id":"12","name":"Gatekeeper","pillar":"ACCESS, CONTACT & CONSENT"}
+REGISTRY_PUT
+{"type":"assets","id":"13","name":"Notify","pillar":"ACCESS, CONTACT & CONSENT"}
+REGISTRY_PUT
+{"type":"assets","id":"14","name":"Verification","pillar":"ACCESS, CONTACT & CONSENT"}
+REGISTRY_PUT
+{"type":"assets","id":"15","name":"Rights Monitor","pillar":"ACCESS, CONTACT & CONSENT"}
+
+REGISTRY_PUT
+{"type":"assets","id":"16","name":"Presence","pillar":"IDENTITY & PRESENCE"}
+REGISTRY_PUT
+{"type":"assets","id":"17","name":"Presence for Businesses","pillar":"IDENTITY & PRESENCE"}
+REGISTRY_PUT
+{"type":"assets","id":"18","name":"Creator Presence","pillar":"IDENTITY & PRESENCE"}
+REGISTRY_PUT
+{"type":"assets","id":"19","name":"Trust Signals","pillar":"IDENTITY & PRESENCE"}
+REGISTRY_PUT
+{"type":"assets","id":"20","name":"Identity Protection","pillar":"IDENTITY & PRESENCE"}
+REGISTRY_PUT
+{"type":"assets","id":"21","name":"Documents","pillar":"IDENTITY & PRESENCE"}
+REGISTRY_PUT
+{"type":"assets","id":"22","name":"Public Access","pillar":"IDENTITY & PRESENCE"}
+
+REGISTRY_PUT
+{"type":"assets","id":"23","name":"Truth","pillar":"TRUTH, RECORD & REALITY"}
+REGISTRY_PUT
+{"type":"assets","id":"24","name":"Truth Archive","pillar":"TRUTH, RECORD & REALITY"}
+REGISTRY_PUT
+{"type":"assets","id":"25","name":"Newswire Protocol","pillar":"TRUTH, RECORD & REALITY"}

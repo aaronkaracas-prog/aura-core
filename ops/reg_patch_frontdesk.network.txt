@@ -1,0 +1,1 @@
+REGISTRY_FILTER domains {"id":"frontdesk.network","set":{"priority":"PHASE1","status":"PARKED"}}

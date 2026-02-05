@@ -1,0 +1,5 @@
+HOST frontdesk.network
+CLEAR_VERIFIED_FETCH https://frontdesk.network
+VERIFIED_FETCH_URL https://frontdesk.network
+REGISTRY_PUT {"type":"domains","item":{"id":"frontdesk.network","domain":"frontdesk.network","pillar":"CORE / INFRASTRUCTURE","purpose":"FrontDesk.Network primary host","priority":"PHASE1","status":"PARKED","notes":"GoDaddy parked lander at /lander"}}
+REGISTRY_GET domains frontdesk.network

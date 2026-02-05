@@ -1,0 +1,4 @@
+HOST auras.guide
+REGISTRY_GET domains frontdesk.network
+REGISTRY_GET assets frontdesk-network
+PORTFOLIO_STATUS

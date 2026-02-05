@@ -1,0 +1,1 @@
+REGISTRY_FILTER {"type":"domains","where":{"status":"PARKED"},"limit":50}

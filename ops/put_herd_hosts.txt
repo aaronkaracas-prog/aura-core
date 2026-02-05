@@ -1,0 +1,2 @@
+HOST frontdesk.network
+REGISTRY_PUT {"type":"config","item":{"id":"herd.hosts","hosts":["frontdesk.network","malibu.city"],"notes":"Herd hosts list for sweeps + self-tests"}}

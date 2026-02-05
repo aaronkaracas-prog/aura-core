@@ -1,0 +1,3 @@
+HOST frontdesk.network
+REGISTRY_PUT {"type":"domains","item":{"id":"frontdesk.network","domain":"frontdesk.network","pillar":"CORE / INFRASTRUCTURE","purpose":"FrontDesk.Network primary host","priority":"PHASE1","status":"PARKED","notes":"GoDaddy parked lander at /lander. JSON REGISTRY_FILTER currently causes Worker error 1101; use args form: REGISTRY_FILTER domains status PARKED <limit>."}}
+REGISTRY_GET domains frontdesk.network

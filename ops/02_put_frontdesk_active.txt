@@ -1,0 +1,2 @@
+REGISTRY_PUT domains frontdesk.network status ACTIVE priority PHASE1
+REGISTRY_PUT {"type":"domains","item":{"id":"frontdesk.network","domain":"frontdesk.network","status":"ACTIVE","priority":"PHASE1"}}

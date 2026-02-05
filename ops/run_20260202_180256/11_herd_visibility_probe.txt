@@ -1,0 +1,8 @@
+HOST frontdesk.network
+VERIFIED_FETCH_URL https://frontdesk.network
+SHOW_ALLOWED_COMMANDS
+HOST_CAPS_GET frontdesk.network
+HERD_STATUS
+HERD_SELF_TEST
+HERD_SWEEP
+SNAPSHOT_STATE

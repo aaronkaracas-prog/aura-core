@@ -1,0 +1,8 @@
+HOST auras.guide
+CLEAR_VERIFIED_FETCH https://auras.guide
+CLEAR_VERIFIED_FETCH http://auras.guide
+VERIFIED_FETCH_URL https://auras.guide
+VERIFIED_FETCH_URL http://auras.guide
+EVIDENCE_PRESENT
+AUDIT_CLEAR
+AUDIT_GET

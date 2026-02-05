@@ -1,0 +1,2 @@
+﻿REGISTRY_IMPORT_ASSETS
+{"items":[{"id":"2","name":"Aura - Human-first autonomous control-plane intelligence","pillar":"CORE / GOVERNANCE"}]}

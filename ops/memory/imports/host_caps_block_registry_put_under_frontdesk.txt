@@ -1,0 +1,2 @@
+HOST frontdesk.network
+REGISTRY_PUT {"type":"domains","item":{"id":"frontdesk.network","domain":"frontdesk.network","proof":"HOST_CAPS_SHOULD_BLOCK_REGISTRY_UNDER_FRONTDESK"}}

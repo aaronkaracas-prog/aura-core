@@ -1,0 +1,1 @@
+REGISTRY_PUT {"type":"domains","item":{"id":"frontdesk.network","domain":"frontdesk.network","pillar":"CORE / INFRASTRUCTURE","purpose":"FrontDesk.Network primary host","priority":"PHASE1","status":"PARKED"}}

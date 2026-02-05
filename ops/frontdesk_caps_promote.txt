@@ -1,0 +1,9 @@
+HOST frontdesk.network
+HOST_CAPS_SET {
+  "allow": [
+    "RUN_SELF_TEST_EVIDENCE",
+    "VERIFIED_FETCH_URL",
+    "EVIDENCE_PRESENT",
+    "SNAPSHOT_STATE"
+  ]
+}

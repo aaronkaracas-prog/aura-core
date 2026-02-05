@@ -1,0 +1,493 @@
+/**
+ * aura-cloudflare — delegated Cloudflare Control Plane for Aura
+ *
+ * Hard rules:
+ * - No deletes (no DNS delete, no route delete)
+ * - Allowed zones only (env.ALLOWED_ZONES CSV or secret)
+ * - Auth required:
+ *    A) HMAC (preferred): X-Aura-TS + X-Aura-Sig over `${ts}\n${rawBody}`
+ *    B) Shared-secret header (compat shim): X-Aura-Secret == AURA_CORE_SECRET (for /execute only)
+ *
+ * NOTE: /execute exists only to match aura-core’s current internal call shape.
+ */
+
+const API_BASE = "https://api.cloudflare.com/client/v4";
+
+function json(obj, status = 200, extraHeaders = {}) {
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      ...extraHeaders,
+    },
+  });
+}
+
+function badRequest(msg, extra = {}) {
+  return json({ ok: false, error: "bad_request", detail: msg, ...extra }, 400);
+}
+function unauthorized(detail = "unauthorized") {
+  return json({ ok: false, error: "unauthorized", detail }, 401);
+}
+function forbidden(detail = "forbidden") {
+  return json({ ok: false, error: "forbidden", detail }, 403);
+}
+function notFound(detail = "not_found") {
+  return json({ ok: false, error: "not_found", detail }, 404);
+}
+function methodNotAllowed() {
+  return json({ ok: false, error: "method_not_allowed" }, 405);
+}
+
+function normalizeZoneName(z) {
+  return String(z || "").trim().toLowerCase();
+}
+function parseAllowedZones(env) {
+  const raw = (env.ALLOWED_ZONES || "").trim();
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((s) => normalizeZoneName(s))
+    .filter(Boolean);
+}
+function isZoneAllowed(env, zoneName) {
+  const allowed = parseAllowedZones(env);
+  if (allowed.length === 0) return false; // explicit allow-list required
+  return allowed.includes(normalizeZoneName(zoneName));
+}
+
+async function hmacSha256Hex(secret, data) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(data));
+  const bytes = new Uint8Array(sig);
+  let hex = "";
+  for (const b of bytes) hex += b.toString(16).padStart(2, "0");
+  return hex;
+}
+
+async function constantTimeEq(a, b) {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+async function verifyAuthHmac(request, env, rawBody) {
+  const secret = env.AURA_CORE_SECRET;
+  if (!secret) return { ok: false, reason: "missing_AURA_CORE_SECRET" };
+
+  const ts = request.headers.get("X-Aura-TS");
+  const sig = request.headers.get("X-Aura-Sig");
+  if (!ts || !sig) return { ok: false, reason: "missing_auth_headers" };
+
+  const tsNum = Number(ts);
+  if (!Number.isFinite(tsNum) || tsNum <= 0) return { ok: false, reason: "bad_timestamp" };
+
+  const now = Math.floor(Date.now() / 1000);
+  const skew = Math.abs(now - tsNum);
+  if (skew > 60) return { ok: false, reason: "timestamp_out_of_window", skew_seconds: skew };
+
+  const data = `${ts}\n${rawBody || ""}`;
+  const expected = await hmacSha256Hex(secret, data);
+  const ok = await constantTimeEq(expected, sig);
+  if (!ok) return { ok: false, reason: "bad_signature" };
+
+  return { ok: true };
+}
+
+// Compat shim: /execute accepts X-Aura-Secret == AURA_CORE_SECRET
+async function verifyAuthExecute(request, env) {
+  const secret = env.AURA_CORE_SECRET;
+  if (!secret) return { ok: false, reason: "missing_AURA_CORE_SECRET" };
+  const got = request.headers.get("X-Aura-Secret");
+  if (!got) return { ok: false, reason: "missing_X_Aura_Secret" };
+  const ok = await constantTimeEq(String(got), String(secret));
+  if (!ok) return { ok: false, reason: "bad_secret" };
+  return { ok: true };
+}
+
+// Internal auth: accept operator token headers for trusted in-cluster calls (aura-core/deployer).
+// This is intentionally separate from external HMAC auth.
+async function verifyAuthInternal(request, env) {
+  const wantA = env.AURA_OPERATOR_TOKEN;
+  const wantB = env.AURA_CORE_SECRET;
+
+  // If neither secret exists, internal auth cannot be used.
+  if (!wantA && !wantB) return { ok: false, reason: "missing_internal_secrets" };
+
+  const got =
+    request.headers.get("x-operator-token") ||
+    request.headers.get("x-aura-operator-token") ||
+    request.headers.get("x-operator") ||
+    request.headers.get("x-ops-token");
+
+  if (!got) return { ok: false, reason: "missing_operator_token" };
+
+  // Prefer AURA_OPERATOR_TOKEN if set; fall back to AURA_CORE_SECRET.
+  if (wantA) {
+    const okA = await constantTimeEq(String(got), String(wantA));
+    if (okA) return { ok: true, via: "AURA_OPERATOR_TOKEN" };
+  }
+  if (wantB) {
+    const okB = await constantTimeEq(String(got), String(wantB));
+    if (okB) return { ok: true, via: "AURA_CORE_SECRET" };
+  }
+  return { ok: false, reason: "bad_operator_token" };
+}
+
+async function cfFetch(env, path, init = {}) {
+  const token = env.CF_API_TOKEN;
+  if (!token) throw new Error("missing_CF_API_TOKEN");
+  const url = `${API_BASE}${path}`;
+  const headers = new Headers(init.headers || {});
+  headers.set("Authorization", `Bearer ${token}`);
+  headers.set("Content-Type", "application/json");
+  const resp = await fetch(url, { ...init, headers });
+  const data = await resp.json().catch(() => null);
+  if (!resp.ok || !data || data.success === false) {
+    return { ok: false, status: resp.status, data };
+  }
+  return { ok: true, status: resp.status, data };
+}
+
+const ZONE_CACHE = new Map(); // name -> { id, name }
+
+async function resolveZoneId(env, zoneName) {
+  const zn = normalizeZoneName(zoneName);
+  if (!zn) return { ok: false, error: "missing_zone" };
+  if (!isZoneAllowed(env, zn)) return { ok: false, error: "zone_not_allowed", zone: zn };
+
+  const cached = ZONE_CACHE.get(zn);
+  if (cached?.id) return { ok: true, zone_id: cached.id, zone_name: cached.name || zn };
+
+  const r = await cfFetch(env, `/zones?name=${encodeURIComponent(zn)}&status=active&page=1&per_page=1`, { method: "GET" });
+  if (!r.ok) return { ok: false, error: "cf_error", detail: r.data };
+  const result = r.data?.result || [];
+  if (!result.length) return { ok: false, error: "zone_not_found", zone: zn };
+
+  const zone = result[0];
+  ZONE_CACHE.set(zn, { id: zone.id, name: zone.name });
+  return { ok: true, zone_id: zone.id, zone_name: zone.name };
+}
+
+function assertNoWildcards(name) {
+  const n = String(name || "").trim();
+  if (!n) return { ok: false, detail: "missing_name" };
+  if (n.includes("*")) return { ok: false, detail: "wildcards_not_allowed" };
+  return { ok: true, name: n };
+}
+
+function assertRecordType(type) {
+  const t = String(type || "").trim().toUpperCase();
+  const allowed = new Set(["A", "AAAA", "CNAME", "TXT", "MX", "SRV", "CAA"]);
+  if (!allowed.has(t)) return { ok: false, detail: "unsupported_type" };
+  return { ok: true, type: t };
+}
+
+function assertRoutePattern(pattern) {
+  const p = String(pattern || "").trim();
+  if (!p) return { ok: false, detail: "missing_pattern" };
+  if (!p.includes("/*")) return { ok: false, detail: "pattern_must_end_with_slash_star" };
+  if (p.includes("*") && !p.endsWith("/*")) return { ok: false, detail: "only_trailing_wildcard_allowed" };
+  return { ok: true, pattern: p };
+}
+
+async function zoneInspect(env, body) {
+  const z = body?.zone;
+  const rz = await resolveZoneId(env, z);
+  if (!rz.ok) return json({ ok: false, error: rz.error, ...rz }, rz.error === "zone_not_allowed" ? 403 : 404);
+
+  const zone_id = rz.zone_id;
+
+  const dns = await cfFetch(env, `/zones/${zone_id}/dns_records?per_page=50`, { method: "GET" });
+  if (!dns.ok) return json({ ok: false, error: "cf_error", action: "list_dns", detail: dns.data }, 502);
+
+  const routes = await cfFetch(env, `/zones/${zone_id}/workers/routes?per_page=50`, { method: "GET" });
+  if (!routes.ok) return json({ ok: false, error: "cf_error", action: "list_routes", detail: routes.data }, 502);
+
+  return json({
+    ok: true,
+    zone: rz.zone_name,
+    zone_id,
+    dns_count: dns.data?.result?.length || 0,
+    routes_count: routes.data?.result?.length || 0,
+    sample: {
+      dns: (dns.data?.result || []).slice(0, 5).map((r) => ({
+        id: r.id,
+        type: r.type,
+        name: r.name,
+        content: r.content,
+        proxied: r.proxied,
+        ttl: r.ttl,
+      })),
+      routes: (routes.data?.result || []).slice(0, 5).map((r) => ({
+        id: r.id,
+        pattern: r.pattern,
+        script: r.script,
+      })),
+    },
+  });
+}
+
+async function dnsUpsert(env, body) {
+  const { zone, type, name, content, proxied, ttl, priority, data } = body || {};
+  const rz = await resolveZoneId(env, zone);
+  if (!rz.ok) return json({ ok: false, error: rz.error, ...rz }, rz.error === "zone_not_allowed" ? 403 : 404);
+
+  const t = assertRecordType(type);
+  if (!t.ok) return badRequest(t.detail);
+
+  const nn = assertNoWildcards(name);
+  if (!nn.ok) return badRequest(nn.detail);
+
+  const recName = nn.name.includes(".") ? nn.name : `${nn.name}.${rz.zone_name}`;
+  if (!content && !data) return badRequest("missing_content_or_data");
+
+  const zone_id = rz.zone_id;
+
+  const q = await cfFetch(
+    env,
+    `/zones/${zone_id}/dns_records?type=${encodeURIComponent(t.type)}&name=${encodeURIComponent(recName)}&page=1&per_page=1`,
+    { method: "GET" }
+  );
+  if (!q.ok) return json({ ok: false, error: "cf_error", action: "query_dns", detail: q.data }, 502);
+
+  const existing = (q.data?.result || [])[0];
+  const payload = {
+    type: t.type,
+    name: recName,
+    content: content,
+    ttl: typeof ttl === "number" ? ttl : 1,
+    proxied: typeof proxied === "boolean" ? proxied : undefined,
+    priority: typeof priority === "number" ? priority : undefined,
+    data: data && typeof data === "object" ? data : undefined,
+  };
+  Object.keys(payload).forEach((k) => payload[k] === undefined && delete payload[k]);
+
+  if (existing?.id) {
+    const u = await cfFetch(env, `/zones/${zone_id}/dns_records/${existing.id}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+    if (!u.ok) return json({ ok: false, error: "cf_error", action: "update_dns", detail: u.data }, 502);
+
+    return json({
+      ok: true,
+      action: "updated",
+      zone: rz.zone_name,
+      record: { id: existing.id, type: t.type, name: recName, content: payload.content, proxied: payload.proxied, ttl: payload.ttl },
+    });
+  }
+
+  const c = await cfFetch(env, `/zones/${zone_id}/dns_records`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (!c.ok) return json({ ok: false, error: "cf_error", action: "create_dns", detail: c.data }, 502);
+
+  const created = c.data?.result;
+  return json({
+    ok: true,
+    action: "created",
+    zone: rz.zone_name,
+    record: { id: created?.id, type: t.type, name: recName, content: created?.content, proxied: created?.proxied, ttl: created?.ttl },
+  });
+}
+
+async function workersRouteUpsert(env, body) {
+  const { zone, pattern, script } = body || {};
+  const rz = await resolveZoneId(env, zone);
+  if (!rz.ok) return json({ ok: false, error: rz.error, ...rz }, rz.error === "zone_not_allowed" ? 403 : 404);
+
+  const pp = assertRoutePattern(pattern);
+  if (!pp.ok) return badRequest(pp.detail);
+
+  const sc = String(script || "").trim();
+  if (!sc) return badRequest("missing_script");
+
+  const zone_id = rz.zone_id;
+
+  const l = await cfFetch(env, `/zones/${zone_id}/workers/routes?per_page=100`, { method: "GET" });
+  if (!l.ok) return json({ ok: false, error: "cf_error", action: "list_routes", detail: l.data }, 502);
+
+  const routes = l.data?.result || [];
+  const existing = routes.find((r) => r.pattern === pp.pattern);
+
+  const payload = { pattern: pp.pattern, script: sc };
+
+  if (existing?.id) {
+    const u = await cfFetch(env, `/zones/${zone_id}/workers/routes/${existing.id}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+    if (!u.ok) return json({ ok: false, error: "cf_error", action: "update_route", detail: u.data }, 502);
+
+    return json({
+      ok: true,
+      action: "updated",
+      zone: rz.zone_name,
+      route: { id: existing.id, pattern: pp.pattern, script: sc },
+    });
+  }
+
+  const c = await cfFetch(env, `/zones/${zone_id}/workers/routes`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  if (!c.ok) return json({ ok: false, error: "cf_error", action: "create_route", detail: c.data }, 502);
+
+  const created = c.data?.result;
+  return json({
+    ok: true,
+    action: "created",
+    zone: rz.zone_name,
+    route: { id: created?.id, pattern: pp.pattern, script: sc },
+  });
+}
+
+async function readJson(request) {
+  const text = await request.text();
+  if (!text) return { raw: "", json: null };
+  try {
+    return { raw: text, json: JSON.parse(text) };
+  } catch {
+    return { raw: text, json: null, parse_error: true };
+  }
+}
+
+function inferOp(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  if (payload.op) return String(payload.op);
+  if (payload.endpoint) return String(payload.endpoint);
+  if (payload.path) return String(payload.path);
+  // inference by fields
+  if (payload.type && payload.name) return "/dns/upsert";
+  if (payload.pattern && payload.script) return "/workers/route";
+  if (payload.zone) return "/zone/inspect";
+  return null;
+}
+
+export default {
+  async fetch(request, env) {
+    try {
+      const url = new URL(request.url);
+      const { pathname } = url;
+
+      if (pathname === "/health") {
+        return json({
+          ok: true,
+          service: "aura-cloudflare",
+          allowed_zones: parseAllowedZones(env),
+          has_token: !!env.CF_API_TOKEN,
+          has_secret: !!env.AURA_CORE_SECRET,
+          ts: Math.floor(Date.now() / 1000),
+        });
+      }
+
+      // /execute (compat shim for aura-core’s current internal call)
+      if (pathname === "/execute") {
+        if (request.method !== "POST") return methodNotAllowed();
+        const auth = await verifyAuthExecute(request, env);
+        if (!auth.ok) return unauthorized(auth.reason);
+
+        const { json: payload, parse_error } = await readJson(request);
+        if (parse_error || !payload) return badRequest("bad_json");
+
+        const op = inferOp(payload);
+        if (!op) return badRequest("cannot_infer_operation");
+
+        const body = payload.body && typeof payload.body === "object" ? payload.body : payload;
+
+        if (op === "/zone/inspect") return await zoneInspect(env, body);
+        if (op === "/dns/upsert") return await dnsUpsert(env, body);
+        if (op === "/workers/route") return await workersRouteUpsert(env, body);
+
+        return notFound("unknown_execute_operation");
+      }
+
+      // Lightweight discovery endpoints (auth required except /health)
+      if (pathname === "/routes" && request.method === "GET") {
+        // Accept internal operator token OR external HMAC for discovery.
+        const internal = await verifyAuthInternal(request, env);
+        if (!internal.ok) {
+          const auth = await verifyAuthHmac(request, env, "");
+          if (!auth.ok) return unauthorized(auth.reason);
+        }
+        return json({
+          ok: true,
+          service: "aura-cloudflare",
+          routes: [
+            { method: "GET", path: "/health", auth: "none" },
+            { method: "GET", path: "/routes", auth: "internal_or_hmac" },
+            { method: "GET", path: "/caps", auth: "internal_or_hmac" },
+            { method: "POST", path: "/execute", auth: "X-Aura-Secret (compat)" },
+            { method: "POST", path: "/zone/inspect", auth: "internal_or_hmac" },
+            { method: "POST", path: "/dns/upsert", auth: "internal_or_hmac" },
+            { method: "POST", path: "/workers/route", auth: "internal_or_hmac" }
+          ],
+          ts: Math.floor(Date.now() / 1000),
+        });
+      }
+
+      if (pathname === "/caps" && request.method === "GET") {
+        const internal = await verifyAuthInternal(request, env);
+        if (!internal.ok) {
+          const auth = await verifyAuthHmac(request, env, "");
+          if (!auth.ok) return unauthorized(auth.reason);
+        }
+        return json({
+          ok: true,
+          service: "aura-cloudflare",
+          hard_rules: {
+            no_deletes: true,
+            allow_list_zones_only: true,
+          },
+          allowed_zones: parseAllowedZones(env),
+          has_token: !!env.CF_API_TOKEN,
+          has_secret: !!env.AURA_CORE_SECRET,
+          ts: Math.floor(Date.now() / 1000),
+        });
+      }
+
+      // All other endpoints require auth. Prefer internal operator-token for in-cluster calls;
+      // fall back to HMAC for external clients.
+      const internal = await verifyAuthInternal(request, env);
+      if (!internal.ok) {
+        const { raw, json: body, parse_error } = await readJson(request);
+        const auth = await verifyAuthHmac(request, env, raw || "");
+        if (!auth.ok) return unauthorized(auth.reason);
+
+        if (request.method !== "POST") return methodNotAllowed();
+        if (parse_error) return badRequest("bad_json");
+
+        if (pathname === "/zone/inspect") return await zoneInspect(env, body);
+        if (pathname === "/dns/upsert") return await dnsUpsert(env, body);
+        if (pathname === "/workers/route") return await workersRouteUpsert(env, body);
+
+        return notFound("unknown_endpoint");
+      }
+
+      // Internal auth path (no body required for auth itself)
+      if (request.method !== "POST") return methodNotAllowed();
+      const { json: body, parse_error } = await readJson(request);
+      if (parse_error) return badRequest("bad_json");
+
+      if (pathname === "/zone/inspect") return await zoneInspect(env, body);
+      if (pathname === "/dns/upsert") return await dnsUpsert(env, body);
+      if (pathname === "/workers/route") return await workersRouteUpsert(env, body);
+
+      return notFound("unknown_endpoint");
+    } catch (err) {
+      return json({ ok: false, error: "unhandled_exception", detail: String(err?.message || err) }, 500);
+    }
+  },
+};

@@ -1,0 +1,6 @@
+HOST auras.guide
+REGISTRY_PUT {"type":"domains","item":{"id":"frontdesk.network","domain":"frontdesk.network","priority":"PHASE1","status":"ACTIVE","proof":"NO_EVIDENCE_SHOULD_FAIL"}}
+VERIFIED_FETCH_URL https://frontdesk.network
+REGISTRY_PUT {"type":"domains","item":{"id":"frontdesk.network","domain":"frontdesk.network","priority":"PHASE1","status":"ACTIVE","proof":"WITH_EVIDENCE_SHOULD_PASS"}}
+REGISTRY_GET domains frontdesk.network
+AUDIT_GET

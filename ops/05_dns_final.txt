@@ -1,0 +1,4 @@
+HOST frontdesk.network
+CF_DNS_UPSERT {"zone":"frontdesk.network","type":"TXT","name":"frontdesk.network","content":"AURA_DNS_AUTONOMY_OK","proxied":false,"ttl":120}
+CF_DNS_LIST
+SNAPSHOT_STATE

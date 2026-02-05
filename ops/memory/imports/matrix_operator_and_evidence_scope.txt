@@ -1,0 +1,9 @@
+HOST auras.guide
+CLEAR_VERIFIED_FETCH https://frontdesk.network
+CLEAR_VERIFIED_FETCH https://malibu.city
+VERIFIED_FETCH_URL https://frontdesk.network
+REGISTRY_PUT {"type":"domains","item":{"id":"malibu.city","domain":"malibu.city","proof":"MATRIX__FRONTDESK_EVIDENCE_MUST_NOT_AUTHORIZE_MALIBU"}}
+VERIFIED_FETCH_URL https://malibu.city
+REGISTRY_PUT {"type":"domains","item":{"id":"malibu.city","domain":"malibu.city","proof":"MATRIX__MALIBU_EVIDENCE_SHOULD_AUTHORIZE_MALIBU"}}
+REGISTRY_GET domains malibu.city
+AUDIT_GET

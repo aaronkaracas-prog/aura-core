@@ -1,0 +1,2 @@
+HOST malibu.city
+REGISTRY_PUT {"type":"domains","item":{"id":"malibu.city","domain":"malibu.city","proof":"HOST_CAPS_SHOULD_BLOCK_REGISTRY_PUT_UNDER_MALIBU"}}

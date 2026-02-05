@@ -1,0 +1,4 @@
+HOST auras.guide
+VERIFIED_FETCH_URL https://frontdesk.network
+REGISTRY_GET domains frontdesk.network
+REGISTRY_GET assets frontdesk-network

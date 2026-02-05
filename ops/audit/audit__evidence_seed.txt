@@ -1,0 +1,6 @@
+HOST frontdesk.network
+CLEAR_VERIFIED_FETCH https://frontdesk.network
+CLEAR_VERIFIED_FETCH http://frontdesk.network
+VERIFIED_FETCH_URL https://frontdesk.network
+VERIFIED_FETCH_URL http://frontdesk.network
+EVIDENCE_PRESENT

@@ -1,0 +1,35 @@
+FIX_QUEUE 2026-02-03T13:51:42
+CSV=C:\Users\Aaron Karacas\aura-worker\aura\ops\summary\DOMAIN_SWEEP_RESUME.csv
+TOTAL=40 http200=21 not200=19 http_probe=6 http530=17
+
+BUCKET_A__HTTP530 (origin/route/DNS/worker missing or CF origin error) — priority P0
+- arksolutions.world
+- aurahere.world
+- cityos.us
+- firstcontact.systems
+- ideaslab.world
+- makemoremoney.business
+- needhelp.solutions
+- operator-put-domain-001.example
+- operator-put-domain-002.example
+- operator-sanity.local
+- operator-test-domain-002.example
+- permissiontoapproach.com
+- talkgenesis.com
+- talktoaura.world
+- theperfectrepairs.com
+- timethelp.world
+- veritynewsroom.com
+
+BUCKET_B__HTTP_PROBE (525 on https; http probe succeeds) — priority P1
+- aistatus.world
+- frontdesk.network
+- helloaura.world
+- timetocreate.kids
+- worldguide.world
+- worldnavigate.world
+
+NEXT_ACTIONS (high-level):
+1) For HTTP530: confirm zone exists + DNS points to expected + worker route present + origin reachable (if proxied).
+2) For HTTP_PROBE: fix TLS/origin handshake; ensure SSL mode + origin cert + SNI matches; eliminate 525.
+3) After fixes: rerun domain sweep to confirm reductions in http530/http_probe.

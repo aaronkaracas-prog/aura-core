@@ -1,0 +1,4 @@
+HOST auras.guide
+VERIFIED_FETCH_URL https://frontdesk.network
+AUDIT_GET
+PORTFOLIO_STATUS

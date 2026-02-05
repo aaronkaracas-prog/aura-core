@@ -1,0 +1,4 @@
+HOST auras.guide
+SNAPSHOT_STATE
+HOST_CAPS_GET malibu.city
+HOST_CAPS_GET frontdesk.network

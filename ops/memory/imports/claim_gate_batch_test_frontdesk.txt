@@ -1,0 +1,9 @@
+HOST auras.guide
+CLEAR_VERIFIED_FETCH https://frontdesk.network
+EVIDENCE_PRESENT https://frontdesk.network
+REGISTRY_PUT {"type":"domains","item":{"id":"frontdesk.network","domain":"frontdesk.network","proof":"NO_EVIDENCE_SHOULD_FAIL"}}
+VERIFIED_FETCH_URL https://frontdesk.network
+EVIDENCE_PRESENT https://frontdesk.network
+REGISTRY_PUT {"type":"domains","item":{"id":"frontdesk.network","domain":"frontdesk.network","proof":"WITH_EVIDENCE_SHOULD_PASS"}}
+REGISTRY_GET domains frontdesk.network
+AUDIT_GET

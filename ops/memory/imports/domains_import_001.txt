@@ -1,0 +1,48 @@
+REGISTRY_IMPORT_DOMAINS
+{
+  "items": [
+    { "id": "auras.guide", "domain": "auras.guide", "pillar": "Aura / Core Identity / Entry Points", "purpose": "trust, presence, legitimacy, what Aura is", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "helloaura.world", "domain": "helloaura.world", "pillar": "Aura / Core Identity / Entry Points", "purpose": "trust, presence, legitimacy, what Aura is", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "withaura.world", "domain": "withaura.world", "pillar": "Aura / Core Identity / Entry Points", "purpose": "trust, presence, legitimacy, what Aura is", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "aurahere.world", "domain": "aurahere.world", "pillar": "Aura / Core Identity / Entry Points", "purpose": "trust, presence, legitimacy, what Aura is", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "aurahello.com", "domain": "aurahello.com", "pillar": "Aura / Core Identity / Entry Points", "purpose": "trust, presence, legitimacy, what Aura is", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "talktoaura.world", "domain": "talktoaura.world", "pillar": "Aura / Core Identity / Entry Points", "purpose": "trust, presence, legitimacy, what Aura is", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "arksolutions.world", "domain": "arksolutions.world", "pillar": "Aura / Core Identity / Entry Points", "purpose": "trust, presence, legitimacy, what Aura is", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "arksystems.us", "domain": "arksystems.us", "pillar": "Aura / Core Identity / Entry Points", "purpose": "trust, presence, legitimacy, what Aura is", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "exist.world", "domain": "exist.world", "pillar": "Aura / Core Identity / Entry Points", "purpose": "trust, presence, legitimacy, what Aura is", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "aistatus.world", "domain": "aistatus.world", "pillar": "Aura / Core Identity / Entry Points", "purpose": "trust, presence, legitimacy, what Aura is", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "veritynewsroom.com", "domain": "veritynewsroom.com", "pillar": "Aura / Core Identity / Entry Points", "purpose": "trust, presence, legitimacy, what Aura is", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "talkgenesis.com", "domain": "talkgenesis.com", "pillar": "Aura / Core Identity / Entry Points", "purpose": "trust, presence, legitimacy, what Aura is", "priority": "UNKNOWN", "status": "UNKNOWN" },
+
+    { "id": "frontdesk.network", "domain": "frontdesk.network", "pillar": "FrontDesk / Business Interface / Intake & Ops", "purpose": "calls, intake, screening, routing, ops visibility", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "firstcontact.systems", "domain": "firstcontact.systems", "pillar": "FrontDesk / Business Interface / Intake & Ops", "purpose": "calls, intake, screening, routing, ops visibility", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "needhelp.solutions", "domain": "needhelp.solutions", "pillar": "FrontDesk / Business Interface / Intake & Ops", "purpose": "calls, intake, screening, routing, ops visibility", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "permissiontoapproach.com", "domain": "permissiontoapproach.com", "pillar": "FrontDesk / Business Interface / Intake & Ops", "purpose": "calls, intake, screening, routing, ops visibility", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "mypta.world", "domain": "mypta.world", "pillar": "FrontDesk / Business Interface / Intake & Ops", "purpose": "calls, intake, screening, routing, ops visibility", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "findwork.world", "domain": "findwork.world", "pillar": "FrontDesk / Business Interface / Intake & Ops", "purpose": "calls, intake, screening, routing, ops visibility", "priority": "UNKNOWN", "status": "UNKNOWN" },
+
+    { "id": "malibu.city", "domain": "malibu.city", "pillar": "Real Estate / Property / Home Lifecycle", "purpose": "place-based ownership, local authority, listings to life", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "cityguide.world", "domain": "cityguide.world", "pillar": "Real Estate / Property / Home Lifecycle", "purpose": "place-based ownership, local authority, listings to life", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "cityos.us", "domain": "cityos.us", "pillar": "Real Estate / Property / Home Lifecycle", "purpose": "place-based ownership, local authority, listings to life", "priority": "UNKNOWN", "status": "UNKNOWN" },
+
+    { "id": "makemoremoney.world", "domain": "makemoremoney.world", "pillar": "Work / Money / Economic Motion", "purpose": "earning, execution, ideas to money", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "makemoremoney.business", "domain": "makemoremoney.business", "pillar": "Work / Money / Economic Motion", "purpose": "earning, execution, ideas to money", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "myidea.world", "domain": "myidea.world", "pillar": "Work / Money / Economic Motion", "purpose": "earning, execution, ideas to money", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "ideaslab.world", "domain": "ideaslab.world", "pillar": "Work / Money / Economic Motion", "purpose": "earning, execution, ideas to money", "priority": "UNKNOWN", "status": "UNKNOWN" },
+
+    { "id": "worldguide.world", "domain": "worldguide.world", "pillar": "World / Navigation / Discovery", "purpose": "discovery, movement, exploration", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "worlddiscover.world", "domain": "worlddiscover.world", "pillar": "World / Navigation / Discovery", "purpose": "discovery, movement, exploration", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "worldnavigate.world", "domain": "worldnavigate.world", "pillar": "World / Navigation / Discovery", "purpose": "discovery, movement, exploration", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "nextstop.world", "domain": "nextstop.world", "pillar": "World / Navigation / Discovery", "purpose": "discovery, movement, exploration", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "placebet.world", "domain": "placebet.world", "pillar": "World / Navigation / Discovery", "purpose": "discovery, movement, exploration", "priority": "UNKNOWN", "status": "UNKNOWN" },
+
+    { "id": "timetocreate.world", "domain": "timetocreate.world", "pillar": "Creation / Learning / Kids", "purpose": "creativity, learning, growth", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "timetocreate.kids", "domain": "timetocreate.kids", "pillar": "Creation / Learning / Kids", "purpose": "creativity, learning, growth", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "timetolearn.kids", "domain": "timetolearn.kids", "pillar": "Creation / Learning / Kids", "purpose": "creativity, learning, growth", "priority": "UNKNOWN", "status": "UNKNOWN" },
+    { "id": "timethelp.world", "domain": "timethelp.world", "pillar": "Creation / Learning / Kids", "purpose": "creativity, learning, growth", "priority": "UNKNOWN", "status": "UNKNOWN" },
+
+    { "id": "hollywood.tools", "domain": "hollywood.tools", "pillar": "Culture / Media / Tools", "purpose": "tools, culture-facing utility", "priority": "UNKNOWN", "status": "UNKNOWN" },
+
+    { "id": "theperfectrepairs.com", "domain": "theperfectrepairs.com", "pillar": "Commerce / Brands / Services", "purpose": "services, real-world execution", "priority": "UNKNOWN", "status": "UNKNOWN" }
+  ]
+}

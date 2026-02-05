@@ -1,0 +1,54 @@
+﻿NETCHECK 20260203_160847  (from C:\Users\Aaron Karacas\aura-worker\aura)
+--- DNS ---
+
+Name        Type TTL Section IPAddress    
+----        ---- --- ------- ---------    
+auras.guide A    253 Answer  172.67.210.23
+auras.guide A    253 Answer  104.21.34.233
+
+
+
+
+Name        Type TTL Section IPAddress                
+----        ---- --- ------- ---------                
+auras.guide AAAA 253 Answer  2606:4700:3034::ac43:d217
+auras.guide AAAA 253 Answer  2606:4700:3035::6815:22e9
+
+
+
+--- TCP 443 ---
+
+
+ComputerName            : auras.guide
+RemoteAddress           : 2606:4700:3034::ac43:d217
+RemotePort              : 443
+NameResolutionResults   : 2606:4700:3034::ac43:d217
+                          2606:4700:3035::6815:22e9
+                          172.67.210.23
+                          104.21.34.233
+MatchingIPsecRules      : 
+NetworkIsolationContext : Internet
+IsAdmin                 : False
+InterfaceAlias          : Wi-Fi
+SourceAddress           : 2600:1012:b03e:d024:41fb:fbda:f34c:116e
+NetRoute (NextHop)      : fe80::e8fb:e9ff:feb7:f164
+TcpTestSucceeded        : True
+
+
+
+
+--- CURL /chat (light) ---
+HTTP/1.1 200 OK
+Date: Wed, 04 Feb 2026 00:09:14 GMT
+Content-Type: application/json
+Content-Length: 56
+Connection: keep-alive
+Vary: accept-encoding
+Report-To: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=EdonAsHNXOsga3hfQC6%2B6t3L8sHfAGhEmOgUdTtLTkk%2BEE%2B6gwMTSlG6fjcMCPwSyhUHZe1OjTAyXleZk87tgAgOkmcSVtLT1BVkuPUmPvKKW2EzXQ%2BX"}]}
+Nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+Server: cloudflare
+CF-RAY: 9c85f0283cddf36b-LAX
+alt-svc: h3=":443"; ma=86400
+
+
+--- SUMMARY ---

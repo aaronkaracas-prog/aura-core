@@ -1,0 +1,1 @@
+REGISTRY_PUT {"type":"domains","id":"operator-sanity.local","domain":"operator-sanity.local","pillar":"CORE / GOVERNANCE","purpose":"operator token validation","priority":"PHASE1","status":"UNKNOWN"}

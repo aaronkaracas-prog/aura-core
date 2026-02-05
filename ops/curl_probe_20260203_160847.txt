@@ -1,0 +1,1 @@
+{"ok":true,"reply":"NOT WIRED: VERIFIED_FETCH REQUIRED"}

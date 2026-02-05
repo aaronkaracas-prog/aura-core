@@ -1,0 +1,19 @@
+HOST auras.guide
+
+# 1) clear any prior evidence for both hosts
+CLEAR_VERIFIED_FETCH https://frontdesk.network
+CLEAR_VERIFIED_FETCH https://malibu.city
+
+# 2) fetch ONLY frontdesk evidence
+VERIFIED_FETCH_URL https://frontdesk.network
+
+# 3) try to write malibu.city WITHOUT malibu evidence -> MUST be NOT_ALLOWED
+REGISTRY_PUT {"type":"domains","item":{"id":"malibu.city","domain":"malibu.city","proof":"ISOLATION_TEST__FRONTDESK_EVIDENCE_SHOULD_NOT_AUTHORIZE_MALIBU"}}
+
+# 4) now fetch malibu evidence, then write -> MUST be ok:true
+VERIFIED_FETCH_URL https://malibu.city
+REGISTRY_PUT {"type":"domains","item":{"id":"malibu.city","domain":"malibu.city","proof":"ISOLATION_TEST__WITH_MALIBU_EVIDENCE_SHOULD_PASS"}}
+
+# 5) confirm final registry and show audit tail
+REGISTRY_GET domains malibu.city
+AUDIT_GET

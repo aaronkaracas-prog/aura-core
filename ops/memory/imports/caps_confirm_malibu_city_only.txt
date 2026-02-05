@@ -1,0 +1,2 @@
+HOST auras.guide
+HOST_CAPS_GET malibu.city

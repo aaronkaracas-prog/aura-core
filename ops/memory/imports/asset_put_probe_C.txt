@@ -1,0 +1,2 @@
+﻿REGISTRY_PUT assets 1
+{"name":"ARK Systems — Portfolio governance & ethics","pillar":"CORE / GOVERNANCE"}

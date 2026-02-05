@@ -1,0 +1,4 @@
+HOST frontdesk.network
+SHOW_BUILD
+REGISTRY_PUT {"type":"domains","item":{"id":"frontdesk.network","domain":"frontdesk.network","pillar":"CORE / INFRASTRUCTURE","purpose":"FrontDesk.Network primary host","priority":"PHASE1","status":"PARKED","notes":"Milestone 2026-01-30: REGISTRY_FILTER works in BOTH forms: JSON where({status:PARKED}) and args form (domains status PARKED <limit>). Verified via compare_filter_json_vs_args batch; both returned 1 item: frontdesk.network. Active host frontdesk.network. Proceed to unpark + route later."}}
+REGISTRY_GET domains frontdesk.network

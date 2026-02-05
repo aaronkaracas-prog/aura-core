@@ -2,6 +2,10 @@ name = "aura-cloudflare"
 main = "src/index.js"
 compatibility_date = "2026-01-19"
 workers_dev = true
+services = [
+  { binding = "AURA_CORE", service = "aura-core" }
+]
+
 
 # Secrets (set via `wrangler secret put`)
 # - CF_API_TOKEN

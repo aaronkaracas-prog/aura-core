@@ -1,0 +1,3 @@
+HOST auras.guide
+VERIFIED_FETCH_URL https://frontdesk.network
+REGISTRY_PUT {"type":"assets","item":{"id":"frontdesk-network","name":"FrontDesk.Network — intake, screening, routing, ops visibility","pillar":"FrontDesk / Business Interface / Intake & Ops","notes":"Domain: frontdesk.network · Claim-gate wired to VERIFIED_FETCH evidence","tags":["frontdesk","intake","routing","network"],"sellability":"UNKNOWN","patent_cluster":""}}

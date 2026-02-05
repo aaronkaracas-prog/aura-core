@@ -1,0 +1,1 @@
+HOST_CAPS_SET example.com ["PING","SNAPSHOT_STATE"]

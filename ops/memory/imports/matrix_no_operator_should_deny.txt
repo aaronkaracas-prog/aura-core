@@ -1,0 +1,4 @@
+HOST auras.guide
+CLEAR_VERIFIED_FETCH https://malibu.city
+VERIFIED_FETCH_URL https://malibu.city
+REGISTRY_PUT {"type":"domains","item":{"id":"malibu.city","domain":"malibu.city","proof":"MATRIX__NO_OPERATOR_SHOULD_DENY"}}

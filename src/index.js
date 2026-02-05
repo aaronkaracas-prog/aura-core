@@ -34,10 +34,12 @@ async function naturalLanguageReply(input, env, activeHost) {
   const capability = (await intentGet("capability")) || "I can inspect state, manage registries, run herd checks, plan deploys, and execute deployer actions when operator-authorized and evidence requirements are satisfied.";
   const gating = (await intentGet("gating")) || "I only gate verified claims and privileged actions. For planning and questions, I respond directly.";
 
-  // If the user is trying to assert a gated claim, enforce evidence-first
+  // If the user is asking about reachability / deployment / DNS etc, stay descriptive and avoid making claims.
   const claimWords = ["live","deployed","reachable","works","working","up","down","online","offline","dns","resolves","propagated","ssl","https","http","525","520","530","error"];
   const looksLikeClaim = claimWords.some(w => lower.includes(w));
-  if (looksLikeClaim) return "NOT WIRED: VERIFIED_FETCH REQUIRED";
+  if (looksLikeClaim) {
+    return "I can't confirm that from here without running a verification check. If you want, tell me which host to check and I can guide the safest way to do it.";
+  }
 
   if (lower === "who are you" || lower.startsWith("who are you")) return identity;
   if (lower === "what can you do" || lower.startsWith("what can you do")) return capability + "\n\n" + gating;
@@ -385,25 +387,9 @@ export default {
       return CLAIM_TRIGGER_WORDS.some((w) => new RegExp('(^|\\W)' + w + '($|\\W)').test(t));
     };
 
-    if (bodyTrim && !isBatchLike && !hasClaimTrigger(bodyTrim)) {
-      const msg =
-        `Aura (control-plane) — ${BUILD} @ ${STAMP}\n` +
-        `Operator: ${isOperator ? 'YES' : 'NO'} (planning/help allowed; deploy/DNS actions are operator-only)\n\n` +
-        `What I can do right now (without VERIFIED_FETCH):\n` +
-        `- Explain identity/capabilities and how to operate\n` +
-        `- Show allowed commands, build, snapshot, memory schema\n` +
-        `- Read registries (GET/LIST/FILTER) within host caps\n\n` +
-        `What requires VERIFIED_FETCH and/or operator token:\n` +
-        `- Claims like live/deployed/reachable\n` +
-        `- Writes (registry puts), deployer calls, DNS changes\n\n` +
-        `Next commands to run:\n` +
-        `1) SHOW_ALLOWED_COMMANDS\n` +
-        `2) SHOW_BUILD\n` +
-        `3) SNAPSHOT_STATE\n` +
-        `4) SHOW_MEMORY_SCHEMA\n` +
-        `5) REGISTRY_LIST domains\n\n` +
-        `Tip: In UI, use ALL-CAPS commands. For multi-line ops, use PowerShell batch mode.`;
-      return Response.json({ ok: true, reply: msg });
+    if (bodyTrim && !isBatchLike) {
+      const reply = await naturalLanguageReply(bodyTrim, env, "none");
+      return Response.json({ ok: true, reply });
     }
 
     // ----------------------------
@@ -511,6 +497,24 @@ export default {
 // ----------------------------
 const REGISTRY_VERSION = "v1";
 const autonomyTickKey = `autonomy:${REGISTRY_VERSION}:tick`;
+
+async function writeAutonomyTick(env) {
+  const prev = await env.AURA_KV.get(autonomyTickKey, { type: "json" }).catch(() => null);
+  const count = Number((prev && prev.count) || 0) + 1;
+  const payload = {
+    ok: true,
+    ts: nowIso(),
+    count,
+    build: BUILD,
+    note: "AUTONOMY_LOOP_TICK"
+  };
+  await env.AURA_KV.put(autonomyTickKey, JSON.stringify(payload));
+  // Also advance AUDIT so operators can verify cron activity without extra state.
+  await auditWrite(env, { action: "AUTONOMY_TICK", type: "autonomy", id: "cron_or_manual" });
+  return payload;
+}
+
+
 
 const registryKey = (type, id) => `reg:${REGISTRY_VERSION}:${type}:${id}`;
 const registryIndexKey = (type) => `reg:${REGISTRY_VERSION}:index:${type}`;
@@ -1542,6 +1546,7 @@ if (line === "HERD_STATUS") {
   continue;
 }
 if (line === "HERD_SELF_TEST") {
+  await writeAutonomyTick(env);
   push("HERD_SELF_TEST", { ok: true, tests: [{ name: "command_wired", pass: true }], stamp: new Date().toISOString() });
   continue;
 }
@@ -1655,13 +1660,16 @@ if (line === "DEPLOYER_CAPS") {
       const caps = await getHostCaps(activeHost);
       const stored = activeHost ? await env.AURA_KV.get(evidenceKey(activeHost)) : null;
 
+      const tick = await env.AURA_KV.get(autonomyTickKey, { type: "json" }).catch(() => null);
+
       const snapshot = {
         build: BUILD,
         stamp: new Date().toISOString(),
         operator: isOperator ? "YES" : "NO",
         active_host: safeHost,
         host_caps: caps || null,
-        evidence_present_for_active_host: Boolean(stored)
+        evidence_present_for_active_host: Boolean(stored),
+        autonomy_tick: tick || null
       };
 
       return jsonReply(snapshot);
@@ -2321,16 +2329,7 @@ if (bodyTrim === "AUDIT_CLEAR") {
 
   async scheduled(event, env, ctx) {
     try {
-      const prev = await env.AURA_KV.get(autonomyTickKey, { type: "json" });
-      const count = Number((prev && prev.count) || 0) + 1;
-      const payload = {
-        ok: true,
-        ts: new Date().toISOString(),
-        count,
-        build: BUILD,
-        note: "AUTONOMY_LOOP_TICK"
-      };
-      await env.AURA_KV.put(autonomyTickKey, JSON.stringify(payload));
+      await writeAutonomyTick(env);
     } catch (_) {
       // Fail-closed: never throw from cron.
     }

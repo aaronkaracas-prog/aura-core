@@ -1,0 +1,5 @@
+HOST auras.guide
+VERIFIED_FETCH {"url":"https://frontdesk.network/","allow_fallback_http":true}
+EVIDENCE_LIST {"host":"frontdesk.network","limit":5}
+VERIFIED_FETCH {"url":"https://malibu.city/","allow_fallback_http":false}
+EVIDENCE_LIST {"host":"malibu.city","limit":5}

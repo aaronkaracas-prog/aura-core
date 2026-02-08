@@ -1,0 +1,3 @@
+HOST frontdesk.network
+EVIDENCE_PRESENT
+SHOW_CLAIM_GATE

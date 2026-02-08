@@ -1,0 +1,4 @@
+BATCH
+HOST frontdesk.network
+SHOW_BUILD
+SNAPSHOT_STATE

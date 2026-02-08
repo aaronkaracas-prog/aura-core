@@ -1,0 +1,5 @@
+DEPLOYER_CALL {"service":"AURA_CF","path":"/","method":"GET","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="}}
+DEPLOYER_CALL {"service":"AURA_CF","path":"/health","method":"GET","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="}}
+DEPLOYER_CALL {"service":"AURA_CF","path":"/ping","method":"GET","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="}}
+DEPLOYER_CALL {"service":"AURA_CF","path":"/version","method":"GET","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="}}
+DEPLOYER_CALL {"service":"AURA_CF","path":"/caps","method":"GET","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="}}

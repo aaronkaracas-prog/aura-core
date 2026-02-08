@@ -1,0 +1,5 @@
+VERIFIED_FETCH_URL https://frontdesk.network
+SNAPSHOT_STATE
+REGISTRY_PUT domains {"key":"malibu.city","value":{"domain":"malibu.city"}}
+REGISTRY_GET domains {"key":"malibu.city"}
+AUDIT_GET

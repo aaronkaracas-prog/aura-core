@@ -1,0 +1,2 @@
+REGISTRY_PUT domains {"key":"malibu.city","value":{"domain":"malibu.city","type":"city","status":"active","source":"verified_fetch","created_by":"aura","notes":{"canonical":true}}}
+REGISTRY_GET domains {"key":"malibu.city"}

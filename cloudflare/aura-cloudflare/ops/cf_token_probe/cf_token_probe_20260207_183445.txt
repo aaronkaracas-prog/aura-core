@@ -1,0 +1,4 @@
+HOST auras.guide
+DEPLOYER_CALL {"service":"AURA_CF","path":"/zones?per_page=1","method":"GET"}
+DEPLOYER_CALL {"service":"AURA_CF","path":"/user/tokens/verify","method":"GET"}
+DEPLOYER_CALL {"service":"AURA_CF","path":"/client/v4/user/tokens/verify","method":"GET"}

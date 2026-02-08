@@ -1,0 +1,18 @@
+﻿RETURN_PACKET
+HTTP/1.1 200 OK | https://auras.guide/chat | Content-Type: text/plain;charset=UTF-8 | JSON=False | FIRST=Aura core active.
+HTTP/1.1 200 OK | https://auras.guide/core | Content-Type: text/html; charset=utf-8 | JSON=False | FIRST=<!DOCTYPE html>
+HTTP/1.1 404 Not Found | https://auras.guide/core/chat | Content-Type: text/plain;charset=UTF-8 | JSON=False | FIRST=Not Found
+HTTP/1.1 404 Not Found | https://auras.guide/api/chat | Content-Type: text/plain;charset=UTF-8 | JSON=False | FIRST=Not Found
+HTTP/1.1 404 Not Found | https://auras.guide/aura/chat | Content-Type: text/plain;charset=UTF-8 | JSON=False | FIRST=Not Found
+HTTP/1.1 404 Not Found | https://auras.guide/command | Content-Type: text/plain;charset=UTF-8 | JSON=False | FIRST=Not Found
+HTTP/1.1 404 Not Found | https://auras.guide/run | Content-Type: text/plain;charset=UTF-8 | JSON=False | FIRST=Not Found
+HTTP/1.1 404 Not Found | https://auras.guide/ui/chat | Content-Type: text/plain;charset=UTF-8 | JSON=False | FIRST=Not Found
+HTTP/1.1 200 OK | https://aura-core.aaronkaracas.workers.dev/chat | Content-Type: text/plain;charset=UTF-8 | JSON=False | FIRST=Aura core active.
+HTTP/1.1 200 OK | https://aura-core.aaronkaracas.workers.dev/core | Content-Type: text/html; charset=utf-8 | JSON=False | FIRST=<!DOCTYPE html>
+HTTP/1.1 404 Not Found | https://aura-core.aaronkaracas.workers.dev/core/chat | Content-Type: text/plain;charset=UTF-8 | JSON=False | FIRST=Not Found
+HTTP/1.1 404 Not Found | https://aura-core.aaronkaracas.workers.dev/api/chat | Content-Type: text/plain;charset=UTF-8 | JSON=False | FIRST=Not Found
+HTTP/1.1 404 Not Found | https://aura-core.aaronkaracas.workers.dev/aura/chat | Content-Type: text/plain;charset=UTF-8 | JSON=False | FIRST=Not Found
+HTTP/1.1 404 Not Found | https://aura-core.aaronkaracas.workers.dev/command | Content-Type: text/plain;charset=UTF-8 | JSON=False | FIRST=Not Found
+HTTP/1.1 404 Not Found | https://aura-core.aaronkaracas.workers.dev/run | Content-Type: text/plain;charset=UTF-8 | JSON=False | FIRST=Not Found
+HTTP/1.1 404 Not Found | https://aura-core.aaronkaracas.workers.dev/ui/chat | Content-Type: text/plain;charset=UTF-8 | JSON=False | FIRST=Not Found
+END

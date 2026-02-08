@@ -1,0 +1,10 @@
+﻿/
+/health
+/zones
+/zones/list
+/api/zones
+/api/zones/list
+/v1/zones
+/v1/zones/list
+/cf/zones
+/cf/zones/list

@@ -1,0 +1,13 @@
+HOST frontdesk.network
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"zones","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"client/v4/zones","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"v4/zones","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"api/client/v4/zones","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"_routes","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"routes","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"body":"{\"op\":\"ZONES_LIST\"}","service":"AURA_CF","path":"zones","method":"POST","content_type":"application/json","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="}}
+DEPLOYER_CALL {"body":"{\"op\":\"ZONES_LIST\"}","service":"AURA_CF","path":"","method":"POST","content_type":"application/json","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="}}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/","content_type":"application/json","service":"AURA_DEPLOYER","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/help","content_type":"application/json","service":"AURA_DEPLOYER","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/__routes","content_type":"application/json","service":"AURA_DEPLOYER","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/openapi.json","content_type":"application/json","service":"AURA_DEPLOYER","method":"GET"}

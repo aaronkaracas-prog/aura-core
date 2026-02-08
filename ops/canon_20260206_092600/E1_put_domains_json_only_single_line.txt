@@ -1,0 +1,2 @@
+HOST frontdesk.network
+REGISTRY_PUT {"type":"domains","id":"frontdesk.network","domain":"frontdesk.network","pillar":"UNKNOWN","purpose":"PUT_PROBE_20260206_095615","priority":"UNKNOWN","status":"UNKNOWN"}

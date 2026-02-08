@@ -1,0 +1,2 @@
+VERIFIED_FETCH_URL https://frontdesk.network
+SNAPSHOT_STATE

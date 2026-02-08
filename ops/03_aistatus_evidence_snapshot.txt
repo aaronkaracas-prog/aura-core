@@ -1,0 +1,4 @@
+HOST aistatus.world
+VERIFIED_FETCH_URL https://aistatus.world/
+EVIDENCE_PRESENT aistatus.world
+SNAPSHOT_STATE

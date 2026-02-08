@@ -1,0 +1,4 @@
+HOST frontdesk.network
+REGISTRY_IMPORT domains
+[]
+AUDIT_GET

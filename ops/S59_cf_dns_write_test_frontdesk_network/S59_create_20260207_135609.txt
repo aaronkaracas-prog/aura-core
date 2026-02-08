@@ -1,0 +1,4 @@
+HOST frontdesk.network
+DEPLOYER_CAPS
+
+DEPLOYER_CALL {"service":"AURA_CF","path":"/dns_records/create","method":"POST","body":{"zone_id":"a2182b819272626cf935df6d28d7463e","type":"TXT","name":"_aura_cf_test.frontdesk.network","content":"aura-cf-write-test","ttl":120,"proxied":false}}

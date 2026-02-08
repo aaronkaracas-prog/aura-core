@@ -1,0 +1,5 @@
+HOST frontdesk.network
+REGISTRY_PUT
+type=hard_stop
+id=global
+value=reprove_detected,missing_caps,missing_evidence,irreversible_request

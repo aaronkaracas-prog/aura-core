@@ -1,0 +1,5 @@
+HOST frontdesk.network
+REGISTRY_PUT
+type=operation_mode
+id=operator
+value=execute_only_with_token_caps_and_evidence

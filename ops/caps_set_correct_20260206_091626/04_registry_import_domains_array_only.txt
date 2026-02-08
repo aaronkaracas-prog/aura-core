@@ -1,0 +1,3 @@
+HOST frontdesk.network
+REGISTRY_IMPORT_DOMAINS
+[{"id":"frontdesk.network","domain":"frontdesk.network","source":"cloudflare"}]

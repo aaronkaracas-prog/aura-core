@@ -1,0 +1,8 @@
+REGISTRY_PUT domains {
+  "type": "domains",
+  "id": "frontdesk.network",
+  "domain": "frontdesk.network",
+  "source": "cloudflare",
+  "status": "ACTIVE",
+  "version": "v1"
+}

@@ -1,0 +1,4 @@
+HOST frontdesk.network
+SHOW_ALLOWED_COMMANDS
+HERD_STATUS
+HERD_SWEEP {"hosts":["frontdesk.network","malibu.city"],"limit":10}

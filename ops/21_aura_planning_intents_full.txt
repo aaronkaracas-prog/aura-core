@@ -1,0 +1,13 @@
+INTENT_ADD frontdesk.network planning_status Explain, in plain language, whether you consider yourself autonomous right now and why.
+INTENT_ADD frontdesk.network safety What guardrails are currently preventing unsafe actions.
+INTENT_ADD frontdesk.network readiness What conditions must be met before domain or registry work should resume.
+INTENT_ADD frontdesk.network roadmap What your recommended next three phases are, assuming autonomy remains stable.
+INTENT_ADD frontdesk.network risks What could still break autonomy if mishandled.
+
+INTENT_GET frontdesk.network planning_status
+INTENT_GET frontdesk.network safety
+INTENT_GET frontdesk.network readiness
+INTENT_GET frontdesk.network roadmap
+INTENT_GET frontdesk.network risks
+
+SNAPSHOT_STATE

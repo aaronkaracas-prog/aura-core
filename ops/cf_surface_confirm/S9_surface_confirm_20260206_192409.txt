@@ -1,0 +1,4 @@
+HOST frontdesk.network
+DEPLOYER_CALL {"path":"/zones/list","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"path":"/zones/a2182b819272626cf935df6d28d7463e/settings","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"path":"/zones/a2182b819272626cf935df6d28d7463e/dns_records?page=1\u0026per_page=1","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"service":"AURA_CF","method":"GET"}

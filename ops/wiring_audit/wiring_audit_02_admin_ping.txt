@@ -1,0 +1,2 @@
+DEPLOYER_CAPS
+DEPLOYER_CALL {"service":"AURA_CF","path":"/admin/ping","method":"GET"}

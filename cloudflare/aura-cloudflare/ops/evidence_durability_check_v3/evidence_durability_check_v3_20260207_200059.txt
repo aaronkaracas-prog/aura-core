@@ -1,0 +1,7 @@
+HOST auras.guide
+CLEAR_VERIFIED_FETCH frontdesk.network
+CLEAR_VERIFIED_FETCH malibu.city
+VERIFIED_FETCH_URL https://frontdesk.network/
+EVIDENCE_PRESENT frontdesk.network
+VERIFIED_FETCH_URL https://malibu.city/
+EVIDENCE_PRESENT malibu.city

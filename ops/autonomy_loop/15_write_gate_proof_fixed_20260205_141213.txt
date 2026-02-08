@@ -1,0 +1,3 @@
+HOST frontdesk.network
+REGISTRY_PUT write_gate_test frontdesk.network.autonomy_100 @C:\Users\Aaron Karacas\aura-worker\aura\ops\autonomy_loop\write_gate_payload_20260205_141206.json
+AUDIT_GET

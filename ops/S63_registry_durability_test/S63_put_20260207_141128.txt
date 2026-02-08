@@ -1,0 +1,10 @@
+HOST frontdesk.network
+
+REGISTRY_PUT {
+  "kind":"test",
+  "key":"durability_check",
+  "value":{
+    "written_at":"20260207_141128",
+    "purpose":"verify memory substrate persistence"
+  }
+}

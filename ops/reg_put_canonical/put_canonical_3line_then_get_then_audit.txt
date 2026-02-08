@@ -1,0 +1,7 @@
+HOST frontdesk.network
+VERIFIED_FETCH_URL https://frontdesk.network/
+EVIDENCE_PRESENT
+REGISTRY_PUT
+{"type":"domains","id":"frontdesk.network","domain":"frontdesk.network","pillar":"UNKNOWN","purpose":"PUT_CANON_20260206_100252","priority":"UNKNOWN","status":"UNKNOWN"}
+REGISTRY_GET domains frontdesk.network
+AUDIT_GET

@@ -1,0 +1,4 @@
+HOST frontdesk.network
+REGISTRY_PUT config {"id":"herd.hosts","hosts":["frontdesk.network","malibu.city"]}
+HERD_STATUS
+HERD_SWEEP {"hosts":["frontdesk.network","malibu.city"],"limit":10}

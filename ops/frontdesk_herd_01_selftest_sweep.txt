@@ -1,0 +1,3 @@
+HOST frontdesk.network
+HERD_SELF_TEST
+HERD_SWEEP

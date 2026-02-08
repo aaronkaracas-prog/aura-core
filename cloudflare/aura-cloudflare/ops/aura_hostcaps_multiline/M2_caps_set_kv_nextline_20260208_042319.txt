@@ -1,0 +1,3 @@
+HOST_CAPS_SET
+host=frontdesk.network
+SNAPSHOT_STATE

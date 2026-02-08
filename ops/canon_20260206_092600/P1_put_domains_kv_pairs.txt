@@ -1,0 +1,6 @@
+HOST frontdesk.network
+REGISTRY_PUT domains frontdesk.network
+pillar=UNKNOWN
+priority=UNKNOWN
+status=UNKNOWN
+purpose=

@@ -1,0 +1,5 @@
+HOST frontdesk.network
+EVIDENCE_PRESENT
+REGISTRY_PUT
+{"type":"write_gate_test","id":"frontdesk.network.put_canary_20260206_100813","note":"CANARY_20260206_100813"}
+AUDIT_GET

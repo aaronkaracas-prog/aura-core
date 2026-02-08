@@ -1,0 +1,5 @@
+HOST frontdesk.network
+REGISTRY_PUT
+type=operation_mode
+id=autonomous
+value=safe_reversible_actions_with_evidence_only

@@ -1,0 +1,5 @@
+HOST frontdesk.network
+REGISTRY_PUT
+type=decision_boundary
+id=when_to_halt
+value=missing_caps,missing_evidence,unknown_command,reprove_detected

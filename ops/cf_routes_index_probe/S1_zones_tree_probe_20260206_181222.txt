@@ -1,0 +1,11 @@
+HOST frontdesk.network
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/zones/list","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/zones/a2182b819272626cf935df6d28d7463e","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/zones/get?zone_id=a2182b819272626cf935df6d28d7463e","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/zones/detail?zone_id=a2182b819272626cf935df6d28d7463e","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/zones/a2182b819272626cf935df6d28d7463e/dns","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/zones/a2182b819272626cf935df6d28d7463e/dns/records","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/zones/a2182b819272626cf935df6d28d7463e/dns_records","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/zones/a2182b819272626cf935df6d28d7463e/dns_records/list","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/zones/a2182b819272626cf935df6d28d7463e/dns_records/list?page=1\u0026per_page=200","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/zones/a2182b819272626cf935df6d28d7463e/dns_records?page=1\u0026per_page=200","content_type":"application/json","service":"AURA_CF","method":"GET"}

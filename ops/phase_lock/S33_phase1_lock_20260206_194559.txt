@@ -1,0 +1,2 @@
+HOST frontdesk.network
+REGISTRY_PUT domains_note frontdesk.network.PHASE1_LOCK {"phase":"DNS_BOUNDARY_CONFIRMED","note":"AURA_CF DNS and settings intentionally not exposed; system operating correctly."}

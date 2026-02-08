@@ -1,0 +1,146 @@
+// aura-cloudflare/src/index.js
+// Cloudflare control-surface worker for Aura.
+// Exposes minimal HTTP API for zones + DNS records using CF_API_TOKEN.
+// No UI. No Aura Core passthrough.
+
+function json(data, status = 200, headers = {}) {
+  return new Response(JSON.stringify(data, null, 2), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      ...headers,
+    },
+  });
+}
+
+function text(s, status = 200, headers = {}) {
+  return new Response(s, {
+    status,
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": "no-store",
+      ...headers,
+    },
+  });
+}
+
+function parseAllowedZones(csv) {
+  if (!csv || typeof csv !== "string") return null;
+  const list = csv
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return list.length ? new Set(list.map((x) => x.toLowerCase())) : null;
+}
+
+async function cfFetch(env, path, init = {}) {
+  const tok = env.CF_API_TOKEN;
+  if (!tok) return { ok: false, status: 500, data: { ok: false, error: "CF_API_TOKEN_MISSING" } };
+
+  const url = `https://api.cloudflare.com/client/v4${path}`;
+  const headers = new Headers(init.headers || {});
+  headers.set("authorization", `Bearer ${tok}`);
+  headers.set("accept", "application/json");
+  if (init.body && !headers.get("content-type")) headers.set("content-type", "application/json");
+
+  const res = await fetch(url, { ...init, headers });
+  let data = null;
+  const ct = res.headers.get("content-type") || "";
+  if (ct.includes("application/json")) {
+    try { data = await res.json(); } catch { data = { ok: false, error: "BAD_JSON_FROM_CF" }; }
+  } else {
+    const t = await res.text();
+    data = { ok: false, error: "NON_JSON_FROM_CF", text: t.slice(0, 2000) };
+  }
+  return { ok: res.ok, status: res.status, data };
+}
+
+function route(req) {
+  const u = new URL(req.url);
+  const parts = u.pathname.split("/").filter(Boolean);
+  return { u, parts };
+}
+
+export default {
+  async fetch(request, env) {
+    const { u, parts } = route(request);
+    const method = request.method.toUpperCase();
+
+    // Health
+    if (u.pathname === "/" && method === "GET") {
+      return json({
+        ok: true,
+        service: "aura-cloudflare",
+        routes: [
+          "GET /zones",
+          "GET /zones/:zone_id",
+          "GET /zones/:zone_id/dns_records",
+        ],
+        note: "Uses CF_API_TOKEN. Optional ALLOWED_ZONES CSV filters by zone name.",
+      });
+    }
+
+    // Only GET for now
+    if (method !== "GET") return json({ ok: false, error: "METHOD_NOT_ALLOWED" }, 405);
+
+    const allowed = parseAllowedZones(env.ALLOWED_ZONES);
+
+    // GET /zones
+    if (parts.length === 1 && parts[0] === "zones") {
+      // Pass through common query params (page/per_page/name/status/account.id etc.)
+      const qs = u.searchParams.toString();
+      const path = `/zones${qs ? "?" + qs : ""}`;
+
+      const r = await cfFetch(env, path, { method: "GET" });
+      if (!r.ok) return json({ ok: false, http_status: r.status, cf: r.data }, 502);
+
+      // Optionally filter by allowed zones (by name)
+      if (allowed && r.data && Array.isArray(r.data.result)) {
+        r.data.result = r.data.result.filter((z) => {
+          const n = String(z?.name || "").toLowerCase();
+          return allowed.has(n);
+        });
+        r.data.result_info = { ...(r.data.result_info || {}), filtered_by_allowed_zones: true }
+      }
+
+      return json({ ok: true, http_status: r.status, cf: r.data }, 200);
+    }
+
+    // GET /zones/:zone_id
+    if (parts.length === 2 && parts[0] === "zones") {
+      const zoneId = parts[1];
+      const r = await cfFetch(env, `/zones/${encodeURIComponent(zoneId)}`, { method: "GET" });
+      if (!r.ok) return json({ ok: false, http_status: r.status, cf: r.data }, 502);
+
+      // If allowed zones is set, enforce it by name on the returned zone
+      if (allowed) {
+        const name = String(r.data?.result?.name || "").toLowerCase();
+        if (!allowed.has(name)) return json({ ok: false, error: "ZONE_NOT_ALLOWED" }, 403);
+      }
+
+      return json({ ok: true, http_status: r.status, cf: r.data }, 200);
+    }
+
+    // GET /zones/:zone_id/dns_records
+    if (parts.length === 3 && parts[0] === "zones" && parts[2] === "dns_records") {
+      const zoneId = parts[1];
+
+      // If allowed zones is set, confirm zone name first (cheap guard)
+      if (allowed) {
+        const zr = await cfFetch(env, `/zones/${encodeURIComponent(zoneId)}`, { method: "GET" });
+        if (!zr.ok) return json({ ok: false, http_status: zr.status, cf: zr.data }, 502);
+        const name = String(zr.data?.result?.name || "").toLowerCase();
+        if (!allowed.has(name)) return json({ ok: false, error: "ZONE_NOT_ALLOWED" }, 403);
+      }
+
+      const qs = u.searchParams.toString();
+      const path = `/zones/${encodeURIComponent(zoneId)}/dns_records${qs ? "?" + qs : ""}`;
+      const r = await cfFetch(env, path, { method: "GET" });
+      if (!r.ok) return json({ ok: false, http_status: r.status, cf: r.data }, 502);
+      return json({ ok: true, http_status: r.status, cf: r.data }, 200);
+    }
+
+    return text("Not Found", 404);
+  },
+};

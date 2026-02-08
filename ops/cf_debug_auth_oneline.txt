@@ -1,0 +1,1 @@
+DEPLOYER_CALL {"service":"AURA_CF","path":"/admin/debug-auth","method":"GET"}

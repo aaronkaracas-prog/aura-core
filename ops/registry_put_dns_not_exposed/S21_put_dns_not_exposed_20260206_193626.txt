@@ -1,0 +1,6 @@
+HOST frontdesk.network
+EVIDENCE_PRESENT
+VERIFIED_FETCH_URL https://frontdesk.network
+EVIDENCE_PRESENT
+REGISTRY_PUT {"type":"domains_note","item":{"zone_id":"a2182b819272626cf935df6d28d7463e","host":"frontdesk.network","decided_at_utc":"2026-02-07T03:36:26.3896859Z","id":"frontdesk.network.AURA_CF.DNS_NOT_EXPOSED","conclusion":"AURA_CF exposes /zones/list but DNS/settings are not exposed (404 not_found)."}}
+REGISTRY_GET domains_note frontdesk.network.AURA_CF.DNS_NOT_EXPOSED

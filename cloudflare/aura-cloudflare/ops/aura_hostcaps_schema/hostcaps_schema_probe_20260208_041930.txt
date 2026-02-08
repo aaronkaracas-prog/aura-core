@@ -1,0 +1,9 @@
+SNAPSHOT_STATE
+HOST_CAPS_GET
+HOST_CAPS_SET {}
+HOST_CAPS_SET {"host":"frontdesk.network"}
+HOST_CAPS_SET {"active_host":"frontdesk.network"}
+HOST_CAPS_SET {"host":"malibu.city"}
+HOST_CAPS_SET {"active_host":"malibu.city"}
+HOST_CAPS_GET
+SNAPSHOT_STATE

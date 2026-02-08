@@ -1,0 +1,4 @@
+HOST frontdesk.network
+PORTFOLIO_STATUS
+REGISTRY_LIST domains 10
+AUDIT_GET

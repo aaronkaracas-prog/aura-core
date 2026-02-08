@@ -1,0 +1,2 @@
+HOST frontdesk.network
+HERD_SWEEP {"hosts":["frontdesk.network","malibu.city"],"limit":10}

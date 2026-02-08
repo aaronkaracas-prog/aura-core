@@ -1,0 +1,8 @@
+REGISTRY_IMPORT_DOMAINS {
+    "items":  {
+                  "source":  "cloudflare",
+                  "domain":  "frontdesk.network",
+                  "id":  "frontdesk.network"
+              },
+    "overwrite":  false
+}

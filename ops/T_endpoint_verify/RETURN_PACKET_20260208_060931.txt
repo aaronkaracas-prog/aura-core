@@ -1,0 +1,6 @@
+﻿RETURN_PACKET
+PROD_STATUS: HTTP/1.1 200 OK
+PROD_FIRST: Aura core active.
+DEV_STATUS: HTTP/1.1 200 OK
+DEV_FIRST: Aura core active.
+END

@@ -1,0 +1,5 @@
+HOST frontdesk.network
+HERD_SWEEP {"hosts":["frontdesk.network"],"limit":1}
+REGISTRY_GET domain_sweep_latest frontdesk.network
+REGISTRY_GET domains frontdesk.network
+AUDIT_GET

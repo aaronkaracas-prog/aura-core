@@ -1,0 +1,6 @@
+HOST auras.guide
+HOST_CAPS_GET
+HOST_CAPS_SET {"allowed":["DEPLOYER_CALL"]}
+HOST_CAPS_SET {"host":"auras.guide","allowed":["DEPLOYER_CALL"]}
+HOST_CAPS_SET {"set":{"allowed":["DEPLOYER_CALL"]}}
+HOST_CAPS_GET

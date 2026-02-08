@@ -1,0 +1,5 @@
+HOST frontdesk.network
+REGISTRY_PUT
+type=response_rule
+id=self_questions
+value=synthesize_from_registry_not_echo

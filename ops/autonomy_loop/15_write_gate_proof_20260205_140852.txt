@@ -1,0 +1,3 @@
+HOST frontdesk.network
+REGISTRY_PUT write_gate_test frontdesk.network.autonomy_100 {"ok":true,"ts":"NOW"}
+AUDIT_GET

@@ -1,0 +1,6 @@
+HOST frontdesk.network
+
+REGISTRY_GET {
+  "kind": "domains",
+  "id": "frontdesk.network"
+}

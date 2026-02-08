@@ -1,0 +1,7 @@
+INTENT_ADD frontdesk.network identity Who are you, in one paragraph, without making claims about reachability or deployment.
+INTENT_ADD frontdesk.network capability What can you do right now in planning mode, without writing or deploying anything.
+INTENT_ADD frontdesk.network next What would you suggest as the next safe step toward full autonomy, assuming no domain or registry work is allowed yet.
+INTENT_GET frontdesk.network identity
+INTENT_GET frontdesk.network capability
+INTENT_GET frontdesk.network next
+SNAPSHOT_STATE

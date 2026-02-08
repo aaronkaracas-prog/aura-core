@@ -1,0 +1,44 @@
+RETURN_PACKET
+BUILD: 
+HOST: 
+OPERATOR: 
+EVIDENCE_ACTIVE_HOST: 
+ALLOWED: 
+SCHEMA_JSON_FIRST_60_LINES:
+{
+    "cmd":  "SHOW_MEMORY_SCHEMA",
+    "payload":  {
+                    "version":  "v1",
+                    "registries":  {
+                                       "assets":  {
+                                                      "id":  "string (recommended: stable slug or numeric string)",
+                                                      "name":  "string",
+                                                      "pillar":  "string",
+                                                      "notes":  "string (optional)",
+                                                      "tags":  "string[] (optional)",
+                                                      "sellability":  "NEVER_SELL | SELLABLE | HOLD | UNKNOWN (optional)",
+                                                      "patent_cluster":  "string (optional)",
+                                                      "created_at":  "iso string (optional)",
+                                                      "updated_at":  "iso string (system)",
+                                                      "audit":  "KV audit events (system)"
+                                                  },
+                                       "domains":  {
+                                                       "id":  "string (domain itself, lowercased)",
+                                                       "domain":  "string",
+                                                       "pillar":  "string",
+                                                       "purpose":  "string (optional)",
+                                                       "priority":  "PHASE1 | PHASE2 | HOLD | UNKNOWN (optional)",
+                                                       "status":  "UNKNOWN | ACTIVE | PARKED | REDIRECT | BROKEN (optional)",
+                                                       "updated_at":  "iso string (system)",
+                                                       "audit":  "KV audit events (system)"
+                                                   },
+                                       "users":  {
+                                                     "id":  "string",
+                                                     "prefs":  "object",
+                                                     "intents":  "object[]",
+                                                     "updated_at":  "iso string"
+                                                 }
+                                   }
+                }
+}
+END

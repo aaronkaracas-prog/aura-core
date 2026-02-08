@@ -1,0 +1,5 @@
+HOST frontdesk.network
+SNAPSHOT_STATE
+HOST_CAPS_GET frontdesk.network
+EVIDENCE_PRESENT
+HERD_STATUS

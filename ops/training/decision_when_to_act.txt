@@ -1,0 +1,5 @@
+HOST frontdesk.network
+REGISTRY_PUT
+type=decision_boundary
+id=when_to_act
+value=read_only_checks,evidence_gated_reversible_actions,registry_reads,health_checks

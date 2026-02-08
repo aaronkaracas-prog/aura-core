@@ -1,0 +1,7 @@
+HOST frontdesk.network
+SHOW_BUILD
+SNAPSHOT_STATE
+REGISTRY_FILTER assets {"limit":1000}
+REGISTRY_FILTER domains {"limit":5000}
+REGISTRY_FILTER users {"limit":1000}
+AUDIT_GET

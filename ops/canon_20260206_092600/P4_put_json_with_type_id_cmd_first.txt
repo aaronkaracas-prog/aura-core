@@ -1,0 +1,2 @@
+REGISTRY_PUT
+{"type":"domains","id":"frontdesk.network","domain":"frontdesk.network","pillar":"UNKNOWN","purpose":"","priority":"UNKNOWN","status":"UNKNOWN"}

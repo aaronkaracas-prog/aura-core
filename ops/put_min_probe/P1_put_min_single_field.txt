@@ -1,0 +1,5 @@
+HOST frontdesk.network
+EVIDENCE_PRESENT
+REGISTRY_PUT domains frontdesk.network {"purpose":"PUT_MIN_20260206_121940"}
+REGISTRY_GET domains frontdesk.network
+AUDIT_GET

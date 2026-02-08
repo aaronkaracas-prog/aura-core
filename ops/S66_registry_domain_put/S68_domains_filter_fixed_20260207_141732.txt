@@ -1,0 +1,5 @@
+HOST frontdesk.network
+
+REGISTRY_FILTER
+kind=domains
+where.id=frontdesk.network

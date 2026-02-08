@@ -1,0 +1,2 @@
+DEPLOYER_CAPS
+DEPLOYER_CALL {"service":"AURA_CF","path":"/__probe__","method":"GET","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="}}

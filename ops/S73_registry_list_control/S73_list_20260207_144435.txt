@@ -1,0 +1,4 @@
+HOST frontdesk.network
+
+REGISTRY_LIST
+kind=domains

@@ -1,0 +1,2 @@
+HOST auras.guide
+DEPLOYER_CALL {"service":"AURA_CF","path":"/zone/inspect","method":"POST","headers":{"content-type":"application/json","x-operator-token":"plain; charset=utf-8" `"},"body":{"zone":"auras.guide"}}

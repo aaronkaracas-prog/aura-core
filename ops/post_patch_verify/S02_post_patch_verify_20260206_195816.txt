@@ -1,0 +1,3 @@
+HOST frontdesk.network
+SNAPSHOT_STATE
+HERD_STATUS

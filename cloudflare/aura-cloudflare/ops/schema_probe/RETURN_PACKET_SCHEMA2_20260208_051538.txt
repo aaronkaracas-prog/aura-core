@@ -1,0 +1,6 @@
+RETURN_PACKET_SCHEMA
+SCHEMA_FILE: C:\Users\Aaron Karacas\aura-worker\aura\cloudflare\aura-cloudflare\ops\schema_probe\SCHEMA_PAYLOAD_20260208_051329.json
+FIRST_80_LINES:
+MATCHES_FIRST_80:
+L: 
+END

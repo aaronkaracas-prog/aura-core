@@ -1,0 +1,3 @@
+HOST frontdesk.network
+REGISTRY_FILTER domains {"where":{"notes_sweep_latest.sweep_latest.host":"frontdesk.network"},"limit":20}
+REGISTRY_FILTER domains {"where":{"notes_sweep_latest.sweep_latest.host":"malibu.city"},"limit":20}

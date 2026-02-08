@@ -1,0 +1,355 @@
+/**
+ * aura-cloudflare (AURA_CF)
+ * Operator-gated Cloudflare control surface used by aura-core via service binding env.AURA_CF.
+ *
+ * Exposes:
+ *   GET  /zones/list?page=&per_page=&name=
+ *   GET  /zones/:zone_id/dns_records/list?page=&per_page=&type=&name=&content=&match=&proxied=
+ *   GET  /dns_records/list?zone_id=... (alias)
+ *   POST /dns_records/create   { zone_id, type, name, content, ttl?, proxied?, priority?, comment?, tags? }
+ *   POST /dns_records/update   { zone_id, record_id, ...fields }
+ *   POST /dns_records/delete   { zone_id, record_id }
+ *
+ * Security:
+ *   Requires x-operator-token header to match env.AURA_OPERATOR_TOKEN.
+ *
+ * Env required:
+ *   - AURA_OPERATOR_TOKEN (secret)
+ *   - CF_API_TOKEN        (secret)  Cloudflare API token with Zone:Read, DNS:Edit (as needed)
+ */
+
+const json = (obj, status = 200, extra = {}) =>
+  new Response(JSON.stringify(obj, null, 2), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      ...extra,
+    },
+  });
+
+const bad = (error, status = 400, extra = {}) => json({ ok: false, error }, status, extra);
+
+function requireOperator(request, env) {
+  const tok = request.headers.get("x-operator-token") || "";
+  const expected = env && env.AURA_OPERATOR_TOKEN ? String(env.AURA_OPERATOR_TOKEN) : "";
+  if (!expected || tok !== expected) return false;
+  return true;
+}
+
+function pickQuery(url, keys) {
+  const out = {};
+  for (const k of keys) {
+    const v = url.searchParams.get(k);
+    if (v !== null && v !== "") out[k] = v;
+  }
+  return out;
+}
+
+function qs(params) {
+  const u = new URL("https://x.invalid/");
+  for (const [k, v] of Object.entries(params || {})) {
+    if (v === undefined || v === null || v === "") continue;
+    u.searchParams.set(k, String(v));
+  }
+  const s = u.searchParams.toString();
+  return s ? `?${s}` : "";
+}
+
+async function cfFetch(env, path, init = {}) {
+  // CF_API_TOKEN should be the raw token value (no quotes, no "Bearer " prefix).
+  let token = env && env.CF_API_TOKEN ? String(env.CF_API_TOKEN) : "";
+  token = token.trim();
+  token = token.replace(/^bearer\s+/i, "").trim(); // tolerate accidental "Bearer <token>" input
+  token = token.replace(/^"+|"+$/g, "").trim(); // strip accidental surrounding quotes
+  if (!token) throw new Error("missing_cf_api_token");
+  // Cloudflare bearer tokens should not contain whitespace
+  if (/\s/.test(token)) throw new Error("invalid_cf_api_token_format");
+  const url = `https://api.cloudflare.com/client/v4${path}`;
+  const headers = new Headers(init.headers || {});
+  headers.set("authorization", `Bearer ${token}`);
+  if (init.body && !headers.get("content-type")) headers.set("content-type", "application/json");
+  const res = await fetch(url, { ...init, headers });
+  const ct = res.headers.get("content-type") || "";
+  let out;
+  if (ct.includes("application/json")) out = await res.json();
+  else out = await res.text();
+  return { res, ct, out };
+}
+
+function asInt(x, defVal) {
+  const n = Number(x);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : defVal;
+}
+
+async function handleZonesList(url, env) {
+  const page = asInt(url.searchParams.get("page"), 1);
+  const per_page = asInt(url.searchParams.get("per_page"), 50);
+  const name = url.searchParams.get("name") || undefined;
+
+  const q = { page, per_page };
+  if (name) q.name = name;
+
+  const { res, out } = await cfFetch(env, `/zones${qs(q)}`, { method: "GET" });
+
+  if (!res.ok || !out || out.success === false) {
+    return bad(
+      {
+        code: "cf_error",
+        http_status: res.status,
+        cf: out,
+      },
+      502
+    );
+  }
+
+  const zones = Array.isArray(out.result)
+    ? out.result.map((z) => ({
+        id: z.id,
+        name: z.name,
+        status: z.status,
+        paused: !!z.paused,
+        account: z.account ? { id: z.account.id, name: z.account.name } : undefined,
+        plan: z.plan ? { id: z.plan.id, name: z.plan.name } : undefined,
+      }))
+    : [];
+
+  return json({
+    ok: true,
+    page,
+    per_page,
+    count: zones.length,
+    zones,
+    ts: new Date().toISOString(),
+  });
+}
+
+async function handleDnsRecordsList(url, env, zoneId) {
+  const page = asInt(url.searchParams.get("page"), 1);
+  const per_page = asInt(url.searchParams.get("per_page"), 100);
+  const filters = pickQuery(url, ["type", "name", "content", "match", "proxied"]);
+  const q = { page, per_page, ...filters };
+
+  const { res, out } = await cfFetch(env, `/zones/${zoneId}/dns_records${qs(q)}`, { method: "GET" });
+
+  if (!res.ok || !out || out.success === false) {
+    return bad(
+      {
+        code: "cf_error",
+        http_status: res.status,
+        cf: out,
+      },
+      502
+    );
+  }
+
+  const records = Array.isArray(out.result)
+    ? out.result.map((r) => ({
+        id: r.id,
+        type: r.type,
+        name: r.name,
+        content: r.content,
+        ttl: r.ttl,
+        proxied: r.proxied,
+        priority: r.priority,
+        created_on: r.created_on,
+        modified_on: r.modified_on,
+        comment: r.comment,
+        tags: r.tags,
+      }))
+    : [];
+
+  return json({
+    ok: true,
+    zone_id: zoneId,
+    page,
+    per_page,
+    count: records.length,
+    records,
+    ts: new Date().toISOString(),
+  });
+}
+
+async function readJsonBody(request) {
+  const ct = request.headers.get("content-type") || "";
+  if (!ct.toLowerCase().includes("application/json")) return null;
+  const txt = await request.text();
+  if (!txt) return null;
+  try {
+    return JSON.parse(txt);
+  } catch {
+    return null;
+  }
+}
+
+function requireFields(obj, fields) {
+  for (const f of fields) {
+    if (!obj || obj[f] === undefined || obj[f] === null || obj[f] === "") return f;
+  }
+  return null;
+}
+
+async function handleCreate(env, body) {
+  const missing = requireFields(body, ["zone_id", "type", "name", "content"]);
+  if (missing) return bad({ code: "missing_field", field: missing }, 400);
+
+  const zoneId = String(body.zone_id);
+  const payload = {
+    type: String(body.type),
+    name: String(body.name),
+    content: String(body.content),
+  };
+
+  if (body.ttl !== undefined) payload.ttl = body.ttl;
+  if (body.proxied !== undefined) payload.proxied = body.proxied;
+  if (body.priority !== undefined) payload.priority = body.priority;
+  if (body.comment !== undefined) payload.comment = body.comment;
+  if (body.tags !== undefined) payload.tags = body.tags;
+
+  const { res, out } = await cfFetch(env, `/zones/${zoneId}/dns_records`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok || !out || out.success === false) {
+    return bad({ code: "cf_error", http_status: res.status, cf: out }, 502);
+  }
+
+  return json({
+    ok: true,
+    zone_id: zoneId,
+    record: out.result
+      ? {
+          id: out.result.id,
+          type: out.result.type,
+          name: out.result.name,
+          content: out.result.content,
+          ttl: out.result.ttl,
+          proxied: out.result.proxied,
+          created_on: out.result.created_on,
+          modified_on: out.result.modified_on,
+        }
+      : out.result,
+    ts: new Date().toISOString(),
+  });
+}
+
+async function handleUpdate(env, body) {
+  const missing = requireFields(body, ["zone_id", "record_id"]);
+  if (missing) return bad({ code: "missing_field", field: missing }, 400);
+
+  const zoneId = String(body.zone_id);
+  const recordId = String(body.record_id);
+
+  const payload = {};
+  for (const k of ["type", "name", "content", "ttl", "proxied", "priority", "comment", "tags"]) {
+    if (body[k] !== undefined) payload[k] = body[k];
+  }
+  if (Object.keys(payload).length === 0) return bad({ code: "no_fields_to_update" }, 400);
+
+  const { res, out } = await cfFetch(env, `/zones/${zoneId}/dns_records/${recordId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok || !out || out.success === false) {
+    return bad({ code: "cf_error", http_status: res.status, cf: out }, 502);
+  }
+
+  return json({
+    ok: true,
+    zone_id: zoneId,
+    record_id: recordId,
+    record: out.result
+      ? {
+          id: out.result.id,
+          type: out.result.type,
+          name: out.result.name,
+          content: out.result.content,
+          ttl: out.result.ttl,
+          proxied: out.result.proxied,
+          modified_on: out.result.modified_on,
+        }
+      : out.result,
+    ts: new Date().toISOString(),
+  });
+}
+
+async function handleDelete(env, body) {
+  const missing = requireFields(body, ["zone_id", "record_id"]);
+  if (missing) return bad({ code: "missing_field", field: missing }, 400);
+
+  const zoneId = String(body.zone_id);
+  const recordId = String(body.record_id);
+
+  const { res, out } = await cfFetch(env, `/zones/${zoneId}/dns_records/${recordId}`, {
+    method: "DELETE",
+  });
+
+  if (!res.ok || !out || out.success === false) {
+    return bad({ code: "cf_error", http_status: res.status, cf: out }, 502);
+  }
+
+  return json({
+    ok: true,
+    zone_id: zoneId,
+    record_id: recordId,
+    result: out.result,
+    ts: new Date().toISOString(),
+  });
+}
+
+export default {
+  async fetch(request, env) {
+    try {
+      if (!requireOperator(request, env)) return bad("unauthorized", 401);
+
+      const url = new URL(request.url);
+      const path = url.pathname;
+
+      if (path === "/health") return json({ ok: true, build: env.BUILD || "AURA_CF", ts: new Date().toISOString() });
+
+      if (path === "/zones/list") {
+        if (request.method !== "GET") return bad("method_not_allowed", 405);
+        return await handleZonesList(url, env);
+      }
+
+      const m = path.match(/^\/zones\/([a-f0-9]{32})\/dns_records\/list$/i);
+      if (m) {
+        if (request.method !== "GET") return bad("method_not_allowed", 405);
+        return await handleDnsRecordsList(url, env, m[1]);
+      }
+
+      if (path === "/dns_records/list") {
+        if (request.method !== "GET") return bad("method_not_allowed", 405);
+        const zoneId = url.searchParams.get("zone_id");
+        if (!zoneId) return bad({ code: "missing_field", field: "zone_id" }, 400);
+        return await handleDnsRecordsList(url, env, String(zoneId));
+      }
+
+      if (path === "/dns_records/create") {
+        if (request.method !== "POST") return bad("method_not_allowed", 405);
+        const body = await readJsonBody(request);
+        if (!body) return bad("bad_json", 400);
+        return await handleCreate(env, body);
+      }
+
+      if (path === "/dns_records/update") {
+        if (request.method !== "POST") return bad("method_not_allowed", 405);
+        const body = await readJsonBody(request);
+        if (!body) return bad("bad_json", 400);
+        return await handleUpdate(env, body);
+      }
+
+      if (path === "/dns_records/delete") {
+        if (request.method !== "POST") return bad("method_not_allowed", 405);
+        const body = await readJsonBody(request);
+        if (!body) return bad("bad_json", 400);
+        return await handleDelete(env, body);
+      }
+
+      return bad("not_found", 404);
+    } catch (e) {
+      return bad({ error: "exception", message: String(e && e.message ? e.message : e) }, 500);
+    }
+  },
+};

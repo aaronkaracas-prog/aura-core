@@ -1,0 +1,3 @@
+HOST frontdesk.network
+REGISTRY_PUT domains {"status":"ACTIVE","domain":"frontdesk.network","purpose":"cf_boundary_note","id":"frontdesk.network","pillar":"infra"}
+REGISTRY_GET domains frontdesk.network

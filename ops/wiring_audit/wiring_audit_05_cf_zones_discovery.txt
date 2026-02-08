@@ -1,0 +1,4 @@
+DEPLOYER_CALL {"service":"AURA_CF","path":"/client/v4/zones?per_page=50","method":"GET","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="}}
+DEPLOYER_CALL {"service":"AURA_CF","path":"/zones?per_page=50","method":"GET","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="}}
+DEPLOYER_CALL {"service":"AURA_CF","path":"/cf/zones?per_page=50","method":"GET","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="}}
+DEPLOYER_CALL {"service":"AURA_CF","path":"/api/zones?per_page=50","method":"GET","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="}}

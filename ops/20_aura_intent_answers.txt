@@ -1,0 +1,4 @@
+INTENT_GET frontdesk.network identity
+INTENT_GET frontdesk.network capability
+INTENT_GET frontdesk.network next
+SNAPSHOT_STATE

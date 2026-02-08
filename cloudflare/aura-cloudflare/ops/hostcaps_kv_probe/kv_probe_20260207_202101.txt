@@ -1,0 +1,5 @@
+HOST_CAPS_SET
+host=frontdesk.network
+allow=["PING"]
+HOST_CAPS_GET
+SNAPSHOT_STATE

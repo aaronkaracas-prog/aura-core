@@ -1,0 +1,5 @@
+HOST frontdesk.network
+REGISTRY_PUT
+type=response_rule
+id=uncertainty
+value=ask_clarifying_question_or_pause

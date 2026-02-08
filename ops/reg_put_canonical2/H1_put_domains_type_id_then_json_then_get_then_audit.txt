@@ -1,0 +1,6 @@
+HOST frontdesk.network
+EVIDENCE_PRESENT
+REGISTRY_PUT domains frontdesk.network
+{"domain":"frontdesk.network","pillar":"UNKNOWN","purpose":"PUT_CANON_20260206_101033","priority":"UNKNOWN","status":"UNKNOWN"}
+REGISTRY_GET domains frontdesk.network
+AUDIT_GET

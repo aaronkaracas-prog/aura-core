@@ -1,0 +1,11 @@
+HOST frontdesk.network
+EVIDENCE_PRESENT
+
+REGISTRY_IMPORT_DOMAINS
+[{"id":"frontdesk.network","domain":"frontdesk.network","pillar":"UNKNOWN","purpose":"IMPORT_UPSERT_A_20260206_121220","priority":"UNKNOWN","status":"UNKNOWN"}]
+
+REGISTRY_IMPORT domains
+[{"id":"frontdesk.network","domain":"frontdesk.network","pillar":"UNKNOWN","purpose":"IMPORT_UPSERT_B_20260206_121220","priority":"UNKNOWN","status":"UNKNOWN"}]
+
+REGISTRY_GET domains frontdesk.network
+AUDIT_GET

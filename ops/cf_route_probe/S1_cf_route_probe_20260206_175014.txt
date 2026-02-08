@@ -1,0 +1,5 @@
+HOST frontdesk.network
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/help","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/__routes","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/openapi.json","content_type":"application/json","service":"AURA_CF","method":"GET"}

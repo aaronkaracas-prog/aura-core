@@ -1,0 +1,9 @@
+RETURN_PACKET_SCHEMA3
+SCHEMA_FILE: C:\Users\Aaron Karacas\aura-worker\aura\cloudflare\aura-cloudflare\ops\schema_probe\SCHEMA_PAYLOAD_20260208_051329.json
+LEN: 0
+INDEXES:
+SNIP_REGISTRY_PUT:
+(no match)
+SNIP_IMPORT_DOMAINS:
+(no match)
+END

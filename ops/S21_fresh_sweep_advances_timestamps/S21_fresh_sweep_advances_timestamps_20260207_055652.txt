@@ -1,0 +1,8 @@
+HOST frontdesk.network
+HERD_SWEEP {"hosts":["frontdesk.network"],"limit":1}
+REGISTRY_GET domain_sweep_latest frontdesk.network
+REGISTRY_GET domains frontdesk.network
+HERD_SWEEP {"hosts":["malibu.city"],"limit":1}
+REGISTRY_GET domain_sweep_latest malibu.city
+REGISTRY_GET domains malibu.city
+AUDIT_GET

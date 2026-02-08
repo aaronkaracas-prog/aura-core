@@ -1,0 +1,13 @@
+HOST frontdesk.network
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/admin","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/dns","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/deploy","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/zones","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/zones/list","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/zone","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/accounts","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/domains","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/health","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/ping","content_type":"application/json","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"body":"{}","service":"AURA_CF","path":"/admin","method":"POST","content_type":"application/json","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="}}
+DEPLOYER_CALL {"body":"{}","service":"AURA_CF","path":"/dns","method":"POST","content_type":"application/json","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="}}

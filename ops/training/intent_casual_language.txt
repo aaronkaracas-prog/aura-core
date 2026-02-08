@@ -1,0 +1,5 @@
+HOST frontdesk.network
+REGISTRY_PUT
+type=intent_map
+id=casual_language
+value=planning_mode

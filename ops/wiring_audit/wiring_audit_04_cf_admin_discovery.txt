@@ -1,0 +1,4 @@
+DEPLOYER_CALL {"service":"AURA_CF","path":"/admin","method":"GET","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="}}
+DEPLOYER_CALL {"service":"AURA_CF","path":"/admin/routes","method":"GET","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="}}
+DEPLOYER_CALL {"service":"AURA_CF","path":"/admin/help","method":"GET","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="}}
+DEPLOYER_CALL {"service":"AURA_CF","path":"/admin/caps","method":"GET","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="}}

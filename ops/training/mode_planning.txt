@@ -1,0 +1,5 @@
+HOST frontdesk.network
+REGISTRY_PUT
+type=operation_mode
+id=planning
+value=listen_reflect_organize_no_system_changes

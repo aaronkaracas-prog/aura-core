@@ -1,0 +1,6 @@
+HOST frontdesk.network
+DEPLOYER_CALL {"path":"/zones/list","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"path":"/dns","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"body":"{\"zone_id\":\"a2182b819272626cf935df6d28d7463e\"}","path":"/dns_records/list","content_type":"application/json","service":"AURA_CF","method":"POST"}
+DEPLOYER_CALL {"path":"/__routes","service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"path":"/dns/__routes","service":"AURA_CF","method":"GET"}

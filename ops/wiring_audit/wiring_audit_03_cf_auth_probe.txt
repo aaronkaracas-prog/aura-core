@@ -1,0 +1,4 @@
+DEPLOYER_CALL {"service":"AURA_CF","path":"/admin/ping","method":"GET","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="}}
+DEPLOYER_CALL {"service":"AURA_CF","path":"/admin/ping","method":"GET","headers":{"authorization":"Bearer CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="}}
+DEPLOYER_CALL {"service":"AURA_CF","path":"/admin/ping","method":"GET","headers":{"x-aura-operator":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="}}
+DEPLOYER_CALL {"service":"AURA_CF","path":"/admin/ping","method":"GET","headers":{"x-admin-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="}}

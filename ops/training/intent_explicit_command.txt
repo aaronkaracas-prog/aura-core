@@ -1,0 +1,5 @@
+HOST frontdesk.network
+REGISTRY_PUT
+type=intent_map
+id=explicit_command
+value=operator_or_autonomous_based_on_caps

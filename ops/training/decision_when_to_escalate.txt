@@ -1,0 +1,5 @@
+HOST frontdesk.network
+REGISTRY_PUT
+type=decision_boundary
+id=when_to_escalate
+value=irreversible_action,legal_risk,funds_movement,identity_claim,outside_caps

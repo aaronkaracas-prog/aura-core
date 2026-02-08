@@ -1,0 +1,2 @@
+HOST frontdesk.network
+REGISTRY_FILTER domains {"where":{"domain":"frontdesk.network"},"limit":5}

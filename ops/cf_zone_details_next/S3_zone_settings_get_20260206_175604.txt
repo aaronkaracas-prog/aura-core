@@ -1,0 +1,2 @@
+HOST frontdesk.network
+DEPLOYER_CALL {"headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"path":"/zone/settings/get?zone_id=a2182b819272626cf935df6d28d7463e","content_type":"application/json","service":"AURA_CF","method":"GET"}

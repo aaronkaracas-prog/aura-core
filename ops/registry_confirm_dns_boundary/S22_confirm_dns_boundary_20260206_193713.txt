@@ -1,0 +1,2 @@
+HOST frontdesk.network
+REGISTRY_GET domains_note frontdesk.network.AURA_CF.DNS_NOT_EXPOSED

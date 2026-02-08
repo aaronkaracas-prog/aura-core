@@ -1,0 +1,2 @@
+HOST frontdesk.network
+HOST_CAPS_SET

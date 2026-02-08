@@ -1,0 +1,10 @@
+HOST frontdesk.network
+
+REGISTRY_PUT
+kind=domains
+id=frontdesk.network
+domain=frontdesk.network
+pillar=core
+purpose=registry_write_test
+priority=PHASE1
+status=ACTIVE

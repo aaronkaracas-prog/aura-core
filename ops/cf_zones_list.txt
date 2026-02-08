@@ -1,0 +1,5 @@
+DEPLOYER_CALL {
+  "service": "AURA_CF",
+  "path": "/zones/list?per_page=50&page=1",
+  "method": "GET"
+}

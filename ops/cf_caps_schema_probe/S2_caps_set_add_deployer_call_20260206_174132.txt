@@ -1,0 +1,2 @@
+HOST frontdesk.network
+HOST_CAPS_SET {"allowed_add":["DEPLOYER_CALL"],"allowed_remove":[]}

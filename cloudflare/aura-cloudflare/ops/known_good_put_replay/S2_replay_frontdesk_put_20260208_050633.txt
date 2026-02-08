@@ -1,0 +1,5 @@
+VERIFIED_FETCH_URL https://frontdesk.network
+SNAPSHOT_STATE
+REGISTRY_PUT domains {"key":"frontdesk.network","value":{"domain":"frontdesk.network"}}
+REGISTRY_GET domains {"key":"frontdesk.network"}
+AUDIT_GET

@@ -1,0 +1,9 @@
+HOST frontdesk.network
+DEPLOYER_CALL {"path":"/accounts/list","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"path":"/accounts","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"path":"/zones","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"body":"{\"zone_id\":\"a2182b819272626cf935df6d28d7463e\"}","service":"AURA_CF","path":"/zones/get","method":"POST","content_type":"application/json","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="}}
+DEPLOYER_CALL {"path":"/zones/list","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"path":"/zones/a2182b819272626cf935df6d28d7463e","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"path":"/zone","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"service":"AURA_CF","method":"GET"}
+DEPLOYER_CALL {"path":"/me","headers":{"x-operator-token":"CJmNTM9QLplkWTfujPsVrMid0zxyVbrK/7H+eGrE/0A="},"service":"AURA_CF","method":"GET"}

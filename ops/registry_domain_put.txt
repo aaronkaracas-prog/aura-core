@@ -1,0 +1,7 @@
+HOST frontdesk.network
+REGISTRY_PUT domains {
+  "id": "frontdesk.network",
+  "domain": "frontdesk.network",
+  "pillar": "frontdesk",
+  "status": "ACTIVE"
+}

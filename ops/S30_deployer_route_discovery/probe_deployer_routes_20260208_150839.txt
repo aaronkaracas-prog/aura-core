@@ -1,0 +1,15 @@
+HOST auras.guide
+DEPLOYER_CAPS
+
+# Does DEPLOYER expose Aura-style /chat?
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","method":"POST","path":"/chat","body":"PING"}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","method":"POST","path":"/chat","body":"SHOW_BUILD"}
+
+# Does DEPLOYER proxy Cloudflare API under /client/v4 ?
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","method":"GET","path":"/client/v4/user"}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","method":"GET","path":"/client/v4/accounts"}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","method":"GET","path":"/client/v4/zones"}
+
+# Alternate common prefix (some proxies use /api or /cf)
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","method":"GET","path":"/api/client/v4/zones"}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","method":"GET","path":"/cf/client/v4/zones"}

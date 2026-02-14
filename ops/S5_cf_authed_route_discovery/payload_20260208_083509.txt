@@ -1,0 +1,4 @@
+HOST frontdesk.network
+DEPLOYER_CALL {"service":"AURA_CF","method":"GET","path":"/zones"}
+DEPLOYER_CALL {"service":"AURA_CF","method":"GET","path":"/accounts"}
+SNAPSHOT_STATE

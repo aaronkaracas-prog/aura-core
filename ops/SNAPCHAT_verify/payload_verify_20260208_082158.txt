@@ -1,0 +1,7 @@
+HOST frontdesk.network
+SHOW_BUILD
+SHOW_ALLOWED_COMMANDS
+SNAPSHOT_STATE
+HOST_CAPS_GET frontdesk.network
+EVIDENCE_PRESENT frontdesk.network
+HERD_STATUS

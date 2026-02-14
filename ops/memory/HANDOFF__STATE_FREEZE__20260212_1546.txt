@@ -1,0 +1,13 @@
+RESUME POINT (LOCKED)
+u = https://malibu.city/chat
+build = AURA_CORE__AUTONOMY_LAYERS__EVIDENCE_ALLOWLIST_HOSTCAPS_OPERATOR_INTENT_PAUSE__MEMORY_SUBSTRATE_V1__REGISTRY_AUDIT__13
+snapshot_stamp = 2026-02-12T15:45:54.740Z
+autonomy_tick_count = 5922
+AUDIT = cleared (seq 0)
+Committed assets:
+- aura_privacy_doctrine_v1
+- aura_intent_contract_v1
+REGISTRY_PUT grammar (LOCKED):
+HOST <host>
+REGISTRY_PUT
+{"type":"assets","item":{...}}

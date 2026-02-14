@@ -1,0 +1,2 @@
+HOST malibu.city
+REGISTRY_PUT assets test_asset {"name":"Inline JSON","pillar":"TEST","notes":"Single-line compliance test"}

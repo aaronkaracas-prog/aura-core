@@ -1,0 +1,1 @@
+{"ok":true,"reply":"[\n  {\n    \"cmd\": \"FAILURE_MEMORY_GET\",\n    \"payload\": {\n      \"ok\": true,\n      \"host\": \"auras.guide\",\n      \"items\": [\n        {\n          \"at\": \"2026-02-10T00:00:00.000Z\",\n          \"code\": \"TEST\",\n          \"detail\": \"FAILURE_MEMORY_PUT_WRITE_PROOF\"\n        }\n      ],\n      \"count\": 1\n    }\n  }\n]"}

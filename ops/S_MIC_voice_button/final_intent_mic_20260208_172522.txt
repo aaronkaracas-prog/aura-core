@@ -1,0 +1,2 @@
+HOST frontdesk.network
+INTENT_ADD {"host":"frontdesk.network","tag":"mic","text":"Voice input is treated as first-class natural language. Transcribe → intent → command routing. No deploys, no claims, no registry writes without explicit follow-up.","consent":"EXPLICIT_COMMAND"}

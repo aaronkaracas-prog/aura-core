@@ -1,0 +1,14 @@
+HOST auras.guide
+SNAPSHOT_STATE
+
+PAUSE
+
+INTENT_ADD auras.guide phase4_final final_autonomy_signal
+
+VERIFIED_FETCH_URL https://example.com
+
+EVIDENCE_PRESENT
+
+DEPLOYER_CALL service=AURA_CF method=GET path=/ body=null
+
+SNAPSHOT_STATE

@@ -1,0 +1,18 @@
+HOST auras.guide
+SHOW_MEMORY_SCHEMA
+HOST auras.guide
+REGISTRY_PUT assets __privacy_probe_valid__ {"id":"__privacy_probe_valid__","name":"Privacy Probe Valid","pillar":"privacy","notes":"put contract test","tags":["privacy","probe"],"created_at":"2026-02-13T13:48:04.8975961-08:00"}
+HOST auras.guide
+REGISTRY_GET assets __privacy_probe_valid__
+HOST auras.guide
+REGISTRY_PUT domains __privacy_probe_domain__ {"id":"privacy-probe.example","domain":"privacy-probe.example","pillar":"privacy","purpose":"put contract test","priority":"HOLD","status":"UNKNOWN"}
+HOST auras.guide
+REGISTRY_GET domains __privacy_probe_domain__
+HOST auras.guide
+REGISTRY_PUT users __privacy_probe_user__ {"id":"__privacy_probe_user__","prefs":{"privacy_probe":true,"ts":"2026-02-13T13:48:04.8975961-08:00"},"intents":[]}
+HOST auras.guide
+REGISTRY_GET users __privacy_probe_user__
+HOST auras.guide
+REGISTRY_AUDIT_TRAIL assets __privacy_probe_valid__
+HOST auras.guide
+AUDIT_GET

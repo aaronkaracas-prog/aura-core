@@ -1,0 +1,9 @@
+HOST auras.guide
+
+REGISTRY_IMPORT_DOMAINS {"items":[
+  {"id":"import-ok-01.world","domain":"import-ok-01.world","pillar":"BATCH","status":"UNKNOWN"},
+  {"id":"import-ok-02.world","domain":"import-ok-02.world","pillar":"BATCH","status":"UNKNOWN"}
+]}
+
+REGISTRY_GET domains import-ok-01.world
+REGISTRY_GET domains import-ok-02.world

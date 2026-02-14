@@ -1,0 +1,461 @@
+==== AUTONOMY_STATUS ====
+ENT")) {
+      const parts = line.split(" ").filter(Boolean);
+      const host = normalizeHostLoose(parts[1]) || activeHost;
+      if (!host) { push("EVIDENCE_PRESENT", "BAD_REQUEST"); continue; }
+      const stored = await env.AURA_KV.get(evidenceKey(host));
+      push("EVIDENCE_PRESENT", stored ? (safeJsonParse(stored) || stored) : "NO_EVIDENCE");
+      continue;
+    }
+
+    if (line === "SHOW_MEMORY_SCHEMA") {
+      push("SHOW_MEMORY_SCHEMA", memorySchemaV1);
+      continue;
+    }
+
+if (line === "SHOW_BUILD") {
+  push("SHOW_BUILD", { build: BUILD, stamp: new Date().toISOString() });
+  continue;
+}
+
+if (line === "SHOW_CLAIM_GATE") {
+  push("SHOW_CLAIM_GATE", {
+    trigger_words: [
+      "live","deployed","launched","resolving","propagating","successful","verified","up","online","working","reachable","available","accessible"
+    ],
+    forced_message: "NOT WIRED: VERIFIED_FETCH REQUIRED",
+    requires_verified_fetch_format: true
+  });
+  continue;
+}
+
+if (line === "SHOW_ALLOWED_COMMANDS") {
+  push("SHOW_ALLOWED_COMMANDS", allowedCommands);
+  continue;
+}
+
+    // ----------------------------
+    // AUTONOMY PRIMITIVES (batch mode; read-only stubs)
+    // ----------------------------
+    if (line === "AUTONOMY_STATUS") { push("AUTONOMY_STATUS", { ok: true }); continue; }
+    if (line === "AUTONOMY_LAST_TICK") { push("AUTONOMY_LAST_TICK", { ok: true }); continue; }
+    if (line === "AUTONOMY_CAPABILITIES") { push("AUTONOMY_CAPABILITIES", { ok: true }); continue; }
+    if (line === "INTENT_SIMULATE") { push("INTENT_SIMULATE", { ok: true, note: "preview-only" }); continue; }
+    if (line === "REGISTRY_AUDIT_TRAIL") { push("REGISTRY_AUDIT_TRAIL", { ok: true, note: "placeholder" }); continue; }
+    if (line === "AUTONOMY_BUDGET_GET") { push("AUTONOMY_BUDGET_GET", { ok: true }); continue; }
+    if (line === "AUTONOMY_BUDGET_SET") { push("AUTONOMY_BUDGET_SET", { ok: true, note: "requires envelope" }); continue; }
+    if (line === "FAILURE_MEMORY_GET") { push("FAILURE_MEMORY_GET", { ok: true }); continue; }
+    if (line === "FAILURE_MEMORY_PUT") { push("FAILURE_MEMORY_PUT", { ok: true, note: "requires envelope" }); continue; }
+    if (line === "AUTONOMY_CHARTER_GET") { push("AUTONOMY_CHARTER_GET", { ok: true }); continue; }
+    if (line === "AUTONOMY_CHARTER_SET") { push("AUTONOMY_CHARTER_SET", { ok: true, note: "requires envelope" }); continue; }
+
+    if (line === "AUDIT_
+==== AUTONOMY_LAST_TICK ====
+eHostLoose(parts[1]) || activeHost;
+      if (!host) { push("EVIDENCE_PRESENT", "BAD_REQUEST"); continue; }
+      const stored = await env.AURA_KV.get(evidenceKey(host));
+      push("EVIDENCE_PRESENT", stored ? (safeJsonParse(stored) || stored) : "NO_EVIDENCE");
+      continue;
+    }
+
+    if (line === "SHOW_MEMORY_SCHEMA") {
+      push("SHOW_MEMORY_SCHEMA", memorySchemaV1);
+      continue;
+    }
+
+if (line === "SHOW_BUILD") {
+  push("SHOW_BUILD", { build: BUILD, stamp: new Date().toISOString() });
+  continue;
+}
+
+if (line === "SHOW_CLAIM_GATE") {
+  push("SHOW_CLAIM_GATE", {
+    trigger_words: [
+      "live","deployed","launched","resolving","propagating","successful","verified","up","online","working","reachable","available","accessible"
+    ],
+    forced_message: "NOT WIRED: VERIFIED_FETCH REQUIRED",
+    requires_verified_fetch_format: true
+  });
+  continue;
+}
+
+if (line === "SHOW_ALLOWED_COMMANDS") {
+  push("SHOW_ALLOWED_COMMANDS", allowedCommands);
+  continue;
+}
+
+    // ----------------------------
+    // AUTONOMY PRIMITIVES (batch mode; read-only stubs)
+    // ----------------------------
+    if (line === "AUTONOMY_STATUS") { push("AUTONOMY_STATUS", { ok: true }); continue; }
+    if (line === "AUTONOMY_LAST_TICK") { push("AUTONOMY_LAST_TICK", { ok: true }); continue; }
+    if (line === "AUTONOMY_CAPABILITIES") { push("AUTONOMY_CAPABILITIES", { ok: true }); continue; }
+    if (line === "INTENT_SIMULATE") { push("INTENT_SIMULATE", { ok: true, note: "preview-only" }); continue; }
+    if (line === "REGISTRY_AUDIT_TRAIL") { push("REGISTRY_AUDIT_TRAIL", { ok: true, note: "placeholder" }); continue; }
+    if (line === "AUTONOMY_BUDGET_GET") { push("AUTONOMY_BUDGET_GET", { ok: true }); continue; }
+    if (line === "AUTONOMY_BUDGET_SET") { push("AUTONOMY_BUDGET_SET", { ok: true, note: "requires envelope" }); continue; }
+    if (line === "FAILURE_MEMORY_GET") { push("FAILURE_MEMORY_GET", { ok: true }); continue; }
+    if (line === "FAILURE_MEMORY_PUT") { push("FAILURE_MEMORY_PUT", { ok: true, note: "requires envelope" }); continue; }
+    if (line === "AUTONOMY_CHARTER_GET") { push("AUTONOMY_CHARTER_GET", { ok: true }); continue; }
+    if (line === "AUTONOMY_CHARTER_SET") { push("AUTONOMY_CHARTER_SET", { ok: true, note: "requires envelope" }); continue; }
+
+    if (line === "AUDIT_GET") {
+      if (!isOperator) { out.push({ cmd: "AUDIT_GET", payload: "UNAUTHORIZED" });
+==== AUTONOMY_CAPABILITIES ====
+ continue; }
+      const stored = await env.AURA_KV.get(evidenceKey(host));
+      push("EVIDENCE_PRESENT", stored ? (safeJsonParse(stored) || stored) : "NO_EVIDENCE");
+      continue;
+    }
+
+    if (line === "SHOW_MEMORY_SCHEMA") {
+      push("SHOW_MEMORY_SCHEMA", memorySchemaV1);
+      continue;
+    }
+
+if (line === "SHOW_BUILD") {
+  push("SHOW_BUILD", { build: BUILD, stamp: new Date().toISOString() });
+  continue;
+}
+
+if (line === "SHOW_CLAIM_GATE") {
+  push("SHOW_CLAIM_GATE", {
+    trigger_words: [
+      "live","deployed","launched","resolving","propagating","successful","verified","up","online","working","reachable","available","accessible"
+    ],
+    forced_message: "NOT WIRED: VERIFIED_FETCH REQUIRED",
+    requires_verified_fetch_format: true
+  });
+  continue;
+}
+
+if (line === "SHOW_ALLOWED_COMMANDS") {
+  push("SHOW_ALLOWED_COMMANDS", allowedCommands);
+  continue;
+}
+
+    // ----------------------------
+    // AUTONOMY PRIMITIVES (batch mode; read-only stubs)
+    // ----------------------------
+    if (line === "AUTONOMY_STATUS") { push("AUTONOMY_STATUS", { ok: true }); continue; }
+    if (line === "AUTONOMY_LAST_TICK") { push("AUTONOMY_LAST_TICK", { ok: true }); continue; }
+    if (line === "AUTONOMY_CAPABILITIES") { push("AUTONOMY_CAPABILITIES", { ok: true }); continue; }
+    if (line === "INTENT_SIMULATE") { push("INTENT_SIMULATE", { ok: true, note: "preview-only" }); continue; }
+    if (line === "REGISTRY_AUDIT_TRAIL") { push("REGISTRY_AUDIT_TRAIL", { ok: true, note: "placeholder" }); continue; }
+    if (line === "AUTONOMY_BUDGET_GET") { push("AUTONOMY_BUDGET_GET", { ok: true }); continue; }
+    if (line === "AUTONOMY_BUDGET_SET") { push("AUTONOMY_BUDGET_SET", { ok: true, note: "requires envelope" }); continue; }
+    if (line === "FAILURE_MEMORY_GET") { push("FAILURE_MEMORY_GET", { ok: true }); continue; }
+    if (line === "FAILURE_MEMORY_PUT") { push("FAILURE_MEMORY_PUT", { ok: true, note: "requires envelope" }); continue; }
+    if (line === "AUTONOMY_CHARTER_GET") { push("AUTONOMY_CHARTER_GET", { ok: true }); continue; }
+    if (line === "AUTONOMY_CHARTER_SET") { push("AUTONOMY_CHARTER_SET", { ok: true, note: "requires envelope" }); continue; }
+
+    if (line === "AUDIT_GET") {
+      if (!isOperator) { out.push({ cmd: "AUDIT_GET", payload: "UNAUTHORIZED" }); continue; }
+      push("AUDIT_GET", await auditList(env, 50));
+      continue;
+    }
+
+    if (
+==== AUTONOMY_BUDGET_GET ====
+{
+  push("SHOW_BUILD", { build: BUILD, stamp: new Date().toISOString() });
+  continue;
+}
+
+if (line === "SHOW_CLAIM_GATE") {
+  push("SHOW_CLAIM_GATE", {
+    trigger_words: [
+      "live","deployed","launched","resolving","propagating","successful","verified","up","online","working","reachable","available","accessible"
+    ],
+    forced_message: "NOT WIRED: VERIFIED_FETCH REQUIRED",
+    requires_verified_fetch_format: true
+  });
+  continue;
+}
+
+if (line === "SHOW_ALLOWED_COMMANDS") {
+  push("SHOW_ALLOWED_COMMANDS", allowedCommands);
+  continue;
+}
+
+    // ----------------------------
+    // AUTONOMY PRIMITIVES (batch mode; read-only stubs)
+    // ----------------------------
+    if (line === "AUTONOMY_STATUS") { push("AUTONOMY_STATUS", { ok: true }); continue; }
+    if (line === "AUTONOMY_LAST_TICK") { push("AUTONOMY_LAST_TICK", { ok: true }); continue; }
+    if (line === "AUTONOMY_CAPABILITIES") { push("AUTONOMY_CAPABILITIES", { ok: true }); continue; }
+    if (line === "INTENT_SIMULATE") { push("INTENT_SIMULATE", { ok: true, note: "preview-only" }); continue; }
+    if (line === "REGISTRY_AUDIT_TRAIL") { push("REGISTRY_AUDIT_TRAIL", { ok: true, note: "placeholder" }); continue; }
+    if (line === "AUTONOMY_BUDGET_GET") { push("AUTONOMY_BUDGET_GET", { ok: true }); continue; }
+    if (line === "AUTONOMY_BUDGET_SET") { push("AUTONOMY_BUDGET_SET", { ok: true, note: "requires envelope" }); continue; }
+    if (line === "FAILURE_MEMORY_GET") { push("FAILURE_MEMORY_GET", { ok: true }); continue; }
+    if (line === "FAILURE_MEMORY_PUT") { push("FAILURE_MEMORY_PUT", { ok: true, note: "requires envelope" }); continue; }
+    if (line === "AUTONOMY_CHARTER_GET") { push("AUTONOMY_CHARTER_GET", { ok: true }); continue; }
+    if (line === "AUTONOMY_CHARTER_SET") { push("AUTONOMY_CHARTER_SET", { ok: true, note: "requires envelope" }); continue; }
+
+    if (line === "AUDIT_GET") {
+      if (!isOperator) { out.push({ cmd: "AUDIT_GET", payload: "UNAUTHORIZED" }); continue; }
+      push("AUDIT_GET", await auditList(env, 50));
+      continue;
+    }
+
+    if (line === "AUDIT_CLEAR") {
+      if (!isOperator) { out.push({ cmd: "AUDIT_CLEAR", payload: "UNAUTHORIZED" }); continue; }
+      // Require a VERIFIED_FETCH seed for the active host before allowing audit mutation.
+      if (!activeHost) { out.push({ cmd: "AUDIT_CLEAR", payload: "BAD_REQUEST" }); continue; }
+      // Must have been 
+==== AUTONOMY_BUDGET_SET ====
+e === "SHOW_CLAIM_GATE") {
+  push("SHOW_CLAIM_GATE", {
+    trigger_words: [
+      "live","deployed","launched","resolving","propagating","successful","verified","up","online","working","reachable","available","accessible"
+    ],
+    forced_message: "NOT WIRED: VERIFIED_FETCH REQUIRED",
+    requires_verified_fetch_format: true
+  });
+  continue;
+}
+
+if (line === "SHOW_ALLOWED_COMMANDS") {
+  push("SHOW_ALLOWED_COMMANDS", allowedCommands);
+  continue;
+}
+
+    // ----------------------------
+    // AUTONOMY PRIMITIVES (batch mode; read-only stubs)
+    // ----------------------------
+    if (line === "AUTONOMY_STATUS") { push("AUTONOMY_STATUS", { ok: true }); continue; }
+    if (line === "AUTONOMY_LAST_TICK") { push("AUTONOMY_LAST_TICK", { ok: true }); continue; }
+    if (line === "AUTONOMY_CAPABILITIES") { push("AUTONOMY_CAPABILITIES", { ok: true }); continue; }
+    if (line === "INTENT_SIMULATE") { push("INTENT_SIMULATE", { ok: true, note: "preview-only" }); continue; }
+    if (line === "REGISTRY_AUDIT_TRAIL") { push("REGISTRY_AUDIT_TRAIL", { ok: true, note: "placeholder" }); continue; }
+    if (line === "AUTONOMY_BUDGET_GET") { push("AUTONOMY_BUDGET_GET", { ok: true }); continue; }
+    if (line === "AUTONOMY_BUDGET_SET") { push("AUTONOMY_BUDGET_SET", { ok: true, note: "requires envelope" }); continue; }
+    if (line === "FAILURE_MEMORY_GET") { push("FAILURE_MEMORY_GET", { ok: true }); continue; }
+    if (line === "FAILURE_MEMORY_PUT") { push("FAILURE_MEMORY_PUT", { ok: true, note: "requires envelope" }); continue; }
+    if (line === "AUTONOMY_CHARTER_GET") { push("AUTONOMY_CHARTER_GET", { ok: true }); continue; }
+    if (line === "AUTONOMY_CHARTER_SET") { push("AUTONOMY_CHARTER_SET", { ok: true, note: "requires envelope" }); continue; }
+
+    if (line === "AUDIT_GET") {
+      if (!isOperator) { out.push({ cmd: "AUDIT_GET", payload: "UNAUTHORIZED" }); continue; }
+      push("AUDIT_GET", await auditList(env, 50));
+      continue;
+    }
+
+    if (line === "AUDIT_CLEAR") {
+      if (!isOperator) { out.push({ cmd: "AUDIT_CLEAR", payload: "UNAUTHORIZED" }); continue; }
+      // Require a VERIFIED_FETCH seed for the active host before allowing audit mutation.
+      if (!activeHost) { out.push({ cmd: "AUDIT_CLEAR", payload: "BAD_REQUEST" }); continue; }
+      // Must have been seeded via VERIFIED_FETCH_URL in THIS same request (not just previously stored KV evidence).
+    
+==== AUTONOMY_CHARTER_GET ====
+nue;
+}
+
+if (line === "SHOW_ALLOWED_COMMANDS") {
+  push("SHOW_ALLOWED_COMMANDS", allowedCommands);
+  continue;
+}
+
+    // ----------------------------
+    // AUTONOMY PRIMITIVES (batch mode; read-only stubs)
+    // ----------------------------
+    if (line === "AUTONOMY_STATUS") { push("AUTONOMY_STATUS", { ok: true }); continue; }
+    if (line === "AUTONOMY_LAST_TICK") { push("AUTONOMY_LAST_TICK", { ok: true }); continue; }
+    if (line === "AUTONOMY_CAPABILITIES") { push("AUTONOMY_CAPABILITIES", { ok: true }); continue; }
+    if (line === "INTENT_SIMULATE") { push("INTENT_SIMULATE", { ok: true, note: "preview-only" }); continue; }
+    if (line === "REGISTRY_AUDIT_TRAIL") { push("REGISTRY_AUDIT_TRAIL", { ok: true, note: "placeholder" }); continue; }
+    if (line === "AUTONOMY_BUDGET_GET") { push("AUTONOMY_BUDGET_GET", { ok: true }); continue; }
+    if (line === "AUTONOMY_BUDGET_SET") { push("AUTONOMY_BUDGET_SET", { ok: true, note: "requires envelope" }); continue; }
+    if (line === "FAILURE_MEMORY_GET") { push("FAILURE_MEMORY_GET", { ok: true }); continue; }
+    if (line === "FAILURE_MEMORY_PUT") { push("FAILURE_MEMORY_PUT", { ok: true, note: "requires envelope" }); continue; }
+    if (line === "AUTONOMY_CHARTER_GET") { push("AUTONOMY_CHARTER_GET", { ok: true }); continue; }
+    if (line === "AUTONOMY_CHARTER_SET") { push("AUTONOMY_CHARTER_SET", { ok: true, note: "requires envelope" }); continue; }
+
+    if (line === "AUDIT_GET") {
+      if (!isOperator) { out.push({ cmd: "AUDIT_GET", payload: "UNAUTHORIZED" }); continue; }
+      push("AUDIT_GET", await auditList(env, 50));
+      continue;
+    }
+
+    if (line === "AUDIT_CLEAR") {
+      if (!isOperator) { out.push({ cmd: "AUDIT_CLEAR", payload: "UNAUTHORIZED" }); continue; }
+      // Require a VERIFIED_FETCH seed for the active host before allowing audit mutation.
+      if (!activeHost) { out.push({ cmd: "AUDIT_CLEAR", payload: "BAD_REQUEST" }); continue; }
+      // Must have been seeded via VERIFIED_FETCH_URL in THIS same request (not just previously stored KV evidence).
+      if (!__seededThisRequest.has(String(activeHost).toLowerCase())) { out.push({ cmd: "AUDIT_CLEAR", payload: "NOT_WIRED: VERIFIED_FETCH REQUIRED" }); continue; }
+      // IMPORTANT: clearing should never crash the Worker.
+      // We clear by resetting the sequence pointer; old event keys become unreachable.
+      try {
+        await env.AU
+==== AUTONOMY_CHARTER_SET ====
+ continue;
+}
+
+    // ----------------------------
+    // AUTONOMY PRIMITIVES (batch mode; read-only stubs)
+    // ----------------------------
+    if (line === "AUTONOMY_STATUS") { push("AUTONOMY_STATUS", { ok: true }); continue; }
+    if (line === "AUTONOMY_LAST_TICK") { push("AUTONOMY_LAST_TICK", { ok: true }); continue; }
+    if (line === "AUTONOMY_CAPABILITIES") { push("AUTONOMY_CAPABILITIES", { ok: true }); continue; }
+    if (line === "INTENT_SIMULATE") { push("INTENT_SIMULATE", { ok: true, note: "preview-only" }); continue; }
+    if (line === "REGISTRY_AUDIT_TRAIL") { push("REGISTRY_AUDIT_TRAIL", { ok: true, note: "placeholder" }); continue; }
+    if (line === "AUTONOMY_BUDGET_GET") { push("AUTONOMY_BUDGET_GET", { ok: true }); continue; }
+    if (line === "AUTONOMY_BUDGET_SET") { push("AUTONOMY_BUDGET_SET", { ok: true, note: "requires envelope" }); continue; }
+    if (line === "FAILURE_MEMORY_GET") { push("FAILURE_MEMORY_GET", { ok: true }); continue; }
+    if (line === "FAILURE_MEMORY_PUT") { push("FAILURE_MEMORY_PUT", { ok: true, note: "requires envelope" }); continue; }
+    if (line === "AUTONOMY_CHARTER_GET") { push("AUTONOMY_CHARTER_GET", { ok: true }); continue; }
+    if (line === "AUTONOMY_CHARTER_SET") { push("AUTONOMY_CHARTER_SET", { ok: true, note: "requires envelope" }); continue; }
+
+    if (line === "AUDIT_GET") {
+      if (!isOperator) { out.push({ cmd: "AUDIT_GET", payload: "UNAUTHORIZED" }); continue; }
+      push("AUDIT_GET", await auditList(env, 50));
+      continue;
+    }
+
+    if (line === "AUDIT_CLEAR") {
+      if (!isOperator) { out.push({ cmd: "AUDIT_CLEAR", payload: "UNAUTHORIZED" }); continue; }
+      // Require a VERIFIED_FETCH seed for the active host before allowing audit mutation.
+      if (!activeHost) { out.push({ cmd: "AUDIT_CLEAR", payload: "BAD_REQUEST" }); continue; }
+      // Must have been seeded via VERIFIED_FETCH_URL in THIS same request (not just previously stored KV evidence).
+      if (!__seededThisRequest.has(String(activeHost).toLowerCase())) { out.push({ cmd: "AUDIT_CLEAR", payload: "NOT_WIRED: VERIFIED_FETCH REQUIRED" }); continue; }
+      // IMPORTANT: clearing should never crash the Worker.
+      // We clear by resetting the sequence pointer; old event keys become unreachable.
+      try {
+        await env.AURA_KV.put(auditSeqKey, "0");
+        await env.AURA_KV.put(auditClearedAtKey, nowIso());
+        ou
+==== FAILURE_MEMORY_GET ====
+propagating","successful","verified","up","online","working","reachable","available","accessible"
+    ],
+    forced_message: "NOT WIRED: VERIFIED_FETCH REQUIRED",
+    requires_verified_fetch_format: true
+  });
+  continue;
+}
+
+if (line === "SHOW_ALLOWED_COMMANDS") {
+  push("SHOW_ALLOWED_COMMANDS", allowedCommands);
+  continue;
+}
+
+    // ----------------------------
+    // AUTONOMY PRIMITIVES (batch mode; read-only stubs)
+    // ----------------------------
+    if (line === "AUTONOMY_STATUS") { push("AUTONOMY_STATUS", { ok: true }); continue; }
+    if (line === "AUTONOMY_LAST_TICK") { push("AUTONOMY_LAST_TICK", { ok: true }); continue; }
+    if (line === "AUTONOMY_CAPABILITIES") { push("AUTONOMY_CAPABILITIES", { ok: true }); continue; }
+    if (line === "INTENT_SIMULATE") { push("INTENT_SIMULATE", { ok: true, note: "preview-only" }); continue; }
+    if (line === "REGISTRY_AUDIT_TRAIL") { push("REGISTRY_AUDIT_TRAIL", { ok: true, note: "placeholder" }); continue; }
+    if (line === "AUTONOMY_BUDGET_GET") { push("AUTONOMY_BUDGET_GET", { ok: true }); continue; }
+    if (line === "AUTONOMY_BUDGET_SET") { push("AUTONOMY_BUDGET_SET", { ok: true, note: "requires envelope" }); continue; }
+    if (line === "FAILURE_MEMORY_GET") { push("FAILURE_MEMORY_GET", { ok: true }); continue; }
+    if (line === "FAILURE_MEMORY_PUT") { push("FAILURE_MEMORY_PUT", { ok: true, note: "requires envelope" }); continue; }
+    if (line === "AUTONOMY_CHARTER_GET") { push("AUTONOMY_CHARTER_GET", { ok: true }); continue; }
+    if (line === "AUTONOMY_CHARTER_SET") { push("AUTONOMY_CHARTER_SET", { ok: true, note: "requires envelope" }); continue; }
+
+    if (line === "AUDIT_GET") {
+      if (!isOperator) { out.push({ cmd: "AUDIT_GET", payload: "UNAUTHORIZED" }); continue; }
+      push("AUDIT_GET", await auditList(env, 50));
+      continue;
+    }
+
+    if (line === "AUDIT_CLEAR") {
+      if (!isOperator) { out.push({ cmd: "AUDIT_CLEAR", payload: "UNAUTHORIZED" }); continue; }
+      // Require a VERIFIED_FETCH seed for the active host before allowing audit mutation.
+      if (!activeHost) { out.push({ cmd: "AUDIT_CLEAR", payload: "BAD_REQUEST" }); continue; }
+      // Must have been seeded via VERIFIED_FETCH_URL in THIS same request (not just previously stored KV evidence).
+      if (!__seededThisRequest.has(String(activeHost).toLowerCase())) { out.push({ cmd: "AUDIT_CLEAR", payload: "NOT_WIRED: VERI
+==== FAILURE_MEMORY_PUT ====
+e"
+    ],
+    forced_message: "NOT WIRED: VERIFIED_FETCH REQUIRED",
+    requires_verified_fetch_format: true
+  });
+  continue;
+}
+
+if (line === "SHOW_ALLOWED_COMMANDS") {
+  push("SHOW_ALLOWED_COMMANDS", allowedCommands);
+  continue;
+}
+
+    // ----------------------------
+    // AUTONOMY PRIMITIVES (batch mode; read-only stubs)
+    // ----------------------------
+    if (line === "AUTONOMY_STATUS") { push("AUTONOMY_STATUS", { ok: true }); continue; }
+    if (line === "AUTONOMY_LAST_TICK") { push("AUTONOMY_LAST_TICK", { ok: true }); continue; }
+    if (line === "AUTONOMY_CAPABILITIES") { push("AUTONOMY_CAPABILITIES", { ok: true }); continue; }
+    if (line === "INTENT_SIMULATE") { push("INTENT_SIMULATE", { ok: true, note: "preview-only" }); continue; }
+    if (line === "REGISTRY_AUDIT_TRAIL") { push("REGISTRY_AUDIT_TRAIL", { ok: true, note: "placeholder" }); continue; }
+    if (line === "AUTONOMY_BUDGET_GET") { push("AUTONOMY_BUDGET_GET", { ok: true }); continue; }
+    if (line === "AUTONOMY_BUDGET_SET") { push("AUTONOMY_BUDGET_SET", { ok: true, note: "requires envelope" }); continue; }
+    if (line === "FAILURE_MEMORY_GET") { push("FAILURE_MEMORY_GET", { ok: true }); continue; }
+    if (line === "FAILURE_MEMORY_PUT") { push("FAILURE_MEMORY_PUT", { ok: true, note: "requires envelope" }); continue; }
+    if (line === "AUTONOMY_CHARTER_GET") { push("AUTONOMY_CHARTER_GET", { ok: true }); continue; }
+    if (line === "AUTONOMY_CHARTER_SET") { push("AUTONOMY_CHARTER_SET", { ok: true, note: "requires envelope" }); continue; }
+
+    if (line === "AUDIT_GET") {
+      if (!isOperator) { out.push({ cmd: "AUDIT_GET", payload: "UNAUTHORIZED" }); continue; }
+      push("AUDIT_GET", await auditList(env, 50));
+      continue;
+    }
+
+    if (line === "AUDIT_CLEAR") {
+      if (!isOperator) { out.push({ cmd: "AUDIT_CLEAR", payload: "UNAUTHORIZED" }); continue; }
+      // Require a VERIFIED_FETCH seed for the active host before allowing audit mutation.
+      if (!activeHost) { out.push({ cmd: "AUDIT_CLEAR", payload: "BAD_REQUEST" }); continue; }
+      // Must have been seeded via VERIFIED_FETCH_URL in THIS same request (not just previously stored KV evidence).
+      if (!__seededThisRequest.has(String(activeHost).toLowerCase())) { out.push({ cmd: "AUDIT_CLEAR", payload: "NOT_WIRED: VERIFIED_FETCH REQUIRED" }); continue; }
+      // IMPORTANT: clearing should never crash the Worker
+==== REGISTRY_AUDIT_TRAIL ====
+W_MEMORY_SCHEMA") {
+      push("SHOW_MEMORY_SCHEMA", memorySchemaV1);
+      continue;
+    }
+
+if (line === "SHOW_BUILD") {
+  push("SHOW_BUILD", { build: BUILD, stamp: new Date().toISOString() });
+  continue;
+}
+
+if (line === "SHOW_CLAIM_GATE") {
+  push("SHOW_CLAIM_GATE", {
+    trigger_words: [
+      "live","deployed","launched","resolving","propagating","successful","verified","up","online","working","reachable","available","accessible"
+    ],
+    forced_message: "NOT WIRED: VERIFIED_FETCH REQUIRED",
+    requires_verified_fetch_format: true
+  });
+  continue;
+}
+
+if (line === "SHOW_ALLOWED_COMMANDS") {
+  push("SHOW_ALLOWED_COMMANDS", allowedCommands);
+  continue;
+}
+
+    // ----------------------------
+    // AUTONOMY PRIMITIVES (batch mode; read-only stubs)
+    // ----------------------------
+    if (line === "AUTONOMY_STATUS") { push("AUTONOMY_STATUS", { ok: true }); continue; }
+    if (line === "AUTONOMY_LAST_TICK") { push("AUTONOMY_LAST_TICK", { ok: true }); continue; }
+    if (line === "AUTONOMY_CAPABILITIES") { push("AUTONOMY_CAPABILITIES", { ok: true }); continue; }
+    if (line === "INTENT_SIMULATE") { push("INTENT_SIMULATE", { ok: true, note: "preview-only" }); continue; }
+    if (line === "REGISTRY_AUDIT_TRAIL") { push("REGISTRY_AUDIT_TRAIL", { ok: true, note: "placeholder" }); continue; }
+    if (line === "AUTONOMY_BUDGET_GET") { push("AUTONOMY_BUDGET_GET", { ok: true }); continue; }
+    if (line === "AUTONOMY_BUDGET_SET") { push("AUTONOMY_BUDGET_SET", { ok: true, note: "requires envelope" }); continue; }
+    if (line === "FAILURE_MEMORY_GET") { push("FAILURE_MEMORY_GET", { ok: true }); continue; }
+    if (line === "FAILURE_MEMORY_PUT") { push("FAILURE_MEMORY_PUT", { ok: true, note: "requires envelope" }); continue; }
+    if (line === "AUTONOMY_CHARTER_GET") { push("AUTONOMY_CHARTER_GET", { ok: true }); continue; }
+    if (line === "AUTONOMY_CHARTER_SET") { push("AUTONOMY_CHARTER_SET", { ok: true, note: "requires envelope" }); continue; }
+
+    if (line === "AUDIT_GET") {
+      if (!isOperator) { out.push({ cmd: "AUDIT_GET", payload: "UNAUTHORIZED" }); continue; }
+      push("AUDIT_GET", await auditList(env, 50));
+      continue;
+    }
+
+    if (line === "AUDIT_CLEAR") {
+      if (!isOperator) { out.push({ cmd: "AUDIT_CLEAR", payload: "UNAUTHORIZED" }); continue; }
+      // Require a VERIFIED_FETCH seed for the active host before allowing audit mutation.

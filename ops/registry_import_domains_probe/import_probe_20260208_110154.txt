@@ -1,0 +1,5 @@
+HOST auras.guide
+
+# try canonical import envelope: list of domain objects
+REGISTRY_IMPORT_DOMAINS {"domains":[{"id":"probe-import.world","domain":"probe-import.world","pillar":"TEST","purpose":"probe import envelope","priority":"HOLD","status":"UNKNOWN"}]}
+REGISTRY_GET domains probe-import.world

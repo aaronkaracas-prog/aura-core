@@ -1,0 +1,7 @@
+HOST malibu.city
+REGISTRY_PUT assets test_asset
+{
+  "name": "Test Asset",
+  "pillar": "TEST",
+  "notes": "Body-on-newline compliance test"
+}

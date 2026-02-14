@@ -1,0 +1,4 @@
+HOST auras.guide
+AUDIT_GET
+HOST malibu.city
+AUDIT_GET

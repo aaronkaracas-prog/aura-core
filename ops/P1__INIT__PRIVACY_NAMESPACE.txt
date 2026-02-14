@@ -1,0 +1,8 @@
+HOST auras.guide
+REGISTRY_PUT privacy recording_state {"enabled":false,"ts":null}
+HOST auras.guide
+REGISTRY_PUT privacy session_mode {"mode":"PRIVATE","ts":null}
+HOST auras.guide
+REGISTRY_PUT privacy durable_mode {"enabled":false,"ts":null}
+HOST auras.guide
+REGISTRY_LIST privacy

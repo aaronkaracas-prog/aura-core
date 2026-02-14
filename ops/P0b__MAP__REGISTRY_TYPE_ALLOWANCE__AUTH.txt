@@ -1,0 +1,8 @@
+HOST auras.guide
+REGISTRY_PUT assets {"id":"__type_allow_assets__","name":"Type Allow Assets","pillar":"system","notes":"type allowance probe","tags":["probe"],"created_at":"2026-02-13T13:52:41.3918079-08:00"}
+REGISTRY_GET assets __type_allow_assets__
+REGISTRY_PUT users {"id":"__type_allow_users__","prefs":{"probe":true,"ts":"2026-02-13T13:52:41.3918079-08:00"},"intents":[]}
+REGISTRY_GET users __type_allow_users__
+REGISTRY_PUT domains {"id":"type-allow-probe.example","domain":"type-allow-probe.example","pillar":"system","purpose":"type allowance probe","priority":"HOLD","status":"UNKNOWN"}
+REGISTRY_GET domains type-allow-probe.example
+AUDIT_GET

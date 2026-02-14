@@ -1,0 +1,5 @@
+HOST auras.guide
+
+SNAPSHOT_STATE
+
+REGISTRY_GET self_model AURA_SELF_MODEL_V1

@@ -1,0 +1,2 @@
+HOST frontdesk.network
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/deploy","method":"POST","content_type":"application/json","body":"{}"}

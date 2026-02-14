@@ -1,0 +1,4 @@
+ZONECOUNT_PACKET
+ZONES_COUNT: 
+RAW_FILE: C:\Users\Aaron Karacas\aura-worker\aura\ops\ui_cloudflare_zone_count\ZONECOUNT_REPLY_20260208_103717.json
+END

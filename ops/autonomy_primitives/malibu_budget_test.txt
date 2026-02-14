@@ -1,0 +1,6 @@
+﻿HOST malibu.city
+AUTONOMY_BUDGET_SET
+{
+  "limit": 123
+}
+AUTONOMY_BUDGET_GET

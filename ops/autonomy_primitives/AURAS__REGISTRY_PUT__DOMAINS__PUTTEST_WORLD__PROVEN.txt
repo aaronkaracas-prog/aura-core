@@ -1,0 +1,2 @@
+HOST auras.guide
+REGISTRY_PUT domains puttest.world {"domain":"puttest.world","pillar":"TEST","purpose":"PUT_TEST","priority":"UNKNOWN","status":"UNKNOWN"}

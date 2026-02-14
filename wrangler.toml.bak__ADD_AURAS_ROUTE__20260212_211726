@@ -1,0 +1,30 @@
+name = "aura-core"
+
+routes = ["malibu.city/*","www.malibu.city/*"]
+main = "src/index.js"
+compatibility_date = "2026-01-21"
+workers_dev = true
+
+# Cron trigger (auto-runner)
+[triggers]
+crons = ["*/1 * * * *"]
+
+# Bindings (match what your deploy output shows)
+[[kv_namespaces]]
+binding = "AURA_KV"
+id = "9c2ba111589e48c6ba5ad1b924ae8809"
+
+[[r2_buckets]]
+binding = "AURA_UPLOADS"
+bucket_name = "auras-guide-uploads"
+
+[[services]]
+binding = "AURA_DEPLOYER"
+service = "aura-deployer"
+
+[[services]]
+binding = "AURA_CF"
+service = "aura-cloudflare"
+
+[ai]
+binding = "AI"

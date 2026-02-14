@@ -1,0 +1,25 @@
+HOST auras.guide
+
+REGISTRY_PUT {"type":"domains","id":"probe-import-01.world","entry":{"domain":"probe-import-01.world","pillar":"BATCH_PROBE","purpose":"batch put 20 domains in one request","priority":"HOLD","status":"UNKNOWN"}}
+REGISTRY_PUT {"type":"domains","id":"probe-import-02.world","entry":{"domain":"probe-import-02.world","pillar":"BATCH_PROBE","purpose":"batch put 20 domains in one request","priority":"HOLD","status":"UNKNOWN"}}
+REGISTRY_PUT {"type":"domains","id":"probe-import-03.world","entry":{"domain":"probe-import-03.world","pillar":"BATCH_PROBE","purpose":"batch put 20 domains in one request","priority":"HOLD","status":"UNKNOWN"}}
+REGISTRY_PUT {"type":"domains","id":"probe-import-04.world","entry":{"domain":"probe-import-04.world","pillar":"BATCH_PROBE","purpose":"batch put 20 domains in one request","priority":"HOLD","status":"UNKNOWN"}}
+REGISTRY_PUT {"type":"domains","id":"probe-import-05.world","entry":{"domain":"probe-import-05.world","pillar":"BATCH_PROBE","purpose":"batch put 20 domains in one request","priority":"HOLD","status":"UNKNOWN"}}
+REGISTRY_PUT {"type":"domains","id":"probe-import-06.world","entry":{"domain":"probe-import-06.world","pillar":"BATCH_PROBE","purpose":"batch put 20 domains in one request","priority":"HOLD","status":"UNKNOWN"}}
+REGISTRY_PUT {"type":"domains","id":"probe-import-07.world","entry":{"domain":"probe-import-07.world","pillar":"BATCH_PROBE","purpose":"batch put 20 domains in one request","priority":"HOLD","status":"UNKNOWN"}}
+REGISTRY_PUT {"type":"domains","id":"probe-import-08.world","entry":{"domain":"probe-import-08.world","pillar":"BATCH_PROBE","purpose":"batch put 20 domains in one request","priority":"HOLD","status":"UNKNOWN"}}
+REGISTRY_PUT {"type":"domains","id":"probe-import-09.world","entry":{"domain":"probe-import-09.world","pillar":"BATCH_PROBE","purpose":"batch put 20 domains in one request","priority":"HOLD","status":"UNKNOWN"}}
+REGISTRY_PUT {"type":"domains","id":"probe-import-10.world","entry":{"domain":"probe-import-10.world","pillar":"BATCH_PROBE","purpose":"batch put 20 domains in one request","priority":"HOLD","status":"UNKNOWN"}}
+
+REGISTRY_PUT {"type":"domains","id":"probe-import-11.world","entry":{"domain":"probe-import-11.world","pillar":"BATCH_PROBE","purpose":"batch put 20 domains in one request","priority":"HOLD","status":"UNKNOWN"}}
+REGISTRY_PUT {"type":"domains","id":"probe-import-12.world","entry":{"domain":"probe-import-12.world","pillar":"BATCH_PROBE","purpose":"batch put 20 domains in one request","priority":"HOLD","status":"UNKNOWN"}}
+REGISTRY_PUT {"type":"domains","id":"probe-import-13.world","entry":{"domain":"probe-import-13.world","pillar":"BATCH_PROBE","purpose":"batch put 20 domains in one request","priority":"HOLD","status":"UNKNOWN"}}
+REGISTRY_PUT {"type":"domains","id":"probe-import-14.world","entry":{"domain":"probe-import-14.world","pillar":"BATCH_PROBE","purpose":"batch put 20 domains in one request","priority":"HOLD","status":"UNKNOWN"}}
+REGISTRY_PUT {"type":"domains","id":"probe-import-15.world","entry":{"domain":"probe-import-15.world","pillar":"BATCH_PROBE","purpose":"batch put 20 domains in one request","priority":"HOLD","status":"UNKNOWN"}}
+REGISTRY_PUT {"type":"domains","id":"probe-import-16.world","entry":{"domain":"probe-import-16.world","pillar":"BATCH_PROBE","purpose":"batch put 20 domains in one request","priority":"HOLD","status":"UNKNOWN"}}
+REGISTRY_PUT {"type":"domains","id":"probe-import-17.world","entry":{"domain":"probe-import-17.world","pillar":"BATCH_PROBE","purpose":"batch put 20 domains in one request","priority":"HOLD","status":"UNKNOWN"}}
+REGISTRY_PUT {"type":"domains","id":"probe-import-18.world","entry":{"domain":"probe-import-18.world","pillar":"BATCH_PROBE","purpose":"batch put 20 domains in one request","priority":"HOLD","status":"UNKNOWN"}}
+REGISTRY_PUT {"type":"domains","id":"probe-import-19.world","entry":{"domain":"probe-import-19.world","pillar":"BATCH_PROBE","purpose":"batch put 20 domains in one request","priority":"HOLD","status":"UNKNOWN"}}
+REGISTRY_PUT {"type":"domains","id":"probe-import-20.world","entry":{"domain":"probe-import-20.world","pillar":"BATCH_PROBE","purpose":"batch put 20 domains in one request","priority":"HOLD","status":"UNKNOWN"}}
+
+REGISTRY_FILTER domains {"where":{"pillar":"BATCH_PROBE"},"limit":50}

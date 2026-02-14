@@ -1,0 +1,10 @@
+﻿HOST auras.guide
+REGISTRY_PUT assets __canon_audit_clear_contract__
+{
+  "id": "__canon_audit_clear_contract__",
+  "name": "AUDIT_CLEAR contract rule",
+  "pillar": "CANON",
+  "notes": "AUDIT_CLEAR contract revalidated 2026-02-13T06:17:00Z",
+  "type": "assets",
+  "version": "v1"
+}

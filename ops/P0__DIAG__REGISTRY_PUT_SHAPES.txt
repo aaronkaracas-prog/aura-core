@@ -1,0 +1,12 @@
+HOST auras.guide
+SHOW_MEMORY_SCHEMA
+HOST auras.guide
+REGISTRY_PUT privacy recording_state {"enabled":false,"ts":null}
+HOST auras.guide
+REGISTRY_PUT privacy recording_state {"enabled":false}
+HOST auras.guide
+REGISTRY_PUT privacy recording_state
+HOST auras.guide
+{"enabled":false,"ts":null}
+HOST auras.guide
+REGISTRY_LIST privacy

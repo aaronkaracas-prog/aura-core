@@ -1,0 +1,10 @@
+HOST auras.guide
+REGISTRY_PUT
+{"type":"assets","item":{
+  "id":"aura_privacy_doctrine_v1",
+  "name":"Aura Privacy / Encryption / Recording Doctrine",
+  "pillar":"CORE_PRIVACY",
+  "notes":"Split-envelope architecture. Server-secure decryption. Consent-first recording. Dual-mode session model. Deferred until Tier-4=100%.",
+  "tags":["privacy","encryption","recording","consent","tier5_deferred","auras.guide"],
+  "sellability":"NEVER_SELL"
+}}

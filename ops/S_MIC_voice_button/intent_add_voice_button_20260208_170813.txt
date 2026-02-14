@@ -1,0 +1,3 @@
+HOST frontdesk.network
+INTENT_ADD
+{"type":"UI_EXTENSION","name":"VoiceInputButton","scope":"ui_only","description":"Add microphone input as a keyboard-equivalent modality. Voice input transcribes to text and populates the input field only. No autosubmit, no background listening, no privilege escalation.","placement":"input_bar.right_of_send","behavior":"press_to_listen","pipeline":"audio_to_text -> populate_input_field","restrictions":["no_autosubmit","no_background_listen","no_privilege_escalation"],"doctrine":"input_modality_only"}

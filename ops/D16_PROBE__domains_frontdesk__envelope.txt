@@ -1,0 +1,16 @@
+﻿HOST auras.guide
+VERIFIED_FETCH_URL https://frontdesk.network/
+REGISTRY_PUT
+{
+  "type": "domains",
+  "item": {
+    "id": "frontdesk.network",
+    "domain": "frontdesk.network",
+    "pillar": "SYSTEM",
+    "purpose": "D16 evidence-gated put proof",
+    "priority": "PHASE1",
+    "status": "ACTIVE"
+  }
+}
+REGISTRY_GET domains frontdesk.network
+AUDIT_GET

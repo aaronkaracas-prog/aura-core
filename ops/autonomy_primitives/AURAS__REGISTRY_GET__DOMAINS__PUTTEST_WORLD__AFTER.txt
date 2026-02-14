@@ -1,0 +1,2 @@
+HOST auras.guide
+REGISTRY_GET domains puttest.world

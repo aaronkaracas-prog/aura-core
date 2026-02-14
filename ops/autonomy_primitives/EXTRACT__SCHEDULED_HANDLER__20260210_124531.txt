@@ -1,0 +1,72 @@
+(explicit commands only)
+    // ----------------------------
+    for (const line of lines) {
+      if (line.startsWith("INTENT_ADD")) {
+        const m = line.match(/^INTENT_ADD\s+(\S+)\s+(\S+)\s+(.+)$/);
+        if (!m) return jsonReply("BAD_REQUEST");
+        const host = m[1].toLowerCase();
+        const tag = m[2].toLowerCase();
+        const text = m[3];
+
+        const payload = {
+          host,
+          tag,
+          text,
+          created_at: new Date().toISOString(),
+          consent: "EXPLICIT_COMMAND"
+        };
+
+        await env.AURA_KV.put(intentKey(host, tag), JSON.stringify(payload));
+        return jsonReply("INTENT_SAVED");
+      }
+
+      if (line.startsWith("INTENT_GET")) {
+        const parts = line.split(" ").filter(Boolean);
+        const host = (parts[1] || "").toLowerCase();
+        const tag = (parts[2] || "").toLowerCase();
+        if (!host || !tag) return jsonReply("BAD_REQUEST");
+        const stored = await env.AURA_KV.get(intentKey(host, tag));
+        return jsonReply(stored ? stored : "INTENT_MISSING");
+      }
+
+      if (line.startsWith("INTENT_CLEAR")) {
+        if (!isOperator) return jsonReply("UNAUTHORIZED");
+        const parts = line.split(" ").filter(Boolean);
+        const host = (parts[1] || "").toLowerCase();
+        const tag = (parts[2] || "").toLowerCase();
+        if (!host || !tag) return jsonReply("BAD_REQUEST");
+        await env.AURA_KV.delete(intentKey(host, tag));
+        return jsonReply("CLEARED");
+      }
+    }
+    if (lines && lines.length === 1) {
+      const nl = await naturalLanguageReply(lines[0], env, activeHost);
+      if (nl) return jsonReply(nl);
+    }
+
+    return jsonReply("NOT WIRED: VERIFIED_FETCH REQUIRED");
+  
+    } catch (err) {
+      const msg = (err && (err.stack || err.message)) ? (err.stack || err.message) : String(err);
+      return new Response(JSON.stringify({ ok: false, error: msg }), { status: 500, headers: { 'content-type': 'application/json; charset=utf-8' } });
+    }
+},
+
+  async scheduled(event, env, ctx) {
+    try {
+      const prev = await env.AURA_KV.get(autonomyTickKey, { type: "json" });
+      const count = Number((prev && prev.count) || 0) + 1;
+      const payload = {
+        ok: true,
+        ts: new Date().toISOString(),
+        count,
+        build: BUILD,
+        note: "AUTONOMY_LOOP_TICK"
+      };
+      await env.AURA_KV.put(autonomyTickKey, JSON.stringify(payload));
+    } catch (_) {
+      // Fail-closed: never throw from cron.
+    }
+  }
+
+};

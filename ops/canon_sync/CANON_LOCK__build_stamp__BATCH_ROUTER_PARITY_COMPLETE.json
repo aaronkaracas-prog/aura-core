@@ -1,0 +1,16 @@
+﻿{
+    "canon_phase":  "BATCH_ROUTER_PARITY_COMPLETE__BUILD_STAMP_LOCKED",
+    "build":  "AURA_CORE__AUTONOMY_LAYERS__EVIDENCE_ALLOWLIST_HOSTCAPS_OPERATOR_INTENT_PAUSE__MEMORY_SUBSTRATE_V1__REGISTRY_AUDIT__13",
+    "locked_at_utc":  "2026-02-13T01:23:11.7715485Z",
+    "proofs":  {
+                   "build_match":  "PASS",
+                   "malibu_snapshot_stamp":  "2026-02-13T01:19:59.213Z",
+                   "auras_snapshot_stamp":  "2026-02-13T01:20:13.176Z",
+                   "malibu_autonomy_tick":  "2026-02-13T01:19:34.115Z",
+                   "auras_autonomy_tick":  "2026-02-13T01:19:34.115Z"
+               },
+    "host_caps":  {
+                      "malibu_updated_at":  "2026-02-12T14:48:10.462Z",
+                      "auras_updated_at":  "2026-02-10T23:03:29.908Z"
+                  }
+}

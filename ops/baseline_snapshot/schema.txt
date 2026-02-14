@@ -1,0 +1,2 @@
+HOST malibu.city
+SHOW_MEMORY_SCHEMA

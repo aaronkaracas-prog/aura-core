@@ -1,0 +1,4 @@
+HOST auras.guide
+REGISTRY_GET users __privacy__
+REGISTRY_AUDIT_TRAIL users __privacy__
+AUDIT_GET

@@ -1,0 +1,6 @@
+HOST frontdesk.network
+CLEAR_VERIFIED_FETCH frontdesk.network
+EVIDENCE_PRESENT frontdesk.network
+REGISTRY_LIST domains
+VERIFIED_FETCH_URL https://frontdesk.network/
+EVIDENCE_PRESENT frontdesk.network

@@ -1,0 +1,11 @@
+﻿>> HOST auras.guide
+>> VERIFIED_FETCH_URL https://auras.guide/
+>> REGISTRY_PUT
+>> {
+>>   "type": "users",
+>>   "item": {
+>>     "id": "probe_prompt_markers_B",
+>>     "prefs": { "mode": "dirty" }
+>>   }
+>> }
+>> REGISTRY_GET users probe_prompt_markers_B

@@ -1,0 +1,2 @@
+HOST malibu.city
+REGISTRY_PUT assets {"id":"test_autonomy_2","name":"Autonomy Check 2","pillar":"SYSTEM","notes":"Repeatable PUT proof"}

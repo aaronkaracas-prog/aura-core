@@ -1,0 +1,2 @@
+HOST auras.guide
+REGISTRY_PUT canon __put_test__ {"x":1}

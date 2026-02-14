@@ -1,0 +1,11 @@
+HOST auras.guide
+REGISTRY_PUT users {"id":"__privacy_policy__","prefs":{"consent_required":true,"consent_rationale":"recording/remembering requires explicit opt-in","recording_indicator_required":true,"stop_delete_export_controls":true,"commands_requiring_consent":["RECORD_START","REMEMBER_ON","DURABLE_MODE_ON"],"updated_at":"2026-02-13T13:54:52.0577481-08:00"},"intents":[]}
+REGISTRY_GET users __privacy_policy__
+REGISTRY_AUDIT_TRAIL users __privacy_policy__
+REGISTRY_PUT users {"id":"__session_policy__","prefs":{"default_mode":"private","remember_mode_requires_consent":true,"private_is_ephemeral":true,"remember_is_durable":true,"updated_at":"2026-02-13T13:54:52.0577481-08:00"},"intents":[]}
+REGISTRY_GET users __session_policy__
+REGISTRY_AUDIT_TRAIL users __session_policy__
+REGISTRY_PUT users {"id":"__storage_policy__","prefs":{"encryption_at_rest":true,"transport_tls_required":true,"e2e_status":"planned","jurisdiction_aware":true,"export_supported":true,"delete_supported":true,"updated_at":"2026-02-13T13:54:52.0577481-08:00"},"intents":[]}
+REGISTRY_GET users __storage_policy__
+REGISTRY_AUDIT_TRAIL users __storage_policy__
+AUDIT_GET

@@ -1,0 +1,5 @@
+HOST auras.guide
+REGISTRY_PUT users {"id":"__privacy__","prefs":{"recording_state":{"enabled":false,"mode":"private_session_default","indicator_required":true,"updated_at":"2026-02-13T13:50:35.1458158-08:00"},"session_mode":{"default":"private","remember_requires_consent":true,"updated_at":"2026-02-13T13:50:35.1458158-08:00"},"durable_mode":{"enabled":false,"encryption":"at_rest_default","e2e":"planned","updated_at":"2026-02-13T13:50:35.1458158-08:00"}},"intents":[]}
+REGISTRY_GET users __privacy__
+REGISTRY_AUDIT_TRAIL users __privacy__
+AUDIT_GET

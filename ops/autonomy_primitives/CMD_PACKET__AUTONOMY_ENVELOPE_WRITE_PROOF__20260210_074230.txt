@@ -1,0 +1,11 @@
+HOST auras.guide
+AUTONOMY_BUDGET_SET
+{ "host":"auras.guide", "budget": { "limit": 123, "spent": 7, "window":"day" } }
+AUTONOMY_CHARTER_SET
+{ "host":"auras.guide", "charter": { "version": 1, "text":"AUTONOMY_CHARTER_TEST__2026-02-10" } }
+FAILURE_MEMORY_PUT
+{ "host":"auras.guide", "item": { "at":"2026-02-10T00:00:00.000Z", "code":"TEST", "detail":"FAILURE_MEMORY_PUT_WRITE_PROOF" } }
+AUTONOMY_BUDGET_GET
+AUTONOMY_CHARTER_GET
+FAILURE_MEMORY_GET
+AUTONOMY_STATUS

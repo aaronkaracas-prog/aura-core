@@ -1,0 +1,10 @@
+﻿HOST auras.guide
+REGISTRY_PUT assets __tier5_test__
+{
+  "id": "__tier5_test__",
+  "name": "Tier5 Test",
+  "pillar": "CANON",
+  "notes": "Tier5 deterministic persistence validation",
+  "type": "assets",
+  "version": "v1"
+}

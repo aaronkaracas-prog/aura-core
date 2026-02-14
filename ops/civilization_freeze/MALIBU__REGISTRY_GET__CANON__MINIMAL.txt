@@ -1,0 +1,2 @@
+HOST malibu.city
+REGISTRY_GET canon __put_test__

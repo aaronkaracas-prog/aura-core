@@ -1,0 +1,2 @@
+HOST frontdesk.network
+INTENT_ADD {"host":"frontdesk.network","tag":"pause","text":"When PAUSE is active, Aura listens and reflects only. No deployer calls, no registry writes, no DNS actions.","consent":"EXPLICIT_COMMAND"}

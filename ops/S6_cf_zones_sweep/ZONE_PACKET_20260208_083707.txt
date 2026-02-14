@@ -1,0 +1,8 @@
+ZONE_PACKET
+BUILD: AURA_CORE__AUTONOMY_LAYERS__EVIDENCE_ALLOWLIST_HOSTCAPS_OPERATOR_INTENT_PAUSE__MEMORY_SUBSTRATE_V1__REGISTRY_AUDIT__13
+RESULT: OK
+ZONE_COUNT: 151
+SAMPLE_20: addictionhelp.world, adherence.world, adventuretime.world, aistatus.world, alonetime.world, apartmenttime.world, arksolutions.world, arksystems.us, aroundtown.world, aurahello.com, aurahere.world, auras.guide, autotime.world, babytime.world, backofhouse.world, bankops.world, billtime.world, booktime.world, caretime.world, cartime.world
+PAYLOAD_BYTES: 722
+PAYLOAD_SHA256: BFD2435DEF8F3A3E447E97F5EC9D7FADB02072709C45BFEDB9BD413119B60ADB
+END

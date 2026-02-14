@@ -1,0 +1,4 @@
+﻿CANON — HOST_CAPS_SET SHAPE
+- Works: HOST_CAPS_SET {"allowed":[...full allowlist...]}
+- Fails: HOST_CAPS_SET {"allowed_add":[...],"allowed_remove":[...]} => BAD_REQUEST
+Proof date: 2026-02-11

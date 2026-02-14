@@ -1,0 +1,6 @@
+HOST auras.guide
+SHOW_MEMORY_SCHEMA
+REGISTRY_LIST domains
+REGISTRY_FILTER domains {"q":"probe"}
+AUDIT_GET
+SNAPSHOT_STATE

@@ -1,0 +1,14 @@
+HOST auras.guide
+SNAPSHOT_STATE
+
+PAUSE
+
+INTENT_ADD auras.guide phase4_exec_gate gated_exec_candidate
+
+VERIFIED_FETCH_URL https://example.com
+
+EVIDENCE_PRESENT
+
+DEPLOYER_CALL service=AURA_DEPLOYER method=POST path=/noop body={}
+
+SNAPSHOT_STATE

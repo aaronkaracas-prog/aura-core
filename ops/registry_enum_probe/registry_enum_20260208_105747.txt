@@ -1,0 +1,6 @@
+HOST auras.guide
+REGISTRY_PUT domains {
+  "id":"auras.guide",
+  "domain":"auras.guide",
+  "pillar":"infrastructure"
+}

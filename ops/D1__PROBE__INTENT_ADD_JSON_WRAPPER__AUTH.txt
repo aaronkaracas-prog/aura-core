@@ -1,0 +1,4 @@
+HOST auras.guide
+INTENT_ADD {"intent":{"id":"intent-probe-json-20260213_143258","kind":"DOMAIN_ACQUIRE","name":"examplebrand","tlds":".world,.com","purchase_allowed":false}}
+INTENT_SIMULATE intent-probe-json-20260213_143258
+SNAPSHOT_STATE

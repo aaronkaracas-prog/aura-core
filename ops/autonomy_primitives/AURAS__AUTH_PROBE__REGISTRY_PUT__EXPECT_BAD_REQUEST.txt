@@ -1,0 +1,2 @@
+HOST auras.guide
+REGISTRY_PUT domains __auth_probe__ {}

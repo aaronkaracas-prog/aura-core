@@ -1,0 +1,25 @@
+﻿
+> src\index.js:1454:      if (line === "AUTONOMY_LAST_TICK") {
+  src\index.js:1455:        const last = await env.AURA_KV.get(__tickKey);
+  src\index.js:1456:        push("AUTONOMY_LAST_TICK",
+  src\index.js:1457:        { ok: true, host: __host, last_tick: last || null });
+  src\index.js:1458:        continue;
+  src\index.js:1459:      }
+  src\index.js:1460:
+  src\index.js:1461:      if (line === "AUTONOMY_CAPABILITIES") {
+  src\index.js:1462:        push("AUTONOMY_CAPABILITIES", { ok: true, host: __host, 
+capabilities: __capabilities, count: __capabilities.length });
+  src\index.js:1463:        continue;
+  src\index.js:1464:      }
+  src\index.js:1465:
+  src\index.js:1466:      if (line === "AUTONOMY_BUDGET_GET") {
+  src\index.js:1467:        const b = (await __readJsonKV(__budgetKey)) || 
+__defaultBudget;
+  src\index.js:1468:        push("AUTONOMY_BUDGET_GET", { ok: true, host: __host, 
+budget: b });
+  src\index.js:1469:        continue;
+  src\index.js:1470:      }
+  src\index.js:1471:
+  src\index.js:1472:      if (line === "AUTONOMY_CHARTER_GET") {
+
+

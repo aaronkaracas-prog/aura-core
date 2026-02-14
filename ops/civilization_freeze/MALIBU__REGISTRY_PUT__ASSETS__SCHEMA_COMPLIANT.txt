@@ -1,0 +1,2 @@
+HOST malibu.city
+REGISTRY_PUT assets __put_test__ {"id":"__put_test__","name":"PUT TEST","pillar":"CANON","notes":"schema compliant put test"}

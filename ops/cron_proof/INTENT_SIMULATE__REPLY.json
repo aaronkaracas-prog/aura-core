@@ -1,0 +1,1 @@
+{"ok":true,"reply":"[\n  {\n    \"cmd\": \"INTENT_SIMULATE\",\n    \"payload\": {\n      \"ok\": true,\n      \"host\": \"auras.guide\",\n      \"note\": \"preview-only\"\n    }\n  }\n]"}

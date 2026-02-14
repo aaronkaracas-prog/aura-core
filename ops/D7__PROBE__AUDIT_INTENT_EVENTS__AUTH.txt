@@ -1,0 +1,6 @@
+HOST auras.guide
+AUDIT_CLEAR
+INTENT_ADD audit-intent-20260213 audit_tag hello
+INTENT_CLEAR audit-intent-20260213 audit_tag
+AUDIT_GET
+SNAPSHOT_STATE

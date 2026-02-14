@@ -1,0 +1,2 @@
+﻿HOST auras.guide
+REGISTRY_PUT assets {"id":"__canon_registry_put_gate__","name":"REGISTRY_PUT gate rule","pillar":"CANON","notes":"Revalidated 2026-02-13T06:23:00Z","type":"assets","version":"v1"}

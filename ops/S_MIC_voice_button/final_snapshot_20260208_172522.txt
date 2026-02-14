@@ -1,0 +1,3 @@
+SNAPSHOT_STATE
+INTENT_GET frontdesk.network mic
+INTENT_GET frontdesk.network pause

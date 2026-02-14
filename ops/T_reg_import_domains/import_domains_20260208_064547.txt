@@ -1,0 +1,9 @@
+HOST frontdesk.network
+REGISTRY_IMPORT_DOMAINS
+[
+  {"id":"malibu.city","domain":"malibu.city","pillar":"CITYGUIDE","purpose":"import test","status":"ACTIVE","priority":"HIGH"},
+  {"id":"frontdesk.network","domain":"frontdesk.network","pillar":"FRONTDESK","purpose":"import test","status":"ACTIVE","priority":"HIGH"}
+]
+REGISTRY_GET domains {"key":"malibu.city"}
+REGISTRY_GET domains {"key":"frontdesk.network"}
+AUDIT_GET 5

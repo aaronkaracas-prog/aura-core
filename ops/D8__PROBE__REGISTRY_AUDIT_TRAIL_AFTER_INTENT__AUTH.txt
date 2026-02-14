@@ -1,0 +1,6 @@
+HOST auras.guide
+INTENT_ADD audittrail-intent-20260213 audittrail_tag hello
+REGISTRY_AUDIT_TRAIL
+INTENT_CLEAR audittrail-intent-20260213 audittrail_tag
+REGISTRY_AUDIT_TRAIL
+SNAPSHOT_STATE

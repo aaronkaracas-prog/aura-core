@@ -1,0 +1,5 @@
+HOST auras.guide
+DEPLOYER_CAPS
+
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","method":"GET","path":"/"}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","method":"GET","path":"/zones"}

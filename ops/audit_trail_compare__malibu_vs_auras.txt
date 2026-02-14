@@ -1,0 +1,5 @@
+﻿HOST malibu.city
+REGISTRY_AUDIT_TRAIL
+
+HOST auras.guide
+REGISTRY_AUDIT_TRAIL

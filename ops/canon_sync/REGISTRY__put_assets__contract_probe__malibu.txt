@@ -1,0 +1,7 @@
+﻿HOST malibu.city
+REGISTRY_PUT assets canon.test.contract
+{
+  "name": "Canon Test Contract",
+  "pillar": "SYSTEM / CANON",
+  "notes": "Contract probe: id is positional token; JSON omits id."
+}

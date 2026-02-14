@@ -1,0 +1,8 @@
+HOST auras.guide
+REGISTRY_PUT users __put_probe_a__ {"a":1}
+REGISTRY_PUT users __put_probe_b__ {"a":"1"}
+REGISTRY_PUT users __put_probe_c__ {"a":true}
+REGISTRY_PUT users __put_probe_d__ {"a":null}
+REGISTRY_PUT users __put_probe_e__ {"a":[1,2]}
+REGISTRY_PUT users __put_probe_f__ {"a":{"b":1}}
+SNAPSHOT_STATE

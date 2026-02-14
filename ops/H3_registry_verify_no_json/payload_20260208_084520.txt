@@ -1,0 +1,5 @@
+HOST frontdesk.network
+REGISTRY_GET domains frontdesk.network
+REGISTRY_GET domains malibu.city
+REGISTRY_LIST domains 5
+SNAPSHOT_STATE

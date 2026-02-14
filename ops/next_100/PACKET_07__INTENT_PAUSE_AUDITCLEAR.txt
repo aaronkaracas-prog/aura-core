@@ -1,0 +1,9 @@
+HOST frontdesk.network
+PAUSE
+INTENT_CLEAR frontdesk.network test
+INTENT_ADD frontdesk.network test {"k":"v","ts":"OP_PROOF"}
+INTENT_GET frontdesk.network test
+VERIFIED_FETCH_URL https://frontdesk.network/
+AUDIT_CLEAR
+AUDIT_GET
+SNAPSHOT_STATE

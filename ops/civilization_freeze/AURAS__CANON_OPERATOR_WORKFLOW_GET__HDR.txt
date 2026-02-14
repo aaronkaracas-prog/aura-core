@@ -1,0 +1,2 @@
+HOST auras.guide
+REGISTRY_GET assets canon.operator_token_workflow_v1

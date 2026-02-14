@@ -1,0 +1,516 @@
+﻿===== ALLOWED_COMMANDS (ctx) =====
+PATTERN: const\s+allowedCommands\s*=\s*\[
+LINES: 452-522
+    const allowedCommands = [
+      "PING",
+      "SHOW_BUILD",
+      "SHOW_CLAIM_GATE",
+      "SHOW_ALLOWED_COMMANDS",
+      "RUN_SELF_TEST_EVIDENCE",
+      "VERIFIED_FETCH_URL",
+      "CLEAR_VERIFIED_FETCH",
+      "EVIDENCE_PRESENT",
+      "SNAPSHOT_STATE",
+      "HOST_CAPS_GET",
+      "HOST_CAPS_SET",
+      "DEPLOYER_CAPS",
+      "DEPLOYER_CALL",
+      "PAUSE",
+      "INTENT_ADD",
+      "INTENT_GET",
+      "INTENT_CLEAR",
+      "SHOW_MEMORY_SCHEMA",
+      "REGISTRY_PUT",
+      "REGISTRY_GET",
+      "REGISTRY_LIST",
+      "REGISTRY_FILTER",
+      "REGISTRY_IMPORT_ASSETS",
+      "REGISTRY_IMPORT_DOMAINS",
+      "PORTFOLIO_STATUS",
+      "AUDIT_GET",
+      "AUDIT_CLEAR",
+      "HERD_STATUS",
+      "HERD_SELF_TEST",
+      "HERD_SWEEP",
+  "AUTONOMY_STATUS",
+  "AUTONOMY_LAST_TICK",
+        "AUTONOMY_LAST_TICK_SET",
+  "AUTONOMY_LAST_TICK_SET",
+  "AUTONOMY_CAPABILITIES",
+  "INTENT_SIMULATE",
+  "REGISTRY_AUDIT_TRAIL",
+  "AUTONOMY_BUDGET_GET",
+  "AUTONOMY_BUDGET_SET",
+  "FAILURE_MEMORY_GET",
+  "FAILURE_MEMORY_PUT",
+  "AUTONOMY_CHARTER_GET",
+  "AUTONOMY_CHARTER_SET",
+];
+
+    // ----------------------------
+    // Helpers
+    // ----------------------------
+    const normalizeHost = (u) => {
+      try {
+        return new URL(u).host.toLowerCase();
+      } catch {
+        return null;
+      }
+    };
+
+    // Accept either a full URL or a bare domain token.
+    const normalizeHostLoose = (s) => {
+      if (!s) return null;
+      const h = normalizeHost(s);
+      if (h) return h;
+      const t = String(s).trim().toLowerCase();
+      if (!t) return null;
+      // Basic sanity: must contain a dot and only valid hostname chars.
+      if (!t.includes(".")) return null;
+      if (!/^[a-z0-9.-]+$/.test(t)) return null;
+      return t;
+    };
+
+    const extractLastUrl = (txt) => {
+===== AUTONOMY_BLOCK (ctx) =====
+PATTERN: const\s+__capabilities\s*=\s*\[
+LINES: 1431-1501
+      const __capabilities = [
+        "AUTONOMY_STATUS",
+        "AUTONOMY_LAST_TICK",
+        "AUTONOMY_LAST_TICK_SET",
+  "AUTONOMY_LAST_TICK_SET",
+        "AUTONOMY_CAPABILITIES",
+        "AUTONOMY_BUDGET_GET",
+        "AUTONOMY_BUDGET_SET",
+        "AUTONOMY_CHARTER_GET",
+        "AUTONOMY_CHARTER_SET",
+        "FAILURE_MEMORY_GET",
+        "FAILURE_MEMORY_PUT",
+        "REGISTRY_AUDIT_TRAIL",
+        "INTENT_SIMULATE"
+      ];
+
+      if (line === "AUTONOMY_LAST_TICK") {
+        const last = await env.AURA_KV.get(__tickKey);
+const cron = await env.AURA_KV.get(autonomyTickKey, { type: "json" }).catch(()=>null);
+const cronTs = (cron && (cron.ts || cron.stamp)) ? String(cron.ts || cron.stamp) : null;
+const chosen = (!last ? cronTs : (cronTs && String(cronTs) > String(last) ? cronTs : last));
+push("AUTONOMY_LAST_TICK", { ok: true, host: __host, last_tick: (chosen || null) });
+        continue;
+      }
+
+      if (line === "AUTONOMY_CAPABILITIES") {
+        push("AUTONOMY_CAPABILITIES", { ok: true, host: __host, capabilities: __capabilities, count: __capabilities.length });
+        continue;
+      }
+
+      if (line === "AUTONOMY_BUDGET_GET") {
+        const b = (await __readJsonKV(__budgetKey)) || __defaultBudget;
+        push("AUTONOMY_BUDGET_GET", { ok: true, host: __host, budget: b });
+        continue;
+      }
+
+      if (line === "AUTONOMY_CHARTER_GET") {
+        const c = (await __readJsonKV(__charterKey)) || __defaultCharter;
+        push("AUTONOMY_CHARTER_GET", { ok: true, host: __host, charter: c });
+        continue;
+      }
+
+      if (line === "FAILURE_MEMORY_GET") {
+        const fm = (await __readJsonKV(__failKey)) || [];
+        push("FAILURE_MEMORY_GET", { ok: true, host: __host, items: fm, count: Array.isArray(fm) ? fm.length : 0 });
+        continue;
+      }
+
+      if (line === "REGISTRY_AUDIT_TRAIL") {
+        // Reuse the existing audit substrate as the authoritative trail output for now.
+        // Deterministic: returns latest 50 events (or fewer) using existing auditList().
+        push("REGISTRY_AUDIT_TRAIL", { ok: true, host: __host, trail: await auditList(env, String(activeHost || "frontdesk.network").toLowerCase(), 50) });
+        continue;
+      }
+
+      if (line === "AUTONOMY_STATUS") {
+        const b = (await __readJsonKV(__budgetKey)) || __defaultBudget;
+        const c = (await __readJsonKV(__charterKey)) || __defaultCharter;
+        const last = await env.AURA_KV.get(__tickKey);
+        push("AUTONOMY_STATUS", {
+          ok: true,
+          host: __host,
+          build: BUILD,
+          stamp: nowIso(),
+          evidence_present_for_active_host: activeHost ? Boolean(await env.AURA_KV.get(evidenceKey(String(activeHost).toLowerCase()))) : false,
+          budget: b,
+          charter: c,
+          last_tick: (await (async()=>{ const cron = await env.AURA_KV.get(autonomyTickKey, { type: "json" }).catch(()=>null); const cronTs = (cron && (cron.ts || cron.stamp)) ? String(cron.ts || cron.stamp) : null; const chosen = (!last ? cronTs : (cronTs && String(cronTs) > String(last) ? cronTs : last)); return chosen || null; })()),
+          capabilities_count: __capabilities.length
+        });
+        continue;
+===== REGISTRY_AUDIT_TRAIL (ctx) =====
+PATTERN: if\s*\(\s*line\s*===\s*"REGISTRY_AUDIT_TRAIL"\s*\)
+LINES: 1479-1514
+      if (line === "REGISTRY_AUDIT_TRAIL") {
+        // Reuse the existing audit substrate as the authoritative trail output for now.
+        // Deterministic: returns latest 50 events (or fewer) using existing auditList().
+        push("REGISTRY_AUDIT_TRAIL", { ok: true, host: __host, trail: await auditList(env, String(activeHost || "frontdesk.network").toLowerCase(), 50) });
+        continue;
+      }
+
+      if (line === "AUTONOMY_STATUS") {
+        const b = (await __readJsonKV(__budgetKey)) || __defaultBudget;
+        const c = (await __readJsonKV(__charterKey)) || __defaultCharter;
+        const last = await env.AURA_KV.get(__tickKey);
+        push("AUTONOMY_STATUS", {
+          ok: true,
+          host: __host,
+          build: BUILD,
+          stamp: nowIso(),
+          evidence_present_for_active_host: activeHost ? Boolean(await env.AURA_KV.get(evidenceKey(String(activeHost).toLowerCase()))) : false,
+          budget: b,
+          charter: c,
+          last_tick: (await (async()=>{ const cron = await env.AURA_KV.get(autonomyTickKey, { type: "json" }).catch(()=>null); const cronTs = (cron && (cron.ts || cron.stamp)) ? String(cron.ts || cron.stamp) : null; const chosen = (!last ? cronTs : (cronTs && String(cronTs) > String(last) ? cronTs : last)); return chosen || null; })()),
+          capabilities_count: __capabilities.length
+        });
+        continue;
+      }
+
+      // SET/PUT are envelope-gated (files/packets): JSON must be provided on subsequent non-command lines.
+// Deterministic: parse envelope, write KV, return readback payload.
+const __readEnvelopeJson = () => {
+  // Consume subsequent non-command lines as JSON text.
+  // Stops when the next allowed command token begins.
+  let j = i + 1;
+  const buf = [];
+  while (j < lines.length) {
+    const l = lines[j];
+    if (!l) { j++; continue; }
+    if (l.startsWith("HOST ")) { j++; continue; }
+===== REGISTRY_GET (batch) (ctx) =====
+PATTERN: if\s*\(\s*line\.startsWith\("REGISTRY_GET"\)\s*\)
+LINES: 1806-1841
+    if (line.startsWith("REGISTRY_GET")) {
+      const args = __parseRegistryGetArgs(line, lines, i, allowedCommands);
+      if (!args || !args.type || !args.id) { push("REGISTRY_GET", "BAD_REQUEST"); continue; }
+      const e = await registryGet(env, args.type, args.id);
+      push(`REGISTRY_GET ${args.type} ${args.id}`, e ? e : "MISSING");
+      continue;
+    }
+
+    if (line.startsWith("REGISTRY_LIST")) {
+      const parts = line.split(" ").filter(Boolean);
+      const type = String(parts[1] || "").toLowerCase();
+      const limit = Number(parts[2] || 50);
+
+      // Allow bare REGISTRY_LIST to return an overview (useful for autonomy flows)
+      if (!type) {
+        const types = ["assets", "domains"];
+        const overview = {};
+        for (const t of types) {
+          try {
+            const ids = await registryGetIndex(env, t);
+            overview[t] = { type: t, count: ids.length };
+          } catch (e) {
+            overview[t] = { type: t, count: null, error: String(e && e.message ? e.message : e) };
+          }
+        }
+        push("REGISTRY_LIST", { registries: overview });
+        continue;
+      }
+
+      const payload = await registryList(env, type, limit);
+      push(`REGISTRY_LIST ${type}`, payload);
+      continue;
+    }
+
+    if (line.startsWith("REGISTRY_FILTER")) {
+      const raw = line.slice("REGISTRY_FILTER".length).trim();
+===== REGISTRY_GET (batch) (ctx) =====
+PATTERN: if\s*\(\s*line\.startsWith\("REGISTRY_GET"\)\s*\)
+LINES: 2651-2686
+  if (line.startsWith("REGISTRY_GET")) {
+    const parts = line.split(" ").filter(Boolean);
+    const type = String(parts[1] || "").toLowerCase();
+    const id = String(parts[2] || "").trim();
+    if (!type || !id) return jsonReply("BAD_REQUEST");
+    const e = await registryGet(env, type, id);
+    return jsonReply(e ? JSON.stringify(e, null, 2) : "MISSING");
+  }
+}
+
+// REGISTRY_LIST <type> [limit]
+for (const line of lines) {
+  if (line.startsWith("REGISTRY_LIST")) {
+    const parts = line.split(" ").filter(Boolean);
+    const type = String(parts[1] || "").toLowerCase();
+    const limit = Number(parts[2] || 50);
+    if (!type) return jsonReply("BAD_REQUEST");
+    const payload = await registryList(env, type, limit);
+    return jsonReply(JSON.stringify(payload, null, 2));
+  }
+}
+
+// REGISTRY_FILTER <type> <field> <value> [limit]
+for (const line of lines) {
+  if (line.startsWith("REGISTRY_FILTER")) {
+    const raw = line.slice("REGISTRY_FILTER".length).trim();
+    let type = "";
+    let field = "";
+    let value = "";
+    let limit = 50;
+    let where = null;
+
+    if (raw.startsWith("{")) {
+      const obj = safeJsonParse(raw);
+      if (!obj || typeof obj !== "object") return jsonReply("BAD_REQUEST");
+      type = String(obj.type || "").toLowerCase();
+===== REGISTRY_PUT (batch) (ctx) =====
+PATTERN: if\s*\(\s*line\.startsWith\("REGISTRY_PUT"\)\s*\)
+LINES: 1653-1693
+    if (line.startsWith("REGISTRY_PUT")) {
+      if (!isOperator) { push("REGISTRY_PUT", "NOT_ALLOWED"); continue; }
+
+      const args = __parseRegistryPutArgs(line, lines, i, allowedCommands);
+      if (!args || !args.type || !args.item) { push("REGISTRY_PUT", "BAD_REQUEST"); continue; }
+
+      const _t = String(args.type).toLowerCase();
+      const item = args.item;
+
+      // Legacy convenience: allow domain puts where id omitted but domain provided.
+      if ((!item.id || !String(item.id).trim()) && _t === "domains") {
+        const maybe = String(item.domain || item.key || "").trim().toLowerCase();
+        if (maybe) item.id = maybe;
+      }
+
+      if (!_t || !item || !item.id) { push("REGISTRY_PUT", "BAD_REQUEST"); continue; }
+
+      const _hostToGate = __domainHostFromRegistryEntry(_t, item);
+      if (_hostToGate && (_t === "domains" || _t === "assets")) {
+        const _ev = await __getHostEvidence(_hostToGate);
+        if (!_ev) { push("REGISTRY_PUT", "NOT_ALLOWED"); continue; }
+      }
+
+      const put = await registryPut(env, _t, item);
+      push("REGISTRY_PUT", put);
+      continue;
+    }
+
+    if (line.startsWith("REGISTRY_IMPORT_ASSETS")) {
+      if (!isOperator) { push("REGISTRY_IMPORT_ASSETS", "NOT_ALLOWED"); continue; }
+
+      const parsedArgs = __parseRegistryImportArgs("REGISTRY_IMPORT_ASSETS", line, lines, i, allowedCommands);
+      if (!parsedArgs) { push("REGISTRY_IMPORT_ASSETS", "BAD_REQUEST"); continue; }
+      const items = parsedArgs.items;
+
+      const idsBefore = await registryGetIndex(env, "assets");
+      const ids = [...idsBefore];
+      let upserts = 0;
+
+      for (const it of items) {
+        if (!it || typeof it !== "object") continue;
+===== REGISTRY_GET (simple) (ctx) =====
+PATTERN: if\s*\(\s*line\.startsWith\("REGISTRY_GET"\)\s*\)\s*\{
+LINES: 1806-1831
+    if (line.startsWith("REGISTRY_GET")) {
+      const args = __parseRegistryGetArgs(line, lines, i, allowedCommands);
+      if (!args || !args.type || !args.id) { push("REGISTRY_GET", "BAD_REQUEST"); continue; }
+      const e = await registryGet(env, args.type, args.id);
+      push(`REGISTRY_GET ${args.type} ${args.id}`, e ? e : "MISSING");
+      continue;
+    }
+
+    if (line.startsWith("REGISTRY_LIST")) {
+      const parts = line.split(" ").filter(Boolean);
+      const type = String(parts[1] || "").toLowerCase();
+      const limit = Number(parts[2] || 50);
+
+      // Allow bare REGISTRY_LIST to return an overview (useful for autonomy flows)
+      if (!type) {
+        const types = ["assets", "domains"];
+        const overview = {};
+        for (const t of types) {
+          try {
+            const ids = await registryGetIndex(env, t);
+            overview[t] = { type: t, count: ids.length };
+          } catch (e) {
+            overview[t] = { type: t, count: null, error: String(e && e.message ? e.message : e) };
+          }
+        }
+        push("REGISTRY_LIST", { registries: overview });
+===== REGISTRY_GET (simple) (ctx) =====
+PATTERN: if\s*\(\s*line\.startsWith\("REGISTRY_GET"\)\s*\)\s*\{
+LINES: 2651-2676
+  if (line.startsWith("REGISTRY_GET")) {
+    const parts = line.split(" ").filter(Boolean);
+    const type = String(parts[1] || "").toLowerCase();
+    const id = String(parts[2] || "").trim();
+    if (!type || !id) return jsonReply("BAD_REQUEST");
+    const e = await registryGet(env, type, id);
+    return jsonReply(e ? JSON.stringify(e, null, 2) : "MISSING");
+  }
+}
+
+// REGISTRY_LIST <type> [limit]
+for (const line of lines) {
+  if (line.startsWith("REGISTRY_LIST")) {
+    const parts = line.split(" ").filter(Boolean);
+    const type = String(parts[1] || "").toLowerCase();
+    const limit = Number(parts[2] || 50);
+    if (!type) return jsonReply("BAD_REQUEST");
+    const payload = await registryList(env, type, limit);
+    return jsonReply(JSON.stringify(payload, null, 2));
+  }
+}
+
+// REGISTRY_FILTER <type> <field> <value> [limit]
+for (const line of lines) {
+  if (line.startsWith("REGISTRY_FILTER")) {
+    const raw = line.slice("REGISTRY_FILTER".length).trim();
+===== PARSE_ARGS (defs) =====
+PATTERN: function\s+__parseRegistry(Get|Put|Import)Args
+LINES: 603-648
+function __parseRegistryPutArgs(line, lines, idx, allowedCommands) {
+  // Returns { type, item, nextIndex } or null
+  const token = "REGISTRY_PUT";
+  const { text, nextIndex } = __collectJsonText(token, line, lines, idx, allowedCommands);
+  if (!text) return null;
+
+  // 1) JSON envelope: {"type":"domains","item":{...}}
+  const direct = safeJsonParse(text);
+  if (direct && typeof direct === "object") {
+    if (direct.type && direct.item) {
+      return { type: String(direct.type).toLowerCase(), item: direct.item, nextIndex };
+    }
+  }
+
+  // 2) Legacy: "<type> <json>"
+  const m = text.match(/^(\S+)\s+([\s\S]+)$/);
+  if (!m) return null;
+  const type = String(m[1] || "").toLowerCase().trim();
+  const item = safeJsonParse(String(m[2] || "").trim());
+  if (!type || !item || typeof item !== "object") return null;
+  return { type, item, nextIndex };
+}
+
+function __parseRegistryGetArgs(line, lines, idx, allowedCommands) {
+  // Supports:
+  //  - REGISTRY_GET <type> <id>
+  //  - REGISTRY_GET <type> {"key":"id"}  (legacy shape)
+  //  - REGISTRY_GET <type>               then {"key":"id"} on next lines
+  const parts = String(line || "").trim().split(/\s+/).filter(Boolean);
+  const type = String(parts[1] || "").toLowerCase().trim();
+  if (!type) return null;
+
+  if (parts.length >= 3) {
+    const rest = String(parts.slice(2).join(" ")).trim();
+    if (!rest) return null;
+    if (rest.startsWith("{") || rest.startsWith("[")) {
+      const obj = safeJsonParse(rest);
+      const key = obj && typeof obj === "object" ? (obj.key || obj.id || obj.domain) : null;
+      const id = String(key || "").trim();
+      if (!id) return null;
+      return { type, id, nextIndex: idx };
+    }
+    return { type, id: String(rest).trim(), nextIndex: idx };
+  }
+
+  // No id on the same line  collect JSON below
+===== PARSE_ARGS (defs) =====
+PATTERN: function\s+__parseRegistry(Get|Put|Import)Args
+LINES: 626-671
+function __parseRegistryGetArgs(line, lines, idx, allowedCommands) {
+  // Supports:
+  //  - REGISTRY_GET <type> <id>
+  //  - REGISTRY_GET <type> {"key":"id"}  (legacy shape)
+  //  - REGISTRY_GET <type>               then {"key":"id"} on next lines
+  const parts = String(line || "").trim().split(/\s+/).filter(Boolean);
+  const type = String(parts[1] || "").toLowerCase().trim();
+  if (!type) return null;
+
+  if (parts.length >= 3) {
+    const rest = String(parts.slice(2).join(" ")).trim();
+    if (!rest) return null;
+    if (rest.startsWith("{") || rest.startsWith("[")) {
+      const obj = safeJsonParse(rest);
+      const key = obj && typeof obj === "object" ? (obj.key || obj.id || obj.domain) : null;
+      const id = String(key || "").trim();
+      if (!id) return null;
+      return { type, id, nextIndex: idx };
+    }
+    return { type, id: String(rest).trim(), nextIndex: idx };
+  }
+
+  // No id on the same line  collect JSON below
+  const { text, nextIndex } = __collectJsonText("REGISTRY_GET", line, lines, idx, allowedCommands);
+  const obj = safeJsonParse(text);
+  const key = obj && typeof obj === "object" ? (obj.key || obj.id || obj.domain) : null;
+  const id = String(key || "").trim();
+  if (!id) return null;
+  return { type, id, nextIndex };
+}
+
+function __parseRegistryImportArgs(token, line, lines, idx, allowedCommands) {
+  const { text, nextIndex } = __collectJsonText(token, line, lines, idx, allowedCommands);
+  if (!text) return null;
+  const parsed = safeJsonParse(text);
+  if (!parsed) return null;
+  const items = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.items) ? parsed.items : null);
+  if (!items) return null;
+  return { parsed, items, nextIndex };
+}
+
+
+const auditWrite = async (env, host, event) => {
+  const ts = nowIso();
+  const seqRaw = await env.AURA_KV.get(auditSeqKey(host));
+  const seq = Number(seqRaw || 0) + 1;
+===== PARSE_ARGS (defs) =====
+PATTERN: function\s+__parseRegistry(Get|Put|Import)Args
+LINES: 657-702
+function __parseRegistryImportArgs(token, line, lines, idx, allowedCommands) {
+  const { text, nextIndex } = __collectJsonText(token, line, lines, idx, allowedCommands);
+  if (!text) return null;
+  const parsed = safeJsonParse(text);
+  if (!parsed) return null;
+  const items = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.items) ? parsed.items : null);
+  if (!items) return null;
+  return { parsed, items, nextIndex };
+}
+
+
+const auditWrite = async (env, host, event) => {
+  const ts = nowIso();
+  const seqRaw = await env.AURA_KV.get(auditSeqKey(host));
+  const seq = Number(seqRaw || 0) + 1;
+  await env.AURA_KV.put(auditSeqKey(host), String(seq));
+
+  const payload = { seq, ts, ...event };
+
+  await env.AURA_KV.put(auditEventKey(host, seq), JSON.stringify(payload));
+  return payload;
+};
+
+const auditList = async (env, host, limit = 50) => {
+  const seqRaw = await env.AURA_KV.get(auditSeqKey(host));
+  const seq = Number(seqRaw || 0);
+  const out = [];
+  const start = Math.max(1, seq - limit + 1);
+  for (let i = start; i <= seq; i++) {
+    const s = await env.AURA_KV.get(auditEventKey(host, i));
+    if (!s) continue;
+    const p = safeJsonParse(s) || s;
+    out.push(p);
+  }
+  return { seq, events: out };
+};
+
+const registryGetIndex = async (env, type) => {
+  const raw = await env.AURA_KV.get(registryIndexKey(type));
+  const parsed = raw ? safeJsonParse(raw) : null;
+  if (Array.isArray(parsed)) return parsed;
+  return [];
+};
+
+const registryPutIndex = async (env, type, ids) => {
+  const clean = [...new Set((ids || []).filter((x) => typeof x === "string" && x.trim()))];
+===== CANON TOKENS (search) =====
+NO_MATCH (canon_sync|CANON_SYNC|canonical_asset_bodies|canon_sync_v1)

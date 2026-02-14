@@ -1,0 +1,6 @@
+HOST malibu.city
+VERIFIED_FETCH_URL https://malibu.city
+SNAPSHOT_STATE
+REGISTRY_PUT domains {"id":"malibu.city","domain":"malibu.city","purpose":"host-scoped write test","pillar":"CITYGUIDE","status":"ACTIVE","priority":"HIGH"}
+REGISTRY_GET domains {"key":"malibu.city"}
+AUDIT_GET 5

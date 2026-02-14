@@ -1,0 +1,10 @@
+HOST auras.guide
+SNAPSHOT_STATE
+
+PAUSE
+
+INTENT_ADD auras.guide phase4_wake test_wake_signal
+
+INTENT_GET auras.guide phase4_wake
+
+SNAPSHOT_STATE

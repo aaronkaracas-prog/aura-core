@@ -1,0 +1,1 @@
+{"ok":true,"reply":"[\n  {\n    \"cmd\": \"REGISTRY_AUDIT_TRAIL\",\n    \"payload\": {\n      \"ok\": true,\n      \"host\": \"auras.guide\",\n      \"trail\": {\n        \"seq\": 0,\n        \"events\": []\n      }\n    }\n  }\n]"}

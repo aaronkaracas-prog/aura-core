@@ -1,0 +1,8 @@
+﻿HOST malibu.city
+REGISTRY_PUT assets canon.test.ascii
+{
+  "id": "canon.test.ascii",
+  "name": "Canon Test ASCII",
+  "pillar": "CORE/CANON",
+  "notes": "Write-test for REGISTRY_PUT assets. ASCII only."
+}

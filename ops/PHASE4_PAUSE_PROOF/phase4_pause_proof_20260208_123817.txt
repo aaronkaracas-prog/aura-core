@@ -1,0 +1,7 @@
+HOST auras.guide
+SNAPSHOT_STATE
+
+# --- PAUSE canonical minimal ---
+PAUSE
+
+SNAPSHOT_STATE

@@ -1,0 +1,3 @@
+﻿HOST malibu.city
+REGISTRY_PUT {"type":"assets","item":{"id":"audit_host_probe_malibu__20260212_111844","name":"Audit Host Isolation Probe (malibu.city)","pillar":"SYSTEM / AUDIT","notes":"If AUDIT is host-isolated, this event should appear only when active_host=malibu.city.","tags":["audit","probe","malibu.city"],"sellability":"NEVER_SELL"}}
+AUDIT_GET

@@ -1,0 +1,3 @@
+HOST malibu.city
+REGISTRY_PUT domains
+{"id":"malibu-set-proof-001","domain":"malibu-set-proof-001.example","pillar":"TEST","purpose":"SET_NOOP_ISOLATION","status":"ACTIVE"}

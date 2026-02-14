@@ -1,0 +1,2 @@
+HOST malibu.city
+REGISTRY_GET assets test_autonomy

@@ -1,0 +1,3 @@
+HOST auras.guide
+SHOW_BUILD
+AUTONOMY_STATUS

@@ -1,0 +1,2 @@
+HOST frontdesk.network
+SHOW_ENV AURA_DEPLOYER

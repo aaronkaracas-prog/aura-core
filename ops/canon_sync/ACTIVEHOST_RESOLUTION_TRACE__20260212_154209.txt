@@ -1,0 +1,519 @@
+﻿=== REQUEST HOST DERIVATION ===
+=== ACTIVE HOST RESOLUTION ===
+=== NOT_ALLOWED PRE-SCAN ===
+
+=== REQUEST HOST DERIVATION ===
+
+
+---
+index.js:351
+    const url = new URL(request.url);
+
+    // ----------------------------
+    // Operator auth (explicit only)  computed early (used by NL responses)
+    // ----------------------------
+    const operatorToken = env.AURA_OPERATOR_TOKEN || env.AURA_OP_TOKEN || env.OPERATOR_TOKEN || "";
+    const operatorHeader =
+      request.headers.get("x-operator-token") ||
+      request.headers.get("X-Operator-Token") ||
+      request.headers.get("x-aura-operator") ||
+      request.headers.get("X-Aura-Operator") ||
+      request.headers.get("x-aura-operator-token") ||
+      request.headers.get("X-Aura-Operator-Token") ||
+      (() => {
+        const a =
+          request.headers.get("authorization") ||
+          request.headers.get("Authorization") ||
+          "";
+        const m = a.match(/^Bearer\s+(.+)$/i);
+        return m ? m[1] : "";
+      })() ||
+      "";
+    const isOperator = Boolean(operatorToken) && String(operatorHeader || "").trim() === String(operatorToken || "").trim();
+
+---
+index.js:1178
+  const selfHost = new URL(request.url).host.toLowerCase();
+
+  if (host === selfHost) {
+    const evidence = {
+      ok: true,
+      host,
+      url: target,
+      probe_url: null,
+      http_status: 200,
+      first_line_html: "SELF_HOST_SYNTHETIC_EVIDENCE",
+      body_length: 0,
+      synthetic: true,
+      reason: "WORKER_SELF_ROUTE_ASSUME_REACHABLE",
+      diagnostics: { cf: request.cf || null, self_host: selfHost, ts: nowTs }
+    };
+    await env.AURA_KV.put(evidenceKey(host), JSON.stringify(evidence));
+    return evidence;
+  }
+
+  try {
+    const { res: res1, text: text1 } = await runFetch(target);
+
+    if (res1.status === 525) {
+
+---
+index.js:2374
+      const selfHost = new URL(request.url).host.toLowerCase();
+      if (host === selfHost) {
+        const evidence = {
+          ok: true,
+          host,
+          url: target,
+          probe_url: null,
+          http_status: 200,
+          first_line_html: "SELF_HOST_SYNTHETIC_EVIDENCE",
+          body_length: 0,
+          synthetic: true,
+          reason: "WORKER_SELF_ROUTE_ASSUME_REACHABLE",
+          diagnostics: {
+            cf: request.cf || null,
+            self_host: selfHost,
+            ts: nowTs
+          }
+        };
+
+        await env.AURA_KV.put(evidenceKey(host), JSON.stringify(evidence));
+        lastEvidence = evidence;
+        fetchEvidences.push(evidence);
+        continue;
+
+=== ACTIVE HOST RESOLUTION ===
+
+
+---
+index.js:522
+    const extractLastUrl = (txt) => {
+      const matches = [...txt.matchAll(/https?:\/\/[^\s]+/g)];
+      return matches.length ? matches[matches.length - 1][0] : null;
+    };
+
+    // Extract a bare domain mention like example.com (no scheme).
+    // Returns the last plausible domain token found in the message.
+    const extractLastBareDomain = (txt) => {
+      // labels + TLD; excludes trailing punctuation due to \b
+      const re =
+        /\b([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+)\b/gi;
+      const matches = [];
+      let m;
+      while ((m = re.exec(txt)) !== null) {
+        const d = (m[1] || "").toLowerCase();
+        if (!d) continue;
+        if (d === "localhost") continue;
+        matches.push(d);
+      }
+      return matches.length ? matches[matches.length - 1] : null;
+    };
+
+    const statusReachable = (st) => Number(st) >= 200 && Number(st) < 400;
+    const evidenceKey = (host) => `verified_fetch:${host}`;
+    const capsKey = (host) => `host_caps:${host}`;
+    const intentKey = (host, tag) => `intent:${host}:${tag}`;
+// ----------------------------
+// Memory Substrate v1 (storage-backed; no model memory)
+// ----------------------------
+const REGISTRY_VERSION = "v1";
+
+const registryKey = (type, id) => `reg:${REGISTRY_VERSION}:${type}:${id}`;
+const registryIndexKey = (type) => `reg:${REGISTRY_VERSION}:index:${type}`;
+const registryMetaKey = (type) => `reg:${REGISTRY_VERSION}:meta:${type}`;
+
+const auditSeqKey = (host) => `audit:${REGISTRY_VERSION}:${host}:seq`;
+
+---
+index.js:529
+    const extractLastBareDomain = (txt) => {
+      // labels + TLD; excludes trailing punctuation due to \b
+      const re =
+        /\b([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+)\b/gi;
+      const matches = [];
+      let m;
+      while ((m = re.exec(txt)) !== null) {
+        const d = (m[1] || "").toLowerCase();
+        if (!d) continue;
+        if (d === "localhost") continue;
+        matches.push(d);
+      }
+      return matches.length ? matches[matches.length - 1] : null;
+    };
+
+    const statusReachable = (st) => Number(st) >= 200 && Number(st) < 400;
+    const evidenceKey = (host) => `verified_fetch:${host}`;
+    const capsKey = (host) => `host_caps:${host}`;
+    const intentKey = (host, tag) => `intent:${host}:${tag}`;
+// ----------------------------
+// Memory Substrate v1 (storage-backed; no model memory)
+// ----------------------------
+const REGISTRY_VERSION = "v1";
+
+const registryKey = (type, id) => `reg:${REGISTRY_VERSION}:${type}:${id}`;
+const registryIndexKey = (type) => `reg:${REGISTRY_VERSION}:index:${type}`;
+const registryMetaKey = (type) => `reg:${REGISTRY_VERSION}:meta:${type}`;
+
+const auditSeqKey = (host) => `audit:${REGISTRY_VERSION}:${host}:seq`;
+const auditEventKey = (host, seq) => `audit:${REGISTRY_VERSION}:${host}:event:${seq}`;
+const auditClearedAtKey = (host) => `audit:${REGISTRY_VERSION}:${host}:cleared_at`;
+
+const nowIso = () => new Date().toISOString();
+
+const safeJsonParse = (s) => {
+  try {
+
+---
+index.js:1034
+    let explicitHost = null;
+    for (const line of lines) {
+      if (line.startsWith("HOST ")) {
+        const parts = line.split(" ").filter(Boolean);
+        if (parts[1]) explicitHost = parts[1].toLowerCase();
+      }
+    }
+
+    const askedUrl = extractLastUrl(body);
+    const askedHostFromUrl = askedUrl ? normalizeHost(askedUrl) : null;
+
+    // If no URL was provided, try to extract a bare domain mention from the message.
+    const askedHostFromBare = askedHostFromUrl ? null : extractLastBareDomain(body);
+
+    // Prefer explicit HOST context for "active host", but for questions we will prefer the asked host.
+    const askedHost = askedHostFromUrl || askedHostFromBare || null;
+    const activeHost = explicitHost || askedHost || null;
+
+    const getHostCaps = async (host) => {
+      if (!host) return null;
+      const stored = await env.AURA_KV.get(capsKey(host));
+      if (!stored) return null;
+      try {
+        const parsed = JSON.parse(stored);
+        if (parsed && Array.isArray(parsed.allowed)) return parsed;
+        return null;
+      } catch {
+        return null;
+      }
+    };
+
+    const hostCaps = await getHostCaps(activeHost);
+
+    const isAllowedForHost = (cmd) => {
+      if (!hostCaps) return true;
+      return hostCaps.allowed.includes(cmd);
+
+---
+index.js:1038
+        if (parts[1]) explicitHost = parts[1].toLowerCase();
+      }
+    }
+
+    const askedUrl = extractLastUrl(body);
+    const askedHostFromUrl = askedUrl ? normalizeHost(askedUrl) : null;
+
+    // If no URL was provided, try to extract a bare domain mention from the message.
+    const askedHostFromBare = askedHostFromUrl ? null : extractLastBareDomain(body);
+
+    // Prefer explicit HOST context for "active host", but for questions we will prefer the asked host.
+    const askedHost = askedHostFromUrl || askedHostFromBare || null;
+    const activeHost = explicitHost || askedHost || null;
+
+    const getHostCaps = async (host) => {
+      if (!host) return null;
+      const stored = await env.AURA_KV.get(capsKey(host));
+      if (!stored) return null;
+      try {
+        const parsed = JSON.parse(stored);
+        if (parsed && Array.isArray(parsed.allowed)) return parsed;
+        return null;
+      } catch {
+        return null;
+      }
+    };
+
+    const hostCaps = await getHostCaps(activeHost);
+
+    const isAllowedForHost = (cmd) => {
+      if (!hostCaps) return true;
+      return hostCaps.allowed.includes(cmd);
+    };
+
+    // ----------------------------
+    // Operator-only: HOST_CAPS_SET (supports multiple lines)
+
+---
+index.js:1042
+    const askedUrl = extractLastUrl(body);
+    const askedHostFromUrl = askedUrl ? normalizeHost(askedUrl) : null;
+
+    // If no URL was provided, try to extract a bare domain mention from the message.
+    const askedHostFromBare = askedHostFromUrl ? null : extractLastBareDomain(body);
+
+    // Prefer explicit HOST context for "active host", but for questions we will prefer the asked host.
+    const askedHost = askedHostFromUrl || askedHostFromBare || null;
+    const activeHost = explicitHost || askedHost || null;
+
+    const getHostCaps = async (host) => {
+      if (!host) return null;
+      const stored = await env.AURA_KV.get(capsKey(host));
+      if (!stored) return null;
+      try {
+        const parsed = JSON.parse(stored);
+        if (parsed && Array.isArray(parsed.allowed)) return parsed;
+        return null;
+      } catch {
+        return null;
+      }
+    };
+
+    const hostCaps = await getHostCaps(activeHost);
+
+    const isAllowedForHost = (cmd) => {
+      if (!hostCaps) return true;
+      return hostCaps.allowed.includes(cmd);
+    };
+
+    // ----------------------------
+    // Operator-only: HOST_CAPS_SET (supports multiple lines)
+    //
+    // Supported syntaxes:
+    // 1) HOST_CAPS_SET <host> <json>
+    // 2) HOST_CAPS_SET <json>                (host defaults to current HOST)
+
+---
+index.js:1043
+    const askedHostFromUrl = askedUrl ? normalizeHost(askedUrl) : null;
+
+    // If no URL was provided, try to extract a bare domain mention from the message.
+    const askedHostFromBare = askedHostFromUrl ? null : extractLastBareDomain(body);
+
+    // Prefer explicit HOST context for "active host", but for questions we will prefer the asked host.
+    const askedHost = askedHostFromUrl || askedHostFromBare || null;
+    const activeHost = explicitHost || askedHost || null;
+
+    const getHostCaps = async (host) => {
+      if (!host) return null;
+      const stored = await env.AURA_KV.get(capsKey(host));
+      if (!stored) return null;
+      try {
+        const parsed = JSON.parse(stored);
+        if (parsed && Array.isArray(parsed.allowed)) return parsed;
+        return null;
+      } catch {
+        return null;
+      }
+    };
+
+    const hostCaps = await getHostCaps(activeHost);
+
+    const isAllowedForHost = (cmd) => {
+      if (!hostCaps) return true;
+      return hostCaps.allowed.includes(cmd);
+    };
+
+    // ----------------------------
+    // Operator-only: HOST_CAPS_SET (supports multiple lines)
+    //
+    // Supported syntaxes:
+    // 1) HOST_CAPS_SET <host> <json>
+    // 2) HOST_CAPS_SET <json>                (host defaults to current HOST)
+    //
+
+---
+index.js:1046
+    const askedHostFromBare = askedHostFromUrl ? null : extractLastBareDomain(body);
+
+    // Prefer explicit HOST context for "active host", but for questions we will prefer the asked host.
+    const askedHost = askedHostFromUrl || askedHostFromBare || null;
+    const activeHost = explicitHost || askedHost || null;
+
+    const getHostCaps = async (host) => {
+      if (!host) return null;
+      const stored = await env.AURA_KV.get(capsKey(host));
+      if (!stored) return null;
+      try {
+        const parsed = JSON.parse(stored);
+        if (parsed && Array.isArray(parsed.allowed)) return parsed;
+        return null;
+      } catch {
+        return null;
+      }
+    };
+
+    const hostCaps = await getHostCaps(activeHost);
+
+    const isAllowedForHost = (cmd) => {
+      if (!hostCaps) return true;
+      return hostCaps.allowed.includes(cmd);
+    };
+
+    // ----------------------------
+    // Operator-only: HOST_CAPS_SET (supports multiple lines)
+    //
+    // Supported syntaxes:
+    // 1) HOST_CAPS_SET <host> <json>
+    // 2) HOST_CAPS_SET <json>                (host defaults to current HOST)
+    //
+    // <json> may be:
+    // - an array of command strings: ["PING","SHOW_BUILD",...]
+    // - an object with allow/allowed: {"allow":[...]} or {"allowed":[...]} (optionally {"host":"..."} )
+
+---
+index.js:1049
+    const askedHost = askedHostFromUrl || askedHostFromBare || null;
+    const activeHost = explicitHost || askedHost || null;
+
+    const getHostCaps = async (host) => {
+      if (!host) return null;
+      const stored = await env.AURA_KV.get(capsKey(host));
+      if (!stored) return null;
+      try {
+        const parsed = JSON.parse(stored);
+        if (parsed && Array.isArray(parsed.allowed)) return parsed;
+        return null;
+      } catch {
+        return null;
+      }
+    };
+
+    const hostCaps = await getHostCaps(activeHost);
+
+    const isAllowedForHost = (cmd) => {
+      if (!hostCaps) return true;
+      return hostCaps.allowed.includes(cmd);
+    };
+
+    // ----------------------------
+    // Operator-only: HOST_CAPS_SET (supports multiple lines)
+    //
+    // Supported syntaxes:
+    // 1) HOST_CAPS_SET <host> <json>
+    // 2) HOST_CAPS_SET <json>                (host defaults to current HOST)
+    //
+    // <json> may be:
+    // - an array of command strings: ["PING","SHOW_BUILD",...]
+    // - an object with allow/allowed: {"allow":[...]} or {"allowed":[...]} (optionally {"host":"..."} )
+    // ----------------------------
+    let hostCapsSetCount = 0;
+
+
+---
+index.js:1050
+    const activeHost = explicitHost || askedHost || null;
+
+    const getHostCaps = async (host) => {
+      if (!host) return null;
+      const stored = await env.AURA_KV.get(capsKey(host));
+      if (!stored) return null;
+      try {
+        const parsed = JSON.parse(stored);
+        if (parsed && Array.isArray(parsed.allowed)) return parsed;
+        return null;
+      } catch {
+        return null;
+      }
+    };
+
+    const hostCaps = await getHostCaps(activeHost);
+
+    const isAllowedForHost = (cmd) => {
+      if (!hostCaps) return true;
+      return hostCaps.allowed.includes(cmd);
+    };
+
+    // ----------------------------
+    // Operator-only: HOST_CAPS_SET (supports multiple lines)
+    //
+    // Supported syntaxes:
+    // 1) HOST_CAPS_SET <host> <json>
+    // 2) HOST_CAPS_SET <json>                (host defaults to current HOST)
+    //
+    // <json> may be:
+    // - an array of command strings: ["PING","SHOW_BUILD",...]
+    // - an object with allow/allowed: {"allow":[...]} or {"allowed":[...]} (optionally {"host":"..."} )
+    // ----------------------------
+    let hostCapsSetCount = 0;
+
+    for (const line of lines) {
+
+=== NOT_ALLOWED PRE-SCAN ===
+
+
+---
+index.js:1152
+      if (allowedCommands.includes(token) && !isAllowedForHost(token)) {
+        return jsonReply("NOT_ALLOWED");
+      }
+    }
+
+// ----------------------------
+// BATCH EXECUTION (ordered, multi-command)
+// Purpose: allow VERIFIED_FETCH + REGISTRY_PUT/GET + AUDIT_GET + PORTFOLIO_STATUS in ONE request.
+// Avoid early-returns from hasLine() helpers.
+// ----------------------------
+const isBatch = lines.length > 1 && lines.some((l) => {
+  const tok = l.split(" ")[0];
+  return allowedCommands.includes(tok);
+});
+
+const doVerifiedFetch = async (target) => {
+  const host = normalizeHost(target);
+  if (!host) return { ok: false, error: "BAD_REQUEST", url: target, http_status: 0 };
+
+  const runFetch = async (probeUrl) => {
+    const res = await fetch(probeUrl);
+    const text = await res.text();
+    return { res, text };
+  };
+
+  const nowTs = new Date().toISOString();
+  const selfHost = new URL(request.url).host.toLowerCase();
+
+  if (host === selfHost) {
+    const evidence = {
+      ok: true,
+      host,
+      url: target,
+      probe_url: null,
+      http_status: 200,
+      first_line_html: "SELF_HOST_SYNTHETIC_EVIDENCE",
+
+---
+index.js:1153
+        return jsonReply("NOT_ALLOWED");
+      }
+    }
+
+// ----------------------------
+// BATCH EXECUTION (ordered, multi-command)
+// Purpose: allow VERIFIED_FETCH + REGISTRY_PUT/GET + AUDIT_GET + PORTFOLIO_STATUS in ONE request.
+// Avoid early-returns from hasLine() helpers.
+// ----------------------------
+const isBatch = lines.length > 1 && lines.some((l) => {
+  const tok = l.split(" ")[0];
+  return allowedCommands.includes(tok);
+});
+
+const doVerifiedFetch = async (target) => {
+  const host = normalizeHost(target);
+  if (!host) return { ok: false, error: "BAD_REQUEST", url: target, http_status: 0 };
+
+  const runFetch = async (probeUrl) => {
+    const res = await fetch(probeUrl);
+    const text = await res.text();
+    return { res, text };
+  };
+
+  const nowTs = new Date().toISOString();
+  const selfHost = new URL(request.url).host.toLowerCase();
+
+  if (host === selfHost) {
+    const evidence = {
+      ok: true,
+      host,
+      url: target,
+      probe_url: null,
+      http_status: 200,
+      first_line_html: "SELF_HOST_SYNTHETIC_EVIDENCE",
+      body_length: 0,

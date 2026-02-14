@@ -1,0 +1,145 @@
+rator-authorized and evidence requirements are satisfied.";
+  const gating = (await intentGet("gating")) || "I only gate verified claims and privileged actions. For planning and questions, I respond directly.";
+
+  // If the user is trying to assert a gated claim, enforce evidence-first
+  const claimWords = ["live","deployed","reachable","works","working","up","down","online","offline","dns","resolves","propagated","ssl","https","http","525","520","530","error"];
+  const looksLikeClaim = claimWords.some(w => lower.includes(w));
+  if (looksLikeClaim) return "NOT WIRED: VERIFIED_FETCH REQUIRED";
+
+  if (lower === "who are you" || lower.startsWith("who are you")) return identity;
+  if (lower === "what can you do" || lower.startsWith("what can you do")) return capability + "\n\n" + gating;
+  if (lower.includes("what systems") || lower.includes("what do you control") || lower.includes("what can you control")) {
+    return capability + "\n\nActive host: " + host + "\nEvidence-first, host-scoped.";
+  }
+  if (lower.includes("help") || lower === "?" || lower.includes("commands")) {
+    return "Type an allowed command (e.g., PING, SHOW_BUILD, SNAPSHOT_STATE).\n\nFor host work: HOST <domain>, then EVIDENCE_PRESENT or VERIFIED_FETCH_URL http://<domain>/";
+  }
+  if (lower.includes("launch") || lower.includes("deploy") || lower.includes("website") || lower.includes("site")) {
+    return "I can plan and execute deployments via DEPLOYER_CALL when operator-authorized.\n\nTell me: domain + desired outcome (landing page vs app) and whether we should VERIFIED_FETCH first for the target host.";
+  }
+
+  // Default: answer politely, no gate.
+  return identity + "\n\n" + capability;
+}
+
+// ==== PATCH: Registry commands bypass claim-gate (2026-01-29) ====
+function __registryBypass(token) {
+  // Only allow read-only registry operations to bypass claim-gate.
+  // Any registry *write* (PUT / IMPORT) must be claim-gated by evidence.
+  return token === "REGISTRY_GET" ||
+         token === "REGISTRY_LIST" ||
+         token === "REGISTRY_FILTER";
+}
+// ================================================================
+const KNOWN_COMMANDS = [
+  "PING",
+  "SHOW_BUILD",
+  "SHOW_CLAIM_GATE",
+  "SHOW_ALLOWED_COMMANDS",
+  "RUN_SELF_TEST_EVIDENCE",
+  "VERIFIED_FETCH_URL",
+  "CLEAR_VERIFIED_FETCH",
+  "EVIDENCE_PRESENT",
+  "SNAPSHOT_STATE",
+  "HOST_CAPS_GET",
+  "HOST_CAPS_SET",
+  "DEPLOYER_CAPS",
+  "DEPLOYER_CALL",
+  "PAUSE",
+  "INTENT_ADD",
+  "INTENT_GET",
+  "INTENT_CLEAR",
+  "SHOW_MEMORY_SCHEMA",
+  "REGISTRY_PUT",
+  "REGISTRY_GET",
+  "REGISTRY_LIST",
+  "REGISTRY_FILTER",
+  "REGISTRY_IMPORT_ASSETS",
+  "REGISTRY_IMPORT_DOMAINS",
+  "PORTFOLIO_STATUS",
+  "AUDIT_GET",
+  "AUDIT_CLEAR",
+  "HERD_STATUS",
+  "HERD_SELF_TEST",
+  "HERD_SWEEP",
+  "AUTONOMY_STATUS",
+  "AUTONOMY_LAST_TICK",
+  "AUTONOMY_CAPABILITIES",
+  "INTENT_SIMULATE",
+  "REGISTRY_AUDIT_TRAIL",
+  "AUTONOMY_BUDGET_GET",
+  "AUTONOMY_BUDGET_SET",
+  "FAILURE_MEMORY_GET",
+  "FAILURE_MEMORY_PUT",
+  "AUTONOMY_CHARTER_GET",
+  "AUTONOMY_CHARTER_SET",
+];
+
+const UI_HTML = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Aura Core UI</title>
+<style>
+  :root{
+    --bg:#070a12; --panel:#0e1424; --panel2:#0b1020;
+    --text:#e8ecff; --muted:#9aa5c7; --line:rgba(255,255,255,.10);
+    --accent:#6d5efc; --good:#48d597; --bad:#ff5c7a;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    background: radial-gradient(1200px 600px at 30% 10%, rgba(109,94,252,.18), transparent 60%),
+                radial-gradient(900px 500px at 80% 30%, rgba(72,213,151,.10), transparent 55%),
+                var(--bg);
+    color:var(--text); height:100vh; display:flex; align-items:center; justify-content:center;
+  }
+  .wrap{ width:min(980px, 96vw); height:min(720px, 92vh); display:flex; flex-direction:column; gap:12px; }
+  .topbar{
+    display:flex; align-items:flex-start; justify-content:space-between; gap:16px;
+    padding:14px 16px; border:1px solid var(--line); border-radius:16px;
+    background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+    box-shadow: 0 10px 30px rgba(0,0,0,.35);
+  }
+  .brand{ display:flex; flex-direction:column; gap:2px; }
+  .brand .h{ font-size:18px; font-weight:700; letter-spacing:.2px; }
+  .brand .s{ font-size:12px; color:var(--muted); }
+  .meta{
+    display:flex; flex-direction:column; align-items:flex-end; gap:4px;
+    font-size:12px; color:var(--muted);
+  }
+  .meta .row{ display:flex; gap:10px; align-items:center; }
+  .dot{ width:8px; height:8px; border-radius:50%; background:var(--good); box-shadow:0 0 0 3px rgba(72,213,151,.14); }
+  .panel{
+    flex:1; min-height:0;
+    border:1px solid var(--line); border-radius:16px;
+    background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+    box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    display:flex; flex-direction:column;
+  }
+  .log{
+    flex:1; min-height:0;
+    padding:14px; overflow:auto;
+    display:flex; flex-direction:column; gap:10px;
+  }
+  .msg{
+    max-width: 90%;
+    border:1px solid var(--line);
+    background: rgba(7,10,18,.35);
+    padding:10px 12px; border-radius:14px;
+    white-space:pre-wrap; word-break:break-word; line-height:1.35;
+  }
+  .msg.me{ align-self:flex-end; background: rgba(109,94,252,.16); border-color: rgba(109,94,252,.35); }
+  .msg.aura{ align-self:flex-start; background: rgba(255,255,255,.04); }
+  .msg.sys{ align-self:center; max-width:100%; color:var(--muted); background: transparent; border:none; padding:0; }
+  .msg.error{ border-color: rgba(255,92,122,.45); background: rgba(255,92,122,.10); }
+  .composer{
+    border-top:1px solid var(--line);
+    padding:12px;
+    display:flex; gap:10px; align-items:flex-end;
+    background: rgba(0,0,0,.12);
+    border-bottom-left-radius:16px; border-bottom-right-radius:16px;
+  }
+  textarea{
+    flex:1; min-heigh

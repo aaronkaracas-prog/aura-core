@@ -1,0 +1,3 @@
+HOST frontdesk.network
+DEPLOYER_CALL {"service":"AURA_CF","path":"/zones","method":"GET"}
+REGISTRY_IMPORT_DOMAINS {"source":"AURA_CF","map":"cf_zones_to_domains","timestamp":"20260208_104905"}

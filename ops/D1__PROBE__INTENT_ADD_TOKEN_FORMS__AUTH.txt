@@ -1,0 +1,4 @@
+HOST auras.guide
+INTENT_ADD intent-domain-acquire-proof-20260213_142924 DOMAIN_ACQUIRE examplebrand .world .com
+INTENT_SIMULATE intent-domain-acquire-proof-20260213_142924
+SNAPSHOT_STATE

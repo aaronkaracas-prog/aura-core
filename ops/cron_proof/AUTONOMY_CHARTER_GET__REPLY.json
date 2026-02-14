@@ -1,0 +1,1 @@
+{"ok":true,"reply":"[\n  {\n    \"cmd\": \"AUTONOMY_CHARTER_GET\",\n    \"payload\": {\n      \"ok\": true,\n      \"host\": \"auras.guide\",\n      \"charter\": {\n        \"version\": 1,\n        \"text\": \"AUTONOMY_CHARTER_TEST__2026-02-10\",\n        \"updated_at\": \"2026-02-10T15:42:50.506Z\"\n      }\n    }\n  }\n]"}

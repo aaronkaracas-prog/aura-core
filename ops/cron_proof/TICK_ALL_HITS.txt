@@ -1,0 +1,123 @@
+﻿
+> src\index.js:110:  "AUTONOMY_LAST_TICK",
+> src\index.js:111:        "AUTONOMY_LAST_TICK_SET",
+> src\index.js:112:  "AUTONOMY_LAST_TICK_SET",
+  src\index.js:113:  "AUTONOMY_CAPABILITIES",
+  src\index.js:114:  "INTENT_SIMULATE",
+  src\index.js:115:  "REGISTRY_AUDIT_TRAIL",
+  src\index.js:116:  "AUTONOMY_BUDGET_GET",
+  src\index.js:117:  "AUTONOMY_BUDGET_SET",
+  src\index.js:118:  "FAILURE_MEMORY_GET",
+  src\index.js:119:  "FAILURE_MEMORY_PUT",
+  src\index.js:120:  "AUTONOMY_CHARTER_GET",
+  src\index.js:121:  "AUTONOMY_CHARTER_SET",
+  src\index.js:122:];
+> src\index.js:472:  "AUTONOMY_LAST_TICK",
+> src\index.js:473:        "AUTONOMY_LAST_TICK_SET",
+> src\index.js:474:  "AUTONOMY_LAST_TICK_SET",
+  src\index.js:475:  "AUTONOMY_CAPABILITIES",
+  src\index.js:476:  "INTENT_SIMULATE",
+  src\index.js:477:  "REGISTRY_AUDIT_TRAIL",
+  src\index.js:478:  "AUTONOMY_BUDGET_GET",
+  src\index.js:479:  "AUTONOMY_BUDGET_SET",
+  src\index.js:480:  "FAILURE_MEMORY_GET",
+  src\index.js:481:  "FAILURE_MEMORY_PUT",
+  src\index.js:482:  "AUTONOMY_CHARTER_GET",
+  src\index.js:483:  "AUTONOMY_CHARTER_SET",
+  src\index.js:484:];
+> src\index.js:964:    if (bodyTrim === "AUTONOMY_LAST_TICK") return 
+jsonReply(JSON.stringify({ ok: true }, null, 2));
+  src\index.js:965:    
+> src\index.js:966:    if (bodyTrim === "AUTONOMY_LAST_TICK_SET") return 
+jsonReply(JSON.stringify({ ok: true, note: "requires envelope" }, null, 2));
+  src\index.js:967:if (bodyTrim === "AUTONOMY_CAPABILITIES") return 
+jsonReply(JSON.stringify({ ok: true }, null, 2));
+  src\index.js:968:    if (bodyTrim === "INTENT_SIMULATE") return 
+jsonReply(JSON.stringify({ ok: true, note: "preview-only" }, null, 2));
+  src\index.js:969:    if (bodyTrim === "REGISTRY_AUDIT_TRAIL") return 
+jsonReply(JSON.stringify({ ok: true, note: "placeholder" }, null, 2));
+  src\index.js:970:    if (bodyTrim === "AUTONOMY_BUDGET_GET") return 
+jsonReply(JSON.stringify({ ok: true }, null, 2));
+  src\index.js:971:    if (bodyTrim === "AUTONOMY_BUDGET_SET") return 
+jsonReply(JSON.stringify({ ok: true, note: "requires envelope" }, null, 2));
+  src\index.js:972:    if (bodyTrim === "FAILURE_MEMORY_GET") return 
+jsonReply(JSON.stringify({ ok: true }, null, 2));
+  src\index.js:973:    if (bodyTrim === "FAILURE_MEMORY_PUT") return 
+jsonReply(JSON.stringify({ ok: true, note: "requires envelope" }, null, 2));
+  src\index.js:974:    if (bodyTrim === "AUTONOMY_CHARTER_GET") return 
+jsonReply(JSON.stringify({ ok: true }, null, 2));
+  src\index.js:975:    if (bodyTrim === "AUTONOMY_CHARTER_SET") return 
+jsonReply(JSON.stringify({ ok: true, note: "requires envelope" }, null, 2));
+  src\index.js:976:
+> src\index.js:1425:      const __tickKey    = `AUTONOMY_LAST_TICK__${__host}`;
+  src\index.js:1426:      const __failKey    = `FAILURE_MEMORY__${__host}`;
+  src\index.js:1427:
+  src\index.js:1428:      const __defaultBudget = { limit: 100, spent: 0, window: 
+"day", updated_at: null };
+  src\index.js:1429:      const __defaultCharter = { version: 1, text: "", 
+updated_at: null };
+  src\index.js:1430:
+  src\index.js:1431:      const __readJsonKV = async (key) => {
+  src\index.js:1432:        const s = await env.AURA_KV.get(key);
+  src\index.js:1433:        if (!s) return null;
+  src\index.js:1434:        const j = safeJsonParse(s);
+  src\index.js:1435:        return j || null;
+> src\index.js:1440:        "AUTONOMY_LAST_TICK",
+> src\index.js:1441:        "AUTONOMY_LAST_TICK_SET",
+> src\index.js:1442:  "AUTONOMY_LAST_TICK_SET",
+  src\index.js:1443:        "AUTONOMY_CAPABILITIES",
+  src\index.js:1444:        "AUTONOMY_BUDGET_GET",
+  src\index.js:1445:        "AUTONOMY_BUDGET_SET",
+  src\index.js:1446:        "AUTONOMY_CHARTER_GET",
+  src\index.js:1447:        "AUTONOMY_CHARTER_SET",
+  src\index.js:1448:        "FAILURE_MEMORY_GET",
+  src\index.js:1449:        "FAILURE_MEMORY_PUT",
+  src\index.js:1450:        "REGISTRY_AUDIT_TRAIL",
+  src\index.js:1451:        "INTENT_SIMULATE"
+  src\index.js:1452:      ];
+> src\index.js:1454:      if (line === "AUTONOMY_LAST_TICK") {
+  src\index.js:1455:        const last = await env.AURA_KV.get(__tickKey);
+> src\index.js:1456:        push("AUTONOMY_LAST_TICK",
+  src\index.js:1457:        { ok: true, host: __host, last_tick: last || null });
+  src\index.js:1458:        continue;
+  src\index.js:1459:      }
+  src\index.js:1460:
+  src\index.js:1461:      if (line === "AUTONOMY_CAPABILITIES") {
+  src\index.js:1462:        push("AUTONOMY_CAPABILITIES", { ok: true, host: __host, 
+capabilities: __capabilities, count: __capabilities.length });
+  src\index.js:1463:        continue;
+  src\index.js:1464:      }
+  src\index.js:1465:
+  src\index.js:1466:      if (line === "AUTONOMY_BUDGET_GET") {
+> src\index.js:1532:if (line === "AUTONOMY_LAST_TICK_SET") {
+> src\index.js:1533:  if (!isOperator) { push("AUTONOMY_LAST_TICK_SET", 
+"NOT_ALLOWED"); continue; }
+  src\index.js:1534:
+  src\index.js:1535:  const r = __readEnvelopeJson();
+> src\index.js:1536:  if (!r || !r.ok) { push("AUTONOMY_LAST_TICK_SET", 
+"BAD_REQUEST"); continue; }
+  src\index.js:1537:
+  src\index.js:1538:  const __host = String(activeHost || 
+"frontdesk.network").toLowerCase();
+> src\index.js:1539:  const __tickKey = `AUTONOMY_LAST_TICK__${__host}`;
+  src\index.js:1540:  const ts = nowIso();
+  src\index.js:1541:
+  src\index.js:1542:  await env.AURA_KV.put(__tickKey, ts, { expirationTtl: 60 * 60 
+* 24 * 30 });
+> src\index.js:1543:  push("AUTONOMY_LAST_TICK_SET", { ok: true, host: __host, 
+last_tick: ts, stamp: ts });
+  src\index.js:1544:  continue;
+  src\index.js:1545:}
+  src\index.js:1546:if (line === "AUTONOMY_BUDGET_SET") {
+  src\index.js:1547:  // Envelope JSON must be provided on subsequent non-command 
+lines (no inline JSON).
+  src\index.js:1548:
+  src\index.js:1549:  const r = __readEnvelopeJson();
+  src\index.js:1550:  if (!r.ok) { push("AUTONOMY_BUDGET_SET", { ok: false, error: 
+r.error, note: r.note }); continue; }
+  src\index.js:1551:
+  src\index.js:1552:  const host = String(r.obj.host || __host).toLowerCase();
+  src\index.js:1553:  const b0 = (r.obj.budget && typeof r.obj.budget === "object") 
+? r.obj.budget : r.obj;
+
+

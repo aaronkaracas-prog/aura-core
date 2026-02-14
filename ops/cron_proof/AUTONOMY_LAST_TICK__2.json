@@ -1,0 +1,1 @@
+{"ok":true,"reply":"[\n  {\n    \"cmd\": \"AUTONOMY_LAST_TICK\",\n    \"payload\": {\n      \"ok\": true,\n      \"host\": \"auras.guide\",\n      \"last_tick\": \"2026-02-11T14:58:18.307Z\"\n    }\n  }\n]"}

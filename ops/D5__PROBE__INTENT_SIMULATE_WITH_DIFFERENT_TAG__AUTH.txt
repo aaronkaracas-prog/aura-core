@@ -1,0 +1,5 @@
+HOST auras.guide
+INTENT_ADD test-intent-20260213 test_tag hello world
+INTENT_SIMULATE
+INTENT_SIMULATE test-intent-20260213 test_tag
+SNAPSHOT_STATE

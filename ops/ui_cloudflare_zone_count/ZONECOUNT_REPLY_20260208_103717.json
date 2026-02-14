@@ -1,0 +1,1 @@
+{"ok":true,"reply":"[\n  {\n    \"cmd\": \"DEPLOYER_CALL\",\n    \"payload\": {\n      \"service\": \"AURA_CF\",\n      \"path\": \"/zones\",\n      \"http_status\": 405,\n      \"content_type\": \"application/json; charset=utf-8\",\n      \"out\": {\n        \"ok\": false,\n        \"error\": \"METHOD_NOT_ALLOWED\"\n      }\n    }\n  }\n]"}

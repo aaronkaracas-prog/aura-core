@@ -1,0 +1,20 @@
+HOST auras.guide
+
+REGISTRY_IMPORT_DOMAINS {"entries":[
+  {"id":"probe-import-01.world","domain":"probe-import-01.world","pillar":"BATCH","status":"UNKNOWN"},
+  {"id":"probe-import-02.world","domain":"probe-import-02.world","pillar":"BATCH","status":"UNKNOWN"}
+]}
+
+REGISTRY_IMPORT_DOMAINS {"items":[
+  {"id":"probe-import-03.world","domain":"probe-import-03.world","pillar":"BATCH","status":"UNKNOWN"},
+  {"id":"probe-import-04.world","domain":"probe-import-04.world","pillar":"BATCH","status":"UNKNOWN"}
+]}
+
+REGISTRY_IMPORT_DOMAINS {"map":{
+  "probe-import-05.world":{"domain":"probe-import-05.world","pillar":"BATCH","status":"UNKNOWN"},
+  "probe-import-06.world":{"domain":"probe-import-06.world","pillar":"BATCH","status":"UNKNOWN"}
+}}
+
+REGISTRY_GET domains probe-import-01.world
+REGISTRY_GET domains probe-import-03.world
+REGISTRY_GET domains probe-import-05.world

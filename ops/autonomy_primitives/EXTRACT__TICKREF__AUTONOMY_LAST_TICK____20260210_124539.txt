@@ -1,0 +1,301 @@
+delete(intentKey(host, tag));
+      push("INTENT_CLEAR", "CLEARED");
+      continue;
+    }
+
+
+    if (line.startsWith("CLEAR_VERIFIED_FETCH")) {
+      const parts = line.split(" ").filter(Boolean);
+      const host = normalizeHost(parts[1]);
+      if (host) await env.AURA_KV.delete(evidenceKey(host));
+      push("CLEAR_VERIFIED_FETCH", host ? "CLEARED" : "BAD_REQUEST");
+      continue;
+    }
+
+    if (line.startsWith("VERIFIED_FETCH_URL")) {
+      const parts = line.split(" ").filter(Boolean);
+      const target = parts[1];
+      const ev = await doVerifiedFetch(target);
+      push("VERIFIED_FETCH_URL", ev);
+      if (ev && ev.ok && ev.host) { __seededThisRequest.add(String(ev.host).toLowerCase()); }
+      continue;
+    }
+
+    if (line.startsWith("EVIDENCE_PRESENT")) {
+      const parts = line.split(" ").filter(Boolean);
+      const host = normalizeHostLoose(parts[1]) || activeHost;
+      if (!host) { push("EVIDENCE_PRESENT", "BAD_REQUEST"); continue; }
+      const stored = await env.AURA_KV.get(evidenceKey(host));
+      push("EVIDENCE_PRESENT", stored ? (safeJsonParse(stored) || stored) : "NO_EVIDENCE");
+      continue;
+    }
+
+    if (line === "SHOW_MEMORY_SCHEMA") {
+      push("SHOW_MEMORY_SCHEMA", memorySchemaV1);
+      continue;
+    }
+
+if (line === "SHOW_BUILD") {
+  push("SHOW_BUILD", { build: BUILD, stamp: new Date().toISOString() });
+  continue;
+}
+
+if (line === "SHOW_CLAIM_GATE") {
+  push("SHOW_CLAIM_GATE", {
+    trigger_words: [
+      "live","deployed","launched","resolving","propagating","successful","verified","up","online","working","reachable","available","accessible"
+    ],
+    forced_message: "NOT WIRED: VERIFIED_FETCH REQUIRED",
+    requires_verified_fetch_format: true
+  });
+  continue;
+}
+
+if (line === "SHOW_ALLOWED_COMMANDS") {
+  push("SHOW_ALLOWED_COMMANDS", allowedCommands);
+  continue;
+}
+
+        // ----------------------------
+    // AUTONOMY PRIMITIVES (batch mode; deterministic state)
+    // ----------------------------
+    {
+      const __host = String(activeHost || "frontdesk.network").toLowerCase();
+      const __budgetKey  = `AUTONOMY_BUDGET__${__host}`;
+      const __charterKey = `AUTONOMY_CHARTER__${__host}`;
+      const __tickKey    = `AUTONOMY_LAST_TICK__${__host}`;
+      const __failKey    = `FAILURE_MEMORY__${__host}`;
+
+      const __defaultBudget = { limit: 100, spent: 0, window: "day", updated_at: null };
+      const __defaultCharter = { version: 1, text: "", updated_at: null };
+
+      const __readJsonKV = async (key) => {
+        const s = await env.AURA_KV.get(key);
+        if (!s) return null;
+        const j = safeJsonParse(s);
+        return j || null;
+      };
+
+      const __capabilities = [
+        "AUTONOMY_STATUS",
+        "AUTONOMY_LAST_TICK",
+        "AUTONOMY_CAPABILITIES",
+        "AUTONOMY_BUDGET_GET",
+        "AUTONOMY_BUDGET_SET",
+        "AUTONOMY_CHARTER_GET",
+        "AUTONOMY_CHARTER_SET",
+        "FAILURE_MEMORY_GET",
+        "FAILURE_MEMORY_PUT",
+        "REGISTRY_AUDIT_TRAIL",
+        "INTENT_SIMULATE"
+      ];
+
+      if (line === "AUTONOMY_LAST_TICK") {
+        const last = await env.AURA_KV.get(__tickKey);
+        push("AUTONOMY_LAST_TICK", { ok: true, host: __host, last_tick: last || null });
+        continue;
+      }
+
+      if (line === "AUTONOMY_CAPABILITIES") {
+        push("AUTONOMY_CAPABILITIES", { ok: true, host: __host, capabilities: __capabilities, count: __capabilities.length });
+        continue;
+      }
+
+      if (line === "AUTONOMY_BUDGET_GET") {
+        const b = (await __readJsonKV(__budgetKey)) || __defaultBudget;
+        push("AUTONOMY_BUDGET_GET", { ok: true, host: __host, budget: b });
+        continue;
+      }
+
+      if (line === "AUTONOMY_CHARTER_GET") {
+        const c = (await __readJsonKV(__charterKey)) || __defaultCharter;
+        push("AUTONOMY_CHARTER_GET", { ok: true, host: __host, charter: c });
+        continue;
+      }
+
+      if (line === "FAILURE_MEMORY_GET") {
+        const fm = (await __readJsonKV(__failKey)) || [];
+        push("FAILURE_MEMORY_GET", { ok: true, host: __host, items: fm, count: Array.isArray(fm) ? fm.length : 0 });
+        continue;
+      }
+
+      if (line === "REGISTRY_AUDIT_TRAIL") {
+        // Reuse the existing audit substrate as the authoritative trail output for now.
+        // Deterministic: returns latest 50 events (or fewer) using existing auditList().
+        push("REGISTRY_AUDIT_TRAIL", { ok: true, host: __host, trail: await auditList(env, 50) });
+        continue;
+      }
+
+      if (line === "AUTONOMY_STATUS") {
+        const b = (await __readJsonKV(__budgetKey)) || __defaultBudget;
+        const c = (await __readJsonKV(__charterKey)) || __defaultCharter;
+        const last = await env.AURA_KV.get(__tickKey);
+        push("AUTONOMY_STATUS", {
+          ok: true,
+          host: __host,
+          build: BUILD,
+          stamp: nowIso(),
+          evidence_present_for_active_host: Boolean(await env.AURA_KV.get(evidenceKey(__host))),
+          budget: b,
+          charter: c,
+          last_tick: last || null,
+          capabilities_count: __capabilities.length
+        });
+        continue;
+      }
+
+      // SET/PUT are envelope-gated (files/packets): JSON must be provided on subsequent non-command lines.
+// Deterministic: parse envelope, write KV, return readback payload.
+const __readEnvelopeJson = () => {
+  // Consume subsequent non-command lines as JSON text.
+  // Stops when the next allowed command token begins.
+  let j = i + 1;
+  const buf = [];
+  while (j < lines.length) {
+    const l = lines[j];
+    if (!l) { j++; continue; }
+    if (l.startsWith("HOST ")) { j++; continue; }
+    const tok = l.split(" ")[0];
+    if (allowedCommands.includes(tok)) break;
+    buf.push(l);
+    j++;
+  }
+  if (!buf.length) return { ok: false, error: "BAD_REQUEST", note: "requires envelope (file/packet) ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â no inline JSON", consumed: 0 };
+  const jsonText = buf.join("\n");
+  const obj = safeJsonParse(jsonText);
+  if (!obj || typeof obj !== "object") return { ok: false, error: "BAD_REQUEST", note: "envelope JSON parse failed", consumed: (j - (i + 1)) };
+  return { ok: true, obj, consumed: (j - (i + 1)) };
+};
+
+if (line === "AUTONOMY_BUDGET_SET") {
+  // Envelope JSON must be provided on subsequent non-command lines (no inline JSON).
+
+  const r = __readEnvelopeJson();
+  if (!r.ok) { push("AUTONOMY_BUDGET_SET", { ok: false, error: r.error, note: r.note }); continue; }
+
+  const host = String(r.obj.host || __host).toLowerCase();
+  const b0 = (r.obj.budget && typeof r.obj.budget === "object") ? r.obj.budget : r.obj;
+  const budget = {
+    limit: (typeof b0.limit === "number" ? b0.limit : __defaultBudget.limit),
+    spent: (typeof b0.spent === "number" ? b0.spent : __defaultBudget.spent),
+    window: (typeof b0.window === "string" ? b0.window : __defaultBudget.window),
+    updated_at: nowIso()
+  };
+
+  await env.AURA_KV.put(`AUTONOMY_BUDGET__${host}`, JSON.stringify(budget));
+  push("AUTONOMY_BUDGET_SET", { ok: true, host, budget });
+  i += r.consumed;
+  continue;
+}
+
+if (line === "AUTONOMY_CHARTER_SET") {
+
+  const r = __readEnvelopeJson();
+  if (!r.ok) { push("AUTONOMY_CHARTER_SET", { ok: false, error: r.error, note: r.note }); continue; }
+
+  const host = String(r.obj.host || __host).toLowerCase();
+  const c0 = (r.obj.charter && typeof r.obj.charter === "object") ? r.obj.charter : r.obj;
+  const charter = {
+    version: (typeof c0.version === "number" ? c0.version : __defaultCharter.version),
+    text: (typeof c0.text === "string" ? c0.text : __defaultCharter.text),
+    updated_at: nowIso()
+  };
+
+  await env.AURA_KV.put(`AUTONOMY_CHARTER__${host}`, JSON.stringify(charter));
+  push("AUTONOMY_CHARTER_SET", { ok: true, host, charter });
+  i += r.consumed;
+  continue;
+}
+
+if (line === "FAILURE_MEMORY_PUT") {
+
+  const r = __readEnvelopeJson();
+  if (!r.ok) { push("FAILURE_MEMORY_PUT", { ok: false, error: r.error, note: r.note }); continue; }
+
+  const host = String(r.obj.host || __host).toLowerCase();
+  const item0 = (r.obj.item && typeof r.obj.item === "object") ? r.obj.item : r.obj;
+  const item = {
+    at: (typeof item0.at === "string" ? item0.at : nowIso()),
+    code: String(item0.code || "X"),
+    detail: String(item0.detail || "")
+  };
+
+  const existing = (await __readJsonKV(`FAILURE_MEMORY__${host}`)) || [];
+  const arr = Array.isArray(existing) ? existing : [];
+  arr.push(item);
+  const bounded = arr.slice(-200);
+
+  await env.AURA_KV.put(`FAILURE_MEMORY__${host}`, JSON.stringify(bounded));
+  push("FAILURE_MEMORY_PUT", { ok: true, host, item, count: bounded.length });
+  i += r.consumed;
+  continue;
+}
+
+if (line === "INTENT_SIMULATE") {
+        push("INTENT_SIMULATE", { ok: true, host: __host, note: "preview-only" });
+        continue;
+      }
+    }    if (line === "AUDIT_GET") {
+      if (!isOperator) { out.push({ cmd: "AUDIT_GET", payload: "UNAUTHORIZED" }); continue; }
+      push("AUDIT_GET", await auditList(env, 50));
+      continue;
+    }
+
+    if (line === "AUDIT_CLEAR") {
+      if (!isOperator) { out.push({ cmd: "AUDIT_CLEAR", payload: "UNAUTHORIZED" }); continue; }
+      // Require a VERIFIED_FETCH seed for the active host before allowing audit mutation.
+      if (!activeHost) { out.push({ cmd: "AUDIT_CLEAR", payload: "BAD_REQUEST" }); continue; }
+      // Must have been seeded via VERIFIED_FETCH_URL in THIS same request (not just previously stored KV evidence).
+      if (!__seededThisRequest.has(String(activeHost).toLowerCase())) { out.push({ cmd: "AUDIT_CLEAR", payload: "NOT_WIRED: VERIFIED_FETCH REQUIRED" }); continue; }
+      // IMPORTANT: clearing should never crash the Worker.
+      // We clear by resetting the sequence pointer; old event keys become unreachable.
+      try {
+        await env.AURA_KV.put(auditSeqKey, "0");
+        await env.AURA_KV.put(auditClearedAtKey, nowIso());
+        out.push({ cmd: "AUDIT_CLEAR", payload: { ok: true, cleared: true } });
+      } catch (e) {
+        out.push({ cmd: "AUDIT_CLEAR", payload: { ok: false, error: "EXCEPTION", message: String(e && e.message ? e.message : e) } });
+      }
+      continue;
+    }
+
+    if (line === "PORTFOLIO_STATUS") {
+      const assetsMetaRaw = await env.AURA_KV.get(registryMetaKey("assets"));
+      const domainsMetaRaw = await env.AURA_KV.get(registryMetaKey("domains"));
+      const assetsMeta = assetsMetaRaw ? (safeJsonParse(assetsMetaRaw) || assetsMetaRaw) : null;
+      const domainsMeta = domainsMetaRaw ? (safeJsonParse(domainsMetaRaw) || domainsMetaRaw) : null;
+
+      const status = {
+        build: BUILD,
+        stamp: nowIso(),
+        registry_version: REGISTRY_VERSION,
+        registries: {
+          assets: assetsMeta || { type: "assets", count: 0, updated_at: null, version: REGISTRY_VERSION },
+          domains: domainsMeta || { type: "domains", count: 0, updated_at: null, version: REGISTRY_VERSION }
+        }
+      };
+      push("PORTFOLIO_STATUS", status);
+      continue;
+    }
+
+    if (line.startsWith("REGISTRY_PUT")) {
+      if (!isOperator) { push("REGISTRY_PUT", "NOT_ALLOWED"); continue; }
+
+      const args = __parseRegistryPutArgs(line, lines, i, allowedCommands);
+      if (!args || !args.type || !args.item) { push("REGISTRY_PUT", "BAD_REQUEST"); continue; }
+
+      const _t = String(args.type).toLowerCase();
+      const item = args.item;
+
+      // Legacy convenience: allow domain puts where id omitted but domain provided.
+      if ((!item.id || !String(item.id).trim()) && _t === "domains") {
+        const maybe = String(item.domain || item.key || "").trim().toLowerCase();
+        if (maybe) item.id = maybe;
+      }
+
+      if (!_t || !item || !item.id) { push("REGISTRY_PUT", "BAD_REQUEST"); continue; }
+
+      const _hostToGate = __domainHostFromRegistryEntry(_t, item);
+      if (_hostToGate && (_t === "domains" || _t === "assets")) {
+        const _ev = await __getHostEvidence(_hostToGate);
+        if (!_ev) { push(

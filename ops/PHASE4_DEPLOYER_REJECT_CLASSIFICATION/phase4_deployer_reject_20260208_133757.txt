@@ -1,0 +1,12 @@
+HOST auras.guide
+SNAPSHOT_STATE
+
+PAUSE
+
+DEPLOYER_CALL service=AURA_DEPLOYER
+
+DEPLOYER_CALL service=AURA_DEPLOYER method=GET path=/
+
+DEPLOYER_CALL service=AURA_DEPLOYER method=POST path=/ body=null
+
+SNAPSHOT_STATE

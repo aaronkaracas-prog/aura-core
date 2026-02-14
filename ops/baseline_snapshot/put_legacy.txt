@@ -1,0 +1,2 @@
+HOST malibu.city
+REGISTRY_PUT assets {"id":"test_autonomy","name":"Autonomy Check","pillar":"SYSTEM","notes":"Tier 4 write validation"}

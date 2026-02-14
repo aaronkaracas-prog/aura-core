@@ -1,0 +1,14 @@
+REG_DISCOVERY_PACKET
+BUILD: AURA_CORE__AUTONOMY_LAYERS__EVIDENCE_ALLOWLIST_HOSTCAPS_OPERATOR_INTENT_PAUSE__MEMORY_SUBSTRATE_V1__REGISTRY_AUDIT__13
+FINDINGS_COUNT: 7
+FINDINGS:
+2) REGISTRY_LIST domains | items=40;meta=true | keys: type,meta,ids_count,returned,items
+8) REGISTRY_GET | count=1 | keys: Length
+9) REGISTRY_GET {"type":"domains","id":"frontdesk.network"} frontdesk.network | count=1 | keys: Length
+10) REGISTRY_GET {"type":"domains","key":"frontdesk.network"} frontdesk.network | count=1 | keys: Length
+11) REGISTRY_FILTER domains | items=40;meta=true | keys: type,meta,ids_count,returned,items
+12) REGISTRY_FILTER domains | items=40;meta=true | keys: type,meta,ids_count,returned,items
+13) REGISTRY_FILTER domains | items=1;meta=true | keys: type,where,returned,items
+PAYLOAD_BYTES: 682
+PAYLOAD_SHA256: 64BE46A298B9DD178136FBAF6F3DEAE7757A610532958506EF0A6A06B107BDA5
+END

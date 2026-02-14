@@ -1,0 +1,7 @@
+HOST frontdesk.network
+
+# Control: PUT a minimal update on an already-known domain record
+REGISTRY_PUT domains {"id":"frontdesk.network","domain":"frontdesk.network","pillar":"TEST","purpose":"probe put envelope","priority":"HOLD","status":"UNKNOWN"}
+
+# Control: GET using JSON form (avoid the parser swallowing tokens into cmd string)
+REGISTRY_GET domains {"id":"frontdesk.network"}

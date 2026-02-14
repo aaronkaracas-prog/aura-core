@@ -1,0 +1,2 @@
+HOST auras.guide
+DEPLOYER_CALL {"service":"AURA_CF","method":"GET","path":"/zones/61e85d4c895f555fc1b5637939d0466f/dns_records?per_page=5"}

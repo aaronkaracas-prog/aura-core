@@ -1,0 +1,4 @@
+HOST auras.guide
+INTENT_CLEAR test-intent-20260213 test_tag
+INTENT_GET test-intent-20260213 test_tag
+SNAPSHOT_STATE

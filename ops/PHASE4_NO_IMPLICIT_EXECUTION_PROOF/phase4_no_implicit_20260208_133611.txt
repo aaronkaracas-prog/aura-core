@@ -1,0 +1,10 @@
+HOST auras.guide
+SNAPSHOT_STATE
+
+PAUSE
+
+INTENT_ADD auras.guide phase4_no_implicit implicit_should_not_run
+
+SNAPSHOT_STATE
+
+INTENT_GET auras.guide phase4_no_implicit

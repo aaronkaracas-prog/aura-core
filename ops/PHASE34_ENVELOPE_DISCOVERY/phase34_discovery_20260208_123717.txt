@@ -1,0 +1,20 @@
+HOST auras.guide
+SNAPSHOT_STATE
+SHOW_ALLOWED_COMMANDS
+SHOW_MEMORY_SCHEMA
+
+# --- INTENT (try common envelopes) ---
+INTENT_ADD {"host":"auras.guide","tag":"autonomy","text":"phase3: observe_without_action","consent":"EXPLICIT_COMMAND"}
+INTENT_ADD {"tag":"autonomy","text":"phase3: observe_without_action","consent":"EXPLICIT_COMMAND"}
+INTENT_ADD {"scope":"autonomy","intent":"observe_without_action","note":"phase3_resume"}
+
+INTENT_GET
+INTENT_GET {"tag":"autonomy"}
+INTENT_GET {"host":"auras.guide","tag":"autonomy"}
+
+# --- PAUSE (try common envelopes) ---
+PAUSE
+PAUSE {"reason":"phase4_entry_test"}
+PAUSE {"on":true,"reason":"phase4_entry_test"}
+
+SNAPSHOT_STATE

@@ -1,0 +1,8 @@
+﻿HOST auras.guide
+REGISTRY_PUT assets __tier5_test__
+{
+  "id": "__tier5_test__",
+  "name": "Tier5 Test",
+  "pillar": "TEST"
+}
+REGISTRY_GET assets __tier5_test__

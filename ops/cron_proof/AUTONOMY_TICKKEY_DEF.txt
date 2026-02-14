@@ -1,0 +1,35 @@
+﻿
+> src\index.js:25:const autonomyTickKey = `autonomy:tick:v1`;
+  src\index.js:26:
+  src\index.js:27:
+  src\index.js:28:
+  src\index.js:29:async function naturalLanguageReply(input, env, activeHost) {
+  src\index.js:30:  const text = (input || "").trim();
+  src\index.js:31:  if (!text) return "";
+> src\index.js:1150:        autonomy_tick: (await env.AURA_KV.get(autonomyTickKey, 
+{ type: "json" }).catch(()=>null)) || null
+  src\index.js:1151:      };
+  src\index.js:1152:
+  src\index.js:1153:      return jsonReply(snapshot);
+  src\index.js:1154:    }
+  src\index.js:1155:
+  src\index.js:1156:    // If host caps exist and a line starts with a command that 
+isn't allowed for this host, block deterministically.
+> src\index.js:2789:      const prev = await env.AURA_KV.get(autonomyTickKey, { 
+type: "json" });
+  src\index.js:2790:      const count = Number((prev && prev.count) || 0) + 1;
+  src\index.js:2791:      const payload = {
+  src\index.js:2792:        ok: true,
+  src\index.js:2793:        ts: new Date().toISOString(),
+  src\index.js:2794:        count,
+  src\index.js:2795:        build: BUILD,
+> src\index.js:2798:      await env.AURA_KV.put(autonomyTickKey, 
+JSON.stringify(payload));
+  src\index.js:2799:    } catch (_) {
+  src\index.js:2800:      // Fail-closed: never throw from cron.
+  src\index.js:2801:    }
+  src\index.js:2802:  }
+  src\index.js:2803:
+  src\index.js:2804:};
+
+

@@ -1,0 +1,6 @@
+HOST malibu.city
+AUTONOMY_BUDGET_SET
+{"host":"malibu.city","budget":{"limit":222,"spent":0,"window":"day"}}
+AUTONOMY_CHARTER_SET
+{"host":"malibu.city","charter":{"version":1,"text":"MALIBU__CHARTER__PROOF__2026-02-11"}}
+AUTONOMY_STATUS

@@ -1,0 +1,1 @@
+﻿{"ok":true,"reply":"[\n  {\n    \"cmd\": \"REGISTRY_LIST\",\n    \"payload\": {\n      \"registries\": {\n        \"assets\": {\n          \"type\": \"assets\",\n          \"count\": 5\n        },\n        \"domains\": {\n          \"type\": \"domains\",\n          \"count\": 40\n        }\n      }\n    }\n  }\n]"}

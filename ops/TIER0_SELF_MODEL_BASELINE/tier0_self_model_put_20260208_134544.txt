@@ -1,0 +1,26 @@
+HOST auras.guide
+
+REGISTRY_PUT self_model {
+  "id": "AURA_SELF_MODEL_V1",
+  "identity": {
+    "name": "Aura",
+    "role": "control-plane intelligence",
+    "scope": "global",
+    "operator_required": true
+  },
+  "tiers": {
+    "tier0_self_model": { "status": "IN_PROGRESS" },
+    "tier1_capability_graph": { "status": "LOCKED" },
+    "tier2_world_model": { "status": "LOCKED" },
+    "tier3_self_repair": { "status": "LOCKED" },
+    "tier4_self_extension": { "status": "LOCKED" },
+    "tier5_human_interface": { "status": "LOCKED" }
+  },
+  "constraints": {
+    "no_drift": true,
+    "evidence_gated": true,
+    "operator_gated": true,
+    "irreversible_requires_pause": true
+  },
+  "created_at": "20260208_134544"
+}

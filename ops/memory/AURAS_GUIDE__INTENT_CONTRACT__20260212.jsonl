@@ -1,0 +1,10 @@
+HOST auras.guide
+REGISTRY_PUT
+{"type":"assets","item":{
+  "id":"aura_intent_contract_v1",
+  "name":"Aura INTENT Command Contract (auras.guide)",
+  "pillar":"CORE_INTENT",
+  "notes":"Contract (build REGISTRY_AUDIT__13): INTENT_ADD requires 4 positional tokens. INTENT_GET and INTENT_CLEAR require 2 tokens. INTENT_SIMULATE works no-arg. INTENT ops do not emit AUDIT events in this build.",
+  "tags":["intent","contract","auras.guide","tier5"],
+  "sellability":"NEVER_SELL"
+}}

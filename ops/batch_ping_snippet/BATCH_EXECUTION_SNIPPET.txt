@@ -1,0 +1,261 @@
+ 1084:       return jsonReply(hostCapsSetCount === 1 ? "OK" : `OK (${hostCapsSetCount})`);
+ 1085:     }
+ 1086: // HOST_CAPS_GET [host]
+ 1087:     for (const line of lines) {
+ 1088:       if (line.startsWith("HOST_CAPS_GET")) {
+ 1089:         const parts = line.split(" ").filter(Boolean);
+ 1090:         const host = (parts[1] || activeHost || "frontdesk.network").toLowerCase();
+ 1091:         const caps = await getHostCaps(host);
+ 1092:         return jsonReply(JSON.stringify(caps || { host, allowed: null }, null, 2));
+ 1093:       }
+ 1094:     }
+ 1095: 
+ 1096:     // SNAPSHOT_STATE (safe subset)
+ 1097:     if (bodyTrim === "SNAPSHOT_STATE") {
+ 1098:       const safeHost = activeHost || "none";
+ 1099:       const caps = await getHostCaps(activeHost);
+ 1100:       const stored = activeHost ? await env.AURA_KV.get(evidenceKey(activeHost)) : null;
+ 1101: 
+ 1102:       const snapshot = {
+ 1103:         build: BUILD,
+ 1104:         stamp: new Date().toISOString(),
+ 1105:         operator: isOperator ? "YES" : "NO",
+ 1106:         active_host: safeHost,
+ 1107:         host_caps: caps || null,
+ 1108:         evidence_present_for_active_host: Boolean(stored),
+ 1109:         autonomy_tick: (await env.AURA_KV.get(autonomyTickKey, { type: "json" }).catch(()=>null)) || null
+ 1110:       };
+ 1111: 
+ 1112:       return jsonReply(snapshot);
+ 1113:     }
+ 1114: 
+ 1115:     // If host caps exist and a line starts with a command that isn't allowed for this host, block deterministically.
+ 1116:     for (const line of lines) {
+ 1117:       const token = line.split(" ")[0];
+ 1118:       if (allowedCommands.includes(token) && !isAllowedForHost(token)) {
+ 1119:         return jsonReply("NOT_ALLOWED");
+ 1120:       }
+ 1121:     }
+ 1122: 
+ 1123: // ----------------------------
+ 1124: // BATCH EXECUTION (ordered, multi-command)
+ 1125: // Purpose: allow VERIFIED_FETCH + REGISTRY_PUT/GET + AUDIT_GET + PORTFOLIO_STATUS in ONE request.
+ 1126: // Avoid early-returns from hasLine() helpers.
+ 1127: // ----------------------------
+ 1128: const isBatch = lines.some((l) => {
+ 1129:   const tok = l.split(" ")[0];
+ 1130:   return allowedCommands.includes(tok);
+ 1131: });
+ 1132: 
+ 1133: const doVerifiedFetch = async (target) => {
+ 1134:   const host = normalizeHost(target);
+ 1135:   if (!host) return { ok: false, error: "BAD_REQUEST", url: target, http_status: 0 };
+ 1136: 
+ 1137:   const runFetch = async (probeUrl) => {
+ 1138:     const res = await fetch(probeUrl);
+ 1139:     const text = await res.text();
+ 1140:     return { res, text };
+ 1141:   };
+ 1142: 
+ 1143:   const nowTs = new Date().toISOString();
+ 1144:   const selfHost = new URL(request.url).host.toLowerCase();
+ 1145: 
+ 1146:   if (host === selfHost) {
+ 1147:     const evidence = {
+ 1148:       ok: true,
+ 1149:       host,
+ 1150:       url: target,
+ 1151:       probe_url: null,
+ 1152:       http_status: 200,
+ 1153:       first_line_html: "SELF_HOST_SYNTHETIC_EVIDENCE",
+ 1154:       body_length: 0,
+ 1155:       synthetic: true,
+ 1156:       reason: "WORKER_SELF_ROUTE_ASSUME_REACHABLE",
+ 1157:       diagnostics: { cf: request.cf || null, self_host: selfHost, ts: nowTs }
+ 1158:     };
+ 1159:     await env.AURA_KV.put(evidenceKey(host), JSON.stringify(evidence));
+ 1160:     return evidence;
+ 1161:   }
+ 1162: 
+ 1163:   try {
+ 1164:     const { res: res1, text: text1 } = await runFetch(target);
+ 1165: 
+ 1166:     if (res1.status === 525) {
+ 1167:       const u = new URL(target);
+ 1168:       if (u.protocol === "https:") {
+ 1169:         u.protocol = "http:";
+ 1170:         const httpUrl = u.toString();
+ 1171:         const { res: res2, text: text2 } = await runFetch(httpUrl);
+ 1172: 
+ 1173:         const evidence = {
+ 1174:           ok: true,
+ 1175:           host,
+ 1176:           public_url: target,
+ 1177:           probe_url: httpUrl,
+ 1178:           fallback_reason: "CF_HTTPS_525_HTTP_PROBE",
+ 1179:           http_status: res2.status,
+ 1180:           first_line_html: text2.split("\n")[0] || "",
+ 1181:           body_length: text2.length,
+ 1182:           diagnostics: { cf: request.cf || null, https_status: 525, ts: nowTs }
+ 1183:         };
+ 1184:         await env.AURA_KV.put(evidenceKey(host), JSON.stringify(evidence));
+ 1185:         return evidence;
+ 1186:       }
+ 1187:     }
+ 1188: 
+ 1189:     const evidence = {
+ 1190:       ok: true,
+ 1191:       host,
+ 1192:       url: target,
+ 1193:       http_status: res1.status,
+ 1194:       first_line_html: text1.split("\n")[0] || "",
+ 1195:       body_length: text1.length,
+ 1196:       diagnostics: { cf: request.cf || null, ts: nowTs }
+ 1197:     };
+ 1198:     await env.AURA_KV.put(evidenceKey(host), JSON.stringify(evidence));
+ 1199:     return evidence;
+ 1200:   } catch (err) {
+ 1201:     const evidence = {
+ 1202:       ok: false,
+ 1203:       host,
+ 1204:       url: target,
+ 1205:       http_status: 0,
+ 1206:       error: String(err?.message || err),
+ 1207:       error_name: err?.name || "UNKNOWN",
+ 1208:       diagnostics: { cf: request.cf || null, ts: nowTs }
+ 1209:     };
+ 1210:     await env.AURA_KV.put(evidenceKey(host), JSON.stringify(evidence));
+ 1211:     return evidence;
+ 1212:   }
+ 1213: };
+ 1214: 
+ 1215: if (isBatch) {
+ 1216:   const out = [];
+ 1217:   const push = (cmd, payload) => out.push({ cmd, payload });
+ 1218:       
+ 1219:   // Track which hosts were VERIFIED_FETCH_URL seeded in THIS request only.
+ 1220:   const __seededThisRequest = new Set();
+ 1221: // Claim-gate (batch mode): registry writes for a domain require VERIFIED_FETCH evidence for that domain's host.
+ 1222:       const __evidenceCache = new Map(); // host -> evidence payload
+ 1223: 
+ 1224:       const __getHostEvidence = async (host) => {
+ 1225:         const h = String(host || "").trim().toLowerCase();
+ 1226:         if (!h) return null;
+ 1227:         if (__evidenceCache.has(h)) return __evidenceCache.get(h);
+ 1228:         try {
+ 1229:           const ev = await env.AURA_KV.get(evidenceKey(h), { type: "json" });
+ 1230:           if (ev) __evidenceCache.set(h, ev);
+ 1231:           return ev || null;
+ 1232:         } catch (_) {
+ 1233:           return null;
+ 1234:         }
+ 1235:       };
+ 1236: 
+ 1237:       const __noteHostEvidence = (host, evidence) => {
+ 1238:         const h = String(host || "").trim().toLowerCase();
+ 1239:         if (!h) return;
+ 1240:         __evidenceCache.set(h, evidence || { ok: true, host: h });
+ 1241:       };
+ 1242: 
+ 1243:       const __domainHostFromRegistryEntry = (type, item) => {
+ 1244:         try {
+ 1245:           if (!item || typeof item !== "object") return null;
+ 1246:           if (type === "domains") return (item.domain || item.id || "").toString();
+ 1247:           if (type === "assets") {
+ 1248:             return (item.domain_id || (Array.isArray(item.domains) && item.domains[0]) || "").toString();
+ 1249:           }
+ 1250:           return null;
+ 1251:         } catch (_) {
+ 1252:           return null;
+ 1253:         }
+ 1254:       };
+ 1255: 
+ 1256: 
+ 1257:   // Execute in the order provided.
+ 1258:   for (let i = 0; i < lines.length; i++) {
+ 1259:     const line = lines[i];
+ 1260:     if (line.startsWith("HOST ")) continue;
+ 1261: 
+ 1262:     // Operator-only command gate (fail closed)
+ 1263:     // NOTE: "inspection" commands should be available without operator auth.
+ 1264:     // Only privileged mutations and deploy actions require operator auth.
+ 1265:     const opOnly =
+ 1266:       line === "AUDIT_GET" ||
+ 1267:       line === "AUDIT_CLEAR" ||
+ 1268:       line.startsWith("CLEAR_VERIFIED_FETCH") ||
+ 1269:       line === "HOST_CAPS_SET" ||
+ 1270:       line.startsWith("REGISTRY_PUT") ||
+ 1271:       line.startsWith("REGISTRY_IMPORT_") ||
+ 1272:       line.startsWith("DEPLOYER_CALL") ||
+ 1273:       line.startsWith("INTENT_ADD") ||
+ 1274:       line.startsWith("INTENT_CLEAR");
+ 1275:     if (opOnly) {
+ 1276:       if (!operatorToken) return jsonReply("OPERATOR_TOKEN_NOT_CONFIGURED");
+ 1277:       if (!isOperator) return jsonReply("UNAUTHORIZED");
+ 1278:     }
+ 1279: 
+ 1280: 
+ 1281:     // ----------------------------
+ 1282:     // Intent (batch mode) â€” emit cmd entries (no early return)
+ 1283:     // ----------------------------
+ 1284:     if (line.startsWith("INTENT_ADD")) {
+ 1285:       const m = line.match(/^INTENT_ADD\s+(\S+)\s+(\S+)\s+(.+)$/);
+ 1286:       if (!m) { push("INTENT_ADD", "BAD_REQUEST"); continue; }
+ 1287:       const host = m[1].toLowerCase();
+ 1288:       const tag = m[2].toLowerCase();
+ 1289:       const text = m[3];
+ 1290: 
+ 1291:       const payload = {
+ 1292:         host,
+ 1293:         tag,
+ 1294:         text,
+ 1295:         created_at: nowIso(),
+ 1296:         consent: "EXPLICIT_COMMAND"
+ 1297:       };
+ 1298: 
+ 1299:       await env.AURA_KV.put(intentKey(host, tag), JSON.stringify(payload));
+ 1300:       push("INTENT_ADD", { ok: true, host, tag });
+ 1301:       continue;
+ 1302:     }
+ 1303: 
+ 1304:     if (line.startsWith("INTENT_GET")) {
+ 1305:       const parts = line.split(" ").filter(Boolean);
+ 1306:       const host = (parts[1] || "").toLowerCase();
+ 1307:       const tag = (parts[2] || "").toLowerCase();
+ 1308:       if (!host || !tag) { push("INTENT_GET", "BAD_REQUEST"); continue; }
+ 1309:       const stored = await env.AURA_KV.get(intentKey(host, tag));
+ 1310:       push("INTENT_GET", stored ? (safeJsonParse(stored) || stored) : "INTENT_MISSING");
+ 1311:       continue;
+ 1312:     }
+ 1313: 
+ 1314:     if (line.startsWith("INTENT_CLEAR")) {
+ 1315:       const parts = line.split(" ").filter(Boolean);
+ 1316:       const host = (parts[1] || "").toLowerCase();
+ 1317:       const tag = (parts[2] || "").toLowerCase();
+ 1318:       if (!host || !tag) { push("INTENT_CLEAR", "BAD_REQUEST"); continue; }
+ 1319:       await env.AURA_KV.delete(intentKey(host, tag));
+ 1320:       push("INTENT_CLEAR", "CLEARED");
+ 1321:       continue;
+ 1322:     }
+ 1323: 
+ 1324: 
+ 1325:     if (line.startsWith("CLEAR_VERIFIED_FETCH")) {
+ 1326:       const parts = line.split(" ").filter(Boolean);
+ 1327:       const host = normalizeHost(parts[1]);
+ 1328:       if (host) await env.AURA_KV.delete(evidenceKey(host));
+ 1329:       push("CLEAR_VERIFIED_FETCH", host ? "CLEARED" : "BAD_REQUEST");
+ 1330:       continue;
+ 1331:     }
+ 1332: 
+ 1333:     if (line.startsWith("VERIFIED_FETCH_URL")) {
+ 1334:       const parts = line.split(" ").filter(Boolean);
+ 1335:       const target = parts[1];
+ 1336:       const ev = await doVerifiedFetch(target);
+ 1337:       push("VERIFIED_FETCH_URL", ev);
+ 1338:       if (ev && ev.ok && ev.host) { __seededThisRequest.add(String(ev.host).toLowerCase()); }
+ 1339:       continue;
+ 1340:     }
+ 1341: 
+ 1342:     if (line.startsWith("EVIDENCE_PRESENT")) {
+ 1343:       const parts = line.split(" ").filter(Boolean);
+ 1344:       const host = normalizeHostLoose(parts[1]) || activeHost;

@@ -1,0 +1,5 @@
+HOST auras.guide
+AUDIT_CLEAR
+REGISTRY_PUT users __domains_policy__ {"domains_write_path":"REGISTRY_IMPORT_DOMAINS","domains_put_is_blocked_by_design":true,"note":"audit-control"}
+AUDIT_GET
+SNAPSHOT_STATE

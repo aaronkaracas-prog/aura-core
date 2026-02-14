@@ -1,0 +1,5 @@
+HOST auras.guide
+REGISTRY_GET users __domains_policy__
+REGISTRY_LIST users 5
+REGISTRY_LIST domains 5
+SNAPSHOT_STATE

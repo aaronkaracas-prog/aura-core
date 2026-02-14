@@ -1,0 +1,2 @@
+HOST malibu.city
+REGISTRY_PUT assets aura_intent_contract_v1 {"name":"Aura INTENT Contract (malibu.city)","pillar":"CORE_INTENT","notes":"INTENT_ADD needs 4 tokens; INTENT_GET/CLEAR use 2 tokens; INTENT_SIMULATE works no-arg.","tags":["intent","contract","malibu.city"],"sellability":"NEVER_SELL","version":"v1"}

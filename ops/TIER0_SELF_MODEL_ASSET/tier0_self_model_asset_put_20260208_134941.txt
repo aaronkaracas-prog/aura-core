@@ -1,0 +1,11 @@
+HOST auras.guide
+
+REGISTRY_PUT assets aura_self {
+  "id": "aura_self",
+  "name": "Aura (Self Model)",
+  "pillar": "AUTONOMY_CORE",
+  "notes": "Canonical self-model for Aura. Governs identity, autonomy tiers, constraints, and self-directed evolution. This asset is authoritative.",
+  "tags": ["self-model","autonomy","tier0","canonical"],
+  "sellability": "NEVER_SELL",
+  "created_at": "20260208_134941"
+}

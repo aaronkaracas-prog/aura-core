@@ -1,0 +1,5 @@
+HOST auras.guide
+
+SHOW_MEMORY_SCHEMA
+
+REGISTRY_LIST self_model

@@ -1,0 +1,5 @@
+HOST auras.guide
+REGISTRY_IMPORT_DOMAINS [{"id":"probe-import-domain.example","domain":"probe-import-domain.example","pillar":"system","purpose":"import write probe","priority":"HOLD","status":"UNKNOWN"}]
+REGISTRY_GET domains probe-import-domain.example
+AUDIT_GET
+SNAPSHOT_STATE

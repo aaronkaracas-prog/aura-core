@@ -1,0 +1,11 @@
+HOST auras.guide
+SHOW_MEMORY_SCHEMA
+HOST auras.guide
+REGISTRY_PUT assets __privacy_probe_line__ {"ok":true,"ts":"2026-02-13T13:46:10.8810609-08:00"}
+HOST auras.guide
+REGISTRY_PUT assets __privacy_probe_block__
+{"ok":true,"ts":"2026-02-13T13:46:10.8810609-08:00"}
+HOST auras.guide
+REGISTRY_GET assets __privacy_probe_line__
+HOST auras.guide
+REGISTRY_GET assets __privacy_probe_block__

@@ -1,0 +1,2 @@
+﻿HOST malibu.city
+HOST_CAPS_SET {"allowed_add":["AUTONOMY_STATUS","AUTONOMY_LAST_TICK","AUTONOMY_CAPABILITIES"],"allowed_remove":[]}

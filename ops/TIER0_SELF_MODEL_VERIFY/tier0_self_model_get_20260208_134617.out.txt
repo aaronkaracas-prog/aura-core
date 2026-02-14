@@ -1,0 +1,1 @@
+﻿{"ok":true,"reply":"[\n  {\n    \"cmd\": \"REGISTRY_GET self_model AURA_SELF_MODEL_V1\",\n    \"payload\": \"MISSING\"\n  }\n]"}

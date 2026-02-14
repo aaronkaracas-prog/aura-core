@@ -1,0 +1,4 @@
+HOST frontdesk.network
+HERD_SWEEP
+REGISTRY_GET domains frontdesk.network
+REGISTRY_GET domains malibu.city

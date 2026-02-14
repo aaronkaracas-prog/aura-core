@@ -1,0 +1,5 @@
+﻿HOST auras.guide
+REGISTRY_GET assets canon_sync_v1
+REGISTRY_GET assets aura
+REGISTRY_GET assets aura_privacy_doctrine_v1
+REGISTRY_GET assets aura_intent_contract_v1

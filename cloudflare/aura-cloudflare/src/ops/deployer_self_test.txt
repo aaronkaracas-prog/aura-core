@@ -1,0 +1,1 @@
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"SELF_DEPLOY_TEST","method":"POST","body":{}}

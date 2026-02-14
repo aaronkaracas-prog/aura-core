@@ -1,0 +1,8 @@
+HOST auras.guide
+SNAPSHOT_STATE
+
+PAUSE
+
+INTENT_ADD auras.guide phase4_noexec test_noexec_signal
+
+SNAPSHOT_STATE

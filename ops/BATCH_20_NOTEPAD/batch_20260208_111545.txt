@@ -1,0 +1,9 @@
+HOST auras.guide
+
+REGISTRY_PUT {"type":"domains","id":"batch-01.auras.guide","entry":{"domain":"batch-01.auras.guide","pillar":"BATCH","status":"UNKNOWN"}}
+REGISTRY_PUT {"type":"domains","id":"batch-02.auras.guide","entry":{"domain":"batch-02.auras.guide","pillar":"BATCH","status":"UNKNOWN"}}
+REGISTRY_PUT {"type":"domains","id":"batch-03.auras.guide","entry":{"domain":"batch-03.auras.guide","pillar":"BATCH","status":"UNKNOWN"}}
+REGISTRY_PUT {"type":"domains","id":"batch-04.auras.guide","entry":{"domain":"batch-04.auras.guide","pillar":"BATCH","status":"UNKNOWN"}}
+REGISTRY_PUT {"type":"domains","id":"batch-05.auras.guide","entry":{"domain":"batch-05.auras.guide","pillar":"BATCH","status":"UNKNOWN"}}
+
+REGISTRY_FILTER domains {"where":{"pillar":"BATCH"},"limit":20}

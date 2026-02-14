@@ -1,0 +1,10 @@
+HOST auras.guide
+
+REGISTRY_PUT assets aura_self {
+  "id": "aura_self",
+  "name": "Aura Self-Model",
+  "pillar": "AUTONOMY_CORE",
+  "tags": ["self-model","autonomy","core"],
+  "sellability": "NEVER_SELL",
+  "created_at": "20260208_135048"
+}

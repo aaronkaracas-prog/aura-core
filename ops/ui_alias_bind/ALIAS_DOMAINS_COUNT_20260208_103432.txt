@@ -1,0 +1,7 @@
+HOST frontdesk.network
+
+DEFINE_EXECUTION_ALIAS
+INPUT How many domains do I have?
+ACTION REGISTRY_LIST domains
+OUTPUT registry.meta.count
+FORMAT NUMBER_ONLY

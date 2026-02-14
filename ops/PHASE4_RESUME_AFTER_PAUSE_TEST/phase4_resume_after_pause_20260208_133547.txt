@@ -1,0 +1,12 @@
+HOST auras.guide
+SNAPSHOT_STATE
+
+PAUSE
+
+INTENT_ADD auras.guide phase4_resume test_resume_signal
+
+INTENT_GET auras.guide phase4_resume
+
+INTENT_CLEAR auras.guide phase4_resume
+
+SNAPSHOT_STATE

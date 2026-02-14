@@ -1,0 +1,9 @@
+HOST auras.guide
+BEGIN_BATCH
+REGISTRY_PUT domains {
+  "id":"auras.guide",
+  "domain":"auras.guide",
+  "pillar":"CORE",
+  "status":"ACTIVE"
+}
+END_BATCH

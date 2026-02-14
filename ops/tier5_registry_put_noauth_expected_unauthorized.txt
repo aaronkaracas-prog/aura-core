@@ -1,0 +1,2 @@
+HOST auras.guide
+REGISTRY_PUT {"type":"assets","id":"__noauth_probe2__","value":{"ts":"2026-02-13T00:00:00Z"}}

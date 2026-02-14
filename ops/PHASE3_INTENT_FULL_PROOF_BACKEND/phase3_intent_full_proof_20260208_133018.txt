@@ -1,0 +1,12 @@
+HOST auras.guide
+SNAPSHOT_STATE
+
+INTENT_CLEAR auras.guide phase3_probe
+
+INTENT_ADD auras.guide phase3_probe hello_world
+INTENT_GET auras.guide phase3_probe
+
+INTENT_CLEAR auras.guide phase3_probe
+INTENT_GET auras.guide phase3_probe
+
+SNAPSHOT_STATE

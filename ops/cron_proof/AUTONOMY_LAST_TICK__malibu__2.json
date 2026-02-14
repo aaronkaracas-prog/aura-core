@@ -1,0 +1,1 @@
+{"ok":true,"reply":"[\n  {\n    \"cmd\": \"AUTONOMY_LAST_TICK\",\n    \"payload\": {\n      \"ok\": true,\n      \"host\": \"malibu.city\",\n      \"last_tick\": \"2026-02-11T15:27:18.307Z\"\n    }\n  }\n]"}

@@ -1,0 +1,5 @@
+HOST auras.guide
+SNAPSHOT_STATE
+INTENT_ADD {"tag":"autonomy","text":"phase3: observe_without_action","consent":"EXPLICIT_COMMAND"}
+INTENT_GET {"tag":"autonomy"}
+SNAPSHOT_STATE

@@ -1,0 +1,6 @@
+HOST auras.guide
+REGISTRY_PUT privacy consent_required {"recording":true,"durable":true}
+HOST auras.guide
+REGISTRY_PUT privacy jurisdiction_mode {"mode":"AUTO","two_party_states":["CA","FL","PA","WA"]}
+HOST auras.guide
+REGISTRY_LIST privacy

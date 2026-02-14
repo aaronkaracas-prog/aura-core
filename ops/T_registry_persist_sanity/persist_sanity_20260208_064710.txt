@@ -1,0 +1,5 @@
+HOST frontdesk.network
+REGISTRY_LIST domains 5
+REGISTRY_FILTER domains {"where":{"id":"malibu.city"},"limit":5}
+REGISTRY_FILTER domains {"where":{"id":"frontdesk.network"},"limit":5}
+AUDIT_GET 5

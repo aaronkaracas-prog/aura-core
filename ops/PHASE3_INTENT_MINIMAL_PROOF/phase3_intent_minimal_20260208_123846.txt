@@ -1,0 +1,12 @@
+HOST auras.guide
+SNAPSHOT_STATE
+
+# --- INTENT minimal / null envelopes ---
+INTENT_ADD {}
+INTENT_ADD {"intent":{}}
+INTENT_ADD {"intent":null}
+
+INTENT_GET {}
+INTENT_GET
+
+SNAPSHOT_STATE

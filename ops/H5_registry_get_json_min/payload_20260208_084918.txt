@@ -1,0 +1,4 @@
+HOST frontdesk.network
+REGISTRY_GET domains {"id":"frontdesk.network"}
+REGISTRY_GET domains {"id":"malibu.city"}
+SNAPSHOT_STATE

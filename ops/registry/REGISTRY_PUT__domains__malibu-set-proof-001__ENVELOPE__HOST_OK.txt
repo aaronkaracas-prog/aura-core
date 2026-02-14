@@ -1,0 +1,3 @@
+HOST malibu.city
+REGISTRY_PUT
+{"type":"domains","item":{"id":"malibu-set-proof-001","domain":"malibu.city","pillar":"TEST","purpose":"EVIDENCE_GATE_PROOF__2026_02_12","status":"ACTIVE"}}

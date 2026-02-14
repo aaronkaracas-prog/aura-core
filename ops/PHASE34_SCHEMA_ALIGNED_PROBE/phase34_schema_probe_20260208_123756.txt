@@ -1,0 +1,14 @@
+HOST auras.guide
+SNAPSHOT_STATE
+
+# --- INTENT (schema-aligned: users.intents[]) ---
+INTENT_ADD {"intent":{"tag":"autonomy","text":"phase3: observe_without_action","consent":"EXPLICIT_COMMAND"}}
+INTENT_ADD {"intent":{"scope":"autonomy","note":"phase3_resume"}}
+INTENT_GET {"filter":{"tag":"autonomy"}}
+INTENT_GET
+
+# --- PAUSE (minimal + object) ---
+PAUSE {}
+PAUSE {"reason":"phase4_entry_test"}
+
+SNAPSHOT_STATE

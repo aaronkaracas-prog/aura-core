@@ -1,0 +1,8 @@
+HOST auras.guide
+REGISTRY_PUT domains __put_test__ {
+  "domain": "__put_test__",
+  "pillar": "TEST",
+  "purpose": "PUT_SHAPE_TEST",
+  "priority": "UNKNOWN",
+  "status": "UNKNOWN"
+}

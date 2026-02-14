@@ -1,0 +1,5 @@
+HOST auras.guide
+AUDIT_CLEAR
+REGISTRY_IMPORT_DOMAINS ["probe-regput-control.example"]
+AUDIT_GET
+SNAPSHOT_STATE

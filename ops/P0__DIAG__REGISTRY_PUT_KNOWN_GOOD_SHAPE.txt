@@ -1,0 +1,4 @@
+HOST auras.guide
+REGISTRY_PUT assets __privacy_probe__ {"ok":true,"ts":"2026-02-13T13:10:47.0044576-08:00"}
+HOST auras.guide
+REGISTRY_GET assets __privacy_probe__

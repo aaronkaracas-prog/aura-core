@@ -1,0 +1,3 @@
+HOST malibu.city
+REGISTRY_PUT
+{"type":"domains","item":{"id":"malibu.city","domain":"malibu.city","pillar":"CITYGUIDE","purpose":"AUDIT_WRITE_PROOF_2026_02_12"}}

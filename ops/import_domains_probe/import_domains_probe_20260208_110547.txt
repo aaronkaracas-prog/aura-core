@@ -1,0 +1,7 @@
+HOST frontdesk.network
+
+# One-item import (probe format)
+REGISTRY_IMPORT_DOMAINS {"upserts":[{"id":"probe-import.world","domain":"probe-import.world","pillar":"TEST","purpose":"import probe","priority":"HOLD","status":"UNKNOWN"}]}
+
+# Verify it exists
+REGISTRY_GET domains probe-import.world

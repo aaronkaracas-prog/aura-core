@@ -1,0 +1,4 @@
+HOST auras.guide
+AUTONOMY_BUDGET_GET
+HOST malibu.city
+AUTONOMY_BUDGET_GET

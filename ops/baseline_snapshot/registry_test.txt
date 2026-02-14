@@ -1,0 +1,2 @@
+HOST malibu.city
+REGISTRY_PUT assets test_autonomy {"name":"Autonomy Check","pillar":"SYSTEM","notes":"Tier4"}

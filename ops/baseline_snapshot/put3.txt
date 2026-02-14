@@ -1,0 +1,2 @@
+HOST malibu.city
+REGISTRY_PUT assets {"id":"trail_probe_1","name":"Trail Probe 1","pillar":"SYSTEM","notes":"Generate audit trail event after caps update"}

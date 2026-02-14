@@ -1,0 +1,2 @@
+HOST auras.guide
+REGISTRY_PUT assets {"id":"__kv_write_probe__","name":"KV write probe","pillar":"CANON","notes":"probe","type":"assets","version":"v1"}

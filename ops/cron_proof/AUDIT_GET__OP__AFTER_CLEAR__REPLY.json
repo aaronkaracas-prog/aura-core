@@ -1,0 +1,1 @@
+{"ok":true,"reply":"[\n  {\n    \"cmd\": \"AUDIT_GET\",\n    \"payload\": {\n      \"seq\": 0,\n      \"events\": []\n    }\n  }\n]"}

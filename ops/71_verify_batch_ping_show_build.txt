@@ -1,0 +1,3 @@
+HOST frontdesk.network
+PING
+SHOW_BUILD

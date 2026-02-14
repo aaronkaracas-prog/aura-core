@@ -1,0 +1,7 @@
+HOST frontdesk.network
+SHOW_ALLOWED_COMMANDS
+SHOW_MEMORY_SCHEMA
+REGISTRY_LIST domains
+REGISTRY_LIST domains {"limit":3}
+REGISTRY_GET domains {"id":"frontdesk.network"}
+SNAPSHOT_STATE

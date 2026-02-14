@@ -1,0 +1,10 @@
+HOST frontdesk.network
+DEPLOYER_CALL {"service":"AURA_CF","method":"GET","path":"/zones?page=1&per_page=50"}
+DEPLOYER_CALL {"service":"AURA_CF","method":"GET","path":"/zones?page=2&per_page=50"}
+DEPLOYER_CALL {"service":"AURA_CF","method":"GET","path":"/zones?page=3&per_page=50"}
+DEPLOYER_CALL {"service":"AURA_CF","method":"GET","path":"/zones?page=4&per_page=50"}
+DEPLOYER_CALL {"service":"AURA_CF","method":"GET","path":"/zones?page=5&per_page=50"}
+DEPLOYER_CALL {"service":"AURA_CF","method":"GET","path":"/zones?page=6&per_page=50"}
+DEPLOYER_CALL {"service":"AURA_CF","method":"GET","path":"/zones?page=7&per_page=50"}
+DEPLOYER_CALL {"service":"AURA_CF","method":"GET","path":"/zones?page=8&per_page=50"}
+SHOW_BUILD

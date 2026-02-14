@@ -1,0 +1,10 @@
+HOST malibu.city
+REGISTRY_PUT
+{"type":"assets","item":{
+  "id":"aura_intent_contract_v1",
+  "name":"Aura INTENT Command Contract (malibu.city)",
+  "pillar":"CORE_INTENT",
+  "notes":"INTENT_ADD requires 4 positional tokens. INTENT_GET and INTENT_CLEAR require 2 tokens. INTENT_SIMULATE works no-arg. No AUDIT emission for INTENT ops in this build.",
+  "tags":["intent","contract","malibu.city","tier5"],
+  "sellability":"NEVER_SELL"
+}}

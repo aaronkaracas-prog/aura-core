@@ -1,0 +1,3 @@
+HOST malibu.city
+REGISTRY_PUT assets aura_intent_contract_v1
+{"name":"Aura INTENT Command Contract (malibu.city)","pillar":"CORE_INTENT","notes":"Contract (build REGISTRY_AUDIT__13): INTENT_SIMULATE works with no args or with an extra newline token; JSON args return empty list. INTENT_ADD requires 4 positional tokens: INTENT_ADD host_token tag_token token3 token4. Response echoes host and tag. Stored text is token3 + space + token4. INTENT_GET and INTENT_CLEAR require 2 tokens: host_token tag_token. Extra tokens ignored. INTENT ops do not emit AUDIT events in this build.","tags":["intent","contract","malibu.city","tier5"],"sellability":"NEVER_SELL","version":"v1"}

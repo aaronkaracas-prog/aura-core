@@ -1,0 +1,2 @@
+HOST frontdesk.network
+REGISTRY_GET assets test_autonomy

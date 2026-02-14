@@ -1,0 +1,2 @@
+﻿HOST malibu.city
+REGISTRY_GET config canon.lock.build_stamp

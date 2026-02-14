@@ -1,0 +1,6 @@
+HOST frontdesk.network
+REGISTRY_GET domains {"id":"frontdesk.network"}
+REGISTRY_GET domains {"id":"malibu.city"}
+REGISTRY_FILTER domains {"where":{"notes_sweep_latest.sweep_latest.host":"frontdesk.network"},"limit":5}
+REGISTRY_FILTER domains {"where":{"notes_sweep_latest.sweep_latest.host":"malibu.city"},"limit":5}
+SNAPSHOT_STATE

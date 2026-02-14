@@ -1,0 +1,3 @@
+HOST auras.guide
+EVIDENCE_PRESENT auras.guide
+AUTONOMY_STATUS

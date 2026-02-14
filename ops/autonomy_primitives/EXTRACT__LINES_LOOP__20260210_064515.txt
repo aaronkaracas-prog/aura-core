@@ -1,0 +1,197 @@
+; read-only stubs)
+    // ----------------------------
+    if (bodyTrim === "AUTONOMY_STATUS") return jsonReply(JSON.stringify({ ok: true }, null, 2));
+    if (bodyTrim === "AUTONOMY_LAST_TICK") return jsonReply(JSON.stringify({ ok: true }, null, 2));
+    if (bodyTrim === "AUTONOMY_CAPABILITIES") return jsonReply(JSON.stringify({ ok: true }, null, 2));
+    if (bodyTrim === "INTENT_SIMULATE") return jsonReply(JSON.stringify({ ok: true, note: "preview-only" }, null, 2));
+    if (bodyTrim === "REGISTRY_AUDIT_TRAIL") return jsonReply(JSON.stringify({ ok: true, note: "placeholder" }, null, 2));
+    if (bodyTrim === "AUTONOMY_BUDGET_GET") return jsonReply(JSON.stringify({ ok: true }, null, 2));
+    if (bodyTrim === "AUTONOMY_BUDGET_SET") return jsonReply(JSON.stringify({ ok: true, note: "requires envelope" }, null, 2));
+    if (bodyTrim === "FAILURE_MEMORY_GET") return jsonReply(JSON.stringify({ ok: true }, null, 2));
+    if (bodyTrim === "FAILURE_MEMORY_PUT") return jsonReply(JSON.stringify({ ok: true, note: "requires envelope" }, null, 2));
+    if (bodyTrim === "AUTONOMY_CHARTER_GET") return jsonReply(JSON.stringify({ ok: true }, null, 2));
+    if (bodyTrim === "AUTONOMY_CHARTER_SET") return jsonReply(JSON.stringify({ ok: true, note: "requires envelope" }, null, 2));
+
+if (bodyTrim === "SHOW_MEMORY_SCHEMA") {
+  return jsonReply(JSON.stringify(memorySchemaV1, null, 2));
+}
+
+if (bodyTrim === "PORTFOLIO_STATUS") {
+  const assetsMetaRaw = await env.AURA_KV.get(registryMetaKey("assets"));
+  const domainsMetaRaw = await env.AURA_KV.get(registryMetaKey("domains"));
+  const assetsMeta = assetsMetaRaw ? (safeJsonParse(assetsMetaRaw) || assetsMetaRaw) : null;
+  const domainsMeta = domainsMetaRaw ? (safeJsonParse(domainsMetaRaw) || domainsMetaRaw) : null;
+
+  const status = {
+    build: BUILD,
+    stamp: nowIso(),
+    registry_version: REGISTRY_VERSION,
+    registries: {
+      assets: assetsMeta || { type: "assets", count: 0, updated_at: null, version: REGISTRY_VERSION },
+      domains: domainsMeta || { type: "domains", count: 0, updated_at: null, version: REGISTRY_VERSION }
+    }
+  };
+
+  return jsonReply(JSON.stringify(status, null, 2));
+}
+
+if (bodyTrim === "AUDIT_GET") {
+  const payload = await auditList(env, 50);
+  return jsonReply(JSON.stringify(payload, null, 2));
+}
+
+    if (bodyTrim === "PAUSE") {
+      return jsonReply("PAUSED");
+    }
+
+    // ----------------------------
+    // Parse message lines (multi-line command batches)
+    // ----------------------------
+    const lines = body
+      .split("\n")
+      .map((l) => l.replace(/\r/g, "").replace(/^\s*>>\s?/, "").replace(/^\s*>\s?/, "").trim())
+      .filter(Boolean);
+
+    let didRegistryWrite = false;
+
+    // ----------------------------
+    // Host context for domain-scoped capability routing
+    // ----------------------------
+    let explicitHost = null;
+    for (const line of lines) {
+      if (line.startsWith("HOST ")) {
+        const parts = line.split(" ").filter(Boolean);
+        if (parts[1]) explicitHost = parts[1].toLowerCase();
+      }
+    }
+
+    const askedUrl = extractLastUrl(body);
+    const askedHostFromUrl = askedUrl ? normalizeHost(askedUrl) : null;
+
+    // If no URL was provided, try to extract a bare domain mention from the message.
+    const askedHostFromBare = askedHostFromUrl ? null : extractLastBareDomain(body);
+
+    // Prefer explicit HOST context for "active host", but for questions we will prefer the asked host.
+    const askedHost = askedHostFromUrl || askedHostFromBare || null;
+    const activeHost = explicitHost || askedHost || null;
+
+    const getHostCaps = async (host) => {
+      if (!host) return null;
+      const stored = await env.AURA_KV.get(capsKey(host));
+      if (!stored) return null;
+      try {
+        const parsed = JSON.parse(stored);
+        if (parsed && Array.isArray(parsed.allowed)) return parsed;
+        return null;
+      } catch {
+        return null;
+      }
+    };
+
+    const hostCaps = await getHostCaps(activeHost);
+
+    const isAllowedForHost = (cmd) => {
+      if (!hostCaps) return true;
+      return hostCaps.allowed.includes(cmd);
+    };
+
+    // ----------------------------
+    // Operator-only: HOST_CAPS_SET (supports multiple lines)
+    //
+    // Supported syntaxes:
+    // 1) HOST_CAPS_SET <host> <json>
+    // 2) HOST_CAPS_SET <json>                (host defaults to current HOST)
+    //
+    // <json> may be:
+    // - an array of command strings: ["PING","SHOW_BUILD",...]
+    // - an object with allow/allowed: {"allow":[...]} or {"allowed":[...]} (optionally {"host":"..."} )
+    // ----------------------------
+    let hostCapsSetCount = 0;
+
+    for (const line of lines) {
+      if (!line.startsWith("HOST_CAPS_SET")) continue;
+
+      if (!isOperator) return jsonReply("UNAUTHORIZED");
+
+      // Split once on whitespace after the command token.
+      const rest = line.slice("HOST_CAPS_SET".length).trim();
+      if (!rest) return jsonReply("BAD_REQUEST");
+
+      // Decide whether the first token is a host or JSON.
+      let host = (activeHost || "").toLowerCase();
+      let jsonText = rest;
+
+      const firstChar = rest[0];
+      if (!(firstChar === "{" || firstChar === "[")) {
+        const m = rest.match(/^(\S+)\s+([\s\S]+)$/);
+        if (!m) return jsonReply("BAD_REQUEST");
+        host = m[1].toLowerCase();
+        jsonText = m[2].trim();
+      }
+
+      if (!host) return jsonReply("BAD_REQUEST");
+
+      try {
+        const parsed = JSON.parse(jsonText);
+
+        // Normalize to an array of command strings.
+        let requested = null;
+
+        if (Array.isArray(parsed)) {
+          requested = parsed;
+        } else if (parsed && typeof parsed === "object") {
+          if (typeof parsed.host === "string" && parsed.host.trim()) {
+            host = parsed.host.trim().toLowerCase();
+          }
+          if (Array.isArray(parsed.allow)) requested = parsed.allow;
+          else if (Array.isArray(parsed.allowed)) requested = parsed.allowed;
+        }
+
+        if (!Array.isArray(requested)) return jsonReply("BAD_REQUEST");
+
+        // Sanitize: keep only known commands.
+        const clean = requested
+          .map((s) => String(s).trim())
+          .filter(Boolean)
+          .filter((c) => allowedCommands.includes(c));
+
+        await env.AURA_KV.put(capsKey(host), JSON.stringify({ allowed: clean, updated_at: nowIso() }), { expirationTtl: 60 * 60 * 24 * 30 });
+        hostCapsSetCount++;
+      } catch (_e) {
+        return jsonReply("BAD_REQUEST");
+      }
+    }
+
+    if (hostCapsSetCount > 0) {
+      return jsonReply(hostCapsSetCount === 1 ? "OK" : `OK (${hostCapsSetCount})`);
+    }
+  // HOST_CAPS_GET [host] (single-command fast path only)
+  if (lines.length === 1 && lines[0].startsWith("HOST_CAPS_GET")) {
+    const parts = lines[0].split(" ").filter(Boolean);
+    const host = (parts[1] || activeHost || "frontdesk.network").toLowerCase();
+    const caps = await getHostCaps(host);
+    return jsonReply(JSON.stringify(caps || { host, allowed: null }, null, 2));
+  }// SNAPSHOT_STATE (safe subset)
+    if (bodyTrim === "SNAPSHOT_STATE") {
+      const safeHost = activeHost || "none";
+      const caps = await getHostCaps(activeHost);
+      const stored = activeHost ? await env.AURA_KV.get(evidenceKey(activeHost)) : null;
+
+      const snapshot = {
+        build: BUILD,
+        stamp: new Date().toISOString(),
+        operator: isOperator ? "YES" : "NO",
+        active_host: safeHost,
+        host_caps: caps || null,
+        evidence_present_for_active_host: Boolean(await env.AURA_KV.get(evidenceKey(__host))),
+        autonomy_tick: (await env.AURA_KV.get(autonomyTickKey, { type: "json" }).catch(()=>null)) || null
+      };
+
+      return jsonReply(snapshot);
+    }
+
+    // If host caps exist and a line starts with a command that isn't allowed for this host, block deterministically.
+    for (const line of lines) {
+      const token = line.split(" ")[0];
+      if (allowedCommands.includes(token) && !isAllowedForHost(token)) {
+        return jsonReply("NOT_ALLOWED")

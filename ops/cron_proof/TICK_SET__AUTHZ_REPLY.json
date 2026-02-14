@@ -1,0 +1,1 @@
+{"ok":true,"reply":"[\n  {\n    \"cmd\": \"AUTONOMY_LAST_TICK_SET\",\n    \"payload\": \"NOT_ALLOWED\"\n  }\n]"}

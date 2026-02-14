@@ -1,0 +1,2 @@
+HOST malibu.city
+REGISTRY_PUT assets {"id":"__kv_write_probe_malibu__","name":"KV write probe malibu","pillar":"CANON","notes":"probe","type":"assets","version":"v1"}

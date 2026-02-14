@@ -1,0 +1,2 @@
+HOST auras.guide
+VERIFIED_FETCH_URL {"url":"https://example.com","host":"example.com"}

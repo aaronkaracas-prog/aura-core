@@ -1,0 +1,560 @@
+// ----------------------------
+    // Simple commands
+    // ----------------------------
+    if (bodyTrim === "PING") return jsonReply("PONG");
+
+    if (bodyTrim === "SHOW_ALLOWED_COMMANDS") {
+      return jsonReply(allowedCommands);
+    }
+
+    if (bodyTrim === "SHOW_BUILD") {
+      return jsonReply(
+        JSON.stringify({ build: BUILD, stamp: new Date().toISOString() }, null, 2)
+      );
+    }
+
+    if (bodyTrim === "SHOW_CLAIM_GATE") {
+      return jsonReply(
+        JSON.stringify(
+          {
+            trigger_words: [
+              "live",
+              "deployed",
+              "launched",
+              "resolving",
+              "propagating",
+              "successful",
+              "verified",
+              "up",
+              "online",
+              "working",
+              "reachable",
+              "available",
+              "accessible"
+            ],
+            forced_message: "NOT WIRED: VERIFIED_FETCH REQUIRED",
+            requires_verified_fetch_format: true
+          },
+          null,
+          2
+        )
+      );
+    }
+
+
+    // ----------------------------
+    // AUTONOMY PRIMITIVES (single command; read-only stubs)
+    // ----------------------------
+    if (bodyTrim === "AUTONOMY_STATUS") return jsonReply(JSON.stringify({ ok: true }, null, 2));
+    if (bodyTrim === "AUTONOMY_LAST_TICK") return jsonReply(JSON.stringify({ ok: true }, null, 2));
+    if (bodyTrim === "AUTONOMY_CAPABILITIES") return jsonReply(JSON.stringify({ ok: true }, null, 2));
+    if (bodyTrim === "INTENT_SIMULATE") return jsonReply(JSON.stringify({ ok: true, note: "preview-only" }, null, 2));
+    if (bodyTrim === "REGISTRY_AUDIT_TRAIL") return jsonReply(JSON.stringify({ ok: true, note: "placeholder" }, null, 2));
+    if (bodyTrim === "AUTONOMY_BUDGET_GET") return jsonReply(JSON.stringify({ ok: true }, null, 2));
+    if (bodyTrim === "AUTONOMY_BUDGET_SET") return jsonReply(JSON.stringify({ ok: true, note: "requires envelope" }, null, 2));
+    if (bodyTrim === "FAILURE_MEMORY_GET") return jsonReply(JSON.stringify({ ok: true }, null, 2));
+    if (bodyTrim === "FAILURE_MEMORY_PUT") return jsonReply(JSON.stringify({ ok: true, note: "requires envelope" }, null, 2));
+    if (bodyTrim === "AUTONOMY_CHARTER_GET") return jsonReply(JSON.stringify({ ok: true }, null, 2));
+    if (bodyTrim === "AUTONOMY_CHARTER_SET") return jsonReply(JSON.stringify({ ok: true, note: "requires envelope" }, null, 2));
+
+if (bodyTrim === "SHOW_MEMORY_SCHEMA") {
+  return jsonReply(JSON.stringify(memorySchemaV1, null, 2));
+}
+
+if (bodyTrim === "PORTFOLIO_STATUS") {
+  const assetsMetaRaw = await env.AURA_KV.get(registryMetaKey("assets"));
+  const domainsMetaRaw = await env.AURA_KV.get(registryMetaKey("domains"));
+  const assetsMeta = assetsMetaRaw ? (safeJsonParse(assetsMetaRaw) || assetsMetaRaw) : null;
+  const domainsMeta = domainsMetaRaw ? (safeJsonParse(domainsMetaRaw) || domainsMetaRaw) : null;
+
+  const status = {
+    build: BUILD,
+    stamp: nowIso(),
+    registry_version: REGISTRY_VERSION,
+    registries: {
+      assets: assetsMeta || { type: "assets", count: 0, updated_at: null, version: REGISTRY_VERSION },
+      domains: domainsMeta || { type: "domains", count: 0, updated_at: null, version: REGISTRY_VERSION }
+    }
+  };
+
+  return jsonReply(JSON.stringify(status, null, 2));
+}
+
+if (bodyTrim === "AUDIT_GET") {
+  const payload = await auditList(env, 50);
+  return jsonReply(JSON.stringify(payload, null, 2));
+}
+
+    if (bodyTrim === "PAUSE") {
+      return jsonReply("PAUSED");
+    }
+
+    // ----------------------------
+    // Parse message lines (multi-line command batches)
+    // ----------------------------
+    const lines = body
+      .split("\n")
+      .map((l) => l.replace(/\r/g, "").replace(/^\s*>>\s?/, "").replace(/^\s*>\s?/, "").trim())
+      .filter(Boolean);
+
+    let didRegistryWrite = false;
+
+    // ----------------------------
+    // Host context for domain-scoped capability routing
+    // ----------------------------
+    let explicitHost = null;
+    for (const line of lines) {
+      if (line.startsWith("HOST ")) {
+        const parts = line.split(" ").filter(Boolean);
+        if (parts[1]) explicitHost = parts[1].toLowerCase();
+      }
+    }
+
+    const askedUrl = extractLastUrl(body);
+    const askedHostFromUrl = askedUrl ? normalizeHost(askedUrl) : null;
+
+    // If no URL was provided, try to extract a bare domain mention from the message.
+    const askedHostFromBare = askedHostFromUrl ? null : extractLastBareDomain(body);
+
+    // Prefer explicit HOST context for "active host", but for questions we will prefer the asked host.
+    const askedHost = askedHostFromUrl || askedHostFromBare || null;
+    const activeHost = explicitHost || askedHost || null;
+
+    const getHostCaps = async (host) => {
+      if (!host) return null;
+      const stored = await env.AURA_KV.get(capsKey(host));
+      if (!stored) return null;
+      try {
+        const parsed = JSON.parse(stored);
+        if (parsed && Array.isArray(parsed.allowed)) return parsed;
+        return null;
+      } catch {
+        return null;
+      }
+    };
+
+    const hostCaps = await getHostCaps(activeHost);
+
+    const isAllowedForHost = (cmd) => {
+      if (!hostCaps) return true;
+      return hostCaps.allowed.includes(cmd);
+    };
+
+    // ----------------------------
+    // Operator-only: HOST_CAPS_SET (supports multiple lines)
+    //
+    // Supported syntaxes:
+    // 1) HOST_CAPS_SET <host> <json>
+    // 2) HOST_CAPS_SET <json>                (host defaults to current HOST)
+    //
+    // <json> may be:
+    // - an array of command strings: ["PING","SHOW_BUILD",...]
+    // - an object with allow/allowed: {"allow":[...]} or {"allowed":[...]} (optionally {"host":"..."} )
+    // ----------------------------
+    let hostCapsSetCount = 0;
+
+    for (const line of lines) {
+      if (!line.startsWith("HOST_CAPS_SET")) continue;
+
+      if (!isOperator) return jsonReply("UNAUTHORIZED");
+
+      // Split once on whitespace after the command token.
+      const rest = line.slice("HOST_CAPS_SET".length).trim();
+      if (!rest) return jsonReply("BAD_REQUEST");
+
+      // Decide whether the first token is a host or JSON.
+      let host = (activeHost || "").toLowerCase();
+      let jsonText = rest;
+
+      const firstChar = rest[0];
+      if (!(firstChar === "{" || firstChar === "[")) {
+        const m = rest.match(/^(\S+)\s+([\s\S]+)$/);
+        if (!m) return jsonReply("BAD_REQUEST");
+        host = m[1].toLowerCase();
+        jsonText = m[2].trim();
+      }
+
+      if (!host) return jsonReply("BAD_REQUEST");
+
+      try {
+        const parsed = JSON.parse(jsonText);
+
+        // Normalize to an array of command strings.
+        let requested = null;
+
+        if (Array.isArray(parsed)) {
+          requested = parsed;
+        } else if (parsed && typeof parsed === "object") {
+          if (typeof parsed.host === "string" && parsed.host.trim()) {
+            host = parsed.host.trim().toLowerCase();
+          }
+          if (Array.isArray(parsed.allow)) requested = parsed.allow;
+          else if (Array.isArray(parsed.allowed)) requested = parsed.allowed;
+        }
+
+        if (!Array.isArray(requested)) return jsonReply("BAD_REQUEST");
+
+        // Sanitize: keep only known commands.
+        const clean = requested
+          .map((s) => String(s).trim())
+          .filter(Boolean)
+          .filter((c) => allowedCommands.includes(c));
+
+        await env.AURA_KV.put(capsKey(host), JSON.stringify({ allowed: clean, updated_at: nowIso() }), { expirationTtl: 60 * 60 * 24 * 30 });
+        hostCapsSetCount++;
+      } catch (_e) {
+        return jsonReply("BAD_REQUEST");
+      }
+    }
+
+    if (hostCapsSetCount > 0) {
+      return jsonReply(hostCapsSetCount === 1 ? "OK" : `OK (${hostCapsSetCount})`);
+    }
+  // HOST_CAPS_GET [host] (single-command fast path only)
+  if (lines.length === 1 && lines[0].startsWith("HOST_CAPS_GET")) {
+    const parts = lines[0].split(" ").filter(Boolean);
+    const host = (parts[1] || activeHost || "frontdesk.network").toLowerCase();
+    const caps = await getHostCaps(host);
+    return jsonReply(JSON.stringify(caps || { host, allowed: null }, null, 2));
+  }// SNAPSHOT_STATE (safe subset)
+    if (bodyTrim === "SNAPSHOT_STATE") {
+      const safeHost = activeHost || "none";
+      const caps = await getHostCaps(activeHost);
+      const stored = activeHost ? await env.AURA_KV.get(evidenceKey(activeHost)) : null;
+
+      const snapshot = {
+        build: BUILD,
+        stamp: new Date().toISOString(),
+        operator: isOperator ? "YES" : "NO",
+        active_host: safeHost,
+        host_caps: caps || null,
+        evidence_present_for_active_host: Boolean(await env.AURA_KV.get(evidenceKey(__host))),
+        autonomy_tick: (await env.AURA_KV.get(autonomyTickKey, { type: "json" }).catch(()=>null)) || null
+      };
+
+      return jsonReply(snapshot);
+    }
+
+    // If host caps exist and a line starts with a command that isn't allowed for this host, block deterministically.
+    for (const line of lines) {
+      const token = line.split(" ")[0];
+      if (allowedCommands.includes(token) && !isAllowedForHost(token)) {
+        return jsonReply("NOT_ALLOWED");
+      }
+    }
+
+// ----------------------------
+// BATCH EXECUTION (ordered, multi-command)
+// Purpose: allow VERIFIED_FETCH + REGISTRY_PUT/GET + AUDIT_GET + PORTFOLIO_STATUS in ONE request.
+// Avoid early-returns from hasLine() helpers.
+// ----------------------------
+const isBatch = lines.length > 1 && lines.some((l) => {
+  const tok = l.split(" ")[0];
+  return allowedCommands.includes(tok);
+});
+
+const doVerifiedFetch = async (target) => {
+  const host = normalizeHost(target);
+  if (!host) return { ok: false, error: "BAD_REQUEST", url: target, http_status: 0 };
+
+  const runFetch = async (probeUrl) => {
+    const res = await fetch(probeUrl);
+    const text = await res.text();
+    return { res, text };
+  };
+
+  const nowTs = new Date().toISOString();
+  const selfHost = new URL(request.url).host.toLowerCase();
+
+  if (host === selfHost) {
+    const evidence = {
+      ok: true,
+      host,
+      url: target,
+      probe_url: null,
+      http_status: 200,
+      first_line_html: "SELF_HOST_SYNTHETIC_EVIDENCE",
+      body_length: 0,
+      synthetic: true,
+      reason: "WORKER_SELF_ROUTE_ASSUME_REACHABLE",
+      diagnostics: { cf: request.cf || null, self_host: selfHost, ts: nowTs }
+    };
+    await env.AURA_KV.put(evidenceKey(host), JSON.stringify(evidence));
+    return evidence;
+  }
+
+  try {
+    const { res: res1, text: text1 } = await runFetch(target);
+
+    if (res1.status === 525) {
+      const u = new URL(target);
+      if (u.protocol === "https:") {
+        u.protocol = "http:";
+        const httpUrl = u.toString();
+        const { res: res2, text: text2 } = await runFetch(httpUrl);
+
+        const evidence = {
+          ok: true,
+          host,
+          public_url: target,
+          probe_url: httpUrl,
+          fallback_reason: "CF_HTTPS_525_HTTP_PROBE",
+          http_status: res2.status,
+          first_line_html: text2.split("\n")[0] || "",
+          body_length: text2.length,
+          diagnostics: { cf: request.cf || null, https_status: 525, ts: nowTs }
+        };
+        await env.AURA_KV.put(evidenceKey(host), JSON.stringify(evidence));
+        return evidence;
+      }
+    }
+
+    const evidence = {
+      ok: true,
+      host,
+      url: target,
+      http_status: res1.status,
+      first_line_html: text1.split("\n")[0] || "",
+      body_length: text1.length,
+      diagnostics: { cf: request.cf || null, ts: nowTs }
+    };
+    await env.AURA_KV.put(evidenceKey(host), JSON.stringify(evidence));
+    return evidence;
+  } catch (err) {
+    const evidence = {
+      ok: false,
+      host,
+      url: target,
+      http_status: 0,
+      error: String(err?.message || err),
+      error_name: err?.name || "UNKNOWN",
+      diagnostics: { cf: request.cf || null, ts: nowTs }
+    };
+    await env.AURA_KV.put(evidenceKey(host), JSON.stringify(evidence));
+    return evidence;
+  }
+};
+
+if (isBatch) {
+  const out = [];
+  const push = (cmd, payload) => out.push({ cmd, payload });
+      
+  // Track which hosts were VERIFIED_FETCH_URL seeded in THIS request only.
+  const __seededThisRequest = new Set();
+// Claim-gate (batch mode): registry writes for a domain require VERIFIED_FETCH evidence for that domain's host.
+      const __evidenceCache = new Map(); // host -> evidence payload
+
+      const __getHostEvidence = async (host) => {
+        const h = String(host || "").trim().toLowerCase();
+        if (!h) return null;
+        if (__evidenceCache.has(h)) return __evidenceCache.get(h);
+        try {
+          const ev = await env.AURA_KV.get(evidenceKey(h), { type: "json" });
+          if (ev) __evidenceCache.set(h, ev);
+          return ev || null;
+        } catch (_) {
+          return null;
+        }
+      };
+
+      const __noteHostEvidence = (host, evidence) => {
+        const h = String(host || "").trim().toLowerCase();
+        if (!h) return;
+        __evidenceCache.set(h, evidence || { ok: true, host: h });
+      };
+
+      const __domainHostFromRegistryEntry = (type, item) => {
+        try {
+          if (!item || typeof item !== "object") return null;
+          if (type === "domains") return (item.domain || item.id || "").toString();
+          if (type === "assets") {
+            return (item.domain_id || (Array.isArray(item.domains) && item.domains[0]) || "").toString();
+          }
+          return null;
+        } catch (_) {
+          return null;
+        }
+      };
+
+
+  // Execute in the order provided.
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.startsWith("HOST ")) continue;
+
+    // Operator-only command gate (fail closed)
+    // NOTE: "inspection" commands should be available without operator auth.
+    // Only privileged mutations and deploy actions require operator auth.
+    const opOnly =
+      line === "AUDIT_GET" ||
+      line === "AUDIT_CLEAR" ||
+      line.startsWith("CLEAR_VERIFIED_FETCH") ||
+      line === "HOST_CAPS_SET" ||
+      line.startsWith("REGISTRY_PUT") ||
+      line.startsWith("REGISTRY_IMPORT_") ||
+      line.startsWith("DEPLOYER_CALL") ||
+      line.startsWith("INTENT_ADD") ||
+      line.startsWith("INTENT_CLEAR");
+    if (opOnly) {
+      if (!operatorToken) return jsonReply("OPERATOR_TOKEN_NOT_CONFIGURED");
+      if (!isOperator) return jsonReply("UNAUTHORIZED");
+    }
+
+
+    // ----------------------------
+    // Intent (batch mode) ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â emit cmd entries (no early return)
+    // ----------------------------
+    if (line.startsWith("INTENT_ADD")) {
+      const m = line.match(/^INTENT_ADD\s+(\S+)\s+(\S+)\s+(.+)$/);
+      if (!m) { push("INTENT_ADD", "BAD_REQUEST"); continue; }
+      const host = m[1].toLowerCase();
+      const tag = m[2].toLowerCase();
+      const text = m[3];
+
+      const payload = {
+        host,
+        tag,
+        text,
+        created_at: nowIso(),
+        consent: "EXPLICIT_COMMAND"
+      };
+
+      await env.AURA_KV.put(intentKey(host, tag), JSON.stringify(payload));
+      push("INTENT_ADD", { ok: true, host, tag });
+      continue;
+    }
+
+    if (line.startsWith("INTENT_GET")) {
+      const parts = line.split(" ").filter(Boolean);
+      const host = (parts[1] || "").toLowerCase();
+      const tag = (parts[2] || "").toLowerCase();
+      if (!host || !tag) { push("INTENT_GET", "BAD_REQUEST"); continue; }
+      const stored = await env.AURA_KV.get(intentKey(host, tag));
+      push("INTENT_GET", stored ? (safeJsonParse(stored) || stored) : "INTENT_MISSING");
+      continue;
+    }
+
+    if (line.startsWith("INTENT_CLEAR")) {
+      const parts = line.split(" ").filter(Boolean);
+      const host = (parts[1] || "").toLowerCase();
+      const tag = (parts[2] || "").toLowerCase();
+      if (!host || !tag) { push("INTENT_CLEAR", "BAD_REQUEST"); continue; }
+      await env.AURA_KV.delete(intentKey(host, tag));
+      push("INTENT_CLEAR", "CLEARED");
+      continue;
+    }
+
+
+    if (line.startsWith("CLEAR_VERIFIED_FETCH")) {
+      const parts = line.split(" ").filter(Boolean);
+      const host = normalizeHost(parts[1]);
+      if (host) await env.AURA_KV.delete(evidenceKey(host));
+      push("CLEAR_VERIFIED_FETCH", host ? "CLEARED" : "BAD_REQUEST");
+      continue;
+    }
+
+    if (line.startsWith("VERIFIED_FETCH_URL")) {
+      const parts = line.split(" ").filter(Boolean);
+      const target = parts[1];
+      const ev = await doVerifiedFetch(target);
+      push("VERIFIED_FETCH_URL", ev);
+      if (ev && ev.ok && ev.host) { __seededThisRequest.add(String(ev.host).toLowerCase()); }
+      continue;
+    }
+
+    if (line.startsWith("EVIDENCE_PRESENT")) {
+      const parts = line.split(" ").filter(Boolean);
+      const host = normalizeHostLoose(parts[1]) || activeHost;
+      if (!host) { push("EVIDENCE_PRESENT", "BAD_REQUEST"); continue; }
+      const stored = await env.AURA_KV.get(evidenceKey(host));
+      push("EVIDENCE_PRESENT", stored ? (safeJsonParse(stored) || stored) : "NO_EVIDENCE");
+      continue;
+    }
+
+    if (line === "SHOW_MEMORY_SCHEMA") {
+      push("SHOW_MEMORY_SCHEMA", memorySchemaV1);
+      continue;
+    }
+
+if (line === "SHOW_BUILD") {
+  push("SHOW_BUILD", { build: BUILD, stamp: new Date().toISOString() });
+  continue;
+}
+
+if (line === "SHOW_CLAIM_GATE") {
+  push("SHOW_CLAIM_GATE", {
+    trigger_words: [
+      "live","deployed","launched","resolving","propagating","successful","verified","up","online","working","reachable","available","accessible"
+    ],
+    forced_message: "NOT WIRED: VERIFIED_FETCH REQUIRED",
+    requires_verified_fetch_format: true
+  });
+  continue;
+}
+
+if (line === "SHOW_ALLOWED_COMMANDS") {
+  push("SHOW_ALLOWED_COMMANDS", allowedCommands);
+  continue;
+}
+
+        // ----------------------------
+    // AUTONOMY PRIMITIVES (batch mode; deterministic state)
+    // ----------------------------
+    {
+      const __host = String(activeHost || "frontdesk.network").toLowerCase();
+      const __budgetKey  = `AUTONOMY_BUDGET__${__host}`;
+      const __charterKey = `AUTONOMY_CHARTER__${__host}`;
+      const __tickKey    = `AUTONOMY_LAST_TICK__${__host}`;
+      const __failKey    = `FAILURE_MEMORY__${__host}`;
+
+      const __defaultBudget = { limit: 100, spent: 0, window: "day", updated_at: null };
+      const __defaultCharter = { version: 1, text: "", updated_at: null };
+
+      const __readJsonKV = async (key) => {
+        const s = await env.AURA_KV.get(key);
+        if (!s) return null;
+        const j = safeJsonParse(s);
+        return j || null;
+      };
+
+      const __capabilities = [
+        "AUTONOMY_STATUS",
+        "AUTONOMY_LAST_TICK",
+        "AUTONOMY_CAPABILITIES",
+        "AUTONOMY_BUDGET_GET",
+        "AUTONOMY_BUDGET_SET",
+        "AUTONOMY_CHARTER_GET",
+        "AUTONOMY_CHARTER_SET",
+        "FAILURE_MEMORY_GET",
+        "FAILURE_MEMORY_PUT",
+        "REGISTRY_AUDIT_TRAIL",
+        "INTENT_SIMULATE"
+      ];
+
+      if (line === "AUTONOMY_LAST_TICK") {
+        const last = await env.AURA_KV.get(__tickKey);
+        push("AUTONOMY_LAST_TICK", { ok: true, host: __host, last_tick: last || null });
+        continue;
+      }
+
+      if (line === "AUTONOMY_CAPABILITIES") {
+        push("AUTONOMY_CAPABILITIES", { ok: true, host: __host, capabilities: __capabilities, count: __capabilities.length });
+        continue;
+      }
+
+      if (line === "AUTONOMY_BUDGET_GET") {
+        const b = (await __readJsonKV(__budgetKey)) || __defaultBudget;
+        push("AUTONOMY_BUDGET_GET", { ok: true, host: __host, budget: b });
+        continue;
+      }
+
+      if (line === "AUTONOMY_CHARTER_GET") {
+        const c = (await __readJsonKV(__charterKey)) || __defaultCharter;
+        push("AUTONOMY_CHARTER_GET", { ok: true, host: __host, charter: c });
+        continue;
+      }
+
+      if (line === "FAILURE_MEMORY_GET") {
+        const fm = (await __readJsonKV(__failKey)) || [];
+        push("FAILURE_MEMORY_GET", { ok: true, host: __host, items: fm, count: Array.isArray(fm) ? fm.length : 0 });
+        co

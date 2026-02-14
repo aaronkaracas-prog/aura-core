@@ -1,0 +1,3 @@
+HOST malibu.city
+REGISTRY_PUT
+{"type":"domains","item":{"id":"aurahello.com","domain":"aurahello.com","pillar":"TEST","purpose":"HOST_EVIDENCE_GATE_PROOF__2026_02_12","priority":"HIGH","status":"ACTIVE"}}

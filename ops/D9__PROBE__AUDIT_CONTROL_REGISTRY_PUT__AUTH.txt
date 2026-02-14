@@ -1,0 +1,5 @@
+HOST auras.guide
+AUDIT_CLEAR
+REGISTRY_PUT users __audit_control__ {"k":"v","ts":"2026-02-13T23:46:30Z"}
+AUDIT_GET
+SNAPSHOT_STATE

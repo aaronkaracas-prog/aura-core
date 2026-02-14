@@ -1,0 +1,3 @@
+HOST frontdesk.network
+HOST_CAPS_GET
+DEPLOYER_CAPS

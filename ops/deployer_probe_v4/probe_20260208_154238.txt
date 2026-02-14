@@ -1,0 +1,2 @@
+HOST frontdesk.network
+DEPLOYER_CALL {"script_name":"_probe","bundle_b64":"dGVzdA==","compatibility_date":"2026-01-14"}

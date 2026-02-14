@@ -1,0 +1,15 @@
+HOST frontdesk.network
+SHOW_BUILD
+REGISTRY_LIST domains
+REGISTRY_LIST domains {"limit":2}
+REGISTRY_LIST domains {"limit":2,"cursor":null}
+REGISTRY_LIST {"type":"domains","limit":2}
+REGISTRY_GET domains {"id":"frontdesk.network"}
+REGISTRY_GET domains {"key":"frontdesk.network"}
+REGISTRY_GET domains {"name":"frontdesk.network"}
+REGISTRY_GET {"type":"domains","id":"frontdesk.network"}
+REGISTRY_GET {"type":"domains","key":"frontdesk.network"}
+REGISTRY_FILTER domains {"where":{"id":"frontdesk.network"},"limit":1}
+REGISTRY_FILTER domains {"where":{"name":"frontdesk.network"},"limit":1}
+REGISTRY_FILTER {"type":"domains","where":{"id":"frontdesk.network"},"limit":1}
+SNAPSHOT_STATE

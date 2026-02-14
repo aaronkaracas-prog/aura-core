@@ -1,0 +1,6 @@
+﻿HOST auras.guide
+PING
+SHOW_BUILD
+SNAPSHOT_STATE
+VERIFIED_FETCH_URL https://auras.guide/
+SNAPSHOT_STATE

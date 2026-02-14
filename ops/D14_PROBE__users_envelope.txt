@@ -1,0 +1,11 @@
+﻿HOST auras.guide
+VERIFIED_FETCH_URL https://auras.guide/
+REGISTRY_PUT
+{
+  "type": "users",
+  "item": {
+    "id": "grammar_probe_v14",
+    "prefs": { "mode": "probe" }
+  }
+}
+REGISTRY_GET users grammar_probe_v14

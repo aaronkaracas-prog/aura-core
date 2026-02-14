@@ -1,0 +1,27 @@
+HOST auras.guide
+
+# AUTONOMY_BUDGET_SET envelope (file-only)
+AUTONOMY_BUDGET_SET
+{
+  "host": "auras.guide",
+  "budget": { "limit": 123, "spent": 7, "window": "day" }
+}
+
+# AUTONOMY_CHARTER_SET envelope (file-only)
+AUTONOMY_CHARTER_SET
+{
+  "host": "auras.guide",
+  "charter": { "version": 1, "text": "AUTONOMY_CHARTER__AURAS_GUIDE__V1", "updated_at": null }
+}
+
+# FAILURE_MEMORY_PUT envelope (file-only)
+FAILURE_MEMORY_PUT
+{
+  "host": "auras.guide",
+  "item": { "at": "NOW", "code": "SMOKE_TEST", "detail": "write-path proof" }
+}
+
+# READBACK PROOF
+AUTONOMY_BUDGET_GET
+AUTONOMY_CHARTER_GET
+FAILURE_MEMORY_GET

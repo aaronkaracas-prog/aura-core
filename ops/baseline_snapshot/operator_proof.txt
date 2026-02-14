@@ -1,0 +1,3 @@
+HOST malibu.city
+PING
+SNAPSHOT_STATE

@@ -1,0 +1,24 @@
+HOST auras.guide
+DEPLOYER_CAPS
+
+# AURA_CF GET probes
+DEPLOYER_CALL {"service":"AURA_CF","method":"GET","path":"/"}
+DEPLOYER_CALL {"service":"AURA_CF","method":"GET","path":"/chat"}
+DEPLOYER_CALL {"service":"AURA_CF","method":"GET","path":"/api"}
+DEPLOYER_CALL {"service":"AURA_CF","method":"GET","path":"/api/"}
+DEPLOYER_CALL {"service":"AURA_CF","method":"GET","path":"/cf"}
+DEPLOYER_CALL {"service":"AURA_CF","method":"GET","path":"/cf/"}
+DEPLOYER_CALL {"service":"AURA_CF","method":"GET","path":"/v1"}
+DEPLOYER_CALL {"service":"AURA_CF","method":"GET","path":"/v1/"}
+DEPLOYER_CALL {"service":"AURA_CF","method":"GET","path":"/__caps"}
+DEPLOYER_CALL {"service":"AURA_CF","method":"GET","path":"/caps"}
+DEPLOYER_CALL {"service":"AURA_CF","method":"GET","path":"/capabilities"}
+DEPLOYER_CALL {"service":"AURA_CF","method":"GET","path":"/routes"}
+DEPLOYER_CALL {"service":"AURA_CF","method":"GET","path":"/health"}
+DEPLOYER_CALL {"service":"AURA_CF","method":"GET","path":"/status"}
+
+# AURA_CF POST probes (empty bodies first)
+DEPLOYER_CALL {"service":"AURA_CF","method":"POST","path":"/api"}
+DEPLOYER_CALL {"service":"AURA_CF","method":"POST","path":"/cf"}
+DEPLOYER_CALL {"service":"AURA_CF","method":"POST","path":"/v1"}
+DEPLOYER_CALL {"service":"AURA_CF","method":"POST","path":"/routes"}

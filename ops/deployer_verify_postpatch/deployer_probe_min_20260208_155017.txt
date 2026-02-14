@@ -1,0 +1,1 @@
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/deploy","method":"POST","content_type":"application/json","body":"{\"script_name\":\"_probe\",\"bundle_b64\":\"dGVzdA==\"}"}

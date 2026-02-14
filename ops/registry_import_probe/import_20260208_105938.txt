@@ -1,0 +1,12 @@
+HOST auras.guide
+REGISTRY_IMPORT_DOMAINS {
+  "import_batch_id":"cf-zones-test",
+  "source":"cloudflare",
+  "domains":[
+    {
+      "id":"auras.guide",
+      "domain":"auras.guide",
+      "pillar":"infrastructure"
+    }
+  ]
+}

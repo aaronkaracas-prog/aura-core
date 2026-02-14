@@ -1,0 +1,9 @@
+HOST auras.guide
+
+REGISTRY_PUT self_model AURA_SELF_MODEL_V1 {
+  "name": "Aura",
+  "role": "control-plane intelligence",
+  "tier": "TIER0_SELF_MODEL",
+  "status": "IN_PROGRESS",
+  "created_at": "20260208_134753"
+}

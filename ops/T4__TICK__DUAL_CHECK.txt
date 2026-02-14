@@ -1,0 +1,4 @@
+HOST auras.guide
+AUTONOMY_LAST_TICK
+HOST auras.guide
+SNAPSHOT_STATE

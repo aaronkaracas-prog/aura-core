@@ -1,0 +1,4 @@
+HOST auras.guide
+REGISTRY_PUT domains {"id":"probe-domain-write.example","domain":"probe-domain-write.example","pillar":"system","purpose":"domains write probe","priority":"HOLD","status":"UNKNOWN"}
+REGISTRY_GET domains probe-domain-write.example
+AUDIT_GET

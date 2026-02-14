@@ -1,0 +1,2 @@
+HOST malibu.city
+REGISTRY_PUT assets __put_test__ {"x":1}

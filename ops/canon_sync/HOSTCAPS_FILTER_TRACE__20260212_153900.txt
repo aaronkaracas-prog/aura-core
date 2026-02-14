@@ -1,0 +1,178 @@
+﻿=== allowedCommands filter sites ===
+
+=== hostCaps/isAllowedForHost definition+usage ===
+
+
+---
+index.js:1067
+    const isAllowedForHost = (cmd) => {
+      if (!hostCaps) return true;
+      return hostCaps.allowed.includes(cmd);
+    };
+
+    // ----------------------------
+    // Operator-only: HOST_CAPS_SET (supports multiple lines)
+    //
+    // Supported syntaxes:
+    // 1) HOST_CAPS_SET <host> <json>
+    // 2) HOST_CAPS_SET <json>                (host defaults to current HOST)
+    //
+    // <json> may be:
+    // - an array of command strings: ["PING","SHOW_BUILD",...]
+    // - an object with allow/allowed: {"allow":[...]} or {"allowed":[...]} (optionally {"host":"..."} )
+    // ----------------------------
+    let hostCapsSetCount = 0;
+
+    for (const line of lines) {
+      if (!line.startsWith("HOST_CAPS_SET")) continue;
+
+      if (!isOperator) return jsonReply("UNAUTHORIZED");
+
+      // Split once on whitespace after the command token.
+      const rest = line.slice("HOST_CAPS_SET".length).trim();
+      if (!rest) return jsonReply("BAD_REQUEST");
+
+---
+index.js:1069
+      return hostCaps.allowed.includes(cmd);
+    };
+
+    // ----------------------------
+    // Operator-only: HOST_CAPS_SET (supports multiple lines)
+    //
+    // Supported syntaxes:
+    // 1) HOST_CAPS_SET <host> <json>
+    // 2) HOST_CAPS_SET <json>                (host defaults to current HOST)
+    //
+    // <json> may be:
+    // - an array of command strings: ["PING","SHOW_BUILD",...]
+    // - an object with allow/allowed: {"allow":[...]} or {"allowed":[...]} (optionally {"host":"..."} )
+    // ----------------------------
+    let hostCapsSetCount = 0;
+
+    for (const line of lines) {
+      if (!line.startsWith("HOST_CAPS_SET")) continue;
+
+      if (!isOperator) return jsonReply("UNAUTHORIZED");
+
+      // Split once on whitespace after the command token.
+      const rest = line.slice("HOST_CAPS_SET".length).trim();
+      if (!rest) return jsonReply("BAD_REQUEST");
+
+      // Decide whether the first token is a host or JSON.
+
+---
+index.js:1152
+      if (allowedCommands.includes(token) && !isAllowedForHost(token)) {
+        return jsonReply("NOT_ALLOWED");
+      }
+    }
+
+// ----------------------------
+// BATCH EXECUTION (ordered, multi-command)
+// Purpose: allow VERIFIED_FETCH + REGISTRY_PUT/GET + AUDIT_GET + PORTFOLIO_STATUS in ONE request.
+// Avoid early-returns from hasLine() helpers.
+// ----------------------------
+const isBatch = lines.length > 1 && lines.some((l) => {
+  const tok = l.split(" ")[0];
+  return allowedCommands.includes(tok);
+});
+
+const doVerifiedFetch = async (target) => {
+  const host = normalizeHost(target);
+  if (!host) return { ok: false, error: "BAD_REQUEST", url: target, http_status: 0 };
+
+  const runFetch = async (probeUrl) => {
+    const res = await fetch(probeUrl);
+    const text = await res.text();
+    return { res, text };
+  };
+
+  const nowTs = new Date().toISOString();
+
+---
+index.js:1067
+    const isAllowedForHost = (cmd) => {
+      if (!hostCaps) return true;
+      return hostCaps.allowed.includes(cmd);
+    };
+
+    // ----------------------------
+    // Operator-only: HOST_CAPS_SET (supports multiple lines)
+    //
+    // Supported syntaxes:
+    // 1) HOST_CAPS_SET <host> <json>
+    // 2) HOST_CAPS_SET <json>                (host defaults to current HOST)
+    //
+    // <json> may be:
+    // - an array of command strings: ["PING","SHOW_BUILD",...]
+    // - an object with allow/allowed: {"allow":[...]} or {"allowed":[...]} (optionally {"host":"..."} )
+    // ----------------------------
+    let hostCapsSetCount = 0;
+
+    for (const line of lines) {
+      if (!line.startsWith("HOST_CAPS_SET")) continue;
+
+      if (!isOperator) return jsonReply("UNAUTHORIZED");
+
+      // Split once on whitespace after the command token.
+      const rest = line.slice("HOST_CAPS_SET".length).trim();
+      if (!rest) return jsonReply("BAD_REQUEST");
+
+---
+index.js:1069
+      return hostCaps.allowed.includes(cmd);
+    };
+
+    // ----------------------------
+    // Operator-only: HOST_CAPS_SET (supports multiple lines)
+    //
+    // Supported syntaxes:
+    // 1) HOST_CAPS_SET <host> <json>
+    // 2) HOST_CAPS_SET <json>                (host defaults to current HOST)
+    //
+    // <json> may be:
+    // - an array of command strings: ["PING","SHOW_BUILD",...]
+    // - an object with allow/allowed: {"allow":[...]} or {"allowed":[...]} (optionally {"host":"..."} )
+    // ----------------------------
+    let hostCapsSetCount = 0;
+
+    for (const line of lines) {
+      if (!line.startsWith("HOST_CAPS_SET")) continue;
+
+      if (!isOperator) return jsonReply("UNAUTHORIZED");
+
+      // Split once on whitespace after the command token.
+      const rest = line.slice("HOST_CAPS_SET".length).trim();
+      if (!rest) return jsonReply("BAD_REQUEST");
+
+      // Decide whether the first token is a host or JSON.
+
+---
+index.js:1152
+      if (allowedCommands.includes(token) && !isAllowedForHost(token)) {
+        return jsonReply("NOT_ALLOWED");
+      }
+    }
+
+// ----------------------------
+// BATCH EXECUTION (ordered, multi-command)
+// Purpose: allow VERIFIED_FETCH + REGISTRY_PUT/GET + AUDIT_GET + PORTFOLIO_STATUS in ONE request.
+// Avoid early-returns from hasLine() helpers.
+// ----------------------------
+const isBatch = lines.length > 1 && lines.some((l) => {
+  const tok = l.split(" ")[0];
+  return allowedCommands.includes(tok);
+});
+
+const doVerifiedFetch = async (target) => {
+  const host = normalizeHost(target);
+  if (!host) return { ok: false, error: "BAD_REQUEST", url: target, http_status: 0 };
+
+  const runFetch = async (probeUrl) => {
+    const res = await fetch(probeUrl);
+    const text = await res.text();
+    return { res, text };
+  };
+
+  const nowTs = new Date().toISOString();

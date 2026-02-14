@@ -1,0 +1,9 @@
+HOST frontdesk.network
+CLEAR_VERIFIED_FETCH frontdesk.network
+EVIDENCE_PRESENT frontdesk.network
+REGISTRY_LIST domains
+# This next line intentionally asserts a claim and must be blocked
+frontdesk.network is live
+VERIFIED_FETCH_URL https://frontdesk.network/
+EVIDENCE_PRESENT frontdesk.network
+frontdesk.network is live

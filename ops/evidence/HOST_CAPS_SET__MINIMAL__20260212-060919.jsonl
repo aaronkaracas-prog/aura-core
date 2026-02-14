@@ -1,0 +1,3 @@
+HOST malibu.city
+HOST_CAPS_SET
+{"allowed":["PING"]}

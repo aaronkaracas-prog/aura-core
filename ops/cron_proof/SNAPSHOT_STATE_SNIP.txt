@@ -1,0 +1,789 @@
+﻿
+> src\index.js:59:    return "Type an allowed command (e.g., PING, SHOW_BUILD, 
+SNAPSHOT_STATE).\n\nFor host work: HOST <domain>, then EVIDENCE_PRESENT or 
+VERIFIED_FETCH_URL http://<domain>/";
+  src\index.js:60:  }
+  src\index.js:61:  if (lower.includes("launch") || lower.includes("deploy") || 
+lower.includes("website") || lower.includes("site")) {
+  src\index.js:62:    return "I can plan and execute deployments via DEPLOYER_CALL 
+when operator-authorized.\n\nTell me: domain + desired outcome (landing page vs 
+app) and whether we should VERIFIED_FETCH first for the target host.";
+  src\index.js:63:  }
+  src\index.js:64:
+  src\index.js:65:  // Default: answer politely, no gate.
+  src\index.js:66:  return identity + "\n\n" + capability;
+  src\index.js:67:}
+  src\index.js:68:
+  src\index.js:69:// ==== PATCH: Registry commands bypass claim-gate (2026-01-29) 
+====
+  src\index.js:70:function __registryBypass(token) {
+  src\index.js:71:  // Only allow read-only registry operations to bypass 
+claim-gate.
+  src\index.js:72:  // Any registry *write* (PUT / IMPORT) must be claim-gated by 
+evidence.
+  src\index.js:73:  return token === "REGISTRY_GET" ||
+  src\index.js:74:         token === "REGISTRY_LIST" ||
+  src\index.js:75:         token === "REGISTRY_FILTER";
+  src\index.js:76:}
+  src\index.js:77:// 
+================================================================
+  src\index.js:78:const KNOWN_COMMANDS = [
+  src\index.js:79:  "PING",
+  src\index.js:80:  "SHOW_BUILD",
+  src\index.js:81:  "SHOW_CLAIM_GATE",
+  src\index.js:82:  "SHOW_ALLOWED_COMMANDS",
+  src\index.js:83:  "RUN_SELF_TEST_EVIDENCE",
+  src\index.js:84:  "VERIFIED_FETCH_URL",
+  src\index.js:85:  "CLEAR_VERIFIED_FETCH",
+  src\index.js:86:  "EVIDENCE_PRESENT",
+> src\index.js:87:  "SNAPSHOT_STATE",
+  src\index.js:88:  "HOST_CAPS_GET",
+  src\index.js:89:  "HOST_CAPS_SET",
+  src\index.js:90:  "DEPLOYER_CAPS",
+  src\index.js:91:  "DEPLOYER_CALL",
+  src\index.js:92:  "PAUSE",
+  src\index.js:93:  "INTENT_ADD",
+  src\index.js:94:  "INTENT_GET",
+  src\index.js:95:  "INTENT_CLEAR",
+  src\index.js:96:  "SHOW_MEMORY_SCHEMA",
+  src\index.js:97:  "REGISTRY_PUT",
+  src\index.js:98:  "REGISTRY_GET",
+  src\index.js:99:  "REGISTRY_LIST",
+  src\index.js:100:  "REGISTRY_FILTER",
+  src\index.js:101:  "REGISTRY_IMPORT_ASSETS",
+  src\index.js:102:  "REGISTRY_IMPORT_DOMAINS",
+  src\index.js:103:  "PORTFOLIO_STATUS",
+  src\index.js:104:  "AUDIT_GET",
+  src\index.js:105:  "AUDIT_CLEAR",
+  src\index.js:106:  "HERD_STATUS",
+  src\index.js:107:  "HERD_SELF_TEST",
+  src\index.js:108:  "HERD_SWEEP",
+  src\index.js:109:  "AUTONOMY_STATUS",
+  src\index.js:110:  "AUTONOMY_LAST_TICK",
+  src\index.js:111:        "AUTONOMY_LAST_TICK_SET",
+  src\index.js:112:  "AUTONOMY_LAST_TICK_SET",
+  src\index.js:113:  "AUTONOMY_CAPABILITIES",
+  src\index.js:114:  "INTENT_SIMULATE",
+  src\index.js:115:  "REGISTRY_AUDIT_TRAIL",
+  src\index.js:116:  "AUTONOMY_BUDGET_GET",
+  src\index.js:117:  "AUTONOMY_BUDGET_SET",
+  src\index.js:118:  "FAILURE_MEMORY_GET",
+  src\index.js:119:  "FAILURE_MEMORY_PUT",
+  src\index.js:120:  "AUTONOMY_CHARTER_GET",
+  src\index.js:121:  "AUTONOMY_CHARTER_SET",
+  src\index.js:122:];
+  src\index.js:123:
+  src\index.js:124:const UI_HTML = `<!doctype html>
+  src\index.js:125:<html lang="en">
+  src\index.js:126:<head>
+  src\index.js:127:<meta charset="utf-8" />
+  src\index.js:128:<meta name="viewport" 
+content="width=device-width,initial-scale=1" />
+  src\index.js:129:<title>Aura Core UI</title>
+  src\index.js:130:<style>
+  src\index.js:131:  :root{
+  src\index.js:132:    --bg:#070a12; --panel:#0e1424; --panel2:#0b1020;
+  src\index.js:133:    --text:#e8ecff; --muted:#9aa5c7; 
+--line:rgba(255,255,255,.10);
+  src\index.js:134:    --accent:#6d5efc; --good:#48d597; --bad:#ff5c7a;
+  src\index.js:135:  }
+  src\index.js:136:  *{box-sizing:border-box}
+  src\index.js:137:  body{
+  src\index.js:138:    margin:0; font-family: ui-sans-serif, system-ui, 
+-apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji";
+  src\index.js:139:    background: radial-gradient(1200px 600px at 30% 10%, 
+rgba(109,94,252,.18), transparent 60%),
+  src\index.js:140:                radial-gradient(900px 500px at 80% 30%, 
+rgba(72,213,151,.10), transparent 55%),
+  src\index.js:141:                var(--bg);
+  src\index.js:142:    color:var(--text); height:100vh; display:flex; 
+align-items:center; justify-content:center;
+  src\index.js:143:  }
+  src\index.js:144:  .wrap{ width:min(980px, 96vw); height:min(720px, 92vh); 
+display:flex; flex-direction:column; gap:12px; }
+  src\index.js:145:  .topbar{
+  src\index.js:146:    display:flex; align-items:flex-start; 
+justify-content:space-between; gap:16px;
+  src\index.js:147:    padding:14px 16px; border:1px solid var(--line); 
+border-radius:16px;
+  src\index.js:148:    background: linear-gradient(180deg, rgba(255,255,255,.06), 
+rgba(255,255,255,.03));
+  src\index.js:149:    box-shadow: 0 10px 30px rgba(0,0,0,.35);
+  src\index.js:150:  }
+  src\index.js:151:  .brand{ display:flex; flex-direction:column; gap:2px; }
+  src\index.js:152:  .brand .h{ font-size:18px; font-weight:700; 
+letter-spacing:.2px; }
+  src\index.js:153:  .brand .s{ font-size:12px; color:var(--muted); }
+  src\index.js:154:  .meta{
+  src\index.js:155:    display:flex; flex-direction:column; align-items:flex-end; 
+gap:4px;
+  src\index.js:156:    font-size:12px; color:var(--muted);
+  src\index.js:157:  }
+  src\index.js:158:  .meta .row{ display:flex; gap:10px; align-items:center; }
+  src\index.js:159:  .dot{ width:8px; height:8px; border-radius:50%; 
+background:var(--good); box-shadow:0 0 0 3px rgba(72,213,151,.14); }
+  src\index.js:160:  .panel{
+  src\index.js:161:    flex:1; min-height:0;
+  src\index.js:162:    border:1px solid var(--line); border-radius:16px;
+  src\index.js:163:    background: linear-gradient(180deg, rgba(255,255,255,.04), 
+rgba(255,255,255,.02));
+  src\index.js:164:    box-shadow: 0 10px 30px rgba(0,0,0,.35);
+  src\index.js:165:    display:flex; flex-direction:column;
+  src\index.js:166:  }
+  src\index.js:167:  .log{
+  src\index.js:168:    flex:1; min-height:0;
+  src\index.js:169:    padding:14px; overflow:auto;
+  src\index.js:170:    display:flex; flex-direction:column; gap:10px;
+  src\index.js:171:  }
+  src\index.js:172:  .msg{
+  src\index.js:173:    max-width: 90%;
+  src\index.js:174:    border:1px solid var(--line);
+  src\index.js:175:    background: rgba(7,10,18,.35);
+  src\index.js:176:    padding:10px 12px; border-radius:14px;
+  src\index.js:177:    white-space:pre-wrap; word-break:break-word; 
+line-height:1.35;
+  src\index.js:178:  }
+  src\index.js:179:  .msg.me{ align-self:flex-end; background: 
+rgba(109,94,252,.16); border-color: rgba(109,94,252,.35); }
+  src\index.js:180:  .msg.aura{ align-self:flex-start; background: 
+rgba(255,255,255,.04); }
+  src\index.js:181:  .msg.sys{ align-self:center; max-width:100%; 
+color:var(--muted); background: transparent; border:none; padding:0; }
+  src\index.js:182:  .msg.error{ border-color: rgba(255,92,122,.45); background: 
+rgba(255,92,122,.10); }
+  src\index.js:183:  .composer{
+  src\index.js:184:    border-top:1px solid var(--line);
+  src\index.js:185:    padding:12px;
+  src\index.js:186:    display:flex; gap:10px; align-items:flex-end;
+  src\index.js:187:    background: rgba(0,0,0,.12);
+  src\index.js:188:    border-bottom-left-radius:16px; 
+border-bottom-right-radius:16px;
+  src\index.js:189:  }
+  src\index.js:190:  textarea{
+  src\index.js:191:    flex:1; min-height:44px; max-height:140px; resize:vertical;
+  src\index.js:192:    padding:10px 12px; border-radius:12px; outline:none;
+  src\index.js:193:    border:1px solid var(--line);
+  src\index.js:194:    background: rgba(0,0,0,.22);
+  src\index.js:195:    color:var(--text); font-size:14px; line-height:1.35;
+  src\index.js:196:  }
+  src\index.js:197:  textarea::placeholder{ color: rgba(154,165,199,.70); }
+  src\index.js:198:  button{
+  src\index.js:199:    height:44px; padding:0 16px; border-radius:12px; 
+cursor:pointer;
+  src\index.js:200:    border:1px solid rgba(109,94,252,.55);
+  src\index.js:201:    background: linear-gradient(180deg, rgba(109,94,252,.95), 
+rgba(109,94,252,.78));
+  src\index.js:202:    color:#fff; font-weight:700; letter-spacing:.2px;
+  src\index.js:203:    box-shadow: 0 10px 20px rgba(109,94,252,.22);
+  src\index.js:204:  }
+  src\index.js:205:  button:disabled{ opacity:.55; cursor:not-allowed; 
+box-shadow:none; }
+  src\index.js:206:  .hint{
+  src\index.js:207:    font-size:12px; color:var(--muted); padding:0 12px 12px 12px;
+> src\index.js:416:        `3) SNAPSHOT_STATE\n` +
+  src\index.js:417:        `4) SHOW_MEMORY_SCHEMA\n` +
+  src\index.js:418:        `5) REGISTRY_LIST domains\n\n` +
+  src\index.js:419:        `Tip: In UI, use ALL-CAPS commands. For multi-line ops, 
+use PowerShell batch mode.`;
+  src\index.js:420:      return Response.json({ ok: true, reply: msg });
+  src\index.js:421:    }
+  src\index.js:422:
+  src\index.js:423:    // ----------------------------
+  src\index.js:424:    // Build / policy markers
+  src\index.js:425:    // ----------------------------
+  src\index.js:426:    // ----------------------------
+  src\index.js:427:    // Operator auth (explicit only)
+  src\index.js:428:    // ----------------------------
+  src\index.js:429:    // operatorToken/operatorHeader/isOperator are computed 
+above (early)
+  src\index.js:430:
+  src\index.js:431:    // If a token is configured and a caller presents a token 
+header that does not match,
+  src\index.js:432:    // fail closed (prevents accidental success with a wrong 
+token).
+  src\index.js:433:    const operatorHeaderPresent = Boolean(operatorHeader);
+  src\index.js:434:    const operatorMismatch = Boolean(operatorToken) && 
+operatorHeaderPresent && operatorHeader !== operatorToken;
+  src\index.js:435:    if (operatorMismatch) return Response.json({ ok: true, 
+reply: "UNAUTHORIZED" });
+  src\index.js:436:
+  src\index.js:437:    // ----------------------------
+  src\index.js:438:    // Commands (global allowlist)
+  src\index.js:439:    // ----------------------------
+  src\index.js:440:    const allowedCommands = [
+  src\index.js:441:      "PING",
+  src\index.js:442:      "SHOW_BUILD",
+  src\index.js:443:      "SHOW_CLAIM_GATE",
+  src\index.js:444:      "SHOW_ALLOWED_COMMANDS",
+  src\index.js:445:      "RUN_SELF_TEST_EVIDENCE",
+  src\index.js:446:      "VERIFIED_FETCH_URL",
+  src\index.js:447:      "CLEAR_VERIFIED_FETCH",
+  src\index.js:448:      "EVIDENCE_PRESENT",
+> src\index.js:449:      "SNAPSHOT_STATE",
+  src\index.js:450:      "HOST_CAPS_GET",
+  src\index.js:451:      "HOST_CAPS_SET",
+  src\index.js:452:      "DEPLOYER_CAPS",
+  src\index.js:453:      "DEPLOYER_CALL",
+  src\index.js:454:      "PAUSE",
+  src\index.js:455:      "INTENT_ADD",
+  src\index.js:456:      "INTENT_GET",
+  src\index.js:457:      "INTENT_CLEAR",
+  src\index.js:458:      "SHOW_MEMORY_SCHEMA",
+  src\index.js:459:      "REGISTRY_PUT",
+  src\index.js:460:      "REGISTRY_GET",
+  src\index.js:461:      "REGISTRY_LIST",
+  src\index.js:462:      "REGISTRY_FILTER",
+  src\index.js:463:      "REGISTRY_IMPORT_ASSETS",
+  src\index.js:464:      "REGISTRY_IMPORT_DOMAINS",
+  src\index.js:465:      "PORTFOLIO_STATUS",
+  src\index.js:466:      "AUDIT_GET",
+  src\index.js:467:      "AUDIT_CLEAR",
+  src\index.js:468:      "HERD_STATUS",
+  src\index.js:469:      "HERD_SELF_TEST",
+  src\index.js:470:      "HERD_SWEEP",
+  src\index.js:471:  "AUTONOMY_STATUS",
+  src\index.js:472:  "AUTONOMY_LAST_TICK",
+  src\index.js:473:        "AUTONOMY_LAST_TICK_SET",
+  src\index.js:474:  "AUTONOMY_LAST_TICK_SET",
+  src\index.js:475:  "AUTONOMY_CAPABILITIES",
+  src\index.js:476:  "INTENT_SIMULATE",
+  src\index.js:477:  "REGISTRY_AUDIT_TRAIL",
+  src\index.js:478:  "AUTONOMY_BUDGET_GET",
+  src\index.js:479:  "AUTONOMY_BUDGET_SET",
+  src\index.js:480:  "FAILURE_MEMORY_GET",
+  src\index.js:481:  "FAILURE_MEMORY_PUT",
+  src\index.js:482:  "AUTONOMY_CHARTER_GET",
+  src\index.js:483:  "AUTONOMY_CHARTER_SET",
+  src\index.js:484:];
+  src\index.js:485:
+  src\index.js:486:    // ----------------------------
+  src\index.js:487:    // Helpers
+  src\index.js:488:    // ----------------------------
+  src\index.js:489:    const normalizeHost = (u) => {
+  src\index.js:490:      try {
+  src\index.js:491:        return new URL(u).host.toLowerCase();
+  src\index.js:492:      } catch {
+  src\index.js:493:        return null;
+  src\index.js:494:      }
+  src\index.js:495:    };
+  src\index.js:496:
+  src\index.js:497:    // Accept either a full URL or a bare domain token.
+  src\index.js:498:    const normalizeHostLoose = (s) => {
+  src\index.js:499:      if (!s) return null;
+  src\index.js:500:      const h = normalizeHost(s);
+  src\index.js:501:      if (h) return h;
+  src\index.js:502:      const t = String(s).trim().toLowerCase();
+  src\index.js:503:      if (!t) return null;
+  src\index.js:504:      // Basic sanity: must contain a dot and only valid 
+hostname chars.
+  src\index.js:505:      if (!t.includes(".")) return null;
+  src\index.js:506:      if (!/^[a-z0-9.-]+$/.test(t)) return null;
+  src\index.js:507:      return t;
+  src\index.js:508:    };
+  src\index.js:509:
+  src\index.js:510:    const extractLastUrl = (txt) => {
+  src\index.js:511:      const matches = [...txt.matchAll(/https?:\/\/[^\s]+/g)];
+  src\index.js:512:      return matches.length ? matches[matches.length - 1][0] : 
+null;
+  src\index.js:513:    };
+  src\index.js:514:
+  src\index.js:515:    // Extract a bare domain mention like example.com (no 
+scheme).
+  src\index.js:516:    // Returns the last plausible domain token found in the 
+message.
+  src\index.js:517:    const extractLastBareDomain = (txt) => {
+  src\index.js:518:      // labels + TLD; excludes trailing punctuation due to \b
+  src\index.js:519:      const re =
+  src\index.js:520:        /\b([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[
+a-z0-9-]{0,61}[a-z0-9])?)+)\b/gi;
+  src\index.js:521:      const matches = [];
+  src\index.js:522:      let m;
+  src\index.js:523:      while ((m = re.exec(txt)) !== null) {
+  src\index.js:524:        const d = (m[1] || "").toLowerCase();
+  src\index.js:525:        if (!d) continue;
+  src\index.js:526:        if (d === "localhost") continue;
+  src\index.js:527:        matches.push(d);
+  src\index.js:528:      }
+  src\index.js:529:      return matches.length ? matches[matches.length - 1] : null;
+  src\index.js:530:    };
+  src\index.js:531:
+  src\index.js:532:    const statusReachable = (st) => Number(st) >= 200 && 
+Number(st) < 400;
+  src\index.js:533:    const evidenceKey = (host) => `verified_fetch:${host}`;
+  src\index.js:534:    const capsKey = (host) => `host_caps:${host}`;
+  src\index.js:535:    const intentKey = (host, tag) => `intent:${host}:${tag}`;
+  src\index.js:536:// ----------------------------
+  src\index.js:537:// Memory Substrate v1 (storage-backed; no model memory)
+  src\index.js:538:// ----------------------------
+  src\index.js:539:const REGISTRY_VERSION = "v1";
+  src\index.js:540:
+  src\index.js:541:const registryKey = (type, id) => 
+`reg:${REGISTRY_VERSION}:${type}:${id}`;
+  src\index.js:542:const registryIndexKey = (type) => 
+`reg:${REGISTRY_VERSION}:index:${type}`;
+  src\index.js:543:const registryMetaKey = (type) => 
+`reg:${REGISTRY_VERSION}:meta:${type}`;
+  src\index.js:544:
+  src\index.js:545:const auditSeqKey = `audit:${REGISTRY_VERSION}:seq`;
+  src\index.js:546:const auditEventKey = (seq) => 
+`audit:${REGISTRY_VERSION}:event:${seq}`;
+  src\index.js:547:const auditClearedAtKey = `audit:${REGISTRY_VERSION}:cleared_at`;
+  src\index.js:548:
+  src\index.js:549:const nowIso = () => new Date().toISOString();
+  src\index.js:550:
+  src\index.js:551:const safeJsonParse = (s) => {
+  src\index.js:552:  try {
+  src\index.js:553:    return JSON.parse(s);
+  src\index.js:554:  } catch {
+  src\index.js:555:    return null;
+  src\index.js:556:  }
+  src\index.js:557:};
+  src\index.js:558:
+  src\index.js:559:/**
+  src\index.js:560: * Parse JSON arguments for commands in batch payloads.
+  src\index.js:561: * Supports:
+  src\index.js:562: *  - TOKEN <json>
+  src\index.js:563: *  - TOKEN <type> <json>               (legacy, e.g. 
+REGISTRY_PUT domains {...})
+  src\index.js:564: *  - TOKEN                              then JSON on subsequent 
+non-command lines
+  src\index.js:565: */
+  src\index.js:566:function __isCommandLine(line, allowedCommands) {
+  src\index.js:567:  if (!line) return false;
+  src\index.js:568:  const tok = String(line).trim().split(/\s+/)[0] || "";
+  src\index.js:569:  if (!tok) return false;
+> src\index.js:1136:  }// SNAPSHOT_STATE (safe subset)
+> src\index.js:1137:    if (bodyTrim === "SNAPSHOT_STATE") {
+  src\index.js:1138:      const safeHost = activeHost || "none";
+  src\index.js:1139:      const caps = await getHostCaps(activeHost);
+  src\index.js:1140:
+  src\index.js:1141:      const snapshot = {
+  src\index.js:1142:        build: BUILD,
+  src\index.js:1143:        stamp: new Date().toISOString(),
+  src\index.js:1144:        operator: isOperator ? "YES" : "NO",
+  src\index.js:1145:        active_host: safeHost,
+  src\index.js:1146:        host_caps: caps || null,
+  src\index.js:1147:        evidence_present_for_active_host: activeHost
+  src\index.js:1148:          ? Boolean(await 
+env.AURA_KV.get(evidenceKey(String(activeHost).toLowerCase())))
+  src\index.js:1149:          : false,
+  src\index.js:1150:        autonomy_tick: (await env.AURA_KV.get(autonomyTickKey, 
+{ type: "json" }).catch(()=>null)) || null
+  src\index.js:1151:      };
+  src\index.js:1152:
+  src\index.js:1153:      return jsonReply(snapshot);
+  src\index.js:1154:    }
+  src\index.js:1155:
+  src\index.js:1156:    // If host caps exist and a line starts with a command that 
+isn't allowed for this host, block deterministically.
+  src\index.js:1157:    for (const line of lines) {
+  src\index.js:1158:      const token = line.split(" ")[0];
+  src\index.js:1159:      if (allowedCommands.includes(token) && 
+!isAllowedForHost(token)) {
+  src\index.js:1160:        return jsonReply("NOT_ALLOWED");
+  src\index.js:1161:      }
+  src\index.js:1162:    }
+  src\index.js:1163:
+  src\index.js:1164:// ----------------------------
+  src\index.js:1165:// BATCH EXECUTION (ordered, multi-command)
+  src\index.js:1166:// Purpose: allow VERIFIED_FETCH + REGISTRY_PUT/GET + AUDIT_GET 
++ PORTFOLIO_STATUS in ONE request.
+  src\index.js:1167:// Avoid early-returns from hasLine() helpers.
+  src\index.js:1168:// ----------------------------
+  src\index.js:1169:const isBatch = lines.length > 1 && lines.some((l) => {
+  src\index.js:1170:  const tok = l.split(" ")[0];
+  src\index.js:1171:  return allowedCommands.includes(tok);
+  src\index.js:1172:});
+  src\index.js:1173:
+  src\index.js:1174:const doVerifiedFetch = async (target) => {
+  src\index.js:1175:  const host = normalizeHost(target);
+  src\index.js:1176:  if (!host) return { ok: false, error: "BAD_REQUEST", url: 
+target, http_status: 0 };
+  src\index.js:1177:
+  src\index.js:1178:  const runFetch = async (probeUrl) => {
+  src\index.js:1179:    const res = await fetch(probeUrl);
+  src\index.js:1180:    const text = await res.text();
+  src\index.js:1181:    return { res, text };
+  src\index.js:1182:  };
+  src\index.js:1183:
+  src\index.js:1184:  const nowTs = new Date().toISOString();
+  src\index.js:1185:  const selfHost = new URL(request.url).host.toLowerCase();
+  src\index.js:1186:
+  src\index.js:1187:  if (host === selfHost) {
+  src\index.js:1188:    const evidence = {
+  src\index.js:1189:      ok: true,
+  src\index.js:1190:      host,
+  src\index.js:1191:      url: target,
+  src\index.js:1192:      probe_url: null,
+  src\index.js:1193:      http_status: 200,
+  src\index.js:1194:      first_line_html: "SELF_HOST_SYNTHETIC_EVIDENCE",
+  src\index.js:1195:      body_length: 0,
+  src\index.js:1196:      synthetic: true,
+  src\index.js:1197:      reason: "WORKER_SELF_ROUTE_ASSUME_REACHABLE",
+  src\index.js:1198:      diagnostics: { cf: request.cf || null, self_host: 
+selfHost, ts: nowTs }
+  src\index.js:1199:    };
+  src\index.js:1200:    await env.AURA_KV.put(evidenceKey(host), 
+JSON.stringify(evidence));
+  src\index.js:1201:    return evidence;
+  src\index.js:1202:  }
+  src\index.js:1203:
+  src\index.js:1204:  try {
+  src\index.js:1205:    const { res: res1, text: text1 } = await runFetch(target);
+  src\index.js:1206:
+  src\index.js:1207:    if (res1.status === 525) {
+  src\index.js:1208:      const u = new URL(target);
+  src\index.js:1209:      if (u.protocol === "https:") {
+  src\index.js:1210:        u.protocol = "http:";
+  src\index.js:1211:        const httpUrl = u.toString();
+  src\index.js:1212:        const { res: res2, text: text2 } = await 
+runFetch(httpUrl);
+  src\index.js:1213:
+  src\index.js:1214:        const evidence = {
+  src\index.js:1215:          ok: true,
+  src\index.js:1216:          host,
+  src\index.js:1217:          public_url: target,
+  src\index.js:1218:          probe_url: httpUrl,
+  src\index.js:1219:          fallback_reason: "CF_HTTPS_525_HTTP_PROBE",
+  src\index.js:1220:          http_status: res2.status,
+  src\index.js:1221:          first_line_html: text2.split("\n")[0] || "",
+  src\index.js:1222:          body_length: text2.length,
+  src\index.js:1223:          diagnostics: { cf: request.cf || null, https_status: 
+525, ts: nowTs }
+  src\index.js:1224:        };
+  src\index.js:1225:        await env.AURA_KV.put(evidenceKey(host), 
+JSON.stringify(evidence));
+  src\index.js:1226:        return evidence;
+  src\index.js:1227:      }
+  src\index.js:1228:    }
+  src\index.js:1229:
+  src\index.js:1230:    const evidence = {
+  src\index.js:1231:      ok: true,
+  src\index.js:1232:      host,
+  src\index.js:1233:      url: target,
+  src\index.js:1234:      http_status: res1.status,
+  src\index.js:1235:      first_line_html: text1.split("\n")[0] || "",
+  src\index.js:1236:      body_length: text1.length,
+  src\index.js:1237:      diagnostics: { cf: request.cf || null, ts: nowTs }
+  src\index.js:1238:    };
+  src\index.js:1239:    await env.AURA_KV.put(evidenceKey(host), 
+JSON.stringify(evidence));
+  src\index.js:1240:    return evidence;
+  src\index.js:1241:  } catch (err) {
+  src\index.js:1242:    const evidence = {
+  src\index.js:1243:      ok: false,
+  src\index.js:1244:      host,
+  src\index.js:1245:      url: target,
+  src\index.js:1246:      http_status: 0,
+  src\index.js:1247:      error: String(err?.message || err),
+  src\index.js:1248:      error_name: err?.name || "UNKNOWN",
+  src\index.js:1249:      diagnostics: { cf: request.cf || null, ts: nowTs }
+  src\index.js:1250:    };
+  src\index.js:1251:    await env.AURA_KV.put(evidenceKey(host), 
+JSON.stringify(evidence));
+  src\index.js:1252:    return evidence;
+  src\index.js:1253:  }
+  src\index.js:1254:};
+  src\index.js:1255:
+  src\index.js:1256:if (isBatch) {
+  src\index.js:1257:  const out = [];
+> src\index.js:1897:    if (line === "SNAPSHOT_STATE") {
+  src\index.js:1898:      const safeHost = activeHost || "none";
+  src\index.js:1899:      const caps = await getHostCaps(activeHost);
+  src\index.js:1900:
+  src\index.js:1901:      const snapshot = {
+  src\index.js:1902:        build: BUILD,
+  src\index.js:1903:        stamp: new Date().toISOString(),
+  src\index.js:1904:        operator: isOperator ? "YES" : "NO",
+  src\index.js:1905:        active_host: safeHost,
+  src\index.js:1906:        host_caps: caps || null,
+  src\index.js:1907:        evidence_present_for_active_host: activeHost
+  src\index.js:1908:          ? Boolean(await 
+env.AURA_KV.get(evidenceKey(String(activeHost).toLowerCase())))
+  src\index.js:1909:          : false
+  src\index.js:1910:      };
+> src\index.js:1911:      push("SNAPSHOT_STATE", snapshot);
+  src\index.js:1912:      continue;
+  src\index.js:1913:    }
+  src\index.js:1914:
+  src\index.js:1915:    
+  src\index.js:1916:
+  src\index.js:1917:    
+  src\index.js:1918:if (line === "HERD_STATUS") {
+  src\index.js:1919:  let herd = null;
+  src\index.js:1920:  try { herd = await registryGet(env, "config", "herd.hosts"); 
+} catch (_) {}
+  src\index.js:1921:  push("HERD_STATUS", { ok: true, host: (activeHost || null), 
+herd_config: herd || null, stamp: new Date().toISOString() });
+  src\index.js:1922:  continue;
+  src\index.js:1923:}
+  src\index.js:1924:if (line === "HERD_SELF_TEST") {
+  src\index.js:1925:  push("HERD_SELF_TEST", { ok: true, tests: [{ name: 
+"command_wired", pass: true }], stamp: new Date().toISOString() });
+  src\index.js:1926:  continue;
+  src\index.js:1927:}
+  src\index.js:1928:if (line.startsWith("HERD_SWEEP")) {
+  src\index.js:1929:  const raw = line.slice("HERD_SWEEP".length).trim();
+  src\index.js:1930:  const args = raw ? safeJsonParse(raw) : null;
+  src\index.js:1931:
+  src\index.js:1932:  let herd = null;
+  src\index.js:1933:  try { herd = await registryGet(env, "config", "herd.hosts"); 
+} catch (_) {}
+  src\index.js:1934:
+  src\index.js:1935:  const defaultHosts = (herd && typeof herd === "object" && 
+Array.isArray(herd.hosts)) ? herd.hosts : [];
+  src\index.js:1936:  const hosts = (args && typeof args === "object" && 
+Array.isArray(args.hosts)) ? args.hosts : defaultHosts;
+  src\index.js:1937:  const limit = (args && typeof args === "object" && typeof 
+args.limit === "number" && args.limit > 0)
+  src\index.js:1938:    ? Math.floor(args.limit)
+  src\index.js:1939:    : hosts.length;
+  src\index.js:1940:
+  src\index.js:1941:  const targets = hosts.slice(0, limit).map((h) => {
+  src\index.js:1942:    const hostStr = String(h).trim();
+  src\index.js:1943:    return { host: hostStr, url: `https://${hostStr}/` };
+  src\index.js:1944:  });
+  src\index.js:1945:
+  src\index.js:1946:  const results = [];
+  src\index.js:1947:  for (const t of targets) {
+  src\index.js:1948:    try {
+  src\index.js:1949:      const evidence = await doVerifiedFetch(t.url);
+  src\index.js:1950:      results.push({ host: t.host, url: t.url, ok: true, 
+evidence });
+  src\index.js:1951:
+  src\index.js:1952:      // Persist latest sweep into registry (no flags; 
+evidence-driven).
+  src\index.js:1953:      // Writes:
+  src\index.js:1954:      // - domain_sweep_latest:<host>  (summary)
+  src\index.js:1955:      // - domains:<host>             (notes_sweep_latest 
+pointer)
+  src\index.js:1956:      try {
+  src\index.js:1957:        if (evidence && evidence.ok) {
+  src\index.js:1958:          const h = String(t.host || "").trim().toLowerCase();
+  src\index.js:1959:          const diag = (evidence.diagnostics && typeof 
+evidence.diagnostics === "object") ? evidence.diagnostics : {};
+  src\index.js:1960:          const cf = (diag.cf && typeof diag.cf === "object") ? 
+diag.cf : null;
+  src\index.js:1961:
+  src\index.js:1962:          const sweepLatest = {
+  src\index.js:1963:            id: h,
+  src\index.js:1964:            host: h,
+  src\index.js:1965:            url: evidence.public_url || evidence.url || t.url,
+  src\index.js:1966:            probe_url: evidence.probe_url || null,
+  src\index.js:1967:            fallback_reason: evidence.fallback_reason || null,
+  src\index.js:1968:            http_status: typeof evidence.http_status === 
+"number" ? evidence.http_status : 0,
+  src\index.js:1969:            first_line_html: typeof evidence.first_line_html 
+=== "string" ? evidence.first_line_html : "",
+  src\index.js:1970:            body_length: typeof evidence.body_length === 
+"number" ? evidence.body_length : 0,
+  src\index.js:1971:            ts: diag.ts || nowIso(),
+  src\index.js:1972:            https_status: (typeof diag.https_status === 
+"number") ? diag.https_status : null,
+  src\index.js:1973:            cf: cf ? {
+  src\index.js:1974:              colo: cf.colo || null,
+  src\index.js:1975:              asn: cf.asn || null,
+  src\index.js:1976:              asOrganization: cf.asOrganization || null,
+  src\index.js:1977:              country: cf.country || null,
+  src\index.js:1978:              regionCode: cf.regionCode || null,
+  src\index.js:1979:              city: cf.city || null,
+  src\index.js:1980:              timezone: cf.timezone || null
+  src\index.js:1981:            } : null
+  src\index.js:1982:          };
+  src\index.js:1983:
+  src\index.js:1984:          await registryPut(env, "domain_sweep_latest", 
+sweepLatest);
+  src\index.js:1985:
+  src\index.js:1986:          const dom = (await registryGet(env, "domains", h)) || 
+{ id: h, domain: h };
+  src\index.js:1987:          const merged = {
+  src\index.js:1988:            ...dom,
+  src\index.js:1989:            id: h,
+  src\index.js:1990:            domain: dom.domain || h,
+  src\index.js:1991:            notes_sweep_latest: {
+  src\index.js:1992:              sweep_latest: {
+  src\index.js:1993:                host: h,
+  src\index.js:1994:                ts: sweepLatest.ts,
+  src\index.js:1995:                http_status: sweepLatest.http_status,
+  src\index.js:1996:                fallback_reason: sweepLatest.fallback_reason,
+  src\index.js:1997:                url: sweepLatest.url
+  src\index.js:1998:              }
+  src\index.js:1999:            }
+  src\index.js:2000:          };
+  src\index.js:2001:          await registryPut(env, "domains", merged);
+  src\index.js:2002:        }
+  src\index.js:2003:      } catch (__) {
+  src\index.js:2004:        // Never fail the sweep response because persistence 
+failed.
+  src\index.js:2005:      }
+  src\index.js:2006:    } catch (e) {
+  src\index.js:2007:      results.push({ host: t.host, url: t.url, ok: false, 
+error: String(e) });
+  src\index.js:2008:    }
+  src\index.js:2009:  }
+  src\index.js:2010:
+  src\index.js:2011:  push("HERD_SWEEP", {
+  src\index.js:2012:    ok: true,
+  src\index.js:2013:    requested: { hosts, limit },
+  src\index.js:2014:    swept: results.length,
+  src\index.js:2015:    results,
+  src\index.js:2016:    stamp: new Date().toISOString()
+  src\index.js:2017:  });
+  src\index.js:2018:  continue;
+  src\index.js:2019:}
+  src\index.js:2020:if (line === "DEPLOYER_CAPS") {
+  src\index.js:2021:      push("DEPLOYER_CAPS", __deployerCaps(env));
+  src\index.js:2022:      continue;
+  src\index.js:2023:    }
+  src\index.js:2024:
+  src\index.js:2025:    if (line.startsWith("DEPLOYER_CALL ")) {
+  src\index.js:2026:      if (!isOperator) { push("DEPLOYER_CALL", "UNAUTHORIZED"); 
+continue; }
+  src\index.js:2027:      const jsonPart = line.slice("DEPLOYER_CALL 
+".length).trim();
+  src\index.js:2028:      const reqObj = safeJsonParse(jsonPart);
+  src\index.js:2029:      if (!reqObj || typeof reqObj !== "object") { 
+push("DEPLOYER_CALL", "BAD_REQUEST"); continue; }
+  src\index.js:2030:
+  src\index.js:2031:      const serviceName = String(reqObj.service || "").trim();
+> src\index.js:2118:    if (hasLine("SNAPSHOT_STATE")) {
+  src\index.js:2119:      const safeHost = activeHost || "none";
+  src\index.js:2120:      const caps = await getHostCaps(activeHost);
+  src\index.js:2121:
+  src\index.js:2122:      const snapshot = {
+  src\index.js:2123:        build: BUILD,
+  src\index.js:2124:        stamp: new Date().toISOString(),
+  src\index.js:2125:        operator: isOperator ? "YES" : "NO",
+  src\index.js:2126:        active_host: safeHost,
+  src\index.js:2127:        host_caps: caps || null,
+  src\index.js:2128:        evidence_present_for_active_host: activeHost
+  src\index.js:2129:          ? Boolean(await 
+env.AURA_KV.get(evidenceKey(String(activeHost).toLowerCase())))
+  src\index.js:2130:          : false
+  src\index.js:2131:      };
+  src\index.js:2132:
+  src\index.js:2133:      return jsonReply(snapshot);
+  src\index.js:2134:
+  src\index.js:2135:    }
+  src\index.js:2136:
+  src\index.js:2137:    if (hasLine("DEPLOYER_CAPS")) {
+  src\index.js:2138:      return jsonReply(JSON.stringify(__deployerCaps(env), 
+null, 2));
+  src\index.js:2139:    }
+  src\index.js:2140:
+  src\index.js:2141:    // DEPLOYER_CALL <json> (single-line only; operator-only)
+  src\index.js:2142:    for (const line of lines) {
+  src\index.js:2143:      if (!line.startsWith("DEPLOYER_CALL")) continue;
+  src\index.js:2144:      if (!isOperator) return jsonReply("UNAUTHORIZED");
+  src\index.js:2145:      const jsonPart = 
+line.slice("DEPLOYER_CALL".length).trim();
+  src\index.js:2146:      const reqObj = safeJsonParse(jsonPart);
+  src\index.js:2147:      if (!reqObj || typeof reqObj !== "object") return 
+jsonReply("BAD_REQUEST");
+  src\index.js:2148:
+  src\index.js:2149:      const serviceName = String(reqObj.service || "").trim();
+  src\index.js:2150:      if (serviceName !== "AURA_DEPLOYER" && serviceName !== 
+"AURA_CF") return jsonReply("BAD_REQUEST");
+  src\index.js:2151:      if (!__hasService(env, serviceName)) return 
+jsonReply("DEPLOYER_CAPS_MISSING");
+  src\index.js:2152:
+  src\index.js:2153:      const path = String(reqObj.path || "").trim();
+  src\index.js:2154:      if (!path.startsWith("/")) return 
+jsonReply("BAD_REQUEST");
+  src\index.js:2155:
+  src\index.js:2156:      try {
+  src\index.js:2157:        const svc = env[serviceName];
+  src\index.js:2158:        const resp = await __serviceFetch(svc, {
+  src\index.js:2159:          path,
+  src\index.js:2160:          method: reqObj.method || "POST",
+  src\index.js:2161:          headers: __withOperatorHeaders(((reqObj.headers && 
+typeof reqObj.headers === "object") ? reqObj.headers : {}), isOperator, 
+operatorHeader, request.headers.get("X-Deploy-Key") || 
+request.headers.get("X-Deploy-Secret")),
+  src\index.js:2162:          content_type: reqObj.content_type || null,
+  src\index.js:2163:          body: reqObj.body != null ? reqObj.body : undefined
+  src\index.js:2164:        });
+  src\index.js:2165:        return jsonReply(JSON.stringify({ service: serviceName, 
+path, ...resp }, null, 2));
+  src\index.js:2166:      } catch (e) {
+  src\index.js:2167:        return jsonReply(JSON.stringify({ service: serviceName, 
+path, http_status: 0, error: "EXCEPTION", message: String(e?.message || e) }, null, 
+2));
+  src\index.js:2168:      }
+  src\index.js:2169:    }
+  src\index.js:2170:
+  src\index.js:2171:
+  src\index.js:2172:    // ----------------------------
+  src\index.js:2173:    // EVIDENCE_PRESENT (return stored evidence JSON for a host)
+  src\index.js:2174:    // ----------------------------
+  src\index.js:2175:    for (const line of lines) {
+  src\index.js:2176:      if (line.startsWith("EVIDENCE_PRESENT")) {
+  src\index.js:2177:        const parts = line.split(" ").filter(Boolean);
+  src\index.js:2178:        const host = normalizeHostLoose(parts[1]) || activeHost;
+  src\index.js:2179:        if (!host) return jsonReply("BAD_REQUEST");
+  src\index.js:2180:        const stored = await env.AURA_KV.get(evidenceKey(host));
+  src\index.js:2181:        if (!stored) return jsonReply("NO_EVIDENCE");
+  src\index.js:2182:        try {
+  src\index.js:2183:          return jsonReply(JSON.stringify(JSON.parse(stored), 
+null, 2));
+  src\index.js:2184:        } catch {
+  src\index.js:2185:          return jsonReply(stored);
+  src\index.js:2186:        }
+  src\index.js:2187:      }
+  src\index.js:2188:    }
+  src\index.js:2189:
+  src\index.js:2190:    // ----------------------------
+  src\index.js:2191:    // Self-test harness (unchanged)
+  src\index.js:2192:    // ----------------------------
+  src\index.js:2193:        async function runSelfTestEvidence() {
+  src\index.js:2194:      const mk = (name, pass, observed, expected) => ({ name, 
+pass, observed, expected });
+  src\index.js:2195:
+  src\index.js:2196:      const hosts = {
+  src\index.js:2197:        example: "example.com",
+  src\index.js:2198:        http404: "httpstat.us"
+  src\index.js:2199:      };
+  src\index.js:2200:
+  src\index.js:2201:      const clearHost = async (host) => {
+  src\index.js:2202:        await env.AURA_KV.delete(evidenceKey(host));
+  src\index.js:2203:      };
+  src\index.js:2204:
+  src\index.js:2205:      const getEvidence = async (host) => {
+  src\index.js:2206:        const stored = await env.AURA_KV.get(evidenceKey(host));
+  src\index.js:2207:        return stored ? JSON.parse(stored) : null;
+  src\index.js:2208:      };
+  src\index.js:2209:
+  src\index.js:2210:      const putEvidence = async (targetUrl) => {
+  src\index.js:2211:        const host = new URL(targetUrl).host.toLowerCase();
+  src\index.js:2212:        try {
+  src\index.js:2213:          const res = await fetch(targetUrl);
+  src\index.js:2214:          const text = await res.text();
+  src\index.js:2215:          const evidence = {
+  src\index.js:2216:            ok: true,
+  src\index.js:2217:            url: targetUrl,
+  src\index.js:2218:            host,
+  src\index.js:2219:            http_status: res.status,
+  src\index.js:2220:            first_line_html: text.split("\n")[0] || "",
+  src\index.js:2221:            body_length: text.length
+  src\index.js:2222:          };
+  src\index.js:2223:          await env.AURA_KV.put(evidenceKey(host), 
+JSON.stringify(evidence));
+  src\index.js:2224:          return evidence;
+  src\index.js:2225:        } catch {
+  src\index.js:2226:          const evidence = { ok: false, url: targetUrl, host, 
+http_status: 0 };
+  src\index.js:2227:          await env.AURA_KV.put(evidenceKey(host), 
+JSON.stringify(evidence));
+  src\index.js:2228:          return evidence;
+  src\index.js:2229:        }
+  src\index.js:2230:      };
+  src\index.js:2231:
+  src\index.js:2232:      const results = [];
+  src\index.js:2233:
+  src\index.js:2234:      await clearHost(hosts.example);
+  src\index.js:2235:      await clearHost(hosts.http404);
+  src\index.js:2236:
+  src\index.js:2237:      const ev0 = await getEvidence(hosts.example);
+  src\index.js:2238:      results.push(
+
+

@@ -1,0 +1,6 @@
+HOST auras.guide
+INTENT_ADD {"id":"intent-domain-acquire-proof-20260213_142745","kind":"DOMAIN_ACQUIRE","target":{"name":"examplebrand","tlds":[".world",".com"],"notes":"Proof only. No purchase. No domain registry writes."},"constraints":{"budget_usd":0,"purchase_allowed":false,"who":"SYSTEM_PROOF"},"status":"PENDING"}
+INTENT_GET
+INTENT_SIMULATE {"id":"intent-domain-acquire-proof-20260213_142745"}
+AUDIT_GET
+SNAPSHOT_STATE

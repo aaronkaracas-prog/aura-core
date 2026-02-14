@@ -1,0 +1,4 @@
+HOST auras.guide
+VERIFIED_FETCH_URL https://auras.guide/
+EVIDENCE_PRESENT auras.guide
+AUTONOMY_STATUS

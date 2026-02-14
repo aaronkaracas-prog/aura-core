@@ -1,0 +1,3 @@
+HOST auras.guide
+
+REGISTRY_PUT self_model AURA_SELF_MODEL_V1 {}

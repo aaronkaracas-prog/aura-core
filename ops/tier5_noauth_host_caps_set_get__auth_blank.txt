@@ -1,0 +1,4 @@
+HOST auras.guide
+HOST_CAPS_SET {"allowed":["PING"]}
+HOST auras.guide
+HOST_CAPS_GET

@@ -1,0 +1,2 @@
+﻿HOST auras.guide
+AUTONOMY_CHARTER_SET {"version":1,"text":"AUTONOMY_CHARTER_TEST__2026-02-11__AURAS__CONTROL"}

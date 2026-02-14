@@ -1,0 +1,2 @@
+HOST malibu.city
+REGISTRY_GET assets canon.operator_token_workflow_v1

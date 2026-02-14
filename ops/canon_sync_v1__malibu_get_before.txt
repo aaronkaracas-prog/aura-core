@@ -1,0 +1,3 @@
+﻿HOST malibu.city
+REGISTRY_GET assets canon_sync_v1
+AUDIT_GET

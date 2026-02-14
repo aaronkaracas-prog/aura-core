@@ -1,0 +1,4 @@
+HOST auras.guide
+AUTONOMY_CAPABILITIES
+HOST auras.guide
+DEPLOYER_CAPS

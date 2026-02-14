@@ -1,0 +1,2 @@
+﻿HOST malibu.city
+VERIFIED_FETCH_URL https://malibu.city

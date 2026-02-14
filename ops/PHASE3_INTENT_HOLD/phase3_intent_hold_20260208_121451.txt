@@ -1,0 +1,3 @@
+HOST auras.guide
+INTENT_ADD {"scope":"PORTFOLIO","intent":"Monitor Cloudflare domains for changes","action":"NONE"}
+INTENT_GET

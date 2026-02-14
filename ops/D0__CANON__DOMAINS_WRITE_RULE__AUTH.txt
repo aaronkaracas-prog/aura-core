@@ -1,0 +1,6 @@
+HOST auras.guide
+REGISTRY_PUT users {"id":"__domains_policy__","prefs":{"domains_write_path":"REGISTRY_IMPORT_DOMAINS","domains_put_is_blocked_by_design":true,"rationale":"prevents ad-hoc per-domain mutation; import is the controlled pathway for bulk + integrity","updated_at":"2026-02-13T14:24:05.1674256-08:00"},"intents":[]}
+REGISTRY_GET users __domains_policy__
+REGISTRY_AUDIT_TRAIL users __domains_policy__
+AUDIT_GET
+SNAPSHOT_STATE

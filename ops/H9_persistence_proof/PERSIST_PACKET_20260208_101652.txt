@@ -1,0 +1,5 @@
+PERSIST_PACKET
+CHECKS:
+REGISTRY_GET domains frontdesk.network | notes_sweep_latest: True
+REGISTRY_GET domains malibu.city | notes_sweep_latest: True
+END

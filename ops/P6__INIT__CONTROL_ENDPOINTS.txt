@@ -1,0 +1,4 @@
+HOST auras.guide
+REGISTRY_PUT privacy controls {"stop":true,"delete":true,"export":true}
+HOST auras.guide
+REGISTRY_LIST privacy

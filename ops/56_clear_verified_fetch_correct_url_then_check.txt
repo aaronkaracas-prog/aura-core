@@ -1,0 +1,4 @@
+HOST frontdesk.network
+CLEAR_VERIFIED_FETCH https://frontdesk.network
+EVIDENCE_PRESENT
+SNAPSHOT_STATE

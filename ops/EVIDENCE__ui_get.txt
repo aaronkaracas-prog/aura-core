@@ -1,0 +1,5 @@
+﻿HOST auras.guide
+VERIFIED_FETCH_URL
+{"url":"https://auras.guide/ui","method":"GET"}
+EVIDENCE_PRESENT
+SNAPSHOT_STATE

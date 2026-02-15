@@ -1,0 +1,1 @@
+REGISTRY_PUT system __tier7_stamp_probe__

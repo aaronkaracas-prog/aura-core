@@ -1,0 +1,35 @@
+﻿
+ops\CORE_UI__BODY23.html:221:<!-- AURA_UI_MUTATIONS -->
+ops\CORE_UI__BODY23.html:224:<script>document.documentElement
+.setAttribute('data-ui-probe-global','YES');</script>
+ops\CORE_UI__BODY23.html:225:<script>console.log('AURA_UI_MAR
+KER_'+Date.now());</script><!--AURA_UI_MARKER-->
+ops\CORE_UI__BODY23.html:226:<!--FORCED_MUTATION_PROBE-->
+ops\CORE_UI__BODY23.html:227:<!-- /AURA_UI_MUTATIONS -->
+ops\CORE_UI__BODY23.html:232:<!--UI_T10_AFTER_REGISTRY 
+type=object hasItems=1 -->
+ops\CORE_UI__BODY23.html:234:<!--UI_T10_AFTER_REGISTRY 
+type=object hasItems=1 -->
+ops\CORE_UI__BODY23.html:236:<!--UI_T10_PRECHECK items=4 -->
+ops\CORE_UI__BODY23.html:238:<!--UI_T10_COUNTS items=4 
+frags=5 hasBody=1 at=7977 -->
+ops\CORE_UI__BODY23.html:240:<!--UI_CALLSITE_HIT-->
+ops\CORE_UI__BODY23.html:242:<!--AURA_UI_ROUTE_EXEC_PROBE-->
+ops\CORE_UI__BODY24.html:221:<!-- AURA_UI_MUTATIONS -->
+ops\CORE_UI__BODY24.html:224:<script>document.documentElement
+.setAttribute('data-ui-probe-global','YES');</script>
+ops\CORE_UI__BODY24.html:225:<script>console.log('AURA_UI_MAR
+KER_'+Date.now());</script><!--AURA_UI_MARKER-->
+ops\CORE_UI__BODY24.html:226:<!--FORCED_MUTATION_PROBE-->
+ops\CORE_UI__BODY24.html:227:<!-- /AURA_UI_MUTATIONS -->
+ops\CORE_UI__BODY24.html:232:<!--UI_T10_AFTER_REGISTRY 
+type=object hasItems=1 -->
+ops\CORE_UI__BODY24.html:234:<!--UI_T10_AFTER_REGISTRY 
+type=object hasItems=1 -->
+ops\CORE_UI__BODY24.html:236:<!--UI_T10_PRECHECK items=4 -->
+ops\CORE_UI__BODY24.html:238:<!--UI_T10_COUNTS items=4 
+frags=5 hasBody=1 at=7977 -->
+ops\CORE_UI__BODY24.html:240:<!--UI_CALLSITE_HIT-->
+ops\CORE_UI__BODY24.html:242:<!--AURA_UI_ROUTE_EXEC_PROBE-->
+
+

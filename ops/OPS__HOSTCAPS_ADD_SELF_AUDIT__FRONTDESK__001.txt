@@ -1,0 +1,5 @@
+﻿HOST frontdesk.network
+HOST_CAPS_GET
+HOST_CAPS_SET
+{"allow_add":["SELF_AUDIT_FULL"]}
+HOST_CAPS_GET

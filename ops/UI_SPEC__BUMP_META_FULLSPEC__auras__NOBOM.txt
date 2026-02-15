@@ -1,0 +1,5 @@
+HOST auras.guide
+REGISTRY_PUT users ui_spec_v1
+{"prefs":{"ui_spec":{"schema":"ui_spec_v1","meta":{"proof":"2026-02-13T18:53:48"},"header":{"show_build":true,"show_stamp":true,"show_operator":true},"refresh":{"mode":"poll","interval_ms":5000},"runtime":{"fetch_spec_cmd":"REGISTRY_GET users ui_spec_v1","poll_cmds":["SHOW_BUILD","SNAPSHOT_STATE","AUTONOMY_STATUS","PORTFOLIO_STATUS"]},"panels":[{"id":"core_status","title":"Core Status","items":["SHOW_BUILD","SNAPSHOT_STATE","AUTONOMY_STATUS"]},{"id":"registry","title":"Registry","items":["PORTFOLIO_STATUS","REGISTRY_LIST domains"]}],"actions":[{"id":"run_batch","label":"Run Batch","type":"chat_batch_send"},{"id":"reload_ui","label":"Reload UI","type":"hard_refresh"}]}}}
+REGISTRY_GET users ui_spec_v1
+REGISTRY_AUDIT_TRAIL users ui_spec_v1

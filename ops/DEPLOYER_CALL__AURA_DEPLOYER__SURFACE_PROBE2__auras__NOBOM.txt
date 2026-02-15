@@ -1,0 +1,16 @@
+HOST auras.guide
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/version","method":"GET","body":null}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/manifest.json","method":"GET","body":null}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/openapi.json","method":"GET","body":null}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/api","method":"GET","body":null}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/api/help","method":"GET","body":null}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/routes","method":"GET","body":null}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/_routes","method":"GET","body":null}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/__routes","method":"GET","body":null}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/admin","method":"GET","body":null}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/admin/help","method":"GET","body":null}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/deploy","method":"GET","body":null}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/update","method":"GET","body":null}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/ui","method":"GET","body":null}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/ui/index.html","method":"GET","body":null}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/robots.txt","method":"GET","body":null}

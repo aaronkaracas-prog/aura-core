@@ -1,0 +1,1 @@
+﻿{"ok":true,"reply":"[\n  {\n    \"cmd\": \"REGISTRY_GET ui probe_global\",\n    \"payload\": \"MISSING\"\n  }\n]"}

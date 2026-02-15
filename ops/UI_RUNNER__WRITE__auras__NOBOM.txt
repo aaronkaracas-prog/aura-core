@@ -1,0 +1,5 @@
+HOST auras.guide
+REGISTRY_PUT users ui_runner_v1
+{"id":"ui_runner_v1","type":"users","version":"v1","prefs":{"source":"ui_spec_v1","generated_at":"2026-02-13T18:44:11","batch_lines":["REGISTRY_GET users ui_spec_v1","SHOW_BUILD","SNAPSHOT_STATE","AUTONOMY_STATUS","PORTFOLIO_STATUS"]}}
+REGISTRY_GET users ui_runner_v1
+REGISTRY_AUDIT_TRAIL users ui_runner_v1

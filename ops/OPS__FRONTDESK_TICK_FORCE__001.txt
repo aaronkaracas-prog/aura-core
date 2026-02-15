@@ -1,0 +1,3 @@
+﻿HOST frontdesk.network
+AUTONOMY_LAST_TICK_SET
+AUTONOMY_LAST_TICK

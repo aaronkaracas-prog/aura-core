@@ -1,0 +1,5 @@
+﻿HOST auras.guide
+SHOW_BUILD
+REGISTRY_LIST ui 50
+REGISTRY_GET ui __probe_global__
+REGISTRY_GET ui __marker__

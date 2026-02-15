@@ -1,0 +1,3 @@
+﻿HOST auras.guide
+REGISTRY_PUT ui {"id":"__probe_global__","html":"<script>document.documentElement.setAttribute('data-ui-probe-global','YES');</script>","scope":"GLOBAL"}
+REGISTRY_GET ui __probe_global__

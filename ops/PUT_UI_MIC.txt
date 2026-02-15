@@ -1,0 +1,2 @@
+﻿HOST auras.guide
+REGISTRY_PUT ui {"id":"mic_button","html":"<script>console.log('MIC BUTTON PLACEHOLDER')</script>","scope":"HOST"}

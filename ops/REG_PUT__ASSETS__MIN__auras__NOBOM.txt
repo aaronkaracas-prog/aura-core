@@ -1,0 +1,4 @@
+HOST auras.guide
+REGISTRY_PUT assets ui_spec_v1 {"id":"ui_spec_v1"}
+REGISTRY_GET assets ui_spec_v1
+AUDIT_GET

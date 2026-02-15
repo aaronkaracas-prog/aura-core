@@ -1,0 +1,4 @@
+HOST frontdesk.network
+AUTONOMY_CHARTER_SET
+{"version":2,"text":"TIER6_MINIMAL_TEST"}
+AUTONOMY_CHARTER_GET

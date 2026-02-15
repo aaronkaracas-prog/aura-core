@@ -1,0 +1,4 @@
+HOST auras.guide
+REGISTRY_PUT users ui_spec_v1 {"prefs":{"ui_spec":{"meta":{"proof":"2026-02-13T18:17:14"}}}}
+REGISTRY_GET users ui_spec_v1
+REGISTRY_AUDIT_TRAIL users ui_spec_v1

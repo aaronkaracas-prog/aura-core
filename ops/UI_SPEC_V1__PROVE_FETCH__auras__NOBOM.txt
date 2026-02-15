@@ -1,0 +1,4 @@
+HOST auras.guide
+REGISTRY_GET users ui_spec_v1
+SNAPSHOT_STATE
+SHOW_BUILD

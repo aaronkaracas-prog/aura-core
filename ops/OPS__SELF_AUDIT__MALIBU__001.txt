@@ -1,0 +1,2 @@
+﻿HOST malibu.city
+SELF_AUDIT_FULL

@@ -1,0 +1,80 @@
+﻿    if (bodyTrim && !isBatchLike && !hasClaimTrigger(bodyTrim)) {
+      const msg =
+        `Aura (control-plane)  ${BUILD} @ ${STAMP}\n` +
+        `Operator: ${isOperator ? 'YES' : 'NO'} (planning/help allowed; deploy/DNS actions are operator-only)\n\n` +
+        `What I can do right now (without VERIFIED_FETCH):\n` +
+        `- Explain identity/capabilities and how to operate\n` +
+        `- Show allowed commands, build, snapshot, memory schema\n` +
+        `- Read registries (GET/LIST/FILTER) within host caps\n\n` +
+        `What requires VERIFIED_FETCH and/or operator token:\n` +
+        `- Claims like live/deployed/reachable\n` +
+        `- Writes (registry puts), deployer calls, DNS changes\n\n` +
+        `Next commands to run:\n` +
+        `1) SHOW_ALLOWED_COMMANDS\n` +
+        `2) SHOW_BUILD\n` +
+        `3) SNAPSHOT_STATE\n` +
+        `4) SHOW_MEMORY_SCHEMA\n` +
+        `5) REGISTRY_LIST domains\n\n` +
+        `Tip: In UI, use ALL-CAPS commands. For multi-line ops, use PowerShell batch mode.`;
+      return Response.json({ ok: true, reply: msg });
+    }
+
+    // ----------------------------
+    // Build / policy markers
+    // ----------------------------
+    // ----------------------------
+    // Operator auth (explicit only)
+    // ----------------------------
+    // operatorToken/operatorHeader/isOperator are computed above (early)
+
+    // If a token is configured and a caller presents a token header that does not match,
+    // fail closed (prevents accidental success with a wrong token).
+    const operatorHeaderPresent = Boolean(operatorHeader);
+    const operatorMismatch = Boolean(operatorToken) && operatorHeaderPresent && operatorHeader !== operatorToken;
+    if (operatorMismatch) return Response.json({ ok: true, reply: "UNAUTHORIZED" });
+
+    // ----------------------------
+    // Commands (global allowlist)
+    // ----------------------------
+    const allowedCommands = [
+      "PING",
+      "SHOW_BUILD",
+      "SHOW_CLAIM_GATE",
+      "SHOW_ALLOWED_COMMANDS",
+      "RUN_SELF_TEST_EVIDENCE",
+      "VERIFIED_FETCH_URL",
+      "CLEAR_VERIFIED_FETCH",
+      "EVIDENCE_PRESENT",
+      "SNAPSHOT_STATE",
+      "HOST_CAPS_GET",
+      "HOST_CAPS_SET",
+      "DEPLOYER_CAPS",
+      "DEPLOYER_CALL",
+      "PAUSE",
+      "INTENT_ADD",
+      "INTENT_GET",
+      "INTENT_CLEAR",
+      "SHOW_MEMORY_SCHEMA",
+      "REGISTRY_PUT",
+      "REGISTRY_GET",
+      "REGISTRY_LIST",
+      "REGISTRY_FILTER",
+      "REGISTRY_IMPORT_ASSETS",
+      "REGISTRY_IMPORT_DOMAINS",
+      "PORTFOLIO_STATUS",
+      "AUDIT_GET",
+      "AUDIT_CLEAR",
+      "HERD_STATUS",
+      "HERD_SELF_TEST",
+      "HERD_SWEEP",
+  "AUTONOMY_STATUS",
+  "AUTONOMY_LAST_TICK",
+        "AUTONOMY_LAST_TICK_SET",
+  "AUTONOMY_LAST_TICK_SET",
+  "AUTONOMY_CAPABILITIES",
+  "INTENT_SIMULATE",
+  "REGISTRY_AUDIT_TRAIL",
+  "AUTONOMY_BUDGET_GET",
+  "AUTONOMY_BUDGET_SET",
+  "FAILURE_MEMORY_GET",
+  "FAILURE_MEMORY_PUT",

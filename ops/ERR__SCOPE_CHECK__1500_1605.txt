@@ -1,0 +1,106 @@
+﻿ 1500: 
+ 1501:     if (line === "SHOW_MEMORY_SCHEMA") {
+ 1502:       push("SHOW_MEMORY_SCHEMA", memorySchemaV1);
+ 1503:       continue;
+ 1504:     }
+ 1505: 
+ 1506: if (line === "SHOW_BUILD") {
+ 1507:   push("SHOW_BUILD", { build: BUILD, stamp: new Date().toISOString() });
+ 1508:   continue;
+ 1509: }
+ 1510: 
+ 1511: if (line === "SHOW_CLAIM_GATE") {
+ 1512:   push("SHOW_CLAIM_GATE", {
+ 1513:     trigger_words: [
+ 1514:       "live","deployed","launched","resolving","propagating","successful","verified","up","online","working","reachable","available","accessible"
+ 1515:     ],
+ 1516:     forced_message: "NOT WIRED: VERIFIED_FETCH REQUIRED",
+ 1517:     requires_verified_fetch_format: true
+ 1518:   });
+ 1519:   continue;
+ 1520: }
+ 1521: 
+ 1522: if (line === "SHOW_ALLOWED_COMMANDS") {
+ 1523:   push("SHOW_ALLOWED_COMMANDS",allowedCommands);
+ 1524:   continue;
+ 1525: }
+ 1526: 
+ 1527:         // ----------------------------
+ 1528:     // AUTONOMY PRIMITIVES (batch mode; deterministic state)
+ 1529:     // ----------------------------
+ 1530:     {
+ 1531:       const __host = String(activeHost || "frontdesk.network").toLowerCase();
+ 1532:       const __budgetKey  = `AUTONOMY_BUDGET__${__host}`;
+ 1533:       const __charterKey = `AUTONOMY_CHARTER__${__host}`;
+ 1534:       const __tickKey    = `AUTONOMY_LAST_TICK__${__host}`;
+ 1535:       const __failKey    = `FAILURE_MEMORY__${__host}`;
+ 1536: 
+ 1537:       const __defaultBudget = { limit: 100, spent: 0, window: "day", updated_at: null };
+ 1538:       const __defaultCharter = { version: 1, text: "", updated_at: null };
+ 1539: 
+ 1540:       const __readJsonKV = async (key) => {
+ 1541:         const s = await env.AURA_KV.get(key);
+ 1542:         if (!s) return null;
+ 1543:         const j = safeJsonParse(s);
+ 1544:         return j || null;
+ 1545:       };
+ 1546: 
+ 1547:       const __capabilities = [
+ 1548:         "AUTONOMY_STATUS",
+ 1549:         "AUTONOMY_LAST_TICK",
+ 1550:         "AUTONOMY_CAPABILITIES",
+ 1551:         "AUTONOMY_BUDGET_GET",
+ 1552:         "AUTONOMY_BUDGET_SET",
+ 1553:         "AUTONOMY_CHARTER_GET",
+ 1554:         "AUTONOMY_CHARTER_SET",
+ 1555:         "FAILURE_MEMORY_GET",
+ 1556:         "FAILURE_MEMORY_PUT",
+ 1557:         "REGISTRY_AUDIT_TRAIL",
+ 1558:         "INTENT_SIMULATE"
+ 1559:       ];
+ 1560: 
+ 1561:       if (line === "AUTONOMY_LAST_TICK") {
+ 1562:         const last = await env.AURA_KV.get(__tickKey);
+ 1563: const cron = await env.AURA_KV.get(autonomyTickKey, { type: "json" }).catch(()=>null);
+ 1564: const cronTs = (cron && (cron.ts || cron.stamp)) ? String(cron.ts || cron.stamp) : null;
+ 1565: const chosen = (!last ? cronTs : (cronTs && String(cronTs) > String(last) ? cronTs : last));
+ 1566: push("AUTONOMY_LAST_TICK",
+ 1567:         continue;
+ 1568:       }
+ 1569: 
+ 1570:       if (line === "AUTONOMY_CAPABILITIES") {
+ 1571:         push("AUTONOMY_CAPABILITIES", { ok: true, host: __host, capabilities: __capabilities, count: __capabilities.length });
+ 1572:         continue;
+ 1573:       }
+ 1574: 
+ 1575:       if (line === "AUTONOMY_BUDGET_GET") {
+ 1576:         const b = (await __readJsonKV(__budgetKey)) || __defaultBudget;
+ 1577:         push("AUTONOMY_BUDGET_GET", { ok: true, host: __host, budget: b });
+ 1578:         continue;
+ 1579:       }
+ 1580: 
+ 1581:       if (line === "AUTONOMY_CHARTER_GET") {
+ 1582:         const c = (await __readJsonKV(__charterKey)) || __defaultCharter;
+ 1583:         push("AUTONOMY_CHARTER_GET", { ok: true, host: __host, charter: c });
+ 1584:         continue;
+ 1585:       }
+ 1586: 
+ 1587:       if (line === "FAILURE_MEMORY_GET") {
+ 1588:         const fm = (await __readJsonKV(__failKey)) || [];
+ 1589:         push("FAILURE_MEMORY_GET", { ok: true, host: __host, items: fm, count: Array.isArray(fm) ? fm.length : 0 });
+ 1590:         continue;
+ 1591:       }
+ 1592: 
+ 1593:       if (line === "REGISTRY_AUDIT_TRAIL") {
+ 1594:         // Reuse the existing audit substrate as the authoritative trail output for now.
+ 1595:         // Deterministic: returns latest 50 events (or fewer) using existing auditList().
+ 1596:         push("REGISTRY_AUDIT_TRAIL", { ok: true, host: __host, trail: await auditList(env, String(activeHost || "frontdesk.network").toLowerCase(), 50) });
+ 1597:         continue;
+ 1598:       }
+ 1599: 
+ 1600:       if (line === "AUTONOMY_STATUS") {
+ 1601:         const b = (await __readJsonKV(__budgetKey)) || __defaultBudget;
+ 1602:         const c = (await __readJsonKV(__charterKey)) || __defaultCharter;
+ 1603:         const last = await env.AURA_KV.get(__tickKey);
+ 1604:         push("AUTONOMY_STATUS", {
+ 1605:           ok: true,

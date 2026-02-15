@@ -1,0 +1,3 @@
+﻿HOST frontdesk.network
+HOST_CAPS_SET {"allow":["SHOW_ALLOWED_COMMANDS"]}
+HOST_CAPS_GET

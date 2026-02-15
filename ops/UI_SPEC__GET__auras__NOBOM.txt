@@ -1,0 +1,2 @@
+HOST auras.guide
+REGISTRY_GET users ui_spec_v1

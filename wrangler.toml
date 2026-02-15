@@ -1,6 +1,14 @@
-name = "aura-core"
+﻿name = "aura-core"
 
-routes = ["malibu.city/*","www.malibu.city/*","auras.guide/*","www.auras.guide/*"]
+routes = [
+  "malibu.city/*",
+  "www.malibu.city/*",
+  "auras.guide/*",
+  "www.auras.guide/*",
+  "frontdesk.network/*",
+  "www.frontdesk.network/*"
+]
+
 main = "src/index.js"
 compatibility_date = "2026-01-21"
 workers_dev = true
@@ -13,7 +21,6 @@ crons = ["*/1 * * * *"]
 [[kv_namespaces]]
 binding = "AURA_KV"
 id = "9c2ba111589e48c6ba5ad1b924ae8809"
-
 
 [[services]]
 binding = "AURA_DEPLOYER"

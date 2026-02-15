@@ -1,0 +1,3 @@
+﻿HOST frontdesk.network
+SNAPSHOT_STATE
+AUTONOMY_STATUS

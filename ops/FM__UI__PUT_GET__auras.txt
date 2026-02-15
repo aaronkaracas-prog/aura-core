@@ -1,0 +1,4 @@
+﻿HOST auras.guide
+FAILURE_MEMORY_PUT {"id":"ui.header.build_unknown","severity":"HIGH","title":"UI header shows Build: unknown while SHOW_BUILD returns __14","evidence":"Aura UI header not parsing SHOW_BUILD/SNAPSHOT_STATE response shape; header stays 'unknown' while backend reports build/stamp correctly.","fix":"UI must render build/stamp deterministically and be spec-driven via KV config.","first_seen":"2026-02-13","status":"OPEN"}
+FAILURE_MEMORY_PUT {"id":"ui.self_updating_required","severity":"HIGH","title":"UI must be remotely configurable (self-updating UI architecture)","evidence":"Current UI is static shell; cannot change layout/features via commands unless UI loads spec/config from KV.","fix":"Create UI_SPEC_V1 anchor in registry; UI loads spec on boot + refresh; allow per-tenant overrides.","status":"OPEN"}
+FAILURE_MEMORY_GET

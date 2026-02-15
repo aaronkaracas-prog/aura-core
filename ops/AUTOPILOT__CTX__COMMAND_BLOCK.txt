@@ -1,0 +1,170 @@
+﻿        `- Writes (registry puts), deployer calls, DNS changes\n\n` +
+        `Next commands to run:\n` +
+        `1) SHOW_ALLOWED_COMMANDS\n` +
+        `2) SHOW_BUILD\n` +
+        `3) SNAPSHOT_STATE\n` +
+        `4) SHOW_MEMORY_SCHEMA\n` +
+        `5) REGISTRY_LIST domains\n\n` +
+        `Tip: In UI, use ALL-CAPS commands. For multi-line ops, use PowerShell batch mode.`;
+      return Response.json({ ok: true, reply: msg });
+    }
+
+    // ----------------------------
+    // Build / policy markers
+    // ----------------------------
+    // ----------------------------
+    // Operator auth (explicit only)
+    // ----------------------------
+    // operatorToken/operatorHeader/isOperator are computed above (early)
+
+    // If a token is configured and a caller presents a token header that does not match,
+    // fail closed (prevents accidental success with a wrong token).
+    const operatorHeaderPresent = Boolean(operatorHeader);
+    const operatorMismatch = Boolean(operatorToken) && operatorHeaderPresent && operatorHeader !== operatorToken;
+    if (operatorMismatch) return Response.json({ ok: true, reply: "UNAUTHORIZED" });
+
+    // ----------------------------
+    // Commands (global allowlist)
+    // ----------------------------
+    const allowedCommands = [
+      "PING",
+      "SHOW_BUILD",
+      "SHOW_CLAIM_GATE",
+      "SHOW_ALLOWED_COMMANDS",
+      "RUN_SELF_TEST_EVIDENCE",
+      "VERIFIED_FETCH_URL",
+      "CLEAR_VERIFIED_FETCH",
+      "EVIDENCE_PRESENT",
+      "SNAPSHOT_STATE",
+      "HOST_CAPS_GET",
+      "HOST_CAPS_SET",
+      "DEPLOYER_CAPS",
+      "DEPLOYER_CALL",
+      "PAUSE",
+      "INTENT_ADD",
+      "INTENT_GET",
+      "INTENT_CLEAR",
+      "SHOW_MEMORY_SCHEMA",
+      "REGISTRY_PUT",
+      "REGISTRY_GET",
+      "REGISTRY_LIST",
+      "REGISTRY_FILTER",
+      "REGISTRY_IMPORT_ASSETS",
+      "REGISTRY_IMPORT_DOMAINS",
+      "PORTFOLIO_STATUS",
+      "AUDIT_GET",
+      "AUDIT_CLEAR",
+      "HERD_STATUS",
+      "HERD_SELF_TEST",
+      "HERD_SWEEP",
+  "AUTONOMY_STATUS",
+  "AUTONOMY_LAST_TICK",
+        "AUTONOMY_LAST_TICK_SET",
+  "AUTONOMY_LAST_TICK_SET",
+  "AUTONOMY_CAPABILITIES",
+  "INTENT_SIMULATE",
+  "REGISTRY_AUDIT_TRAIL",
+  "AUTONOMY_BUDGET_GET",
+  "AUTONOMY_BUDGET_SET",
+  "FAILURE_MEMORY_GET",
+  "FAILURE_MEMORY_PUT",
+  "AUTONOMY_CHARTER_GET",
+  "AUTONOMY_CHARTER_SET",
+];
+
+    // ----------------------------
+    // Helpers
+    // ----------------------------
+    const normalizeHost = (u) => {
+      try {
+        return new URL(u).host.toLowerCase();
+      } catch {
+        return null;
+      }
+    };
+
+    // Accept either a full URL or a bare domain token.
+    const normalizeHostLoose = (s) => {
+      if (!s) return null;
+      const h = normalizeHost(s);
+      if (h) return h;
+      const t = String(s).trim().toLowerCase();
+      if (!t) return null;
+      // Basic sanity: must contain a dot and only valid hostname chars.
+      if (!t.includes(".")) return null;
+      if (!/^[a-z0-9.-]+$/.test(t)) return null;
+      return t;
+    };
+
+    const extractLastUrl = (txt) => {
+      const matches = [...txt.matchAll(/https?:\/\/[^\s]+/g)];
+      return matches.length ? matches[matches.length - 1][0] : null;
+    };
+
+    // Extract a bare domain mention like example.com (no scheme).
+    // Returns the last plausible domain token found in the message.
+    const extractLastBareDomain = (txt) => {
+      // labels + TLD; excludes trailing punctuation due to \b
+      const re =
+        /\b([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+)\b/gi;
+      const matches = [];
+      let m;
+      while ((m = re.exec(txt)) !== null) {
+        const d = (m[1] || "").toLowerCase();
+        if (!d) continue;
+        if (d === "localhost") continue;
+        matches.push(d);
+      }
+      return matches.length ? matches[matches.length - 1] : null;
+    };
+
+    const statusReachable = (st) => Number(st) >= 200 && Number(st) < 400;
+    const evidenceKey = (host) => `verified_fetch:${host}`;
+    const capsKey = (host) => `host_caps:${host}`;
+    const intentKey = (host, tag) => `intent:${host}:${tag}`;
+// ----------------------------
+// Memory Substrate v1 (storage-backed; no model memory)
+// ----------------------------
+REGISTRY_VERSION = "v1";
+
+function registryKey(type, id) { return `reg:${REGISTRY_VERSION}:${type}:${id}`; }
+function registryIndexKey(type) { return `reg:${REGISTRY_VERSION}:index:${type}`; }
+function registryMetaKey(type) { return `reg:${REGISTRY_VERSION}:meta:${type}`; }
+
+const auditSeqKey = (host) => `audit:${REGISTRY_VERSION}:${host}:seq`;
+const auditEventKey = (host, seq) => `audit:${REGISTRY_VERSION}:${host}:event:${seq}`;
+const auditClearedAtKey = (host) => `audit:${REGISTRY_VERSION}:${host}:cleared_at`;
+
+const nowIso = () => new Date().toISOString();
+
+safeJsonParse = (s) => {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Parse JSON arguments for commands in batch payloads.
+ * Supports:
+ *  - TOKEN <json>
+ *  - TOKEN <type> <json>               (legacy, e.g. REGISTRY_PUT domains {...})
+ *  - TOKEN                              then JSON on subsequent non-command lines
+ */
+function __isCommandLine(line, allowedCommands) {
+  if (!line) return false;
+  const tok = String(line).trim().split(/\s+/)[0] || "";
+  if (!tok) return false;
+  if (tok === "HOST") return true;
+  return allowedCommands && Array.isArray(allowedCommands) && allowedCommands.includes(tok);
+}
+
+function __collectJsonText(token, line, lines, idx, allowedCommands) {
+  const tail = String(line || "").slice(token.length).trim();
+  if (tail) return { text: tail, nextIndex: idx };
+
+  // Collect subsequent lines until the next command token (or HOST) appears.
+  const buf = [];
+  let j = idx + 1;
+  for (; j < (lines || []).length; j++) {

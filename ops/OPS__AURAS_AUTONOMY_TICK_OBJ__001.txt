@@ -1,0 +1,3 @@
+﻿HOST auras.guide
+SNAPSHOT_STATE
+AUTONOMY_STATUS

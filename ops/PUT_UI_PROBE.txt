@@ -1,0 +1,2 @@
+﻿HOST auras.guide
+REGISTRY_PUT ui __probe__ {"id":"__probe__","html":"<script>document.documentElement.setAttribute('data-ui-probe','YES');</script>","scope":"HOST"}

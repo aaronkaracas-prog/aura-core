@@ -1,0 +1,27 @@
+﻿TIER10_UI_INJECTION__PROOF_PACKET
+Timestamp folder: ops\T10_PROOF_20260214_114634
+
+Worker: aura-core-ui (workers.dev only)
+URL: https://aura-core-ui.aaronkaracas.workers.dev/core
+
+Determinism proofs:
+- CORE_UI__BODY23.html and CORE_UI__BODY24.html both contain:
+  - <!-- AURA_UI_MUTATIONS --> ... <!-- /AURA_UI_MUTATIONS -->
+  - FORCED_MUTATION_PROBE
+  - data-ui-probe-global='YES'
+  - AURA_UI_MARKER
+  - UI_T10_AFTER_REGISTRY (hasItems=1)
+  - UI_T10_PRECHECK (items=4)
+  - UI_T10_COUNTS (items=4 frags=5 hasBody=1 at=7977)
+  - UI_CALLSITE_HIT
+  - AURA_UI_ROUTE_EXEC_PROBE
+
+Index.js (local):
+- SHA256: 6DAF831A4F4F4180DCA55CBAA4C0A35AA92431107F3586F427EB48C63BD4D6AA
+- Length: 109758
+
+Deploy history captured via:
+wrangler deployments list --name aura-core-ui --config wrangler.ui.toml
+(see console output from 2026-02-14)
+
+Tier 10 status: 100% ✅

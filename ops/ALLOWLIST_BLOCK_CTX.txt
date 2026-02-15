@@ -1,0 +1,80 @@
+    const allowedCommands = [
+      "PING",
+      "SHOW_BUILD",
+      "SHOW_CLAIM_GATE",
+      "SHOW_ALLOWED_COMMANDS",
+      "SELF_TEST_FULL","RUN_SELF_TEST_EVIDENCE",
+      "VERIFIED_FETCH_URL",
+      "CLEAR_VERIFIED_FETCH",
+      "EVIDENCE_PRESENT",
+      "SNAPSHOT_STATE",
+      "HOST_CAPS_GET",
+      "HOST_CAPS_SET",
+      "DEPLOYER_CAPS",
+      "DEPLOYER_CALL",
+      "PAUSE",
+      "INTENT_ADD",
+      "INTENT_GET",
+      "INTENT_CLEAR",
+      "SHOW_MEMORY_SCHEMA",
+      "REGISTRY_PUT",
+      "REGISTRY_GET",
+      "REGISTRY_LIST",
+      "REGISTRY_FILTER",
+      "REGISTRY_IMPORT_ASSETS",
+      "REGISTRY_IMPORT_DOMAINS",
+      "PORTFOLIO_STATUS",
+      "AUDIT_GET",
+      "AUDIT_CLEAR",
+      "HERD_STATUS",
+      "HERD_SELF_TEST",
+      "HERD_SWEEP",
+  "AUTONOMY_STATUS",
+  "AUTONOMY_LAST_TICK",
+        "AUTONOMY_LAST_TICK_SET",
+  "AUTONOMY_LAST_TICK_SET",
+  "AUTONOMY_CAPABILITIES",
+  "INTENT_SIMULATE",
+  "REGISTRY_AUDIT_TRAIL",
+  "AUTONOMY_BUDGET_GET",
+  "AUTONOMY_BUDGET_SET",
+  "FAILURE_MEMORY_GET",
+  "FAILURE_MEMORY_PUT",
+  "AUTONOMY_CHARTER_GET",
+  "AUTONOMY_CHARTER_SET",
+];
+
+    // ----------------------------
+    // Helpers
+    // ----------------------------
+    const normalizeHost = (u) => {
+      try {
+        return new URL(u).host.toLowerCase();
+      } catch {
+        return null;
+      }
+    };
+
+    // Accept either a full URL or a bare domain token.
+    const normalizeHostLoose = (s) => {
+      if (!s) return null;
+      const h = normalizeHost(s);
+      if (h) return h;
+      const t = String(s).trim().toLowerCase();
+      if (!t) return null;
+      // Basic sanity: must contain a dot and only valid hostname chars.
+      if (!t.includes(".")) return null;
+      if (!/^[a-z0-9.-]+$/.test(t)) return null;
+      return t;
+    };
+
+    const extractLastUrl = (txt) => {
+      const matches = [...txt.matchAll(/https?:\/\/[^\s]+/g)];
+      return matches.length ? matches[matches.length - 1][0] : null;
+    };
+
+    // Extract a bare domain mention like example.com (no scheme).
+    // Returns the last plausible domain token found in the message.
+    const extractLastBareDomain = (txt) => {
+      // labels + TLD; excludes trailing punctuation due to \b
+      const re =

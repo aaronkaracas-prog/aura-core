@@ -1,0 +1,45 @@
+﻿
+
+    // ----------------------------
+    // Strict allowlist: unknown single-token command => UNKNOWN_COMMAND
+    // ----------------------------
+    if (/^[A-Z0-9_]+$/.test(bodyTrim) && !allowedCommands.includes(bodyTrim)) {
+      return jsonReply("UNKNOWN_COMMAND");
+    }
+
+    // ----------------------------
+    // Simple commands
+    // ----------------------------
+    if (bodyTrim === "PING") return jsonReply("PONG");
+
+    if (bodyTrim === "SHOW_ALLOWED_COMMANDS") {
+      return jsonReply(allowedCommands);
+    }
+
+    if (bodyTrim === "SHOW_BUILD") {
+      return jsonReply(
+        JSON.stringify({ build: BUILD, stamp: new Date().toISOString() }, null, 2)
+      );
+    }
+
+    if (bodyTrim === "SHOW_CLAIM_GATE") {
+      return jsonReply(
+        JSON.stringify(
+          {
+            trigger_words: [
+              "live",
+              "deployed",
+              "launched",
+              "resolving",
+              "propagating",
+              "successful",
+              "verified",
+              "up",
+              "online",
+              "working",
+              "reachable",
+              "available",
+              "accessible"
+            ],
+            forced_message: "NOT WIRED: VERIFIED_FETCH REQUIRED",
+            requires_verified_fetch_format: true

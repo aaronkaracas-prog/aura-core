@@ -1,0 +1,220 @@
+﻿    if (rest.startsWith("{") || rest.startsWith("[")) {
+      const obj = safeJsonParse(rest);
+      const key = obj && typeof obj === "object" ? (obj.key || obj.id || obj.domain) : null;
+      const id = String(key || "").trim();
+      if (!id) return null;
+      return { type, id, nextIndex: idx };
+    }
+    return { type, id: String(rest).trim(), nextIndex: idx };
+  }
+
+  // No id on the same line  collect JSON below
+  const { text, nextIndex } = __collectJsonText("REGISTRY_GET", line, lines, idx, allowedCommands);
+  const obj = safeJsonParse(text);
+  const key = obj && typeof obj === "object" ? (obj.key || obj.id || obj.domain) : null;
+  const id = String(key || "").trim();
+  if (!id) return null;
+  return { type, id, nextIndex };
+}
+
+function __parseRegistryImportArgs(token, line, lines, idx, allowedCommands) {
+  const { text, nextIndex } = __collectJsonText(token, line, lines, idx, allowedCommands);
+  if (!text) return null;
+  const parsed = safeJsonParse(text);
+  if (!parsed) return null;
+  const items = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.items) ? parsed.items : null);
+  if (!items) return null;
+  return { parsed, items, nextIndex };
+}
+
+
+const auditWrite = async (env, host, event) => {
+  const ts = nowIso();
+  const seqRaw = await env.AURA_KV.get(auditSeqKey(host));
+  const seq = Number(seqRaw || 0) + 1;
+  await env.AURA_KV.put(auditSeqKey(host), String(seq));
+
+  const payload = { seq, ts, ...event };
+
+  await env.AURA_KV.put(auditEventKey(host, seq), JSON.stringify(payload));
+  return payload;
+};
+
+const auditList = async (env, host, limit = 50) => {
+  const seqRaw = await env.AURA_KV.get(auditSeqKey(host));
+  const seq = Number(seqRaw || 0);
+  const out = [];
+  const start = Math.max(1, seq - limit + 1);
+  for (let i = start; i <= seq; i++) {
+    const s = await env.AURA_KV.get(auditEventKey(host, i));
+    if (!s) continue;
+    const p = safeJsonParse(s) || s;
+    out.push(p);
+  }
+  return { seq, events: out };
+};
+
+async function registryGetIndex(env, type) {
+  const raw = await env.AURA_KV.get(registryIndexKey(type));
+  const parsed = raw ? safeJsonParse(raw) : null;
+  if (Array.isArray(parsed)) return parsed;
+  return [];
+}
+
+const registryPutIndex = async (env, type, ids) => {
+  const clean = [...new Set((ids || []).filter((x) => typeof x === "string" && x.trim()))];
+  await env.AURA_KV.put(registryIndexKey(type), JSON.stringify(clean));
+  await env.AURA_KV.put(
+    registryMetaKey(type),
+    JSON.stringify({ type, count: clean.length, updated_at: nowIso(), version: REGISTRY_VERSION })
+  );
+  return clean.length;
+};
+
+const registryPut = async (env, type, obj) => {
+  if (!obj || typeof obj !== "object") return { ok: false, error: "BAD_REQUEST" };
+  const id = String(obj.id || "").trim();
+  if (!id) return { ok: false, error: "BAD_REQUEST" };
+
+  const key = registryKey(type, id);
+  const stored = {
+    ...obj,
+    id,
+    type,
+    updated_at: nowIso(),
+    version: REGISTRY_VERSION
+  };
+
+  await env.AURA_KV.put(key, JSON.stringify(stored));
+
+  const ids = await registryGetIndex(env, type);
+  if (!ids.includes(id)) {
+    ids.push(id);
+    await registryPutIndex(env, type, ids);
+  } else {
+    await env.AURA_KV.put(
+      registryMetaKey(type),
+      JSON.stringify({ type, count: ids.length, updated_at: nowIso(), version: REGISTRY_VERSION })
+    );
+  }
+
+  await auditWrite(env, activeHost, { action: "REGISTRY_PUT", type, id });
+  return { ok: true, entry: stored };
+};
+
+const registryGet = async (env, type, id) => {
+  const key = registryKey(type, id);
+  const raw = await env.AURA_KV.get(key);
+  if (!raw) return null;
+  return safeJsonParse(raw) || raw;
+};
+
+async function registryList(env, type, limit = 50) {
+  const ids = await registryGetIndex(env, type);
+  const slice = ids.slice(0, Math.max(0, Math.min(limit, 500)));
+  const items = [];
+  for (const id of slice) {
+    const e = await registryGet(env, type, id);
+    if (e) items.push(e);
+  }
+  const metaRaw = await env.AURA_KV.get(registryMetaKey(type));
+  const meta = metaRaw ? (safeJsonParse(metaRaw) || metaRaw) : null;
+  return { type, meta, ids_count: ids.length, returned: items.length, items };
+};
+async function injectUiMutations(env, html, activeHost) {
+  let __ui_raw_dbg = "";
+  try {
+    if (!html || typeof html !== "string") {
+  return (html || "") + "\n<!--UI_T10_GUARD_HIT type=" + (typeof html) + " -->\n";
+}
+    html = html + "\n<!--UI_T10_FUNC_ENTER-->\n";
+
+    const host = String(activeHost || "").trim().toLowerCase();
+    const payload = await registryList(env, "ui", 500);
+    html = html + "\n<!--UI_T10_AFTER_REGISTRY type=" + (typeof payload) + " hasItems=" + (payload && payload.items ? 1 : 0) + " -->\n";
+    html = html + "\n<!--UI_T10_AFTER_REGISTRY type=" + (typeof payload) + " hasItems=" + (payload && payload.items ? 1 : 0) + " -->\n";
+    const items = (payload && payload.items) ? payload.items : [];
+    html = html + "\n<!--UI_T10_PRECHECK items=" + (items ? items.length : "null") + " -->\n";
+    if (!items.length) {
+      const z = "\n<!--UI_T10_ITEMS=0-->\n";
+      if (html.toLowerCase().includes("</body>")) return html.replace("</body>", z + "</body>");
+      return html + z;
+    }
+
+    const frags = [];
+    const __t10_itemsN = items.length;
+    for (const it of items) {
+      if (!it || !it.html) continue;
+
+      const scope = String(it.scope || "GLOBAL").toUpperCase();
+
+      if (scope === "GLOBAL") {
+        frags.push(String(it.html));
+        continue;
+      }
+
+      if (scope === "HOST") {
+        const itHost = String(it.host || it.activeHost || it.domain || "").trim().toLowerCase();
+        if (!itHost || (host && itHost === host)) frags.push(String(it.html));
+        continue;
+      }
+    }
+
+    // T10 FORCE-INJECT PROBE
+frags.push("<!--FORCED_MUTATION_PROBE-->" );
+
+    const __t10_fragsN = frags.length;
+    const __t10_hasBody = html.toLowerCase().includes("</body>") ? 1 : 0;
+    const __t10_at = html.toLowerCase().lastIndexOf("</body>");
+    html = html + "\n<!--UI_T10_COUNTS items=" + __t10_itemsN + " frags=" + __t10_fragsN + " hasBody=" + __t10_hasBody + " at=" + __t10_at + " -->\n";
+    const blob =
+      "\n<!-- AURA_UI_MUTATIONS -->\n" +
+      frags.join("\n") +
+      "\n<!-- /AURA_UI_MUTATIONS -->\n";
+
+    const marker = "</body>";
+    const at = html.toLowerCase().lastIndexOf(marker);
+    if (at < 0) return html + blob;
+
+    return html.slice(0, at) + blob + html.slice(at);
+
+  } catch (err) {
+    console.error("injectUiMutations error:", err);
+    const __t10_msg = (err && err.message) ? String(err.message) : String(err);
+    const __t10_safe = __t10_msg.split("-->").join("--_");
+    return String(html || "") + "\n<!--UI_T10_CATCH_HIT msg=" + __t10_safe + " -->\n";
+  }
+}
+
+
+const registryFilter = async (env, type, field, value, limit = 50) => {
+  const ids = await registryGetIndex(env, type);
+  const out = [];
+  for (const id of ids) {
+    const e = await registryGet(env, type, id);
+    if (!e || typeof e !== "object") continue;
+    const v = e[field];
+    const match =
+      (typeof v === "string" && String(v).toLowerCase() === String(value).toLowerCase()) ||
+      (Array.isArray(v) &&
+        v.map((x) => String(x).toLowerCase()).includes(String(value).toLowerCase()));
+    if (match) out.push(e);
+    if (out.length >= Math.max(1, Math.min(limit, 200))) break;
+  }
+  return { type, field, value, returned: out.length, items: out };
+}
+const registryFilterWhere = async (env, type, where = {}, limit = 50) => {
+  const ids = await registryGetIndex(env, type);
+  const out = [];
+  const keys = Object.keys(where || {}).filter(Boolean);
+  for (const id of ids) {
+    const e = await registryGet(env, type, id);
+    if (!e || typeof e !== "object") continue;
+
+    let ok = true;
+    for (const k of keys) {
+      const expected = where[k];
+      const actual = e[k];
+
+      if (expected == null) continue;
+

@@ -1,0 +1,10 @@
+﻿HOST auras.guide
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/","method":"GET","content_type":"application/json","body":"{}"}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/ui","method":"GET","content_type":"application/json","body":"{}"}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/ui/schema","method":"GET","content_type":"application/json","body":"{}"}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/ui/edit","method":"POST","content_type":"application/json","body":"{\"op\":\"noop\"}"}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/ui/patch","method":"POST","content_type":"application/json","body":"{\"op\":\"noop\"}"}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/ui/update","method":"POST","content_type":"application/json","body":"{\"op\":\"noop\"}"}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/mutate","method":"POST","content_type":"application/json","body":"{\"op\":\"noop\"}"}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/ui/mutation","method":"POST","content_type":"application/json","body":"{\"op\":\"noop\"}"}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/surface/mutate","method":"POST","content_type":"application/json","body":"{\"op\":\"noop\"}"}

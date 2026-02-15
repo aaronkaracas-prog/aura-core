@@ -1,0 +1,3 @@
+﻿HOST auras.guide
+AUTONOMY_BUDGET_SET {"limit":601302,"window":"day"}
+AUTONOMY_BUDGET_GET

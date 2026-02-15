@@ -1,0 +1,5 @@
+HOST auras.guide
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/ui","method":"PUT","body":""}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/ui","method":"POST","body":""}
+DEPLOYER_CALL {"service":"AURA_CF","path":"/","method":"PUT","body":""}
+DEPLOYER_CALL {"service":"AURA_CF","path":"/","method":"POST","body":""}

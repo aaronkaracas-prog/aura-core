@@ -1,0 +1,7 @@
+﻿{
+    "cmd":  "SHOW_BUILD",
+    "payload":  {
+                    "build":  "AURA_CORE__AUTONOMY_LAYERS__EVIDENCE_ALLOWLIST_HOSTCAPS_OPERATOR_INTENT_PAUSE__MEMORY_SUBSTRATE_V1__REGISTRY_AUDIT__14",
+                    "stamp":  "2026-02-14T22:34:03.809Z"
+                }
+}

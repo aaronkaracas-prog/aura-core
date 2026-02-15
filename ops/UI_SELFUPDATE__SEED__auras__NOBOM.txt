@@ -1,0 +1,7 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT {"id":"ui.header.build_unknown","severity":"HIGH","title":"UI header shows Build unknown","evidence":"UI header does not display build although SHOW_BUILD returns __14.","fix":"UI must parse SHOW_BUILD response deterministically and/or be spec-driven.","status":"OPEN"}
+FAILURE_MEMORY_PUT {"id":"ui.self_updating_required","severity":"HIGH","title":"UI must be spec-driven (self-updating UI)","evidence":"Static UI shell cannot change components without a remote spec.","fix":"Introduce KV-backed UI spec; UI loads it on boot/refresh.","status":"OPEN"}
+REGISTRY_PUT assets ui_spec_v1 {"id":"ui_spec_v1","name":"UI Spec v1","pillar":"AURA_CORE","tags":["UI","SPEC"],"notes":"UI spec anchor key.","sellability":"NEVER_SELL"}
+REGISTRY_GET assets ui_spec_v1
+FAILURE_MEMORY_GET
+AUDIT_GET

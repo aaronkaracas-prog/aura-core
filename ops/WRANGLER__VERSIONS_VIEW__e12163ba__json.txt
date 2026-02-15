@@ -1,0 +1,120 @@
+﻿{
+  "id": "e12163ba-1572-4fee-9290-2bca675e48f7",
+  "number": 1094,
+  "metadata": {
+    "created_on": "2026-02-14T23:47:11.171099Z",
+    "source": "wrangler",
+    "author_id": "484e1aa8c04893f04900ee37dce8dec5",
+    "author_email": "aaronkaracas@gmail.com",
+    "has_preview": true
+  },
+  "annotations": {
+    "workers/triggered_by": "version_upload"
+  },
+  "resources": {
+    "script": {
+      "etag": "48a92dab28f9dd4a2fcfcddb8e3704493d99ae7ef9a5b2822dca550323249248",
+      "handlers": [
+        "fetch",
+        "scheduled"
+      ],
+      "last_deployed_from": "wrangler"
+    },
+    "script_runtime": {
+      "compatibility_date": "2026-01-21",
+      "usage_model": "standard"
+    },
+    "bindings": [
+      {
+        "name": "...",
+        "type": "secret_text"
+      },
+      {
+        "name": "AI",
+        "project": "<catalog>",
+        "type": "ai"
+      },
+      {
+        "name": "AURA_ADMIN_TOKEN",
+        "type": "secret_text"
+      },
+      {
+        "environment": "production",
+        "name": "AURA_CF",
+        "service": "aura-cloudflare",
+        "type": "service"
+      },
+      {
+        "name": "AURACLOUDFLARE_API_TOKEN",
+        "type": "secret_text"
+      },
+      {
+        "name": "AURA_CORE_SECRET",
+        "type": "secret_text"
+      },
+      {
+        "environment": "production",
+        "name": "AURA_DEPLOYER",
+        "service": "aura-deployer",
+        "type": "service"
+      },
+      {
+        "name": "AURA_DEPLOYER_KEY",
+        "type": "secret_text"
+      },
+      {
+        "name": "AURA_KV",
+        "namespace_id": "9c2ba111589e48c6ba5ad1b924ae8809",
+        "type": "kv_namespace"
+      },
+      {
+        "name": "AURA_OPERATOR_TOKEN",
+        "type": "secret_text"
+      },
+      {
+        "name": "CF_ACCOUNT_ID",
+        "type": "secret_text"
+      },
+      {
+        "name": "CF_API_TOKEN",
+        "type": "secret_text"
+      },
+      {
+        "name": "CITYGUIDE_DOMAIN",
+        "type": "secret_text"
+      },
+      {
+        "name": "CLOUDFLARE_API_TOKEN",
+        "type": "secret_text"
+      },
+      {
+        "name": "DEPLOY_SECRET",
+        "type": "secret_text"
+      },
+      {
+        "name": "GOOGLE_PLACES_API_KEY",
+        "type": "secret_text"
+      },
+      {
+        "name": "OPENAI_API_KEY",
+        "type": "secret_text"
+      },
+      {
+        "name": "OPERATOR_TOKEN",
+        "type": "secret_text"
+      },
+      {
+        "name": "SF_ACCESS_TOKEN",
+        "type": "secret_text"
+      },
+      {
+        "name": "SF_INSTANCE_URL",
+        "type": "secret_text"
+      },
+      {
+        "name": "STRIPE_API_KEY",
+        "type": "secret_text"
+      }
+    ]
+  }
+}

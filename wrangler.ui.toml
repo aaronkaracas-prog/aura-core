@@ -1,0 +1,19 @@
+﻿name = "aura-core-ui"
+main = "src/index.js"
+compatibility_date = "2026-01-21"
+workers_dev = true
+
+[[kv_namespaces]]
+binding = "AURA_KV"
+id = "9c2ba111589e48c6ba5ad1b924ae8809"
+
+[[services]]
+binding = "AURA_DEPLOYER"
+service = "aura-deployer"
+
+[[services]]
+binding = "AURA_CF"
+service = "aura-cloudflare"
+
+[ai]
+binding = "AI"

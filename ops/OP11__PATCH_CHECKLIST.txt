@@ -1,0 +1,7 @@
+﻿PATCH GOALS:
+1) allowedCommands: remove duplicate 'AUTONOMY_LAST_TICK_SET' (keep exactly one)
+2) single-command SHOW_BUILD: return object via jsonReply({build,stamp}) (no JSON.stringify)
+POST-DEPLOY PROOFS:
+- dups list is empty
+- SHOW_BUILD reply type != System.String
+- /core still injects mutations + length stable

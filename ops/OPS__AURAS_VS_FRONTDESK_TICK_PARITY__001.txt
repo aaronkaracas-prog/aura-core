@@ -1,0 +1,4 @@
+﻿HOST auras.guide
+SNAPSHOT_STATE
+HOST frontdesk.network
+SNAPSHOT_STATE

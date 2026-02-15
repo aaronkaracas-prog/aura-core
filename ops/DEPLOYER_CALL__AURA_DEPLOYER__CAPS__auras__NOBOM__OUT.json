@@ -1,0 +1,1 @@
+{"ok":true,"reply":"[\n  {\n    \"cmd\": \"DEPLOYER_CALL\",\n    \"payload\": {\n      \"service\": \"AURA_DEPLOYER\",\n      \"path\": \"/caps\",\n      \"http_status\": 404,\n      \"content_type\": \"text/plain;charset=utf-8\",\n      \"out\": \"Not Found\"\n    }\n  }\n]"}

@@ -1,0 +1,41 @@
+﻿ 1545:       };
+ 1546: 
+ 1547:       const __capabilities = [
+ 1548:         "AUTONOMY_STATUS",
+ 1549:         "AUTONOMY_LAST_TICK",
+ 1550:         "AUTONOMY_CAPABILITIES",
+ 1551:         "AUTONOMY_BUDGET_GET",
+ 1552:         "AUTONOMY_BUDGET_SET",
+ 1553:         "AUTONOMY_CHARTER_GET",
+ 1554:         "AUTONOMY_CHARTER_SET",
+ 1555:         "FAILURE_MEMORY_GET",
+ 1556:         "FAILURE_MEMORY_PUT",
+ 1557:         "REGISTRY_AUDIT_TRAIL",
+ 1558:         "INTENT_SIMULATE"
+ 1559:       ];
+ 1560: 
+ 1561:       if (line === "AUTONOMY_LAST_TICK") {
+ 1562:         const last = await env.AURA_KV.get(__tickKey);
+ 1563: const cron = await env.AURA_KV.get(autonomyTickKey, { type: "json" }).catch(()=>null);
+ 1564: const cronTs = (cron && (cron.ts || cron.stamp)) ? String(cron.ts || cron.stamp) : null;
+ 1565: const chosen = (!last ? cronTs : (cronTs && String(cronTs) > String(last) ? cronTs : last));
+ 1566: push("AUTONOMY_LAST_TICK",
+ 1567:         continue;
+ 1568:       }
+ 1569: 
+ 1570:       if (line === "AUTONOMY_CAPABILITIES") {
+ 1571:         push("AUTONOMY_CAPABILITIES", { ok: true, host: __host, capabilities: __capabilities, count: __capabilities.length });
+ 1572:         continue;
+ 1573:       }
+ 1574: 
+ 1575:       if (line === "AUTONOMY_BUDGET_GET") {
+ 1576:         const b = (await __readJsonKV(__budgetKey)) || __defaultBudget;
+ 1577:         push("AUTONOMY_BUDGET_GET", { ok: true, host: __host, budget: b });
+ 1578:         continue;
+ 1579:       }
+ 1580: 
+ 1581:       if (line === "AUTONOMY_CHARTER_GET") {
+ 1582:         const c = (await __readJsonKV(__charterKey)) || __defaultCharter;
+ 1583:         push("AUTONOMY_CHARTER_GET", { ok: true, host: __host, charter: c });
+ 1584:         continue;
+ 1585:       }

@@ -1,0 +1,1 @@
+﻿{"ok":true,"reply":"[\n  {\n    \"cmd\": \"INTENT_ADD\",\n    \"payload\": {\n      \"ok\": true,\n      \"host\": \"auras.guide\",\n      \"tag\": \"ui_mutation_request\"\n    }\n  }\n]"}

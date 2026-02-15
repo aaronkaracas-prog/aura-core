@@ -1,0 +1,6 @@
+﻿HOST auras.guide
+AUTONOMY_STATUS
+HOST malibu.city
+AUTONOMY_STATUS
+HOST frontdesk.network
+AUTONOMY_STATUS

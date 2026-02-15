@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Aura Core UI</title>
+<style>
+  :root{
+    --bg:#070a12; --panel:#0e1424; --panel2:#0b1020;
+    --text:#e8ecff; --muted:#9aa5c7; --line:rgba(255,255,255,.10);
+    --accent:#6d5efc; --good:#48d597; --bad:#ff5c7a;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    background: radial-gradient(1200px 600px at 30% 10%, rgba(109,94,252,.18), transparent 60%),
+                radial-gradient(900px 500px at 80% 30%, rgba(72,213,151,.10), transparent 55%),
+                var(--bg);
+    color:var(--text); height:100vh; display:flex; align-items:center; justify-content:center;
+  }
+  .wrap{ width:min(980px, 96vw); height:min(720px, 92vh); display:flex; flex-direction:column; gap:12px; }
+  .topbar{
+    display:flex; align-items:flex-start; justify-content:space-between; gap:16px;
+    padding:14px 16px; border:1px solid var(--line); border-radius:16px;
+    background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+    box-shadow: 0 10px 30px rgba(0,0,0,.35);
+  }
+  .brand{ display:flex; flex-direction:column; gap:2px; }
+  .brand .h{ font-size:18px; font-weight:700; letter-spacing:.2px; }
+  .brand .s{ font-size:12px; color:var(--muted); }
+  .meta{
+    display:flex; flex-direction:column; align-items:flex-end; gap:4px;
+    font-size:12px; color:var(--muted);
+  }
+  .meta .row{ display:flex; gap:10px; align-items:center; }
+  .dot{ width:8px; height:8px; border-radius:50%; background:var(--good); box-shadow:0 0 0 3px rgba(72,213,151,.14); }
+  .panel{
+    flex:1; min-height:0;
+    border:1px solid var(--line); border-radius:16px;
+    background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+    box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    display:flex; flex-direction:column;
+  }
+  .log{
+    flex:1; min-height:0;
+    padding:14px; overflow:auto;
+    display:flex; flex-direction:column; gap:10px;
+  }
+  .msg{
+    max-width: 90%;
+    border:1px solid var(--line);
+    background: rgba(7,10,18,.35);
+    padding:10px 12px; border-radius:14px;
+    white-space:pre-wrap; word-break:break-word; line-height:1.35;
+  }
+  .msg.me{ align-self:flex-end; background: rgba(109,94,252,.16); border-color: rgba(109,94,252,.35); }
+  .msg.aura{ align-self:flex-start; background: rgba(255,255,255,.04); }
+  .msg.sys{ align-self:center; max-width:100%; color:var(--muted); background: transparent; border:none; padding:0; }
+  .msg.error{ border-color: rgba(255,92,122,.45); background: rgba(255,92,122,.10); }
+  .composer{
+    border-top:1px solid var(--line);
+    padding:12px;
+    display:flex; gap:10px; align-items:flex-end;
+    background: rgba(0,0,0,.12);
+    border-bottom-left-radius:16px; border-bottom-right-radius:16px;
+  }
+  textarea{
+    flex:1; min-height:44px; max-height:140px; resize:vertical;
+    padding:10px 12px; border-radius:12px; outline:none;
+    border:1px solid var(--line);
+    background: rgba(0,0,0,.22);
+    color:var(--text); font-size:14px; line-height:1.35;
+  }
+  textarea::placeholder{ color: rgba(154,165,199,.70); }
+  button{
+    height:44px; padding:0 16px; border-radius:12px; cursor:pointer;
+    border:1px solid rgba(109,94,252,.55);
+    background: linear-gradient(180deg, rgba(109,94,252,.95), rgba(109,94,252,.78));
+    color:#fff; font-weight:700; letter-spacing:.2px;
+    box-shadow: 0 10px 20px rgba(109,94,252,.22);
+  }
+  button:disabled{ opacity:.55; cursor:not-allowed; box-shadow:none; }
+  .hint{
+    font-size:12px; color:var(--muted); padding:0 12px 12px 12px;
+  }
+  code.k{ color:#c7cffc; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <div class="h">Aura Core</div>
+        <div class="s">UI route: <code class="k">/ui</code>  POST <code class="k">/chat</code></div>
+      </div>
+      <div class="meta">
+        <div class="row"><span class="dot"></span><span id="status">Ready</span></div>
+        <div class="row"><span>Build:</span><span id="build"></span></div>
+        <div class="row"><span>Stamp:</span><span id="stamp"></span></div>
+        <div class="row"><span>Local:</span><span id="localtime"></span></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div id="log" class="log"></div>
+      <div class="composer">
+        <textarea id="input" placeholder="Type a command (e.g., PING). Enter = send, Shift+Enter = newline"></textarea>
+        <button id="send">Send</button>
+      </div>
+      <div class="hint">
+        Tip: Prefer batch mode via PowerShell for multi-line ops. UI is for quick interactive checks.
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const log = document.getElementById('log');
+  const input = document.getElementById('input');
+  const sendBtn = document.getElementById('send');
+  const statusEl = document.getElementById('status');
+  const buildEl = document.getElementById('build');
+  const stampEl = document.getElementById('stamp');
+  const localEl = document.getElementById('localtime');
+
+  function nowLocal(){
+    try { return new Date().toLocaleString(); } catch(e){ return String(new Date()); }
+  }
+  function setStatus(t, isError){
+    statusEl.textContent = t;
+    statusEl.style.color = isError ? 'var(--bad)' : 'var(--text)';
+  }
+  function addMsg(kind, text, opts){
+    const d = document.createElement('div');
+    d.className = 'msg ' + kind + (opts && opts.error ? ' error' : '');
+    d.textContent = text;
+    log.appendChild(d);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  async function postChat(raw){
+    const r = await fetch('/chat', {
+      method:'POST',
+      headers:{ 'content-type':'text/plain; charset=utf-8' },
+      body: raw
+    });
+    const txt = await r.text();
+    // Worker may return JSON or plain text
+    try { return JSON.parse(txt); } catch(e){ return { ok:false, reply: txt }; }
+  }
+
+  async function run(cmd){
+    const trimmed = (cmd || '').trim();
+    if(!trimmed) return;
+    addMsg('me', trimmed);
+    input.value = '';
+    sendBtn.disabled = true;
+    setStatus('Working', false);
+    try{
+      const res = await postChat(trimmed);
+      if(res && typeof res === 'object'){
+        if(res.ok){
+          const reply = res.reply;
+          if(typeof reply === 'string'){
+            addMsg('aura', reply);
+          }else{
+            addMsg('aura', JSON.stringify(reply, null, 2));
+          }
+          setStatus('Ready', false);
+        }else{
+          addMsg('aura', (res.reply ? (typeof res.reply === 'string' ? res.reply : JSON.stringify(res.reply, null, 2)) : 'ERROR'), {error:true});
+          setStatus('Error', true);
+        }
+      }else{
+        addMsg('aura', String(res), {error:true});
+        setStatus('Error', true);
+      }
+    }catch(err){
+      addMsg('aura', 'UI ERROR: ' + (err && err.message ? err.message : String(err)), {error:true});
+      setStatus('Error', true);
+    }finally{
+      sendBtn.disabled = false;
+      input.focus();
+    }
+  }
+
+  // Enter-to-send
+  input.addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter' && !e.shiftKey){
+      e.preventDefault();
+      run(input.value);
+    }
+  });
+  sendBtn.addEventListener('click', ()=> run(input.value));
+
+  // Boot
+  localEl.textContent = nowLocal();
+  setInterval(()=>{ localEl.textContent = nowLocal(); }, 1000);
+
+  addMsg('sys', 'Connected. Type a command below (e.g., PING).');
+
+  // Pull build/stamp once
+  (async ()=>{
+    try{
+      const res = await postChat('SHOW_BUILD');
+      if(res && res.ok && res.reply && res.reply.build){
+        buildEl.textContent = res.reply.build;
+        stampEl.textContent = res.reply.stamp || '';
+      }else{
+        buildEl.textContent = 'unknown';
+        stampEl.textContent = '';
+      }
+    }catch(e){
+      buildEl.textContent = 'unknown';
+      stampEl.textContent = '';
+    }
+  })();
+})();
+</script>
+</body>
+</html>
+<!--UI_T10_FUNC_ENTER-->
+
+<!--UI_T10_CATCH_HIT msg=Cannot access 'registryIndexKey' before initialization -->
+
+<!--UI_CALLSITE_HIT-->
+
+<!--AURA_UI_ROUTE_EXEC_PROBE-->

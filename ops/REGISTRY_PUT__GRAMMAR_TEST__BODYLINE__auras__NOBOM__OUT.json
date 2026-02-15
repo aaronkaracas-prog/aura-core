@@ -1,0 +1,1 @@
+﻿{"ok":true,"reply":"[\n  {\n    \"cmd\": \"REGISTRY_PUT\",\n    \"payload\": \"BAD_REQUEST\"\n  },\n  {\n    \"cmd\": \"REGISTRY_GET users put_grammar_test_20260213_181904\",\n    \"payload\": \"MISSING\"\n  }\n]"}

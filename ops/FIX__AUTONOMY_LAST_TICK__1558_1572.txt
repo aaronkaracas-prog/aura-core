@@ -1,0 +1,15 @@
+﻿ 1558:         "INTENT_SIMULATE"
+ 1559:       ];
+ 1560: 
+ 1561:       if (line === "AUTONOMY_LAST_TICK") {
+ 1562:         const last = await env.AURA_KV.get(__tickKey);
+ 1563: const cron = await env.AURA_KV.get(autonomyTickKey, { type: "json" }).catch(()=>null);
+ 1564: const cronTs = (cron && (cron.ts || cron.stamp)) ? String(cron.ts || cron.stamp) : null;
+ 1565: const chosen = (!last ? cronTs : (cronTs && String(cronTs) > String(last) ? cronTs : last));
+ 1566: push("AUTONOMY_LAST_TICK", { ok: true, host: __host, last_tick: (chosen || null) });
+ 1567:         continue;
+ 1568:       }
+ 1569: 
+ 1570:       if (line === "AUTONOMY_CAPABILITIES") {
+ 1571:         push("AUTONOMY_CAPABILITIES", { ok: true, host: __host, capabilities: __capabilities, count: __capabilities.length });
+ 1572:         continue;

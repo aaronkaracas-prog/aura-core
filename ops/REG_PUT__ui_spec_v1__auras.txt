@@ -1,0 +1,3 @@
+﻿HOST auras.guide
+REGISTRY_PUT assets ui_spec_v1 {"id":"ui_spec_v1","name":"UI Spec v1 (self-updating UI)","pillar":"AURA_CORE","tags":["UI","SPEC","SELF_UPDATING"],"notes":"KV-backed UI spec. UI shell must load this on boot + refresh. This record is the canonical anchor key for spec-driven UI.","sellability":"NEVER_SELL"}
+REGISTRY_GET assets ui_spec_v1

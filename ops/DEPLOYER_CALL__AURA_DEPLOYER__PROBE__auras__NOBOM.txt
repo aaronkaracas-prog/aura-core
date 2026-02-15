@@ -1,0 +1,5 @@
+HOST auras.guide
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/","method":"GET","body":null}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/health","method":"GET","body":null}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/status","method":"GET","body":null}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","path":"/help","method":"GET","body":null}

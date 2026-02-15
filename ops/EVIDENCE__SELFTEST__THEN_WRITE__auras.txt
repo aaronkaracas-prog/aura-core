@@ -1,0 +1,1 @@
+﻿HOST auras.guideRUN_SELF_TEST_EVIDENCEEVIDENCE_PRESENTREGISTRY_PUT assets ui_spec_v1 {"id":"ui_spec_v1","name":"UI Spec v1","pillar":"AURA_CORE","notes":"UI spec anchor."}REGISTRY_GET assets ui_spec_v1AUDIT_GET

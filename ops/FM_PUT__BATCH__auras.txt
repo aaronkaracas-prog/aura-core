@@ -1,0 +1,2 @@
+﻿HOST auras.guide
+FAILURE_MEMORY_PUT {"id":"ui.header.build_unknown","severity":"HIGH","title":"UI header shows Build: unknown while SHOW_BUILD returns __14","evidence":"Aura UI header not parsing SHOW_BUILD/SNAPSHOT_STATE response shape; backend returns reply as string in single-path. UI must render build/stamp from batch or parse string JSON.","fix":"Make UI shell spec-driven and add robust response parsing; header should display build/stamp from SHOW_BUILD payload.","first_seen":"2026-02-13","status":"OPEN"}

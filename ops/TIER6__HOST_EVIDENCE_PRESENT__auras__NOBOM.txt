@@ -1,0 +1,8 @@
+HOST auras.guide
+EVIDENCE_PRESENT
+HOST frontdesk.network
+EVIDENCE_PRESENT
+HOST malibu.city
+EVIDENCE_PRESENT
+HOST auras.guide
+SNAPSHOT_STATE

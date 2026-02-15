@@ -1,0 +1,1 @@
+﻿HOST auras.guideREGISTRY_PUT assets ui_spec_v1 {"id":"ui_spec_v1","name":"UI Spec v1","pillar":"AURA_CORE","tags":["UI","SPEC"],"notes":"UI spec anchor key.","sellability":"NEVER_SELL"}REGISTRY_GET assets ui_spec_v1AUDIT_GET

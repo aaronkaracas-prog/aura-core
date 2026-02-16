@@ -1,0 +1,2 @@
+﻿HOST auras.guide
+REGISTRY_PUT audit __d3_probe__ {"ts":"2026-02-15T11:43:00Z","note":"D3_PROBE"}

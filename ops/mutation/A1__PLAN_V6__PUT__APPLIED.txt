@@ -1,0 +1,2 @@
+HOST auras.guide
+REGISTRY_PUT config {"executed_at":"2026-02-16T04:22:28.3026590-08:00","id":"mutation_plan.plan.v6","type":"config","patch_file":"C:\\Users\\Aaron Karacas\\aura-worker\\aura\\ops\\mutation\\patches\\PATCH_V1__BUILD__18_TO_19__plan_v6.txt","expected_build_after":"__19","version":"v1","applied":true,"note":"A1 Phase A: applied via bridge fmt patch file; BUILD now __19","status":"APPLIED","build":"AURA_CORE__AUTONOMY_LAYERS__EVIDENCE_ALLOWLIST_HOSTCAPS_OPERATOR_INTENT_PAUSE__MEMORY_SUBSTRATE_V1__REGISTRY_AUDIT__19"}

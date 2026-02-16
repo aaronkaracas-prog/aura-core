@@ -1,0 +1,4 @@
+﻿HOST malibu.city
+PAUSE
+PAUSE test
+PAUSE {"reason":"probe","ts":"now"}

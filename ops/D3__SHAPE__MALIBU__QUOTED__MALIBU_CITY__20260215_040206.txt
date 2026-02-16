@@ -1,0 +1,2 @@
+﻿HOST malibu.city
+REGISTRY_PUT assets __d3_probe__ "D3 PROBE"

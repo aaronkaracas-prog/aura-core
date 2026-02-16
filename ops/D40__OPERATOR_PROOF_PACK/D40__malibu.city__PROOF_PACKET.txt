@@ -1,0 +1,11 @@
+HOST malibu.city
+SNAPSHOT_STATE
+AUTONOMY_BUDGET_SET
+{"limit":103,"spent":0,"window":"day"}
+AUTONOMY_BUDGET_GET
+AUTONOMY_CHARTER_SET
+{"host":"malibu.city","charter":{"version":10,"text":"D40_PROOF_PACK__CHARTER_V10__ENVELOPE_ONLY__2026-02-15T10:38:05.632Z"}}
+AUTONOMY_CHARTER_GET
+AUTONOMY_LAST_TICK_SET
+{"host":"malibu.city"}
+AUTONOMY_LAST_TICK

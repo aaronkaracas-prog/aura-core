@@ -1,0 +1,2 @@
+﻿HOST frontdesk.network
+REGISTRY_PUT assets __d3_probe__ name=D3_PROBE pillar=TEST notes=D3_TOKENFORM

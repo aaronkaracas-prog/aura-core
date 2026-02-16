@@ -1,0 +1,2 @@
+﻿HOST frontdesk.network
+VERIFIED_FETCH_URL https://frontdesk.network/

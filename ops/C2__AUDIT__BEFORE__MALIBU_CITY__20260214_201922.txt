@@ -1,0 +1,4 @@
+﻿HOST malibu.city
+AUDIT_CLEAR
+AUDIT_GET
+REGISTRY_AUDIT_TRAIL users aaron

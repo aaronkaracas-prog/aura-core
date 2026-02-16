@@ -1,0 +1,2 @@
+﻿HOST auras.guide
+AUTONOMY_CHARTER_SET {"version":9,"text":"v9"}

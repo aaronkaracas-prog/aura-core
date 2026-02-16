@@ -1,0 +1,6 @@
+﻿HOST frontdesk.network
+REGISTRY_AUDIT_TRAIL
+REGISTRY_AUDIT_TRAIL users
+REGISTRY_AUDIT_TRAIL users aaron
+REGISTRY_AUDIT_TRAIL {"type":"users","id":"aaron"}
+REGISTRY_AUDIT_TRAIL {"registry":"users","id":"aaron"}

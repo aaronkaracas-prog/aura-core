@@ -1,0 +1,3 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT
+{"code":"TX1_MUTATION_CONTRACT_STORED","detail":"Stored tx1_mutation_contract_v1 (data-only) defining future self-edit API surface with auth+evidence+backup+verify+rollback.","at":"2026-02-15T16:17:23.1644294-08:00"}

@@ -1,0 +1,2 @@
+﻿HOST frontdesk.network
+FAILURE_MEMORY_GET d6_probe

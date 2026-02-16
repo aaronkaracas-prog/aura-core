@@ -1,0 +1,2 @@
+HOST auras.guide
+HOST_CAPS_SET {"noop":true}

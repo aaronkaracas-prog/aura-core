@@ -1,0 +1,4 @@
+﻿>> HOST auras.guide
+>> SELF_AUDIT_FULL
+>> AUTONOMY_STATUS
+>> HOST_CAPS_GET

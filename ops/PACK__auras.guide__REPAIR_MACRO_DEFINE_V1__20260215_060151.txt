@@ -1,0 +1,3 @@
+HOST auras.guide
+REGISTRY_PUT system repair_macro_allowlist_v1 {"macros":["RETRY_PROBE","CLEAR_FAILURE_MEMORY","REORDER_PROBE_HOSTS","SWITCH_EVIDENCE_MODE"]}
+REGISTRY_GET system repair_macro_allowlist_v1

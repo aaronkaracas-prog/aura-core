@@ -1,0 +1,4 @@
+﻿HOST auras.guide
+PING
+FAILURE_MEMORY_GET d6_probe
+SHOW_BUILD

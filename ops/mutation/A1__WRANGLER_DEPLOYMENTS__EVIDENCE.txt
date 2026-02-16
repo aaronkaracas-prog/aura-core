@@ -1,0 +1,2 @@
+wrangler --version
+wrangler deployments list

@@ -1,0 +1,2 @@
+HOST auras.guide
+DEPLOYER_CALL {"service":"AURA_CF","path":"/deploy","method":"POST","content_type":"application/json","body":"{}"}

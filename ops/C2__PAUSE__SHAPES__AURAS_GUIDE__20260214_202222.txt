@@ -1,0 +1,4 @@
+﻿HOST auras.guide
+PAUSE
+PAUSE test
+PAUSE {"reason":"probe","ts":"now"}

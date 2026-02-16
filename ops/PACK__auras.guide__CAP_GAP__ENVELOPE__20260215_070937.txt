@@ -1,0 +1,3 @@
+HOST auras.guide
+REGISTRY_PUT {"type":"assets","item":{"id":"capability_gap_map_v1","name":"Capability Gap Map v1","pillar":"SYSTEM","gaps":{},"version":1}}
+REGISTRY_GET assets capability_gap_map_v1

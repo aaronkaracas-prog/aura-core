@@ -1,0 +1,2 @@
+HOST auras.guide
+REGISTRY_PUT config {"updated_at":"2026-02-16T01:53:06.092Z","id":"mutation_plan.index.v1","index":["mutation_plan.plan.v1","mutation_plan.plan.v2","mutation_plan.plan.v3","mutation_plan.plan.v4","mutation_plan.plan.v5","mutation_plan.plan.v6"],"type":"config","version":"v1"}

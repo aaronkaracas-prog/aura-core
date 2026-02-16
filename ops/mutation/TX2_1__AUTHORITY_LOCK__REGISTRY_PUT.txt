@@ -1,0 +1,3 @@
+HOST auras.guide
+REGISTRY_PUT config {"id":"mutation.authority","authority":"LOCAL_POWERSHELL_BRIDGE_V1","notes":"Self-edit requires external executor; we will implement the executor as a deterministic PowerShell bridge with backup+rollback+deploy+verify.","updated_at":"2026-02-15T16:26:59.1951261-08:00"}
+REGISTRY_GET config mutation.authority

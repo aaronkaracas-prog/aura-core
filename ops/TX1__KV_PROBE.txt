@@ -1,0 +1,2 @@
+﻿HOST auras.guide
+REGISTRY_PUT assets tx1_kv_probe_v1 {"name":"kv_probe","pillar":"test"}

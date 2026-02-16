@@ -1,0 +1,2 @@
+HOST frontdesk.network
+REGISTRY_PUT domains {"id":"__d3_putcanon_fd__","domain":"frontdesk.network","pillar":"TEST","purpose":"D3_CANON_PUT_LEGACY","priority":"PHASE1","status":"ACTIVE"}

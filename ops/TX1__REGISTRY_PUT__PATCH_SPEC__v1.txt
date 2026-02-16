@@ -1,0 +1,2 @@
+HOST auras.guide
+REGISTRY_PUT assets {"id":"tx1_patch_spec_v1","name":"TX1 Patch Spec v1","pillar":"aura-core","notes":"Concrete patch specimen for future SELF_PATCH execution. No mutation endpoints exist yet; this is data only.","tags":["TX1","patch-spec","dry-run"],"sellability":"internal","patent_cluster":"n/a","spec":{"target":"src/index.js","mode":"regex_insert","anchor":"if (line === \"FAILURE_MEMORY_PUT\") {","insert_label":"SELF_PATCH_PUT_HANDLER_BLOCK_V1","safety":{"backup_required":true,"verify_build":true,"rollback_on_fail":true}}}

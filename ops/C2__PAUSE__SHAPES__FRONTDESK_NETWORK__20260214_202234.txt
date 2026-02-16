@@ -1,0 +1,4 @@
+﻿HOST frontdesk.network
+PAUSE
+PAUSE test
+PAUSE {"reason":"probe","ts":"now"}

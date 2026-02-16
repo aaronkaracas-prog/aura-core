@@ -1,0 +1,4 @@
+﻿HOST auras.guide
+AUTONOMY_CHARTER_SET
+{"version":10,"text":"AURAS_V10_ENVELOPE_OK"}
+AUTONOMY_CHARTER_GET

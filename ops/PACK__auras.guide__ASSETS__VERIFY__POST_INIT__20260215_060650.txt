@@ -1,0 +1,5 @@
+HOST auras.guide
+REGISTRY_FILTER assets repair_macro_allowlist_v1
+REGISTRY_FILTER assets stage_enabled_v1
+REGISTRY_FILTER assets capability_gap_map_v1
+REGISTRY_AUDIT_TRAIL

@@ -40,7 +40,7 @@ function routeInputBeforeClaimGate(ctx, input) {
 // === END UI_ROUTER_ENTRY ===
 
 // Canonical build/stamp (rendered in UI header and returned by SHOW_BUILD)
-const BUILD = 'AURA_CORE__AUTONOMY_LAYERS__EVIDENCE_ALLOWLIST_HOSTCAPS_OPERATOR_INTENT_PAUSE__MEMORY_SUBSTRATE_V1__REGISTRY_AUDIT__19';
+const BUILD = 'AURA_CORE__AUTONOMY_LAYERS__EVIDENCE_ALLOWLIST_HOSTCAPS_OPERATOR_INTENT_PAUSE__MEMORY_SUBSTRATE_V1__REGISTRY_AUDIT__14';
 const STAMP = new Date().toISOString();
 
 const AUTONOMY_TICK_VERSION = 'v2';
@@ -146,311 +146,139 @@ const UI_HTML = `<!doctype html>
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Aura Core Ã¢â‚¬Â¢ UI</title>
-<meta name="ui-version" content="UI_PATCH__20260215_2A__CHATGPT_SHELL">
+<title>Aura Core UI</title>
 <style>
   :root{
     --bg:#070a12; --panel:#0e1424; --panel2:#0b1020;
     --text:#e8ecff; --muted:#9aa5c7; --line:rgba(255,255,255,.10);
     --accent:#6d5efc; --good:#48d597; --bad:#ff5c7a;
-    --bubbleMe: rgba(109,94,252,.18);
-    --bubbleAura: rgba(255,255,255,.05);
   }
   *{box-sizing:border-box}
-  html,body{height:100%}
   body{
-    margin:0;
-    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji";
-    background:
-      radial-gradient(1200px 600px at 30% 10%, rgba(109,94,252,.18), transparent 60%),
-      radial-gradient(900px 500px at 80% 30%, rgba(72,213,151,.10), transparent 55%),
-      var(--bg);
-    color:var(--text);
-    overflow:hidden;
+    margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    background: radial-gradient(1200px 600px at 30% 10%, rgba(109,94,252,.18), transparent 60%),
+                radial-gradient(900px 500px at 80% 30%, rgba(72,213,151,.10), transparent 55%),
+                var(--bg);
+    color:var(--text); height:100vh; display:flex; align-items:center; justify-content:center;
   }
-
-  .app{ height:100%; display:flex; }
-
-  .side{
-    width:280px;
-    border-right:1px solid var(--line);
-    background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
-    display:flex;
-    flex-direction:column;
-    gap:12px;
-    padding:14px;
-  }
-  .sideTop{
-    display:flex; flex-direction:column; gap:6px;
-    padding-bottom:12px;
-    border-bottom:1px solid var(--line);
-  }
-  .brand{ font-weight:800; letter-spacing:.2px; font-size:16px; }
-  .sub{ color:var(--muted); font-size:12px; line-height:1.35; }
-  .projHdr{ color:var(--muted); font-size:12px; margin-top:2px; }
-  .projList{ display:flex; flex-direction:column; gap:8px; }
-  .projBtn{
-    display:flex; align-items:center; justify-content:space-between;
-    width:100%;
-    padding:10px 10px;
-    border-radius:12px;
-    border:1px solid var(--line);
-    background: rgba(0,0,0,.18);
-    color:var(--text);
-    cursor:pointer;
-    text-align:left;
-  }
-  .projBtn:hover{ border-color: rgba(109,94,252,.45); }
-  .projBtn.active{
-    border-color: rgba(109,94,252,.60);
-    background: rgba(109,94,252,.14);
-  }
-  .pill{
-    font-size:11px;
-    color:var(--muted);
-    border:1px solid var(--line);
-    padding:2px 8px;
-    border-radius:999px;
-  }
-
-  .main{ flex:1; display:flex; flex-direction:column; min-width:0; }
-
+  .wrap{ width:min(980px, 96vw); height:min(720px, 92vh); display:flex; flex-direction:column; gap:12px; }
   .topbar{
-    display:flex;
-    align-items:flex-start;
-    justify-content:space-between;
-    gap:16px;
-    padding:14px 16px;
-    border-bottom:1px solid var(--line);
+    display:flex; align-items:flex-start; justify-content:space-between; gap:16px;
+    padding:14px 16px; border:1px solid var(--line); border-radius:16px;
     background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+    box-shadow: 0 10px 30px rgba(0,0,0,.35);
   }
+  .brand{ display:flex; flex-direction:column; gap:2px; }
+  .brand .h{ font-size:18px; font-weight:700; letter-spacing:.2px; }
+  .brand .s{ font-size:12px; color:var(--muted); }
   .meta{
     display:flex; flex-direction:column; align-items:flex-end; gap:4px;
     font-size:12px; color:var(--muted);
   }
   .meta .row{ display:flex; gap:10px; align-items:center; }
   .dot{ width:8px; height:8px; border-radius:50%; background:var(--good); box-shadow:0 0 0 3px rgba(72,213,151,.14); }
-  .statusErr .dot{ background:var(--bad); box-shadow:0 0 0 3px rgba(255,92,122,.14); }
-  .titleBlock{ display:flex; flex-direction:column; gap:2px; min-width:0; }
-  .titleBlock .h{ font-size:16px; font-weight:800; letter-spacing:.2px; }
-  .titleBlock .s{ font-size:12px; color:var(--muted); }
-
-  .chat{
-    flex:1;
-    min-height:0;
-    overflow:auto;
-    padding:18px 16px 12px 16px;
-    display:flex;
-    flex-direction:column;
-    gap:10px;
+  .panel{
+    flex:1; min-height:0;
+    border:1px solid var(--line); border-radius:16px;
+    background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+    box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    display:flex; flex-direction:column;
   }
-  .bubble{
-    max-width: min(780px, 92%);
+  .log{
+    flex:1; min-height:0;
+    padding:14px; overflow:auto;
+    display:flex; flex-direction:column; gap:10px;
+  }
+  .msg{
+    max-width: 90%;
     border:1px solid var(--line);
-    padding:10px 12px;
-    border-radius:16px;
-    line-height:1.35;
-    white-space:pre-wrap;
-    word-break:break-word;
+    background: rgba(7,10,18,.35);
+    padding:10px 12px; border-radius:14px;
+    white-space:pre-wrap; word-break:break-word; line-height:1.35;
   }
-  .me{ align-self:flex-end; background: var(--bubbleMe); border-color: rgba(109,94,252,.40); }
-  .aura{ align-self:flex-start; background: var(--bubbleAura); }
-  .sys{ align-self:center; max-width:100%; background: transparent; border:none; color:var(--muted); padding:0; }
-  .err{ border-color: rgba(255,92,122,.45); background: rgba(255,92,122,.10); }
-
-  .composerWrap{
+  .msg.me{ align-self:flex-end; background: rgba(109,94,252,.16); border-color: rgba(109,94,252,.35); }
+  .msg.aura{ align-self:flex-start; background: rgba(255,255,255,.04); }
+  .msg.sys{ align-self:center; max-width:100%; color:var(--muted); background: transparent; border:none; padding:0; }
+  .msg.error{ border-color: rgba(255,92,122,.45); background: rgba(255,92,122,.10); }
+  .composer{
     border-top:1px solid var(--line);
     padding:12px;
+    display:flex; gap:10px; align-items:flex-end;
     background: rgba(0,0,0,.12);
-  }
-  .composer{
-    display:flex;
-    gap:10px;
-    align-items:flex-end;
-    max-width: 980px;
-    margin:0 auto;
-  }
-  .iconBtn{
-    height:44px;
-    width:44px;
-    border-radius:12px;
-    border:1px solid var(--line);
-    background: rgba(0,0,0,.22);
-    color: var(--text);
-    cursor:not-allowed;
-    opacity:.65;
-    display:flex; align-items:center; justify-content:center;
-    user-select:none;
+    border-bottom-left-radius:16px; border-bottom-right-radius:16px;
   }
   textarea{
-    flex:1;
-    min-height:44px;
-    max-height:160px;
-    resize:vertical;
-    padding:10px 12px;
-    border-radius:12px;
-    outline:none;
+    flex:1; min-height:44px; max-height:140px; resize:vertical;
+    padding:10px 12px; border-radius:12px; outline:none;
     border:1px solid var(--line);
     background: rgba(0,0,0,.22);
-    color:var(--text);
-    font-size:14px;
-    line-height:1.35;
+    color:var(--text); font-size:14px; line-height:1.35;
   }
   textarea::placeholder{ color: rgba(154,165,199,.70); }
-  .send{
-    height:44px;
-    padding:0 16px;
-    border-radius:12px;
-    cursor:pointer;
+  button{
+    height:44px; padding:0 16px; border-radius:12px; cursor:pointer;
     border:1px solid rgba(109,94,252,.55);
     background: linear-gradient(180deg, rgba(109,94,252,.95), rgba(109,94,252,.78));
-    color:#fff;
-    font-weight:800;
-    letter-spacing:.2px;
+    color:#fff; font-weight:700; letter-spacing:.2px;
     box-shadow: 0 10px 20px rgba(109,94,252,.22);
   }
-  .send:disabled{ opacity:.55; cursor:not-allowed; box-shadow:none; }
+  button:disabled{ opacity:.55; cursor:not-allowed; box-shadow:none; }
   .hint{
-    max-width:980px;
-    margin:8px auto 0 auto;
-    color:var(--muted);
-    font-size:12px;
-    padding:0 2px;
+    font-size:12px; color:var(--muted); padding:0 12px 12px 12px;
   }
   code.k{ color:#c7cffc; }
-  .iconBtn{
-    cursor:pointer;
-    opacity:1;
-  }
-  .overlay{
-    position:fixed;
-    inset:0;
-    background: rgba(0,0,0,.55);
-    display:none;
-    align-items:center;
-    justify-content:center;
-    padding:24px;
-    z-index:50;
-  }
-  .overlay.show{ display:flex; }
-  .modal{
-    width: min(520px, 92vw);
-    border-radius:16px;
-    border:1px solid var(--line);
-    background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
-    box-shadow: 0 30px 80px rgba(0,0,0,.55);
-    padding:16px;
-  }
-  .modal h3{ margin:0 0 8px 0; font-size:16px; }
-  .modal p{ margin:0 0 12px 0; color: var(--muted); line-height:1.4; font-size:13px; }
-  .modal .row{ display:flex; gap:10px; justify-content:flex-end; }
-  .btn{
-    height:38px;
-    padding:0 14px;
-    border-radius:12px;
-    border:1px solid var(--line);
-    background: rgba(0,0,0,.25);
-    color: var(--text);
-    cursor:pointer;
-    font-weight:700;
-  }
-  .btn.primary{
-    border-color: rgba(109,94,252,.55);
-    background: rgba(109,94,252,.20);
-  }
 </style>
 </head>
 <body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <div class="h">Aura Core</div>
+        <div class="s">UI route: <code class="k">/ui</code>  POST <code class="k">/chat</code></div>
+      </div>
+      <div class="meta">
+        <div class="row"><span class="dot"></span><span id="status">Ready</span></div>
+        <div class="row"><span>Build:</span><span id="build"></span></div>
+        <div class="row"><span>Stamp:</span><span id="stamp"></span></div>
+        <div class="row"><span>Local:</span><span id="localtime"></span></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div id="log" class="log"></div>
+      <div class="composer">
+        <textarea id="input" placeholder="Type a command (e.g., PING). Enter = send, Shift+Enter = newline"></textarea>
+        <button id="send">Send</button>
+      </div>
       <div class="hint">
         Tip: Prefer batch mode via PowerShell for multi-line ops. UI is for quick interactive checks.
       </div>
     </div>
-  </main>
-</div>
+  </div>
 
 <script>
 (function(){
-  const UI_VERSION = 'UI_PATCH__20260215_2A__CHATGPT_SHELL';
-
-  const chat = document.getElementById('chat');
+  const log = document.getElementById('log');
   const input = document.getElementById('input');
   const sendBtn = document.getElementById('send');
   const statusEl = document.getElementById('status');
-  const metaEl = document.getElementById('meta');
   const buildEl = document.getElementById('build');
   const stampEl = document.getElementById('stamp');
   const localEl = document.getElementById('localtime');
-  const uiVerEl = document.getElementById('uiver');
-  const hostLabel = document.getElementById('hostLabel');
-  const titleEl = document.getElementById('title');
-  const projList = document.getElementById('projList');
-  const attachBtn = document.getElementById('attachBtn');
-  const micBtn = document.getElementById('micBtn');
-  const overlay = document.getElementById('overlay');
-  const overlayTitle = document.getElementById('overlayTitle');
-  const overlayMsg = document.getElementById('overlayMsg');
-  const overlayClose = document.getElementById('overlayClose');
-
-  function showOverlay(title, msg){
-    if(!overlay) return;
-    overlayTitle.textContent = title;
-    overlayMsg.textContent = msg;
-    overlay.classList.add('show');
-    overlay.setAttribute('aria-hidden','false');
-  }
-  function hideOverlay(){
-    if(!overlay) return;
-    overlay.classList.remove('show');
-    overlay.setAttribute('aria-hidden','true');
-  }
-
-  if(overlayClose) overlayClose.addEventListener('click', hideOverlay);
-  if(overlay) overlay.addEventListener('click', (e)=>{ if(e.target === overlay) hideOverlay(); });
-
-  if(attachBtn){
-    attachBtn.addEventListener('click', ()=>{
-      showOverlay('Attach', 'File upload is next. This is the UI shell step Ã¢â‚¬â€ no upload logic yet.');
-    });
-  }
-  if(micBtn){
-    micBtn.addEventListener('click', async ()=>{
-      addBubble('sys', 'Mic click (handler live).', false);
-      if(micState === 'recording'){
-        micStop();
-      }else{
-        await micStart();
-      }
-    });
-  }
-
-  if(uiVerEl) uiVerEl.textContent = UI_VERSION;
-
-  let activeHost = 'auras.guide';
-  let activeName = 'Aura Core';
 
   function nowLocal(){
     try { return new Date().toLocaleString(); } catch(e){ return String(new Date()); }
   }
-  localEl.textContent = nowLocal();
-  setInterval(()=>{ localEl.textContent = nowLocal(); }, 1000);
-
   function setStatus(t, isError){
     statusEl.textContent = t;
-    if(isError){
-      metaEl.classList.add('statusErr');
-      statusEl.style.color = 'var(--bad)';
-    }else{
-      metaEl.classList.remove('statusErr');
-      statusEl.style.color = 'var(--text)';
-    }
+    statusEl.style.color = isError ? 'var(--bad)' : 'var(--text)';
   }
-
-  function addBubble(kind, text, isErr){
+  function addMsg(kind, text, opts){
     const d = document.createElement('div');
-    d.className = 'bubble ' + kind + (isErr ? ' err' : '');
+    d.className = 'msg ' + kind + (opts && opts.error ? ' error' : '');
     d.textContent = text;
-    chat.appendChild(d);
-    chat.scrollTop = chat.scrollHeight;
+    log.appendChild(d);
+    log.scrollTop = log.scrollHeight;
   }
 
   async function postChat(raw){
@@ -460,20 +288,64 @@ const UI_HTML = `<!doctype html>
       body: raw
     });
     const txt = await r.text();
+    // Worker may return JSON or plain text
     try { return JSON.parse(txt); } catch(e){ return { ok:false, reply: txt }; }
   }
 
-  function normalizeInputForHost(userText){
-    const s = String(userText || '');
-    const trimmed = s.trim();
-    if(!trimmed) return '';
-    if (/^HOST\s+/m.test(trimmed)) return trimmed;
-    return 'HOST ' + activeHost + '\n' + trimmed;
+  async function run(cmd){
+    const trimmed = (cmd || '').trim();
+    if(!trimmed) return;
+    addMsg('me', trimmed);
+    input.value = '';
+    sendBtn.disabled = true;
+    setStatus('Working', false);
+    try{
+      const res = await postChat(trimmed);
+      if(res && typeof res === 'object'){
+        if(res.ok){
+          const reply = res.reply;
+          if(typeof reply === 'string'){
+            addMsg('aura', reply);
+          }else{
+            addMsg('aura', JSON.stringify(reply, null, 2));
+          }
+          setStatus('Ready', false);
+        }else{
+          addMsg('aura', (res.reply ? (typeof res.reply === 'string' ? res.reply : JSON.stringify(res.reply, null, 2)) : 'ERROR'), {error:true});
+          setStatus('Error', true);
+        }
+      }else{
+        addMsg('aura', String(res), {error:true});
+        setStatus('Error', true);
+      }
+    }catch(err){
+      addMsg('aura', 'UI ERROR: ' + (err && err.message ? err.message : String(err)), {error:true});
+      setStatus('Error', true);
+    }finally{
+      sendBtn.disabled = false;
+      input.focus();
+    }
   }
 
-  async function pullBuild(){
+  // Enter-to-send
+  input.addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter' && !e.shiftKey){
+      e.preventDefault();
+      run(input.value);
+    }
+  });
+  sendBtn.addEventListener('click', ()=> run(input.value));
+
+  // Boot
+  localEl.textContent = nowLocal();
+  setInterval(()=>{ localEl.textContent = nowLocal(); }, 1000);
+
+  addMsg('sys', 'Connected. Type a command below (e.g., PING).');
+
+  // Pull build/stamp once
+  (async ()=>{
     try{
-      const res = await postChat('HOST ' + activeHost + '\nSHOW_BUILD');
+      const res = await postChat('SHOW_BUILD');
       if(res && res.ok && res.reply && res.reply.build){
         buildEl.textContent = res.reply.build;
         stampEl.textContent = res.reply.stamp || '';
@@ -485,96 +357,9 @@ const UI_HTML = `<!doctype html>
       buildEl.textContent = 'unknown';
       stampEl.textContent = '';
     }
-  }
-
-  async function runSend(){
-    const raw = input.value;
-    const trimmed = String(raw || '').trim();
-    if(!trimmed) return;
-
-    addBubble('me', trimmed, false);
-    input.value = '';
-
-    sendBtn.disabled = true;
-    setStatus('Working', false);
-
-    try{
-      const payload = normalizeInputForHost(trimmed);
-      const res = await postChat(payload);
-
-      if(res && typeof res === 'object'){
-        if(res.ok){
-          const reply = res.reply;
-          if(typeof reply === 'string'){
-            addBubble('aura', reply, false);
-          }else{
-            addBubble('aura', JSON.stringify(reply, null, 2), false);
-          }
-          setStatus('Ready', false);
-        }else{
-          addBubble('aura', (res.reply ? (typeof res.reply === 'string' ? res.reply : JSON.stringify(res.reply, null, 2)) : 'ERROR'), true);
-          setStatus('Error', true);
-        }
-      }else{
-        addBubble('aura', String(res), true);
-        setStatus('Error', true);
-      }
-    }catch(err){
-      addBubble('aura', 'UI ERROR: ' + (err && err.message ? err.message : String(err)), true);
-      setStatus('Error', true);
-    }finally{
-      sendBtn.disabled = false;
-      input.focus();
-    }
-  }
-
-  input.addEventListener('keydown', (e)=>{
-  const k = e.key;
-  const code = e.code;
-  const kc = e.keyCode;
-  const isEnter = (k === 'Enter') || (code === 'Enter') || (kc === 13);
-  if(isEnter && !e.shiftKey){
-    e.preventDefault();
-    e.stopPropagation();
-    runSend();
-  }
-});
-  sendBtn.addEventListener('click', runSend);
-
-  projList.addEventListener('click', (e)=>{
-    const btn = e.target.closest('.projBtn');
-    if(!btn) return;
-    const host = btn.getAttribute('data-host');
-    if(!host) return;
-
-    activeHost = host;
-    activeName =
-      (host === 'frontdesk.network') ? 'FrontDesk' :
-      (host === 'malibu.city') ? 'Malibu' :
-      'Aura Core';
-
-    [...projList.querySelectorAll('.projBtn')].forEach(b=>b.classList.remove('active'));
-    btn.classList.add('active');
-    hostLabel.textContent = activeHost;
-    titleEl.textContent = activeName;
-
-    addBubble('sys', 'HOST set to ' + activeHost + '. Pulling SHOW_BUILD...', false);
-    pullBuild();
-  });
-
-  addBubble('sys', 'Connected. Select a project or type a command (e.g., PING).', false);
-  pullBuild();
+  })();
 })();
 </script>
-<div id="overlay" class="overlay" aria-hidden="true">
-  <div class="modal" role="dialog" aria-modal="true">
-    <h3 id="overlayTitle">Overlay</h3>
-    <p id="overlayMsg">Placeholder.</p>
-    <div class="row">
-      <button id="overlayClose" class="btn primary">Close</button>
-    </div>
-  </div>
-</div>
 </body>
 </html>`;
 
@@ -930,7 +715,7 @@ const registryGetIndex = async (env, type) => {
   const raw = await env.AURA_KV.get(registryIndexKey(type));
   const parsed = raw ? safeJsonParse(raw) : null;
   if (Array.isArray(parsed)) return parsed;
-  return { ok: true, wrote: true };
+  return [];
 };
 
 const registryPutIndex = async (env, type, ids) => {
@@ -3147,14 +2932,6 @@ if (bodyTrim === "AUDIT_CLEAR") {
   }
 
 };
-
-
-
-
-
-
-
-
 
 
 

@@ -1,0 +1,5 @@
+HOST malibu.city
+FAILURE_MEMORY_PUT
+{"host":"malibu.city","key":"d6_probe","detail":"FM_PROOF_MALIBU__20260215_050031"}
+FAILURE_MEMORY_GET
+

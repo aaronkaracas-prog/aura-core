@@ -1,0 +1,2 @@
+HOST auras.guide
+REGISTRY_PUT config mutation_plan.plan.v6 {"id":"mutation_plan.plan.v6","status":"PENDING","applied":false,"patch_file":"C:\\Users\\Aaron Karacas\\aura-worker\\aura\\ops\\mutation\\patches\\PATCH_V1__BUILD__18_TO_19__plan_v6.txt","expected_build_after":"__19","created_at":"2026-02-15T18:17:24.5162110-08:00","note":"Phase A success proof: bump BUILD __18 -\u003e __19 via PATCH_V1 replace-once"}

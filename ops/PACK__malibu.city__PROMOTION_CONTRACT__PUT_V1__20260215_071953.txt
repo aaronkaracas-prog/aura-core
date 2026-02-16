@@ -1,0 +1,4 @@
+HOST malibu.city
+REGISTRY_PUT assets {"id":"promotion_contract_v1","name":"Promotion Contract v1","pillar":"SYSTEM","version":1,"rules":{"stage_required":true,"promotion_requires":["DRIFT_SENTINEL_PASS","AUDIT_TRAIL_INCREMENT"],"no_code_changes_without_human":true}}
+REGISTRY_GET assets promotion_contract_v1
+REGISTRY_AUDIT_TRAIL

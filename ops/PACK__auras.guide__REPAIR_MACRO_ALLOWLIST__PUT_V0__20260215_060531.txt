@@ -1,0 +1,3 @@
+HOST auras.guide
+REGISTRY_PUT system repair_macro_allowlist_v1 {"macros":[]}
+REGISTRY_GET system repair_macro_allowlist_v1

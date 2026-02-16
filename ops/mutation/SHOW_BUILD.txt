@@ -1,0 +1,2 @@
+﻿HOST auras.guide
+SHOW_BUILD

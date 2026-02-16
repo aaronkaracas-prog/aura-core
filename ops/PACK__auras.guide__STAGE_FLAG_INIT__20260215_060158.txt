@@ -1,0 +1,3 @@
+HOST auras.guide
+REGISTRY_PUT system stage_enabled_v1 true
+REGISTRY_GET system stage_enabled_v1

@@ -1,0 +1,2 @@
+﻿HOST auras.guide
+REGISTRY_PUT assets __d3_probe__ "{\"id\":\"__d3_probe__\",\"name\":\"D3_PROBE\",\"pillar\":\"TEST\"}"

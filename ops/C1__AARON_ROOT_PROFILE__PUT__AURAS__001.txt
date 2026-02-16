@@ -1,0 +1,2 @@
+﻿HOST auras.guide
+REGISTRY_PUT identity AARON_ROOT_PROFILE_V1 {"role":"operator_root","vector_priority":["A","C","B"],"sovereignty_mode":true,"meeting_guardrail_enabled":true,"economic_engine_status":"parked","autonomy_activation":"A+C in progress","build_anchor":"14"}

@@ -1,0 +1,4 @@
+HOST auras.guide
+HOST frontdesk.network
+PING
+

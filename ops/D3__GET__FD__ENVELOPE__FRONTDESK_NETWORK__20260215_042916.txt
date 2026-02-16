@@ -1,0 +1,2 @@
+﻿HOST frontdesk.network
+REGISTRY_GET domains __d3_putcanon2__

@@ -1,0 +1,8 @@
+HOST malibu.city
+REGISTRY_PUT assets {"id":"repair_macro_allowlist_v1","name":"Repair Macro Allowlist v1","pillar":"SYSTEM","macros":["RETRY_PROBE","CLEAR_FAILURE_MEMORY","REORDER_PROBE_HOSTS","SWITCH_EVIDENCE_MODE"],"version":1}
+REGISTRY_PUT assets {"id":"stage_enabled_v1","name":"Stage Enabled v1","pillar":"SYSTEM","enabled":true,"version":1}
+REGISTRY_PUT assets {"id":"capability_gap_map_v1","name":"Capability Gap Map v1","pillar":"SYSTEM","gaps":{},"version":1}
+REGISTRY_GET assets repair_macro_allowlist_v1
+REGISTRY_GET assets stage_enabled_v1
+REGISTRY_GET assets capability_gap_map_v1
+REGISTRY_AUDIT_TRAIL

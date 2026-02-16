@@ -1,0 +1,3 @@
+HOST auras.guide
+DEPLOYER_CALL
+{"service":"AURA_CF","path":"/","method":"GET"}

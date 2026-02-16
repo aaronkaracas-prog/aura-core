@@ -1,0 +1,4 @@
+﻿HOST frontdesk.network
+AUTONOMY_CHARTER_SET
+{"version":10,"text":"FD_V10_ENVELOPE_OK"}
+AUTONOMY_CHARTER_GET

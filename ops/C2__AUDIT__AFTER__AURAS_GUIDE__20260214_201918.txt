@@ -1,0 +1,3 @@
+﻿HOST auras.guide
+AUDIT_GET
+REGISTRY_AUDIT_TRAIL users aaron

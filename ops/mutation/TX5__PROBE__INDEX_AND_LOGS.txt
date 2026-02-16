@@ -1,0 +1,5 @@
+﻿HOST auras.guide
+REGISTRY_GET config mutation_plan.index.v1
+REGISTRY_GET config mutation_plan.execlog.v1
+REGISTRY_GET config mutation_plan.plan.v4
+SHOW_BUILD

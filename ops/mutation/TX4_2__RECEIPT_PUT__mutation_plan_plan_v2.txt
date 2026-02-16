@@ -1,0 +1,3 @@
+HOST auras.guide
+REGISTRY_PUT config {"patch_file":"C:\\Users\\Aaron Karacas\\aura-worker\\aura\\ops\\mutation\\TX4_2__PATCH__mutation_plan_plan_v2__20260215_165823.txt","id":"mutation_plan.plan.v2","stamp":"2026-02-16T00:58:46.669Z","applied":true,"build":"AURA_CORE__AUTONOMY_LAYERS__EVIDENCE_ALLOWLIST_HOSTCAPS_OPERATOR_INTENT_PAUSE__MEMORY_SUBSTRATE_V1__REGISTRY_AUDIT__17","status":"APPLIED","bridge_output":"MUTATION_SUCCESS backup=C:\\Users\\Aaron Karacas\\aura-worker\\aura\\ops\\mutation\\backups\\index.js.bak_20260215_165824","executed_at":"2026-02-15T16:58:45.5734424-08:00"}
+REGISTRY_GET config mutation_plan.plan.v2

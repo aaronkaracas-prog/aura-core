@@ -1,0 +1,2 @@
+HOST frontdesk.network
+AUTONOMY_BUDGET_SET {"limit": 102}

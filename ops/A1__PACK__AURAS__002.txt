@@ -1,0 +1,4 @@
+﻿HOST auras.guide
+REGISTRY_GET users aaron
+AUTONOMY_STATUS
+SNAPSHOT_STATE

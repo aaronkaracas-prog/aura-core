@@ -1,0 +1,7 @@
+﻿HOST auras.guide
+REGISTRY_PUT config {
+    "updated_at":  "2026-02-15T17:43:50.9477233-08:00",
+    "lines":  [
+                  "2026-02-15T17:43:47.8220503-08:00 mutation_plan.plan.v4 APPLIED AURA_CORE__AUTONOMY_LAYERS__EVIDENCE_ALLOWLIST_HOSTCAPS_OPERATOR_INTENT_PAUSE__MEMORY_SUBSTRATE_V1__REGISTRY_AUDIT__18"
+              ]
+}

@@ -1,0 +1,2 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT {"code":"SELF_EDIT_TX1_START","detail":"FM_PUT_SINGLE_PROOF ts_local=2026-02-15_15:12"}

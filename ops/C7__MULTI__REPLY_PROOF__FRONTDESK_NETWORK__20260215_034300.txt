@@ -1,0 +1,4 @@
+﻿HOST frontdesk.network
+SHOW_BUILD
+PAUSE
+SNAPSHOT_STATE

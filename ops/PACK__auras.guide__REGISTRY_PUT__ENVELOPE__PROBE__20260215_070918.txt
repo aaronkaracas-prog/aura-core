@@ -1,0 +1,3 @@
+HOST auras.guide
+REGISTRY_PUT {"type":"assets","item":{"id":"stage_enabled_v1","name":"Stage Enabled v1","pillar":"SYSTEM","enabled":true,"version":1}}
+REGISTRY_GET assets stage_enabled_v1

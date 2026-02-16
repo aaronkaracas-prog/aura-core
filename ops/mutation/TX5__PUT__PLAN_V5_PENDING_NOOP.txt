@@ -1,0 +1,2 @@
+﻿HOST auras.guide
+REGISTRY_PUT config {"id":"mutation_plan.plan.v5","replace":"__NOOP__","created_at":"2026-02-15T17:56:38.2350254-08:00","search":"__THIS_PATTERN_WILL_NEVER_EXIST__AURA_NOOP__","patch_file":"C:\\Users\\Aaron Karacas\\aura-worker\\aura\\ops\\mutation\\TX5__PATCH__mutation_plan_plan_v5__NOOP.txt","status":"PENDING"}

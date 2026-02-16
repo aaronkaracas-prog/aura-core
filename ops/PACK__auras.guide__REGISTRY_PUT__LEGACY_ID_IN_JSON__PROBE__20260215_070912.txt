@@ -1,0 +1,3 @@
+HOST auras.guide
+REGISTRY_PUT assets {"id":"repair_macro_allowlist_v1","name":"Repair Macro Allowlist v1","pillar":"SYSTEM","macros":[],"version":1}
+REGISTRY_GET assets repair_macro_allowlist_v1

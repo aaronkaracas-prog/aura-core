@@ -1,0 +1,2 @@
+HOST auras.guide
+SELF_AUDIT_FULL

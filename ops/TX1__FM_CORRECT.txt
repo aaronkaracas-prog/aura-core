@@ -1,0 +1,3 @@
+﻿HOST auras.guide
+FAILURE_MEMORY_PUT
+{"code":"TX1_VERIFY","detail":"ENVELOPE_LINE_FORM"}

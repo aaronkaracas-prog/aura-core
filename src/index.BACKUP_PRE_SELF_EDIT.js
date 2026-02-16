@@ -1,4 +1,4 @@
-﻿
+
 // === BUILD 15 PATCH: Deterministic PAUSE Acknowledgment ===
 // Injected to ensure PAUSE emits observable reply payload (no KV mutation).
 function __AURA_PAUSE_ACK__(cmd, host, replyArr) {
@@ -40,7 +40,7 @@ function routeInputBeforeClaimGate(ctx, input) {
 // === END UI_ROUTER_ENTRY ===
 
 // Canonical build/stamp (rendered in UI header and returned by SHOW_BUILD)
-const BUILD = 'AURA_CORE__AUTONOMY_LAYERS__EVIDENCE_ALLOWLIST_HOSTCAPS_OPERATOR_INTENT_PAUSE__MEMORY_SUBSTRATE_V1__REGISTRY_AUDIT__19';
+const BUILD = 'AURA_CORE__AUTONOMY_LAYERS__EVIDENCE_ALLOWLIST_HOSTCAPS_OPERATOR_INTENT_PAUSE__MEMORY_SUBSTRATE_V1__REGISTRY_AUDIT__14';
 const STAMP = new Date().toISOString();
 
 const AUTONOMY_TICK_VERSION = 'v2';
@@ -146,7 +146,7 @@ const UI_HTML = `<!doctype html>
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Aura Core Ã¢â‚¬Â¢ UI</title>
+<title>Aura Core â€¢ UI</title>
 <meta name="ui-version" content="UI_PATCH__20260215_2A__CHATGPT_SHELL">
 <style>
   :root{
@@ -409,7 +409,7 @@ const UI_HTML = `<!doctype html>
 
   if(attachBtn){
     attachBtn.addEventListener('click', ()=>{
-      showOverlay('Attach', 'File upload is next. This is the UI shell step Ã¢â‚¬â€ no upload logic yet.');
+      showOverlay('Attach', 'File upload is next. This is the UI shell step â€” no upload logic yet.');
     });
   }
   if(micBtn){
@@ -930,7 +930,7 @@ const registryGetIndex = async (env, type) => {
   const raw = await env.AURA_KV.get(registryIndexKey(type));
   const parsed = raw ? safeJsonParse(raw) : null;
   if (Array.isArray(parsed)) return parsed;
-  return { ok: true, wrote: true };
+  return [];
 };
 
 const registryPutIndex = async (env, type, ids) => {
@@ -3147,12 +3147,6 @@ if (bodyTrim === "AUDIT_CLEAR") {
   }
 
 };
-
-
-
-
-
-
 
 
 

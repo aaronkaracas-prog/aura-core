@@ -1,0 +1,3 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT {"code":"SELF_EDIT_TX1_START","detail":"Start TX1: discover deployer mutation endpoint; then patch+deploy+verify+rollback-on-fail. ts_local=2026-02-15_15:10"}
+FAILURE_MEMORY_GET

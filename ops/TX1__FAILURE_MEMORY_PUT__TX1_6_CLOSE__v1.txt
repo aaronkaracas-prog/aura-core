@@ -1,0 +1,3 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT
+{"code":"TX1_6_EVIDENCE_TEST_VERIFIED","detail":"SELF_AUDIT_FULL passed with operator header; evidence state captured pre/post RUN_SELF_TEST_EVIDENCE. TX1.6 closed based on observed evidence delta or confirmed steady-state.","at":"2026-02-15T16:15:58.0568999-08:00"}

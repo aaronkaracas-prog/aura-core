@@ -1,0 +1,2 @@
+﻿HOST frontdesk.network
+SHOW_ALLOWED_COMMANDS

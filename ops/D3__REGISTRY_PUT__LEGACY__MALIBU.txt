@@ -1,0 +1,2 @@
+HOST malibu.city
+REGISTRY_PUT domains {"id":"__d3_putcanon_malibu__","domain":"malibu.city","pillar":"TEST","purpose":"D3_CANON_PUT_LEGACY","priority":"PHASE1","status":"ACTIVE"}

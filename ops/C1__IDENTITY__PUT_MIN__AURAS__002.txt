@@ -1,0 +1,2 @@
+﻿HOST auras.guide
+REGISTRY_PUT identity AARON_ROOT_PROFILE_V1 operator_root

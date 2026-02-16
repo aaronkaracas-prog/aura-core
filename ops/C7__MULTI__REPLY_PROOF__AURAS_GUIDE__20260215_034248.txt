@@ -1,0 +1,4 @@
+﻿HOST auras.guide
+SHOW_BUILD
+PAUSE
+SNAPSHOT_STATE

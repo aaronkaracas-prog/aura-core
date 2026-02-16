@@ -1,0 +1,2 @@
+HOST auras.guide
+REGISTRY_PUT config {"ping":"probe","ts":"2026-02-15T18:24:56.8068727-08:00","id":"__op_probe__","type":"config","version":"v1"}

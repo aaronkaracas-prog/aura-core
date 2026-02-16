@@ -1,0 +1,8 @@
+HOST auras.guide
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","method":"OPTIONS","path":"/deploy"}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","method":"OPTIONS","path":"/patch"}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","method":"OPTIONS","path":"/edit"}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","method":"OPTIONS","path":"/file"}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","method":"OPTIONS","path":"/repo"}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","method":"OPTIONS","path":"/api"}
+DEPLOYER_CALL {"service":"AURA_DEPLOYER","method":"GET","path":"/api"}

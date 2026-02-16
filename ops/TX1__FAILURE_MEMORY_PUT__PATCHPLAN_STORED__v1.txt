@@ -1,0 +1,3 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT
+{"code":"TX1_PATCH_PLAN_STORED","detail":"Stored tx1_self_edit_plan_v1 in REGISTRY. Deployer mutation endpoints absent (404). Next step: when mutation surface exists, execute plan.","at":"2026-02-15T16:11:43.0240032-08:00"}

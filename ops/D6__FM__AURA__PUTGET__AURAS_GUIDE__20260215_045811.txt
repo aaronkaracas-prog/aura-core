@@ -1,0 +1,5 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT
+{"host":"auras.guide","key":"d6_probe","detail":"FM_PROOF__"}
+FAILURE_MEMORY_GET
+

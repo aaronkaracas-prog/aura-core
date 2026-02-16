@@ -1,0 +1,2 @@
+﻿HOST frontdesk.network
+AUTONOMY_CHARTER_SET {"version":9,"text":"FD_V9_D34_SET_ONLY"}

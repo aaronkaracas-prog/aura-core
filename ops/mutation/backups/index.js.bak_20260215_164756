@@ -40,7 +40,7 @@ function routeInputBeforeClaimGate(ctx, input) {
 // === END UI_ROUTER_ENTRY ===
 
 // Canonical build/stamp (rendered in UI header and returned by SHOW_BUILD)
-const BUILD = 'AURA_CORE__AUTONOMY_LAYERS__EVIDENCE_ALLOWLIST_HOSTCAPS_OPERATOR_INTENT_PAUSE__MEMORY_SUBSTRATE_V1__REGISTRY_AUDIT__19';
+const BUILD = 'AURA_CORE__AUTONOMY_LAYERS__EVIDENCE_ALLOWLIST_HOSTCAPS_OPERATOR_INTENT_PAUSE__MEMORY_SUBSTRATE_V1__REGISTRY_AUDIT__15';
 const STAMP = new Date().toISOString();
 
 const AUTONOMY_TICK_VERSION = 'v2';
@@ -3147,10 +3147,6 @@ if (bodyTrim === "AUDIT_CLEAR") {
   }
 
 };
-
-
-
-
 
 
 

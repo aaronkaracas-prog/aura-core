@@ -1,0 +1,2 @@
+HOST auras.guide
+REGISTRY_PUT assets {"id":"tx1_self_edit_plan_v1","name":"TX1 Self-Edit Plan v1","pillar":"aura-core","notes":"Deployer mutation endpoints absent (404). Store self-edit intent + patch plan here until mutation surface exists. Next: add SELF_PATCH_PUT/GET + evidence gate once code edits are allowed.","tags":["TX1","self-edit","patch-plan","evidence-gated"],"sellability":"internal","patent_cluster":"n/a"}

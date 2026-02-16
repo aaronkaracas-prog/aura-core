@@ -1,0 +1,2 @@
+﻿HOST auras.guide
+REGISTRY_PUT domains auras.guide domain=auras.guide pillar=TEST purpose=D3_CANON_PUT2 priority=PHASE1 status=ACTIVE

@@ -1,0 +1,2 @@
+﻿HOST auras.guide
+REGISTRY_GET assets __d3_probe__

@@ -1,0 +1,5 @@
+HOST auras.guide
+PING
+SHOW_BUILD
+SNAPSHOT_STATE
+

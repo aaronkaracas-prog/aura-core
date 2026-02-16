@@ -1,0 +1,2 @@
+﻿HOST frontdesk.network
+CLEAR_VERIFIED_FETCH

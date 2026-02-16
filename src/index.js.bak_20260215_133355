@@ -1,4 +1,4 @@
-﻿
+
 // === BUILD 15 PATCH: Deterministic PAUSE Acknowledgment ===
 // Injected to ensure PAUSE emits observable reply payload (no KV mutation).
 function __AURA_PAUSE_ACK__(cmd, host, replyArr) {
@@ -40,7 +40,7 @@ function routeInputBeforeClaimGate(ctx, input) {
 // === END UI_ROUTER_ENTRY ===
 
 // Canonical build/stamp (rendered in UI header and returned by SHOW_BUILD)
-const BUILD = 'AURA_CORE__AUTONOMY_LAYERS__EVIDENCE_ALLOWLIST_HOSTCAPS_OPERATOR_INTENT_PAUSE__MEMORY_SUBSTRATE_V1__REGISTRY_AUDIT__19';
+const BUILD = 'AURA_CORE__AUTONOMY_LAYERS__EVIDENCE_ALLOWLIST_HOSTCAPS_OPERATOR_INTENT_PAUSE__MEMORY_SUBSTRATE_V1__REGISTRY_AUDIT__14';
 const STAMP = new Date().toISOString();
 
 const AUTONOMY_TICK_VERSION = 'v2';
@@ -146,7 +146,7 @@ const UI_HTML = `<!doctype html>
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Aura Core Ã¢â‚¬Â¢ UI</title>
+<title>Aura Core • UI</title>
 <meta name="ui-version" content="UI_PATCH__20260215_2A__CHATGPT_SHELL">
 <style>
   :root{
@@ -318,49 +318,59 @@ const UI_HTML = `<!doctype html>
     padding:0 2px;
   }
   code.k{ color:#c7cffc; }
-  .iconBtn{
-    cursor:pointer;
-    opacity:1;
-  }
-  .overlay{
-    position:fixed;
-    inset:0;
-    background: rgba(0,0,0,.55);
-    display:none;
-    align-items:center;
-    justify-content:center;
-    padding:24px;
-    z-index:50;
-  }
-  .overlay.show{ display:flex; }
-  .modal{
-    width: min(520px, 92vw);
-    border-radius:16px;
-    border:1px solid var(--line);
-    background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
-    box-shadow: 0 30px 80px rgba(0,0,0,.55);
-    padding:16px;
-  }
-  .modal h3{ margin:0 0 8px 0; font-size:16px; }
-  .modal p{ margin:0 0 12px 0; color: var(--muted); line-height:1.4; font-size:13px; }
-  .modal .row{ display:flex; gap:10px; justify-content:flex-end; }
-  .btn{
-    height:38px;
-    padding:0 14px;
-    border-radius:12px;
-    border:1px solid var(--line);
-    background: rgba(0,0,0,.25);
-    color: var(--text);
-    cursor:pointer;
-    font-weight:700;
-  }
-  .btn.primary{
-    border-color: rgba(109,94,252,.55);
-    background: rgba(109,94,252,.20);
-  }
 </style>
 </head>
 <body>
+<div class="app">
+  <aside class="side">
+    <div class="sideTop">
+      <div class="brand">Aura Core</div>
+      <div class="sub">UI route: <code class="k">/ui</code> • POST <code class="k">/chat</code></div>
+      <div class="projHdr">Projects</div>
+    </div>
+
+    <div class="projList" id="projList">
+      <button class="projBtn active" data-host="auras.guide">
+        <span>Aura Core</span><span class="pill">auras.guide</span>
+      </button>
+      <button class="projBtn" data-host="frontdesk.network">
+        <span>FrontDesk</span><span class="pill">frontdesk.network</span>
+      </button>
+      <button class="projBtn" data-host="malibu.city">
+        <span>Malibu</span><span class="pill">malibu.city</span>
+      </button>
+    </div>
+
+    <div class="sub" style="margin-top:auto;">
+      Tip: Click a project to set <code class="k">HOST</code> and pull <code class="k">SHOW_BUILD</code>.
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div class="titleBlock">
+        <div class="h" id="title">Aura Core</div>
+        <div class="s">Active HOST: <code class="k" id="hostLabel">auras.guide</code></div>
+      </div>
+
+      <div class="meta" id="meta">
+        <div class="row"><span class="dot"></span><span id="status">Ready</span></div>
+        <div class="row"><span>Build:</span><span id="build"></span></div>
+        <div class="row"><span>Stamp:</span><span id="stamp"></span></div>
+        <div class="row"><span>UI Version:</span><span id="uiver"></span></div>
+        <div class="row"><span>Local:</span><span id="localtime"></span></div>
+      </div>
+    </div>
+
+    <div id="chat" class="chat"></div>
+
+    <div class="composerWrap">
+      <div class="composer">
+        <div class="iconBtn" title="Attach (later)">📎</div>
+        <div class="iconBtn" title="Mic (later)">🎤</div>
+        <textarea id="input" placeholder="Type an ALL-CAPS command (e.g., PING). Enter = send, Shift+Enter = newline"></textarea>
+        <button id="send" class="send">Send</button>
+      </div>
       <div class="hint">
         Tip: Prefer batch mode via PowerShell for multi-line ops. UI is for quick interactive checks.
       </div>
@@ -384,44 +394,6 @@ const UI_HTML = `<!doctype html>
   const hostLabel = document.getElementById('hostLabel');
   const titleEl = document.getElementById('title');
   const projList = document.getElementById('projList');
-  const attachBtn = document.getElementById('attachBtn');
-  const micBtn = document.getElementById('micBtn');
-  const overlay = document.getElementById('overlay');
-  const overlayTitle = document.getElementById('overlayTitle');
-  const overlayMsg = document.getElementById('overlayMsg');
-  const overlayClose = document.getElementById('overlayClose');
-
-  function showOverlay(title, msg){
-    if(!overlay) return;
-    overlayTitle.textContent = title;
-    overlayMsg.textContent = msg;
-    overlay.classList.add('show');
-    overlay.setAttribute('aria-hidden','false');
-  }
-  function hideOverlay(){
-    if(!overlay) return;
-    overlay.classList.remove('show');
-    overlay.setAttribute('aria-hidden','true');
-  }
-
-  if(overlayClose) overlayClose.addEventListener('click', hideOverlay);
-  if(overlay) overlay.addEventListener('click', (e)=>{ if(e.target === overlay) hideOverlay(); });
-
-  if(attachBtn){
-    attachBtn.addEventListener('click', ()=>{
-      showOverlay('Attach', 'File upload is next. This is the UI shell step Ã¢â‚¬â€ no upload logic yet.');
-    });
-  }
-  if(micBtn){
-    micBtn.addEventListener('click', async ()=>{
-      addBubble('sys', 'Mic click (handler live).', false);
-      if(micState === 'recording'){
-        micStop();
-      }else{
-        await micStart();
-      }
-    });
-  }
 
   if(uiVerEl) uiVerEl.textContent = UI_VERSION;
 
@@ -566,15 +538,6 @@ const UI_HTML = `<!doctype html>
   pullBuild();
 })();
 </script>
-<div id="overlay" class="overlay" aria-hidden="true">
-  <div class="modal" role="dialog" aria-modal="true">
-    <h3 id="overlayTitle">Overlay</h3>
-    <p id="overlayMsg">Placeholder.</p>
-    <div class="row">
-      <button id="overlayClose" class="btn primary">Close</button>
-    </div>
-  </div>
-</div>
 </body>
 </html>`;
 
@@ -930,7 +893,7 @@ const registryGetIndex = async (env, type) => {
   const raw = await env.AURA_KV.get(registryIndexKey(type));
   const parsed = raw ? safeJsonParse(raw) : null;
   if (Array.isArray(parsed)) return parsed;
-  return { ok: true, wrote: true };
+  return [];
 };
 
 const registryPutIndex = async (env, type, ids) => {
@@ -3147,12 +3110,6 @@ if (bodyTrim === "AUDIT_CLEAR") {
   }
 
 };
-
-
-
-
-
-
 
 
 

@@ -1694,6 +1694,7 @@ for (let i = 0; i < lines.length; i++) {
     const rawLine = lines[i];
 const __parts = String(rawLine||"").trim().split(/\s+/);
 const line = __parts[0] || "";
+      const nextLine = lines[i + 1];
 const args = __parts.length > 1 ? __parts.slice(1) : [];const operator = !!(request.headers.get("X-Operator-Token") || "");if (line.startsWith("HOST ")) {
       const parts = line.split(" ").filter(Boolean);
       if (parts[1]) activeHost = parts[1].toLowerCase();

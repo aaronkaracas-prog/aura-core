@@ -2611,32 +2611,6 @@ if (line === "FAILURE_MEMORY_SET") {
 
       continue;
     }
-    if (line === "SELF_PATCH_APPLY") {
-
-      const nextLine = lines[i + 1];
-      const ev = await __getHostEvidence(activeHost);
-      if (!ev || !ev.ok) { push("SELF_PATCH_APPLY",
-  "PATCH_INDEX_STATUS",
-  "PATCH_INDEX_PUT",
-  "PATCH_INDEX_GET",
-"PATCH_OBJECT_PUT",
-"PATCH_OBJECT_GET", "READY: VERIFIED_FETCH OK (NEXT: PATCH_INDEX_WIRE)"); continue; }
-      if (!isOperator) { push("SELF_PATCH_APPLY",
-  "PATCH_INDEX_STATUS",
-  "PATCH_INDEX_PUT",
-  "PATCH_INDEX_GET",
-"PATCH_OBJECT_PUT",
-"PATCH_OBJECT_GET", { ok:false, error:"OPERATOR_REQUIRED" }); continue; }
-
-      // TX1: mutation surface not implemented in-worker yet. This is a controlled stub.
-      push("SELF_PATCH_APPLY",
-  "PATCH_INDEX_STATUS",
-  "PATCH_INDEX_PUT",
-  "PATCH_INDEX_GET",
-"PATCH_OBJECT_PUT",
-"PATCH_OBJECT_GET", { ok:false, host: activeHost, error:"MUTATION_SURFACE_NOT_IMPLEMENTED", next:"Use external mutation bridge / deployer once wired." });
-      continue;
-    }
 
 if (line === "INTENT_SIMULATE") {
         push("INTENT_SIMULATE", { ok: true, host: __host, note: "preview-only" });

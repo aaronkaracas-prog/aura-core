@@ -1,0 +1,5 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT {"ts":"
+20260222_094730
+","type":"MILESTONE","scope":"REGISTRY","summary":"REGISTRY_UNBLOCKED: PUT/GET/LIST/AUDIT PASS on auras.guide","evidence":{"version_id":"b92749c3-8251-433b-8d69-6d2cccf36038","id":"reg_put_proof__20260222_084953","audit_seq":3}}
+FAILURE_MEMORY_GET

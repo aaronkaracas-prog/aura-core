@@ -1,0 +1,6 @@
+HOST frontdesk.network
+SELF_AUDIT_FULL
+
+HOST malibu.city
+SELF_AUDIT_FULL
+

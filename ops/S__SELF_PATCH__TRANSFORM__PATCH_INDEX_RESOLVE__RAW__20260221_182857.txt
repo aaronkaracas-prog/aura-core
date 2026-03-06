@@ -1,0 +1,5 @@
+HOST auras.guide
+SELF_PATCH_PUT
+{"intent":{"name":"canon_index_test","obj":{"note":"prove_patch_index_to_object_resolution","ts":"20260221_182857"}}}
+SELF_PATCH_APPLY
+

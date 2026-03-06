@@ -1,0 +1,5 @@
+HOST auras.guide
+PORTFOLIO_STATUS
+REGISTRY_LIST assets
+REGISTRY_LIST domains
+

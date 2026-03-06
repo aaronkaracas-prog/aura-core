@@ -1,0 +1,5 @@
+HOST auras.guide
+VERIFIED_FETCH_URL https://auras.guide/ui
+EVIDENCE_PRESENT
+SHOW_BUILD
+

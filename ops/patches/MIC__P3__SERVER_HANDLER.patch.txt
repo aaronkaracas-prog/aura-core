@@ -1,0 +1,25 @@
+﻿PATCH_V1
+SEARCH:
+if (bodyTrim === "SHOW_BUILD") {
+      return jsonReply({ build: BUILD, stamp: new Date().toISOString() });
+    }
+REPLACE:
+if (bodyTrim === "SHOW_BUILD") {
+      return jsonReply({ build: BUILD, stamp: new Date().toISOString() });
+    }
+
+    if (bodyTrim === "MIC_PROBE") {
+      // Deterministic server-side probe: confirms UI mic subsystem marker shipped
+      const uiHasMic = (typeof UI_HTML === "string") && UI_HTML.includes("MIC_SUBSYSTEM_WIRED_V1");
+      return jsonReply({
+        ok: true,
+        host: (new URL(request.url).host || null),
+        build: BUILD,
+        stamp: new Date().toISOString(),
+        mic_probe: {
+          ui_marker_present: uiHasMic,
+          note: "This probe confirms mic wiring is shipped. Browser permission/audio capture is tested in UI."
+        }
+      });
+    }
+END_PATCH

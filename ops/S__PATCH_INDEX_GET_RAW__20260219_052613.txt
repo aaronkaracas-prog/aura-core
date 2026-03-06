@@ -1,0 +1,7 @@
+﻿HOST auras.guide
+PATCH_INDEX_GET {"name":"ui_fix_norm_real","raw":true}
+PATCH_INDEX_GET {"name":"ui_fix_pullbuild_real","raw":true}
+PATCH_INDEX_GET {"name":"ui_fix_01","raw":true}
+PATCH_INDEX_GET {"name":"ui_fix_02","raw":true}
+PATCH_INDEX_GET {"name":"ui_fix_03","raw":true}
+PATCH_INDEX_STATUS

@@ -1,0 +1,5 @@
+HOST auras.guide
+SELF_PATCH_PUT
+{"intent":{"name":"PING_PATCH_TEST","obj":{"note":"prove_transform_exec_path","ts":"20260221_184119"}}}
+SELF_PATCH_APPLY
+

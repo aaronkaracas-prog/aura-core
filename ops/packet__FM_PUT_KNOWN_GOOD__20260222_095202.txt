@@ -1,0 +1,4 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT
+{"at":"20260222_095202","code":"MILESTONE","detail":"REGISTRY_UNBLOCKED: PUT/GET/LIST/AUDIT PASS on auras.guide ; domain_seed=domain__auras.guide ; audit_seq=4"}
+FAILURE_MEMORY_GET

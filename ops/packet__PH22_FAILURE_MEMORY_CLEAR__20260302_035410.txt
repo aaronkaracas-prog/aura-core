@@ -1,0 +1,8 @@
+HOST frontdesk.network
+FAILURE_MEMORY_CLEAR
+{}
+
+HOST malibu.city
+FAILURE_MEMORY_CLEAR
+{}
+

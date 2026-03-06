@@ -1,0 +1,3 @@
+HOST auras.guide
+REGISTRY_PUT assets auto_patch_spec {"marker":"__AUTO_PATCH_TEST__02","target":"src/index.js","id":"PATCH_SELF_EDIT_TEST_02","type":"BUILD_SUFFIX_APPEND","createdAt":"2026-02-18T06:05:45.3726309-08:00"}
+

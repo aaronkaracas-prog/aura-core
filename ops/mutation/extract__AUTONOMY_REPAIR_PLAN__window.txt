@@ -1,0 +1,241 @@
+//
+// NOTE: This file is intended to be deployed as Wrangler main="src/index.js"
+//
+// --- BEGIN ORIGINAL CONTENT ---
+
+// === UI_ROUTER_ENTRY ===
+// Router shim: classify natural language via INTENT before claim gate
+function routeInputBeforeClaimGate(ctx, input) {
+  if (!input || typeof input !== 'string') return { passthrough: true };
+  const isCommand = /^[A-Z_]+(\s|$)/.test(input.trim());
+  if (isCommand) return { passthrough: true };
+  // Natural language  intent-first
+  return { intentFirst: true, text: input };
+}
+// === END UI_ROUTER_ENTRY ===
+
+// Canonical build/stamp (rendered in UI header and returned by SHOW_BUILD)
+const BUILD = 'AURA_CORE__AUTONOMY_LAYERS__EVIDENCE_ALLOWLIST_HOSTCAPS_OPERATOR_INTENT_PAUSE__MEMORY_SUBSTRATE_V1__REGISTRY_AUDIT__20__AUTO_RUNTIME_TEST__01';
+const STAMP = new Date().toISOString();
+
+const AUTONOMY_TICK_VERSION = 'v2';
+const AUTONOMY_TICK_HOSTS = ['auras.guide','malibu.city','frontdesk.network'];
+const autonomyTickKeyForHost = (host) => `autonomy:tick:${AUTONOMY_TICK_VERSION}:${host}`;
+
+async function naturalLanguageReply(input, env, activeHost) {
+  const text = (input || "").trim();
+  if (!text) return "";
+
+  const lower = text.toLowerCase();
+  const host = (activeHost && activeHost !== "none") ? activeHost : "frontdesk.network";
+
+  const intentGet = async (tag) => {
+    try {
+      return await env.AURA_KV.get(`intent:${host}:${tag}`);
+    } catch (_) {
+      return null;
+    }
+  };
+
+  const identity = (await intentGet("identity")) || "I am Aura  an autonomous, evidence-first control-plane for ARK Systems. Host-scoped. Persistence-backed. Neutral and non-coercive.";
+// STUB REMOVED: AUTONOMY_REPAIR_PLAN now routes to line-engine (no VERIFIED_FETCH gate here).
+  if (lower.includes("help") || lower === "?" || lower.includes("commands")) {
+    return "Type an allowed command (e.g., PING, SHOW_BUILD, SNAPSHOT_STATE).\n\nFor host work: HOST <domain>, then EVIDENCE_PRESENT or VERIFIED_FETCH_URL http://<domain>/";
+  }
+  if (lower.includes("launch") || lower.includes("deploy") || lower.includes("website") || lower.includes("site")) {
+    return "I can plan and execute deployments via DEPLOYER_CALL when operator-authorized.\n\nTell me: domain + desired outcome (landing page vs app) and whether we should VERIFIED_FETCH first for the target host.";
+  }
+
+  // Default: answer politely, no gate.
+  return identity + "\n\n" + capability;
+}
+
+// ==== PATCH: Registry commands bypass claim-gate (2026-01-29) ====
+function __registryBypass(token) {
+  // Only allow read-only registry operations to bypass claim-gate.
+  // Any registry *write* (PUT / IMPORT) must be claim-gated by evidence.
+  return token === "REGISTRY_GET" ||
+         token === "REGISTRY_LIST" ||
+         token === "REGISTRY_FILTER";
+}
+// ================================================================
+const KNOWN_COMMANDS = [
+  "MIC_PROBE",
+  "PING",
+  "SHOW_BUILD",
+  "SHOW_CLAIM_GATE",
+  "SHOW_ALLOWED_COMMANDS",
+  "RUN_SELF_TEST_EVIDENCE",
+  "VERIFIED_FETCH_URL",
+  "CLEAR_VERIFIED_FETCH",
+  "EVIDENCE_PRESENT",
+  "SNAPSHOT_STATE",
+  "HOST_CAPS_GET",
+  "HOST_CAPS_SET",
+  "DEPLOYER_CAPS",
+  "DEPLOYER_CALL",
+  "PAUSE",
+  "INTENT_ADD",
+  "INTENT_GET",
+  "INTENT_CLEAR",
+  "SHOW_MEMORY_SCHEMA",
+  "REGISTRY_PUT",
+  "REGISTRY_GET",
+  "REGISTRY_LIST",
+  "REGISTRY_FILTER",
+  "REGISTRY_IMPORT_ASSETS",
+  "REGISTRY_IMPORT_DOMAINS",
+  "PORTFOLIO_STATUS",
+  "AUDIT_GET",
+  "AUDIT_CLEAR",
+  "HERD_STATUS",
+  "HERD_SELF_TEST",
+  "HERD_SWEEP",
+  "AUTONOMY_STATUS",
+  "AUTONOMY_LAST_TICK",
+        "AUTONOMY_LAST_TICK_SET",
+  "AUTONOMY_CAPABILITIES",
+  "INTENT_SIMULATE",
+  "REGISTRY_AUDIT_TRAIL",
+  "AUTONOMY_BUDGET_GET",
+  "AUTONOMY_BUDGET_SET",
+  "FAILURE_MEMORY_GET",
+  "FAILURE_MEMORY_PUT",
+  "FAILURE_MEMORY_CLEAR",
+  "FAILURE_MEMORY_SET",
+  "SELF_PATCH_PUT",
+  "SELF_PATCH_GET",
+  "SELF_PATCH_APPLY",
+  "PATCH_INDEX_STATUS",
+"PATCH_INDEX_PUT",
+"PATCH_INDEX_GET","PATCH_INDEX_APPLY",
+"PATCH_INDEX_LIST",
+"PATCH_INDEX_META",
+"PATCH_INDEX_DELETE",
+"PATCH_OBJECT_PUT",
+"PATCH_OBJECT_GET",
+  "AUTONOMY_CHARTER_GET",
+  "AUTONOMY_CHARTER_SET",
+];
+
+const UI_HTML = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Aura Core ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ UI</title>
+<meta name="ui-version" content="UI_PATCH__20260215_2A__CHATGPT_SHELL">
+<style>
+  :root{
+    --bg:#070a12; --panel:#0e1424; --panel2:#0b1020;
+    --text:#e8ecff; --muted:#9aa5c7; --line:rgba(255,255,255,.10);
+    --accent:#6d5efc; --good:#48d597; --bad:#ff5c7a;
+    --bubbleMe: rgba(109,94,252,.18);
+    --bubbleAura: rgba(255,255,255,.05);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    background:
+      radial-gradient(1200px 600px at 30% 10%, rgba(109,94,252,.18), transparent 60%),
+      radial-gradient(900px 500px at 80% 30%, rgba(72,213,151,.10), transparent 55%),
+      var(--bg);
+    color:var(--text);
+    overflow:hidden;
+  }
+
+  .app{ height:100%; display:flex; }
+
+  .side{
+    width:280px;
+    border-right:1px solid var(--line);
+    background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    padding:14px;
+  }
+  .sideTop{
+    display:flex; flex-direction:column; gap:6px;
+    padding-bottom:12px;
+    border-bottom:1px solid var(--line);
+  }
+  .brand{ font-weight:800; letter-spacing:.2px; font-size:16px; }
+  .sub{ color:var(--muted); font-size:12px; line-height:1.35; }
+  .projHdr{ color:var(--muted); font-size:12px; margin-top:2px; }
+  .projList{ display:flex; flex-direction:column; gap:8px; }
+  .projBtn{
+    display:flex; align-items:center; justify-content:space-between;
+    width:100%;
+    padding:10px 10px;
+    border-radius:12px;
+    border:1px solid var(--line);
+    background: rgba(0,0,0,.18);
+    color:var(--text);
+    cursor:pointer;
+    text-align:left;
+  }
+  .projBtn:hover{ border-color: rgba(109,94,252,.45); }
+  .projBtn.active{
+    border-color: rgba(109,94,252,.60);
+    background: rgba(109,94,252,.14);
+  }
+  .pill{
+    font-size:11px;
+    color:var(--muted);
+    border:1px solid var(--line);
+    padding:2px 8px;
+    border-radius:999px;
+  }
+
+  .main{ flex:1; display:flex; flex-direction:column; min-width:0; }
+
+  .topbar{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:16px;
+    padding:14px 16px;
+    border-bottom:1px solid var(--line);
+    background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+  }
+  .meta{
+    display:flex; flex-direction:column; align-items:flex-end; gap:4px;
+    font-size:12px; color:var(--muted);
+  }
+  .meta .row{ display:flex; gap:10px; align-items:center; }
+  .dot{ width:8px; height:8px; border-radius:50%; background:var(--good); box-shadow:0 0 0 3px rgba(72,213,151,.14); }
+  .statusErr .dot{ background:var(--bad); box-shadow:0 0 0 3px rgba(255,92,122,.14); }
+  .titleBlock{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .titleBlock .h{ font-size:16px; font-weight:800; letter-spacing:.2px; }
+  .titleBlock .s{ font-size:12px; color:var(--muted); }
+
+  .chat{
+    flex:1;
+    min-height:0;
+    overflow:auto;
+    padding:18px 16px 12px 16px;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+  .bubble{
+    max-width: min(780px, 92%);
+    border:1px solid var(--line);
+    padding:10px 12px;
+    border-radius:16px;
+    line-height:1.35;
+    white-space:pre-wrap;
+    word-break:break-word;
+  }
+  .me{ align-self:flex-end; background: var(--bubbleMe); border-color: rgba(109,94,252,.40); }
+  .aura{ align-self:flex-start; background: var(--bubbleAura); }
+  .sys{ align-self:center; max-width:100%; background: transparent; border:none; color:var(--muted); padding:0; }
+  .err{ border-color: rgba(255,92,122,.45); background: rgba(255,92,122,.10); }
+
+  .composerWrap{
+    border-top:1px solid var(--line);
+    padding:12px;
+    background: rgba(0,0,0,.12);

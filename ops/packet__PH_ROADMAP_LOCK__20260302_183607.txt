@@ -1,0 +1,3 @@
+REGISTRY_PUT {"type":"canon","item":{"id":"CANON__PH_ROADMAP__V1","status":"ACTIVE","planning_horizon":{"ph_min":1,"ph_max":72},"current":{"ph":59,"label":"PH59_GUARDRAILS"},"meters":{"global":100,"ph_roadmap":"PH 59 / PH 72 (81.9%)"},"rules":["PH roadmap meter must be shown every turn","Active task meter must be shown every turn","Update meters only from real outputs","Do not ask to proceed; continue until 100%"]}}
+REGISTRY_GET canon CANON__PH_ROADMAP__V1
+REGISTRY_AUDIT_TRAIL {"limit":10}

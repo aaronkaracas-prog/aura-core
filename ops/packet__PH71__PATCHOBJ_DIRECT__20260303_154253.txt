@@ -1,0 +1,2 @@
+PATCH_OBJECT_PUT diag_patch e30=
+PATCH_OBJECT_GET diag_patch

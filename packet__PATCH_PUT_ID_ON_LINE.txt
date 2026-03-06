@@ -1,0 +1,4 @@
+HOST auras.guide
+PATCH_INDEX_PUT proof__patch_cycle__20260219_214028
+{"note":"harmless proof patch - no behavior change","ops":[]}
+PATCH_INDEX_GET proof__patch_cycle__20260219_214028

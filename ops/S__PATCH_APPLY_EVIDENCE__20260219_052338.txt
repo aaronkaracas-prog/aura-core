@@ -1,0 +1,5 @@
+﻿HOST auras.guide
+PATCH_INDEX_GET {"name":"ui_fix_norm_exact"}
+PATCH_INDEX_GET {"name":"ui_fix_norm_newline_exact"}
+PATCH_INDEX_GET {"name":"ui_fix_pullbuild_newline_exact"}
+PATCH_INDEX_STATUS

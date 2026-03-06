@@ -1,0 +1,4 @@
+HOST auras.guide
+AUTONOMY_REPAIR_PLAN
+{ "mode": "proof_no_deploy", "goal": "Resolve SELF_PATCH intent -> confirm PATCH_INDEX and PATCH_OBJECT linkage for index_id=patch_index_probe__20260222_123907 and patch_object_id=patch_obj_indexlink__20260222_123831. Do NOT apply patches. Output steps + checks only.", "context": { "index_id": "patch_index_probe__20260222_123907", "patch_object_id": "patch_obj_indexlink__20260222_123831", "host": "auras.guide", "stamp": "20260222_125027" } }
+AUTONOMY_REPAIR_PLAN_GET

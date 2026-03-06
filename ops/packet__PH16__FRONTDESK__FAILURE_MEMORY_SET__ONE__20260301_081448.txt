@@ -1,0 +1,2 @@
+HOST frontdesk.network
+FAILURE_MEMORY_SET {"items":[{"id":"synthetic__exec_probe__20260301_081448","ts":"2026-03-01T16:14:48.5146624Z","summary":"synthetic exec probe"}]}

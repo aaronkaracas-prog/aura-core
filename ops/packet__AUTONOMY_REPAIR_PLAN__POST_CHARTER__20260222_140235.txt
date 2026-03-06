@@ -1,0 +1,3 @@
+HOST auras.guide
+AUTONOMY_REPAIR_PLAN
+{ "mode": "proof_no_deploy", "goal": "Use patch_surface_resolution domain: resolve linkage for index_id=patch_index_probe__20260222_123907 patch_object_id=patch_obj_indexlink__20260222_123831 using SELF_PATCH intent. Output checklist + findings. No apply, no deploy.", "context": { "index_id": "patch_index_probe__20260222_123907", "patch_object_id": "patch_obj_indexlink__20260222_123831", "host": "auras.guide", "stamp": "20260222_140235" } }

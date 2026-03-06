@@ -1,0 +1,6 @@
+HOST auras.guide
+SELF_PATCH_PUT
+{"intent":{"name":"execute_active_index_fallback_probe","note":"No index_id provided; must use PATCH_INDEX_ACTIVE.","mode":"proof_active_index_fallback"},"stamp":"20260225_023630"}
+SELF_PATCH_GET
+SELF_PATCH_EXECUTE
+FAILURE_MEMORY_GET

@@ -1,0 +1,4 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT
+{ "at": "20260222_145006", "code": "HOST_CONTEXT_CLOBBER_BUG", "detail": "Observed response host contamination: FAILURE_MEMORY replies sometimes report host other than active_host despite HOST auras.guide line. Also observed charter responses with host overwritten by payload strings. Hypothesis: failure-memory/charter path mistakenly derives host from message content. Fix: host must only come from parsed HOST line, never from any payload text." }
+FAILURE_MEMORY_GET

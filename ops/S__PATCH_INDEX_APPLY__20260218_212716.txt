@@ -1,0 +1,7 @@
+﻿HOST auras.guide
+PATCH_INDEX_GET {"name":"ui_fix_01"}
+PATCH_INDEX_GET {"name":"ui_fix_02"}
+PATCH_INDEX_GET {"name":"ui_fix_03"}
+PATCH_INDEX_APPLY {"names":["ui_fix_01","ui_fix_02","ui_fix_03"],"note":"UI normalize + pullBuild newline/regex fixes"}
+SHOW_BUILD
+SNAPSHOT_STATE

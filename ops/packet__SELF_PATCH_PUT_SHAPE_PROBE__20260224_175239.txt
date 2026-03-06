@@ -1,0 +1,7 @@
+HOST auras.guide
+SELF_PATCH_PUT {"ok":true}
+SELF_PATCH_PUT {"stamp":"20260224_175239"}
+SELF_PATCH_PUT {"intent":{"name":"resolve_index_link_only"}}
+SELF_PATCH_PUT {"stamp":"20260224_175239","intent":{"name":"resolve_index_link_only","mode":"proof_no_deploy","index_id":"patch_index_probe2__20260224_155327","patch_object_id":"patch_obj_indexlink__20260222_123831","note":"x"}}
+SELF_PATCH_GET
+FAILURE_MEMORY_GET

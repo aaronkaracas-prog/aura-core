@@ -1,0 +1,7 @@
+HOST auras.guide
+PATCH_INDEX_GET test_patch_1
+PATCH_INDEX_META test_patch_1
+PATCH_INDEX_DELETE test_patch_1
+PATCH_INDEX_GET test_patch_1
+PATCH_INDEX_META test_patch_1
+PATCH_INDEX_LIST

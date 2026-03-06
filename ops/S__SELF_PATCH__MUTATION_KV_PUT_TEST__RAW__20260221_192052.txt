@@ -1,0 +1,5 @@
+HOST auras.guide
+SELF_PATCH_PUT
+{"intent":{"name":"MUTATION_KV_PUT_TEST","obj":{"note":"prove_real_mutation","ts":"20260221_192052"}}}
+SELF_PATCH_APPLY
+

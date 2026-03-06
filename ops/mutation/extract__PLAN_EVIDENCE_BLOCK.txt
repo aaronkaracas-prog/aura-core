@@ -1,0 +1,161 @@
+            const h = String(obj.host).toLowerCase();
+            if (h !== __host) { push("AUTONOMY_BUDGET_GET", "BAD_REQUEST"); continue; }
+            reqHost = h;
+          }
+        }
+        const b = (await __readJsonKV(__budgetKey)) || __defaultBudget;
+        push("AUTONOMY_BUDGET_GET", { ok: true, host: reqHost, budget: b });
+        continue;
+      }
+
+      if (line === "AUTONOMY_CHARTER_GET") {
+        const c = (await __readJsonKV(__charterKey)) || __defaultCharter;
+        push("AUTONOMY_CHARTER_GET", { ok: true, host: __host, charter: c });
+        continue;
+      }
+
+      if (line === "FAILURE_MEMORY_GET") {
+        const fm = (await __readJsonKV(__failKeyForRead)) || [];
+        push("FAILURE_MEMORY_GET", { ok: true, host: __host, items: fm, count: Array.isArray(fm) ? fm.length : 0 });
+        continue;
+      }
+
+      if (line === "REGISTRY_AUDIT_TRAIL") {
+        // Reuse the existing audit substrate as the authoritative trail output for now.
+        // Deterministic: returns latest 50 events (or fewer) using existing auditList().
+        push("REGISTRY_AUDIT_TRAIL", { ok: true, host: __host, trail: await auditList(env, String(activeHost || "frontdesk.network").toLowerCase(), 50) });
+        continue;
+      }
+
+      if (line === "AUTONOMY_REPAIR_PLAN") {
+        // Read-only: propose deterministic repairs for the selected host.
+        const b = (await __readJsonKV(__budgetKey)) || __defaultBudget;
+        const c = (await __readJsonKV(__charterKey)) || __defaultCharter;
+        const last_tick = await env.AURA_KV.get(__tickKey);
+        const evidencePresent = activeHost
+          ? Boolean(await env.AURA_KV.get(evidenceKey(String(activeHost).toLowerCase())))
+          : false;
+
+        const actions = [];
+        if (!evidencePresent) {
+          actions.push({ id: "EVIDENCE_ADD_REQUIRED", severity: "HIGH", note: "No evidence present for host; run evidence capture/test and store evidenceKey(host)." });
+        }
+        if (!last_tick) {
+          actions.push({ id: "TICK_MISSING", severity: "MED", note: "No last_tick; cron may not be running for this host route or host is unknown." });
+        }
+        if (!b || typeof b.limit !== "number") {
+          actions.push({ id: "BUDGET_SHAPE_FIX", severity: "MED", note: "Budget shape invalid; restore default budget object." });
+        }
+        if (!c || typeof c.version !== "number") {
+          actions.push({ id: "CHARTER_SHAPE_FIX", severity: "LOW", note: "Charter missing/invalid; restore default charter." });
+        }
+
+        push("AUTONOMY_REPAIR_PLAN", { ok: true, host: __host, stamp: nowIso(), actions, count: actions.length });
+        continue;
+      }
+      if (line === "AUTONOMY_REPAIR_EXECUTE" || fullLine === "AUTONOMY_REPAIR_EXECUTE" || fullLine.startsWith("AUTONOMY_REPAIR_EXECUTE ")) {
+        if (!isOperator) { push("AUTONOMY_REPAIR_EXECUTE", "UNAUTHORIZED"); continue; }
+
+        // Deterministic, host-scoped execution of safe repairs only.
+        // Contract supports:
+        //  (A) Inline JSON:   AUTONOMY_REPAIR_EXECUTE {"applyTick":true,"applyBudget":true,"applyCharter":true,"recordFailure":true}
+        //  (B) Envelope JSON: AUTONOMY_REPAIR_EXECUTE\n{...}
+        let obj = null;
+        let consumed = 0;
+
+        if (fullLine.startsWith("AUTONOMY_REPAIR_EXECUTE ")) {
+          const raw = fullLine.slice("AUTONOMY_REPAIR_EXECUTE ".length).trim();
+          try { obj = JSON.parse(raw); }
+          catch (e) { push("AUTONOMY_REPAIR_EXECUTE", { ok:false, error:"BAD_JSON", note:String(e && e.message ? e.message : e) }); continue; }
+        } else {
+          const n = String(nextLine || "").trim();
+          if (n && n.startsWith("{")) {
+            try { obj = JSON.parse(n); consumed = 1; }
+            catch (e) { push("AUTONOMY_REPAIR_EXECUTE", { ok:false, error:"BAD_JSON_ENVELOPE", note:String(e && e.message ? e.message : e) }); continue; }
+          }
+        }
+
+        const applyTick     = (obj && typeof obj.applyTick === "boolean") ? obj.applyTick : true;
+        const applyBudget   = (obj && typeof obj.applyBudget === "boolean") ? obj.applyBudget : true;
+        const applyCharter  = (obj && typeof obj.applyCharter === "boolean") ? obj.applyCharter : true;
+        const recordFailure = (obj && typeof obj.recordFailure === "boolean") ? obj.recordFailure : true;
+
+        const hostLower = String(activeHost || __host || "").toLowerCase();
+        const results = [];
+
+        // 1) Ensure a tick exists (host-scoped tick key).
+        if (applyTick) {
+          const tickPayload = { ok: true, ts: nowIso(), count: 1, build: BUILD, note: "AUTONOMY_REPAIR_EXECUTE_TICK" };
+          await env.AURA_KV.put(__tickKey, JSON.stringify(tickPayload));
+          results.push({ fixed: "TICK_PRESENT", key: String(__tickKey) });
+        } else {
+          results.push({ skipped: "TICK_PRESENT" });
+        }
+
+        // 2) Ensure budget shape exists (host-scoped).
+        const b = (await __readJsonKV(__budgetKey)) || null;
+        const bOk = Boolean(b && typeof b.limit === "number" && typeof b.spent === "number" && typeof b.window === "string");
+        if (!bOk) {
+          if (applyBudget) {
+            const budget = { limit: __defaultBudget.limit, spent: __defaultBudget.spent, window: __defaultBudget.window, updated_at: nowIso() };
+            await env.AURA_KV.put(__budgetKey, JSON.stringify(budget));
+            results.push({ fixed: "BUDGET_SHAPE", key: String(__budgetKey), budget });
+          } else {
+            results.push({ needs: "BUDGET_SHAPE", key: String(__budgetKey) });
+          }
+        } else {
+          results.push({ ok: "BUDGET_SHAPE" });
+        }
+
+        // 3) Ensure charter shape exists (host-scoped).
+        const c = (await __readJsonKV(__charterKey)) || null;
+        const cOk = Boolean(c && typeof c.version === "number" && typeof c.text === "string");
+        if (!cOk) {
+          if (applyCharter) {
+            const charter = { version: __defaultCharter.version, text: __defaultCharter.text, updated_at: nowIso() };
+            await env.AURA_KV.put(__charterKey, JSON.stringify(charter));
+            results.push({ fixed: "CHARTER_SHAPE", key: String(__charterKey), charter });
+          } else {
+            results.push({ needs: "CHARTER_SHAPE", key: String(__charterKey) });
+          }
+        } else {
+          results.push({ ok: "CHARTER_SHAPE" });
+        }
+
+        // 4) Evidence: do NOT fabricate evidence. Report missing as actionable + optionally record failure memory.
+        const evPresent = hostLower ? Boolean(await env.AURA_KV.get(evidenceKey(hostLower))) : false;
+        if (!evPresent) {
+          results.push({ needs: "EVIDENCE_PRESENT", key: evidenceKey(hostLower), note: "EVIDENCE_NOT_AUTO_SEEDED" });
+          if (recordFailure) {
+            try {
+              const key = "FAILURE_MEMORY__" + __host;
+              const existing = (await __readJsonKV(key)) || [];
+              const arr = Array.isArray(existing) ? existing : [];
+              arr.push({ at: nowIso(), code: "EVIDENCE_MISSING", detail: "AUTONOMY_REPAIR_EXECUTE detected missing evidence for host=" + hostLower });
+              const bounded = arr.slice(-200);
+              await env.AURA_KV.put(key, JSON.stringify(bounded));
+              results.push({ recorded: "FAILURE_MEMORY", key, code: "EVIDENCE_MISSING" });
+            } catch (e) {
+              results.push({ warn: "FAILURE_MEMORY_WRITE_FAILED", note: String(e && e.message ? e.message : e) });
+            }
+          }
+        } else {
+          results.push({ ok: "EVIDENCE_PRESENT" });
+        }
+
+        push("AUTONOMY_REPAIR_EXECUTE", { ok: true, host: hostLower, stamp: nowIso(), results });
+
+        if (consumed) { i += consumed; }
+        continue;
+      }if (line === "AUTONOMY_STATUS") {
+        const b = (await __readJsonKV(__budgetKey)) || __defaultBudget;
+        const c = (await __readJsonKV(__charterKey)) || __defaultCharter;
+        const last = await env.AURA_KV.get(__tickKey);
+
+        const evidencePresent = activeHost
+          ? Boolean(await env.AURA_KV.get(evidenceKey(String(activeHost).toLowerCase())))
+          : false;
+
+        const last_tick = (await (async()=>{
+          const cron = await env.AURA_KV.get(autonomyTickKeyForHost(activeHost), { type: "json" }).catch(()=>null);
+          const cronTs = (cron && (cron.ts || cron.stamp)) ? String(cron.ts || cron.stamp) : null;

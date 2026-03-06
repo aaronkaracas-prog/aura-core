@@ -1,0 +1,13 @@
+HOST auras.guide
+SHOW_BUILD
+REGISTRY_GET PATCH_INDEX_ACTIVE__auras.guide
+REGISTRY_GET {"key":"PATCH_INDEX_ACTIVE__auras.guide"}
+REGISTRY_GET {"id":"PATCH_INDEX_ACTIVE__auras.guide"}
+REGISTRY_LIST
+REGISTRY_FILTER patch_obj_
+REGISTRY_FILTER patch_object
+REGISTRY_FILTER recordfailure
+REGISTRY_FILTER patch_index_recordfailure_fix
+PATCH_OBJECT_GET patch_obj_recordfailure_fix__20260302_01
+PATCH_OBJECT_GET {"id":"patch_obj_recordfailure_fix__20260302_01"}
+SNAPSHOT_STATE

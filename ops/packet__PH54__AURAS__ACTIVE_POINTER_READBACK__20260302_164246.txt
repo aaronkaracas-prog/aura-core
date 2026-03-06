@@ -1,0 +1,7 @@
+HOST auras.guide
+SHOW_BUILD
+REGISTRY_GET PATCH_INDEX_ACTIVE__auras.guide
+PATCH_INDEX_GET patch_index_recordfailure_fix__20260302_01
+PATCH_OBJECT_GET patch_obj_recordfailure_fix__20260302_01
+PATCH_INDEX_STATUS
+SNAPSHOT_STATE

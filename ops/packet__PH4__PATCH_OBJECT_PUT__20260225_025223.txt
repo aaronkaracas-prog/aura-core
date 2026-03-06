@@ -1,0 +1,2 @@
+HOST auras.guide
+PATCH_OBJECT_PUT {"id":"patch_obj_mut1__20260225_025223","host":"auras.guide","tags":["phase4","mutation","kv_only","no_deploy"],"kind":"patch_mutation_v1","created_at":"20260225_025223","body":{"mutation":{"replace":"PATCH_INDEX_GET","type":"replace_literal_once","find":"PATCH_INDEX_GET"},"proof":{"suffix_value":"ph4__20260225_025223","suffix_key":"build_suffix:auras.guide"},"target":"kv_only","note":"Phase4: deterministic string mutation (kv-only)."}}

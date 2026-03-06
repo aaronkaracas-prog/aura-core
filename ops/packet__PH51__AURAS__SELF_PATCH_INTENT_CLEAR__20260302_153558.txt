@@ -1,0 +1,4 @@
+HOST auras.guide
+SELF_PATCH_PUT {"host":"auras.guide","intent":null,"note":"PH51 clear stale multi-host intent"}
+SELF_PATCH_GET
+SNAPSHOT_STATE

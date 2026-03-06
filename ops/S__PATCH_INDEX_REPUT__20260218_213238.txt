@@ -1,0 +1,5 @@
+﻿HOST auras.guide
+PATCH_INDEX_PUT {"name":"ui_fix_01","find":"if (/^HOSTs+/m.test(trimmed)) return trimmed;","replace":"if (/^HOST\\s+/mi.test(trimmed)) return trimmed;","note":"fix HOST regex: missing \\\\s"}
+PATCH_INDEX_PUT {"name":"ui_fix_02","find":"return 'HOST ' + activeHost + '\n' + trimmed;","replace":"return 'HOST ' + activeHost + '\\n' + trimmed;","note":"fix newline escape in normalizeInputForHost"}
+PATCH_INDEX_PUT {"name":"ui_fix_03","find":"const res = await postChat('HOST ' + activeHost + '\nSHOW_BUILD');","replace":"const res = await postChat('HOST ' + activeHost + '\\nSHOW_BUILD');","note":"fix newline escape in pullBuild payload"}
+PATCH_INDEX_STATUS

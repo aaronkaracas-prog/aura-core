@@ -1,0 +1,7 @@
+HOST auras.guide
+HERD_SELF_TEST
+HERD_SWEEP
+HERD_STATUS
+REGISTRY_GET {"type":"domain_sweep_latest","id":"frontdesk.network"}
+REGISTRY_GET {"type":"domain_sweep_latest","id":"malibu.city"}
+REGISTRY_AUDIT_TRAIL

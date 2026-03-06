@@ -1,0 +1,18 @@
+HOST auras.guide
+VERIFIED_FETCH_URL
+https://example.com/
+VERIFIED_FETCH_URL
+{"url":"https://example.com/"}
+VERIFIED_FETCH_URL
+{"public_url":"https://example.com/"}
+VERIFIED_FETCH_URL
+{"target":"https://example.com/"}
+VERIFIED_FETCH_URL
+{"href":"https://example.com/"}
+CLEAR_VERIFIED_FETCH
+{}
+CLEAR_VERIFIED_FETCH
+{"scope":"all"}
+CLEAR_VERIFIED_FETCH
+{"host":"auras.guide"}
+SNAPSHOT_STATE

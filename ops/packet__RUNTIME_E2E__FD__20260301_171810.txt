@@ -1,0 +1,6 @@
+HOST frontdesk.network
+RUNTIME_COMMAND_DEFINE HELLO_WORLD
+push("HELLO_SIDE_EFFECT", { ok:true, stamp: (new Date()).toISOString() }); return "OK_EXEC";
+RUNTIME_COMMAND_EXECUTE HELLO_WORLD
+ignored_input
+

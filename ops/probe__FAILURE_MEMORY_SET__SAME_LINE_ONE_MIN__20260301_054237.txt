@@ -1,0 +1,2 @@
+HOST frontdesk.network
+FAILURE_MEMORY_SET {"items":[{"id":"synthetic__min__20260301_054237","ts":"2026-03-01T13:42:37.9327334Z","summary":"synthetic"}]}

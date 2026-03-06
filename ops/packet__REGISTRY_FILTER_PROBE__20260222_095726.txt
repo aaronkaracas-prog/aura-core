@@ -1,0 +1,7 @@
+HOST auras.guide
+REGISTRY_FILTER assets
+{"tags":["proof"]}
+REGISTRY_FILTER
+{"type":"assets","filter":{"tags":["proof"]}}
+REGISTRY_FILTER assets tags=proof
+REGISTRY_AUDIT_TRAIL

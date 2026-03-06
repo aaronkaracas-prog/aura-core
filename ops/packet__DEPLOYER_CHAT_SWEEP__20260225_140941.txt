@@ -1,0 +1,7 @@
+HOST auras.guide
+DEPLOYER_CALL {"body":{},"method":"GET","path":"/chat","service":"AURA_DEPLOYER"}
+DEPLOYER_CALL {"body":{},"method":"GET","path":"/chat/","service":"AURA_DEPLOYER"}
+DEPLOYER_CALL {"body":{},"method":"GET","path":"/api","service":"AURA_DEPLOYER"}
+DEPLOYER_CALL {"body":{},"method":"GET","path":"/api/chat","service":"AURA_DEPLOYER"}
+DEPLOYER_CALL {"body":{},"method":"GET","path":"/v1","service":"AURA_DEPLOYER"}
+DEPLOYER_CALL {"body":{},"method":"GET","path":"/v1/chat","service":"AURA_DEPLOYER"}

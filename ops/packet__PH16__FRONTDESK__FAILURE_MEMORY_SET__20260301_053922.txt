@@ -1,0 +1,13 @@
+HOST frontdesk.network
+FAILURE_MEMORY_SET
+{
+    "items":  [
+                  {
+                      "summary":  "Synthetic failure seed via FAILURE_MEMORY_SET to force non-empty plan; remove after verification.",
+                      "host":  "frontdesk.network",
+                      "kind":  "SYNTHETIC_PROBE",
+                      "id":  "synthetic__set_probe__20260301_053922",
+                      "ts":  "2026-03-01T13:39:22.8282990Z"
+                  }
+              ]
+}

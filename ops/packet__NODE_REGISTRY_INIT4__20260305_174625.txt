@@ -1,0 +1,4 @@
+REGISTRY_PUT
+{"id":"aura_nodes","value":{"nodes":["auras.guide"]}}
+REGISTRY_GET
+{"id":"aura_nodes"}

@@ -1,0 +1,6 @@
+HOST malibu.city
+REGISTRY_AUDIT_TRAIL
+REGISTRY_GET {"type":"domain_sweep_latest","id":"frontdesk.network"}
+REGISTRY_GET {"type":"domain_sweep_latest","id":"malibu.city"}
+REGISTRY_GET {"type":"domains","id":"frontdesk.network"}
+REGISTRY_GET {"type":"domains","id":"malibu.city"}

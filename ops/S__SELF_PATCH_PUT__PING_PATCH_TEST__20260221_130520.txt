@@ -1,0 +1,3 @@
+HOST auras.guide
+SELF_PATCH_PUT
+{"intent":{"name":"PING_PATCH_TEST","obj":{"note":"probe-after-f47c70bd","ts":"20260221_130520"}}}

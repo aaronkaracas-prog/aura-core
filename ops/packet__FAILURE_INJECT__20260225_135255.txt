@@ -1,0 +1,3 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT {"id":"TEST_FAIL_01","note":"controlled_injection","severity":"low"}
+FAILURE_MEMORY_GET

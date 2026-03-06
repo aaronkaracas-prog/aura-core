@@ -1,0 +1,25 @@
+PATCH_V1
+TARGET_FILE: src/index.js
+
+SEARCH:
+    // ----------------------------
+    // AUTONOMY PRIMITIVES (single command; read-only stubs)
+    // ----------------------------
+    if (bodyTrim === "AUTONOMY_STATUS") return jsonReply(JSON.stringify({ ok: true }, null, 2));
+    if (bodyTrim === "AUTONOMY_LAST_TICK") return jsonReply(JSON.stringify({ ok: true }, null, 2));
+
+    if (bodyTrim === "AUTONOMY_LAST_TICK_SET") return jsonReply(JSON.stringify({ ok: true, note: "requires envelope" }, null, 2));
+if (bodyTrim === "AUTONOMY_CAPABILITIES") return jsonReply({ ok: true });
+    if (bodyTrim === "INTENT_SIMULATE") return jsonReply(JSON.stringify({ ok: true, note: "preview-only" }, null, 2));
+    if (bodyTrim === "REGISTRY_AUDIT_TRAIL") return jsonReply(JSON.stringify({ ok: true, note: "placeholder" }, null, 2));
+    // [PATCH] removed placeholder AUTONOMY_BUDGET_GET early-return; allow batch execution
+    if (bodyTrim === "AUTONOMY_BUDGET_SET") return jsonReply(JSON.stringify({ ok: true, note: "requires envelope" }, null, 2));
+    if (bodyTrim === "FAILURE_MEMORY_GET") return jsonReply(JSON.stringify({ ok: true }, null, 2));
+    if (bodyTrim === "FAILURE_MEMORY_PUT") return jsonReply(JSON.stringify({ ok: true, note: "requires envelope" }, null, 2));
+    if (bodyTrim === "AUTONOMY_CHARTER_GET") return jsonReply(JSON.stringify({ ok: true }, null, 2));
+    if (bodyTrim === "AUTONOMY_CHARTER_SET") return jsonReply(JSON.stringify({ ok: true, note: "requires envelope" }, null, 2));
+
+REPLACE:
+
+
+END_PATCH

@@ -1,0 +1,2 @@
+HOST auras.guide
+REGISTRY_AUDIT_TRAIL

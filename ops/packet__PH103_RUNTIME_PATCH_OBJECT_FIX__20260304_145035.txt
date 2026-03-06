@@ -1,0 +1,3 @@
+RUNTIME_COMMAND_DEFINE PATCH_OBJECT_PUT
+async ({args, env}) => { const raw=args[0]; if(!raw){return {ok:false,error:'MISSING'}}; const [id,b64]=raw.split('|'); if(!id||!b64){return {ok:false,error:'BAD_FORMAT'}}; await env.AURA_KV.put('patch_object:'+id,b64); return {ok:true,id}; }
+RUNTIME_COMMAND_GET PATCH_OBJECT_PUT

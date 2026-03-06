@@ -1,0 +1,3 @@
+﻿HOST auras.guide
+PATCH_OBJECT_PUT {"name":"ui_inline_script_head","text":"(paste the first ~80 lines of the inline script here exactly)","note":"capture head for crash-site scan"}
+PATCH_OBJECT_GET {"name":"ui_inline_script_head"}

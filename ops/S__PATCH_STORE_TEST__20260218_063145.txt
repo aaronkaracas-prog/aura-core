@@ -1,0 +1,3 @@
+HOST auras.guide
+PATCH_STORE {"id":"AUTO_TEST_01","type":"BUILD_SUFFIX_APPEND","marker":"__AUTO_RUNTIME_TEST__01"}
+

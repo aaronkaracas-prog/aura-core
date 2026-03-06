@@ -1,0 +1,4 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT
+{ "at": "20260222_141039", "code": "REPAIR_EXECUTE_TICK_ONLY", "detail": "AUTONOMY_REPAIR_EXECUTE appears stubbed: returns only TICK_PRESENT regardless of goal/context. Next work: implement parsing + action synthesis for REPAIR_PLAN/EXECUTE in index.js. Charter pointer pattern proven via PATCH_OBJECT id." }
+FAILURE_MEMORY_GET

@@ -1,0 +1,10 @@
+﻿
+
+Algorithm : SHA256
+Hash      : 7EBD9C77D763F7D4796F80536D6C9622C8CDF432A11CBBA7CA
+            6B223AFC524415
+Path      : C:\Users\Aaron 
+            Karacas\aura-worker\aura\src\index.js
+
+
+

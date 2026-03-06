@@ -1,0 +1,7 @@
+HOST example.com
+CLEAR_VERIFIED_FETCH
+AUTONOMY_REPAIR_PLAN
+AUTONOMY_REPAIR_EXECUTE {"applyTick":true,"applyBudget":true,"applyCharter":false,"recordFailure":true}
+EVIDENCE_PRESENT
+AUTONOMY_STATUS
+SHOW_BUILD

@@ -1,0 +1,23 @@
+HOST auras.guide
+REGISTRY_LIST domains
+REGISTRY_LIST assets
+REGISTRY_GET domains 0
+REGISTRY_GET domains 1
+REGISTRY_GET domains 2
+REGISTRY_GET domains 3
+REGISTRY_GET domains 4
+REGISTRY_GET domains 5
+REGISTRY_GET domains 6
+REGISTRY_GET domains 7
+REGISTRY_GET domains 8
+REGISTRY_GET domains 9
+REGISTRY_GET assets 0
+REGISTRY_GET assets 1
+REGISTRY_GET assets 2
+REGISTRY_GET assets 3
+REGISTRY_GET assets 4
+REGISTRY_GET assets 5
+REGISTRY_GET assets 6
+REGISTRY_GET assets 7
+REGISTRY_GET assets 8
+REGISTRY_GET assets 9

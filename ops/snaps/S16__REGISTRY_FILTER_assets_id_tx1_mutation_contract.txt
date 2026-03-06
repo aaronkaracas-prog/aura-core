@@ -1,0 +1,2 @@
+﻿HOST auras.guide
+REGISTRY_FILTER {"type":"assets","field":"id","value":"tx1_mutation_contract","limit":50}

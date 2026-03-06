@@ -1,0 +1,4 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT
+{ "at": "20260222_124746", "code": "PATCH_INDEX_B64_DECODE_PROVEN", "detail": "Local decode: indexB64 decodes to JSON whose objects[] contains patchObjId=patch_obj_indexlink__20260222_123831 ; indexId=patch_index_probe__20260222_123907 ; PATCH_INDEX_GET patch_index_probe__20260222_123907 returns present:true bytes_b64=344. End-to-end index content confirmed (no deploy)." }
+FAILURE_MEMORY_GET

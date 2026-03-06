@@ -1,0 +1,5 @@
+﻿HOST auras.guide
+PATCH_INDEX_PUT guard_test Z3VhcmRfdGVzdA==
+PATCH_INDEX_GET guard_test
+PATCH_INDEX_DELETE guard_test
+PATCH_INDEX_GET guard_test

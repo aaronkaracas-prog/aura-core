@@ -1,0 +1,4 @@
+HOST auras.guide
+SNAPSHOT_STATE
+PATCH_INDEX_GET
+

@@ -1,0 +1,5 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT
+{"key":"post_mutation_proof","value":{"ts":"20260221_202246","note":"failure_memory_roundtrip_proof","build_hint":"AUTO_RUNTIME_TEST__01"}}
+FAILURE_MEMORY_GET
+{"key":"post_mutation_proof"}

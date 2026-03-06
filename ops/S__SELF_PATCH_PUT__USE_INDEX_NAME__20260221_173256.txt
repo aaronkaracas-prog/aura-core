@@ -1,0 +1,3 @@
+HOST auras.guide
+SELF_PATCH_PUT
+{"intent":{"name":"canon_index_test","obj":{"note":"attempt_transform_via_index_name","ts":"20260221_173256"}}}

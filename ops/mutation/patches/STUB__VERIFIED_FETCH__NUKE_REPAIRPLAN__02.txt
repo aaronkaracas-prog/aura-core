@@ -1,0 +1,90 @@
+PATCH_V1
+TARGET_FILE: src/index.js
+
+SEARCH:
+      push("VERIFIED_FETCH_URL", ev);
+      if (ev && ev.ok && ev.host) { __seededThisRequest.add(String(ev.host).toLowerCase()); }
+      continue;
+    }
+
+    if (line.startsWith("EVIDENCE_PRESENT")) {
+      const parts = line.split(" ").filter(Boolean);
+      const host = normalizeHostLoose(parts[1]) || activeHost;
+      if (!host) { push("EVIDENCE_PRESENT", "BAD_REQUEST"); continue; }
+      const stored = await env.AURA_KV.get(evidenceKey(host));
+      push("EVIDENCE_PRESENT", stored ? (safeJsonParse(stored) || stored) : "NO_EVIDENCE");
+      continue;
+    }
+
+    if (line === "SHOW_MEMORY_SCHEMA") {
+      push("SHOW_MEMORY_SCHEMA", memorySchemaV1);
+      continue;
+    }
+
+if (line === "PAUSE") { push("PAUSE", { cmd: "PAUSE", paused: true, host: activeHost, note: "DETERMINISTIC_PAUSE_ACK_V2_BATCH" }); continue; }
+if (line === "SHOW_BUILD") {
+  push("SHOW_BUILD", { build: BUILD, stamp: new Date().toISOString() });
+  continue;
+}
+
+if (line === "SHOW_CLAIM_GATE") {
+  push("SHOW_CLAIM_GATE", {
+    trigger_words: [
+      "live","deployed","launched","resolving","propagating","successful","verified","up","online","working","reachable","available","accessible"
+    ],
+    forced_message: "NOT WIRED: VERIFIED_FETCH REQUIRED",
+    requires_verified_fetch_format: true
+  });
+  continue;
+}
+
+if (line === "SHOW_ALLOWED_COMMANDS") {
+  push("SHOW_ALLOWED_COMMANDS", allowedCommands);
+  continue;
+}
+
+
+REPLACE:
+      push("VERIFIED_FETCH_URL", ev);
+      if (ev && ev.ok && ev.host) { __seededThisRequest.add(String(ev.host).toLowerCase()); }
+      continue;
+    }
+
+    if (line.startsWith("EVIDENCE_PRESENT")) {
+      const parts = line.split(" ").filter(Boolean);
+      const host = normalizeHostLoose(parts[1]) || activeHost;
+      if (!host) { push("EVIDENCE_PRESENT", "BAD_REQUEST"); continue; }
+      const stored = await env.AURA_KV.get(evidenceKey(host));
+      push("EVIDENCE_PRESENT", stored ? (safeJsonParse(stored) || stored) : "NO_EVIDENCE");
+      continue;
+    }
+
+    if (line === "SHOW_MEMORY_SCHEMA") {
+      push("SHOW_MEMORY_SCHEMA", memorySchemaV1);
+      continue;
+    }
+
+if (line === "PAUSE") { push("PAUSE", { cmd: "PAUSE", paused: true, host: activeHost, note: "DETERMINISTIC_PAUSE_ACK_V2_BATCH" }); continue; }
+if (line === "SHOW_BUILD") {
+  push("SHOW_BUILD", { build: BUILD, stamp: new Date().toISOString() });
+  continue;
+}
+
+if (line === "SHOW_CLAIM_GATE") {
+  push("SHOW_CLAIM_GATE", {
+    trigger_words: [
+      "live","deployed","launched","resolving","propagating","successful","verified","up","online","working","reachable","available","accessible"
+    ],
+    forced_message: "NOT WIRED: VERIFIED_FETCH REQUIRED",
+    requires_verified_fetch_format: true
+  });
+  continue;
+}
+
+if (line === "SHOW_ALLOWED_COMMANDS") {
+  push("SHOW_ALLOWED_COMMANDS", allowedCommands);
+  continue;
+}
+
+
+END_PATCH

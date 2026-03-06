@@ -1,0 +1,3 @@
+FAILURE_MEMORY_SET
+{"items":[{"id":"test_failure","reason":"patch_exception_test"}]}
+FAILURE_MEMORY_GET

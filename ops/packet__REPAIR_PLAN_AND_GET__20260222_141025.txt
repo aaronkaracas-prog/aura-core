@@ -1,0 +1,4 @@
+HOST auras.guide
+AUTONOMY_REPAIR_PLAN
+{ "mode": "proof_no_deploy", "goal": "Create a resolve-only plan based on SELF_PATCH intent. Checks: SELF_PATCH_GET; PATCH_INDEX_GET patch_index_probe__20260222_123907; PATCH_OBJECT_GET patch_obj_indexlink__20260222_123831; decode index b64 locally and confirm objects[] contains patch_object_id. No apply, no deploy.", "context": { "index_id": "patch_index_probe__20260222_123907", "patch_object_id": "patch_obj_indexlink__20260222_123831", "charter_body_id": "charter_body_v11__20260222_140529", "stamp": "20260222_141025" } }
+AUTONOMY_REPAIR_PLAN_GET

@@ -1,0 +1,3 @@
+HOST auras.guide
+PATCH_OBJECT_GET
+{"id":"PH6_RECEIPT__auras.guide","note":"if empty, next step is add a tiny READ helper in index.js"}

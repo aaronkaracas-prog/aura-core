@@ -1,0 +1,5 @@
+HOST auras.guide
+FAILURE_MEMORY_SET
+{"items":[{"code":"NEEDS_PLANNER_ACTION","detail":"PH6 proof: planner must emit one kv_only action + receipt."}]}
+FAILURE_MEMORY_GET
+AUTONOMY_REPAIR_PLAN

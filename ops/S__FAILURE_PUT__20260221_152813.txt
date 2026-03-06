@@ -1,0 +1,3 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT
+{"type":"UI_WIRING_TEST","severity":"high","note":"force-autonomy-test","ts":"20260221_152813"}

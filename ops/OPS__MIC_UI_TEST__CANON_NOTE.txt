@@ -1,0 +1,3 @@
+﻿HOST auras.guide
+FAILURE_MEMORY_PUT
+{"host":"auras.guide","item":{"code":"MIC_UI_TEST_CANON","detail":"CANON - Authoritative mic evidence: MIC_UI_TEST=PASS_FINAL_LOCKED and MIC_UI_TEST_UX=<see entry>. Earlier FAIL/FAIL_CONFIRMED/FAIL_FINAL entries were template placeholders used during workflow testing and are non-authoritative."}}

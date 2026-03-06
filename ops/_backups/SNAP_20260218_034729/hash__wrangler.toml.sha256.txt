@@ -1,0 +1,10 @@
+﻿
+
+Algorithm : SHA256
+Hash      : 282979C5F3F1570FBC7B79ABD9B5030AA3E2EF0C395724BF4A
+            035BED98A891AA
+Path      : C:\Users\Aaron 
+            Karacas\aura-worker\aura\wrangler.toml
+
+
+

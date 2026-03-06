@@ -1,0 +1,6 @@
+HOST auras.guide
+SELF_PATCH_PUT
+{"intent":{"name":"mutation_kv_put_roundtrip","note":"Execute MUTATION_KV_PUT_TEST and return MUTATION_APPLIED receipt.","mode":"proof_kv_put"},"stamp":"20260224_194542"}
+SELF_PATCH_GET
+SELF_PATCH_EXECUTE
+FAILURE_MEMORY_GET

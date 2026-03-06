@@ -1,0 +1,2 @@
+HOST frontdesk.network
+REGISTRY_PUT CANON {"id":"TIER3_COMPLETE__frontdesk.network__20260301","status":"AUTONOMY_READY","build":"AUTO_RUNTIME_TEST__01","capabilities":25,"budget_limit":777,"health":"OK"}

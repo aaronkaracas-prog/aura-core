@@ -1,0 +1,301 @@
+        `- Explain identity/capabilities and how to operate\n` +
+        `- Show allowed commands, build, snapshot, memory schema\n` +
+        `- Read registries (GET/LIST/FILTER) within host caps\n\n` +
+        `What requires VERIFIED_FETCH and/or operator token:\n` +
+        `- Claims like live/deployed/reachable\n` +
+        `- Writes (registry puts), deployer calls, DNS changes\n\n` +
+        `Next commands to run:\n` +
+        `1) SHOW_ALLOWED_COMMANDS\n` +
+        `2) SHOW_BUILD\n` +
+        `3) SNAPSHOT_STATE\n` +
+        `4) SHOW_MEMORY_SCHEMA\n` +
+        `5) REGISTRY_LIST domains\n\n` +
+        `Tip: In UI, use ALL-CAPS commands. For multi-line ops, use PowerShell batch mode.`;
+      return Response.json({ ok: true, reply: msg });
+    }
+
+    // ----------------------------
+    // Build / policy markers
+    // ----------------------------
+    // ----------------------------
+    // Operator auth (explicit only)
+    // ----------------------------
+    // operatorToken/operatorHeader/isOperator are computed above (early)
+
+    // If a token is configured and a caller presents a token header that does not match,
+    // fail closed (prevents accidental success with a wrong token).
+    const operatorHeaderPresent = Boolean(operatorHeader);
+    const operatorMismatch = Boolean(operatorToken) && operatorHeaderPresent && operatorHeader !== operatorToken;
+    if (operatorMismatch) return Response.json({ ok: true, reply: "UNAUTHORIZED" });
+
+    // ----------------------------
+    // Commands (global allowlist)
+    // ----------------------------
+    const allowedCommands = [
+      "MIC_PROBE",
+      "PING",
+      "SHOW_BUILD",
+      "SHOW_CLAIM_GATE",
+      "SHOW_ALLOWED_COMMANDS",
+      "AUTONOMY_REPAIR_PLAN",
+      "AUTONOMY_REPAIR_EXECUTE",
+      "SELF_AUDIT_FULL",
+      "RUN_SELF_TEST_EVIDENCE",
+      "VERIFIED_FETCH_URL",
+      "CLEAR_VERIFIED_FETCH",
+      "EVIDENCE_PRESENT",
+      "SNAPSHOT_STATE",
+      "HOST_CAPS_GET",
+      "HOST_CAPS_SET",
+      "DEPLOYER_CAPS",
+      "DEPLOYER_CALL",
+      "PAUSE",
+      "INTENT_ADD",
+      "INTENT_GET",
+      "INTENT_CLEAR",
+      "SHOW_MEMORY_SCHEMA",
+      "REGISTRY_PUT",
+      "REGISTRY_GET",
+      "REGISTRY_LIST",
+      "REGISTRY_FILTER",
+      "REGISTRY_IMPORT_ASSETS",
+      "REGISTRY_IMPORT_DOMAINS",
+      "PORTFOLIO_STATUS",
+      "AUDIT_GET",
+      "AUDIT_CLEAR",
+      "HERD_STATUS",
+      "HERD_SELF_TEST",
+      "HERD_SWEEP",
+  "AUTONOMY_STATUS",
+  "AUTONOMY_LAST_TICK",
+        "AUTONOMY_LAST_TICK_SET",
+  "AUTONOMY_CAPABILITIES",
+  "INTENT_SIMULATE",
+  "REGISTRY_AUDIT_TRAIL",
+  "AUTONOMY_BUDGET_GET",
+  "AUTONOMY_BUDGET_SET",
+  "FAILURE_MEMORY_GET",
+  "FAILURE_MEMORY_PUT",
+  "FAILURE_MEMORY_CLEAR",
+  "FAILURE_MEMORY_SET",
+  "SELF_PATCH_PUT",
+  "SELF_PATCH_GET",
+  "SELF_PATCH_APPLY",
+  "PATCH_INDEX_STATUS",
+  "PATCH_INDEX_PUT",
+  "PATCH_INDEX_GET","PATCH_INDEX_APPLY",
+"PATCH_OBJECT_PUT",
+"PATCH_OBJECT_GET",
+  "AUTONOMY_CHARTER_GET",
+  "AUTONOMY_CHARTER_SET",
+];
+
+    // ----------------------------
+    // Helpers
+    // ----------------------------
+    const normalizeHost = (u) => {
+      try {
+        const s = String(u || "").trim();
+        if (!s) return null;
+
+        const hasScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(s);
+        const url = new URL(hasScheme ? s : ("https://" + s));
+
+        const h = (url.host || "").toLowerCase();
+        return h || null;
+      } catch {
+        return null;
+      }
+    };
+
+    // Accept either a full URL or a bare domain token.
+    const normalizeHostLoose = (s) => {
+      if (!s) return null;
+      const h = normalizeHost(s);
+      if (h)   // Auto-forward operator token to downstream service if caller is operator and header not explicitly provided.
+  try {
+    const hk = Object.keys(h || {}).find(k => String(k).toLowerCase() === "x-operator-token");
+    if (!hk && isOperator && operatorHeader) h["X-Operator-Token"] = operatorHeader;
+  } catch (_) {}
+  return h;
+      const t = String(s).trim().toLowerCase();
+      if (!t) return null;
+      // Basic sanity: must contain a dot and only valid hostname chars.
+      if (!t.includes(".")) return null;
+      if (!/^[a-z0-9.-]+$/.test(t)) return null;
+      return t;
+    };
+
+    const extractLastUrl = (txt) => {
+      const matches = [...txt.matchAll(/https?:\/\/[^\s]+/g)];
+      return matches.length ? matches[matches.length - 1][0] : null;
+    };
+
+    // Extract a bare domain mention like example.com (no scheme).
+    // Returns the last plausible domain token found in the message.
+    const extractLastBareDomain = (txt) => {
+      // labels + TLD; excludes trailing punctuation due to \b
+      const re =
+        /\b([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+)\b/gi;
+      const matches = [];
+      let m;
+      while ((m = re.exec(txt)) !== null) {
+        const d = (m[1] || "").toLowerCase();
+        if (!d) continue;
+        if (d === "localhost") continue;
+        matches.push(d);
+      }
+      return matches.length ? matches[matches.length - 1] : null;
+    };
+
+    const statusReachable = (st) => Number(st) >= 200 && Number(st) < 400;
+    const evidenceKey = (host) => `verified_fetch:${host}`;
+    const capsKey = (host) => `host_caps:${host}`;
+    const intentKey = (host, tag) => `intent:${host}:${tag}`;
+// ----------------------------
+// Memory Substrate v1 (storage-backed; no model memory)
+// ----------------------------
+const REGISTRY_VERSION = "v1";
+
+const registryKey = (type, id) => `reg:${REGISTRY_VERSION}:${type}:${id}`;
+const registryIndexKey = (type) => `reg:${REGISTRY_VERSION}:index:${type}`;
+const registryMetaKey = (type) => `reg:${REGISTRY_VERSION}:meta:${type}`;
+
+const auditSeqKey = (host) => `audit:${REGISTRY_VERSION}:${host}:seq`;
+const auditEventKey = (host, seq) => `audit:${REGISTRY_VERSION}:${host}:event:${seq}`;
+const auditClearedAtKey = (host) => `audit:${REGISTRY_VERSION}:${host}:cleared_at`;
+
+const nowIso = () => new Date().toISOString();
+// SELF_PATCH_TRANSFORM_V1 (top-level) — required for non-batch execution paths
+const __selfPatchTransform_v1 = async (supported, ctx) => {
+  try {
+    if (!supported) return null;
+
+    // Existing deterministic smoke test path
+    if (supported === "PING_PATCH_TEST") {
+      return {
+        stage: "EXECUTED",
+        receipt: {
+          ts: new Date().toISOString(),
+          type: "SELF_PATCH_EXECUTED_V1",
+          note: "Deterministic test execution path confirmed."
+        }
+      };
+    }
+
+    const env = ctx && ctx.env ? ctx.env : null;
+    if (!env || !env.AURA_KV) {
+      return {
+        stage: "NOT_WIRED",
+        receipt: {
+          ts: new Date().toISOString(),
+          type: "SELF_PATCH_TRANSFORM_V1",
+          note: "Missing env.AURA_KV"
+        }
+      };
+    }
+
+    // Minimal mutation proof — KV put + immediate get (host-scoped)
+    if (supported === "MUTATION_KV_PUT_TEST") {
+      const host = (ctx && ctx.activeHost) ? String(ctx.activeHost).toLowerCase() : "unknown";
+      const key = `SELF_PATCH_MUTATION_TEST__${host}`;
+      const payload = {
+        ok: true,
+        host,
+        ts: new Date().toISOString(),
+        note: "proof_kv_put_roundtrip"
+      };
+
+      await env.AURA_KV.put(key, JSON.stringify(payload));
+      const got = await env.AURA_KV.get(key);
+
+      return {
+        stage: "MUTATION_APPLIED",
+        mutation: {
+          type: "KV_PUT_ROUNDTRIP",
+          key,
+          bytes: got ? String(got).length : 0
+        },
+        receipt: {
+          ts: new Date().toISOString(),
+          type: "SELF_PATCH_MUTATION_V1",
+          note: "KV put/get roundtrip succeeded."
+        }
+      };
+    }
+
+    // Treat supported as a PATCH_INDEX id and prove we can resolve -> object -> b64 -> JSON
+    const idxId = String(supported).trim();
+    const idxKey = `patch_index:${idxId}`;
+    const objIdRaw = await env.AURA_KV.get(idxKey);
+    const objId = (objIdRaw ? String(objIdRaw).trim() : "");
+    if (!objId) {
+      return {
+        stage: "NO_PATCH_INDEX",
+        receipt: {
+          ts: new Date().toISOString(),
+          type: "SELF_PATCH_TRANSFORM_V1",
+          note: `No patch index for ${idxId}`
+        }
+      };
+    }
+
+    const objKey = `patch_object:${objId}`;
+    const b64 = await env.AURA_KV.get(objKey);
+    if (!b64) {
+      return {
+        stage: "NO_PATCH_OBJECT",
+        receipt: {
+          ts: new Date().toISOString(),
+          type: "SELF_PATCH_TRANSFORM_V1",
+          note: `No patch object for ${objId}`
+        }
+      };
+    }
+
+    let parsed = null;
+    try {
+      const bin = atob(String(b64));
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const jsonText = new TextDecoder("utf-8").decode(bytes);
+      parsed = JSON.parse(jsonText);
+    } catch (_) {}
+
+    return {
+      stage: "PATCH_ASSET_RESOLVED",
+      patch: {
+        index_id: idxId,
+        object_id: objId,
+        bytes_b64: String(b64).length,
+        json_ok: !!parsed
+      },
+      receipt: {
+        ts: new Date().toISOString(),
+        type: "SELF_PATCH_TRANSFORM_V1",
+        note: "Resolved patch_index -> patch_object and decoded b64 (no mutation executed)."
+      }
+    };
+  } catch (e) {
+    return {
+      stage: "EXCEPTION",
+      receipt: {
+        ts: new Date().toISOString(),
+        type: "SELF_PATCH_TRANSFORM_EXCEPTION_V1",
+        message: String(e && e.message ? e.message : e)
+      }
+    };
+  }
+};
+
+const safeJsonParse = (s) => {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Parse JSON arguments for commands in batch payloads.
+ * Supports:

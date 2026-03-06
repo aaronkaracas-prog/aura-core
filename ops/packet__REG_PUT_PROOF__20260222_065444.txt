@@ -1,0 +1,4 @@
+HOST auras.guide
+REGISTRY_PUT
+{"type":"assets","id":"reg_put_proof__20260222_065444","value":{"ts":"20260222_065444","note":"reg_put_proof"}}
+REGISTRY_AUDIT_TRAIL

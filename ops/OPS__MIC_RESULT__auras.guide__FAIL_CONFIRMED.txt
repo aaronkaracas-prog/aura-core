@@ -1,0 +1,3 @@
+﻿HOST auras.guide
+FAILURE_MEMORY_PUT
+{"host":"auras.guide","item":{"code":"MIC_UI_TEST","detail":"FAIL_CONFIRMED - <real reason here: permission denied / no audio device / UI error text / browser blocked>"}}

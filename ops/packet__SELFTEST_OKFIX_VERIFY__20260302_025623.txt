@@ -1,0 +1,3 @@
+HOST auras.guide
+RUN_SELF_TEST_EVIDENCE
+

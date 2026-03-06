@@ -1,0 +1,13 @@
+HOST auras.guide
+AUDIT_GET
+REGISTRY_AUDIT_TRAIL
+{"type":"domains"}
+
+REGISTRY_IMPORT_DOMAINS
+{"domains":["healthtime.world"]}
+
+REGISTRY_IMPORT_DOMAINS
+{"list":["healthtime.world"]}
+
+REGISTRY_IMPORT_DOMAINS
+{"items":[{"id":"healthtime.world","domain":"healthtime.world","pillar":"PHASE1"}]}

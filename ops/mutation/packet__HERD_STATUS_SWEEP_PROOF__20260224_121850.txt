@@ -1,0 +1,6 @@
+HOST auras.guide
+HERD_STATUS
+HERD_SWEEP
+REGISTRY_GET domain_sweep_latest malibu.city
+REGISTRY_GET domain_sweep_latest frontdesk.network
+

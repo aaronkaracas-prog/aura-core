@@ -1,0 +1,2 @@
+HOST auras.guide
+DEPLOYER_CALL {"body":{},"method":"GET","path":"/","service":"AURA_DEPLOYER"}

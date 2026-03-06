@@ -1,0 +1,9 @@
+HOST auras.guide
+VERIFIED_FETCH_URL {"url":"https://example.com/","timeout_ms":2000}
+VERIFIED_FETCH_URL {"public_url":"https://example.com/","timeout_ms":2000}
+VERIFIED_FETCH_URL {"target":"https://example.com/","timeout_ms":2000}
+VERIFIED_FETCH_URL {"href":"https://example.com/","timeout_ms":2000}
+CLEAR_VERIFIED_FETCH {}
+CLEAR_VERIFIED_FETCH {"scope":"all"}
+CLEAR_VERIFIED_FETCH {"host":"auras.guide"}
+SNAPSHOT_STATE

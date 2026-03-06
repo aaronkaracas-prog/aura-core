@@ -1,0 +1,2 @@
+HOST frontdesk.network
+REGISTRY_PUT CANON {"created_at":"2026-03-01T09:59:55.9397152-08:00","host":"frontdesk.network","source":{"patch_object_id":"patch_obj_mut2__20260228_055839","index_id":"patch_index_mut2__20260228_055839"},"id":"PATCH_OBJECT_DECODED__patch_obj_mut2__20260228_055839","decoded":{"op":"failure_memory_put","stamp":"20260228_055839","payload":{"code":"PH8_MUT2_PROOF","detail":"PH8_MUT2__20260228_055839"},"note":"PH8_MUT2 controlled failure_memory mutation","kind":"patch_mutation_v1","target":"FAILURE_MEMORY"}}

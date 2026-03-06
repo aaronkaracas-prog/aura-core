@@ -1,0 +1,6 @@
+HOST auras.guide
+VERIFIED_FETCH_URL
+{"url":"https://example.com/","timeout_ms":2000}
+CLEAR_VERIFIED_FETCH
+{}
+EVIDENCE_PRESENT

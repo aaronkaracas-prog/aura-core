@@ -1,0 +1,9 @@
+HOST malibu.city
+PATCH_OBJECT_GET PH6_RECEIPT__malibu.city
+
+HOST frontdesk.network
+PATCH_OBJECT_GET PH6_RECEIPT__frontdesk.network
+
+HOST auras.guide
+PATCH_OBJECT_GET PH6_RECEIPT__auras.guide
+

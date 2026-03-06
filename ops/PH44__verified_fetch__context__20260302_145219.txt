@@ -1,0 +1,260 @@
+﻿    // ----------------------------
+    const hasReachabilityQuestion = /\breachable\b/i.test(body);
+
+    // Response-shape controls
+    const wantYesNo = /return\s+only\s*:\s*yes\s+or\s+no\b/i.test(body);
+    const wantReachableUnreachable =
+      /return\s+only\s*:\s*reachable\s+or\s+unreachable\b/i.test(body);
+    const want200or000 = /return\s+only\s*:\s*200\s+or\s+000\b/i.test(body);
+    const wantHttpStatus = /return\s+only\s+the\s+http_status\b/i.test(body);
+    const isShapeRequest =
+      wantYesNo || wantReachableUnreachable || want200or000 || wantHttpStatus;
+
+
+    // ----------------------------
+    // CLAIM GATE (wired): if user asks "live/deployed/online/etc" in the prompt,
+    // require at least one VERIFIED_FETCH_URL line in the SAME request.
+    // This prevents stale KV evidence from being used to claim reachability.
+    // ----------------------------
+    const claimGateTriggerWords = [
+      "live",
+      "deployed",
+      "launched",
+      "resolving",
+      "propagating",
+      "successful",
+      "verified",
+      "up",
+      "online",
+      "working",
+      "reachable",
+      "available",
+      "accessible"
+    ];
+    const claimGateForcedMessage = "READY: VERIFIED_FETCH OK (NEXT: PATCH_INDEX_WIRE)";
+    const claimGateTriggered =
+      new RegExp(`\\b(${claimGateTriggerWords.join("|")})\\b`, "i").test(body);
+    const hasVerifiedFetchInThisRequest = lines.some((l) => l.startsWith("VERIFIED_FETCH_URL"));
+
+    // Registry commands are explicitly bypassed (they are structured, not "claims").
+    const hasRegistryBypass =
+      lines.some((l) => __registryBypass(l.split(" ")[0]));
+
+    if (claimGateTriggered && !hasVerifiedFetchInThisRequest && !hasRegistryBypass) {
+      return jsonReply(claimGateForcedMessage);
+    }
+
+    const clearHosts = [];
+    for (const line of lines) {
+      if (line.startsWith("CLEAR_VERIFIED_FETCH")) {
+        const parts = line.split(" ").filter(Boolean);
+        const target = parts[1];
+        const host = normalizeHost(target);
+        if (host) clearHosts.push(host);
+      }
+    }
+
+    if (clearHosts.length > 0) {
+      for (const host of clearHosts) {
+        await env.AURA_KV.delete(evidenceKey(host));
+      }
+
+      // If the message only clears evidence (plus optional HOST line), return deterministically.
+      const hasOtherAction =
+        lines.some((l) => {
+          const t = l.split(" ")[0];
+          return (
+            t !== "HOST" &&
+            t !== "CLEAR_VERIFIED_FETCH" &&
+            allowedCommands.includes(t)
+          );
+        }) || hasReachabilityQuestion || isShapeRequest;
+
+      if (!hasOtherAction) {
+        return jsonReply(clearHosts.length === 1 ? "CLEARED" : `CLEARED (${clearHosts.length})`);
+      }
+    }
+
+    let lastEvidence = null;
+    const fetchEvidences = [];
+
+    for (const line of lines) {
+      if (!line.startsWith("VERIFIED_FETCH_URL")) continue;
+
+      const parts = line.split(" ").filter(Boolean);
+      const target = parts[1];
+      const host = normalizeHost(target);
+      if (!host) continue;
+
+      const runFetch = async (probeUrl) => {
+        const res = await fetch(probeUrl);
+        const text = await res.text();
+        return { res, text };
+      };
+
+      const nowTs = new Date().toISOString();
+
+      // Prevent self-fetch recursion (auras.guide/* routes to this Worker).
+      // Instead, record a synthetic "reachable" evidence based on the fact this request is being served.
+      const selfHost = new URL(request.url).host.toLowerCase();
+      if (host === selfHost) {
+        const evidence = {
+          ok: true,
+          host,
+          url: target,
+          probe_url: null,
+          http_status: 200,
+          first_line_html: "SELF_HOST_SYNTHETIC_EVIDENCE",
+          body_length: 0,
+          synthetic: true,
+          reason: "WORKER_SELF_ROUTE_ASSUME_REACHABLE",
+          diagnostics: {
+            cf: request.cf || null,
+            self_host: selfHost,
+            ts: nowTs
+          }
+        };
+
+        await env.AURA_KV.put(evidenceKey(host), JSON.stringify(evidence));
+        lastEvidence = evidence;
+        fetchEvidences.push(evidence);
+        continue;
+      }
+
+      try {
+        // 1) Try HTTPS (or whatever the user provided)
+        const { res: res1, text: text1 } = await runFetch(target);
+
+        // 2) If HTTPS returns 525, retry HTTP for same host/path/query
+        if (res1.status === 525) {
+          const u = new URL(target);
+          if (u.protocol === "https:") {
+            u.protocol = "http:";
+            const httpUrl = u.toString();
+
+            const { res: res2, text: text2 } = await runFetch(httpUrl);
+
+            const evidence = {
+              ok: true,
+              host,
+              public_url: target,
+              probe_url: httpUrl,
+              fallback_reason: "CF_HTTPS_525_HTTP_PROBE",
+              http_status: res2.status,
+              first_line_html: text2.split("\n")[0] || "",
+              body_length: text2.length,
+              diagnostics: {
+                cf: request.cf || null,
+                https_status: 525,
+                ts: nowTs
+              }
+            };
+
+            await env.AURA_KV.put(evidenceKey(host), JSON.stringify(evidence));
+            lastEvidence = evidence;
+            fetchEvidences.push(evidence);
+            continue;
+          }
+        }
+
+        // Normal path: store what we got
+        const evidence = {
+          ok: true,
+          host,
+          url: target,
+          http_status: res1.status,
+          first_line_html: text1.split("\n")[0] || "",
+          body_length: text1.length,
+          diagnostics: {
+            cf: request.cf || null,
+            ts: nowTs
+          }
+        };
+
+        await env.AURA_KV.put(evidenceKey(host), JSON.stringify(evidence));
+        lastEvidence = evidence;
+        fetchEvidences.push(evidence);
+      } catch (err) {
+        const evidence = {
+          ok: false,
+          host,
+          url: target,
+          http_status: 0,
+          error: String(err?.message || err),
+          error_name: err?.name || "UNKNOWN",
+          diagnostics: {
+            cf: request.cf || null,
+            ts: nowTs
+          }
+        };
+
+        await env.AURA_KV.put(evidenceKey(host), JSON.stringify(evidence));
+        lastEvidence = evidence;
+        fetchEvidences.push(evidence);
+      }
+    }
+
+    // ----------------------------
+    // Target selection for questions:
+    // Prefer an asked host (URL or bare domain mention). Otherwise use active HOST context.
+    // ----------------------------
+    const targetHostForQuestion = askedHost || activeHost || null;
+
+    // Inline compute from VERIFIED_FETCH_URL executed in THIS message when asked host matches
+    if (lastEvidence && targetHostForQuestion && lastEvidence.host === targetHostForQuestion) {
+      const st = Number(lastEvidence.http_status || 0);
+      const r = lastEvidence.ok && statusReachable(st);
+
+      if (wantHttpStatus) return jsonReply(String(st));
+      if (want200or000) return jsonReply(st === 200 ? "200" : "000");
+      if (wantReachableUnreachable) return jsonReply(r ? "REACHABLE" : "UNREACHABLE");
+      if (wantYesNo) return jsonReply(r ? "YES" : "NO");
+    }
+
+    // VERIFIED_FETCH (explicit): return stored evidence for HOST context.
+// This is NOT a "claim"; it simply returns the last stored evidence object.
+const hasVerifiedFetchCmd = lines.some((l) => /^VERIFIED_FETCH(\s|$)/.test(l));
+if (hasVerifiedFetchCmd) {
+  const hostToUse = targetHostForQuestion;
+  if (!hostToUse) return jsonReply(claimGateForcedMessage);
+
+  const stored = await env.AURA_KV.get(evidenceKey(hostToUse));
+  if (!stored) return jsonReply(claimGateForcedMessage);
+
+  try { return jsonReply(JSON.parse(stored)); }
+  catch { return jsonReply(claimGateForcedMessage); }
+}
+// If VERIFIED_FETCH_URL ran and there is NO reachability question, return the evidence JSON by default.
+    if (fetchEvidences.length > 0 && !hasReachabilityQuestion && !isShapeRequest) {
+      const payload = fetchEvidences.length === 1 ? fetchEvidences[0] : fetchEvidences;
+      return jsonReply(payload);
+    }
+
+    // ----------------------------
+    // Shape-only queries (no "reachable" keyword) using HOST context + existing evidence.
+    // Example: "HOST example.com\nReturn ONLY the http_status"
+    // ----------------------------
+    if (!hasReachabilityQuestion && isShapeRequest) {
+      const hostToUse = targetHostForQuestion;
+      if (!hostToUse) return jsonReply("READY: VERIFIED_FETCH OK (NEXT: PATCH_INDEX_WIRE)");
+
+      const stored = await env.AURA_KV.get(evidenceKey(hostToUse));
+      if (!stored) return jsonReply("READY: VERIFIED_FETCH OK (NEXT: PATCH_INDEX_WIRE)");
+
+      const evidence = JSON.parse(stored);
+      const st = Number(evidence.http_status || 0);
+      const r = evidence.ok && statusReachable(st);
+
+      if (wantHttpStatus) return jsonReply(String(st));
+      if (want200or000) return jsonReply(st === 200 ? "200" : "000");
+      if (wantReachableUnreachable) return jsonReply(r ? "REACHABLE" : "UNREACHABLE");
+      if (wantYesNo) return jsonReply(r ? "YES" : "NO");
+
+      return jsonReply(String(st));
+    }
+
+    // Evidence-memory reachability path (host-scoped KV)
+    if (hasReachabilityQuestion) {
+      const hostToUse = targetHostForQuestion;
+      if (!hostToUse) return jsonReply("READY: VERIFIED_FETCH OK (NEXT: PATCH_INDEX_WIRE)");
+

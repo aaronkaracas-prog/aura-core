@@ -1,0 +1,3 @@
+﻿HOST auras.guide
+PATCH_INDEX_GET {"id":"pix_20260218_151549"}
+

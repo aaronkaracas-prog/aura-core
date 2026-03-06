@@ -1,0 +1,18 @@
+PATCH_V1
+TARGET_FILE: src/index.js
+
+SEARCH:
+    return jsonReply("NOT WIRED: VERIFIED_FETCH REQUIRED");
+
+REPLACE:
+    // DBG: prove which path we are in + what lines/tok look like right before stub.
+    try {
+      const __dbg_one = (lines && lines.length >= 1) ? String(lines[0] || "") : "";
+      const __dbg_tok = String((__dbg_one || "").trim().split(" ")[0] || "").trim();
+      return jsonReply({ ok: true, reply: { dbg: "LATEGATE_BEFORE_STUB", lines_len: (lines ? lines.length : null), one: __dbg_one, tok: __dbg_tok, host: String(activeHost||"").toLowerCase() } });
+    } catch (_) {
+      return jsonReply({ ok: true, reply: { dbg: "LATEGATE_BEFORE_STUB_ERR" } });
+    }
+    return jsonReply("NOT WIRED: VERIFIED_FETCH REQUIRED");
+
+END_PATCH

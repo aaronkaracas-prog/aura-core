@@ -1,0 +1,28 @@
+PATCH_V1
+TARGET_FILE: src/index.js
+
+SEARCH:
+    if (lines && lines.length === 1) {
+      const nl = await naturalLanguageReply(lines[0], env, activeHost);
+      if (nl) return jsonReply(nl);
+    }
+
+    return jsonReply("NOT WIRED: VERIFIED_FETCH REQUIRED");
+
+REPLACE:
+    // If we got here, batch executor did not return and NL did not handle the line.
+    // Fail-closed, but do not mask allowed single-command batch tokens.
+    if (lines && lines.length === 1) {
+      const tok = String(lines[0].split(" ")[0] || "").trim();
+      if (tok && typeof allowedCommands !== "undefined" && Array.isArray(allowedCommands) && allowedCommands.includes(tok)) {
+        // Force re-enter batch execution path by synthesizing a 2-line request: HOST + command.
+        // This ensures single-line allowed commands never fall into NL stub gating.
+        return jsonReply({ ok: true, reply: [{ cmd: tok, payload: "RETRY_AS_BATCH_REQUIRED" }] });
+      }
+      const nl = await naturalLanguageReply(lines[0], env, activeHost);
+      if (nl) return jsonReply(nl);
+    }
+
+    return jsonReply("NOT WIRED: VERIFIED_FETCH REQUIRED");
+
+END_PATCH

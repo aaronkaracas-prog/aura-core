@@ -1,0 +1,2 @@
+HOST auras.guide
+PATCH_INDEX_GET canon_index_test

@@ -1,0 +1,90 @@
+PATCH_V1
+TARGET_FILE: src/index.js
+
+SEARCH:
+    // Response-shape controls
+    const wantYesNo = /return\s+only\s*:\s*yes\s+or\s+no\b/i.test(body);
+    const wantReachableUnreachable =
+      /return\s+only\s*:\s*reachable\s+or\s+unreachable\b/i.test(body);
+    const want200or000 = /return\s+only\s*:\s*200\s+or\s+000\b/i.test(body);
+    const wantHttpStatus = /return\s+only\s+the\s+http_status\b/i.test(body);
+    const isShapeRequest =
+      wantYesNo || wantReachableUnreachable || want200or000 || wantHttpStatus;
+
+
+    // ----------------------------
+    // CLAIM GATE (wired): if user asks "live/deployed/online/etc" in the prompt,
+    // require at least one VERIFIED_FETCH_URL line in the SAME request.
+    // This prevents stale KV evidence from being used to claim reachability.
+    // ----------------------------
+    const claimGateTriggerWords = [
+      "live",
+      "deployed",
+      "launched",
+      "resolving",
+      "propagating",
+      "successful",
+      "verified",
+      "up",
+      "online",
+      "working",
+      "reachable",
+      "available",
+      "accessible"
+    ];
+    const claimGateForcedMessage = "NOT WIRED: VERIFIED_FETCH REQUIRED";
+    const claimGateTriggered =
+      new RegExp(`\\b(${claimGateTriggerWords.join("|")})\\b`, "i").test(body);
+    const hasVerifiedFetchInThisRequest = lines.some((l) => l.startsWith("VERIFIED_FETCH_URL"));
+
+    // Registry commands are explicitly bypassed (they are structured, not "claims").
+    const hasRegistryBypass =
+      lines.some((l) => __registryBypass(l.split(" ")[0]));
+
+    if (claimGateTriggered && !hasVerifiedFetchInThisRequest && !hasRegistryBypass) {
+      return jsonReply(claimGateForcedMessage);
+
+REPLACE:
+    // Response-shape controls
+    const wantYesNo = /return\s+only\s*:\s*yes\s+or\s+no\b/i.test(body);
+    const wantReachableUnreachable =
+      /return\s+only\s*:\s*reachable\s+or\s+unreachable\b/i.test(body);
+    const want200or000 = /return\s+only\s*:\s*200\s+or\s+000\b/i.test(body);
+    const wantHttpStatus = /return\s+only\s+the\s+http_status\b/i.test(body);
+    const isShapeRequest =
+      wantYesNo || wantReachableUnreachable || want200or000 || wantHttpStatus;
+
+
+    // ----------------------------
+    // CLAIM GATE (wired): if user asks "live/deployed/online/etc" in the prompt,
+    // require at least one VERIFIED_FETCH_URL line in the SAME request.
+    // This prevents stale KV evidence from being used to claim reachability.
+    // ----------------------------
+    const claimGateTriggerWords = [
+      "live",
+      "deployed",
+      "launched",
+      "resolving",
+      "propagating",
+      "successful",
+      "verified",
+      "up",
+      "online",
+      "working",
+      "reachable",
+      "available",
+      "accessible"
+    ];
+    const claimGateForcedMessage = "NOT WIRED: VERIFIED_FETCH REQUIRED";
+    const claimGateTriggered =
+      new RegExp(`\\b(${claimGateTriggerWords.join("|")})\\b`, "i").test(body);
+    const hasVerifiedFetchInThisRequest = lines.some((l) => l.startsWith("VERIFIED_FETCH_URL"));
+
+    // Registry commands are explicitly bypassed (they are structured, not "claims").
+    const hasRegistryBypass =
+      lines.some((l) => __registryBypass(l.split(" ")[0]));
+
+    if (claimGateTriggered && !hasVerifiedFetchInThisRequest && !hasRegistryBypass) {
+      return jsonReply(claimGateForcedMessage);
+
+END_PATCH

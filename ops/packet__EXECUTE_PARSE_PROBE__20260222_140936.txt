@@ -1,0 +1,9 @@
+HOST auras.guide
+AUTONOMY_REPAIR_EXECUTE
+{ "mode": "dry_run_read_only", "goal": "PARSE_PROBE_VALID", "context": { "stamp": "
+20260222_140936
+" } }
+AUTONOMY_REPAIR_EXECUTE
+{ "mode": "dry_run_read_only", "goal": "PARSE_PROBE_INVALID", "context": { "stamp": "
+20260222_140936
+" } 

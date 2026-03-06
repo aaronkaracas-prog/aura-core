@@ -1,0 +1,5 @@
+HOST frontdesk.network
+CLEAR_VERIFIED_FETCH {}
+VERIFIED_FETCH_URL {"url":"https://frontdesk.network"}
+EVIDENCE_PRESENT frontdesk.network
+SNAPSHOT_STATE

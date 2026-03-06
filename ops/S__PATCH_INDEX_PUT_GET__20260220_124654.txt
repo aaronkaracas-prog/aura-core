@@ -1,0 +1,5 @@
+HOST auras.guide
+PATCH_INDEX_PUT
+{"id":"tx_stage_patch_001","b64":"AA=="}
+PATCH_INDEX_GET
+{"id":"tx_stage_patch_001"}

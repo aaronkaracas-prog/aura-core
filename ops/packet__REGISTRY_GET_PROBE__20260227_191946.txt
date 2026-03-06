@@ -1,0 +1,9 @@
+HOST malibu.city
+REGISTRY_GET 
+
+HOST frontdesk.network
+REGISTRY_GET 
+
+HOST auras.guide
+REGISTRY_GET 
+

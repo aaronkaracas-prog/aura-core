@@ -1,0 +1,3 @@
+﻿HOST auras.guide
+PATCH_INDEX_APPLY {"names":["ui_fix_01","ui_fix_02","ui_fix_03"],"note":"apply UI normalize/pullBuild fixes"}
+SHOW_BUILD

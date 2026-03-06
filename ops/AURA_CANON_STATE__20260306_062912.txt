@@ -1,0 +1,44 @@
+AURA CORE CANON STATE
+=====================
+
+Build:
+AURA_CORE__AUTONOMY_LAYERS__EVIDENCE_ALLOWLIST_HOSTCAPS_OPERATOR_INTENT_PAUSE__MEMORY_SUBSTRATE_V1__REGISTRY_AUDIT__20__AUTO_RUNTIME_TEST__01
+
+Host:
+auras.guide
+
+Autonomy Health:
+OK
+
+Capabilities Count:
+24
+
+Registry:
+assets = 45
+domains = 49
+
+Failure Memory:
+count = 0
+
+Patch Engine:
+PATCH_INDEX_V1_WIRED
+
+Herd Hosts:
+frontdesk.network
+malibu.city
+
+Autonomy Tick:
+ACTIVE
+
+Budget:
+limit = 100
+spent = 0
+
+Charter:
+version = 11
+
+Audit Completed:
+03/06/2026 06:29:19
+
+Result:
+SYSTEM VERIFIED OPERATIONAL

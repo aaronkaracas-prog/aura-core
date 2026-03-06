@@ -1,0 +1,3 @@
+HOST frontdesk.network
+SELF_AUDIT_FULL
+AUTONOMY_STATUS

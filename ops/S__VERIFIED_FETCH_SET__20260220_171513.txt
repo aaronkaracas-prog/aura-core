@@ -1,0 +1,4 @@
+HOST auras.guide
+VERIFIED_FETCH_URL_SET
+{ "url": "https://auras.guide/core" }
+VERIFIED_FETCH_URL_GET

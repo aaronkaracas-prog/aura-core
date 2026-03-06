@@ -1,0 +1,2 @@
+HOST auras.guide
+PATCH_OBJECT_PUT {"id":{"id":"canon_object_test"},"b64":"eyJ0cyI6IjIwMjYwMjIxXzE3MTk0MiIsIm5vdGUiOiJwYXRjaF9vYmplY3Rfcm91bmR0cmlwIn0="}

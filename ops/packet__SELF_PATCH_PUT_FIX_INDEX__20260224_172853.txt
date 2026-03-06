@@ -1,0 +1,7 @@
+HOST auras.guide
+SELF_PATCH_PUT {"stamp":"20260224_172853","intent":{"name":"resolve_index_link_only","mode":"proof_no_deploy","index_id":"patch_index_probe2__20260224_155327","patch_object_id":"patch_obj_indexlink__20260222_123831","note":"Fix intent index_id to known-present patch index; proof_no_deploy; do not deploy."}}
+SELF_PATCH_GET
+SELF_PATCH_APPLY
+PATCH_INDEX_GET
+FAILURE_MEMORY_GET
+AUDIT_GET

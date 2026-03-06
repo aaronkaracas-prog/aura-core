@@ -1,0 +1,5 @@
+HOST auras.guide
+PATCH_INDEX_PUT patch_index_probe2__20260224_155327 no_deploy patch_obj_indexlink__20260222_123831
+PATCH_INDEX_GET patch_index_probe2__20260224_155327
+SELF_PATCH_APPLY
+FAILURE_MEMORY_GET

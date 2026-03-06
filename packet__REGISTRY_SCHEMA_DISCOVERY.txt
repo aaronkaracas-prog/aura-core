@@ -1,0 +1,11 @@
+HOST auras.guide
+SHOW_MEMORY_SCHEMA
+SELF_AUDIT_FULL
+REGISTRY_FILTER
+{"type":"domains"}
+REGISTRY_FILTER
+{"type":"assets"}
+REGISTRY_GET
+{"type":"domains"}
+REGISTRY_GET
+{"type":"assets"}

@@ -1,0 +1,4 @@
+HOST auras.guide
+AUTONOMY_REPAIR_EXECUTE {"applyTick":true,"applyBudget":true,"applyCharter":false,"recordFailure":false}
+AUTONOMY_STATUS
+SHOW_BUILD

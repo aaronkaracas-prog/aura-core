@@ -1,0 +1,28 @@
+OPERATOR_INTENT
+Create a new Aura operator UI.
+
+Requirements:
+
+Sidebar with assets:
+Aura Core
+FrontDesk
+Malibu
+
+Main console:
+Chat interface similar to ChatGPT
+
+Tools:
+Microphone
+File Upload
+Clear Console
+
+Backend:
+POST /chat
+
+Publish route:
+/ui
+
+Use DEPLOYER_CALL if deployment is required.
+
+Return confirmation:
+UI_DEPLOYED

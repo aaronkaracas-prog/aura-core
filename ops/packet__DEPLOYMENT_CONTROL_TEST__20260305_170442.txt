@@ -1,0 +1,3 @@
+INTENT_SIMULATE
+{"intent":"deployment_probe","target":"aura_node_test"}
+AUTONOMY_STATUS

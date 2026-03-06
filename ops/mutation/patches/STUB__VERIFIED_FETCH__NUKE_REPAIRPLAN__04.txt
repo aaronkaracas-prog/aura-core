@@ -1,0 +1,90 @@
+PATCH_V1
+TARGET_FILE: src/index.js
+
+SEARCH:
+      const results = [];
+
+      await clearHost(hosts.example);
+      await clearHost(hosts.http404);
+
+      const ev0 = await getEvidence(hosts.example);
+      results.push(
+        mk(
+          "evidence_missing_example",
+          ev0 === null,
+          ev0 ? "EVIDENCE_PRESENT" : "EVIDENCE_MISSING",
+          "EVIDENCE_MISSING"
+        )
+      );
+
+      const ev1 = await putEvidence("https://example.com");
+      const yes1 = ev1.ok && statusReachable(ev1.http_status) ? "YES" : "NO";
+      results.push(mk("fetch_example_yes", yes1 === "YES", yes1, "YES"));
+
+      const ev2 = await putEvidence("https://httpstat.us/404");
+      const yes2 = ev2.ok && statusReachable(ev2.http_status) ? "YES" : "NO";
+      results.push(mk("fetch_404_no", yes2 === "NO", yes2, "NO"));
+
+      await clearHost(hosts.http404);
+      const httpAfterClear = await getEvidence(hosts.http404);
+      const shouldGate = httpAfterClear === null;
+      results.push(
+        mk(
+          "cross_host_gate_http404",
+          shouldGate,
+          shouldGate ? "NOT WIRED: VERIFIED_FETCH REQUIRED" : "HAS_EVIDENCE",
+          "NOT WIRED: VERIFIED_FETCH REQUIRED"
+        )
+      );
+
+      await clearHost(hosts.example);
+      await clearHost(hosts.http404);
+
+      const ok = results.every((r) => r.pass);
+      return jsonReply(JSON.stringify({ ok, tests: results }, null, 2));
+        }
+
+REPLACE:
+      const results = [];
+
+      await clearHost(hosts.example);
+      await clearHost(hosts.http404);
+
+      const ev0 = await getEvidence(hosts.example);
+      results.push(
+        mk(
+          "evidence_missing_example",
+          ev0 === null,
+          ev0 ? "EVIDENCE_PRESENT" : "EVIDENCE_MISSING",
+          "EVIDENCE_MISSING"
+        )
+      );
+
+      const ev1 = await putEvidence("https://example.com");
+      const yes1 = ev1.ok && statusReachable(ev1.http_status) ? "YES" : "NO";
+      results.push(mk("fetch_example_yes", yes1 === "YES", yes1, "YES"));
+
+      const ev2 = await putEvidence("https://httpstat.us/404");
+      const yes2 = ev2.ok && statusReachable(ev2.http_status) ? "YES" : "NO";
+      results.push(mk("fetch_404_no", yes2 === "NO", yes2, "NO"));
+
+      await clearHost(hosts.http404);
+      const httpAfterClear = await getEvidence(hosts.http404);
+      const shouldGate = httpAfterClear === null;
+      results.push(
+        mk(
+          "cross_host_gate_http404",
+          shouldGate,
+          shouldGate ? "NOT WIRED: VERIFIED_FETCH REQUIRED" : "HAS_EVIDENCE",
+          "NOT WIRED: VERIFIED_FETCH REQUIRED"
+        )
+      );
+
+      await clearHost(hosts.example);
+      await clearHost(hosts.http404);
+
+      const ok = results.every((r) => r.pass);
+      return jsonReply(JSON.stringify({ ok, tests: results }, null, 2));
+        }
+
+END_PATCH

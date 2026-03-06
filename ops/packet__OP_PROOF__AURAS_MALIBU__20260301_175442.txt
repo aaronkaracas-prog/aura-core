@@ -1,0 +1,8 @@
+HOST auras.guide
+AUTONOMY_BUDGET_SET {"limit":777,"window":"day"}
+AUTONOMY_BUDGET_GET
+
+HOST malibu.city
+AUTONOMY_BUDGET_SET {"limit":777,"window":"day"}
+AUTONOMY_BUDGET_GET
+

@@ -1,0 +1,2 @@
+﻿HOST auras.guide
+REGISTRY_GET assets tx1_patch_spec_v1

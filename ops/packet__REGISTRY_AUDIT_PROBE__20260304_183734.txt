@@ -1,0 +1,2 @@
+REGISTRY_PUT {"type":"assets","item":{"id":"audit_probe_20260304_183734","name":"Audit Trail Probe","pillar":"SYSTEM","notes":"registry write test"}}
+AUDIT_GET

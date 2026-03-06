@@ -1,0 +1,4 @@
+HOST auras.guide
+SELF_PATCH_PUT
+{"intent":{"name":"canon_index_test","obj":{"note":"post_mutation_patch_asset_resolution_proof","ts":"20260221_202125"}}}
+SELF_PATCH_APPLY

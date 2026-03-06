@@ -1,0 +1,4 @@
+PATCH_OBJECT_PUT patch_obj_recordfailure_fix__20260302_01 {"note":"PH59 probe A: id as positional arg","patch":{"type":"noop","note":"probe"} }
+PATCH_OBJECT_GET patch_obj_recordfailure_fix__20260302_01
+PATCH_OBJECT_PUT {"id":"patch_obj_recordfailure_fix__20260302_01","note":"PH59 probe B: id inside json","patch":{"type":"noop","note":"probe"}}
+PATCH_OBJECT_GET patch_obj_recordfailure_fix__20260302_01

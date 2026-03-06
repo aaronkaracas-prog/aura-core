@@ -1,0 +1,10 @@
+﻿HOST auras.guide
+PATCH_INDEX_PUT {"name":"ui_fix_norm_exact","find":"if (/^HOSTs+/m.test(trimmed)) return trimmed;","replace":"if (/^HOST\\s+/mi.test(trimmed)) return trimmed;","note":"fix HOST regex exactly as it exists in UI"}
+PATCH_INDEX_PUT {"name":"ui_fix_norm_newline_exact","find":"return 'HOST ' + activeHost + '
+' + trimmed;","replace":"return 'HOST ' + activeHost + '\\n' + trimmed;","note":"fix normalize newline exact (
+) -> \\n"}
+PATCH_INDEX_PUT {"name":"ui_fix_pullbuild_newline_exact","find":"const res = await postChat('HOST ' + activeHost + '
+SHOW_BUILD');","replace":"const res = await postChat('HOST ' + activeHost + '\\nSHOW_BUILD');","note":"fix pullBuild newline exact (
+) -> \\n"}
+PATCH_INDEX_APPLY {"names":["ui_fix_norm_exact","ui_fix_norm_newline_exact","ui_fix_pullbuild_newline_exact"],"note":"apply exact UI fixes (regex + newlines)"}
+SHOW_BUILD

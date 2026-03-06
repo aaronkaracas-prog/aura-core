@@ -1,0 +1,3 @@
+﻿HOST auras.guide
+FAILURE_MEMORY_PUT
+{"host":"auras.guide","item":{"code":"MIC_UI_TEST","detail":"FAIL_FINAL - <paste the exact observed reason from the browser/UI here; include browser name + error text if any>"}}

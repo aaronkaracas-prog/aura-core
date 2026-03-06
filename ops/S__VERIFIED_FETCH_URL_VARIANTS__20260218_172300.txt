@@ -1,0 +1,10 @@
+﻿HOST auras.guide
+VERIFIED_FETCH_URL
+VERIFIED_FETCH_URL example.com
+VERIFIED_FETCH_URL https://example.com
+VERIFIED_FETCH_URL https://example.com/
+VERIFIED_FETCH_URL auras.guide
+VERIFIED_FETCH_URL https://auras.guide
+VERIFIED_FETCH_URL https://auras.guide/
+VERIFIED_FETCH_URL www.auras.guide
+VERIFIED_FETCH_URL https://www.auras.guide

@@ -1,0 +1,4 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT
+{ "at": "20260222_123605", "code": "PATCH_OBJECT_POSARGS_PROVEN", "detail": "PATCH_OBJECT_PUT <id> <b64> stored:true; PATCH_OBJECT_GET present:true; bytes_b64=364; inline JSON rejected due to whitespace splitting; contract locked." }
+FAILURE_MEMORY_GET

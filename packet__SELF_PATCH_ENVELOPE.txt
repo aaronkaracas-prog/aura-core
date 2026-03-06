@@ -1,0 +1,3 @@
+HOST auras.guide
+SELF_PATCH_PUT file C:\Users\Aaron Karacas\aura-worker\aura\patch__build20_to_21.txt
+SELF_PATCH_GET

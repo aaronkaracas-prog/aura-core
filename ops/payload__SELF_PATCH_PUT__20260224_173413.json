@@ -1,0 +1,1 @@
+{"intent":{"index_id":"patch_index_probe2__20260224_155327","name":"resolve_index_link_only","patch_object_id":"patch_obj_indexlink__20260222_123831","mode":"proof_no_deploy","note":"Fix intent index_id to known-present patch index; proof_no_deploy; do not deploy."},"stamp":"20260224_173413"}

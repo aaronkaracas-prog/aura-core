@@ -1,0 +1,40 @@
+﻿PATCH_V1
+SEARCH:
+  const micBtn = document.getElementById('micBtn');
+REPLACE:
+  const micBtn = document.getElementById('micBtn');
+
+  // MIC_SUBSYSTEM_WIRED_V1
+  let micState = 'idle';           // idle | recording
+  let micStream = null;            // MediaStream
+  let micLastError = null;         // { name, message } or null
+
+  async function micStart(){
+    micLastError = null;
+    try{
+      if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+        micLastError = { name:'UNSUPPORTED', message:'navigator.mediaDevices.getUserMedia missing' };
+        addBubble('sys', 'Mic FAIL: UNSUPPORTED', true);
+        return;
+      }
+      micStream = await navigator.mediaDevices.getUserMedia({ audio:true });
+      micState = 'recording';
+      addBubble('sys', 'Mic OK: stream acquired (recording state set).', false);
+    }catch(e){
+      micLastError = { name:(e && e.name ? e.name : 'ERROR'), message:(e && e.message ? e.message : String(e)) };
+      micState = 'idle';
+      addBubble('sys', 'Mic FAIL: ' + micLastError.name + ' — ' + micLastError.message, true);
+    }
+  }
+
+  function micStop(){
+    try{
+      if(micStream && micStream.getTracks){
+        micStream.getTracks().forEach(t=>{ try{ t.stop(); }catch(_){} });
+      }
+    }catch(_){}
+    micStream = null;
+    micState = 'idle';
+    addBubble('sys', 'Mic stopped.', false);
+  }
+END_PATCH

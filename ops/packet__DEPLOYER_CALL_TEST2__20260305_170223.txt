@@ -1,0 +1,4 @@
+DEPLOYER_CALL
+{"service":"AURA_DEPLOYER","method":"GET","path":"/health"}
+DEPLOYER_CALL
+{"service":"AURA_CF","method":"GET","path":"/accounts"}

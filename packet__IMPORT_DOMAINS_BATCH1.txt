@@ -1,0 +1,3 @@
+HOST auras.guide
+REGISTRY_IMPORT_DOMAINS
+{"domains":["healthtime.world","patientflow.world","claimhelp.world","medicalrecords.world","paperwork.world","immigrationhelp.world","myneighborhood.world","sellstuff.world","liveevents.world","aroundtown.world"],"pillar":"PHASE1","status":"UNKNOWN","priority":"PHASE1"}

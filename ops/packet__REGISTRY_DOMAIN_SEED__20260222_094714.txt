@@ -1,0 +1,4 @@
+HOST auras.guide
+REGISTRY_PUT {"type":"domains","item":{"id":"domain__auras.guide","domain":"auras.guide","kind":"core","status":"LIVE","notes":"canonical domain record","tags":["core","production"],"owner":"ARK"}}
+REGISTRY_GET domains domain__auras.guide
+REGISTRY_AUDIT_TRAIL

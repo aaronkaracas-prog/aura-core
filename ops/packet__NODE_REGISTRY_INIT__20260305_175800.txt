@@ -1,0 +1,3 @@
+REGISTRY_PUT aura_nodes {"nodes":["auras.guide"]}
+REGISTRY_GET aura_nodes
+REGISTRY_LIST

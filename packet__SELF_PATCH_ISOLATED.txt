@@ -1,0 +1,4 @@
+HOST auras.guide
+SELF_PATCH_PUT
+HOST auras.guide
+SHOW_BUILD

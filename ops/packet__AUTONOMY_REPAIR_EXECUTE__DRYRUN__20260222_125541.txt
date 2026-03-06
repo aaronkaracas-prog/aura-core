@@ -1,0 +1,3 @@
+HOST auras.guide
+AUTONOMY_REPAIR_EXECUTE
+{ "mode": "dry_run_read_only", "goal": "Read-only: resolve SELF_PATCH intent and confirm linkage for index_id=patch_index_probe__20260222_123907 patch_object_id=patch_obj_indexlink__20260222_123831. Output checks performed and findings. No writes except logging.", "context": { "host": "auras.guide", "index_id": "patch_index_probe__20260222_123907", "patch_object_id": "patch_obj_indexlink__20260222_123831", "stamp": "20260222_125541" } }

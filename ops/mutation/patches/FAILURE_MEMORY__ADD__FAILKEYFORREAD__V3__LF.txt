@@ -1,0 +1,11 @@
+PATCH_V1
+TARGET_FILE: src/index.js
+
+SEARCH:
+      const __failKey    = `FAILURE_MEMORY__${__host}`;
+
+REPLACE:
+      const __failKey    = `FAILURE_MEMORY__${__host}`;
+      const __failKeyForRead = FAILURE_MEMORY__;
+
+END_PATCH

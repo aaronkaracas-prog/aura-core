@@ -1,0 +1,11 @@
+HOST auras.guide
+AUTONOMY_BUDGET_SET {"limit":778}
+AUTONOMY_BUDGET_GET
+SNAPSHOT_STATE
+PATCH_OBJECT_PUT {"id":"patch_obj_probe__20260224_135516","note":"patch object put proof","b64":"eyJvayI6dHJ1ZSwibm90ZSI6InBhdGNoX29ial9wcm9vZiJ9"}
+PATCH_OBJECT_GET patch_obj_probe__20260224_135516
+PATCH_INDEX_PUT {"id":"patch_index_probe2__20260224_135516","mode":"no_deploy","note":"patch index put proof (no deploy)","objects":["patch_obj_probe__20260224_135516"]}
+PATCH_INDEX_GET patch_index_probe2__20260224_135516
+PATCH_INDEX_STATUS
+AUDIT_GET
+FAILURE_MEMORY_GET

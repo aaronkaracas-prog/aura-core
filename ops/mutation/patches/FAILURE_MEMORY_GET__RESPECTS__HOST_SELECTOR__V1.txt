@@ -1,0 +1,20 @@
+PATCH_V1
+TARGET_FILE: src/index.js
+
+SEARCH:
+      if (line === "FAILURE_MEMORY_GET") {
+        const items = (await __readJsonKV(FAILURE_MEMORY__)) || [];
+        push("FAILURE_MEMORY_GET", { ok: true, host: ACTIVE_HOST, items: Array.isArray(items) ? items : [], count: Array.isArray(items) ? items.length : 0 });
+        continue;
+      }
+
+REPLACE:
+      if (line === "FAILURE_MEMORY_GET") {
+        const h = __host || ACTIVE_HOST;
+        const items = (await __readJsonKV("FAILURE_MEMORY__" + h)) || [];
+        const arr = Array.isArray(items) ? items : [];
+        push("FAILURE_MEMORY_GET", { ok: true, host: h, items: arr, count: arr.length });
+        continue;
+      }
+
+END_PATCH

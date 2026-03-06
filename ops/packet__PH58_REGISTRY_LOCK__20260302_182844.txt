@@ -1,0 +1,3 @@
+REGISTRY_PUT {"k":"CANON__PH58__POST_STABILIZATION","v":{"ph":"PH58","status":"COMPLETE","notes":["Wrapper injection removed","UTF-8 no BOM enforced","Runtime verified after restore"],"canon_locks":["auras.guide endpoint is /chat not /core","token length check must be on its own line (no concat with $ts)","AUTH_SANITY then OP_PROOF required before any writes"],"verified":{"operator":"YES","autonomy_tick":"OK","evidence_present":true}}}
+REGISTRY_GET {"k":"CANON__PH58__POST_STABILIZATION"}
+REGISTRY_AUDIT_TRAIL {"limit":10}

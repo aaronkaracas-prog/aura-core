@@ -1,0 +1,21 @@
+HOST malibu.city
+PATCH_OBJECT_PUT patch_obj_mut2__20260227_200250 eyJvcCI6ImZhaWx1cmVfbWVtb3J5X3B1dCIsInN0YW1wIjoiMjAyNjAyMjdfMjAwMjUwIiwicGF5bG9hZCI6eyJjb2RlIjoiUEg4X01VVDJfUFJPT0YiLCJkZXRhaWwiOiJQSDhfTVVUMl9fMjAyNjAyMjdfMjAwMjUwIn0sIm5vdGUiOiJQSDhfTVVUMiBjb250cm9sbGVkIGZhaWx1cmVfbWVtb3J5IG11dGF0aW9uIiwia2luZCI6InBhdGNoX211dGF0aW9uX3YxIiwidGFyZ2V0IjoiRkFJTFVSRV9NRU1PUlkifQ==
+PATCH_INDEX_PUT patch_index_mut2__20260227_200250 patch_obj_mut2__20260227_200250
+SELF_PATCH_PUT {"host":"multi","ok":true,"stamp":"2026-02-28T04:02:51.3591094Z","intent":{"intent":{"index_id":"patch_index_mut2__20260227_200250","name":"phase8_mut2_failure_memory","patch_object_id":"patch_obj_mut2__20260227_200250","mode":"mutation","note":"PH8_MUT2 controlled failure_memory proof"},"stamp":"20260227_200250"}}
+SELF_PATCH_APPLY
+FAILURE_MEMORY_GET
+
+HOST frontdesk.network
+PATCH_OBJECT_PUT patch_obj_mut2__20260227_200250 eyJvcCI6ImZhaWx1cmVfbWVtb3J5X3B1dCIsInN0YW1wIjoiMjAyNjAyMjdfMjAwMjUwIiwicGF5bG9hZCI6eyJjb2RlIjoiUEg4X01VVDJfUFJPT0YiLCJkZXRhaWwiOiJQSDhfTVVUMl9fMjAyNjAyMjdfMjAwMjUwIn0sIm5vdGUiOiJQSDhfTVVUMiBjb250cm9sbGVkIGZhaWx1cmVfbWVtb3J5IG11dGF0aW9uIiwia2luZCI6InBhdGNoX211dGF0aW9uX3YxIiwidGFyZ2V0IjoiRkFJTFVSRV9NRU1PUlkifQ==
+PATCH_INDEX_PUT patch_index_mut2__20260227_200250 patch_obj_mut2__20260227_200250
+SELF_PATCH_PUT {"host":"multi","ok":true,"stamp":"2026-02-28T04:02:51.3591094Z","intent":{"intent":{"index_id":"patch_index_mut2__20260227_200250","name":"phase8_mut2_failure_memory","patch_object_id":"patch_obj_mut2__20260227_200250","mode":"mutation","note":"PH8_MUT2 controlled failure_memory proof"},"stamp":"20260227_200250"}}
+SELF_PATCH_APPLY
+FAILURE_MEMORY_GET
+
+HOST auras.guide
+PATCH_OBJECT_PUT patch_obj_mut2__20260227_200250 eyJvcCI6ImZhaWx1cmVfbWVtb3J5X3B1dCIsInN0YW1wIjoiMjAyNjAyMjdfMjAwMjUwIiwicGF5bG9hZCI6eyJjb2RlIjoiUEg4X01VVDJfUFJPT0YiLCJkZXRhaWwiOiJQSDhfTVVUMl9fMjAyNjAyMjdfMjAwMjUwIn0sIm5vdGUiOiJQSDhfTVVUMiBjb250cm9sbGVkIGZhaWx1cmVfbWVtb3J5IG11dGF0aW9uIiwia2luZCI6InBhdGNoX211dGF0aW9uX3YxIiwidGFyZ2V0IjoiRkFJTFVSRV9NRU1PUlkifQ==
+PATCH_INDEX_PUT patch_index_mut2__20260227_200250 patch_obj_mut2__20260227_200250
+SELF_PATCH_PUT {"host":"multi","ok":true,"stamp":"2026-02-28T04:02:51.3591094Z","intent":{"intent":{"index_id":"patch_index_mut2__20260227_200250","name":"phase8_mut2_failure_memory","patch_object_id":"patch_obj_mut2__20260227_200250","mode":"mutation","note":"PH8_MUT2 controlled failure_memory proof"},"stamp":"20260227_200250"}}
+SELF_PATCH_APPLY
+FAILURE_MEMORY_GET
+

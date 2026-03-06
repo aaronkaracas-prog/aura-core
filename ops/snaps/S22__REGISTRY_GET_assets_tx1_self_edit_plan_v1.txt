@@ -1,0 +1,2 @@
+﻿HOST auras.guide
+REGISTRY_GET assets tx1_self_edit_plan_v1

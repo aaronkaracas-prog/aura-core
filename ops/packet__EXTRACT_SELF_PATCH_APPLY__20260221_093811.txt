@@ -1,0 +1,5 @@
+﻿HOST auras.guide
+
+PATCH_INDEX_GET
+{"id":"core_index","raw":true}
+

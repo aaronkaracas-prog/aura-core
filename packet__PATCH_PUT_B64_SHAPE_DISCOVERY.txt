@@ -1,0 +1,13 @@
+HOST auras.guide
+
+PATCH_INDEX_PUT proof__putshape__A
+{"id":"proof__putshape__A","b64":"UEFUQ0hfUFJPT0ZfVjE="}
+
+PATCH_INDEX_PUT proof__putshape__B UEFUQ0hfUFJPT0ZfVjE=
+
+PATCH_INDEX_PUT proof__putshape__C
+B64 UEFUQ0hfUFJPT0ZfVjE=
+
+PATCH_INDEX_GET proof__putshape__A
+PATCH_INDEX_GET proof__putshape__B
+PATCH_INDEX_GET proof__putshape__C

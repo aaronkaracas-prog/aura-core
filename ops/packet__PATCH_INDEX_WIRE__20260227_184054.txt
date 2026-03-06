@@ -1,0 +1,9 @@
+HOST malibu.city
+PATCH_INDEX_WIRE patch_index_src1__20260225_120906
+
+HOST frontdesk.network
+PATCH_INDEX_WIRE patch_index_src1__20260225_120906
+
+HOST auras.guide
+PATCH_INDEX_WIRE patch_index_src1__20260225_120906
+

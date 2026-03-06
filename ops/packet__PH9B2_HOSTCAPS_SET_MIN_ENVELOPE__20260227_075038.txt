@@ -1,0 +1,6 @@
+HOST frontdesk.network
+HOST_CAPS_SET
+{"allowed":["PING","HOST_CAPS_GET","HOST_CAPS_SET"]}
+HOST_CAPS_GET
+PING
+SHOW_BUILD

@@ -1,0 +1,3 @@
+HOST auras.guide
+PATCH_APPLY {"id":"AUTO_TEST_01"}
+

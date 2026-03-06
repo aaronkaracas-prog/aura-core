@@ -1,0 +1,4 @@
+HOST auras.guide
+SELF_PATCH_INTENT_SET
+{"id":"proof_stage_only","note":"stage-only proof","b64":"AA=="}
+SELF_PATCH_APPLY

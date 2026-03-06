@@ -1,0 +1,4 @@
+HOST auras.guide
+FAILURE_MEMORY_SET
+{"items":[{"code":"TICK_PRESENT","detail":"simulate missing tick"},{"code":"EVIDENCE_PRESENT","detail":"simulate missing verified_fetch evidence"},{"code":"BUDGET_SHAPE","detail":"simulate invalid budget shape"},{"code":"CHARTER_SHAPE","detail":"simulate invalid charter shape"}]}
+FAILURE_MEMORY_GET

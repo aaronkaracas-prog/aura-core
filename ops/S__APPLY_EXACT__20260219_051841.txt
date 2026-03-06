@@ -1,0 +1,3 @@
+﻿HOST auras.guide
+PATCH_INDEX_APPLY {"names":["ui_fix_norm_exact","ui_fix_norm_newline_exact","ui_fix_pullbuild_newline_exact"],"note":"APPLY exact UI fixes now"}
+SHOW_BUILD

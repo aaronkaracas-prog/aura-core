@@ -1,0 +1,3 @@
+PATCH_INDEX_STATUS
+PATCH_INDEX_PUT test_index_1 test_patch_1
+PATCH_INDEX_GET test_index_1

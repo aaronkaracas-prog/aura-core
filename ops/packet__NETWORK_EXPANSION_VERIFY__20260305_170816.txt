@@ -1,0 +1,4 @@
+AUTONOMY_STATUS
+INTENT_SIMULATE
+{"intent":"network_expand","origin":"auras.guide"}
+AUTONOMY_CAPABILITIES

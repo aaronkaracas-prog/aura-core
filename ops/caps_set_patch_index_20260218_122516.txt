@@ -1,0 +1,9 @@
+﻿HOST auras.guide
+HOST_CAPS_SET {"host":"auras.guide","allowed":[
+  "SHOW_BUILD",
+  "SNAPSHOT_STATE",
+  "...(existing items)...",
+  "PATCH_INDEX_STATUS",
+  "PATCH_INDEX_PUT",
+  "PATCH_INDEX_GET"
+]}

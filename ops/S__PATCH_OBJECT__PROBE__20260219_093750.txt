@@ -1,0 +1,3 @@
+HOST auras.guide
+PATCH_OBJECT_PUT ui_obj_probe_1 dGVzdA==
+PATCH_OBJECT_GET ui_obj_probe_1

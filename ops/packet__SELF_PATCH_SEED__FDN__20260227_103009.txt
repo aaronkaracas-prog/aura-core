@@ -1,0 +1,4 @@
+HOST frontdesk.network
+SELF_PATCH_PUT {"intent":{"intent":{"index_id":"patch_index_src1__20260225_120906","name":"phase5_source_only_probe","patch_object_id":"patch_obj_src1__20260225_120906","mode":"source_only","note":"PH5: force source_only intent to reach branch"},"stamp":"20260227_103020"}}
+SELF_PATCH_GET
+PATCH_INDEX_STATUS

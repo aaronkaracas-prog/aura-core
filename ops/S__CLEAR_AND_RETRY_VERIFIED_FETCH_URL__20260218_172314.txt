@@ -1,0 +1,4 @@
+﻿HOST auras.guide
+CLEAR_VERIFIED_FETCH auras.guide
+VERIFIED_FETCH_URL auras.guide
+EVIDENCE_PRESENT auras.guide

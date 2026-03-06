@@ -1,0 +1,11 @@
+HOST auras.guide
+REGISTRY_PUT
+{ "type":"assets", "item": { "id":"
+reg_put_proof__20260222_080822
+", "name":"Registry Put Proof 
+20260222_080822
+", "pillar":"ARK", "notes":"reg_put_proof", "tags":["proof"], "sellability":"HOLD", "domain_id":"auras.guide" } }
+REGISTRY_GET assets 
+reg_put_proof__20260222_080822
+REGISTRY_LIST assets
+REGISTRY_AUDIT_TRAIL

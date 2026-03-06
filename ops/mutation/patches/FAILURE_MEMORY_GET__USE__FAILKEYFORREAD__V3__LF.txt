@@ -1,0 +1,10 @@
+PATCH_V1
+TARGET_FILE: src/index.js
+
+SEARCH:
+        const fm = (await __readJsonKV(__failKey)) || [];
+
+REPLACE:
+        const fm = (await __readJsonKV(__failKeyForRead)) || [];
+
+END_PATCH

@@ -1,0 +1,5 @@
+PING
+PATCH_OBJECT_PUT testtrace ZHVtbXk=
+PING
+PATCH_OBJECT_GET testtrace
+PING

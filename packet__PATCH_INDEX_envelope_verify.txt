@@ -1,0 +1,6 @@
+HOST auras.guide
+PATCH_INDEX_PUT
+{ "id":"env_test_1", "b64":"VEVTVF9FTlZfMQ==" }
+PATCH_INDEX_LIST env_test_
+PATCH_INDEX_DELETE env_test_1
+PATCH_INDEX_LIST env_test_

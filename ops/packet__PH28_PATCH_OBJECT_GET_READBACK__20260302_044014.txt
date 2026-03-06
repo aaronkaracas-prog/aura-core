@@ -1,0 +1,3 @@
+HOST auras.guide
+PATCH_OBJECT_GET patch_obj_recordfailure_fix__20260302_01
+

@@ -1,0 +1,90 @@
+PATCH_V1
+TARGET_FILE: src/index.js
+
+SEARCH:
+    if (hasLine("PING")) return jsonReply("PONG");
+
+
+    if (hasLine("SHOW_ALLOWED_COMMANDS")) {
+      return jsonReply(allowedCommands);
+    }
+
+    if (hasLine("SHOW_BUILD")) {
+      return jsonReply({ build: BUILD, stamp: new Date().toISOString() });
+    }
+
+    if (hasLine("SHOW_CLAIM_GATE")) {
+      return jsonReply(
+        JSON.stringify(
+          {
+            trigger_words: [
+              "live",
+              "deployed",
+              "launched",
+              "resolving",
+              "propagating",
+              "successful",
+              "verified",
+              "up",
+              "online",
+              "working",
+              "reachable",
+              "available",
+              "accessible"
+            ],
+            forced_message: "NOT WIRED: VERIFIED_FETCH REQUIRED",
+            requires_verified_fetch_format: true
+          },
+          null,
+          2
+        )
+      );
+    }
+
+    if (hasLine("RUN_SELF_TEST_EVIDENCE")) {
+      return await runSelfTestEvidence();
+
+REPLACE:
+    if (hasLine("PING")) return jsonReply("PONG");
+
+
+    if (hasLine("SHOW_ALLOWED_COMMANDS")) {
+      return jsonReply(allowedCommands);
+    }
+
+    if (hasLine("SHOW_BUILD")) {
+      return jsonReply({ build: BUILD, stamp: new Date().toISOString() });
+    }
+
+    if (hasLine("SHOW_CLAIM_GATE")) {
+      return jsonReply(
+        JSON.stringify(
+          {
+            trigger_words: [
+              "live",
+              "deployed",
+              "launched",
+              "resolving",
+              "propagating",
+              "successful",
+              "verified",
+              "up",
+              "online",
+              "working",
+              "reachable",
+              "available",
+              "accessible"
+            ],
+            forced_message: "NOT WIRED: VERIFIED_FETCH REQUIRED",
+            requires_verified_fetch_format: true
+          },
+          null,
+          2
+        )
+      );
+    }
+
+    if (hasLine("RUN_SELF_TEST_EVIDENCE")) {
+      return await runSelfTestEvidence();
+
+END_PATCH

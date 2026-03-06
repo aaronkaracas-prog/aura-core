@@ -1,0 +1,2 @@
+FAILURE_MEMORY_SET {"items":[{"id":"probe_20260303_170612","value":"ok"}]}
+FAILURE_MEMORY_GET probe_20260303_170612

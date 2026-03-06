@@ -1,0 +1,4 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT
+{"id":"CANON_TEST","at":"20260221_171605","note":"hostcaps_unblock_test"}
+FAILURE_MEMORY_GET

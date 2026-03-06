@@ -1,0 +1,3 @@
+HOST malibu.city
+PATCH_INDEX_GET patch_index_src1__20260225_120906
+PATCH_OBJECT_GET patch_obj_src1__20260225_120906

@@ -1,0 +1,8 @@
+HOST auras.guide
+FAILURE_MEMORY_CLEAR
+AUTONOMY_REPAIR_EXECUTE {"applyTick":true,"applyBudget":true,"applyCharter":true,"recordFailure":true}
+AUTONOMY_REPAIR_PLAN
+PATCH_OBJECT_GET PH6_RECEIPT__auras.guide
+FAILURE_MEMORY_GET
+AUTONOMY_STATUS
+SHOW_BUILD

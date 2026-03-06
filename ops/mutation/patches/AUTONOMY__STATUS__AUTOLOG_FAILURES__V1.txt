@@ -1,0 +1,59 @@
+PATCH_V1
+TARGET_FILE: src/index.js
+
+SEARCH:
+        const anyFalse = invariants.some(x => x && x.ok === false);
+        const anyNull = invariants.some(x => !x || x.ok === null || typeof x.ok === "undefined");
+        const health = anyFalse ? "WARN" : (anyNull ? "UNKNOWN" : "OK");
+
+        push("AUTONOMY_STATUS", {
+          ok: true,
+          host: __host,
+          build: BUILD,
+          stamp: nowIso(),
+          evidence_present_for_active_host: evidencePresent,
+          budget: b,
+          charter: c,
+          last_tick,
+          capabilities_count: __capabilities.length,
+          health,
+          invariants
+        });
+        continue;
+      }
+
+REPLACE:
+        const anyFalse = invariants.some(x => x && x.ok === false);
+        const anyNull = invariants.some(x => !x || x.ok === null || typeof x.ok === "undefined");
+        const health = anyFalse ? "WARN" : (anyNull ? "UNKNOWN" : "OK");
+
+        // Auto-log invariant failures (host-scoped, bounded). Safe: internal telemetry only.
+        if (health !== "OK") {
+          try {
+            const key = FAILURE_MEMORY__;
+            const existing = (await __readJsonKV(key)) || [];
+            const arr = Array.isArray(existing) ? existing : [];
+            const detail = AUTONOMY_STATUS health= invariants_failed=;
+            arr.push({ at: nowIso(), code: "AUTONOMY_INVARIANT", detail });
+            const bounded = arr.slice(-200);
+            await env.AURA_KV.put(key, JSON.stringify(bounded));
+          } catch (e) { /* swallow */ }
+        }
+
+        push("AUTONOMY_STATUS", {
+          ok: true,
+          host: __host,
+          build: BUILD,
+          stamp: nowIso(),
+          evidence_present_for_active_host: evidencePresent,
+          budget: b,
+          charter: c,
+          last_tick,
+          capabilities_count: __capabilities.length,
+          health,
+          invariants
+        });
+        continue;
+      }
+
+END_PATCH

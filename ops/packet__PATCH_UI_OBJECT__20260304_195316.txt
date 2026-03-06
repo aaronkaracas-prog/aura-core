@@ -1,0 +1,1 @@
+PATCH_OBJECT_PUT ui_bootstrap_v1 {"description":"Aura UI bootstrap","type":"source_patch","target":"ui_endpoint","action":"create"}

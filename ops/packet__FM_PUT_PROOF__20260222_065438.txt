@@ -1,0 +1,5 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT
+{"item":{"at":"20260222_065438","code":"PUTPROOF","detail":"FM_PUT_PROOF__20260222_065438"}}
+FAILURE_MEMORY_GET
+{"key":"__latest__"}

@@ -1,0 +1,7 @@
+HOST auras.guide
+DEPLOYER_CALL {"body":{},"method":"GET","path":"/file?path=src/index.js","service":"AURA_DEPLOYER"}
+DEPLOYER_CALL {"body":{},"method":"GET","path":"/read?path=src/index.js","service":"AURA_DEPLOYER"}
+DEPLOYER_CALL {"body":{},"method":"GET","path":"/get?path=src/index.js","service":"AURA_DEPLOYER"}
+DEPLOYER_CALL {"body":{},"method":"GET","path":"/raw?path=src/index.js","service":"AURA_DEPLOYER"}
+DEPLOYER_CALL {"body":{},"method":"GET","path":"/download?path=src/index.js","service":"AURA_DEPLOYER"}
+DEPLOYER_CALL {"body":{},"method":"GET","path":"/fs/read?path=src/index.js","service":"AURA_DEPLOYER"}

@@ -1,0 +1,7 @@
+﻿PATCH_V1
+SEARCH:
+const allowedCommands = [
+REPLACE:
+const allowedCommands = [
+      "MIC_PROBE",
+END_PATCH

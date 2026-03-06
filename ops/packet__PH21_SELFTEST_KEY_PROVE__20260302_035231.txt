@@ -1,0 +1,6 @@
+HOST frontdesk.network
+RUN_SELF_TEST_EVIDENCE
+
+HOST malibu.city
+RUN_SELF_TEST_EVIDENCE
+

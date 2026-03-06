@@ -1,0 +1,25 @@
+﻿HOST auras.guide
+PATCH_OBJECT_PUT {"name":"ui_norm_fix_v1","text":"function normalizeInputForHost(userText){
+    const s = String(userText || '');
+    const trimmed = s.trim();
+    if(!trimmed) return '';
+    if (/^HOST\\s+/mi.test(trimmed)) return trimmed;
+    return 'HOST ' + activeHost + '\\n' + trimmed;
+  }","note":"normalize fix: HOST regex + newline escape"}
+PATCH_OBJECT_PUT {"name":"ui_pullBuild_fix_v1","text":"async function pullBuild(){
+    try{
+      const res = await postChat('HOST ' + activeHost + '\\nSHOW_BUILD');
+      if(res && res.ok && res.reply && res.reply.build){
+        buildEl.textContent = res.reply.build;
+        stampEl.textContent = res.reply.stamp || '';
+      }else{
+        buildEl.textContent = 'unknown';
+        stampEl.textContent = '';
+      }
+    }catch(e){
+      buildEl.textContent = 'unknown';
+      stampEl.textContent = '';
+    }
+  }","note":"pullBuild fix: newline escape"}
+PATCH_OBJECT_GET {"name":"ui_norm_fix_v1"}
+PATCH_OBJECT_GET {"name":"ui_pullBuild_fix_v1"}

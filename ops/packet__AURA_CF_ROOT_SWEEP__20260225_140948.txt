@@ -1,0 +1,9 @@
+HOST auras.guide
+DEPLOYER_CALL {"body":{},"method":"GET","path":"/","service":"AURA_CF"}
+DEPLOYER_CALL {"body":{},"method":"GET","path":"/__meta","service":"AURA_CF"}
+DEPLOYER_CALL {"body":{},"method":"GET","path":"/meta","service":"AURA_CF"}
+DEPLOYER_CALL {"body":{},"method":"GET","path":"/version","service":"AURA_CF"}
+DEPLOYER_CALL {"body":{},"method":"GET","path":"/routes","service":"AURA_CF"}
+DEPLOYER_CALL {"body":{},"method":"GET","path":"/__routes","service":"AURA_CF"}
+DEPLOYER_CALL {"body":{},"method":"GET","path":"/caps","service":"AURA_CF"}
+DEPLOYER_CALL {"body":{},"method":"GET","path":"/health","service":"AURA_CF"}

@@ -1,0 +1,4 @@
+HOST auras.guide
+PATCH_INDEX_APPLY patch_index_recordfailure_fix__20260302_01 {"kv_only":true}
+PATCH_INDEX_GET
+

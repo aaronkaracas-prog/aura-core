@@ -1,0 +1,3 @@
+﻿HOST auras.guide
+FAILURE_MEMORY_PUT
+{"host":"auras.guide","item":{"code":"MIC_UI_TEST","detail":"PASS_FINAL_LOCKED - mic permission granted + capture confirmed in UI. Two later FAIL entries were template placeholders accidentally written during workflow testing; ignore them."}}

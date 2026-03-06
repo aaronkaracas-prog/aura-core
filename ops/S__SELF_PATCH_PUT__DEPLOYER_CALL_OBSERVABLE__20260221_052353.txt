@@ -1,0 +1,5 @@
+HOST auras.guide
+SELF_PATCH_PUT
+{"name":"deployer_call_observable_v1","target":{"host":"auras.guide","command":"DEPLOYER_CALL","surface":"chat_command_dispatch"},"acceptance":["DEPLOYER_CALL with bad JSON returns structured error payload (not reply:[])","DEPLOYER_CALL /caps returns structured payload or structured upstream error","Other commands still function; no regression in HOST_CAPS_SET/GET"],"intent":"Make DEPLOYER_CALL produce a reply entry (no silent skip). Ensure operator-only + host-caps gated behavior remains intact. Return a structured receipt payload even on errors."}
+SELF_PATCH_GET
+SELF_PATCH_APPLY

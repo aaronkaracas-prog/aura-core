@@ -1,0 +1,4 @@
+HOST index.js
+FAILURE_MEMORY_CLEAR
+{ "mode": "clear_all" }
+FAILURE_MEMORY_GET

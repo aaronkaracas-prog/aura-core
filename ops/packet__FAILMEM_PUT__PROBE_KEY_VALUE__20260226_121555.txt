@@ -1,0 +1,4 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT
+{"key":"failprobe__20260226_121555","value":{"msg":"probe","ts":"20260226_121555"}}
+FAILURE_MEMORY_GET

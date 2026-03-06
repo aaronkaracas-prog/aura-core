@@ -1,0 +1,4 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT
+{"id":"task__verified_fetch_seed__20260226_121106","ts":"20260226_121106","notes":"Safe task: no deploy, no source edits. Used to drive AUTONOMY_REPAIR_PLAN into non-empty actions.","host":"auras.guide","type":"REPAIR_OBJECTIVE","goal":"Ensure VERIFIED_FETCH evidence is present for active host; if missing, seed it; record receipt.","scope":"kv_only"}
+FAILURE_MEMORY_GET

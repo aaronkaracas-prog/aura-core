@@ -1,0 +1,1 @@
+RUNTIME_COMMAND_DEFINE BUILD_UI {"description":"Bootstrap Aura UI workspace","steps":["REGISTRY_PUT apps ui_shell","REGISTRY_PUT apps ui_sidebar","REGISTRY_PUT apps ui_chat","REGISTRY_PUT apps ui_registry","REGISTRY_PUT apps ui_memory","REGISTRY_PUT apps ui_console"]}

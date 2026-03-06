@@ -1,0 +1,4 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT
+{"at":"20260222_103443","code":"MILESTONE","detail":"REGISTRY_FILTER proven OK (inline JSON same-line). Evidence: VersionID=ea6d3bd0-a22e-48af-9827-634008f66df2 ; cmd='REGISTRY_FILTER assets {\"tags\":[\"proof\"]}' ; returned=41 ; host=auras.guide"}
+FAILURE_MEMORY_GET

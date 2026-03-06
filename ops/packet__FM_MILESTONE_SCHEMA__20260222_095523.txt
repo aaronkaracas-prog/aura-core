@@ -1,0 +1,4 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT
+{"at":"20260222_095523","code":"MILESTONE","detail":"FAILURE_MEMORY_PUT proven OK in envelope mode; required shape is {at,code,detail}. Inline JSON is unsafe."}
+FAILURE_MEMORY_GET

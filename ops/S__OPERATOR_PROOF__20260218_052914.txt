@@ -1,0 +1,4 @@
+HOST auras.guide
+AUTONOMY_BUDGET_SET {"host":"auras.guide","limit":321}
+AUTONOMY_BUDGET_GET
+

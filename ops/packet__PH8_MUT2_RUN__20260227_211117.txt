@@ -1,0 +1,30 @@
+HOST malibu.city
+PATCH_OBJECT_PUT
+{"id":"patch_obj_mut2__20260227_211117","b64":"eyJvcCI6ImZhaWx1cmVfbWVtb3J5X3B1dCIsInN0YW1wIjoiMjAyNjAyMjdfMjExMTE3IiwicGF5bG9hZCI6eyJjb2RlIjoiUEg4X01VVDJfUFJPT0YiLCJkZXRhaWwiOiJQSDhfTVVUMl9fMjAyNjAyMjdfMjExMTE3In0sIm5vdGUiOiJQSDhfTVVUMiBjb250cm9sbGVkIGZhaWx1cmVfbWVtb3J5IG11dGF0aW9uIiwia2luZCI6InBhdGNoX211dGF0aW9uX3YxIiwidGFyZ2V0IjoiRkFJTFVSRV9NRU1PUlkifQ=="}
+PATCH_OBJECT_GET patch_obj_mut2__20260227_211117
+PATCH_INDEX_PUT patch_index_mut2__20260227_211117 OBJ patch_obj_mut2__20260227_211117
+PATCH_INDEX_GET patch_index_mut2__20260227_211117
+SELF_PATCH_PUT {"host":"multi","ok":true,"stamp":"2026-02-28T05:12:25.6015186Z","intent":{"intent":{"index_id":"patch_index_mut2__20260227_211117","name":"phase8_mut2_failure_memory","patch_object_id":"patch_obj_mut2__20260227_211117","mode":"mutation","note":"PH8_MUT2 controlled failure_memory proof"},"stamp":"20260227_211117"}}
+SELF_PATCH_EXECUTE
+FAILURE_MEMORY_GET
+
+HOST frontdesk.network
+PATCH_OBJECT_PUT
+{"id":"patch_obj_mut2__20260227_211117","b64":"eyJvcCI6ImZhaWx1cmVfbWVtb3J5X3B1dCIsInN0YW1wIjoiMjAyNjAyMjdfMjExMTE3IiwicGF5bG9hZCI6eyJjb2RlIjoiUEg4X01VVDJfUFJPT0YiLCJkZXRhaWwiOiJQSDhfTVVUMl9fMjAyNjAyMjdfMjExMTE3In0sIm5vdGUiOiJQSDhfTVVUMiBjb250cm9sbGVkIGZhaWx1cmVfbWVtb3J5IG11dGF0aW9uIiwia2luZCI6InBhdGNoX211dGF0aW9uX3YxIiwidGFyZ2V0IjoiRkFJTFVSRV9NRU1PUlkifQ=="}
+PATCH_OBJECT_GET patch_obj_mut2__20260227_211117
+PATCH_INDEX_PUT patch_index_mut2__20260227_211117 OBJ patch_obj_mut2__20260227_211117
+PATCH_INDEX_GET patch_index_mut2__20260227_211117
+SELF_PATCH_PUT {"host":"multi","ok":true,"stamp":"2026-02-28T05:12:25.6015186Z","intent":{"intent":{"index_id":"patch_index_mut2__20260227_211117","name":"phase8_mut2_failure_memory","patch_object_id":"patch_obj_mut2__20260227_211117","mode":"mutation","note":"PH8_MUT2 controlled failure_memory proof"},"stamp":"20260227_211117"}}
+SELF_PATCH_EXECUTE
+FAILURE_MEMORY_GET
+
+HOST auras.guide
+PATCH_OBJECT_PUT
+{"id":"patch_obj_mut2__20260227_211117","b64":"eyJvcCI6ImZhaWx1cmVfbWVtb3J5X3B1dCIsInN0YW1wIjoiMjAyNjAyMjdfMjExMTE3IiwicGF5bG9hZCI6eyJjb2RlIjoiUEg4X01VVDJfUFJPT0YiLCJkZXRhaWwiOiJQSDhfTVVUMl9fMjAyNjAyMjdfMjExMTE3In0sIm5vdGUiOiJQSDhfTVVUMiBjb250cm9sbGVkIGZhaWx1cmVfbWVtb3J5IG11dGF0aW9uIiwia2luZCI6InBhdGNoX211dGF0aW9uX3YxIiwidGFyZ2V0IjoiRkFJTFVSRV9NRU1PUlkifQ=="}
+PATCH_OBJECT_GET patch_obj_mut2__20260227_211117
+PATCH_INDEX_PUT patch_index_mut2__20260227_211117 OBJ patch_obj_mut2__20260227_211117
+PATCH_INDEX_GET patch_index_mut2__20260227_211117
+SELF_PATCH_PUT {"host":"multi","ok":true,"stamp":"2026-02-28T05:12:25.6015186Z","intent":{"intent":{"index_id":"patch_index_mut2__20260227_211117","name":"phase8_mut2_failure_memory","patch_object_id":"patch_obj_mut2__20260227_211117","mode":"mutation","note":"PH8_MUT2 controlled failure_memory proof"},"stamp":"20260227_211117"}}
+SELF_PATCH_EXECUTE
+FAILURE_MEMORY_GET
+

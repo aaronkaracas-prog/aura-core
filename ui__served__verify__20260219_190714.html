@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Aura Core ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ UI</title>
+<meta name="ui-version" content="UI_PATCH__20260215_2A__CHATGPT_SHELL">
+<style>
+  :root{
+    --bg:#070a12; --panel:#0e1424; --panel2:#0b1020;
+    --text:#e8ecff; --muted:#9aa5c7; --line:rgba(255,255,255,.10);
+    --accent:#6d5efc; --good:#48d597; --bad:#ff5c7a;
+    --bubbleMe: rgba(109,94,252,.18);
+    --bubbleAura: rgba(255,255,255,.05);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    background:
+      radial-gradient(1200px 600px at 30% 10%, rgba(109,94,252,.18), transparent 60%),
+      radial-gradient(900px 500px at 80% 30%, rgba(72,213,151,.10), transparent 55%),
+      var(--bg);
+    color:var(--text);
+    overflow:hidden;
+  }
+
+  .app{ height:100%; display:flex; }
+
+  .side{
+    width:280px;
+    border-right:1px solid var(--line);
+    background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    padding:14px;
+  }
+  .sideTop{
+    display:flex; flex-direction:column; gap:6px;
+    padding-bottom:12px;
+    border-bottom:1px solid var(--line);
+  }
+  .brand{ font-weight:800; letter-spacing:.2px; font-size:16px; }
+  .sub{ color:var(--muted); font-size:12px; line-height:1.35; }
+  .projHdr{ color:var(--muted); font-size:12px; margin-top:2px; }
+  .projList{ display:flex; flex-direction:column; gap:8px; }
+  .projBtn{
+    display:flex; align-items:center; justify-content:space-between;
+    width:100%;
+    padding:10px 10px;
+    border-radius:12px;
+    border:1px solid var(--line);
+    background: rgba(0,0,0,.18);
+    color:var(--text);
+    cursor:pointer;
+    text-align:left;
+  }
+  .projBtn:hover{ border-color: rgba(109,94,252,.45); }
+  .projBtn.active{
+    border-color: rgba(109,94,252,.60);
+    background: rgba(109,94,252,.14);
+  }
+  .pill{
+    font-size:11px;
+    color:var(--muted);
+    border:1px solid var(--line);
+    padding:2px 8px;
+    border-radius:999px;
+  }
+
+  .main{ flex:1; display:flex; flex-direction:column; min-width:0; }
+
+  .topbar{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:16px;
+    padding:14px 16px;
+    border-bottom:1px solid var(--line);
+    background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+  }
+  .meta{
+    display:flex; flex-direction:column; align-items:flex-end; gap:4px;
+    font-size:12px; color:var(--muted);
+  }
+  .meta .row{ display:flex; gap:10px; align-items:center; }
+  .dot{ width:8px; height:8px; border-radius:50%; background:var(--good); box-shadow:0 0 0 3px rgba(72,213,151,.14); }
+  .statusErr .dot{ background:var(--bad); box-shadow:0 0 0 3px rgba(255,92,122,.14); }
+  .titleBlock{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .titleBlock .h{ font-size:16px; font-weight:800; letter-spacing:.2px; }
+  .titleBlock .s{ font-size:12px; color:var(--muted); }
+
+  .chat{
+    flex:1;
+    min-height:0;
+    overflow:auto;
+    padding:18px 16px 12px 16px;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+  .bubble{
+    max-width: min(780px, 92%);
+    border:1px solid var(--line);
+    padding:10px 12px;
+    border-radius:16px;
+    line-height:1.35;
+    white-space:pre-wrap;
+    word-break:break-word;
+  }
+  .me{ align-self:flex-end; background: var(--bubbleMe); border-color: rgba(109,94,252,.40); }
+  .aura{ align-self:flex-start; background: var(--bubbleAura); }
+  .sys{ align-self:center; max-width:100%; background: transparent; border:none; color:var(--muted); padding:0; }
+  .err{ border-color: rgba(255,92,122,.45); background: rgba(255,92,122,.10); }
+
+  .composerWrap{
+    border-top:1px solid var(--line);
+    padding:12px;
+    background: rgba(0,0,0,.12);
+  }
+  .composer{
+    display:flex;
+    gap:10px;
+    align-items:flex-end;
+    max-width: 980px;
+    margin:0 auto;
+  }
+  .iconBtn{
+    height:44px;
+    width:44px;
+    border-radius:12px;
+    border:1px solid var(--line);
+    background: rgba(0,0,0,.22);
+    color: var(--text);
+    cursor:not-allowed;
+    opacity:.65;
+    display:flex; align-items:center; justify-content:center;
+    user-select:none;
+  }
+  textarea{
+    flex:1;
+    min-height:44px;
+    max-height:160px;
+    resize:vertical;
+    padding:10px 12px;
+    border-radius:12px;
+    outline:none;
+    border:1px solid var(--line);
+    background: rgba(0,0,0,.22);
+    color:var(--text);
+    font-size:14px;
+    line-height:1.35;
+  }
+  textarea::placeholder{ color: rgba(154,165,199,.70); }
+  .send{
+    height:44px;
+    padding:0 16px;
+    border-radius:12px;
+    cursor:pointer;
+    border:1px solid rgba(109,94,252,.55);
+    background: linear-gradient(180deg, rgba(109,94,252,.95), rgba(109,94,252,.78));
+    color:#fff;
+    font-weight:800;
+    letter-spacing:.2px;
+    box-shadow: 0 10px 20px rgba(109,94,252,.22);
+  }
+  .send:disabled{ opacity:.55; cursor:not-allowed; box-shadow:none; }
+  .hint{
+    max-width:980px;
+    margin:8px auto 0 auto;
+    color:var(--muted);
+    font-size:12px;
+    padding:0 2px;
+  }
+  code.k{ color:#c7cffc; }
+  .iconBtn{
+    cursor:pointer;
+    opacity:1;
+  }
+  .overlay{
+    position:fixed;
+    inset:0;
+    background: rgba(0,0,0,.55);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+    z-index:50;
+  }
+  .overlay.show{ display:flex; }
+  .modal{
+    width: min(520px, 92vw);
+    border-radius:16px;
+    border:1px solid var(--line);
+    background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
+    box-shadow: 0 30px 80px rgba(0,0,0,.55);
+    padding:16px;
+  }
+  .modal h3{ margin:0 0 8px 0; font-size:16px; }
+  .modal p{ margin:0 0 12px 0; color: var(--muted); line-height:1.4; font-size:13px; }
+  .modal .row{ display:flex; gap:10px; justify-content:flex-end; }
+  .btn{
+    height:38px;
+    padding:0 14px;
+    border-radius:12px;
+    border:1px solid var(--line);
+    background: rgba(0,0,0,.25);
+    color: var(--text);
+    cursor:pointer;
+    font-weight:700;
+  }
+  .btn.primary{
+    border-color: rgba(109,94,252,.55);
+    background: rgba(109,94,252,.20);
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="side">
+    <div class="sideTop">
+      <div class="brand">Aura Core</div>
+      <div class="sub">Control-plane UI shell for quick interactive checks.</div>
+      <div class="projHdr">Projects</div>
+    </div>
+
+    <div id="projList" class="projList">
+      <button class="projBtn active" data-host="auras.guide">
+        <span>Aura Core</span><span class="pill">auras.guide</span>
+      </button>
+      <button class="projBtn" data-host="frontdesk.network">
+        <span>FrontDesk</span><span class="pill">frontdesk.network</span>
+      </button>
+      <button class="projBtn" data-host="malibu.city">
+        <span>Malibu</span><span class="pill">malibu.city</span>
+      </button>
+    </div>
+
+    <div class="sub" style="margin-top:auto">
+      <div><span class="pill">UI</span> <span id="uiver"></span></div>
+      <div style="margin-top:6px">Host: <span id="hostLabel">auras.guide</span></div>
+    </div>
+  </div>
+
+  <main class="main">
+    <div class="topbar">
+      <div class="titleBlock">
+        <div id="title" class="h">Aura Core</div>
+        <div class="s">Build: <span id="build">...</span></div>
+        <div class="s">Stamp: <span id="stamp">...</span></div>
+      </div>
+      <div id="meta" class="meta">
+        <div class="row"><span class="dot"></span><span id="status">Ready</span></div>
+        <div class="row">Local: <span id="localtime"></span></div>
+      </div>
+    </div>
+
+    <div id="chat" class="chat"></div>
+
+    <div class="composerWrap">
+      <div class="composer">
+        <button id="attachBtn" class="iconBtn" title="Attach">â¤’</button>
+        <button id="micBtn" class="iconBtn" title="Mic">ðŸŽ™</button>
+        <textarea id="input" placeholder="Type a command (e.g., PING)"></textarea>
+        <button id="send" class="send">Send</button>
+      </div>
+      <div class="hint">
+        Tip: Prefer batch mode via PowerShell for multi-line ops. UI is for quick interactive checks.
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+(function(){
+  const UI_VERSION = 'UI_PATCH__20260215_2A__CHATGPT_SHELL';
+
+  const chat = document.getElementById('chat');
+  const input = document.getElementById('input');
+  const sendBtn = document.getElementById('send');
+  const statusEl = document.getElementById('status');
+  const metaEl = document.getElementById('meta');
+  const buildEl = document.getElementById('build');
+  const stampEl = document.getElementById('stamp');
+  const localEl = document.getElementById('localtime');
+  const uiVerEl = document.getElementById('uiver');
+  const hostLabel = document.getElementById('hostLabel');
+  const titleEl = document.getElementById('title');
+  const projList = document.getElementById('projList');
+  const attachBtn = document.getElementById('attachBtn');
+  const micBtn = document.getElementById('micBtn');
+
+  // MIC_SUBSYSTEM_WIRED_V1
+  let micState = 'idle';           // idle | recording
+  let micStream = null;            // MediaStream
+  let micLastError = null;         // { name, message } or null
+
+  async function micStart(){
+    micLastError = null;
+    try{
+      if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+        micLastError = { name:'UNSUPPORTED', message:'navigator.mediaDevices.getUserMedia missing' };
+        addBubble('sys', 'Mic FAIL: UNSUPPORTED', true);
+        return;
+      }
+      micStream = await navigator.mediaDevices.getUserMedia({ audio:true });
+      micState = 'recording';
+      addBubble('sys', 'Mic OK: stream acquired (recording state set).', false);
+    }catch(e){
+      micLastError = { name:(e && e.name ? e.name : 'ERROR'), message:(e && e.message ? e.message : String(e)) };
+      micState = 'idle';
+      addBubble('sys', 'Mic FAIL: ' + micLastError.name + ' â€” ' + micLastError.message, true);
+    }
+  }
+
+  function micStop(){
+    try{
+      if(micStream && micStream.getTracks){
+        micStream.getTracks().forEach(t=>{ try{ t.stop(); }catch(_){} });
+      }
+    }catch(_){}
+    micStream = null;
+    micState = 'idle';
+    addBubble('sys', 'Mic stopped.', false);
+  }
+  const overlay = document.getElementById('overlay');
+  const overlayTitle = document.getElementById('overlayTitle');
+  const overlayMsg = document.getElementById('overlayMsg');
+  const overlayClose = document.getElementById('overlayClose');
+
+  function showOverlay(title, msg){
+    if(!overlay) return;
+    overlayTitle.textContent = title;
+    overlayMsg.textContent = msg;
+    overlay.classList.add('show');
+    overlay.setAttribute('aria-hidden','false');
+  }
+  function hideOverlay(){
+    if(!overlay) return;
+    overlay.classList.remove('show');
+    overlay.setAttribute('aria-hidden','true');
+  }
+
+  if(overlayClose) overlayClose.addEventListener('click', hideOverlay);
+  if(overlay) overlay.addEventListener('click', (e)=>{ if(e.target === overlay) hideOverlay(); });
+
+  if(attachBtn){
+    attachBtn.addEventListener('click', ()=>{
+      showOverlay('Attach', 'File upload is next. This is the UI shell step ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â no upload logic yet.');
+    });
+  }
+  if(micBtn){
+    micBtn.addEventListener('click', async ()=>{
+      addBubble('sys', 'Mic click (handler live).', false);
+      if(micState === 'recording'){
+        micStop();
+      }else{
+        await micStart();
+      }
+    });
+  }
+
+  if(uiVerEl) uiVerEl.textContent = UI_VERSION;
+
+  let activeHost = 'auras.guide';
+  let activeName = 'Aura Core';
+
+  function nowLocal(){
+    try { return new Date().toLocaleString(); } catch(e){ return String(new Date()); }
+  }
+  localEl.textContent = nowLocal();
+  setInterval(()=>{ localEl.textContent = nowLocal(); }, 1000);
+
+  function setStatus(t, isError){
+    statusEl.textContent = t;
+    if(isError){
+      metaEl.classList.add('statusErr');
+      statusEl.style.color = 'var(--bad)';
+    }else{
+      metaEl.classList.remove('statusErr');
+      statusEl.style.color = 'var(--text)';
+    }
+  }
+
+  function addBubble(kind, text, isErr){
+    const d = document.createElement('div');
+    d.className = 'bubble ' + kind + (isErr ? ' err' : '');
+    d.textContent = text;
+    chat.appendChild(d);
+    chat.scrollTop = chat.scrollHeight;
+  }
+
+  async function postChat(raw){
+    const r = await fetch('/chat', {
+      method:'POST',
+      headers:{ 'content-type':'text/plain; charset=utf-8' },
+      body: raw
+    });
+    const txt = await r.text();
+    try { return JSON.parse(txt); } catch(e){ return { ok:false, reply: txt }; }
+  }
+
+  function normalizeInputForHost(userText){
+    const s = String(userText || '');
+    const trimmed = s.trim();
+    if(!trimmed) return '';
+    if (/^HOST\s+/m.test(trimmed)) return trimmed;
+    return 'HOST ' + activeHost + '\n' + trimmed;
+  }
+
+  async function pullBuild(){
+    try{
+      const res = await postChat('HOST ' + activeHost + '
+SHOW_BUILD');
+if(res && res.ok && res.reply && res.reply.build){
+        buildEl.textContent = res.reply.build;
+        stampEl.textContent = res.reply.stamp || '';
+      }else{
+        buildEl.textContent = 'unknown';
+        stampEl.textContent = '';
+      }
+    }catch(e){
+      buildEl.textContent = 'unknown';
+      stampEl.textContent = '';
+    }
+  }
+
+  async function runSend(){
+    const raw = input.value;
+    const trimmed = String(raw || '').trim();
+    if(!trimmed) return;
+
+    addBubble('me', trimmed, false);
+    input.value = '';
+
+    sendBtn.disabled = true;
+    setStatus('Working', false);
+
+    try{
+      const payload = normalizeInputForHost(trimmed);
+      const res = await postChat('HOST ' + activeHost + '
+SHOW_BUILD');
+if(res && typeof res === 'object'){
+        if(res.ok){
+          const reply = res.reply;
+          if(typeof reply === 'string'){
+            addBubble('aura', reply, false);
+          }else{
+            addBubble('aura', JSON.stringify(reply, null, 2), false);
+          }
+          setStatus('Ready', false);
+        }else{
+          addBubble('aura', (res.reply ? (typeof res.reply === 'string' ? res.reply : JSON.stringify(res.reply, null, 2)) : 'ERROR'), true);
+          setStatus('Error', true);
+        }
+      }else{
+        addBubble('aura', String(res), true);
+        setStatus('Error', true);
+      }
+    }catch(err){
+      addBubble('aura', 'UI ERROR: ' + (err && err.message ? err.message : String(err)), true);
+      setStatus('Error', true);
+    }finally{
+      sendBtn.disabled = false;
+      input.focus();
+    }
+  }
+
+  input.addEventListener('keydown', (e)=>{
+  const k = e.key;
+  const code = e.code;
+  const kc = e.keyCode;
+  const isEnter = (k === 'Enter') || (code === 'Enter') || (kc === 13);
+  if(isEnter && !e.shiftKey){
+    e.preventDefault();
+    e.stopPropagation();
+    runSend();
+  }
+});
+  sendBtn.addEventListener('click', runSend);
+
+  projList.addEventListener('click', (e)=>{
+    const btn = e.target.closest('.projBtn');
+    if(!btn) return;
+    const host = btn.getAttribute('data-host');
+    if(!host) return;
+
+    activeHost = host;
+    activeName =
+      (host === 'frontdesk.network') ? 'FrontDesk' :
+      (host === 'malibu.city') ? 'Malibu' :
+      'Aura Core';
+
+    [...projList.querySelectorAll('.projBtn')].forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    hostLabel.textContent = activeHost;
+    titleEl.textContent = activeName;
+
+    addBubble('sys', 'HOST set to ' + activeHost + '. Pulling SHOW_BUILD...', false);
+    pullBuild();
+  });
+
+  addBubble('sys', 'Connected. Select a project or type a command (e.g., PING).', false);
+  pullBuild();
+})();
+</script>
+<div id="overlay" class="overlay" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true">
+    <h3 id="overlayTitle">Overlay</h3>
+    <p id="overlayMsg">Placeholder.</p>
+    <div class="row">
+      <button id="overlayClose" class="btn primary">Close</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

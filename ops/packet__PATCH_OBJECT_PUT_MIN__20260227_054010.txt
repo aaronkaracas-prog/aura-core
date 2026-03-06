@@ -1,0 +1,5 @@
+HOST auras.guide
+PATCH_OBJECT_PUT PH6_RECEIPT__auras.guide
+{"json":{"code":"NEEDS_PLANNER_ACTION","detail":"PH6_PATCH_OBJECT_PUT_MIN_PROOF","emitted_at":"manual"}}
+PATCH_OBJECT_GET PH6_RECEIPT__auras.guide
+SHOW_BUILD

@@ -1,0 +1,2 @@
+﻿HOST auras.guide
+REGISTRY_FILTER {"type":"assets","field":"tags","value":"tx1","limit":200}

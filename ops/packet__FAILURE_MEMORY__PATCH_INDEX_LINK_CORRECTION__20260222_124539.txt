@@ -1,0 +1,4 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT
+{ "at": "20260222_124539", "code": "PATCH_INDEX_GET_REQUIRES_ID", "detail": "Correction: PATCH_INDEX_GET without args returns MISSING_ID. Use positional: PATCH_INDEX_GET <id>. PATCH_INDEX_PUT stored id=patch_index_probe__20260222_123907 (bytes_b64=344). Next proof step is PATCH_INDEX_GET <id> returning present:true and showing objects[] includes patch_obj_indexlink id." }
+FAILURE_MEMORY_GET

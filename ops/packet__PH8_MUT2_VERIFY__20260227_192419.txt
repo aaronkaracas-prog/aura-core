@@ -1,0 +1,9 @@
+HOST malibu.city
+FAILURE_MEMORY_GET
+
+HOST frontdesk.network
+FAILURE_MEMORY_GET
+
+HOST auras.guide
+FAILURE_MEMORY_GET
+

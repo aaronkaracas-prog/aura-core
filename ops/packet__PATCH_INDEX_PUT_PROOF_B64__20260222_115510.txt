@@ -1,0 +1,5 @@
+HOST auras.guide
+PATCH_INDEX_PUT
+{"b64":"eyJpZCI6InBhdGNoX3Byb2JlX18yMDI2MDIyMl8xMTU1MTAiLCJob3N0IjoiYXVyYXMuZ3VpZGUiLCJ0YWdzIjpbInByb29mIiwibm9fZGVwbG95Il0sImNyZWF0ZWRfYXQiOiIyMDI2MDIyMl8xMTU1MTAiLCJtb2RlIjoibm9vcCIsInN1bW1hcnkiOiJQQVRDSF9JTkRFWF9QVVQgcHJvb2YgcGF5bG9hZCAoYjY0IHJlcXVpcmVkKS4gTm8gZGVwbG95LiIsInRhcmdldCI6InNyYy9pbmRleC5qcyJ9","id":"patch_probe__20260222_115510","meta":{"host":"auras.guide","tags":["proof","no_deploy"],"created_at":"20260222_115510","mode":"noop","summary":"PATCH_INDEX_PUT proof only (no deploy).","target":"src/index.js"}}
+PATCH_INDEX_GET patch_probe__20260222_115510
+PATCH_INDEX_STATUS

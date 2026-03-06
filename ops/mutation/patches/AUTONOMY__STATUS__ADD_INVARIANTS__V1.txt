@@ -1,0 +1,74 @@
+PATCH_V1
+TARGET_FILE: src/index.js
+
+SEARCH:
+      if (line === "AUTONOMY_STATUS") {
+        const b = (await __readJsonKV(__budgetKey)) || __defaultBudget;
+        const c = (await __readJsonKV(__charterKey)) || __defaultCharter;
+        const last = await env.AURA_KV.get(__tickKey);
+        push("AUTONOMY_STATUS", {
+          ok: true,
+          host: __host,
+          build: BUILD,
+          stamp: nowIso(),
+          evidence_present_for_active_host: activeHost ? Boolean(await env.AURA_KV.get(evidenceKey(String(activeHost).toLowerCase()))) : false,
+          budget: b,
+          charter: c,
+          last_tick: (await (async()=>{ const cron = await env.AURA_KV.get(autonomyTickKeyForHost(activeHost), { type: "json" }).catch(()=>null); const cronTs = (cron && (cron.ts || cron.stamp)) ? String(cron.ts || cron.stamp) : null; const chosen = (!last ? cronTs : (cronTs && String(cronTs) > String(last) ? cronTs : last)); return chosen || null; })()),
+          capabilities_count: __capabilities.length
+        });
+        continue;
+      }
+
+REPLACE:
+      if (line === "AUTONOMY_STATUS") {
+        const b = (await __readJsonKV(__budgetKey)) || __defaultBudget;
+        const c = (await __readJsonKV(__charterKey)) || __defaultCharter;
+        const last = await env.AURA_KV.get(__tickKey);
+
+        const evidencePresent = activeHost
+          ? Boolean(await env.AURA_KV.get(evidenceKey(String(activeHost).toLowerCase())))
+          : false;
+
+        const last_tick = (await (async()=>{ const cron = await env.AURA_KV.get(autonomyTickKeyForHost(activeHost), { type: "json" }).catch(()=>null); const cronTs = (cron && (cron.ts || cron.stamp)) ? String(cron.ts || cron.stamp) : null; const chosen = (!last ? cronTs : (cronTs && String(cronTs) > String(last) ? cronTs : last)); return chosen || null; })());
+
+        const invariants = [];
+        invariants.push({ id: "EVIDENCE_PRESENT", ok: evidencePresent === true });
+
+        const hasTick = Boolean(last_tick);
+        invariants.push({ id: "TICK_PRESENT", ok: hasTick });
+
+        let age_s = null;
+        if (hasTick) {
+          try { age_s = Math.round((Date.now() - Date.parse(String(last_tick))) / 1000); } catch (e) { age_s = null; }
+        }
+        if (age_s !== null) {
+          invariants.push({ id: "TICK_FRESH_UNDER_120S", ok: age_s <= 120, age_s });
+        }
+
+        const budgetShapeOk = (b && typeof b.limit === "number" && typeof b.spent === "number");
+        invariants.push({ id: "BUDGET_SHAPE", ok: budgetShapeOk });
+
+        invariants.push({ id: "CAPABILITIES_COUNT_PRESENT", ok: (typeof __capabilities.length === "number"), count: __capabilities.length });
+
+        const anyFalse = invariants.some(x => x && x.ok === false);
+        const anyNull = invariants.some(x => !x || x.ok === null || typeof x.ok === "undefined");
+        const health = anyFalse ? "WARN" : (anyNull ? "UNKNOWN" : "OK");
+
+        push("AUTONOMY_STATUS", {
+          ok: true,
+          host: __host,
+          build: BUILD,
+          stamp: nowIso(),
+          evidence_present_for_active_host: evidencePresent,
+          budget: b,
+          charter: c,
+          last_tick,
+          capabilities_count: __capabilities.length,
+          health,
+          invariants
+        });
+        continue;
+      }
+
+END_PATCH

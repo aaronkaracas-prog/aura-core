@@ -1,0 +1,4 @@
+HOST auras.guide
+AUTONOMY_CHARTER_SET
+{ "version": 11, "text": "D41_PATCH_SURFACE_RESOLUTION__CHARTER_V11__20260222_135722", "domains": ["tick_maintenance","patch_surface_resolution"], "patch_surface_resolution": { "trigger": "SELF_PATCH_GET present && intent.mode==proof_no_deploy", "required_checks": ["SELF_PATCH_GET","PATCH_INDEX_GET <index_id>","PATCH_OBJECT_GET <patch_object_id>"], "forbid": ["SELF_PATCH_APPLY","DEPLOY"], "output": "Return an explicit checklist of checks + findings." }, "stamp": "20260222_135729" }
+AUTONOMY_CHARTER_GET

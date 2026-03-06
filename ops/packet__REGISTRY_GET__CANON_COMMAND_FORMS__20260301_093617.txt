@@ -1,0 +1,2 @@
+HOST frontdesk.network
+REGISTRY_GET CANON CANON_COMMAND_FORMS__frontdesk.network

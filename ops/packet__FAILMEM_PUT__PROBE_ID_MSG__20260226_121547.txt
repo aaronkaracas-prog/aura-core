@@ -1,0 +1,4 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT
+{"msg":"probe","id":"failprobe__20260226_121547","ts":"20260226_121547"}
+FAILURE_MEMORY_GET

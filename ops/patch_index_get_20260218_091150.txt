@@ -1,0 +1,2 @@
+﻿HOST auras.guide
+PATCH_INDEX_GET tx_20260218_091137

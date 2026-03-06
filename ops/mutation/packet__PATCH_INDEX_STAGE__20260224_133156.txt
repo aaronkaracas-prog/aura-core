@@ -1,0 +1,6 @@
+HOST auras.guide
+PATCH_INDEX_PUT {"id":"patch_index_stage__20260224_133156","mode":"no_deploy","note":"Stage-only patch index for closed-loop proof. No deploy. No code change.","objects":["patch_obj_indexlink__20260222_123831"]}
+PATCH_INDEX_GET patch_index_stage__20260224_133156
+PATCH_INDEX_STATUS
+AUDIT_GET
+FAILURE_MEMORY_GET

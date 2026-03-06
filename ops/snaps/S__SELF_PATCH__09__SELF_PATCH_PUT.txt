@@ -1,0 +1,9 @@
+﻿HOST auras.guide
+SELF_PATCH_PUT {
+  "plan_id": "tx1_self_patch_intent_v1",
+  "ts_utc": "2026-02-17T00:00:00.000Z",
+  "target": "src/index.js",
+  "mode": "STUB_ONLY",
+  "note": "Intent stored in KV. Apply remains MUTATION_SURFACE_NOT_IMPLEMENTED."
+}
+

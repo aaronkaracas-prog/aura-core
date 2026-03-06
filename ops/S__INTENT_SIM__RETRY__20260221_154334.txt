@@ -1,0 +1,3 @@
+HOST auras.guide
+INTENT_SIMULATE
+{"intent":{"name":"UI_WIRING_TEST","obj":{"force":"true","ts":"20260221_154334"}}}

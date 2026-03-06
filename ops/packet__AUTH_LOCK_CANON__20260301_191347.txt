@@ -1,0 +1,4 @@
+HOST auras.guide
+HOST_CAPS_SET {"require_authorization_header":true,"require_bearer_format":true}
+AUDIT_GET
+

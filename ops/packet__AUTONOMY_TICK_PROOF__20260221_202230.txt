@@ -1,0 +1,4 @@
+HOST auras.guide
+AUTONOMY_LAST_TICK_SET
+{"note":"tick_proof","ts":"20260221_202230"}
+AUTONOMY_LAST_TICK

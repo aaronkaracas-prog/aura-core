@@ -1,0 +1,9 @@
+PATCH_OBJECT_PUT {"id":"ph61_patch_proof__20260303_134442","host":"auras.guide","key":"PH61_PATCH_PROOF__auras.guide","note":"PH61 patch lifecycle proof (safe kv marker)","kind":"kv_put","value":"ok|ts=20260303_134442|build=PH61"}
+PATCH_INDEX_PUT {"host":"auras.guide","note":"PH61 patch index proof (single safe patch)","patches":[{"id":"ph61_patch_proof__20260303_134442","enabled":true}]}
+PATCH_INDEX_STATUS
+PATCH_INDEX_APPLY
+PATCH_INDEX_STATUS
+PATCH_OBJECT_GET {"id":"
+ph61_patch_proof__20260303_134442
+"}
+REGISTRY_GET {"type":"kv","id":"PH61_PATCH_PROOF__auras.guide"}

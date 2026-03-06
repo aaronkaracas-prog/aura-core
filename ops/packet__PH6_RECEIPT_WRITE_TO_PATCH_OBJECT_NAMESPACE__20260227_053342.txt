@@ -1,0 +1,5 @@
+HOST auras.guide
+AUTONOMY_REPAIR_EXECUTE
+{"actions":[{"type":"kv_only","op":"KV_PUT","key":"patch_object:PH6_RECEIPT__auras.guide","value":{"code":"NEEDS_PLANNER_ACTION","detail":"PH6_RECEIPT_PATCH_OBJECT_WRITE_PROOF","emitted_at":"manual"}}]}
+PATCH_OBJECT_GET PH6_RECEIPT__auras.guide
+SHOW_BUILD

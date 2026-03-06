@@ -1,0 +1,2 @@
+﻿HOST auras.guide
+REGISTRY_PUT {"type":"assets","item":{"id":"tx1_self_edit_plan","name":"TX1 Self-Edit Plan","tags":["TX1","self-edit","patch-plan","evidence-gated","alias"],"patent_cluster":"n/a","pillar":"aura-core","sellability":"internal","notes":"Alias of tx1_self_edit_plan_v1 (canonical lookup id)."}}

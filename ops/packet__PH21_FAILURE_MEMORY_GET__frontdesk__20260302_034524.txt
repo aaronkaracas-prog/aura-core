@@ -1,0 +1,3 @@
+HOST frontdesk.network
+FAILURE_MEMORY_GET
+

@@ -1,0 +1,4 @@
+HOST auras.guide
+PING
+AUTONOMY_BUDGET_GET {"host":"auras.guide"}
+

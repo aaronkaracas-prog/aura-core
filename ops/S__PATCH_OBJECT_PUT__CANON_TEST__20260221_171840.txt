@@ -1,0 +1,3 @@
+HOST auras.guide
+PATCH_OBJECT_PUT
+{"name":"canon_object_test","obj":{"note":"patch_object_roundtrip","ts":"20260221_171840"}}

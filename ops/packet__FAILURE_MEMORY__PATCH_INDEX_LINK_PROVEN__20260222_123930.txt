@@ -1,0 +1,4 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT
+{ "at": "20260222_123930", "code": "PATCH_INDEX_LINK_PROVEN", "detail": "PATCH_OBJECT id stored and referenced by PATCH_INDEX (PATCH_INDEX_PUT b64). Verified by PATCH_OBJECT_GET present:true and PATCH_INDEX_GET present:true with objects[] containing the id. No deploy." }
+FAILURE_MEMORY_GET

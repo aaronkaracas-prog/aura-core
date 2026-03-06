@@ -1,0 +1,6 @@
+HOST auras.guide
+SELF_PATCH_PUT
+{"note":"probe_intent","host":"auras.guide","ts":"PROBE","what":"confirm current PUT/GET/APPLY baseline before wiring"}
+
+SELF_PATCH_GET
+SELF_PATCH_APPLY

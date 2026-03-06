@@ -1,0 +1,4 @@
+﻿HOST auras.guide
+SELF_PATCH_PUT
+{"intent":{"obj":{"intent":{"name":"PING_PATCH_TEST"}}}}
+SELF_PATCH_APPLY

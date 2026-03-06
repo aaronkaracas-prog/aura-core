@@ -1,0 +1,9 @@
+HOST malibu.city
+SELF_PATCH_APPLY
+
+HOST frontdesk.network
+SELF_PATCH_APPLY
+
+HOST auras.guide
+SELF_PATCH_APPLY
+

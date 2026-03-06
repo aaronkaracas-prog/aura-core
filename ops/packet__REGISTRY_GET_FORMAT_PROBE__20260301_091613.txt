@@ -1,0 +1,4 @@
+HOST frontdesk.network
+REGISTRY_GET assets PH9_PLAN_ANCHOR__frontdesk.network__20260228_081257
+REGISTRY_GET {"type":"assets","id":"PH9_PLAN_ANCHOR__frontdesk.network__20260228_081257"}
+REGISTRY_GET assets repair_macro_allowlist_v1

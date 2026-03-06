@@ -1,0 +1,4 @@
+HOST auras.guide
+FAILURE_MEMORY_SET
+{"items":[{"code":"NEEDS_REPAIR_ACTIONS","detail":"Planner currently returns actions:[]; require at least one safe kv_only action emission + receipt."}]}
+FAILURE_MEMORY_GET

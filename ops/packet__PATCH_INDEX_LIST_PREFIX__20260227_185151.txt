@@ -1,0 +1,9 @@
+HOST malibu.city
+PATCH_INDEX_LIST patch_index_
+
+HOST frontdesk.network
+PATCH_INDEX_LIST patch_index_
+
+HOST auras.guide
+PATCH_INDEX_LIST patch_index_
+

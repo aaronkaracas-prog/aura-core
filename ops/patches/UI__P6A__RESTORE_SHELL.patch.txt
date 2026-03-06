@@ -1,0 +1,70 @@
+﻿PATCH_V1
+SEARCH:
+<body>
+      <div class="hint">
+        Tip: Prefer batch mode via PowerShell for multi-line ops. UI is for quick interactive checks.
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+REPLACE:
+<body>
+<div class="app">
+  <div class="side">
+    <div class="sideTop">
+      <div class="brand">Aura Core</div>
+      <div class="sub">Control-plane UI shell for quick interactive checks.</div>
+      <div class="projHdr">Projects</div>
+    </div>
+
+    <div id="projList" class="projList">
+      <button class="projBtn active" data-host="auras.guide">
+        <span>Aura Core</span><span class="pill">auras.guide</span>
+      </button>
+      <button class="projBtn" data-host="frontdesk.network">
+        <span>FrontDesk</span><span class="pill">frontdesk.network</span>
+      </button>
+      <button class="projBtn" data-host="malibu.city">
+        <span>Malibu</span><span class="pill">malibu.city</span>
+      </button>
+    </div>
+
+    <div class="sub" style="margin-top:auto">
+      <div><span class="pill">UI</span> <span id="uiver"></span></div>
+      <div style="margin-top:6px">Host: <span id="hostLabel">auras.guide</span></div>
+    </div>
+  </div>
+
+  <main class="main">
+    <div class="topbar">
+      <div class="titleBlock">
+        <div id="title" class="h">Aura Core</div>
+        <div class="s">Build: <span id="build">...</span></div>
+        <div class="s">Stamp: <span id="stamp">...</span></div>
+      </div>
+      <div id="meta" class="meta">
+        <div class="row"><span class="dot"></span><span id="status">Ready</span></div>
+        <div class="row">Local: <span id="localtime"></span></div>
+      </div>
+    </div>
+
+    <div id="chat" class="chat"></div>
+
+    <div class="composerWrap">
+      <div class="composer">
+        <button id="attachBtn" class="iconBtn" title="Attach">⤒</button>
+        <button id="micBtn" class="iconBtn" title="Mic">🎙</button>
+        <textarea id="input" placeholder="Type a command (e.g., PING)"></textarea>
+        <button id="send" class="send">Send</button>
+      </div>
+      <div class="hint">
+        Tip: Prefer batch mode via PowerShell for multi-line ops. UI is for quick interactive checks.
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+END_PATCH

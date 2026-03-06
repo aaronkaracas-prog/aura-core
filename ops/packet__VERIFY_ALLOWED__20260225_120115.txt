@@ -1,0 +1,2 @@
+HOST auras.guide
+SHOW_ALLOWED_COMMANDS

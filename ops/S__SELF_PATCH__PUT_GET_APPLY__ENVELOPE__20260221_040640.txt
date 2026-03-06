@@ -1,0 +1,11 @@
+HOST auras.guide
+SHOW_BUILD
+SNAPSHOT_STATE
+SHOW_ALLOWED_COMMANDS
+SELF_PATCH_STATUS
+SELF_PATCH_GET
+SELF_PATCH_PUT
+{"ok":true,"host":"auras.guide","stamp":"PROBE","intent":{"ok":true,"obj":{"note":"wire_phase2_probe","host":"auras.guide","ts":"PROBE","what":"confirm current SELF_PATCH_PUT/GET/APPLY behavior after stub removal"},"consumed":0}}
+SELF_PATCH_GET
+SELF_PATCH_APPLY
+SELF_PATCH_GET

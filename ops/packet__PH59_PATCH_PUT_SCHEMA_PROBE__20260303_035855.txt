@@ -1,0 +1,12 @@
+PATCH_OBJECT_PUT patch_obj__schema_probe__01 e30=
+PATCH_OBJECT_GET patch_obj__schema_probe__01
+PATCH_OBJECT_PUT {"id":"patch_obj__schema_probe__02","b64":"e30="}
+PATCH_OBJECT_GET patch_obj__schema_probe__02
+PATCH_OBJECT_PUT {"id":"patch_obj__schema_probe__03","bytes_b64":"e30="}
+PATCH_OBJECT_GET patch_obj__schema_probe__03
+PATCH_INDEX_PUT patch_index__schema_probe__01 e30=
+PATCH_INDEX_GET patch_index__schema_probe__01
+PATCH_INDEX_PUT {"id":"patch_index__schema_probe__02","b64":"e30="}
+PATCH_INDEX_GET patch_index__schema_probe__02
+PATCH_INDEX_PUT {"id":"patch_index__schema_probe__03","bytes_b64":"e30="}
+PATCH_INDEX_GET patch_index__schema_probe__03

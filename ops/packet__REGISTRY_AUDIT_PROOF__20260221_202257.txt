@@ -1,0 +1,4 @@
+HOST auras.guide
+REGISTRY_PUT
+{"type":"assets","id":"reg_audit_now__20260221_202257","value":{"ts":"20260221_202257","note":"audit_density_proof"}}
+AUDIT_GET

@@ -1,0 +1,4 @@
+﻿HOST auras.guide
+HOST_CAPS_GET auras.guide
+SELF_AUDIT_FULL
+SNAPSHOT_STATE

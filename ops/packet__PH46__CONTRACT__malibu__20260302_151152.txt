@@ -1,0 +1,7 @@
+HOST malibu.city
+CLEAR_VERIFIED_FETCH {}
+VERIFIED_FETCH_URL https://malibu.city
+EVIDENCE_PRESENT malibu.city
+VERIFIED_FETCH_URL {"url":"https://malibu.city"}
+EVIDENCE_PRESENT malibu.city
+SNAPSHOT_STATE

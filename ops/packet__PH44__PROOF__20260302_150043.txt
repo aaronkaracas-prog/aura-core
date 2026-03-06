@@ -1,0 +1,6 @@
+HOST auras.guide
+CLEAR_VERIFIED_FETCH {}
+VERIFIED_FETCH_URL {"url":"https://auras.guide"}
+EVIDENCE_PRESENT auras.guide
+SHOW_BUILD
+SNAPSHOT_STATE

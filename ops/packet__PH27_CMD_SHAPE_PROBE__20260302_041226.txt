@@ -1,0 +1,12 @@
+HOST frontdesk.network
+PATCH_OBJECT_GET patch_obj_mut2__20260228_055839
+
+HOST malibu.city
+PATCH_OBJECT_GET patch_obj_mut2__20260228_055839
+
+HOST frontdesk.network
+PATCH_INDEX_APPLY patch_index_mut2__20260228_055839 {"kv_only":true}
+
+HOST malibu.city
+PATCH_INDEX_APPLY patch_index_mut2__20260228_055839 {"kv_only":true}
+

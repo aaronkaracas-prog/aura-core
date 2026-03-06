@@ -1,0 +1,6 @@
+HOST auras.guide
+REGISTRY_AUDIT_TRAIL
+HOST malibu.city
+REGISTRY_AUDIT_TRAIL
+HOST frontdesk.network
+REGISTRY_AUDIT_TRAIL

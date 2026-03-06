@@ -1,0 +1,32 @@
+PATCH_V1
+TARGET_FILE: src/index.js
+
+SEARCH:
+        push("AUTONOMY_REPAIR_PLAN", { ok: true, host: __host, stamp: nowIso(), actions, count: actions.length });
+        continue;
+      }
+
+REPLACE:
+        push("AUTONOMY_REPAIR_PLAN", { ok: true, host: __host, stamp: nowIso(), actions, count: actions.length });
+        continue;
+      }
+
+      if (line === "AUTONOMY_REPAIR_EXECUTE") {
+        if (!isOperator) { push("AUTONOMY_REPAIR_EXECUTE", "UNAUTHORIZED"); continue; }
+        // Deterministic, host-scoped execution of safe repairs only.
+        const hostLower = String(activeHost || __host || "").toLowerCase();
+        const results = [];
+        // 1) Ensure a tick exists (host-scoped tick key).
+        const tickPayload = { ok: true, ts: nowIso(), count: 1, build: BUILD, note: "AUTONOMY_REPAIR_EXECUTE_TICK" };
+        await env.AURA_KV.put(__tickKey, JSON.stringify(tickPayload));
+        results.push({ fixed: "TICK_PRESENT", key: String(__tickKey) });
+        // 2) Evidence: do NOT fabricate evidence for arbitrary hosts. Report missing evidence as actionable.
+        const evPresent = hostLower ? Boolean(await env.AURA_KV.get(evidenceKey(hostLower))) : false;
+        if (!evPresent) {
+          results.push({ needs: "EVIDENCE_PRESENT", note: "EVIDENCE_NOT_AUTO_SEEDED" });
+        }
+        push("AUTONOMY_REPAIR_EXECUTE", { ok: true, host: hostLower, results });
+        continue;
+      }
+
+END_PATCH

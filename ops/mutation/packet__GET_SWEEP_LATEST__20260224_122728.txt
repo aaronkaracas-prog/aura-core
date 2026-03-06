@@ -1,0 +1,4 @@
+HOST auras.guide
+REGISTRY_GET domain_sweep_latest malibu.city
+REGISTRY_GET domain_sweep_latest frontdesk.network
+

@@ -1,0 +1,6 @@
+REGISTRY_PUT {"type":"canon","item":{"id":"CANON__PH59__PATCH_PUT_WIRING_TEST","ph":"PH59","status":"RUN","stamp":"2026-03-03T00:00:00.000Z"}}
+REGISTRY_GET canon CANON__PH59__PATCH_PUT_WIRING_TEST
+PATCH_OBJECT_PUT {"id":"patch_obj__wiring_test__20260303_01","note":"PH59 wiring test","patch":{"type":"noop"}}
+PATCH_OBJECT_GET patch_obj__wiring_test__20260303_01
+PATCH_INDEX_PUT {"id":"patch_index__wiring_test__20260303_01","patch_object_id":"patch_obj__wiring_test__20260303_01","mode":"kv_only"}
+PATCH_INDEX_GET patch_index__wiring_test__20260303_01

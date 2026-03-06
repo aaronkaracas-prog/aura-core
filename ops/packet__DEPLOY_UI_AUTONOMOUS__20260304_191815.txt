@@ -1,0 +1,16 @@
+OPERATOR_INTENT
+Aura create a new operator UI and deploy it.
+
+Requirements:
+
+Chat console
+Sidebar: Aura Core, FrontDesk, Malibu
+Tools: microphone, file upload
+
+Route:
+/ui
+
+Use deployment bridge if required.
+
+Return:
+UI_DEPLOYED

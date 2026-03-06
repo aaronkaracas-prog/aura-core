@@ -1,0 +1,5 @@
+﻿HOST auras.guide
+SHOW_ALLOWED_COMMANDS
+VERIFIED_FETCH_URL
+VERIFIED_FETCH_URL https://example.com
+VERIFIED_FETCH_URL {"url":"https://example.com"}

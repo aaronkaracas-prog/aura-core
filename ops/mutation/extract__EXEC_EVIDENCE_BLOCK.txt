@@ -1,0 +1,221 @@
+          try { obj = JSON.parse(raw); }
+          catch (e) { push("AUTONOMY_REPAIR_EXECUTE", { ok:false, error:"BAD_JSON", note:String(e && e.message ? e.message : e) }); continue; }
+        } else {
+          const n = String(nextLine || "").trim();
+          if (n && n.startsWith("{")) {
+            try { obj = JSON.parse(n); consumed = 1; }
+            catch (e) { push("AUTONOMY_REPAIR_EXECUTE", { ok:false, error:"BAD_JSON_ENVELOPE", note:String(e && e.message ? e.message : e) }); continue; }
+          }
+        }
+
+        const applyTick     = (obj && typeof obj.applyTick === "boolean") ? obj.applyTick : true;
+        const applyBudget   = (obj && typeof obj.applyBudget === "boolean") ? obj.applyBudget : true;
+        const applyCharter  = (obj && typeof obj.applyCharter === "boolean") ? obj.applyCharter : true;
+        const recordFailure = (obj && typeof obj.recordFailure === "boolean") ? obj.recordFailure : true;
+
+        const hostLower = String(activeHost || __host || "").toLowerCase();
+        const results = [];
+
+        // 1) Ensure a tick exists (host-scoped tick key).
+        if (applyTick) {
+          const tickPayload = { ok: true, ts: nowIso(), count: 1, build: BUILD, note: "AUTONOMY_REPAIR_EXECUTE_TICK" };
+          await env.AURA_KV.put(__tickKey, JSON.stringify(tickPayload));
+          results.push({ fixed: "TICK_PRESENT", key: String(__tickKey) });
+        } else {
+          results.push({ skipped: "TICK_PRESENT" });
+        }
+
+        // 2) Ensure budget shape exists (host-scoped).
+        const b = (await __readJsonKV(__budgetKey)) || null;
+        const bOk = Boolean(b && typeof b.limit === "number" && typeof b.spent === "number" && typeof b.window === "string");
+        if (!bOk) {
+          if (applyBudget) {
+            const budget = { limit: __defaultBudget.limit, spent: __defaultBudget.spent, window: __defaultBudget.window, updated_at: nowIso() };
+            await env.AURA_KV.put(__budgetKey, JSON.stringify(budget));
+            results.push({ fixed: "BUDGET_SHAPE", key: String(__budgetKey), budget });
+          } else {
+            results.push({ needs: "BUDGET_SHAPE", key: String(__budgetKey) });
+          }
+        } else {
+          results.push({ ok: "BUDGET_SHAPE" });
+        }
+
+        // 3) Ensure charter shape exists (host-scoped).
+        const c = (await __readJsonKV(__charterKey)) || null;
+        const cOk = Boolean(c && typeof c.version === "number" && typeof c.text === "string");
+        if (!cOk) {
+          if (applyCharter) {
+            const charter = { version: __defaultCharter.version, text: __defaultCharter.text, updated_at: nowIso() };
+            await env.AURA_KV.put(__charterKey, JSON.stringify(charter));
+            results.push({ fixed: "CHARTER_SHAPE", key: String(__charterKey), charter });
+          } else {
+            results.push({ needs: "CHARTER_SHAPE", key: String(__charterKey) });
+          }
+        } else {
+          results.push({ ok: "CHARTER_SHAPE" });
+        }
+
+        // 4) Evidence: do NOT fabricate evidence. Report missing as actionable + optionally record failure memory.
+        const evPresent = hostLower ? Boolean(await env.AURA_KV.get(evidenceKey(hostLower))) : false;
+        if (!evPresent) {
+          results.push({ needs: "EVIDENCE_PRESENT", key: evidenceKey(hostLower), note: "EVIDENCE_NOT_AUTO_SEEDED" });
+          if (recordFailure) {
+            try {
+              const key = "FAILURE_MEMORY__" + __host;
+              const existing = (await __readJsonKV(key)) || [];
+              const arr = Array.isArray(existing) ? existing : [];
+              arr.push({ at: nowIso(), code: "EVIDENCE_MISSING", detail: "AUTONOMY_REPAIR_EXECUTE detected missing evidence for host=" + hostLower });
+              const bounded = arr.slice(-200);
+              await env.AURA_KV.put(key, JSON.stringify(bounded));
+              results.push({ recorded: "FAILURE_MEMORY", key, code: "EVIDENCE_MISSING" });
+            } catch (e) {
+              results.push({ warn: "FAILURE_MEMORY_WRITE_FAILED", note: String(e && e.message ? e.message : e) });
+            }
+          }
+        } else {
+          results.push({ ok: "EVIDENCE_PRESENT" });
+        }
+
+        push("AUTONOMY_REPAIR_EXECUTE", { ok: true, host: hostLower, stamp: nowIso(), results });
+
+        if (consumed) { i += consumed; }
+        continue;
+      }if (line === "AUTONOMY_STATUS") {
+        const b = (await __readJsonKV(__budgetKey)) || __defaultBudget;
+        const c = (await __readJsonKV(__charterKey)) || __defaultCharter;
+        const last = await env.AURA_KV.get(__tickKey);
+
+        const evidencePresent = activeHost
+          ? Boolean(await env.AURA_KV.get(evidenceKey(String(activeHost).toLowerCase())))
+          : false;
+
+        const last_tick = (await (async()=>{
+          const cron = await env.AURA_KV.get(autonomyTickKeyForHost(activeHost), { type: "json" }).catch(()=>null);
+          const cronTs = (cron && (cron.ts || cron.stamp)) ? String(cron.ts || cron.stamp) : null;
+
+          let lastTs = null;
+          try {
+            const s = String(last || "").trim();
+            if (s) {
+              if (s.startsWith("{")) {
+                const j = safeJsonParse(s);
+                lastTs = (j && (j.ts || j.stamp)) ? String(j.ts || j.stamp) : null;
+              } else {
+                lastTs = s;
+              }
+            }
+          } catch (_) { lastTs = null; }
+
+          const chosen = (!lastTs ? cronTs : (cronTs && String(cronTs) > String(lastTs) ? cronTs : lastTs));
+          return chosen || null;
+        })());
+
+        const invariants = [];
+        invariants.push({ id: "EVIDENCE_PRESENT", ok: evidencePresent === true });
+
+        const hasTick = Boolean(last_tick);
+        invariants.push({ id: "TICK_PRESENT", ok: hasTick });
+
+        let age_s = null;
+        if (hasTick) {
+          try { age_s = Math.round((Date.now() - Date.parse(String(last_tick))) / 1000); } catch (e) { age_s = null; }
+        }
+        if (age_s !== null) {
+          invariants.push({ id: "TICK_FRESH_UNDER_120S", ok: age_s <= 120, age_s });
+        }
+
+        const budgetShapeOk = (b && typeof b.limit === "number" && typeof b.spent === "number");
+        invariants.push({ id: "BUDGET_SHAPE", ok: budgetShapeOk });
+
+        invariants.push({ id: "CAPABILITIES_COUNT_PRESENT", ok: (typeof __capabilities.length === "number"), count: __capabilities.length });
+
+        const anyFalse = invariants.some(x => x && x.ok === false);
+        const anyNull = invariants.some(x => !x || x.ok === null || typeof x.ok === "undefined");
+        const health = anyFalse ? "WARN" : (anyNull ? "UNKNOWN" : "OK");
+
+        // Auto-log invariant failures (host-scoped, bounded). Safe: internal telemetry only.
+        if (health !== "OK") {
+          try {
+            const key = "FAILURE_MEMORY__" + __host;
+            const existing = (await __readJsonKV(key)) || [];
+            const arr = Array.isArray(existing) ? existing : [];
+            const detail = "AUTONOMY_STATUS health=" + health + " invariants_failed=" + invariants.filter(x=>x && x.ok===false).map(x=>x.id).join(",");
+            arr.push({ at: nowIso(), code: "AUTONOMY_INVARIANT", detail });
+            const bounded = arr.slice(-200);
+            await env.AURA_KV.put(key, JSON.stringify(bounded));
+          } catch (e) { /* swallow */ }
+        }
+
+        push("AUTONOMY_STATUS", {
+          ok: true,
+          host: __host,
+          build: BUILD,
+          stamp: nowIso(),
+          evidence_present_for_active_host: evidencePresent,
+          budget: b,
+          charter: c,
+          last_tick,
+          capabilities_count: __capabilities.length,
+          health,
+          invariants
+        });
+        continue;
+      }
+
+      // SET/PUT are envelope-gated (files/packets): JSON must be provided on subsequent non-command lines.
+// Deterministic: parse envelope, write KV, return readback payload.
+  // SET/PUT are envelope-gated (files/packets): JSON must be provided on subsequent non-command lines.
+  // CANON: __readEnvelopeJson is defined earlier (single source of truth). Do not redefine it here.
+if (line === "AUTONOMY_LAST_TICK_SET") {
+  if (!isOperator) { push("AUTONOMY_LAST_TICK_SET", "NOT_ALLOWED"); continue; }
+
+  const r = __readEnvelopeJson(lines, i, allowedCommands, nextLine);
+  if (!r || !r.ok) { push("AUTONOMY_LAST_TICK_SET", "BAD_REQUEST"); continue; }
+
+  const __host = String(activeHost || "frontdesk.network").toLowerCase();
+  const __tickKey = `AUTONOMY_LAST_TICK__${__host}`;
+  const ts = nowIso();
+
+  await env.AURA_KV.put(__tickKey, ts, { expirationTtl: 60 * 60 * 24 * 30 });
+  push("AUTONOMY_LAST_TICK_SET", { ok: true, host: __host, last_tick: ts, stamp: ts });
+  continue;
+}
+if (fullLine === "AUTONOMY_BUDGET_SET" || fullLine.startsWith("AUTONOMY_BUDGET_SET ")) {
+  if (!isOperator) { push("AUTONOMY_BUDGET_SET", "NOT_ALLOWED"); continue; }
+  // Supports BOTH formats:
+  // 1) Inline JSON:  AUTONOMY_BUDGET_SET {"limit":123}
+  // 2) Envelope JSON on following line(s): AUTONOMY_BUDGET_SET\n{"budget":{...}}
+
+  let obj = null;
+  let consumed = 0;
+
+  if (fullLine.startsWith("AUTONOMY_BUDGET_SET ")) {
+    const raw = fullLine.slice("AUTONOMY_BUDGET_SET ".length).trim();
+    let parsed = null;
+    try { parsed = JSON.parse(raw); } catch (e) { push("AUTONOMY_BUDGET_SET", { ok: false, error: "BAD_JSON", note: String(e && e.message ? e.message : e) }); continue; }
+    obj = parsed;
+  } else {
+    const r = __readEnvelopeJson(lines, i, allowedCommands, nextLine);
+    if (!r.ok) { push("AUTONOMY_BUDGET_SET", { ok: false, error: r.error, note: r.note }); continue; }
+    obj = r.obj;
+    consumed = r.consumed;
+  }
+
+  const host = String(obj.host || __host).toLowerCase();
+  const b0 = (obj.budget && typeof obj.budget === "object") ? obj.budget : obj;
+
+  const budget = {
+    limit: (typeof b0.limit === "number" ? b0.limit : __defaultBudget.limit),
+    spent: (typeof b0.spent === "number" ? b0.spent : __defaultBudget.spent),
+    window: (typeof b0.window === "string" ? b0.window : __defaultBudget.window),
+    updated_at: nowIso()
+  };
+
+  await env.AURA_KV.put(`AUTONOMY_BUDGET__${host}`, JSON.stringify(budget));
+  push("AUTONOMY_BUDGET_SET", { ok: true, host, budget });
+
+  if (consumed) { i += consumed; }
+  continue;
+}
+
+if (line === "AUTONOMY_CHARTER_SET") {

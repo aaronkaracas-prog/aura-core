@@ -1,0 +1,27 @@
+﻿PATCH_V1
+SEARCH:
+if (line === "SHOW_ALLOWED_COMMANDS") {
+  push("SHOW_ALLOWED_COMMANDS", allowedCommands);
+  continue;
+}
+REPLACE:
+if (line === "SHOW_ALLOWED_COMMANDS") {
+  push("SHOW_ALLOWED_COMMANDS", allowedCommands);
+  continue;
+}
+
+if (line === "MIC_PROBE") {
+  const uiHasMicHandler = UI_HTML.includes("MIC_SUBSYSTEM_WIRED_V1");
+  push("MIC_PROBE", {
+    ok: true,
+    host: (new URL(request.url).host || null),
+    build: BUILD,
+    stamp: new Date().toISOString(),
+    mic_probe: {
+      ui_marker_present: uiHasMicHandler,
+      note: "Browser permission/audio capture must be tested in UI; this probe confirms wiring is shipped."
+    }
+  });
+  continue;
+}
+END_PATCH

@@ -1,0 +1,2 @@
+HOST auras.guide
+PATCH_OBJECT_PUT x eyJ0cyI6IjIwMjYwMjIxXzE3MzIyOSIsIm5vdGUiOiJ4In0=

@@ -1,0 +1,32 @@
+HOST frontdesk.network
+REGISTRY_PUT CANON CANON_COMMAND_FORMS__frontdesk.network
+{
+    "created_at":  "2026-03-01T09:34:08.6715163-08:00",
+    "host":  "frontdesk.network",
+    "id":  "CANON_COMMAND_FORMS__frontdesk.network",
+    "rules":  {
+                  "frontdesk_network_command_forms":  [
+                                                          "AUTONOMY_REPAIR_PLAN takes NO JSON on this host.",
+                                                          "PATCH_OBJECT_GET uses positional id: PATCH_OBJECT_GET \u003cid\u003e (NO JSON).",
+                                                          "PATCH_INDEX_GET uses positional id: PATCH_INDEX_GET \u003cid\u003e (NO JSON).",
+                                                          "PATCH_INDEX_APPLY uses positional id: PATCH_INDEX_APPLY \u003cid\u003e (NO JSON).",
+                                                          "REGISTRY_GET uses positional args: REGISTRY_GET \u003ctype\u003e \u003cid\u003e (NO JSON)."
+                                                      ],
+                  "operator_proof":  [
+                                         "Every new session: prove operator by AUTONOMY_BUDGET_SET + AUTONOMY_BUDGET_GET readback.",
+                                         "If SET returns ok but GET doesn\u0027t change: wrong host binding or wrong token — STOP."
+                                     ],
+                  "packet_format":  [
+                                        "Use text/plain envelope packets.",
+                                        "Use curl --data-binary @file (never inline packet bodies).",
+                                        "Do not include leading \u0027\u003e\u003e\u0027 chevrons in copy/paste; generate in PowerShell if needed."
+                                    ],
+                  "general":  [
+                                  "No deviation from Canon.",
+                                  "No rediscovery of solved issues.",
+                                  "Packets written UTF-8 no BOM.",
+                                  "Each PowerShell command isolated; numbering outside code blocks only.",
+                                  "All writes must be proven by immediate readback."
+                              ]
+              }
+}

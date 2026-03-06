@@ -1,0 +1,4 @@
+﻿HOST auras.guide
+DEPLOYER_CALL {"service":"AURA_CF","method":"POST","path":"/chat","headers":{"x-aura-operator-token":"__USE_CALLER_OPERATOR_TOKEN__","content-type":"text/plain; charset=utf-8"},"body":"HOST auras.guide
+SHOW_BUILD
+"}

@@ -1,0 +1,3 @@
+HOST frontdesk.network
+RUNTIME_COMMAND_DEFINE {"id":"TEST_DYNAMIC_V1","logic":"return 'dynamic_ok'"}
+RUNTIME_COMMAND_EXECUTE TEST_DYNAMIC_V1

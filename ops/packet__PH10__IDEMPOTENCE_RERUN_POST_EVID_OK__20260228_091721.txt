@@ -1,0 +1,9 @@
+HOST auras.guide
+AUTONOMY_REPAIR_EXECUTE {"applyTick":false,"applyBudget":false,"applyCharter":false,"recordFailure":true}
+AUTONOMY_REPAIR_EXECUTE {"applyTick":false,"applyBudget":false,"applyCharter":false,"recordFailure":true}
+HOST malibu.city
+AUTONOMY_REPAIR_EXECUTE {"applyTick":false,"applyBudget":false,"applyCharter":false,"recordFailure":true}
+AUTONOMY_REPAIR_EXECUTE {"applyTick":false,"applyBudget":false,"applyCharter":false,"recordFailure":true}
+HOST frontdesk.network
+AUTONOMY_REPAIR_EXECUTE {"applyTick":false,"applyBudget":false,"applyCharter":false,"recordFailure":true}
+AUTONOMY_REPAIR_EXECUTE {"applyTick":false,"applyBudget":false,"applyCharter":false,"recordFailure":true}

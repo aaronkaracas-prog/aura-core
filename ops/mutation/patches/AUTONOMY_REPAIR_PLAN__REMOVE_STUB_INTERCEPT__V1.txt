@@ -1,0 +1,22 @@
+PATCH_V1
+TARGET_FILE: src/index.js
+
+SEARCH:
+  const capability = (await intentGet("capability")) || "I can inspect state, manage registries, run herd checks, plan deploys, and execute deployer actions when operator-authorized and evidence requirements are satisfied.";
+  const gating = (await intentGet("gating")) || "I only gate verified claims and privileged actions. For planning and questions, I respond directly.";
+
+  // If the user is trying to assert a gated claim, enforce evidence-first
+  const claimWords = ["live","deployed","reachable","works","working","up","down","online","offline","dns","resolves","propagated","ssl","https","http","525","520","530","error"];
+  const looksLikeClaim = claimWords.some(w => lower.includes(w));
+  if (looksLikeClaim) return "NOT WIRED: VERIFIED_FETCH REQUIRED";
+
+  if (lower === "who are you" || lower.startsWith("who are you")) return identity;
+  if (lower === "what can you do" || lower.startsWith("what can you do")) return capability + "\n\n" + gating;
+  if (lower.includes("what systems") || lower.includes("what do you control") || lower.includes("what can you control")) {
+    return capability + "\n\nActive host: " + host + "\nEvidence-first, host-scoped.";
+  }
+
+REPLACE:
+// STUB REMOVED: AUTONOMY_REPAIR_PLAN now routes to line-engine (no VERIFIED_FETCH gate here).
+
+END_PATCH

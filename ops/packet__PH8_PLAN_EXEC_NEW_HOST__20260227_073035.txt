@@ -1,0 +1,6 @@
+HOST frontdesk.network
+AUTONOMY_REPAIR_PLAN
+AUTONOMY_REPAIR_EXECUTE {"applyTick":true,"applyBudget":true,"applyCharter":false,"recordFailure":true}
+AUTONOMY_REPAIR_PLAN
+AUTONOMY_STATUS
+SHOW_BUILD

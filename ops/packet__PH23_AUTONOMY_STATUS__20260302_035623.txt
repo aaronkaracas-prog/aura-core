@@ -1,0 +1,6 @@
+HOST frontdesk.network
+AUTONOMY_STATUS
+
+HOST malibu.city
+AUTONOMY_STATUS
+

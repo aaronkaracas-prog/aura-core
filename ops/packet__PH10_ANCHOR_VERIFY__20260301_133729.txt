@@ -1,0 +1,2 @@
+HOST frontdesk.network
+REGISTRY_GET CANON PH9_PLAN_ANCHOR__frontdesk.network__20260228_081257

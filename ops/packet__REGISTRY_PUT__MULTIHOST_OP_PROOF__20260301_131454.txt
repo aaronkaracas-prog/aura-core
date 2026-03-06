@@ -1,0 +1,2 @@
+HOST frontdesk.network
+REGISTRY_PUT CANON {"id":"MULTIHOST_OPERATOR_PROOF__20260301__20260301_131454","host":"frontdesk.network","note":"Single bearer token successfully performed operator write+readback on all three hosts.","method":"AUTONOMY_BUDGET_SET {\"limit\":777} + AUTONOMY_BUDGET_GET readback","created_at":"2026-03-01T13:15:10.8388838-08:00","results":{"frontdesk.network":{"limit":777,"ok":true},"auras.guide":{"limit":777,"ok":true},"malibu.city":{"limit":777,"ok":true}}}

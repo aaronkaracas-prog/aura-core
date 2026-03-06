@@ -1,0 +1,3 @@
+HOST malibu.city
+REGISTRY_LIST {"type":"domains","limit":20}
+REGISTRY_LIST {"type":"domain_sweep_latest","limit":20}

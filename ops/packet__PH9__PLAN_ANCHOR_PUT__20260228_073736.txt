@@ -1,0 +1,4 @@
+HOST auras.guide
+REGISTRY_PUT {"type":"assets","item":{"notes":"Durable anchor record for planner output + repair loop wiring. Created by operator for PH9 proof. Target: replace PH6 receipt loop with PH9 plan artifact.","tags":["PH9","planner","repair","anchor","auras.guide"],"name":"PH9 Plan Anchor","id":"PH9_PLAN_ANCHOR__auras.guide__20260228_073719","pillar":"autonomy"}}
+REGISTRY_GET assets PH9_PLAN_ANCHOR__auras.guide__20260228_073719
+REGISTRY_FILTER PH9_PLAN_ANCHOR__auras.guide__20260228_073719

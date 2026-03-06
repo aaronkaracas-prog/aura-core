@@ -1,0 +1,5 @@
+HOST auras.guide
+PATCH_OBJECT_PUT
+{"b64":"eyJpZCI6InBhdGNoX29ial9wcm9iZV9fMjAyNjAyMjJfMTIwMDE1IiwiaG9zdCI6ImF1cmFzLmd1aWRlIiwidGFncyI6WyJwcm9vZiIsIm5vX2RlcGxveSJdLCJjcmVhdGVkX2F0IjoiMjAyNjAyMjJfMTIwMDE1Iiwia2luZCI6InByb2JlIiwic3VtbWFyeSI6IlBBVENIX09CSkVDVF9QVVQgcHJvb2YgcGF5bG9hZCAoYjY0IHJlcXVpcmVkKS4gTm8gZGVwbG95LiIsImJvZHkiOnsidHMiOiIyMDI2MDIyMl8xMjAwMTUiLCJub3RlIjoiaGVsbG8gZnJvbSBQQVRDSF9PQkpFQ1QifX0=","id":"patch_obj_probe__20260222_120015","meta":{"summary":"PATCH_OBJECT_PUT proof only (no deploy).","host":"auras.guide","tags":["proof","no_deploy"],"created_at":"20260222_120015","kind":"probe"}}
+PATCH_OBJECT_GET patch_obj_probe__20260222_120015
+PATCH_INDEX_STATUS

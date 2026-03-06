@@ -1,0 +1,5 @@
+HOST frontdesk.network
+SHOW_CLAIM_GATE
+
+HOST malibu.city
+SHOW_CLAIM_GATE

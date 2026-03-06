@@ -1,0 +1,4 @@
+RUNTIME_COMMAND_DEFINE PATCH_OBJECT_PUT async ({args, env}) => { const id=args[0]; const b64=args[1]; if(!id||!b64){return {ok:false,error:"MISSING_ARGS"}}; await env.AURA_KV.put("patch_object:"+id,b64); return {ok:true,id}; }
+RUNTIME_COMMAND_DEFINE PATCH_OBJECT_GET async ({args, env}) => { const id=args[0]; if(!id){return {ok:false,error:"MISSING_ID"}}; const v=await env.AURA_KV.get("patch_object:"+id); return {ok:true,id,present:!!v,bytes_b64:v||0}; }
+RUNTIME_COMMAND_GET PATCH_OBJECT_PUT
+RUNTIME_COMMAND_GET PATCH_OBJECT_GET

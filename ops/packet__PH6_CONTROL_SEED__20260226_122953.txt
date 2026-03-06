@@ -1,0 +1,4 @@
+HOST auras.guide
+FAILURE_MEMORY_SET
+{"items":[{"code":"NEEDS_PLANNER_ACTION","detail":"Phase6 control test: planner must emit one kv_only action."}]}
+FAILURE_MEMORY_GET

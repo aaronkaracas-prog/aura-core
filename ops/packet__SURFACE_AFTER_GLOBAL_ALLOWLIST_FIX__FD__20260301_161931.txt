@@ -1,0 +1,4 @@
+HOST frontdesk.network
+SHOW_ALLOWED_COMMANDS
+HOST_CAPS_GET
+

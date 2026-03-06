@@ -1,0 +1,3 @@
+HOST auras.guide
+SELF_PATCH_PUT
+{"intent":{"name":"PING_PATCH_TEST","obj":{"note":"no-chevron json line","ts":"20260221_114003"}}}

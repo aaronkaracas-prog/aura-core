@@ -1,0 +1,4 @@
+HOST auras.guide
+FAILURE_MEMORY_PUT
+{ "at": "20260222_130202", "code": "HOST_CAPS_SET_IS_REPLACE", "detail": "Canon: HOST_CAPS_SET replaces the entire allowed list (not additive). Never set a minimal list unless you intend to drop permissions. Always restore/merge full known-good allowlist + additions. After clobber, HOST_CAPS_GET may become NOT_ALLOWED if removed." }
+FAILURE_MEMORY_GET

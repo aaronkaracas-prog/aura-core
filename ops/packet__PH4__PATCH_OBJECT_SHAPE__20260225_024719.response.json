@@ -1,0 +1,1 @@
+﻿{"ok":true,"reply":[{"cmd":"PATCH_OBJECT_GET","payload":{"ok":true,"id":"OBJECT_ID_HERE","key":"patch_object:OBJECT_ID_HERE","present":false,"bytes_b64":0}}]}

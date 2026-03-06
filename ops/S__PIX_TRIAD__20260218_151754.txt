@@ -1,0 +1,4 @@
+﻿HOST auras.guide
+PATCH_INDEX_STATUS
+PATCH_INDEX_PUT {"id":"triad_test","bytes_b64":"dHJpYWRfdGVzdA=="}
+PATCH_INDEX_GET {"id":"triad_test"}

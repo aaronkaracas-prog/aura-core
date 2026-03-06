@@ -1,0 +1,3 @@
+HOST malibu.city
+REGISTRY_PUT {"type":"assets","item":{"notes":"Durable anchor record for planner output + repair loop wiring. Multi-host PH9 proof.","tags":["PH9","planner","repair","anchor","malibu.city"],"name":"PH9 Plan Anchor","id":"PH9_PLAN_ANCHOR__malibu.city__20260228_081108","pillar":"autonomy"}}
+AUTONOMY_REPAIR_PLAN

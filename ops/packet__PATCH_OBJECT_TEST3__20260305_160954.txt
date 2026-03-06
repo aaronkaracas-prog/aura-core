@@ -1,0 +1,3 @@
+PATCH_OBJECT_PUT test_patch_1
+{"type":"runtime_test","message":"patch system working"}
+PATCH_OBJECT_GET test_patch_1

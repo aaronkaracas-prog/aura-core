@@ -1,0 +1,5 @@
+HOST auras.guide
+PATCH_INDEX_PUT
+{"id":"patch_probe__20260222_114336","target":"src/index.js","mode":"noop","summary":"PATCH_INDEX_PUT proof only (no deploy).","created_at":"20260222_114336","tags":["proof","no_deploy"],"host":"auras.guide"}
+PATCH_INDEX_GET patch_probe__20260222_114336
+PATCH_INDEX_STATUS

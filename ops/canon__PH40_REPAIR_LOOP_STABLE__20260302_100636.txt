@@ -1,0 +1,1 @@
+CANON_CLOSEOUT__PH40__20260302_100636 REPAIR_PLAN_DETERMINISTIC (actions=[] count=0 across hosts) REPAIR_EXECUTE_SAFE_NOOP (idempotent TICK_PRESENT fix observed) POST_EXECUTE_PLAN_EMPTY (no residual actions) INVARIANTS_STABLE_AFTER_EXECUTION HOST_PARITY_CONFIRMED (auras.guide, frontdesk.network, malibu.city) 

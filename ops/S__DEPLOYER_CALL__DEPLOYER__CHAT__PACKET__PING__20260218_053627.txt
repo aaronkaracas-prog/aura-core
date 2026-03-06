@@ -1,0 +1,3 @@
+HOST auras.guide
+DEPLOYER_CALL {"headers":{"X-Operator-Token":"3cea36ede33b4bcdbbdcf1423613aa901e6e2ef7b8b646d084bd9954c427ebda","content-type":"text/plain; charset=utf-8"},"method":"POST","path":"/chat","service":"AURA_DEPLOYER","body":"HOST auras.guide\nPING\n"}
+

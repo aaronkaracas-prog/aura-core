@@ -1,0 +1,4 @@
+HOST auras.guide
+REGISTRY_FILTER assets {"tags":["charter"]}
+REGISTRY_FILTER assets {"tags":["D40_PROOF_PACK"]}
+REGISTRY_FILTER assets {"tags":["CHARTER_V10"]}

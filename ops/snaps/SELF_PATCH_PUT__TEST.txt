@@ -1,0 +1,2 @@
+﻿HOST auras.guide
+SELF_PATCH_PUT {"id":"test_patch_v1","note":"pipeline validation only","patch":"// no-op validation"}

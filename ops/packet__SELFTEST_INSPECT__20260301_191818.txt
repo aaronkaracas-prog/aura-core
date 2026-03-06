@@ -1,0 +1,4 @@
+HOST auras.guide
+SELF_PATCH_GET
+PATCH_INDEX_STATUS
+

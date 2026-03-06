@@ -1,0 +1,2 @@
+﻿HOST auras.guide
+REGISTRY_FILTER {"type":"domains","limit":200}

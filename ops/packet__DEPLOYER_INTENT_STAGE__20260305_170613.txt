@@ -1,0 +1,2 @@
+SELF_PATCH_PUT {"name":"deploy_node_probe","mode":"intent","target":"aura_node_test","type":"node_spawn"}
+SELF_PATCH_GET

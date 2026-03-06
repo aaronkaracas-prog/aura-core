@@ -1,0 +1,19 @@
+﻿HOST auras.guide
+PATCH_INDEX_PUT {"name":"ui_fix_norm_real","find":"function normalizeInputForHost(userText){
+    const s = String(userText || '');
+    const trimmed = s.trim();
+    if(!trimmed) return '';
+    if (/^HOSTs+/m.test(trimmed)) return trimmed;
+    return 'HOST ' + activeHost + '
+' + trimmed;
+  }","replace":"function normalizeInputForHost(userText){
+    const s = String(userText || '');
+    const trimmed = s.trim();
+    if(!trimmed) return '';
+    if (/^HOST\\s+/mi.test(trimmed)) return trimmed;
+    return 'HOST ' + activeHost + '\\n' + trimmed;
+  }","note":"fix normalizeInputForHost in actual UI script"}
+PATCH_INDEX_PUT {"name":"ui_fix_pullbuild_real","find":"const res = await postChat('HOST ' + activeHost + '
+SHOW_BUILD');","replace":"const res = await postChat('HOST ' + activeHost + '\\nSHOW_BUILD');","note":"fix pullBuild newline in actual UI script"}
+PATCH_INDEX_APPLY {"names":["ui_fix_norm_real","ui_fix_pullbuild_real"],"note":"apply real UI inline fixes"}
+SHOW_BUILD

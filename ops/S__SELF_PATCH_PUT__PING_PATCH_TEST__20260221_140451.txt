@@ -1,0 +1,4 @@
+>> HOST auras.guide
+>> SELF_PATCH_PUT
+>> {"intent":{"name":"PING_PATCH_TEST","obj":{"note":"apply-key-fixed","ts":"20260221_140451"}}}
+>> 

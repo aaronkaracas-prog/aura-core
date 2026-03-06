@@ -1,0 +1,2 @@
+HOST auras.guide
+PATCH_OBJECT_PUT canon_object_test_2 eyJ0cyI6IjIwMjYwMjIxXzE3Mjc1OCIsIm5vdGUiOiJvYmoyIn0=

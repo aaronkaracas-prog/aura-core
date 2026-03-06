@@ -1,0 +1,3 @@
+SELF_PATCH_PUT {"name":"dry_run_patch","mode":"SELF_PATCH_GET","index_id":"self_patch_probe_20260304_184014","patch_object_id":"PATCH_OBJECT_GET","note":"dry-run probe"}
+SELF_PATCH_GET
+SELF_PATCH_EXECUTE

@@ -1,0 +1,3 @@
+﻿HOST auras.guide
+PATCH_OBJECT_PUT po_test eyJvayI6dHJ1ZX0=
+PATCH_OBJECT_GET po_test

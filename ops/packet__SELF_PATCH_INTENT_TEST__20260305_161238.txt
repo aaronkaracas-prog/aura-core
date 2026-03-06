@@ -1,0 +1,2 @@
+SELF_PATCH_PUT {"name":"test_runtime_patch","index_id":"test_index_1","patch_object_id":"test_patch_1","mode":"execute"}
+SELF_PATCH_GET

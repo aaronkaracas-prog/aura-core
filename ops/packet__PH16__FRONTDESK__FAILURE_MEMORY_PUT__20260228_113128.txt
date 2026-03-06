@@ -1,0 +1,15 @@
+HOST frontdesk.network
+FAILURE_MEMORY_PUT
+{
+  "id": "synthetic__planner_probe__
+20260228_113128
+",
+  "ts": "
+2026-02-28T19:31:28.9229908Z
+",
+  "host": "frontdesk.network",
+  "kind": "SYNTHETIC_PROBE",
+  "where": "PH16",
+  "summary": "Synthetic failure seed to force non-empty AUTONOMY_REPAIR_PLAN; safe/no-op expected.",
+  "details": { "note": "Canon test stimulus only. Clear after plan verified." }
+}

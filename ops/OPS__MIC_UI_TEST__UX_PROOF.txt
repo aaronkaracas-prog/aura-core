@@ -1,0 +1,3 @@
+﻿HOST auras.guide
+FAILURE_MEMORY_PUT
+{"host":"auras.guide","item":{"code":"MIC_UI_TEST_UX","detail":"Chrome/Edge <version> — clicked mic icon → browser permission prompt shown → allowed → level meter moved / transcript appeared / waveform active (paste exact observed UI text)."}}

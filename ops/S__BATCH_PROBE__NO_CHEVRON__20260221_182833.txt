@@ -1,0 +1,4 @@
+HOST auras.guide
+PING
+SHOW_BUILD
+

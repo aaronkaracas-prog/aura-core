@@ -1,0 +1,37 @@
+PATCH_V1
+TARGET_FILE: src/index.js
+
+SEARCH:
+      if (line === "AUTONOMY_STATUS") {
+
+REPLACE:
+      if (line === "AUTONOMY_REPAIR_PLAN") {
+        // Read-only: propose deterministic repairs for the selected host.
+        const b = (await __readJsonKV(__budgetKey)) || __defaultBudget;
+        const c = (await __readJsonKV(__charterKey)) || __defaultCharter;
+        const last_tick = await env.AURA_KV.get(__tickKey);
+        const evidencePresent = activeHost
+          ? Boolean(await env.AURA_KV.get(evidenceKey(String(activeHost).toLowerCase())))
+          : false;
+
+        const actions = [];
+        if (!evidencePresent) {
+          actions.push({ id: "EVIDENCE_ADD_REQUIRED", severity: "HIGH", note: "No evidence present for host; run evidence capture/test and store evidenceKey(host)." });
+        }
+        if (!last_tick) {
+          actions.push({ id: "TICK_MISSING", severity: "MED", note: "No last_tick; cron may not be running for this host route or host is unknown." });
+        }
+        if (!b || typeof b.limit !== "number") {
+          actions.push({ id: "BUDGET_SHAPE_FIX", severity: "MED", note: "Budget shape invalid; restore default budget object." });
+        }
+        if (!c || typeof c.version !== "number") {
+          actions.push({ id: "CHARTER_SHAPE_FIX", severity: "LOW", note: "Charter missing/invalid; restore default charter." });
+        }
+
+        push("AUTONOMY_REPAIR_PLAN", { ok: true, host: __host, stamp: nowIso(), actions, count: actions.length });
+        continue;
+      }
+
+      if (line === "AUTONOMY_STATUS") {
+
+END_PATCH

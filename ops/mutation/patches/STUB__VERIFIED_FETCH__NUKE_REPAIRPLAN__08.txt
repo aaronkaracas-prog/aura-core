@@ -1,0 +1,90 @@
+PATCH_V1
+TARGET_FILE: src/index.js
+
+SEARCH:
+    // Prefer an asked host (URL or bare domain mention). Otherwise use active HOST context.
+    // ----------------------------
+    const targetHostForQuestion = askedHost || activeHost || null;
+
+    // Inline compute from VERIFIED_FETCH_URL executed in THIS message when asked host matches
+    if (lastEvidence && targetHostForQuestion && lastEvidence.host === targetHostForQuestion) {
+      const st = Number(lastEvidence.http_status || 0);
+      const r = lastEvidence.ok && statusReachable(st);
+
+      if (wantHttpStatus) return jsonReply(String(st));
+      if (want200or000) return jsonReply(st === 200 ? "200" : "000");
+      if (wantReachableUnreachable) return jsonReply(r ? "REACHABLE" : "UNREACHABLE");
+      if (wantYesNo) return jsonReply(r ? "YES" : "NO");
+    }
+
+    // If VERIFIED_FETCH_URL ran and there is NO reachability question, return the evidence JSON by default.
+    if (fetchEvidences.length > 0 && !hasReachabilityQuestion && !isShapeRequest) {
+      const payload = fetchEvidences.length === 1 ? fetchEvidences[0] : fetchEvidences;
+      return jsonReply(payload);
+    }
+
+    // ----------------------------
+    // Shape-only queries (no "reachable" keyword) using HOST context + existing evidence.
+    // Example: "HOST example.com\nReturn ONLY the http_status"
+    // ----------------------------
+    if (!hasReachabilityQuestion && isShapeRequest) {
+      const hostToUse = targetHostForQuestion;
+      if (!hostToUse) return jsonReply("NOT WIRED: VERIFIED_FETCH REQUIRED");
+
+      const stored = await env.AURA_KV.get(evidenceKey(hostToUse));
+      if (!stored) return jsonReply("NOT WIRED: VERIFIED_FETCH REQUIRED");
+
+      const evidence = JSON.parse(stored);
+      const st = Number(evidence.http_status || 0);
+      const r = evidence.ok && statusReachable(st);
+
+      if (wantHttpStatus) return jsonReply(String(st));
+      if (want200or000) return jsonReply(st === 200 ? "200" : "000");
+      if (wantReachableUnreachable) return jsonReply(r ? "REACHABLE" : "UNREACHABLE");
+      if (wantYesNo) return jsonReply(r ? "YES" : "NO");
+
+
+REPLACE:
+    // Prefer an asked host (URL or bare domain mention). Otherwise use active HOST context.
+    // ----------------------------
+    const targetHostForQuestion = askedHost || activeHost || null;
+
+    // Inline compute from VERIFIED_FETCH_URL executed in THIS message when asked host matches
+    if (lastEvidence && targetHostForQuestion && lastEvidence.host === targetHostForQuestion) {
+      const st = Number(lastEvidence.http_status || 0);
+      const r = lastEvidence.ok && statusReachable(st);
+
+      if (wantHttpStatus) return jsonReply(String(st));
+      if (want200or000) return jsonReply(st === 200 ? "200" : "000");
+      if (wantReachableUnreachable) return jsonReply(r ? "REACHABLE" : "UNREACHABLE");
+      if (wantYesNo) return jsonReply(r ? "YES" : "NO");
+    }
+
+    // If VERIFIED_FETCH_URL ran and there is NO reachability question, return the evidence JSON by default.
+    if (fetchEvidences.length > 0 && !hasReachabilityQuestion && !isShapeRequest) {
+      const payload = fetchEvidences.length === 1 ? fetchEvidences[0] : fetchEvidences;
+      return jsonReply(payload);
+    }
+
+    // ----------------------------
+    // Shape-only queries (no "reachable" keyword) using HOST context + existing evidence.
+    // Example: "HOST example.com\nReturn ONLY the http_status"
+    // ----------------------------
+    if (!hasReachabilityQuestion && isShapeRequest) {
+      const hostToUse = targetHostForQuestion;
+      if (!hostToUse) return jsonReply("NOT WIRED: VERIFIED_FETCH REQUIRED");
+
+      const stored = await env.AURA_KV.get(evidenceKey(hostToUse));
+      if (!stored) return jsonReply("NOT WIRED: VERIFIED_FETCH REQUIRED");
+
+      const evidence = JSON.parse(stored);
+      const st = Number(evidence.http_status || 0);
+      const r = evidence.ok && statusReachable(st);
+
+      if (wantHttpStatus) return jsonReply(String(st));
+      if (want200or000) return jsonReply(st === 200 ? "200" : "000");
+      if (wantReachableUnreachable) return jsonReply(r ? "REACHABLE" : "UNREACHABLE");
+      if (wantYesNo) return jsonReply(r ? "YES" : "NO");
+
+
+END_PATCH

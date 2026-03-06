@@ -1,0 +1,4 @@
+HOST frontdesk.network
+PATCH_INDEX_GET {"id":"patch_index_src1__20260225_120906"}
+PATCH_OBJECT_GET {"id":"patch_obj_src1__20260225_120906"}
+PATCH_INDEX_STATUS

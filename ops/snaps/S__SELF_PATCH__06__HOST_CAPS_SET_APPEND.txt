@@ -1,0 +1,2 @@
+﻿HOST auras.guide
+HOST_CAPS_SET {"allowed_append":["SELF_PATCH_PUT","SELF_PATCH_GET","SELF_PATCH_APPLY"]}

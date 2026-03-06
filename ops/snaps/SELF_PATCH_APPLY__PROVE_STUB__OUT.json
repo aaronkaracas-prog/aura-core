@@ -1,0 +1,1 @@
+﻿{"ok":true,"reply":[{"cmd":"SELF_PATCH_APPLY","payload":{"ok":false,"host":"auras.guide","error":"MUTATION_SURFACE_NOT_IMPLEMENTED","next":"Use external mutation bridge / deployer once wired."}}]}

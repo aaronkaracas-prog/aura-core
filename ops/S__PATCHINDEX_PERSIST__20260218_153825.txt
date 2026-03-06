@@ -1,0 +1,3 @@
+﻿HOST auras.guide
+PATCH_INDEX_PUT persist_test cGVyc2lzdF90ZXN0
+PATCH_INDEX_GET persist_test

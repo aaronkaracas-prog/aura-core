@@ -1,0 +1,4 @@
+HOST auras.guide
+FAILURE_MEMORY_SET {"items":[{"at":"20260222_075504","code":"PROOF","detail":"FM_SET_PROOF__20260222_075504"}]}
+FAILURE_MEMORY_GET
+{"key":"__latest__"}

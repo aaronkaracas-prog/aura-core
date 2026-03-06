@@ -1,0 +1,8 @@
+HOST auras.guide
+REGISTRY_GET {"type":"domains","id":"frontdesk.network"}
+REGISTRY_GET {"type":"domains","id":"domain__frontdesk.network"}
+REGISTRY_GET {"type":"domains","id":"domain_frontdesk.network"}
+REGISTRY_GET {"type":"domains","id":"domain:frontdesk.network"}
+REGISTRY_GET {"type":"domains","id":"frontdesk_network"}
+REGISTRY_FILTER {"type":"domains","q":"frontdesk"}
+REGISTRY_FILTER {"type":"domains","q":"malibu"}

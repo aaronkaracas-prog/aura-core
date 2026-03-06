@@ -1,0 +1,3 @@
+HOST frontdesk.network
+PATCH_INDEX_STATUS
+SELF_PATCH_GET

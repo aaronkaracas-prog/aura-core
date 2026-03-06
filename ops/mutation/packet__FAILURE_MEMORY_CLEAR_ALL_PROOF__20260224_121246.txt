@@ -1,0 +1,5 @@
+HOST auras.guide
+FAILURE_MEMORY_CLEAR
+{"scope":"all"}
+FAILURE_MEMORY_GET
+

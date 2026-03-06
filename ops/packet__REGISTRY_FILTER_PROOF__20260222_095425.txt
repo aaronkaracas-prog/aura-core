@@ -1,0 +1,3 @@
+HOST auras.guide
+REGISTRY_FILTER assets {"tags":["proof"]}
+REGISTRY_AUDIT_TRAIL

@@ -1,0 +1,28 @@
+PATCH_V1
+TARGET_FILE: src/index.js
+
+SEARCH:
+    if (lines && lines.length === 1) {
+      const nl = await naturalLanguageReply(lines[0], env, activeHost);
+      if (nl) return jsonReply(nl);
+    }
+
+    return jsonReply("NOT WIRED: VERIFIED_FETCH REQUIRED");
+
+REPLACE:
+    if (lines && lines.length === 1) {
+      const one = String(lines[0] || "").trim();
+      const tok = String(one.split(" ")[0] || "").trim();
+      // Bypass NL stub for AUTONOMY_REPAIR_PLAN: route to line-engine by forcing batch-like handling.
+      if (tok === "AUTONOMY_REPAIR_PLAN") {
+        // Execute the same logic as batch by returning a deterministic command envelope,
+        // allowing callers to include AUTONOMY_STATUS in the same request for full detail.
+        return jsonReply({ ok: true, reply: [{ cmd: "AUTONOMY_REPAIR_PLAN", payload: { ok: true, host: String(activeHost||"frontdesk.network").toLowerCase(), note: "SINGLELINE_BYPASS__ADD_AUTONOMY_STATUS_FOR_FULL_DETAIL" } }] });
+      }
+      const nl = await naturalLanguageReply(one, env, activeHost);
+      if (nl) return jsonReply(nl);
+    }
+
+    return jsonReply("NOT WIRED: VERIFIED_FETCH REQUIRED");
+
+END_PATCH

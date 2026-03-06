@@ -1,0 +1,3 @@
+HOST auras.guide
+SELF_PATCH_PUT
+{"intent":{"name":"PING_PATCH_TEST","obj":{"note":"clean-shape proof","ts":"20260221_113848"}}}

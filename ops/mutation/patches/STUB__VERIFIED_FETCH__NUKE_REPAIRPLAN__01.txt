@@ -1,0 +1,90 @@
+PATCH_V1
+TARGET_FILE: src/index.js
+
+SEARCH:
+        ok: true,
+        host: (new URL(request.url).host || null),
+        build: BUILD,
+        stamp: new Date().toISOString(),
+        mic_probe: {
+          ui_marker_present: uiHasMic,
+          note: "This probe confirms mic wiring is shipped. Browser permission/audio capture is tested in UI."
+        }
+      });
+    }
+
+    if (bodyTrim === "SHOW_CLAIM_GATE") {
+      return jsonReply(
+        JSON.stringify(
+          {
+            trigger_words: [
+              "live",
+              "deployed",
+              "launched",
+              "resolving",
+              "propagating",
+              "successful",
+              "verified",
+              "up",
+              "online",
+              "working",
+              "reachable",
+              "available",
+              "accessible"
+            ],
+            forced_message: "NOT WIRED: VERIFIED_FETCH REQUIRED",
+            requires_verified_fetch_format: true
+          },
+          null,
+          2
+        )
+      );
+    }
+
+
+    // ----------------------------
+
+REPLACE:
+        ok: true,
+        host: (new URL(request.url).host || null),
+        build: BUILD,
+        stamp: new Date().toISOString(),
+        mic_probe: {
+          ui_marker_present: uiHasMic,
+          note: "This probe confirms mic wiring is shipped. Browser permission/audio capture is tested in UI."
+        }
+      });
+    }
+
+    if (bodyTrim === "SHOW_CLAIM_GATE") {
+      return jsonReply(
+        JSON.stringify(
+          {
+            trigger_words: [
+              "live",
+              "deployed",
+              "launched",
+              "resolving",
+              "propagating",
+              "successful",
+              "verified",
+              "up",
+              "online",
+              "working",
+              "reachable",
+              "available",
+              "accessible"
+            ],
+            forced_message: "NOT WIRED: VERIFIED_FETCH REQUIRED",
+            requires_verified_fetch_format: true
+          },
+          null,
+          2
+        )
+      );
+    }
+
+
+    // ----------------------------
+
+END_PATCH

@@ -1,0 +1,4 @@
+HOST auras.guide
+PATCH_INDEX_STATUS
+PATCH_INDEX_PUT ui_probe_1 dGVzdA==
+PATCH_INDEX_GET ui_probe_1

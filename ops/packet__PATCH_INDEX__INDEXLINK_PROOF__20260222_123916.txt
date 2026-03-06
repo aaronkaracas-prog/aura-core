@@ -1,0 +1,5 @@
+HOST auras.guide
+PATCH_INDEX_PUT
+{ "id": "patch_index_probe__20260222_123907", "b64": "eyJpZCI6InBhdGNoX2luZGV4X3Byb2JlX18yMDI2MDIyMl8xMjM5MDciLCJob3N0IjoiYXVyYXMuZ3VpZGUiLCJ0YWdzIjpbInByb29mIiwiaW5kZXhfbGluayIsIm5vX2RlcGxveSJdLCJvYmplY3RzIjpbInBhdGNoX29ial9pbmRleGxpbmtfXzIwMjYwMjIyXzEyMzgzMSJdLCJub3RlIjoiUEFUQ0hfSU5ERVggcHJvb2Y6IHJlZmVyZW5jZXMgUEFUQ0hfT0JKRUNUIGlkIChubyBkZXBsb3kpLiIsImNyZWF0ZWRfYXQiOiIyMDI2MDIyMl8xMjM5MDcifQ==", "meta": { "ts": "20260222_123916", "mode": "proof_no_deploy", "note": "index stores object reference" } }
+PATCH_INDEX_GET
+PATCH_INDEX_STATUS

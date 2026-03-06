@@ -1,0 +1,5 @@
+HOST auras.guide
+PATCH_OBJECT_PUT patch_obj_recordfailure_fix__20260302_01 {"mode":"source_only","note":"Define recordFailure fallback if missing","source_patch":"if (typeof recordFailure === 'undefined') { globalThis.recordFailure = async function(code,detail){ try { await kvPut('FAILURE_MEMORY__'+ACTIVE_HOST, { at:new Date().toISOString(), code, detail }); } catch(e){} }; }"}
+PATCH_INDEX_PUT patch_index_recordfailure_fix__20260302_01 {"patch_object_id":"patch_obj_recordfailure_fix__20260302_01","mode":"source_only"}
+PATCH_INDEX_APPLY patch_index_recordfailure_fix__20260302_01
+SELF_PATCH_EXECUTE

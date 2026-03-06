@@ -1,0 +1,4 @@
+﻿HOST auras.guide
+PARSE_ECHO
+PARSE_ECHO one two three
+PATCH_INDEX_PUT triad_test dHJpYWRfdGVzdA==

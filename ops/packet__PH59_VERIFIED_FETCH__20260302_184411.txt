@@ -1,0 +1,2 @@
+VERIFIED_FETCH_URL https://auras.guide/
+EVIDENCE_PRESENT

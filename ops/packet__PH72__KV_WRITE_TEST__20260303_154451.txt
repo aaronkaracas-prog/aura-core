@@ -1,0 +1,7 @@
+REGISTRY_PUT diag_test value_test
+REGISTRY_GET diag_test
+PATCH_OBJECT_PUT diag_patch_
+20260303_154451
+ e30=
+PATCH_OBJECT_GET diag_patch_
+20260303_154451

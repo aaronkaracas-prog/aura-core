@@ -1,0 +1,10 @@
+HOST auras.guide
+FAILURE_MEMORY_CLEAR
+FAILURE_MEMORY_GET
+{"key":"__latest__"}
+FAILURE_MEMORY_SET
+{"at":"20260222_063653","code":"PROBE","detail":"FM_SET_PARSER_PROBE__"}
+FAILURE_MEMORY_PUT
+{"key":"fm_put_probe","value":{"ts":"20260222_063653","note":"fm_put_probe"}}
+FAILURE_MEMORY_GET
+{"key":"fm_put_probe"}

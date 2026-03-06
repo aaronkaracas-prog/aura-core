@@ -1,0 +1,320 @@
+﻿        try {
+          const ev = await env.AURA_KV.get(evidenceKey(h), { type: "json" });
+          if (ev) __evidenceCache.set(h, ev);
+          return ev || null;
+        } catch (_) {
+          return null;
+        }
+      };
+
+      const __noteHostEvidence = (host, evidence) => {
+        const h = String(host || "").trim().toLowerCase();
+        if (!h) return;
+        __evidenceCache.set(h, evidence || { ok: true, host: h });
+      };
+
+      const __domainHostFromRegistryEntry = (type, item) => {
+        try {
+          if (!item || typeof item !== "object") return null;
+          if (type === "domains") return (item.domain || item.id || "").toString();
+          if (type === "assets") {
+            return (item.domain_id || (Array.isArray(item.domains) && item.domains[0]) || "").toString();
+          }
+          return null;
+        } catch (_) {
+          return null;
+        }
+      };
+
+
+  // Execute in the order provided.
+  function __readEnvelopeJson(lines, i, allowedCommands, nextLineOpt) {
+  // Mode A: caller passed a single JSON line (e.g. nextLine)
+  if (typeof nextLineOpt === "string" && nextLineOpt.trim().length) {
+    const obj = safeJsonParse(nextLineOpt.trim());
+    if (!obj || typeof obj !== "object") return { ok:false, error:"BAD_REQUEST", note:"inline/envelope JSON parse failed", consumed: 0 };
+    return { ok:true, obj, consumed: 1 };
+  }
+
+  // Mode B: consume subsequent non-command lines as JSON text
+  let j = i + 1;
+  const buf = [];
+  while (j < lines.length) {
+    const l = lines[j];
+    if (!l) { j++; continue; }
+    if (l.startsWith("HOST ")) { j++; continue; }
+    const tok = l.split(" ")[0];
+    if (allowedCommands.includes(tok)) break;
+    buf.push(l);
+    j++;
+  }
+  if (!buf.length) return { ok:false, error:"BAD_REQUEST", note:"requires envelope (file/packet)  no inline JSON", consumed: 0 };
+  const jsonText = buf.join("\n");
+  const obj = safeJsonParse(jsonText);
+  if (!obj || typeof obj !== "object") return { ok:false, error:"BAD_REQUEST", note:"envelope JSON parse failed", consumed: (j - (i + 1)) };
+  return { ok:true, obj, consumed: (j - (i + 1)) };
+}
+for (let i = 0; i < lines.length; i++) {
+  let consumed = 0; // envelope line-consumption counter (PH16 hardening)
+    const rawLine = lines[i];
+const fullLine = String(rawLine || "").trim();
+const __parts = fullLine ? fullLine.split(/\s+/) : [];
+const cmd = __parts[0] || "";
+const args = __parts.length > 1 ? __parts.slice(1) : [];
+const line = fullLine;
+      const nextLine = lines[i + 1];
+const operator = isOperator;if (cmd === "HOST") {
+      const parts = line.split(" ").filter(Boolean);
+      if (parts[1]) activeHost = parts[1].toLowerCase();
+      continue;
+    }
+
+    // Operator-only command gate (fail closed)
+    // NOTE: "inspection" commands should be available without operator auth.
+    // Only privileged mutations and deploy actions require operator auth.
+    const opOnly =
+      line === "AUDIT_GET" ||
+      line === "AUDIT_CLEAR" ||
+      line.startsWith("CLEAR_VERIFIED_FETCH") ||
+      line === "HOST_CAPS_SET" ||
+      line.startsWith("REGISTRY_PUT") ||
+      line.startsWith("REGISTRY_IMPORT_") ||
+      line.startsWith("DEPLOYER_CALL") ||
+      line.startsWith("INTENT_ADD") ||
+      line.startsWith("INTENT_CLEAR");
+    if (opOnly) {
+      if (!operatorToken) return jsonReply("OPERATOR_TOKEN_NOT_CONFIGURED");
+      if (!isOperator) return jsonReply("UNAUTHORIZED");
+    }
+
+
+    // ----------------------------
+    // Intent (batch mode)  emit cmd entries (no early return)
+    // ----------------------------
+    if (line.startsWith("INTENT_ADD")) {
+      const m = line.match(/^INTENT_ADD\s+(\S+)\s+(\S+)\s+(.+)$/);
+      if (!m) { push("INTENT_ADD", "BAD_REQUEST"); continue; }
+      const host = m[1].toLowerCase();
+      const tag = m[2].toLowerCase();
+      const text = m[3];
+
+      const payload = {
+        host,
+        tag,
+        text,
+        created_at: nowIso(),
+        consent: "EXPLICIT_COMMAND"
+      };
+
+      await env.AURA_KV.put(intentKey(host, tag), JSON.stringify(payload));
+      push("INTENT_ADD", { ok: true, host, tag });
+      continue;
+    }
+
+    if (line.startsWith("INTENT_GET")) {
+      const parts = line.split(" ").filter(Boolean);
+      const host = (parts[1] || "").toLowerCase();
+      const tag = (parts[2] || "").toLowerCase();
+      if (!host || !tag) { push("INTENT_GET", "BAD_REQUEST"); continue; }
+      const stored = await env.AURA_KV.get(intentKey(host, tag));
+      push("INTENT_GET", stored ? (safeJsonParse(stored) || stored) : "INTENT_MISSING");
+      continue;
+    }
+
+    if (line.startsWith("INTENT_CLEAR")) {
+      const parts = line.split(" ").filter(Boolean);
+      const host = (parts[1] || "").toLowerCase();
+      const tag = (parts[2] || "").toLowerCase();
+      if (!host || !tag) { push("INTENT_CLEAR", "BAD_REQUEST"); continue; }
+      await env.AURA_KV.delete(intentKey(host, tag));
+      push("INTENT_CLEAR", "CLEARED");
+      continue;
+    }
+
+
+    if (line === "CLEAR_VERIFIED_FETCH") {
+      const host = normalizeHost((Array.isArray(args) && args.length ? args[0] : null));
+      if (host) await env.AURA_KV.delete(evidenceKey(host));
+      push("CLEAR_VERIFIED_FETCH", host ? "CLEARED" : "BAD_REQUEST");
+      continue;
+    }
+
+    if (line === "VERIFIED_FETCH_URL") {
+      const target = (Array.isArray(args) && args.length ? args[0] : null);
+      const ev = await doVerifiedFetch(target);
+      push("VERIFIED_FETCH_URL", ev);
+      if (ev && ev.ok && ev.host) { __seededThisRequest.add(String(ev.host).toLowerCase()); }
+      continue;
+    }
+
+    if (line === "EVIDENCE_PRESENT") {
+      const host = normalizeHostLoose((Array.isArray(args) && args.length ? args[0] : null)) || activeHost;
+      if (!host) { push("EVIDENCE_PRESENT", "BAD_REQUEST"); continue; }
+      const stored = await env.AURA_KV.get(evidenceKey(host));
+      push("EVIDENCE_PRESENT", stored ? (safeJsonParse(stored) || stored) : "NO_EVIDENCE");
+      continue;
+    }
+
+    if (line === "SHOW_MEMORY_SCHEMA") {
+      push("SHOW_MEMORY_SCHEMA", memorySchemaV1);
+      continue;
+    }
+
+if (line === "PAUSE") { push("PAUSE", { cmd: "PAUSE", paused: true, host: activeHost, note: "DETERMINISTIC_PAUSE_ACK_V2_BATCH" }); continue; }
+if (line === "PING") { push("PING", "PONG"); continue; }
+    if (line === "VERIFIED_FETCH") {
+      const url = args?.[0];
+      if (!url) return jsonReply({ error: "MISSING_URL" });
+
+      try {
+        const r = await fetch(url, { method: "GET" });
+        const text = await r.text();
+        return jsonReply({ ok: true, status: r.status, length: text.length });
+      } catch (e) {
+        return jsonReply({ ok: false, error: String(e && e.message ? e.message : e) });
+      }
+    }
+if (line === "PATCH_INDEX_LIST") {
+  // args: [prefix?] default "" -> returns ids
+  const prefix = (args && args[0]) ? String(args[0]) : "";
+  const listPrefix = "patch_index:" + prefix;
+  const keys = await env.AURA_KV.list({ prefix: listPrefix, limit: 1000 });
+  const ids = (keys && keys.keys ? keys.keys : []).map(k => String(k.name).replace(/^patch_index:/,""));
+  push("PATCH_INDEX_LIST", { ok:true, prefix, count: ids.length, ids });
+  continue;
+}
+
+if (line === "PATCH_INDEX_DELETE") {
+  if (!operator) { push("PATCH_INDEX_DELETE", { ok:false, error:"NOT_AUTHORIZED" }); continue; }
+  // args: [id]
+  const id = (args && args[0]) ? String(args[0]) : "";
+  if (!id) { push("PATCH_INDEX_DELETE", { ok:false, error:"MISSING_ID" }); continue; }
+  const key = "patch_index:" + id;
+  await env.AURA_KV.delete(key);
+  push("PATCH_INDEX_DELETE", { ok:true, deleted:true, id, key });
+  continue;
+}
+
+if (line === "PATCH_INDEX_META") {
+  // args: [id] -> returns size bytes_b64 if present (no decode)
+  const id = (args && args[0]) ? String(args[0]) : "";
+  if (!id) { push("PATCH_INDEX_META", { ok:false, error:"MISSING_ID" }); continue; }
+  const key = "patch_index:" + id;
+  const b64 = await env.AURA_KV.get(key);
+  if (!b64) { push("PATCH_INDEX_META", { ok:true, id, key, present:false }); continue; }
+  const bytes_b64 = String(b64).length;
+  push("PATCH_INDEX_META", { ok:true, id, key, present:true, bytes_b64 });
+  continue;
+}
+if (line === "PATCH_OBJECT_PUT") {
+  if (!operator) { push("PATCH_OBJECT_PUT", { ok:false, error:"NOT_AUTHORIZED" }); continue; }
+
+  // Supports:
+  // 1) Positional: PATCH_OBJECT_PUT <id> <b64>
+  // 2) Envelope (next line): PATCH_OBJECT_PUT \n {"id":"...","b64":"..."}
+
+  let id = (args && args[0]) ? String(args[0]) : "";
+  let b64 = (args && args[1]) ? String(args[1]) : "";
+
+  // Positional path
+  if (id && b64) {
+    const key = "patch_object:" + id;
+    await env.AURA_KV.put(key, b64);
+    push("PATCH_OBJECT_PUT", { ok:true, stored:true, id, key, bytes_b64: String(b64).length });
+    continue;
+  }
+
+  // Envelope fallback (next line)
+  if ((!id || !b64) && typeof lines[i + 1] === "string") {
+    const nextLine = lines[i + 1];
+    const r = __readEnvelopeJson(lines, i, allowedCommands, nextLine);
+    if (r && r.ok && r.obj && typeof r.obj === "object") {
+      id = (r.obj.id != null) ? String(r.obj.id) : "";
+      b64 = (r.obj.b64 != null) ? String(r.obj.b64) : "";
+      if (r.consumed) { i += r.consumed; }
+    }
+  }
+
+  if (!id || !b64) {
+    push("PATCH_OBJECT_PUT", { ok:false, error:"MISSING_ID_OR_B64" });
+    continue;
+  }
+
+  const key2 = "patch_object:" + id;
+  await env.AURA_KV.put(key2, b64);
+  push("PATCH_OBJECT_PUT", { ok:true, stored:true, id, key:key2, bytes_b64: String(b64).length });
+  continue;
+}
+
+if (cmd === "PATCH_OBJECT_GET") {
+  const id = (args && args[0]) ? String(args[0]) : "";
+  if (!id) { push("PATCH_OBJECT_GET", { ok:false, error:"MISSING_ID" }); continue; }
+  const key = "patch_object:" + id;
+  const b64 = await env.AURA_KV.get(key);
+  if (!b64) { push("PATCH_OBJECT_GET", { ok:true, id, key, present:false, bytes_b64:0 }); continue; }
+  push("PATCH_OBJECT_GET", { ok:true, id, key, present:true, bytes_b64: String(b64).length, b64 });
+  continue;
+}
+if (line === "PATCH_INDEX_STATUS") {
+  push("PATCH_INDEX_STATUS", { ok: true, host: activeHost, wired: true, note: "PATCH_INDEX_V1_WIRED" });
+  continue;
+}  
+if (cmd === "PATCH_INDEX_PUT") {
+  if (!operator) { push("PATCH_INDEX_PUT", { ok:false, error:"NOT_AUTHORIZED" }); continue; }
+
+  // Supports:
+  //  - PATCH_INDEX_PUT <id> <b64>
+  //  - PATCH_INDEX_PUT  then JSON envelope on next line: { "id":"...", "b64":"..." }
+  let id = args?.[0];
+  let b64 = args?.[1];
+  let mode = args?.[1];
+  let objectId = args?.[2];
+
+  // CANON positional: PATCH_INDEX_PUT <id> <mode> <objectId>
+  if (id && mode && objectId) {
+    const key = "patch_index:" + String(id);
+    await env.AURA_KV.put(key, String(objectId));
+    try { await env.AURA_KV.put("patch_index_mode:" + String(id), String(mode)); } catch (_) {}
+    push("PATCH_INDEX_PUT", { ok:true, stored:true, id:String(id), key, mode:String(mode), objectId:String(objectId), bytes_b64: String(objectId).length });
+    continue;
+  }
+
+
+  // Envelope fallback (next line)
+  if ((!id || !b64) && typeof lines[i + 1] === "string") {
+    const nextLine = lines[i + 1];
+    const r = __readEnvelopeJson(lines, i, allowedCommands, nextLine);
+    if (r && r.ok && r.obj && typeof r.obj === "object") {
+      id = r.obj.id;
+      b64 = r.obj.b64;
+      if (r.consumed) { i += r.consumed; }
+    }
+  }
+
+  if (!id) { push("PATCH_INDEX_PUT", { ok:false, error:"MISSING_ID" }); continue; }
+  if (!b64) { push("PATCH_INDEX_PUT", { ok:false, error:"MISSING_B64" }); continue; }
+
+  const key = "patch_index:" + String(id);
+  await env.AURA_KV.put(key, String(b64));
+  push("PATCH_INDEX_PUT", { ok:true, stored:true, id:String(id), key, bytes_b64: String(b64).length });
+  continue;
+}
+
+if (cmd === "PATCH_INDEX_APPLY") {
+  let id = args?.[0];
+  if (!id) { push("PATCH_INDEX_APPLY", { ok:false, error:"MISSING_ID" }); continue; }
+  // NOOP apply (wire proof). Real apply wiring can follow later.
+  await env.AURA_KV.put("PATCH_INDEX_ACTIVE__" + activeHost, id);
+push("PATCH_INDEX_APPLY", { ok:true, id, key:"PATCH_INDEX_ACTIVE__" + activeHost, note:"PATCH_INDEX_APPLY_SET_ACTIVE" });
+  continue;
+}
+if (cmd === "PATCH_INDEX_GET") {
+  let id = args?.[0];
+  if (!id) {
+  const activeId = await env.AURA_KV.get("PATCH_INDEX_ACTIVE__" + activeHost);
+  if (!activeId) { push("PATCH_INDEX_GET", { ok:false, error:"MISSING_ID" }); continue; }
+  id = activeId;
+}
+  const key = "patch_index:" + id;
+  const b64 = await env.AURA_KV.get(key);
+  push("PATCH_INDEX_GET", { ok:true, id, key, present: !!b64, bytes_b64: b64 ? b64.length : 0, value: b64 ? String(b64) : "" });

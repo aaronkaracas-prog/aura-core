@@ -1,0 +1,4 @@
+HOST frontdesk.network
+RUNTIME_COMMAND_EXECUTE HELLO_WORLD
+ignored_input
+

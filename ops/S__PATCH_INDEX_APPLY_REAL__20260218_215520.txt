@@ -1,0 +1,4 @@
+﻿HOST auras.guide
+PATCH_INDEX_APPLY {"names":["ui_fix_norm_real","ui_fix_pullbuild_real"],"note":"apply real UI inline fixes now"}
+SHOW_BUILD
+SNAPSHOT_STATE

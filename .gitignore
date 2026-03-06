@@ -8,6 +8,7 @@ commit.wide.json
 selfdeploy-payload.json
 *.wide.json
 *.payload.json
+ops/mutation/
 
 # Secrets / keys
 open ai keys.txt

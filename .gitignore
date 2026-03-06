@@ -16,3 +16,4 @@ open ai keys.txt
 *.key
 *.pem
 *.env
+ops/mutation/

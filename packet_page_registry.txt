@@ -1,0 +1,2 @@
+REGISTRY_PUT {"key":"page:/hellotest","value_b64":"PGh0bWw+PGJvZHk+PGgxPkhFTExPIFRFU1Q8L2gxPjwvYm9keT48L2h0bWw+"}
+REGISTRY_GET {"key":"page:/hellotest"}

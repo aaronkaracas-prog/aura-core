@@ -1,0 +1,2 @@
+REGISTRY_IMPORT_ASSETS
+[{"id":"system.autonomy.controller","name":"Autonomy Controller","pillar":"autonomy","notes":"central coordination engine for observer, simulation, and repair systems"}]

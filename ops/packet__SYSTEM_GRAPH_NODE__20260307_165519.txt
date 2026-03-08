@@ -1,0 +1,2 @@
+REGISTRY_PUT {"key":"system.node.aura-core","value":{"type":"worker","hosts":["auras.guide"],"manages":["malibu.city","frontdesk.network"],"role":"control-plane"}}
+HOST_CAPS_GET

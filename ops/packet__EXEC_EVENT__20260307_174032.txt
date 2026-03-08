@@ -1,0 +1,2 @@
+REGISTRY_IMPORT_ASSETS
+[{"id":"event.execution.run.task","name":"Execution Running Task","pillar":"event","notes":"runtime executing autonomy task"}]

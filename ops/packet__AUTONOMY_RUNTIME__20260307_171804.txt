@@ -1,0 +1,2 @@
+REGISTRY_IMPORT_ASSETS
+[{"id":"system.autonomy.runtime","name":"Autonomy Runtime","pillar":"autonomy","notes":"self-operating runtime coordinating observer, simulation, repair and task execution"}]

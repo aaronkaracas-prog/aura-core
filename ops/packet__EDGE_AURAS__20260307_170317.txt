@@ -1,0 +1,2 @@
+REGISTRY_IMPORT_ASSETS
+[{"id":"edge.auras.guide.served_by.aura-core","name":"auras.guide served_by aura-core","pillar":"graph","notes":"host served by control plane"}]

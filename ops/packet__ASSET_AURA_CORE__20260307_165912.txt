@@ -1,0 +1,2 @@
+REGISTRY_IMPORT_ASSETS
+[{"id":"aura-core","name":"Aura Core","pillar":"infrastructure","notes":"control plane worker"}]

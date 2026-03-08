@@ -1,0 +1,2 @@
+REGISTRY_IMPORT_ASSETS
+[{"id":"system.eventlog","name":"System Event Log","pillar":"system","notes":"event ledger for autonomy runtime"}]

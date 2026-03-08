@@ -1,0 +1,2 @@
+REGISTRY_IMPORT_ASSETS
+[{"id":"system.taskqueue","name":"Autonomy Task Queue","pillar":"system","notes":"queued tasks for autonomy execution"}]

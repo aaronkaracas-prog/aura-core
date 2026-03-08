@@ -1,0 +1,2 @@
+REGISTRY_IMPORT_ASSETS
+[{"id":"simulation.edge.test","name":"Simulation Edge Test","pillar":"simulation","notes":"simulation relation between nodes"}]

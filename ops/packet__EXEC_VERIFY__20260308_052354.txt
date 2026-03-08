@@ -1,0 +1,1 @@
+REGISTRY_GET assets event.execution.run.task

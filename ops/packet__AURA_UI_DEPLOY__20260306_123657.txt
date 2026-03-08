@@ -1,0 +1,37 @@
+PATCH_OBJECT_PUT aura_control_ui_v1
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset='utf-8'>
+<title>Aura Control</title>
+<style>
+body{font-family:Arial;background:#0b0f14;color:#e6edf3;margin:0;padding:0}
+header{background:#111827;padding:12px;font-weight:bold}
+#console{height:60vh;overflow:auto;padding:10px;border-top:1px solid #222}
+#cmd{width:100%;padding:12px;background:#0f172a;color:#fff;border:0}
+button{padding:10px;margin:4px}
+</style>
+</head>
+<body>
+<header>AURA CONTROL</header>
+<div id='console'></div>
+<input id='cmd' placeholder='Type command…'>
+<button onclick='sendCmd()'>Send</button>
+<button onclick='startMic()'>🎤</button>
+<script>
+async function sendCmd(){
+let cmd=document.getElementById('cmd').value;
+let res=await fetch('/chat',{method:'POST',body:cmd});
+let txt=await res.text();
+document.getElementById('console').innerHTML+='<pre>'+txt+'</pre>';
+}
+function startMic(){
+const r=new webkitSpeechRecognition();
+r.onresult=e=>{document.getElementById('cmd').value=e.results[0][0].transcript}
+r.start();
+}
+</script>
+</body>
+</html>
+PATCH_INDEX_PUT aura_control_ui_v1
+PATCH_INDEX_APPLY aura_control_ui_v1

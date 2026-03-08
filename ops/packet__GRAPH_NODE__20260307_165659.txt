@@ -1,0 +1,2 @@
+REGISTRY_PUT system.node.aura-core
+{"type":"worker","hosts":["auras.guide"],"manages":["malibu.city","frontdesk.network"],"role":"control-plane"}

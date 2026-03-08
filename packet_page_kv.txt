@@ -1,0 +1,2 @@
+DEPLOYER_CALL KV_PUT page:/hellotest PGh0bWw+PGJvZHk+PGgxPkhFTExPIFRFU1Q8L2gxPjwvYm9keT48L2h0bWw+
+DEPLOYER_CALL KV_GET page:/hellotest

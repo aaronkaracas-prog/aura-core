@@ -1,0 +1,2 @@
+REGISTRY_IMPORT_ASSETS
+[{"id":"simulation.engine.root","name":"Simulation Engine Root","pillar":"simulation","notes":"root controller for predictive system modeling"}]

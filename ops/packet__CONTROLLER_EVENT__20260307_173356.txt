@@ -1,0 +1,2 @@
+REGISTRY_IMPORT_ASSETS
+[{"id":"event.controller.process.queue","name":"Controller Processing Queue","pillar":"event","notes":"autonomy controller responding to observer queue signal"}]

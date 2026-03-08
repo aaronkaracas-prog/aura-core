@@ -1,0 +1,2 @@
+REGISTRY_IMPORT_ASSETS
+[{"id":"simulation.test.node","name":"Simulation Test Node","pillar":"simulation","notes":"test object for simulation engine"}]

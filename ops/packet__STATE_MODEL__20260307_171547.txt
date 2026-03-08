@@ -1,0 +1,2 @@
+REGISTRY_IMPORT_ASSETS
+[{"id":"system.statemodel","name":"System State Model","pillar":"autonomy","notes":"internal model of system topology and runtime state"}]

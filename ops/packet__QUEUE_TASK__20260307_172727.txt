@@ -1,0 +1,2 @@
+REGISTRY_IMPORT_ASSETS
+[{"id":"queue.autonomy.bootstrap","name":"Autonomy Queue Entry","pillar":"taskqueue","notes":"first runtime task queued for execution"}]

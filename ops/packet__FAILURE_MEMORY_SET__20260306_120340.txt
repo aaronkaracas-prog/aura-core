@@ -1,0 +1,2 @@
+FAILURE_MEMORY_SET {"items":[{"name":"test_failure_event","type":"probe","note":"autonomy_phase_test"}]}
+FAILURE_MEMORY_GET

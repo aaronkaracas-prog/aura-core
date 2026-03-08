@@ -1,0 +1,2 @@
+REGISTRY_IMPORT_ASSETS
+[{"id":"event.simulation.evaluate.task","name":"Simulation Evaluating Task","pillar":"event","notes":"simulation engine evaluating queued autonomy task"}]

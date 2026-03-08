@@ -1,0 +1,2 @@
+REGISTRY_IMPORT_ASSETS
+[{"id":"auras.guide","name":"auras.guide","pillar":"host","notes":"primary aura runtime host"}]

@@ -1,0 +1,2 @@
+REGISTRY_IMPORT_ASSETS
+[{"id":"malibu.city","name":"malibu.city","pillar":"host","notes":"cityguide host"}]

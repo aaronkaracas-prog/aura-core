@@ -1,0 +1,2 @@
+REGISTRY_PUT
+{"key":"system.node.aura-core","value":"control-plane"}

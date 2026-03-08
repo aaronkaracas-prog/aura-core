@@ -1,0 +1,2 @@
+REGISTRY_IMPORT_ASSETS
+[{"id":"event.repair.plan.action","name":"Repair Engine Planning Action","pillar":"event","notes":"repair engine generating execution plan from simulation results"}]

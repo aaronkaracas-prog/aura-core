@@ -1,0 +1,2 @@
+REGISTRY_IMPORT_ASSETS
+[{"id":"edge.frontdesk.network.served_by.aura-core","name":"frontdesk.network served_by aura-core","pillar":"graph","notes":"host served by control plane"}]

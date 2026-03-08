@@ -1,0 +1,1 @@
+REGISTRY_GET assets queue.autonomy.bootstrap

@@ -1,0 +1,2 @@
+REGISTRY_IMPORT_ASSETS
+[{"id":"system.simulation","name":"Simulation Engine","pillar":"system","notes":"predictive simulation layer for autonomy planning"}]

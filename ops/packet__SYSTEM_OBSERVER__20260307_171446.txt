@@ -1,0 +1,2 @@
+REGISTRY_IMPORT_ASSETS
+[{"id":"system.observer","name":"System Observer","pillar":"autonomy","notes":"observes runtime state and feeds simulation engine"}]

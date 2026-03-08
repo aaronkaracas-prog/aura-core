@@ -1,0 +1,2 @@
+REGISTRY_IMPORT_ASSETS
+[{"id":"system.repairengine","name":"Autonomy Repair Engine","pillar":"system","notes":"repair planning and execution engine"}]

@@ -1,0 +1,2 @@
+REGISTRY_IMPORT_ASSETS
+[{"id":"task.autonomy.bootstrap","name":"Autonomy Bootstrap Task","pillar":"task","notes":"initial autonomy test task for runtime execution"}]

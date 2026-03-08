@@ -1,0 +1,2 @@
+REGISTRY_IMPORT_ASSETS
+[{"id":"eventlog.autonomy.bootstrap.start","name":"Autonomy Bootstrap Event","pillar":"eventlog","notes":"first runtime event initiating autonomy pipeline"}]

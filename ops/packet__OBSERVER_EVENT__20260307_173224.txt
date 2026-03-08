@@ -1,0 +1,2 @@
+REGISTRY_IMPORT_ASSETS
+[{"id":"event.observer.queue.detected","name":"Observer Queue Detection","pillar":"event","notes":"observer detected queued autonomy task"}]

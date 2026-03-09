@@ -1,0 +1,2 @@
+HOST auras.guide
+REGISTRY_PUT {"key":"patch_object:patch_object:test_task","value":"eyJ2YWx1ZSI6Im9rIn0="}

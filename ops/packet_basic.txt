@@ -1,0 +1,1 @@
+REGISTRY_PUT {"type":"assets","item":{"id":"basic","content_b64":"PGh0bWw+PGJvZHkgc3R5bGU9J2ZvbnQtZmFtaWx5OnNhbnMtc2VyaWY7YmFja2dyb3VuZDojMTExO2NvbG9yOiNmZmYnPjxoMT5BdXJhIEJhc2ljIFVJPC9oMT48cD5Xb3JrZXIgcnVudGltZSBpcyBzZXJ2aW5nIHRoaXMgcGFnZS48L3A+PC9ib2R5PjwvaHRtbD4="}}

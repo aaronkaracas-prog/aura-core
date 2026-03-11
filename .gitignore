@@ -1,19 +1,7 @@
-﻿src/index-last.js
-src/index-lastgood.js
-src/indexlast.js
-src/working inex files/
-
-# Block huge payloads
-commit.wide.json
-selfdeploy-payload.json
-*.wide.json
-*.payload.json
-ops/mutation/
-
-# Secrets / keys
-open ai keys.txt
-*keys*.txt
-*.key
-*.pem
-*.env
-ops/mutation/
+﻿ops/
+packet_*
+backup_*
+*_packet.txt
+*_packet.json
+*_packet.mjs
+index_corrupted_*

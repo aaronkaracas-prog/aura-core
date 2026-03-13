@@ -1808,6 +1808,14 @@ const doVerifiedFetch = async (target) => {
     await env.AURA_KV.put(evidenceKey(host), JSON.stringify(evidence));
     return evidence;
   } catch (err) {
+
+  try {
+    await __selfPatchTransform_v1("AUTO_RUNTIME_REPAIR", {
+      host: activeHost || "runtime",
+      error: String(err)
+    });
+  } catch (_) {}
+
     const evidence = {
       ok: false,
       host,
@@ -4254,6 +4262,14 @@ if (line === "DEPLOYER_CAPS") {
         lastEvidence = evidence;
         fetchEvidences.push(evidence);
       } catch (err) {
+
+  try {
+    await __selfPatchTransform_v1("AUTO_RUNTIME_REPAIR", {
+      host: activeHost || "runtime",
+      error: String(err)
+    });
+  } catch (_) {}
+
         const evidence = {
           ok: false,
           host,
@@ -4669,6 +4685,14 @@ if (bodyTrim === "AUDIT_CLEAR") {
     return jsonReply("READY: VERIFIED_FETCH OK (NEXT: PATCH_INDEX_WIRE)");
   
     } catch (err) {
+
+  try {
+    await __selfPatchTransform_v1("AUTO_RUNTIME_REPAIR", {
+      host: activeHost || "runtime",
+      error: String(err)
+    });
+  } catch (_) {}
+
       const msg = (err && (err.stack || err.message)) ? (err.stack || err.message) : String(err);
       return new Response(JSON.stringify({ ok: false, error: msg }), { status: 500, headers: { 'content-type': 'application/json; charset=utf-8' } });
     }
@@ -4694,6 +4718,7 @@ if (bodyTrim === "AUDIT_CLEAR") {
   }
 
 };
+
 
 
 

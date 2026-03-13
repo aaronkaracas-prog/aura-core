@@ -74,8 +74,14 @@ async function naturalLanguageReply(input, env, activeHost) {
   };
 
   
-  const identity = (await intentGet("identity")) || "I am Aura — autonomous evidence-first control plane.";
-  const capability = (await intentGet("capability")) || "";
+  
+  
+  
+  
+
+  
+  
+
   if (lower.includes("help") || lower === "?" || lower.includes("commands")) {
     return "Type an allowed command (e.g., PING, SHOW_BUILD, SNAPSHOT_STATE).\n\nFor host work: HOST <domain>, then EVIDENCE_PRESENT or VERIFIED_FETCH_URL http://<domain>/";
   }
@@ -4698,7 +4704,7 @@ if (bodyTrim === "AUDIT_CLEAR") {
     }
 },
 
-  async scheduled(event, env, ctx) {
+  async __scheduled_worker(event, env, ctx) {
     try {
       for (const host of AUTONOMY_TICK_HOSTS) {
         const prev = await env.AURA_KV.get(autonomyTickKeyForHost(host), { type: "json" }).catch(()=>null);
@@ -4791,6 +4797,42 @@ if (bodyTrim === "AUDIT_CLEAR") {
 
 
 
+
+
+
+
+
+
+
+
+
+async function __auraEvolutionCycle(env, host) {
+
+  try {
+
+    const memKey = FAILURE_MEMORY__System.Management.Automation.Internal.Host.InternalHost;
+    const mem = await env.AURA_KV.get(memKey, { type: "json" }) || [];
+
+    if (!Array.isArray(mem) || mem.length < 5) return;
+
+    const recent = mem.slice(-5);
+
+    const signature = recent.map(x => String(x.error)).join(" | ");
+
+    const intent = {
+      ts: new Date().toISOString(),
+      type: "AUTO_PATCH_INTENT_V1",
+      signature,
+      host
+    };
+
+    const key = SELF_PATCH_INTENT__System.Management.Automation.Internal.Host.InternalHost;
+
+    await env.AURA_KV.put(key, JSON.stringify(intent));
+
+  } catch (_) {}
+
+}
 
 
 

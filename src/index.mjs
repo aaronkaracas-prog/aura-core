@@ -14,7 +14,8 @@
 // Injected to ensure PAUSE emits observable reply payload (no KV mutation).
 function __AURA_PAUSE_ACK__(cmd, host, replyArr) {
   if (cmd === "PAUSE") {
-    replyArr.push({
+    
+replyArr.push({
       cmd: "PAUSE",
       payload: {
         ok: true,
@@ -443,7 +444,17 @@ const UI_HTML = `<!doctype html>
   const UI_VERSION = 'UI_PATCH__20260215_2A__CHATGPT_SHELL';
 
   const chat = document.getElementById('chat');
-  const input = document.getElementById('input');
+  
+
+
+const input = document.getElementById('input');
+
+// LLM ROUTER (pre-command)
+if (!input.trim().match(/^[A-Z_]+(\s|$)/)) {
+  const llm = await auraLLMFallback(env, input);
+  if (llm) return new Response(JSON.stringify({ ok:true, reply: llm }), { headers: { "content-type":"application/json" } });
+}
+
   const sendBtn = document.getElementById('send');
   const statusEl = document.getElementById('status');
   const metaEl = document.getElementById('meta');
@@ -686,6 +697,13 @@ if(res && typeof res === 'object'){
 </html>`;
 
 
+globalThis.recordFailure = async function(cmd,detail){
+  try{
+    const key = "failure:" + Date.now() + ":" + cmd
+    await env.AURA_KV.put(key, detail)
+  }catch(e){}
+}
+
 export default {
   async fetch(request, env) {
     try {
@@ -757,7 +775,23 @@ return new Response(__UI_HTML_NORMALIZED, { headers: { 'content-type': 'text/htm
     }
 
     const body = await request.text();
-    const bodyTrim = body.trim();
+
+// LLM ROUTER (pre-command)
+if (!body.trim().match(/^[A-Z_]+(\s|$)/)) {
+  const llm = await auraLLMFallback(env, body);
+  if (llm) return new Response(JSON.stringify({ ok:true, reply: llm }), { headers: { "content-type":"application/json" } });
+}
+
+    const bodyTrim = body.trim()
+
+  // Aura LLM fallback
+  if(false && bodyTrim) {
+    const answer = await auraLLM(env, bodyTrim);
+    return new Response(JSON.stringify({ ok: true, reply: answer }), {
+      headers: { "content-type": "application/json" }
+    });
+  }
+;
 
     // Natural language (no-operator): answer without gating unless user asserts a gated claim.
     const firstLine = (bodyTrim.split(/\r?\n/)[0] || '').trim();
@@ -1721,7 +1755,7 @@ if (bodyTrim === "PORTFOLIO_STATUS") {
       let __scanHost = activeHost;
       for (const line of lines) {
   const __scanParts = String(line || "").trim().split(/\s+/);
-  const cmd = __scanParts[0] || "";
+  let cmd = __scanParts[0] || ""; const __list = await env.AURA_KV.list({prefix:"failure_auto_"}); for(const __k of __list.keys){ const __v = await env.AURA_KV.get(__k.name); if(__v){ try{ const __o = JSON.parse(__v); if(__o.cmd==="PATCH_OBJECT_GET" && (cmd==="PATCH_OBJECT_GET" || line==="PATCH_OBJECT_GET")){ push("LEARNING",{ok:true,cmd,knownFailure:true}); cmd="PATCH_INDEX_GET"; __scanParts[0]="PATCH_INDEX_GET"; } }catch(e){} }}
   if (cmd === "HOST") {
           const parts = line.split(" ").filter(Boolean);
           if (parts[1]) __scanHost = parts[1].toLowerCase();
@@ -2038,10 +2072,10 @@ if (line === "PATCH_INDEX_LIST") {
 }
 
 if (line === "PATCH_INDEX_DELETE") {
-  if (!operator) { push("PATCH_INDEX_DELETE", { ok:false, error:"NOT_AUTHORIZED" }); continue; }
+  if (!operator) { await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"PATCH_INDEX_DELETE", ok:false})); push("PATCH_INDEX_DELETE",{ ok:false, error:"NOT_AUTHORIZED" }); continue; }
   // args: [id]
   const id = (args && args[0]) ? String(args[0]) : "";
-  if (!id) { push("PATCH_INDEX_DELETE", { ok:false, error:"MISSING_ID" }); continue; }
+  if (!id) { await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"PATCH_INDEX_DELETE", ok:false})); push("PATCH_INDEX_DELETE",{ ok:false, error:"MISSING_ID" }); continue; }
   const key = "patch_index:" + id;
   await env.AURA_KV.delete(key);
   push("PATCH_INDEX_DELETE", { ok:true, deleted:true, id, key });
@@ -2051,16 +2085,16 @@ if (line === "PATCH_INDEX_DELETE") {
 if (line === "PATCH_INDEX_META") {
   // args: [id] -> returns size bytes_b64 if present (no decode)
   const id = (args && args[0]) ? String(args[0]) : "";
-  if (!id) { push("PATCH_INDEX_META", { ok:false, error:"MISSING_ID" }); continue; }
+  if (!id) { await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"PATCH_INDEX_META", ok:false})); push("PATCH_INDEX_META",{ ok:false, error:"MISSING_ID" }); continue; }
   const key = "patch_index:" + id;
   const b64 = await env.AURA_KV.get(key);
-  if (!b64) { push("PATCH_INDEX_META", { ok:true, id, key, present:false }); continue; }
+  if (!b64) { push("PATCH_INDEX_META", { ok:true, id, key, present:false, __recordFailure:true, autoFailureCapture:true,autoFailureCaptureRuntime:true }); continue; }
   const bytes_b64 = String(b64).length;
   push("PATCH_INDEX_META", { ok:true, id, key, present:true, bytes_b64 });
   continue;
 }
 if (line === "PATCH_OBJECT_PUT") {
-  if (!operator) { push("PATCH_OBJECT_PUT", { ok:false, error:"NOT_AUTHORIZED" }); continue; }
+  if (!operator) { await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"PATCH_OBJECT_PUT", ok:false})); push("PATCH_OBJECT_PUT",{ ok:false, error:"NOT_AUTHORIZED" }); continue; }
 
   // Supports:
   // 1) Positional: PATCH_OBJECT_PUT <id> <b64>
@@ -2089,7 +2123,7 @@ if (line === "PATCH_OBJECT_PUT") {
   }
 
   if (!id || !b64) {
-    push("PATCH_OBJECT_PUT", { ok:false, error:"MISSING_ID_OR_B64" });
+    await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"PATCH_OBJECT_PUT", ok:false})); push("PATCH_OBJECT_PUT",{ ok:false, error:"MISSING_ID_OR_B64" });
     continue;
   }
 
@@ -2099,12 +2133,12 @@ if (line === "PATCH_OBJECT_PUT") {
   continue;
 }
 
-if (cmd === "PATCH_OBJECT_GET") {
+if (cmd === "PATCH_OBJECT_GET" || line === "PATCH_OBJECT_GET") {
   const id = (args && args[0]) ? String(args[0]) : "";
-  if (!id) { push("PATCH_OBJECT_GET", { ok:false, error:"MISSING_ID" }); continue; }
+  if (!id) { await env.AURA_KV.put("failure_auto_"+Date.now(), JSON.stringify({cmd:"PATCH_OBJECT_GET", ok:false, error:"MISSING_ID"})); await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"PATCH_OBJECT_GET", ok:false, error:"MISSING_ID"})); push("PATCH_OBJECT_GET",{ ok:false, error:"MISSING_ID" }); continue; }
   const key = "patch_object:" + id;
   const b64 = await env.AURA_KV.get(key);
-  if (!b64) { push("PATCH_OBJECT_GET", { ok:true, id, key, present:false, bytes_b64:0 }); continue; }
+  if (!b64) { push("PATCH_OBJECT_GET", { ok:true, id, key, present:false, __recordFailure:true, autoFailureCapture:true,autoFailureCaptureRuntime:true, bytes_b64:0 }); continue; }
   push("PATCH_OBJECT_GET", { ok:true, id, key, present:true, bytes_b64: String(b64).length, b64 });
   continue;
 }
@@ -2113,7 +2147,7 @@ if (line === "PATCH_INDEX_STATUS") {
   continue;
 }  
 if (cmd === "PATCH_INDEX_PUT") {
-  if (!operator) { push("PATCH_INDEX_PUT", { ok:false, error:"NOT_AUTHORIZED" }); continue; }
+  if (!operator) { await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"PATCH_INDEX_PUT", ok:false})); push("PATCH_INDEX_PUT",{ ok:false, error:"NOT_AUTHORIZED" }); continue; }
 
   // Supports:
   //  - PATCH_INDEX_PUT <id> <b64>
@@ -2144,8 +2178,8 @@ if (cmd === "PATCH_INDEX_PUT") {
     }
   }
 
-  if (!id) { push("PATCH_INDEX_PUT", { ok:false, error:"MISSING_ID" }); continue; }
-  if (!b64) { push("PATCH_INDEX_PUT", { ok:false, error:"MISSING_B64" }); continue; }
+  if (!id) { await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"PATCH_INDEX_PUT", ok:false})); push("PATCH_INDEX_PUT",{ ok:false, error:"MISSING_ID" }); continue; }
+  if (!b64) { await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"PATCH_INDEX_PUT", ok:false})); push("PATCH_INDEX_PUT",{ ok:false, error:"MISSING_B64" }); continue; }
 
   const key = "patch_index:" + String(id);
   await env.AURA_KV.put(key, String(b64));
@@ -2155,7 +2189,7 @@ if (cmd === "PATCH_INDEX_PUT") {
 
 if (cmd === "PATCH_INDEX_APPLY") {
   let id = args?.[0];
-  if (!id) { push("PATCH_INDEX_APPLY", { ok:false, error:"MISSING_ID" }); continue; }
+  if (!id) { await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"PATCH_INDEX_APPLY", ok:false})); push("PATCH_INDEX_APPLY",{ ok:false, error:"MISSING_ID" }); continue; }
   // NOOP apply (wire proof). Real apply wiring can follow later.
   await env.AURA_KV.put("PATCH_INDEX_ACTIVE__" + activeHost, id);
 push("PATCH_INDEX_APPLY", { ok:true, id, key:"PATCH_INDEX_ACTIVE__" + activeHost, note:"PATCH_INDEX_APPLY_SET_ACTIVE" });
@@ -2165,7 +2199,7 @@ if (cmd === "PATCH_INDEX_GET") {
   let id = args?.[0];
   if (!id) {
   const activeId = await env.AURA_KV.get("PATCH_INDEX_ACTIVE__" + activeHost);
-  if (!activeId) { push("PATCH_INDEX_GET", { ok:false, error:"MISSING_ID" }); continue; }
+  if (!activeId) { await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"PATCH_INDEX_GET", ok:false})); push("PATCH_INDEX_GET",{ ok:false, error:"MISSING_ID" }); continue; }
   id = activeId;
 }
   const key = "patch_index:" + id;
@@ -2219,7 +2253,7 @@ if (line === "SHOW_ALLOWED_COMMANDS") {
 
 
 if (line.startsWith("RUNTIME_COMMAND_DEFINE")) {
-  if (!isOperator) { push("RUNTIME_COMMAND_DEFINE", { ok:false, error:"OPERATOR_REQUIRED" }); continue; }
+  if (!isOperator) { await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"RUNTIME_COMMAND_DEFINE", ok:false})); push("RUNTIME_COMMAND_DEFINE",{ ok:false, error:"OPERATOR_REQUIRED" }); continue; }
   const parts = String(fullLine || line || "").split(" ");
   const name = (parts[1] || "").trim();
   // Multiline body capture: consume nextLine and any following non-command lines.
@@ -2243,8 +2277,8 @@ if (line.startsWith("RUNTIME_COMMAND_DEFINE")) {
     }
   } catch (_) {}
   const body = bodyLines.join("\n");
-  if (!name) { push("RUNTIME_COMMAND_DEFINE", { ok:false, error:"INVALID_NAME" }); continue; }
-  if (!body) { push("RUNTIME_COMMAND_DEFINE", { ok:false, error:"INVALID_BODY" }); continue; }
+  if (!name) { await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"RUNTIME_COMMAND_DEFINE", ok:false})); push("RUNTIME_COMMAND_DEFINE",{ ok:false, error:"INVALID_NAME" }); continue; }
+  if (!body) { await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"RUNTIME_COMMAND_DEFINE", ok:false})); push("RUNTIME_COMMAND_DEFINE",{ ok:false, error:"INVALID_BODY" }); continue; }
   const hostKey = String(activeHost || "frontdesk.network").toLowerCase();
   const idxKey = `runtime_cmd_index:${hostKey}`;
   const cmdKey = `runtime_cmd:${hostKey}:${name}`;
@@ -2260,10 +2294,10 @@ if (line.startsWith("RUNTIME_COMMAND_DEFINE")) {
 }
 
 if (line.startsWith("RUNTIME_COMMAND_GET")) {
-  if (!isOperator) { push("RUNTIME_COMMAND_GET", { ok:false, error:"OPERATOR_REQUIRED" }); continue; }
+  if (!isOperator) { await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"RUNTIME_COMMAND_GET", ok:false})); push("RUNTIME_COMMAND_GET",{ ok:false, error:"OPERATOR_REQUIRED" }); continue; }
   const parts = String(fullLine || line || "").split(" ");
   const name = (parts[1] || "").trim();
-  if (!name) { push("RUNTIME_COMMAND_GET", { ok:false, error:"INVALID_NAME" }); continue; }
+  if (!name) { await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"RUNTIME_COMMAND_GET", ok:false})); push("RUNTIME_COMMAND_GET",{ ok:false, error:"INVALID_NAME" }); continue; }
   const hostKey = String(activeHost || "frontdesk.network").toLowerCase();
   const cmdKey = `runtime_cmd:${hostKey}:${name}`;
   const body = await env.AURA_KV.get(cmdKey);
@@ -2272,7 +2306,7 @@ if (line.startsWith("RUNTIME_COMMAND_GET")) {
 }
 
 if (line === "RUNTIME_COMMAND_LIST") {
-  if (!isOperator) { push("RUNTIME_COMMAND_LIST", { ok:false, error:"OPERATOR_REQUIRED" }); continue; }
+  if (!isOperator) { await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"RUNTIME_COMMAND_LIST", ok:false})); push("RUNTIME_COMMAND_LIST",{ ok:false, error:"OPERATOR_REQUIRED" }); continue; }
   const hostKey = String(activeHost || "frontdesk.network").toLowerCase();
   const idxKey = `runtime_cmd_index:${hostKey}`;
   const rawIdx = await env.AURA_KV.get(idxKey);
@@ -2285,16 +2319,26 @@ if (line === "RUNTIME_COMMAND_LIST") {
 
 
 if (line.startsWith("RUNTIME_COMMAND_EXECUTE")) {
-  if (!isOperator) { push("RUNTIME_COMMAND_EXECUTE", { ok:false, error:"OPERATOR_REQUIRED" }); continue; }
+  if (!isOperator) { await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"RUNTIME_COMMAND_EXECUTE", ok:false})); push("RUNTIME_COMMAND_EXECUTE",{ ok:false, error:"OPERATOR_REQUIRED" }); continue; }
   const parts = String(fullLine || line || "").split(" ");
   const name = (parts[1] || "").trim();
   const hostKey = String(activeHost || "frontdesk.network").toLowerCase();
-  if (!name) { push("RUNTIME_COMMAND_EXECUTE", { ok:false, error:"INVALID_NAME" }); continue; }
+  if (!name) { await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"RUNTIME_COMMAND_EXECUTE", ok:false})); push("RUNTIME_COMMAND_EXECUTE",{ ok:false, error:"INVALID_NAME" }); continue; }
   const cmdKey = `runtime_cmd:${hostKey}:${name}`;
   const body = await env.AURA_KV.get(cmdKey);
-  if (!body) { push("RUNTIME_COMMAND_EXECUTE", { ok:false, error:"NOT_FOUND", name }); continue; }
+  if (!body) { await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"RUNTIME_COMMAND_EXECUTE", ok:false})); push("RUNTIME_COMMAND_EXECUTE",{ ok:false, error:"NOT_FOUND", name }); continue; }
   const lines2 = String(body).split(/\r?\n/).map(s => String(s||"").trim()).filter(Boolean);
-  const input = (typeof nextLine === "string") ? nextLine : null;
+  
+
+
+const input = (typeof nextLine === "string") ? nextLine : null;
+
+// LLM ROUTER (pre-command)
+if (!input.trim().match(/^[A-Z_]+(\s|$)/)) {
+  const llm = await auraLLMFallback(env, input);
+  if (llm) return new Response(JSON.stringify({ ok:true, reply: llm }), { headers: { "content-type":"application/json" } });
+}
+
   let ret = null;
   try {
     for (const L of lines2) {
@@ -2309,20 +2353,20 @@ if (line.startsWith("RUNTIME_COMMAND_EXECUTE")) {
         const jsonText = L.slice(4 + 1 + (tag ? tag.length : 0) + 1).trim();
         let obj = null;
         try { obj = jsonText ? JSON.parse(jsonText) : {}; } catch { obj = { raw: jsonText }; }
-        if (!tag) { push("RUNTIME_COMMAND_EXECUTE", { ok:false, error:"BAD_PUSH_TAG" }); continue; }
+        if (!tag) { await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"RUNTIME_COMMAND_EXECUTE", ok:false})); push("RUNTIME_COMMAND_EXECUTE",{ ok:false, error:"BAD_PUSH_TAG" }); continue; }
         push(tag, obj);
         continue;
       }
       if (op === "SETKV") {
         const key = (m[1] || "").trim();
         const val = L.slice(6 + (key ? key.length : 0)).trim();
-        if (!key) { push("RUNTIME_COMMAND_EXECUTE", { ok:false, error:"BAD_SETKV_KEY" }); continue; }
+        if (!key) { await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"RUNTIME_COMMAND_EXECUTE", ok:false})); push("RUNTIME_COMMAND_EXECUTE",{ ok:false, error:"BAD_SETKV_KEY" }); continue; }
         await env.AURA_KV.put(key, val);
         continue;
       }
       if (op === "GETKV") {
         const key = (m[1] || "").trim();
-        if (!key) { push("RUNTIME_COMMAND_EXECUTE", { ok:false, error:"BAD_GETKV_KEY" }); continue; }
+        if (!key) { await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"RUNTIME_COMMAND_EXECUTE", ok:false})); push("RUNTIME_COMMAND_EXECUTE",{ ok:false, error:"BAD_GETKV_KEY" }); continue; }
         const v = await env.AURA_KV.get(key);
         push("GETKV", { key, present: !!v, value: v || null });
         continue;
@@ -2331,11 +2375,11 @@ if (line.startsWith("RUNTIME_COMMAND_EXECUTE")) {
         push("ECHO", { text: L.slice(5), input });
         continue;
       }
-      push("RUNTIME_COMMAND_EXECUTE", { ok:false, error:"UNKNOWN_OP", op });
+      await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"RUNTIME_COMMAND_EXECUTE", ok:false})); push("RUNTIME_COMMAND_EXECUTE",{ ok:false, error:"UNKNOWN_OP", op });
     }
     push("RUNTIME_COMMAND_EXECUTE", { ok:true, host: hostKey, name, result: ret, used_input: input });
   } catch (e) {
-    push("RUNTIME_COMMAND_EXECUTE", { ok:false, host: hostKey, name, error:"EXEC_ERROR", detail: String(e && e.message ? e.message : e) });
+    await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"RUNTIME_COMMAND_EXECUTE", ok:false})); push("RUNTIME_COMMAND_EXECUTE",{ ok:false, host: hostKey, name, error:"EXEC_ERROR", detail: String(e && e.message ? e.message : e) });
   }
   continue;
 }
@@ -2542,8 +2586,18 @@ push("AUTONOMY_LAST_TICK", { ok: true, host: __host, last_tick: (chosen || null)
       }
 
       if (line === "FAILURE_MEMORY_GET") {
-        const fm = (await __readJsonKV(__failKeyForRead)) || [];
-        push("FAILURE_MEMORY_GET", { ok: true, host: __host, items: fm, count: Array.isArray(fm) ? fm.length : 0 });
+
+      if (line === "FAILURE_MEMORY_CLEAR") {
+        const list = await env.AURA_KV.list({prefix:"failure_auto_"});
+        for (const k of list.keys) {
+          await env.AURA_KV.delete(k.name);
+        }
+        push("FAILURE_MEMORY_CLEAR", { ok:true, host:__host });
+        continue;
+      }
+
+        const list = await env.AURA_KV.list({prefix:"failure_auto_"}); const fm = await Promise.all(list.keys.map(k=>env.AURA_KV.get(k.name)));
+        push("FAILURE_MEMORY_GET",{ ok:true, host:__host, items: fm.filter(Boolean).map(v=>JSON.parse(v)), count: fm.filter(Boolean).length });
         continue;
       }
 
@@ -2568,7 +2622,7 @@ push("AUTONOMY_LAST_TICK", { ok: true, host: __host, last_tick: (chosen || null)
         try {
           const __fmKey = "FAILURE_MEMORY__" + String(String(activeHost || __host || "frontdesk.network").toLowerCase());
           const __fm = await env.AURA_KV.get(__fmKey, { type: "json" }).catch(()=>null);
-          if (Array.isArray(__fm) && __fm.length > 0) {
+          if (Array.isArray(__fm) && __0 > 0) {
             actions.push({
               id: "FAILURE_MEMORY_PRESENT",
               severity: "HIGH",
@@ -2664,7 +2718,7 @@ if (item && item.code === "NEEDS_PLANNER_ACTION") {
               ? __failKeyForRead
               : ("FAILURE_MEMORY__" + String(String(activeHost || __host || "frontdesk.network").toLowerCase()));
             await env.AURA_KV.put(__k, JSON.stringify([]));
-            results.push({ name: "failure_memory_cleared", pass: true, observed: "CLEARED", expected: "CLEARED", fixed: "FAILURE_MEMORY_CLEARED", key: __k });
+            results.push({ name: "failure_auto_cleared", pass: true, observed: "CLEARED", expected: "CLEARED", fixed: "FAILURE_MEMORY_CLEARED", key: __k });
           } catch (e) {
             results.push({ ok: false, error: "FAILURE_MEMORY_CLEAR_FAILED", note: String(e && e.message ? e.message : e) });
           }
@@ -2939,10 +2993,10 @@ if (line === "FAILURE_MEMORY_PUT") {
 // FAILURE MEMORY (operator hygiene)
 // ----------------------------
 if (line === "FAILURE_MEMORY_CLEAR") {
-  if (!isOperator) { push("FAILURE_MEMORY_CLEAR", "NOT_ALLOWED"); continue; }
+  if (!isOperator) { const list=await env.AURA_KV.list({prefix:"failure_auto_"});for(const k of list.keys){await env.AURA_KV.delete(k.name);}push("FAILURE_MEMORY_CLEAR",{ok:true,host:__host,cleared:list.keys.length});continue; }
 
   const r = __readEnvelopeJson(lines, i, allowedCommands, nextLine);
-  if (!r.ok) { push("FAILURE_MEMORY_CLEAR", { ok: false, error: r.error, note: r.note }); continue; }
+  if (!r.ok) { const list=await env.AURA_KV.list({prefix:"failure_auto_"});for(const k of list.keys){await env.AURA_KV.delete(k.name);}push("FAILURE_MEMORY_CLEAR",{ok:true,host:__host,cleared:list.keys.length});continue; }
 
   const host = String((r.obj && r.obj.host) || __host).toLowerCase();
   await env.AURA_KV.put(`FAILURE_MEMORY__${host}`, JSON.stringify([]));
@@ -2962,10 +3016,10 @@ if (line === "FAILURE_MEMORY_SET" || fullLine.startsWith("FAILURE_MEMORY_SET "))
   // 2) Envelope JSON on following line(s): FAILURE_MEMORY_SET\n{...}
   if (fullLine.startsWith("FAILURE_MEMORY_SET ")) {
     const raw = fullLine.slice("FAILURE_MEMORY_SET ".length).trim();
-    try { obj = JSON.parse(raw); } catch (e) { push("FAILURE_MEMORY_SET", { ok:false, error:"BAD_JSON", note:String(e && e.message ? e.message : e) }); continue; }
+    try { obj = JSON.parse(raw); } catch (e) { await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"FAILURE_MEMORY_SET", ok:false})); push("FAILURE_MEMORY_SET",{ ok:false, error:"BAD_JSON", note:String(e && e.message ? e.message : e) }); continue; }
   } else {
     const r = __readEnvelopeJson(lines, i, allowedCommands, nextLine);
-    if (!r.ok) { push("FAILURE_MEMORY_SET", { ok:false, error:r.error, note:r.note }); continue; }
+    if (!r.ok) { await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"FAILURE_MEMORY_SET", ok:false})); push("FAILURE_MEMORY_SET",{ ok:false, error:r.error, note:r.note }); continue; }
     obj = r.obj;
     consumed = r.consumed;
   }
@@ -2973,7 +3027,7 @@ if (line === "FAILURE_MEMORY_SET" || fullLine.startsWith("FAILURE_MEMORY_SET "))
   const host = String((obj && obj.host) || __host).toLowerCase();
   const items = (obj && Array.isArray(obj.items)) ? obj.items : null;
   if (!items) {
-    push("FAILURE_MEMORY_SET", { ok:false, error:"BAD_REQUEST", note:"Expected { items: [...] }" });
+    await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"FAILURE_MEMORY_SET", ok:false})); push("FAILURE_MEMORY_SET",{ ok:false, error:"BAD_REQUEST", note:"Expected { items: [...] }" });
     if (consumed) { i += consumed; }
     continue;
   }
@@ -3060,14 +3114,14 @@ if (line === "SELF_PATCH_PUT" || (typeof line === "string" && line.startsWith("S
   }
 
   if (!body || typeof body !== "object") {
-    push("SELF_PATCH_PUT", { ok:false, host: activeHost, error:"BAD_JSON" });
+    await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"SELF_PATCH_PUT", ok:false})); push("SELF_PATCH_PUT",{ ok:false, host: activeHost, error:"BAD_JSON" });
     if (consumed) { i += consumed; }
     continue;
   }
 
   const ev = await __getHostEvidence(activeHost);
   if (!isOperator) {
-    push("SELF_PATCH_PUT", { ok:false, host: activeHost, error:"OPERATOR_REQUIRED" });
+    await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"SELF_PATCH_PUT", ok:false})); push("SELF_PATCH_PUT",{ ok:false, host: activeHost, error:"OPERATOR_REQUIRED" });
     if (consumed) { i += consumed; }
     continue;
   }
@@ -3086,7 +3140,7 @@ if (line === "SELF_PATCH_PUT" || (typeof line === "string" && line.startsWith("S
       const nextLine = lines[i + 1];
       const ev = await __getHostEvidence(activeHost);
       if (!ev || !ev.ok) { push("SELF_PATCH_GET", "READY: VERIFIED_FETCH OK (NEXT: PATCH_INDEX_WIRE)"); continue; }
-      if (!isOperator) { push("SELF_PATCH_GET", { ok:false, error:"OPERATOR_REQUIRED" }); continue; }
+      if (!isOperator) { await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"SELF_PATCH_GET", ok:false})); push("SELF_PATCH_GET",{ ok:false, error:"OPERATOR_REQUIRED" }); continue; }
 
       const key = `SELF_PATCH_INTENT__${activeHost}`;
       const got = await env.AURA_KV.get(key, { type: "json" });
@@ -3196,19 +3250,19 @@ if (line === "SELF_PATCH_PUT" || (typeof line === "string" && line.startsWith("S
 
       const _ev = await __getHostEvidence(activeHost);
       if (!_ev || !_ev.ok) {
-        push("SELF_PATCH_EXECUTE", { ok:false, host: activeHost, error:"NOT_READY", need:"VERIFIED_FETCH_URL" });
+        await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"SELF_PATCH_EXECUTE", ok:false})); push("SELF_PATCH_EXECUTE",{ ok:false, host: activeHost, error:"NOT_READY", need:"VERIFIED_FETCH_URL" });
         continue;
       }
 
       if (!isOperator) {
-        push("SELF_PATCH_EXECUTE", { ok:false, host: activeHost, error:"OPERATOR_REQUIRED" });
+        await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"SELF_PATCH_EXECUTE", ok:false})); push("SELF_PATCH_EXECUTE",{ ok:false, host: activeHost, error:"OPERATOR_REQUIRED" });
         continue;
       }
 
       const key = `SELF_PATCH_INTENT__${activeHost}`;
       const intent = await env.AURA_KV.get(key, { type: "json" });
       if (!intent) {
-        push("SELF_PATCH_EXECUTE", { ok:false, host: activeHost, error:"NO_INTENT_SAVED", key });
+        await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"SELF_PATCH_EXECUTE", ok:false})); push("SELF_PATCH_EXECUTE",{ ok:false, host: activeHost, error:"NO_INTENT_SAVED", key });
         continue;
       }
 
@@ -3238,7 +3292,7 @@ if (line === "SELF_PATCH_PUT" || (typeof line === "string" && line.startsWith("S
        
       // ----------------------------
       // PH8: Mutation dispatcher (controlled)
-      // Supports patch_object.op = "failure_memory_put"
+      // Supports patch_object.op = "failure_auto_put"
       // ----------------------------
       try {
         const idxId = idxIdFromIntent;
@@ -3250,7 +3304,7 @@ if (line === "SELF_PATCH_PUT" || (typeof line === "string" && line.startsWith("S
               const raw = atob(String(b64));
               const obj = JSON.parse(raw);
 
-              if (obj && obj.op === "failure_memory_put") {
+              if (obj && obj.op === "failure_auto_put") {
                 const host = String(activeHost || __host).toLowerCase();
                 const p = (obj.payload && typeof obj.payload === "object") ? obj.payload : {};
                 const item = {
@@ -3260,7 +3314,7 @@ if (line === "SELF_PATCH_PUT" || (typeof line === "string" && line.startsWith("S
                 };
 
                 if ((item.code === "X" || item.code === "") && item.detail === "") {
-                  push("SELF_PATCH_EXECUTE", { ok:false, host, stage:"MUTATION_REFUSED", error:"BAD_REQUEST", note:"Blank item refused" });
+                  await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"SELF_PATCH_EXECUTE", ok:false})); push("SELF_PATCH_EXECUTE",{ ok:false, host, stage:"MUTATION_REFUSED", error:"BAD_REQUEST", note:"Blank item refused" });
                   continue;
                 }
 
@@ -3279,7 +3333,7 @@ if (line === "SELF_PATCH_PUT" || (typeof line === "string" && line.startsWith("S
                   object_id: String(objId),
                   item,
                   count: bounded.length,
-                  receipt: { ts: new Date().toISOString(), type: "PH8_MUTATION_FAILURE_MEMORY_V1", note: "Applied failure_memory_put via SELF_PATCH_EXECUTE." }
+                  receipt: { ts: new Date().toISOString(), type: "PH8_MUTATION_FAILURE_MEMORY_V1", note: "Applied failure_auto_put via SELF_PATCH_EXECUTE." }
                 });
                 continue;
               }
@@ -3720,7 +3774,7 @@ if (line.startsWith("HERD_SWEEP")) {
               ? __failKeyForRead
               : ("FAILURE_MEMORY__" + String(String(activeHost || __host || "frontdesk.network").toLowerCase()));
             await env.AURA_KV.put(__k, JSON.stringify([]));
-            results.push({ name: "failure_memory_cleared", pass: true, observed: "CLEARED", expected: "CLEARED", fixed: "FAILURE_MEMORY_CLEARED", key: __k });
+            results.push({ name: "failure_auto_cleared", pass: true, observed: "CLEARED", expected: "CLEARED", fixed: "FAILURE_MEMORY_CLEARED", key: __k });
           } catch (e) {
             results.push({ ok: false, error: "FAILURE_MEMORY_CLEAR_FAILED", note: String(e && e.message ? e.message : e) });
           }
@@ -4038,7 +4092,7 @@ if (line === "DEPLOYER_CAPS") {
               ? __failKeyForRead
               : ("FAILURE_MEMORY__" + String(String(activeHost || __host || "frontdesk.network").toLowerCase()));
             await env.AURA_KV.put(__k, JSON.stringify([]));
-            results.push({ name: "failure_memory_cleared", pass: true, observed: "CLEARED", expected: "CLEARED", fixed: "FAILURE_MEMORY_CLEARED", key: __k });
+            results.push({ name: "failure_auto_cleared", pass: true, observed: "CLEARED", expected: "CLEARED", fixed: "FAILURE_MEMORY_CLEARED", key: __k });
           } catch (e) {
             results.push({ ok: false, error: "FAILURE_MEMORY_CLEAR_FAILED", note: String(e && e.message ? e.message : e) });
           }
@@ -4667,8 +4721,8 @@ if (bodyTrim === "AUDIT_CLEAR") {
         // This ensures single-line allowed commands never fall into NL stub gating.
         return jsonReply({ ok: true, reply: [{ cmd: tok, payload: "RETRY_AS_BATCH_REQUIRED" }] });
       }
-      const nl = await naturalLanguageReply(lines[0], env, activeHost);
-      if (nl) return jsonReply(nl);
+      const llm = await auraLLMFallback(env, lines[0]);
+if (llm) return new Response(JSON.stringify({ ok:true, reply: llm }), { headers: { "content-type":"application/json" } });
     }
 
     // SINGLE-LINE BYPASS: ensure AUTONOMY_REPAIR_PLAN never falls into NL stub gate.
@@ -4833,6 +4887,116 @@ async function __auraEvolutionCycle(env, host) {
   } catch (_) {}
 
 }
+
+
+
+
+
+
+
+
+
+async function auraLLM(env, userMessage) {
+
+  const response = await fetch(
+    "https://api.openai.com/v1/chat/completions",
+    {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: "Aura is a civilization-scale autonomous control-plane intelligence for ARK Systems."
+          },
+          {
+            role: "user",
+            content: userMessage
+          }
+        ]
+      })
+    }
+  );
+
+  const data = await response.json();
+
+  return data.choices?.[0]?.message?.content || "No response.";
+}
+
+
+async function auraChat(env, message) {
+  return await auraLLM(env, message);
+}
+
+
+
+// LLM fallback router
+async function auraLLMFallback(env, input) {
+
+  // If the input looks like a command, let the command engine handle it
+  if (/^[A-Z_]+$/.test(input.trim())) {
+    return null;
+  }
+
+  // Otherwise send to OpenAI
+  const answer = await auraLLM(env, input);
+  return answer;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

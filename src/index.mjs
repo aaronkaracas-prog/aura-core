@@ -91,7 +91,7 @@ async function naturalLanguageReply(input, env, activeHost) {
   }
 
   // Default: answer politely, no gate.
-  return identity + "\n\n" + capability;
+  return "OK";
 }
 
 // ==== PATCH: Registry commands bypass claim-gate (2026-01-29) ====
@@ -2140,6 +2140,38 @@ if (cmd === "PATCH_OBJECT_GET" || line === "PATCH_OBJECT_GET") {
   const b64 = await env.AURA_KV.get(key);
   if (!b64) { push("PATCH_OBJECT_GET", { ok:true, id, key, present:false, __recordFailure:true, autoFailureCapture:true,autoFailureCaptureRuntime:true, bytes_b64:0 }); continue; }
   push("PATCH_OBJECT_GET", { ok:true, id, key, present:true, bytes_b64: String(b64).length, b64 });
+if (cmd === "CALL_START") {
+  try {
+    const p = typeof payload === "string" ? JSON.parse(payload || "{}") : (payload || {});
+    const number = p.number;
+
+    if (!number) {
+      push("CALL_START", { ok:false, error:"MISSING_NUMBER" });
+      continue;
+    }
+
+    const res = await fetch("https://api.twilio.com/2010-04-01/Accounts/TWILIO_SID_REMOVED/Calls.json", {
+      method: "POST",
+      headers: {
+        "Authorization": "Basic " + btoa("TWILIO_SID_REMOVED:d1d00997c24d7c044e7b315068e1ee29"),
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: "To=" + encodeURIComponent(number) + "&From=%2B15752287274&Url=http://demo.twilio.com/docs/voice.xml"
+    });
+
+    const text = await res.text();
+
+    push("CALL_START", {
+      ok: true,
+      status: res.status,
+      body: text
+    });
+
+  } catch (e) {
+    push("CALL_START", { ok:false, error:e.message });
+  }
+  continue;
+}
   continue;
 }
 if (line === "PATCH_INDEX_STATUS") {
@@ -2205,6 +2237,36 @@ if (cmd === "PATCH_INDEX_GET") {
   const key = "patch_index:" + id;
   const b64 = await env.AURA_KV.get(key);
   push("PATCH_INDEX_GET", { ok:true, id, key, present: !!b64, bytes_b64: b64 ? b64.length : 0, value: b64 ? String(b64) : "" });
+  continue;
+}
+if (cmd === "CALL_START") {
+  try {
+    const p = typeof payload === "string" ? JSON.parse(payload || "{}") : (payload || {});
+    const number = p.number;
+
+    const sid = "TWILIO_SID_REMOVED";
+    const token = "d1d00997c24d7c044e7b315068e1ee29";
+    const from = "+15752287274";
+
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls.json`, {
+      method: "POST",
+      headers: {
+        "Authorization": "Basic " + btoa(`${sid}:${token}`),
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: new URLSearchParams({
+        To: number,
+        From: from,
+        Url: "http://demo.twilio.com/docs/voice.xml"
+      })
+    });
+
+    const data = await res.json();
+    push("CALL_START", { ok: true, sid: data.sid, status: data.status });
+
+  } catch (e) {
+    push("CALL_START", "ERROR_" + e.message);
+  }
   continue;
 }
 
@@ -4946,6 +5008,9 @@ async function auraLLMFallback(env, input) {
   const answer = await auraLLM(env, input);
   return answer;
 }
+
+
+
 
 
 

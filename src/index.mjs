@@ -31,6 +31,32 @@ replyArr.push({
 }
 // === END PATCH ===
 
+function __AURA_CALL_LAYER__(cmd, args, host, replyArr, env) {
+  if (cmd !== "CALL_START") return false;
+
+  const to = args?.to;
+  if (!to) {
+    replyArr.push({
+      cmd: "CALL_START",
+      payload: { ok:false, error:"MISSING_NUMBER" }
+    });
+    return true;
+  }
+
+  replyArr.push({
+    cmd: "CALL_START",
+    payload: {
+      ok: true,
+      status: "READY",
+      to: to,
+      note: "CALL_LAYER_READY"
+    }
+  });
+
+  return true;
+}
+
+
 // AURA CORE  CANONICAL REBUILD (FULL FILE REPLACEMENT)
 // Rebuilt from last known-good 91K source (operator-provided backup)
 // Purpose: restore Aura Core command interpreter + registry grammar compatibility
@@ -121,7 +147,7 @@ const KNOWN_COMMANDS = [
   "HOST_CAPS_SET",
   "DEPLOYER_CAPS",
   "DEPLOYER_CALL",
-  "PAUSE",
+  "PAUSE","CALL_START",
   "INTENT_ADD",
   "INTENT_GET",
   "INTENT_CLEAR",
@@ -872,7 +898,7 @@ if (!body.trim().match(/^[A-Z_]+(\s|$)/)) {
       "HOST_CAPS_SET",
       "DEPLOYER_CAPS",
       "DEPLOYER_CALL",
-      "PAUSE",
+      "PAUSE","CALL_START",
       "INTENT_ADD",
       "INTENT_GET",
       "INTENT_CLEAR",
@@ -2047,7 +2073,7 @@ const operator = isOperator;if (cmd === "HOST") {
       continue;
     }
 
-if (line === "PAUSE") { push("PAUSE", { cmd: "PAUSE", paused: true, host: activeHost, note: "DETERMINISTIC_PAUSE_ACK_V2_BATCH" }); continue; }
+if (line === "PAUSE") { push("PAUSE","CALL_START", { cmd: "PAUSE", paused: true, host: activeHost, note: "DETERMINISTIC_PAUSE_ACK_V2_BATCH" }); continue; }
 if (line === "PING") { push("PING", "PONG"); continue; }
     if (line === "VERIFIED_FETCH") {
       const url = args?.[0];
@@ -5008,6 +5034,11 @@ async function auraLLMFallback(env, input) {
   const answer = await auraLLM(env, input);
   return answer;
 }
+
+
+
+
+
 
 
 

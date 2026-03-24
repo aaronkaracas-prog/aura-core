@@ -31,7 +31,7 @@ replyArr.push({
 }
 // === END PATCH ===
 
-function __AURA_CALL_LAYER__(cmd, args, host, replyArr, env) {
+async function __AURA_CALL_LAYER__(cmd, args, host, replyArr, env) {
   if (cmd !== "CALL_START") return false;
 
   const to = args?.to;
@@ -43,15 +43,49 @@ function __AURA_CALL_LAYER__(cmd, args, host, replyArr, env) {
     return true;
   }
 
-  replyArr.push({
-    cmd: "CALL_START",
-    payload: {
-      ok: true,
-      status: "READY",
-      to: to,
-      note: "CALL_LAYER_READY"
+  try {
+    const sid = env.TWILIO_SID;
+    const token = env.TWILIO_TOKEN;
+    const from = env.TWILIO_FROM;
+
+    if (!sid || !token || !from) {
+      replyArr.push({
+        cmd: "CALL_START",
+        payload: { ok:false, error:"MISSING_TWILIO_ENV" }
+      });
+      return true;
     }
-  });
+
+    const auth = btoa(sid + ":" + token);
+
+    const body = new URLSearchParams({
+      To: to,
+      From: from,
+      Url: "http://demo.twilio.com/docs/voice.xml"
+    });
+
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls.json`, {
+      method: "POST",
+      headers: {
+        "Authorization": "Basic " + auth,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body
+    });
+
+    const json = await res.json();
+
+    replyArr.push({
+      cmd: "CALL_START",
+      payload: { ok: true, status: json.status, sid: json.sid, to: to }
+    });
+
+  } catch (e) {
+    replyArr.push({
+      cmd: "CALL_START",
+      payload: { ok:false, error: e.message }
+    });
+  }
 
   return true;
 }
@@ -1898,7 +1932,7 @@ const doVerifiedFetch = async (target) => {
 
 if (isBatch) {
   const out = [];
-  const push = (cmd, payload) => out.push({ cmd, payload });
+  const push = (cmd, payload) => out.push({ cmd, payload: payload ?? {} });
       
   // Track which hosts were VERIFIED_FETCH_URL seeded in THIS request only.
   const __seededThisRequest = new Set();
@@ -2006,7 +2040,7 @@ const operator = isOperator;if (cmd === "HOST") {
     // ----------------------------
     if (line.startsWith("INTENT_ADD")) {
       const m = line.match(/^INTENT_ADD\s+(\S+)\s+(\S+)\s+(.+)$/);
-      if (!m) { push("INTENT_ADD", "BAD_REQUEST"); continue; }
+      if (!m) { push("INTENT_ADD", { ok:false, error:"BAD_REQUEST" }); continue; }
       const host = m[1].toLowerCase();
       const tag = m[2].toLowerCase();
       const text = m[3];
@@ -2028,7 +2062,7 @@ const operator = isOperator;if (cmd === "HOST") {
       const parts = line.split(" ").filter(Boolean);
       const host = (parts[1] || "").toLowerCase();
       const tag = (parts[2] || "").toLowerCase();
-      if (!host || !tag) { push("INTENT_GET", "BAD_REQUEST"); continue; }
+      if (!host || !tag) { push("INTENT_GET", { ok:false, error:"BAD_REQUEST" }); continue; }
       const stored = await env.AURA_KV.get(intentKey(host, tag));
       push("INTENT_GET", stored ? (safeJsonParse(stored) || stored) : "INTENT_MISSING");
       continue;
@@ -2038,9 +2072,9 @@ const operator = isOperator;if (cmd === "HOST") {
       const parts = line.split(" ").filter(Boolean);
       const host = (parts[1] || "").toLowerCase();
       const tag = (parts[2] || "").toLowerCase();
-      if (!host || !tag) { push("INTENT_CLEAR", "BAD_REQUEST"); continue; }
+      if (!host || !tag) { push("INTENT_CLEAR", { ok:false, error:"BAD_REQUEST" }); continue; }
       await env.AURA_KV.delete(intentKey(host, tag));
-      push("INTENT_CLEAR", "CLEARED");
+      push("INTENT_CLEAR", { ok:false, error:"CLEARED" });
       continue;
     }
 
@@ -2062,7 +2096,7 @@ const operator = isOperator;if (cmd === "HOST") {
 
     if (line === "EVIDENCE_PRESENT") {
       const host = normalizeHostLoose((Array.isArray(args) && args.length ? args[0] : null)) || activeHost;
-      if (!host) { push("EVIDENCE_PRESENT", "BAD_REQUEST"); continue; }
+      if (!host) { push("EVIDENCE_PRESENT", { ok:false, error:"BAD_REQUEST" }); continue; }
       const stored = await env.AURA_KV.get(evidenceKey(host));
       push("EVIDENCE_PRESENT", stored ? (safeJsonParse(stored) || stored) : "NO_EVIDENCE");
       continue;
@@ -2074,7 +2108,7 @@ const operator = isOperator;if (cmd === "HOST") {
     }
 
 if (line === "PAUSE") { push("PAUSE","CALL_START", { cmd: "PAUSE", paused: true, host: activeHost, note: "DETERMINISTIC_PAUSE_ACK_V2_BATCH" }); continue; }
-if (line === "PING") { push("PING", "PONG"); continue; }
+if (line === "PING") { push("PING", { ok:false, error:"PONG" }); continue; }
     if (line === "VERIFIED_FETCH") {
       const url = args?.[0];
       if (!url) return jsonReply({ error: "MISSING_URL" });
@@ -2168,7 +2202,7 @@ if (cmd === "PATCH_OBJECT_GET" || line === "PATCH_OBJECT_GET") {
   push("PATCH_OBJECT_GET", { ok:true, id, key, present:true, bytes_b64: String(b64).length, b64 });
 if (cmd === "CALL_START") {
   try {
-    const p = typeof payload === "string" ? JSON.parse(payload || "{}") : (payload || {});
+    const p = typeof (typeof payload !== "undefined" ? payload : {}) === "string" ? JSON.parse(payload || "{}") : (payload || {});
     const number = p.number;
 
     if (!number) {
@@ -2267,7 +2301,7 @@ if (cmd === "PATCH_INDEX_GET") {
 }
 if (cmd === "CALL_START") {
   try {
-    const p = typeof payload === "string" ? JSON.parse(payload || "{}") : (payload || {});
+    const p = typeof (typeof payload !== "undefined" ? payload : {}) === "string" ? JSON.parse(payload || "{}") : (payload || {});
     const number = p.number;
 
     const sid = "TWILIO_SID_REMOVED";
@@ -2291,7 +2325,7 @@ if (cmd === "CALL_START") {
     push("CALL_START", { ok: true, sid: data.sid, status: data.status });
 
   } catch (e) {
-    push("CALL_START", "ERROR_" + e.message);
+    push("CALL_START", { ok:false, error: e.message });
   }
   continue;
 }
@@ -2655,10 +2689,10 @@ push("AUTONOMY_LAST_TICK", { ok: true, host: __host, last_tick: (chosen || null)
         if (fullLine.startsWith("AUTONOMY_BUDGET_GET ")) {
           const raw = fullLine.slice("AUTONOMY_BUDGET_GET ".length).trim();
           const obj = safeJsonParse(raw);
-          if (!obj || typeof obj !== "object") { push("AUTONOMY_BUDGET_GET", "BAD_REQUEST"); continue; }
+          if (!obj || typeof obj !== "object") { push("AUTONOMY_BUDGET_GET", { ok:false, error:"BAD_REQUEST" }); continue; }
           if (obj.host) {
             const h = String(obj.host).toLowerCase();
-            if (h !== __host) { push("AUTONOMY_BUDGET_GET", "BAD_REQUEST"); continue; }
+            if (h !== __host) { push("AUTONOMY_BUDGET_GET", { ok:false, error:"BAD_REQUEST" }); continue; }
             reqHost = h;
           }
         }
@@ -2974,10 +3008,10 @@ if (item && item.code === "NEEDS_PLANNER_ACTION") {
   // SET/PUT are envelope-gated (files/packets): JSON must be provided on subsequent non-command lines.
   // CANON: __readEnvelopeJson is defined earlier (single source of truth). Do not redefine it here.
 if (line === "AUTONOMY_LAST_TICK_SET") {
-  if (!isOperator) { push("AUTONOMY_LAST_TICK_SET", "NOT_ALLOWED"); continue; }
+  if (!isOperator) { push("AUTONOMY_LAST_TICK_SET", { ok:false, error:"NOT_ALLOWED" }); continue; }
 
   const r = __readEnvelopeJson(lines, i, allowedCommands, nextLine);
-  if (!r || !r.ok) { push("AUTONOMY_LAST_TICK_SET", "BAD_REQUEST"); continue; }
+  if (!r || !r.ok) { push("AUTONOMY_LAST_TICK_SET", { ok:false, error:"BAD_REQUEST" }); continue; }
 
   const __host = String(activeHost || "frontdesk.network").toLowerCase();
   const __tickKey = `AUTONOMY_LAST_TICK__${__host}`;
@@ -2988,7 +3022,7 @@ if (line === "AUTONOMY_LAST_TICK_SET") {
   continue;
 }
 if (fullLine === "AUTONOMY_BUDGET_SET" || fullLine.startsWith("AUTONOMY_BUDGET_SET ")) {
-  if (!isOperator) { push("AUTONOMY_BUDGET_SET", "NOT_ALLOWED"); continue; }
+  if (!isOperator) { push("AUTONOMY_BUDGET_SET", { ok:false, error:"NOT_ALLOWED" }); continue; }
   // Supports BOTH formats:
   // 1) Inline JSON:  AUTONOMY_BUDGET_SET {"limit":123}
   // 2) Envelope JSON on following line(s): AUTONOMY_BUDGET_SET\n{"budget":{...}}
@@ -3026,7 +3060,7 @@ if (fullLine === "AUTONOMY_BUDGET_SET" || fullLine.startsWith("AUTONOMY_BUDGET_S
 }
 
 if (line === "AUTONOMY_CHARTER_SET") {
-  if (!isOperator) { push("AUTONOMY_CHARTER_SET", "NOT_ALLOWED"); continue; }
+  if (!isOperator) { push("AUTONOMY_CHARTER_SET", { ok:false, error:"NOT_ALLOWED" }); continue; }
 
   const r = __readEnvelopeJson(lines, i, allowedCommands, nextLine);
   if (!r.ok) { push("AUTONOMY_CHARTER_SET", { ok: false, error: r.error, note: r.note }); continue; }
@@ -3046,7 +3080,7 @@ if (line === "AUTONOMY_CHARTER_SET") {
 }
 
 if (line === "FAILURE_MEMORY_PUT") {
-  if (!isOperator) { push("FAILURE_MEMORY_PUT", "NOT_ALLOWED"); continue; }
+  if (!isOperator) { push("FAILURE_MEMORY_PUT", { ok:false, error:"NOT_ALLOWED" }); continue; }
 
   const r = __readEnvelopeJson(lines, i, allowedCommands, nextLine);
   if (!r.ok) { push("FAILURE_MEMORY_PUT", { ok: false, error: r.error, note: r.note }); continue; }
@@ -3094,7 +3128,7 @@ if (line === "FAILURE_MEMORY_CLEAR") {
 }
 
 if (line === "FAILURE_MEMORY_SET" || fullLine.startsWith("FAILURE_MEMORY_SET ")) {
-  if (!isOperator) { push("FAILURE_MEMORY_SET", "NOT_ALLOWED"); continue; }
+  if (!isOperator) { push("FAILURE_MEMORY_SET", { ok:false, error:"NOT_ALLOWED" }); continue; }
 
   let obj = null;
   let consumed = 0;
@@ -3227,7 +3261,7 @@ if (line === "SELF_PATCH_PUT" || (typeof line === "string" && line.startsWith("S
 
       const nextLine = lines[i + 1];
       const ev = await __getHostEvidence(activeHost);
-      if (!ev || !ev.ok) { push("SELF_PATCH_GET", "READY: VERIFIED_FETCH OK (NEXT: PATCH_INDEX_WIRE)"); continue; }
+      if (!ev || !ev.ok) { push("SELF_PATCH_GET", { ok:false, error:"READY: VERIFIED_FETCH OK (NEXT: PATCH_INDEX_WIRE)" }); continue; }
       if (!isOperator) { await env.AURA_KV.put("failure_auto_"+Date.now(),JSON.stringify({cmd:"SELF_PATCH_GET", ok:false})); push("SELF_PATCH_GET",{ ok:false, error:"OPERATOR_REQUIRED" }); continue; }
 
       const key = `SELF_PATCH_INTENT__${activeHost}`;
@@ -3567,10 +3601,10 @@ if (line === "INTENT_SIMULATE") {
     }
 
     if (line.startsWith("REGISTRY_PUT")) {
-      if (!isOperator) { push("REGISTRY_PUT", "NOT_ALLOWED"); continue; }
+      if (!isOperator) { push("REGISTRY_PUT", { ok:false, error:"NOT_ALLOWED" }); continue; }
 
       const args = __parseRegistryPutArgs(fullLine, lines, i, allowedCommands);
-      if (!args || !args.type || !args.item) { push("REGISTRY_PUT", "BAD_REQUEST"); continue; }
+      if (!args || !args.type || !args.item) { push("REGISTRY_PUT", { ok:false, error:"BAD_REQUEST" }); continue; }
 
       const _t = String(args.type).toLowerCase();
       const item = args.item;
@@ -3581,12 +3615,12 @@ if (line === "INTENT_SIMULATE") {
         if (maybe) item.id = maybe;
       }
 
-      if (!_t || !item || !item.id) { push("REGISTRY_PUT", "BAD_REQUEST"); continue; }
+      if (!_t || !item || !item.id) { push("REGISTRY_PUT", { ok:false, error:"BAD_REQUEST" }); continue; }
 
       const _hostToGate = __domainHostFromRegistryEntry(_t, item);
       if (_hostToGate && (_t === "domains" || _t === "assets")) {
         const _ev = await __getHostEvidence(_hostToGate);
-        if (!_ev) { push("REGISTRY_PUT", "NOT_ALLOWED"); continue; }
+        if (!_ev) { push("REGISTRY_PUT", { ok:false, error:"NOT_ALLOWED" }); continue; }
       }
 
       const put = await registryPut(env, _t, item);
@@ -3595,10 +3629,10 @@ if (line === "INTENT_SIMULATE") {
     }
 
     if (line.startsWith("REGISTRY_IMPORT_ASSETS")) {
-      if (!isOperator) { push("REGISTRY_IMPORT_ASSETS", "NOT_ALLOWED"); continue; }
+      if (!isOperator) { push("REGISTRY_IMPORT_ASSETS", { ok:false, error:"NOT_ALLOWED" }); continue; }
 
       const parsedArgs = __parseRegistryImportArgs("REGISTRY_IMPORT_ASSETS", fullLine, lines, i, allowedCommands);
-      if (!parsedArgs) { push("REGISTRY_IMPORT_ASSETS", "BAD_REQUEST"); continue; }
+      if (!parsedArgs) { push("REGISTRY_IMPORT_ASSETS", { ok:false, error:"BAD_REQUEST" }); continue; }
       const items = parsedArgs.items;
 
       const idsBefore = await registryGetIndex(env, "assets");
@@ -3632,10 +3666,10 @@ if (line === "INTENT_SIMULATE") {
     }
 
     if (line.startsWith("REGISTRY_IMPORT_DOMAINS")) {
-      if (!isOperator) { push("REGISTRY_IMPORT_DOMAINS", "NOT_ALLOWED"); continue; }
+      if (!isOperator) { push("REGISTRY_IMPORT_DOMAINS", { ok:false, error:"NOT_ALLOWED" }); continue; }
 
       const parsedArgs = __parseRegistryImportArgs("REGISTRY_IMPORT_DOMAINS", fullLine, lines, i, allowedCommands);
-      if (!parsedArgs) { push("REGISTRY_IMPORT_DOMAINS", "BAD_REQUEST"); continue; }
+      if (!parsedArgs) { push("REGISTRY_IMPORT_DOMAINS", { ok:false, error:"BAD_REQUEST" }); continue; }
       const items = parsedArgs.items;
 
       const idsBefore = await registryGetIndex(env, "domains");
@@ -3668,7 +3702,7 @@ if (line === "INTENT_SIMULATE") {
     }
 
     if (line.startsWith("REGISTRY_IMPORT ")) {
-      if (!isOperator) { push("REGISTRY_IMPORT", "NOT_ALLOWED"); continue; }
+      if (!isOperator) { push("REGISTRY_IMPORT", { ok:false, error:"NOT_ALLOWED" }); continue; }
       const jsonPart = line.slice("REGISTRY_IMPORT ".length).trim();
       const payload = safeJsonParse(jsonPart);
       const typeName = String(payload?.type || "").toLowerCase().trim();
@@ -3676,7 +3710,7 @@ if (line === "INTENT_SIMULATE") {
         typeName === "asset" || typeName === "assets" ? "assets" :
         typeName === "domain" || typeName === "domains" ? "domains" : "";
       const items = Array.isArray(payload?.items) ? payload.items : null;
-      if (!normalized || !items) { push("REGISTRY_IMPORT", "BAD_REQUEST"); continue; }
+      if (!normalized || !items) { push("REGISTRY_IMPORT", { ok:false, error:"BAD_REQUEST" }); continue; }
       // Reuse the same import core logic by calling the generic function already defined below via registryPut loops would be verbose;
       // keep simple: write through registryPut in a tight loop.
       const idsBefore = await registryGetIndex(env, normalized);
@@ -3721,7 +3755,7 @@ if (line === "INTENT_SIMULATE") {
 
     if (line.startsWith("REGISTRY_GET")) {
       const args = __parseRegistryGetArgs(fullLine, lines, i, allowedCommands);
-      if (!args || !args.type || !args.id) { push("REGISTRY_GET", "BAD_REQUEST"); continue; }
+      if (!args || !args.type || !args.id) { push("REGISTRY_GET", { ok:false, error:"BAD_REQUEST" }); continue; }
       const e = await registryGet(env, args.type, args.id);
       push(`REGISTRY_GET ${args.type} ${args.id}`, e ? e : "MISSING");
       continue;
@@ -3763,7 +3797,7 @@ if (line === "INTENT_SIMULATE") {
 
       if (raw.startsWith("{")) {
         const obj = safeJsonParse(raw);
-        if (!obj || typeof obj !== "object") { push("REGISTRY_FILTER", "BAD_REQUEST"); continue; }
+        if (!obj || typeof obj !== "object") { push("REGISTRY_FILTER", { ok:false, error:"BAD_REQUEST" }); continue; }
         type = String(obj.type || "").toLowerCase();
         limit = Number(obj.limit || 50);
         if (obj.where && typeof obj.where === "object") {
@@ -3780,7 +3814,7 @@ if (line === "INTENT_SIMULATE") {
         limit = Number(parts[4] || 50);
       }
 
-      if (!type) { push("REGISTRY_FILTER", "BAD_REQUEST"); continue; }
+      if (!type) { push("REGISTRY_FILTER", { ok:false, error:"BAD_REQUEST" }); continue; }
       const payload = where
         ? await registryFilterWhere(env, type, where, limit)
         : await registryFilter(env, type, field, value, limit);
@@ -3968,17 +4002,17 @@ if (line === "DEPLOYER_CAPS") {
     }
 
     if (fullLine.startsWith("DEPLOYER_CALL ")) {
-      if (!isOperator) { push("DEPLOYER_CALL", "UNAUTHORIZED"); continue; }
+      if (!isOperator) { push("DEPLOYER_CALL", { ok:false, error:"UNAUTHORIZED" }); continue; }
       const jsonPart = fullLine.slice("DEPLOYER_CALL ".length).trim();
       const reqObj = safeJsonParse(jsonPart);
-      if (!reqObj || typeof reqObj !== "object") { push("DEPLOYER_CALL", "BAD_REQUEST"); continue; }
+      if (!reqObj || typeof reqObj !== "object") { push("DEPLOYER_CALL", { ok:false, error:"BAD_REQUEST" }); continue; }
 
       const serviceName = String(reqObj.service || "").trim();
-      if (serviceName !== "AURA_DEPLOYER" && serviceName !== "AURA_CF") { push("DEPLOYER_CALL", "BAD_REQUEST"); continue; }
-      if (!__hasService(env, serviceName)) { push("DEPLOYER_CALL", "DEPLOYER_CAPS_MISSING"); continue; }
+      if (serviceName !== "AURA_DEPLOYER" && serviceName !== "AURA_CF") { push("DEPLOYER_CALL", { ok:false, error:"BAD_REQUEST" }); continue; }
+      if (!__hasService(env, serviceName)) { push("DEPLOYER_CALL", { ok:false, error:"DEPLOYER_CAPS_MISSING" }); continue; }
 
       const path = String(reqObj.path || "").trim();
-      if (!path.startsWith("/")) { push("DEPLOYER_CALL", "BAD_REQUEST"); continue; }
+      if (!path.startsWith("/")) { push("DEPLOYER_CALL", { ok:false, error:"BAD_REQUEST" }); continue; }
 
       // Enforce host caps: treat this as its own command token (DEPLOYER_CALL already host-capped upstream).
       // Evidence gating: callers must provide VERIFIED_FETCH_URL separately when making reachability claims.
@@ -5034,6 +5068,11 @@ async function auraLLMFallback(env, input) {
   const answer = await auraLLM(env, input);
   return answer;
 }
+
+
+
+
+
 
 
 

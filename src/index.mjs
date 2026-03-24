@@ -34,7 +34,7 @@ replyArr.push({
 async function __AURA_CALL_LAYER__(cmd, args, host, replyArr, env) {
   if (cmd !== "CALL_START") return false;
 
-  const to = args?.to;
+  let to = args?.to; if (!to && typeof args === "string") { try { const parsed = JSON.parse(args); to = parsed.to; } catch (e) {} }
   if (!to) {
     replyArr.push({
       cmd: "CALL_START",
@@ -56,7 +56,7 @@ async function __AURA_CALL_LAYER__(cmd, args, host, replyArr, env) {
       return true;
     }
 
-    const auth = btoa(sid + ":" + token);
+    const auth = Buffer.from(sid + ":" + token).toString("base64");
 
     const body = new URLSearchParams({
       To: to,
@@ -771,7 +771,7 @@ export default {
     const url = new URL(request.url)
   // Aura dynamic page router
   if (request.method === "GET" && url.pathname !== "/chat") {
-    const pageId="page:"+url.pathname; const idb64=btoa(pageId); const patch=await env.AURA_KV.get("patch_index:"+idb64); if(patch){return new Response(atob(patch),{headers:{"content-type":"text/html"}})} const page=await env.AURA_KV.get(pageId)
+    const pageId="page:"+url.pathname; const idb64=Buffer.from(pageId).toString("base64"); const patch=await env.AURA_KV.get("patch_index:"+idb64); if(patch){return new Response(atob(patch),{headers:{"content-type":"text/html"}})} const page=await env.AURA_KV.get(pageId)
     if (page) {
       return new Response(page,{headers:{"content-type":"text/html"}})
     }
@@ -2202,22 +2202,13 @@ if (cmd === "PATCH_OBJECT_GET" || line === "PATCH_OBJECT_GET") {
   push("PATCH_OBJECT_GET", { ok:true, id, key, present:true, bytes_b64: String(b64).length, b64 });
 if (cmd === "CALL_START") {
   try {
-    const p = typeof (typeof payload !== "undefined" ? payload : {}) === "string" ? JSON.parse(payload || "{}") : (payload || {});
+    const p = typeof (payloadObj || {}) === "string" ? JSON.parse(payloadObj || "{}") : (payloadObj || {});
     const number = p.number;
 
     if (!number) {
       push("CALL_START", { ok:false, error:"MISSING_NUMBER" });
       continue;
     }
-
-    const res = await fetch("https://api.twilio.com/2010-04-01/Accounts/TWILIO_SID_REMOVED/Calls.json", {
-      method: "POST",
-      headers: {
-        "Authorization": "Basic " + btoa("TWILIO_SID_REMOVED:d1d00997c24d7c044e7b315068e1ee29"),
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: "To=" + encodeURIComponent(number) + "&From=%2B15752287274&Url=http://demo.twilio.com/docs/voice.xml"
-    });
 
     const text = await res.text();
 
@@ -2301,25 +2292,14 @@ if (cmd === "PATCH_INDEX_GET") {
 }
 if (cmd === "CALL_START") {
   try {
-    const p = typeof (typeof payload !== "undefined" ? payload : {}) === "string" ? JSON.parse(payload || "{}") : (payload || {});
+    const p = typeof (payloadObj || {}) === "string" ? JSON.parse(payloadObj || "{}") : (payloadObj || {});
     const number = p.number;
 
-    const sid = "TWILIO_SID_REMOVED";
+    
     const token = "d1d00997c24d7c044e7b315068e1ee29";
     const from = "+15752287274";
 
-    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Calls.json`, {
-      method: "POST",
-      headers: {
-        "Authorization": "Basic " + btoa(`${sid}:${token}`),
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: new URLSearchParams({
-        To: number,
-        From: from,
-        Url: "http://demo.twilio.com/docs/voice.xml"
-      })
-    });
+    
 
     const data = await res.json();
     push("CALL_START", { ok: true, sid: data.sid, status: data.status });
@@ -2789,7 +2769,7 @@ if (item && item.code === "NEEDS_PLANNER_ACTION") {
 
                 const __json = JSON.stringify(__receipt);
 
-                const __b64 = (() => { try { return btoa(unescape(encodeURIComponent(__json))); } catch (_) { return ""; } })();
+                const __b64 = (() => { try { return Buffer.from(unescape(encodeURIComponent(__json).toString("base64"))); } catch (_) { return ""; } })();
 
                 if (__b64) {
                   try { await env.AURA_KV.put("patch_object:" + __id, __b64); } catch (_) {}
@@ -5068,6 +5048,17 @@ async function auraLLMFallback(env, input) {
   const answer = await auraLLM(env, input);
   return answer;
 }
+
+
+
+
+
+
+
+
+
+
+
 
 
 

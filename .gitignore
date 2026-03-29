@@ -1,0 +1,9 @@
+﻿ops/
+packet_*
+backup_*
+*_packet.txt
+*_packet.json
+*_packet.mjs
+index_corrupted_*
+commit.wide.json
+selfdeploy-payload.json

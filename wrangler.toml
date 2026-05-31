@@ -18,3 +18,10 @@ index_name = "aura-vectors"
 
 [ai]
 binding = "AI"
+
+[triggers]
+crons = ["*/1 * * * *"]
+
+[[services]]
+binding = "AURA_OPS"
+service = "aura-ops"

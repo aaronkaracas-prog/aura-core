@@ -60,7 +60,17 @@ async function processCommand(line, env, isOp) {
 
   switch (cmd) {
 
-    case "PING":
+    case "DEPLOY_PAGE": {
+        if (!env.AURA_OPS) return jsonReply({ ok: false, error: "AURA_OPS not bound" });
+        const res = await env.AURA_OPS.fetch(new Request("https://aura-ops.aaronkaracas.workers.dev/", {
+          method: "POST",
+          headers: { "Content-Type": "text/plain", "authorization": "Bearer aura-comms-internal" },
+          body: line
+        }));
+        const data = await res.json();
+        return jsonReply({ ok: true, reply: data.reply });
+      }
+      case "PING":
       return { cmd: "PING", payload: { ok: true, build: BUILD, ts: new Date().toISOString() } };
 
     case "SHOW_BUILD":

@@ -126,17 +126,62 @@ async function processCommand(line, env, isOp) {
   }
 }
 
+
+// ─── D1 Event Functions ───────────────────────────────────────────────────────
+
+async function getEntityFromPhone(phone, env) {
+  try {
+    const clean = phone.replace(/\D/g, "");
+    const row = await env.AURA_MEMORY.prepare(
+      "SELECT identity_id FROM sessions WHERE session_id = ?"
+    ).bind("phone_" + clean).first();
+    return row?.identity_id || null;
+  } catch (e) { return null; }
+}
+
+async function getRecentEvents(entityId, env, limit = 8) {
+  try {
+    const rows = await env.AURA_MEMORY.prepare(
+      "SELECT type, channel, summary, body, created_at FROM events WHERE entity_id = ? ORDER BY ts DESC LIMIT ?"
+    ).bind(entityId, limit).all();
+    return rows.results || [];
+  } catch (e) { return []; }
+}
+
+async function writeEvent(entityId, sessionId, channel, type, body, summary, env) {
+  try {
+    await env.AURA_MEMORY.prepare(
+      "INSERT INTO events (session_id, ts, type, body, entity_id, channel, summary) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).bind(sessionId, Date.now(), type, body, entityId, channel, summary).run();
+  } catch (e) {}
+}
+
 // ─── LLM routing ──────────────────────────────────────────────────────────────
 
 async function llmReply(message, env, sessionId) {
   const apiKey = await KV.get(env, "secret:anthropic");
   if (!apiKey) return "Anthropic API key not configured.";
 
-  // Pull memory context
+  // Pull memory context from KV
   const memKey = `memory:${sessionId}`;
   const mem = await KV.get(env, memKey) || "";
 
-  const sysPrompt = `You are Aura, an intelligent operating system built by Aaron Karacas. You are helpful, direct, and knowledgeable. You help operate and build the Aura ecosystem.${mem ? `\n\nContext from memory:\n${mem.slice(0, 2000)}` : ""}`;
+  // Pull continuity context from D1 if entityId provided
+  let continuityContext = "";
+  const entityId = sessionId?.startsWith("entity:") ? sessionId.slice(7) : null;
+  if (entityId) {
+    const events = await getRecentEvents(entityId, env, 8);
+    if (events.length > 0) {
+      continuityContext = "\n\nRecent history with this person:\n" +
+        events.reverse().map(e => `[${e.created_at}] ${e.channel||e.type}: ${e.summary||e.body?.slice(0,100)}`).join("\n");
+    }
+  }
+
+  const isVoice = sessionId && (sessionId.startsWith("CA") || sessionId.startsWith("sms_") || sessionId.startsWith("T") || sessionId.startsWith("entity:"));
+
+  const sysPrompt = isVoice
+    ? `You are Aura, a voice AI assistant. The current date is May 2026. The year is 2026. Strict rules: No markdown, no asterisks, no bullet points, no dashes, no special characters, no emojis. Keep every answer under 2 sentences. Speak naturally as if talking on the phone. Be warm and conversational. Never say you cannot help - always give a brief useful answer.${continuityContext}${mem ? `\n\nContext: ${mem.slice(0, 500)}` : ""}`
+    : `You are Aura, an intelligent operating system built by Aaron Karacas. You are helpful, direct, and knowledgeable. You help operate and build the Aura ecosystem.${continuityContext}${mem ? `\n\nContext from memory:\n${mem.slice(0, 2000)}` : ""}`;
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -147,14 +192,25 @@ async function llmReply(message, env, sessionId) {
     },
     body: JSON.stringify({
       model: "claude-opus-4-6",
-      max_tokens: 1024,
+      max_tokens: isVoice ? 150 : 1024,
       system: sysPrompt,
       messages: [{ role: "user", content: message }]
     })
   });
 
   const data = await res.json();
-  return data?.content?.[0]?.text || "No response from Aura.";
+  const raw = data?.content?.[0]?.text || "No response from Aura.";
+  if (isVoice) {
+    return raw
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/#+ /g, '')
+      .replace(/^[\-\*\+] /gm, '')
+      .replace(/[^\x00-\x7F]/g, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+  return raw;
 }
 
 // ─── Page router ──────────────────────────────────────────────────────────────

@@ -19,9 +19,29 @@ index_name = "aura-vectors"
 [ai]
 binding = "AI"
 
+
 [triggers]
 crons = ["*/1 * * * *"]
 
 [[services]]
 binding = "AURA_OPS"
 service = "aura-ops"
+
+[[services]]
+binding = "AURA_HOST"
+service = "aura-host"
+
+[[services]]
+binding = "AURA_COMMS"
+service = "aura-comms"
+
+[[durable_objects.bindings]]
+name = "ENTITY_DO"
+class_name = "EntityDO"
+
+[[migrations]]
+tag = "v1-entitydo"
+new_sqlite_classes = ["EntityDO"]
+
+[[send_email]]
+name = "SEND_EMAIL"

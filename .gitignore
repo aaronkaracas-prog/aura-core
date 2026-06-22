@@ -1,5 +1,22 @@
+﻿# session logs and dumps - never commit
+aura_session_*.txt
+aura_everything.txt
+aura_kv_dump.json
+aura_kv_keys.json
+at.txt
+*_payload.txt
+
+# scratch and backup files
+tmp-*.html
+test*.html
+home*.html
+console*.html
+privacy.html
+terms.html
+*.cjs
+src/index - Copy*.mjs
+src/index (*).mjs
+
+# node
 node_modules/
 .wrangler/
-dist/
-*.bak
-*.log

@@ -1,0 +1,40 @@
+name = "aura-core-staging"
+main = "src/index.mjs"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[kv_namespaces]]
+binding = "AURA_KV"
+id = "9c2ba111589e48c6ba5ad1b924ae8809"
+
+[[d1_databases]]
+binding = "AURA_MEMORY"
+database_name = "aura-memory"
+database_id = "5c0a0120-1a34-486a-99df-e73e4d564f7d"
+
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "aura-vectors"
+
+[ai]
+binding = "AI"
+
+[[services]]
+binding = "AURA_OPS"
+service = "aura-ops"
+
+[[services]]
+binding = "AURA_HOST"
+service = "aura-host"
+
+[[services]]
+binding = "AURA_COMMS"
+service = "aura-comms"
+
+[[durable_objects.bindings]]
+name = "ENTITY_DO"
+class_name = "EntityDO"
+
+[[migrations]]
+tag = "v1-entitydo"
+new_sqlite_classes = ["EntityDO"]

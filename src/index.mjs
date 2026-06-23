@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.78-2026-06-22";
+const BUILD = "aura-core-v4.9.79-2026-06-22";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -409,6 +409,20 @@ async function processCommand(line, env, isOp) {
 
       const sub = (args[0] || "").toUpperCase();
 
+      if (sub === "SYNC") {
+        // Copy the current main src/index.mjs onto the proposal branch via GitHub API only
+        // (no large payload through /chat). Used to seed a known-good candidate to prove the
+        // pipeline, and as the base a brain-generated edit would start from.
+        const mainFile = await gh(`/repos/${GH_OWNER}/${GH_REPO}/contents/src/index.mjs?ref=${BASE_BRANCH}`);
+        if (!mainFile.ok || !mainFile.j.content) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Could not read main index: " + mainFile.status } };
+        const eb = await ensureBranch();
+        if (!eb.ok) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: eb.error } };
+        // main content is already base64 from the contents API - write it straight to the branch
+        const put = await commitFile("src/index.mjs", mainFile.j.content.replace(/\n/g, ""), "Aura SYNC: copy current main index to proposal branch");
+        if (!put.ok) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Write failed: " + put.status + " " + JSON.stringify(put.j).slice(0, 200) } };
+        return { cmd: "AURA_PROPOSE", payload: { ok: true, mode: "sync", branch: PROPOSE_BRANCH, branch_created: !eb.existed, file: "src/index.mjs", commit_url: put.j.commit && put.j.commit.html_url, compare_url: `https://github.com/${GH_OWNER}/${GH_REPO}/compare/${BASE_BRANCH}...${PROPOSE_BRANCH}`, note: "Current main index copied to proposal branch. Triggers the validate Action. Live untouched." } };
+      }
+
       if (sub === "STATUS") {
         const ref = await gh(`/repos/${GH_OWNER}/${GH_REPO}/git/ref/heads/${PROPOSE_BRANCH}`);
         if (!ref.ok) return { cmd: "AURA_PROPOSE", payload: { ok: true, branch: PROPOSE_BRANCH, exists: false, note: "Proposal branch not created yet. A NOTE or INDEX proposal will create it." } };
@@ -445,7 +459,7 @@ async function processCommand(line, env, isOp) {
         return { cmd: "AURA_PROPOSE", payload: { ok: true, branch: PROPOSE_BRANCH, branch_created: !eb.existed, file: "src/index.mjs", bytes: decoded.length, commit_url: put.j.commit && put.j.commit.html_url, compare_url: `https://github.com/${GH_OWNER}/${GH_REPO}/compare/${BASE_BRANCH}...${PROPOSE_BRANCH}`, note: "Candidate index written to proposal branch. Live (main) is untouched. Next: syntax gate + staging twin before any promotion." } };
       }
 
-      return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Usage: AURA_PROPOSE STATUS | NOTE <text> | INDEX <base64>" } };
+      return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Usage: AURA_PROPOSE SYNC | STATUS | NOTE <text> | INDEX <base64>" } };
     }
 
     case "AURA_VALIDATE": {

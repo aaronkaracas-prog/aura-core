@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.79-2026-06-22";
+const BUILD = "aura-core-v4.9.80-2026-06-22";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -408,6 +408,19 @@ async function processCommand(line, env, isOp) {
       };
 
       const sub = (args[0] || "").toUpperCase();
+
+      if (sub === "BREAKTEST") {
+        // TEST ONLY: write a deliberately-broken index to the branch to prove the syntax gate
+        // catches it (Action should go red, AURA_VALIDATE should read FAIL). Not part of the
+        // real flow - a tool to verify the gate actually rejects bad code. Recover with SYNC.
+        const broken = 'const BUILD = "BROKEN-TEST";\nexport default { fetch() { processCommand( \n'; // missing closing brace + paren on purpose
+        const b64 = btoa(broken);
+        const eb = await ensureBranch();
+        if (!eb.ok) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: eb.error } };
+        const put = await commitFile("src/index.mjs", b64, "BREAKTEST: deliberately broken index to prove the gate rejects it");
+        if (!put.ok) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Write failed: " + put.status + " " + JSON.stringify(put.j).slice(0, 200) } };
+        return { cmd: "AURA_PROPOSE", payload: { ok: true, mode: "breaktest", branch: PROPOSE_BRANCH, file: "src/index.mjs", commit_url: put.j.commit && put.j.commit.html_url, note: "Broken index written to branch ON PURPOSE. The validate Action should now FAIL. Recover with AURA_PROPOSE SYNC." } };
+      }
 
       if (sub === "SYNC") {
         // Copy the current main src/index.mjs onto the proposal branch via GitHub API only

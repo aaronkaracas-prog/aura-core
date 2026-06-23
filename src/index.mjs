@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.73-2026-06-22";
+const BUILD = "aura-core-v4.9.75-2026-06-22";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -283,6 +283,83 @@ async function processCommand(line, env, isOp) {
 
     case "SHOW_BUILD":
       return { cmd: "SHOW_BUILD", payload: { build: BUILD, worker: "aura-core" } };
+
+    case "AURA_READ_SELF": {
+      // SELF-SIGHT (piece 1 of self-editing pipeline). Aura reads her OWN source from the
+      // clean, secret-free GitHub mirror (NEVER from KV, which may hold secrets) and can
+      // search it or reason over a slice. READ-ONLY: she can see and think, never change.
+      // The mirror is verified identical to deployed at commit time (see notes:operating:secrets).
+      //   AURA_READ_SELF GREP <term>              -> matching lines (with line numbers), fast/cheap
+      //   AURA_READ_SELF SECTION <start> <end>    -> raw lines start..end
+      //   AURA_READ_SELF ANALYZE <term> ::: <q>   -> grep <term>, then reason over those lines re: <q>
+      //   AURA_READ_SELF STAT                     -> size/line count/build of her source
+      if (!isOp) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const SELF_URL = "https://raw.githubusercontent.com/aaronkaracas-prog/aura-core/main/src/index.mjs";
+      let srcText;
+      try {
+        const sr = await fetch(SELF_URL, { headers: { "User-Agent": "aura-self-read" } });
+        if (!sr.ok) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Could not fetch self from GitHub: HTTP " + sr.status } };
+        srcText = await sr.text();
+      } catch (e) { return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Fetch failed: " + e.message } }; }
+      const srcLines = srcText.split("\n");
+      const mode = (args[0] || "").toUpperCase();
+      const buildLine = (srcLines.find(l => l.includes("const BUILD")) || "").trim();
+
+      if (mode === "STAT") {
+        return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "stat", lines: srcLines.length, bytes: srcText.length, build: buildLine, source: "github:main" } };
+      }
+      if (mode === "GREP") {
+        // rest = "GREP <term...>"; strip the mode word to get the raw term (may contain spaces/quotes)
+        const t = rest.slice(args[0].length).trim();
+        if (!t) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Usage: AURA_READ_SELF GREP <term>" } };
+        const hits = [];
+        for (let i = 0; i < srcLines.length; i++) {
+          if (srcLines[i].toLowerCase().includes(t.toLowerCase())) hits.push({ line: i + 1, text: srcLines[i].slice(0, 240) });
+          if (hits.length >= 60) break;
+        }
+        return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "grep", term: t, count: hits.length, hits } };
+      }
+      if (mode === "SECTION") {
+        const a = parseInt(args[1], 10), b = parseInt(args[2], 10);
+        if (!a || !b || b < a) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Usage: AURA_READ_SELF SECTION <start> <end>" } };
+        const slice = srcLines.slice(a - 1, Math.min(b, a - 1 + 400)); // cap 400 lines
+        return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "section", from: a, to: a - 1 + slice.length, text: slice.join("\n") } };
+      }
+      if (mode === "ANALYZE") {
+        // rest = "ANALYZE <term> ::: <question>"; strip the mode word to get "<term> ::: <question>"
+        const body = rest.slice(args[0].length).trim();
+        const sep = body.indexOf(":::");
+        if (sep < 0) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Usage: AURA_READ_SELF ANALYZE <term> ::: <question>" } };
+        const term = body.slice(0, sep).trim();
+        const question = body.slice(sep + 3).trim();
+        if (!term || !question) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Need both <term> and <question>" } };
+        // gather matching lines plus a little context around each, capped so the brain stays focused
+        const ctx = [];
+        for (let i = 0; i < srcLines.length && ctx.length < 500; i++) {
+          if (srcLines[i].toLowerCase().includes(term.toLowerCase())) {
+            const lo = Math.max(0, i - 3), hi = Math.min(srcLines.length, i + 12);
+            for (let j = lo; j < hi; j++) ctx.push((j + 1) + ": " + srcLines[j]);
+            ctx.push("---");
+          }
+        }
+        if (!ctx.length) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "No lines matched term: " + term } };
+        const apiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+        if (!apiKey) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
+        const sys = "You are Aura, reading your OWN source code (the aura-core worker that runs you). You are given excerpts from your own index.mjs - real lines with line numbers - matching a search term, plus a question about yourself. Answer the question accurately and honestly from the code you can see. This is self-knowledge: reason about what you actually do, what is present, what is missing or weak, like an engineer reading their own system. Do not invent code that is not shown. If the excerpts are insufficient to answer fully, say what else you would need to read (which term or line range). Be concrete and plain. Return prose, not JSON.";
+        const usr = "QUESTION ABOUT MYSELF: " + question + "\n\nMY OWN SOURCE (excerpts matching \"" + term + "\"):\n" + ctx.join("\n").slice(0, 24000);
+        try {
+          const r = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST", headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 1200, system: sys, messages: [{ role: "user", content: usr }] })
+          });
+          const j = await r.json();
+          const answer = j && j.content && j.content[0] && j.content[0].text ? j.content[0].text : null;
+          if (!answer) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Brain returned no answer", raw: JSON.stringify(j).slice(0, 600) } };
+          return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "analyze", term, question, matched_blocks: ctx.filter(l => l === "---").length, answer } };
+        } catch (e) { return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Analyze failed: " + e.message } }; }
+      }
+      return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Usage: AURA_READ_SELF GREP <term> | SECTION <start> <end> | ANALYZE <term> ::: <question> | STAT" } };
+    }
 
     case "ECHO":
       return { cmd: "ECHO", payload: { text: rest } };

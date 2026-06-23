@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.80-2026-06-22";
+const BUILD = "aura-core-v4.9.81-2026-06-22";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -518,6 +518,57 @@ async function processCommand(line, env, isOp) {
               : gate === "FAIL" ? "Candidate FAILED node --check (syntax error). Rejected - cannot advance. See run_url for the error."
               : gate === "RUNNING" ? "Validation Action still running. Check again in ~20-30s."
               : "No validation run yet."
+      } };
+    }
+
+    case "AURA_PROMOTE": {
+      // SELF-EDIT piece 5: fire the promote-to-live pipeline from a command (no GitHub UI).
+      // Triggers the promote-to-live.yml workflow via the GitHub dispatch API using the token in KV.
+      // The workflow uploads a new version at 0%, then PAUSES at the production approval gate.
+      // Promotion to 100% still requires explicit approval (AURA_APPROVE or the GitHub button) -
+      // this command only STARTS the pipeline, it does not make anything live by itself.
+      if (!isOp) return { cmd: "AURA_PROMOTE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);
+      if (!ghTok) return { cmd: "AURA_PROMOTE", payload: { ok: false, error: "No GitHub token" } };
+      const r = await fetch("https://api.github.com/repos/aaronkaracas-prog/aura-core/actions/workflows/promote-to-live.yml/dispatches", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github+json", "User-Agent": "aura-promote", "Content-Type": "application/json" },
+        body: JSON.stringify({ ref: "main", inputs: { confirm: "PROMOTE" } })
+      });
+      if (r.status === 204) {
+        return { cmd: "AURA_PROMOTE", payload: { ok: true, started: true, note: "Promote pipeline started. It uploads a new version at 0% (no users), then waits for approval. Check with AURA_PROMOTE STATUS in ~30s. Nothing is live until approved." } };
+      }
+      const j = await r.json().catch(() => ({}));
+      return { cmd: "AURA_PROMOTE", payload: { ok: false, error: "Dispatch failed: HTTP " + r.status + " " + JSON.stringify(j).slice(0, 200) } };
+    }
+
+    case "AURA_PROMOTE_STATUS": {
+      // Read the real status of the most recent promote-to-live run - instant, no UI.
+      if (!isOp) return { cmd: "AURA_PROMOTE_STATUS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);
+      if (!ghTok) return { cmd: "AURA_PROMOTE_STATUS", payload: { ok: false, error: "No GitHub token" } };
+      const gh = async (path) => {
+        const r = await fetch("https://api.github.com" + path, { headers: { "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github+json", "User-Agent": "aura-promote" } });
+        return { ok: r.ok, status: r.status, j: await r.json().catch(() => ({})) };
+      };
+      const runs = await gh("/repos/aaronkaracas-prog/aura-core/actions/runs?per_page=10");
+      if (!runs.ok) return { cmd: "AURA_PROMOTE_STATUS", payload: { ok: false, error: "Could not read runs: " + runs.status } };
+      const run = (runs.j.workflow_runs || []).find(r => r.name === "promote-to-live" || (r.path || "").includes("promote-to-live"));
+      if (!run) return { cmd: "AURA_PROMOTE_STATUS", payload: { ok: true, found: false, note: "No promote-to-live run found yet." } };
+      // get per-job detail so we can see which step is where
+      const jobs = await gh(`/repos/aaronkaracas-prog/aura-core/actions/runs/${run.id}/jobs`);
+      const jobSummary = (jobs.ok ? jobs.j.jobs : []).map(j => ({ name: j.name, status: j.status, conclusion: j.conclusion }));
+      const waitingApproval = jobSummary.some(j => j.name === "promote" && j.status === "waiting");
+      return { cmd: "AURA_PROMOTE_STATUS", payload: {
+        ok: true, found: true,
+        run_status: run.status, run_conclusion: run.conclusion,
+        jobs: jobSummary,
+        waiting_for_approval: waitingApproval,
+        run_url: run.html_url,
+        note: waitingApproval ? "Version uploaded at 0%. WAITING FOR YOUR APPROVAL to flip to 100%."
+            : run.status !== "completed" ? "Pipeline still running."
+            : run.conclusion === "success" ? "Promote completed successfully."
+            : "Promote did not succeed - see jobs for the failing step."
       } };
     }
 

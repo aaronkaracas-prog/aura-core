@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.77-2026-06-22";
+const BUILD = "aura-core-v4.9.78-2026-06-22";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -449,75 +449,48 @@ async function processCommand(line, env, isOp) {
     }
 
     case "AURA_VALIDATE": {
-      // SELF-EDIT piece 3: the SYNTAX GATE. Reads the candidate index from the proposal branch
-      // and proves it is valid JavaScript that PARSES, plus structural sanity checks - WITHOUT
-      // executing it. A candidate that fails this gate can never advance toward live.
-      // HOW: new Function(code) forces V8 to PARSE the code (throws SyntaxError if malformed) but
-      // does NOT run it. We wrap the module body so import/export at top level doesn't false-fail.
-      //   AURA_VALIDATE            -> validate src/index.mjs on the proposal branch
+      // SELF-EDIT piece 3: the SYNTAX GATE - reads the REAL verdict from the GitHub Action that
+      // runs `node --check src/index.mjs` on every push to the proposal branch. In-worker parsing
+      // is impossible (the Workers runtime blocks new Function/eval), so the true parse check runs
+      // on GitHub's Node and we read its conclusion here. This is the honest gate.
+      //   AURA_VALIDATE   -> latest validate-candidate Action run for the proposal branch
       if (!isOp) return { cmd: "AURA_VALIDATE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const GH_OWNER = "aaronkaracas-prog", GH_REPO = "aura-core", PROPOSE_BRANCH = "aura-proposes";
       const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);
       if (!ghTok) return { cmd: "AURA_VALIDATE", payload: { ok: false, error: "No GitHub token" } };
-      // fetch the candidate from the proposal branch (raw)
-      let code;
+      const gh = async (path) => {
+        const r = await fetch("https://api.github.com" + path, { headers: { "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github+json", "User-Agent": "aura-validate" } });
+        return { ok: r.ok, status: r.status, j: await r.json().catch(() => ({})) };
+      };
+      // the candidate's build (from the branch) for context
+      let candidateBuild = null;
       try {
-        const r = await fetch(`https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${PROPOSE_BRANCH}/src/index.mjs`, { headers: { "User-Agent": "aura-validate", "Authorization": "Bearer " + ghTok } });
-        if (!r.ok) return { cmd: "AURA_VALIDATE", payload: { ok: false, error: "Could not read candidate from branch: HTTP " + r.status + " (has an INDEX been proposed yet?)" } };
-        code = await r.text();
-      } catch (e) { return { cmd: "AURA_VALIDATE", payload: { ok: false, error: "Fetch failed: " + e.message } }; }
-
-      const checks = {};
-      const fail = [];
-
-      // 1) STRUCTURAL: must still be the index, not some random file
-      checks.has_build = code.includes("const BUILD");
-      checks.has_export_default = code.includes("export default");
-      checks.has_processCommand = code.includes("processCommand");
-      if (!checks.has_build) fail.push("missing const BUILD");
-      if (!checks.has_export_default) fail.push("missing export default");
-      if (!checks.has_processCommand) fail.push("missing processCommand");
-
-      // 2) BALANCE: quick brace/paren/bracket balance (cheap structural smoke test)
-      const bal = (open, close) => { let n = 0; for (const ch of code) { if (ch === open) n++; else if (ch === close) n--; } return n; };
-      checks.brace_balance = bal("{", "}");
-      checks.paren_balance = bal("(", ")");
-      checks.bracket_balance = bal("[", "]");
-      if (checks.brace_balance !== 0) fail.push("unbalanced braces: " + checks.brace_balance);
-      if (checks.paren_balance !== 0) fail.push("unbalanced parens: " + checks.paren_balance);
-      if (checks.bracket_balance !== 0) fail.push("unbalanced brackets: " + checks.bracket_balance);
-
-      // 3) PARSE: force V8 to parse without executing. Strip import/export lines so a top-level
-      // module construct does not false-fail inside Function(), then parse the remaining body.
-      let parse_ok = false, parse_error = null;
-      try {
-        const stripped = code
-          .replace(/^\s*import\s+.*?;?\s*$/gm, "")
-          .replace(/^\s*export\s+default\s+/gm, "(")   // turn export default X into (X
-          .replace(/^\s*export\s+/gm, "");
-        // wrap so it is a parseable function body; never called -> never executed
-        new Function(stripped + "\n;");
-        parse_ok = true;
-      } catch (e) {
-        parse_ok = false;
-        parse_error = e.name + ": " + e.message;
-        fail.push("PARSE FAILED -> " + parse_error);
-      }
-      checks.parses = parse_ok;
-
-      const buildLine = (code.split("\n").find(l => l.includes("const BUILD")) || "").trim();
-      const passed = fail.length === 0;
+        const rc = await fetch(`https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${PROPOSE_BRANCH}/src/index.mjs`, { headers: { "User-Agent": "aura-validate", "Authorization": "Bearer " + ghTok } });
+        if (rc.ok) { const t = await rc.text(); candidateBuild = (t.split("\n").find(l => l.includes("const BUILD")) || "").trim(); }
+      } catch {}
+      // latest Action run on the proposal branch
+      const runs = await gh(`/repos/${GH_OWNER}/${GH_REPO}/actions/runs?branch=${PROPOSE_BRANCH}&per_page=1`);
+      if (!runs.ok) return { cmd: "AURA_VALIDATE", payload: { ok: false, error: "Could not read Action runs: " + runs.status } };
+      const run = runs.j.workflow_runs && runs.j.workflow_runs[0];
+      if (!run) return { cmd: "AURA_VALIDATE", payload: { ok: true, gate: "PENDING", candidate_build: candidateBuild, note: "No Action run found yet for the proposal branch. Propose a candidate (AURA_PROPOSE INDEX) to trigger validation, then check again in ~30s." } };
+      // status: queued|in_progress|completed ; conclusion: success|failure|...
+      const status = run.status, conclusion = run.conclusion;
+      let gate;
+      if (status !== "completed") gate = "RUNNING";
+      else if (conclusion === "success") gate = "PASS";
+      else gate = "FAIL";
       return { cmd: "AURA_VALIDATE", payload: {
         ok: true,
-        gate: passed ? "PASS" : "FAIL",
-        candidate_build: buildLine,
-        candidate_bytes: code.length,
-        candidate_lines: code.split("\n").length,
-        checks,
-        failures: fail,
-        verdict: passed
-          ? "Candidate parses and passes structural checks. Eligible to advance to staging (piece 4)."
-          : "Candidate REJECTED at syntax gate. It cannot advance. Fix and re-propose."
+        gate,
+        candidate_build: candidateBuild,
+        action_status: status,
+        action_conclusion: conclusion,
+        run_url: run.html_url,
+        run_started: run.run_started_at,
+        verdict: gate === "PASS" ? "Candidate passed node --check on real Node. Eligible to advance to staging (piece 4)."
+              : gate === "FAIL" ? "Candidate FAILED node --check (syntax error). Rejected - cannot advance. See run_url for the error."
+              : gate === "RUNNING" ? "Validation Action still running. Check again in ~20-30s."
+              : "No validation run yet."
       } };
     }
 

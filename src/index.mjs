@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.75-2026-06-22";
+const BUILD = "aura-core-v4.9.76-2026-06-22";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -359,6 +359,93 @@ async function processCommand(line, env, isOp) {
         } catch (e) { return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Analyze failed: " + e.message } }; }
       }
       return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Usage: AURA_READ_SELF GREP <term> | SECTION <start> <end> | ANALYZE <term> ::: <question> | STAT" } };
+    }
+
+    case "AURA_PROPOSE": {
+      // SELF-EDIT piece 2: Aura writes a CANDIDATE to a proposal BRANCH via the GitHub API.
+      // SAFE BY CONSTRUCTION: the target branch is HARDCODED to PROPOSE_BRANCH and can NEVER be
+      // main/live. Live deploys from Aaron's machine off main; a branch commit is inert until a
+      // later pipeline stage (syntax gate -> staging twin -> human-approved promotion) acts on it.
+      // This command does NOT deploy anything. It only puts a proposal on the table.
+      //   AURA_PROPOSE STATUS                         -> show the proposal branch + its latest commit
+      //   AURA_PROPOSE NOTE <text>                    -> write a small marker file (proof-of-write test)
+      //   AURA_PROPOSE INDEX <base64-of-full-index>   -> commit a full candidate src/index.mjs to the branch
+      if (!isOp) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const GH_OWNER = "aaronkaracas-prog";
+      const GH_REPO = "aura-core";
+      const PROPOSE_BRANCH = "aura-proposes";   // hardcoded - NEVER main
+      const BASE_BRANCH = "main";
+      const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);
+      if (!ghTok) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "No GitHub token (set secret:github_token)" } };
+      const gh = async (path, method, body) => {
+        const r = await fetch("https://api.github.com" + path, {
+          method: method || "GET",
+          headers: { "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github+json", "User-Agent": "aura-self-edit", ...(body ? { "Content-Type": "application/json" } : {}) },
+          ...(body ? { body: JSON.stringify(body) } : {})
+        });
+        const j = await r.json().catch(() => ({}));
+        return { status: r.status, ok: r.ok, j };
+      };
+      // ensure the proposal branch exists (create from main if missing)
+      const ensureBranch = async () => {
+        const ref = await gh(`/repos/${GH_OWNER}/${GH_REPO}/git/ref/heads/${PROPOSE_BRANCH}`);
+        if (ref.ok) return { ok: true, existed: true };
+        const baseRef = await gh(`/repos/${GH_OWNER}/${GH_REPO}/git/ref/heads/${BASE_BRANCH}`);
+        if (!baseRef.ok) return { ok: false, error: "Cannot read base branch main: " + baseRef.status + " " + JSON.stringify(baseRef.j).slice(0, 200) };
+        const baseSha = baseRef.j.object && baseRef.j.object.sha;
+        const made = await gh(`/repos/${GH_OWNER}/${GH_REPO}/git/refs`, "POST", { ref: "refs/heads/" + PROPOSE_BRANCH, sha: baseSha });
+        if (!made.ok) return { ok: false, error: "Cannot create proposal branch: " + made.status + " " + JSON.stringify(made.j).slice(0, 200) };
+        return { ok: true, existed: false };
+      };
+      // commit a file to the proposal branch (reads current sha on that branch if file exists)
+      const commitFile = async (filePath, contentB64, message) => {
+        const cur = await gh(`/repos/${GH_OWNER}/${GH_REPO}/contents/${filePath}?ref=${PROPOSE_BRANCH}`);
+        const sha = cur.ok && cur.j && cur.j.sha ? cur.j.sha : undefined;
+        const put = await gh(`/repos/${GH_OWNER}/${GH_REPO}/contents/${filePath}`, "PUT", {
+          message, content: contentB64, branch: PROPOSE_BRANCH, ...(sha ? { sha } : {})
+        });
+        return put;
+      };
+
+      const sub = (args[0] || "").toUpperCase();
+
+      if (sub === "STATUS") {
+        const ref = await gh(`/repos/${GH_OWNER}/${GH_REPO}/git/ref/heads/${PROPOSE_BRANCH}`);
+        if (!ref.ok) return { cmd: "AURA_PROPOSE", payload: { ok: true, branch: PROPOSE_BRANCH, exists: false, note: "Proposal branch not created yet. A NOTE or INDEX proposal will create it." } };
+        const sha = ref.j.object && ref.j.object.sha;
+        const commit = await gh(`/repos/${GH_OWNER}/${GH_REPO}/commits/${sha}`);
+        const c = commit.ok ? commit.j.commit : null;
+        return { cmd: "AURA_PROPOSE", payload: { ok: true, branch: PROPOSE_BRANCH, exists: true, head_sha: sha, last_message: c && c.message, last_author: c && c.author && c.author.date, compare_url: `https://github.com/${GH_OWNER}/${GH_REPO}/compare/${BASE_BRANCH}...${PROPOSE_BRANCH}` } };
+      }
+
+      if (sub === "NOTE") {
+        const text = rest.slice(args[0].length).trim();
+        if (!text) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Usage: AURA_PROPOSE NOTE <text>" } };
+        const eb = await ensureBranch();
+        if (!eb.ok) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: eb.error } };
+        const b64 = btoa(unescape(encodeURIComponent(`Aura proposal note @ ${new Date().toISOString()}\n\n${text}\n`)));
+        const put = await commitFile("AURA_PROPOSAL_NOTE.md", b64, "Aura proposes (note): " + text.slice(0, 60));
+        if (!put.ok) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Write failed: " + put.status + " " + JSON.stringify(put.j).slice(0, 200) } };
+        return { cmd: "AURA_PROPOSE", payload: { ok: true, branch: PROPOSE_BRANCH, branch_created: !eb.existed, file: "AURA_PROPOSAL_NOTE.md", commit_url: put.j.commit && put.j.commit.html_url, compare_url: `https://github.com/${GH_OWNER}/${GH_REPO}/compare/${BASE_BRANCH}...${PROPOSE_BRANCH}`, note: "Proposal written to branch. Live (main) is untouched." } };
+      }
+
+      if (sub === "INDEX") {
+        // full candidate index as base64 (avoids any newline/size issues over /chat)
+        const b64 = rest.slice(args[0].length).trim();
+        if (!b64) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Usage: AURA_PROPOSE INDEX <base64-of-full-index.mjs>" } };
+        // sanity: decode and confirm it looks like the index (has the BUILD line and an export default)
+        let decoded; try { decoded = decodeURIComponent(escape(atob(b64))); } catch { return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Content is not valid base64" } }; }
+        if (!decoded.includes("const BUILD") || !decoded.includes("export default")) {
+          return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Decoded content does not look like index.mjs (missing BUILD or export default) - refusing to write" } };
+        }
+        const eb = await ensureBranch();
+        if (!eb.ok) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: eb.error } };
+        const put = await commitFile("src/index.mjs", b64, "Aura proposes candidate index (" + decoded.length + " bytes) to " + PROPOSE_BRANCH);
+        if (!put.ok) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Write failed: " + put.status + " " + JSON.stringify(put.j).slice(0, 200) } };
+        return { cmd: "AURA_PROPOSE", payload: { ok: true, branch: PROPOSE_BRANCH, branch_created: !eb.existed, file: "src/index.mjs", bytes: decoded.length, commit_url: put.j.commit && put.j.commit.html_url, compare_url: `https://github.com/${GH_OWNER}/${GH_REPO}/compare/${BASE_BRANCH}...${PROPOSE_BRANCH}`, note: "Candidate index written to proposal branch. Live (main) is untouched. Next: syntax gate + staging twin before any promotion." } };
+      }
+
+      return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Usage: AURA_PROPOSE STATUS | NOTE <text> | INDEX <base64>" } };
     }
 
     case "ECHO":

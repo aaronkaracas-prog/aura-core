@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.76-2026-06-22";
+const BUILD = "aura-core-v4.9.77-2026-06-22";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -446,6 +446,79 @@ async function processCommand(line, env, isOp) {
       }
 
       return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Usage: AURA_PROPOSE STATUS | NOTE <text> | INDEX <base64>" } };
+    }
+
+    case "AURA_VALIDATE": {
+      // SELF-EDIT piece 3: the SYNTAX GATE. Reads the candidate index from the proposal branch
+      // and proves it is valid JavaScript that PARSES, plus structural sanity checks - WITHOUT
+      // executing it. A candidate that fails this gate can never advance toward live.
+      // HOW: new Function(code) forces V8 to PARSE the code (throws SyntaxError if malformed) but
+      // does NOT run it. We wrap the module body so import/export at top level doesn't false-fail.
+      //   AURA_VALIDATE            -> validate src/index.mjs on the proposal branch
+      if (!isOp) return { cmd: "AURA_VALIDATE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const GH_OWNER = "aaronkaracas-prog", GH_REPO = "aura-core", PROPOSE_BRANCH = "aura-proposes";
+      const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);
+      if (!ghTok) return { cmd: "AURA_VALIDATE", payload: { ok: false, error: "No GitHub token" } };
+      // fetch the candidate from the proposal branch (raw)
+      let code;
+      try {
+        const r = await fetch(`https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${PROPOSE_BRANCH}/src/index.mjs`, { headers: { "User-Agent": "aura-validate", "Authorization": "Bearer " + ghTok } });
+        if (!r.ok) return { cmd: "AURA_VALIDATE", payload: { ok: false, error: "Could not read candidate from branch: HTTP " + r.status + " (has an INDEX been proposed yet?)" } };
+        code = await r.text();
+      } catch (e) { return { cmd: "AURA_VALIDATE", payload: { ok: false, error: "Fetch failed: " + e.message } }; }
+
+      const checks = {};
+      const fail = [];
+
+      // 1) STRUCTURAL: must still be the index, not some random file
+      checks.has_build = code.includes("const BUILD");
+      checks.has_export_default = code.includes("export default");
+      checks.has_processCommand = code.includes("processCommand");
+      if (!checks.has_build) fail.push("missing const BUILD");
+      if (!checks.has_export_default) fail.push("missing export default");
+      if (!checks.has_processCommand) fail.push("missing processCommand");
+
+      // 2) BALANCE: quick brace/paren/bracket balance (cheap structural smoke test)
+      const bal = (open, close) => { let n = 0; for (const ch of code) { if (ch === open) n++; else if (ch === close) n--; } return n; };
+      checks.brace_balance = bal("{", "}");
+      checks.paren_balance = bal("(", ")");
+      checks.bracket_balance = bal("[", "]");
+      if (checks.brace_balance !== 0) fail.push("unbalanced braces: " + checks.brace_balance);
+      if (checks.paren_balance !== 0) fail.push("unbalanced parens: " + checks.paren_balance);
+      if (checks.bracket_balance !== 0) fail.push("unbalanced brackets: " + checks.bracket_balance);
+
+      // 3) PARSE: force V8 to parse without executing. Strip import/export lines so a top-level
+      // module construct does not false-fail inside Function(), then parse the remaining body.
+      let parse_ok = false, parse_error = null;
+      try {
+        const stripped = code
+          .replace(/^\s*import\s+.*?;?\s*$/gm, "")
+          .replace(/^\s*export\s+default\s+/gm, "(")   // turn export default X into (X
+          .replace(/^\s*export\s+/gm, "");
+        // wrap so it is a parseable function body; never called -> never executed
+        new Function(stripped + "\n;");
+        parse_ok = true;
+      } catch (e) {
+        parse_ok = false;
+        parse_error = e.name + ": " + e.message;
+        fail.push("PARSE FAILED -> " + parse_error);
+      }
+      checks.parses = parse_ok;
+
+      const buildLine = (code.split("\n").find(l => l.includes("const BUILD")) || "").trim();
+      const passed = fail.length === 0;
+      return { cmd: "AURA_VALIDATE", payload: {
+        ok: true,
+        gate: passed ? "PASS" : "FAIL",
+        candidate_build: buildLine,
+        candidate_bytes: code.length,
+        candidate_lines: code.split("\n").length,
+        checks,
+        failures: fail,
+        verdict: passed
+          ? "Candidate parses and passes structural checks. Eligible to advance to staging (piece 4)."
+          : "Candidate REJECTED at syntax gate. It cannot advance. Fix and re-propose."
+      } };
     }
 
     case "ECHO":

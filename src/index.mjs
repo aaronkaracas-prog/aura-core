@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.125-2026-06-25";
+const BUILD = "aura-core-v4.9.126-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8989,7 +8989,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="console">
   <div class="greet" onclick="openChat()">
     <div class="orb"></div>
-    <div class="greettext">${greet}</div>
+    <div class="greettext" id="greetBar"></div>
   </div>
   <div class="inbar" onclick="openChat();setTimeout(function(){var c=document.getElementById('chatInput');if(c)c.focus()},100)">
     <button class="cbtn" title="Attach">${icPlus}</button>
@@ -9007,9 +9007,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
     <div style="font-weight:700;color:#fff">Aura</div>
   </div>
   <div class="chat" id="chatArea">
-    <div class="msg aura"><span class="lbl">AURA</span>${greet}
-      ${suggestionsHtml}
-    </div>
+    <div class="msg aura"><span class="lbl">AURA</span><span id="greetMsg"></span></div>
   </div>
   <div class="console" style="border-top:1px solid #16161f">
     <div class="attach" id="attachRow" style="display:none"></div>
@@ -9030,6 +9028,11 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 </div>
 
 <script>
+var AURA_GREET = ${JSON.stringify(greet)};
+document.addEventListener('DOMContentLoaded',function(){
+  var gb=document.getElementById('greetBar'); if(gb) gb.textContent=AURA_GREET;
+  var gm=document.getElementById('greetMsg'); if(gm) gm.textContent=AURA_GREET;
+});
 function openChat(){document.getElementById('chatlayer').classList.add('open')}
 function closeChat(){document.getElementById('chatlayer').classList.remove('open')}
 function toggleMenu(){document.getElementById('drawer').classList.toggle('open');document.getElementById('scrim').classList.toggle('open')}

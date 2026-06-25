@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.142-2026-06-25";
+const BUILD = "aura-core-v4.9.143-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8938,7 +8938,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.142</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.143</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9041,7 +9041,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.rec{background:#ec4899;color:#fff}
 .install{display:none;align-items:center;gap:0.5rem;font-size:0.8rem;color:#a855f7;padding:0.5rem 1rem;cursor:pointer;justify-content:center}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.142</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.143</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9285,7 +9285,7 @@ let _rec=null,_recOn=false;
 function toggleMic(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){addMsg("Your browser doesn't support voice - try typing.","aura");return}if(_recOn){_rec&&_rec.stop();return}_rec=new SR();_rec.lang='en-US';_rec.interimResults=true;_rec.continuous=false;_recOn=true;_rec.onresult=(e)=>{let txt='';for(let i=0;i<e.results.length;i++)txt+=e.results[i][0].transcript;document.getElementById('chatInput').value=txt};_rec.onerror=()=>{};_rec.onend=()=>{_recOn=false;if(document.getElementById('chatInput').value.trim())sendMsg()};_rec.start()}
 (function(){
   var grid=document.getElementById('appgrid'); if(!grid) return;
-  var editing=false, drag=null, lpTimer=null, sx=0, sy=0, moved=false;
+  var editing=false, drag=null, cand=null, lpTimer=null, sx=0, sy=0, moved=false;
   var isTouch=('ontouchstart' in window);
   function order(){return [].slice.call(grid.querySelectorAll('.app')).map(function(el){return el.getAttribute('data-app');});}
   function saveOrder(){ fetch('/home/layout',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({apps:order()})}).catch(function(){}); }
@@ -9297,18 +9297,20 @@ function toggleMic(){const SR=window.SpeechRecognition||window.webkitSpeechRecog
   function exitEdit(){ if(!editing) return; editing=false; grid.classList.remove('editing'); document.getElementById('editbar').classList.remove('show'); saveOrder(); }
   document.getElementById('editdone').onclick=exitEdit;
   function pt(e){ var t=(e.touches&&e.touches[0])?e.touches[0]:e; return {x:t.clientX,y:t.clientY}; }
-  function down(e){ var app=e.target.closest('.app'); if(!app) return; var p=pt(e); sx=p.x; sy=p.y; moved=false;
-    if(!editing){ lpTimer=setTimeout(enterEdit,500); } else { drag=app; app.classList.add('dragging'); } }
-  function move(e){ var p=pt(e); if(Math.abs(p.x-sx)>8||Math.abs(p.y-sy)>8){ moved=true; clearTimeout(lpTimer); }
-    if(!editing||!drag) return; if(e.cancelable) e.preventDefault();
+  function down(e){ var app=e.target.closest('.app'); if(!app) return; var p=pt(e); sx=p.x; sy=p.y; moved=false; cand=app;
+    lpTimer=setTimeout(enterEdit,450); }
+  function move(e){ if(!cand) return; var p=pt(e);
+    if(!moved && (Math.abs(p.x-sx)>8||Math.abs(p.y-sy)>8)){ moved=true; clearTimeout(lpTimer); }
+    if(moved && editing && !drag){ drag=cand; drag.classList.add('dragging'); }
+    if(!drag) return; if(e.cancelable) e.preventDefault();
     var over=document.elementFromPoint(p.x,p.y); var tgt=over&&over.closest?over.closest('.app'):null;
     if(tgt&&tgt!==drag){ var r=tgt.getBoundingClientRect(); var after=p.y>r.top+r.height/2||(Math.abs(p.y-(r.top+r.height/2))<4&&p.x>r.left+r.width/2); grid.insertBefore(drag, after?tgt.nextSibling:tgt); } }
   function up(e){ clearTimeout(lpTimer);
-    if(drag){ drag.classList.remove('dragging'); drag=null; saveOrder(); return; }
-    if(isTouch&&!editing&&!moved){ var app=e.target.closest('.app'); if(app) askAura('Open '+app.getAttribute('data-app')); } }
-  if(isTouch){ grid.addEventListener('touchstart',down,{passive:true}); grid.addEventListener('touchmove',move,{passive:false}); grid.addEventListener('touchend',up); }
-  else { grid.addEventListener('mousedown',down); window.addEventListener('mousemove',function(e){ if(drag) move(e); }); window.addEventListener('mouseup',up);
-    grid.addEventListener('click',function(e){ if(editing) return; var app=e.target.closest('.app'); if(app) askAura('Open '+app.getAttribute('data-app')); }); }
+    if(drag){ drag.classList.remove('dragging'); drag=null; cand=null; saveOrder(); return; }
+    if(!moved && !editing){ var app=cand||(e.target.closest&&e.target.closest('.app')); if(app) askAura('Open '+app.getAttribute('data-app')); }
+    cand=null; }
+  if(isTouch){ grid.addEventListener('touchstart',down,{passive:true}); grid.addEventListener('touchmove',move,{passive:false}); grid.addEventListener('touchend',up); grid.addEventListener('touchcancel',up); }
+  else { grid.addEventListener('mousedown',down); window.addEventListener('mousemove',move); window.addEventListener('mouseup',up); }
   document.addEventListener(isTouch?'touchstart':'mousedown',function(e){ if(editing && !e.target.closest('#appgrid') && !e.target.closest('#editbar')) exitEdit(); },{passive:true});
 })();
 if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('/sw.js').then(function(reg){reg.update();}).catch(function(){});var refreshing=false;navigator.serviceWorker.addEventListener('controllerchange',function(){if(refreshing)return;refreshing=true;if(hadController)window.location.reload();});}

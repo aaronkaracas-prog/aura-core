@@ -8903,6 +8903,7 @@ export default {
         {n:"Tasks",c:"#1c2030"},{n:"Notes",c:"#2a261c"},{n:"Settings",c:"#202028"}
       ];
       const appGrid = apps.map(function(a){return '<div class="app" onclick="askAura(\'Open '+a.n+'\')"><div class="appicon" style="background:'+a.c+'">'+a.n.charAt(0)+'</div><div class="applabel">'+a.n+'</div></div>';}).join("");
+      const suggestionsHtml = suggestions.length ? ('<div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.5rem">' + suggestions.map(function(s){return '<button onclick="askAura(\''+s.replace(/'/g,"")+'\')" style="background:#15151f;border:1px solid #24243a;color:#c8c4d8;font-size:0.82rem;padding:0.5rem 0.85rem;border-radius:18px;cursor:pointer">'+s+'</button>';}).join("") + '</div>') : "";
 
       const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"><title>Home — ${name}</title><style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -8985,7 +8986,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
   </div>
   <div class="chat" id="chatArea">
     <div class="msg aura"><span class="lbl">AURA</span>${greet}
-      ${suggestions.length ? `<div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.5rem">${suggestions.map(s => `<button onclick="askAura('${s.replace(/'/g, "")}')" style="background:#15151f;border:1px solid #24243a;color:#c8c4d8;font-size:0.82rem;padding:0.5rem 0.85rem;border-radius:18px;cursor:pointer">${s}</button>`).join("")}</div>` : ""}
+      ${suggestionsHtml}
     </div>
   </div>
   <div class="console" style="border-top:1px solid #16161f">

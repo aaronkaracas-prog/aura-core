@@ -8527,7 +8527,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
 // design queue, and emails the artist. Used by /aura-chat (gate-off path) and by
 // /confirm-payment (gate-on path, after the customer pays). Single source of truth
 // so both paths deliver identically.
-async function auraDeliverDesign(env, { sessionId, prompt, concept, shop, artist, context }) {
+async function showIt(subject, env, opts = {}) {
   const imgResult = await auraGenerateImage(prompt, env, { source: "aura-deliver", session: sessionId });
   if (!imgResult || !imgResult.ok) return { ok: false, error: imgResult ? imgResult.error : "generation failed" };
   const image = { id: imgResult.id, url: `https://auras.guide/image/${imgResult.id}` };

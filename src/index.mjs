@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.138-2026-06-25";
+const BUILD = "aura-core-v4.9.139-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8905,7 +8905,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.138</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.139</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9008,7 +9008,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.rec{background:#ec4899;color:#fff}
 .install{display:none;align-items:center;gap:0.5rem;font-size:0.8rem;color:#a855f7;padding:0.5rem 1rem;cursor:pointer;justify-content:center}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.138</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.139</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9242,9 +9242,10 @@ function askAura(t){if(document.getElementById('drawer').classList.contains('ope
 async function sendMsg(){const inp=document.getElementById('chatInput');const m=inp.value.trim();if(!m&&!_file)return;inp.value='';addMsg((m||'')+(_file?(' . '+_file.name):''),'user');const payload={message:m};if(_file)payload.file=_file;clearFile();const ld=document.createElement('div');ld.className='msg aura';ld.id='ld';ld.innerHTML='<span class="lbl">AURA</span><span style="color:#6b6b8a">...</span>';document.getElementById('chatArea').appendChild(ld);try{const r=await fetch('/home/talk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const el=document.getElementById('ld');if(el)el.remove();const d=await r.json();if(d.ok)addMsg(d.reply,'aura');else addMsg('Trouble connecting.','aura')}catch(e){const el=document.getElementById('ld');if(el)el.remove();addMsg('Connection error.','aura')}}
 let _rec=null,_recOn=false;
 function toggleMic(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){addMsg("Your browser doesn't support voice - try typing.","aura");return}if(_recOn){_rec&&_rec.stop();return}_rec=new SR();_rec.lang='en-US';_rec.interimResults=true;_rec.continuous=false;_recOn=true;_rec.onresult=(e)=>{let txt='';for(let i=0;i<e.results.length;i++)txt+=e.results[i][0].transcript;document.getElementById('chatInput').value=txt};_rec.onerror=()=>{};_rec.onend=()=>{_recOn=false;if(document.getElementById('chatInput').value.trim())sendMsg()};_rec.start()}
+if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').then(function(reg){reg.update();}).catch(function(){});var refreshing=false;navigator.serviceWorker.addEventListener('controllerchange',function(){if(refreshing)return;refreshing=true;window.location.reload();});}
 </script>
 </body></html>`;
-      return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+      return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" } });
     }
 
     // Home Screen Aura teammate — talks to HOME mode AS the logged-in PTA (session-gated, own PTA only).

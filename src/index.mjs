@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.143-2026-06-25";
+const BUILD = "aura-core-v4.9.144-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8938,7 +8938,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.143</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.144</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9041,7 +9041,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.rec{background:#ec4899;color:#fff}
 .install{display:none;align-items:center;gap:0.5rem;font-size:0.8rem;color:#a855f7;padding:0.5rem 1rem;cursor:pointer;justify-content:center}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.143</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.144</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9149,7 +9149,7 @@ window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();def
         {n:"Files",c:"#1c1c2e"},{n:"Music",c:"#2a1c24"},{n:"Camera",c:"#222"},
         {n:"Tasks",c:"#1c2030"},{n:"Notes",c:"#2a261c"},{n:"Settings",c:"#202028"}
       ];
-      const appGrid = apps.map(function(a){return '<div class="app" data-app="'+a.n+'"><div class="appicon" style="background:'+a.c+'">'+a.n.charAt(0)+'</div><div class="applabel">'+a.n+'</div></div>';}).join("");
+      const appGrid = apps.map(function(a){return '<div class="app" draggable="false" data-app="'+a.n+'"><div class="appicon" style="background:'+a.c+'">'+a.n.charAt(0)+'</div><div class="applabel">'+a.n+'</div></div>';}).join("");
       const suggestionsHtml = suggestions.length ? ('<div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.5rem">' + suggestions.map(function(s){return '<button onclick="askAura(\''+s.replace(/'/g,"")+'\')" style="background:#15151f;border:1px solid #24243a;color:#c8c4d8;font-size:0.82rem;padding:0.5rem 0.85rem;border-radius:18px;cursor:pointer">'+s+'</button>';}).join("") + '</div>') : "";
 
       const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"><title>Home — ${name}</title>
@@ -9172,7 +9172,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 .sec{color:#6b6b8a;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin:1.2rem 0.2rem 0.7rem}
 /* APP GRID (their habits) */
 .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem 0.6rem}
-.app{display:flex;flex-direction:column;align-items:center;gap:0.4rem;cursor:pointer}
+.app{display:flex;flex-direction:column;align-items:center;gap:0.4rem;cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-user-drag:none;touch-action:none}
 .appicon{width:60px;height:60px;border-radius:15px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.4rem;color:#cfcfe0;border:1px solid #20202c}
 .applabel{font-size:0.72rem;color:#c8c8d8}
 .app{transition:transform 0.12s ease}
@@ -9300,8 +9300,7 @@ function toggleMic(){const SR=window.SpeechRecognition||window.webkitSpeechRecog
   function down(e){ var app=e.target.closest('.app'); if(!app) return; var p=pt(e); sx=p.x; sy=p.y; moved=false; cand=app;
     lpTimer=setTimeout(enterEdit,450); }
   function move(e){ if(!cand) return; var p=pt(e);
-    if(!moved && (Math.abs(p.x-sx)>8||Math.abs(p.y-sy)>8)){ moved=true; clearTimeout(lpTimer); }
-    if(moved && editing && !drag){ drag=cand; drag.classList.add('dragging'); }
+    if(!moved && (Math.abs(p.x-sx)>8||Math.abs(p.y-sy)>8)){ moved=true; clearTimeout(lpTimer); if(!editing) enterEdit(); drag=cand; drag.classList.add('dragging'); }
     if(!drag) return; if(e.cancelable) e.preventDefault();
     var over=document.elementFromPoint(p.x,p.y); var tgt=over&&over.closest?over.closest('.app'):null;
     if(tgt&&tgt!==drag){ var r=tgt.getBoundingClientRect(); var after=p.y>r.top+r.height/2||(Math.abs(p.y-(r.top+r.height/2))<4&&p.x>r.left+r.width/2); grid.insertBefore(drag, after?tgt.nextSibling:tgt); } }

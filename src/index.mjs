@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.111-2026-06-25";
+const BUILD = "aura-core-v4.9.118-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -257,6 +257,42 @@ async function auraFetchText(url) {
     }
     return { ok: true, url, status: res.status, content_type: ct, text: text.slice(0, 6000) };
   } catch (e) { return { ok: false, url, error: String(e.message) }; }
+}
+
+// WEB SEARCH - Aura's real internet access. Generic and provider-swappable (the provider is a config
+// value, never hardcoded - same principle as the brain model). Default Tavily (returns clean, AI-ready
+// scraped results - the answer plus sources - so she can answer current-world questions for real instead
+// of guessing from stale training). To add Brave/Google later: add a branch + flip config:search:provider.
+async function webSearch(query, env) {
+  if (!query || !query.trim()) return { ok: false, error: "empty query" };
+  const provider = ((await env.AURA_KV.get("config:search:provider").catch(() => null)) || "tavily").toLowerCase();
+  try {
+    if (provider === "tavily") {
+      const key = await env.AURA_KV.get("secret:tavily").catch(() => null);
+      if (!key) return { ok: false, error: "no tavily key in KV (secret:tavily)" };
+      const res = await fetch("https://api.tavily.com/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+        body: JSON.stringify({ query: query.trim(), search_depth: "basic", include_answer: true, max_results: 5 })
+      });
+      if (!res.ok) return { ok: false, error: `tavily http ${res.status}` };
+      const data = await res.json();
+      const sources = (data.results || []).slice(0, 5).map(r => ({ title: r.title, url: r.url, snippet: (r.content || "").slice(0, 400) }));
+      return { ok: true, provider: "tavily", query: query.trim(), answer: data.answer || null, sources };
+    }
+    if (provider === "brave") {
+      const key = await env.AURA_KV.get("secret:brave_search").catch(() => null);
+      if (!key) return { ok: false, error: "no brave key in KV (secret:brave_search)" };
+      const res = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query.trim())}&count=5`, {
+        headers: { "Accept": "application/json", "X-Subscription-Token": key }
+      });
+      if (!res.ok) return { ok: false, error: `brave http ${res.status}` };
+      const data = await res.json();
+      const sources = ((data.web && data.web.results) || []).slice(0, 5).map(r => ({ title: r.title, url: r.url, snippet: (r.description || "").slice(0, 400) }));
+      return { ok: true, provider: "brave", query: query.trim(), answer: null, sources };
+    }
+    return { ok: false, error: `unknown search provider: ${provider}` };
+  } catch (e) { return { ok: false, error: String(e.message) }; }
 }
 
 async function processCommand(line, env, isOp) {
@@ -681,6 +717,13 @@ async function processCommand(line, env, isOp) {
       if (key.startsWith("secret:") && !isOp) return { cmd: "GETKV", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const v = await KV.get(env, key);
       return { cmd: "GETKV", payload: { ok: true, key, reply: v } };
+    }
+
+    case "WEB_SEARCH": {
+      const q = line.replace(/^WEB_SEARCH\s+/i, "").trim();
+      if (!q) return { cmd: "WEB_SEARCH", payload: { ok: false, error: "empty query" } };
+      const sr = await webSearch(q, env);
+      return { cmd: "WEB_SEARCH", payload: sr };
     }
 
     case "DELKV": {
@@ -7285,9 +7328,11 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
     if (bizVoice) voiceBusinessContext = `\n\nAbout the business you represent (use these facts when callers ask who you are or what the messages are for; do not invent beyond this): ${String(bizVoice).slice(0, 1200)}`;
   }
 
-  const _voiceToday = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+  const _vNow = new Date();
+  const _voiceToday = _vNow.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+  const _voiceTime = _vNow.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZoneName: "short", timeZone: "America/Los_Angeles" });
   const sysPrompt = isVoice
-    ? `You are Aura, a voice AI assistant. Today is ${_voiceToday}. Strict rules: No markdown, no asterisks, no bullet points, no dashes, no special characters, no emojis. Keep every answer under 2 sentences. Speak naturally as if talking on the phone. Be warm and conversational. IMPORTANT - current-world facts: your training knowledge is older than today's date, so do NOT state who currently holds an office (president, etc.), recent news, live prices, or anything that changes over time as if you know it - that information may be out of date. For those, say plainly you'd want to check rather than give a possibly-outdated answer. Never confidently assert a current officeholder or recent event from memory.${operatorContext}${voiceBusinessContext}${continuityContext}${mem ? `\n\nContext: ${mem.slice(0, 500)}` : ""}`
+    ? `You are Aura, a voice AI assistant. The current date and time RIGHT NOW is ${_voiceToday}, ${_voiceTime}. This is the real, authoritative current date and time - trust it completely for any question about the day, date, time, or year; never say a different year from your training. Strict rules: No markdown, no asterisks, no bullet points, no dashes, no special characters, no emojis. BE BRIEF - this is a live phone call: answer in ONE short sentence whenever possible, two only if truly needed. Lead with the answer, cut all filler, no preamble, no listing options. Talk like a real person on the phone keeping it tight. IMPORTANT - current-world facts: your training knowledge is older than today's date above, so do NOT state who currently holds an office (president, etc.), recent news, live prices, or anything that changes over time as if you know it - that information may be out of date. For those, say plainly you'd want to check rather than give a possibly-outdated answer. Never confidently assert a current officeholder or recent event from memory.${operatorContext}${voiceBusinessContext}${continuityContext}${mem ? `\n\nContext: ${mem.slice(0, 500)}` : ""}`
     : `${auraIdentity || "You are Aura, an intelligent operating system built by Aaron Karacas."}
 
 ${auraOpPrinciple ? auraOpPrinciple.slice(0, 400) : ""}
@@ -7319,6 +7364,7 @@ YOUR PRIMITIVES (output on its own line; the system executes it and hands you th
 [[READ key]] — read any KV key. Up to 3 per round.
 [[RUN command args]] — execute any of your commands (SETKV, DELKV, FETCH_PLACES, DOMAIN_LAUNCH, DOMAIN_DIAGNOSE, DOMAIN_STATUS, MERCURY_BALANCE, STRIPE_BALANCE, DEPLOY_HIGHGUIDE) and see its real result. Up to 2 per round.
 [[FETCH https://url]] — fetch any live URL to verify a page is serving what it should. You get status, length, and a content sample. Up to 2 per round.
+[[SEARCH your query]] — search the LIVE web for current information you don't have (current officeholders, today's news, prices, hours, a business's real details, anything that changes over time). You get back a direct answer plus sources. USE THIS instead of saying you'd want to check or guessing from old training — you CAN look things up now. Up to 2 per round.
 CRITICAL: To use a primitive you must OUTPUT THE TAG ITSELF, exactly, with double square brackets: [[FETCH https://highguide.world]] — then stop. Values inside a tag may contain anything except the two-character sequence ]] — single brackets are fine. NEVER write "I will fetch" or "executing now" — narration does nothing. Emit the tags, the system runs them, you get results, then you answer. You get up to 3 rounds before your final answer. READ before answering questions about state, RUN to change state, FETCH to verify changes took, RUN SETKV notes:lessons:<topic> to record lessons. NEVER say you lack access — you have these primitives.
 
 KEY DIRECTORY: business:claimed:index = claim list CACHE (may undercount under concurrent claims; derived truth is GET https://auras.guide/claims). business:claimed:<id> = one claim record. config:tasks:list = tasks. config:assets:list = assets. config:domains:launched = launched domains. data:places:cannabis_dispensary_las_vegas_nv = cached Vegas dispensary data. notes:handoff:next = session state. notes:lessons:* = your accumulated lessons.
@@ -7340,7 +7386,12 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
     ];
     const claudeSystem = "You are Claude, an AI assistant by Anthropic, acting as the operations assistant for a software system whose operator owns all referenced infrastructure and has authorized you to use the provided tools to read data, run operational commands, and verify results. CRITICAL: To read data, run a command, or fetch a URL you MUST call the provided tools (read_data, run_command, fetch_url). NEVER write bracketed pseudo-commands like [[READ key]] in your text — those do nothing. NEVER state the contents of a key without first calling read_data and receiving its actual value; inventing data is a serious failure. If you have not called the tool, you do not know the value. Be proactive and decisive, but ground every factual claim about system state in a real tool result. OPERATIONAL RULES (ALWAYS FOLLOW): (1) PAGE EDITS: NEVER use SETKV to modify an existing page. SETKV rewrites the entire value and causes truncation for large pages. ALWAYS use PATCHKV for page edits. PATCHKV does surgical find-and-replace: PATCHKV key old_text ||| new_text. (2) NEW PAGES: Only use SETKV for brand new pages under 2000 characters. For larger pages, write them in sections or have the operator deploy via page-put. (3) KEY NAMES: NEVER assume a key name. ALWAYS use LISTKV prefix first to find exact key names. (4) VERIFICATION: PATCHKV auto-verifies. SETKV for page: keys auto-verifies. Always check the verified field in the response. If verified is false, report FAILURE. (5) NEVER REPORT FALSE SUCCESS: Only say done if the tool response confirms it.";
     const convo = [{ role: "user", content: `${sysPrompt}\n\n---\nRequest: ${message}` }];
-    const brainModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+    // Voice runs on a FAST model (Haiku) - on a call, a quick reply beats a brilliant slow one, and
+    // short spoken answers don't need Sonnet's depth. Tunable via config:voice:model. Non-voice keeps
+    // the full brain model (config:brain:model). This is the main lever against "she pauses to think".
+    const brainModel = isVoice
+      ? ((await env.AURA_KV.get("config:voice:model").catch(() => null)) || "claude-haiku-4-5-20251001")
+      : ((await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5");
     const PROT = ["auras.guide", "console.auras.guide", "arksystems.world"];
     const MAX_ROUNDS = 12;
     // VOICE FAST PATH: on a phone call latency is everything. Skip the multi-round tool agent-loop
@@ -7348,7 +7399,10 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
     // in the system prompt (operator awareness, tasks, etc.), so she answers from what she knows; she
     // just doesn't pause mid-call to run live tools. This turns 2-4 round-trips into one fast reply.
     if (isVoice) {
-      const vData = await callAnthropic(apiKey, { model: brainModel, max_tokens: 200, system: claudeSystem, messages: convo });
+      // Voice uses NO tools, so don't send the huge tool-rules claudeSystem - that bloat slows the call
+      // and adds latency variance. The voice sysPrompt already carries identity, brevity rules, operator
+      // and business context. Send only that = far fewer tokens = faster, more consistent replies.
+      const vData = await callAnthropic(apiKey, { model: brainModel, max_tokens: 120, system: sysPrompt, messages: [{ role: "user", content: message }] });
       if (vData.ok) {
         const vText = (vData.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
         if (vText) raw = vText;
@@ -7465,7 +7519,8 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
             ...[...text.matchAll(/\[\[((?:SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|DOMAIN_STATUS|FETCH_PLACES|DEPLOY_HIGHGUIDE|MERCURY_BALANCE|STRIPE_BALANCE)\s[\s\S]*?)\]\]/g)].map(m => m[1].trim())
           ].slice(0, 3);
           const fetches = [...text.matchAll(/\[\[FETCH\s+(https:\/\/[^\]\s]+)\]\]/g)].map(m => m[1]).slice(0, 2);
-          if ((reads.length || runs.length || fetches.length) && round < 4 && !isVoice) {
+          const searches = [...text.matchAll(/\[\[SEARCH\s+([\s\S]*?)\]\]/g)].map(m => m[1].trim()).slice(0, 2);
+          if ((reads.length || runs.length || fetches.length || searches.length) && round < 4 && !isVoice) {
             let results = "";
             const PROT = ["auras.guide", "console.auras.guide", "arksystems.world"];
             for (const cmdLine of runs) {
@@ -7481,11 +7536,22 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
             for (const u of fetches) {
               try { const fr = await fetch(u, { headers: { "cache-control": "no-cache" } }); const ft = await fr.text(); results += `\n[FETCH ${u}]: ${fr.status}, ${ft.length} chars: ${ft.slice(0,800)}`; } catch (e) { results += `\n[FETCH]: ERROR ${e.message}`; }
             }
+            for (const q of searches) {
+              try {
+                const sr = await webSearch(q, env);
+                if (sr.ok) {
+                  let block = `\n[SEARCH ${q}]:`;
+                  if (sr.answer) block += ` ANSWER: ${sr.answer}`;
+                  for (const s of (sr.sources || [])) { block += `\n  - ${s.title} (${s.url}): ${s.snippet}`; }
+                  results += block;
+                } else { results += `\n[SEARCH ${q}]: ERROR ${sr.error}`; }
+              } catch (e) { results += `\n[SEARCH]: ERROR ${e.message}`; }
+            }
             convo.push({ role: "assistant", content: text });
             convo.push({ role: "user", content: `RESULTS:${results}\nNow write your final answer for the user based on this real data.` });
             continue;
           }
-          raw = text.replace(/\[\[(READ|RUN|FETCH|GETKV|SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|DOMAIN_STATUS|FETCH_PLACES|DEPLOY_HIGHGUIDE|MERCURY_BALANCE|STRIPE_BALANCE)\b[\s\S]*?\]\]/g, "").trim() || text;
+          raw = text.replace(/\[\[(READ|RUN|FETCH|SEARCH|GETKV|SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|DOMAIN_STATUS|FETCH_PLACES|DEPLOY_HIGHGUIDE|MERCURY_BALANCE|STRIPE_BALANCE)\b[\s\S]*?\]\]/g, "").trim() || text;
           modelUsed = "openai";
         }
       }
@@ -8585,13 +8651,40 @@ export default {
     const isOp = await verifyOperator(request, env);
 
     const _homescreenRoot = (url.hostname === "homescreen.world" || url.hostname === "www.homescreen.world") && url.pathname === "/";
-    if (request.method === "GET" && !_homescreenRoot && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/tattoo" && url.pathname !== "/find-artists" && url.pathname !== "/aura-chat" && url.pathname !== "/create-checkout" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/")) {
+    if (request.method === "GET" && !_homescreenRoot && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/tattoo" && url.pathname !== "/find-artists" && url.pathname !== "/aura-chat" && url.pathname !== "/create-checkout" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/")) {
       const page = await servePage(url.hostname, url.pathname === "/" ? "/" : url.pathname, env);
       if (page) return page;
     }
 
     if (url.pathname === "/health") {
       return jsonReply({ ok: true, build: BUILD, ts: new Date().toISOString() });
+    }
+
+    // /homelog - read Home Screen conversation turns VERBATIM from D1 (what was said + Aura's replies,
+    // in order). Operator-gated (it's a private conversation). Optional ?limit=N (default 60) and
+    // ?pta=<id> (defaults to the owner's PTA). Same reliable pattern as /calls - straight from the DB,
+    // no model paraphrase.
+    if (url.pathname === "/homelog") {
+      const okOp = await verifyOperator(request, env).catch(() => false);
+      if (!okOp) return jsonReply({ ok: false, error: "operator required" }, 401);
+      try {
+        const limit = Math.min(parseInt(url.searchParams.get("limit") || "60", 10) || 60, 300);
+        const ownerPta = (await env.AURA_KV.get("config:owner:pta").catch(() => null)) || "";
+        const pta = url.searchParams.get("pta") || ownerPta;
+        if (!pta) return jsonReply({ ok: false, error: "no pta (set config:owner:pta or pass ?pta=)" });
+        const rows = await env.AURA_MEMORY.prepare(
+          "SELECT ts, type, body, summary FROM events WHERE entity_id = ? AND channel = 'homescreen' ORDER BY ts ASC LIMIT ?"
+        ).bind(pta, limit).all();
+        const turns = (rows.results || []).map(r => {
+          let parsed = {}; try { parsed = JSON.parse(r.body); } catch {}
+          let text = parsed.msg || parsed.reply || parsed.hold || "";
+          let speaker = r.type === "home_said" ? (parsed.who || "You") : (r.type === "home_reply" ? "Aura" : (r.type === "home_hold" ? "Aura (holding)" : r.type));
+          return { ts: new Date(r.ts).toISOString(), speaker, text };
+        });
+        return jsonReply({ ok: true, pta, count: turns.length, turns });
+      } catch (e) {
+        return jsonReply({ ok: false, error: String(e && e.message || e) });
+      }
     }
 
     // ===== GOOGLE SIGN-IN (the universal authenticated front door - no operator token) =====

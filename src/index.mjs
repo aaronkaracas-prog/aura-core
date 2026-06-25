@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.137-2026-06-25";
+const BUILD = "aura-core-v4.9.138-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8804,8 +8804,14 @@ export default {
       const session = Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b => b.toString(16).padStart(2, "0")).join("");
       await env.AURA_KV.put(`session:${session}`, JSON.stringify({ pta: entId, identity, name, created: Date.now() }), { expirationTtl: 60 * 60 * 24 * 30 }).catch(() => {});
       const dest = stateRec.dest || "/";
+      // Carry the session token IN THE REDIRECT URL, not only in the cookie. iOS/Android run an
+      // installed PWA in a SEPARATE cookie jar from the browser that handled the Google OAuth
+      // bounce, so a Set-Cookie alone never reaches the app and it stays stuck on the signed-out
+      // screen. The token in ?s= survives the jump back; /home consumes it once and sets the cookie
+      // in the APP's own jar, closing the loop. Cookie is still set for the plain-browser case.
+      const destWithToken = dest + (dest.includes("?") ? "&" : "?") + "s=" + session;
       return new Response(null, { status: 302, headers: {
-        "location": dest,
+        "location": destWithToken,
         "set-cookie": `aura_session=${session}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=${60 * 60 * 24 * 30}`
       } });
     }
@@ -8899,7 +8905,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.137</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.138</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9002,7 +9008,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.rec{background:#ec4899;color:#fff}
 .install{display:none;align-items:center;gap:0.5rem;font-size:0.8rem;color:#a855f7;padding:0.5rem 1rem;cursor:pointer;justify-content:center}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.137</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.138</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9033,6 +9039,25 @@ window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();def
       const cookie = request.headers.get("cookie") || "";
       const m = cookie.match(/aura_session=([a-f0-9]+)/);
       let sess = null; if (m) { try { const r = await env.AURA_KV.get(`session:${m[1]}`); if (r) sess = JSON.parse(r); } catch {} }
+      // INSTALLED-APP SIGN-IN: no cookie yet, but the OAuth callback carried a one-time ?s=<token>.
+      // The installed PWA runs in its own cookie jar, separate from the browser that handled Google
+      // sign-in, so the cookie set during OAuth never reached the app. Here we resolve that token to
+      // the real server-side session, set the cookie in THIS context (the app's jar), and redirect
+      // to a clean URL. After this one hop the app holds its own cookie and every /home/greet and
+      // /home/talk fetch is authenticated. This is what stops the installed app being a dead image.
+      if (!sess) {
+        const tok = url.searchParams.get("s");
+        if (tok && /^[a-f0-9]+$/.test(tok)) {
+          let tokSess = null; try { const r = await env.AURA_KV.get(`session:${tok}`); if (r) tokSess = JSON.parse(r); } catch {}
+          if (tokSess) {
+            return new Response(null, { status: 302, headers: {
+              "location": url.pathname,
+              "set-cookie": `aura_session=${tok}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=${60 * 60 * 24 * 30}`,
+              "Cache-Control": "no-cache, no-store, must-revalidate"
+            } });
+          }
+        }
+      }
       // LOGGED OUT → show a real front door (not a raw redirect). Auth starts on THIS host so the
       // session + redirect_uri stay on the same domain the person is actually visiting.
       if (!sess) {

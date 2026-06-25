@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.141-2026-06-25";
+const BUILD = "aura-core-v4.9.142-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8938,7 +8938,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.141</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.142</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9041,7 +9041,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.rec{background:#ec4899;color:#fff}
 .install{display:none;align-items:center;gap:0.5rem;font-size:0.8rem;color:#a855f7;padding:0.5rem 1rem;cursor:pointer;justify-content:center}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.141</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.142</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9149,7 +9149,7 @@ window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();def
         {n:"Files",c:"#1c1c2e"},{n:"Music",c:"#2a1c24"},{n:"Camera",c:"#222"},
         {n:"Tasks",c:"#1c2030"},{n:"Notes",c:"#2a261c"},{n:"Settings",c:"#202028"}
       ];
-      const appGrid = apps.map(function(a){return '<div class="app" onclick="askAura(\'Open '+a.n+'\')"><div class="appicon" style="background:'+a.c+'">'+a.n.charAt(0)+'</div><div class="applabel">'+a.n+'</div></div>';}).join("");
+      const appGrid = apps.map(function(a){return '<div class="app" data-app="'+a.n+'"><div class="appicon" style="background:'+a.c+'">'+a.n.charAt(0)+'</div><div class="applabel">'+a.n+'</div></div>';}).join("");
       const suggestionsHtml = suggestions.length ? ('<div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.5rem">' + suggestions.map(function(s){return '<button onclick="askAura(\''+s.replace(/'/g,"")+'\')" style="background:#15151f;border:1px solid #24243a;color:#c8c4d8;font-size:0.82rem;padding:0.5rem 0.85rem;border-radius:18px;cursor:pointer">'+s+'</button>';}).join("") + '</div>') : "";
 
       const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"><title>Home — ${name}</title>
@@ -9175,6 +9175,13 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 .app{display:flex;flex-direction:column;align-items:center;gap:0.4rem;cursor:pointer}
 .appicon{width:60px;height:60px;border-radius:15px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.4rem;color:#cfcfe0;border:1px solid #20202c}
 .applabel{font-size:0.72rem;color:#c8c8d8}
+.app{transition:transform 0.12s ease}
+@keyframes jiggle{0%{transform:rotate(-1.6deg)}50%{transform:rotate(1.6deg)}100%{transform:rotate(-1.6deg)}}
+.grid.editing .app{animation:jiggle 0.32s infinite ease-in-out}
+.app.dragging{opacity:0.45;animation:none !important;transform:scale(1.08)}
+.editbar{position:fixed;top:0;left:0;right:0;display:none;justify-content:center;padding:0.6rem;background:rgba(10,10,15,0.82);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:50}
+.editbar.show{display:flex}
+.editbar button{background:#a855f7;color:#fff;border:none;font-weight:700;font-size:0.9rem;padding:0.5rem 1.5rem;border-radius:20px;cursor:pointer}
 /* AURA CONSOLE (bottom - the wedge) */
 .console{position:sticky;bottom:0;border-top:1px solid #16161f;background:#0c0c12;padding:0.8rem 1rem 1.1rem}
 .greet{display:flex;gap:0.7rem;align-items:flex-start;margin-bottom:0.7rem;cursor:pointer}
@@ -9213,7 +9220,8 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <!-- SCROLL: their familiar world -->
 <div class="hscroll">
   <div class="sec">Your world</div>
-  <div class="grid">${appGrid}</div>
+  <div class="editbar" id="editbar"><button id="editdone">Done</button></div>
+  <div class="grid" id="appgrid">${appGrid}</div>
 </div>
 
 <!-- AURA CONSOLE (the wedge: loved feature + continuity) -->
@@ -9275,6 +9283,34 @@ function askAura(t){if(document.getElementById('drawer').classList.contains('ope
 async function sendMsg(){const inp=document.getElementById('chatInput');const m=inp.value.trim();if(!m&&!_file)return;inp.value='';addMsg((m||'')+(_file?(' . '+_file.name):''),'user');const payload={message:m};if(_file)payload.file=_file;clearFile();const ld=document.createElement('div');ld.className='msg aura';ld.id='ld';ld.innerHTML='<span class="lbl">AURA</span><span style="color:#6b6b8a">...</span>';document.getElementById('chatArea').appendChild(ld);try{const r=await fetch('/home/talk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const el=document.getElementById('ld');if(el)el.remove();const d=await r.json();if(d.ok)addMsg(d.reply,'aura');else addMsg('Trouble connecting.','aura')}catch(e){const el=document.getElementById('ld');if(el)el.remove();addMsg('Connection error.','aura')}}
 let _rec=null,_recOn=false;
 function toggleMic(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){addMsg("Your browser doesn't support voice - try typing.","aura");return}if(_recOn){_rec&&_rec.stop();return}_rec=new SR();_rec.lang='en-US';_rec.interimResults=true;_rec.continuous=false;_recOn=true;_rec.onresult=(e)=>{let txt='';for(let i=0;i<e.results.length;i++)txt+=e.results[i][0].transcript;document.getElementById('chatInput').value=txt};_rec.onerror=()=>{};_rec.onend=()=>{_recOn=false;if(document.getElementById('chatInput').value.trim())sendMsg()};_rec.start()}
+(function(){
+  var grid=document.getElementById('appgrid'); if(!grid) return;
+  var editing=false, drag=null, lpTimer=null, sx=0, sy=0, moved=false;
+  var isTouch=('ontouchstart' in window);
+  function order(){return [].slice.call(grid.querySelectorAll('.app')).map(function(el){return el.getAttribute('data-app');});}
+  function saveOrder(){ fetch('/home/layout',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({apps:order()})}).catch(function(){}); }
+  // apply the saved arrangement on load (fetch after load, never injected)
+  fetch('/home/layout',{credentials:'include'}).then(function(r){return r.json();}).then(function(d){
+    if(d&&d.ok&&Array.isArray(d.apps)){ d.apps.forEach(function(n){ var el=grid.querySelector('.app[data-app="'+n+'"]'); if(el) grid.appendChild(el); }); }
+  }).catch(function(){});
+  function enterEdit(){ if(editing) return; editing=true; grid.classList.add('editing'); document.getElementById('editbar').classList.add('show'); if(navigator.vibrate) navigator.vibrate(30); }
+  function exitEdit(){ if(!editing) return; editing=false; grid.classList.remove('editing'); document.getElementById('editbar').classList.remove('show'); saveOrder(); }
+  document.getElementById('editdone').onclick=exitEdit;
+  function pt(e){ var t=(e.touches&&e.touches[0])?e.touches[0]:e; return {x:t.clientX,y:t.clientY}; }
+  function down(e){ var app=e.target.closest('.app'); if(!app) return; var p=pt(e); sx=p.x; sy=p.y; moved=false;
+    if(!editing){ lpTimer=setTimeout(enterEdit,500); } else { drag=app; app.classList.add('dragging'); } }
+  function move(e){ var p=pt(e); if(Math.abs(p.x-sx)>8||Math.abs(p.y-sy)>8){ moved=true; clearTimeout(lpTimer); }
+    if(!editing||!drag) return; if(e.cancelable) e.preventDefault();
+    var over=document.elementFromPoint(p.x,p.y); var tgt=over&&over.closest?over.closest('.app'):null;
+    if(tgt&&tgt!==drag){ var r=tgt.getBoundingClientRect(); var after=p.y>r.top+r.height/2||(Math.abs(p.y-(r.top+r.height/2))<4&&p.x>r.left+r.width/2); grid.insertBefore(drag, after?tgt.nextSibling:tgt); } }
+  function up(e){ clearTimeout(lpTimer);
+    if(drag){ drag.classList.remove('dragging'); drag=null; saveOrder(); return; }
+    if(isTouch&&!editing&&!moved){ var app=e.target.closest('.app'); if(app) askAura('Open '+app.getAttribute('data-app')); } }
+  if(isTouch){ grid.addEventListener('touchstart',down,{passive:true}); grid.addEventListener('touchmove',move,{passive:false}); grid.addEventListener('touchend',up); }
+  else { grid.addEventListener('mousedown',down); window.addEventListener('mousemove',function(e){ if(drag) move(e); }); window.addEventListener('mouseup',up);
+    grid.addEventListener('click',function(e){ if(editing) return; var app=e.target.closest('.app'); if(app) askAura('Open '+app.getAttribute('data-app')); }); }
+  document.addEventListener(isTouch?'touchstart':'mousedown',function(e){ if(editing && !e.target.closest('#appgrid') && !e.target.closest('#editbar')) exitEdit(); },{passive:true});
+})();
 if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('/sw.js').then(function(reg){reg.update();}).catch(function(){});var refreshing=false;navigator.serviceWorker.addEventListener('controllerchange',function(){if(refreshing)return;refreshing=true;if(hadController)window.location.reload();});}
 </script>
 </body></html>`;

@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.128-2026-06-25";
+const BUILD = "aura-core-v4.9.129-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8881,6 +8881,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
 <div class="head"><div class="orb"></div><div class="htitle">Aura</div></div>
+<div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
   <button class="cbtn" id="mic" title="Speak">&#127908;</button>
@@ -8889,6 +8890,8 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 </div></div>
 <script>
 var chat=document.getElementById('chat'),inp=document.getElementById('inp');
+var APPS=["Photos","Messages","Calendar","Maps","Wallet","Music","Files","Camera","Notes","Tasks","Contacts","Settings"];
+(function(){var g=document.getElementById('appgrid');APPS.forEach(function(name){var a=document.createElement('div');a.className='app';var ic=document.createElement('div');ic.className='appicon';ic.textContent=name.charAt(0);var lb=document.createElement('div');lb.className='applabel';lb.textContent=name;a.appendChild(ic);a.appendChild(lb);a.onclick=function(){inp.value="Open "+name;send();};g.appendChild(a);});})();
 function add(t,who){var d=document.createElement('div');d.className='msg '+who;if(who==='aura'){var l=document.createElement('span');l.className='lbl';l.textContent='AURA';d.appendChild(l);d.appendChild(document.createTextNode(t));}else{d.textContent=t;}chat.appendChild(d);chat.scrollTop=chat.scrollHeight;}
 fetch('/home/greet').then(function(r){return r.json();}).then(function(d){document.getElementById('greet').textContent=d.greet||'Hey. What do you want to get into?';}).catch(function(){document.getElementById('greet').textContent='Hey. What do you want to get into?';});
 function send(){var m=inp.value.trim();if(!m)return;inp.value='';add(m,'user');var ld=document.createElement('div');ld.className='msg aura';ld.id='ld';ld.textContent='…';chat.appendChild(ld);chat.scrollTop=chat.scrollHeight;fetch('/home/talk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:m})}).then(function(r){return r.json();}).then(function(d){var e=document.getElementById('ld');if(e)e.remove();add(d.ok?d.reply:'Trouble connecting.','aura');}).catch(function(){var e=document.getElementById('ld');if(e)e.remove();add('Connection error.','aura');});}
@@ -8951,6 +8954,10 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .msg.user{align-self:flex-end;background:#1f1f2e;border-radius:14px;padding:0.7rem 1rem}
 .msg.aura{align-self:flex-start;color:#e8e4f0}
 .msg.aura .lbl{color:#a855f7;font-weight:700;font-size:0.72rem;display:block;margin-bottom:0.3rem}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0.9rem 0.5rem;padding:1rem 1.1rem;flex-shrink:0;border-bottom:1px solid #16161f}
+.app{display:flex;flex-direction:column;align-items:center;gap:0.35rem;cursor:pointer}
+.appicon{width:54px;height:54px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.25rem;color:#cfcfe0;border:1px solid #20202c;background:#16161f}
+.applabel{font-size:0.68rem;color:#c8c8d8}
 .composer{flex-shrink:0;background:#0c0c12;border-top:1px solid #16161f;padding:0.8rem 1rem calc(env(safe-area-inset-bottom) + 1rem)}
 .inbar{display:flex;align-items:center;gap:0.5rem;background:#15151f;border:1px solid #24243a;border-radius:26px;padding:0.4rem 0.5rem 0.4rem 0.9rem}
 .inbar input{flex:1;background:none;border:none;color:#e8e4f0;font-size:16px;outline:none;padding:0.5rem 0}
@@ -8960,6 +8967,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .install{display:none;align-items:center;gap:0.5rem;font-size:0.8rem;color:#a855f7;padding:0.5rem 1rem;cursor:pointer;justify-content:center}
 </style></head><body>
 <div class="head"><div class="orb"></div><div class="htitle">Aura</div></div>
+<div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="install" id="install">Add Aura to your home screen ↓</div>
 <div class="composer"><div class="inbar">
@@ -8969,6 +8977,8 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 </div></div>
 <script>
 var chat=document.getElementById('chat'),inp=document.getElementById('inp');
+var APPS=["Photos","Messages","Calendar","Maps","Wallet","Music","Files","Camera","Notes","Tasks","Contacts","Settings"];
+(function(){var g=document.getElementById('appgrid');APPS.forEach(function(name){var a=document.createElement('div');a.className='app';var ic=document.createElement('div');ic.className='appicon';ic.textContent=name.charAt(0);var lb=document.createElement('div');lb.className='applabel';lb.textContent=name;a.appendChild(ic);a.appendChild(lb);a.onclick=function(){inp.value="Open "+name;send();};g.appendChild(a);});})();
 function add(t,who){var d=document.createElement('div');d.className='msg '+who;if(who==='aura'){var l=document.createElement('span');l.className='lbl';l.textContent='AURA';d.appendChild(l);d.appendChild(document.createTextNode(t));}else{d.textContent=t;}chat.appendChild(d);chat.scrollTop=chat.scrollHeight;}
 fetch('/home/greet').then(function(r){return r.json();}).then(function(d){document.getElementById('greet').textContent=d.greet||'Hey. What do you want to get into?';}).catch(function(){document.getElementById('greet').textContent='Hey. What do you want to get into?';});
 function send(){var m=inp.value.trim();if(!m)return;inp.value='';add(m,'user');var ld=document.createElement('div');ld.className='msg aura';ld.id='ld';ld.textContent='…';chat.appendChild(ld);chat.scrollTop=chat.scrollHeight;fetch('/home/talk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:m})}).then(function(r){return r.json();}).then(function(d){var e=document.getElementById('ld');if(e)e.remove();add(d.ok?d.reply:'Trouble connecting.','aura');}).catch(function(){var e=document.getElementById('ld');if(e)e.remove();add('Connection error.','aura');});}

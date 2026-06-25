@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.131-2026-06-25";
+const BUILD = "aura-core-v4.9.132-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8899,7 +8899,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.132</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -8985,7 +8985,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.rec{background:#ec4899;color:#fff}
 .install{display:none;align-items:center;gap:0.5rem;font-size:0.8rem;color:#a855f7;padding:0.5rem 1rem;cursor:pointer;justify-content:center}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.132</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="install" id="install">Add Aura to your home screen ↓</div>

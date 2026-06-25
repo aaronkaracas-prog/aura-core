@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.122-2026-06-25";
+const BUILD = "aura-core-v4.9.123-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8896,109 +8896,128 @@ export default {
       const icSend = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>`;
       const icMenu = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>`;
 
-      const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"><title>Aura — ${name}</title><style>
+      const apps = [
+        {n:"Photos",c:"#1c1c28"},{n:"Messages",c:"#1c2a1c"},{n:"Calendar",c:"#2a1c1c"},
+        {n:"Contacts",c:"#1c2230"},{n:"Maps",c:"#1c2a26"},{n:"Wallet",c:"#241c2a"},
+        {n:"Files",c:"#1c1c2e"},{n:"Music",c:"#2a1c24"},{n:"Camera",c:"#222"},
+        {n:"Tasks",c:"#1c2030"},{n:"Notes",c:"#2a261c"},{n:"Settings",c:"#202028"}
+      ];
+      const appGrid = apps.map(function(a){return '<div class="app" onclick="askAura(\'Open '+a.n+'\')"><div class="appicon" style="background:'+a.c+'">'+a.n.charAt(0)+'</div><div class="applabel">'+a.n+'</div></div>';}).join("");
+
+      const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"><title>Home — ${name}</title><style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
-body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;display:flex;height:100vh;height:100dvh;overflow:hidden}
-a{color:#a855f7}
-/* LEFT SIDEBAR (desktop) */
-.sidebar{width:280px;flex-shrink:0;background:#0c0c12;border-right:1px solid #1a1a24;display:flex;flex-direction:column;overflow:hidden}
-.sb-head{padding:1.1rem 1rem 0.6rem;display:flex;align-items:center;justify-content:space-between}
-.sb-title{font-size:1.05rem;font-weight:800;color:#fff}
-.sb-sec{padding:0.5rem 0.8rem;color:#5a5a6e;font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-top:0.5rem}
-.sb-scroll{flex:1;overflow-y:auto;padding:0 0.4rem}
-.newbtn{margin:0.4rem 0.8rem 0.6rem;padding:0.7rem 1rem;background:#15151f;border:1px solid #1f1f2e;border-radius:10px;color:#e8e4f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;gap:0.6rem;font-weight:600}
-.imgs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;padding:0.3rem 0.8rem 0.8rem}
-.imgs div{aspect-ratio:1;background:linear-gradient(135deg,#1a1a2e,#2a2a40);border-radius:7px}
-.sb-foot{padding:0.8rem 1rem;border-top:1px solid #1a1a24;font-size:0.78rem;color:#8888a8;display:flex;align-items:center;gap:0.6rem}
-.avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#a855f7,#ec4899);flex-shrink:0}
-/* MAIN */
-.main{flex:1;display:flex;flex-direction:column;min-width:0}
-.topbar{display:flex;align-items:center;gap:0.7rem;padding:0.8rem 1rem;border-bottom:1px solid #14141c}
-.iconbtn{background:none;border:none;color:#9a9ab0;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0.3rem;border-radius:8px}
-.iconbtn:hover{color:#e8e4f0;background:#16161f}
-.menuBtn{display:none}
-.chat{flex:1;overflow-y:auto;padding:1.5rem 1rem;display:flex;flex-direction:column;gap:1rem;max-width:760px;width:100%;margin:0 auto}
-.msg{max-width:90%;line-height:1.5;font-size:0.95rem;animation:fadeIn 0.3s}
+body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden}
+/* TOP BAR */
+.htop{display:flex;align-items:center;justify-content:space-between;padding:0.9rem 1.1rem 0.5rem}
+.hmenu{background:none;border:none;color:#9a9ab0;cursor:pointer;display:flex;padding:0.3rem}
+.htitle{font-weight:700;color:#fff;font-size:1.05rem}
+/* SCROLL AREA */
+.hscroll{flex:1;overflow-y:auto;padding:0.3rem 1.1rem 1rem}
+.sec{color:#6b6b8a;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin:1.2rem 0.2rem 0.7rem}
+/* APP GRID (their habits) */
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem 0.6rem}
+.app{display:flex;flex-direction:column;align-items:center;gap:0.4rem;cursor:pointer}
+.appicon{width:60px;height:60px;border-radius:15px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.4rem;color:#cfcfe0;border:1px solid #20202c}
+.applabel{font-size:0.72rem;color:#c8c8d8}
+/* AURA CONSOLE (bottom - the wedge) */
+.console{flex-shrink:0;border-top:1px solid #16161f;background:#0c0c12;padding:0.8rem 1rem 1.1rem}
+.greet{display:flex;gap:0.7rem;align-items:flex-start;margin-bottom:0.7rem;cursor:pointer}
+.orb{width:42px;height:42px;border-radius:50%;flex-shrink:0;background:radial-gradient(circle at 35% 30%,#c084fc,#7c3aed 60%,#3b0764);box-shadow:0 0 18px rgba(168,85,247,0.45)}
+.greettext{font-size:0.9rem;line-height:1.4;color:#d8d4e8}
+.greettext b{color:#fff}
+.inbar{display:flex;align-items:center;gap:0.5rem;background:#15151f;border:1px solid #24243a;border-radius:26px;padding:0.4rem 0.5rem 0.4rem 0.7rem}
+.inbar input{flex:1;background:none;border:none;color:#e8e4f0;font-size:16px;outline:none;padding:0.4rem}
+.cbtn{width:38px;height:38px;border-radius:50%;border:none;background:none;color:#9a9ab0;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
+.cbtn.rec{background:#ec4899;color:#fff}
+/* CHAT OVERLAY (slides up when talking) */
+.chatlayer{position:fixed;inset:0;background:#0a0a0f;z-index:50;display:none;flex-direction:column}
+.chatlayer.open{display:flex}
+.clhead{display:flex;align-items:center;gap:0.6rem;padding:0.9rem 1.1rem;border-bottom:1px solid #16161f}
+.clback{background:none;border:none;color:#9a9ab0;font-size:1.4rem;cursor:pointer}
+.chat{flex:1;overflow-y:auto;padding:1.2rem 1rem;display:flex;flex-direction:column;gap:1rem}
+.msg{max-width:88%;line-height:1.5;font-size:0.95rem}
 .msg.user{align-self:flex-end;background:#1f1f2e;border-radius:14px;padding:0.7rem 1rem}
 .msg.aura{align-self:flex-start;color:#e8e4f0}
 .msg.aura .lbl{color:#a855f7;font-weight:700;font-size:0.72rem;display:block;margin-bottom:0.3rem}
-.sugg{display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.3rem}
-.sugg button{background:#15151f;border:1px solid #24243a;color:#c8c4d8;font-size:0.82rem;padding:0.5rem 0.85rem;border-radius:18px;cursor:pointer}
-.sugg button:hover{border-color:#a855f7}
-/* COMPOSER */
-.composer{padding:0.8rem 1rem 1.1rem;max-width:760px;width:100%;margin:0 auto}
-.inbar{display:flex;align-items:center;gap:0.5rem;background:#15151f;border:1px solid #24243a;border-radius:26px;padding:0.4rem 0.5rem 0.4rem 0.7rem}
-.inbar input{flex:1;background:none;border:none;color:#e8e4f0;font-size:16px;outline:none;padding:0.4rem}
-.cbtn{width:36px;height:36px;border-radius:50%;border:none;background:none;color:#9a9ab0;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.cbtn:hover{color:#e8e4f0;background:#22222e}
-.cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
-.cbtn.rec{background:#ec4899;color:#fff}
 .attach{font-size:0.8rem;color:#a855f7;padding:0 0.5rem 0.4rem}
-/* DRAWER (deep menu / phone) */
+/* DRAWER */
 .scrim{position:fixed;inset:0;background:rgba(0,0,0,0.55);opacity:0;pointer-events:none;transition:opacity .25s;z-index:60}
 .scrim.open{opacity:1;pointer-events:auto}
 .drawer{position:fixed;top:0;right:0;bottom:0;width:80%;max-width:340px;background:#0d0d14;border-left:1px solid #1f1f2e;transform:translateX(100%);transition:transform .25s;z-index:70;overflow-y:auto}
 .drawer.open{transform:none}
-@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-@media(max-width:760px){.sidebar{display:none}.menuBtn{display:flex}}
 </style></head><body>
 
-<!-- LEFT SIDEBAR (desktop) -->
-<aside class="sidebar">
-  <div class="sb-head"><span class="sb-title">Aura</span><span style="font-size:0.65rem;color:#5a5a6e;background:#15151f;padding:0.2rem 0.5rem;border-radius:10px">${role?esc(role):"home"}</span></div>
-  <div class="newbtn" onclick="newChat()">${icPlus}<span>New conversation</span></div>
-  <div class="sb-scroll">
-    <div class="sb-sec">Recent</div>
-    ${recentLinks || '<div style="padding:0.5rem 0.7rem;color:#5a5a6e;font-size:0.82rem">Nothing yet</div>'}
-    <div class="sb-sec">Images</div>
-    <div class="imgs"><div></div><div></div><div></div><div></div><div></div><div></div></div>
-  </div>
-  <div class="sb-foot"><div class="avatar"></div><span>${name}</span></div>
-</aside>
-
-<!-- DEEP DRAWER (everything else) -->
-<div class="scrim" id="scrim" onclick="toggleMenu()"></div>
-<div class="drawer" id="drawer">
-  <div style="padding:1.2rem 1rem;border-bottom:1px solid #1f1f2e"><div style="font-size:1.1rem;font-weight:800;color:#fff">Your world</div><div style="color:#6b6b8a;font-size:0.8rem;margin-top:0.2rem">${role?esc(role):"everything"}</div></div>
-  <div style="padding:0.5rem">${roomLinks}</div>
+<!-- TOP BAR -->
+<div class="htop">
+  <div class="htitle">Home</div>
+  <button class="hmenu" onclick="toggleMenu()">${icMenu}</button>
 </div>
 
-<!-- MAIN -->
-<div class="main">
-  <div class="topbar">
-    <button class="iconbtn menuBtn" onclick="toggleMenu()">${icMenu}</button>
-    <div style="flex:1;font-weight:700;color:#fff">Home</div>
-    <button class="iconbtn" onclick="toggleMenu()" title="Your world">${icMenu}</button>
+<!-- SCROLL: their familiar world -->
+<div class="hscroll">
+  <div class="sec">Your world</div>
+  <div class="grid">${appGrid}</div>
+</div>
+
+<!-- AURA CONSOLE (the wedge: loved feature + continuity) -->
+<div class="console">
+  <div class="greet" onclick="openChat()">
+    <div class="orb"></div>
+    <div class="greettext">${greet}</div>
+  </div>
+  <div class="inbar">
+    <input type="file" id="fileInput" style="display:none" onchange="onFile(this)">
+    <button class="cbtn" onclick="document.getElementById('fileInput').click()" title="Attach">${icPlus}</button>
+    <button class="cbtn" id="micBtn" onclick="openChat();toggleMic()" title="Speak">${icMic}</button>
+    <input id="homeInput" placeholder="Talk to Aura..." onfocus="openChat()" onkeydown="if(event.key==='Enter'){openChat();document.getElementById('chatInput').value=this.value;this.value='';sendMsg()}">
+    <button class="cbtn send" onclick="openChat();var v=document.getElementById('homeInput');document.getElementById('chatInput').value=v.value;v.value='';sendMsg()" title="Send">${icSend}</button>
+  </div>
+</div>
+
+<!-- CHAT OVERLAY -->
+<div class="chatlayer" id="chatlayer">
+  <div class="clhead">
+    <button class="clback" onclick="closeChat()">‹</button>
+    <div class="orb" style="width:30px;height:30px"></div>
+    <div style="font-weight:700;color:#fff">Aura</div>
   </div>
   <div class="chat" id="chatArea">
     <div class="msg aura"><span class="lbl">AURA</span>${greet}
-      ${suggestions.length ? `<div class="sugg">${suggestions.map(s => `<button onclick="askAura('${s.replace(/'/g, "")}')">${s}</button>`).join("")}</div>` : ""}
+      ${suggestions.length ? `<div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.5rem">${suggestions.map(s => `<button onclick="askAura('${s.replace(/'/g, "")}')" style="background:#15151f;border:1px solid #24243a;color:#c8c4d8;font-size:0.82rem;padding:0.5rem 0.85rem;border-radius:18px;cursor:pointer">${s}</button>`).join("")}</div>` : ""}
     </div>
   </div>
-  <div class="composer">
+  <div class="console" style="border-top:1px solid #16161f">
     <div class="attach" id="attachRow" style="display:none"></div>
     <div class="inbar">
-      <input type="file" id="fileInput" style="display:none" onchange="onFile(this)">
       <button class="cbtn" onclick="document.getElementById('fileInput').click()" title="Attach">${icPlus}</button>
-      <button class="cbtn" id="micBtn" onclick="toggleMic()" title="Speak">${icMic}</button>
+      <button class="cbtn" id="micBtn2" onclick="toggleMic()" title="Speak">${icMic}</button>
       <input id="chatInput" placeholder="Message Aura..." onkeydown="if(event.key==='Enter')sendMsg()">
       <button class="cbtn send" onclick="sendMsg()" title="Send">${icSend}</button>
     </div>
   </div>
 </div>
 
+<!-- DRAWER -->
+<div class="scrim" id="scrim" onclick="toggleMenu()"></div>
+<div class="drawer" id="drawer">
+  <div style="padding:1.2rem 1rem;border-bottom:1px solid #1f1f2e"><div style="font-size:1.1rem;font-weight:800;color:#fff">Your world</div></div>
+  <div style="padding:0.5rem">${roomLinks}</div>
+</div>
+
 <script>
+function openChat(){document.getElementById('chatlayer').classList.add('open')}
+function closeChat(){document.getElementById('chatlayer').classList.remove('open')}
 function toggleMenu(){document.getElementById('drawer').classList.toggle('open');document.getElementById('scrim').classList.toggle('open')}
-function newChat(){document.getElementById('chatArea').innerHTML='<div class="msg aura"><span class="lbl">AURA</span>Fresh start, ${firstName}. What do you want to get into?</div>'}
-function addMsg(t,who){const d=document.createElement('div');d.className='msg '+who;if(who==='aura')d.innerHTML='<span class="lbl">AURA</span>'+t.replace(/\\n/g,'<br>');else d.textContent=t;document.getElementById('chatArea').appendChild(d);const c=document.getElementById('chatArea');c.scrollTop=c.scrollHeight}
+function addMsg(t,who){const d=document.createElement('div');d.className='msg '+who;if(who==='aura')d.innerHTML='<span class="lbl">AURA</span>'+t.replace(/\n/g,'<br>');else d.textContent=t;document.getElementById('chatArea').appendChild(d);const c=document.getElementById('chatArea');c.scrollTop=c.scrollHeight}
 let _file=null;
-function onFile(inp){const f=inp.files[0];if(!f)return;_file={name:f.name,type:f.type,size:f.size};const r=new FileReader();r.onload=()=>{_file.dataUrl=r.result};r.readAsDataURL(f);const row=document.getElementById('attachRow');row.style.display='block';row.innerHTML='Attached: '+f.name+' <span style="color:#6b6b8a;cursor:pointer" onclick="clearFile()">✕</span>'}
+function onFile(inp){const f=inp.files[0];if(!f)return;_file={name:f.name,type:f.type,size:f.size};const r=new FileReader();r.onload=()=>{_file.dataUrl=r.result};r.readAsDataURL(f);openChat();const row=document.getElementById('attachRow');row.style.display='block';row.innerHTML='Attached: '+f.name+' <span style="color:#6b6b8a;cursor:pointer" onclick="clearFile()">x</span>'}
 function clearFile(){_file=null;document.getElementById('fileInput').value='';const row=document.getElementById('attachRow');row.style.display='none';row.innerHTML=''}
-function askAura(t){if(document.getElementById('drawer').classList.contains('open'))toggleMenu();document.getElementById('chatInput').value=t;sendMsg()}
-async function sendMsg(){const inp=document.getElementById('chatInput');const m=inp.value.trim();if(!m&&!_file)return;inp.value='';addMsg((m||'')+(_file?(' · '+_file.name):''),'user');const payload={message:m};if(_file)payload.file=_file;clearFile();const ld=document.createElement('div');ld.className='msg aura';ld.id='ld';ld.innerHTML='<span class="lbl">AURA</span><span style="color:#6b6b8a">…</span>';document.getElementById('chatArea').appendChild(ld);try{const r=await fetch('/home/talk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const el=document.getElementById('ld');if(el)el.remove();const d=await r.json();if(d.ok)addMsg(d.reply,'aura');else addMsg('Trouble connecting.','aura');if(d.refresh)setTimeout(()=>location.reload(),1200)}catch(e){const el=document.getElementById('ld');if(el)el.remove();addMsg('Connection error.','aura')}}
+function askAura(t){if(document.getElementById('drawer').classList.contains('open'))toggleMenu();openChat();document.getElementById('chatInput').value=t;sendMsg()}
+async function sendMsg(){const inp=document.getElementById('chatInput');const m=inp.value.trim();if(!m&&!_file)return;inp.value='';addMsg((m||'')+(_file?(' . '+_file.name):''),'user');const payload={message:m};if(_file)payload.file=_file;clearFile();const ld=document.createElement('div');ld.className='msg aura';ld.id='ld';ld.innerHTML='<span class="lbl">AURA</span><span style="color:#6b6b8a">...</span>';document.getElementById('chatArea').appendChild(ld);try{const r=await fetch('/home/talk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const el=document.getElementById('ld');if(el)el.remove();const d=await r.json();if(d.ok)addMsg(d.reply,'aura');else addMsg('Trouble connecting.','aura')}catch(e){const el=document.getElementById('ld');if(el)el.remove();addMsg('Connection error.','aura')}}
 let _rec=null,_recOn=false;
-function toggleMic(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){addMsg("Your browser doesn't support voice — try typing.","aura");return}if(_recOn){_rec&&_rec.stop();return}_rec=new SR();_rec.lang='en-US';_rec.interimResults=true;_rec.continuous=false;const btn=document.getElementById('micBtn');btn.classList.add('rec');_recOn=true;_rec.onresult=(e)=>{let txt='';for(let i=0;i<e.results.length;i++)txt+=e.results[i][0].transcript;document.getElementById('chatInput').value=txt};_rec.onerror=()=>{};_rec.onend=()=>{btn.classList.remove('rec');_recOn=false;if(document.getElementById('chatInput').value.trim())sendMsg()};_rec.start()}
+function toggleMic(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){addMsg("Your browser doesn't support voice - try typing.","aura");return}if(_recOn){_rec&&_rec.stop();return}_rec=new SR();_rec.lang='en-US';_rec.interimResults=true;_rec.continuous=false;_recOn=true;_rec.onresult=(e)=>{let txt='';for(let i=0;i<e.results.length;i++)txt+=e.results[i][0].transcript;document.getElementById('chatInput').value=txt};_rec.onerror=()=>{};_rec.onend=()=>{_recOn=false;if(document.getElementById('chatInput').value.trim())sendMsg()};_rec.start()}
 </script>
 </body></html>`;
       return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });

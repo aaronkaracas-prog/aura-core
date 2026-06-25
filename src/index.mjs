@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.144-2026-06-25";
+const BUILD = "aura-core-v4.9.145-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8938,7 +8938,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.144</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.145</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9041,7 +9041,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.rec{background:#ec4899;color:#fff}
 .install{display:none;align-items:center;gap:0.5rem;font-size:0.8rem;color:#a855f7;padding:0.5rem 1rem;cursor:pointer;justify-content:center}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.144</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.145</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9222,6 +9222,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
   <div class="sec">Your world</div>
   <div class="editbar" id="editbar"><button id="editdone">Done</button></div>
   <div class="grid" id="appgrid">${appGrid}</div>
+  <div id="dragdbg" style="text-align:center;font-family:monospace;font-size:0.72rem;color:#a855f7;padding:0.5rem;opacity:0.8">…</div>
 </div>
 
 <!-- AURA CONSOLE (the wedge: loved feature + continuity) -->
@@ -9285,32 +9286,32 @@ let _rec=null,_recOn=false;
 function toggleMic(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){addMsg("Your browser doesn't support voice - try typing.","aura");return}if(_recOn){_rec&&_rec.stop();return}_rec=new SR();_rec.lang='en-US';_rec.interimResults=true;_rec.continuous=false;_recOn=true;_rec.onresult=(e)=>{let txt='';for(let i=0;i<e.results.length;i++)txt+=e.results[i][0].transcript;document.getElementById('chatInput').value=txt};_rec.onerror=()=>{};_rec.onend=()=>{_recOn=false;if(document.getElementById('chatInput').value.trim())sendMsg()};_rec.start()}
 (function(){
   var grid=document.getElementById('appgrid'); if(!grid) return;
-  var editing=false, drag=null, cand=null, lpTimer=null, sx=0, sy=0, moved=false;
-  var isTouch=('ontouchstart' in window);
+  var editing=false, drag=null, cand=null, lpTimer=null, sx=0, sy=0, moved=false, mc=0;
+  var dbg=document.getElementById('dragdbg');
+  function log(s){ if(dbg) dbg.textContent=s; }
   function order(){return [].slice.call(grid.querySelectorAll('.app')).map(function(el){return el.getAttribute('data-app');});}
   function saveOrder(){ fetch('/home/layout',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({apps:order()})}).catch(function(){}); }
-  // apply the saved arrangement on load (fetch after load, never injected)
   fetch('/home/layout',{credentials:'include'}).then(function(r){return r.json();}).then(function(d){
     if(d&&d.ok&&Array.isArray(d.apps)){ d.apps.forEach(function(n){ var el=grid.querySelector('.app[data-app="'+n+'"]'); if(el) grid.appendChild(el); }); }
   }).catch(function(){});
-  function enterEdit(){ if(editing) return; editing=true; grid.classList.add('editing'); document.getElementById('editbar').classList.add('show'); if(navigator.vibrate) navigator.vibrate(30); }
-  function exitEdit(){ if(!editing) return; editing=false; grid.classList.remove('editing'); document.getElementById('editbar').classList.remove('show'); saveOrder(); }
+  function enterEdit(){ if(editing) return; editing=true; grid.classList.add('editing'); document.getElementById('editbar').classList.add('show'); if(navigator.vibrate) navigator.vibrate(30); log('edit mode on'); }
+  function exitEdit(){ if(!editing) return; editing=false; grid.classList.remove('editing'); document.getElementById('editbar').classList.remove('show'); saveOrder(); log('saved, edit off'); }
   document.getElementById('editdone').onclick=exitEdit;
-  function pt(e){ var t=(e.touches&&e.touches[0])?e.touches[0]:e; return {x:t.clientX,y:t.clientY}; }
-  function down(e){ var app=e.target.closest('.app'); if(!app) return; var p=pt(e); sx=p.x; sy=p.y; moved=false; cand=app;
-    lpTimer=setTimeout(enterEdit,450); }
-  function move(e){ if(!cand) return; var p=pt(e);
-    if(!moved && (Math.abs(p.x-sx)>8||Math.abs(p.y-sy)>8)){ moved=true; clearTimeout(lpTimer); if(!editing) enterEdit(); drag=cand; drag.classList.add('dragging'); }
-    if(!drag) return; if(e.cancelable) e.preventDefault();
-    var over=document.elementFromPoint(p.x,p.y); var tgt=over&&over.closest?over.closest('.app'):null;
-    if(tgt&&tgt!==drag){ var r=tgt.getBoundingClientRect(); var after=p.y>r.top+r.height/2||(Math.abs(p.y-(r.top+r.height/2))<4&&p.x>r.left+r.width/2); grid.insertBefore(drag, after?tgt.nextSibling:tgt); } }
-  function up(e){ clearTimeout(lpTimer);
-    if(drag){ drag.classList.remove('dragging'); drag=null; cand=null; saveOrder(); return; }
-    if(!moved && !editing){ var app=cand||(e.target.closest&&e.target.closest('.app')); if(app) askAura('Open '+app.getAttribute('data-app')); }
+  grid.addEventListener('pointerdown',function(e){ var app=e.target.closest('.app'); if(!app) return; cand=app; sx=e.clientX; sy=e.clientY; moved=false; mc=0; try{grid.setPointerCapture(e.pointerId);}catch(_){ } lpTimer=setTimeout(enterEdit,450); log('down: '+app.getAttribute('data-app')); });
+  grid.addEventListener('pointermove',function(e){ if(!cand) return; mc++; var dx=Math.abs(e.clientX-sx), dy=Math.abs(e.clientY-sy);
+    if(!moved && (dx>7||dy>7)){ moved=true; clearTimeout(lpTimer); if(!editing) enterEdit(); drag=cand; drag.classList.add('dragging'); }
+    if(!drag){ log('move '+mc+' ('+dx+','+dy+')'); return; } if(e.cancelable) e.preventDefault();
+    var over=document.elementFromPoint(e.clientX,e.clientY); var tgt=over&&over.closest?over.closest('.app'):null;
+    if(tgt&&tgt!==drag){ var r=tgt.getBoundingClientRect(); var after=e.clientY>r.top+r.height/2||(Math.abs(e.clientY-(r.top+r.height/2))<4&&e.clientX>r.left+r.width/2); grid.insertBefore(drag, after?tgt.nextSibling:tgt); }
+    log('dragging '+(drag.getAttribute('data-app'))); });
+  function endPointer(e){ clearTimeout(lpTimer);
+    if(drag){ drag.classList.remove('dragging'); drag=null; cand=null; saveOrder(); log('dropped + saved'); return; }
+    if(!moved && !editing){ var app=cand||(e.target.closest&&e.target.closest('.app')); if(app){ log('open '+app.getAttribute('data-app')); askAura('Open '+app.getAttribute('data-app')); } }
     cand=null; }
-  if(isTouch){ grid.addEventListener('touchstart',down,{passive:true}); grid.addEventListener('touchmove',move,{passive:false}); grid.addEventListener('touchend',up); grid.addEventListener('touchcancel',up); }
-  else { grid.addEventListener('mousedown',down); window.addEventListener('mousemove',move); window.addEventListener('mouseup',up); }
-  document.addEventListener(isTouch?'touchstart':'mousedown',function(e){ if(editing && !e.target.closest('#appgrid') && !e.target.closest('#editbar')) exitEdit(); },{passive:true});
+  grid.addEventListener('pointerup',endPointer);
+  grid.addEventListener('pointercancel',endPointer);
+  document.addEventListener('pointerdown',function(e){ if(editing && !e.target.closest('#appgrid') && !e.target.closest('#editbar')) exitEdit(); });
+  log('ready - press & drag an icon');
 })();
 if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('/sw.js').then(function(reg){reg.update();}).catch(function(){});var refreshing=false;navigator.serviceWorker.addEventListener('controllerchange',function(){if(refreshing)return;refreshing=true;if(hadController)window.location.reload();});}
 </script>

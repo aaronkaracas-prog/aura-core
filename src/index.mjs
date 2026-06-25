@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.118-2026-06-25";
+const BUILD = "aura-core-v4.9.120-SELFEDIT-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -593,7 +593,38 @@ async function processCommand(line, env, isOp) {
         return { cmd: "AURA_PROPOSE", payload: { ok: true, branch: PROPOSE_BRANCH, branch_created: !eb.existed, file: "src/index.mjs", bytes: decoded.length, commit_url: put.j.commit && put.j.commit.html_url, compare_url: `https://github.com/${GH_OWNER}/${GH_REPO}/compare/${BASE_BRANCH}...${PROPOSE_BRANCH}`, note: "Candidate index written to proposal branch. Live (main) is untouched. Next: syntax gate + staging twin before any promotion." } };
       }
 
-      return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Usage: AURA_PROPOSE SYNC | STATUS | NOTE <text> | INDEX <base64>" } };
+      if (sub === "PATCH") {
+        // SURGICAL SELF-EDIT: Aura changes her OWN source with an exact find/replace instead of
+        // regenerating the whole file. Format: AURA_PROPOSE PATCH <oldtext> ||| <newtext>
+        // She fetches current main, replaces the FIRST exact occurrence of <oldtext> with <newtext>,
+        // and commits the result to the proposal branch (NEVER main - same safe-by-construction rule).
+        // The syntax gate then validates it like any other candidate. This is how she edits herself.
+        const payload = rest.slice(args[0].length).trim();
+        const sep = payload.indexOf("|||");
+        if (sep < 0) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Usage: AURA_PROPOSE PATCH <oldtext> ||| <newtext>" } };
+        const oldText = payload.slice(0, sep).trim();
+        const newText = payload.slice(sep + 3).trim();
+        if (!oldText) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "oldtext is empty - nothing to find" } };
+        // fetch current main source (the real current her)
+        const mainFile = await gh(`/repos/${GH_OWNER}/${GH_REPO}/contents/src/index.mjs?ref=${BASE_BRANCH}`);
+        if (!mainFile.ok || !mainFile.j.content) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Could not read main index: " + mainFile.status } };
+        let src; try { src = decodeURIComponent(escape(atob(mainFile.j.content.replace(/\n/g, "")))); } catch (e) { return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Could not decode main source: " + e.message } }; }
+        const occurrences = src.split(oldText).length - 1;
+        if (occurrences === 0) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "oldtext not found in source - patch refused (read your source with AURA_READ_SELF first to copy the exact text)" } };
+        if (occurrences > 1) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "oldtext appears " + occurrences + " times - must be unique. Include more surrounding context to make it unique." } };
+        const patched = src.replace(oldText, newText);
+        if (!patched.includes("const BUILD") || !patched.includes("export default")) {
+          return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Patched result no longer looks like index.mjs (missing BUILD or export default) - refusing to write" } };
+        }
+        const b64 = btoa(unescape(encodeURIComponent(patched)));
+        const eb = await ensureBranch();
+        if (!eb.ok) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: eb.error } };
+        const put = await commitFile("src/index.mjs", b64, "Aura self-edit (patch): " + oldText.slice(0, 40).replace(/\s+/g, " ") + " -> " + newText.slice(0, 40).replace(/\s+/g, " "));
+        if (!put.ok) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Write failed: " + put.status + " " + JSON.stringify(put.j).slice(0, 200) } };
+        return { cmd: "AURA_PROPOSE", payload: { ok: true, mode: "patch", branch: PROPOSE_BRANCH, file: "src/index.mjs", replaced_bytes: oldText.length, new_bytes: newText.length, result_bytes: patched.length, commit_url: put.j.commit && put.j.commit.html_url, compare_url: `https://github.com/${GH_OWNER}/${GH_REPO}/compare/${BASE_BRANCH}...${PROPOSE_BRANCH}`, note: "Surgical patch applied to current main, written to proposal branch. Live untouched. Next: AURA_VALIDATE then AURA_PROMOTE." } };
+      }
+
+      return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Usage: AURA_PROPOSE SYNC | STATUS | NOTE <text> | INDEX <base64> | PATCH <oldtext> ||| <newtext>" } };
     }
 
     case "AURA_VALIDATE": {

@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.130-2026-06-25";
+const BUILD = "aura-core-v4.9.131-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8909,17 +8909,8 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 </div></div>
 <script>
 var chat=document.getElementById('chat'),inp=document.getElementById('inp');
-var DEFAULT_APPS=["Photos","Messages","Calendar","Maps","Wallet","Music","Files","Camera","Notes","Tasks","Contacts","Settings"];
-var APPS=DEFAULT_APPS.slice();
-var grid=document.getElementById('appgrid');
-var dragEl=null,dragName=null,longTimer=null,dragging=false;
-function renderGrid(){grid.innerHTML='';APPS.forEach(function(name){var a=document.createElement('div');a.className='app';a.dataset.name=name;var ic=document.createElement('div');ic.className='appicon';ic.textContent=name.charAt(0);var lb=document.createElement('div');lb.className='applabel';lb.textContent=name;a.appendChild(ic);a.appendChild(lb);
-a.addEventListener('touchstart',function(e){longTimer=setTimeout(function(){dragging=true;dragName=name;a.style.opacity='0.5';if(navigator.vibrate)navigator.vibrate(15);},350);},{passive:true});
-a.addEventListener('touchmove',function(e){if(!dragging){clearTimeout(longTimer);return;}e.preventDefault();var t=e.touches[0];var over=document.elementFromPoint(t.clientX,t.clientY);var oa=over&&over.closest('.app');if(oa&&oa.dataset.name&&oa.dataset.name!==dragName){var from=APPS.indexOf(dragName),to=APPS.indexOf(oa.dataset.name);APPS.splice(from,1);APPS.splice(to,0,dragName);renderGrid();}},{passive:false});
-a.addEventListener('touchend',function(e){clearTimeout(longTimer);if(dragging){dragging=false;a.style.opacity='1';saveOrder();}else{inp.value="Open "+name;send();}},{passive:true});
-grid.appendChild(a);});}
-function saveOrder(){try{fetch('/home/layout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apps:APPS})});}catch(e){}}
-fetch('/home/layout').then(function(r){return r.json();}).then(function(d){if(d.ok&&Array.isArray(d.apps)&&d.apps.length){APPS=d.apps;}renderGrid();}).catch(function(){renderGrid();});
+var APPS=["Photos","Messages","Calendar","Maps","Wallet","Music","Files","Camera","Notes","Tasks","Contacts","Settings"];
+(function(){var g=document.getElementById('appgrid');if(!g)return;APPS.forEach(function(name){var a=document.createElement('div');a.className='app';var ic=document.createElement('div');ic.className='appicon';ic.textContent=name.charAt(0);var lb=document.createElement('div');lb.className='applabel';lb.textContent=name;a.appendChild(ic);a.appendChild(lb);a.onclick=function(){inp.value="Open "+name;send();};g.appendChild(a);});})();
 function add(t,who){var d=document.createElement('div');d.className='msg '+who;if(who==='aura'){var l=document.createElement('span');l.className='lbl';l.textContent='AURA';d.appendChild(l);d.appendChild(document.createTextNode(t));}else{d.textContent=t;}chat.appendChild(d);chat.scrollTop=chat.scrollHeight;}
 fetch('/home/greet').then(function(r){return r.json();}).then(function(d){document.getElementById('greet').textContent=d.greet||'Hey. What do you want to get into?';}).catch(function(){document.getElementById('greet').textContent='Hey. What do you want to get into?';});
 function send(){var m=inp.value.trim();if(!m)return;inp.value='';add(m,'user');var ld=document.createElement('div');ld.className='msg aura';ld.id='ld';ld.textContent='…';chat.appendChild(ld);chat.scrollTop=chat.scrollHeight;fetch('/home/talk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:m})}).then(function(r){return r.json();}).then(function(d){var e=document.getElementById('ld');if(e)e.remove();add(d.ok?d.reply:'Trouble connecting.','aura');}).catch(function(){var e=document.getElementById('ld');if(e)e.remove();add('Connection error.','aura');});}
@@ -9005,17 +8996,8 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 </div></div>
 <script>
 var chat=document.getElementById('chat'),inp=document.getElementById('inp');
-var DEFAULT_APPS=["Photos","Messages","Calendar","Maps","Wallet","Music","Files","Camera","Notes","Tasks","Contacts","Settings"];
-var APPS=DEFAULT_APPS.slice();
-var grid=document.getElementById('appgrid');
-var dragEl=null,dragName=null,longTimer=null,dragging=false;
-function renderGrid(){grid.innerHTML='';APPS.forEach(function(name){var a=document.createElement('div');a.className='app';a.dataset.name=name;var ic=document.createElement('div');ic.className='appicon';ic.textContent=name.charAt(0);var lb=document.createElement('div');lb.className='applabel';lb.textContent=name;a.appendChild(ic);a.appendChild(lb);
-a.addEventListener('touchstart',function(e){longTimer=setTimeout(function(){dragging=true;dragName=name;a.style.opacity='0.5';if(navigator.vibrate)navigator.vibrate(15);},350);},{passive:true});
-a.addEventListener('touchmove',function(e){if(!dragging){clearTimeout(longTimer);return;}e.preventDefault();var t=e.touches[0];var over=document.elementFromPoint(t.clientX,t.clientY);var oa=over&&over.closest('.app');if(oa&&oa.dataset.name&&oa.dataset.name!==dragName){var from=APPS.indexOf(dragName),to=APPS.indexOf(oa.dataset.name);APPS.splice(from,1);APPS.splice(to,0,dragName);renderGrid();}},{passive:false});
-a.addEventListener('touchend',function(e){clearTimeout(longTimer);if(dragging){dragging=false;a.style.opacity='1';saveOrder();}else{inp.value="Open "+name;send();}},{passive:true});
-grid.appendChild(a);});}
-function saveOrder(){try{fetch('/home/layout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apps:APPS})});}catch(e){}}
-fetch('/home/layout').then(function(r){return r.json();}).then(function(d){if(d.ok&&Array.isArray(d.apps)&&d.apps.length){APPS=d.apps;}renderGrid();}).catch(function(){renderGrid();});
+var APPS=["Photos","Messages","Calendar","Maps","Wallet","Music","Files","Camera","Notes","Tasks","Contacts","Settings"];
+(function(){var g=document.getElementById('appgrid');if(!g)return;APPS.forEach(function(name){var a=document.createElement('div');a.className='app';var ic=document.createElement('div');ic.className='appicon';ic.textContent=name.charAt(0);var lb=document.createElement('div');lb.className='applabel';lb.textContent=name;a.appendChild(ic);a.appendChild(lb);a.onclick=function(){inp.value="Open "+name;send();};g.appendChild(a);});})();
 function add(t,who){var d=document.createElement('div');d.className='msg '+who;if(who==='aura'){var l=document.createElement('span');l.className='lbl';l.textContent='AURA';d.appendChild(l);d.appendChild(document.createTextNode(t));}else{d.textContent=t;}chat.appendChild(d);chat.scrollTop=chat.scrollHeight;}
 fetch('/home/greet').then(function(r){return r.json();}).then(function(d){document.getElementById('greet').textContent=d.greet||'Hey. What do you want to get into?';}).catch(function(){document.getElementById('greet').textContent='Hey. What do you want to get into?';});
 function send(){var m=inp.value.trim();if(!m)return;inp.value='';add(m,'user');var ld=document.createElement('div');ld.className='msg aura';ld.id='ld';ld.textContent='…';chat.appendChild(ld);chat.scrollTop=chat.scrollHeight;fetch('/home/talk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:m})}).then(function(r){return r.json();}).then(function(d){var e=document.getElementById('ld');if(e)e.remove();add(d.ok?d.reply:'Trouble connecting.','aura');}).catch(function(){var e=document.getElementById('ld');if(e)e.remove();add('Connection error.','aura');});}

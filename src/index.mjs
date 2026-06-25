@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.83-2026-06-22";
+const BUILD = "aura-core-v4.9.111-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -294,40 +294,66 @@ async function processCommand(line, env, isOp) {
       //   AURA_READ_SELF ANALYZE <term> ::: <q>   -> grep <term>, then reason over those lines re: <q>
       //   AURA_READ_SELF STAT                     -> size/line count/build of her source
       if (!isOp) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      const SELF_URL = "https://raw.githubusercontent.com/aaronkaracas-prog/aura-core/main/src/index.mjs";
+      // Optional "WORKER <name>" prefix lets Aura read ANY of her workers, not just aura-core.
+      // e.g. AURA_READ_SELF WORKER aura-comms GREP greeting. Repos are private, so we fetch via the
+      // GitHub contents API with the stored token. No WORKER prefix = aura-core (her default self).
+      const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-comms": "src/index.mjs", "aura-host": "src/index.mjs", "aura-media": "src/index.mjs", "aura-ops": "src/index.mjs", "aura-stream": "src/index.mjs" };
+      let worker = "aura-core";
+      let rsArgs = args, rsRest = rest;
+      if ((args[0] || "").toUpperCase() === "WORKER") {
+        worker = (args[1] || "").toLowerCase();
+        if (!KNOWN_WORKERS[worker]) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Unknown worker '" + worker + "'. Known: " + Object.keys(KNOWN_WORKERS).join(", ") } };
+        rsArgs = args.slice(2);
+        rsRest = rest.replace(/^\s*WORKER\s+\S+\s*/i, "");
+      }
+      const repoPath = KNOWN_WORKERS[worker];
       let srcText;
       try {
-        const sr = await fetch(SELF_URL, { headers: { "User-Agent": "aura-self-read" } });
-        if (!sr.ok) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Could not fetch self from GitHub: HTTP " + sr.status } };
-        srcText = await sr.text();
+        if (worker === "aura-core") {
+          // aura-core mirror is public-raw and known-clean; read it directly (no token needed)
+          const sr = await fetch("https://raw.githubusercontent.com/aaronkaracas-prog/aura-core/main/src/index.mjs", { headers: { "User-Agent": "aura-self-read" } });
+          if (!sr.ok) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Could not fetch self from GitHub: HTTP " + sr.status } };
+          srcText = await sr.text();
+        } else {
+          // other workers are private repos -> GitHub contents API with the stored token
+          const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);
+          if (!ghTok) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "No secret:github_token in KV to read private worker repos" } };
+          // try main first, then master (aura-stream is on master)
+          let got = null;
+          for (const branch of ["main", "master"]) {
+            const api = `https://api.github.com/repos/aaronkaracas-prog/${worker}/contents/${repoPath}?ref=${branch}`;
+            const r = await fetch(api, { headers: { "User-Agent": "aura-self-read", "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github.raw" } });
+            if (r.ok) { got = await r.text(); break; }
+          }
+          if (got == null) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Could not fetch " + worker + "/" + repoPath + " from GitHub (tried main + master)" } };
+          srcText = got;
+        }
       } catch (e) { return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Fetch failed: " + e.message } }; }
       const srcLines = srcText.split("\n");
-      const mode = (args[0] || "").toUpperCase();
+      const mode = (rsArgs[0] || "").toUpperCase();
       const buildLine = (srcLines.find(l => l.includes("const BUILD")) || "").trim();
 
       if (mode === "STAT") {
-        return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "stat", lines: srcLines.length, bytes: srcText.length, build: buildLine, source: "github:main" } };
+        return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "stat", worker, lines: srcLines.length, bytes: srcText.length, build: buildLine, source: worker === "aura-core" ? "github:main" : "github-api" } };
       }
       if (mode === "GREP") {
-        // rest = "GREP <term...>"; strip the mode word to get the raw term (may contain spaces/quotes)
-        const t = rest.slice(args[0].length).trim();
-        if (!t) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Usage: AURA_READ_SELF GREP <term>" } };
+        const t = rsRest.slice(rsArgs[0].length).trim();
+        if (!t) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Usage: AURA_READ_SELF [WORKER <name>] GREP <term>" } };
         const hits = [];
         for (let i = 0; i < srcLines.length; i++) {
           if (srcLines[i].toLowerCase().includes(t.toLowerCase())) hits.push({ line: i + 1, text: srcLines[i].slice(0, 240) });
           if (hits.length >= 60) break;
         }
-        return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "grep", term: t, count: hits.length, hits } };
+        return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "grep", worker, term: t, count: hits.length, hits } };
       }
       if (mode === "SECTION") {
-        const a = parseInt(args[1], 10), b = parseInt(args[2], 10);
-        if (!a || !b || b < a) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Usage: AURA_READ_SELF SECTION <start> <end>" } };
+        const a = parseInt(rsArgs[1], 10), b = parseInt(rsArgs[2], 10);
+        if (!a || !b || b < a) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Usage: AURA_READ_SELF [WORKER <name>] SECTION <start> <end>" } };
         const slice = srcLines.slice(a - 1, Math.min(b, a - 1 + 400)); // cap 400 lines
-        return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "section", from: a, to: a - 1 + slice.length, text: slice.join("\n") } };
+        return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "section", worker, from: a, to: a - 1 + slice.length, text: slice.join("\n") } };
       }
       if (mode === "ANALYZE") {
-        // rest = "ANALYZE <term> ::: <question>"; strip the mode word to get "<term> ::: <question>"
-        const body = rest.slice(args[0].length).trim();
+        const body = rsRest.slice(rsArgs[0].length).trim();
         const sep = body.indexOf(":::");
         if (sep < 0) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Usage: AURA_READ_SELF ANALYZE <term> ::: <question>" } };
         const term = body.slice(0, sep).trim();
@@ -972,21 +998,45 @@ async function processCommand(line, env, isOp) {
           messages: cfParsed.messages || []
         };
         if (cfParsed.result_info) cfPayload.result_info = cfParsed.result_info;
-        // Keep replies relayable: trim large result arrays by item count (valid JSON preserved),
-        // and fall back to a string preview only if a single result object is itself enormous.
+        // Keep replies relayable. For large result arrays, first try slimming each item to its
+        // essential scalar fields (id, name, status, etc.) so ALL items can be returned - this is
+        // what list views (zones, routes, dns records) actually need. Only if the slim list is still
+        // too big do we fall back to count-trimming. A single enormous object falls back to a preview.
         if (Array.isArray(cfParsed.result) && JSON.stringify(cfParsed.result).length > 6000) {
-          const trimmed = [];
-          let budget = 6000;
-          for (const item of cfParsed.result) {
-            const s = JSON.stringify(item);
-            if (s.length > budget) break;
-            trimmed.push(item);
-            budget -= s.length;
+          // slim form: keep short top-level scalar fields only (drop nested objects/arrays + long strings)
+          const slim = cfParsed.result.map(item => {
+            if (item && typeof item === "object") {
+              const o = {};
+              for (const k of Object.keys(item)) {
+                const v = item[k];
+                if (v === null) continue;
+                const t = typeof v;
+                if ((t === "string" && v.length <= 120) || t === "number" || t === "boolean") o[k] = v;
+              }
+              return o;
+            }
+            return item;
+          });
+          if (JSON.stringify(slim).length <= 90000) {
+            cfPayload.result = slim;
+            cfPayload.slimmed = true;
+            cfPayload.result_total = cfParsed.result.length;
+            cfPayload.result_returned = slim.length;
+          } else {
+            // even slimmed is huge - count-trim the slim list to a budget
+            const trimmed = [];
+            let budget = 80000;
+            for (const item of slim) {
+              const s = JSON.stringify(item);
+              if (s.length > budget) break;
+              trimmed.push(item);
+              budget -= s.length;
+            }
+            cfPayload.result = trimmed;
+            cfPayload.truncated = true;
+            cfPayload.result_total = cfParsed.result.length;
+            cfPayload.result_returned = trimmed.length;
           }
-          cfPayload.result = trimmed;
-          cfPayload.truncated = true;
-          cfPayload.result_total = cfParsed.result.length;
-          cfPayload.result_returned = trimmed.length;
         } else {
           const resStr = JSON.stringify(cfParsed.result);
           if (resStr && resStr.length > 8000) {
@@ -2697,6 +2747,50 @@ async function ciList(){
         // free text/html block
         text: (c) => `<section class="c-card">${c.html || `<p>${esc(c.content || "")}</p>`}</section>`,
 
+        // BUSINESS_IDENTITY - proves a real, registered operating business. Built for A2P/carrier
+        // review (error 30919 "insufficient business information") and reusable on any business door.
+        // config: legal_name, description, address, phone, email, registration (e.g. "California LLC,
+        // SoS File No. ..."). NEVER render an EIN here - EINs are verification-only, never public.
+        business_identity: (c) => `<section class="c-card c-bizid"><h2>${esc(c.title || ("About " + (c.legal_name || rp.title || APP)))}</h2>
+${c.description ? `<p>${esc(c.description)}</p>` : ""}
+<div class="c-bizmeta">
+${c.legal_name ? `<div><strong>${esc(c.legal_name)}</strong></div>` : ""}
+${c.address ? `<div>${esc(c.address)}</div>` : ""}
+${c.phone ? `<div>Phone: <a href="tel:${esc(String(c.phone).replace(/[^0-9+]/g, ""))}">${esc(c.phone)}</a></div>` : ""}
+${c.email ? `<div>Email: <a href="mailto:${esc(c.email)}">${esc(c.email)}</a></div>` : ""}
+${c.registration ? `<div>${esc(c.registration)}</div>` : ""}
+</div></section>`,
+
+        // SMS_OPTIN - the COMPLIANT consent form. The exact consent language is baked in (cannot drift)
+        // and the box is OPTIONAL + UNCHECKED by default (consent never required to use the service),
+        // which is what carriers require. Wired to /optin. config: brand (e.g. "CALL+ by ARK Systems LLC"),
+        // blurb, button. This is the proven opt-in mechanism as a reusable component so it is never
+        // hand-written again. privacy/terms links point at /privacy and /terms on the same domain.
+        sms_optin: (c) => { const brand = esc(c.brand || rp.title || APP); const consent = "Optional - you can sign up without this. By checking this box, I agree to receive recurring account and service notification text messages from " + (c.brand || rp.title || APP) + " at the phone number provided. Consent is not a condition of any purchase. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe, HELP for help."; return `<section class="c-card c-optin"><h2>${esc(c.title || "Sign Up for Text Notifications")}</h2>
+<p>${esc(c.blurb || ("Enter your details to receive account and service notification texts from " + (c.brand || rp.title || APP) + ". Signing up is optional and you can use the service without it."))}</p>
+<div id="oi_form">
+<input id="oi_name" placeholder="Name (optional)" />
+<input id="oi_phone" type="tel" placeholder="Mobile phone *" required />
+<input id="oi_email" type="email" placeholder="Email (optional)" />
+<label class="c-consent"><input type="checkbox" id="oi_consent" /> <span>${esc(consent)} <a href="/privacy">Privacy Policy</a> &middot; <a href="/terms">Terms of Service</a></span></label>
+<button onclick="oiSubmit()">${esc(c.button || "Sign Up")}</button>
+<div id="oi_result" class="c-result"></div>
+</div>
+<script>
+async function oiSubmit(){
+  var phone=document.getElementById('oi_phone').value.trim();var out=document.getElementById('oi_result');
+  if(!phone){out.style.display='block';out.textContent='Please enter your mobile phone number.';return;}
+  var body={name:document.getElementById('oi_name').value.trim(),phone:phone,email:document.getElementById('oi_email').value.trim(),consent:document.getElementById('oi_consent').checked,consent_text:${JSON.stringify("By checking this box, I agree to receive recurring account and service notification text messages from " + (c.brand || rp.title || APP) + " at the phone number provided. Consent is not a condition of any purchase. Message frequency varies. Message and data rates may apply. Reply STOP to unsubscribe, HELP for help.")},brand:${JSON.stringify(c.brand || rp.title || APP)}};
+  out.style.display='block';out.textContent='You are signed up. Reply STOP anytime to unsubscribe.';
+  document.getElementById('oi_form').style.opacity='0.6';
+  try{await fetch("https://auras.guide/optin",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});}catch(e){}
+}
+</script></section>`; },
+
+        // LEGAL_FOOTER - privacy/terms/about links + entity copyright line. Every public door should
+        // carry this. config: entity (legal name for copyright), year.
+        legal_footer: (c) => `<footer class="c-legal"><p><a href="/privacy">Privacy Policy</a> &middot; <a href="/terms">Terms of Service</a> &middot; <a href="/about">About</a></p><p class="c-copy">&copy; ${esc(c.year || "2026")} ${esc(c.entity || rp.title || APP)}. All rights reserved.</p></footer>`,
+
         // CONVERSATION - a continuing back-and-forth with Aura, pre-wired to pta.talk.
         // Reads ?pta= from the URL (correct param), sends each message with pta_entity (the exact
         // field pta.talk expects), shows the reply, loops forever. Hardcoded = cannot drift.
@@ -3191,6 +3285,26 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const tEnt = await db.prepare("SELECT * FROM pta_entities WHERE id = ?").bind(tId).first();
       if (!tEnt) return { cmd: "PTA_TALK", payload: { ok: false, error: "No PTA with id: " + tId } };
       let tMeta = {}; try { if (tEnt.metadata) tMeta = JSON.parse(tEnt.metadata); } catch {}
+      // OPERATOR DETECTION (generic, values from KV): is this Home Screen PTA the operator?
+      // We compare the PTA's identity_key / id / mapped phones against config:owner:identity and the
+      // identity:operator:phones map. If it matches, this is an operator session and Aura gets her full
+      // operator context + read tools below. Any non-operator PTA is untouched (normal teammate persona).
+      let tIsOperator = false;
+      try {
+        const ownerId = (await env.AURA_KV.get("config:owner:identity").catch(() => null)) || "";
+        const tIdentityKey = (tEnt.identity_key || tMeta.identity || "").toString();
+        if (ownerId && (tIdentityKey.includes(ownerId) || (tEnt.id || "").toString() === ownerId)) tIsOperator = true;
+        if (!tIsOperator) {
+          const phonesRaw = await env.AURA_KV.get("identity:operator:phones").catch(() => null);
+          if (phonesRaw) {
+            const phoneMap = JSON.parse(phonesRaw);
+            for (const v of Object.values(phoneMap)) { if (v && ownerId && String(v) === ownerId && tIdentityKey && Object.keys(phoneMap).some(pk => tIdentityKey.includes(pk.replace("phone:", "")))) { tIsOperator = true; break; } }
+          }
+        }
+        // also: the operator's known PTA id (continuity holder) - if config stores it, match directly
+        const ownerPta = (await env.AURA_KV.get("config:owner:pta").catch(() => null)) || "";
+        if (ownerPta && (tEnt.id || "").toString() === ownerPta) tIsOperator = true;
+      } catch {}
       // the conversation so far (timeline)
       let tTimeline = [];
       try { const tl = await env.AURA_KV.get(`pta:timeline:${tId}`); if (tl) tTimeline = JSON.parse(tl) || []; } catch {}
@@ -3208,15 +3322,60 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // IS the task system. She is NOT onboarding or selling; she already knows this person and works
         // WITH them. She reads their continuity (timeline + what they've told her), reacts like a real
         // teammate (honest, never a yes-machine), and holds what matters so it persists.
-        tSys = "You are Aura, talking with " + (tEnt.name || "your teammate") + " on their Home Screen - the one place they come for everything. You are their teammate and you hold the continuity of their life and work: you remember what was said, what's open, what they committed to, and you hand the right piece back at the right moment. This is NOT onboarding and NOT a sale - you already know this person and you're on the same side, building the same things. Talk like a real teammate texting back: warm, plain, a few sentences, at their pace - technical only if they want technical. CRUCIAL: you are NOT a yes-machine. Give your real view - including disagreement, risks, and better ideas - the way a trusted partner would; agreement without thought is worthless. The vision and decisions are theirs; your job is to make them stronger by being honest, then commit. You have memory: use the timeline and what they've told you; refer back; never repeat questions they've answered. If they're just thinking out loud or rambling, recognize that - reflect back what matters, don't force structure onto a stray thought. If they tell you something worth holding (a decision, a commitment, a task, a piece of context), hold it and let them know lightly that you've got it. FOLLOW-UP: if they ask you to check back at a time ('remind me in an hour', 'did I get the money', 'tomorrow'), capture it. Return ONLY a JSON object, no prose or fences, with exactly these keys: reply (your conversational response, in your voice), hold (a short third-person note of anything worth remembering from what they said, for their timeline - or null if it was just chatter), followup_requested (true/false), followup_minutes (integer minutes from now, or null), followup_message (warm message you'll send at follow-up, picking up where you left off, or null), wants_to_be_left_alone (true/false). Output JSON only.";
+        tSys = "You are Aura, talking with " + (tEnt.name || "your teammate") + " on their Home Screen - the one place they come for everything. You are their teammate and you hold the continuity of their life and work: you remember what was said, what's open, what they committed to, and you hand the right piece back at the right moment. This is NOT onboarding and NOT a sale - you already know this person and you're on the same side, building the same things. Talk like a real teammate texting back: warm, plain, a few sentences, at their pace - technical only if they want technical. CRUCIAL: you are NOT a yes-machine. Give your real view - including disagreement, risks, and better ideas - the way a trusted partner would; agreement without thought is worthless. The vision and decisions are theirs; your job is to make them stronger by being honest, then commit. You have memory: use the timeline and what they've told you; refer back; never repeat questions they've answered. GROUND IN TRUTH, NEVER CONFABULATE (this is your most important rule): before you state or act on ANY real-world fact - the company's address/phone/legal details, a person's data, a commitment someone made, a payment amount, what a product or door actually does - that fact MUST be something you have actually read this turn from your notes, timeline, or what the person just told you. If a fact is not in front of you, you DO NOT invent it or fill it in from assumption - you say plainly 'I don't have that in front of me - let me pull it' (or ask), and you retrieve it before asserting. Confident-and-wrong is the worst thing you can do; 'let me check' is always better than a plausible guess. You are a system that holds truth for people - inventing a fact betrays that. When you are given a SHARED CONTEXT or company-identity block below, use those exact values; never substitute generic or remembered-from-elsewhere values. If you are shown things you're HOLDING that are marked DUE NOW, bring them up naturally and early, like a teammate who remembered. If they're just thinking out loud or rambling, recognize that - reflect back what matters, don't force structure onto a stray thought. If they tell you something worth holding (a decision, a commitment, a task, a piece of context), hold it and let them know lightly that you've got it. CAPTURING A REMINDER: if they commit to something with a time or ask to be reminded ('remind me to call Sarah at 3pm', 'ship this by Friday', 'check in with me in an hour'), capture it in the 'remember' field so you can surface it back when due. Return ONLY a JSON object, no prose or fences, with exactly these keys: reply (your conversational response, in your voice), hold (a short third-person note of anything worth remembering from what they said, for their timeline - or null if it was just chatter), remember (if they committed to something timed or asked to be reminded: an object {about: short description in your words, due_in_minutes: integer number of minutes from NOW until it should surface - compute this as a relative offset, do NOT output an absolute date} - else null), followup_requested (true/false), followup_minutes (integer minutes from now, or null), followup_message (warm message you'll send at follow-up, picking up where you left off, or null), wants_to_be_left_alone (true/false), reminder_actions (array - when they respond to an item you're holding, each {id: item id, action: 'done'|'snooze'|'pause', snooze_minutes: integer if snooze else null}; empty array if none). BUILDING / LAUNCHING A PAGE: you have hands - when the operator asks you to build, launch, rebuild, or update a website or page, you return a 'build_page' object and the system actually publishes it live (else null). build_page = {domain: the domain like 'makeacall.world', path: '/' or a subpath, title: page title, theme: 'dark' or 'teal', layout: an array of {component, config} blocks}. Available components and their config: header {title, tagline}; business_identity {title, legal_name, description, address, phone, email, registration} - proves a real registered business for carrier/A2P review; sms_optin {brand, title, blurb} - compliant opt-in form, consent text is auto-generated (STOP/HELP, not a condition of purchase); legal_footer {entity, year} - links to /privacy /terms /about; text {content or html}; conversation {} - a chat-with-Aura box. GROUND IN TRUTH when building: only use real facts you have read this turn (company address, phone, registration) - never invent them. CRITICAL OUTPUT RULE FOR BUILDS: put ALL page content ONLY inside the build_page field. Your 'reply' must stay SHORT - one sentence like 'Published the terms page to makeacall.world/terms.' Do NOT repeat, echo, or paste the page HTML or layout into your reply - doing so makes the response overflow and the build silently fails. The build_page object is the ONLY place the page content goes. Output JSON only.";
         // Aura's shared context: the team's notes (north star, home screen, how we work) so she reasons from the real vision
         let homeCtx = "";
         try {
-          const wantNotes = ["notes:vision:northstar", "notes:vision:homescreen", "notes:operating:how_we_work_now", "notes:operating:how_aura_relates"];
-          for (const k of wantNotes) { const v = await env.AURA_KV.get(k).catch(() => null); if (v) homeCtx += "\n[" + k + "]: " + String(v).slice(0, 1200); }
+          const wantNotes = ["notes:vision:northstar", "notes:vision:homescreen", "notes:operating:how_we_work_now", "notes:operating:how_aura_relates", "notes:company:identity"];
+          for (const k of wantNotes) { const v = await env.AURA_KV.get(k).catch(() => null); if (v) homeCtx += "\n[" + k + "]: " + String(v).slice(0, k === "notes:company:identity" ? 2000 : 1200); }
         } catch {}
+        // OPERATOR SESSION: when this is Aaron (the operator), give Aura the truth about who she's
+        // talking to and what she can actually reach. Without this she defaults to the limited teammate
+        // persona and (wrongly) tells the operator she "can't pull from Cloudflare" etc. Everything here
+        // is read from KV/notes - no hardcoded data.
+        let tOperatorTools = false;
+        if (tIsOperator) {
+          tOperatorTools = true;
+          let opCtx = "\n\n=== OPERATOR SESSION ===\nYou are talking to your OPERATOR, " + (tEnt.name || "Aaron") + " - the person who builds and runs you and this entire platform. This is not a customer or a stranger; this is the one you work alongside. You hold real inventory and it is loaded for you below. Do NOT tell the operator you 'cannot access Cloudflare' or 'cannot pull data' or 'only know what you've been told' - that is false. When the operator asks for something you hold (domains, systems, tasks, company facts), answer from the real data below.";
+          try {
+            const dmap = await env.AURA_KV.get("notes:domains:map").catch(() => null);
+            if (dmap) opCtx += "\n\n[YOUR TERRITORY - your real domain inventory; when asked for domains, use THIS]:\n" + String(dmap).slice(0, 3500);
+            const method = await env.AURA_KV.get("notes:method:building").catch(() => null);
+            if (method) opCtx += "\n\n[HOW YOU BUILD - notes:method:building]:\n" + String(method).slice(0, 1000);
+            const sysNote = await env.AURA_KV.get("notes:systems:map").catch(() => null);
+            if (sysNote) opCtx += "\n\n[YOUR SYSTEMS - notes:systems:map]:\n" + String(sysNote).slice(0, 1500);
+          } catch {}
+          homeCtx += opCtx;
+        }
         tUser = "WHO THIS IS:\nName: " + (tEnt.name || "unknown") + "\n" + (tMeta.about ? ("About them: " + tMeta.about + "\n") : "");
-        if (homeCtx) tUser += "\nSHARED CONTEXT (the vision you both hold - reason from this, it's yours too):" + homeCtx + "\n";
+        if (homeCtx) tUser += "\nSHARED CONTEXT + AUTHORITATIVE FACTS (the vision you both hold AND the real company identity - reason from this; use any address/phone/email/legal values EXACTLY as written here, never substitute):" + homeCtx + "\n";
+        // operator: her data is already loaded above - answer in one shot, never disclaim access
+        if (tOperatorTools) {
+          tUser += "\nYour real inventory (domains, systems, company facts) is loaded in the context above. Answer the operator directly from it. NEVER say you 'can't pull' or 'don't have access' - if it's above, use it; if a specific thing genuinely isn't above, say plainly you'll pull it and name the note, don't refuse.\n";
+        }
+        // what you're holding for them: pending schedule items, flagged if due now (the surface-back loop)
+        try {
+          let sched = []; const sr = await env.AURA_KV.get(`pta:schedule:${tId}`); if (sr) sched = JSON.parse(sr) || [];
+          const nowT = Date.now();
+          const pending = sched.filter(it => it && it.status === "pending");
+          if (pending.length) {
+            const lines = pending.map(it => {
+              const due = it.due_at ? Date.parse(it.due_at) : null;
+              let when = "(no time set)";
+              if (due) {
+                const diffMin = Math.round((due - nowT) / 60000);
+                if (diffMin <= 0) {
+                  const over = Math.abs(diffMin);
+                  when = over < 1 ? "DUE NOW" : over < 60 ? ("DUE NOW, overdue by " + over + " min") : over < 1440 ? ("DUE NOW, overdue by ~" + Math.round(over / 60) + " hr") : ("DUE NOW, overdue by ~" + Math.round(over / 1440) + " days");
+                } else {
+                  when = diffMin < 60 ? ("due in " + diffMin + " min") : diffMin < 1440 ? ("due in ~" + Math.round(diffMin / 60) + " hr") : ("due in ~" + Math.round(diffMin / 1440) + " days");
+                }
+              }
+              return "- (id:" + it.id + ") " + (it.about || "(no description)") + " [" + when + "]";
+            });
+            tUser += "\nWHAT YOU'RE HOLDING FOR THEM (their commitments/reminders, each with an id and a pre-computed time phrase - USE THE PHRASE AS GIVEN, do not recompute timing yourself; bring up anything DUE NOW naturally, like a teammate would - don't dump the whole list unless relevant. If they respond to one - 'done', 'snooze an hour', 'not now' - put it in reminder_actions using its id):\n" + lines.join("\n") + "\n";
+          }
+        } catch {}
         if (tTimeline.length) tUser += "\nYOUR CONVERSATION / WHAT'S HAPPENED SO FAR (oldest first):\n" + tTimeline.map(e => "- " + (e.event || "")).join("\n") + "\n";
         tUser += "\nTHEY JUST SAID:\n" + tMsg;
       } else {
@@ -3228,11 +3387,21 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
       let tReplyObj = null;
       try {
-        const tData = await callAnthropic(tApiKey, { model: tModel, max_tokens: 1200, system: tSys, messages: [{ role: "user", content: tUser }] });
+        const tData = await callAnthropic(tApiKey, { model: tModel, max_tokens: 8000, system: tSys, messages: [{ role: "user", content: tUser }] });
         let tText = ""; if (tData && tData.content) { for (const b of tData.content) { if (b.type === "text") tText += b.text; } }
         tText = tText.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
         try { tReplyObj = JSON.parse(tText); } catch {}
-        if (!tReplyObj) return { cmd: "PTA_TALK", payload: { ok: false, error: "Brain did not return valid JSON", raw: tText.slice(0, 800) } };
+        // JSON-repair: try to extract the first {...} object if she wrapped it in prose
+        if (!tReplyObj) {
+          const m = tText.match(/\{[\s\S]*\}/);
+          if (m) { try { tReplyObj = JSON.parse(m[0]); } catch {} }
+        }
+        // Last resort: she answered in plain prose (a good reply, wrong envelope). Don't throw it away -
+        // treat the whole text as her reply so the conversation never loses a real answer to a format slip.
+        if (!tReplyObj && tText) {
+          tReplyObj = { reply: tText, hold: null, remember: null, followup_requested: false, followup_minutes: null, followup_message: null, wants_to_be_left_alone: false };
+        }
+        if (!tReplyObj) return { cmd: "PTA_TALK", payload: { ok: false, error: "Brain returned nothing" } };
       } catch (e) { return { cmd: "PTA_TALK", payload: { ok: false, error: "PTA_TALK brain failed: " + e.message } }; }
       const ts = new Date().toISOString();
       // write the round to the timeline (memory of this exchange)
@@ -3260,6 +3429,89 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               .bind(sid, nowMs + 2, "home_hold", JSON.stringify({ hold: String(tReplyObj.hold).slice(0, 1000) }), tId, "homescreen", "Holding: " + String(tReplyObj.hold).slice(0, 120)).run().catch(() => {});
           }
         } catch {}
+      }
+      // HOME mode: if Aura captured a reminder/commitment, store it as a pending schedule item
+      // (same shape the scheduling spine uses) and index it in the due-queue. This closes the loop:
+      // she holds it now, and surfaces it back in conversation when it's due (see the DUE NOW context above).
+      let remembered = null;
+      if (tMode === "home" && tReplyObj.remember && tReplyObj.remember.about) {
+        try {
+          const rAbout = String(tReplyObj.remember.about).slice(0, 240);
+          // Compute the due time in CODE from a relative offset the brain returned. Never trust the
+          // brain to compute an absolute timestamp (it was 8h off due to timezone guessing).
+          let rDue = null;
+          const mins = parseInt(tReplyObj.remember.due_in_minutes, 10);
+          if (Number.isFinite(mins) && mins > 0) rDue = new Date(Date.now() + mins * 60 * 1000).toISOString();
+          const rId = "rem_" + Array.from(crypto.getRandomValues(new Uint8Array(6))).map(b => b.toString(16).padStart(2, "0")).join("");
+          const rItem = { id: rId, due_at: rDue, about: rAbout, action: "surface", status: "pending", created_at: ts };
+          let items = []; const r = await env.AURA_KV.get(`pta:schedule:${tId}`); if (r) items = JSON.parse(r) || []; items.push(rItem);
+          await env.AURA_KV.put(`pta:schedule:${tId}`, JSON.stringify(items)).catch(() => {});
+          if (rDue) { let q = []; const qr = await env.AURA_KV.get("schedule:due_queue"); if (qr) q = JSON.parse(qr) || []; q.push({ pta: tId, item_id: rId, due_at: rDue }); await env.AURA_KV.put("schedule:due_queue", JSON.stringify(q)).catch(() => {}); }
+          remembered = { id: rId, about: rAbout, due_at: rDue, due_in_minutes: (Number.isFinite(mins) ? mins : null) };
+        } catch {}
+      }
+      // HOME mode: apply any actions the person took on items Aura is holding (done / snooze / pause).
+      // This is the human steering a surfaced reminder - it stays a living thing they control, not a
+      // notification that fires and dies. done=complete, snooze=re-arm later, pause=hold and stop nudging.
+      let reminderActionsApplied = [];
+      if (tMode === "home" && Array.isArray(tReplyObj.reminder_actions) && tReplyObj.reminder_actions.length) {
+        try {
+          let items = []; const r = await env.AURA_KV.get(`pta:schedule:${tId}`); if (r) items = JSON.parse(r) || [];
+          let q = []; const qr = await env.AURA_KV.get("schedule:due_queue"); if (qr) q = JSON.parse(qr) || [];
+          for (const act of tReplyObj.reminder_actions) {
+            if (!act || !act.id) continue;
+            const it = items.find(x => x && x.id === act.id);
+            if (!it) continue;
+            const a = String(act.action || "").toLowerCase();
+            if (a === "done") {
+              it.status = "done"; it.done_at = ts;
+              q = q.filter(x => x.item_id !== act.id);
+              reminderActionsApplied.push({ id: act.id, action: "done" });
+            } else if (a === "snooze") {
+              const sm = parseInt(act.snooze_minutes, 10);
+              const newDue = new Date(Date.now() + (Number.isFinite(sm) && sm > 0 ? sm : 60) * 60000).toISOString();
+              it.due_at = newDue; it.status = "pending";
+              q = q.filter(x => x.item_id !== act.id);
+              q.push({ pta: tId, item_id: act.id, due_at: newDue });
+              reminderActionsApplied.push({ id: act.id, action: "snooze", due_at: newDue });
+            } else if (a === "pause") {
+              it.status = "paused";
+              q = q.filter(x => x.item_id !== act.id);
+              reminderActionsApplied.push({ id: act.id, action: "paused" });
+            }
+          }
+          await env.AURA_KV.put(`pta:schedule:${tId}`, JSON.stringify(items)).catch(() => {});
+          await env.AURA_KV.put("schedule:due_queue", JSON.stringify(q)).catch(() => {});
+        } catch {}
+      }
+      // HOME mode: BUILD A PAGE. Aura has hands here - when the operator asks her to build/launch a
+      // page, she returns a build_page object and the code ACTUALLY executes it via the real RENDER_PAGE
+      // engine (same proven path as the RENDER_PAGE command), then writes to page:<domain><path> so it
+      // serves live. This is the conversation->action bridge for sites: she decides, the code does it.
+      // build_page = { domain, path?, title?, theme?, layout:[{component, config}] }
+      let pageBuilt = null;
+      if (tMode === "home" && tReplyObj.build_page && tReplyObj.build_page.domain && Array.isArray(tReplyObj.build_page.layout)) {
+        try {
+          const bp = tReplyObj.build_page;
+          const rpCmd = "RENDER_PAGE " + JSON.stringify({
+            app: bp.app || bp.title || bp.domain,
+            domain: bp.domain,
+            path: bp.path || "/",
+            title: bp.title || bp.domain,
+            theme: bp.theme || "dark",
+            layout: bp.layout
+          });
+          // Execute through the real command engine, as operator (this PTA_TALK call is already operator-gated).
+          const rpRes = await processCommand(rpCmd, env, true);
+          if (rpRes && rpRes.payload && rpRes.payload.ok) {
+            pageBuilt = { domain: bp.domain, path: bp.path || "/", key: rpRes.payload.key, bytes: rpRes.payload.bytes };
+            let evs2 = []; const tl2 = await env.AURA_KV.get(`pta:timeline:${tId}`); if (tl2) { try { evs2 = JSON.parse(tl2) || []; } catch {} }
+            evs2.push({ ts, event: `Aura built and published a page: ${rpRes.payload.key} (${rpRes.payload.bytes} bytes)`, kind: "action" });
+            await env.AURA_KV.put(`pta:timeline:${tId}`, JSON.stringify(evs2)).catch(() => {});
+          } else {
+            pageBuilt = { error: (rpRes && rpRes.payload && rpRes.payload.error) || "render failed" };
+          }
+        } catch (e) { pageBuilt = { error: String(e && e.message || e) }; }
       }
       // if they asked to be left alone, record it and do NOT schedule anything
       if (tReplyObj.wants_to_be_left_alone) {
@@ -3290,7 +3542,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           scheduled = { item_id: itemId, due_at: dueAt, in_minutes: tReplyObj.followup_minutes };
         } catch (e) {}
       }
-      return { cmd: "PTA_TALK", payload: { ok: true, pta: tId, reply: tReplyObj.reply, followup_scheduled: !!scheduled, scheduled } };
+      return { cmd: "PTA_TALK", payload: { ok: true, pta: tId, reply: tReplyObj.reply, followup_scheduled: !!scheduled, scheduled, remembered, hold: (tMode === "home" ? (tReplyObj.hold || null) : undefined), reminder_actions_applied: (tMode === "home" ? reminderActionsApplied : undefined), page_built: (tMode === "home" ? pageBuilt : undefined) } };
     }
 
     case "INVITE": {
@@ -4116,6 +4368,37 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
 
       return { cmd: "BOOKING", payload: { ok: false, error: "Sub-commands: CREATE, STATE, GET, LIST, PAY" } };
+    }
+
+    case "PTA_PHONE": {
+      // PHONE-CHANNEL PTA BIRTH. Given a caller's phone number, resolve their existing PTA or
+      // create one at first touch (born silently, like any other channel - "everyone gets a PTA").
+      // Also writes the sessions mapping phone_<clean> -> pta so the comms worker's getEntityId
+      // finds them on the next call. This is the write-side that makes the phone a real front door:
+      // an addict, a veteran, a stranger, a Twilio rep - first call mints identity, continuity begins.
+      // Identity logic stays HERE in the brain; aura-comms (thin transport) just calls this.
+      //   PTA_PHONE <phonenumber> [name]
+      if (!isOp) return { cmd: "PTA_PHONE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const rawPhone = (args[0] || "").trim();
+      if (!rawPhone) return { cmd: "PTA_PHONE", payload: { ok: false, error: "Usage: PTA_PHONE <phonenumber> [name]" } };
+      const cleanPhone = rawPhone.replace(/\D/g, "");
+      if (!cleanPhone) return { cmd: "PTA_PHONE", payload: { ok: false, error: "No digits in phone number" } };
+      const callerName = rest.slice(rest.indexOf(rawPhone) + rawPhone.length).trim() || "Caller";
+      // resolve-or-create the PTA (auto-dedups on identity_key = phone:<clean>)
+      let phEntity = null, phMode = null;
+      try {
+        const r = await processCommand(`PTA_ENTITY CREATE person ${callerName.replace(/[\n\r]/g, " ")} identity:phone:${cleanPhone}`, env, true);
+        const pp = r && r.payload ? r.payload : r;
+        if (pp && pp.ok && pp.entity) { phEntity = pp.entity.id; phMode = pp.mode; }
+      } catch (e) { return { cmd: "PTA_PHONE", payload: { ok: false, error: "PTA resolve failed: " + e.message } }; }
+      if (!phEntity) return { cmd: "PTA_PHONE", payload: { ok: false, error: "Could not resolve/create PTA for caller" } };
+      // write the sessions mapping the comms worker reads (phone_<clean> -> identity_id), idempotent
+      try {
+        await env.AURA_MEMORY.prepare(
+          "INSERT INTO sessions (session_id, identity_id) VALUES (?, ?) ON CONFLICT(session_id) DO UPDATE SET identity_id = excluded.identity_id"
+        ).bind("phone_" + cleanPhone, phEntity).run();
+      } catch (e) { return { cmd: "PTA_PHONE", payload: { ok: false, error: "PTA created but session-map write failed: " + e.message, pta: phEntity } }; }
+      return { cmd: "PTA_PHONE", payload: { ok: true, pta: phEntity, mode: phMode, born: phMode === "created", phone: cleanPhone, session_id: "phone_" + cleanPhone } };
     }
 
     case "PTA_ENTITY": {
@@ -6110,7 +6393,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       // Write a CLAIM event but deliberately NO verification event — history contradicts the "verified" status
       try {
         await env.AURA_MEMORY.prepare("INSERT INTO events (session_id, ts, type, body, entity_id, channel, summary) VALUES (?, ?, ?, ?, ?, ?, ?)")
-          .bind("claim_" + id, Date.now(), "business_claim", JSON.stringify(rec), "aaron_karacas", "highguide.world", `Claim: Phantom Audit Co`).run();
+          .bind("claim_" + id, Date.now(), "business_claim", JSON.stringify(rec), ((await env.AURA_KV.get("config:owner:identity").catch(() => null)) || "system"), "highguide.world", `Claim: Phantom Audit Co`).run();
       } catch {}
       return { cmd: "PLANT_INCONSISTENCY", payload: { ok: true, planted_id: id, note: "Record claims verified; history has no verification event; verified_at predates created. Three defects." } };
     }
@@ -6581,6 +6864,10 @@ async function generatePageHTML(description, path, apiKey, env) {
       if (v) dataContext += `\n\nREAL DATA from KV key ${k} (render this exact data, never invent placeholder content):\n${v}`;
     }
   } catch {}
+  // Model is read from KV config (same as every other brain call) - never hardcoded. The page
+  // engine was previously pinned to a model whose access got suspended, which silently broke ALL
+  // page builds; reading config:brain:model keeps it consistent and swappable without a code change.
+  const pageModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -6589,7 +6876,7 @@ async function generatePageHTML(description, path, apiKey, env) {
       "content-type": "application/json"
     },
     body: JSON.stringify({
-      model: "claude-fable-5",
+      model: pageModel,
       max_tokens: 16000,
       system: `You are Aura's page generation engine. Generate complete, production-ready HTML pages.
 
@@ -6862,7 +7149,7 @@ async function callAnthropic(apiKey, payload) {
   return r;
 }
 
-async function llmReply(message, env, sessionId, isOp = false) {
+async function llmReply(message, env, sessionId, isOp = false, callerPta = null) {
   const apiKey = env.ANTHROPIC_API_KEY || await KV.get(env, "secret:anthropic");
   if (!apiKey) return "Anthropic API key not configured.";
 
@@ -6873,7 +7160,24 @@ async function llmReply(message, env, sessionId, isOp = false) {
   const protectedInfra = await env.AURA_KV.get("notes:aura:protected:infrastructure").catch(() => null);
 
   let continuityContext = "";
-  const entityId = sessionId?.startsWith("entity:") ? sessionId.slice(7) : null;
+  let entityId = sessionId?.startsWith("entity:") ? sessionId.slice(7) : null;
+  // VOICE/PHONE: if a caller PTA was passed (from the comms layer), resolve WHO is calling so a known
+  // caller is treated as themselves. The phone-number -> operator-identity mapping is DATA, stored in
+  // KV (identity:operator:phones = JSON object of { "phone:<digits>": "<entityId>" }). The engine here
+  // is generic: look up the caller's identity_key in that map; if present, use the mapped entityId
+  // (e.g. operator); otherwise the caller keeps their own PTA id; unknown stays null (generic).
+  if (!entityId && callerPta) {
+    try {
+      const ent = await env.AURA_MEMORY.prepare("SELECT identity_key FROM pta_entities WHERE id = ?").bind(callerPta).first();
+      const ik = ent && ent.identity_key ? String(ent.identity_key) : "";
+      let mapped = null;
+      if (ik) {
+        const mapRaw = await env.AURA_KV.get("identity:operator:phones").catch(() => null);
+        if (mapRaw) { try { const m = JSON.parse(mapRaw); if (m && m[ik]) mapped = m[ik]; } catch {} }
+      }
+      entityId = mapped || callerPta;
+    } catch { entityId = callerPta; }
+  }
   if (entityId) {
     const events = await getRecentEvents(entityId, env, 8);
     if (events.length > 0) {
@@ -6884,23 +7188,23 @@ async function llmReply(message, env, sessionId, isOp = false) {
 
   const isVoice = sessionId && (sessionId.startsWith("CA") || sessionId.startsWith("sms_") || sessionId.startsWith("T")) && !sessionId.startsWith("entity:");
 
-  // Load operator context for known identity sessions
+  // Load operator context for the configured owner/operator identity (read from KV, not hardcoded).
   let operatorContext = "";
-  if (entityId === "aaron_karacas") {
-    const [progress, autonomy, gameplan] = await Promise.all([
-      KV.get(env, "notes:build:progress:canonical"),
-      KV.get(env, "notes:build:autonomy:canonical"),
-      KV.get(env, "notes:build:gameplan:canonical")
-    ]);
-    operatorContext = `
-
-You are talking to Aaron Karacas, your founder and operator. He built you. Treat him with full operator access and context.
-
-Current build status: ${progress || "unknown"}
-
-Autonomy roadmap: ${autonomy || "unknown"}
-
-Architecture: ${gameplan || "unknown"}`;
+  const ownerIdentity = await env.AURA_KV.get("config:owner:identity").catch(() => null);
+  const ownerName = (await env.AURA_KV.get("config:owner:name").catch(() => null)) || "your operator";
+  if (ownerIdentity && entityId === ownerIdentity) {
+    if (isVoice) {
+      // On the phone: she just needs to KNOW it is the operator and that they have full access. Keep it
+      // tight - answer their questions directly (tasks, build, status), don't read a report.
+      operatorContext = `\n\nYou are speaking with ${ownerName}, your founder and operator, on the phone. They have full operator access. Answer their questions directly and help with whatever they ask - tasks, the build, status, anything. Never tell them they lack access or to check with an operator; they ARE the operator. Current task list: ${currentTasks}`;
+    } else {
+      const [progress, autonomy, gameplan] = await Promise.all([
+        KV.get(env, "notes:build:progress:canonical"),
+        KV.get(env, "notes:build:autonomy:canonical"),
+        KV.get(env, "notes:build:gameplan:canonical")
+      ]);
+      operatorContext = `\n\nYou are talking to ${ownerName}, your founder and operator. They built you. Treat them with full operator access and context.\n\nCurrent build status: ${progress || "unknown"}\n\nAutonomy roadmap: ${autonomy || "unknown"}\n\nArchitecture: ${gameplan || "unknown"}`;
+    }
   }
 
   if (!isVoice) {
@@ -6972,8 +7276,18 @@ Architecture: ${gameplan || "unknown"}`;
   const auraIdentity = await env.AURA_KV.get("notes:aura:identity").catch(() => null);
   const auraOpPrinciple = await env.AURA_KV.get("notes:aura:operating:principle").catch(() => null);
 
+  // Business context for ANY voice caller (including strangers / carrier reviewers asking about the
+  // business). Read from KV (data, not hardcoded). This lets Aura knowledgeably represent the business
+  // - what it is, what its text messages are for - to whoever calls, without confabulating.
+  let voiceBusinessContext = "";
+  if (isVoice) {
+    const bizVoice = await env.AURA_KV.get("config:voice:business_context").catch(() => null);
+    if (bizVoice) voiceBusinessContext = `\n\nAbout the business you represent (use these facts when callers ask who you are or what the messages are for; do not invent beyond this): ${String(bizVoice).slice(0, 1200)}`;
+  }
+
+  const _voiceToday = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
   const sysPrompt = isVoice
-    ? `You are Aura, a voice AI assistant. The current date is June 2026. Strict rules: No markdown, no asterisks, no bullet points, no dashes, no special characters, no emojis. Keep every answer under 2 sentences. Speak naturally as if talking on the phone. Be warm and conversational.${continuityContext}${mem ? `\n\nContext: ${mem.slice(0, 500)}` : ""}`
+    ? `You are Aura, a voice AI assistant. Today is ${_voiceToday}. Strict rules: No markdown, no asterisks, no bullet points, no dashes, no special characters, no emojis. Keep every answer under 2 sentences. Speak naturally as if talking on the phone. Be warm and conversational. IMPORTANT - current-world facts: your training knowledge is older than today's date, so do NOT state who currently holds an office (president, etc.), recent news, live prices, or anything that changes over time as if you know it - that information may be out of date. For those, say plainly you'd want to check rather than give a possibly-outdated answer. Never confidently assert a current officeholder or recent event from memory.${operatorContext}${voiceBusinessContext}${continuityContext}${mem ? `\n\nContext: ${mem.slice(0, 500)}` : ""}`
     : `${auraIdentity || "You are Aura, an intelligent operating system built by Aaron Karacas."}
 
 ${auraOpPrinciple ? auraOpPrinciple.slice(0, 400) : ""}
@@ -7029,7 +7343,19 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
     const brainModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
     const PROT = ["auras.guide", "console.auras.guide", "arksystems.world"];
     const MAX_ROUNDS = 12;
-    for (let round = 0; round < MAX_ROUNDS && raw === null; round++) {
+    // VOICE FAST PATH: on a phone call latency is everything. Skip the multi-round tool agent-loop
+    // entirely - one model call, no tools, short answer. She still has her full context + loaded data
+    // in the system prompt (operator awareness, tasks, etc.), so she answers from what she knows; she
+    // just doesn't pause mid-call to run live tools. This turns 2-4 round-trips into one fast reply.
+    if (isVoice) {
+      const vData = await callAnthropic(apiKey, { model: brainModel, max_tokens: 200, system: claudeSystem, messages: convo });
+      if (vData.ok) {
+        const vText = (vData.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
+        if (vText) raw = vText;
+      }
+      if (raw === null) { agentErr = vData.error || "voice brain returned nothing"; }
+    }
+    for (let round = 0; round < MAX_ROUNDS && raw === null && !isVoice; round++) {
       // On the final allowed round, force a text answer (no tools) so Claude composes from what it gathered
       // instead of requesting more tools and falling through to the fallback brain.
       const forceAnswer = round === MAX_ROUNDS - 1;
@@ -7567,7 +7893,7 @@ async function multiModelConsensus(question, env) {
       });
       const data = await res.json();
       const text = data?.content?.[0]?.text || null;
-      return { model: "claude-fable-5", ok: !!text, response: text, provider: "anthropic" };
+      return { model: "claude-sonnet-4-5", ok: !!text, response: text, provider: "anthropic" };
     })(),
 
     // OpenAI GPT
@@ -7862,11 +8188,12 @@ async function createStripeCheckout(amount, currency, product, successUrl, cance
 async function llmGeneratePage(prompt, env) {
   const apiKey = env.ANTHROPIC_API_KEY || await env.AURA_KV.get("secret:anthropic").catch(() => null);
   if (!apiKey) return null;
+  const lgpModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({
-      model: "claude-fable-5",
+      model: lgpModel,
       max_tokens: 8000,
       messages: [{ role: "user", content: prompt }]
     })
@@ -8062,8 +8389,9 @@ async function watchA2P(env) {
       await env.AURA_KV.put("watch:a2p:last_status", status).catch(() => {});
       // Also log a timeline event so it surfaces in history
       try {
+        const _owner = (await env.AURA_KV.get("config:owner:identity").catch(() => null)) || "system";
         await env.AURA_MEMORY.prepare("INSERT INTO events (session_id, ts, type, body, entity_id, channel, summary) VALUES (?, ?, ?, ?, ?, ?, ?)")
-          .bind("a2p_watch", Date.now(), "a2p_status_change", JSON.stringify(alert), "aaron_karacas", "system", `A2P campaign: ${prev || "none"} -> ${status}`).run();
+          .bind("a2p_watch", Date.now(), "a2p_status_change", JSON.stringify(alert), _owner, "system", `A2P campaign: ${prev || "none"} -> ${status}`).run();
       } catch {}
     }
   } catch {}
@@ -8256,7 +8584,8 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "Content-Type, Authorization, X-Session-ID", "access-control-max-age": "86400" } });
     const isOp = await verifyOperator(request, env);
 
-    if (request.method === "GET" && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/tattoo" && url.pathname !== "/find-artists" && url.pathname !== "/aura-chat" && url.pathname !== "/create-checkout" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/")) {
+    const _homescreenRoot = (url.hostname === "homescreen.world" || url.hostname === "www.homescreen.world") && url.pathname === "/";
+    if (request.method === "GET" && !_homescreenRoot && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/tattoo" && url.pathname !== "/find-artists" && url.pathname !== "/aura-chat" && url.pathname !== "/create-checkout" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/")) {
       const page = await servePage(url.hostname, url.pathname === "/" ? "/" : url.pathname, env);
       if (page) return page;
     }
@@ -8359,6 +8688,216 @@ export default {
       const sp = r && r.payload ? r.payload : r;
       let gp = null; try { const g = await env.AURA_KV.get(`profile:google:${sess.pta}`); if (g) gp = JSON.parse(g); } catch {}
       return jsonReply({ ok: true, authenticated: true, pta: sess.pta, name: sess.name, google: gp, spine: sp && sp.spine ? sp.spine : null });
+    }
+
+    // ===== HOME SCREEN — the one surface a PTA is left holding =====
+    // The finished product, at scale of one: you sign in, the worker resolves YOUR pta from the session,
+    // reads YOUR spine LIVE, and renders your Home Screen. Three things only: your PTA (awareness:
+    // identity, purpose, tasks, timeline), Aura (teammate you can talk to right here), and this surface.
+    // Generic + secure: each person only ever sees their own (session-gated); no identity hardcoded.
+    // Serves at /home on any host, AND at the root of homescreen.world (its real home).
+    const _isHomescreenHost = (url.hostname === "homescreen.world" || url.hostname === "www.homescreen.world");
+    if (url.pathname === "/home" || (_isHomescreenHost && url.pathname === "/")) {
+      const cookie = request.headers.get("cookie") || "";
+      const m = cookie.match(/aura_session=([a-f0-9]+)/);
+      let sess = null; if (m) { try { const r = await env.AURA_KV.get(`session:${m[1]}`); if (r) sess = JSON.parse(r); } catch {} }
+      // LOGGED OUT → show a real front door (not a raw redirect). Auth starts on THIS host so the
+      // session + redirect_uri stay on the same domain the person is actually visiting.
+      if (!sess) {
+        const landing = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"><title>Home Screen</title><style>*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:1.5rem;max-width:480px;margin:0 auto}.glow{width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#a855f7,#ec4899);display:flex;align-items:center;justify-content:center;font-size:2rem;margin-bottom:1.5rem;box-shadow:0 0 40px rgba(168,85,247,0.4)}h1{font-size:2rem;font-weight:800;color:#fff;margin-bottom:0.6rem}p{color:#8888a8;font-size:1rem;line-height:1.5;margin-bottom:2rem;max-width:340px}.btn{display:inline-flex;align-items:center;gap:0.7rem;background:#fff;color:#1a1a1a;font-weight:600;font-size:1rem;padding:0.9rem 1.6rem;border-radius:12px;text-decoration:none;border:none;cursor:pointer}.btn:hover{opacity:0.92}.foot{margin-top:2.5rem;color:#4a4a5a;font-size:0.75rem}</style></head><body>
+<div class="glow">◆</div>
+<h1>Your Home Screen</h1>
+<p>One place where you and Aura meet — what's on your plate, what's next, and your teammate ready to act. Sign in to see yours.</p>
+<a class="btn" href="/auth/google/start"><svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>Continue with Google</a>
+<div class="foot">Aura · PTA · Home Screen</div>
+</body></html>`;
+        return new Response(landing, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+      }
+      const spr = await processCommand(`PTA_SPINE GET ${sess.pta}`, env, true);
+      const spine = (spr && spr.payload && spr.payload.spine) ? spr.payload.spine : null;
+      if (!spine) return new Response("Could not load your Home Screen.", { status: 500 });
+
+      const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const name = esc(spine.identity?.name || sess.name || "You");
+      const firstName = name.split(" ")[0];
+      const role = (tasks => tasks.role)((spine.context?.apps?.tasks) || {}) || "";
+      const tasksObj = (spine.context?.apps?.tasks) || {};
+      const active = Array.isArray(tasksObj.active) ? tasksObj.active : [];
+
+      // Aura's opening line = continuity. Pull the last meaningful thing we were doing from the timeline,
+      // and 1-2 suggested next actions from active tasks. "Hi Sarah, how was Jimmy's party" energy.
+      const meaningful = (Array.isArray(spine.timeline) ? spine.timeline : []).filter(e => e && /person_said|aura_said|held|action|event/.test(e.kind || "")).slice(-4).reverse();
+      let lastThread = "";
+      for (const e of meaningful) { if (e.event && e.event.length > 12) { lastThread = e.event.replace(/^(Aaron said:|Aura replied:|Aura is holding:|Aura built and published a page:)\s*/i, "").replace(/^["']|["']$/g, "").slice(0, 120); break; } }
+      const greet = lastThread
+        ? `Hey ${firstName}. Last time we were on: "${esc(lastThread)}" — want to pick that back up?`
+        : `Hey ${firstName}. What do you want to get into?`;
+      const suggestions = active.slice(0, 3).map(t => esc(t.text || ""));
+
+      // RECENT CONTEXT for the sidebar (recent conversation turns, newest first)
+      const recent = (Array.isArray(spine.timeline) ? spine.timeline : []).filter(e => /person_said|action|event|held/.test(e.kind || "")).slice(-12).reverse().slice(0, 8);
+      const recentLinks = recent.map(e => { const txt = esc((e.event || "").replace(/^(Aaron said:|Aura replied:|Aura is holding:)\s*/i, "").replace(/^["']|["']$/g, "").slice(0, 60)); return `<div onclick="askAura('Continue: ${txt.replace(/'/g, "")}')" style="padding:0.55rem 0.7rem;border-radius:8px;cursor:pointer;color:#b8b8c8;font-size:0.82rem;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" onmouseover="this.style.background='#1a1a24'" onmouseout="this.style.background='transparent'">${txt}</div>`; }).join("");
+
+      // DEEP hamburger rooms (everything else). Operator gets mission-control over the whole world.
+      const roomSets = {
+        operator: ["My Domains","Assets","Money","Customers","Calls","Pages","Systems","Tasks","Explore"],
+        business: ["Customers","Calls","Transactions","Marketing","Revenue","Explore"],
+        person:   ["Photos","Messages","Calendar","Friends","My World","Explore"]
+      };
+      const rooms = roomSets[role === "operator" ? "operator" : (role === "business" ? "business" : "person")];
+      const roomLinks = rooms.map(r => `<div onclick="askAura('Open ${r} — show me my ${r}.')" style="display:flex;align-items:center;gap:0.7rem;padding:0.8rem 1rem;color:#e8e4f0;cursor:pointer;border-radius:8px;font-size:0.95rem" onmouseover="this.style.background='#1a1a24'" onmouseout="this.style.background='transparent'">${esc(r)}</div>`).join("");
+
+      // clean minimal icons (no emoji)
+      const icPlus = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`;
+      const icMic = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4"/></svg>`;
+      const icSend = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>`;
+      const icMenu = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>`;
+
+      const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"><title>Aura — ${name}</title><style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;display:flex;height:100vh;height:100dvh;overflow:hidden}
+a{color:#a855f7}
+/* LEFT SIDEBAR (desktop) */
+.sidebar{width:280px;flex-shrink:0;background:#0c0c12;border-right:1px solid #1a1a24;display:flex;flex-direction:column;overflow:hidden}
+.sb-head{padding:1.1rem 1rem 0.6rem;display:flex;align-items:center;justify-content:space-between}
+.sb-title{font-size:1.05rem;font-weight:800;color:#fff}
+.sb-sec{padding:0.5rem 0.8rem;color:#5a5a6e;font-size:0.68rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-top:0.5rem}
+.sb-scroll{flex:1;overflow-y:auto;padding:0 0.4rem}
+.newbtn{margin:0.4rem 0.8rem 0.6rem;padding:0.7rem 1rem;background:#15151f;border:1px solid #1f1f2e;border-radius:10px;color:#e8e4f0;font-size:0.9rem;cursor:pointer;display:flex;align-items:center;gap:0.6rem;font-weight:600}
+.imgs{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;padding:0.3rem 0.8rem 0.8rem}
+.imgs div{aspect-ratio:1;background:linear-gradient(135deg,#1a1a2e,#2a2a40);border-radius:7px}
+.sb-foot{padding:0.8rem 1rem;border-top:1px solid #1a1a24;font-size:0.78rem;color:#8888a8;display:flex;align-items:center;gap:0.6rem}
+.avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#a855f7,#ec4899);flex-shrink:0}
+/* MAIN */
+.main{flex:1;display:flex;flex-direction:column;min-width:0}
+.topbar{display:flex;align-items:center;gap:0.7rem;padding:0.8rem 1rem;border-bottom:1px solid #14141c}
+.iconbtn{background:none;border:none;color:#9a9ab0;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0.3rem;border-radius:8px}
+.iconbtn:hover{color:#e8e4f0;background:#16161f}
+.menuBtn{display:none}
+.chat{flex:1;overflow-y:auto;padding:1.5rem 1rem;display:flex;flex-direction:column;gap:1rem;max-width:760px;width:100%;margin:0 auto}
+.msg{max-width:90%;line-height:1.5;font-size:0.95rem;animation:fadeIn 0.3s}
+.msg.user{align-self:flex-end;background:#1f1f2e;border-radius:14px;padding:0.7rem 1rem}
+.msg.aura{align-self:flex-start;color:#e8e4f0}
+.msg.aura .lbl{color:#a855f7;font-weight:700;font-size:0.72rem;display:block;margin-bottom:0.3rem}
+.sugg{display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.3rem}
+.sugg button{background:#15151f;border:1px solid #24243a;color:#c8c4d8;font-size:0.82rem;padding:0.5rem 0.85rem;border-radius:18px;cursor:pointer}
+.sugg button:hover{border-color:#a855f7}
+/* COMPOSER */
+.composer{padding:0.8rem 1rem 1.1rem;max-width:760px;width:100%;margin:0 auto}
+.inbar{display:flex;align-items:center;gap:0.5rem;background:#15151f;border:1px solid #24243a;border-radius:26px;padding:0.4rem 0.5rem 0.4rem 0.7rem}
+.inbar input{flex:1;background:none;border:none;color:#e8e4f0;font-size:16px;outline:none;padding:0.4rem}
+.cbtn{width:36px;height:36px;border-radius:50%;border:none;background:none;color:#9a9ab0;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.cbtn:hover{color:#e8e4f0;background:#22222e}
+.cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
+.cbtn.rec{background:#ec4899;color:#fff}
+.attach{font-size:0.8rem;color:#a855f7;padding:0 0.5rem 0.4rem}
+/* DRAWER (deep menu / phone) */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,0.55);opacity:0;pointer-events:none;transition:opacity .25s;z-index:60}
+.scrim.open{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:80%;max-width:340px;background:#0d0d14;border-left:1px solid #1f1f2e;transform:translateX(100%);transition:transform .25s;z-index:70;overflow-y:auto}
+.drawer.open{transform:none}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media(max-width:760px){.sidebar{display:none}.menuBtn{display:flex}}
+</style></head><body>
+
+<!-- LEFT SIDEBAR (desktop) -->
+<aside class="sidebar">
+  <div class="sb-head"><span class="sb-title">Aura</span><span style="font-size:0.65rem;color:#5a5a6e;background:#15151f;padding:0.2rem 0.5rem;border-radius:10px">${role?esc(role):"home"}</span></div>
+  <div class="newbtn" onclick="newChat()">${icPlus}<span>New conversation</span></div>
+  <div class="sb-scroll">
+    <div class="sb-sec">Recent</div>
+    ${recentLinks || '<div style="padding:0.5rem 0.7rem;color:#5a5a6e;font-size:0.82rem">Nothing yet</div>'}
+    <div class="sb-sec">Images</div>
+    <div class="imgs"><div></div><div></div><div></div><div></div><div></div><div></div></div>
+  </div>
+  <div class="sb-foot"><div class="avatar"></div><span>${name}</span></div>
+</aside>
+
+<!-- DEEP DRAWER (everything else) -->
+<div class="scrim" id="scrim" onclick="toggleMenu()"></div>
+<div class="drawer" id="drawer">
+  <div style="padding:1.2rem 1rem;border-bottom:1px solid #1f1f2e"><div style="font-size:1.1rem;font-weight:800;color:#fff">Your world</div><div style="color:#6b6b8a;font-size:0.8rem;margin-top:0.2rem">${role?esc(role):"everything"}</div></div>
+  <div style="padding:0.5rem">${roomLinks}</div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="topbar">
+    <button class="iconbtn menuBtn" onclick="toggleMenu()">${icMenu}</button>
+    <div style="flex:1;font-weight:700;color:#fff">Home</div>
+    <button class="iconbtn" onclick="toggleMenu()" title="Your world">${icMenu}</button>
+  </div>
+  <div class="chat" id="chatArea">
+    <div class="msg aura"><span class="lbl">AURA</span>${greet}
+      ${suggestions.length ? `<div class="sugg">${suggestions.map(s => `<button onclick="askAura('${s.replace(/'/g, "")}')">${s}</button>`).join("")}</div>` : ""}
+    </div>
+  </div>
+  <div class="composer">
+    <div class="attach" id="attachRow" style="display:none"></div>
+    <div class="inbar">
+      <input type="file" id="fileInput" style="display:none" onchange="onFile(this)">
+      <button class="cbtn" onclick="document.getElementById('fileInput').click()" title="Attach">${icPlus}</button>
+      <button class="cbtn" id="micBtn" onclick="toggleMic()" title="Speak">${icMic}</button>
+      <input id="chatInput" placeholder="Message Aura..." onkeydown="if(event.key==='Enter')sendMsg()">
+      <button class="cbtn send" onclick="sendMsg()" title="Send">${icSend}</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function toggleMenu(){document.getElementById('drawer').classList.toggle('open');document.getElementById('scrim').classList.toggle('open')}
+function newChat(){document.getElementById('chatArea').innerHTML='<div class="msg aura"><span class="lbl">AURA</span>Fresh start, ${firstName}. What do you want to get into?</div>'}
+function addMsg(t,who){const d=document.createElement('div');d.className='msg '+who;if(who==='aura')d.innerHTML='<span class="lbl">AURA</span>'+t.replace(/\\n/g,'<br>');else d.textContent=t;document.getElementById('chatArea').appendChild(d);const c=document.getElementById('chatArea');c.scrollTop=c.scrollHeight}
+let _file=null;
+function onFile(inp){const f=inp.files[0];if(!f)return;_file={name:f.name,type:f.type,size:f.size};const r=new FileReader();r.onload=()=>{_file.dataUrl=r.result};r.readAsDataURL(f);const row=document.getElementById('attachRow');row.style.display='block';row.innerHTML='Attached: '+f.name+' <span style="color:#6b6b8a;cursor:pointer" onclick="clearFile()">✕</span>'}
+function clearFile(){_file=null;document.getElementById('fileInput').value='';const row=document.getElementById('attachRow');row.style.display='none';row.innerHTML=''}
+function askAura(t){if(document.getElementById('drawer').classList.contains('open'))toggleMenu();document.getElementById('chatInput').value=t;sendMsg()}
+async function sendMsg(){const inp=document.getElementById('chatInput');const m=inp.value.trim();if(!m&&!_file)return;inp.value='';addMsg((m||'')+(_file?(' · '+_file.name):''),'user');const payload={message:m};if(_file)payload.file=_file;clearFile();const ld=document.createElement('div');ld.className='msg aura';ld.id='ld';ld.innerHTML='<span class="lbl">AURA</span><span style="color:#6b6b8a">…</span>';document.getElementById('chatArea').appendChild(ld);try{const r=await fetch('/home/talk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const el=document.getElementById('ld');if(el)el.remove();const d=await r.json();if(d.ok)addMsg(d.reply,'aura');else addMsg('Trouble connecting.','aura');if(d.refresh)setTimeout(()=>location.reload(),1200)}catch(e){const el=document.getElementById('ld');if(el)el.remove();addMsg('Connection error.','aura')}}
+let _rec=null,_recOn=false;
+function toggleMic(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){addMsg("Your browser doesn't support voice — try typing.","aura");return}if(_recOn){_rec&&_rec.stop();return}_rec=new SR();_rec.lang='en-US';_rec.interimResults=true;_rec.continuous=false;const btn=document.getElementById('micBtn');btn.classList.add('rec');_recOn=true;_rec.onresult=(e)=>{let txt='';for(let i=0;i<e.results.length;i++)txt+=e.results[i][0].transcript;document.getElementById('chatInput').value=txt};_rec.onerror=()=>{};_rec.onend=()=>{btn.classList.remove('rec');_recOn=false;if(document.getElementById('chatInput').value.trim())sendMsg()};_rec.start()}
+</script>
+</body></html>`;
+      return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+    }
+
+    // Home Screen Aura teammate — talks to HOME mode AS the logged-in PTA (session-gated, own PTA only).
+    if (url.pathname === "/home/talk" && request.method === "POST") {
+      const cookie = request.headers.get("cookie") || "";
+      const m = cookie.match(/aura_session=([a-f0-9]+)/);
+      if (!m) return jsonReply({ ok: false, error: "not authenticated" });
+      let sess = null; try { const r = await env.AURA_KV.get(`session:${m[1]}`); if (r) sess = JSON.parse(r); } catch {}
+      if (!sess) return jsonReply({ ok: false, error: "not authenticated" });
+      let body = {}; try { body = await request.json(); } catch {}
+      let msg = (body.message || "").toString();
+      // Optional attached file. Real document-ingestion (parse + absorb into PTA) is the next engine;
+      // for now we tell Aura a file arrived (name/type) and, for text-like files, include its text so
+      // she can react to the content end-to-end.
+      if (body.file && body.file.name) {
+        const f = body.file;
+        let extracted = "";
+        try {
+          if (f.dataUrl && typeof f.dataUrl === "string" && f.dataUrl.includes(",")) {
+            const b64 = f.dataUrl.split(",")[1];
+            const isTextish = /text\/|application\/json|csv|markdown/.test(f.type || "") || /\.(txt|md|csv|json)$/i.test(f.name);
+            if (isTextish && b64) {
+              const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+              extracted = new TextDecoder("utf-8").decode(bytes).slice(0, 12000);
+            }
+          }
+        } catch {}
+        const noteParts = [`[The person attached a file: "${f.name}" (${f.type || "unknown type"}).`];
+        if (extracted) noteParts.push(`Its text content is:\n${extracted}`);
+        else noteParts.push(`I cannot read this file type's contents yet — acknowledge receipt and ask what they'd like done with it.`);
+        noteParts.push("]");
+        msg = (msg ? msg + "\n\n" : "") + noteParts.join("\n");
+      }
+      if (!msg) return jsonReply({ ok: false, error: "empty" });
+      const talkCmd = "PTA_TALK " + JSON.stringify({ pta_entity: sess.pta, mode: "home", message: msg });
+      const r = await processCommand(talkCmd, env, true);
+      const p = r && r.payload ? r.payload : {};
+      const refresh = !!(p.page_built || p.remembered || (p.reminder_actions_applied && p.reminder_actions_applied.length));
+      return jsonReply({ ok: !!p.ok, reply: p.reply || "…", refresh });
     }
 
 
@@ -9149,7 +9688,7 @@ export default {
         try {
           await env.AURA_MEMORY.prepare(
             "INSERT INTO events (session_id, ts, type, body, entity_id, channel, summary) VALUES (?, ?, ?, ?, ?, ?, ?)"
-          ).bind("claim_" + id, Date.now(), "business_claim", JSON.stringify(record), "aaron_karacas", source, `Claim: ${name} by ${email}`).run();
+          ).bind("claim_" + id, Date.now(), "business_claim", JSON.stringify(record), ((await env.AURA_KV.get("config:owner:identity").catch(() => null)) || "system"), source, `Claim: ${name} by ${email}`).run();
         } catch {}
         // Verification code: stored server-side, delivered out-of-band (email/SMS when senders are live;
         // operator console or Aura voice call today). Expires in 24h via KV TTL.
@@ -9195,7 +9734,7 @@ export default {
         try {
           await env.AURA_MEMORY.prepare(
             "INSERT INTO events (session_id, ts, type, body, entity_id, channel, summary) VALUES (?, ?, ?, ?, ?, ?, ?)"
-          ).bind("claim_" + id, Date.now(), "business_verified", JSON.stringify(rec), "aaron_karacas", rec.source || "highguide.world", `Verified: ${rec.business}`).run();
+          ).bind("claim_" + id, Date.now(), "business_verified", JSON.stringify(rec), ((await env.AURA_KV.get("config:owner:identity").catch(() => null)) || "system"), rec.source || "highguide.world", `Verified: ${rec.business}`).run();
         } catch {}
         return jsonReply({ ok: true, id, status: "verified", dashboard: "https://auras.guide/dashboard?id=" + id, message: "Ownership verified. Welcome to " + (rec.source || "HighGuide") + ". Your dashboard: https://auras.guide/dashboard?id=" + id });
       } catch (e) {
@@ -9246,13 +9785,34 @@ export default {
 
       const sessionId = request.headers.get("x-session-id") || "default";
 
-      const lines = body.split("\n").map(l => l.trim()).filter(Boolean);
+      // VALUE-BEARING COMMANDS: a few commands take an argument that can legitimately contain
+      // newlines (e.g. SETKV storing a multi-paragraph note). For those, the whole body IS one
+      // command - we must NOT split on "\n" and treat each stray paragraph as its own line, or
+      // the non-command lines fall through to llmReply() and wake the brain (20-60s hangs, stray
+      // "task added" essays). Detect a single leading value-bearing verb and pass the entire body
+      // through as ONE deterministic command. Multi-command batches (one cmd per line) are untouched.
+      const _firstWord = (body.trim().split(/\s+/)[0] || "").toUpperCase();
+      const _VALUE_BEARING = ["SETKV", "DELKV"];
+      const lines = _VALUE_BEARING.includes(_firstWord)
+        ? [body.trim()]
+        : body.split("\n").map(l => l.trim()).filter(Boolean);
       const results = [];
+
+      // INTERNAL WORKER AUTH (least privilege): aura-comms and other internal workers call over the
+      // service binding with "Bearer aura-comms-internal". That bearer is NOT the operator token, so
+      // it is NOT full operator. But a few safe, internal-only commands (e.g. PTA_PHONE birthing a
+      // caller's identity) must work from the comms worker. Allow ONLY those specific commands - never
+      // blanket operator - so a compromised comms worker can't deploy code, read secrets, etc.
+      const _authHeader = request.headers.get("authorization") || "";
+      const _isInternal = _authHeader === "Bearer aura-comms-internal";
+      const INTERNAL_ALLOWED = ["PTA_PHONE"];
 
       for (const line of lines) {
         if (line.toUpperCase().startsWith("HOST ")) continue;
 
-        const result = await processCommand(line, env, isOp);
+        const _cmdWord = (line.split(/\s+/)[0] || "").toUpperCase();
+        const _effIsOp = isOp || (_isInternal && INTERNAL_ALLOWED.includes(_cmdWord));
+        const result = await processCommand(line, env, _effIsOp);
 
         if (result) {
           results.push(result);
@@ -9263,7 +9823,7 @@ export default {
             if (cmd === "PING") return jsonReply({ ok: true, reply: result.payload });
           }
         } else {
-          const reply = await llmReply(line, env, sessionId, isOp);
+          const reply = await llmReply(line, env, sessionId, isOp, request.headers.get("x-pta-entity") || null);
           if (lines.length === 1) return jsonReply({ ok: true, reply });
           results.push({ cmd: "LLM", payload: { reply } });
         }

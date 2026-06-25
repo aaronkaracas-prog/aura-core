@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.121-2026-06-25";
+const BUILD = "aura-core-v4.9.122-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -755,6 +755,13 @@ async function processCommand(line, env, isOp) {
       if (!q) return { cmd: "WEB_SEARCH", payload: { ok: false, error: "empty query" } };
       const sr = await webSearch(q, env);
       return { cmd: "WEB_SEARCH", payload: sr };
+    }
+
+    case "SHOW_IT": {
+      const subject = line.replace(/^SHOW_IT\s+/i, "").trim();
+      if (!subject) return { cmd: "SHOW_IT", payload: { ok: false, error: "Usage: SHOW_IT <what to show>" } };
+      const r = await showIt(subject, env, { source: "show_it_cmd" });
+      return { cmd: "SHOW_IT", payload: r };
     }
 
     case "DELKV": {
@@ -7691,7 +7698,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
   }
   try {
     const cmdLines = raw.split("\n");
-    const cmdPattern = /^(SETKV|GETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|RELAUNCH_ALL|EVENT_STORM|EVENT_STORM_REAL|READ_STORM|ENDURANCE|INTEGRITY_SCAN|DO_TEST|DO_STORM|DO_VERIFY|COLD_SURGE|SURGE_PROBE|FANOUT_STORM|HOT_ENTITY|HOT_SHARDED|GENERATE_IMAGE|RESOURCE_STATUS|CLOUDFLARE_STATUS|WORLD_MAP|LOADGEN|LOADTEST_APPEND|PLANT_INCONSISTENCY|LOOP_PROBE|STORM_CLEANUP|DEPLOY_CONSOLE|MERCURY_BALANCE|STRIPE_BALANCE|DOMAIN_STATUS|FETCH_PLACES|DEPLOY_HIGHGUIDE|PING)(\s+.*)?$/;
+    const cmdPattern = /^(SETKV|GETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|RELAUNCH_ALL|EVENT_STORM|EVENT_STORM_REAL|READ_STORM|ENDURANCE|INTEGRITY_SCAN|DO_TEST|DO_STORM|DO_VERIFY|COLD_SURGE|SURGE_PROBE|FANOUT_STORM|HOT_ENTITY|HOT_SHARDED|GENERATE_IMAGE|SHOW_IT|RESOURCE_STATUS|CLOUDFLARE_STATUS|WORLD_MAP|LOADGEN|LOADTEST_APPEND|PLANT_INCONSISTENCY|LOOP_PROBE|STORM_CLEANUP|DEPLOY_CONSOLE|MERCURY_BALANCE|STRIPE_BALANCE|DOMAIN_STATUS|FETCH_PLACES|DEPLOY_HIGHGUIDE|PING)(\s+.*)?$/;
     const results = [];
     for (const ln of cmdLines) {
       const trimmed = ln.trim();
@@ -8527,6 +8534,18 @@ async function auraGenerateImage(prompt, env, opts = {}) {
 // design queue, and emails the artist. Used by /aura-chat (gate-off path) and by
 // /confirm-payment (gate-on path, after the customer pays). Single source of truth
 // so both paths deliver identically.
+// SHOW IT — Aura's universal visual verb. Everywhere she lives, when a moment is better shown
+// than told, she reaches for this. Wraps her image engine so "show it" is ONE capability surfaced
+// anywhere, not separate wirings. She decides WHEN to show; this is the hand she shows it WITH.
+async function showIt(subject, env, opts = {}) {
+  const want = (subject || "").trim();
+  if (!want) return { ok: false, error: "nothing to show" };
+  const prompt = opts.raw ? want : `${want}. High quality, visually striking, well-composed, detailed.`;
+  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null });
+  if (!result || !result.ok) return { ok: false, error: result ? result.error : "generation failed" };
+  return { ok: true, id: result.id, image_url: result.image_url || `https://auras.guide/image/${result.id}`, showed: want };
+}
+
 async function auraDeliverDesign(env, { sessionId, prompt, concept, shop, artist, context }) {
   const imgResult = await auraGenerateImage(prompt, env, { source: "aura-deliver", session: sessionId });
   if (!imgResult || !imgResult.ok) return { ok: false, error: imgResult ? imgResult.error : "generation failed" };

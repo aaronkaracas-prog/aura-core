@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.120-SELFEDIT-2026-06-25";
+const BUILD = "aura-core-v4.9.121-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment

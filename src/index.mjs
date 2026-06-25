@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.139-2026-06-25";
+const BUILD = "aura-core-v4.9.140-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8701,6 +8701,39 @@ export default {
     const isOp = await verifyOperator(request, env);
 
     const _homescreenRoot = (url.hostname === "homescreen.world" || url.hostname === "www.homescreen.world") && url.pathname === "/";
+
+    // ============ /lab - CLEAN INSTALL TEST SURFACE ============
+    // A virgin, login-free, never-cached page for proving the installed-PWA pipeline from zero.
+    // No session, no grid, no brain - the only variables are: does a fresh install load live code,
+    // does its JavaScript run in standalone, and does it self-update. Everything is no-store so it
+    // can never freeze. Install /lab to the home screen and read the three big lines it shows.
+    if (url.pathname === "/lab/ping") {
+      return new Response(JSON.stringify({ ok: true, build: BUILD, ts: new Date().toISOString() }), {
+        headers: { "Content-Type": "application/json", "Cache-Control": "no-cache, no-store, must-revalidate" }
+      });
+    }
+    if (url.pathname === "/lab/manifest") {
+      const mani = { name: "Aura Lab", short_name: "Lab", start_url: "/lab", display: "standalone", background_color: "#0a0a0f", theme_color: "#0a0a0f", icons: [{ src: "/image/aura-icon-192", sizes: "192x192", type: "image/png" }, { src: "/image/aura-icon-512", sizes: "512x512", type: "image/png" }] };
+      return new Response(JSON.stringify(mani), { headers: { "Content-Type": "application/manifest+json", "Cache-Control": "no-cache, no-store, must-revalidate" } });
+    }
+    if (url.pathname === "/lab") {
+      const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"><title>Aura Lab</title>
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Lab"><meta name="mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0a0a0f"><link rel="manifest" href="/lab/manifest">
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-serif;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:1.5rem;gap:1.4rem}.lab{font-size:1rem;letter-spacing:0.3em;color:#a855f7;font-weight:700}.big{font-size:2.4rem;font-weight:800;color:#fff;font-family:monospace}.row{font-size:1.1rem;font-family:monospace;padding:0.5rem 1rem;border-radius:10px;background:#16161f}.ok{color:#34d399}.bad{color:#f87171}.muted{color:#6b6b8a;font-size:0.85rem;max-width:340px;line-height:1.5}</style></head><body>
+<div class="lab">AURA LAB</div>
+<div class="big">HTML: ${BUILD.replace("aura-core-", "")}</div>
+<div class="row" id="js"><span class="bad">JS: did not run</span></div>
+<div class="row" id="ping"><span class="muted">PING: fetching…</span></div>
+<div class="muted">If you see green on both lines, the installed app loaded live code AND its JavaScript ran AND it reached the network. That's the whole pipeline, proven.</div>
+<script>
+document.getElementById('js').innerHTML='<span class="ok">JS: ran &#10003;</span>';
+fetch('/lab/ping',{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){document.getElementById('ping').innerHTML='<span class="ok">PING: live '+(d.build||'').replace('aura-core-','')+' &#10003;</span>';}).catch(function(e){document.getElementById('ping').innerHTML='<span class="bad">PING failed: '+e+'</span>';});
+if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').then(function(reg){reg.update();}).catch(function(){});var refreshing=false;navigator.serviceWorker.addEventListener('controllerchange',function(){if(refreshing)return;refreshing=true;window.location.reload();});}
+</script>
+</body></html>`;
+      return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" } });
+    }
+
     if (request.method === "GET" && !_homescreenRoot && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/tattoo" && url.pathname !== "/find-artists" && url.pathname !== "/aura-chat" && url.pathname !== "/create-checkout" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/")) {
       const page = await servePage(url.hostname, url.pathname === "/" ? "/" : url.pathname, env);
       if (page) return page;
@@ -8905,7 +8938,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.139</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.140</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9008,7 +9041,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.rec{background:#ec4899;color:#fff}
 .install{display:none;align-items:center;gap:0.5rem;font-size:0.8rem;color:#a855f7;padding:0.5rem 1rem;cursor:pointer;justify-content:center}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.139</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.140</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">

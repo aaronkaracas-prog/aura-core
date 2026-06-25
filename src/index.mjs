@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.123-2026-06-25";
+const BUILD = "aura-core-v4.9.124-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8701,7 +8701,7 @@ export default {
     const isOp = await verifyOperator(request, env);
 
     const _homescreenRoot = (url.hostname === "homescreen.world" || url.hostname === "www.homescreen.world") && url.pathname === "/";
-    if (request.method === "GET" && !_homescreenRoot && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/tattoo" && url.pathname !== "/find-artists" && url.pathname !== "/aura-chat" && url.pathname !== "/create-checkout" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/")) {
+    if (request.method === "GET" && !_homescreenRoot && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/tattoo" && url.pathname !== "/find-artists" && url.pathname !== "/aura-chat" && url.pathname !== "/create-checkout" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/")) {
       const page = await servePage(url.hostname, url.pathname === "/" ? "/" : url.pathname, env);
       if (page) return page;
     }
@@ -8840,6 +8840,22 @@ export default {
     // Generic + secure: each person only ever sees their own (session-gated); no identity hardcoded.
     // Serves at /home on any host, AND at the root of homescreen.world (its real home).
     const _isHomescreenHost = (url.hostname === "homescreen.world" || url.hostname === "www.homescreen.world");
+    if (url.pathname === "/manifest.webmanifest") {
+      const mani = {
+        name: "Aura Home Screen",
+        short_name: "Aura",
+        start_url: "/home",
+        display: "standalone",
+        background_color: "#0a0a0f",
+        theme_color: "#0a0a0f",
+        icons: [
+          { src: "/image/aura-icon-192", sizes: "192x192", type: "image/png" },
+          { src: "/image/aura-icon-512", sizes: "512x512", type: "image/png" }
+        ]
+      };
+      return new Response(JSON.stringify(mani), { headers: { "Content-Type": "application/manifest+json", "cache-control": "no-store" } });
+    }
+
     if (url.pathname === "/home" || (_isHomescreenHost && url.pathname === "/")) {
       const cookie = request.headers.get("cookie") || "";
       const m = cookie.match(/aura_session=([a-f0-9]+)/);
@@ -8905,7 +8921,14 @@ export default {
       const appGrid = apps.map(function(a){return '<div class="app" onclick="askAura(\'Open '+a.n+'\')"><div class="appicon" style="background:'+a.c+'">'+a.n.charAt(0)+'</div><div class="applabel">'+a.n+'</div></div>';}).join("");
       const suggestionsHtml = suggestions.length ? ('<div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.5rem">' + suggestions.map(function(s){return '<button onclick="askAura(\''+s.replace(/'/g,"")+'\')" style="background:#15151f;border:1px solid #24243a;color:#c8c4d8;font-size:0.82rem;padding:0.5rem 0.85rem;border-radius:18px;cursor:pointer">'+s+'</button>';}).join("") + '</div>') : "";
 
-      const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"><title>Home — ${name}</title><style>
+      const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"><title>Home — ${name}</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Aura">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0a0a0f">
+<link rel="manifest" href="/manifest.webmanifest">
+<style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
 body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden}
@@ -8968,12 +8991,11 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
     <div class="orb"></div>
     <div class="greettext">${greet}</div>
   </div>
-  <div class="inbar">
-    <input type="file" id="fileInput" style="display:none" onchange="onFile(this)">
-    <button class="cbtn" onclick="document.getElementById('fileInput').click()" title="Attach">${icPlus}</button>
-    <button class="cbtn" id="micBtn" onclick="openChat();toggleMic()" title="Speak">${icMic}</button>
-    <input id="homeInput" placeholder="Talk to Aura..." onfocus="openChat()" onkeydown="if(event.key==='Enter'){openChat();document.getElementById('chatInput').value=this.value;this.value='';sendMsg()}">
-    <button class="cbtn send" onclick="openChat();var v=document.getElementById('homeInput');document.getElementById('chatInput').value=v.value;v.value='';sendMsg()" title="Send">${icSend}</button>
+  <div class="inbar" onclick="openChat();setTimeout(function(){var c=document.getElementById('chatInput');if(c)c.focus()},100)">
+    <button class="cbtn" title="Attach">${icPlus}</button>
+    <button class="cbtn" id="micBtn" onclick="event.stopPropagation();openChat();setTimeout(toggleMic,150)" title="Speak">${icMic}</button>
+    <input placeholder="Talk to Aura..." readonly style="cursor:pointer">
+    <button class="cbtn send" title="Open">${icSend}</button>
   </div>
 </div>
 

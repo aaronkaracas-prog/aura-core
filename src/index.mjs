@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.124-2026-06-25";
+const BUILD = "aura-core-v4.9.125-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8931,13 +8931,13 @@ export default {
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
-body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden}
+body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;display:flex;flex-direction:column;min-height:100vh}
 /* TOP BAR */
 .htop{display:flex;align-items:center;justify-content:space-between;padding:0.9rem 1.1rem 0.5rem}
 .hmenu{background:none;border:none;color:#9a9ab0;cursor:pointer;display:flex;padding:0.3rem}
 .htitle{font-weight:700;color:#fff;font-size:1.05rem}
 /* SCROLL AREA */
-.hscroll{flex:1;overflow-y:auto;padding:0.3rem 1.1rem 1rem}
+.hscroll{padding:0.3rem 1.1rem 1rem}
 .sec{color:#6b6b8a;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin:1.2rem 0.2rem 0.7rem}
 /* APP GRID (their habits) */
 .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem 0.6rem}
@@ -8945,7 +8945,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 .appicon{width:60px;height:60px;border-radius:15px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.4rem;color:#cfcfe0;border:1px solid #20202c}
 .applabel{font-size:0.72rem;color:#c8c8d8}
 /* AURA CONSOLE (bottom - the wedge) */
-.console{flex-shrink:0;border-top:1px solid #16161f;background:#0c0c12;padding:0.8rem 1rem 1.1rem}
+.console{position:sticky;bottom:0;border-top:1px solid #16161f;background:#0c0c12;padding:0.8rem 1rem 1.1rem}
 .greet{display:flex;gap:0.7rem;align-items:flex-start;margin-bottom:0.7rem;cursor:pointer}
 .orb{width:42px;height:42px;border-radius:50%;flex-shrink:0;background:radial-gradient(circle at 35% 30%,#c084fc,#7c3aed 60%,#3b0764);box-shadow:0 0 18px rgba(168,85,247,0.45)}
 .greettext{font-size:0.9rem;line-height:1.4;color:#d8d4e8}

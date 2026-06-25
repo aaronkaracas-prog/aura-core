@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.127-2026-06-25";
+const BUILD = "aura-core-v4.9.128-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8915,6 +8915,73 @@ document.getElementById('mic').onclick=function(){var SR=window.SpeechRecognitio
         ]
       };
       return new Response(JSON.stringify(mani), { headers: { "Content-Type": "application/manifest+json", "cache-control": "no-store" } });
+    }
+
+    // ============ PWA APP SHELL (homescreen.world root) ============
+    // The installable "phone thing." homescreen.world/ IS the app: tap "Add to Home Screen",
+    // it installs full-screen like a native app, persistent session, one front door.
+    // Built fetch-don't-inject: static shell, greeting + chat fetched after load. Cannot break.
+    // First milestone: wraps the PROVEN chat. Home Screen layout comes after the shell is locked.
+    if (_isHomescreenHost && url.pathname === "/") {
+      const cookie = request.headers.get("cookie") || "";
+      const m = cookie.match(/aura_session=([a-f0-9]+)/);
+      let signedIn = false;
+      if (m) { try { const r = await env.AURA_KV.get(`session:${m[1]}`); if (r) signedIn = true; } catch {} }
+      // Not signed in -> clean front door with Google sign-in (auth stays on this host).
+      if (!signedIn) {
+        const landing = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"><title>Aura</title>
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Aura"><meta name="mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0a0a0f"><link rel="manifest" href="/manifest.webmanifest">
+<style>*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-serif;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:1.5rem}.orb{width:84px;height:84px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#c084fc,#7c3aed 60%,#3b0764);box-shadow:0 0 50px rgba(168,85,247,0.5);margin-bottom:1.6rem}h1{font-size:2rem;font-weight:800;color:#fff;margin-bottom:0.6rem}p{color:#8888a8;font-size:1rem;line-height:1.5;margin-bottom:2rem;max-width:320px}.btn{display:inline-flex;align-items:center;gap:0.7rem;background:#fff;color:#1a1a1a;font-weight:600;font-size:1rem;padding:0.9rem 1.6rem;border-radius:12px;text-decoration:none;border:none;cursor:pointer}</style></head><body>
+<div class="orb"></div><h1>Aura</h1><p>The assistant who actually remembers you. Sign in and pick up right where you left off.</p>
+<a class="btn" href="/auth/google/start"><svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>Continue with Google</a>
+</body></html>`;
+        return new Response(landing, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+      }
+      // Signed in -> the APP SHELL: full-screen chat, installable, persistent. Zero injection.
+      const shell = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover,user-scalable=no"><title>Aura</title>
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Aura"><meta name="mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0a0a0f"><link rel="manifest" href="/manifest.webmanifest">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-serif;display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden}
+.head{display:flex;align-items:center;gap:0.6rem;padding:calc(env(safe-area-inset-top) + 0.9rem) 1.1rem 0.9rem;border-bottom:1px solid #16161f;flex-shrink:0}
+.orb{width:34px;height:34px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#c084fc,#7c3aed 60%,#3b0764);box-shadow:0 0 14px rgba(168,85,247,0.45)}
+.htitle{font-weight:700;color:#fff}
+.chat{flex:1;overflow-y:auto;padding:1.2rem 1rem;display:flex;flex-direction:column;gap:1rem}
+.msg{max-width:88%;line-height:1.5;font-size:0.95rem}
+.msg.user{align-self:flex-end;background:#1f1f2e;border-radius:14px;padding:0.7rem 1rem}
+.msg.aura{align-self:flex-start;color:#e8e4f0}
+.msg.aura .lbl{color:#a855f7;font-weight:700;font-size:0.72rem;display:block;margin-bottom:0.3rem}
+.composer{flex-shrink:0;background:#0c0c12;border-top:1px solid #16161f;padding:0.8rem 1rem calc(env(safe-area-inset-bottom) + 1rem)}
+.inbar{display:flex;align-items:center;gap:0.5rem;background:#15151f;border:1px solid #24243a;border-radius:26px;padding:0.4rem 0.5rem 0.4rem 0.9rem}
+.inbar input{flex:1;background:none;border:none;color:#e8e4f0;font-size:16px;outline:none;padding:0.5rem 0}
+.cbtn{width:40px;height:40px;border-radius:50%;border:none;background:none;color:#9a9ab0;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1.2rem}
+.cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
+.cbtn.rec{background:#ec4899;color:#fff}
+.install{display:none;align-items:center;gap:0.5rem;font-size:0.8rem;color:#a855f7;padding:0.5rem 1rem;cursor:pointer;justify-content:center}
+</style></head><body>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div></div>
+<div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
+<div class="install" id="install">Add Aura to your home screen ↓</div>
+<div class="composer"><div class="inbar">
+  <button class="cbtn" id="mic" title="Speak">&#127908;</button>
+  <input id="inp" placeholder="Talk to Aura..." autocomplete="off">
+  <button class="cbtn send" id="send" title="Send">&#8594;</button>
+</div></div>
+<script>
+var chat=document.getElementById('chat'),inp=document.getElementById('inp');
+function add(t,who){var d=document.createElement('div');d.className='msg '+who;if(who==='aura'){var l=document.createElement('span');l.className='lbl';l.textContent='AURA';d.appendChild(l);d.appendChild(document.createTextNode(t));}else{d.textContent=t;}chat.appendChild(d);chat.scrollTop=chat.scrollHeight;}
+fetch('/home/greet').then(function(r){return r.json();}).then(function(d){document.getElementById('greet').textContent=d.greet||'Hey. What do you want to get into?';}).catch(function(){document.getElementById('greet').textContent='Hey. What do you want to get into?';});
+function send(){var m=inp.value.trim();if(!m)return;inp.value='';add(m,'user');var ld=document.createElement('div');ld.className='msg aura';ld.id='ld';ld.textContent='…';chat.appendChild(ld);chat.scrollTop=chat.scrollHeight;fetch('/home/talk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:m})}).then(function(r){return r.json();}).then(function(d){var e=document.getElementById('ld');if(e)e.remove();add(d.ok?d.reply:'Trouble connecting.','aura');}).catch(function(){var e=document.getElementById('ld');if(e)e.remove();add('Connection error.','aura');});}
+document.getElementById('send').onclick=send;
+inp.addEventListener('keydown',function(e){if(e.key==='Enter')send();});
+var rec=null,recOn=false;
+document.getElementById('mic').onclick=function(){var SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){add("Voice not supported here — type instead.","aura");return;}if(recOn){rec&&rec.stop();return;}rec=new SR();rec.lang='en-US';rec.interimResults=true;rec.continuous=false;recOn=true;this.classList.add('rec');var btn=this;rec.onresult=function(e){var t='';for(var i=0;i<e.results.length;i++)t+=e.results[i][0].transcript;inp.value=t;};rec.onend=function(){recOn=false;btn.classList.remove('rec');if(inp.value.trim())send();};rec.start();};
+// PWA install prompt (Android/Chrome). iOS uses Share > Add to Home Screen manually.
+var deferredPrompt=null;
+window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();deferredPrompt=e;var ib=document.getElementById('install');ib.style.display='flex';ib.onclick=function(){deferredPrompt.prompt();deferredPrompt=null;ib.style.display='none';};});
+</script>
+</body></html>`;
+      return new Response(shell, { headers: { "Content-Type": "text/html; charset=utf-8" } });
     }
 
     if (url.pathname === "/home" || (_isHomescreenHost && url.pathname === "/")) {

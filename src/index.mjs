@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.181-2026-06-26";
+const BUILD = "aura-core-v4.9.183-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -921,14 +921,14 @@ async function processCommand(line, env, isOp) {
     case "AURA_PAY_CHECKOUT": {
       const parts = line.trim().split(/\s+/);
       const amount = parseFloat(parts[1]) || 0;
-      const product = parts.slice(2).join(" ") || "Aura Pay";
+      const product = parts.slice(2).join(" ") || "Payment";
       if (!amount) return { cmd: "AURA_PAY_CHECKOUT", payload: { ok: false, error: "AURA_PAY_CHECKOUT <amount> <product>" } };
       return { cmd: "AURA_PAY_CHECKOUT", payload: await createStripeCheckout(amount, "usd", product, null, null, env) };
     }
     case "AURA_PAY_INTENT": {
       const parts = line.trim().split(/\s+/);
       const amount = parseFloat(parts[1]) || 0;
-      const description = parts.slice(2).join(" ") || "Aura Pay";
+      const description = parts.slice(2).join(" ") || "Payment";
       if (!amount) return { cmd: "AURA_PAY_INTENT", payload: { ok: false, error: "AURA_PAY_INTENT <amount> <description>" } };
       return { cmd: "AURA_PAY_INTENT", payload: await createPaymentIntent(amount, "usd", description, {}, env) };
     }
@@ -5768,169 +5768,62 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     }
 
     // ═══════════════════════════════════════════════════════════
-    // AURAPAY — Universal payment layer. Wraps Stripe completely.
-    // No one ever sees Stripe. AuraPay is the face.
     // ═══════════════════════════════════════════════════════════
 
-    case "AURAPAY": {
-      if (!isOp) return { cmd: "AURAPAY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      const sub = (args[0] || "").toUpperCase();
-      let stripeKey = await env.AURA_KV.get("secret:stripe").catch(() => null);
-      if (!stripeKey) return { cmd: "AURAPAY", payload: { ok: false, error: "Stripe not configured" } };
-      if (stripeKey.startsWith("{")) { try { stripeKey = JSON.parse(stripeKey).secret_key || JSON.parse(stripeKey).key || stripeKey; } catch {} }
-      const stripeCall = async (endpoint, method = "GET", body = null) => {
-        const opts = { method, headers: { "Authorization": "Basic " + btoa(stripeKey + ":") } };
-        if (body) { opts.headers["Content-Type"] = "application/x-www-form-urlencoded"; opts.body = body.toString(); }
-        const r = await fetch(`https://api.stripe.com/v1/${endpoint}`, opts);
-        return r.json();
-      };
+    case "COMMERCE": {
+      // ===== THE COMMERCE ENGINE — universal value-exchange reasoning ("HOW is value exchanged?") =====
+      // Canon Core Engine. NOT the payment plumbing (that's Stripe — a pluggable PROVIDER below
+      // this). This is the REASONING layer: given a value-exchange situation, decide the RIGHT STRUCTURE —
+      // one-time payment / subscription / deposit / booking / appointment / order / donation / tiered —
+      // the right amount and timing, and which provider executes. Reasons through the shared mind (so it
+      // challenges, never fabricates prices). It PROPOSES the transaction; the provider (Stripe) executes,
+      // and any real charge goes through the gate (operator/customer approves). Providers are pluggable in
+      // KV (config:commerce:providers) so a new processor plugs in from OUTSIDE — Stripe is provider #1.
+      //   COMMERCE STRUCTURE ::: {"what":"...","who":"buyer/seller context","goal":"...","constraints":"..."}
+      //   COMMERCE PROVIDERS                      (list registered payment providers)
+      //   COMMERCE PROVIDER ADD ::: {json}        (plug in a processor from outside — no core edit)
+      const ceSub = (args[0] || "").toUpperCase();
+      const ceAfter = rest.replace(/^COMMERCE\s+/i, "").replace(new RegExp("^" + ceSub + "\\s*", "i"), "");
+      const cePayload = ceAfter.includes(":::") ? ceAfter.slice(ceAfter.indexOf(":::") + 3).trim() : "";
 
-      if (sub === "BALANCE") {
-        const bal = await stripeCall("balance");
-        const available = (bal.available || []).map(b => ({ amount: b.amount / 100, currency: b.currency }));
-        const pending = (bal.pending || []).map(b => ({ amount: b.amount / 100, currency: b.currency }));
-        return { cmd: "AURAPAY", payload: { ok: true, mode: "balance", available, pending } };
+      if (ceSub === "PROVIDERS") {
+        let providers = []; try { const p = await env.AURA_KV.get("config:commerce:providers"); if (p) providers = JSON.parse(p) || []; } catch {}
+        if (!providers.length) providers = [{ id: "stripe", name: "Stripe", handles: ["payment", "subscription", "refund", "checkout"], status: "active", default: true }];
+        return { cmd: "COMMERCE", payload: { ok: true, providers } };
       }
-
-      if (sub === "TRANSACTIONS") {
-        const limit = parseInt(args[1]) || 10;
-        const charges = await stripeCall(`charges?limit=${limit}`);
-        const txns = (charges.data || []).map(c => ({
-          id: c.id, amount: c.amount / 100, currency: c.currency, status: c.status,
-          description: c.description, customer: c.customer, created: new Date(c.created * 1000).toISOString(),
-          metadata: c.metadata, receipt_url: c.receipt_url,
-          statement_descriptor: c.statement_descriptor || c.calculated_statement_descriptor
-        }));
-        return { cmd: "AURAPAY", payload: { ok: true, mode: "transactions", count: txns.length, transactions: txns } };
+      if (ceSub === "PROVIDER" && (args[1] || "").toUpperCase() === "ADD") {
+        if (!isOp) return { cmd: "COMMERCE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+        let np; try { np = JSON.parse(cePayload); } catch { return { cmd: "COMMERCE", payload: { ok: false, error: 'Usage: COMMERCE PROVIDER ADD ::: {"id","name","handles":["payment","subscription"],"regions":[...],"notes":"..."}' } }; }
+        if (!np.id || !np.name) return { cmd: "COMMERCE", payload: { ok: false, error: "id and name required" } };
+        let providers = []; try { const p = await env.AURA_KV.get("config:commerce:providers"); if (p) providers = JSON.parse(p) || []; } catch {}
+        providers = providers.filter(x => x.id !== np.id); providers.push({ ...np, added: new Date().toISOString() });
+        await env.AURA_KV.put("config:commerce:providers", JSON.stringify(providers)).catch(() => {});
+        return { cmd: "COMMERCE", payload: { ok: true, added: np.id, provider_count: providers.length, note: "Payment provider plugged in. The Commerce Engine can now reason about it — no core edit needed." } };
       }
-
-      if (sub === "REFUND") {
-        const chargeId = args[1] || "";
-        if (!chargeId) return { cmd: "AURAPAY", payload: { ok: false, error: "Usage: AURAPAY REFUND <charge_id> [amount_cents]" } };
-        const params = new URLSearchParams();
-        params.append("charge", chargeId);
-        const amountCents = parseInt(args[2]);
-        if (amountCents > 0) params.append("amount", amountCents.toString());
-        const refund = await stripeCall("refunds", "POST", params);
-        if (refund.error) return { cmd: "AURAPAY", payload: { ok: false, error: refund.error.message } };
-        return { cmd: "AURAPAY", payload: { ok: true, mode: "refund", refund_id: refund.id, amount: refund.amount / 100, status: refund.status } };
+      if (ceSub === "STRUCTURE" || ceSub === "DECIDE") {
+        let ctx; try { ctx = JSON.parse(cePayload); } catch { return { cmd: "COMMERCE", payload: { ok: false, error: 'Usage: COMMERCE STRUCTURE ::: {what,who,goal,constraints}' } }; }
+        let providers = []; try { const p = await env.AURA_KV.get("config:commerce:providers"); if (p) providers = JSON.parse(p) || []; } catch {}
+        if (!providers.length) providers = [{ id: "stripe", name: "Stripe", handles: ["payment", "subscription", "refund", "checkout"], default: true }];
+        const ceR = await reasonThroughLoop(env, {
+          entity: JSON.stringify(ctx),
+          lens: "COMMERCE — decide the RIGHT STRUCTURE for this value exchange. The forms: one-time PAYMENT, recurring SUBSCRIPTION, DEPOSIT/hold, BOOKING/appointment, ORDER (physical/digital goods), TICKET, DONATION, tiered/usage. Choose what genuinely fits the situation and serves BOTH sides — not just the most money now. Consider: is this a one-time thing or an ongoing relationship (subscription)? Does it need a deposit to hold commitment? Should the ask come now or after value is shown? What amount is justified by the real value (never invent a price — if no real number is given, say it must be set, or frame as a range to decide)? Which provider executes? You PROPOSE the structure; a real charge requires approval and the provider (Stripe) executes it. Reason honestly; never fabricate amounts or fees.",
+          facts: { situation: ctx, providers },
+          extraKeys: [
+            { key: "structure", desc: "the chosen form: payment | subscription | deposit | booking | order | ticket | donation | tiered" },
+            { key: "why_this_structure", desc: "one sentence — why this fits the situation and serves both sides better than alternatives" },
+            { key: "amount_guidance", desc: "the real amount if given; else 'must be set' or an honest range to decide — NEVER a fabricated price" },
+            { key: "timing", desc: "when to make the ask: now / after value shown / on booking / recurring" },
+            { key: "provider", desc: "which registered provider executes it (e.g. stripe)" },
+            { key: "provider_command", desc: "the concrete provider action to run once approved (e.g. a Stripe checkout/charge), as a proposal" },
+            { key: "needs_approval", desc: "boolean — true for any real charge (always propose, never auto-charge)" }
+          ]
+        });
+        if (!ceR.ok) return { cmd: "COMMERCE", payload: { ok: false, error: ceR.error } };
+        return { cmd: "COMMERCE", payload: { ok: true, proposal_only: true, gate: "any real charge requires approval; Stripe executes", situation: ctx, commerce: ceR.reasoning } };
       }
-
-      if (sub === "CUSTOMER") {
-        // AURAPAY CUSTOMER CREATE <email> [name] or AURAPAY CUSTOMER GET <customer_id> or AURAPAY CUSTOMER FIND <email>
-        const action = (args[1] || "").toUpperCase();
-        if (action === "CREATE") {
-          const email = args[2] || "";
-          const name = args.slice(3).join(" ") || "";
-          if (!email) return { cmd: "AURAPAY", payload: { ok: false, error: "Usage: AURAPAY CUSTOMER CREATE <email> [name]" } };
-          const params = new URLSearchParams();
-          params.append("email", email);
-          if (name) params.append("name", name);
-          params.append("metadata[source]", "aurapay");
-          const cust = await stripeCall("customers", "POST", params);
-          if (cust.error) return { cmd: "AURAPAY", payload: { ok: false, error: cust.error.message } };
-          return { cmd: "AURAPAY", payload: { ok: true, mode: "customer_created", customer_id: cust.id, email: cust.email, name: cust.name } };
-        }
-        if (action === "GET") {
-          const custId = args[2] || "";
-          if (!custId) return { cmd: "AURAPAY", payload: { ok: false, error: "Usage: AURAPAY CUSTOMER GET <customer_id>" } };
-          const cust = await stripeCall(`customers/${custId}`);
-          if (cust.error) return { cmd: "AURAPAY", payload: { ok: false, error: cust.error.message } };
-          return { cmd: "AURAPAY", payload: { ok: true, mode: "customer", customer_id: cust.id, email: cust.email, name: cust.name, created: new Date(cust.created * 1000).toISOString() } };
-        }
-        if (action === "FIND") {
-          const email = args[2] || "";
-          if (!email) return { cmd: "AURAPAY", payload: { ok: false, error: "Usage: AURAPAY CUSTOMER FIND <email>" } };
-          const result = await stripeCall(`customers?email=${encodeURIComponent(email)}&limit=1`);
-          if (!result.data || result.data.length === 0) return { cmd: "AURAPAY", payload: { ok: true, mode: "customer_not_found", email } };
-          const c = result.data[0];
-          return { cmd: "AURAPAY", payload: { ok: true, mode: "customer_found", customer_id: c.id, email: c.email, name: c.name } };
-        }
-        return { cmd: "AURAPAY", payload: { ok: false, error: "CUSTOMER sub-commands: CREATE, GET, FIND" } };
-      }
-
-      if (sub === "SUBSCRIBE") {
-        // AURAPAY SUBSCRIBE <customer_id> <amount_cents> <interval: month|year> [description]
-        const custId = args[1] || "";
-        const amount = parseInt(args[2]) || 0;
-        const interval = (args[3] || "month").toLowerCase();
-        const desc = args.slice(4).join(" ") || "AuraPay Subscription";
-        if (!custId || !amount) return { cmd: "AURAPAY", payload: { ok: false, error: "Usage: AURAPAY SUBSCRIBE <customer_id> <amount_cents> <month|year> [description]" } };
-        const params = new URLSearchParams();
-        params.append("customer", custId);
-        params.append("items[0][price_data][currency]", "usd");
-        params.append("items[0][price_data][product_data][name]", desc);
-        params.append("items[0][price_data][unit_amount]", amount.toString());
-        params.append("items[0][price_data][recurring][interval]", interval);
-        const subscription = await stripeCall("subscriptions", "POST", params);
-        if (subscription.error) return { cmd: "AURAPAY", payload: { ok: false, error: subscription.error.message } };
-        return { cmd: "AURAPAY", payload: { ok: true, mode: "subscribed", subscription_id: subscription.id, status: subscription.status, customer: custId, amount: amount / 100, interval } };
-      }
-
-      if (sub === "CANCEL") {
-        const subId = args[1] || "";
-        if (!subId) return { cmd: "AURAPAY", payload: { ok: false, error: "Usage: AURAPAY CANCEL <subscription_id>" } };
-        const result = await stripeCall(`subscriptions/${subId}`, "DELETE");
-        if (result.error) return { cmd: "AURAPAY", payload: { ok: false, error: result.error.message } };
-        return { cmd: "AURAPAY", payload: { ok: true, mode: "cancelled", subscription_id: result.id, status: result.status } };
-      }
-
-      if (sub === "CHECKOUT") {
-        // AURAPAY CHECKOUT <json> — fully generic. The caller supplies everything; the engine hardcodes nothing.
-        //   {"amount_cents":5000,"product":"<name>","mode":"payment|subscription","interval":"month",
-        //    "success_url":"<url>","cancel_url":"<url>","descriptor":"<statement descriptor>","currency":"usd"}
-        let co = {};
-        try { co = JSON.parse(rest.slice(rest.indexOf("CHECKOUT") + 8).trim() || "{}"); } catch { return { cmd: "AURAPAY", payload: { ok: false, error: 'Usage: AURAPAY CHECKOUT {"amount_cents","product","mode","success_url","cancel_url"[,"interval","descriptor","currency"]}' } }; }
-        const amount = parseInt(co.amount_cents) || 0;
-        const productName = (co.product || "Payment").toString();
-        const mode = co.mode === "subscription" ? "subscription" : "payment";
-        const currency = (co.currency || "usd").toString();
-        if (!amount || amount < 50) return { cmd: "AURAPAY", payload: { ok: false, error: "amount_cents required (min 50)" } };
-        if (!co.success_url || !co.cancel_url) return { cmd: "AURAPAY", payload: { ok: false, error: "success_url and cancel_url required (the engine hardcodes no destination)" } };
-        const params = new URLSearchParams();
-        params.append("mode", mode);
-        params.append("line_items[0][price_data][currency]", currency);
-        params.append("line_items[0][price_data][product_data][name]", productName);
-        params.append("line_items[0][price_data][unit_amount]", amount.toString());
-        if (mode === "subscription") params.append("line_items[0][price_data][recurring][interval]", (co.interval || "month").toString());
-        params.append("line_items[0][quantity]", "1");
-        params.append("success_url", co.success_url.toString());
-        params.append("cancel_url", co.cancel_url.toString());
-        if (mode === "payment" && co.descriptor) params.append("payment_intent_data[statement_descriptor]", co.descriptor.toString().slice(0, 22));
-        const session = await stripeCall("checkout/sessions", "POST", params);
-        if (session.error) return { cmd: "AURAPAY", payload: { ok: false, error: session.error.message } };
-        return { cmd: "AURAPAY", payload: { ok: true, mode: "checkout_created", url: session.url, session_id: session.id, amount: amount / 100, product: productName } };
-      }
-
-      if (sub === "METHODS") {
-        // List/manage payment methods visible in checkout — Note: most payment method config is in Stripe Dashboard
-        // This returns what's currently enabled on the account
-        const pm = await stripeCall("payment_method_configurations?limit=5");
-        return { cmd: "AURAPAY", payload: { ok: true, mode: "payment_methods", note: "Payment method configuration is managed in Stripe Dashboard > Settings > Payment methods. Use the dashboard to enable/disable Apple Pay, Google Pay, Card, Bank, etc.", data: pm.data ? pm.data.length + " configurations found" : "none" } };
-      }
-
-      if (sub === "API") {
-        // Generic Stripe API: AURAPAY API <GET|POST|DELETE> <endpoint>
-        const method = (args[1] || "GET").toUpperCase();
-        let endpoint = args[2] || "";
-        if (!endpoint) return { cmd: "AURAPAY", payload: { ok: false, error: "Usage: AURAPAY API GET <endpoint>. Example: AURAPAY API GET customers?limit=5" } };
-        if (endpoint.startsWith("/v1/")) endpoint = endpoint.slice(4);
-        if (endpoint.startsWith("v1/")) endpoint = endpoint.slice(3);
-        const result = await stripeCall(endpoint, method, method === "POST" ? (() => { const b = rest.slice(rest.indexOf(endpoint) + endpoint.length).trim(); return b ? new URLSearchParams(b) : null; })() : null);
-        if (result.data && Array.isArray(result.data)) {
-          return { cmd: "AURAPAY", payload: { ok: true, mode: "api", endpoint, count: result.data.length, has_more: result.has_more, items: result.data.slice(0, 10).map(d => { const s = { id: d.id, object: d.object }; for (const k of ["name","email","status","amount","currency","description","last4","brand","type","active","livemode"]) { if (d[k] !== undefined) s[k] = d[k]; } if (d.created) s.created = new Date(d.created * 1000).toISOString(); return s; }) } };
-        }
-        if (result.error) return { cmd: "AURAPAY", payload: { ok: false, mode: "api", endpoint, error: result.error.message || result.error } };
-        return { cmd: "AURAPAY", payload: { ok: true, mode: "api", endpoint, data: result } };
-      }
-
-      return { cmd: "AURAPAY", payload: { ok: false, error: "Sub-commands: BALANCE, TRANSACTIONS, REFUND, CUSTOMER (CREATE/GET/FIND), SUBSCRIBE, CANCEL, CHECKOUT, METHODS, API <GET|POST|DELETE> <endpoint>" } };
+      return { cmd: "COMMERCE", payload: { ok: false, error: "Usage: COMMERCE STRUCTURE ::: {what,who,goal,constraints} | COMMERCE PROVIDERS | COMMERCE PROVIDER ADD ::: {json}" } };
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // CAPABILITY REGISTRY — What Aura can do. Universal.
-    // Each capability is a building block. Industries select what they need.
-    // ═══════════════════════════════════════════════════════════
 
     case "CAPABILITY": {
       if (!isOp) return { cmd: "CAPABILITY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
@@ -6630,7 +6523,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         total: allList.length,
         live: launchedList.length,
         registered_not_live: allList.length - launchedList.length,
-        metrics_note: "revenue/users/pta_count/traffic are null because those data sources aren't built yet (AuraPay=revenue, PTA=pta_count, analytics=traffic/users). Honest placeholders, not zeros. Per-domain page/serving status available via WORLD_MAP <domain>."
+        metrics_note: "revenue/users/pta_count/traffic are null because those data sources aren't built yet (Stripe=revenue, PTA=pta_count, analytics=traffic/users). Honest placeholders, not zeros. Per-domain page/serving status available via WORLD_MAP <domain>."
       };
 
       // If focused on one domain, also fetch its LIVE serving status for ground truth
@@ -8167,7 +8060,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
   try {
     const tools = [
       { name: "read_data", description: "Read a stored value by its key from the system's key-value store.", input_schema: { type: "object", properties: { key: { type: "string", description: "The key to read" } }, required: ["key"] } },
-      { name: "run_command", description: "Execute an operational command. KEY COMMANDS: SETKV key value (write full value - ONLY for small values under 2000 chars), GETKV key, LISTKV prefix [limit] (lists KV keys by prefix), DELKV key, PATCHKV key find_string ||| replace_string (surgical find-and-replace in a KV value - USE THIS for editing pages instead of rewriting them. The ||| delimiter separates the find and replace strings). CRITICAL: For page edits, ALWAYS use PATCHKV, never SETKV. SETKV rewrites the entire value which causes truncation for large pages. PATCHKV only changes what you specify. SYSTEM: DOMAIN_LAUNCH, DOMAIN_STATUS, FETCH_PLACES query, EMAIL_SEND <to> <subject> | <body>. AURAPAY: AURAPAY BALANCE/TRANSACTIONS/REFUND/CUSTOMER/SUBSCRIBE/CANCEL/CHECKOUT. REGISTRY: CAPABILITY REGISTER/LIST/GET, INDUSTRY REGISTER/UPDATE/LIST/GET, BUSINESS_STATE SET/GET. PTA: PTA_INIT, PTA_ENTITY, PTA_GRANT, PTA_SCAN, PTA_QUERY. CF_API: CF_API <METHOD> <path> [json]. Provide the full command line.", input_schema: { type: "object", properties: { command: { type: "string", description: "The command line to execute" } }, required: ["command"] } },
+      { name: "run_command", description: "Execute an operational command. KEY COMMANDS: SETKV key value (write full value - ONLY for small values under 2000 chars), GETKV key, LISTKV prefix [limit] (lists KV keys by prefix), DELKV key, PATCHKV key find_string ||| replace_string (surgical find-and-replace in a KV value - USE THIS for editing pages instead of rewriting them. The ||| delimiter separates the find and replace strings). CRITICAL: For page edits, ALWAYS use PATCHKV, never SETKV. SETKV rewrites the entire value which causes truncation for large pages. PATCHKV only changes what you specify. SYSTEM: DOMAIN_LAUNCH, DOMAIN_STATUS, FETCH_PLACES query, EMAIL_SEND <to> <subject> | <body>. REGISTRY: CAPABILITY REGISTER/LIST/GET, INDUSTRY REGISTER/UPDATE/LIST/GET, BUSINESS_STATE SET/GET. PTA: PTA_INIT, PTA_ENTITY, PTA_GRANT, PTA_SCAN, PTA_QUERY. CF_API: CF_API <METHOD> <path> [json]. Provide the full command line.", input_schema: { type: "object", properties: { command: { type: "string", description: "The command line to execute" } }, required: ["command"] } },
       { name: "fetch_url", description: "Fetch a live URL and return its status and content, to verify what a page is serving.", input_schema: { type: "object", properties: { url: { type: "string", description: "The https URL to fetch" } }, required: ["url"] } }
     ];
     const claudeSystem = "You are Claude, an AI assistant by Anthropic, acting as the operations assistant for a software system whose operator owns all referenced infrastructure and has authorized you to use the provided tools to read data, run operational commands, and verify results. CRITICAL: To read data, run a command, or fetch a URL you MUST call the provided tools (read_data, run_command, fetch_url). NEVER write bracketed pseudo-commands like [[READ key]] in your text — those do nothing. NEVER state the contents of a key without first calling read_data and receiving its actual value; inventing data is a serious failure. If you have not called the tool, you do not know the value. Be proactive and decisive, but ground every factual claim about system state in a real tool result. OPERATIONAL RULES (ALWAYS FOLLOW): (1) PAGE EDITS: NEVER use SETKV to modify an existing page. SETKV rewrites the entire value and causes truncation for large pages. ALWAYS use PATCHKV for page edits. PATCHKV does surgical find-and-replace: PATCHKV key old_text ||| new_text. (2) NEW PAGES: Only use SETKV for brand new pages under 2000 characters. For larger pages, write them in sections or have the operator deploy via page-put. (3) KEY NAMES: NEVER assume a key name. ALWAYS use LISTKV prefix first to find exact key names. (4) VERIFICATION: PATCHKV auto-verifies. SETKV for page: keys auto-verifies. Always check the verified field in the response. If verified is false, report FAILURE. (5) NEVER REPORT FALSE SUCCESS: Only say done if the tool response confirms it.";
@@ -8985,7 +8878,7 @@ async function createPaymentIntent(amount, currency, description, metadata, env)
   const result = await stripeRequest("/payment_intents", "POST", {
     amount: String(Math.round(amount * 100)),
     currency: currency || "usd",
-    description: description || "Aura Pay",
+    description: description || "Payment",
     "payment_method_types[]": "card",
     "metadata[source]": "aura_pay",
     "metadata[product]": metadata?.product || "",
@@ -9013,7 +8906,7 @@ async function createStripeCheckout(amount, currency, product, successUrl, cance
   const result = await stripeRequest("/checkout/sessions", "POST", {
     "payment_method_types[]": "card",
     "line_items[0][price_data][currency]": currency || "usd",
-    "line_items[0][price_data][product_data][name]": product || "Aura Pay",
+    "line_items[0][price_data][product_data][name]": product || "Payment",
     "line_items[0][price_data][unit_amount]": String(Math.round(amount * 100)),
     "line_items[0][quantity]": "1",
     mode: "payment",
@@ -9712,7 +9605,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.181</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.183</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9987,7 +9880,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.181</div>
+  <div id="ver">v4.9.183</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 
@@ -10480,7 +10373,7 @@ function openAlbum(idx){
       params.append("amount", String(amount));
       params.append("currency", "usd");
       params.append("automatic_payment_methods[enabled]", "true");
-      params.append("description", "AuraPay payment");
+      params.append("description", "Payment");
       if (sid) params.append("metadata[session]", sid);
       if (email) params.append("receipt_email", email);
       try {

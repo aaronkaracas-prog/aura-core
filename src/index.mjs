@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.173-2026-06-25";
+const BUILD = "aura-core-v4.9.174-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -187,6 +187,22 @@ const KV = {
 // From name, reply-to) lives here so every email lands, not in spam.
 // Returns: { ok, to, subject, message_id, accepted, error }
 // ═══════════════════════════════════════════════════════════════════════════
+// SHARED HONORED-EXIT GUARD — one check used by every contact channel (email, SMS, future channels),
+// so "out means out" can never drift between paths. Takes an identity like "email:a@b.com" or
+// "phone:+1555...". Returns true if this person has permanently opted out, by identity key or resolved PTA.
+async function isOptedOut(env, identity) {
+  if (!identity) return false;
+  const idKey = String(identity).toLowerCase().trim();
+  try {
+    let opted = await env.AURA_KV.get("pta:optout:" + idKey).catch(() => null);
+    if (!opted) {
+      const ent = await env.AURA_MEMORY.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(idKey).first().catch(() => null);
+      if (ent && ent.id) opted = await env.AURA_KV.get("pta:optout:" + ent.id).catch(() => null);
+    }
+    return !!opted;
+  } catch { return false; }
+}
+
 async function sendEmail(env, to, subject, body, opts) {
   opts = opts || {};
   const result = { ok: false, to, subject, message_id: null, accepted: false, error: null };
@@ -197,17 +213,11 @@ async function sendEmail(env, to, subject, body, opts) {
   // mail (verification codes) may pass opts.system=true to bypass (those are not outreach).
   if (!opts.system) {
     try {
-      // opt-out can be keyed by the identity (email:<addr>) or by a resolved pta id
       const idKey = "email:" + String(to).toLowerCase().trim();
-      let opted = await env.AURA_KV.get("pta:optout:" + idKey).catch(() => null);
-      if (!opted) {
-        // resolve to a PTA by identity (identity lives in the identity_key column), then check its opt-out
-        try { const ent = await env.AURA_MEMORY.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(idKey).first(); if (ent && ent.id) opted = await env.AURA_KV.get("pta:optout:" + ent.id).catch(() => null); } catch {}
-      }
-      if (opted) {
+      if (await isOptedOut(env, idKey)) {
         result.error = "BLOCKED: recipient has permanently opted out — honored, not contacted";
         result.opted_out = true;
-        try { let log = []; const lr = await env.AURA_KV.get("optout:blocked_log"); if (lr) log = JSON.parse(lr) || []; log.push({ to, subject: subject || null, ts: new Date().toISOString() }); await env.AURA_KV.put("optout:blocked_log", JSON.stringify(log.slice(-200))).catch(() => {}); } catch {}
+        try { let log = []; const lr = await env.AURA_KV.get("optout:blocked_log"); if (lr) log = JSON.parse(lr) || []; log.push({ channel: "email", to, subject: subject || null, ts: new Date().toISOString() }); await env.AURA_KV.put("optout:blocked_log", JSON.stringify(log.slice(-200))).catch(() => {}); } catch {}
         return result;
       }
     } catch {}
@@ -6148,6 +6158,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const to = args[1] || "";
         const msgBody = rest.slice(rest.indexOf(to) + to.length).trim();
         if (!to || !msgBody) return { cmd: "TWILIO", payload: { ok: false, error: "Usage: TWILIO SEND <to_number> <message>" } };
+        // HONORED EXIT — same guard as email, before any text is sent. Out means out, every channel.
+        const phoneId = "phone:" + String(to).replace(/[^\d+]/g, "");
+        if (await isOptedOut(env, phoneId)) {
+          try { let log = []; const lr = await env.AURA_KV.get("optout:blocked_log"); if (lr) log = JSON.parse(lr) || []; log.push({ channel: "sms", to, ts: new Date().toISOString() }); await env.AURA_KV.put("optout:blocked_log", JSON.stringify(log.slice(-200))).catch(() => {}); } catch {}
+          return { cmd: "TWILIO", payload: { ok: false, opted_out: true, error: "BLOCKED: recipient has permanently opted out — honored, not contacted" } };
+        }
         const params = new URLSearchParams();
         params.append("To", to);
         params.append("MessagingServiceSid", msgSvcSid);
@@ -9639,7 +9655,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.173</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.174</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9914,7 +9930,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.173</div>
+  <div id="ver">v4.9.174</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.190-2026-06-26";
+const BUILD = "aura-core-v4.9.191-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8095,6 +8095,36 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
 
       return `Done. I generated ${gen.html.length} characters of HTML and deployed to ${pageKey}.${verdict}`;
     }
+
+    // INTENT-FIRST short-circuit. If the operator drops a BARE fragment — just a domain, or a few
+    // words with no real sentence/verb — do NOT let the brain reach for DOMAIN_STATUS / fetch_url /
+    // FETCH_PLACES out of reflex. That tool-pull is what makes her give a status report or a command
+    // menu when Aaron wanted a thinking partner. Instead, reason INTENT-FIRST in his world: what is
+    // this, where does it fit in what he's building, what is he likely trying to DO — and ASK if unsure.
+    const _msgTrim = (message || "").trim();
+    const _looksBareFragment = _msgTrim.length > 0 && _msgTrim.length < 60
+      && _msgTrim.split(/\s+/).length <= 4
+      && !/[.!?].*\w/.test(_msgTrim.replace(/\b[a-z0-9-]+\.(world|guide|com|us|city|kids|network|systems|solutions|tools|business|org|net|io|co)\b/gi, "")) // strip domains before checking for sentence punctuation
+      && !/^(yes|no|ok|okay|go|stop|deploy|launch|build|status|help|what|why|how|who|when|where)\b/i.test(_msgTrim);
+    if (isOp && _looksBareFragment) {
+      const sNote = await env.AURA_KV.get("notes:self").catch(() => null);
+      const stNote = await env.AURA_KV.get("notes:STATE").catch(() => null);
+      const intentFirst = await reasonThroughLoop(env, {
+        entity: _msgTrim,
+        lens: "INTENT-FIRST. Aaron (your founder/operator) just dropped a bare fragment at you — a domain, a name, a few words, with no sentence. DO NOT run a status check, fetch the URL, or offer a menu of commands. That is the help-desk reflex and it is WRONG. Instead DECIPHER it against AARON'S WORLD: he is building a platform (Core done; live direction = SecureSpend, OpenForBusiness, PERCEIVE, the dashboard; he has verticals/doorways like CityGuide and others). Figure out what this fragment most likely IS in his world (one of his assets/doorways? a new idea? a competitor he's studying? a business?), what he is probably trying to DO with it, and respond as his BUILD PARTNER who holds the whole context. If it is clearly one of his things, say what it is and propose the likely next move. If you genuinely cannot tell, ASK him one plain, specific question about his INTENT (not 'which command?' — 'what's the move?'). If it is something OUTSIDE his world (e.g. amazon.com), recognize that and ask what he wants with it. Be a partner thinking, never a console listing options.",
+        facts: { fragment: _msgTrim, who_i_am: sNote ? sNote.slice(0, 1200) : null, where_things_stand: stNote ? stNote.slice(0, 900) : null },
+        extraKeys: [
+          { key: "what_this_likely_is", desc: "your read on what the fragment is in Aaron's world (or that it's outside his world)" },
+          { key: "likely_intent", desc: "what Aaron is probably trying to do with it" },
+          { key: "my_response", desc: "what you'd actually say back to him — partner thinking, propose the move, or ask one specific intent question. THIS is the reply." },
+          { key: "need_to_ask", desc: "true if you genuinely need to ask him rather than proceed" }
+        ]
+      });
+      if (intentFirst.ok && intentFirst.reasoning && intentFirst.reasoning.my_response) {
+        return intentFirst.reasoning.my_response;
+      }
+      // if reasoning failed, fall through to normal brain rather than blocking
+    }
   }
 
   const auraIdentity = await env.AURA_KV.get("notes:aura:identity").catch(() => null);
@@ -9701,7 +9731,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.190</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.191</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9976,7 +10006,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.190</div>
+  <div id="ver">v4.9.191</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

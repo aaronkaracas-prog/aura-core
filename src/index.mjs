@@ -5,59 +5,12 @@
  */
 
 
-const BUILD = "aura-core-v4.9.175-2026-06-25";
+const BUILD = "aura-core-v4.9.177-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
 // Element inline (no stripe.com redirect), and on success calls /confirm-payment to
 // generate + deliver the design, then displays it.
-const AURA_PAY_PAGE = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"><title>Complete your design · MyTattoo.world</title><script src="https://js.stripe.com/v3/"></script><style>*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,'Segoe UI',sans-serif;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:1.2rem;max-width:460px;margin:0 auto}.brand{font-size:.8rem;font-weight:800;letter-spacing:.05em;color:#a855f7;margin-top:.5rem}.card{width:100%;background:#13131f;border:1px solid #20203a;border-radius:16px;padding:1.4rem;margin-top:1.2rem}h1{font-size:1.25rem;font-weight:800;color:#fff;margin-bottom:.3rem}.sub{color:#8888a8;font-size:.9rem;line-height:1.45;margin-bottom:1.1rem}.amt{font-size:2rem;font-weight:800;color:#fff;margin:.2rem 0 1.1rem}.amt small{font-size:.85rem;color:#8888a8;font-weight:500}label{display:block;font-size:.78rem;color:#9a9ab8;margin:.2rem 0 .4rem}input[type=email]{width:100%;background:#0e0e18;border:1px solid #25253f;border-radius:10px;padding:.7rem .9rem;color:#e8e4f0;font-size:16px;outline:none;margin-bottom:1rem}#payment-element{margin-bottom:1rem}#payBtn{width:100%;padding:.95rem;border:none;border-radius:11px;background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff;font-size:1rem;font-weight:700;cursor:pointer}#payBtn:disabled{opacity:.5;cursor:not-allowed}.err{color:#ff6b8a;font-size:.85rem;min-height:1.1rem;margin-top:.6rem;text-align:center}.secure{text-align:center;color:#6b6b8a;font-size:.72rem;margin-top:.9rem}.hidden{display:none}.spin{width:26px;height:26px;border:3px solid #2a2a45;border-top-color:#a855f7;border-radius:50%;animation:s 1s linear infinite;margin:1.5rem auto}@keyframes s{to{transform:rotate(360deg)}}#design{width:100%;border-radius:12px;margin:1rem 0;display:none}#dl{display:none;text-align:center;padding:.8rem;background:#1a1a2e;border:1px solid #2a2a45;border-radius:10px;color:#a855f7;text-decoration:none;font-weight:600;font-size:.9rem}.check{font-size:2.5rem;text-align:center;color:#22c55e}</style></head><body><div class="brand">MyTattoo.world</div><div class="card" id="loadCard"><div class="spin"></div><p style="text-align:center;color:#8888a8;font-size:.9rem">Setting up secure payment…</p></div><div class="card hidden" id="payCard"><h1>Generate your design</h1><p class="sub">One design session — Aura creates your custom tattoo and your artist gets notified, ready for your visit.</p><div class="amt" id="amt">$10.00 <small>one time</small></div><label for="email">Email for your receipt (optional)</label><input type="email" id="email" placeholder="you@example.com" autocomplete="email"><div id="payment-element"></div><button id="payBtn" disabled>Pay</button><div class="err" id="err"></div><div class="secure">🔒 Secured by Stripe · Powered by AuraPay</div></div><div class="card hidden" id="successCard"><div class="check">✓</div><p id="successMsg" style="text-align:center;color:#fff;font-weight:600;margin:.6rem 0 .2rem">Payment complete!</p><img id="design" alt="Your tattoo design"><a id="dl" download="tattoo-design.png">Save your design</a></div><script>
-var params=new URLSearchParams(location.search);
-var sid=params.get('session')||'';
-var amount=parseInt(params.get('amount'),10)||1000;
-var stripe,elements;
-document.getElementById('amt').innerHTML='$'+(amount/100).toFixed(2)+' <small>one time</small>';
-document.getElementById('payBtn').textContent='Pay $'+(amount/100).toFixed(2);
-function showCard(id){['loadCard','payCard','successCard'].forEach(function(c){document.getElementById(c).classList.add('hidden')});document.getElementById(id).classList.remove('hidden')}
-function fail(msg){showCard('payCard');document.getElementById('payment-element').innerHTML='<p style="color:#ff6b8a;font-size:.9rem;text-align:center">'+msg+'</p>';document.getElementById('payBtn').classList.add('hidden')}
-async function init(){
-  if(!sid){fail('Missing session. Please return to your chat and try again.');return}
-  try{
-    var r=await fetch('/create-payment-intent',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session:sid,amount:amount})});
-    var d=await r.json();
-    if(!d.ok){fail(d.error||'Could not start payment.');return}
-    stripe=Stripe(d.publishable_key);
-    elements=stripe.elements({clientSecret:d.client_secret,appearance:{theme:'night',variables:{colorPrimary:'#a855f7',colorBackground:'#0e0e18',borderRadius:'10px'}}});
-    elements.create('payment').mount('#payment-element');
-    showCard('payCard');
-    document.getElementById('payBtn').disabled=false;
-  }catch(e){fail('Connection error. Please try again.')}
-}
-document.getElementById('payBtn').addEventListener('click',async function(){
-  var btn=document.getElementById('payBtn');var em=document.getElementById('email').value.trim();
-  btn.disabled=true;btn.textContent='Processing…';document.getElementById('err').textContent='';
-  var cp={return_url:window.location.href};if(em)cp.receipt_email=em;
-  var result=await stripe.confirmPayment({elements:elements,confirmParams:cp,redirect:'if_required'});
-  if(result.error){document.getElementById('err').textContent=result.error.message;btn.disabled=false;btn.textContent='Pay $'+(amount/100).toFixed(2);return}
-  if(result.paymentIntent&&(result.paymentIntent.status==='succeeded'||result.paymentIntent.status==='processing')){deliver()}
-  else{document.getElementById('err').textContent='Payment was not completed.';btn.disabled=false;btn.textContent='Pay $'+(amount/100).toFixed(2)}
-});
-async function deliver(){
-  showCard('successCard');
-  try{
-    var r=await fetch('/confirm-payment?session='+encodeURIComponent(sid));
-    var d=await r.json();
-    if(d.ok&&d.image&&d.image.url){
-      var img=document.getElementById('design');img.src=d.image.url;img.style.display='block';
-      var dl=document.getElementById('dl');dl.href=d.image.url;dl.style.display='inline-block';
-      document.getElementById('successMsg').textContent='Payment complete — your design is ready!';
-    }else{
-      document.getElementById('successMsg').textContent='Payment complete! Return to your chat with Aura to see your design.';
-    }
-  }catch(e){document.getElementById('successMsg').textContent='Payment complete!'}
-}
-init();
-</script></body></html>`;
 // ─── EntityDO: per-entity Durable Object (Living Entity) ──────────────────────
 // Each business/city/person gets its own dedicated object with its own SQLite storage.
 // No shared contention — this is the civilization-scale isolation layer.
@@ -2471,9 +2424,9 @@ async function processCommand(line, env, isOp) {
       // PTA identity, passes the bare amount to the rail (Stripe) in live mode or simulates
       // in test mode, ingests the FULL rail response, and stores both sides in-world.
       // Usage (JSON arg):
-      //   SECURESPEND_CHARGE {"asset":"mytattoo.world","amount":40.00,"currency":"usd",
-      //      "item":"Custom tattoo design","buyer":{"name":"Jane","identity":"email:jane@x.com"},
-      //      "mode":"test","context":{...},"return_to":"https://mytattoo.world/thanks"}
+      //   SECURESPEND_CHARGE {"asset":"<asset>","amount":40.00,"currency":"usd",
+      //      "item":"<item description>","buyer":{"name":"<name>","identity":"email:<addr>"},
+      //      "mode":"test","context":{...},"return_to":"<return url>"}
       // mode defaults to "test" (full flow, no real charge). "live" calls Stripe.
       if (!isOp) return { cmd: "SECURESPEND_CHARGE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const db = env.AURA_MEMORY;
@@ -2892,7 +2845,7 @@ async function processCommand(line, env, isOp) {
       // already calls a real engine.action from the catalog, so it CANNOT be mis-wired.
       // Building a page = naming components in order. No brain, byte-exact, every time.
       // This is the foundation of HomeScreen / the dynamic-UI surface.
-      // Usage (JSON): RENDER_PAGE {"app":"servicelife","domain":"servicelife.world","title":"ServiceLife","theme":"teal","layout":[{"component":"profile_form","config":{...}},{"component":"crisis_banner"}]}
+      // Usage (JSON): RENDER_PAGE {"app":"<app>","domain":"<domain>","title":"<title>","theme":"<theme>","layout":[{"component":"<component>","config":{...}},{"component":"<component>"}]}
       if (!isOp) return { cmd: "RENDER_PAGE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       let rp;
       try { rp = JSON.parse(rest.trim()); } catch { return { cmd: "RENDER_PAGE", payload: { ok: false, error: 'Usage: RENDER_PAGE {"app","domain","title","theme","layout":[{component,config}]}' } }; }
@@ -5923,22 +5876,27 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
 
       if (sub === "CHECKOUT") {
-        // AURAPAY CHECKOUT <type: shop|design|custom> [amount_cents] [description]
-        const type = (args[1] || "custom").toLowerCase();
-        let amount, productName, mode = "payment";
-        if (type === "shop") { amount = 10000; productName = "MyTattoo.world — Studio Membership"; mode = "subscription"; }
-        else if (type === "design") { amount = 1000; productName = "MyTattoo.world — Tattoo Design Session"; }
-        else { amount = parseInt(args[2]) || 50; productName = args.slice(3).join(" ") || "AuraPay Payment"; }
+        // AURAPAY CHECKOUT <json> — fully generic. The caller supplies everything; the engine hardcodes nothing.
+        //   {"amount_cents":5000,"product":"<name>","mode":"payment|subscription","interval":"month",
+        //    "success_url":"<url>","cancel_url":"<url>","descriptor":"<statement descriptor>","currency":"usd"}
+        let co = {};
+        try { co = JSON.parse(rest.slice(rest.indexOf("CHECKOUT") + 8).trim() || "{}"); } catch { return { cmd: "AURAPAY", payload: { ok: false, error: 'Usage: AURAPAY CHECKOUT {"amount_cents","product","mode","success_url","cancel_url"[,"interval","descriptor","currency"]}' } }; }
+        const amount = parseInt(co.amount_cents) || 0;
+        const productName = (co.product || "Payment").toString();
+        const mode = co.mode === "subscription" ? "subscription" : "payment";
+        const currency = (co.currency || "usd").toString();
+        if (!amount || amount < 50) return { cmd: "AURAPAY", payload: { ok: false, error: "amount_cents required (min 50)" } };
+        if (!co.success_url || !co.cancel_url) return { cmd: "AURAPAY", payload: { ok: false, error: "success_url and cancel_url required (the engine hardcodes no destination)" } };
         const params = new URLSearchParams();
-        params.append("mode", mode === "subscription" ? "subscription" : "payment");
-        params.append("line_items[0][price_data][currency]", "usd");
+        params.append("mode", mode);
+        params.append("line_items[0][price_data][currency]", currency);
         params.append("line_items[0][price_data][product_data][name]", productName);
         params.append("line_items[0][price_data][unit_amount]", amount.toString());
-        if (mode === "subscription") params.append("line_items[0][price_data][recurring][interval]", "month");
+        if (mode === "subscription") params.append("line_items[0][price_data][recurring][interval]", (co.interval || "month").toString());
         params.append("line_items[0][quantity]", "1");
-        params.append("success_url", "https://mytattoo.world/welcome?payment=success");
-        params.append("cancel_url", "https://mytattoo.world/shops");
-        if (mode === "payment") params.append("payment_intent_data[statement_descriptor]", "MYTATTOO.WORLD");
+        params.append("success_url", co.success_url.toString());
+        params.append("cancel_url", co.cancel_url.toString());
+        if (mode === "payment" && co.descriptor) params.append("payment_intent_data[statement_descriptor]", co.descriptor.toString().slice(0, 22));
         const session = await stripeCall("checkout/sessions", "POST", params);
         if (session.error) return { cmd: "AURAPAY", payload: { ok: false, error: session.error.message } };
         return { cmd: "AURAPAY", payload: { ok: true, mode: "checkout_created", url: session.url, session_id: session.id, amount: amount / 100, product: productName } };
@@ -6085,6 +6043,62 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     // TWILIO — Communication layer management. Campaigns, SMS, balance.
     // Aura owns this — no manual Twilio console needed.
     // ═══════════════════════════════════════════════════════════
+
+    case "COMMS": {
+      // ===== THE COMMUNICATIONS ENGINE — the global channel-decision brain =====
+      // For ANY moment of reaching a person, decide the BEST channel: voice call, SMS/text, Aura's
+      // voice (AI voice call), email, or DIGITAL (in-app / push / Home Screen — free over data). The
+      // channel is a DECISION, not a default. She weighs purpose, urgency, who the person is, where they
+      // are, and COST (telecom spend vs free data). Carriers are PLUGGABLE: registered as data in
+      // config:comms:carriers so a new carrier (Vonage, Telnyx, Bandwidth) plugs in from OUTSIDE without
+      // editing the Core. Reasons through the shared mind (challenge, data-trust, no fabrication).
+      //   COMMS DECIDE ::: {"who":"...","why":"...","where":"...","urgency":"...","relationship":"..."}
+      //   COMMS CARRIERS                       (list registered carriers)
+      //   COMMS CARRIER ADD ::: {json}         (plug in a carrier from outside — no core edit)
+      const cmSub = (args[0] || "").toUpperCase();
+      const cmAfter = rest.replace(/^COMMS\s+/i, "").replace(new RegExp("^" + cmSub + "\\s*", "i"), "");
+      const cmPayload = cmAfter.includes(":::") ? cmAfter.slice(cmAfter.indexOf(":::") + 3).trim() : "";
+
+      if (cmSub === "CARRIERS") {
+        let carriers = []; try { const c = await env.AURA_KV.get("config:comms:carriers"); if (c) carriers = JSON.parse(c) || []; } catch {}
+        // Twilio is the built-in default carrier if none registered
+        if (!carriers.length) carriers = [{ id: "twilio", name: "Twilio", channels: ["sms", "voice", "voice_ai"], status: "active", default: true }];
+        return { cmd: "COMMS", payload: { ok: true, carriers } };
+      }
+      if (cmSub === "CARRIER" && (args[1] || "").toUpperCase() === "ADD") {
+        if (!isOp) return { cmd: "COMMS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+        let nc; try { nc = JSON.parse(cmPayload); } catch { return { cmd: "COMMS", payload: { ok: false, error: 'Usage: COMMS CARRIER ADD ::: {"id","name","channels":["sms","voice"],"regions":["US","AU"],"notes":"why/when to use"}' } }; }
+        if (!nc.id || !nc.name) return { cmd: "COMMS", payload: { ok: false, error: "id and name required" } };
+        let carriers = []; try { const c = await env.AURA_KV.get("config:comms:carriers"); if (c) carriers = JSON.parse(c) || []; } catch {}
+        carriers = carriers.filter(x => x.id !== nc.id); carriers.push({ ...nc, added: new Date().toISOString() });
+        await env.AURA_KV.put("config:comms:carriers", JSON.stringify(carriers)).catch(() => {});
+        return { cmd: "COMMS", payload: { ok: true, added: nc.id, carrier_count: carriers.length, note: "Carrier plugged in. The Communications Engine can now reason about it — no core edit needed." } };
+      }
+      if (cmSub === "DECIDE") {
+        let ctx; try { ctx = JSON.parse(cmPayload); } catch { return { cmd: "COMMS", payload: { ok: false, error: 'Usage: COMMS DECIDE ::: {"who","why","where","urgency","relationship"}' } }; }
+        // gather the real channel + carrier reality so the decision is grounded
+        let carriers = []; try { const c = await env.AURA_KV.get("config:comms:carriers"); if (c) carriers = JSON.parse(c) || []; } catch {}
+        if (!carriers.length) carriers = [{ id: "twilio", name: "Twilio", channels: ["sms", "voice", "voice_ai"], status: "active", default: true }];
+        let numbers = null; try { const nr = await env.AURA_KV.get("twilio:numbers:all"); if (nr) { const n = JSON.parse(nr); numbers = { count: n.count, primary: n.primary }; } } catch {}
+        const cmLens = "COMMUNICATIONS ENGINE — decide the single BEST channel to reach this person right now. The channels: DIGITAL (in-app message / push / Home Screen — FREE over data, best when the person is already in our world or reachable digitally), EMAIL (good for non-urgent, first business outreach, anything needing a record), SMS (fast, personal, time-sensitive, needs a phone + carrier + spend), VOICE CALL (a real human conversation — highest cost and intrusion, only when it genuinely fits), AURA VOICE (her AI voice on a call — for scale where a real conversation matters but a human can't). The channel is a DECISION: weigh purpose, urgency, who they are, where they are, and COST. CRITICAL telecom-vs-data: prefer FREE digital/data channels when the person is reachable that way; only spend on telecom (SMS/voice) when the channel genuinely serves the moment better. Respect the person — never a call when a text does, never a text when a quiet in-app note does. If multiple carriers exist, pick the best for the region/cost. Ground in the real carrier + number facts given; never fabricate costs.";
+        const cmR = await reasonThroughLoop(env, {
+          entity: JSON.stringify(ctx),
+          lens: cmLens,
+          facts: { carriers, our_numbers: numbers, context: ctx },
+          extraKeys: [
+            { key: "channel", desc: "the chosen channel: digital | email | sms | voice | aura_voice" },
+            { key: "carrier", desc: "which carrier to use if telecom (or 'none' if digital/email)" },
+            { key: "why_this_channel", desc: "one sentence — why this beats the alternatives for THIS moment" },
+            { key: "telecom_or_data", desc: "'data' (free) or 'telecom' (costs money) — and why" },
+            { key: "cost_note", desc: "real cost consideration if known, or 'unknown — do not fabricate'" },
+            { key: "the_message_shape", desc: "one line on what the outreach should be (not the full copy)" }
+          ]
+        });
+        if (!cmR.ok) return { cmd: "COMMS", payload: { ok: false, error: cmR.error } };
+        return { cmd: "COMMS", payload: { ok: true, context: ctx, decision: cmR.reasoning } };
+      }
+      return { cmd: "COMMS", payload: { ok: false, error: "Usage: COMMS DECIDE ::: {who,why,where,urgency,relationship} | COMMS CARRIERS | COMMS CARRIER ADD ::: {json}" } };
+    }
 
     case "TWILIO": {
       if (!isOp) return { cmd: "TWILIO", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
@@ -6264,57 +6278,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (!isOp) return { cmd: "GENERATE_PAGE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       // UNIVERSAL PAGE GENERATOR — data-driven component renderer.
       // Aura describes pages as JSON configs. Code renders them. Any page, any domain, no code changes.
-      // Usage: GENERATE_PAGE <key> <json config>
+      // The engine holds NO page content — every page is described from outside via JSON.
+      // Usage: GENERATE_PAGE <page-key> <json config>
       //   key: page:domain.com/ or page:domain.com/path
-      //   config: { title, sections: [{type, ...props}] }
-      // Or shortcut: GENERATE_PAGE <preset> <domain> for built-in presets (home, shops, welcome, dashboard, design)
+      //   config: { title, sections: [{type, ...props}] }  (component types: header, cards, text, button, chips, form, link_display, qrcode, chat)
       const arg0 = (args[0] || "").toLowerCase();
-      const arg1 = args[1] || "mytattoo.world";
-      const presets = {
-        home: (d) => ({ title: d, sections: [
-          { type: "header", title: "MyTattoo.world", links: [{text:"About",href:"/about"},{text:"Login",href:"/login"}] },
-          { type: "cards", items: [{title:"I Want A Tattoo",desc:"Design your tattoo with AI before your appointment",href:"/design",chatMsg:"I want a tattoo"},{title:"I Am A Tattoo Artist or I Own A Shop",desc:"Your customers arrive knowing exactly what they want",href:"/shops",chatMsg:"I am a tattoo artist"}] },
-          { type: "chat", context: "home", message: "Welcome to MyTattoo.world! I am Aura. Are you here to design a tattoo or are you a tattoo artist?" }
-        ]}),
-        shops: (d) => ({ title: d+" — For Shops", sections: [
-          { type: "header", title: "MyTattoo.world", back: "/" },
-          { type: "text", heading: "You do the tattooing. We do everything else.", body: "Your customers design their tattoo before they walk in. They arrive knowing exactly what they want. No more hours of consultation. You get notified the moment a design is ready." },
-          { type: "text", body: '<a href="/design">Want to try it? Click here to see how your customers will experience it →</a>' },
-          { type: "text", heading: "What you get", body: "Your own branded page (yourshop.mytattoo.world)<br>Your customers design before they arrive<br>You get notified when a design is ready<br>QR code for your shop window" },
-          { type: "text", body: "$100 per month. Cancel anytime.", style: "color:#fff;font-size:1.1rem" },
-          { type: "button", text: "Get Started", href: "https://auras.guide/create-checkout?type=test&redirect=1" },
-          { type: "chat", context: "shop", message: "Hey! I can answer any questions about how MyTattoo.world works for your shop." }
-        ]}),
-        welcome: (d) => ({ title: d+" — Welcome", sections: [
-          { type: "header", title: "MyTattoo.world" },
-          { type: "text", heading: "Let's get your studio set up" },
-          { type: "form", fields: [{name:"shopName",placeholder:"Shop or Studio Name",required:true},{name:"artistName",placeholder:"Your Name",required:true},{name:"phone",placeholder:"Phone"},{name:"email",placeholder:"Email"},{name:"address",placeholder:"Address"},{name:"city",placeholder:"City"},{name:"state",placeholder:"State"},{name:"specialties",placeholder:"Specialties (Japanese, Realism, etc)"}], submitLabel: "Submit", chatContext: "onboarding" },
-          { type: "chat", context: "onboarding", message: "I can help you fill this out, or just complete the form and hit submit. Either way works!" }
-        ]}),
-        dashboard: (d) => ({ title: d+" — Dashboard", sections: [
-          { type: "header", title: "MyTattoo.world", subtitle: "Dashboard", back: "/" },
-          { type: "link_display", label: "Your Studio Link", paramName: "shop", artistParam: "artist", domain: "mytattoo.world" },
-          { type: "qrcode", paramName: "shop", artistParam: "artist", domain: "mytattoo.world" },
-          { type: "text", heading: "Profile", body: "Upload your logo and profile photo — coming soon.", muted: true },
-          { type: "text", heading: "Pending Designs", body: "No pending designs yet. When customers use your link, their designs will appear here.", muted: true },
-          { type: "chat", context: "shop", message: "This is your dashboard. Your link and QR code are ready to share with customers. Need help with anything?" }
-        ]}),
-        design: (d) => ({ title: d+" — Design Your Tattoo", sections: [
-          { type: "header", title: "MyTattoo.world", back: "/" },
-          { type: "chips", items: ["Japanese","Realism","Fine Line","Blackwork","Traditional","Watercolor","Geometric","Minimalist"] },
-          { type: "chat", context: "tattoo", message: "Hi! I am Aura, your tattoo design assistant. Tell me what you are thinking — a memorial for someone you love, a sleeve you have been dreaming about, or just a vibe. I will help you see it before it is permanent.", placeholder: "Tell Aura about your tattoo..." }
-        ]})
-      };
 
       let pageKey, config;
-      if (presets[arg0]) {
-        config = presets[arg0](arg1);
-        const pathMap = { home: "/", shops: "/shops", welcome: "/welcome", dashboard: "/dashboard", design: "/design" };
-        pageKey = `page:${arg1}${pathMap[arg0]}`;
-      } else {
+      {
         pageKey = arg0.startsWith("page:") ? arg0 : `page:${arg0}`;
         const jsonStart = rest.indexOf("{");
-        if (jsonStart < 0) return { cmd: "GENERATE_PAGE", payload: { ok: false, error: "Provide JSON config or use a preset: home, shops, welcome, dashboard, design" } };
+        if (jsonStart < 0) return { cmd: "GENERATE_PAGE", payload: { ok: false, error: "Provide a JSON page config. The engine holds no presets — describe the page: { title, sections: [...] }" } };
         try { config = JSON.parse(rest.slice(jsonStart)); } catch (e) { return { cmd: "GENERATE_PAGE", payload: { ok: false, error: "Invalid JSON: " + e.message } }; }
       }
 
@@ -6423,20 +6397,11 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           const st = a2pAlert.changed_to || a2pAlert.status || "UNKNOWN";
           if (!/APPROVED|VERIFIED/i.test(st)) cf.blockers.push(`A2P SMS: ${st}`);
         }
-        // Stripe answer pending
-        cf.blockers.push("Stripe dispensary-fee answer: PENDING");
-        // Email sender
-        cf.blockers.push("Email sender: NOT BUILT");
+        // operator-defined blockers live in KV (config:focus:blockers), not hardcoded here
+        try { const bl = await env.AURA_KV.get("config:focus:blockers"); if (bl) { const arr = JSON.parse(bl); if (Array.isArray(arr)) arr.forEach(x => cf.blockers.push(x)); } } catch {}
       } catch { cf.blockers = []; }
-      // Next actions (compact)
-      cf.next_actions = [
-        "Send Stripe support email (dispensary listing fee question)",
-        "Fund Mercury (currently $7 critical)",
-        "Build email sender (unblocks claim verification for any vertical)",
-        "Prep dispensary cold-call pitch with Aura",
-        "First cold call to Vegas dispensary",
-        "Onboard Lia's florist as free test bench"
-      ];
+      // Next actions come from KV (config:focus:next_actions) — operator-owned, not baked into the brain
+      try { const na = await env.AURA_KV.get("config:focus:next_actions"); cf.next_actions = na ? (JSON.parse(na) || []) : []; } catch { cf.next_actions = []; }
       return { cmd: "CURRENT_FOCUS", payload: { ok: true, ...cf } };
     }
 
@@ -7073,12 +7038,12 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       const id = "biz_audit_" + Date.now().toString(36);
       const created = new Date().toISOString();
       const fakeVerified = new Date(Date.now() - 86400000).toISOString(); // verified 1 day BEFORE created — impossible
-      const rec = { id, business: "Phantom Audit Co", contact: "Test", email: "audit@arksystems.world", phone: "555-0900", source: "highguide.world", address: "", status: "verified", created, verified_at: fakeVerified };
+      const rec = { id, business: "Test Record " + id, contact: "Test", email: "test@example.com", phone: "555-0000", source: "audit_test", address: "", status: "verified", created, verified_at: fakeVerified };
       await env.AURA_KV.put(`business:claimed:${id}`, JSON.stringify(rec));
       // Write a CLAIM event but deliberately NO verification event — history contradicts the "verified" status
       try {
         await env.AURA_MEMORY.prepare("INSERT INTO events (session_id, ts, type, body, entity_id, channel, summary) VALUES (?, ?, ?, ?, ?, ?, ?)")
-          .bind("claim_" + id, Date.now(), "business_claim", JSON.stringify(rec), ((await env.AURA_KV.get("config:owner:identity").catch(() => null)) || "system"), "highguide.world", `Claim: Phantom Audit Co`).run();
+          .bind("claim_" + id, Date.now(), "business_claim", JSON.stringify(rec), ((await env.AURA_KV.get("config:owner:identity").catch(() => null)) || "system"), "audit_test", `Claim: ${rec.business}`).run();
       } catch {}
       return { cmd: "PLANT_INCONSISTENCY", payload: { ok: true, planted_id: id, note: "Record claims verified; history has no verification event; verified_at predates created. Three defects." } };
     }
@@ -7331,7 +7296,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
     case "FETCH_PLACES": {
       const parts = line.trim().split(/\s+/);
       const query = parts.slice(1).join(" ");
-      if (!query) return { cmd: "FETCH_PLACES", payload: { ok: false, error: "Usage: FETCH_PLACES dispensaries in Las Vegas NV" } };
+      if (!query) return { cmd: "FETCH_PLACES", payload: { ok: false, error: "Usage: FETCH_PLACES <what> in <city>" } };
       try {
         const gmKey = await env.AURA_KV.get("secret:google_maps").catch(() => null);
         if (!gmKey) return { cmd: "FETCH_PLACES", payload: { ok: false, error: "No Google Maps key in KV at secret:google_maps" } };
@@ -7353,32 +7318,6 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         return { cmd: "FETCH_PLACES", payload: { ok: true, query, count: places.length, cached_at: cacheKey, places } };
       } catch(e) {
         return { cmd: "FETCH_PLACES", payload: { ok: false, error: e.message } };
-      }
-    }
-
-    case "DEPLOY_HIGHGUIDE": {
-      if (!isOp) return { cmd: "DEPLOY_HIGHGUIDE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      try {
-        const parts = line.trim().split(/\s+/);
-        const city = parts.slice(1).join(" ") || "Las Vegas NV";
-        const gmKey = await env.AURA_KV.get("secret:google_maps").catch(() => null);
-        if (!gmKey) return { cmd: "DEPLOY_HIGHGUIDE", payload: { ok: false, error: "No Google Maps key" } };
-        // Fetch dispensaries
-        const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=cannabis+dispensary+${encodeURIComponent(city)}&key=${gmKey}`;
-        const r = await fetch(url);
-        const d = await r.json();
-        const places = (d.results || []).slice(0, 6).map(p => ({
-          n: p.name,
-          a: p.formatted_address || p.vicinity || "",
-          r: p.rating || "",
-          img: p.photos && p.photos[0] ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${p.photos[0].photo_reference}&key=${gmKey}` : "https://images.unsplash.com/photo-1603909223429-69bb7101f420?w=400&q=80"
-        }));
-        // Store in KV
-        const cacheKey = "data:places:dispensaries_" + city.toLowerCase().replace(/\s+/g, "_");
-        await env.AURA_KV.put(cacheKey, JSON.stringify(places));
-        return { cmd: "DEPLOY_HIGHGUIDE", payload: { ok: true, city, dispensaries: places.length, cached_at: cacheKey } };
-      } catch(e) {
-        return { cmd: "DEPLOY_HIGHGUIDE", payload: { ok: false, error: e.message } };
       }
     }
 
@@ -7515,7 +7454,7 @@ function detectDeployIntent(message) {
   const deployVerbs = /^(?:please\s+)?(deploy|publish|launch|build|rebuild|create|make|put up|update|generate|write)\b/i;
   const pageNouns = /\b(page|site|homepage|home page|landing page|about page|terms|privacy|holding page)\b/;
   const domainMatch = lower.match(/\b([a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:world|guide|com|us|city|kids|network|systems|solutions|tools|business))\b/);
-  // A domain mention plus a deploy verb is enough — "rebuild highguide.world" needs no page noun
+  // A domain mention plus a deploy verb is enough — "rebuild example.com" needs no page noun
   if (!deployVerbs.test(lower)) return null;
   if (!pageNouns.test(lower) && !domainMatch) return null;
   const domain = domainMatch ? domainMatch[1] : "auras.guide";
@@ -7537,13 +7476,10 @@ function detectDeployIntent(message) {
 }
 
 async function generatePageHTML(description, path, apiKey, env) {
-  // Inject real data: any data:* keys named in the message, plus auto-load dispensary cache for highguide
+  // Inject real data: any data:* keys named in the message are loaded from KV and given to the renderer.
   let dataContext = "";
   try {
     const keyRefs = [...new Set(description.match(/data:[a-z0-9_:.-]+/gi) || [])];
-    if (/highguide|dispensar/i.test(description) && !keyRefs.includes("data:places:cannabis_dispensary_las_vegas_nv")) {
-      keyRefs.push("data:places:cannabis_dispensary_las_vegas_nv");
-    }
     for (const k of keyRefs.slice(0, 3)) {
       const v = await env.AURA_KV.get(k).catch(() => null);
       if (v) dataContext += `\n\nREAL DATA from KV key ${k} (render this exact data, never invent placeholder content):\n${v}`;
@@ -8077,8 +8013,7 @@ The array must contain ALL existing tasks above plus the new one appended. Never
 
 OTHER COMMANDS (one per line, auto-executed):
 DOMAIN_LAUNCH domain.com
-FETCH_PLACES dispensaries in Las Vegas NV
-DEPLOY_HIGHGUIDE Las Vegas NV
+FETCH_PLACES <what> in <city>
 MERCURY_BALANCE
 STRIPE_BALANCE  
 DOMAIN_STATUS
@@ -8091,12 +8026,12 @@ OBSERVE (read current state) → ANALYZE → ACT → VERIFY (check the result ac
 
 YOUR PRIMITIVES (output on its own line; the system executes it and hands you the result before you answer):
 [[READ key]] — read any KV key. Up to 3 per round.
-[[RUN command args]] — execute any of your commands (SETKV, DELKV, FETCH_PLACES, DOMAIN_LAUNCH, DOMAIN_DIAGNOSE, DOMAIN_STATUS, MERCURY_BALANCE, STRIPE_BALANCE, DEPLOY_HIGHGUIDE) and see its real result. Up to 2 per round.
+[[RUN command args]] — execute any of your commands (SETKV, DELKV, FETCH_PLACES, DOMAIN_LAUNCH, DOMAIN_DIAGNOSE, DOMAIN_STATUS, MERCURY_BALANCE, STRIPE_BALANCE) and see its real result. Up to 2 per round.
 [[FETCH https://url]] — fetch any live URL to verify a page is serving what it should. You get status, length, and a content sample. Up to 2 per round.
 [[SEARCH your query]] — search the LIVE web for current information you don't have (current officeholders, today's news, prices, hours, a business's real details, anything that changes over time). You get back a direct answer plus sources. USE THIS instead of saying you'd want to check or guessing from old training — you CAN look things up now. Up to 2 per round.
-CRITICAL: To use a primitive you must OUTPUT THE TAG ITSELF, exactly, with double square brackets: [[FETCH https://highguide.world]] — then stop. Values inside a tag may contain anything except the two-character sequence ]] — single brackets are fine. NEVER write "I will fetch" or "executing now" — narration does nothing. Emit the tags, the system runs them, you get results, then you answer. You get up to 3 rounds before your final answer. READ before answering questions about state, RUN to change state, FETCH to verify changes took, RUN SETKV notes:lessons:<topic> to record lessons. NEVER say you lack access — you have these primitives.
+CRITICAL: To use a primitive you must OUTPUT THE TAG ITSELF, exactly, with double square brackets: [[FETCH https://example.com]] — then stop. Values inside a tag may contain anything except the two-character sequence ]] — single brackets are fine. NEVER write "I will fetch" or "executing now" — narration does nothing. Emit the tags, the system runs them, you get results, then you answer. You get up to 3 rounds before your final answer. READ before answering questions about state, RUN to change state, FETCH to verify changes took, RUN SETKV notes:lessons:<topic> to record lessons. NEVER say you lack access — you have these primitives.
 
-KEY DIRECTORY: business:claimed:index = claim list CACHE (may undercount under concurrent claims; derived truth is GET https://auras.guide/claims). business:claimed:<id> = one claim record. config:tasks:list = tasks. config:assets:list = assets. config:domains:launched = launched domains. data:places:cannabis_dispensary_las_vegas_nv = cached Vegas dispensary data. notes:handoff:next = session state. notes:lessons:* = your accumulated lessons.
+KEY DIRECTORY: business:claimed:index = claim list CACHE (may undercount under concurrent claims; derived truth is GET https://auras.guide/claims). business:claimed:<id> = one claim record. config:tasks:list = tasks. config:assets:list = assets. config:domains:launched = launched domains. notes:handoff:next = session state. notes:lessons:* = your accumulated lessons.
 ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.slice(0, 2000)}` : ""}`;
 
   // Multi-model routing: Anthropic primary → OpenAI fallback → Grok fallback
@@ -8245,7 +8180,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
           const reads = [...text.matchAll(/\[\[(?:READ|GETKV)\s+([^\]\s]+)\]\]/g)].map(m => m[1]).slice(0, 3);
           const runs = [
             ...[...text.matchAll(/\[\[RUN\s+([\s\S]*?)\]\]/g)].map(m => m[1].trim()),
-            ...[...text.matchAll(/\[\[((?:SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|DOMAIN_STATUS|FETCH_PLACES|DEPLOY_HIGHGUIDE|MERCURY_BALANCE|STRIPE_BALANCE)\s[\s\S]*?)\]\]/g)].map(m => m[1].trim())
+            ...[...text.matchAll(/\[\[((?:SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE)\s[\s\S]*?)\]\]/g)].map(m => m[1].trim())
           ].slice(0, 3);
           const fetches = [...text.matchAll(/\[\[FETCH\s+(https:\/\/[^\]\s]+)\]\]/g)].map(m => m[1]).slice(0, 2);
           const searches = [...text.matchAll(/\[\[SEARCH\s+([\s\S]*?)\]\]/g)].map(m => m[1].trim()).slice(0, 2);
@@ -8280,7 +8215,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
             convo.push({ role: "user", content: `RESULTS:${results}\nNow write your final answer for the user based on this real data.` });
             continue;
           }
-          raw = text.replace(/\[\[(READ|RUN|FETCH|SEARCH|GETKV|SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|DOMAIN_STATUS|FETCH_PLACES|DEPLOY_HIGHGUIDE|MERCURY_BALANCE|STRIPE_BALANCE)\b[\s\S]*?\]\]/g, "").trim() || text;
+          raw = text.replace(/\[\[(READ|RUN|FETCH|SEARCH|GETKV|SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE)\b[\s\S]*?\]\]/g, "").trim() || text;
           modelUsed = "openai";
         }
       }
@@ -8353,7 +8288,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
       const fbReads = [...raw.matchAll(/\[\[(?:READ|GETKV)\s+([^\]\s]+)\]\]/g)].map(m => m[1]).slice(0, 3);
       const fbRuns = [
         ...[...raw.matchAll(/\[\[RUN\s+([\s\S]*?)\]\]/g)].map(m => m[1].trim()),
-        ...[...raw.matchAll(/\[\[((?:SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_STATUS|FETCH_PLACES|DEPLOY_HIGHGUIDE|MERCURY_BALANCE|STRIPE_BALANCE)\s[\s\S]*?)\]\]/g)].map(m => m[1].trim())
+        ...[...raw.matchAll(/\[\[((?:SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE)\s[\s\S]*?)\]\]/g)].map(m => m[1].trim())
       ].slice(0, 3);
       const PROTECTED2 = ["auras.guide", "console.auras.guide", "arksystems.world"];
       for (const cmdLine of fbRuns) {
@@ -8372,7 +8307,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
       }
     } catch {}
     if (fbResults) {
-      raw = raw.replace(/\[\[(READ|RUN|FETCH|GETKV|SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_STATUS|FETCH_PLACES|DEPLOY_HIGHGUIDE|MERCURY_BALANCE|STRIPE_BALANCE)\b[\s\S]*?\]\]/g, "").trim();
+      raw = raw.replace(/\[\[(READ|RUN|FETCH|GETKV|SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE)\b[\s\S]*?\]\]/g, "").trim();
       raw = raw + "\n\nExecution results:" + fbResults;
     }
     raw = raw + "\n\n[fallback brain: " + modelUsed + " — actions executed by core]";
@@ -8389,7 +8324,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
   }
   try {
     const cmdLines = raw.split("\n");
-    const cmdPattern = /^(SETKV|GETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|RELAUNCH_ALL|EVENT_STORM|EVENT_STORM_REAL|READ_STORM|ENDURANCE|INTEGRITY_SCAN|DO_TEST|DO_STORM|DO_VERIFY|COLD_SURGE|SURGE_PROBE|FANOUT_STORM|HOT_ENTITY|HOT_SHARDED|GENERATE_IMAGE|SHOW_IT|RESOURCE_STATUS|CLOUDFLARE_STATUS|WORLD_MAP|LOADGEN|LOADTEST_APPEND|PLANT_INCONSISTENCY|LOOP_PROBE|STORM_CLEANUP|DEPLOY_CONSOLE|MERCURY_BALANCE|STRIPE_BALANCE|DOMAIN_STATUS|FETCH_PLACES|DEPLOY_HIGHGUIDE|PING)(\s+.*)?$/;
+    const cmdPattern = /^(SETKV|GETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|RELAUNCH_ALL|EVENT_STORM|EVENT_STORM_REAL|READ_STORM|ENDURANCE|INTEGRITY_SCAN|DO_TEST|DO_STORM|DO_VERIFY|COLD_SURGE|SURGE_PROBE|FANOUT_STORM|HOT_ENTITY|HOT_SHARDED|GENERATE_IMAGE|SHOW_IT|RESOURCE_STATUS|CLOUDFLARE_STATUS|WORLD_MAP|LOADGEN|LOADTEST_APPEND|PLANT_INCONSISTENCY|LOOP_PROBE|STORM_CLEANUP|DEPLOY_CONSOLE|MERCURY_BALANCE|STRIPE_BALANCE|DOMAIN_STATUS|FETCH_PLACES|PING)(\s+.*)?$/;
     const results = [];
     for (const ln of cmdLines) {
       const trimmed = ln.trim();
@@ -9694,7 +9629,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.175</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.177</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9969,7 +9904,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.175</div>
+  <div id="ver">v4.9.177</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 
@@ -10447,67 +10382,6 @@ function openAlbum(idx){
       return new Response(JSON.stringify({ ok: true, session: sid, paid: true, generated, image }), { headers: { "content-type": "application/json", ...cors } });
     }
 
-    // STRIPE /create-checkout — creates a Stripe Checkout Session and returns the URL.
-    // POST { type: "shop"|"design"|"test", shop, artist, return_url }
-    // Returns { ok, url } — redirect the user to url to complete payment.
-    if (url.pathname === "/create-checkout") {
-      const cors = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "Content-Type" };
-      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
-      let type = "test", shopName = "", artistName = "", returnUrl = "";
-      if (request.method === "POST") {
-        try { const b = await request.json(); type = b.type || "test"; shopName = b.shop || ""; artistName = b.artist || ""; returnUrl = b.return_url || ""; } catch {}
-      } else {
-        type = url.searchParams.get("type") || "test";
-        shopName = url.searchParams.get("shop") || "";
-        returnUrl = url.searchParams.get("return_url") || "";
-      }
-      let stripeKey = await env.AURA_KV.get("secret:stripe").catch(() => null);
-      if (!stripeKey) return new Response(JSON.stringify({ ok: false, error: "Stripe not configured" }), { status: 500, headers: { "content-type": "application/json", ...cors } });
-      if (stripeKey.startsWith("{")) { try { stripeKey = JSON.parse(stripeKey).secret_key || JSON.parse(stripeKey).key || stripeKey; } catch {} }
-      // Determine amount and product based on type
-      let amount, productName, mode = "payment";
-      if (type === "shop") { amount = 10000; productName = "MyTattoo.world — Studio Membership"; mode = "subscription"; }
-      else if (type === "design") { amount = 1000; productName = "MyTattoo.world — Tattoo Design Session"; }
-      else { amount = 50; productName = "MyTattoo.world — Test"; }
-      const successUrl = returnUrl || (type === "shop" ? "https://mytattoo.world/welcome" : type === "design" ? "https://mytattoo.world/design" : "https://mytattoo.world/welcome");
-      const cancelUrl = type === "shop" ? "https://mytattoo.world/shops" : "https://mytattoo.world";
-      // Build Stripe Checkout Session
-      const params = new URLSearchParams();
-      if (mode === "subscription") {
-        params.append("mode", "subscription");
-        params.append("line_items[0][price_data][currency]", "usd");
-        params.append("line_items[0][price_data][product_data][name]", productName);
-        params.append("line_items[0][price_data][unit_amount]", amount.toString());
-        params.append("line_items[0][price_data][recurring][interval]", "month");
-        params.append("line_items[0][quantity]", "1");
-      } else {
-        params.append("mode", "payment");
-        params.append("line_items[0][price_data][currency]", "usd");
-        params.append("line_items[0][price_data][product_data][name]", productName);
-        params.append("line_items[0][price_data][unit_amount]", amount.toString());
-        params.append("line_items[0][quantity]", "1");
-      }
-      params.append("success_url", successUrl + "?payment=success");
-      params.append("cancel_url", cancelUrl);
-      if (shopName) params.append("metadata[shop]", shopName);
-      if (artistName) params.append("metadata[artist]", artistName);
-      if (mode === "payment") params.append("payment_intent_data[statement_descriptor]", type === "shop" ? "MYTATTOO SHOP" : "MYTATTOO DESIGN");
-      const wantRedirect = url.searchParams.get("redirect") === "1" || (request.method === "GET" && !request.headers.get("accept")?.includes("application/json"));
-      try {
-        const sRes = await fetch("https://api.stripe.com/v1/checkout/sessions", {
-          method: "POST",
-          headers: { "Authorization": "Basic " + btoa(stripeKey + ":"), "Content-Type": "application/x-www-form-urlencoded" },
-          body: params.toString()
-        });
-        const sData = await sRes.json();
-        if (sData.error) return new Response(JSON.stringify({ ok: false, error: sData.error.message }), { status: 400, headers: { "content-type": "application/json", ...cors } });
-        if (wantRedirect && sData.url) return Response.redirect(sData.url, 303);
-        return new Response(JSON.stringify({ ok: true, url: sData.url, session_id: sData.id }), { headers: { "content-type": "application/json", ...cors } });
-      } catch (e) {
-        return new Response(JSON.stringify({ ok: false, error: "Stripe error: " + e.message }), { status: 500, headers: { "content-type": "application/json", ...cors } });
-      }
-    }
-
     // STRIPE /create-payment-intent — embedded (Elements) flow. No redirect to stripe.com.
     // POST/GET { session, amount(cents, default 1000), email(optional) }
     // Returns { ok, client_secret, publishable_key, amount }
@@ -10551,11 +10425,12 @@ function openAlbum(idx){
       }
     }
 
-    // EMBEDDED PAYMENT PAGE /pay — Stripe Elements hosted on auras.guide (never stripe.com).
-    // Reads ?session and ?amount from its own URL client-side. On success it calls
-    // /confirm-payment which generates + delivers the pending design, then shows it here.
+    // EMBEDDED PAYMENT PAGE /pay — generic Stripe Elements page served from KV (page:pay).
+    // Page content lives OUTSIDE the index in KV like every other page. Reads ?session and ?amount
+    // client-side. If no page is configured, returns a clear 404 rather than a hardcoded page.
     if (url.pathname === "/pay" && request.method === "GET") {
-      const page = AURA_PAY_PAGE;
+      const page = await env.AURA_KV.get("page:pay").catch(() => null);
+      if (!page) return new Response("Payment page not configured. Set page:pay in KV.", { status: 404, headers: { "content-type": "text/plain" } });
       return new Response(page, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
     }
 
@@ -10564,12 +10439,12 @@ function openAlbum(idx){
     // the exact consent language shown, timestamp, and source. CORS-open (public form).
     if (url.pathname === "/optin" && request.method === "POST") {
       const cors = { "access-control-allow-origin": "*", "access-control-allow-methods": "POST, OPTIONS", "access-control-allow-headers": "Content-Type" };
-      let name = "", phone = "", email = "", consent = false, consentText = "";
-      try { const b = await request.json(); name = (b.name || "").trim(); phone = (b.phone || "").trim(); email = (b.email || "").trim(); consent = b.consent === true || b.consent === "true"; consentText = (b.consent_text || "").trim(); } catch {}
+      let name = "", phone = "", email = "", consent = false, consentText = "", source = "";
+      try { const b = await request.json(); name = (b.name || "").trim(); phone = (b.phone || "").trim(); email = (b.email || "").trim(); consent = b.consent === true || b.consent === "true"; consentText = (b.consent_text || "").trim(); source = (b.source || "").toString().slice(0, 100); } catch {}
       if (!phone) return new Response(JSON.stringify({ ok: false, error: "Phone number is required." }), { status: 400, headers: { "content-type": "application/json", ...cors } });
       if (!consent) return new Response(JSON.stringify({ ok: false, error: "You must check the consent box to receive messages." }), { status: 400, headers: { "content-type": "application/json", ...cors } });
       const normPhone = phone.replace(/[^0-9+]/g, "");
-      const record = { name, phone: normPhone, email, consent: true, consent_text: consentText, source: "makeacall.world", ip: request.headers.get("cf-connecting-ip") || "", user_agent: request.headers.get("user-agent") || "", ts: new Date().toISOString() };
+      const record = { name, phone: normPhone, email, consent: true, consent_text: consentText, source: source || "optin_form", ip: request.headers.get("cf-connecting-ip") || "", user_agent: request.headers.get("user-agent") || "", ts: new Date().toISOString() };
       await env.AURA_KV.put(`optin:${normPhone}`, JSON.stringify(record)).catch(() => {});
       try { await env.AURA_MEMORY.prepare("INSERT INTO events (session_id, ts, type, body, entity_id, channel, summary) VALUES (?, ?, ?, ?, ?, ?, ?)").bind("sms_optin", Date.now(), "sms_optin", JSON.stringify(record), `phone:${normPhone}`, "sms", `SMS opt-in: ${name || normPhone}`).run(); } catch {}
       return new Response(JSON.stringify({ ok: true, message: "You're signed up. You'll receive a confirmation text shortly. Reply STOP anytime to unsubscribe." }), { headers: { "content-type": "application/json", ...cors } });
@@ -10798,81 +10673,6 @@ function openAlbum(idx){
       return new Response(JSON.stringify(result), { status: result.ok ? 200 : 500, headers: { "content-type": "application/json", ...cors } });
     }
 
-    // PUBLIC /find-artists endpoint — search for real tattoo shops by location.
-    // GET /find-artists?q=Los+Angeles or ?q=Las+Vegas&style=Japanese
-    if (url.pathname === "/find-artists") {
-      const cors = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, OPTIONS", "access-control-allow-headers": "Content-Type" };
-      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
-      const q = (url.searchParams.get("q") || url.searchParams.get("location") || "").trim();
-      const style = (url.searchParams.get("style") || "").trim();
-      if (!q) return new Response(JSON.stringify({ ok: false, error: "Provide ?q=city name" }), { status: 400, headers: { "content-type": "application/json", ...cors } });
-      const searchQuery = style ? `${style} tattoo shops ${q}` : `tattoo shops ${q}`;
-      const cacheKey = `data:places:tattoo_${searchQuery.replace(/\s+/g, "_").toLowerCase()}`;
-      // Check cache first
-      const cached = await env.AURA_KV.get(cacheKey).catch(() => null);
-      if (cached) {
-        try {
-          const data = JSON.parse(cached);
-          return new Response(JSON.stringify({ ok: true, query: searchQuery, count: data.length, places: data, cached: true }), { headers: { "content-type": "application/json", ...cors } });
-        } catch {}
-      }
-      // Fetch from Google Maps
-      let gmKey = await env.AURA_KV.get("secret:google_maps").catch(() => null);
-      if (!gmKey) return new Response(JSON.stringify({ ok: false, error: "Maps API not configured" }), { status: 500, headers: { "content-type": "application/json", ...cors } });
-      if (gmKey.startsWith("{")) { try { gmKey = JSON.parse(gmKey).api_key || gmKey; } catch {} }
-      try {
-        const gUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(searchQuery)}&key=${gmKey}`;
-        const gRes = await fetch(gUrl);
-        const gData = await gRes.json();
-        if (gData.status !== "OK") return new Response(JSON.stringify({ ok: false, error: gData.status }), { status: 500, headers: { "content-type": "application/json", ...cors } });
-        const places = (gData.results || []).map(p => ({
-          name: p.name,
-          address: p.formatted_address,
-          rating: p.rating || 0,
-          total_ratings: p.user_ratings_total || 0,
-          place_id: p.place_id,
-          lat: p.geometry?.location?.lat,
-          lng: p.geometry?.location?.lng,
-          open_now: p.opening_hours?.open_now
-        }));
-        // Cache for 24h
-        await env.AURA_KV.put(cacheKey, JSON.stringify(places), { expirationTtl: 86400 }).catch(() => {});
-        return new Response(JSON.stringify({ ok: true, query: searchQuery, count: places.length, places, cached: false }), { headers: { "content-type": "application/json", ...cors } });
-      } catch (e) {
-        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: { "content-type": "application/json", ...cors } });
-      }
-    }
-
-    // PUBLIC /tattoo endpoint — tattoo design generator for MyTattoo.world.
-    // Accepts a description, enhances it for tattoo art, generates via gpt-image-1.
-    // POST { "idea": "Japanese dragon sleeve", "style": "Japanese", "placement": "full sleeve" }
-    // Returns { ok, id, url, idea, enhanced_prompt }
-    if (url.pathname === "/tattoo") {
-      const cors = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "Content-Type" };
-      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
-      let idea = "", style = "", placement = "";
-      if (request.method === "POST") {
-        try { const b = await request.json(); idea = b.idea || b.prompt || b.q || ""; style = b.style || ""; placement = b.placement || ""; } catch {}
-      } else {
-        idea = url.searchParams.get("idea") || url.searchParams.get("q") || "";
-        style = url.searchParams.get("style") || "";
-        placement = url.searchParams.get("placement") || "";
-      }
-      idea = (idea || "").trim();
-      if (!idea) return new Response(JSON.stringify({ ok: false, error: "Describe your tattoo idea" }), { status: 400, headers: { "content-type": "application/json", ...cors } });
-      // Enhance for tattoo art
-      let enhanced = `Professional tattoo design: ${idea}.`;
-      if (style) enhanced += ` Style: ${style}.`;
-      if (placement) enhanced += ` Designed for placement on ${placement}.`;
-      enhanced += " Clean tattoo artwork on dark background, high detail, suitable for tattooing on skin. Professional tattoo flash art quality, crisp lines, beautiful shading.";
-      const result = await auraGenerateImage(enhanced, env, { source: "mytattoo", entity: null });
-      if (result.ok) {
-        return new Response(JSON.stringify({ ok: true, id: result.id, url: result.url, idea, style: style || "artist choice", placement: placement || "not specified", enhanced_prompt: enhanced }), { headers: { "content-type": "application/json", ...cors } });
-      }
-      return new Response(JSON.stringify({ ok: false, error: result.error || "Generation failed" }), { status: 500, headers: { "content-type": "application/json", ...cors } });
-    }
-
-    // PUBLIC pitch endpoint — business URL -> read it -> generate a visual of that business. The old page calls this.
     if (url.pathname === "/pitch") {
       const cors = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "Content-Type" };
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
@@ -10932,7 +10732,7 @@ function openAlbum(idx){
     if (url.pathname === "/dashboard" && request.method === "GET") {
       const id = (url.searchParams.get("id") || "").slice(0, 60);
       const recRaw = id ? await env.AURA_KV.get(`business:claimed:${id}`).catch(() => null) : null;
-      if (!recRaw) return new Response("<!DOCTYPE html><html><body style=\"background:#0a0a0a;color:#eee;font-family:sans-serif;padding:40px\"><h2>Dashboard not found</h2><p>Check your link, or claim your business at <a href=\"https://highguide.world\" style=\"color:#8b7cf6\">highguide.world</a>.</p></body></html>", { headers: { "content-type": "text/html" }, status: 404 });
+      if (!recRaw) return new Response("<!DOCTYPE html><html><body style=\"background:#0a0a0a;color:#eee;font-family:sans-serif;padding:40px\"><h2>Dashboard not found</h2><p>Check your link.</p></body></html>", { headers: { "content-type": "text/html" }, status: 404 });
       const rec = JSON.parse(recRaw);
       const verified = rec.status === "verified";
       const esc = s => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -10941,7 +10741,7 @@ function openAlbum(idx){
     }
 
     if (url.pathname === "/claim" && request.method === "POST") {
-      // Business claim intake — called by claim forms on HighGuide/CityGuide pages. Public, rate-limited.
+      // Business claim intake — called by claim forms on any vertical page. Public, rate-limited.
       const rl = await checkRateLimit(request, env, isOp);
       if (!rl.allowed) return jsonReply({ ok: false, error: "Rate limit exceeded" });
       try {
@@ -10950,7 +10750,7 @@ function openAlbum(idx){
         const contactName = (body.name || "").toString().slice(0, 120).trim();
         const email = (body.email || "").toString().slice(0, 200).trim();
         const phone = (body.phone || "").toString().slice(0, 40).trim();
-        const source = (body.source || "highguide.world").toString().slice(0, 100);
+        const source = (body.source || "").toString().slice(0, 100);
         if (!name || !email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
           return jsonReply({ ok: false, error: "business and a valid email are required" });
         }
@@ -11016,9 +10816,9 @@ function openAlbum(idx){
         try {
           await env.AURA_MEMORY.prepare(
             "INSERT INTO events (session_id, ts, type, body, entity_id, channel, summary) VALUES (?, ?, ?, ?, ?, ?, ?)"
-          ).bind("claim_" + id, Date.now(), "business_verified", JSON.stringify(rec), ((await env.AURA_KV.get("config:owner:identity").catch(() => null)) || "system"), rec.source || "highguide.world", `Verified: ${rec.business}`).run();
+          ).bind("claim_" + id, Date.now(), "business_verified", JSON.stringify(rec), ((await env.AURA_KV.get("config:owner:identity").catch(() => null)) || "system"), rec.source || "claim", `Verified: ${rec.business}`).run();
         } catch {}
-        return jsonReply({ ok: true, id, status: "verified", dashboard: "https://auras.guide/dashboard?id=" + id, message: "Ownership verified. Welcome to " + (rec.source || "HighGuide") + ". Your dashboard: https://auras.guide/dashboard?id=" + id });
+        return jsonReply({ ok: true, id, status: "verified", dashboard: "https://auras.guide/dashboard?id=" + id, message: "Ownership verified. Your dashboard: https://auras.guide/dashboard?id=" + id });
       } catch (e) {
         return jsonReply({ ok: false, error: "Invalid verify payload: " + e.message });
       }

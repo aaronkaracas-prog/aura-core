@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.160-2026-06-25";
+const BUILD = "aura-core-v4.9.161-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -7431,10 +7431,30 @@ async function reasonThroughLoop(env, opts) {
     + "Return ONLY a JSON object, no prose, no fences, with these keys: saw (what is actually true, separating fact from assumption), assumptions_challenged (array — each assumption examined with a verdict on whether it is truly necessary), data_trust (array — any fact you would not fully trust and why, or empty), minimum_viable (one sentence — the smallest real version that works now), the_move (the single highest-leverage decision), why (one sentence), push_back (one sentence directly to the operator IF their frame rests on something unverified/shaky, else empty string), watch_for (array), confidence (high|medium|low)" + extra + ". Output JSON only.";
   const user = "FACTS:\n" + (typeof opts.facts === "string" ? opts.facts : JSON.stringify(opts.facts || {})) + (opts.frame ? ("\n\nFRAME (challenge this — do NOT blindly accept it):\n" + String(opts.frame).slice(0, 2500)) : "") + "\n\nSITUATION: " + (opts.entity || "");
   try {
-    const d = await callAnthropic(apiKey, { model, max_tokens: opts.maxTokens || 1100, system: sys, messages: [{ role: "user", content: user }] });
+    const d = await callAnthropic(apiKey, { model, max_tokens: opts.maxTokens || 2000, system: sys, messages: [{ role: "user", content: user }] });
     let tx = ""; if (d && d.content) { for (const b of d.content) { if (b.type === "text") tx += b.text; } }
     tx = tx.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
-    return { ok: true, reasoning: JSON.parse(tx) };
+    // primary parse
+    try { return { ok: true, reasoning: JSON.parse(tx) }; } catch (e1) {
+      // RECOVERY: the model may have been truncated mid-JSON (hit the token ceiling) or added stray
+      // characters. Try to salvage the reasoning instead of throwing it away.
+      // 1) extract the outermost object
+      const first = tx.indexOf("{"); const last = tx.lastIndexOf("}");
+      if (first !== -1 && last > first) { try { return { ok: true, reasoning: JSON.parse(tx.slice(first, last + 1)) }; } catch {} }
+      // 2) close an unterminated string + balance braces, then parse
+      try {
+        let s = tx.slice(first === -1 ? 0 : first);
+        // count unescaped quotes; if odd, the last string is open -> close it
+        const quotes = (s.match(/(?<!\\)"/g) || []).length; if (quotes % 2 !== 0) s += '"';
+        const opens = (s.match(/{/g) || []).length, closes = (s.match(/}/g) || []).length;
+        const openB = (s.match(/\[/g) || []).length, closeB = (s.match(/\]/g) || []).length;
+        s += "]".repeat(Math.max(0, openB - closeB)) + "}".repeat(Math.max(0, opens - closes));
+        const salvaged = JSON.parse(s);
+        return { ok: true, reasoning: salvaged, recovered: true };
+      } catch {}
+      // 3) still unparseable — return the raw text so nothing is lost, flagged
+      return { ok: true, reasoning: { saw: "(reasoning returned but could not be parsed as JSON; raw text preserved)", raw: tx.slice(0, 4000), parse_error: String(e1 && e1.message) }, recovered: false, raw_only: true };
+    }
   } catch (e) { return { ok: false, error: "Reasoning failed: " + String(e && e.message) }; }
 }
 
@@ -9227,7 +9247,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.160</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.161</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9502,7 +9522,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.160</div>
+  <div id="ver">v4.9.161</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

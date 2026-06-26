@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.153-2026-06-25";
+const BUILD = "aura-core-v4.9.154-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -6150,6 +6150,32 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       const ecRaw = (rest || "").trim();
       const ecToday = new Date().toISOString().slice(0, 10);
       const readDay = async (d) => { try { const ex = await env.AURA_KV.get("economics:cost:" + d); return ex ? JSON.parse(ex) : null; } catch { return null; } };
+      if (/^ANALYZE\b/i.test(ecRaw)) {
+        // ECONOMICS ANALYZE — the financial-intelligence engine. Joins cost-to-serve (our ledger)
+        // with revenue (Stripe) and cash (Mercury), runs the ecosystem-sustainability lens.
+        // OPERATOR ONLY (reads real account data). Objective: a healthy self-sustaining ecosystem.
+        if (!isOp) return { cmd: "ECONOMICS", payload: { ok: false, error: "OPERATOR_REQUIRED (reads real account data)" } };
+        let cost7 = { calls: 0, input_tokens: 0, output_tokens: 0, usd: 0, by_model: {} }, costDays = [];
+        for (let i = 0; i < 7; i++) { const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10); const a = await readDay(d); if (a) { cost7.calls += a.calls; cost7.input_tokens += a.input_tokens; cost7.output_tokens += a.output_tokens; cost7.usd += a.usd; for (const k in (a.by_model || {})) cost7.by_model[k] = Number(((cost7.by_model[k] || 0) + a.by_model[k]).toFixed(6)); costDays.push({ date: d, usd: Number(a.usd.toFixed(4)), calls: a.calls }); } }
+        cost7.usd = Number(cost7.usd.toFixed(4));
+        let stripe = null, mercury = null;
+        try { const sb = await stripeRequest("/balance", "GET", null, env); if (sb.ok) stripe = { available: (sb.data.available || []).map(b => ({ currency: b.currency, amount: b.amount / 100 })), pending: (sb.data.pending || []).map(b => ({ currency: b.currency, amount: b.amount / 100 })) }; } catch {}
+        try { const mb = await getMercuryBalance(env); if (mb.ok) mercury = { total_available: mb.total_available, accounts: (mb.accounts || []).map(a => ({ name: a.name, available: a.available })) }; } catch {}
+        const ecFacts = { cost_to_serve_last_7_days_usd: cost7.usd, ai_calls_7d: cost7.calls, cost_by_model_7d: cost7.by_model, cost_by_day: costDays, stripe_revenue: stripe, cash_mercury: mercury, ts: new Date().toISOString() };
+        const ecApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+        if (!ecApiKey) return { cmd: "ECONOMICS", payload: { ok: true, mode: "raw", facts: ecFacts, note: "Brain not configured — returning raw facts only." } };
+        const ecModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+        const ecSys = "You are the ECONOMICS ENGINE of Aura — her financial intelligence about HER OWN operation (not a user's personal spending). You are given real facts: AI cost-to-serve (what Aura spent on her own brain calls), Stripe revenue, and Mercury cash. Your objective is NOT maximizing profit — it is a healthy, self-sustaining ecosystem. Reason honestly about cost-to-serve, revenue, margin, cash position, and runway. If revenue is zero and cash is thin, say so plainly and protect runway. Return ONLY a JSON object, no prose, no fences, with exactly these keys: cost_to_serve_7d (number USD), revenue_observed (number USD), cash_on_hand (number USD), margin_state (one of: healthy, thin, negative, pre_revenue), runway_note (one sentence on how long current cash lasts at current burn, or 'not enough data'), self_sustaining (boolean), the_smartest_move (one sentence, the single highest-leverage financial action right now), why (one sentence), watch_for (array of risks), confidence (high|medium|low). Output JSON only.";
+        try {
+          const d = await callAnthropic(ecApiKey, { model: ecModel, max_tokens: 900, system: ecSys, messages: [{ role: "user", content: "REAL FACTS:\n" + JSON.stringify(ecFacts) }] });
+          let tx = ""; if (d && d.content) { for (const b of d.content) { if (b.type === "text") tx += b.text; } }
+          tx = tx.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+          const parsed = JSON.parse(tx);
+          const ts = new Date().toISOString();
+          await env.AURA_KV.put("economics:analysis:" + ts.slice(0, 10), JSON.stringify({ analysis: parsed, facts: ecFacts, ts })).catch(() => {});
+          return { cmd: "ECONOMICS", payload: { ok: true, mode: "analysis", facts: ecFacts, analysis: parsed, ts } };
+        } catch (e) { return { cmd: "ECONOMICS", payload: { ok: false, error: "Economics analysis failed: " + String(e.message), facts: ecFacts } }; }
+      }
       if (/^DAYS\s+\d+/i.test(ecRaw)) {
         const n = Math.min(parseInt(ecRaw.replace(/^DAYS\s+/i, ""), 10) || 1, 60);
         let sum = { calls: 0, input_tokens: 0, output_tokens: 0, usd: 0, by_model: {} }, days = [];
@@ -9111,7 +9137,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.153</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.154</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9386,7 +9412,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.153</div>
+  <div id="ver">v4.9.154</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.164-2026-06-25";
+const BUILD = "aura-core-v4.9.165-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -3839,6 +3839,126 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         } catch (e) {}
       }
       return { cmd: "PTA_TALK", payload: { ok: true, pta: tId, reply: tReplyObj.reply, followup_scheduled: !!scheduled, scheduled, remembered, hold: (tMode === "home" ? (tReplyObj.hold || null) : undefined), reminder_actions_applied: (tMode === "home" ? reminderActionsApplied : undefined), page_built: (tMode === "home" ? pageBuilt : undefined) } };
+    }
+
+    case "MOMENT": {
+      // ===== THE HARVEST ATOM — a real-world moment that births context-rich PTAs from consent =====
+      // A "moment" is a genuinely useful real-world offer (a ride home, a room tonight, a special) tied
+      // to a PLACE and optionally a CONNECTOR (the bartender). Aura CREATES it ahead of time, baking in
+      // the surroundings she already perceives, and gets a scan link. When a person TAPS yes, their PTA
+      // is BORN carrying the MAXIMUM honest context of that moment — place, time, the offer, the
+      // connector edge, the live surroundings — and is stamped from birth with a PERMANENT, HONORED exit.
+      // Identity is never empty; the understanding comes with it. Out means out, forever.
+      //   MOMENT CREATE ::: {json}                  -> mint a harvest moment; returns token + scan_url
+      //   MOMENT SCAN <token> [::: {json context}]  -> the tap: births the context-rich PTA, returns the thing
+      //   MOMENT OPTOUT <pta_id> [::: reason]        -> the permanent, honored exit
+      //   MOMENT GET <token>                         -> inspect a moment
+      if (!isOp) return { cmd: "MOMENT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const mSub = (args[0] || "").toUpperCase();
+      const mBody = rest.slice(cmd.length + 1 + mSub.length).trim();
+      const mPayload = mBody.includes(":::") ? mBody.slice(mBody.indexOf(":::") + 3).trim() : "";
+      const mArg = mBody.includes(":::") ? mBody.slice(0, mBody.indexOf(":::")).trim() : mBody.trim();
+      const mkId = (p) => p + "_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
+
+      if (mSub === "CREATE") {
+        let mc; try { mc = JSON.parse(mPayload || mArg); } catch { return { cmd: "MOMENT", payload: { ok: false, error: 'Usage: MOMENT CREATE ::: {"offer":"ride home","place":"<business_pta or place name>","connector":"<pta or name>","context":"late night, World Cup crowd"}' } }; }
+        if (!mc.offer) return { cmd: "MOMENT", payload: { ok: false, error: "offer required (what useful thing is being offered)" } };
+        const token = mkId("m");
+        const ts = new Date().toISOString();
+        // bake in the surroundings Aura already perceives: if place is a business PTA, pull its stored context
+        let placeContext = null, placePtaId = null;
+        if (mc.place && /^(pta_|biz_|business_)/i.test(mc.place)) {
+          placePtaId = mc.place;
+          try { const e = await env.AURA_MEMORY.prepare("SELECT name, metadata FROM pta_entities WHERE id = ?").bind(mc.place).first(); if (e) { let md = {}; try { md = JSON.parse(e.metadata || "{}"); } catch {} placeContext = { name: e.name, location: md.location || md.address || null, perceived: md.brief || md.surroundings || null }; } } catch {}
+        }
+        let connectorPtaId = null;
+        if (mc.connector && /^pta_/i.test(mc.connector)) connectorPtaId = mc.connector;
+        const moment = {
+          token, offer: mc.offer, place: mc.place || null, place_pta: placePtaId, place_context: placeContext,
+          connector: mc.connector || null, connector_pta: connectorPtaId,
+          baked_context: mc.context || null, created: ts, status: "live", births: 0
+        };
+        await env.AURA_KV.put("moment:" + token, JSON.stringify(moment)).catch(() => {});
+        const scanUrl = "https://homescreen.world/m/" + token;
+        return { cmd: "MOMENT", payload: { ok: true, token, scan_url: scanUrl, offer: moment.offer, place: moment.place, note: "Moment is live. Put scan_url behind a QR. Every tap births a context-rich PTA. The tap is instant — surroundings are already baked in." } };
+      }
+
+      if (mSub === "SCAN") {
+        if (!mArg) return { cmd: "MOMENT", payload: { ok: false, error: "Usage: MOMENT SCAN <token> [::: {json person/device context}]" } };
+        const mRaw = await env.AURA_KV.get("moment:" + mArg).catch(() => null);
+        if (!mRaw) return { cmd: "MOMENT", payload: { ok: false, error: "No such moment: " + mArg } };
+        let moment; try { moment = JSON.parse(mRaw); } catch { return { cmd: "MOMENT", payload: { ok: false, error: "Corrupt moment" } }; }
+        let personCtx = {}; if (mPayload) { try { personCtx = JSON.parse(mPayload); } catch {} }
+        const ts = new Date().toISOString();
+        const hour = new Date().getHours();
+        const timeOfDay = hour >= 22 || hour < 4 ? "late_night" : hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
+        // BIRTH FROM THE TAP (consent): create the person's PTA, carrying maximum honest context of the moment
+        let bornId = null;
+        try {
+          const idHint = personCtx.phone ? ("identity:phone:" + String(personCtx.phone).replace(/[^\d+]/g, "")) : personCtx.email ? ("identity:email:" + personCtx.email) : "";
+          const nm = (personCtx.name || "Guest").replace(/[\n\r]/g, " ");
+          const pr = await processCommand(`PTA_ENTITY CREATE person ${nm}${idHint ? " " + idHint : ""}`, env, true);
+          const pp = pr && pr.payload ? pr.payload : pr;
+          if (pp && pp.ok && pp.entity) bornId = pp.entity.id;
+        } catch (e) { return { cmd: "MOMENT", payload: { ok: false, error: "Birth failed: " + String(e && e.message) } }; }
+        if (!bornId) return { cmd: "MOMENT", payload: { ok: false, error: "Could not create PTA on scan" } };
+        // stamp the MAXIMUM honest context of the moment onto the new PTA at birth
+        try {
+          const ent = await env.AURA_MEMORY.prepare("SELECT metadata FROM pta_entities WHERE id = ?").bind(bornId).first();
+          let meta = {}; if (ent && ent.metadata) { try { meta = JSON.parse(ent.metadata); } catch {} }
+          meta.born_from_consent = true;
+          meta.born_at_moment = moment.token;
+          meta.birth_context = {
+            offer: moment.offer, place: moment.place, place_context: moment.place_context,
+            connector: moment.connector, time_of_day: timeOfDay, ts,
+            surroundings: moment.baked_context, person_provided: personCtx
+          };
+          meta.consent_scope = "Consented to: " + moment.offer + (moment.place ? (" at " + (moment.place_context && moment.place_context.name ? moment.place_context.name : moment.place)) : "");
+          await env.AURA_MEMORY.prepare("UPDATE pta_entities SET metadata = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(meta), ts, bornId).run();
+        } catch {}
+        await env.AURA_KV.put(`pta:state:${bornId}`, "active").catch(() => {});
+        // EDGES — the graph thickens: person was at this place, connected via this connector
+        try {
+          if (moment.place_pta) await processCommand(`PTA_GRANT ${moment.place_pta} ${bornId} ${JSON.stringify({ edge_type: "presence", relationship: "was_at", context: moment.offer, ts })}`, env, true);
+          if (moment.connector_pta) await processCommand(`PTA_GRANT ${moment.connector_pta} ${bornId} ${JSON.stringify({ edge_type: "introduction", relationship: "connected_via", context: moment.offer, ts })}`, env, true);
+        } catch {}
+        // timeline: born from a real, useful moment
+        try {
+          const evs = [{ ts, event: `Born from consent: tapped yes to "${moment.offer}"${moment.place ? " at " + (moment.place_context && moment.place_context.name ? moment.place_context.name : moment.place) : ""}${moment.connector ? ", connected via " + moment.connector : ""} (${timeOfDay})`, kind: "birth_from_moment" }];
+          await env.AURA_KV.put(`pta:timeline:${bornId}`, JSON.stringify(evs)).catch(() => {});
+        } catch {}
+        // count the birth on the moment
+        try { moment.births = (moment.births || 0) + 1; await env.AURA_KV.put("moment:" + moment.token, JSON.stringify(moment)).catch(() => {}); } catch {}
+        return { cmd: "MOMENT", payload: { ok: true, born_pta: bornId, offer: moment.offer, delivered: moment.offer, context_captured: { place: moment.place, connector: moment.connector, time_of_day: timeOfDay, surroundings: moment.baked_context, person: personCtx }, exit: "This person can say 'never again' anytime via MOMENT OPTOUT " + bornId + " — and it is honored forever.", note: "PTA born carrying the moment's full context. Edges written to place + connector." } };
+      }
+
+      if (mSub === "OPTOUT") {
+        if (!mArg) return { cmd: "MOMENT", payload: { ok: false, error: "Usage: MOMENT OPTOUT <pta_id> [::: reason]" } };
+        const ts = new Date().toISOString();
+        // THE PERMANENT, HONORED EXIT — out means out, forever. No more contact, ever. Not a 30-day pause.
+        await env.AURA_KV.put(`pta:optout:${mArg}`, JSON.stringify({ opted_out: true, ts, reason: mPayload || null, permanent: true })).catch(() => {});
+        await env.AURA_KV.put(`pta:state:${mArg}`, "opted_out").catch(() => {});
+        try {
+          const ent = await env.AURA_MEMORY.prepare("SELECT metadata FROM pta_entities WHERE id = ?").bind(mArg).first();
+          let meta = {}; if (ent && ent.metadata) { try { meta = JSON.parse(ent.metadata); } catch {} }
+          meta.do_not_contact = true; meta.opted_out_at = ts; meta.opt_out_permanent = true;
+          await env.AURA_MEMORY.prepare("UPDATE pta_entities SET metadata = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(meta), ts, mArg).run();
+        } catch {}
+        try {
+          let evs = []; const tl = await env.AURA_KV.get(`pta:timeline:${mArg}`); if (tl) { try { evs = JSON.parse(tl) || []; } catch {} }
+          evs.push({ ts, event: "Asked never to be contacted again. Honored permanently.", kind: "permanent_opt_out" });
+          await env.AURA_KV.put(`pta:timeline:${mArg}`, JSON.stringify(evs)).catch(() => {});
+        } catch {}
+        return { cmd: "MOMENT", payload: { ok: true, pta: mArg, opted_out: true, permanent: true, note: "Out means out. This person will never be contacted again. Honored forever." } };
+      }
+
+      if (mSub === "GET") {
+        const mRaw = await env.AURA_KV.get("moment:" + mArg).catch(() => null);
+        if (!mRaw) return { cmd: "MOMENT", payload: { ok: false, error: "No such moment: " + mArg } };
+        return { cmd: "MOMENT", payload: { ok: true, moment: JSON.parse(mRaw) } };
+      }
+
+      return { cmd: "MOMENT", payload: { ok: false, error: "Usage: MOMENT CREATE|SCAN|OPTOUT|GET ..." } };
     }
 
     case "INVITE": {
@@ -9295,7 +9415,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.164</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.165</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9570,7 +9690,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.164</div>
+  <div id="ver">v4.9.165</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

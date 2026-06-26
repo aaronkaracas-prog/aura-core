@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.169-2026-06-25";
+const BUILD = "aura-core-v4.9.170-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -3839,6 +3839,39 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         } catch (e) {}
       }
       return { cmd: "PTA_TALK", payload: { ok: true, pta: tId, reply: tReplyObj.reply, followup_scheduled: !!scheduled, scheduled, remembered, hold: (tMode === "home" ? (tReplyObj.hold || null) : undefined), reminder_actions_applied: (tMode === "home" ? reminderActionsApplied : undefined), page_built: (tMode === "home" ? pageBuilt : undefined) } };
+    }
+
+    case "OPPORTUNITY":
+    case "WEAKNESS": {
+      // ===== THE OPPORTUNITY ENGINE — see the leak their success is hiding, build the fix =====
+      // Aura looks at a business and finds the ONE weakness their success is covering up (a packed
+      // restaurant that captures no customers; an artist whose skill hides that hand-designing eats
+      // their day), names the DIGITAL TOOL that fixes it, judges whether she can BUILD IT NOW (a page,
+      // QR, capture form, MOMENT — yes, today) or whether it is a real project, and writes the pitch to
+      // the owner. We make money when the business makes money — so the bar is a real, buildable gain.
+      // Reasons through the shared mind, so it finds the NON-OBVIOUS leak and never inflates.
+      //   OPPORTUNITY <business + what they do + how they're doing>
+      let opRaw = (rest || "").trim();
+      if (!opRaw) return { cmd: "OPPORTUNITY", payload: { ok: false, error: "Usage: OPPORTUNITY <business + what they do + how they're doing>" } };
+      // tell her what she can actually BUILD right now, so "buildable_now" is grounded in real capability
+      const BUILDABLE = "Aura can build, autonomously and today, anything DIGITAL that is page-level: a web page or mini-tool (GENERATE_PAGE), a QR-driven real-world capture moment that births a customer relationship/PTA (MOMENT), a business identity/continuity layer (PTA), a generated image (GENERATE_IMAGE), a visual (SHOW_IT). She CANNOT build physical things, and a genuinely complex app (e.g. a high-fidelity AI tattoo-design generator, a full booking platform, real-time inventory) is a PROJECT, not a same-day build. Judge honestly which bucket the fix falls in.";
+      const opLens = "OPPORTUNITY INTELLIGENCE — look at this business and find the ONE weakness their success is HIDING. The weakness is rarely 'they need more customers' — a packed business has plenty; the leak is usually the thing their success lets them ignore (a slammed restaurant that captures zero customer relationships; a skilled artist whose talent hides that a manual task eats their highest-value hours; a giant with scale but no lifelong customer continuity). See what they are LEAVING ON THE TABLE because things are going well enough that nobody looked. Then name the single DIGITAL TOOL that fixes it, and judge honestly whether Aura can build it NOW or it is a project. Be specific and real — a fix the owner would immediately recognize as obviously valuable. We earn when they earn, so the gain must be real and buildable, not a vanity feature.";
+      const opR = await reasonThroughLoop(env, {
+        entity: opRaw,
+        lens: opLens,
+        facts: { what_aura_can_build: BUILDABLE },
+        extraKeys: [
+          { key: "the_hidden_weakness", desc: "the one leak their success is covering — the non-obvious thing they're leaving on the table" },
+          { key: "why_they_miss_it", desc: "one sentence — why the owner hasn't seen it themselves" },
+          { key: "the_tool", desc: "the single digital tool that fixes it, named concretely" },
+          { key: "how_it_makes_them_money", desc: "one sentence — the direct line from this tool to more revenue/time for them" },
+          { key: "buildable_now", desc: "boolean — can Aura build this autonomously today (page/QR/MOMENT/PTA level)?" },
+          { key: "build_path", desc: "if buildable_now: the exact capability + a one-line spec (e.g. 'MOMENT: QR at the door capturing diners into a Malibu-Seafood PTA'); if a project: what it would take" },
+          { key: "the_pitch", desc: "2-3 sentences Aura would say to the owner — leads with what she noticed about THEIR business, then the offer" }
+        ]
+      });
+      if (!opR.ok) return { cmd: "OPPORTUNITY", payload: { ok: false, error: opR.error } };
+      return { cmd: "OPPORTUNITY", payload: { ok: true, business: opRaw, opportunity: opR.reasoning } };
     }
 
     case "ROUTER":
@@ -9584,7 +9617,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.169</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.170</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9859,7 +9892,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.169</div>
+  <div id="ver">v4.9.170</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

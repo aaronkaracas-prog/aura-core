@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.150-2026-06-25";
+const BUILD = "aura-core-v4.9.151-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -1874,6 +1874,84 @@ async function processCommand(line, env, isOp) {
         }
       } catch {}
       return { cmd: "COGNIZE", payload: { ok: true, entity: cgEntity, depth: cgDepth, routed: cgRouted, summary: cgSummary, layers: cgLayers } };
+    }
+
+    case "LOOP": {
+      // ===== THE FULL COGNITIVE LOOP CONDUCTOR =====
+      // Runs SEE -> UNDERSTAND -> EXPAND -> JUDGE(gate) -> DECIDE -> [translate decision->action]
+      // -> ACT -> (JUDGE the result) -> LEARN, as ONE motion, carrying state through.
+      // SAFE BY DEFAULT: dry-run. Thinks all the way to the edge of action and PROPOSES, fires nothing.
+      // LOOP CONFIRM <entity> (operator) fires the proposal, then judges the result and learns — the
+      // correction loop closed behind trust. This is the loop the whole Runtime Core is built around.
+      // Usage: LOOP <entity>          (full loop, dry-run — proposes an action, fires nothing)
+      //        LOOP CONFIRM <entity>  (operator: fire the proposal, then JUDGE + LEARN)
+      let lpRaw = rest;
+      let lpConfirm = false;
+      if (/^CONFIRM\s+/i.test(lpRaw)) { lpConfirm = true; lpRaw = lpRaw.replace(/^CONFIRM\s+/i, "").trim(); }
+      const lpEntity = lpRaw.trim();
+      if (!lpEntity) return { cmd: "LOOP", payload: { ok: false, error: "Usage: LOOP <entity> (full loop, dry-run). LOOP CONFIRM <entity> (operator: fire + judge + learn)." } };
+      const lpSlug = lpEntity.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "entity";
+
+      // --- FRONT HALF: think it through (reuse the conductor) ---
+      const lpCz = await processCommand("COGNIZE " + lpEntity, env, isOp);
+      const lpCzP = (lpCz && lpCz.payload) ? lpCz.payload : lpCz;
+      if (!lpCzP || !lpCzP.ok) return { cmd: "LOOP", payload: { ok: false, stage: "cognize", error: "Front half of the loop did not complete (COGNIZE).", detail: lpCzP } };
+      const lpDecision = (lpCzP.layers && lpCzP.layers.priority && lpCzP.layers.priority.priority) ? lpCzP.layers.priority.priority : null;
+      const lpGate = lpCzP.summary ? (lpCzP.summary.gate_verdict || null) : null;
+
+      // --- TRANSLATE: decision -> a proposed capability command (the thinking->doing bridge) ---
+      const lpApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      if (!lpApiKey) return { cmd: "LOOP", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
+      const lpModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      let lpCapList = "";
+      try { const cr = await processCommand("CAPABILITY LIST", env, isOp); const cp = (cr && cr.payload) ? cr.payload : cr; if (cp && cp.capabilities) lpCapList = (cp.capabilities || []).map(c => (c && c.name) ? c.name : c).join(", "); } catch {}
+      const lpTrSys = "You are the bridge between Aura's DECISION and her ACTION. Given a decision (the one thing to do) and a list of available capability commands, choose the SINGLE capability command that would carry out the decision, fully formed and ready to run. If the right move is to communicate or respond rather than fire a tool, return needs_action false. Return ONLY a JSON object, no prose, no fences, with exactly these keys: needs_action (boolean), capability_command (the exact command string to run, or empty), why (one sentence), communicate_instead (what Aura should say or do if no action, else empty). Output JSON only.";
+      const lpTrUser = "DECISION:\n" + JSON.stringify(lpDecision || {}) + "\n\nAVAILABLE CAPABILITIES:\n" + (lpCapList || "(none listed)") + "\n\nENTITY: " + lpEntity;
+      let lpProposal = null;
+      try {
+        const trData = await callAnthropic(lpApiKey, { model: lpModel, max_tokens: 400, system: lpTrSys, messages: [{ role: "user", content: lpTrUser }] });
+        let tt = ""; if (trData && trData.content) { for (const b of trData.content) { if (b.type === "text") tt += b.text; } }
+        tt = tt.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+        lpProposal = JSON.parse(tt);
+      } catch (e) { lpProposal = { needs_action: false, capability_command: "", why: "Could not translate decision into an action: " + String(e.message), communicate_instead: "" }; }
+
+      // --- ACT: dry-run the proposal (fires nothing unless LOOP CONFIRM + operator) ---
+      let lpAct = null;
+      if (lpProposal && lpProposal.needs_action && lpProposal.capability_command) {
+        const actCmd = (lpConfirm ? "ACT CONFIRM " : "ACT ") + lpEntity + " ::: " + lpProposal.capability_command;
+        const ar = await processCommand(actCmd, env, isOp);
+        lpAct = (ar && ar.payload) ? ar.payload : ar;
+      }
+
+      // --- BACK HALF (only when CONFIRM actually fired an action): JUDGE the result, then LEARN ---
+      let lpJudgment = null, lpLesson = null;
+      if (lpConfirm && lpAct && lpAct.fired) {
+        const jr = await processCommand("JUDGE " + lpEntity, env, isOp);
+        const jp = (jr && jr.payload) ? jr.payload : jr;
+        lpJudgment = (jp && jp.judgment) ? jp.judgment : jp;
+        const lr = await processCommand("LEARN " + lpEntity, env, isOp);
+        const lp2 = (lr && lr.payload) ? lr.payload : lr;
+        lpLesson = (lp2 && lp2.lesson) ? lp2.lesson : lp2;
+      }
+
+      // --- log the full loop trace ---
+      const lpTs = new Date().toISOString();
+      const lpTrace = { entity: lpEntity, confirmed: lpConfirm, gate_verdict: lpGate, decision: lpDecision ? (lpDecision.the_one_thing || null) : null, proposal: lpProposal, acted: !!(lpAct && lpAct.fired), judgment: lpJudgment, lesson: lpLesson, ts: lpTs };
+      await env.AURA_KV.put("loop:" + lpSlug + ":" + lpTs, JSON.stringify(lpTrace)).catch(() => {});
+
+      return { cmd: "LOOP", payload: { ok: true, entity: lpEntity, confirmed: lpConfirm, mode: lpConfirm ? "fired" : "dry_run",
+        saw: lpCzP.summary ? (lpCzP.summary.what_it_is || null) : null,
+        understood: lpCzP.summary ? (lpCzP.summary.what_it_really_is || null) : null,
+        expanded: lpCzP.summary ? (lpCzP.summary.what_it_could_become || null) : null,
+        decided: lpDecision ? lpDecision.the_one_thing : null,
+        gate_verdict: lpGate,
+        proposed_action: lpProposal,
+        act: lpAct,
+        judgment: lpJudgment,
+        lesson: lpLesson,
+        logged_as: "loop:" + lpSlug + ":" + lpTs,
+        note: lpConfirm ? "Loop ran fully: thought, acted, judged, learned." : "Dry-run: thought all the way to the edge of action and proposed. Nothing fired. Use LOOP CONFIRM (operator) to act, judge, and learn."
+      } };
     }
 
     case "ACT": {
@@ -8938,7 +9016,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.150</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.151</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9213,7 +9291,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.150</div>
+  <div id="ver">v4.9.151</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

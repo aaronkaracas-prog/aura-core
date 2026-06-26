@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.168-2026-06-25";
+const BUILD = "aura-core-v4.9.169-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -3839,6 +3839,59 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         } catch (e) {}
       }
       return { cmd: "PTA_TALK", payload: { ok: true, pta: tId, reply: tReplyObj.reply, followup_scheduled: !!scheduled, scheduled, remembered, hold: (tMode === "home" ? (tReplyObj.hold || null) : undefined), reminder_actions_applied: (tMode === "home" ? reminderActionsApplied : undefined), page_built: (tMode === "home" ? pageBuilt : undefined) } };
+    }
+
+    case "ROUTER":
+    case "HANDLE": {
+      // ===== THE ROUTER — she decides what to do herself =====
+      // Takes a plain-language SITUATION and decides which engine(s) to run, in what order. This is the
+      // EXPAND/DECIDE move pointed at Aura's OWN capabilities. CRITICAL SAFETY DESIGN: the router
+      // PROPOSES a plan; it does NOT autonomously fire real-world actions. Perception/reasoning steps
+      // (BRIEF, OUTCOME, ECONOMICS) are safe to auto-run; action steps that touch the real world
+      // (MOMENT, WORKFLOW, calls, spend, email) are PROPOSED and must pass the gate + operator go.
+      // This is the line between "she runs herself" and "she runs off."
+      //   ROUTER <situation>            (propose a plan; auto-run only the safe perception/reasoning steps)
+      //   ROUTER RUN <situation>        (also execute the safe steps and return their results)
+      let rtRaw = (rest || "").trim();
+      let rtExecute = false;
+      if (/^RUN\s+/i.test(rtRaw)) { rtExecute = true; rtRaw = rtRaw.replace(/^RUN\s+/i, "").trim(); }
+      if (!rtRaw) return { cmd: "ROUTER", payload: { ok: false, error: "Usage: ROUTER <situation>  |  ROUTER RUN <situation>" } };
+      // the catalog she chooses from — name, what it's for, and whether it touches the real world
+      const CATALOG = [
+        { engine: "BRIEF", purpose: "live perception of a business + its neighborhood right now (events, footprint)", real_world: false, takes: "a business name + location" },
+        { engine: "OUTCOME", purpose: "turn a goal/subject into leverage + a sequenced growth strategy", real_world: false, takes: "a goal or a business/subject" },
+        { engine: "ECONOMICS", purpose: "financial intelligence about Aura's OWN operation (the machine's money)", real_world: false, takes: "(no arg) ANALYZE" },
+        { engine: "MOMENT", purpose: "create a real-world offer that births a context-rich PTA from a consensual tap", real_world: true, takes: "an offer + place + connector" },
+        { engine: "WORKFLOW", purpose: "run a multi-step sequence over time (do, wait, follow up)", real_world: true, takes: "a list of steps" }
+      ];
+      const rtLens = "ROUTER — you look at a real situation and decide which of Aura's engines to run, in what order, to handle it well. You are choosing TOOLS, not doing the work. Pick the smallest sequence that actually serves the situation. Perception before reasoning; reasoning before action. Mark which steps are safe to auto-run (perception/reasoning) and which touch the REAL WORLD (creating offers, running sequences, calls, spending, emailing) and therefore must be PROPOSED for approval, never fired automatically. If the situation is about a specific business, perceive it first. If it is about Aura's own money, that is ECONOMICS. If it is a goal, that is OUTCOME. If it calls for a real-world play (e.g. fill empty rooms tonight), propose MOMENT/WORKFLOW but do NOT assume authority to act.";
+      const rtR = await reasonThroughLoop(env, {
+        entity: rtRaw,
+        lens: rtLens,
+        facts: { engine_catalog: CATALOG },
+        extraKeys: [
+          { key: "situation_type", desc: "one phrase: what kind of situation this is" },
+          { key: "plan", desc: "array of ordered steps, each {engine, why, command (the exact command string to run), real_world (boolean)}" },
+          { key: "auto_runnable", desc: "array of the engine names in plan that are safe to run now (perception/reasoning only)" },
+          { key: "needs_approval", desc: "array of the steps that touch the real world and must be approved before firing" }
+        ]
+      });
+      if (!rtR.ok) return { cmd: "ROUTER", payload: { ok: false, error: rtR.error } };
+      const plan = rtR.reasoning;
+      // optionally EXECUTE only the safe, non-real-world steps
+      let executed = [];
+      if (rtExecute && Array.isArray(plan.plan)) {
+        for (const step of plan.plan) {
+          if (step.real_world) { executed.push({ engine: step.engine, skipped: true, reason: "real-world action — requires approval, not auto-fired" }); continue; }
+          if (!step.command) { executed.push({ engine: step.engine, skipped: true, reason: "no command produced" }); continue; }
+          try {
+            const r = await processCommand(step.command, env, isOp);
+            const p = (r && r.payload) ? r.payload : r;
+            executed.push({ engine: step.engine, command: step.command, ok: !!(p && p.ok), result: p });
+          } catch (e) { executed.push({ engine: step.engine, command: step.command, ok: false, error: String(e && e.message) }); }
+        }
+      }
+      return { cmd: "ROUTER", payload: { ok: true, situation: rtRaw, plan, executed: rtExecute ? executed : undefined, note: rtExecute ? "Ran the safe perception/reasoning steps. Real-world steps are proposed only — approve them to fire." : "Proposed a plan. Real-world steps require approval; nothing was fired. Use ROUTER RUN to execute the safe steps." } };
     }
 
     case "WORKFLOW": {
@@ -9531,7 +9584,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.168</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.169</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9806,7 +9859,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.168</div>
+  <div id="ver">v4.9.169</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

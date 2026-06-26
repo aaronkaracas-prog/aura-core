@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.149-2026-06-25";
+const BUILD = "aura-core-v4.9.150-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8938,7 +8938,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.149</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.150</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9213,7 +9213,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.149</div>
+  <div id="ver">v4.9.150</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 
@@ -9288,7 +9288,7 @@ document.addEventListener('DOMContentLoaded',function(){
 function openChat(){document.getElementById('chatlayer').classList.add('open');setTimeout(function(){var c=document.getElementById('chatInput');if(c)c.focus();},120);}
 function closeChat(){document.getElementById('chatlayer').classList.remove('open')}
 function toggleMenu(){document.getElementById('drawer').classList.toggle('open');document.getElementById('scrim').classList.toggle('open')}
-function addMsg(t,who){var d=document.createElement('div');d.className='msg '+who;if(who==='aura')d.innerHTML='<span class="lbl">AURA</span>'+String(t).replace(/\n/g,'<br>');else d.textContent=t;document.getElementById('chatArea').appendChild(d);var c=document.getElementById('chatArea');c.scrollTop=c.scrollHeight}
+function addMsg(t,who){var d=document.createElement('div');d.className='msg '+who;if(who==='aura')d.innerHTML='<span class="lbl">AURA</span>'+String(t).replace(/\\n/g,'<br>');else d.textContent=t;document.getElementById('chatArea').appendChild(d);var c=document.getElementById('chatArea');c.scrollTop=c.scrollHeight}
 function askAura(t){if(document.getElementById('drawer').classList.contains('open'))toggleMenu();openChat();var i=document.getElementById('chatInput');i.value=t;sendMsg()}
 async function sendMsg(){var inp=document.getElementById('chatInput');var m=inp.value.trim();if(!m)return;inp.value='';addMsg(m,'user');var ld=document.createElement('div');ld.className='msg aura';ld.id='ld';ld.innerHTML='<span class="lbl">AURA</span><span style="color:#6b6b8a">...</span>';document.getElementById('chatArea').appendChild(ld);try{var r=await fetch('/home/talk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:m})});var el=document.getElementById('ld');if(el)el.remove();var d=await r.json();if(d.ok)addMsg(d.reply,'aura');else addMsg('Trouble connecting.','aura')}catch(e){var el2=document.getElementById('ld');if(el2)el2.remove();addMsg('Connection error.','aura')}}
 var _rec=null,_recOn=false;
@@ -9299,6 +9299,8 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
 <script>
 // ===== PHOTO CANVAS — on-device organizer (place + time). Photos never leave the phone. =====
 var PC = { albums: [] };
+function pcPick(){ var f=document.getElementById('pcFiles'); if(f) f.click(); }
+function pcAsk(i){ var a=PC.albums[i]; if(a) askAura('Tell me about my photos from '+a.place); }
 function openPhotos(){
   document.getElementById('homeCanvas').style.display='none';
   var pc=document.getElementById('photoCanvas'); pc.style.display='block';
@@ -9310,7 +9312,7 @@ function openPhotos(){
       '<div class="pc-glow"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>'+
       '<div class="pc-h">Let me organize your photos</div>'+
       '<div class="pc-p">Choose your photos and I\u2019ll sort the chaos into trips and places \u2014 Hawaii, the snow trip, the whole timeline. This happens right here on your phone. Nothing leaves your device.</div>'+
-      '<button class="pc-btn" onclick="document.getElementById(\'pcFiles\').click()">Choose photos</button>'+
+      '<button class="pc-btn" onclick="pcPick()">Choose photos</button>'+
       '<div class="pc-note">Pick a batch or select all \u2014 your photos stay private to you.</div>'+
       '<input id="pcFiles" type="file" accept="image/*" multiple style="display:none" onchange="organizePhotos(this.files)">'+
     '</div>';
@@ -9376,7 +9378,7 @@ function openAlbum(idx){
   var a=PC.albums[idx]; var pc=document.getElementById('photoCanvas');
   var html='<div class="pc-head"><button class="pc-back" onclick="renderAlbums()">\u2039</button><div class="pc-title">'+a.place+'</div></div>';
   html+='<div class="pc-summary">'+dateRange(a)+'</div><div class="photogrid">';
-  a.photos.forEach(function(p){ html+='<img src="'+p.url+'" loading="lazy" onclick="askAura(\'Tell me about my photos from '+a.place.replace(/\x27/g,"")+'\')">'; });
+  a.photos.forEach(function(p){ html+='<img src="'+p.url+'" loading="lazy" onclick="pcAsk('+idx+')">'; });
   html+='</div>';
   pc.innerHTML=html;
 }

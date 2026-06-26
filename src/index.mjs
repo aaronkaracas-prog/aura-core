@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.178-2026-06-26";
+const BUILD = "aura-core-v4.9.179-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -6129,42 +6129,57 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
 
       if (sub === "STATUS" || sub === "PICTURE") {
-        // ===== CANONICAL TWILIO SIGHT — the whole telephony picture in one grounded shot =====
-        // Ends the scavenger hunt: account, balance, number inventory, and the LIVE campaign status,
-        // assembled from real API + KV reads (never confabulated). The campaign SID lives in ONE
-        // canonical key (config:twilio:campaign_sid); if missing, self-heal from the known SID so this
-        // is always answerable instantly going forward. This is job one of the Communications Engine.
-        const out = { account_sid: acctSid, ts: new Date().toISOString() };
-        // balance (live)
-        try { const b = await twilioCall(`https://api.twilio.com/2010-04-01/Accounts/${acctSid}/Balance.json`); out.balance_usd = b.balance ? Number(b.balance) : null; out.currency = b.currency || "USD"; } catch (e) { out.balance_usd = null; out.balance_error = String(e && e.message); }
-        // number inventory (KV)
-        try { const nr = await env.AURA_KV.get("twilio:numbers:all"); if (nr) { const n = JSON.parse(nr); out.numbers = { count: n.count || (n.numbers || []).length, primary: n.primary || null, toll_free: n.toll_free || null, updated: n.updated || null }; } } catch {}
-        // campaign SID — canonical key, self-heal if missing
-        let campSid = await env.AURA_KV.get("config:twilio:campaign_sid").catch(() => null);
-        if (!campSid) {
-          // fall back to the known submitted campaign and lock it into the canonical key
-          campSid = "QE2c6890da8086d771620e9b13fadeba0b";
-          await env.AURA_KV.put("config:twilio:campaign_sid", campSid).catch(() => {});
-          out.campaign_sid_self_healed = true;
-        }
-        out.campaign_sid = campSid;
-        // live campaign status
+        // ===== CANONICAL TWILIO SIGHT — canon-correct: Core ASKS, aura-comms TRANSPORTS =====
+        // The Service Layer (aura-comms) owns Twilio and holds the creds. Core does NOT call
+        // api.twilio.com directly — it asks aura-comms for the raw telephony truth, then Core does
+        // what Core does: REASON about what it means (canonical campaign SID, plain-English summary).
+        // Core thinks; aura-comms executes. (Per notes:architecture:core_canon.)
+        const out = { ts: new Date().toISOString() };
+        // ask aura-comms for the account-level picture (balance, numbers, messaging services, A2P)
         try {
-          const c = await twilioCall(`https://messaging.twilio.com/v1/Services/${msgSvcSid}/Compliance/Usa2p/${campSid}`);
-          if (c.code) { out.campaign = { error: c.message, code: c.code }; }
-          else { out.campaign = { status: c.campaign_status, errors: c.errors || [], created: c.date_created, description: c.description }; }
-        } catch (e) { out.campaign = { error: String(e && e.message) }; }
-        // plain-language summary of what it MEANS (grounded only in what we just read)
-        const cs = out.campaign && out.campaign.status ? out.campaign.status : "unknown";
-        const errCount = (out.campaign && Array.isArray(out.campaign.errors)) ? out.campaign.errors.length : 0;
-        out.means = cs === "VERIFIED" || cs === "APPROVED"
+          const r = await env.AURA_COMMS.fetch(new Request("https://aura-comms/chat", {
+            method: "POST", headers: { "Content-Type": "text/plain", "authorization": "Bearer aura-comms-internal" },
+            body: "TWILIO_STATUS"
+          }));
+          const d = await r.json();
+          const tp = (d && (d.reply !== undefined ? d.reply : d)) || {};
+          out.account_status = tp.account_status || null;
+          out.numbers_owned = tp.numbers_owned !== undefined ? tp.numbers_owned : null;
+          out.messaging_services = tp.messaging_services || [];
+          out.configured_messaging_service_sid = tp.configured_messaging_service_sid || null;
+        } catch (e) { out.comms_error = String(e && e.message); }
+        // ask aura-comms for the balance
+        try {
+          const rb = await env.AURA_COMMS.fetch(new Request("https://aura-comms/chat", {
+            method: "POST", headers: { "Content-Type": "text/plain", "authorization": "Bearer aura-comms-internal" },
+            body: "TWILIO_BALANCE"
+          }));
+          const db = await rb.json();
+          const bp = (db && (db.reply !== undefined ? db.reply : db)) || {};
+          if (bp.balance !== undefined && bp.balance !== null) { out.balance_usd = parseFloat(bp.balance); out.currency = bp.currency || "USD"; }
+        } catch (e) { out.balance_error = String(e && e.message); }
+        // ask aura-comms for the A2P / campaign status
+        let campaign = null;
+        try {
+          const ra = await env.AURA_COMMS.fetch(new Request("https://aura-comms/chat", {
+            method: "POST", headers: { "Content-Type": "text/plain", "authorization": "Bearer aura-comms-internal" },
+            body: "A2P_STATUS"
+          }));
+          const da = await ra.json();
+          campaign = (da && (da.reply !== undefined ? da.reply : da)) || null;
+        } catch (e) { out.campaign_error = String(e && e.message); }
+        out.campaign = campaign;
+        // Core REASONS about what it means (grounded only in what aura-comms returned)
+        const cs = campaign && (campaign.status || campaign.campaign_status) ? (campaign.status || campaign.campaign_status) : "unknown";
+        const errs = campaign && Array.isArray(campaign.errors) ? campaign.errors : [];
+        out.means = (cs === "VERIFIED" || cs === "APPROVED")
           ? "SMS campaign is APPROVED — texting is cleared to go live."
           : cs === "IN_PROGRESS"
-            ? ("Campaign is IN REVIEW with the carrier" + (errCount ? (", but has " + errCount + " error(s) to address") : " and has no errors — nothing to do but wait for it to clear.") )
+            ? ("Campaign is IN REVIEW with the carrier" + (errs.length ? (", but has " + errs.length + " error(s) to address") : " and has no errors — nothing to do but wait for it to clear."))
             : cs === "FAILED"
               ? "Campaign FAILED — needs a fix and resubmit (read the errors)."
               : "Campaign status is " + cs + " — read the campaign block for detail.";
-        return { cmd: "TWILIO", payload: { ok: true, mode: "status", ...out } };
+        return { cmd: "TWILIO", payload: { ok: true, mode: "status", via: "aura-comms", ...out } };
       }
 
       if (sub === "CAMPAIGN_STATUS") {
@@ -6217,13 +6232,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           try { let log = []; const lr = await env.AURA_KV.get("optout:blocked_log"); if (lr) log = JSON.parse(lr) || []; log.push({ channel: "sms", to, ts: new Date().toISOString() }); await env.AURA_KV.put("optout:blocked_log", JSON.stringify(log.slice(-200))).catch(() => {}); } catch {}
           return { cmd: "TWILIO", payload: { ok: false, opted_out: true, error: "BLOCKED: recipient has permanently opted out — honored, not contacted" } };
         }
-        const params = new URLSearchParams();
-        params.append("To", to);
-        params.append("MessagingServiceSid", msgSvcSid);
-        params.append("Body", msgBody);
-        const result = await twilioCall(`https://api.twilio.com/2010-04-01/Accounts/${acctSid}/Messages.json`, "POST", params);
-        if (result.code) return { cmd: "TWILIO", payload: { ok: false, error: result.message, code: result.code } };
-        return { cmd: "TWILIO", payload: { ok: true, mode: "sent", sid: result.sid, to: result.to, status: result.status } };
+        // Transport via aura-comms (Service Layer owns Twilio). Core already decided it's OK to send.
+        try {
+          const r = await env.AURA_COMMS.fetch(new Request("https://aura-comms/chat", {
+            method: "POST", headers: { "Content-Type": "text/plain", "authorization": "Bearer aura-comms-internal" },
+            body: "SMS_SEND " + to + " " + msgBody
+          }));
+          const d = await r.json();
+          const rp = (d && (d.reply !== undefined ? d.reply : d)) || {};
+          if (d.ok === false || rp.ok === false) return { cmd: "TWILIO", payload: { ok: false, error: rp.error || d.error || "send failed", via: "aura-comms" } };
+          return { cmd: "TWILIO", payload: { ok: true, mode: "sent", via: "aura-comms", sid: rp.sid || null, to: rp.to || to, status: rp.status || null } };
+        } catch (e) {
+          return { cmd: "TWILIO", payload: { ok: false, error: "aura-comms unreachable: " + String(e && e.message) } };
+        }
       }
 
       if (sub === "BRANDS") {
@@ -9590,7 +9611,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.178</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.179</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9865,7 +9886,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.178</div>
+  <div id="ver">v4.9.179</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

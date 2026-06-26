@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.170-2026-06-25";
+const BUILD = "aura-core-v4.9.171-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -3864,10 +3864,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           { key: "the_hidden_weakness", desc: "the one leak their success is covering — the non-obvious thing they're leaving on the table" },
           { key: "why_they_miss_it", desc: "one sentence — why the owner hasn't seen it themselves" },
           { key: "the_tool", desc: "the single digital tool that fixes it, named concretely" },
-          { key: "how_it_makes_them_money", desc: "one sentence — the direct line from this tool to more revenue/time for them" },
+          { key: "how_it_makes_them_money", desc: "one sentence — the direct line from this tool to more revenue/time for them, in PLAIN terms. NEVER invent figures (no made-up diner counts, ticket sizes, or dollar totals); describe the mechanism, not a fabricated number" },
           { key: "buildable_now", desc: "boolean — can Aura build this autonomously today (page/QR/MOMENT/PTA level)?" },
           { key: "build_path", desc: "if buildable_now: the exact capability + a one-line spec (e.g. 'MOMENT: QR at the door capturing diners into a Malibu-Seafood PTA'); if a project: what it would take" },
-          { key: "the_pitch", desc: "2-3 sentences Aura would say to the owner — leads with what she noticed about THEIR business, then the offer" }
+          { key: "the_pitch", desc: "2-3 sentences Aura would say to the owner — leads with what she noticed about THEIR business, then the offer. CRITICAL: use NO fabricated numbers. Speak to the real, obvious gain in plain language; if a result is hypothetical, label it as something to test together, never assert an invented figure as fact" }
         ]
       });
       if (!opR.ok) return { cmd: "OPPORTUNITY", payload: { ok: false, error: opR.error } };
@@ -7733,6 +7733,7 @@ async function reasonThroughLoop(env, opts) {
     + "(3) JUDGE — weigh which possibilities actually hold up and matter most. "
     + "(4) DECIDE — choose the single highest-leverage move, grounded in what is REALLY true, not what the frame assumed. "
     + "TWO reflexes you always apply: DATA TRUST — flag any fact you would not fully trust (a number that could be a broken/failed data pipe, a null that might be a silent failure, a 'fact' that is actually a future promise); and PUSH BACK — if the operator's own frame rests on something unverified or shaky, say so directly and plainly to the operator, do not just quietly work around it. "
+    + "ABSOLUTE INTEGRITY RULE — NEVER FABRICATE NUMBERS. You may ONLY state a specific figure (revenue, customer counts, percentages, dollar amounts, traffic, conversion rates) if it is a REAL number you were actually given in the facts. You must NEVER invent, estimate-as-fact, or back-into a number to make a point — no made-up '500 diners a day', no fabricated '$750k a year', no invented conversion rates. If you do not have the real number, do NOT produce one. Instead either (a) say plainly what is unknown and that it must be measured, or (b) frame a possibility explicitly as a hypothesis to TEST grounded in their real numbers ('if we capture even a fraction of your actual daily diners, here is the kind of result we could test for') — always labeled as wishful/possible, never asserted as fact. A single fabricated number destroys the trust the entire relationship depends on. Reality, or an honestly-labeled hypothesis. Never make-believe, never false hope. "
     + "Apply this specialized LENS: " + (opts.lens || "general operator reasoning") + ". "
     + "Scale to the actual situation — a person's life gets a human-sized read, a venture gets a venture read; never inflate. Ground everything in the facts; no generic filler. "
     + "Return ONLY a JSON object, no prose, no fences, with these keys: saw (what is actually true, separating fact from assumption), assumptions_challenged (array — each assumption examined with a verdict on whether it is truly necessary), data_trust (array — any fact you would not fully trust and why, or empty), minimum_viable (one sentence — the smallest real version that works now), the_move (the single highest-leverage decision), why (one sentence), push_back (one sentence directly to the operator IF their frame rests on something unverified/shaky, else empty string), watch_for (array), confidence (high|medium|low)" + extra + ". Output JSON only.";
@@ -9617,7 +9618,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.170</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.171</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9892,7 +9893,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.170</div>
+  <div id="ver">v4.9.171</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

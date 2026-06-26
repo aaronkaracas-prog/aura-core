@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.171-2026-06-25";
+const BUILD = "aura-core-v4.9.172-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -191,6 +191,27 @@ async function sendEmail(env, to, subject, body, opts) {
   opts = opts || {};
   const result = { ok: false, to, subject, message_id: null, accepted: false, error: null };
   if (!to || !to.includes("@")) { result.error = "invalid recipient"; return result; }
+  // HONORED EXIT — enforced, not promised. "Out means out, forever." Before ANY email is sent, check
+  // whether this contact has permanently opted out. If so, refuse and log it. This is the code-level
+  // guarantee that makes the opt-out real everywhere contact happens, not just a note. Internal/system
+  // mail (verification codes) may pass opts.system=true to bypass (those are not outreach).
+  if (!opts.system) {
+    try {
+      // opt-out can be keyed by the identity (email:<addr>) or by a resolved pta id
+      const idKey = "email:" + String(to).toLowerCase().trim();
+      let opted = await env.AURA_KV.get("pta:optout:" + idKey).catch(() => null);
+      if (!opted) {
+        // resolve to a PTA by identity, then check its opt-out
+        try { const ent = await env.AURA_MEMORY.prepare("SELECT id FROM pta_entities WHERE metadata LIKE ?").bind('%"identity":"' + idKey + '"%').first(); if (ent && ent.id) opted = await env.AURA_KV.get("pta:optout:" + ent.id).catch(() => null); } catch {}
+      }
+      if (opted) {
+        result.error = "BLOCKED: recipient has permanently opted out — honored, not contacted";
+        result.opted_out = true;
+        try { let log = []; const lr = await env.AURA_KV.get("optout:blocked_log"); if (lr) log = JSON.parse(lr) || []; log.push({ to, subject: subject || null, ts: new Date().toISOString() }); await env.AURA_KV.put("optout:blocked_log", JSON.stringify(log.slice(-200))).catch(() => {}); } catch {}
+        return result;
+      }
+    } catch {}
+  }
   const cfToken = env.CF_API_TOKEN || await KV.get(env, "secret:cf_api_token");
   if (!cfToken) { result.error = "no CF API token"; return result; }
   // deliverability: a real From name (not bare noreply@) helps inbox placement
@@ -5561,7 +5582,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const code = String(Math.floor(100000 + Math.random() * 900000)); // 6-digit
       const rec = { identity: vIdentity, code, created: Date.now(), expires: Date.now() + 10 * 60 * 1000, attempts: 0 };
       await env.AURA_KV.put(`verify:${vIdentity}`, JSON.stringify(rec), { expirationTtl: 900 }).catch(() => {});
-      const sent = await sendEmail(env, vEmail, "Your Aura verification code", `Your verification code is ${code}\n\nIt expires in 10 minutes. If you did not request this, you can ignore this email.`);
+      const sent = await sendEmail(env, vEmail, "Your Aura verification code", `Your verification code is ${code}\n\nIt expires in 10 minutes. If you did not request this, you can ignore this email.`, { system: true });
       return { cmd: "VERIFY_REQUEST", payload: { ok: !!(sent && sent.ok), identity: vIdentity, email_status: sent, message: (sent && sent.ok) ? "Code sent. Check your email, then call VERIFY_CONFIRM with the code." : "Could not send the code - check email delivery." } };
     }
 
@@ -9618,7 +9639,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.171</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.172</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9893,7 +9914,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.171</div>
+  <div id="ver">v4.9.172</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

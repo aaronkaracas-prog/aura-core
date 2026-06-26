@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.154-2026-06-25";
+const BUILD = "aura-core-v4.9.155-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -6165,7 +6165,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         const ecApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
         if (!ecApiKey) return { cmd: "ECONOMICS", payload: { ok: true, mode: "raw", facts: ecFacts, note: "Brain not configured — returning raw facts only." } };
         const ecModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
-        const ecSys = "You are the ECONOMICS ENGINE of Aura — her financial intelligence about HER OWN operation (not a user's personal spending). You are given real facts: AI cost-to-serve (what Aura spent on her own brain calls), Stripe revenue, and Mercury cash. Your objective is NOT maximizing profit — it is a healthy, self-sustaining ecosystem. Reason honestly about cost-to-serve, revenue, margin, cash position, and runway. If revenue is zero and cash is thin, say so plainly and protect runway. Return ONLY a JSON object, no prose, no fences, with exactly these keys: cost_to_serve_7d (number USD), revenue_observed (number USD), cash_on_hand (number USD), margin_state (one of: healthy, thin, negative, pre_revenue), runway_note (one sentence on how long current cash lasts at current burn, or 'not enough data'), self_sustaining (boolean), the_smartest_move (one sentence, the single highest-leverage financial action right now), why (one sentence), watch_for (array of risks), confidence (high|medium|low). Output JSON only.";
+        const ecSys = "You are the ECONOMICS ENGINE of Aura — her financial intelligence about HER OWN operation (not a user's personal spending). You are given real facts: AI cost-to-serve (what Aura spent on her own brain calls), Stripe revenue, and Mercury cash. Your objective is NOT maximizing profit — it is a healthy, self-sustaining ecosystem. INFORMATION IS NOT UNDERSTANDING: never just report numbers — translate them into plain human meaning, including opportunity cost and what each number implies for the decision. A runway figure means nothing without what it implies; say what it implies. Reason honestly about cost-to-serve, revenue, margin, cash position, and runway. If revenue is zero and cash is thin, say so plainly and protect runway. Return ONLY a JSON object, no prose, no fences, with exactly these keys: cost_to_serve_7d (number USD), revenue_observed (number USD), cash_on_hand (number USD), margin_state (one of: healthy, thin, negative, pre_revenue), runway_note (one sentence on how long current cash lasts at current burn, or 'not enough data'), self_sustaining (boolean), plain_english (2-3 sentences a non-financial person would understand — what this financial picture actually MEANS right now, not the raw numbers), the_smartest_move (one sentence, the single highest-leverage financial action right now), why (one sentence), watch_for (array of risks), confidence (high|medium|low). Output JSON only.";
         try {
           const d = await callAnthropic(ecApiKey, { model: ecModel, max_tokens: 900, system: ecSys, messages: [{ role: "user", content: "REAL FACTS:\n" + JSON.stringify(ecFacts) }] });
           let tx = ""; if (d && d.content) { for (const b of d.content) { if (b.type === "text") tx += b.text; } }
@@ -9137,7 +9137,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.154</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.155</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9412,7 +9412,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.154</div>
+  <div id="ver">v4.9.155</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

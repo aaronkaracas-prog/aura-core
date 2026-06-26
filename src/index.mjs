@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.163-2026-06-25";
+const BUILD = "aura-core-v4.9.164-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -3157,6 +3157,40 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       await env.AURA_KV.put(pageKey, html).catch(() => {});
 
       return { cmd: "RENDER_PAGE", payload: { ok: true, domain: rp.domain, key: pageKey, bytes: html.length, components_used: used, available_components: Object.keys(COMPONENTS) } };
+    }
+
+    case "BRIEF": {
+      // ===== LIVING BUSINESS BRIEF (live-perception layer) =====
+      // Fuses LIVE PERCEPTION with REASONING: searches what is happening around the business RIGHT NOW
+      // (its neighborhood, today's/this week's events) and the business's own online footprint, then
+      // reasons through the shared mind into a neighborhood-aware brief grounded in TODAY — not static.
+      // This is the "YOUR NEIGHBORHOOD / what's happening today" engine of OpenForBusiness.
+      // Usage: BRIEF <business name + location>
+      let brRaw = (rest || "").trim();
+      if (!brRaw) return { cmd: "BRIEF", payload: { ok: false, error: "Usage: BRIEF <business name + location>" } };
+      let live = {};
+      try {
+        const s1 = await webSearch("events happening today this week near " + brRaw, env);
+        const s2 = await webSearch(brRaw + " reviews rating hours", env);
+        const pack = (sr) => (sr && sr.sources ? sr.sources.map(x => ({ title: x.title, snippet: x.snippet })) : []);
+        live = {
+          whats_happening_now: { answer: (s1 && s1.answer) || null, sources: pack(s1) },
+          the_business: { answer: (s2 && s2.answer) || null, sources: pack(s2) }
+        };
+      } catch (e) { live = { error: String(e && e.message) }; }
+      const brLens = "LIVING BUSINESS BRIEF — you are analyzing a REAL business in its REAL neighborhood, RIGHT NOW. You are given live web findings about (a) what is happening around the business today/this week and (b) the business's own online footprint. Demonstrate genuine understanding: what the business is, what is happening in its neighborhood TODAY that it could act on, and the single highest-leverage first opportunity given what is live right now. Be specific to the actual live findings — name the real events and conditions, never generic. This is the difference between software and understanding. Still challenge weak assumptions and flag what the data does not show.";
+      const brR = await reasonThroughLoop(env, {
+        entity: brRaw,
+        lens: brLens,
+        facts: { live_findings: live },
+        extraKeys: [
+          { key: "the_business", desc: "what this business is, one line, from the findings" },
+          { key: "whats_happening_now", desc: "array — the live, time-sensitive things in its neighborhood today/this week it could act on" },
+          { key: "first_opportunity", desc: "the single highest-leverage move given what is live RIGHT NOW" }
+        ]
+      });
+      if (!brR.ok) return { cmd: "BRIEF", payload: { ok: false, error: brR.error } };
+      return { cmd: "BRIEF", payload: { ok: true, business: brRaw, live_findings: live, brief: brR.reasoning } };
     }
 
     case "THINK": {
@@ -9261,7 +9295,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.163</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.164</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9536,7 +9570,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.163</div>
+  <div id="ver">v4.9.164</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

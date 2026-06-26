@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.162-2026-06-25";
+const BUILD = "aura-core-v4.9.163-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -3191,14 +3191,23 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const ocApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
       if (!ocApiKey) return { cmd: "OUTCOME", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
       const ocModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
-      // optional grounding: any real context the operator has stored
+      // SUBJECT-WORLD, not operator-world. The engine reasons about the SUBJECT given (a business, a
+      // goal, a person) on its OWN terms. The operator's personal context (notes:STATE) is NOT injected
+      // by default — that caused world-bleed (judging a tattoo shop against Aaron's Home Screen notes).
+      // It is pulled ONLY when the operator explicitly asks ("OUTCOME MINE <goal>"), i.e. when the
+      // subject genuinely IS the operator's own situation. This is what lets Aura analyze every business
+      // on its own merits — the core requirement for OpenForBusiness.
       let ocContext = "";
-      try { const st = await env.AURA_KV.get("notes:STATE"); if (st) ocContext = String(st).slice(0, 1500); } catch {}
-      // OUTCOME now reasons THROUGH the shared mind — it inherits assumption-challenge, data-trust,
-      // and operator-pushback, and adds its outcome-specific lens + keys (leverage, multipliers, strategy).
-      const ocLens = "OUTCOME INTELLIGENCE — given a desired GOAL, answer HOW we get from here to the outcome. Find the highest-leverage paths and turn the goal into a coordinated SEQUENCED plan, not a task dump. Look for the few moves where small effort yields large results, the multipliers already in hand that amplify everything, and the single first move today. You inform and recommend; the human decides.";
+      let ocSubjectRaw = ocRaw;
+      if (/^MINE\s+/i.test(ocSubjectRaw)) {
+        ocSubjectRaw = ocSubjectRaw.replace(/^MINE\s+/i, "").trim();
+        try { const st = await env.AURA_KV.get("notes:STATE"); if (st) ocContext = String(st).slice(0, 1500); } catch {}
+      }
+      // OUTCOME reasons THROUGH the shared mind — inherits assumption-challenge, data-trust, pushback,
+      // and adds its outcome-specific lens + keys (leverage, multipliers, strategy).
+      const ocLens = "OUTCOME INTELLIGENCE — given a desired GOAL or a SUBJECT to grow (often a business), answer HOW we get from here to the outcome. Reason about the SUBJECT on its own terms — its world, its market, its customers — not about whoever is asking. Find the highest-leverage paths and turn the goal into a coordinated SEQUENCED plan, not a task dump. Look for the few moves where small effort yields large results, the multipliers already in hand, and the single first move today. You inform and recommend; the human decides.";
       const ocR = await reasonThroughLoop(env, {
-        entity: ocRaw,
+        entity: ocSubjectRaw,
         lens: ocLens,
         facts: ocContext ? { operator_context: ocContext } : {},
         maxTokens: 1300,
@@ -9252,7 +9261,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.162</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.163</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9527,7 +9536,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.162</div>
+  <div id="ver">v4.9.163</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

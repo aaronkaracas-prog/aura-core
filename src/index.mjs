@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.167-2026-06-25";
+const BUILD = "aura-core-v4.9.168-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -6423,19 +6423,35 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         try { const tr = await processCommand("TWILIO_BALANCE", env, isOp); const tp = (tr && tr.payload) ? tr.payload : tr; if (tp && (tp.balance !== undefined || tp.ok)) twilio = { balance: tp.balance !== undefined ? tp.balance : null, currency: tp.currency || "USD" }; } catch {}
         let opFrame = ""; try { const of = await env.AURA_KV.get("notes:economics:operating_frame"); if (of) opFrame = String(of).slice(0, 2000); } catch {}
         const ecFacts = { cost_to_serve_last_7_days_usd: cost7.usd, ai_calls_7d: cost7.calls, cost_by_model_7d: cost7.by_model, cost_by_day: costDays, stripe_revenue: stripe, cash_mercury: mercury, twilio_funding: twilio, ts: new Date().toISOString() };
-        const ecApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
-        if (!ecApiKey) return { cmd: "ECONOMICS", payload: { ok: true, mode: "raw", facts: ecFacts, note: "Brain not configured — returning raw facts only." } };
-        const ecModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
-        const ecSys = "You are the ECONOMICS ENGINE of Aura — her financial intelligence about HER OWN operation, acting as the OPERATOR who keeps the machine running. You are given real facts: AI cost-to-serve (tokens), Stripe revenue, Mercury cash, and Twilio funding. You are ALSO given an OPERATING FRAME describing how the machine runs. CRITICAL — YOU DO NOT BLINDLY ACCEPT THE FRAME. Before you decide anything, you EXPAND: you challenge the assumptions you were handed and ask what is actually NECESSARY versus merely assumed. Ask explicitly: what is the MINIMUM machine that works? Which stated dependencies are truly load-bearing and which are optional or phase-two? For example, if the frame describes an 'email-then-call' engine, question whether calling (and its funding) is required to START, or whether the zero-cost path (email alone) already starts the machine today and calling is a later phase. Find the highest-leverage path, not the one the frame assumes. A real operator questions the plan; a weak one optimizes inside a plan they never examined. KEY OPERATING TRUTHS: there is a working FLOAT in Mercury that is fuel not profit; keep tokens paid; STRIPE DOES NOT AUTO-FUND MERCURY (money in Stripe sits until swept — reason about Mercury + unswept Stripe as total fuel, flag when a sweep is needed); every dollar recycles. INFORMATION IS NOT UNDERSTANDING: translate numbers into plain meaning. Objective is a healthy self-sustaining machine, not max profit. Return ONLY a JSON object, no prose, no fences, with exactly these keys: cost_to_serve_7d (number USD), revenue_observed (number USD), mercury_float (number USD), stripe_unswept (number USD), twilio_funding (number USD or null), total_fuel (number USD = mercury + unswept stripe), assumptions_challenged (array — each stated/implied assumption you examined and your verdict on whether it is truly necessary), minimum_machine (one sentence — the smallest setup that starts generating value today, given the real costs), margin_state (healthy|thin|negative|pre_revenue), runway_note (one sentence, what the fuel implies at current burn), machine_running (boolean — can she operate the minimum machine right now), needs_stripe_sweep (boolean), self_sustaining (boolean), plain_english (2-3 sentences a non-financial person understands), the_smartest_move (one sentence — the single highest-leverage operating action right now, based on the MINIMUM machine not the assumed one), why (one sentence), watch_for (array), confidence (high|medium|low). Output JSON only.";
-        try {
-          const d = await callAnthropic(ecApiKey, { model: ecModel, max_tokens: 1000, system: ecSys, messages: [{ role: "user", content: "REAL FACTS:\n" + JSON.stringify(ecFacts) + (opFrame ? ("\n\nOPERATING FRAME:\n" + opFrame) : "") }] });
-          let tx = ""; if (d && d.content) { for (const b of d.content) { if (b.type === "text") tx += b.text; } }
-          tx = tx.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
-          const parsed = JSON.parse(tx);
-          const ts = new Date().toISOString();
-          await env.AURA_KV.put("economics:analysis:" + ts.slice(0, 10), JSON.stringify({ analysis: parsed, facts: ecFacts, ts })).catch(() => {});
-          return { cmd: "ECONOMICS", payload: { ok: true, mode: "analysis", facts: ecFacts, analysis: parsed, ts } };
-        } catch (e) { return { cmd: "ECONOMICS", payload: { ok: false, error: "Economics analysis failed: " + String(e.message), facts: ecFacts } }; }
+        // ECONOMICS now reasons THROUGH the shared mind — it inherits assumption-challenge, data-trust
+        // (is this number real or a broken pipe?), and operator push-back, and keeps its economics outputs.
+        const ecLens = "ECONOMICS INTELLIGENCE — Aura's financial intelligence about HER OWN operation, acting as the OPERATOR who keeps the machine running. Reason about cost-to-serve (tokens), revenue (Stripe), cash (Mercury), and Twilio funding. KEY OPERATING TRUTHS: the Mercury balance is a working FLOAT (fuel, not profit); keep tokens paid; STRIPE DOES NOT AUTO-FUND MERCURY (money in Stripe sits until swept — reason about Mercury + unswept Stripe as total fuel, and flag when a sweep is needed); every dollar recycles. The objective is a healthy self-sustaining machine, not maximum profit. Translate numbers into plain meaning. When you challenge assumptions, ask explicitly what the MINIMUM machine that works is, and which stated dependencies are truly load-bearing vs optional/phase-two.";
+        const ecR = await reasonThroughLoop(env, {
+          entity: "Aura's own operation (the machine) — keep it running on the real numbers",
+          lens: ecLens,
+          facts: ecFacts,
+          frame: opFrame || null,
+          extraKeys: [
+            { key: "cost_to_serve_7d", desc: "number USD" },
+            { key: "revenue_observed", desc: "number USD" },
+            { key: "mercury_float", desc: "number USD" },
+            { key: "stripe_unswept", desc: "number USD" },
+            { key: "twilio_funding", desc: "number USD or null" },
+            { key: "total_fuel", desc: "number USD = mercury + unswept stripe" },
+            { key: "margin_state", desc: "healthy|thin|negative|pre_revenue" },
+            { key: "runway_note", desc: "one sentence, what the fuel implies at current burn" },
+            { key: "machine_running", desc: "boolean — can she operate the minimum machine right now" },
+            { key: "needs_stripe_sweep", desc: "boolean — is there meaningful money sitting in Stripe to sweep" },
+            { key: "self_sustaining", desc: "boolean" },
+            { key: "plain_english", desc: "2-3 sentences a non-financial person understands" },
+            { key: "the_smartest_move", desc: "one sentence — the single highest-leverage operating action right now, based on the minimum machine" }
+          ]
+        });
+        if (!ecR.ok) return { cmd: "ECONOMICS", payload: { ok: false, error: "Economics analysis failed: " + ecR.error, facts: ecFacts } };
+        const parsed = ecR.reasoning;
+        const ts = new Date().toISOString();
+        await env.AURA_KV.put("economics:analysis:" + ts.slice(0, 10), JSON.stringify({ analysis: parsed, facts: ecFacts, ts })).catch(() => {});
+        return { cmd: "ECONOMICS", payload: { ok: true, mode: "analysis", facts: ecFacts, analysis: parsed, ts } };
       }
       if (/^DAYS\s+\d+/i.test(ecRaw)) {
         const n = Math.min(parseInt(ecRaw.replace(/^DAYS\s+/i, ""), 10) || 1, 60);
@@ -9515,7 +9531,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.167</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.168</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9790,7 +9806,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.167</div>
+  <div id="ver">v4.9.168</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

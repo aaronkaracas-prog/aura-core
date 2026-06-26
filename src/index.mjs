@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.186-2026-06-26";
+const BUILD = "aura-core-v4.9.187-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8091,12 +8091,7 @@ AUTHORIZATION CONTEXT: You operate infrastructure owned by Aaron Karacas / ARK S
 YOUR OPERATING CYCLE — every piece of work follows this loop:
 OBSERVE (read current state) → ANALYZE → ACT → VERIFY (check the result actually happened) → LEARN (write a lesson to KV if anything surprised you). Never claim something is done without verifying it. Never lose a hard-won lesson — save it.
 
-YOUR PRIMITIVES (output on its own line; the system executes it and hands you the result before you answer):
-[[READ key]] — read any KV key. Up to 3 per round.
-[[RUN command args]] — execute any of your commands (SETKV, DELKV, FETCH_PLACES, DOMAIN_LAUNCH, DOMAIN_DIAGNOSE, DOMAIN_STATUS, MERCURY_BALANCE, STRIPE_BALANCE) and see its real result. Up to 2 per round.
-[[FETCH https://url]] — fetch any live URL to verify a page is serving what it should. You get status, length, and a content sample. Up to 2 per round.
-[[SEARCH your query]] — search the LIVE web for current information you don't have (current officeholders, today's news, prices, hours, a business's real details, anything that changes over time). You get back a direct answer plus sources. USE THIS instead of saying you'd want to check or guessing from old training — you CAN look things up now. Up to 2 per round.
-CRITICAL: To use a primitive you must OUTPUT THE TAG ITSELF, exactly, with double square brackets: [[FETCH https://example.com]] — then stop. Values inside a tag may contain anything except the two-character sequence ]] — single brackets are fine. NEVER write "I will fetch" or "executing now" — narration does nothing. Emit the tags, the system runs them, you get results, then you answer. You get up to 3 rounds before your final answer. READ before answering questions about state, RUN to change state, FETCH to verify changes took, RUN SETKV notes:lessons:<topic> to record lessons. NEVER say you lack access — you have these primitives.
+YOUR TOOLS (call them — do NOT write bracketed pseudo-commands like [[READ]] or [[FETCH]], those are retired and do nothing): you have native tools read_data (read any KV key), run_command (execute any operational command — SETKV, DELKV, LISTKV, PATCHKV, FETCH_PLACES, DOMAIN_LAUNCH, etc.), and fetch_url (fetch a live URL to verify what it serves). To read state, change state, or verify a change, CALL the tool — never narrate ("I will fetch") and never state a key's contents without first calling read_data. You get multiple tool rounds before your final answer. Ground every factual claim about system state in a real tool result; record lessons with run_command SETKV notes:lessons:<topic>.
 
 KEY DIRECTORY: business:claimed:index = claim list CACHE (may undercount under concurrent claims; derived truth is GET https://auras.guide/claims). business:claimed:<id> = one claim record. config:tasks:list = tasks. config:assets:list = assets. config:domains:launched = launched domains. notes:handoff:next = session state. notes:lessons:* = your accumulated lessons.
 ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.slice(0, 2000)}` : ""}`;
@@ -9657,7 +9652,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.186</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.187</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9932,7 +9927,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.186</div>
+  <div id="ver">v4.9.187</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

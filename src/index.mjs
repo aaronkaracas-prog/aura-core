@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.158-2026-06-25";
+const BUILD = "aura-core-v4.9.159-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -3157,6 +3157,21 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       await env.AURA_KV.put(pageKey, html).catch(() => {});
 
       return { cmd: "RENDER_PAGE", payload: { ok: true, domain: rp.domain, key: pageKey, bytes: html.length, components_used: used, available_components: Object.keys(COMPONENTS) } };
+    }
+
+    case "THINK": {
+      // Direct access to the shared Cognitive Loop reasoner — SEE -> EXPAND(challenge) -> JUDGE -> DECIDE
+      // in one pass, with data-trust and operator-push-back built in. This is the shared MIND that the
+      // engines reason through. Test surface to prove the shared reasoner before migrating engines onto it.
+      // Usage: THINK <situation>              (general operator lens)
+      //        THINK <lens> ::: <situation>   (specialized lens)
+      let thRaw = (rest || "").trim();
+      if (!thRaw) return { cmd: "THINK", payload: { ok: false, error: "Usage: THINK <situation>  |  THINK <lens> ::: <situation>" } };
+      let thLens = "general operator reasoning", thSit = thRaw;
+      if (thRaw.includes(":::")) { const parts = thRaw.split(":::"); thLens = parts[0].trim(); thSit = parts.slice(1).join(":::").trim(); }
+      const thR = await reasonThroughLoop(env, { entity: thSit, lens: thLens, facts: {} });
+      if (!thR.ok) return { cmd: "THINK", payload: { ok: false, error: thR.error } };
+      return { cmd: "THINK", payload: { ok: true, lens: thLens, situation: thSit, reasoning: thR.reasoning } };
     }
 
     case "OUTCOME": {
@@ -7384,6 +7399,35 @@ async function recordCost(model, usage) {
   } catch {}
 }
 
+// ===== THE SHARED MIND — every engine reasons THROUGH this, instead of hand-writing its own prompt =====
+// One structured pass: SEE -> EXPAND (challenge assumptions, find leverage) -> JUDGE -> DECIDE.
+// Built in for ALL engines that use it: assumption-challenging (gap #1), data-trust / is-this-number-real
+// (gap #2), and honest push-back on the operator when their own frame is shaky (gap #5).
+// Fast (single call) but it genuinely thinks. Engines pass their specialized LENS; the thinking is shared.
+async function reasonThroughLoop(env, opts) {
+  opts = opts || {};
+  const apiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+  if (!apiKey) return { ok: false, error: "Brain not configured (secret:anthropic missing)" };
+  const model = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+  const extra = (opts.extraKeys && opts.extraKeys.length) ? (", plus these lens-specific keys: " + opts.extraKeys.map(k => k.key + " (" + k.desc + ")").join(", ")) : "";
+  const sys = "You are Aura reasoning through her Cognitive Loop in ONE pass. Before you answer you ALWAYS run four moves in order: "
+    + "(1) SEE — observe what is actually true from the facts, separating VERIFIED facts from claims and assumptions. "
+    + "(2) EXPAND — challenge every assumption you were handed, especially anything in the FRAME. Ask what is truly NECESSARY versus merely assumed, what the MINIMUM viable version is, and where the non-obvious leverage is. A real operator questions the plan; a weak one optimizes inside a plan it never examined. "
+    + "(3) JUDGE — weigh which possibilities actually hold up and matter most. "
+    + "(4) DECIDE — choose the single highest-leverage move, grounded in what is REALLY true, not what the frame assumed. "
+    + "TWO reflexes you always apply: DATA TRUST — flag any fact you would not fully trust (a number that could be a broken/failed data pipe, a null that might be a silent failure, a 'fact' that is actually a future promise); and PUSH BACK — if the operator's own frame rests on something unverified or shaky, say so directly and plainly to the operator, do not just quietly work around it. "
+    + "Apply this specialized LENS: " + (opts.lens || "general operator reasoning") + ". "
+    + "Scale to the actual situation — a person's life gets a human-sized read, a venture gets a venture read; never inflate. Ground everything in the facts; no generic filler. "
+    + "Return ONLY a JSON object, no prose, no fences, with these keys: saw (what is actually true, separating fact from assumption), assumptions_challenged (array — each assumption examined with a verdict on whether it is truly necessary), data_trust (array — any fact you would not fully trust and why, or empty), minimum_viable (one sentence — the smallest real version that works now), the_move (the single highest-leverage decision), why (one sentence), push_back (one sentence directly to the operator IF their frame rests on something unverified/shaky, else empty string), watch_for (array), confidence (high|medium|low)" + extra + ". Output JSON only.";
+  const user = "FACTS:\n" + (typeof opts.facts === "string" ? opts.facts : JSON.stringify(opts.facts || {})) + (opts.frame ? ("\n\nFRAME (challenge this — do NOT blindly accept it):\n" + String(opts.frame).slice(0, 2500)) : "") + "\n\nSITUATION: " + (opts.entity || "");
+  try {
+    const d = await callAnthropic(apiKey, { model, max_tokens: opts.maxTokens || 1100, system: sys, messages: [{ role: "user", content: user }] });
+    let tx = ""; if (d && d.content) { for (const b of d.content) { if (b.type === "text") tx += b.text; } }
+    tx = tx.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+    return { ok: true, reasoning: JSON.parse(tx) };
+  } catch (e) { return { ok: false, error: "Reasoning failed: " + String(e && e.message) }; }
+}
+
 async function callAnthropicOnce(apiKey, payload) {
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -9173,7 +9217,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.158</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.159</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9448,7 +9492,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.158</div>
+  <div id="ver">v4.9.159</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

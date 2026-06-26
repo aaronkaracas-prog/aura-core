@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.148-2026-06-25";
+const BUILD = "aura-core-v4.9.149-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8938,7 +8938,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.148</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.149</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9092,7 +9092,7 @@ self.addEventListener('fetch', function(e){
         {n:"Contacts",c:"#1c2230"},{n:"Music",c:"#2a1c24"},{n:"Maps",c:"#1c2a26"},
         {n:"Files",c:"#1c1c2e"},{n:"Tasks",c:"#1c2030"},{n:"Wallet",c:"#241c2a"}
       ];
-      const roomsHtml = apps.map(function(a){return '<div class="room" onclick="askAura(\'Open '+a.n+'\')"><div class="roomicon" style="background:'+a.c+'">'+a.n.charAt(0)+'</div><div class="roomlabel">'+a.n+'</div></div>';}).join("")
+      const roomsHtml = apps.map(function(a){var act = a.n==='Photos' ? 'openPhotos()' : "askAura('Open "+a.n+"')"; return '<div class="room" onclick="'+act+'"><div class="roomicon" style="background:'+a.c+'">'+a.n.charAt(0)+'</div><div class="roomlabel">'+a.n+'</div></div>';}).join("")
         + '<div class="room" onclick="askAura(\'I want to add a new room\')"><div class="roomicon add">'+icPlus+'</div><div class="roomlabel">Add Room</div></div>';
 
       // ===== WHAT'S IMPORTANT (real data: active tasks / held items; honest empty state otherwise) =====
@@ -9159,6 +9159,27 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 .dcard::before{content:"";position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,0.55),transparent 60%)}
 .dtitle{font-size:1rem;font-weight:700;color:#fff;position:relative}
 .dsub{font-size:0.75rem;color:rgba(255,255,255,0.8);position:relative}
+/* ===== PHOTO CANVAS ===== */
+.pc-head{display:flex;align-items:center;gap:0.6rem;padding:0 1.1rem 0.4rem}
+.pc-back{background:none;border:none;color:#a855f7;font-size:1.5rem;cursor:pointer;line-height:1;padding:0}
+.pc-title{font-size:1.2rem;font-weight:800;color:#fff}
+.pc-connect{display:flex;flex-direction:column;align-items:center;text-align:center;padding:2.4rem 1.6rem;gap:0.5rem}
+.pc-glow{width:74px;height:74px;border-radius:20px;background:linear-gradient(135deg,#a855f7,#ec4899);display:flex;align-items:center;justify-content:center;margin-bottom:0.6rem;box-shadow:0 0 36px rgba(168,85,247,0.4)}
+.pc-h{font-size:1.3rem;font-weight:800;color:#fff}
+.pc-p{font-size:0.92rem;color:#9a9ab0;line-height:1.5;max-width:330px}
+.pc-btn{margin-top:1rem;background:#fff;color:#111;font-weight:700;font-size:1rem;border:none;border-radius:14px;padding:0.85rem 1.7rem;cursor:pointer}
+.pc-note{font-size:0.74rem;color:#5a5a72;margin-top:0.4rem}
+.pc-progress{text-align:center;padding:2.5rem 1.5rem;color:#c8c4d8;font-size:0.95rem}
+.pc-bar{height:6px;background:#1a1a26;border-radius:3px;margin:1rem auto 0;max-width:280px;overflow:hidden}
+.pc-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#a855f7,#ec4899);transition:width .2s}
+.albums{display:grid;grid-template-columns:repeat(2,1fr);gap:0.9rem;padding:0.5rem 1.1rem 1rem}
+.album{cursor:pointer}
+.albumcover{width:100%;aspect-ratio:1/1;border-radius:16px;object-fit:cover;background:#16161f;display:block}
+.albumtitle{font-size:0.95rem;font-weight:700;color:#fff;margin-top:0.5rem;line-height:1.2}
+.albumsub{font-size:0.78rem;color:#8888a8;margin-top:0.15rem}
+.photogrid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:0.4rem 0.8rem 1rem}
+.photogrid img{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:6px;background:#16161f;cursor:pointer}
+.pc-summary{padding:0 1.1rem 0.8rem;color:#b8b4c8;font-size:0.9rem;line-height:1.4}
 /* ===== SHELL: bottom nav ===== */
 .bottomnav{position:fixed;bottom:0;left:0;right:0;height:72px;background:rgba(12,12,18,0.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid #16161f;display:flex;align-items:center;justify-content:space-around;padding-bottom:env(safe-area-inset-bottom);z-index:40}
 .navbtn{background:none;border:none;color:#8888a0;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:0.68rem;cursor:pointer}
@@ -9192,7 +9213,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.148</div>
+  <div id="ver">v4.9.149</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 
@@ -9208,6 +9229,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 
 <!-- ===== ADAPTIVE CANVAS — context: home (swappable: money/photos/etc plug in here) ===== -->
 <div class="canvas" id="canvas" data-context="home">
+<div id="homeCanvas">
   <div class="cansec">
     <div class="canhead"><span>What's important right now</span><a onclick="askAura('Show me everything important right now')">See all</a></div>
     <div class="cardscroll">${importantHtml}</div>
@@ -9220,6 +9242,8 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
     <div class="canhead"><span>Discover</span></div>
     <div class="discover">${discoverHtml}</div>
   </div>
+</div>
+<div id="photoCanvas" style="display:none"></div>
 </div>
 
 <!-- ===== SHELL: bottom nav ===== -->
@@ -9270,6 +9294,92 @@ async function sendMsg(){var inp=document.getElementById('chatInput');var m=inp.
 var _rec=null,_recOn=false;
 function toggleMic(){var SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){addMsg("Your browser doesn't support voice - try typing.","aura");return}if(_recOn){_rec&&_rec.stop();return}_rec=new SR();_rec.lang='en-US';_rec.interimResults=true;_rec.continuous=false;_recOn=true;_rec.onresult=function(e){var txt='';for(var i=0;i<e.results.length;i++)txt+=e.results[i][0].transcript;document.getElementById('chatInput').value=txt};_rec.onerror=function(){};_rec.onend=function(){_recOn=false;if(document.getElementById('chatInput').value.trim())sendMsg()};_rec.start()}
 if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('/sw.js').then(function(reg){reg.update();}).catch(function(){});var refreshing=false;navigator.serviceWorker.addEventListener('controllerchange',function(){if(refreshing)return;refreshing=true;if(hadController)window.location.reload();});}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
+<script>
+// ===== PHOTO CANVAS — on-device organizer (place + time). Photos never leave the phone. =====
+var PC = { albums: [] };
+function openPhotos(){
+  document.getElementById('homeCanvas').style.display='none';
+  var pc=document.getElementById('photoCanvas'); pc.style.display='block';
+  document.getElementById('canvas').setAttribute('data-context','photos');
+  if(PC.albums.length){ renderAlbums(); return; }
+  pc.innerHTML =
+    '<div class="pc-head"><button class="pc-back" onclick="backHome()">\u2039</button><div class="pc-title">Photos</div></div>'+
+    '<div class="pc-connect">'+
+      '<div class="pc-glow"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>'+
+      '<div class="pc-h">Let me organize your photos</div>'+
+      '<div class="pc-p">Choose your photos and I\u2019ll sort the chaos into trips and places \u2014 Hawaii, the snow trip, the whole timeline. This happens right here on your phone. Nothing leaves your device.</div>'+
+      '<button class="pc-btn" onclick="document.getElementById(\'pcFiles\').click()">Choose photos</button>'+
+      '<div class="pc-note">Pick a batch or select all \u2014 your photos stay private to you.</div>'+
+      '<input id="pcFiles" type="file" accept="image/*" multiple style="display:none" onchange="organizePhotos(this.files)">'+
+    '</div>';
+}
+function backHome(){
+  document.getElementById('photoCanvas').style.display='none';
+  document.getElementById('homeCanvas').style.display='block';
+  document.getElementById('canvas').setAttribute('data-context','home');
+}
+function haversine(a,b,c,d){var R=6371,t=(c-a)*Math.PI/180,n=(d-b)*Math.PI/180,x=Math.sin(t/2)*Math.sin(t/2)+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(n/2)*Math.sin(n/2);return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
+async function organizePhotos(files){
+  var pc=document.getElementById('photoCanvas');
+  files=[].slice.call(files); var total=files.length;
+  pc.innerHTML='<div class="pc-head"><button class="pc-back" onclick="backHome()">\u2039</button><div class="pc-title">Photos</div></div>'+
+    '<div class="pc-progress" id="pcProg">Reading your photos\u2026<div class="pc-bar"><i id="pcBar"></i></div><div id="pcCount" style="margin-top:0.6rem;color:#8888a8;font-size:0.85rem">0 / '+total+'</div></div>';
+  var items=[];
+  for(var i=0;i<files.length;i++){
+    var f=files[i]; var date=null,lat=null,lng=null;
+    try{ var ex=await exifr.parse(f,{pick:['DateTimeOriginal','CreateDate','GPSLatitude','GPSLongitude']});
+      if(ex){ date=ex.DateTimeOriginal||ex.CreateDate||null; if(typeof ex.latitude==='number'){lat=ex.latitude;lng=ex.longitude;} }
+    }catch(e){}
+    if(!date && f.lastModified) date=new Date(f.lastModified);
+    items.push({file:f,url:URL.createObjectURL(f),date:date?new Date(date):null,lat:lat,lng:lng});
+    if(i%5===0||i===files.length-1){ document.getElementById('pcBar').style.width=Math.round((i+1)/total*100)+'%'; document.getElementById('pcCount').textContent=(i+1)+' / '+total; await new Promise(function(r){setTimeout(r,0);}); }
+  }
+  items.sort(function(a,b){ if(!a.date)return 1; if(!b.date)return -1; return a.date-b.date; });
+  var trips=[],cur=null;
+  items.forEach(function(it){
+    if(!cur){ cur=newTrip(it); trips.push(cur); return; }
+    var gapDays = (it.date&&cur.lastDate)? Math.abs(it.date-cur.lastDate)/86400000 : 0;
+    var far=false;
+    if(it.lat!=null&&cur.lat!=null){ far = haversine(it.lat,it.lng,cur.lat,cur.lng)>75; }
+    if(gapDays>3 || far){ cur=newTrip(it); trips.push(cur); }
+    else { addToTrip(cur,it); }
+  });
+  document.getElementById('pcProg').innerHTML='Finding where these were taken\u2026';
+  for(var t=0;t<trips.length;t++){ await nameTrip(trips[t]); }
+  PC.albums=trips;
+  renderAlbums();
+}
+function newTrip(it){var t={photos:[],lat:null,lng:null,_latSum:0,_lngSum:0,_gpsN:0,firstDate:it.date,lastDate:it.date,place:null};addToTrip(t,it);return t;}
+function addToTrip(t,it){t.photos.push(it);if(it.date){if(!t.firstDate||it.date<t.firstDate)t.firstDate=it.date;if(!t.lastDate||it.date>t.lastDate)t.lastDate=it.date;}if(it.lat!=null){t._latSum+=it.lat;t._lngSum+=it.lng;t._gpsN++;t.lat=t._latSum/t._gpsN;t.lng=t._lngSum/t._gpsN;}}
+async function nameTrip(t){
+  if(t.lat==null){ t.place=t.firstDate?monthYear(t.firstDate):'Untitled'; return; }
+  try{ var r=await fetch('https://api.bigdatacloud.net/data/reverse-geocode-client?latitude='+t.lat+'&longitude='+t.lng+'&localityLanguage=en');
+    var d=await r.json(); t.place = d.principalSubdivision || d.city || d.locality || d.countryName || 'Somewhere';
+  }catch(e){ t.place = t.firstDate?monthYear(t.firstDate):'A place'; }
+}
+function monthYear(d){return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]+' '+d.getFullYear();}
+function dateRange(t){ if(!t.firstDate)return t.photos.length+' photos'; var a=monthYear(t.firstDate),b=monthYear(t.lastDate); return (a===b?a:a+' \u2013 '+b)+' \u00b7 '+t.photos.length+' photos'; }
+function renderAlbums(){
+  var pc=document.getElementById('photoCanvas');
+  var albums=PC.albums.slice().sort(function(a,b){return (b.lastDate||0)-(a.lastDate||0);});
+  var trips=albums.filter(function(a){return a.lat!=null;}).length;
+  var html='<div class="pc-head"><button class="pc-back" onclick="backHome()">\u2039</button><div class="pc-title">Your photos</div></div>';
+  html+='<div class="pc-summary">Organized '+PC.albums.reduce(function(n,a){return n+a.photos.length;},0)+' photos into '+albums.length+' '+(albums.length===1?'album':'albums')+(trips?(', '+trips+' by place'):'')+'. Tap any to open \u2014 or ask Aura about them.</div>';
+  html+='<div class="albums">';
+  albums.forEach(function(a){ html+='<div class="album" onclick="openAlbum('+PC.albums.indexOf(a)+')"><img class="albumcover" src="'+a.photos[0].url+'" loading="lazy"><div class="albumtitle">'+a.place+'</div><div class="albumsub">'+dateRange(a)+'</div></div>'; });
+  html+='</div>';
+  pc.innerHTML=html;
+}
+function openAlbum(idx){
+  var a=PC.albums[idx]; var pc=document.getElementById('photoCanvas');
+  var html='<div class="pc-head"><button class="pc-back" onclick="renderAlbums()">\u2039</button><div class="pc-title">'+a.place+'</div></div>';
+  html+='<div class="pc-summary">'+dateRange(a)+'</div><div class="photogrid">';
+  a.photos.forEach(function(p){ html+='<img src="'+p.url+'" loading="lazy" onclick="askAura(\'Tell me about my photos from '+a.place.replace(/\x27/g,"")+'\')">'; });
+  html+='</div>';
+  pc.innerHTML=html;
+}
 </script>
 </body></html>`;
       return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" } });

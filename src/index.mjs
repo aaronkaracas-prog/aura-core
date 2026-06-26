@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.185-2026-06-26";
+const BUILD = "aura-core-v4.9.186-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -3850,7 +3850,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           { key: "the_tool", desc: "the single digital tool that fixes it, named concretely" },
           { key: "how_it_makes_them_money", desc: "one sentence — the direct line from this tool to more revenue/time for them, in PLAIN terms. NEVER invent figures (no made-up diner counts, ticket sizes, or dollar totals); describe the mechanism, not a fabricated number" },
           { key: "buildable_now", desc: "boolean — can Aura build this autonomously today (page/QR/MOMENT/PTA level)?" },
-          { key: "build_path", desc: "if buildable_now: the exact capability + a one-line spec (e.g. 'MOMENT: QR at the door capturing diners into a Malibu-Seafood PTA'); if a project: what it would take" },
+          { key: "build_path", desc: "if buildable_now: the exact capability + a one-line spec (e.g. 'MOMENT: QR at the door capturing customers into the business's own PTA' — always use the actual business, NEVER a different business's name); if a project: what it would take" },
           { key: "the_pitch", desc: "2-3 sentences Aura would say to the owner — leads with what she noticed about THEIR business, then the offer. CRITICAL: use NO fabricated numbers. Speak to the real, obvious gain in plain language; if a result is hypothetical, label it as something to test together, never assert an invented figure as fact" }
         ]
       });
@@ -9657,7 +9657,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.185</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.186</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9932,7 +9932,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.185</div>
+  <div id="ver">v4.9.186</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

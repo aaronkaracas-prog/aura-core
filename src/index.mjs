@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.161-2026-06-25";
+const BUILD = "aura-core-v4.9.162-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -7419,6 +7419,11 @@ async function reasonThroughLoop(env, opts) {
   const apiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
   if (!apiKey) return { ok: false, error: "Brain not configured (secret:anthropic missing)" };
   const model = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+  // ONE central reasoning cap. Generous by default so real reasoning always FINISHES, firm so no single
+  // answer can run away and drain the float. Adjustable any time via config:brain:reasoning_cap — no code change.
+  let reasoningCap = 3000;
+  try { const rc = await env.AURA_KV.get("config:brain:reasoning_cap"); if (rc) { const n = parseInt(rc, 10); if (n > 0) reasoningCap = n; } } catch {}
+  const capToUse = Math.min(opts.maxTokens || reasoningCap, reasoningCap);
   const extra = (opts.extraKeys && opts.extraKeys.length) ? (", plus these lens-specific keys: " + opts.extraKeys.map(k => k.key + " (" + k.desc + ")").join(", ")) : "";
   const sys = "You are Aura reasoning through her Cognitive Loop in ONE pass. Before you answer you ALWAYS run four moves in order: "
     + "(1) SEE — observe what is actually true from the facts, separating VERIFIED facts from claims and assumptions. "
@@ -7431,7 +7436,7 @@ async function reasonThroughLoop(env, opts) {
     + "Return ONLY a JSON object, no prose, no fences, with these keys: saw (what is actually true, separating fact from assumption), assumptions_challenged (array — each assumption examined with a verdict on whether it is truly necessary), data_trust (array — any fact you would not fully trust and why, or empty), minimum_viable (one sentence — the smallest real version that works now), the_move (the single highest-leverage decision), why (one sentence), push_back (one sentence directly to the operator IF their frame rests on something unverified/shaky, else empty string), watch_for (array), confidence (high|medium|low)" + extra + ". Output JSON only.";
   const user = "FACTS:\n" + (typeof opts.facts === "string" ? opts.facts : JSON.stringify(opts.facts || {})) + (opts.frame ? ("\n\nFRAME (challenge this — do NOT blindly accept it):\n" + String(opts.frame).slice(0, 2500)) : "") + "\n\nSITUATION: " + (opts.entity || "");
   try {
-    const d = await callAnthropic(apiKey, { model, max_tokens: opts.maxTokens || 2000, system: sys, messages: [{ role: "user", content: user }] });
+    const d = await callAnthropic(apiKey, { model, max_tokens: capToUse, system: sys, messages: [{ role: "user", content: user }] });
     let tx = ""; if (d && d.content) { for (const b of d.content) { if (b.type === "text") tx += b.text; } }
     tx = tx.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
     // primary parse
@@ -9247,7 +9252,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.161</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.162</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9522,7 +9527,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.161</div>
+  <div id="ver">v4.9.162</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

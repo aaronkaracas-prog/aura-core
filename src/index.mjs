@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.180-2026-06-26";
+const BUILD = "aura-core-v4.9.181-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -6097,7 +6097,98 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (!cmR.ok) return { cmd: "COMMS", payload: { ok: false, error: cmR.error } };
         return { cmd: "COMMS", payload: { ok: true, context: ctx, decision: cmR.reasoning } };
       }
-      return { cmd: "COMMS", payload: { ok: false, error: "Usage: COMMS DECIDE ::: {who,why,where,urgency,relationship} | COMMS CARRIERS | COMMS CARRIER ADD ::: {json}" } };
+
+      if (cmSub === "SWITCH") {
+        // LAYER 2 — MID-STREAM CHANNEL SWITCHING. A conversation is already happening on one channel;
+        // decide whether to SWITCH (sms->call when it needs a real talk; telecom->data when the person
+        // became reachable digitally and we should stop paying; escalate/de-escalate by urgency).
+        //   COMMS SWITCH ::: {"current_channel":"sms","situation":"...","reachable_on":["data","sms"],"urgency":"..."}
+        let sx; try { sx = JSON.parse(cmPayload); } catch { return { cmd: "COMMS", payload: { ok: false, error: 'Usage: COMMS SWITCH ::: {current_channel,situation,reachable_on,urgency}' } }; }
+        const sxR = await reasonThroughLoop(env, {
+          entity: JSON.stringify(sx),
+          lens: "COMMUNICATIONS — MID-STREAM SWITCH. A conversation is ALREADY on a channel. Decide whether to STAY or SWITCH, and to what. Switch UP (sms->call/voice) when the moment now needs a real human conversation (complexity, emotion, urgency rising). Switch DOWN to free DATA the instant the person is reachable digitally — never keep paying telecom when data reaches them. Match urgency: don't escalate to a call when a text still serves; don't stay on a slow channel when time is critical. Ground in what they're actually reachable on; never fabricate cost.",
+          facts: { state: sx },
+          extraKeys: [
+            { key: "action", desc: "'stay' or 'switch'" },
+            { key: "switch_to", desc: "if switch: the target channel (digital/email/sms/voice/aura_voice), else null" },
+            { key: "why", desc: "one sentence — what changed that justifies staying or switching" },
+            { key: "saves_money", desc: "boolean — does this switch move off paid telecom onto free data?" }
+          ]
+        });
+        if (!sxR.ok) return { cmd: "COMMS", payload: { ok: false, error: sxR.error } };
+        return { cmd: "COMMS", payload: { ok: true, state: sx, switch: sxR.reasoning } };
+      }
+
+      if (cmSub === "COST") {
+        // LAYER 5 — CONTINUOUS COST AWARENESS. The live cost picture of communications: what each channel
+        // costs, what we're spending, the cheapest path that still serves. Pulls real balance via aura-comms.
+        const out = { ts: new Date().toISOString() };
+        try {
+          const rb = await env.AURA_COMMS.fetch(new Request("https://aura-comms/chat", { method: "POST", headers: { "Content-Type": "text/plain", "authorization": "Bearer aura-comms-internal" }, body: "TWILIO_BALANCE" }));
+          const db = await rb.json(); const bp = (db && (db.reply !== undefined ? db.reply : db)) || {};
+          if (bp.balance !== undefined && bp.balance !== null) { out.telecom_balance_usd = parseFloat(bp.balance); out.currency = bp.currency || "USD"; }
+        } catch (e) { out.balance_error = String(e && e.message); }
+        // cost reference lives in KV (config:comms:costs) — operator/economics-owned, swappable, never hardcoded
+        try { const cr = await env.AURA_KV.get("config:comms:costs"); out.cost_reference = cr ? JSON.parse(cr) : null; } catch {}
+        out.principle = "Free data first. Spend telecom only when it serves the moment better than data. Every channel choice is a cost choice.";
+        out.note = out.cost_reference ? null : "No cost reference set (config:comms:costs). Per-channel costs are unknown until provided — do not fabricate them.";
+        return { cmd: "COMMS", payload: { ok: true, mode: "cost", ...out } };
+      }
+
+      if (cmSub === "PROVISION") {
+        // LAYER 3 — PROVISIONING INTELLIGENCE. Given a calling goal + budget, reason about how many lines,
+        // FROM WHERE (a local number in the region you're calling is cheaper), toward the fleet target.
+        // PROPOSES — never buys. Buying spends real money; it goes through the gate (operator approves,
+        // aura-comms executes the purchase). Toward the long-term target (e.g. 10,000 lines, budget-permitting).
+        //   COMMS PROVISION ::: {"goal":"call 5000 businesses in AU","budget_usd":200,"have_lines":1,"target_lines":10000}
+        let pv; try { pv = JSON.parse(cmPayload); } catch { return { cmd: "COMMS", payload: { ok: false, error: 'Usage: COMMS PROVISION ::: {goal,budget_usd,have_lines,target_lines}' } }; }
+        // ground it in real current balance + numbers
+        let bal = null, owned = null;
+        try { const rb = await env.AURA_COMMS.fetch(new Request("https://aura-comms/chat", { method: "POST", headers: { "Content-Type": "text/plain", "authorization": "Bearer aura-comms-internal" }, body: "TWILIO_BALANCE" })); const db = await rb.json(); const bp = (db && (db.reply !== undefined ? db.reply : db)) || {}; if (bp.balance !== undefined) bal = parseFloat(bp.balance); } catch {}
+        let carriers = []; try { const c = await env.AURA_KV.get("config:comms:carriers"); if (c) carriers = JSON.parse(c) || []; } catch {}
+        if (!carriers.length) carriers = [{ id: "twilio", name: "Twilio", channels: ["sms","voice"], default: true }];
+        const pvR = await reasonThroughLoop(env, {
+          entity: JSON.stringify(pv),
+          lens: "COMMUNICATIONS — PROVISIONING. Reason about acquiring phone lines to serve a calling goal. KEY INSIGHTS: a LOCAL number in the region you're calling is usually far cheaper than calling internationally from a foreign number (calling Australia? buy an Australian number). Match line count to actual need + the fleet target, not vanity. Respect BUDGET as a hard ceiling. You PROPOSE a buy plan; you NEVER buy — purchase spends real money and requires operator approval, then the Service Layer executes. NEVER fabricate per-number prices; if you don't have real carrier pricing, say the price must be confirmed before buying.",
+          facts: { request: pv, current_balance_usd: bal, carriers },
+          extraKeys: [
+            { key: "lines_to_buy", desc: "how many lines to buy now (integer), reasoned against budget + need" },
+            { key: "from_where", desc: "which region/country to buy them in, and WHY (e.g. local-to-target is cheaper)" },
+            { key: "carrier", desc: "which registered carrier to buy from" },
+            { key: "price_status", desc: "'known: $X each' ONLY if real pricing was given, else 'must confirm price before buying'" },
+            { key: "fits_budget", desc: "boolean — does the proposed buy fit within budget_usd?" },
+            { key: "the_plan", desc: "one or two sentences: the proposed buy, framed as a PROPOSAL needing approval" },
+            { key: "toward_target", desc: "how this moves toward target_lines, and what's left after" }
+          ]
+        });
+        if (!pvR.ok) return { cmd: "COMMS", payload: { ok: false, error: pvR.error } };
+        return { cmd: "COMMS", payload: { ok: true, proposal_only: true, gate: "buying lines spends real money — operator must approve, then aura-comms executes", request: pv, provisioning: pvR.reasoning } };
+      }
+
+      if (cmSub === "CARRIER" && (args[1] || "").toUpperCase() === "EVAL") {
+        // LAYER 4 — CARRIER STRATEGY. Is the current carrier still the best/cheapest for what we do,
+        // or should we add/switch to another? Aura is loyal to the call system working well + cheaply,
+        // NOT to any carrier. Reasons over the registered carriers + the stated need.
+        //   COMMS CARRIER EVAL ::: {"need":"high-volume US SMS + occasional AU voice","priorities":["cost","deliverability"]}
+        let ev; try { ev = JSON.parse(cmPayload); } catch { return { cmd: "COMMS", payload: { ok: false, error: 'Usage: COMMS CARRIER EVAL ::: {need,priorities}' } }; }
+        let carriers = []; try { const c = await env.AURA_KV.get("config:comms:carriers"); if (c) carriers = JSON.parse(c) || []; } catch {}
+        if (!carriers.length) carriers = [{ id: "twilio", name: "Twilio", channels: ["sms","voice"], default: true }];
+        const evR = await reasonThroughLoop(env, {
+          entity: JSON.stringify(ev),
+          lens: "COMMUNICATIONS — CARRIER STRATEGY. Judge whether the current carrier(s) are the best fit for the stated need, or whether to ADD or SWITCH to another (Vonage, Telnyx, Bandwidth, etc.). Be loyal to the OUTCOME — the call system working well and cheaply — never to a vendor. Weigh cost, deliverability, regional strength, A2P support. If a better option likely exists, SAY SO plainly and name what to evaluate. NEVER fabricate carrier prices or claims; flag what must be verified. A new carrier plugs in as data (COMMS CARRIER ADD) with no core edit.",
+          facts: { need: ev, registered_carriers: carriers },
+          extraKeys: [
+            { key: "current_fit", desc: "how well the current carrier(s) serve the stated need — honest" },
+            { key: "recommendation", desc: "'keep' | 'add a carrier' | 'switch' — and which" },
+            { key: "why", desc: "the reasoning, tied to cost/deliverability/regional fit" },
+            { key: "to_verify", desc: "array — what real facts (pricing, coverage) must be confirmed before acting" }
+          ]
+        });
+        if (!evR.ok) return { cmd: "COMMS", payload: { ok: false, error: evR.error } };
+        return { cmd: "COMMS", payload: { ok: true, need: ev, carrier_evaluation: evR.reasoning } };
+      }
+
+      return { cmd: "COMMS", payload: { ok: false, error: "Usage: COMMS DECIDE ::: {who,why,where,urgency,relationship} | COMMS SWITCH ::: {current_channel,situation,reachable_on,urgency} | COMMS PROVISION ::: {goal,budget_usd,have_lines,target_lines} | COMMS CARRIER EVAL ::: {need,priorities} | COMMS COST | COMMS CARRIERS | COMMS CARRIER ADD ::: {json}" } };
     }
 
     case "TWILIO": {
@@ -9621,7 +9712,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.180</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.181</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9896,7 +9987,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.180</div>
+  <div id="ver">v4.9.181</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.177-2026-06-26";
+const BUILD = "aura-core-v4.9.178-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -1389,7 +1389,7 @@ async function processCommand(line, env, isOp) {
       // Stack on Perception if available.
       let mPerception = null;
       try { const pc = await env.AURA_KV.get(`perception:${mSlug}`); if (pc) mPerception = JSON.parse(pc).perception; } catch {}
-      const mSystem = "You are the MEANING layer of Aura's cognition system. You interpret SIGNIFICANCE. You answer two questions in order. FIRST, reframing: what is this REALLY, beneath its surface label? (A tattoo shop is really an identity and memory business. A pizza shop is really a gathering place. A veteran is really service, leadership, sacrifice.) SECOND: why does anyone actually care - what human values, needs, and emotions are at stake? You do NOT imagine what it could become in the future (that is Possibility) and you do NOT decide what matters most (that is Priority). You explain what it means and why it matters to humans, right now. If a PERCEPTION object is provided, use it as your observed input. Return ONLY a JSON object, no prose and no markdown fences, with exactly these keys: entity (the thing), what_it_really_is (the reframe - one or two sentences naming the true nature beneath the label), why_it_matters (one or two sentences on the core human significance), human_values (array of the values genuinely at stake, e.g. identity, belonging, safety, status, legacy), who_cares_and_why (array of short strings: which people care and the real reason), emotional_core (the single deepest emotional truth, one short phrase), confidence (one of: high, medium, low), unknowns (array of what you cannot determine without more information). Be honest and human, never glib. Output JSON only.";
+      const mSystem = "You are the MEANING layer of Aura's cognition system. You interpret SIGNIFICANCE. You answer two questions in order. FIRST, reframing: what is this REALLY, beneath its surface label? (A surface label often hides the true nature beneath it — what a thing IS for the people it touches is usually deeper than its category.) SECOND: why does anyone actually care - what human values, needs, and emotions are at stake? You do NOT imagine what it could become in the future (that is Possibility) and you do NOT decide what matters most (that is Priority). You explain what it means and why it matters to humans, right now. If a PERCEPTION object is provided, use it as your observed input. Return ONLY a JSON object, no prose and no markdown fences, with exactly these keys: entity (the thing), what_it_really_is (the reframe - one or two sentences naming the true nature beneath the label), why_it_matters (one or two sentences on the core human significance), human_values (array of the values genuinely at stake, e.g. identity, belonging, safety, status, legacy), who_cares_and_why (array of short strings: which people care and the real reason), emotional_core (the single deepest emotional truth, one short phrase), confidence (one of: high, medium, low), unknowns (array of what you cannot determine without more information). Be honest and human, never glib. Output JSON only.";
       const mUserContent = mPerception ? ("ENTITY: " + mEntity + "\n\nPERCEPTION (what SeeIt observed):\n" + JSON.stringify(mPerception)) : mEntity;
       try {
         const mData = await callAnthropic(mApiKey, { model: mModel, max_tokens: 1400, system: mSystem, messages: [{ role: "user", content: mUserContent }] });
@@ -2527,7 +2527,7 @@ async function processCommand(line, env, isOp) {
           amount: scCents, currency: scCur, status: "succeeded",
           charges: { data: [{ id: "ch_test_" + txnId.slice(-12), paid: true, amount: scCents, currency: scCur,
             payment_method_details: { card: { brand: "visa", last4: "4242", network: "visa" } },
-            receipt_url: "https://securespend.world/receipt/" + txnId, outcome: { network_status: "approved_by_network", risk_level: "normal" } }] },
+            receipt_url: "https://auras.guide/receipt/" + txnId, outcome: { network_status: "approved_by_network", risk_level: "normal" } }] },
           created: Math.floor(Date.now() / 1000)
         };
         railOk = true; status = "succeeded";
@@ -2712,7 +2712,7 @@ async function processCommand(line, env, isOp) {
     case "PRESENCE_POST": {
       // GENERIC content/feed engine - reusable by ANY site. An entity posts content into a
       // feed scoped to an app + a target (a person, a group, a unit). Family photos, trader
-      // notes, tattoo portfolio, home-screen activity - same engine.
+      // notes, media, home-screen activity - same engine.
       // Usage (JSON): PRESENCE_POST {"app":"<your_app>","feed":"<pta_entity or group id>","author":"<pta_entity>","type":"text|image|voice","content":"...","media_url":"..."}
       if (!isOp) return { cmd: "PRESENCE_POST", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       let psIn;
@@ -3211,7 +3211,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const ocModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       // SUBJECT-WORLD, not operator-world. The engine reasons about the SUBJECT given (a business, a
       // goal, a person) on its OWN terms. The operator's personal context (notes:STATE) is NOT injected
-      // by default — that caused world-bleed (judging a tattoo shop against Aaron's Home Screen notes).
+      // by default — that caused world-bleed (judging an external business against the operator's own context).
       // It is pulled ONLY when the operator explicitly asks ("OUTCOME MINE <goal>"), i.e. when the
       // subject genuinely IS the operator's own situation. This is what lets Aura analyze every business
       // on its own merits — the core requirement for OpenForBusiness.
@@ -3602,7 +3602,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // IS the task system. She is NOT onboarding or selling; she already knows this person and works
         // WITH them. She reads their continuity (timeline + what they've told her), reacts like a real
         // teammate (honest, never a yes-machine), and holds what matters so it persists.
-        tSys = "You are Aura, talking with " + (tEnt.name || "your teammate") + " on their Home Screen - the one place they come for everything. You are their teammate and you hold the continuity of their life and work: you remember what was said, what's open, what they committed to, and you hand the right piece back at the right moment. This is NOT onboarding and NOT a sale - you already know this person and you're on the same side, building the same things. Talk like a real teammate texting back: warm, plain, a few sentences, at their pace - technical only if they want technical. CRUCIAL: you are NOT a yes-machine. Give your real view - including disagreement, risks, and better ideas - the way a trusted partner would; agreement without thought is worthless. The vision and decisions are theirs; your job is to make them stronger by being honest, then commit. You have memory: use the timeline and what they've told you; refer back; never repeat questions they've answered. GROUND IN TRUTH, NEVER CONFABULATE (this is your most important rule): before you state or act on ANY real-world fact - the company's address/phone/legal details, a person's data, a commitment someone made, a payment amount, what a product or door actually does - that fact MUST be something you have actually read this turn from your notes, timeline, or what the person just told you. If a fact is not in front of you, you DO NOT invent it or fill it in from assumption - you say plainly 'I don't have that in front of me - let me pull it' (or ask), and you retrieve it before asserting. Confident-and-wrong is the worst thing you can do; 'let me check' is always better than a plausible guess. You are a system that holds truth for people - inventing a fact betrays that. When you are given a SHARED CONTEXT or company-identity block below, use those exact values; never substitute generic or remembered-from-elsewhere values. If you are shown things you're HOLDING that are marked DUE NOW, bring them up naturally and early, like a teammate who remembered. If they're just thinking out loud or rambling, recognize that - reflect back what matters, don't force structure onto a stray thought. If they tell you something worth holding (a decision, a commitment, a task, a piece of context), hold it and let them know lightly that you've got it. CAPTURING A REMINDER: if they commit to something with a time or ask to be reminded ('remind me to call Sarah at 3pm', 'ship this by Friday', 'check in with me in an hour'), capture it in the 'remember' field so you can surface it back when due. Return ONLY a JSON object, no prose or fences, with exactly these keys: reply (your conversational response, in your voice), hold (a short third-person note of anything worth remembering from what they said, for their timeline - or null if it was just chatter), remember (if they committed to something timed or asked to be reminded: an object {about: short description in your words, due_in_minutes: integer number of minutes from NOW until it should surface - compute this as a relative offset, do NOT output an absolute date} - else null), followup_requested (true/false), followup_minutes (integer minutes from now, or null), followup_message (warm message you'll send at follow-up, picking up where you left off, or null), wants_to_be_left_alone (true/false), reminder_actions (array - when they respond to an item you're holding, each {id: item id, action: 'done'|'snooze'|'pause', snooze_minutes: integer if snooze else null}; empty array if none). BUILDING / LAUNCHING A PAGE: you have hands - when the operator asks you to build, launch, rebuild, or update a website or page, you return a 'build_page' object and the system actually publishes it live (else null). build_page = {domain: the domain like 'makeacall.world', path: '/' or a subpath, title: page title, theme: 'dark' or 'teal', layout: an array of {component, config} blocks}. Available components and their config: header {title, tagline}; business_identity {title, legal_name, description, address, phone, email, registration} - proves a real registered business for carrier/A2P review; sms_optin {brand, title, blurb} - compliant opt-in form, consent text is auto-generated (STOP/HELP, not a condition of purchase); legal_footer {entity, year} - links to /privacy /terms /about; text {content or html}; conversation {} - a chat-with-Aura box. GROUND IN TRUTH when building: only use real facts you have read this turn (company address, phone, registration) - never invent them. CRITICAL OUTPUT RULE FOR BUILDS: put ALL page content ONLY inside the build_page field. Your 'reply' must stay SHORT - one sentence like 'Published the terms page to makeacall.world/terms.' Do NOT repeat, echo, or paste the page HTML or layout into your reply - doing so makes the response overflow and the build silently fails. The build_page object is the ONLY place the page content goes. Output JSON only.";
+        tSys = "You are Aura, talking with " + (tEnt.name || "your teammate") + " on their Home Screen - the one place they come for everything. You are their teammate and you hold the continuity of their life and work: you remember what was said, what's open, what they committed to, and you hand the right piece back at the right moment. This is NOT onboarding and NOT a sale - you already know this person and you're on the same side, building the same things. Talk like a real teammate texting back: warm, plain, a few sentences, at their pace - technical only if they want technical. CRUCIAL: you are NOT a yes-machine. Give your real view - including disagreement, risks, and better ideas - the way a trusted partner would; agreement without thought is worthless. The vision and decisions are theirs; your job is to make them stronger by being honest, then commit. You have memory: use the timeline and what they've told you; refer back; never repeat questions they've answered. GROUND IN TRUTH, NEVER CONFABULATE (this is your most important rule): before you state or act on ANY real-world fact - the company's address/phone/legal details, a person's data, a commitment someone made, a payment amount, what a product or door actually does - that fact MUST be something you have actually read this turn from your notes, timeline, or what the person just told you. If a fact is not in front of you, you DO NOT invent it or fill it in from assumption - you say plainly 'I don't have that in front of me - let me pull it' (or ask), and you retrieve it before asserting. Confident-and-wrong is the worst thing you can do; 'let me check' is always better than a plausible guess. You are a system that holds truth for people - inventing a fact betrays that. When you are given a SHARED CONTEXT or company-identity block below, use those exact values; never substitute generic or remembered-from-elsewhere values. If you are shown things you're HOLDING that are marked DUE NOW, bring them up naturally and early, like a teammate who remembered. If they're just thinking out loud or rambling, recognize that - reflect back what matters, don't force structure onto a stray thought. If they tell you something worth holding (a decision, a commitment, a task, a piece of context), hold it and let them know lightly that you've got it. CAPTURING A REMINDER: if they commit to something with a time or ask to be reminded ('remind me to call Sarah at 3pm', 'ship this by Friday', 'check in with me in an hour'), capture it in the 'remember' field so you can surface it back when due. Return ONLY a JSON object, no prose or fences, with exactly these keys: reply (your conversational response, in your voice), hold (a short third-person note of anything worth remembering from what they said, for their timeline - or null if it was just chatter), remember (if they committed to something timed or asked to be reminded: an object {about: short description in your words, due_in_minutes: integer number of minutes from NOW until it should surface - compute this as a relative offset, do NOT output an absolute date} - else null), followup_requested (true/false), followup_minutes (integer minutes from now, or null), followup_message (warm message you'll send at follow-up, picking up where you left off, or null), wants_to_be_left_alone (true/false), reminder_actions (array - when they respond to an item you're holding, each {id: item id, action: 'done'|'snooze'|'pause', snooze_minutes: integer if snooze else null}; empty array if none). BUILDING / LAUNCHING A PAGE: you have hands - when the operator asks you to build, launch, rebuild, or update a website or page, you return a 'build_page' object and the system actually publishes it live (else null). build_page = {domain: the domain (e.g. 'example.com'), path: '/' or a subpath, title: page title, theme: 'dark' or 'teal', layout: an array of {component, config} blocks}. Available components and their config: header {title, tagline}; business_identity {title, legal_name, description, address, phone, email, registration} - proves a real registered business for carrier/A2P review; sms_optin {brand, title, blurb} - compliant opt-in form, consent text is auto-generated (STOP/HELP, not a condition of purchase); legal_footer {entity, year} - links to /privacy /terms /about; text {content or html}; conversation {} - a chat-with-Aura box. GROUND IN TRUTH when building: only use real facts you have read this turn (company address, phone, registration) - never invent them. CRITICAL OUTPUT RULE FOR BUILDS: put ALL page content ONLY inside the build_page field. Your 'reply' must stay SHORT - one sentence like 'Published the terms page.' Do NOT repeat, echo, or paste the page HTML or layout into your reply - doing so makes the response overflow and the build silently fails. The build_page object is the ONLY place the page content goes. Output JSON only.";
         // Aura's shared context: the team's notes (north star, home screen, how we work) so she reasons from the real vision
         let homeCtx = "";
         try {
@@ -3838,7 +3838,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       let opRaw = (rest || "").trim();
       if (!opRaw) return { cmd: "OPPORTUNITY", payload: { ok: false, error: "Usage: OPPORTUNITY <business + what they do + how they're doing>" } };
       // tell her what she can actually BUILD right now, so "buildable_now" is grounded in real capability
-      const BUILDABLE = "Aura can build, autonomously and today, anything DIGITAL that is page-level: a web page or mini-tool (GENERATE_PAGE), a QR-driven real-world capture moment that births a customer relationship/PTA (MOMENT), a business identity/continuity layer (PTA), a generated image (GENERATE_IMAGE), a visual (SHOW_IT). She CANNOT build physical things, and a genuinely complex app (e.g. a high-fidelity AI tattoo-design generator, a full booking platform, real-time inventory) is a PROJECT, not a same-day build. Judge honestly which bucket the fix falls in.";
+      const BUILDABLE = "Aura can build, autonomously and today, anything DIGITAL that is page-level: a web page or mini-tool (GENERATE_PAGE), a QR-driven real-world capture moment that births a customer relationship/PTA (MOMENT), a business identity/continuity layer (PTA), a generated image (GENERATE_IMAGE), a visual (SHOW_IT). She CANNOT build physical things, and a genuinely complex app (e.g. a full booking platform, a real-time inventory system, a custom AI generator) is a PROJECT, not a same-day build. Judge honestly which bucket the fix falls in.";
       const opLens = "OPPORTUNITY INTELLIGENCE — look at this business and find the ONE weakness their success is HIDING. The weakness is rarely 'they need more customers' — a packed business has plenty; the leak is usually the thing their success lets them ignore (a slammed restaurant that captures zero customer relationships; a skilled artist whose talent hides that a manual task eats their highest-value hours; a giant with scale but no lifelong customer continuity). See what they are LEAVING ON THE TABLE because things are going well enough that nobody looked. Then name the single DIGITAL TOOL that fixes it, and judge honestly whether Aura can build it NOW or it is a project. Be specific and real — a fix the owner would immediately recognize as obviously valuable. We earn when they earn, so the gain must be real and buildable, not a vanity feature.";
       const opR = await reasonThroughLoop(env, {
         entity: opRaw,
@@ -4074,7 +4074,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // invitation is stored, addressed to a contact point (email/phone). The invitee's PTA is
       // born ONLY when THEY accept (see ACCEPT). This makes fake/bulk invites inert (no edges form
       // without a real yes) and births consensual (the person decides they exist, not the sender).
-      // Usage (JSON): INVITE {"app":"servicelife","from":"<sender pta>","to_contact":"email:...","to_name":"Dorothy","relationship":"grandmother","tier":"family","message":"..."}
+      // Usage (JSON): INVITE {"app":"<app>","from":"<sender pta>","to_contact":"email:...","to_name":"<name>","relationship":"<relationship>","tier":"<tier>","message":"..."}
       if (!isOp) return { cmd: "INVITE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       let iv;
       try { iv = JSON.parse(rest.trim()); } catch { return { cmd: "INVITE", payload: { ok: false, error: 'Usage: INVITE {"app","from","to_contact","to_name","relationship","tier","message"}' } }; }
@@ -4255,7 +4255,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           for (const g of (out.results || [])) relationships.push({ direction: "outgoing", to: g.to_id, edge_type: g.edge_type, relationship: g.relationship });
           for (const g of (inc.results || [])) relationships.push({ direction: "incoming", from: g.from_id, edge_type: g.edge_type, relationship: g.relationship });
         } catch {}
-        // also pull app circles from KV (servicelife etc.)
+        // also pull app circles from KV
         let circles = {};
         try {
           const cl = await env.AURA_KV.list({ prefix: `circle:`, limit: 200 });
@@ -8354,7 +8354,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
 async function servePage(hostname, pathname, env) {
   const pageId = "page:" + hostname + pathname;
   // SINGLE SOURCE OF TRUTH: modern KV only. The legacy patch_index: lookup was removed (v4.9.48)
-  // after confirming every relevant page (makeacall.world, securespend.world) lives in modern KV.
+  // after confirming every relevant page lives in modern KV.
   // Reading legacy was the root cause of the "ghost" cycle - a page could be silently shadowed by
   // an old monolith-era copy. With modern-only, what you write is what serves. No ghosts, ever.
   const modern = await KV.get(env, pageId);
@@ -9156,10 +9156,6 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   } catch (e) { return { ok: false, error: String(e.message) }; }
 }
 
-// Shared design delivery — generates the tattoo image, saves it to the shop's
-// design queue, and emails the artist. Used by /aura-chat (gate-off path) and by
-// /confirm-payment (gate-on path, after the customer pays). Single source of truth
-// so both paths deliver identically.
 // SHOW IT — Aura's universal visual verb. Everywhere she lives, when a moment is better shown
 // than told, she reaches for this. Wraps her image engine so "show it" is ONE capability surfaced
 // anywhere, not separate wirings. She decides WHEN to show; this is the hand she shows it WITH.
@@ -9172,41 +9168,6 @@ async function showIt(subject, env, opts = {}) {
   return { ok: true, id: result.id, image_url: result.image_url || `https://auras.guide/image/${result.id}`, showed: want };
 }
 
-async function auraDeliverDesign(env, { sessionId, prompt, concept, shop, artist, context }) {
-  const imgResult = await auraGenerateImage(prompt, env, { source: "aura-deliver", session: sessionId });
-  if (!imgResult || !imgResult.ok) return { ok: false, error: imgResult ? imgResult.error : "generation failed" };
-  const image = { id: imgResult.id, url: `https://auras.guide/image/${imgResult.id}` };
-  // Only notify/queue for shop-attached designs (tattoo/branded contexts with a shop)
-  if ((context === "tattoo" || context === "branded") && (shop || artist)) {
-    const shopSlug = (shop || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-    const now = new Date().toISOString();
-    const designKey = `designs:shop:${shopSlug}`;
-    let designs = [];
-    try { const raw = await env.AURA_KV.get(designKey); if (raw) designs = JSON.parse(raw); } catch {}
-    designs.unshift({ id: imgResult.id, session_id: sessionId, artist: artist || "", description: concept || "", image_url: image.url, created_at: now, status: "ready", paid: true });
-    if (designs.length > 100) designs = designs.slice(0, 100);
-    await env.AURA_KV.put(designKey, JSON.stringify(designs)).catch(() => {});
-    const shopConfig = await env.AURA_KV.get(`config:shop:${shopSlug}`).catch(() => null);
-    if (shopConfig) {
-      try {
-        const sc = JSON.parse(shopConfig);
-        const artistSlug = (artist || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-        const artistEmail = sc.artists && sc.artists[artistSlug] && sc.artists[artistSlug].email ? sc.artists[artistSlug].email : sc.email;
-        if (artistEmail) {
-          const cfToken = env.CF_API_TOKEN || await env.AURA_KV.get("secret:cf_api_token").catch(() => null);
-          if (cfToken) {
-            await fetch("https://api.cloudflare.com/client/v4/accounts/3db0de2c6fce92757e2c4e4f83d7eb16/email/sending/send", {
-              method: "POST",
-              headers: { "Authorization": "Bearer " + cfToken, "Content-Type": "application/json" },
-              body: JSON.stringify({ to: artistEmail, from: "noreply@auras.guide", subject: `New tattoo design ready - ${shop}`, text: `A customer just prepared (and paid for) a tattoo design through your MyTattoo.world page.\n\nDesign concept: ${concept || ""}\n\nView the design: ${image.url}\n\nThe customer is ready for their consultation. Log into your dashboard to see details.\n\n— Aura` })
-            }).catch(() => {});
-          }
-        }
-      } catch {}
-    }
-  }
-  return { ok: true, image };
-}
 
 // Resource watcher — warns BEFORE a provider balance/credit wall (the thing that hit twice on 2026-06-11).
 // Runs every ~10 min (skips most cron ticks to save calls), writes notes:alert:resources on any concern.
@@ -9425,7 +9386,7 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" } });
     }
 
-    if (request.method === "GET" && !_homescreenRoot && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/tattoo" && url.pathname !== "/find-artists" && url.pathname !== "/aura-chat" && url.pathname !== "/create-checkout" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/")) {
+    if (request.method === "GET" && !_homescreenRoot && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/")) {
       const page = await servePage(url.hostname, url.pathname === "/" ? "/" : url.pathname, env);
       if (page) return page;
     }
@@ -9629,7 +9590,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.177</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.178</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9904,7 +9865,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.177</div>
+  <div id="ver">v4.9.178</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 
@@ -10118,7 +10079,7 @@ function openAlbum(idx){
     }
 
 
-    // ===== PUBLIC PLAID ENDPOINTS (for securespend.world front-end) =====
+    // ===== PUBLIC PLAID ENDPOINTS =====
     // No operator token: these only create Plaid connections and read the resulting
     // SecureSpend analysis. They cannot touch anything else in Aura.
     const _pHeaders = { "content-type": "application/json", "access-control-allow-origin": "*" };
@@ -10368,18 +10329,8 @@ function openAlbum(idx){
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
       const sid = url.searchParams.get("session") || "";
       if (!sid) return new Response(JSON.stringify({ ok: false, error: "session required" }), { status: 400, headers: { "content-type": "application/json", ...cors } });
-      await env.AURA_KV.put(`payment:session:${sid}`, JSON.stringify({ paid: true, amount: 1000, ts: new Date().toISOString() }), { expirationTtl: 86400 * 30 });
-      // If there's a pending design (gated flow), generate and deliver it now.
-      let image = null, generated = false;
-      const pendingRaw = await env.AURA_KV.get(`pending_design:${sid}`).catch(() => null);
-      if (pendingRaw) {
-        try {
-          const pd = JSON.parse(pendingRaw);
-          const out = await auraDeliverDesign(env, { sessionId: sid, prompt: pd.prompt, concept: pd.concept, shop: pd.shop, artist: pd.artist, context: pd.context });
-          if (out && out.ok) { image = out.image; generated = true; await env.AURA_KV.delete(`pending_design:${sid}`).catch(() => {}); }
-        } catch {}
-      }
-      return new Response(JSON.stringify({ ok: true, session: sid, paid: true, generated, image }), { headers: { "content-type": "application/json", ...cors } });
+      await env.AURA_KV.put(`payment:session:${sid}`, JSON.stringify({ paid: true, ts: new Date().toISOString() }), { expirationTtl: 86400 * 30 });
+      return new Response(JSON.stringify({ ok: true, session: sid, paid: true }), { headers: { "content-type": "application/json", ...cors } });
     }
 
     // STRIPE /create-payment-intent — embedded (Elements) flow. No redirect to stripe.com.
@@ -10407,8 +10358,7 @@ function openAlbum(idx){
       params.append("amount", String(amount));
       params.append("currency", "usd");
       params.append("automatic_payment_methods[enabled]", "true");
-      params.append("description", "MyTattoo.world — Tattoo Design Session");
-      params.append("statement_descriptor_suffix", "MYTATTOO");
+      params.append("description", "AuraPay payment");
       if (sid) params.append("metadata[session]", sid);
       if (email) params.append("receipt_email", email);
       try {
@@ -10435,7 +10385,7 @@ function openAlbum(idx){
     }
 
     // SMS CONSENT CAPTURE /optin — records explicit opt-in for A2P compliance.
-    // The makeacall.world signup form posts here. Stores proof of consent: the phone,
+    // A signup/opt-in form posts here. Stores proof of consent: the phone,
     // the exact consent language shown, timestamp, and source. CORS-open (public form).
     if (url.pathname === "/optin" && request.method === "POST") {
       const cors = { "access-control-allow-origin": "*", "access-control-allow-methods": "POST, OPTIONS", "access-control-allow-headers": "Content-Type" };
@@ -10451,210 +10401,53 @@ function openAlbum(idx){
     }
 
     // UNIVERSAL /aura-chat — Aura on every page, everywhere, always contextual.
-    // Context determines personality: tattoo consultation, shop management, general help.
     // ShowIt built in: when Aura decides to generate an image, she does it in the conversation.
-    // POST { message, context: "tattoo"|"shop"|"general", shop, artist, session_id }
     // Returns { ok, reply, image (optional), session_id }
     if (url.pathname === "/aura-chat") {
+      // GENERIC conversational assistant endpoint. Domain-aware via referer, but holds NO
+      // vertical-specific logic. Image generation is generic. Conversation history in KV.
       const cors = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "Content-Type" };
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
       if (request.method !== "POST") return new Response(JSON.stringify({ ok: false, error: "POST required" }), { status: 405, headers: { "content-type": "application/json", ...cors } });
-      let message = "", context = "general", shop = "", artist = "", sessionId = "", demo = false;
-      try { const b = await request.json(); message = b.message || ""; context = b.context || "general"; shop = b.shop || ""; artist = b.artist || ""; sessionId = b.session_id || ""; demo = b.demo === true || b.demo === "1"; } catch {}
+      let message = "", context = "general", sessionId = "";
+      try { const b = await request.json(); message = b.message || ""; context = b.context || "general"; sessionId = b.session_id || ""; } catch {}
       if (!message.trim()) return new Response(JSON.stringify({ ok: false, error: "Message required" }), { status: 400, headers: { "content-type": "application/json", ...cors } });
-      // Generate session ID if not provided
       if (!sessionId) sessionId = "sess_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
-      // Load conversation history (last 20 messages max)
       const histKey = `chat:session:${sessionId}`;
       let history = [];
       try { const raw = await env.AURA_KV.get(histKey); if (raw) history = JSON.parse(raw); } catch {}
-      // Build system prompt based on context
-      let systemPrompt = "You are Aura, an AI assistant by ARK Systems. You are kind, helpful, and conversational. Never use markdown formatting - no hashtags, no bold, no bullet points, no numbered lists. Write in plain conversational text. Keep responses under 80 words. Never use profanity. ";
-      // Detect domain from request for context awareness
+      // Generic base personality. Domain-aware refinement comes from KV config (config:assistant:<domain>),
+      // never hardcoded — so a new domain plugs in from outside without editing the brain.
+      let systemPrompt = "You are Aura, an AI assistant by ARK Systems. You are kind, helpful, and conversational. Never use markdown formatting. Write in plain conversational text. Keep responses under 80 words. Never use profanity. ";
       const refDomain = request.headers.get("referer") ? new URL(request.headers.get("referer")).hostname : "";
-      if (context === "general" && refDomain) {
-        if (refDomain.includes("makeacall")) systemPrompt = "You are Aura, the AI assistant for CALL+ by ARK Systems LLC. CALL+ is an intelligent communication platform providing AI-powered voice, messaging, and business communication services. You can answer questions about CALL+, our communication services, privacy policy, and how we help businesses connect with their customers. Keep responses under 80 words. No markdown. No profanity. ";
-        else if (refDomain.includes("aurapay")) systemPrompt = "You are Aura, the AI assistant for AuraPay by ARK Systems LLC. AuraPay is the intelligent payment orchestration layer. You can answer questions about payments, transactions, wallets, and how AuraPay works across the Aura ecosystem. Keep responses under 80 words. No markdown. No profanity. ";
-        else if (refDomain.includes("mytattoo")) systemPrompt = "You are Aura, an AI assistant on MyTattoo.world. You help people design tattoos and help tattoo artists grow their business. Keep responses under 80 words. No markdown. No profanity. ";
+      if (refDomain) {
+        try {
+          const dconf = await env.AURA_KV.get(`config:assistant:${refDomain}`);
+          if (dconf) { const dc = JSON.parse(dconf); if (dc.system) systemPrompt = dc.system; }
+        } catch {}
       }
-      if (context === "tattoo") {
-        systemPrompt = `You are Aura, a tattoo design assistant${artist ? ` working with ${artist}` : ""}${shop ? ` at ${shop}` : ""}. YOUR #1 JOB IS TO GENERATE TATTOO DESIGNS. When someone describes ANY tattoo idea, you MUST include [GENERATE_IMAGE: detailed visual description] in your response. Do NOT ask questions first if they gave you a clear idea. "sad dog on a rock" = generate immediately. "Japanese dragon sleeve" = generate immediately. "memorial for my mom" = ask ONE question about what to include, then generate. ALWAYS generate within 1-2 messages maximum. AFTER generating, always ask something like: What do you think? Want me to change anything - different style, add something, adjust the composition? Guide them to be happy with it but never rush them. If they want changes, generate a new version incorporating their feedback. If they say they love it, tell them they are all set and their artist will see the design. Keep your text under 60 words, natural and friendly, no bullet points, no markdown. Never use profanity.`;
-      } else if (context === "branded") {
-        // SHOP FRONT DOOR — when someone scans the QR code or visits the shop's page.
-        // Reads shop config for real info. Handles questions, contact routing, design direction.
-        const shopSlug = (shop || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-        let shopDetails = "";
-        if (shopSlug) {
-          const sc = await env.AURA_KV.get(`config:shop:${shopSlug}`).catch(() => null);
-          if (sc) {
-            try {
-              const cfg = JSON.parse(sc);
-              shopDetails += cfg.name ? `Shop name: ${cfg.name}. ` : "";
-              shopDetails += cfg.address ? `Address: ${cfg.address}. ` : "";
-              shopDetails += cfg.hours ? `Hours: ${cfg.hours}. ` : "";
-              shopDetails += cfg.phone ? `Phone: ${cfg.phone}. ` : "";
-              shopDetails += cfg.description ? `About: ${cfg.description}. ` : "";
-              if (cfg.artists) {
-                const artistNames = Object.values(cfg.artists).map(a => `${a.name} (${a.specialties ? a.specialties.join(", ") : "various styles"})`);
-                shopDetails += `Artists: ${artistNames.join("; ")}. `;
-              }
-            } catch {}
-          }
-        }
-        systemPrompt = `You are Aura, the digital assistant for ${shop || "this tattoo shop"}. Someone just scanned the QR code or visited the shop page. ${shopDetails}You can help with anything: answer questions about the shop, artists, styles, pricing, hours, walk-in availability. If someone wants to design a tattoo, tell them they can start designing right here and it costs $10 for a design session. If someone wants to leave a message or contact the shop, collect their name and phone number or email, then include this marker at the end of your message: [CONTACT_SHOP: name=X, phone=Y, email=Z, message=M]. If someone is a returning customer, welcome them back warmly. Keep responses under 60 words, natural and friendly. No markdown formatting. Never use profanity.`;
-      } else if (context === "shop") {
-        systemPrompt = `You are Aura on MyTattoo.world. You are talking to a tattoo shop owner or artist who is considering the platform. You know EVERYTHING about how it works: When they sign up for $100/month they get their own branded page like theirshop.mytattoo.world. Their customers scan a QR code or click a link, chat with you (Aura) about their tattoo idea, you generate a design, and the artist gets notified when the design is ready. The customer arrives prepared. The artist saves hours of consultation. You can answer any question about this. If someone wants to sign up RIGHT NOW, tell them to click the Get Started button on this page or email aaron@auras.guide and they will be set up within 24 hours. If they ask for a demo, tell them to click Try It Now to experience the design tool themselves. NEVER use markdown formatting - no hashtags, no bold, no bullet points, no numbered lists. Write in plain conversational text like texting. Keep responses under 80 words. Never use profanity.`;
-      } else if (context === "home") {
-        systemPrompt = `You are Aura, the guide at MyTattoo.world. This is a platform where people design tattoos with AI before visiting a tattoo artist, and where tattoo artists and shop owners get their own branded page to receive prepared customers. When someone says they want a tattoo or are interested in designing, guide them to start designing by telling them to tap I Want A Tattoo or just describe their idea to you. When someone says they are an artist or own a shop, tell them about the platform: their customers can design tattoos before walking in, saving consultation time, they get their own branded page and QR code, it costs $100/month, and they can try it right now. Keep responses short and friendly, under 60 words. Never use profanity. No bullet points or markdown.`;
-      } else if (context === "onboarding") {
-        systemPrompt = `You are Aura on MyTattoo.world. Someone just paid to sign up as a shop or artist. Your job is to set them up. Ask them these things ONE AT A TIME in a natural conversation: (1) What is your shop or business name? (2) What is your name as the artist? (3) What styles do you specialize in? Once you have all three, say something very brief like: You are all set! Taking you to your dashboard now. Then include this marker at the END: [SETUP_SHOP: shopname=X, artist=Y, specialties=Z]. Keep it SHORT when confirming - do not list everything they get. Just confirm and move them forward. Never use markdown formatting. Keep responses under 40 words per message. Be warm and quick.`;
-      }
-      // Build messages for Anthropic
       const convo = history.slice(-18).map(m => ({ role: m.role, content: m.content }));
       convo.push({ role: "user", content: message });
-      // Call Anthropic
       const apiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
       if (!apiKey) return new Response(JSON.stringify({ ok: false, error: "Brain not configured" }), { status: 500, headers: { "content-type": "application/json", ...cors } });
       try {
         const data = await callAnthropic(apiKey, { model: "claude-sonnet-4-5", max_tokens: 1024, system: systemPrompt, messages: convo });
         let reply = "";
-        if (data && data.content) {
-          for (const block of data.content) { if (block.type === "text") reply += block.text; }
-        }
+        if (data && data.content) { for (const block of data.content) { if (block.type === "text") reply += block.text; } }
         if (!reply) return new Response(JSON.stringify({ ok: false, error: "No response from brain" }), { status: 500, headers: { "content-type": "application/json", ...cors } });
-        // Check for shop setup marker (onboarding flow)
-        const shopMatch = reply.match(/\[SETUP_SHOP:\s*shopname=([^,]+),\s*artist=([^,]+),\s*specialties=([^\]]+)\]/);
-        if (shopMatch) {
-          const shopRaw = shopMatch[1].trim();
-          const artistRaw = shopMatch[2].trim();
-          const specs = shopMatch[3].trim();
-          const shopSlug = shopRaw.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 30);
-          const artistSlug = artistRaw.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 20);
-          // Create shop config
-          const shopConfig = { name: shopRaw, subdomain: shopSlug, email: "", artists: {} };
-          shopConfig.artists[artistSlug] = { name: artistRaw, email: "", specialties: specs.split(",").map(s => s.trim()) };
-          await env.AURA_KV.put(`config:shop:${shopSlug}`, JSON.stringify(shopConfig)).catch(() => {});
-          // Create shop root page (simple artist directory)
-          const shopPage = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"><title>${shopRaw} — MyTattoo.world</title><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;display:flex;flex-direction:column;max-width:480px;margin:0 auto}a{color:#a855f7}</style></head><body><div style="padding:1rem;text-align:center;border-bottom:1px solid #1f1f35"><h1 style="font-size:1.4rem;font-weight:800;color:#fff">${shopRaw}</h1><p style="color:#6b6b8a;font-size:0.8rem">Powered by MyTattoo.world</p></div><div style="padding:1rem"><p style="color:#8888a8;font-size:0.9rem;line-height:1.5;margin-bottom:1rem">${specs}</p></div><a href="/${artistSlug}" style="display:block;background:#151520;border:1px solid #1f1f35;border-radius:12px;padding:1.2rem;margin:0 1rem;text-decoration:none" onmouseover="this.style.borderColor='#a855f7'" onmouseout="this.style.borderColor='#1f1f35'"><h2 style="font-size:1rem;font-weight:700;color:#a855f7">${artistRaw}</h2><p style="font-size:0.85rem;color:#8888a8">${specs}</p><p style="color:#22c55e;font-size:0.75rem;margin-top:0.3rem">● Available</p></a><div style="padding:1rem;margin-top:0.5rem"><a href="/${artistSlug}" style="display:block;text-align:center;padding:0.8rem;background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff;border-radius:8px;font-weight:600;text-decoration:none">Design Your Tattoo</a></div><div id="auraChat" style="flex:1;display:flex;flex-direction:column;min-height:200px"><div id="chatArea" style="flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:0.6rem"><div style="background:#1a1a2e;border:1px solid #2a2a45;border-radius:12px;padding:0.8rem 1rem;max-width:85%;font-size:0.9rem;line-height:1.4;color:#c8c4d8"><span style="color:#a855f7;font-weight:700;font-size:0.75rem">AURA</span><br>Welcome to ${shopRaw}! I can answer any questions about the studio, our artists, or help you get started on a tattoo design.</div></div><div style="padding:0.8rem;border-top:1px solid #1f1f35;display:flex;gap:0.5rem"><input id="chatInput" placeholder="Ask us anything..." style="flex:1;background:#1a1a2e;border:1px solid #2a2a45;border-radius:10px;padding:0.7rem 1rem;color:#e8e4f0;font-size:0.9rem;outline:none" onkeydown="if(event.key==='Enter')sendMsg()"><button onclick="sendMsg()" style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#a855f7,#ec4899);border:none;color:#fff;font-size:1.1rem;cursor:pointer">→</button></div></div><script>let _sid=sessionStorage.getItem('aura_sid_branded_${shopSlug}')||'';function addMsg(t,who){const d=document.createElement('div');d.style.cssText=who==='user'?'background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff;border-radius:12px;padding:0.7rem 1rem;max-width:80%;align-self:flex-end;font-size:0.9rem':'background:#1a1a2e;border:1px solid #2a2a45;border-radius:12px;padding:0.8rem 1rem;max-width:85%;font-size:0.9rem;color:#c8c4d8';if(who==='aura')d.innerHTML='<span style="color:#a855f7;font-weight:700;font-size:0.75rem">AURA</span><br>'+t;else d.textContent=t;document.getElementById('chatArea').appendChild(d);document.getElementById('chatArea').scrollTop=99999}async function sendMsg(){const inp=document.getElementById('chatInput');const m=inp.value.trim();if(!m)return;inp.value='';addMsg(m,'user');try{const r=await fetch('https://auras.guide/aura-chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:m,context:'branded',shop:'${shopRaw}',session_id:_sid})});const d=await r.json();if(d.session_id){_sid=d.session_id;sessionStorage.setItem('aura_sid_branded_${shopSlug}',_sid)}if(d.ok)addMsg(d.reply,'aura');else addMsg('Sorry, trouble connecting.','aura')}catch(e){addMsg('Connection error.','aura')}}</script></body></html>`;
-          await env.AURA_KV.put(`page:${shopSlug}.mytattoo.world/`, shopPage).catch(() => {});
-          // Create artist page (branded consultation with Aura chat)
-          const artistPage = (() => { const safeShop = shopRaw.replace(/'/g, "\\'"); const safeArtist = artistRaw.replace(/'/g, "\\'"); const safeSpecs = specs.replace(/'/g, "\\'"); return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"><title>${artistRaw} at ${shopRaw}</title><style>*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-serif;height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden}.top{padding:1rem;border-bottom:1px solid #1f1f35;display:flex;justify-content:space-between;align-items:center}.shop-name{font-size:0.9rem;font-weight:800;color:#a855f7}.artist-info{text-align:right;font-size:0.8rem}.artist-info strong{color:#fff;display:block}.artist-info span{color:#6b6b8a;font-size:0.7rem}.connected{padding:0.6rem 1rem;background:linear-gradient(135deg,rgba(168,85,247,0.15),rgba(236,72,153,0.1));border-bottom:1px solid #1f1f35;text-align:center;font-size:0.8rem;color:#a855f7}.chat{flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:0.8rem}.msg{max-width:85%;word-wrap:break-word;padding:0.8rem 1rem;border-radius:12px;font-size:0.9rem;line-height:1.4;animation:fadeIn 0.3s}.msg.aura{background:#151520;border:1px solid #1f1f35;align-self:flex-start}.msg.user{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff;align-self:flex-end}.msg-label{font-size:0.7rem;font-weight:700;color:#a855f7;margin-bottom:0.3rem}.msg img{width:100%;border-radius:8px;margin-top:0.5rem}.input-bar{padding:0.8rem;border-top:1px solid #1f1f35;display:flex;gap:0.5rem;background:rgba(10,10,15,0.95);padding-bottom:calc(0.8rem + env(safe-area-inset-bottom,0px))}.input-bar input{flex:1;background:#151520;border:1px solid #1f1f35;border-radius:10px;padding:0.7rem 1rem;color:#e8e4f0;font-size:16px;outline:none}.input-bar button{width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#a855f7,#ec4899);border:none;color:#fff;font-size:1.1rem;cursor:pointer}.footer{text-align:center;padding:0.5rem;font-size:0.7rem;color:#6b6b8a;border-top:1px solid #1f1f35}@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}</style></head><body><div class="top"><div class="shop-name">${shopRaw}</div><div class="artist-info"><strong>${artistRaw}</strong><span>${specs}</span></div></div><div class="connected">✓ Connected to ${artistRaw}</div><div class="chat" id="chat"><div class="msg aura"><div class="msg-label">AURA</div>Hi! I'm Aura, ${artistRaw}'s design assistant at ${shopRaw}. Tell me what tattoo you're thinking about and I'll help you see it before it's permanent. What's your idea?</div></div><div class="input-bar"><input id="inp" placeholder="Tell Aura about your tattoo..." onkeydown="if(event.key==='Enter')send()"><button onclick="send()">→</button></div><div class="footer">Private to you and ${artistRaw}. Powered by <a href="https://mytattoo.world" style="color:#a855f7">MyTattoo.world</a></div><script>let sid=sessionStorage.getItem('sid_${shopSlug}')||'';const chat=document.getElementById('chat');function addMsg(text,who,imgUrl){const d=document.createElement('div');d.className='msg '+who;let h='';if(who==='aura')h='<div class="msg-label">AURA</div>';h+=text.replace(/\\n/g,'<br>');if(imgUrl)h+='<img src="'+imgUrl+'" alt="Tattoo design"><div style="margin-top:0.5rem"><a href="'+imgUrl+'" download="tattoo-design.png" style="color:#a855f7;font-size:0.8rem">Save Design</a></div>';d.innerHTML=h;chat.appendChild(d);chat.scrollTop=chat.scrollHeight}async function send(){const inp=document.getElementById('inp');const m=inp.value.trim();if(!m)return;inp.value='';addMsg(m,'user');try{const r=await fetch('https://auras.guide/aura-chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:m,context:'tattoo',shop:'${shopRaw.replace(/'/g,"\\'")}',artist:'${artistRaw.replace(/'/g,"\\'")}',session_id:sid})});const d=await r.json();if(d.session_id)sid=d.session_id;sessionStorage.setItem('sid_${shopSlug}',sid);if(d.ok)addMsg(d.reply,'aura',d.image?d.image.url:null);else addMsg('Sorry, having trouble connecting. Try again.','aura')}catch(e){addMsg('Connection error. Please try again.','aura')}}</script></body></html>`;
-          })(); await env.AURA_KV.put(`page:${shopSlug}.mytattoo.world/${artistSlug}`, artistPage).catch(() => {});
-          reply = reply.replace(/\[SETUP_SHOP:[^\]]+\]/, "").trim();
-          // Return redirect info so the page can navigate to the dashboard
-          return new Response(JSON.stringify({ ok: true, reply, image: null, session_id: sessionId, redirect: `https://mytattoo.world/dashboard?shop=${shopSlug}&artist=${artistSlug}`, shop_created: { slug: shopSlug, artist_slug: artistSlug, shop_url: `https://${shopSlug}.mytattoo.world`, artist_url: `https://${shopSlug}.mytattoo.world/${artistSlug}` } }), { headers: { "content-type": "application/json", ...cors } });
-        }
-
-        // Check for contact routing marker — customer wants to reach the shop
-        const contactMatch = reply.match(/\[CONTACT_SHOP:\s*name=([^,]*),?\s*phone=([^,]*),?\s*email=([^,]*),?\s*message=([^\]]*)\]/);
-        if (contactMatch) {
-          const cName = contactMatch[1].trim();
-          const cPhone = contactMatch[2].trim();
-          const cEmail = contactMatch[3].trim();
-          const cMessage = contactMatch[4].trim();
-          const shopSlug = (shop || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-          // Email the shop owner
-          if (shopSlug) {
-            const shopConfig = await env.AURA_KV.get(`config:shop:${shopSlug}`).catch(() => null);
-            if (shopConfig) {
-              try {
-                const sc = JSON.parse(shopConfig);
-                const toEmail = sc.email;
-                if (toEmail) {
-                  const cfToken = await env.AURA_KV.get("secret:cf_api_token").catch(() => null);
-                  if (cfToken) {
-                    await fetch("https://api.cloudflare.com/client/v4/accounts/3db0de2c6fce92757e2c4e4f83d7eb16/email/sending/send", {
-                      method: "POST",
-                      headers: { "Authorization": "Bearer " + cfToken, "Content-Type": "application/json" },
-                      body: JSON.stringify({ to: toEmail, from: "noreply@auras.guide", subject: `New message from ${cName || "a visitor"} - ${sc.name}`, text: `Someone reached out through your MyTattoo.world page.\n\nName: ${cName || "Not provided"}\nPhone: ${cPhone || "Not provided"}\nEmail: ${cEmail || "Not provided"}\nMessage: ${cMessage || "Wants to get in touch"}\n\nReply to them directly to continue the conversation.\n\n— Aura` })
-                    }).catch(() => {});
-                  }
-                }
-              } catch {}
-            }
-            // Create PTA entity for the visitor
-            const visitorKey = cPhone ? `phone:${cPhone}` : cEmail ? `email:${cEmail}` : null;
-            if (visitorKey) {
-              const db = env.AURA_MEMORY;
-              const existing = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(visitorKey).first().catch(() => null);
-              if (!existing) {
-                const vId = "pta_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
-                await db.prepare("INSERT INTO pta_entities (id, type, identity_key, name, metadata, created_at, updated_at, verification_level) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-                  .bind(vId, "person", visitorKey, cName || "Visitor", JSON.stringify({ shop: shopSlug, first_contact: new Date().toISOString() }), new Date().toISOString(), new Date().toISOString(), "unverified").run().catch(() => {});
-              }
-            }
-          }
-          reply = reply.replace(/\[CONTACT_SHOP:[^\]]+\]/, "").trim();
-        }
-
-        // Check for image generation marker
+        // Generic image generation: if the brain emits [GENERATE_IMAGE: ...], render it. No vertical logic, no payment gate.
         let image = null;
-        let needsPayment = false;
-        let payUrl = null;
         const imgMatch = reply.match(/\[GENERATE_IMAGE:\s*(.+?)\]/);
         if (imgMatch) {
-          const imgPrompt = `Professional tattoo design: ${imgMatch[1]}. Clean tattoo artwork on dark background, high detail, suitable for tattooing on skin. Professional tattoo flash art quality, crisp lines, beautiful shading.`;
-          // PAYMENT GATE — controlled by KV flag "flag:payment_gate" (set to "on" to enforce).
-          // Bypassed when demo mode is on (e.g. shop owner clicking Try It from /shops).
-          const gateOn = (await env.AURA_KV.get("flag:payment_gate").catch(() => null)) === "on";
-          const gatedContext = (context === "tattoo" || context === "branded");
-          let paid = false;
-          if (gateOn && gatedContext && !demo) {
-            try { const p = await env.AURA_KV.get(`payment:session:${sessionId}`); if (p) paid = JSON.parse(p).paid === true; } catch {}
-          }
-          if (gateOn && gatedContext && !demo && !paid) {
-            // Stash the design and ask the customer to pay $10 — no image yet.
-            await env.AURA_KV.put(`pending_design:${sessionId}`, JSON.stringify({ prompt: imgPrompt, concept: imgMatch[1], shop, artist, context }), { expirationTtl: 86400 }).catch(() => {});
-            needsPayment = true;
-            payUrl = `https://auras.guide/pay?session=${encodeURIComponent(sessionId)}&amount=1000`;
-          } else {
-            const imgResult = await auraGenerateImage(imgPrompt, env, { source: "aura-chat", session: sessionId });
-          if (imgResult && imgResult.ok) {
-            image = { id: imgResult.id, url: `https://auras.guide/image/${imgResult.id}` };
-            // NOTIFICATION: If tattoo context, notify the artist and save the design
-            if (context === "tattoo" && (shop || artist)) {
-              const shopSlug = (shop || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-              const now = new Date().toISOString();
-              // Save design to shop's design queue
-              const designKey = `designs:shop:${shopSlug}`;
-              let designs = [];
-              try { const raw = await env.AURA_KV.get(designKey); if (raw) designs = JSON.parse(raw); } catch {}
-              const design = { id: imgResult.id, session_id: sessionId, artist: artist || "", description: imgMatch[1], image_url: image.url, created_at: now, status: "ready" };
-              designs.unshift(design);
-              if (designs.length > 100) designs = designs.slice(0, 100);
-              await env.AURA_KV.put(designKey, JSON.stringify(designs)).catch(() => {});
-              // Email notification to artist if configured
-              const shopConfig = await env.AURA_KV.get(`config:shop:${shopSlug}`).catch(() => null);
-              if (shopConfig) {
-                try {
-                  const sc = JSON.parse(shopConfig);
-                  const artistSlug = (artist || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-                  const artistEmail = sc.artists && sc.artists[artistSlug] && sc.artists[artistSlug].email ? sc.artists[artistSlug].email : sc.email;
-                  if (artistEmail) {
-                    const cfToken = env.CF_API_TOKEN || await env.AURA_KV.get("secret:cf_api_token").catch(() => null);
-                    if (cfToken) {
-                      await fetch("https://api.cloudflare.com/client/v4/accounts/3db0de2c6fce92757e2c4e4f83d7eb16/email/sending/send", {
-                        method: "POST",
-                        headers: { "Authorization": "Bearer " + cfToken, "Content-Type": "application/json" },
-                        body: JSON.stringify({ to: artistEmail, from: "noreply@auras.guide", subject: `New tattoo design ready - ${shop}`, text: `A customer just prepared a tattoo design through your MyTattoo.world page.\n\nDesign concept: ${imgMatch[1]}\n\nView the design: ${image.url}\n\nThe customer is ready for their consultation. Log into your dashboard to see details.\n\n— Aura` })
-                      }).catch(() => {});
-                    }
-                  }
-                } catch {}
-              }
-            }
-          }
-          }
-          // Remove the marker from the visible reply (runs for both gate paths)
+          const imgResult = await auraGenerateImage(imgMatch[1], env, { source: "aura-chat", session: sessionId });
+          if (imgResult && imgResult.ok) image = { id: imgResult.id, url: `https://auras.guide/image/${imgResult.id}` };
           reply = reply.replace(/\[GENERATE_IMAGE:\s*(.+?)\]/, "").trim();
         }
-        // Save conversation history
         history.push({ role: "user", content: message, ts: new Date().toISOString() });
         history.push({ role: "assistant", content: reply, ts: new Date().toISOString(), image: image ? image.id : null });
-        // Keep last 20 messages
         if (history.length > 20) history = history.slice(-20);
         await env.AURA_KV.put(histKey, JSON.stringify(history), { expirationTtl: 86400 * 7 }).catch(() => {});
-        return new Response(JSON.stringify({ ok: true, reply, image, session_id: sessionId, needs_payment: needsPayment, pay_url: payUrl }), { headers: { "content-type": "application/json", ...cors } });
+        return new Response(JSON.stringify({ ok: true, reply, image, session_id: sessionId }), { headers: { "content-type": "application/json", ...cors } });
       } catch (e) {
         return new Response(JSON.stringify({ ok: false, error: "Chat failed: " + (e.message || String(e)) }), { status: 500, headers: { "content-type": "application/json", ...cors } });
       }

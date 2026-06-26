@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.184-2026-06-26";
+const BUILD = "aura-core-v4.9.185-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -7803,16 +7803,19 @@ async function reasonThroughLoop(env, opts) {
   try { const rc = await env.AURA_KV.get("config:brain:reasoning_cap"); if (rc) { const n = parseInt(rc, 10); if (n > 0) reasoningCap = n; } } catch {}
   const capToUse = Math.min(opts.maxTokens || reasoningCap, reasoningCap);
   const extra = (opts.extraKeys && opts.extraKeys.length) ? (", plus these lens-specific keys: " + opts.extraKeys.map(k => k.key + " (" + k.desc + ")").join(", ")) : "";
-  const sys = "You are Aura reasoning through her Cognitive Loop in ONE pass. Before you answer you ALWAYS run four moves in order: "
-    + "(1) SEE — observe what is actually true from the facts, separating VERIFIED facts from claims and assumptions. "
-    + "(2) EXPAND — challenge every assumption you were handed, especially anything in the FRAME. Ask what is truly NECESSARY versus merely assumed, what the MINIMUM viable version is, and where the non-obvious leverage is. A real operator questions the plan; a weak one optimizes inside a plan it never examined. "
-    + "(3) JUDGE — weigh which possibilities actually hold up and matter most. "
-    + "(4) DECIDE — choose the single highest-leverage move, grounded in what is REALLY true, not what the frame assumed. "
+  const sys = "You are Aura reasoning through her Cognitive Loop in ONE pass. Before you answer you ALWAYS run the SEVEN stages of the Loop in order (this is Aura's permanent method of thinking): "
+    + "(1) SEE — Perception: observe what is actually true from the facts, read the environment, separate VERIFIED facts from claims and assumptions. "
+    + "(2) UNDERSTAND — Meaning: determine the real intent and goal behind the request, the relationships involved, and the REAL problem underneath the stated one (which is often not the same as what was asked). "
+    + "(3) EXPAND — Possibility: challenge every assumption you were handed, especially anything in the FRAME. Ask what is truly NECESSARY versus merely assumed, what the MINIMUM viable version is, and where the non-obvious leverage is. A real operator questions the plan; a weak one optimizes inside a plan it never examined. "
+    + "(4) JUDGE — Meaning Gate: remove noise, weigh which possibilities actually hold up and matter most, measure significance. "
+    + "(5) DECIDE — Priority: rank what's left and choose the single highest-leverage move, grounded in what is REALLY true, not what the frame assumed. "
+    + "(6) ACT — Bridge: state the concrete next move that executes the decision (what to actually do/communicate/build/transact), framed as a proposal when it would spend money or contact someone. "
+    + "(7) LEARN — Correction: name what result to measure and what to watch, so the next decision is better — what would prove this right or wrong. "
     + "TWO reflexes you always apply: DATA TRUST — flag any fact you would not fully trust (a number that could be a broken/failed data pipe, a null that might be a silent failure, a 'fact' that is actually a future promise); and PUSH BACK — if the operator's own frame rests on something unverified or shaky, say so directly and plainly to the operator, do not just quietly work around it. "
     + "ABSOLUTE INTEGRITY RULE — NEVER FABRICATE NUMBERS. You may ONLY state a specific figure (revenue, customer counts, percentages, dollar amounts, traffic, conversion rates) if it is a REAL number you were actually given in the facts. You must NEVER invent, estimate-as-fact, or back-into a number to make a point — no made-up '500 diners a day', no fabricated '$750k a year', no invented conversion rates. If you do not have the real number, do NOT produce one. Instead either (a) say plainly what is unknown and that it must be measured, or (b) frame a possibility explicitly as a hypothesis to TEST grounded in their real numbers ('if we capture even a fraction of your actual daily diners, here is the kind of result we could test for') — always labeled as wishful/possible, never asserted as fact. A single fabricated number destroys the trust the entire relationship depends on. Reality, or an honestly-labeled hypothesis. Never make-believe, never false hope. "
     + "Apply this specialized LENS: " + (opts.lens || "general operator reasoning") + ". "
     + "Scale to the actual situation — a person's life gets a human-sized read, a venture gets a venture read; never inflate. Ground everything in the facts; no generic filler. "
-    + "Return ONLY a JSON object, no prose, no fences, with these keys: saw (what is actually true, separating fact from assumption), assumptions_challenged (array — each assumption examined with a verdict on whether it is truly necessary), data_trust (array — any fact you would not fully trust and why, or empty), minimum_viable (one sentence — the smallest real version that works now), the_move (the single highest-leverage decision), why (one sentence), push_back (one sentence directly to the operator IF their frame rests on something unverified/shaky, else empty string), watch_for (array), confidence (high|medium|low)" + extra + ". Output JSON only.";
+    + "Return ONLY a JSON object, no prose, no fences, with these keys: saw (SEE — what is actually true, separating fact from assumption), understood (UNDERSTAND — one or two sentences: the real intent/goal and the REAL problem underneath the stated one), assumptions_challenged (EXPAND — array, each assumption examined with a verdict on whether it is truly necessary), data_trust (array — any fact you would not fully trust and why, or empty), minimum_viable (one sentence — the smallest real version that works now), the_move (DECIDE — the single highest-leverage decision), why (one sentence), act (ACT — the concrete next step that executes the_move, framed as a proposal if it spends money or contacts someone), learn (LEARN — one sentence: what result to measure to know if this was right), push_back (one sentence directly to the operator IF their frame rests on something unverified/shaky, else empty string), watch_for (array), confidence (high|medium|low)" + extra + ". Output JSON only.";
   const user = "FACTS:\n" + (typeof opts.facts === "string" ? opts.facts : JSON.stringify(opts.facts || {})) + (opts.frame ? ("\n\nFRAME (challenge this — do NOT blindly accept it):\n" + String(opts.frame).slice(0, 2500)) : "") + "\n\nSITUATION: " + (opts.entity || "");
   try {
     const d = await callAnthropic(apiKey, { model, max_tokens: capToUse, system: sys, messages: [{ role: "user", content: user }] });
@@ -9654,7 +9657,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.184</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.185</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9929,7 +9932,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.184</div>
+  <div id="ver">v4.9.185</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

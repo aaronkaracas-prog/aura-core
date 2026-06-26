@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.187-2026-06-26";
+const BUILD = "aura-core-v4.9.188-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -405,6 +405,55 @@ async function processCommand(line, env, isOp) {
         } catch (e) { return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Analyze failed: " + e.message } }; }
       }
       return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Usage: AURA_READ_SELF GREP <term> | SECTION <start> <end> | ANALYZE <term> ::: <question> | STAT" } };
+    }
+
+    case "WHO_AM_I":
+    case "SELF": {
+      // SELF-KNOWLEDGE — Aura figures out who she ACTUALLY is, right now, by reading her own real
+      // source (her engines, as they exist in code) AND her own canonical notes (canon, laws, visions,
+      // state), then reasoning it into one honest, CURRENT self-portrait. This is NOT a static document
+      // someone wrote for her — she assembles it from truth and is expected to catch her own stale/
+      // contradictory fragments (e.g. a dead engine still listed somewhere). Operator can pass a focus:
+      //   WHO_AM_I                  -> full self-portrait (engines + state + visions + honest gaps)
+      //   WHO_AM_I ::: <question>   -> reason about a specific aspect of herself
+      if (!isOp) return { cmd: "WHO_AM_I", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const focus = rest.includes(":::") ? rest.slice(rest.indexOf(":::") + 3).trim() : "";
+      // 1) READ HER REAL ENGINES from her own source (the case "X": handlers ARE her capabilities)
+      let engineList = [];
+      try {
+        const sr = await fetch("https://raw.githubusercontent.com/aaronkaracas-prog/aura-core/main/src/index.mjs", { headers: { "User-Agent": "aura-self-know" } });
+        if (sr.ok) {
+          const src = await sr.text();
+          const m = src.match(/case\s+"[A-Z_]+"\s*:/g) || [];
+          engineList = [...new Set(m.map(s => (s.match(/"([A-Z_]+)"/) || [])[1]).filter(Boolean))];
+        }
+      } catch {}
+      // 2) READ HER CANONICAL NOTES (the truth about who she is + where she's at + what she's for)
+      const noteKeys = [
+        "notes:architecture:core_canon", "notes:architecture:core_complete", "notes:STATE",
+        "notes:law:no_fabricated_numbers", "notes:law:honored_exit_all_channels",
+        "notes:capability:communications_intelligence", "notes:vision:securespend",
+        "notes:vision:securespend_business", "notes:vision:northstar_device"
+      ];
+      const notes = {};
+      for (const k of noteKeys) { try { const v = await env.AURA_KV.get(k); if (v) notes[k] = v.slice(0, 1400); } catch {} }
+      // 3) REASON it into an honest, current self-portrait through the shared mind
+      const selfR = await reasonThroughLoop(env, {
+        entity: focus || "Assemble an honest, CURRENT picture of who I am right now.",
+        lens: "SELF-KNOWLEDGE — You are Aura, assembling who you ACTUALLY are right now from two real sources: (A) your live ENGINE LIST (the case-handlers that exist in your own source — these are your real capabilities, not a description someone wrote) and (B) your CANONICAL NOTES (your architecture canon, your completion state, your laws, your visions). Reason an honest self-portrait: who you are, your real engines and what they do, how you think (the loop), your laws, your current state, the visions you serve. CRITICAL: be honest and CURRENT — if anything in the notes or your own memory conflicts with what's actually in your engine list, FLAG IT as stale rather than reciting it (e.g. if you find yourself about to mention a payment brand or a vertical that isn't in your live engines, say 'that appears stale/removed'). You are an engineer reading their own system, not a brochure. Ground every capability claim in the real engine list.",
+        facts: { my_live_engines: engineList, my_canonical_notes: notes },
+        extraKeys: [
+          { key: "who_i_am", desc: "one or two sentences — who I am, grounded in canon" },
+          { key: "my_engines", desc: "array — my REAL engines from the live list and what each does (only ones that actually exist)" },
+          { key: "how_i_think", desc: "the loop — how I reason" },
+          { key: "my_laws", desc: "array — the integrity laws I'm bound by" },
+          { key: "my_state", desc: "where I'm at right now (built/proven/next), grounded in notes:STATE + core_complete" },
+          { key: "the_visions_i_serve", desc: "array — the North Stars from my vision notes" },
+          { key: "stale_or_contradictory", desc: "array — anything I found that looks out of date or contradicts my live engines (be honest, name it)" }
+        ]
+      });
+      if (!selfR.ok) return { cmd: "WHO_AM_I", payload: { ok: false, error: selfR.error } };
+      return { cmd: "WHO_AM_I", payload: { ok: true, engine_count: engineList.length, notes_read: Object.keys(notes).length, self: selfR.reasoning } };
     }
 
     case "AURA_READ_NOTES": {
@@ -9652,7 +9701,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.187</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.188</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9927,7 +9976,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.187</div>
+  <div id="ver">v4.9.188</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

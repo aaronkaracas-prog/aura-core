@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.165-2026-06-25";
+const BUILD = "aura-core-v4.9.166-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -3855,9 +3855,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       //   MOMENT GET <token>                         -> inspect a moment
       if (!isOp) return { cmd: "MOMENT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const mSub = (args[0] || "").toUpperCase();
-      const mBody = rest.slice(cmd.length + 1 + mSub.length).trim();
-      const mPayload = mBody.includes(":::") ? mBody.slice(mBody.indexOf(":::") + 3).trim() : "";
-      const mArg = mBody.includes(":::") ? mBody.slice(0, mBody.indexOf(":::")).trim() : mBody.trim();
+      // everything after "MOMENT <SUB>" ; split on ::: into the inline arg and the json payload
+      const mAfterSub = rest.replace(/^MOMENT\s+/i, "").replace(new RegExp("^" + mSub + "\\s*", "i"), "");
+      const mArg = (mAfterSub.includes(":::") ? mAfterSub.slice(0, mAfterSub.indexOf(":::")) : mAfterSub).trim();
+      const mPayload = mAfterSub.includes(":::") ? mAfterSub.slice(mAfterSub.indexOf(":::") + 3).trim() : "";
       const mkId = (p) => p + "_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
 
       if (mSub === "CREATE") {
@@ -3934,6 +3935,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
       if (mSub === "OPTOUT") {
         if (!mArg) return { cmd: "MOMENT", payload: { ok: false, error: "Usage: MOMENT OPTOUT <pta_id> [::: reason]" } };
+        // the one rule has to be airtight: verify this is a REAL person before confirming a permanent exit
+        const target = await env.AURA_MEMORY.prepare("SELECT id FROM pta_entities WHERE id = ?").bind(mArg).first().catch(() => null);
+        if (!target) return { cmd: "MOMENT", payload: { ok: false, error: "No such PTA: " + mArg + " — refusing to confirm an opt-out for an identity that does not exist." } };
         const ts = new Date().toISOString();
         // THE PERMANENT, HONORED EXIT — out means out, forever. No more contact, ever. Not a 30-day pause.
         await env.AURA_KV.put(`pta:optout:${mArg}`, JSON.stringify({ opted_out: true, ts, reason: mPayload || null, permanent: true })).catch(() => {});
@@ -9415,7 +9419,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.165</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.166</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9690,7 +9694,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.165</div>
+  <div id="ver">v4.9.166</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

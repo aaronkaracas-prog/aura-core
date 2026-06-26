@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.183-2026-06-26";
+const BUILD = "aura-core-v4.9.184-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -6289,6 +6289,55 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     // GENERATE_PAGE <type> <domain> [json config]
     // ═══════════════════════════════════════════════════════════
 
+    case "CANVAS":
+    case "ADAPTIVE_CANVAS": {
+      // ===== THE ADAPTIVE CANVAS ENGINE — universal context/experience reasoning =====
+      // The 8th canon Core Engine. Answers: "HOW should this moment be EXPERIENCED?" It does NOT draw
+      // pixels — that's GENERATE_PAGE (the renderer below it). This is the REASONING layer: given WHO is
+      // here, WHAT they need, and WHAT is happening, it decides the right SHAPE of the experience —
+      // dashboard / timeline / map / menu / form / gallery / document / workspace / a single focused
+      // action — and what belongs on it right now, what's noise, what the one primary action is. Nothing
+      // is static; the experience adapts to context. It reasons through the shared mind, then (optionally)
+      // hands GENERATE_PAGE a concrete config to render. Canvas DECIDES the experience; GENERATE_PAGE draws it.
+      //   CANVAS SHAPE ::: {"who":"...","need":"...","context":"...","surface":"home|business|page","moment":"..."}
+      //   CANVAS RENDER ::: {same}     (reason the shape AND emit a GENERATE_PAGE-ready config)
+      const acSub = (args[0] || "").toUpperCase();
+      const acAfter = rest.replace(/^(ADAPTIVE_CANVAS|CANVAS)\s+/i, "").replace(new RegExp("^" + acSub + "\\s*", "i"), "");
+      const acPayload = acAfter.includes(":::") ? acAfter.slice(acAfter.indexOf(":::") + 3).trim() : "";
+      if (acSub === "SHAPE" || acSub === "RENDER" || acSub === "DECIDE") {
+        let ctx; try { ctx = JSON.parse(acPayload); } catch { return { cmd: "ADAPTIVE_CANVAS", payload: { ok: false, error: 'Usage: CANVAS SHAPE ::: {who,need,context,surface,moment}' } }; }
+        const acR = await reasonThroughLoop(env, {
+          entity: JSON.stringify(ctx),
+          lens: "ADAPTIVE CANVAS — decide HOW this moment should be EXPERIENCED. You are choosing the SHAPE of the experience for THIS person, THIS need, THIS moment — not a fixed template. The vocabulary of shapes: DASHBOARD (status/overview at a glance), TIMELINE (history/sequence of events), MAP (places/spatial), MENU (choices/navigation), FORM (capture input), GALLERY (visual browse), DOCUMENT (read/reference), WORKSPACE (do focused work), or a SINGLE FOCUSED ACTION (one clear thing to do now). Decide: which shape fits, what 2-5 things belong on it RIGHT NOW (and what is noise to leave off), and the ONE primary action. Adapt to context — a busy owner at 9am needs something different than a customer browsing. Nothing static. Be concrete; never invent data the surface doesn't have.",
+          facts: { context: ctx },
+          extraKeys: [
+            { key: "shape", desc: "the chosen experience shape: dashboard | timeline | map | menu | form | gallery | document | workspace | single_action" },
+            { key: "why_this_shape", desc: "one sentence — why this shape fits who's here, their need, and the moment" },
+            { key: "show_now", desc: "array of 2-5 things that belong on this surface right now, most important first" },
+            { key: "leave_off", desc: "array — what is noise for THIS moment and should NOT be shown (adapting to context)" },
+            { key: "primary_action", desc: "the single most important action for this person right now" },
+            { key: "sections_hint", desc: "array of GENERATE_PAGE-style section types this shape implies (header, cards, timeline, map, form, chips, button, gallery, chat)" }
+          ]
+        });
+        if (!acR.ok) return { cmd: "ADAPTIVE_CANVAS", payload: { ok: false, error: acR.error } };
+        const result = { ok: true, context: ctx, canvas: acR.reasoning };
+        // RENDER mode: also emit a GENERATE_PAGE-ready config skeleton from the reasoned shape (renderer draws it)
+        if (acSub === "RENDER") {
+          const r = acR.reasoning || {};
+          const sections = [];
+          if (Array.isArray(r.sections_hint)) {
+            for (const t of r.sections_hint) sections.push({ type: String(t).toLowerCase() });
+          }
+          result.render_config = {
+            note: "Canvas reasoned the shape; this is a GENERATE_PAGE-ready skeleton. Fill section props from real surface data, then GENERATE_PAGE <page-key> <config> to draw it.",
+            config: { title: (r.shape ? (String(r.shape).toUpperCase() + " — " + (ctx.need || "")) : (ctx.need || "Experience")), shape: r.shape || null, primary_action: r.primary_action || null, sections }
+          };
+        }
+        return { cmd: "ADAPTIVE_CANVAS", payload: result };
+      }
+      return { cmd: "ADAPTIVE_CANVAS", payload: { ok: false, error: "Usage: CANVAS SHAPE ::: {who,need,context,surface,moment} | CANVAS RENDER ::: {same} (reasons shape + emits a GENERATE_PAGE-ready config). The renderer is GENERATE_PAGE." } };
+    }
+
     case "GENERATE_PAGE": {
       if (!isOp) return { cmd: "GENERATE_PAGE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       // UNIVERSAL PAGE GENERATOR — data-driven component renderer.
@@ -9605,7 +9654,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.183</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.184</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9880,7 +9929,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.183</div>
+  <div id="ver">v4.9.184</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

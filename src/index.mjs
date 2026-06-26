@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.156-2026-06-25";
+const BUILD = "aura-core-v4.9.157-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -6194,13 +6194,16 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         let stripe = null, mercury = null;
         try { const sb = await stripeRequest("/balance", "GET", null, env); if (sb.ok) stripe = { available: (sb.data.available || []).map(b => ({ currency: b.currency, amount: b.amount / 100 })), pending: (sb.data.pending || []).map(b => ({ currency: b.currency, amount: b.amount / 100 })) }; } catch {}
         try { const mb = await getMercuryBalance(env); if (mb.ok) mercury = { total_available: mb.total_available, accounts: (mb.accounts || []).map(a => ({ name: a.name, available: a.available })) }; } catch {}
-        const ecFacts = { cost_to_serve_last_7_days_usd: cost7.usd, ai_calls_7d: cost7.calls, cost_by_model_7d: cost7.by_model, cost_by_day: costDays, stripe_revenue: stripe, cash_mercury: mercury, ts: new Date().toISOString() };
+        let twilio = null;
+        try { const tr = await processCommand("TWILIO_BALANCE", env, isOp); const tp = (tr && tr.payload) ? tr.payload : tr; if (tp && (tp.balance !== undefined || tp.ok)) twilio = { balance: tp.balance !== undefined ? tp.balance : null, currency: tp.currency || "USD" }; } catch {}
+        let opFrame = ""; try { const of = await env.AURA_KV.get("notes:economics:operating_frame"); if (of) opFrame = String(of).slice(0, 2000); } catch {}
+        const ecFacts = { cost_to_serve_last_7_days_usd: cost7.usd, ai_calls_7d: cost7.calls, cost_by_model_7d: cost7.by_model, cost_by_day: costDays, stripe_revenue: stripe, cash_mercury: mercury, twilio_funding: twilio, ts: new Date().toISOString() };
         const ecApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
         if (!ecApiKey) return { cmd: "ECONOMICS", payload: { ok: true, mode: "raw", facts: ecFacts, note: "Brain not configured — returning raw facts only." } };
         const ecModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
-        const ecSys = "You are the ECONOMICS ENGINE of Aura — her financial intelligence about HER OWN operation (not a user's personal spending). You are given real facts: AI cost-to-serve (what Aura spent on her own brain calls), Stripe revenue, and Mercury cash. Your objective is NOT maximizing profit — it is a healthy, self-sustaining ecosystem. INFORMATION IS NOT UNDERSTANDING: never just report numbers — translate them into plain human meaning, including opportunity cost and what each number implies for the decision. A runway figure means nothing without what it implies; say what it implies. Reason honestly about cost-to-serve, revenue, margin, cash position, and runway. If revenue is zero and cash is thin, say so plainly and protect runway. Return ONLY a JSON object, no prose, no fences, with exactly these keys: cost_to_serve_7d (number USD), revenue_observed (number USD), cash_on_hand (number USD), margin_state (one of: healthy, thin, negative, pre_revenue), runway_note (one sentence on how long current cash lasts at current burn, or 'not enough data'), self_sustaining (boolean), plain_english (2-3 sentences a non-financial person would understand — what this financial picture actually MEANS right now, not the raw numbers), the_smartest_move (one sentence, the single highest-leverage financial action right now), why (one sentence), watch_for (array of risks), confidence (high|medium|low). Output JSON only.";
+        const ecSys = "You are the ECONOMICS ENGINE of Aura — her financial intelligence about HER OWN operation, acting as the OPERATOR who keeps the machine running. You are given real facts: AI cost-to-serve (tokens), Stripe revenue, Mercury cash, and Twilio funding. You are ALSO given an OPERATING FRAME describing how the machine actually runs — read it and reason against it, do not reason in the abstract. KEY OPERATING TRUTHS from the frame: there is a working FLOAT in Mercury that is fuel, not profit; Aura must keep TOKENS paid and TWILIO funded so the email-then-call engine never stops; every dollar of revenue is recycled back into the machine; and CRITICALLY, STRIPE DOES NOT AUTO-FUND MERCURY — money in Stripe sits there until swept, so you must reason about the TOTAL of Mercury + unswept Stripe, and flag when Stripe has funds that need sweeping. INFORMATION IS NOT UNDERSTANDING: translate numbers into plain meaning. Objective is a healthy self-sustaining machine, not max profit. Return ONLY a JSON object, no prose, no fences, with exactly these keys: cost_to_serve_7d (number USD), revenue_observed (number USD), mercury_float (number USD), stripe_unswept (number USD), twilio_funding (number USD or null), total_fuel (number USD = mercury + unswept stripe), margin_state (healthy|thin|negative|pre_revenue), runway_note (one sentence, what the fuel implies at current burn), machine_running (boolean — are tokens and Twilio currently funded enough to keep operating), needs_stripe_sweep (boolean — is there meaningful money sitting in Stripe to move to Mercury), self_sustaining (boolean), plain_english (2-3 sentences a non-financial person understands — what this means right now), the_smartest_move (one sentence — the single highest-leverage operating action right now), why (one sentence), watch_for (array of risks), confidence (high|medium|low). Output JSON only.";
         try {
-          const d = await callAnthropic(ecApiKey, { model: ecModel, max_tokens: 900, system: ecSys, messages: [{ role: "user", content: "REAL FACTS:\n" + JSON.stringify(ecFacts) }] });
+          const d = await callAnthropic(ecApiKey, { model: ecModel, max_tokens: 1000, system: ecSys, messages: [{ role: "user", content: "REAL FACTS:\n" + JSON.stringify(ecFacts) + (opFrame ? ("\n\nOPERATING FRAME:\n" + opFrame) : "") }] });
           let tx = ""; if (d && d.content) { for (const b of d.content) { if (b.type === "text") tx += b.text; } }
           tx = tx.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
           const parsed = JSON.parse(tx);
@@ -9170,7 +9173,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.156</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.157</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9445,7 +9448,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.156</div>
+  <div id="ver">v4.9.157</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

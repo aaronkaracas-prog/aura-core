@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.166-2026-06-25";
+const BUILD = "aura-core-v4.9.167-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -3839,6 +3839,39 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         } catch (e) {}
       }
       return { cmd: "PTA_TALK", payload: { ok: true, pta: tId, reply: tReplyObj.reply, followup_scheduled: !!scheduled, scheduled, remembered, hold: (tMode === "home" ? (tReplyObj.hold || null) : undefined), reminder_actions_applied: (tMode === "home" ? reminderActionsApplied : undefined), page_built: (tMode === "home" ? pageBuilt : undefined) } };
+    }
+
+    case "WORKFLOW": {
+      // The sequence-runner. Define an ordered list of steps (each "optionally wait, then do <command>")
+      // and Aura runs them herself, surviving between requests on the cron heartbeat.
+      //   WORKFLOW CREATE ::: {"name":"...","subject":"...","steps":[{"do":"BRIEF ...","note":"..."},{"wait_seconds":86400,"do":"EMAIL_SEND ..."}]}
+      //   WORKFLOW RUN <id>      (kick it now)        WORKFLOW STATUS <id>
+      //   WORKFLOW LIST          WORKFLOW CANCEL <id>  WORKFLOW RESUME <id> (clear a gate)
+      if (!isOp) return { cmd: "WORKFLOW", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const wSub = (args[0] || "").toUpperCase();
+      const wAfter = rest.replace(/^WORKFLOW\s+/i, "").replace(new RegExp("^" + wSub + "\\s*", "i"), "");
+      const wArg = (wAfter.includes(":::") ? wAfter.slice(0, wAfter.indexOf(":::")) : wAfter).trim();
+      const wPayload = wAfter.includes(":::") ? wAfter.slice(wAfter.indexOf(":::") + 3).trim() : "";
+
+      if (wSub === "CREATE") {
+        let wc; try { wc = JSON.parse(wPayload || wArg); } catch { return { cmd: "WORKFLOW", payload: { ok: false, error: 'Usage: WORKFLOW CREATE ::: {"name","subject","steps":[{"do":"<command>","wait_seconds?","wait_until?","gate?","note?"}]}' } }; }
+        if (!Array.isArray(wc.steps) || !wc.steps.length) return { cmd: "WORKFLOW", payload: { ok: false, error: "steps[] required (each step needs a 'do' command)" } };
+        for (const s of wc.steps) { if (!s.do && !s.gate) return { cmd: "WORKFLOW", payload: { ok: false, error: "each step needs a 'do' command (or a 'gate')" } }; }
+        const id = "wf_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
+        const ts = new Date().toISOString();
+        const wf = { id, name: wc.name || "workflow", subject: wc.subject || null, steps: wc.steps, cursor: 0, status: "running", created: ts, updated: ts, log: [], _wait_due: null };
+        await env.AURA_KV.put("workflow:" + id, JSON.stringify(wf)).catch(() => {});
+        try { let idx = []; const ir = await env.AURA_KV.get("workflow:index"); if (ir) idx = JSON.parse(ir) || []; idx.push(id); await env.AURA_KV.put("workflow:index", JSON.stringify(idx)).catch(() => {}); } catch {}
+        // kick it once so immediate steps fire now, stopping at the first wait/gate
+        const adv = await advanceWorkflow(env, id);
+        return { cmd: "WORKFLOW", payload: { ok: true, id, status: adv.status, advanced: adv, note: "Workflow created and started. It will continue on its own via the heartbeat." } };
+      }
+      if (wSub === "RUN") { if (!wArg) return { cmd: "WORKFLOW", payload: { ok: false, error: "Usage: WORKFLOW RUN <id>" } }; const adv = await advanceWorkflow(env, wArg); return { cmd: "WORKFLOW", payload: { ok: adv.ok !== false, id: wArg, advanced: adv } }; }
+      if (wSub === "STATUS") { if (!wArg) return { cmd: "WORKFLOW", payload: { ok: false, error: "Usage: WORKFLOW STATUS <id>" } }; const r = await env.AURA_KV.get("workflow:" + wArg).catch(() => null); if (!r) return { cmd: "WORKFLOW", payload: { ok: false, error: "no workflow " + wArg } }; return { cmd: "WORKFLOW", payload: { ok: true, workflow: JSON.parse(r) } }; }
+      if (wSub === "LIST") { let idx = []; try { const ir = await env.AURA_KV.get("workflow:index"); if (ir) idx = JSON.parse(ir) || []; } catch {} const out = []; for (const wid of idx.slice(-30)) { try { const r = await env.AURA_KV.get("workflow:" + wid); if (r) { const w = JSON.parse(r); out.push({ id: w.id, name: w.name, status: w.status, cursor: w.cursor, steps: (w.steps || []).length }); } } catch {} } return { cmd: "WORKFLOW", payload: { ok: true, workflows: out } }; }
+      if (wSub === "CANCEL") { if (!wArg) return { cmd: "WORKFLOW", payload: { ok: false, error: "Usage: WORKFLOW CANCEL <id>" } }; const r = await env.AURA_KV.get("workflow:" + wArg).catch(() => null); if (!r) return { cmd: "WORKFLOW", payload: { ok: false, error: "no workflow " + wArg } }; const w = JSON.parse(r); w.status = "cancelled"; w.updated = new Date().toISOString(); await env.AURA_KV.put("workflow:" + wArg, JSON.stringify(w)).catch(() => {}); return { cmd: "WORKFLOW", payload: { ok: true, id: wArg, status: "cancelled" } }; }
+      if (wSub === "RESUME") { if (!wArg) return { cmd: "WORKFLOW", payload: { ok: false, error: "Usage: WORKFLOW RESUME <id>" } }; const r = await env.AURA_KV.get("workflow:" + wArg).catch(() => null); if (!r) return { cmd: "WORKFLOW", payload: { ok: false, error: "no workflow " + wArg } }; const w = JSON.parse(r); w._gate_cleared = true; w.status = "running"; await env.AURA_KV.put("workflow:" + wArg, JSON.stringify(w)).catch(() => {}); const adv = await advanceWorkflow(env, wArg); return { cmd: "WORKFLOW", payload: { ok: true, id: wArg, advanced: adv } }; }
+      return { cmd: "WORKFLOW", payload: { ok: false, error: "Usage: WORKFLOW CREATE|RUN|STATUS|LIST|CANCEL|RESUME ..." } };
     }
 
     case "MOMENT": {
@@ -9115,6 +9148,68 @@ async function watchResources(env) {
 // (email first - the only active channel), marks the item done, and records that it fired on the
 // PTA's timeline. This is what lets a PTA act in time on its own initiative - the difference
 // between an assistant that only responds when spoken to and one that keeps its commitments.
+// ===== WORKFLOW ENGINE — the sequence-runner that chains the moves Aura already has =====
+// A workflow is an ordered list of STEPS. Each step is "optionally WAIT, then DO <a real command>".
+// DO can be ANY capability she has: BRIEF, MOMENT CREATE, OUTCOME, EMAIL_SEND, later CALL. Steps can
+// WAIT (a duration or until a time) or pause on a GATE (e.g. wait for a reply / manual resume). The
+// workflow is DURABLE (lives in KV) and is advanced by the same per-minute cron heartbeat that already
+// drains scheduled actions — so "follow up with the bartender tomorrow" still happens tomorrow with
+// nobody typing. This turns proven atoms into a machine that runs itself.
+async function advanceWorkflow(env, id) {
+  let wf;
+  try { const r = await env.AURA_KV.get("workflow:" + id); if (!r) return { ok: false, error: "no workflow " + id }; wf = JSON.parse(r); } catch { return { ok: false, error: "corrupt workflow " + id }; }
+  if (!wf || wf.status === "done" || wf.status === "cancelled") return { ok: true, status: wf ? wf.status : "missing" };
+  const now = Date.now();
+  let guard = 0;
+  while (guard++ < 8) {
+    if (wf.cursor >= (wf.steps || []).length) { wf.status = "done"; wf.updated = new Date().toISOString(); await env.AURA_KV.put("workflow:" + id, JSON.stringify(wf)).catch(() => {}); return { ok: true, status: "done" }; }
+    const step = wf.steps[wf.cursor];
+    // GATE — pause until an external event resumes it (WORKFLOW RESUME <id>)
+    if (step.gate && !wf._gate_cleared) { wf.status = "paused"; wf.updated = new Date().toISOString(); await env.AURA_KV.put("workflow:" + id, JSON.stringify(wf)).catch(() => {}); return { ok: true, status: "paused", waiting_on: step.gate }; }
+    wf._gate_cleared = false;
+    // WAIT — if this step has a wait we haven't satisfied yet, arm it and stop until due
+    if ((step.wait_seconds || step.wait_until) && wf._wait_due == null) {
+      const due = step.wait_until ? Date.parse(step.wait_until) : (now + (Number(step.wait_seconds) || 0) * 1000);
+      wf._wait_due = due; wf.status = "waiting"; wf.updated = new Date().toISOString();
+      await env.AURA_KV.put("workflow:" + id, JSON.stringify(wf)).catch(() => {});
+      // enqueue on the workflow heartbeat
+      try { let q = []; const qr = await env.AURA_KV.get("workflow:due_queue"); if (qr) q = JSON.parse(qr) || []; if (!q.find(e => e.id === id)) q.push({ id, due_at: new Date(due).toISOString() }); await env.AURA_KV.put("workflow:due_queue", JSON.stringify(q)).catch(() => {}); } catch {}
+      return { ok: true, status: "waiting", until: new Date(due).toISOString() };
+    }
+    if (wf._wait_due != null && now < wf._wait_due) { return { ok: true, status: "waiting", until: new Date(wf._wait_due).toISOString() }; }
+    wf._wait_due = null; // wait satisfied (or none) — execute the step
+    let ok = false, summary = "";
+    try {
+      const r = await processCommand(step.do, env, true);
+      const p = (r && r.payload) ? r.payload : r;
+      ok = !!(p && p.ok);
+      summary = ok ? (p.note || p.born_pta || p.token || p.key || JSON.stringify(p).slice(0, 200)) : ("FAILED: " + (p && p.error ? p.error : "no result"));
+    } catch (e) { ok = false; summary = "threw: " + String(e && e.message); }
+    wf.log = wf.log || [];
+    wf.log.push({ step: wf.cursor, ran_at: new Date().toISOString(), do: step.do, ok, summary: String(summary).slice(0, 300) });
+    wf.cursor += 1;
+    wf.updated = new Date().toISOString();
+    await env.AURA_KV.put("workflow:" + id, JSON.stringify(wf)).catch(() => {});
+    // loop continues to the next step (immediate steps chain; a waited/gated step will stop us)
+  }
+  return { ok: true, status: wf.status, note: "advanced (guard reached)" };
+}
+
+async function drainWorkflows(env) {
+  try {
+    let q = []; const qr = await env.AURA_KV.get("workflow:due_queue"); if (qr) { try { q = JSON.parse(qr) || []; } catch {} }
+    if (!q.length) return;
+    const now = Date.now();
+    const remaining = [];
+    for (const entry of q) {
+      const due = Date.parse(entry.due_at);
+      if (isNaN(due) || due > now) { remaining.push(entry); continue; }
+      await advanceWorkflow(env, entry.id); // advanceWorkflow re-enqueues if it hits another wait
+    }
+    await env.AURA_KV.put("workflow:due_queue", JSON.stringify(remaining)).catch(() => {});
+  } catch {}
+}
+
 async function drainSchedule(env) {
   try {
     let q = []; const qr = await env.AURA_KV.get("schedule:due_queue"); if (qr) { try { q = JSON.parse(qr) || []; } catch {} }
@@ -9172,6 +9267,7 @@ export default {
     ctx.waitUntil(watchA2P(env));
     ctx.waitUntil(watchResources(env));
     ctx.waitUntil(drainSchedule(env));
+    ctx.waitUntil(drainWorkflows(env));
   },
 
   async fetch(request, env) {
@@ -9419,7 +9515,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.166</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.167</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9694,7 +9790,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.166</div>
+  <div id="ver">v4.9.167</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

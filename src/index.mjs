@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.155-2026-06-25";
+const BUILD = "aura-core-v4.9.156-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -3157,6 +3157,39 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       await env.AURA_KV.put(pageKey, html).catch(() => {});
 
       return { cmd: "RENDER_PAGE", payload: { ok: true, domain: rp.domain, key: pageKey, bytes: html.length, components_used: used, available_components: Object.keys(COMPONENTS) } };
+    }
+
+    case "OUTCOME": {
+      // ===== OUTCOME ENGINE — Universal Outcome Intelligence =====
+      // Turns any GOAL into leverage + a coordinated, sequenced plan: "HOW do we get from here
+      // to the desired outcome?" Pairs with the loop (EXPAND->DECIDE pointed at execution).
+      // Informs and recommends; the human decides and acts. Universal — works for any goal, any person.
+      // Usage: OUTCOME <goal>        (reason a goal into a strategy)
+      //        OUTCOME FRESH <goal>  (recompute, bypass cache)
+      let ocRaw = (rest || "").trim();
+      let ocFresh = false;
+      if (/^FRESH\s+/i.test(ocRaw)) { ocFresh = true; ocRaw = ocRaw.replace(/^FRESH\s+/i, "").trim(); }
+      if (!ocRaw) return { cmd: "OUTCOME", payload: { ok: false, error: "Usage: OUTCOME <goal>  (turn a goal into leverage + a coordinated strategy). OUTCOME FRESH <goal> to recompute." } };
+      const ocSlug = ocRaw.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 90) || "goal";
+      const ocKey = "outcome:" + ocSlug;
+      if (!ocFresh) { try { const cached = await env.AURA_KV.get(ocKey); if (cached) { const c = JSON.parse(cached); return { cmd: "OUTCOME", payload: { ok: true, cached: true, goal: ocRaw, outcome: c } }; } } catch {} }
+      const ocApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      if (!ocApiKey) return { cmd: "OUTCOME", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
+      const ocModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      // optional grounding: any real context the operator has stored
+      let ocContext = "";
+      try { const st = await env.AURA_KV.get("notes:STATE"); if (st) ocContext = String(st).slice(0, 1500); } catch {}
+      const ocSys = "You are the OUTCOME ENGINE of Aura — universal outcome intelligence. Given a desired GOAL, your job is the question: HOW do we get from here to the desired outcome? You find the highest-leverage paths and turn a goal into a coordinated, SEQUENCED plan — not a task dump. You think across: the TRUE outcome actually wanted (sometimes deeper or more specific than stated); LEVERAGE — the few moves where a small effort produces a large result, and the 'if this one thing works, what else becomes possible'; MULTIPLIERS — existing relationships, assets, audiences, or things already in hand that amplify everything else; STRATEGY — a short sequence of moves in order; and the single FIRST MOVE to make today. Ground everything in the real situation provided; never generic filler. Scale to the actual goal — a person's personal goal gets a human-sized plan, a venture gets a venture plan; never inflate. You INFORM and RECOMMEND; the human decides and acts. Return ONLY a JSON object, no prose, no fences, with exactly these keys: goal (the true outcome, refined if needed), leverage_points (array — the few highest-leverage moves), multipliers (array — existing things that amplify), strategy (array of sequenced steps, each a short phrase, in order), first_move (one concrete action to take today), avoid (array — traps or low-value moves to skip), confidence (high|medium|low). Output JSON only.";
+      const ocUser = "GOAL:\n" + ocRaw + (ocContext ? ("\n\nREAL CONTEXT (operator's current situation, use only if relevant):\n" + ocContext) : "");
+      try {
+        const d = await callAnthropic(ocApiKey, { model: ocModel, max_tokens: 1100, system: ocSys, messages: [{ role: "user", content: ocUser }] });
+        let tx = ""; if (d && d.content) { for (const b of d.content) { if (b.type === "text") tx += b.text; } }
+        tx = tx.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+        const parsed = JSON.parse(tx);
+        const ts = new Date().toISOString();
+        await env.AURA_KV.put(ocKey, JSON.stringify(parsed)).catch(() => {});
+        return { cmd: "OUTCOME", payload: { ok: true, cached: false, goal: ocRaw, outcome: parsed, ts } };
+      } catch (e) { return { cmd: "OUTCOME", payload: { ok: false, error: "Outcome reasoning failed: " + String(e && e.message) } }; }
     }
 
     case "MISSION_SET": {
@@ -9137,7 +9170,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.155</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.156</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9412,7 +9445,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.155</div>
+  <div id="ver">v4.9.156</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.179-2026-06-26";
+const BUILD = "aura-core-v4.9.180-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -6169,13 +6169,23 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           campaign = (da && (da.reply !== undefined ? da.reply : da)) || null;
         } catch (e) { out.campaign_error = String(e && e.message); }
         out.campaign = campaign;
-        // Core REASONS about what it means (grounded only in what aura-comms returned)
-        const cs = campaign && (campaign.status || campaign.campaign_status) ? (campaign.status || campaign.campaign_status) : "unknown";
-        const errs = campaign && Array.isArray(campaign.errors) ? campaign.errors : [];
+        // Core REASONS about what it means. aura-comms returns campaign data nested:
+        // { service, campaigns: [{ campaign_status, errors, ... }], brands: [{ status }] }.
+        // Read the actual shape, not a guessed top-level field.
+        let cs = "unknown", errs = [];
+        if (campaign) {
+          const c0 = Array.isArray(campaign.campaigns) && campaign.campaigns.length ? campaign.campaigns[0] : null;
+          if (c0) { cs = c0.campaign_status || c0.status || "unknown"; errs = Array.isArray(c0.errors) ? c0.errors : []; }
+          else if (campaign.status || campaign.campaign_status) { cs = campaign.status || campaign.campaign_status; errs = Array.isArray(campaign.errors) ? campaign.errors : []; }
+          // surface the brand status too, since it's a real gate
+          const b0 = Array.isArray(campaign.brands) && campaign.brands.length ? campaign.brands[0] : null;
+          if (b0) out.brand_status = b0.status || null;
+        }
+        out.campaign_status = cs;
         out.means = (cs === "VERIFIED" || cs === "APPROVED")
           ? "SMS campaign is APPROVED — texting is cleared to go live."
           : cs === "IN_PROGRESS"
-            ? ("Campaign is IN REVIEW with the carrier" + (errs.length ? (", but has " + errs.length + " error(s) to address") : " and has no errors — nothing to do but wait for it to clear."))
+            ? ("Campaign is IN REVIEW with the carrier" + (errs.length ? (", but has " + errs.length + " error(s) to address") : " and has no errors" + (out.brand_status === "APPROVED" ? " (brand already APPROVED) — nothing to do but wait for the campaign to clear." : " — nothing to do but wait.")))
             : cs === "FAILED"
               ? "Campaign FAILED — needs a fix and resubmit (read the errors)."
               : "Campaign status is " + cs + " — read the campaign block for detail.";
@@ -9611,7 +9621,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.179</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.180</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9886,7 +9896,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.179</div>
+  <div id="ver">v4.9.180</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.151-2026-06-25";
+const BUILD = "aura-core-v4.9.152-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -1877,12 +1877,11 @@ async function processCommand(line, env, isOp) {
     }
 
     case "LOOP": {
-      // ===== THE FULL COGNITIVE LOOP CONDUCTOR =====
-      // Runs SEE -> UNDERSTAND -> EXPAND -> JUDGE(gate) -> DECIDE -> [translate decision->action]
-      // -> ACT -> (JUDGE the result) -> LEARN, as ONE motion, carrying state through.
-      // SAFE BY DEFAULT: dry-run. Thinks all the way to the edge of action and PROPOSES, fires nothing.
-      // LOOP CONFIRM <entity> (operator) fires the proposal, then judges the result and learns — the
-      // correction loop closed behind trust. This is the loop the whole Runtime Core is built around.
+      // ===== THE FULL COGNITIVE LOOP CONDUCTOR (instrumented) =====
+      // Runs SEE -> UNDERSTAND -> EXPAND -> DECIDE -> JUDGE(gate) -> [translate decision->action]
+      // -> ACT -> (JUDGE result) -> LEARN as ONE motion, carrying state. SAFE BY DEFAULT: dry-run.
+      // FULL VISIBILITY: every stage is timed; a TIME BUDGET returns gracefully BEFORE the platform
+      // wall (so we never get a silent blank); the whole trace + timings are logged to loop:{slug}.
       // Usage: LOOP <entity>          (full loop, dry-run — proposes an action, fires nothing)
       //        LOOP CONFIRM <entity>  (operator: fire the proposal, then JUDGE + LEARN)
       let lpRaw = rest;
@@ -1892,66 +1891,103 @@ async function processCommand(line, env, isOp) {
       if (!lpEntity) return { cmd: "LOOP", payload: { ok: false, error: "Usage: LOOP <entity> (full loop, dry-run). LOOP CONFIRM <entity> (operator: fire + judge + learn)." } };
       const lpSlug = lpEntity.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "entity";
 
-      // --- FRONT HALF: think it through (reuse the conductor) ---
-      const lpCz = await processCommand("COGNIZE " + lpEntity, env, isOp);
-      const lpCzP = (lpCz && lpCz.payload) ? lpCz.payload : lpCz;
-      if (!lpCzP || !lpCzP.ok) return { cmd: "LOOP", payload: { ok: false, stage: "cognize", error: "Front half of the loop did not complete (COGNIZE).", detail: lpCzP } };
-      const lpDecision = (lpCzP.layers && lpCzP.layers.priority && lpCzP.layers.priority.priority) ? lpCzP.layers.priority.priority : null;
-      const lpGate = lpCzP.summary ? (lpCzP.summary.gate_verdict || null) : null;
+      const lpT0 = Date.now();
+      const lpTiming = {};
+      const lpBudgetMs = 38000; // stay safely under the platform wall; return partial before we get killed
+      const lpElapsed = () => Date.now() - lpT0;
+      const lpLayers = {};
+      // run a stage, time it; returns the payload
+      const lpStage = async (name, cmd) => { const s = Date.now(); const r = await processCommand(cmd, env, isOp); lpTiming[name] = Date.now() - s; return (r && r.payload) ? r.payload : r; };
+      const lpSummary = {};
+      const lpBuildSummary = () => {
+        try { if (lpLayers.perception && lpLayers.perception.perception) lpSummary.what_it_is = lpLayers.perception.perception.what_it_is; } catch {}
+        try { if (lpLayers.meaning && lpLayers.meaning.meaning) lpSummary.what_it_really_is = lpLayers.meaning.meaning.what_it_really_is; } catch {}
+        try { if (lpLayers.possibility && lpLayers.possibility.possibility) lpSummary.what_it_could_become = lpLayers.possibility.possibility.what_it_could_become; } catch {}
+        try { if (lpLayers.priority && lpLayers.priority.priority) { lpSummary.decided = lpLayers.priority.priority.the_one_thing; lpSummary.do_now = lpLayers.priority.priority.do_now; } } catch {}
+        try { if (lpLayers.gate && lpLayers.gate.gate) { lpSummary.gate_verdict = lpLayers.gate.gate.verdict; lpSummary.gate_reason = lpLayers.gate.gate.reason; } } catch {}
+      };
+      const lpEarly = (reached, extra) => {
+        lpBuildSummary();
+        const ts = new Date().toISOString();
+        const trace = { entity: lpEntity, confirmed: lpConfirm, partial: true, reached, summary: lpSummary, timing: lpTiming, total_ms: lpElapsed(), ts };
+        env.AURA_KV.put("loop:" + lpSlug + ":" + ts, JSON.stringify(trace)).catch(() => {});
+        return { cmd: "LOOP", payload: Object.assign({ ok: true, partial: true, entity: lpEntity, reached, note: "Stopped early to stay under the platform time limit — returning what completed, with timings so we can see exactly what is slow. Run LOOP again to continue (earlier stages are now cached and fast).", summary: lpSummary, timing: lpTiming, total_ms: lpElapsed() }, extra || {}) };
+      };
 
-      // --- TRANSLATE: decision -> a proposed capability command (the thinking->doing bridge) ---
-      const lpApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
-      if (!lpApiKey) return { cmd: "LOOP", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
-      const lpModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
-      let lpCapList = "";
-      try { const cr = await processCommand("CAPABILITY LIST", env, isOp); const cp = (cr && cr.payload) ? cr.payload : cr; if (cp && cp.capabilities) lpCapList = (cp.capabilities || []).map(c => (c && c.name) ? c.name : c).join(", "); } catch {}
-      const lpTrSys = "You are the bridge between Aura's DECISION and her ACTION. Given a decision (the one thing to do) and a list of available capability commands, choose the SINGLE capability command that would carry out the decision, fully formed and ready to run. If the right move is to communicate or respond rather than fire a tool, return needs_action false. Return ONLY a JSON object, no prose, no fences, with exactly these keys: needs_action (boolean), capability_command (the exact command string to run, or empty), why (one sentence), communicate_instead (what Aura should say or do if no action, else empty). Output JSON only.";
-      const lpTrUser = "DECISION:\n" + JSON.stringify(lpDecision || {}) + "\n\nAVAILABLE CAPABILITIES:\n" + (lpCapList || "(none listed)") + "\n\nENTITY: " + lpEntity;
-      let lpProposal = null;
       try {
-        const trData = await callAnthropic(lpApiKey, { model: lpModel, max_tokens: 400, system: lpTrSys, messages: [{ role: "user", content: lpTrUser }] });
-        let tt = ""; if (trData && trData.content) { for (const b of trData.content) { if (b.type === "text") tt += b.text; } }
-        tt = tt.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
-        lpProposal = JSON.parse(tt);
-      } catch (e) { lpProposal = { needs_action: false, capability_command: "", why: "Could not translate decision into an action: " + String(e.message), communicate_instead: "" }; }
+        // ---- FRONT HALF (each stage timed; budget-checked before the next) ----
+        lpLayers.perception = await lpStage("perceive", "PERCEIVE " + lpEntity);
+        if (lpElapsed() > lpBudgetMs) return lpEarly("perceive");
+        lpLayers.meaning = await lpStage("meaning", "MEANING " + lpEntity);
+        if (lpElapsed() > lpBudgetMs) return lpEarly("meaning");
+        lpLayers.possibility = await lpStage("possibility", "POSSIBILITY " + lpEntity);
+        if (lpElapsed() > lpBudgetMs) return lpEarly("possibility");
+        lpLayers.priority = await lpStage("priority", "PRIORITY " + lpEntity);
+        if (lpElapsed() > lpBudgetMs) return lpEarly("priority");
+        lpLayers.gate = await lpStage("gate", "GATE " + lpEntity);
+        if (lpElapsed() > lpBudgetMs) return lpEarly("gate");
+        lpBuildSummary();
+        const lpDecision = (lpLayers.priority && lpLayers.priority.priority) ? lpLayers.priority.priority : null;
+        const lpGate = lpSummary.gate_verdict || null;
 
-      // --- ACT: dry-run the proposal (fires nothing unless LOOP CONFIRM + operator) ---
-      let lpAct = null;
-      if (lpProposal && lpProposal.needs_action && lpProposal.capability_command) {
-        const actCmd = (lpConfirm ? "ACT CONFIRM " : "ACT ") + lpEntity + " ::: " + lpProposal.capability_command;
-        const ar = await processCommand(actCmd, env, isOp);
-        lpAct = (ar && ar.payload) ? ar.payload : ar;
+        // ---- TRANSLATE: decision -> a proposed capability command (the thinking->doing bridge) ----
+        const lpApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+        if (!lpApiKey) return lpEarly("translate", { error: "Brain not configured (secret:anthropic missing)" });
+        const lpModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+        let lpCapList = "";
+        try { const cr = await processCommand("CAPABILITY LIST", env, isOp); const cp = (cr && cr.payload) ? cr.payload : cr; if (cp && cp.capabilities) lpCapList = (cp.capabilities || []).map(c => (c && c.name) ? c.name : c).join(", "); } catch {}
+        const lpTrSys = "You are the bridge between Aura's DECISION and her ACTION. Given a decision (the one thing to do) and a list of available capability commands, choose the SINGLE capability command that would carry out the decision, fully formed and ready to run. If the right move is to communicate or respond rather than fire a tool, return needs_action false. Return ONLY a JSON object, no prose, no fences, with exactly these keys: needs_action (boolean), capability_command (the exact command string to run, or empty), why (one sentence), communicate_instead (what Aura should say or do if no action, else empty). Output JSON only.";
+        const lpTrUser = "DECISION:\n" + JSON.stringify(lpDecision || {}) + "\n\nAVAILABLE CAPABILITIES:\n" + (lpCapList || "(none listed)") + "\n\nENTITY: " + lpEntity;
+        let lpProposal = null;
+        const lpTrStart = Date.now();
+        try {
+          const trData = await callAnthropic(lpApiKey, { model: lpModel, max_tokens: 400, system: lpTrSys, messages: [{ role: "user", content: lpTrUser }] });
+          let tt = ""; if (trData && trData.content) { for (const b of trData.content) { if (b.type === "text") tt += b.text; } }
+          tt = tt.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+          lpProposal = JSON.parse(tt);
+        } catch (e) { lpProposal = { needs_action: false, capability_command: "", why: "Could not translate decision into an action: " + String(e.message), communicate_instead: "" }; }
+        lpTiming.translate = Date.now() - lpTrStart;
+        if (lpElapsed() > lpBudgetMs && !lpConfirm) return lpEarly("translate", { proposed_action: lpProposal });
+
+        // ---- ACT: dry-run the proposal (fires nothing unless LOOP CONFIRM + operator) ----
+        let lpAct = null;
+        if (lpProposal && lpProposal.needs_action && lpProposal.capability_command) {
+          const actCmd = (lpConfirm ? "ACT CONFIRM " : "ACT ") + lpEntity + " ::: " + lpProposal.capability_command;
+          lpAct = await lpStage("act", actCmd);
+        }
+
+        // ---- BACK HALF (only when CONFIRM actually fired): JUDGE the result, then LEARN ----
+        let lpJudgment = null, lpLesson = null;
+        if (lpConfirm && lpAct && lpAct.fired) {
+          const jp = await lpStage("judge", "JUDGE " + lpEntity);
+          lpJudgment = (jp && jp.judgment) ? jp.judgment : jp;
+          const lp2 = await lpStage("learn", "LEARN " + lpEntity);
+          lpLesson = (lp2 && lp2.lesson) ? lp2.lesson : lp2;
+        }
+
+        // ---- log the full loop trace (with timings) ----
+        const lpTs = new Date().toISOString();
+        const lpTrace = { entity: lpEntity, confirmed: lpConfirm, gate_verdict: lpGate, decision: lpDecision ? (lpDecision.the_one_thing || null) : null, proposal: lpProposal, acted: !!(lpAct && lpAct.fired), judgment: lpJudgment, lesson: lpLesson, timing: lpTiming, total_ms: lpElapsed(), ts: lpTs };
+        await env.AURA_KV.put("loop:" + lpSlug + ":" + lpTs, JSON.stringify(lpTrace)).catch(() => {});
+
+        return { cmd: "LOOP", payload: { ok: true, entity: lpEntity, confirmed: lpConfirm, mode: lpConfirm ? "fired" : "dry_run",
+          saw: lpSummary.what_it_is || null,
+          understood: lpSummary.what_it_really_is || null,
+          expanded: lpSummary.what_it_could_become || null,
+          decided: lpDecision ? lpDecision.the_one_thing : null,
+          gate_verdict: lpGate,
+          proposed_action: lpProposal,
+          act: lpAct,
+          judgment: lpJudgment,
+          lesson: lpLesson,
+          timing: lpTiming,
+          total_ms: lpElapsed(),
+          logged_as: "loop:" + lpSlug + ":" + lpTs,
+          note: lpConfirm ? "Loop ran fully: thought, acted, judged, learned." : "Dry-run: thought all the way to the edge of action and proposed. Nothing fired. Use LOOP CONFIRM (operator) to act, judge, and learn."
+        } };
+      } catch (e) {
+        return { cmd: "LOOP", payload: { ok: false, entity: lpEntity, error: "Loop error: " + String(e && e.message), timing: lpTiming, total_ms: lpElapsed(), summary: lpSummary } };
       }
-
-      // --- BACK HALF (only when CONFIRM actually fired an action): JUDGE the result, then LEARN ---
-      let lpJudgment = null, lpLesson = null;
-      if (lpConfirm && lpAct && lpAct.fired) {
-        const jr = await processCommand("JUDGE " + lpEntity, env, isOp);
-        const jp = (jr && jr.payload) ? jr.payload : jr;
-        lpJudgment = (jp && jp.judgment) ? jp.judgment : jp;
-        const lr = await processCommand("LEARN " + lpEntity, env, isOp);
-        const lp2 = (lr && lr.payload) ? lr.payload : lr;
-        lpLesson = (lp2 && lp2.lesson) ? lp2.lesson : lp2;
-      }
-
-      // --- log the full loop trace ---
-      const lpTs = new Date().toISOString();
-      const lpTrace = { entity: lpEntity, confirmed: lpConfirm, gate_verdict: lpGate, decision: lpDecision ? (lpDecision.the_one_thing || null) : null, proposal: lpProposal, acted: !!(lpAct && lpAct.fired), judgment: lpJudgment, lesson: lpLesson, ts: lpTs };
-      await env.AURA_KV.put("loop:" + lpSlug + ":" + lpTs, JSON.stringify(lpTrace)).catch(() => {});
-
-      return { cmd: "LOOP", payload: { ok: true, entity: lpEntity, confirmed: lpConfirm, mode: lpConfirm ? "fired" : "dry_run",
-        saw: lpCzP.summary ? (lpCzP.summary.what_it_is || null) : null,
-        understood: lpCzP.summary ? (lpCzP.summary.what_it_really_is || null) : null,
-        expanded: lpCzP.summary ? (lpCzP.summary.what_it_could_become || null) : null,
-        decided: lpDecision ? lpDecision.the_one_thing : null,
-        gate_verdict: lpGate,
-        proposed_action: lpProposal,
-        act: lpAct,
-        judgment: lpJudgment,
-        lesson: lpLesson,
-        logged_as: "loop:" + lpSlug + ":" + lpTs,
-        note: lpConfirm ? "Loop ran fully: thought, acted, judged, learned." : "Dry-run: thought all the way to the edge of action and proposed. Nothing fired. Use LOOP CONFIRM (operator) to act, judge, and learn."
-      } };
     }
 
     case "ACT": {
@@ -9016,7 +9052,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.151</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.152</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9291,7 +9327,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.151</div>
+  <div id="ver">v4.9.152</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

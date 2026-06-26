@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.146-2026-06-25";
+const BUILD = "aura-core-v4.9.148-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8938,7 +8938,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.146</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.148</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9077,109 +9077,159 @@ self.addEventListener('fetch', function(e){
       const rooms = roomSets[role === "operator" ? "operator" : (role === "business" ? "business" : "person")];
       const roomLinks = rooms.map(r => `<div onclick="askAura('Open ${r} — show me my ${r}.')" style="display:flex;align-items:center;gap:0.7rem;padding:0.8rem 1rem;color:#e8e4f0;cursor:pointer;border-radius:8px;font-size:0.95rem" onmouseover="this.style.background='#1a1a24'" onmouseout="this.style.background='transparent'">${esc(r)}</div>`).join("");
 
-      // clean minimal icons (no emoji)
-      const icPlus = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`;
+      // ===== ICONS (shell) =====
+      const icPlus = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`;
       const icMic = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4"/></svg>`;
       const icSend = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>`;
       const icMenu = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>`;
+      const icCart = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>`;
+      const icGrid = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>`;
+      const icStar = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
 
+      // ===== ROOMS (familiar surfaces — tapped to change context, never dragged) =====
       const apps = [
         {n:"Photos",c:"#1c1c28"},{n:"Messages",c:"#1c2a1c"},{n:"Calendar",c:"#2a1c1c"},
-        {n:"Contacts",c:"#1c2230"},{n:"Maps",c:"#1c2a26"},{n:"Wallet",c:"#241c2a"},
-        {n:"Files",c:"#1c1c2e"},{n:"Music",c:"#2a1c24"},{n:"Camera",c:"#222"},
-        {n:"Tasks",c:"#1c2030"},{n:"Notes",c:"#2a261c"},{n:"Settings",c:"#202028"}
+        {n:"Contacts",c:"#1c2230"},{n:"Music",c:"#2a1c24"},{n:"Maps",c:"#1c2a26"},
+        {n:"Files",c:"#1c1c2e"},{n:"Tasks",c:"#1c2030"},{n:"Wallet",c:"#241c2a"}
       ];
-      const appGrid = apps.map(function(a){return '<div class="app" draggable="false" data-app="'+a.n+'"><div class="appicon" style="background:'+a.c+'">'+a.n.charAt(0)+'</div><div class="applabel">'+a.n+'</div></div>';}).join("");
-      const suggestionsHtml = suggestions.length ? ('<div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.5rem">' + suggestions.map(function(s){return '<button onclick="askAura(\''+s.replace(/'/g,"")+'\')" style="background:#15151f;border:1px solid #24243a;color:#c8c4d8;font-size:0.82rem;padding:0.5rem 0.85rem;border-radius:18px;cursor:pointer">'+s+'</button>';}).join("") + '</div>') : "";
+      const roomsHtml = apps.map(function(a){return '<div class="room" onclick="askAura(\'Open '+a.n+'\')"><div class="roomicon" style="background:'+a.c+'">'+a.n.charAt(0)+'</div><div class="roomlabel">'+a.n+'</div></div>';}).join("")
+        + '<div class="room" onclick="askAura(\'I want to add a new room\')"><div class="roomicon add">'+icPlus+'</div><div class="roomlabel">Add Room</div></div>';
+
+      // ===== WHAT'S IMPORTANT (real data: active tasks / held items; honest empty state otherwise) =====
+      const importantHtml = (active && active.length)
+        ? active.slice(0,6).map(function(t){var x=esc(t.text||"");return '<div class="ccard" onclick="askAura(\''+x.replace(/'/g,"")+'\')"><div class="ccardtitle">'+x+'</div></div>';}).join("")
+        : '<div class="ccard wide" onclick="openChat()"><div class="ccardtitle">Nothing urgent right now</div><div class="ccardsub">Tap to tell Aura what\u2019s on your mind</div></div>';
+
+      // ===== DISCOVER (context doorways) =====
+      const discoverItems = [
+        {t:"Discover", s:"Something amazing", g:"linear-gradient(135deg,#6d28d9,#9333ea)"},
+        {t:"City Guide", s:"Your city, smarter", g:"linear-gradient(135deg,#1e3a8a,#7c3aed)"},
+        {t:"Photos", s:"Your memories", g:"linear-gradient(135deg,#334155,#0f172a)"},
+        {t:"Music", s:"Your soundtrack", g:"linear-gradient(135deg,#0ea5e9,#6366f1)"}
+      ];
+      const discoverHtml = discoverItems.map(function(d){return '<div class="dcard" style="background:'+d.g+'" onclick="askAura(\'Open '+d.t+'\')"><div class="dtitle">'+d.t+'</div><div class="dsub">'+d.s+'</div></div>';}).join("");
 
       const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"><title>Home — ${name}</title>
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Aura">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#0a0a0f">
-<link rel="manifest" href="/manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Aura"><meta name="mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0a0a0f"><link rel="manifest" href="/manifest.webmanifest">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
-body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;display:flex;flex-direction:column;min-height:100vh}
-/* TOP BAR */
-.htop{display:flex;align-items:center;justify-content:space-between;padding:0.9rem 1.1rem 0.5rem}
-.hmenu{background:none;border:none;color:#9a9ab0;cursor:pointer;display:flex;padding:0.3rem}
-.htitle{font-weight:700;color:#fff;font-size:1.05rem}
-/* SCROLL AREA */
-.hscroll{padding:0.3rem 1.1rem 1rem}
-.sec{color:#6b6b8a;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin:1.2rem 0.2rem 0.7rem}
-/* APP GRID (their habits) */
-.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem 0.6rem}
-.app{display:flex;flex-direction:column;align-items:center;gap:0.4rem;cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-user-drag:none;touch-action:none}
-.appicon{width:60px;height:60px;border-radius:15px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.4rem;color:#cfcfe0;border:1px solid #20202c}
-.applabel{font-size:0.72rem;color:#c8c8d8}
-.app{transition:transform 0.12s ease}
-@keyframes jiggle{0%{transform:rotate(-1.6deg)}50%{transform:rotate(1.6deg)}100%{transform:rotate(-1.6deg)}}
-.grid.editing .app{animation:jiggle 0.32s infinite ease-in-out}
-.app.dragging{opacity:0.45;animation:none !important;transform:scale(1.08)}
-.editbar{position:fixed;top:0;left:0;right:0;display:none;justify-content:center;padding:0.6rem;background:rgba(10,10,15,0.82);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:50}
-.editbar.show{display:flex}
-.editbar button{background:#a855f7;color:#fff;border:none;font-weight:700;font-size:0.9rem;padding:0.5rem 1.5rem;border-radius:20px;cursor:pointer}
-/* AURA CONSOLE (bottom - the wedge) */
-.console{position:sticky;bottom:0;border-top:1px solid #16161f;background:#0c0c12;padding:0.8rem 1rem 1.1rem}
-.greet{display:flex;gap:0.7rem;align-items:flex-start;margin-bottom:0.7rem;cursor:pointer}
-.orb{width:42px;height:42px;border-radius:50%;flex-shrink:0;background:radial-gradient(circle at 35% 30%,#c084fc,#7c3aed 60%,#3b0764);box-shadow:0 0 18px rgba(168,85,247,0.45)}
-.greettext{font-size:0.9rem;line-height:1.4;color:#d8d4e8}
-.greettext b{color:#fff}
-.inbar{display:flex;align-items:center;gap:0.5rem;background:#15151f;border:1px solid #24243a;border-radius:26px;padding:0.4rem 0.5rem 0.4rem 0.7rem}
-.inbar input{flex:1;background:none;border:none;color:#e8e4f0;font-size:16px;outline:none;padding:0.4rem}
-.cbtn{width:38px;height:38px;border-radius:50%;border:none;background:none;color:#9a9ab0;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
-.cbtn.rec{background:#ec4899;color:#fff}
-/* CHAT OVERLAY (slides up when talking) */
-.chatlayer{position:fixed;inset:0;background:#0a0a0f;z-index:50;display:none;flex-direction:column}
+body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;display:flex;flex-direction:column;min-height:100vh;min-height:100dvh;padding-bottom:78px}
+/* ===== SHELL: top bar ===== */
+.top{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.1rem 0.4rem}
+.ico{background:none;border:none;color:#cfcfe0;cursor:pointer;display:flex;position:relative;padding:0.35rem}
+.toptitle{font-weight:700;color:#fff;font-size:1.1rem;display:flex;flex-direction:column;align-items:center;gap:3px}
+.toptitle .dot{width:5px;height:5px;border-radius:50%;background:#a855f7}
+.cartcount{position:absolute;top:-2px;right:-4px;background:#a855f7;color:#fff;font-size:0.62rem;font-weight:700;min-width:16px;height:16px;border-radius:8px;display:flex;align-items:center;justify-content:center;padding:0 4px}
+#ver{position:absolute;top:6px;left:50%;transform:translateX(-50%);font-family:monospace;font-size:0.62rem;color:#3a3a4a}
+/* ===== SHELL: Aura hero ===== */
+.hero{display:flex;align-items:center;gap:0.9rem;padding:0.8rem 1.1rem 1rem;cursor:pointer}
+.orb{border-radius:50%;background:radial-gradient(circle at 34% 30%,#d8b4fe,#7c3aed 55%,#3b0764);box-shadow:0 0 22px rgba(168,85,247,0.5);flex-shrink:0}
+.orb.big{width:58px;height:58px;position:relative}
+.orb.big::after{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid rgba(168,85,247,0.35);animation:pulse 2.6s infinite}
+@keyframes pulse{0%{transform:scale(1);opacity:0.7}70%{transform:scale(1.35);opacity:0}100%{opacity:0}}
+.herotext{flex:1;min-width:0}
+.hgreet{font-size:1.15rem;font-weight:700;color:#fff;line-height:1.25}
+.hgreet b{color:#c084fc}
+.hline{font-size:0.9rem;color:#b8b4c8;margin-top:0.2rem;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.hcta{font-size:0.78rem;color:#7c5cff;margin-top:0.35rem;font-weight:600}
+.mic{width:46px;height:46px;border-radius:50%;border:1px solid #2a2a3c;background:#14141d;color:#cfcfe0;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer}
+/* ===== CANVAS (adaptive — context: home) ===== */
+.canvas{flex:1;padding:0 0 1rem}
+.cansec{margin-top:1.4rem}
+.canhead{display:flex;align-items:center;justify-content:space-between;padding:0 1.1rem 0.7rem}
+.canhead span{font-size:1.05rem;font-weight:700;color:#fff}
+.canhead a{font-size:0.85rem;color:#a855f7;cursor:pointer}
+.cardscroll{display:flex;gap:0.8rem;overflow-x:auto;padding:0 1.1rem 0.3rem;scrollbar-width:none}
+.cardscroll::-webkit-scrollbar{display:none}
+.ccard{flex:0 0 auto;width:160px;min-height:120px;background:linear-gradient(160deg,#16161f,#101019);border:1px solid #1e1e2c;border-radius:16px;padding:1rem;display:flex;flex-direction:column;justify-content:flex-end;cursor:pointer}
+.ccard.wide{width:88%}
+.ccardtitle{font-size:0.95rem;font-weight:600;color:#fff;line-height:1.3}
+.ccardsub{font-size:0.8rem;color:#8888a8;margin-top:0.3rem}
+/* rooms */
+.rooms{display:grid;grid-template-columns:repeat(5,1fr);gap:1rem 0.5rem;padding:0 1.1rem}
+.room{display:flex;flex-direction:column;align-items:center;gap:0.4rem;cursor:pointer}
+.roomicon{width:58px;height:58px;border-radius:15px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.35rem;color:#cfcfe0;border:1px solid #20202c}
+.roomicon.add{background:none;border:1px dashed #3a3a4c;color:#7c7c92}
+.roomlabel{font-size:0.7rem;color:#c8c8d8;text-align:center}
+/* discover */
+.discover{display:flex;gap:0.8rem;overflow-x:auto;padding:0 1.1rem 0.3rem;scrollbar-width:none}
+.discover::-webkit-scrollbar{display:none}
+.dcard{flex:0 0 auto;width:150px;height:150px;border-radius:18px;padding:1rem;display:flex;flex-direction:column;justify-content:flex-end;cursor:pointer;position:relative;overflow:hidden}
+.dcard::before{content:"";position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,0.55),transparent 60%)}
+.dtitle{font-size:1rem;font-weight:700;color:#fff;position:relative}
+.dsub{font-size:0.75rem;color:rgba(255,255,255,0.8);position:relative}
+/* ===== SHELL: bottom nav ===== */
+.bottomnav{position:fixed;bottom:0;left:0;right:0;height:72px;background:rgba(12,12,18,0.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid #16161f;display:flex;align-items:center;justify-content:space-around;padding-bottom:env(safe-area-inset-bottom);z-index:40}
+.navbtn{background:none;border:none;color:#8888a0;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:0.68rem;cursor:pointer}
+.navorb{background:none;border:none;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:0.68rem;color:#c084fc;cursor:pointer;transform:translateY(-6px)}
+.navorb .orb{width:46px;height:46px}
+/* ===== conversation overlay ===== */
+.chatlayer{position:fixed;inset:0;background:#0a0a0f;z-index:80;display:none;flex-direction:column}
 .chatlayer.open{display:flex}
 .clhead{display:flex;align-items:center;gap:0.6rem;padding:0.9rem 1.1rem;border-bottom:1px solid #16161f}
-.clback{background:none;border:none;color:#9a9ab0;font-size:1.4rem;cursor:pointer}
+.clback{background:none;border:none;color:#9a9ab0;font-size:1.6rem;cursor:pointer;line-height:1}
 .chat{flex:1;overflow-y:auto;padding:1.2rem 1rem;display:flex;flex-direction:column;gap:1rem}
 .msg{max-width:88%;line-height:1.5;font-size:0.95rem}
 .msg.user{align-self:flex-end;background:#1f1f2e;border-radius:14px;padding:0.7rem 1rem}
 .msg.aura{align-self:flex-start;color:#e8e4f0}
 .msg.aura .lbl{color:#a855f7;font-weight:700;font-size:0.72rem;display:block;margin-bottom:0.3rem}
-.attach{font-size:0.8rem;color:#a855f7;padding:0 0.5rem 0.4rem}
-/* DRAWER */
-.scrim{position:fixed;inset:0;background:rgba(0,0,0,0.55);opacity:0;pointer-events:none;transition:opacity .25s;z-index:60}
+.console{border-top:1px solid #16161f;background:#0c0c12;padding:0.7rem 1rem 1rem}
+.inbar{display:flex;align-items:center;gap:0.5rem;background:#15151f;border:1px solid #24243a;border-radius:26px;padding:0.4rem 0.5rem 0.4rem 0.7rem}
+.inbar input{flex:1;background:none;border:none;color:#e8e4f0;font-size:16px;outline:none;padding:0.4rem}
+.cbtn{width:38px;height:38px;border-radius:50%;border:none;background:none;color:#9a9ab0;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
+.cbtn.rec{background:#ec4899;color:#fff}
+/* drawer */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,0.55);opacity:0;pointer-events:none;transition:opacity .25s;z-index:90}
 .scrim.open{opacity:1;pointer-events:auto}
-.drawer{position:fixed;top:0;right:0;bottom:0;width:80%;max-width:340px;background:#0d0d14;border-left:1px solid #1f1f2e;transform:translateX(100%);transition:transform .25s;z-index:70;overflow-y:auto}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:80%;max-width:340px;background:#0d0d14;border-left:1px solid #1f1f2e;transform:translateX(100%);transition:transform .25s;z-index:95;overflow-y:auto}
 .drawer.open{transform:none}
+.drawer .dh{padding:1.2rem 1rem;border-bottom:1px solid #1f1f2e;font-size:1.1rem;font-weight:800;color:#fff}
 </style></head><body>
 
-<!-- TOP BAR -->
-<div class="htop">
-  <div class="htitle">Home</div>
-  <button class="hmenu" onclick="toggleMenu()">${icMenu}</button>
+<!-- ===== PERMANENT SHELL ===== -->
+<div class="top">
+  <button class="ico" onclick="toggleMenu()">${icMenu}</button>
+  <div class="toptitle">Home<span class="dot"></span></div>
+  <div id="ver">v4.9.148</div>
+  <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 
-<!-- SCROLL: their familiar world -->
-<div class="hscroll">
-  <div class="sec">Your world</div>
-  <div class="editbar" id="editbar"><button id="editdone">Done</button></div>
-  <div class="grid" id="appgrid">${appGrid}</div>
-  <div id="dragdbg" style="text-align:center;font-family:monospace;font-size:0.72rem;color:#a855f7;padding:0.5rem;opacity:0.8">…</div>
-</div>
-
-<!-- AURA CONSOLE (the wedge: loved feature + continuity) -->
-<div class="console">
-  <div class="greet" onclick="openChat()">
-    <div class="orb"></div>
-    <div class="greettext" id="greetBar"></div>
+<div class="hero" onclick="openChat()">
+  <div class="orb big"></div>
+  <div class="herotext">
+    <div class="hgreet">Good ${ (new Date().getHours()<12?'morning': new Date().getHours()<18?'afternoon':'evening') }, <b>${firstName}</b>.</div>
+    <div class="hline" id="heroLine"></div>
+    <div class="hcta">Tap to reply or talk to Aura</div>
   </div>
-  <div class="inbar" onclick="openChat();setTimeout(function(){var c=document.getElementById('chatInput');if(c)c.focus()},100)">
-    <button class="cbtn" title="Attach">${icPlus}</button>
-    <button class="cbtn" id="micBtn" onclick="event.stopPropagation();openChat();setTimeout(toggleMic,150)" title="Speak">${icMic}</button>
-    <input placeholder="Talk to Aura..." readonly style="cursor:pointer">
-    <button class="cbtn send" title="Open">${icSend}</button>
+  <button class="mic" onclick="event.stopPropagation();openChat();setTimeout(toggleMic,150)">${icMic}</button>
+</div>
+
+<!-- ===== ADAPTIVE CANVAS — context: home (swappable: money/photos/etc plug in here) ===== -->
+<div class="canvas" id="canvas" data-context="home">
+  <div class="cansec">
+    <div class="canhead"><span>What's important right now</span><a onclick="askAura('Show me everything important right now')">See all</a></div>
+    <div class="cardscroll">${importantHtml}</div>
+  </div>
+  <div class="cansec">
+    <div class="canhead"><span>My Rooms</span><a onclick="toggleMenu()">Edit</a></div>
+    <div class="rooms">${roomsHtml}</div>
+  </div>
+  <div class="cansec">
+    <div class="canhead"><span>Discover</span></div>
+    <div class="discover">${discoverHtml}</div>
   </div>
 </div>
 
-<!-- CHAT OVERLAY -->
+<!-- ===== SHELL: bottom nav ===== -->
+<div class="bottomnav">
+  <button class="navbtn" onclick="toggleMenu()">${icGrid}<span>Rooms</span></button>
+  <button class="navorb" onclick="openChat()"><div class="orb"></div><span>Aura</span></button>
+  <button class="navbtn" onclick="askAura('Discover something amazing for me right now')">${icStar}<span>Explore</span></button>
+</div>
+
+<!-- ===== CONVERSATION ===== -->
 <div class="chatlayer" id="chatlayer">
   <div class="clhead">
     <button class="clback" onclick="closeChat()">‹</button>
@@ -9189,10 +9239,8 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
   <div class="chat" id="chatArea">
     <div class="msg aura"><span class="lbl">AURA</span><span id="greetMsg"></span></div>
   </div>
-  <div class="console" style="border-top:1px solid #16161f">
-    <div class="attach" id="attachRow" style="display:none"></div>
+  <div class="console">
     <div class="inbar">
-      <button class="cbtn" onclick="document.getElementById('fileInput').click()" title="Attach">${icPlus}</button>
       <button class="cbtn" id="micBtn2" onclick="toggleMic()" title="Speak">${icMic}</button>
       <input id="chatInput" placeholder="Message Aura..." onkeydown="if(event.key==='Enter')sendMsg()">
       <button class="cbtn send" onclick="sendMsg()" title="Send">${icSend}</button>
@@ -9200,59 +9248,27 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
   </div>
 </div>
 
-<!-- DRAWER -->
+<!-- ===== DRAWER (deep rooms) ===== -->
 <div class="scrim" id="scrim" onclick="toggleMenu()"></div>
 <div class="drawer" id="drawer">
-  <div style="padding:1.2rem 1rem;border-bottom:1px solid #1f1f2e"><div style="font-size:1.1rem;font-weight:800;color:#fff">Your world</div></div>
+  <div class="dh">Your world</div>
   <div style="padding:0.5rem">${roomLinks}</div>
 </div>
 
 <script>
 var AURA_GREET = ${JSON.stringify(greet)};
 document.addEventListener('DOMContentLoaded',function(){
-  var gb=document.getElementById('greetBar'); if(gb) gb.textContent=AURA_GREET;
+  var hl=document.getElementById('heroLine'); if(hl) hl.textContent=AURA_GREET;
   var gm=document.getElementById('greetMsg'); if(gm) gm.textContent=AURA_GREET;
 });
-function openChat(){document.getElementById('chatlayer').classList.add('open')}
+function openChat(){document.getElementById('chatlayer').classList.add('open');setTimeout(function(){var c=document.getElementById('chatInput');if(c)c.focus();},120);}
 function closeChat(){document.getElementById('chatlayer').classList.remove('open')}
 function toggleMenu(){document.getElementById('drawer').classList.toggle('open');document.getElementById('scrim').classList.toggle('open')}
-function addMsg(t,who){const d=document.createElement('div');d.className='msg '+who;if(who==='aura')d.innerHTML='<span class="lbl">AURA</span>'+t.replace(/\n/g,'<br>');else d.textContent=t;document.getElementById('chatArea').appendChild(d);const c=document.getElementById('chatArea');c.scrollTop=c.scrollHeight}
-let _file=null;
-function onFile(inp){const f=inp.files[0];if(!f)return;_file={name:f.name,type:f.type,size:f.size};const r=new FileReader();r.onload=()=>{_file.dataUrl=r.result};r.readAsDataURL(f);openChat();const row=document.getElementById('attachRow');row.style.display='block';row.innerHTML='Attached: '+f.name+' <span style="color:#6b6b8a;cursor:pointer" onclick="clearFile()">x</span>'}
-function clearFile(){_file=null;document.getElementById('fileInput').value='';const row=document.getElementById('attachRow');row.style.display='none';row.innerHTML=''}
-function askAura(t){if(document.getElementById('drawer').classList.contains('open'))toggleMenu();openChat();document.getElementById('chatInput').value=t;sendMsg()}
-async function sendMsg(){const inp=document.getElementById('chatInput');const m=inp.value.trim();if(!m&&!_file)return;inp.value='';addMsg((m||'')+(_file?(' . '+_file.name):''),'user');const payload={message:m};if(_file)payload.file=_file;clearFile();const ld=document.createElement('div');ld.className='msg aura';ld.id='ld';ld.innerHTML='<span class="lbl">AURA</span><span style="color:#6b6b8a">...</span>';document.getElementById('chatArea').appendChild(ld);try{const r=await fetch('/home/talk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const el=document.getElementById('ld');if(el)el.remove();const d=await r.json();if(d.ok)addMsg(d.reply,'aura');else addMsg('Trouble connecting.','aura')}catch(e){const el=document.getElementById('ld');if(el)el.remove();addMsg('Connection error.','aura')}}
-let _rec=null,_recOn=false;
-function toggleMic(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){addMsg("Your browser doesn't support voice - try typing.","aura");return}if(_recOn){_rec&&_rec.stop();return}_rec=new SR();_rec.lang='en-US';_rec.interimResults=true;_rec.continuous=false;_recOn=true;_rec.onresult=(e)=>{let txt='';for(let i=0;i<e.results.length;i++)txt+=e.results[i][0].transcript;document.getElementById('chatInput').value=txt};_rec.onerror=()=>{};_rec.onend=()=>{_recOn=false;if(document.getElementById('chatInput').value.trim())sendMsg()};_rec.start()}
-(function(){
-  var grid=document.getElementById('appgrid'); if(!grid) return;
-  var editing=false, drag=null, cand=null, lpTimer=null, sx=0, sy=0, moved=false, mc=0;
-  var dbg=document.getElementById('dragdbg');
-  function log(s){ if(dbg) dbg.textContent=s; }
-  function order(){return [].slice.call(grid.querySelectorAll('.app')).map(function(el){return el.getAttribute('data-app');});}
-  function saveOrder(){ fetch('/home/layout',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({apps:order()})}).catch(function(){}); }
-  fetch('/home/layout',{credentials:'include'}).then(function(r){return r.json();}).then(function(d){
-    if(d&&d.ok&&Array.isArray(d.apps)){ d.apps.forEach(function(n){ var el=grid.querySelector('.app[data-app="'+n+'"]'); if(el) grid.appendChild(el); }); }
-  }).catch(function(){});
-  function enterEdit(){ if(editing) return; editing=true; grid.classList.add('editing'); document.getElementById('editbar').classList.add('show'); if(navigator.vibrate) navigator.vibrate(30); log('edit mode on'); }
-  function exitEdit(){ if(!editing) return; editing=false; grid.classList.remove('editing'); document.getElementById('editbar').classList.remove('show'); saveOrder(); log('saved, edit off'); }
-  document.getElementById('editdone').onclick=exitEdit;
-  grid.addEventListener('pointerdown',function(e){ var app=e.target.closest('.app'); if(!app) return; cand=app; sx=e.clientX; sy=e.clientY; moved=false; mc=0; try{grid.setPointerCapture(e.pointerId);}catch(_){ } lpTimer=setTimeout(enterEdit,450); log('down: '+app.getAttribute('data-app')); });
-  grid.addEventListener('pointermove',function(e){ if(!cand) return; mc++; var dx=Math.abs(e.clientX-sx), dy=Math.abs(e.clientY-sy);
-    if(!moved && (dx>7||dy>7)){ moved=true; clearTimeout(lpTimer); if(!editing) enterEdit(); drag=cand; drag.classList.add('dragging'); }
-    if(!drag){ log('move '+mc+' ('+dx+','+dy+')'); return; } if(e.cancelable) e.preventDefault();
-    var over=document.elementFromPoint(e.clientX,e.clientY); var tgt=over&&over.closest?over.closest('.app'):null;
-    if(tgt&&tgt!==drag){ var r=tgt.getBoundingClientRect(); var after=e.clientY>r.top+r.height/2||(Math.abs(e.clientY-(r.top+r.height/2))<4&&e.clientX>r.left+r.width/2); grid.insertBefore(drag, after?tgt.nextSibling:tgt); }
-    log('dragging '+(drag.getAttribute('data-app'))); });
-  function endPointer(e){ clearTimeout(lpTimer);
-    if(drag){ drag.classList.remove('dragging'); drag=null; cand=null; saveOrder(); log('dropped + saved'); return; }
-    if(!moved && !editing){ var app=cand||(e.target.closest&&e.target.closest('.app')); if(app){ log('open '+app.getAttribute('data-app')); askAura('Open '+app.getAttribute('data-app')); } }
-    cand=null; }
-  grid.addEventListener('pointerup',endPointer);
-  grid.addEventListener('pointercancel',endPointer);
-  document.addEventListener('pointerdown',function(e){ if(editing && !e.target.closest('#appgrid') && !e.target.closest('#editbar')) exitEdit(); });
-  log('ready - press & drag an icon');
-})();
+function addMsg(t,who){var d=document.createElement('div');d.className='msg '+who;if(who==='aura')d.innerHTML='<span class="lbl">AURA</span>'+String(t).replace(/\n/g,'<br>');else d.textContent=t;document.getElementById('chatArea').appendChild(d);var c=document.getElementById('chatArea');c.scrollTop=c.scrollHeight}
+function askAura(t){if(document.getElementById('drawer').classList.contains('open'))toggleMenu();openChat();var i=document.getElementById('chatInput');i.value=t;sendMsg()}
+async function sendMsg(){var inp=document.getElementById('chatInput');var m=inp.value.trim();if(!m)return;inp.value='';addMsg(m,'user');var ld=document.createElement('div');ld.className='msg aura';ld.id='ld';ld.innerHTML='<span class="lbl">AURA</span><span style="color:#6b6b8a">...</span>';document.getElementById('chatArea').appendChild(ld);try{var r=await fetch('/home/talk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:m})});var el=document.getElementById('ld');if(el)el.remove();var d=await r.json();if(d.ok)addMsg(d.reply,'aura');else addMsg('Trouble connecting.','aura')}catch(e){var el2=document.getElementById('ld');if(el2)el2.remove();addMsg('Connection error.','aura')}}
+var _rec=null,_recOn=false;
+function toggleMic(){var SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){addMsg("Your browser doesn't support voice - try typing.","aura");return}if(_recOn){_rec&&_rec.stop();return}_rec=new SR();_rec.lang='en-US';_rec.interimResults=true;_rec.continuous=false;_recOn=true;_rec.onresult=function(e){var txt='';for(var i=0;i<e.results.length;i++)txt+=e.results[i][0].transcript;document.getElementById('chatInput').value=txt};_rec.onerror=function(){};_rec.onend=function(){_recOn=false;if(document.getElementById('chatInput').value.trim())sendMsg()};_rec.start()}
 if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('/sw.js').then(function(reg){reg.update();}).catch(function(){});var refreshing=false;navigator.serviceWorker.addEventListener('controllerchange',function(){if(refreshing)return;refreshing=true;if(hadController)window.location.reload();});}
 </script>
 </body></html>`;

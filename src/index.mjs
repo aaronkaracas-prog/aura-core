@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.172-2026-06-25";
+const BUILD = "aura-core-v4.9.173-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -201,8 +201,8 @@ async function sendEmail(env, to, subject, body, opts) {
       const idKey = "email:" + String(to).toLowerCase().trim();
       let opted = await env.AURA_KV.get("pta:optout:" + idKey).catch(() => null);
       if (!opted) {
-        // resolve to a PTA by identity, then check its opt-out
-        try { const ent = await env.AURA_MEMORY.prepare("SELECT id FROM pta_entities WHERE metadata LIKE ?").bind('%"identity":"' + idKey + '"%').first(); if (ent && ent.id) opted = await env.AURA_KV.get("pta:optout:" + ent.id).catch(() => null); } catch {}
+        // resolve to a PTA by identity (identity lives in the identity_key column), then check its opt-out
+        try { const ent = await env.AURA_MEMORY.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(idKey).first(); if (ent && ent.id) opted = await env.AURA_KV.get("pta:optout:" + ent.id).catch(() => null); } catch {}
       }
       if (opted) {
         result.error = "BLOCKED: recipient has permanently opted out — honored, not contacted";
@@ -9639,7 +9639,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.172</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.173</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9914,7 +9914,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.172</div>
+  <div id="ver">v4.9.173</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

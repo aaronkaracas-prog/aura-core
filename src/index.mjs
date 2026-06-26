@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.152-2026-06-25";
+const BUILD = "aura-core-v4.9.153-2026-06-25";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -6140,6 +6140,31 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       await env.AURA_KV.put("worldmap:last", JSON.stringify({ ts: new Date().toISOString(), summary }), { expirationTtl: 3600 }).catch(() => {});
       return { cmd: "WORLD_MAP", payload: { ok: true, summary, worlds } };
     }
+    case "ECONOMICS": {
+      // ECONOMICS ENGINE (foundation) — cost-to-serve visibility. Reads the AI cost ledger that
+      // every brain call now writes. This is the raw material the financial-intelligence engine
+      // reasons over: what serving costs, by model, per call. Revenue (Stripe) joins this next.
+      // Usage: ECONOMICS                (today's cost to serve)
+      //        ECONOMICS <YYYY-MM-DD>   (a specific day)
+      //        ECONOMICS DAYS <n>       (sum of the last n days)
+      const ecRaw = (rest || "").trim();
+      const ecToday = new Date().toISOString().slice(0, 10);
+      const readDay = async (d) => { try { const ex = await env.AURA_KV.get("economics:cost:" + d); return ex ? JSON.parse(ex) : null; } catch { return null; } };
+      if (/^DAYS\s+\d+/i.test(ecRaw)) {
+        const n = Math.min(parseInt(ecRaw.replace(/^DAYS\s+/i, ""), 10) || 1, 60);
+        let sum = { calls: 0, input_tokens: 0, output_tokens: 0, usd: 0, by_model: {} }, days = [];
+        for (let i = 0; i < n; i++) {
+          const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+          const a = await readDay(d); if (a) { sum.calls += a.calls; sum.input_tokens += a.input_tokens; sum.output_tokens += a.output_tokens; sum.usd += a.usd; for (const k in (a.by_model || {})) sum.by_model[k] = Number(((sum.by_model[k] || 0) + a.by_model[k]).toFixed(6)); days.push(d); }
+        }
+        return { cmd: "ECONOMICS", payload: { ok: true, range_days: n, days_with_data: days.length, calls: sum.calls, input_tokens: sum.input_tokens, output_tokens: sum.output_tokens, usd: Number(sum.usd.toFixed(4)), by_model: sum.by_model, cost_per_call: sum.calls ? Number((sum.usd / sum.calls).toFixed(5)) : 0 } };
+      }
+      const day = /^\d{4}-\d{2}-\d{2}$/.test(ecRaw) ? ecRaw : ecToday;
+      const agg = await readDay(day);
+      if (!agg) return { cmd: "ECONOMICS", payload: { ok: true, date: day, calls: 0, usd: 0, note: "No AI cost recorded for this day yet. Every brain call from now on is metered here." } };
+      return { cmd: "ECONOMICS", payload: { ok: true, date: agg.date, calls: agg.calls, input_tokens: agg.input_tokens, output_tokens: agg.output_tokens, usd: Number(agg.usd.toFixed(4)), by_model: agg.by_model, cost_per_call: agg.calls ? Number((agg.usd / agg.calls).toFixed(5)) : 0 } };
+    }
+
     case "RESOURCE_STATUS": {
       if (!isOp) return { cmd: "RESOURCE_STATUS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const out = { ts: new Date().toISOString(), providers: {} };
@@ -7271,6 +7296,32 @@ async function executeApprovedPatch(env) {
 
 // Streaming Anthropic caller — long generations stream continuously so edge timeouts (524)
 // cannot kill heavy thinking. Never throws on HTTP/parse problems; returns a structured result.
+// ===== ECONOMICS ENGINE (foundation): cost-to-serve instrumentation =====
+// Every AI call is metered here. _AURA_ENV is set once at the request entry so the
+// API wrapper (which has no env) can write the cost ledger. Prices are USD per 1M tokens;
+// a code default, overridable later via config:economics:prices. Sibling of the loop's timing.
+let _AURA_ENV = null;
+const _AI_PRICES = { sonnet: { in: 3, out: 15 }, haiku: { in: 1, out: 5 }, opus: { in: 15, out: 75 }, default: { in: 3, out: 15 } };
+async function recordCost(model, usage) {
+  try {
+    if (!_AURA_ENV || !usage) return;
+    const m = String(model || "");
+    const tier = m.includes("haiku") ? "haiku" : m.includes("opus") ? "opus" : m.includes("sonnet") ? "sonnet" : "default";
+    const p = _AI_PRICES[tier] || _AI_PRICES.default;
+    const inTok = usage.input_tokens || 0, outTok = usage.output_tokens || 0;
+    if (!inTok && !outTok) return;
+    const usd = (inTok / 1e6) * p.in + (outTok / 1e6) * p.out;
+    const day = new Date().toISOString().slice(0, 10);
+    const key = "economics:cost:" + day;
+    let agg = { date: day, calls: 0, input_tokens: 0, output_tokens: 0, usd: 0, by_model: {} };
+    try { const ex = await _AURA_ENV.AURA_KV.get(key); if (ex) agg = JSON.parse(ex); } catch {}
+    agg.calls += 1; agg.input_tokens += inTok; agg.output_tokens += outTok; agg.usd += usd;
+    agg.by_model[tier] = Number(((agg.by_model[tier] || 0) + usd).toFixed(6));
+    agg.usd = Number(agg.usd.toFixed(6));
+    await _AURA_ENV.AURA_KV.put(key, JSON.stringify(agg));
+  } catch {}
+}
+
 async function callAnthropicOnce(apiKey, payload) {
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -7288,7 +7339,7 @@ async function callAnthropicOnce(apiKey, payload) {
       try {
         const d = JSON.parse(t);
         if (d?.type === "error") return { ok: false, status: res.status, error: JSON.stringify(d.error).slice(0, 200), retryable: true };
-        return { ok: true, status: res.status, content: d.content || [], stop_reason: d.stop_reason || null };
+        return { ok: true, status: res.status, content: d.content || [], stop_reason: d.stop_reason || null, usage: d.usage ? { input_tokens: d.usage.input_tokens || 0, output_tokens: d.usage.output_tokens || 0 } : null };
       } catch { return { ok: false, status: res.status, error: "non-JSON response: " + t.slice(0, 120), retryable: true }; }
     }
     const reader = res.body.getReader();
@@ -7298,6 +7349,7 @@ async function callAnthropicOnce(apiKey, payload) {
     let stopReason = null;
     let current = null;
     let streamErr = null;
+    let usageIn = 0, usageOut = 0;
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -7311,6 +7363,9 @@ async function callAnthropicOnce(apiKey, payload) {
         if (!dataStr) continue;
         let ev; try { ev = JSON.parse(dataStr); } catch { continue; }
         if (ev.type === "error") { streamErr = JSON.stringify(ev.error || ev).slice(0, 200); }
+        else if (ev.type === "message_start") {
+          if (ev.message && ev.message.usage) { usageIn = ev.message.usage.input_tokens || 0; usageOut = ev.message.usage.output_tokens || usageOut; }
+        }
         else if (ev.type === "content_block_start") {
           current = ev.content_block && ev.content_block.type === "tool_use"
             ? { type: "tool_use", id: ev.content_block.id, name: ev.content_block.name, _json: "" }
@@ -7324,11 +7379,12 @@ async function callAnthropicOnce(apiKey, payload) {
           current = null;
         } else if (ev.type === "message_delta") {
           if (ev.delta && ev.delta.stop_reason) stopReason = ev.delta.stop_reason;
+          if (ev.usage && typeof ev.usage.output_tokens === "number") usageOut = ev.usage.output_tokens;
         }
       }
     }
     if (streamErr) return { ok: false, status: 200, error: "stream error: " + streamErr, retryable: true };
-    return { ok: true, status: 200, content, stop_reason: stopReason };
+    return { ok: true, status: 200, content, stop_reason: stopReason, usage: { input_tokens: usageIn, output_tokens: usageOut } };
   } catch (e) {
     return { ok: false, status: 0, error: "fetch failed: " + (e && e.message ? e.message : String(e)), retryable: true };
   }
@@ -7341,6 +7397,7 @@ async function callAnthropic(apiKey, payload) {
     await new Promise(s => setTimeout(s, 2000));
     r = await callAnthropicOnce(apiKey, payload);
   }
+  if (r.ok && r.usage) { await recordCost(payload && payload.model, r.usage); }
   return r;
 }
 
@@ -8802,6 +8859,7 @@ async function drainSchedule(env) {
 
 export default {
   async scheduled(event, env, ctx) {
+    _AURA_ENV = env;
     ctx.waitUntil(runHealthChecks(env));
     ctx.waitUntil(watchA2P(env));
     ctx.waitUntil(watchResources(env));
@@ -8809,6 +8867,7 @@ export default {
   },
 
   async fetch(request, env) {
+    _AURA_ENV = env;
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "Content-Type, Authorization, X-Session-ID", "access-control-max-age": "86400" } });
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "Content-Type, Authorization, X-Session-ID", "access-control-max-age": "86400" } });
@@ -9052,7 +9111,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.152</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.153</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -9327,7 +9386,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.152</div>
+  <div id="ver">v4.9.153</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.225-2026-06-26";
+const BUILD = "aura-core-v4.9.226-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -851,7 +851,7 @@ async function processCommand(line, env, isOp) {
       // Live AIS vessel data (Movement layer). PRIMARY PATH: read a snapshot written by an always-on
       // AIS collector (Durable Object or external process holding the aisstream WebSocket open and
       // writing ais:snapshot:<region> to KV every minute). A request-scoped Worker CANNOT itself hold
-      // the aisstream firehose open (confirmed v4.9.225: even a whole-planet 18s subscription received
+      // the aisstream firehose open (confirmed v4.9.226: even a whole-planet 18s subscription received
       // zero messages — Workers don't pump a long-lived outbound WS the way a persistent backend does).
       // So: if a collector snapshot exists, serve it (instant); otherwise return honest status, not a
       // misleading empty success. Movement signal is still available via WEB_SEARCH / NEWS_QUERY.
@@ -9789,7 +9789,7 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" } });
     }
 
-    if (request.method === "GET" && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/now" && url.pathname !== "/dashboard" && !url.pathname.startsWith("/brain") && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/")) {
+    if (request.method === "GET" && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/now" && url.pathname !== "/dashboard" && !url.pathname.startsWith("/brain") && !url.pathname.startsWith("/world") && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/")) {
       const page = await servePage(url.hostname, url.pathname === "/" ? "/" : url.pathname, env);
       if (page) return page;
     }
@@ -10221,7 +10221,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.225</div>
+  <div id="ver">v4.9.226</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 
@@ -10661,6 +10661,21 @@ function openAlbum(idx){
     // COMMAND CENTER data bundle — token-gated, returns all proven feeds in one call.
     // BRAIN data — Aura's organized map (notes:INDEX + the grouped notes behind it), for the Brain
     // dashboard panel. Reads the live notes so it is never stale. Groups by category for rendering.
+    // WORLD data — Aaron's whole world in one pull for the Home Screen: money (Mercury/Stripe/Twilio/
+    // OpenAI/Anthropic), infrastructure (Cloudflare/zones/token), and domains-as-assets (launched vs not).
+    // Reuses the SAME proven commands the Command Center uses — no new feeds, just bundled for Home.
+    if (url.pathname === "/world/data") {
+      const wCors = { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, content-type", "access-control-allow-methods": "GET, OPTIONS" };
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: wCors });
+      const ok = await verifyOperator(request, env);
+      if (!ok) return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), { status: 401, headers: wCors });
+      const bundle = { ts: new Date().toISOString() };
+      try { const r = await processCommand("RESOURCE_STATUS", env, true); bundle.money = r.payload; } catch (e) { bundle.money = { error: String(e.message) }; }
+      try { const r = await processCommand("CLOUDFLARE_STATUS", env, true); bundle.infra = r.payload; } catch (e) { bundle.infra = { error: String(e.message) }; }
+      try { const r = await processCommand("WORLD_MAP", env, true); bundle.domains = r.payload; } catch (e) { bundle.domains = { error: String(e.message) }; }
+      return new Response(JSON.stringify({ ok: true, ...bundle }), { headers: wCors });
+    }
+
     if (url.pathname === "/brain/data") {
       const bCors = { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, content-type", "access-control-allow-methods": "GET, OPTIONS" };
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: bCors });

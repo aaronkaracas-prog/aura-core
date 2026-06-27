@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.226-2026-06-26";
+const BUILD = "aura-core-v4.9.227-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -851,7 +851,7 @@ async function processCommand(line, env, isOp) {
       // Live AIS vessel data (Movement layer). PRIMARY PATH: read a snapshot written by an always-on
       // AIS collector (Durable Object or external process holding the aisstream WebSocket open and
       // writing ais:snapshot:<region> to KV every minute). A request-scoped Worker CANNOT itself hold
-      // the aisstream firehose open (confirmed v4.9.226: even a whole-planet 18s subscription received
+      // the aisstream firehose open (confirmed v4.9.227: even a whole-planet 18s subscription received
       // zero messages — Workers don't pump a long-lived outbound WS the way a persistent backend does).
       // So: if a collector snapshot exists, serve it (instant); otherwise return honest status, not a
       // misleading empty success. Movement signal is still available via WEB_SEARCH / NEWS_QUERY.
@@ -6843,6 +6843,65 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       await env.AURA_KV.put("resource:last_status", JSON.stringify(out)).catch(() => {});
       return { cmd: "RESOURCE_STATUS", payload: { ok: true, ...out } };
     }
+    case "SERVICE_STATUS": {
+      // COMPLETE REALITY SNAPSHOT of every external service in Aaron's world. Health-checks each key
+      // live (active/down), and merges the funding registry (notes:registry:services) so each service
+      // shows its cost model + whether a card is on file. The funding state is what protects a launch:
+      // a free-trial key with no card will DIE the moment volume hits. This makes that visible.
+      if (!isOp) return { cmd: "SERVICE_STATUS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const services = {};
+      const reg = await KV.get(env, "notes:registry:services").catch(() => null);
+      let regMap = {};
+      if (reg) { try { regMap = JSON.parse(reg); } catch {} }
+
+      // helper: a key exists check
+      const has = async (k) => { try { const v = await KV.get(env, k); return !!v; } catch { return false; } };
+      // helper: live ping returns true/false/null(unknown)
+      const ping = async (fn) => { try { return await fn(); } catch { return false; } };
+
+      // Define every service: key, label, what it powers, and a live check (null check = key-presence only)
+      const defs = [
+        { id: "anthropic", label: "Anthropic (Claude)", powers: "Aura's reasoning brain", key: "secret:anthropic",
+          check: async () => { const k = await KV.get(env,"secret:anthropic"); if(!k) return false; const r = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":k,"anthropic-version":"2023-06-01","content-type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:1,messages:[{role:"user",content:"hi"}]})}); return r.ok; } },
+        { id: "openai", label: "OpenAI", powers: "ShowIt image generation", key: "secret:openai",
+          check: async () => { let k = await KV.get(env,"secret:openai"); if(k&&k.startsWith("{")){try{k=JSON.parse(k).api_key;}catch{}} if(!k) return false; const r = await fetch("https://api.openai.com/v1/models",{headers:{"Authorization":"Bearer "+k}}); return r.ok; } },
+        { id: "grok", label: "Grok (xAI)", powers: "alternate reasoning", key: "secret:grok_api_key", check: null },
+        { id: "tavily", label: "Tavily", powers: "web search (situations)", key: "secret:tavily", check: null },
+        { id: "brave_search", label: "Brave Search", powers: "web search fallback", key: "secret:brave_search", check: null },
+        { id: "currents", label: "Currents", powers: "live news (NEWS_QUERY)", key: "secret:currents", check: null },
+        { id: "oilprice", label: "OilPriceAPI", powers: "oil/Brent (OIL_PRICE)", key: "secret:oilprice", check: null },
+        { id: "openweather", label: "OpenWeather", powers: "marine weather (MARINE_WX)", key: "secret:openweather", check: null },
+        { id: "aisstream", label: "AISStream", powers: "live ship positions (AIS)", key: "secret:aisstream", check: null },
+        { id: "google_maps", label: "Google Maps", powers: "places (FETCH_PLACES)", key: "secret:google_maps", check: null },
+        { id: "google_oauth", label: "Google OAuth", powers: "sign-in / identity", key: "secret:google_client_id", check: null },
+        { id: "mercury", label: "Mercury", powers: "operating bank", key: "secret:mercury_api_key",
+          check: async () => { const m = await getMercuryBalance(env); return !!(m && m.ok); } },
+        { id: "stripe", label: "Stripe", powers: "incoming revenue", key: "secret:stripe",
+          check: async () => { const s = await getStripeBalance(env); return !!(s && s.ok); } },
+        { id: "plaid", label: "Plaid", powers: "bank connections", key: "secret:plaid_client_id", check: null },
+        { id: "twilio", label: "Twilio", powers: "SMS + voice + lines", key: "secret:twilio_sid", check: null },
+        { id: "cloudflare", label: "Cloudflare", powers: "the whole stack (Workers/KV/D1)", key: "secret:cf_api_token", check: null },
+        { id: "github", label: "GitHub", powers: "code + auto-deploy", key: "secret:github_token", check: null }
+      ];
+
+      for (const d of defs) {
+        const present = await has(d.key);
+        let live = null;
+        if (present && d.check) live = await ping(d.check);
+        const r = regMap[d.id] || {};
+        services[d.id] = {
+          label: d.label,
+          powers: d.powers,
+          key_present: present,
+          live,                                   // true=verified up, false=down/invalid, null=not live-checked
+          cost_model: r.cost_model || "unknown",  // free | trial | payg | funded | unknown
+          funded: r.funded === true,              // is a card on file / will it scale
+          funding_note: r.funding_note || "",
+          free_until: r.free_until || ""
+        };
+      }
+      return { cmd: "SERVICE_STATUS", payload: { ok: true, ts: new Date().toISOString(), services } };
+    }
     case "GENERATE_IMAGE": {
       if (!isOp) return { cmd: "GENERATE_IMAGE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       // Generate an image via OpenAI (gpt-image-1), the engine ShowIt is built around. Returns a viewable URL/data.
@@ -8569,7 +8628,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
           const reads = [...text.matchAll(/\[\[(?:READ|GETKV)\s+([^\]\s]+)\]\]/g)].map(m => m[1]).slice(0, 3);
           const runs = [
             ...[...text.matchAll(/\[\[RUN\s+([\s\S]*?)\]\]/g)].map(m => m[1].trim()),
-            ...[...text.matchAll(/\[\[((?:SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE)\s[\s\S]*?)\]\]/g)].map(m => m[1].trim())
+            ...[...text.matchAll(/\[\[((?:SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS)\s[\s\S]*?)\]\]/g)].map(m => m[1].trim())
           ].slice(0, 3);
           const fetches = [...text.matchAll(/\[\[FETCH\s+(https:\/\/[^\]\s]+)\]\]/g)].map(m => m[1]).slice(0, 2);
           const searches = [...text.matchAll(/\[\[SEARCH\s+([\s\S]*?)\]\]/g)].map(m => m[1].trim()).slice(0, 2);
@@ -8604,7 +8663,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
             convo.push({ role: "user", content: `RESULTS:${results}\nNow write your final answer for the user based on this real data.` });
             continue;
           }
-          raw = text.replace(/\[\[(READ|RUN|FETCH|SEARCH|GETKV|SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE)\b[\s\S]*?\]\]/g, "").trim() || text;
+          raw = text.replace(/\[\[(READ|RUN|FETCH|SEARCH|GETKV|SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS)\b[\s\S]*?\]\]/g, "").trim() || text;
           modelUsed = "openai";
         }
       }
@@ -8686,7 +8745,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
       const fbReads = [...raw.matchAll(/\[\[(?:READ|GETKV)\s+([^\]\s]+)\]\]/g)].map(m => m[1]).slice(0, 3);
       const fbRuns = [
         ...[...raw.matchAll(/\[\[RUN\s+([\s\S]*?)\]\]/g)].map(m => m[1].trim()),
-        ...[...raw.matchAll(/\[\[((?:SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE)\s[\s\S]*?)\]\]/g)].map(m => m[1].trim())
+        ...[...raw.matchAll(/\[\[((?:SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS)\s[\s\S]*?)\]\]/g)].map(m => m[1].trim())
       ].slice(0, 3);
       const PROTECTED2 = ["auras.guide", "console.auras.guide", "arksystems.world"];
       for (const cmdLine of fbRuns) {
@@ -8705,7 +8764,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
       }
     } catch {}
     if (fbResults) {
-      raw = raw.replace(/\[\[(READ|RUN|FETCH|GETKV|SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE)\b[\s\S]*?\]\]/g, "").trim();
+      raw = raw.replace(/\[\[(READ|RUN|FETCH|GETKV|SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS)\b[\s\S]*?\]\]/g, "").trim();
       raw = raw + "\n\nExecution results:" + fbResults;
     }
     raw = raw + "\n\n[fallback brain: " + modelUsed + " — actions executed by core]";
@@ -8722,7 +8781,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
   }
   try {
     const cmdLines = raw.split("\n");
-    const cmdPattern = /^(SETKV|GETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|RELAUNCH_ALL|EVENT_STORM|EVENT_STORM_REAL|READ_STORM|ENDURANCE|INTEGRITY_SCAN|DO_TEST|DO_STORM|DO_VERIFY|COLD_SURGE|SURGE_PROBE|FANOUT_STORM|HOT_ENTITY|HOT_SHARDED|GENERATE_IMAGE|SHOW_IT|RESOURCE_STATUS|CLOUDFLARE_STATUS|WORLD_MAP|LOADGEN|LOADTEST_APPEND|PLANT_INCONSISTENCY|LOOP_PROBE|STORM_CLEANUP|DEPLOY_CONSOLE|MERCURY_BALANCE|STRIPE_BALANCE|DOMAIN_STATUS|FETCH_PLACES|PING)(\s+.*)?$/;
+    const cmdPattern = /^(SETKV|GETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|RELAUNCH_ALL|EVENT_STORM|EVENT_STORM_REAL|READ_STORM|ENDURANCE|INTEGRITY_SCAN|DO_TEST|DO_STORM|DO_VERIFY|COLD_SURGE|SURGE_PROBE|FANOUT_STORM|HOT_ENTITY|HOT_SHARDED|GENERATE_IMAGE|SHOW_IT|RESOURCE_STATUS|CLOUDFLARE_STATUS|WORLD_MAP|LOADGEN|LOADTEST_APPEND|PLANT_INCONSISTENCY|LOOP_PROBE|STORM_CLEANUP|DEPLOY_CONSOLE|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|DOMAIN_STATUS|FETCH_PLACES|PING)(\s+.*)?$/;
     const results = [];
     for (const ln of cmdLines) {
       const trimmed = ln.trim();
@@ -8741,7 +8800,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
         return null;
       }).filter(Boolean).join("\n");
       if (summary) {
-        raw = raw.replace(/^(SETKV|GETKV|DELKV|DOMAIN_LAUNCH|DEPLOY_CONSOLE|MERCURY_BALANCE|STRIPE_BALANCE|DOMAIN_STATUS).*$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
+        raw = raw.replace(/^(SETKV|GETKV|DELKV|DOMAIN_LAUNCH|DEPLOY_CONSOLE|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|DOMAIN_STATUS).*$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
         raw = raw + "\n\n" + summary;
       }
     }
@@ -10221,7 +10280,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.226</div>
+  <div id="ver">v4.9.227</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 
@@ -10673,6 +10732,7 @@ function openAlbum(idx){
       try { const r = await processCommand("RESOURCE_STATUS", env, true); bundle.money = r.payload; } catch (e) { bundle.money = { error: String(e.message) }; }
       try { const r = await processCommand("CLOUDFLARE_STATUS", env, true); bundle.infra = r.payload; } catch (e) { bundle.infra = { error: String(e.message) }; }
       try { const r = await processCommand("WORLD_MAP", env, true); bundle.domains = r.payload; } catch (e) { bundle.domains = { error: String(e.message) }; }
+      try { const r = await processCommand("SERVICE_STATUS", env, true); bundle.services = r.payload; } catch (e) { bundle.services = { error: String(e.message) }; }
       return new Response(JSON.stringify({ ok: true, ...bundle }), { headers: wCors });
     }
 
@@ -11131,7 +11191,7 @@ function openAlbum(idx){
       // AND character breakdown, because each tiny fragment lost the whole picture). A real COMMAND
       // BATCH has EVERY non-empty line starting with a known command verb. If ANY line is prose, the
       // whole body is a single human message.
-      const KNOWN_CMD_VERBS = /^(SETKV|GETKV|LISTKV|DELKV|PATCHKV|PING|HOST|DOMAIN_LAUNCH|DOMAIN_STATUS|DOMAIN_DIAGNOSE|FETCH_PLACES|WORLD_MAP|PTA_[A-Z_]+|COMMS|WORKFLOW|EMAIL_SEND|MERCURY_BALANCE|STRIPE_BALANCE|TWILIO[A-Z_]*|A2P_[A-Z]+|SMS_[A-Z]+|CAPABILITY|INDUSTRY|BUSINESS_STATE|CF_API|AURA_[A-Z_]+|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|SHOW_IT|SHOWIT|GENERATE_PAGE|DEPLOY_[A-Z]+|ROUTE_[A-Z_]+|GETKV|WEB_SEARCH|NEWS_QUERY|OIL_PRICE|MARINE_WX|AIS_QUERY|LOOP_PROBE)\b/i;
+      const KNOWN_CMD_VERBS = /^(SETKV|GETKV|LISTKV|DELKV|PATCHKV|PING|HOST|DOMAIN_LAUNCH|DOMAIN_STATUS|DOMAIN_DIAGNOSE|FETCH_PLACES|WORLD_MAP|PTA_[A-Z_]+|COMMS|WORKFLOW|EMAIL_SEND|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|TWILIO[A-Z_]*|A2P_[A-Z]+|SMS_[A-Z]+|CAPABILITY|INDUSTRY|BUSINESS_STATE|CF_API|AURA_[A-Z_]+|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|SHOW_IT|SHOWIT|GENERATE_PAGE|DEPLOY_[A-Z]+|ROUTE_[A-Z_]+|GETKV|WEB_SEARCH|NEWS_QUERY|OIL_PRICE|MARINE_WX|AIS_QUERY|LOOP_PROBE)\b/i;
       const _rawLines = body.split("\n").map(l => l.trim()).filter(Boolean);
       const _looksLikeCommandBatch = _rawLines.length > 0 && _rawLines.every(l => KNOWN_CMD_VERBS.test(l));
       const _isProseDump = !_VALUE_BEARING.includes(_firstWord) && _rawLines.length > 1 && !_looksLikeCommandBatch;

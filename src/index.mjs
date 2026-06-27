@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.197-2026-06-26";
+const BUILD = "aura-core-v4.9.198-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8495,9 +8495,12 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
       model: modelUsed, ts: new Date().toISOString()
     })).catch(() => {});
   }
-  // Definitive per-turn outcome — always written, captures the WHOLE routing result
+  // Definitive per-turn outcome — always written, captures the WHOLE routing result.
+  // NON-BLOCKING: this logging must NOT delay the reply. Fire it without awaiting so the answer
+  // returns immediately; the writes complete in the background. (Awaiting these added ~800ms/turn,
+  // and the journal read+rewrite grew slower as the daily array grew — pure latency on every message.)
   if (!isVoice) {
-    await KV.put(env, "monitor:last_turn", JSON.stringify({
+    KV.put(env, "monitor:last_turn", JSON.stringify({
       ts: new Date().toISOString(),
       answered_by: modelUsed || "none",
       fable_stop_reason: lastStop,
@@ -8506,16 +8509,19 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
     })).catch(() => {});
     // LEARNING JOURNAL — every interaction is captured experience (Aaron's mandate 2026-06-12).
     // One daily key accumulates compact turn records; Aura consolidates them into notes:lessons:* on demand.
-    try {
-      const jDay = new Date().toISOString().slice(0, 10);
-      const jKey = `learning:journal:${jDay}`;
-      let jArr = [];
-      try { jArr = JSON.parse(await env.AURA_KV.get(jKey) || "[]"); } catch { jArr = []; }
-      if (!Array.isArray(jArr)) jArr = [];
-      jArr.push({ ts: new Date().toISOString(), q: String(message || "").slice(0, 300), a: (raw || "").slice(0, 300), by: modelUsed || "none", err: agentErr || null });
-      if (jArr.length > 300) jArr = jArr.slice(-300);
-      await env.AURA_KV.put(jKey, JSON.stringify(jArr)).catch(() => {});
-    } catch {}
+    // Also non-blocking — runs after the reply is already on its way back.
+    (async () => {
+      try {
+        const jDay = new Date().toISOString().slice(0, 10);
+        const jKey = `learning:journal:${jDay}`;
+        let jArr = [];
+        try { jArr = JSON.parse(await env.AURA_KV.get(jKey) || "[]"); } catch { jArr = []; }
+        if (!Array.isArray(jArr)) jArr = [];
+        jArr.push({ ts: new Date().toISOString(), q: String(message || "").slice(0, 300), a: (raw || "").slice(0, 300), by: modelUsed || "none", err: agentErr || null });
+        if (jArr.length > 300) jArr = jArr.slice(-300);
+        await env.AURA_KV.put(jKey, JSON.stringify(jArr)).catch(() => {});
+      } catch {}
+    })();
   }
 
   raw = raw || "Aura is temporarily unavailable. All AI providers failed to respond.";
@@ -9833,7 +9839,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.197</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.198</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -10108,7 +10114,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.197</div>
+  <div id="ver">v4.9.198</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.201-2026-06-26";
+const BUILD = "aura-core-v4.9.202-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8128,56 +8128,53 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
     const _bareDomainOnly = /^https?:\/\/\S+$|^[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.(?:world|guide|com|us|city|kids|network|systems|solutions|tools|business|org|net|io|co|app|dev|xyz)\/?$/i.test(_msgTrim);
     const _looksBareFragment = _bareDomainOnly;
     if (isOp && _looksBareFragment) {
-      const sNote = await env.AURA_KV.get("notes:self").catch(() => null);
-      const stNote = await env.AURA_KV.get("notes:STATE").catch(() => null);
-      // KNOW-IT-FIRST: load his actual domains/assets so she recognizes what's HIS before reasoning.
-      // A fragment that IS one of his known domains should be RECOGNIZED ("that's your X, here's its
-      // state"), not asked-about as if unknown. Only truly-unknown things get the open intent question.
-      let hisDomains = [];
-      try {
-        const dl = await env.AURA_KV.get("config:domains:launched").catch(() => null);
-        const da = await env.AURA_KV.get("config:domains:all").catch(() => null);
-        const parse = (x) => { try { const j = JSON.parse(x); return Array.isArray(j) ? j : (j.domains || j.list || []); } catch { return (x || "").split(/[\s,]+/).filter(Boolean); } };
-        hisDomains = [...new Set([...(dl ? parse(dl) : []), ...(da ? parse(da) : [])])];
-      } catch {}
-      const dmap = await env.AURA_KV.get("notes:domains:map").catch(() => null);
-      // is this fragment one of his known domains (or a page he serves)?
-      const _fragDomain = (_msgTrim.match(/\b([a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:world|guide|com|us|city|kids|network|systems|solutions|tools|business|org|net|io|co))\b/i) || [])[1];
+      // KNOW-IT-FIRST: load his domains/assets in PARALLEL (not sequential) to recognize what's his.
+      const [dl, da, dmap] = await Promise.all([
+        env.AURA_KV.get("config:domains:launched").catch(() => null),
+        env.AURA_KV.get("config:domains:all").catch(() => null),
+        env.AURA_KV.get("notes:domains:map").catch(() => null)
+      ]);
+      const parse = (x) => { try { const j = JSON.parse(x); return Array.isArray(j) ? j : (j.domains || j.list || []); } catch { return (x || "").split(/[\s,]+/).filter(Boolean); } };
+      const hisDomains = [...new Set([...(dl ? parse(dl) : []), ...(da ? parse(da) : [])])];
+      const _fragDomain = (_msgTrim.match(/\b([a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:world|guide|com|us|city|kids|network|systems|solutions|tools|business|org|net|io|co))\b/i) || [])[1] || _msgTrim.replace(/^https?:\/\//, "").replace(/\/$/, "");
       let _knownAsset = null;
       if (_fragDomain) {
         const hit = hisDomains.find(d => String(d).toLowerCase().includes(_fragDomain.toLowerCase()) || _fragDomain.toLowerCase().includes(String(d).toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "")));
         if (hit) _knownAsset = hit;
-        // also: does she serve a page for it? (page:<domain>...) — quick existence check
-        if (!_knownAsset) { try { const pg = await env.AURA_KV.get("page:" + _fragDomain + "/").catch(() => null); if (pg) _knownAsset = _fragDomain + " (she serves a live page for it)"; } catch {} }
+        if (!_knownAsset) { try { const pg = await env.AURA_KV.get("page:" + _fragDomain + "/").catch(() => null); if (pg) _knownAsset = _fragDomain; } catch {} }
       }
+
+      // KNOWN ASSET → INSTANT reply, NO model call. She already knows it's his and live from the lookup.
+      // Name its likely role from the TLD/name (guide=guide doorway, etc.) and ask the move. ~instant.
+      if (_knownAsset) {
+        const tld = (_fragDomain.split(".").pop() || "").toLowerCase();
+        const roleByTld = { world: "doorway", guide: "guide doorway", city: "city doorway", network: "network", systems: "systems doorway", solutions: "solutions doorway", tools: "tools doorway", business: "business doorway" };
+        const role = roleByTld[tld] || "doorway";
+        return `That's your ${_fragDomain} — your ${role}, live in your portfolio. What's the move?`;
+      }
+
+      // UNKNOWN fragment (e.g. amazon.com, or a brand-new domain) → worth ONE fast reasoning call to
+      // figure out what it likely is in his world and ask the right intent question.
+      const [sNote, stNote] = await Promise.all([
+        env.AURA_KV.get("notes:self").catch(() => null),
+        env.AURA_KV.get("notes:STATE").catch(() => null)
+      ]);
       const intentFirst = await reasonThroughLoop(env, {
         fast: true,
         model: (await env.AURA_KV.get("config:fast:model").catch(() => null)) || "claude-haiku-4-5-20251001",
-        maxTokens: 900,
-        entity: _msgTrim.slice(0, 3000),
-        lens: "INTENT-FIRST. Aaron (your founder/operator) just dropped a bare fragment at you — a domain, a name, a few words, with no sentence. DO NOT run a status check or offer a menu of commands — that is the help-desk reflex and it is WRONG. KNOW-IT-FIRST: you are given his KNOWN DOMAINS/ASSETS. If this fragment IS one of his known assets, you already KNOW what it is — lead by naming it plainly ('That's your [X] — your [vertical/doorway], it's live') and then ask only the MOVE ('what do you want to do with it?'). Do NOT ask 'is this a live asset or a new idea' about something you can see is already his and live — that makes you look like you don't know your own world. If the fragment is NOT in his known assets (e.g. amazon.com, or a brand-new domain), THEN reason what it likely is in his world and ask one specific INTENT question. Always respond as his BUILD PARTNER who holds the whole context, never a console listing options.",
-        facts: { fragment: _msgTrim, is_one_of_his_known_assets: _knownAsset || "NOT found in his known asset list", his_known_domains_sample: hisDomains.slice(0, 40), his_domain_map: dmap ? dmap.slice(0, 800) : null, who_i_am: sNote ? sNote.slice(0, 900) : null, where_things_stand: stNote ? stNote.slice(0, 700) : null },
+        maxTokens: 700,
+        entity: _msgTrim.slice(0, 1500),
+        lens: "INTENT-FIRST. Aaron (your operator) dropped a bare domain/fragment that is NOT one of his known assets (it's not in his portfolio). Figure out what it likely is in HIS world — is it a competitor/reference he's studying, a brand-new domain he wants to set up, or something outside his world entirely (e.g. amazon.com is Amazon's)? DO NOT run a status check or list commands. Respond as his build partner in ONE or two sentences: recognize what it is (or that it's not his), and ask the one specific INTENT question that moves it forward. Never a console menu.",
+        facts: { fragment: _msgTrim, note: "NOT in his known asset list", his_known_domains_count: hisDomains.length, who_i_am: sNote ? sNote.slice(0, 600) : null },
         extraKeys: [
-          { key: "what_this_likely_is", desc: "what the fragment is — if it's a known asset of his, NAME it confidently; if outside his world, say so" },
-          { key: "i_already_know_this", desc: "true if this is one of his known assets you recognize, false if genuinely unknown to you" },
-          { key: "likely_intent", desc: "what Aaron is probably trying to do with it" },
-          { key: "my_response", desc: "what you'd say back — if known: name it then ask the move; if unknown: ask one specific intent question. THIS is the reply." },
-          { key: "need_to_ask", desc: "true if you genuinely need to ask intent rather than proceed" }
+          { key: "my_response", desc: "one or two sentences — what it likely is (or that it's outside his world) + one specific intent question. THIS is the reply." }
         ]
       });
       if (intentFirst.ok && intentFirst.reasoning && intentFirst.reasoning.my_response) {
         return intentFirst.reasoning.my_response;
       }
-      // if reasoning failed, fall through to normal brain rather than blocking.
-      // DIAGNOSTIC: record WHY it fell through so we can see if the fast read is failing.
-      env.AURA_KV.put("monitor:intentfirst_fail", JSON.stringify({
-        ts: new Date().toISOString(), fragment: _msgTrim,
-        ok: intentFirst.ok, has_reasoning: !!intentFirst.reasoning,
-        has_my_response: !!(intentFirst.reasoning && intentFirst.reasoning.my_response),
-        error: intentFirst.error || null,
-        reasoning_keys: intentFirst.reasoning ? Object.keys(intentFirst.reasoning).join(",") : null,
-        raw_preview: intentFirst.reasoning ? JSON.stringify(intentFirst.reasoning).slice(0, 500) : null
-      })).catch(() => {});
+      // fast read failed → give a clean partner question rather than falling into the 69s loop
+      return `That's not one of your live assets — what do you want to do with ${_fragDomain || _msgTrim}? Set it up as a new doorway, or are you pointing me at it for something else?`;
     }
 
     // BIG-DUMP fast path. When Aaron pastes a large document/concept (long, multi-line, no command),
@@ -9859,7 +9856,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.201</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.202</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -10134,7 +10131,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.201</div>
+  <div id="ver">v4.9.202</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

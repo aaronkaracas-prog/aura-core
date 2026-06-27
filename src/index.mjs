@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.240-2026-06-27";
+const BUILD = "aura-core-v4.9.241-2026-06-27";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -11062,6 +11062,7 @@ function openAlbum(idx){
             cost: Math.round(cost(c.price) * 1e5) / 1e5, line, caller_name: c.caller_name || null,
             answered_by: c.answered_by || null, has_rec: !!rec, rec, tr };
         });
+        ocalls.sort((a, b) => { const ta = Date.parse(a.start) || 0, tb = Date.parse(b.start) || 0; return tb - ta; });
         const callsTo = {}, msgHit = {};
         for (const c of calls) { if (c.direction === "inbound") callsTo[c.to] = (callsTo[c.to] || 0) + 1; }
         for (const m of msgs) { if (m.to) msgHit[m.to] = (msgHit[m.to] || 0) + 1; if (m.from) msgHit[m.from] = (msgHit[m.from] || 0) + 1; }
@@ -11091,6 +11092,27 @@ function openAlbum(idx){
         const r = await processCommand("TWILIO_INTEL", env, true);
         const p = r && r.payload;
         if (!p || p.ok === false) return new Response(JSON.stringify({ ok: false, error: "twilio pull failed", raw: p || null }), { status: 502, headers: ciCors });
+        // Recordings/transcripts can belong to calls older than the recent-100 call window.
+        // Fetch each recording's parent call directly so the joins (Recorded/Transcribed views) populate.
+        try {
+          const rawCalls = (p.calls && p.calls.raw && p.calls.raw.calls) || [];
+          const have = new Set(rawCalls.map((c) => c.sid));
+          const recs = (p.recordings && p.recordings.raw && p.recordings.raw.recordings) || [];
+          const need = Array.from(new Set(recs.map((r) => r.call_sid).filter((s) => s && !have.has(s))));
+          if (need.length) {
+            const tsid = await env.AURA_KV.get("secret:twilio_account_sid").catch(() => null);
+            const ttok = await env.AURA_KV.get("secret:twilio_auth_token").catch(() => null);
+            if (tsid && ttok) {
+              const tAuth = "Basic " + btoa(tsid + ":" + ttok);
+              const fetched = await Promise.all(need.map((cs) =>
+                fetch("https://api.twilio.com/2010-04-01/Accounts/" + tsid + "/Calls/" + cs + ".json", { headers: { authorization: tAuth } })
+                  .then((rr) => rr.ok ? rr.json() : null).catch(() => null)
+              ));
+              for (const fc of fetched) { if (fc && fc.sid && !have.has(fc.sid)) { rawCalls.push(fc); have.add(fc.sid); } }
+              if (p.calls && p.calls.raw) p.calls.raw.calls = rawCalls;
+            }
+          }
+        } catch (e) { /* non-fatal: organize whatever calls we have */ }
         const organized = organizeTwilio(p);
         return new Response(JSON.stringify({ ok: true, ts: new Date().toISOString(), account: p.account_sid || null, ...organized }), { headers: ciCors });
       } catch (e) {

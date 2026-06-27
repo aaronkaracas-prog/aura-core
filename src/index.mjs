@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.235-2026-06-26";
+const BUILD = "aura-core-v4.9.236-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -6907,6 +6907,68 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           free_until: r.free_until || ""
         };
       }));
+
+      // REAL DOLLAR SPEND for Anthropic + OpenAI via their admin keys (cost is what you've spent;
+      // these are pay-as-you-go against your card, not prepaid balances). Show last-30-day spend.
+      const spendWindow = () => {
+        const end = new Date();
+        const start = new Date(end.getTime() - 30 * 24 * 3600 * 1000);
+        return { start: start.toISOString().slice(0, 10) + "T00:00:00Z", end: end.toISOString().slice(0, 10) + "T00:00:00Z" };
+      };
+      // Anthropic cost_report (USD)
+      try {
+        const aKey = await KV.get(env, "secret:anthropic_admin");
+        if (aKey && services.anthropic) {
+          const w = spendWindow();
+          const u = "https://api.anthropic.com/v1/organizations/cost_report?starting_at=" + encodeURIComponent(w.start) + "&ending_at=" + encodeURIComponent(w.end);
+          const res = await Promise.race([
+            fetch(u, { headers: { "x-api-key": aKey, "anthropic-version": "2023-06-01" } }),
+            new Promise((r) => setTimeout(() => r(null), 6000))
+          ]);
+          if (res && res.ok) {
+            const j = await res.json();
+            let total = 0;
+            for (const bucket of (j.data || [])) {
+              for (const item of (bucket.results || [])) {
+                const amt = item.amount ?? item.cost ?? (item.amount_usd) ?? 0;
+                total += Number(amt) || 0;
+              }
+            }
+            services.anthropic.spend_usd = Math.round(total * 100) / 100;
+            services.anthropic.spend_window = "30d";
+          } else if (res) {
+            services.anthropic.spend_error = "http " + res.status;
+          }
+        }
+      } catch (e) { if (services.anthropic) services.anthropic.spend_error = String(e.message); }
+      // OpenAI costs (USD)
+      try {
+        let oKey = await KV.get(env, "secret:openai_admin");
+        if (oKey && oKey.startsWith("{")) { try { oKey = JSON.parse(oKey).api_key; } catch {} }
+        if (oKey && services.openai) {
+          const end = Math.floor(Date.now() / 1000);
+          const start = end - 30 * 24 * 3600;
+          const u = "https://api.openai.com/v1/organization/costs?start_time=" + start + "&end_time=" + end + "&limit=180";
+          const res = await Promise.race([
+            fetch(u, { headers: { "Authorization": "Bearer " + oKey } }),
+            new Promise((r) => setTimeout(() => r(null), 6000))
+          ]);
+          if (res && res.ok) {
+            const j = await res.json();
+            let total = 0;
+            for (const bucket of (j.data || [])) {
+              for (const item of (bucket.results || [])) {
+                const amt = (item.amount && (item.amount.value ?? item.amount)) ?? 0;
+                total += Number(amt) || 0;
+              }
+            }
+            services.openai.spend_usd = Math.round(total * 100) / 100;
+            services.openai.spend_window = "30d";
+          } else if (res) {
+            services.openai.spend_error = "http " + res.status;
+          }
+        }
+      } catch (e) { if (services.openai) services.openai.spend_error = String(e.message); }
       return { cmd: "SERVICE_STATUS", payload: { ok: true, ts: new Date().toISOString(), services } };
     }
     case "GENERATE_IMAGE": {

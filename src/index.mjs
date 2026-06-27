@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.228-2026-06-26";
+const BUILD = "aura-core-v4.9.229-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -851,7 +851,7 @@ async function processCommand(line, env, isOp) {
       // Live AIS vessel data (Movement layer). PRIMARY PATH: read a snapshot written by an always-on
       // AIS collector (Durable Object or external process holding the aisstream WebSocket open and
       // writing ais:snapshot:<region> to KV every minute). A request-scoped Worker CANNOT itself hold
-      // the aisstream firehose open (confirmed v4.9.228: even a whole-planet 18s subscription received
+      // the aisstream firehose open (confirmed v4.9.229: even a whole-planet 18s subscription received
       // zero messages — Workers don't pump a long-lived outbound WS the way a persistent backend does).
       // So: if a collector snapshot exists, serve it (instant); otherwise return honest status, not a
       // misleading empty success. Movement signal is still available via WEB_SEARCH / NEWS_QUERY.
@@ -10287,7 +10287,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.228</div>
+  <div id="ver">v4.9.229</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 
@@ -10736,10 +10736,16 @@ function openAlbum(idx){
       const ok = await verifyOperator(request, env);
       if (!ok) return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), { status: 401, headers: wCors });
       const bundle = { ts: new Date().toISOString() };
-      try { const r = await processCommand("RESOURCE_STATUS", env, true); bundle.money = r.payload; } catch (e) { bundle.money = { error: String(e.message) }; }
-      try { const r = await processCommand("CLOUDFLARE_STATUS", env, true); bundle.infra = r.payload; } catch (e) { bundle.infra = { error: String(e.message) }; }
-      try { const r = await processCommand("WORLD_MAP", env, true); bundle.domains = r.payload; } catch (e) { bundle.domains = { error: String(e.message) }; }
-      try { const r = await processCommand("SERVICE_STATUS", env, true); bundle.services = r.payload; } catch (e) { bundle.services = { error: String(e.message) }; }
+      const [moneyR, infraR, domainsR, servicesR] = await Promise.all([
+        processCommand("RESOURCE_STATUS", env, true).catch((e) => ({ payload: { error: String(e.message) } })),
+        processCommand("CLOUDFLARE_STATUS", env, true).catch((e) => ({ payload: { error: String(e.message) } })),
+        processCommand("WORLD_MAP", env, true).catch((e) => ({ payload: { error: String(e.message) } })),
+        processCommand("SERVICE_STATUS", env, true).catch((e) => ({ payload: { error: String(e.message) } }))
+      ]);
+      bundle.money = moneyR.payload;
+      bundle.infra = infraR.payload;
+      bundle.domains = domainsR.payload;
+      bundle.services = servicesR.payload;
       return new Response(JSON.stringify({ ok: true, ...bundle }), { headers: wCors });
     }
 

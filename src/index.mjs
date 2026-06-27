@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.219-2026-06-26";
+const BUILD = "aura-core-v4.9.221-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -851,7 +851,7 @@ async function processCommand(line, env, isOp) {
       // Live AIS vessel data (Movement layer). PRIMARY PATH: read a snapshot written by an always-on
       // AIS collector (Durable Object or external process holding the aisstream WebSocket open and
       // writing ais:snapshot:<region> to KV every minute). A request-scoped Worker CANNOT itself hold
-      // the aisstream firehose open (confirmed v4.9.219: even a whole-planet 18s subscription received
+      // the aisstream firehose open (confirmed v4.9.221: even a whole-planet 18s subscription received
       // zero messages — Workers don't pump a long-lived outbound WS the way a persistent backend does).
       // So: if a collector snapshot exists, serve it (instant); otherwise return honest status, not a
       // misleading empty success. Movement signal is still available via WEB_SEARCH / NEWS_QUERY.
@@ -9788,7 +9788,7 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" } });
     }
 
-    if (request.method === "GET" && !_homescreenRoot && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/")) {
+    if (request.method === "GET" && !_homescreenRoot && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/now" && url.pathname !== "/dashboard" && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/")) {
       const page = await servePage(url.hostname, url.pathname === "/" ? "/" : url.pathname, env);
       if (page) return page;
     }
@@ -9960,61 +9960,12 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       if (!m) return jsonReply({ ok: false, greet: "Hey. Sign in to see your Home Screen." });
       let sess = null; try { const r = await env.AURA_KV.get(`session:${m[1]}`); if (r) sess = JSON.parse(r); } catch {}
       if (!sess) return jsonReply({ ok: false, greet: "Hey. Sign in to see your Home Screen." });
-      const spr = await processCommand(`PTA_SPINE GET ${sess.pta}`, env, true);
-      const spine = (spr && spr.payload && spr.payload.spine) ? spr.payload.spine : null;
-      const nm = (spine && spine.identity && spine.identity.name) || sess.name || "there";
-      const firstName = String(nm).split(" ")[0];
-      const meaningful = (spine && Array.isArray(spine.timeline) ? spine.timeline : []).filter(e => e && /person_said|aura_said|held|action|event/.test(e.kind || "")).slice(-4).reverse();
-      let lastThread = "";
-      for (const e of meaningful) { if (e.event && e.event.length > 12) { lastThread = e.event.replace(/^(Aaron said:|Aura replied:|Aura is holding:|Aura built and published a page:)\s*/i, "").replace(/^["']|["']$/g, "").slice(0, 120); break; } }
-      const greet = lastThread ? `Hey ${firstName}. Last time we were on: ${lastThread} — want to pick that back up?` : `Hey ${firstName}. What do you want to get into?`;
-      return jsonReply({ ok: true, greet, name: firstName });
-    }
-
-    // /talk - bulletproof standalone chat. Static HTML, ZERO data injection. Everything fetched
-    // after load. This proves the chat pipe works cleanly, isolated from any layout fragility.
-    if (url.pathname === "/talk") {
-      const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"><title>Aura</title><style>
-*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-serif;display:flex;flex-direction:column;min-height:100vh}
-.head{display:flex;align-items:center;gap:0.6rem;padding:1rem 1.1rem;border-bottom:1px solid #16161f}
-.orb{width:34px;height:34px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#c084fc,#7c3aed 60%,#3b0764);box-shadow:0 0 14px rgba(168,85,247,0.45)}
-.htitle{font-weight:700;color:#fff}
-.chat{flex:1;overflow-y:auto;padding:1.2rem 1rem;display:flex;flex-direction:column;gap:1rem}
-.msg{max-width:88%;line-height:1.5;font-size:0.95rem}
-.msg.user{align-self:flex-end;background:#1f1f2e;border-radius:14px;padding:0.7rem 1rem}
-.msg.aura{align-self:flex-start;color:#e8e4f0}
-.msg.aura .lbl{color:#a855f7;font-weight:700;font-size:0.72rem;display:block;margin-bottom:0.3rem}
-.composer{position:sticky;bottom:0;background:#0c0c12;border-top:1px solid #16161f;padding:0.8rem 1rem 1.1rem}
-.inbar{display:flex;align-items:center;gap:0.5rem;background:#15151f;border:1px solid #24243a;border-radius:26px;padding:0.4rem 0.5rem 0.4rem 0.9rem}
-.inbar input{flex:1;background:none;border:none;color:#e8e4f0;font-size:16px;outline:none;padding:0.5rem 0}
-.cbtn{width:40px;height:40px;border-radius:50%;border:none;background:none;color:#9a9ab0;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:1.2rem}
-.cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
-.cbtn.rec{background:#ec4899;color:#fff}
-</style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.219</div></div>
-<div class="grid" id="appgrid"></div>
-<div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
-<div class="composer"><div class="inbar">
-  <button class="cbtn" id="mic" title="Speak">&#127908;</button>
-  <input id="inp" placeholder="Talk to Aura..." autocomplete="off">
-  <button class="cbtn send" id="send" title="Send">&#8594;</button>
-</div></div>
-<script>
-var chat=document.getElementById('chat'),inp=document.getElementById('inp');
-var APPS=["Photos","Messages","Calendar","Maps","Wallet","Music","Files","Camera","Notes","Tasks","Contacts","Settings"];
-(function(){var g=document.getElementById('appgrid');if(!g)return;APPS.forEach(function(name){var a=document.createElement('div');a.className='app';var ic=document.createElement('div');ic.className='appicon';ic.textContent=name.charAt(0);var lb=document.createElement('div');lb.className='applabel';lb.textContent=name;a.appendChild(ic);a.appendChild(lb);a.onclick=function(){inp.value="Open "+name;send();};g.appendChild(a);});})();
-function add(t,who){var d=document.createElement('div');d.className='msg '+who;if(who==='aura'){var l=document.createElement('span');l.className='lbl';l.textContent='AURA';d.appendChild(l);d.appendChild(document.createTextNode(t));}else{d.textContent=t;}chat.appendChild(d);chat.scrollTop=chat.scrollHeight;}
-fetch('/home/greet',{credentials:'include'}).then(function(r){return r.json();}).then(function(d){document.getElementById('greet').textContent=d.greet||'Hey. What do you want to get into?';}).catch(function(){document.getElementById('greet').textContent='Hey. What do you want to get into?';});
-if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('/sw.js').then(function(reg){reg.update();}).catch(function(){});var refreshing=false;navigator.serviceWorker.addEventListener('controllerchange',function(){if(refreshing)return;refreshing=true;if(hadController)window.location.reload();});}
-function send(){var m=inp.value.trim();if(!m)return;inp.value='';add(m,'user');var ld=document.createElement('div');ld.className='msg aura';ld.id='ld';ld.textContent='…';chat.appendChild(ld);chat.scrollTop=chat.scrollHeight;fetch('/home/talk',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:m})}).then(function(r){return r.json();}).then(function(d){var e=document.getElementById('ld');if(e)e.remove();add(d.ok?d.reply:'Trouble connecting.','aura');}).catch(function(){var e=document.getElementById('ld');if(e)e.remove();add('Connection error.','aura');});}
-document.getElementById('send').onclick=send;
-inp.addEventListener('keydown',function(e){if(e.key==='Enter')send();});
-var rec=null,recOn=false;
-document.getElementById('mic').onclick=function(){var SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){add("Voice not supported here — type instead.","aura");return;}if(recOn){rec&&rec.stop();return;}rec=new SR();rec.lang='en-US';rec.interimResults=true;rec.continuous=false;recOn=true;this.classList.add('rec');var btn=this;rec.onresult=function(e){var t='';for(var i=0;i<e.results.length;i++)t+=e.results[i][0].transcript;inp.value=t;};rec.onend=function(){recOn=false;btn.classList.remove('rec');if(inp.value.trim())send();};rec.start();};
-</script>
-</body></html>`;
-      return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+      // SIGNED IN -> serve the NEW relevance dashboard (talk-to-Aura home screen, business #0) from KV.
+      // Old rooms/Photos/Maps UI retired. Google sign-in above is the front door; every customer walks
+      // this same path (sign in -> their dashboard).
+      const _hsPage = await env.AURA_KV.get("page:homescreen.world/").catch(() => null);
+      if (_hsPage) return new Response(_hsPage, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" } });
+      return new Response("Home Screen not deployed yet.", { status: 404, headers: { "Content-Type": "text/plain" } });
     }
 
     // /sw.js - service worker that UN-FREEZES the installed app. It skips waiting (activates the
@@ -10267,7 +10218,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.219</div>
+  <div id="ver">v4.9.221</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

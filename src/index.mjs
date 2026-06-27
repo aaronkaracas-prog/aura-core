@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.198-2026-06-26";
+const BUILD = "aura-core-v4.9.199-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -7976,6 +7976,22 @@ async function callAnthropic(apiKey, payload) {
 
 async function llmReply(message, env, sessionId, isOp = false, callerPta = null) {
   const _T0 = Date.now(); const _timings = []; const _mark = (label) => { _timings.push(label + "=" + (Date.now() - _T0) + "ms"); };
+
+  // INSTANT GREETING — fires at the very TOP, before any KV reads, context building, or model calls.
+  // A greeting/ack needs none of that, so a "hello" returns in ~milliseconds instead of doing ~900ms
+  // of setup it never uses. (Operator-only so strangers still go through the full identity-aware path.)
+  if (isOp) {
+    const _wantTiming = typeof message === "string" && message.includes("!!timing");
+    const _g = (message || "").replace(/!!timing/gi, "").trim().toLowerCase().replace(/[!.,…]+$/, "");
+    const _greet = new Set(["hi","hey","hello","yo","sup","hiya","hey there","hi there","gm","good morning","good afternoon","good evening","morning","howdy","hola","whats up","what's up","wassup"]);
+    const _ack = new Set(["thanks","thank you","thx","ty","ok","okay","kk","cool","nice","great","perfect","got it","gotcha","sounds good","awesome","yep","yup","yes","no","nope"]);
+    if (_greet.has(_g) || _ack.has(_g)) {
+      const reply = _greet.has(_g) ? "Hey Aaron. What's the move?" : "On it — what's next?";
+      _mark("instant_top");
+      return _wantTiming ? reply + "\n\n⏱ TIMINGS: " + _timings.join("  |  ") : reply;
+    }
+  }
+
   const apiKey = env.ANTHROPIC_API_KEY || await KV.get(env, "secret:anthropic");
   if (!apiKey) return "Anthropic API key not configured.";
 
@@ -9839,7 +9855,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.198</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.199</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -10114,7 +10130,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.198</div>
+  <div id="ver">v4.9.199</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

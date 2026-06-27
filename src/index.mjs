@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.200-2026-06-26";
+const BUILD = "aura-core-v4.9.201-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8168,7 +8168,16 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
       if (intentFirst.ok && intentFirst.reasoning && intentFirst.reasoning.my_response) {
         return intentFirst.reasoning.my_response;
       }
-      // if reasoning failed, fall through to normal brain rather than blocking
+      // if reasoning failed, fall through to normal brain rather than blocking.
+      // DIAGNOSTIC: record WHY it fell through so we can see if the fast read is failing.
+      env.AURA_KV.put("monitor:intentfirst_fail", JSON.stringify({
+        ts: new Date().toISOString(), fragment: _msgTrim,
+        ok: intentFirst.ok, has_reasoning: !!intentFirst.reasoning,
+        has_my_response: !!(intentFirst.reasoning && intentFirst.reasoning.my_response),
+        error: intentFirst.error || null,
+        reasoning_keys: intentFirst.reasoning ? Object.keys(intentFirst.reasoning).join(",") : null,
+        raw_preview: intentFirst.reasoning ? JSON.stringify(intentFirst.reasoning).slice(0, 500) : null
+      })).catch(() => {});
     }
 
     // BIG-DUMP fast path. When Aaron pastes a large document/concept (long, multi-line, no command),
@@ -9850,7 +9859,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.200</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.201</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -10125,7 +10134,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.200</div>
+  <div id="ver">v4.9.201</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

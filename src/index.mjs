@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.237-2026-06-26";
+const BUILD = "aura-core-v4.9.238-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -6973,6 +6973,80 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       } catch (e) { if (services.openai) services.openai.spend_error = String(e.message); }
       return { cmd: "SERVICE_STATUS", payload: { ok: true, ts: new Date().toISOString(), services } };
     }
+    case "RAW_COST": {
+      // Pull the COMPLETE, UNTOUCHED cost data from the AI providers. No summing, no math, no
+      // manipulation - exactly what Anthropic and OpenAI report, every line item, every field.
+      // For analysis: capture raw, surface exact. Uses the stored admin keys (no key-pasting).
+      if (!isOp) return { cmd: "RAW_COST", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const out = { ts: new Date().toISOString() };
+      const now = new Date();
+      const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 19) + "Z";
+      const nowIso = now.toISOString().slice(0, 19) + "Z";
+
+      // Anthropic cost_report - grouped by description + model for maximum granularity, raw.
+      try {
+        const aKey = await KV.get(env, "secret:anthropic_admin");
+        if (!aKey) { out.anthropic = { error: "secret:anthropic_admin not set" }; }
+        else {
+          const u = "https://api.anthropic.com/v1/organizations/cost_report"
+            + "?starting_at=" + encodeURIComponent(monthStart)
+            + "&ending_at=" + encodeURIComponent(nowIso)
+            + "&group_by[]=description&group_by[]=workspace_id&bucket_width=1d&limit=31";
+          const res = await fetch(u, { headers: { "x-api-key": aKey, "anthropic-version": "2023-06-01", "content-type": "application/json" } });
+          const text = await res.text();
+          let parsed = null; try { parsed = JSON.parse(text); } catch {}
+          out.anthropic = { http: res.status, raw: parsed || text };
+        }
+      } catch (e) { out.anthropic = { error: String(e.message) }; }
+
+      // Anthropic usage_report (token counts) - the per-token detail, raw.
+      try {
+        const aKey = await KV.get(env, "secret:anthropic_admin");
+        if (aKey) {
+          const u = "https://api.anthropic.com/v1/organizations/usage_report/messages"
+            + "?starting_at=" + encodeURIComponent(monthStart)
+            + "&ending_at=" + encodeURIComponent(nowIso)
+            + "&group_by[]=model&bucket_width=1d&limit=31";
+          const res = await fetch(u, { headers: { "x-api-key": aKey, "anthropic-version": "2023-06-01", "content-type": "application/json" } });
+          const text = await res.text();
+          let parsed = null; try { parsed = JSON.parse(text); } catch {}
+          out.anthropic_usage = { http: res.status, raw: parsed || text };
+        }
+      } catch (e) { out.anthropic_usage = { error: String(e.message) }; }
+
+      // OpenAI costs - raw.
+      try {
+        let oKey = await KV.get(env, "secret:openai_admin");
+        if (oKey && oKey.startsWith("{")) { try { oKey = JSON.parse(oKey).api_key; } catch {} }
+        if (!oKey) { out.openai = { error: "secret:openai_admin not set" }; }
+        else {
+          const start = Math.floor(new Date(monthStart).getTime() / 1000);
+          const end = Math.floor(now.getTime() / 1000);
+          const u = "https://api.openai.com/v1/organization/costs?start_time=" + start + "&end_time=" + end + "&bucket_width=1d&limit=31";
+          const res = await fetch(u, { headers: { "Authorization": "Bearer " + oKey } });
+          const text = await res.text();
+          let parsed = null; try { parsed = JSON.parse(text); } catch {}
+          out.openai = { http: res.status, raw: parsed || text };
+        }
+      } catch (e) { out.openai = { error: String(e.message) }; }
+
+      // OpenAI usage (tokens) - raw.
+      try {
+        let oKey = await KV.get(env, "secret:openai_admin");
+        if (oKey && oKey.startsWith("{")) { try { oKey = JSON.parse(oKey).api_key; } catch {} }
+        if (oKey) {
+          const start = Math.floor(new Date(monthStart).getTime() / 1000);
+          const end = Math.floor(now.getTime() / 1000);
+          const u = "https://api.openai.com/v1/organization/usage/completions?start_time=" + start + "&end_time=" + end + "&bucket_width=1d&limit=31";
+          const res = await fetch(u, { headers: { "Authorization": "Bearer " + oKey } });
+          const text = await res.text();
+          let parsed = null; try { parsed = JSON.parse(text); } catch {}
+          out.openai_usage = { http: res.status, raw: parsed || text };
+        }
+      } catch (e) { out.openai_usage = { error: String(e.message) }; }
+
+      return { cmd: "RAW_COST", payload: { ok: true, ...out } };
+    }
     case "GENERATE_IMAGE": {
       if (!isOp) return { cmd: "GENERATE_IMAGE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       // Generate an image via OpenAI (gpt-image-1), the engine ShowIt is built around. Returns a viewable URL/data.
@@ -8699,7 +8773,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
           const reads = [...text.matchAll(/\[\[(?:READ|GETKV)\s+([^\]\s]+)\]\]/g)].map(m => m[1]).slice(0, 3);
           const runs = [
             ...[...text.matchAll(/\[\[RUN\s+([\s\S]*?)\]\]/g)].map(m => m[1].trim()),
-            ...[...text.matchAll(/\[\[((?:SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS)\s[\s\S]*?)\]\]/g)].map(m => m[1].trim())
+            ...[...text.matchAll(/\[\[((?:SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST)\s[\s\S]*?)\]\]/g)].map(m => m[1].trim())
           ].slice(0, 3);
           const fetches = [...text.matchAll(/\[\[FETCH\s+(https:\/\/[^\]\s]+)\]\]/g)].map(m => m[1]).slice(0, 2);
           const searches = [...text.matchAll(/\[\[SEARCH\s+([\s\S]*?)\]\]/g)].map(m => m[1].trim()).slice(0, 2);
@@ -8734,7 +8808,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
             convo.push({ role: "user", content: `RESULTS:${results}\nNow write your final answer for the user based on this real data.` });
             continue;
           }
-          raw = text.replace(/\[\[(READ|RUN|FETCH|SEARCH|GETKV|SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS)\b[\s\S]*?\]\]/g, "").trim() || text;
+          raw = text.replace(/\[\[(READ|RUN|FETCH|SEARCH|GETKV|SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST)\b[\s\S]*?\]\]/g, "").trim() || text;
           modelUsed = "openai";
         }
       }
@@ -8816,7 +8890,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
       const fbReads = [...raw.matchAll(/\[\[(?:READ|GETKV)\s+([^\]\s]+)\]\]/g)].map(m => m[1]).slice(0, 3);
       const fbRuns = [
         ...[...raw.matchAll(/\[\[RUN\s+([\s\S]*?)\]\]/g)].map(m => m[1].trim()),
-        ...[...raw.matchAll(/\[\[((?:SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS)\s[\s\S]*?)\]\]/g)].map(m => m[1].trim())
+        ...[...raw.matchAll(/\[\[((?:SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST)\s[\s\S]*?)\]\]/g)].map(m => m[1].trim())
       ].slice(0, 3);
       const PROTECTED2 = ["auras.guide", "console.auras.guide", "arksystems.world"];
       for (const cmdLine of fbRuns) {
@@ -8835,7 +8909,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
       }
     } catch {}
     if (fbResults) {
-      raw = raw.replace(/\[\[(READ|RUN|FETCH|GETKV|SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS)\b[\s\S]*?\]\]/g, "").trim();
+      raw = raw.replace(/\[\[(READ|RUN|FETCH|GETKV|SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST)\b[\s\S]*?\]\]/g, "").trim();
       raw = raw + "\n\nExecution results:" + fbResults;
     }
     raw = raw + "\n\n[fallback brain: " + modelUsed + " — actions executed by core]";
@@ -8852,7 +8926,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
   }
   try {
     const cmdLines = raw.split("\n");
-    const cmdPattern = /^(SETKV|GETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|RELAUNCH_ALL|EVENT_STORM|EVENT_STORM_REAL|READ_STORM|ENDURANCE|INTEGRITY_SCAN|DO_TEST|DO_STORM|DO_VERIFY|COLD_SURGE|SURGE_PROBE|FANOUT_STORM|HOT_ENTITY|HOT_SHARDED|GENERATE_IMAGE|SHOW_IT|RESOURCE_STATUS|CLOUDFLARE_STATUS|WORLD_MAP|LOADGEN|LOADTEST_APPEND|PLANT_INCONSISTENCY|LOOP_PROBE|STORM_CLEANUP|DEPLOY_CONSOLE|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|DOMAIN_STATUS|FETCH_PLACES|PING)(\s+.*)?$/;
+    const cmdPattern = /^(SETKV|GETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|RELAUNCH_ALL|EVENT_STORM|EVENT_STORM_REAL|READ_STORM|ENDURANCE|INTEGRITY_SCAN|DO_TEST|DO_STORM|DO_VERIFY|COLD_SURGE|SURGE_PROBE|FANOUT_STORM|HOT_ENTITY|HOT_SHARDED|GENERATE_IMAGE|SHOW_IT|RESOURCE_STATUS|CLOUDFLARE_STATUS|WORLD_MAP|LOADGEN|LOADTEST_APPEND|PLANT_INCONSISTENCY|LOOP_PROBE|STORM_CLEANUP|DEPLOY_CONSOLE|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|DOMAIN_STATUS|FETCH_PLACES|PING)(\s+.*)?$/;
     const results = [];
     for (const ln of cmdLines) {
       const trimmed = ln.trim();
@@ -8871,7 +8945,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
         return null;
       }).filter(Boolean).join("\n");
       if (summary) {
-        raw = raw.replace(/^(SETKV|GETKV|DELKV|DOMAIN_LAUNCH|DEPLOY_CONSOLE|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|DOMAIN_STATUS).*$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
+        raw = raw.replace(/^(SETKV|GETKV|DELKV|DOMAIN_LAUNCH|DEPLOY_CONSOLE|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|DOMAIN_STATUS).*$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
         raw = raw + "\n\n" + summary;
       }
     }
@@ -11268,7 +11342,7 @@ function openAlbum(idx){
       // AND character breakdown, because each tiny fragment lost the whole picture). A real COMMAND
       // BATCH has EVERY non-empty line starting with a known command verb. If ANY line is prose, the
       // whole body is a single human message.
-      const KNOWN_CMD_VERBS = /^(SETKV|GETKV|LISTKV|DELKV|PATCHKV|PING|HOST|DOMAIN_LAUNCH|DOMAIN_STATUS|DOMAIN_DIAGNOSE|FETCH_PLACES|WORLD_MAP|PTA_[A-Z_]+|COMMS|WORKFLOW|EMAIL_SEND|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|TWILIO[A-Z_]*|A2P_[A-Z]+|SMS_[A-Z]+|CAPABILITY|INDUSTRY|BUSINESS_STATE|CF_API|AURA_[A-Z_]+|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|SHOW_IT|SHOWIT|GENERATE_PAGE|DEPLOY_[A-Z]+|ROUTE_[A-Z_]+|GETKV|WEB_SEARCH|NEWS_QUERY|OIL_PRICE|MARINE_WX|AIS_QUERY|LOOP_PROBE)\b/i;
+      const KNOWN_CMD_VERBS = /^(SETKV|GETKV|LISTKV|DELKV|PATCHKV|PING|HOST|DOMAIN_LAUNCH|DOMAIN_STATUS|DOMAIN_DIAGNOSE|FETCH_PLACES|WORLD_MAP|PTA_[A-Z_]+|COMMS|WORKFLOW|EMAIL_SEND|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|TWILIO[A-Z_]*|A2P_[A-Z]+|SMS_[A-Z]+|CAPABILITY|INDUSTRY|BUSINESS_STATE|CF_API|AURA_[A-Z_]+|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|SHOW_IT|SHOWIT|GENERATE_PAGE|DEPLOY_[A-Z]+|ROUTE_[A-Z_]+|GETKV|WEB_SEARCH|NEWS_QUERY|OIL_PRICE|MARINE_WX|AIS_QUERY|LOOP_PROBE)\b/i;
       const _rawLines = body.split("\n").map(l => l.trim()).filter(Boolean);
       const _looksLikeCommandBatch = _rawLines.length > 0 && _rawLines.every(l => KNOWN_CMD_VERBS.test(l));
       const _isProseDump = !_VALUE_BEARING.includes(_firstWord) && _rawLines.length > 1 && !_looksLikeCommandBatch;

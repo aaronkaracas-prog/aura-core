@@ -5,7 +5,37 @@
  */
 
 
-const BUILD = "aura-core-v4.9.243-2026-06-27";
+const BUILD = "aura-core-v4.9.244-2026-06-27";
+
+// ============================================================================
+// CORE_MAP — COMPACT FALLBACK ONLY. The CANONICAL architecture map is DATA in KV at
+// config:core:map (set/edited via SETKV, no redeploy). /home/core reads KV first and
+// falls back to this stub so the home-screen "The Core" view never goes blank.
+// Per the standing rule, the index holds generic engines + this minimal fallback — the
+// living truth is the KV record. Status: built | thin | missing.
+// ============================================================================
+const CORE_MAP = {
+  version: "fallback",
+  loop_status: "complete",
+  loop: [
+    { n:1, verb:"SEE", layer:"Perception" }, { n:2, verb:"UNDERSTAND", layer:"Meaning" },
+    { n:3, verb:"EXPAND", layer:"Possibility" }, { n:4, verb:"JUDGE", layer:"Meaning Gate" },
+    { n:5, verb:"DECIDE", layer:"Priority" }, { n:6, verb:"ACT", layer:"Bridge" },
+    { n:7, verb:"LEARN", layer:"Correction" }
+  ],
+  engines: [
+    { n:1, name:"PTA", title:"Universal Identity", q:"WHO is involved?", status:"built" },
+    { n:2, name:"Aura", title:"Universal Intelligence", q:"WHAT should happen?", status:"built" },
+    { n:3, name:"Adaptive Canvas", title:"Universal Context", q:"HOW should this be experienced?", status:"thin", note:"Reasons about shape but does not yet GENERATE the home screen by business type." },
+    { n:4, name:"ShowIt", title:"Universal Visualization", q:"WHAT should they see?", status:"built" },
+    { n:5, name:"Commerce / SecureSpend", title:"Universal Transactions", q:"HOW does value move?", status:"built", note:"Test mode; live by Stripe flip." },
+    { n:6, name:"Economics", title:"Financial Intelligence", q:"Cost / create / return?", status:"thin" },
+    { n:7, name:"Outcome", title:"Outcome Intelligence", q:"How do we reach the goal?", status:"thin" },
+    { n:8, name:"Workflow", title:"Universal Execution", q:"What happens next?", status:"thin" },
+    { n:9, name:"SituationTracker", title:"Universal Awareness", q:"WHAT is happening?", status:"missing", note:"Not started — only raw AIS_QUERY exists." }
+  ]
+};
+
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -10677,11 +10707,16 @@ function openAlbum(idx){
 
     // HOME DOMAINS / ASSETS - token-gated snapshot feeds for the home left-nav views.
     // Page sends the homescreen token (same as /world/data). Live first, then idle.
-    if (url.pathname === "/home/domains" || url.pathname === "/home/assets") {
+    if (url.pathname === "/home/domains" || url.pathname === "/home/assets" || url.pathname === "/home/core") {
       const hCors = { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, content-type", "access-control-allow-methods": "GET, OPTIONS" };
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: hCors });
       const okOp = await verifyOperator(request, env);
       if (!okOp) return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), { status: 401, headers: hCors });
+      if (url.pathname === "/home/core") {
+        let core = null;
+        try { core = JSON.parse(await env.AURA_KV.get("config:core:map") || "null"); } catch {}
+        return new Response(JSON.stringify({ ok: true, build: BUILD, source: core ? "kv" : "fallback", core: core || CORE_MAP }), { headers: hCors });
+      }
       const norm = (a) => (Array.isArray(a) ? a : []).map((x) => typeof x === "string" ? x : (x && (x.domain || x.name || x.title || x.label || x.host)) || String(x)).filter(Boolean);
       if (url.pathname === "/home/assets") {
         let assets = [];

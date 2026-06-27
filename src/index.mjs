@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.213-2026-06-26";
+const BUILD = "aura-core-v4.9.214-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8070,7 +8070,7 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
   let operatorContext = "";
   const ownerIdentity = await env.AURA_KV.get("config:owner:identity").catch(() => null);
   const ownerName = (await env.AURA_KV.get("config:owner:name").catch(() => null)) || "your operator";
-  if (ownerIdentity && entityId === ownerIdentity) {
+  if (isOp || (ownerIdentity && entityId === ownerIdentity)) {
     if (isVoice) {
       // On the phone: she just needs to KNOW it is the operator and that they have full access. Keep it
       // tight - answer their questions directly (tasks, build, status), don't read a report.
@@ -9917,7 +9917,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.213</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.214</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -10192,7 +10192,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.213</div>
+  <div id="ver">v4.9.214</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

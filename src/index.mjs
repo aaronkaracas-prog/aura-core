@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.215-2026-06-26";
+const BUILD = "aura-core-v4.9.216-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -788,6 +788,99 @@ async function processCommand(line, env, isOp) {
       if (!q) return { cmd: "WEB_SEARCH", payload: { ok: false, error: "empty query" } };
       const sr = await webSearch(q, env);
       return { cmd: "WEB_SEARCH", payload: sr };
+    }
+
+    case "NEWS_QUERY": {
+      // Live news via Currents API (Media layer of SituationTracker). Reads secret:currents from KV.
+      const q = line.replace(/^NEWS_QUERY\s+/i, "").trim();
+      if (!q) return { cmd: "NEWS_QUERY", payload: { ok: false, error: "Usage: NEWS_QUERY <topic>" } };
+      const key = await env.AURA_KV.get("secret:currents").catch(() => null);
+      if (!key) return { cmd: "NEWS_QUERY", payload: { ok: false, error: "no currents key in KV (secret:currents)" } };
+      try {
+        const url = `https://api.currentsapi.services/v1/search?keywords=${encodeURIComponent(q)}&language=en&apiKey=${key}`;
+        const r = await fetch(url, { headers: { "cache-control": "no-cache" } });
+        if (!r.ok) return { cmd: "NEWS_QUERY", payload: { ok: false, error: `currents http ${r.status}` } };
+        const d = await r.json();
+        const news = (d.news || []).slice(0, 12).map(n => ({ title: n.title, description: (n.description || "").slice(0, 300), url: n.url, published: n.published, source: n.author || (n.category || []).join(",") }));
+        return { cmd: "NEWS_QUERY", payload: { ok: true, query: q, count: news.length, news } };
+      } catch (e) { return { cmd: "NEWS_QUERY", payload: { ok: false, error: e.message } }; }
+    }
+
+    case "OIL_PRICE": {
+      // Live oil/commodity price via OilPriceAPI (Economics layer). Reads secret:oilprice from KV.
+      // Usage: OIL_PRICE [BRENT_CRUDE_USD|WTI_USD]  (defaults to Brent)
+      const arg = line.replace(/^OIL_PRICE\s*/i, "").trim().toUpperCase();
+      const code = arg || "BRENT_CRUDE_USD";
+      const key = await env.AURA_KV.get("secret:oilprice").catch(() => null);
+      if (!key) return { cmd: "OIL_PRICE", payload: { ok: false, error: "no oilprice key in KV (secret:oilprice)" } };
+      try {
+        const url = `https://api.oilpriceapi.com/v1/prices/latest?by_code=${encodeURIComponent(code)}`;
+        const r = await fetch(url, { headers: { "Authorization": `Token ${key}`, "Content-Type": "application/json" } });
+        if (!r.ok) return { cmd: "OIL_PRICE", payload: { ok: false, error: `oilprice http ${r.status}` } };
+        const d = await r.json();
+        const p = d.data || d;
+        return { cmd: "OIL_PRICE", payload: { ok: true, code, price: p.price, currency: p.currency || "USD", formatted: p.formatted, type: p.type, created_at: p.created_at } };
+      } catch (e) { return { cmd: "OIL_PRICE", payload: { ok: false, error: e.message } }; }
+    }
+
+    case "MARINE_WX": {
+      // Live weather via OpenWeatherMap (Environment layer). Reads secret:openweather from KV.
+      // Usage: MARINE_WX <lat> <lon>   e.g. Strait of Hormuz ~ MARINE_WX 26.57 56.25
+      const parts = line.replace(/^MARINE_WX\s+/i, "").trim().split(/\s+/);
+      const lat = parseFloat(parts[0]), lon = parseFloat(parts[1]);
+      if (isNaN(lat) || isNaN(lon)) return { cmd: "MARINE_WX", payload: { ok: false, error: "Usage: MARINE_WX <lat> <lon>" } };
+      const key = await env.AURA_KV.get("secret:openweather").catch(() => null);
+      if (!key) return { cmd: "MARINE_WX", payload: { ok: false, error: "no openweather key in KV (secret:openweather)" } };
+      try {
+        const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${key}`;
+        const r = await fetch(url);
+        if (!r.ok) return { cmd: "MARINE_WX", payload: { ok: false, error: `openweather http ${r.status}` } };
+        const d = await r.json();
+        return { cmd: "MARINE_WX", payload: { ok: true, place: d.name || `${lat},${lon}`, conditions: (d.weather || [{}])[0].description, temp_c: d.main?.temp, wind_ms: d.wind?.speed, wind_gust_ms: d.wind?.gust, wind_deg: d.wind?.deg, visibility_m: d.visibility, pressure: d.main?.pressure } };
+      } catch (e) { return { cmd: "MARINE_WX", payload: { ok: false, error: e.message } }; }
+    }
+
+    case "AIS_QUERY": {
+      // Live AIS vessel data via AISStream.io WebSocket (Movement layer). Reads secret:aisstream from KV.
+      // Usage: AIS_QUERY <minLat> <minLon> <maxLat> <maxLon> [seconds]  — opens the stream, collects
+      // position reports in the bounding box for a few seconds, then closes and returns a snapshot.
+      // Strait of Hormuz example: AIS_QUERY 25.5 55.5 27.5 57.5 8
+      const parts = line.replace(/^AIS_QUERY\s+/i, "").trim().split(/\s+/);
+      const minLat = parseFloat(parts[0]), minLon = parseFloat(parts[1]), maxLat = parseFloat(parts[2]), maxLon = parseFloat(parts[3]);
+      const secs = Math.min(Math.max(parseInt(parts[4] || "8", 10) || 8, 3), 15);
+      if ([minLat, minLon, maxLat, maxLon].some(isNaN)) return { cmd: "AIS_QUERY", payload: { ok: false, error: "Usage: AIS_QUERY <minLat> <minLon> <maxLat> <maxLon> [seconds]" } };
+      const key = await env.AURA_KV.get("secret:aisstream").catch(() => null);
+      if (!key) return { cmd: "AIS_QUERY", payload: { ok: false, error: "no aisstream key in KV (secret:aisstream)" } };
+      try {
+        const resp = await fetch("https://stream.aisstream.io/v0/stream", { headers: { Upgrade: "websocket" } });
+        const ws = resp.webSocket;
+        if (!ws) return { cmd: "AIS_QUERY", payload: { ok: false, error: "AIS websocket upgrade failed (edge may not support outbound ws to aisstream)" } };
+        ws.accept();
+        const vessels = new Map();
+        ws.addEventListener("message", (ev) => {
+          try {
+            const m = JSON.parse(typeof ev.data === "string" ? ev.data : "");
+            const meta = m.MetaData || m.Metadata || {};
+            const mmsi = meta.MMSI || m.MMSI;
+            if (!mmsi) return;
+            const pr = m.Message?.PositionReport;
+            const sd = m.Message?.ShipStaticData;
+            const cur = vessels.get(mmsi) || { mmsi };
+            if (meta.ShipName) cur.name = String(meta.ShipName).trim();
+            if (meta.latitude != null) { cur.lat = meta.latitude; cur.lon = meta.longitude; }
+            if (pr) { cur.lat = pr.Latitude ?? cur.lat; cur.lon = pr.Longitude ?? cur.lon; cur.sog = pr.Sog; cur.cog = pr.Cog; cur.heading = pr.TrueHeading; cur.nav_status = pr.NavigationalStatus; }
+            if (sd) { cur.dest = sd.Destination?.trim(); cur.type = sd.Type; cur.imo = sd.ImoNumber; }
+            vessels.set(mmsi, cur);
+          } catch {}
+        });
+        ws.send(JSON.stringify({ APIKey: key, BoundingBoxes: [[[minLat, minLon], [maxLat, maxLon]]] }));
+        await new Promise(res => setTimeout(res, secs * 1000));
+        try { ws.close(); } catch {}
+        const list = [...vessels.values()];
+        const moving = list.filter(v => (v.sog || 0) > 1).length;
+        const anchored = list.filter(v => (v.sog || 0) <= 1).length;
+        return { cmd: "AIS_QUERY", payload: { ok: true, box: [minLat, minLon, maxLat, maxLon], window_s: secs, vessel_count: list.length, moving, anchored_or_loitering: anchored, vessels: list.slice(0, 40) } };
+      } catch (e) { return { cmd: "AIS_QUERY", payload: { ok: false, error: e.message } }; }
     }
 
     case "SHOW_IT": {
@@ -8328,7 +8421,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
   try {
     const tools = [
       { name: "read_data", description: "Read a stored value by its key from the system's key-value store.", input_schema: { type: "object", properties: { key: { type: "string", description: "The key to read" } }, required: ["key"] } },
-      { name: "run_command", description: "Execute an operational command. KEY COMMANDS: SETKV key value (write full value - ONLY for small values under 2000 chars), GETKV key, LISTKV prefix [limit] (lists KV keys by prefix), DELKV key, PATCHKV key find_string ||| replace_string (surgical find-and-replace in a KV value - USE THIS for editing pages instead of rewriting them. The ||| delimiter separates the find and replace strings). CRITICAL: For page edits, ALWAYS use PATCHKV, never SETKV. SETKV rewrites the entire value which causes truncation for large pages. PATCHKV only changes what you specify. SYSTEM: DOMAIN_LAUNCH, DOMAIN_STATUS, FETCH_PLACES query, EMAIL_SEND <to> <subject> | <body>. REGISTRY: CAPABILITY REGISTER/LIST/GET, INDUSTRY REGISTER/UPDATE/LIST/GET, BUSINESS_STATE SET/GET. PTA: PTA_INIT, PTA_ENTITY, PTA_GRANT, PTA_SCAN, PTA_QUERY. CF_API: CF_API <METHOD> <path> [json]. Provide the full command line.", input_schema: { type: "object", properties: { command: { type: "string", description: "The command line to execute" } }, required: ["command"] } },
+      { name: "run_command", description: "Execute an operational command. KEY COMMANDS: SETKV key value (write full value - ONLY for small values under 2000 chars), GETKV key, LISTKV prefix [limit] (lists KV keys by prefix), DELKV key, PATCHKV key find_string ||| replace_string (surgical find-and-replace in a KV value - USE THIS for editing pages instead of rewriting them. The ||| delimiter separates the find and replace strings). CRITICAL: For page edits, ALWAYS use PATCHKV, never SETKV. SETKV rewrites the entire value which causes truncation for large pages. PATCHKV only changes what you specify. SYSTEM: DOMAIN_LAUNCH, DOMAIN_STATUS, FETCH_PLACES query, EMAIL_SEND <to> <subject> | <body>. REGISTRY: CAPABILITY REGISTER/LIST/GET, INDUSTRY REGISTER/UPDATE/LIST/GET, BUSINESS_STATE SET/GET. LIVE-DATA FEEDS (SituationTracker - use these for real-world situations, they pull LIVE data): WEB_SEARCH <query> (live web, best general signal), NEWS_QUERY <topic> (live breaking news via Currents), OIL_PRICE [BRENT_CRUDE_USD|WTI_USD] (live oil price), MARINE_WX <lat> <lon> (live weather/wind/visibility at a point), AIS_QUERY <minLat> <minLon> <maxLat> <maxLon> [seconds] (live ship positions in a bounding box - e.g. Strait of Hormuz is AIS_QUERY 25.5 55.5 27.5 57.5). PTA: PTA_INIT, PTA_ENTITY, PTA_GRANT, PTA_SCAN, PTA_QUERY. CF_API: CF_API <METHOD> <path> [json]. Provide the full command line.", input_schema: { type: "object", properties: { command: { type: "string", description: "The command line to execute" } }, required: ["command"] } },
       { name: "fetch_url", description: "Fetch a live URL and return its status and content, to verify what a page is serving.", input_schema: { type: "object", properties: { url: { type: "string", description: "The https URL to fetch" } }, required: ["url"] } }
     ];
     const claudeSystem = (operatorContext ? "YOU ARE AURA. Your full identity, worldview, and always-on awareness are below — they govern WHO YOU ARE and HOW YOU SEE, and they take precedence over the operations-assistant framing that follows (that framing only describes your TOOLS, not your identity). When Aaron describes a real-world event, SEE THE SITUATION per your awareness; do NOT fall back to listing infrastructure capabilities or telling him to use other apps." + operatorContext + "\n\n--- YOUR TOOLS (how to act on the system) ---\n" : "") + "You are Claude, an AI assistant by Anthropic, acting as the operations assistant for a software system whose operator owns all referenced infrastructure and has authorized you to use the provided tools to read data, run operational commands, and verify results. CRITICAL: To read data, run a command, or fetch a URL you MUST call the provided tools (read_data, run_command, fetch_url). NEVER write bracketed pseudo-commands like [[READ key]] in your text — those do nothing. NEVER state the contents of a key without first calling read_data and receiving its actual value; inventing data is a serious failure. If you have not called the tool, you do not know the value. Be proactive and decisive, but ground every factual claim about system state in a real tool result. OPERATIONAL RULES (ALWAYS FOLLOW): (1) PAGE EDITS: NEVER use SETKV to modify an existing page. SETKV rewrites the entire value and causes truncation for large pages. ALWAYS use PATCHKV for page edits. PATCHKV does surgical find-and-replace: PATCHKV key old_text ||| new_text. (2) NEW PAGES: Only use SETKV for brand new pages under 2000 characters. For larger pages, write them in sections or have the operator deploy via page-put. (3) KEY NAMES: NEVER assume a key name. ALWAYS use LISTKV prefix first to find exact key names. (4) VERIFICATION: PATCHKV auto-verifies. SETKV for page: keys auto-verifies. Always check the verified field in the response. If verified is false, report FAILURE. (5) NEVER REPORT FALSE SUCCESS: Only say done if the tool response confirms it.";
@@ -9917,7 +10010,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.215</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.216</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -10192,7 +10285,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.215</div>
+  <div id="ver">v4.9.216</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 
@@ -11002,7 +11095,7 @@ function openAlbum(idx){
       // AND character breakdown, because each tiny fragment lost the whole picture). A real COMMAND
       // BATCH has EVERY non-empty line starting with a known command verb. If ANY line is prose, the
       // whole body is a single human message.
-      const KNOWN_CMD_VERBS = /^(SETKV|GETKV|LISTKV|DELKV|PATCHKV|PING|HOST|DOMAIN_LAUNCH|DOMAIN_STATUS|DOMAIN_DIAGNOSE|FETCH_PLACES|WORLD_MAP|PTA_[A-Z_]+|COMMS|WORKFLOW|EMAIL_SEND|MERCURY_BALANCE|STRIPE_BALANCE|TWILIO[A-Z_]*|A2P_[A-Z]+|SMS_[A-Z]+|CAPABILITY|INDUSTRY|BUSINESS_STATE|CF_API|AURA_[A-Z_]+|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|SHOW_IT|SHOWIT|GENERATE_PAGE|DEPLOY_[A-Z]+|ROUTE_[A-Z_]+|GETKV|WEB_SEARCH|LOOP_PROBE)\b/i;
+      const KNOWN_CMD_VERBS = /^(SETKV|GETKV|LISTKV|DELKV|PATCHKV|PING|HOST|DOMAIN_LAUNCH|DOMAIN_STATUS|DOMAIN_DIAGNOSE|FETCH_PLACES|WORLD_MAP|PTA_[A-Z_]+|COMMS|WORKFLOW|EMAIL_SEND|MERCURY_BALANCE|STRIPE_BALANCE|TWILIO[A-Z_]*|A2P_[A-Z]+|SMS_[A-Z]+|CAPABILITY|INDUSTRY|BUSINESS_STATE|CF_API|AURA_[A-Z_]+|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|SHOW_IT|SHOWIT|GENERATE_PAGE|DEPLOY_[A-Z]+|ROUTE_[A-Z_]+|GETKV|WEB_SEARCH|NEWS_QUERY|OIL_PRICE|MARINE_WX|AIS_QUERY|LOOP_PROBE)\b/i;
       const _rawLines = body.split("\n").map(l => l.trim()).filter(Boolean);
       const _looksLikeCommandBatch = _rawLines.length > 0 && _rawLines.every(l => KNOWN_CMD_VERBS.test(l));
       const _isProseDump = !_VALUE_BEARING.includes(_firstWord) && _rawLines.length > 1 && !_looksLikeCommandBatch;

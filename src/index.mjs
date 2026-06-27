@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.229-2026-06-26";
+const BUILD = "aura-core-v4.9.235-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -11183,7 +11183,7 @@ function openAlbum(idx){
       body = body
         .replace(/\x00/g, "")           // null bytes
         .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "") // control chars except \t\n\r
-        .slice(0, 32000);               // max 32KB input
+        .slice(0, 262144);              // max 256KB input (raised from 32KB which truncated page deploys mid-script)
 
       if (!body.trim()) return jsonReply({ ok: false, error: "Empty request" });
 

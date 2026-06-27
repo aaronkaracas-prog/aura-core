@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.239-2026-06-27";
+const BUILD = "aura-core-v4.9.240-2026-06-27";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -10029,7 +10029,7 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" } });
     }
 
-    if (request.method === "GET" && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/now" && url.pathname !== "/dashboard" && !url.pathname.startsWith("/brain") && !url.pathname.startsWith("/world") && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/")) {
+    if (request.method === "GET" && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/now" && url.pathname !== "/dashboard" && !url.pathname.startsWith("/brain") && !url.pathname.startsWith("/world") && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/") && !url.pathname.startsWith("/call-intel")) {
       const page = await servePage(url.hostname, url.pathname === "/" ? "/" : url.pathname, env);
       if (page) return page;
     }
@@ -11023,6 +11023,79 @@ function openAlbum(idx){
       try { bundle.alert_resources = JSON.parse(await env.AURA_KV.get("notes:alert:resources") || "null"); } catch {}
       try { bundle.alert_a2p = JSON.parse(await env.AURA_KV.get("notes:alert:a2p") || "null"); } catch {}
       return new Response(JSON.stringify({ ok: true, ...bundle }), { headers: ccCors });
+    }
+
+    // CALL INTELLIGENCE data feed. Pulls TWILIO_INTEL (raw) and organizes it:
+    // joins calls <- recordings <- transcriptions, computes per-line activity and vitals.
+    // Generic: organizes whatever the Twilio account exposes; no site/business specifics.
+    if (url.pathname === "/call-intel/data") {
+      const ciCors = { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, content-type", "access-control-allow-methods": "GET, OPTIONS" };
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: ciCors });
+      const ok = await verifyOperator(request, env);
+      if (!ok) return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), { status: 401, headers: ciCors });
+      const organizeTwilio = (p) => {
+        const get = (n, k) => (p && p[n] && p[n].raw && p[n].raw[k]) || [];
+        const calls = get("calls", "calls");
+        const recs = get("recordings", "recordings");
+        const trans = get("transcriptions", "transcriptions");
+        const msgs = get("messages", "messages");
+        const nums = get("numbers", "incoming_phone_numbers");
+        const bal = (p && p.balance && p.balance.raw) || {};
+        const cost = (x) => { const f = parseFloat(x); return isNaN(f) ? 0 : Math.abs(f); };
+        const recByCall = {};
+        for (const r of recs) { (recByCall[r.call_sid] = recByCall[r.call_sid] || []).push(r); }
+        const trByRec = {};
+        for (const t of trans) { trByRec[t.recording_sid] = t; }
+        const ocalls = calls.map((c) => {
+          const inbound = c.direction === "inbound";
+          const line = inbound ? c.to : c.from;
+          const rlist = recByCall[c.sid] || [];
+          let rec = null, tr = null;
+          if (rlist.length) {
+            const r = rlist[0]; const t = trByRec[r.sid];
+            rec = { sid: r.sid, duration: r.duration, media_url: r.media_url || null };
+            if (t) tr = { status: t.status, text: t.transcription_text || "" };
+          }
+          return { sid: c.sid, direction: c.direction, from: c.from, to: c.to,
+            from_fmt: c.from_formatted || null, to_fmt: c.to_formatted || null,
+            start: c.start_time, duration: parseInt(c.duration || 0, 10) || 0, status: c.status,
+            cost: Math.round(cost(c.price) * 1e5) / 1e5, line, caller_name: c.caller_name || null,
+            answered_by: c.answered_by || null, has_rec: !!rec, rec, tr };
+        });
+        const callsTo = {}, msgHit = {};
+        for (const c of calls) { if (c.direction === "inbound") callsTo[c.to] = (callsTo[c.to] || 0) + 1; }
+        for (const m of msgs) { if (m.to) msgHit[m.to] = (msgHit[m.to] || 0) + 1; if (m.from) msgHit[m.from] = (msgHit[m.from] || 0) + 1; }
+        const onums = nums.map((n) => ({ phone: n.phone_number, friendly: n.friendly_name || null, created: n.date_created,
+            voice: !!(n.capabilities && n.capabilities.voice), sms: !!(n.capabilities && n.capabilities.sms),
+            inbound_calls: callsTo[n.phone_number] || 0, messages: msgHit[n.phone_number] || 0 }))
+          .sort((a, b) => (b.inbound_calls - a.inbound_calls) || (b.messages - a.messages));
+        const sum = (arr, f) => arr.reduce((s, x) => s + f(x), 0);
+        const vitals = {
+          balance: Math.round((parseFloat(bal.balance) || 0) * 100) / 100, currency: bal.currency || "USD",
+          numbers: nums.length, calls: calls.length, calls_capped: calls.length >= 100,
+          inbound: calls.filter((c) => c.direction === "inbound").length,
+          outbound: calls.filter((c) => String(c.direction).startsWith("outbound")).length,
+          completed: calls.filter((c) => c.status === "completed").length,
+          busy: calls.filter((c) => c.status === "busy").length,
+          no_answer: calls.filter((c) => c.status === "no-answer").length,
+          talk_sec: sum(calls, (c) => parseInt(c.duration || 0, 10) || 0),
+          call_spend: Math.round(sum(calls, (c) => cost(c.price)) * 1e4) / 1e4,
+          sms: msgs.length, recordings: recs.length,
+          transcripts_with_text: trans.filter((t) => (t.transcription_text || "").trim()).length
+        };
+        const omsgs = msgs.map((m) => ({ sid: m.sid, dir: m.direction, from: m.from, to: m.to,
+          body: m.body, status: m.status, date: m.date_sent || m.date_created }));
+        return { vitals, calls: ocalls, numbers: onums, messages: omsgs };
+      };
+      try {
+        const r = await processCommand("TWILIO_INTEL", env, true);
+        const p = r && r.payload;
+        if (!p || p.ok === false) return new Response(JSON.stringify({ ok: false, error: "twilio pull failed", raw: p || null }), { status: 502, headers: ciCors });
+        const organized = organizeTwilio(p);
+        return new Response(JSON.stringify({ ok: true, ts: new Date().toISOString(), account: p.account_sid || null, ...organized }), { headers: ciCors });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, error: String((e && e.message) || e) }), { status: 500, headers: ciCors });
+      }
     }
 
     // CONFIRM PAYMENT — marks a session as paid so image generation unlocks

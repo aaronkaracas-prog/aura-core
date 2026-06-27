@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.192-2026-06-26";
+const BUILD = "aura-core-v4.9.193-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -7845,12 +7845,13 @@ async function reasonThroughLoop(env, opts) {
   opts = opts || {};
   const apiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
   if (!apiKey) return { ok: false, error: "Brain not configured (secret:anthropic missing)" };
-  const model = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+  const model = opts.model || (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
   // ONE central reasoning cap. Generous by default so real reasoning always FINISHES, firm so no single
   // answer can run away and drain the float. Adjustable any time via config:brain:reasoning_cap — no code change.
   let reasoningCap = 3000;
   try { const rc = await env.AURA_KV.get("config:brain:reasoning_cap"); if (rc) { const n = parseInt(rc, 10); if (n > 0) reasoningCap = n; } } catch {}
-  const capToUse = Math.min(opts.maxTokens || reasoningCap, reasoningCap);
+  // A caller can pass opts.fast to bound output tightly (fast path); else respect the central cap.
+  const capToUse = opts.fast ? (opts.maxTokens || 900) : Math.min(opts.maxTokens || reasoningCap, reasoningCap);
   const extra = (opts.extraKeys && opts.extraKeys.length) ? (", plus these lens-specific keys: " + opts.extraKeys.map(k => k.key + " (" + k.desc + ")").join(", ")) : "";
   const sys = "You are Aura reasoning through her Cognitive Loop in ONE pass. Before you answer you ALWAYS run the SEVEN stages of the Loop in order (this is Aura's permanent method of thinking): "
     + "(1) SEE — Perception: observe what is actually true from the facts, read the environment, separate VERIFIED facts from claims and assumptions. "
@@ -8130,7 +8131,10 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
         if (!_knownAsset) { try { const pg = await env.AURA_KV.get("page:" + _fragDomain + "/").catch(() => null); if (pg) _knownAsset = _fragDomain + " (she serves a live page for it)"; } catch {} }
       }
       const intentFirst = await reasonThroughLoop(env, {
-        entity: _msgTrim,
+        fast: true,
+        model: (await env.AURA_KV.get("config:fast:model").catch(() => null)) || "claude-haiku-4-5-20251001",
+        maxTokens: 900,
+        entity: _msgTrim.slice(0, 3000),
         lens: "INTENT-FIRST. Aaron (your founder/operator) just dropped a bare fragment at you — a domain, a name, a few words, with no sentence. DO NOT run a status check or offer a menu of commands — that is the help-desk reflex and it is WRONG. KNOW-IT-FIRST: you are given his KNOWN DOMAINS/ASSETS. If this fragment IS one of his known assets, you already KNOW what it is — lead by naming it plainly ('That's your [X] — your [vertical/doorway], it's live') and then ask only the MOVE ('what do you want to do with it?'). Do NOT ask 'is this a live asset or a new idea' about something you can see is already his and live — that makes you look like you don't know your own world. If the fragment is NOT in his known assets (e.g. amazon.com, or a brand-new domain), THEN reason what it likely is in his world and ask one specific INTENT question. Always respond as his BUILD PARTNER who holds the whole context, never a console listing options.",
         facts: { fragment: _msgTrim, is_one_of_his_known_assets: _knownAsset || "NOT found in his known asset list", his_known_domains_sample: hisDomains.slice(0, 40), his_domain_map: dmap ? dmap.slice(0, 800) : null, who_i_am: sNote ? sNote.slice(0, 900) : null, where_things_stand: stNote ? stNote.slice(0, 700) : null },
         extraKeys: [
@@ -8145,6 +8149,38 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
         return intentFirst.reasoning.my_response;
       }
       // if reasoning failed, fall through to normal brain rather than blocking
+    }
+
+    // BIG-DUMP fast path. When Aaron pastes a large document/concept (long, multi-line, no command),
+    // do NOT run the full slow multi-round agent loop on the deep model — that blows past the request
+    // ceiling and times out. Instead do ONE fast bounded read: make sense of it in his world, connect
+    // it to his engines/assets, give a real partner view, and ask the move. A document is a dump to
+    // understand, not a tool-task. (Excludes things that look like a deploy/command, handled above.)
+    const _isBigDump = isOp && _msgTrim.length > 400 && /\n/.test(_msgTrim)
+      && !/^(\s*)(SETKV|GETKV|LISTKV|DELKV|PATCHKV|DOMAIN_|PTA_|COMMS|WORKFLOW|AURA_|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|WORLD_MAP|CAPABILITY|TWILIO|SHOW_IT|GENERATE_PAGE)\b/i.test(_msgTrim);
+    if (_isBigDump) {
+      const sN = await env.AURA_KV.get("notes:self").catch(() => null);
+      const stN = await env.AURA_KV.get("notes:STATE").catch(() => null);
+      let hisD = [];
+      try { const dl = await env.AURA_KV.get("config:domains:launched").catch(() => null); const da = await env.AURA_KV.get("config:domains:all").catch(() => null); const p = (x) => { try { const j = JSON.parse(x); return Array.isArray(j) ? j : (j.domains || j.list || []); } catch { return (x || "").split(/[\s,]+/).filter(Boolean); } }; hisD = [...new Set([...(dl ? p(dl) : []), ...(da ? p(da) : [])])]; } catch {}
+      const dumpR = await reasonThroughLoop(env, {
+        fast: true,
+        model: (await env.AURA_KV.get("config:fast:model").catch(() => null)) || "claude-haiku-4-5-20251001",
+        maxTokens: 1100,
+        entity: _msgTrim.slice(0, 6000),
+        lens: "AARON DUMPED A DOCUMENT/CONCEPT AT YOU. This is a big paste — a new idea, vertical, doorway, or piece of his vision. Your job is to MAKE SENSE OF IT IN HIS WORLD, fast and real — NOT summarize it back like a brochure, NOT just praise it. He is building a platform (Core done; engines: PTA, Aura Engine, Adaptive Canvas, ShowIt, Commerce, Economics, Outcome, Workflow; live direction: SecureSpend, OpenForBusiness, PERCEIVE; he has doorways/verticals and real domains). READ this dump and: (1) recognize WHAT IT IS in his world (a new doorway/vertical? a layer on the Core? where does it sit?), (2) CONNECT it to what you already are — which of your engines and existing assets/domains does it use or relate to? (be specific — if it names PTA, Adaptive Canvas, Commerce, a domain you recognize, SAY so), (3) give your REAL partner view — what's strong, what's unclear, what it would need, do you see a risk or a better angle (you are NOT a yes-machine), (4) ask him the one real question that moves it forward (is this a doorway to start building, or thinking-it-through? where does it fit vs his existing assets?). Be sharp and grounded, not glib.",
+        facts: { the_dump: _msgTrim.slice(0, 6000), who_i_am: sN ? sN.slice(0, 900) : null, where_things_stand: stN ? stN.slice(0, 600) : null, his_known_domains_sample: hisD.slice(0, 40) },
+        extraKeys: [
+          { key: "what_it_is", desc: "what this is in his world — a new doorway/vertical/layer, and where it sits relative to the Core and his existing assets" },
+          { key: "connects_to", desc: "array — which of your real engines and which existing domains/assets this uses or relates to (be specific)" },
+          { key: "my_real_view", desc: "your honest partner take — what's strong, what's unclear or risky, a better angle if you see one" },
+          { key: "my_response", desc: "what you'd actually say back to Aaron — recognize it in his world, connect it, your view, then ask the one question that moves it forward. THIS is the reply." }
+        ]
+      });
+      if (dumpR.ok && dumpR.reasoning && dumpR.reasoning.my_response) {
+        return dumpR.reasoning.my_response;
+      }
+      // fall through to normal brain if the fast read failed
     }
   }
 
@@ -9752,7 +9788,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.192</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.193</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -10027,7 +10063,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.192</div>
+  <div id="ver">v4.9.193</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.221-2026-06-26";
+const BUILD = "aura-core-v4.9.222-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -851,7 +851,7 @@ async function processCommand(line, env, isOp) {
       // Live AIS vessel data (Movement layer). PRIMARY PATH: read a snapshot written by an always-on
       // AIS collector (Durable Object or external process holding the aisstream WebSocket open and
       // writing ais:snapshot:<region> to KV every minute). A request-scoped Worker CANNOT itself hold
-      // the aisstream firehose open (confirmed v4.9.221: even a whole-planet 18s subscription received
+      // the aisstream firehose open (confirmed v4.9.222: even a whole-planet 18s subscription received
       // zero messages — Workers don't pump a long-lived outbound WS the way a persistent backend does).
       // So: if a collector snapshot exists, serve it (instant); otherwise return honest status, not a
       // misleading empty success. Movement signal is still available via WEB_SEARCH / NEWS_QUERY.
@@ -9972,13 +9972,18 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
     // new version immediately), claims all clients, and uses network-first (always fetch fresh,
     // fall back to cache only if offline). This stops the PWA from ever being a frozen stale image.
     if (url.pathname === "/sw.js") {
+      // KILL SWITCH. The old PWA service worker cached the retired rooms home screen and kept
+      // serving it even after the server changed. This worker unregisters itself and wipes all
+      // caches, then any browser holding the old SW stops serving stale pages. No offline caching
+      // for now — the home screen is server-rendered after Google auth; staleness > offline here.
       const sw = `
-const VERSION = 'aura-${Date.now()}';
 self.addEventListener('install', function(e){ self.skipWaiting(); });
-self.addEventListener('activate', function(e){ e.waitUntil(self.clients.claim()); });
-self.addEventListener('fetch', function(e){
-  // Network-first: always try the live server. Only fall back to nothing if totally offline.
-  e.respondWith(fetch(e.request).catch(function(){ return new Response('Offline', { status: 503 }); }));
+self.addEventListener('activate', function(e){
+  e.waitUntil((async function(){
+    try { const keys = await caches.keys(); await Promise.all(keys.map(function(k){ return caches.delete(k); })); } catch(_){}
+    try { await self.registration.unregister(); } catch(_){}
+    try { const cs = await self.clients.matchAll(); cs.forEach(function(c){ c.navigate(c.url); }); } catch(_){}
+  })());
 });
 `;
       return new Response(sw, { headers: { "Content-Type": "application/javascript", "Cache-Control": "no-cache, no-store, must-revalidate" } });
@@ -10218,7 +10223,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.221</div>
+  <div id="ver">v4.9.222</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

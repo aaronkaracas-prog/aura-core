@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.205-2026-06-26";
+const BUILD = "aura-core-v4.9.206-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8183,11 +8183,37 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
       return `That's not one of your live assets — what do you want to do with ${_fragDomain || _msgTrim}? Set it up as a new doorway, or are you pointing me at it for something else?`;
     }
 
+    // FOUNDER-EVAL path. When Aaron points Aura at a company/product/service to EVALUATE as a
+    // potential ARK opportunity ("look at LifeLock, what should we do", "what about X", "should we
+    // build this"), she runs the FOUNDER LOGIC (notes:capability:opportunity_discovery): what do they
+    // do, can WE do it better/simpler/free, does it make PTAs, does it move the North Stars — and if
+    // yes, propose the asset. This is finding opportunities FOR ARK (a new doorway), distinct from the
+    // OPPORTUNITY engine that finds opportunities FOR a business. She holds the WHOLE worldview, so she
+    // should beat a generic model that only knows a fraction of what Aaron is building.
+    const _founderTrigger = isOp && _msgTrim.length < 400 && /\b(look at|what about|check out|should we (build|do|make)|do it better|what (should|would) we do|evaluate|thoughts on|what do you think (of|about))\b/i.test(_msgTrim)
+      && /\b([A-Z][a-zA-Z]+|[a-z0-9-]+\.[a-z]{2,})\b/.test(_msgTrim); // names a company/product/site
+    if (_founderTrigger) {
+      const [oppLogic, coreMap, northstar, obf, sN, dlRaw, daRaw] = await Promise.all([
+        env.AURA_KV.get("notes:capability:opportunity_discovery").catch(() => null),
+        env.AURA_KV.get("notes:architecture:core").catch(() => null),
+        env.AURA_KV.get("notes:vision:northstar").catch(() => null),
+        env.AURA_KV.get("notes:openforbusiness").catch(() => null),
+        env.AURA_KV.get("notes:self").catch(() => null),
+        env.AURA_KV.get("config:domains:launched").catch(() => null),
+        env.AURA_KV.get("config:domains:all").catch(() => null)
+      ]);
+      let hisD = [];
+      try { const p = (x) => { try { const j = JSON.parse(x); return Array.isArray(j) ? j : (j.domains || j.list || []); } catch { return (x || "").split(/[\s,]+/).filter(Boolean); } }; hisD = [...new Set([...(dlRaw ? p(dlRaw) : []), ...(daRaw ? p(daRaw) : [])])]; } catch {}
+      const founderReply = await fastReply(env, {
+        maxTokens: 750,
+        system: "You are Aura, Aaron's co-founder mind for ARK Systems — an OPPORTUNITY DISCOVERY ENGINE, not just an assistant. Aaron just pointed you at a company/product/service. Your job is NOT to admire it or analyze it academically — it is to think like a FOUNDER expanding ARK: run the founder loop (below) and, if it fits, PROPOSE the new asset concretely. You hold ARK's WHOLE worldview (architecture, doorways model, North Stars, the 182-door ecosystem, OpenForBusiness, the free-to-use/transaction-layer-monetization model) — given below. Use it. You should OUT-REASON any generic AI that only knows a fraction of what Aaron is building, because you actually hold his architecture and philosophy. THE FOUNDER LOOP: what do they do / who benefits / how do they make money / biggest strength / biggest weakness / could ARK solve it differently, simpler, with less friction / could we make it FREE / would free accelerate adoption + introduce people to Aura + generate PTAs + strengthen the ecosystem / does it move us toward the North Stars (PTA-for-everyone, ecosystem value, the $1B/day at the transaction layer — a free asset is a strategic acquisition investment, not a failure to monetize). Aaron's instinct: never copy a competitor, solve the underlying problem in a BETTER way — free for consumers, simpler, AI-first, integrated into Aura, long-term relationship, cross-asset leverage, global scale. DELIVER: (1) what they really do + their real weakness, (2) the ARK version done BETTER — name the asset (e.g. a .world doorway), what it does, why it's free, (3) how it rides your real Core (PTA, Aura, Adaptive Canvas, ShowIt, Commerce — be specific) and which existing doorways it connects to, (4) the honest North Star fit + one risk. Be a sharp founder proposing a real move, grounded in the actual architecture, not a brochure.",
+        user: `=== THE FOUNDER LOGIC (how I think about opportunities) ===\n${oppLogic ? oppLogic.slice(0, 1800) : "(founder logic note not loaded)"}\n\n=== MY WORLDVIEW (what Aaron is building) ===\nDOORWAYS MODEL: ${coreMap ? coreMap.slice(0, 900) : ""}\nOPENFORBUSINESS: ${obf ? obf.slice(0, 500) : ""}\nNORTH STAR: ${northstar ? northstar.slice(0, 400) : ""}\nWHO I AM: ${sN ? sN.slice(0, 400) : ""}\nMY ${hisD.length} LIVE DOMAINS (existing doorways — see if this connects to or overlaps any): ${hisD.slice(0, 80).join(", ")}\n\n=== AARON JUST SAID ===\n${_msgTrim}`
+      });
+      if (founderReply) return founderReply;
+      // fall through if the founder read failed
+    }
+
     // BIG-DUMP fast path. When Aaron pastes a large document/concept (long, multi-line, no command),
-    // do NOT run the full slow multi-round agent loop on the deep model — that blows past the request
-    // ceiling and times out. Instead do ONE fast bounded read: make sense of it in his world, connect
-    // it to his engines/assets, give a real partner view, and ask the move. A document is a dump to
-    // understand, not a tool-task. (Excludes things that look like a deploy/command, handled above.)
     const _isBigDump = isOp && _msgTrim.length > 400 && /\n/.test(_msgTrim)
       && !/^(\s*)(SETKV|GETKV|LISTKV|DELKV|PATCHKV|DOMAIN_|PTA_|COMMS|WORKFLOW|AURA_|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|WORLD_MAP|CAPABILITY|TWILIO|SHOW_IT|GENERATE_PAGE)\b/i.test(_msgTrim);
     if (_isBigDump) {
@@ -9869,7 +9895,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.205</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.206</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -10144,7 +10170,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.205</div>
+  <div id="ver">v4.9.206</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.203-2026-06-26";
+const BUILD = "aura-core-v4.9.204-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -9854,7 +9854,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.203</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.204</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -10129,7 +10129,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.203</div>
+  <div id="ver">v4.9.204</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 
@@ -10932,9 +10932,21 @@ function openAlbum(idx){
       // through as ONE deterministic command. Multi-command batches (one cmd per line) are untouched.
       const _firstWord = (body.trim().split(/\s+/)[0] || "").toUpperCase();
       const _VALUE_BEARING = ["SETKV", "DELKV"];
-      const lines = _VALUE_BEARING.includes(_firstWord)
-        ? [body.trim()]
-        : body.split("\n").map(l => l.trim()).filter(Boolean);
+
+      // DOCUMENT / PROSE DUMP DETECTION: if the operator pastes a document, concept, or any prose
+      // (multi-line text that is NOT a batch of commands), it must be treated as ONE message — not
+      // split per line into 13 contextless fragments that each wake the brain (that caused 60s+ hangs
+      // AND character breakdown, because each tiny fragment lost the whole picture). A real COMMAND
+      // BATCH has EVERY non-empty line starting with a known command verb. If ANY line is prose, the
+      // whole body is a single human message.
+      const KNOWN_CMD_VERBS = /^(SETKV|GETKV|LISTKV|DELKV|PATCHKV|PING|HOST|DOMAIN_LAUNCH|DOMAIN_STATUS|DOMAIN_DIAGNOSE|FETCH_PLACES|WORLD_MAP|PTA_[A-Z_]+|COMMS|WORKFLOW|EMAIL_SEND|MERCURY_BALANCE|STRIPE_BALANCE|TWILIO[A-Z_]*|A2P_[A-Z]+|SMS_[A-Z]+|CAPABILITY|INDUSTRY|BUSINESS_STATE|CF_API|AURA_[A-Z_]+|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|SHOW_IT|SHOWIT|GENERATE_PAGE|DEPLOY_[A-Z]+|ROUTE_[A-Z_]+|GETKV|WEB_SEARCH|LOOP_PROBE)\b/i;
+      const _rawLines = body.split("\n").map(l => l.trim()).filter(Boolean);
+      const _looksLikeCommandBatch = _rawLines.length > 0 && _rawLines.every(l => KNOWN_CMD_VERBS.test(l));
+      const _isProseDump = !_VALUE_BEARING.includes(_firstWord) && _rawLines.length > 1 && !_looksLikeCommandBatch;
+
+      const lines = (_VALUE_BEARING.includes(_firstWord) || _isProseDump)
+        ? [body.trim()]            // whole body as ONE message (a stored value, or a prose/document dump)
+        : _rawLines;               // genuine command batch: one command per line
       const results = [];
 
       // INTERNAL WORKER AUTH (least privilege): aura-comms and other internal workers call over the

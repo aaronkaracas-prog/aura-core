@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.204-2026-06-26";
+const BUILD = "aura-core-v4.9.205-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8191,17 +8191,32 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
     const _isBigDump = isOp && _msgTrim.length > 400 && /\n/.test(_msgTrim)
       && !/^(\s*)(SETKV|GETKV|LISTKV|DELKV|PATCHKV|DOMAIN_|PTA_|COMMS|WORKFLOW|AURA_|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|WORLD_MAP|CAPABILITY|TWILIO|SHOW_IT|GENERATE_PAGE)\b/i.test(_msgTrim);
     if (_isBigDump) {
-      const sN = await env.AURA_KV.get("notes:self").catch(() => null);
+      // Load the ACTUAL WORLDVIEW — not just self-description and bare domain names, but the
+      // architecture and vision that define what Aaron is building. Without this she pattern-matches
+      // engine labels FROM the document instead of placing it in his real world. Parallel load.
+      const [sN, coreCanon, coreMap, obf, northstar, domainMap, dlRaw, daRaw] = await Promise.all([
+        env.AURA_KV.get("notes:self").catch(() => null),
+        env.AURA_KV.get("notes:architecture:core_canon").catch(() => null),
+        env.AURA_KV.get("notes:architecture:core").catch(() => null),
+        env.AURA_KV.get("notes:openforbusiness").catch(() => null),
+        env.AURA_KV.get("notes:vision:northstar").catch(() => null),
+        env.AURA_KV.get("notes:domains:map").catch(() => null),
+        env.AURA_KV.get("config:domains:launched").catch(() => null),
+        env.AURA_KV.get("config:domains:all").catch(() => null)
+      ]);
       let hisD = [];
-      try { const dl = await env.AURA_KV.get("config:domains:launched").catch(() => null); const da = await env.AURA_KV.get("config:domains:all").catch(() => null); const p = (x) => { try { const j = JSON.parse(x); return Array.isArray(j) ? j : (j.domains || j.list || []); } catch { return (x || "").split(/[\s,]+/).filter(Boolean); } }; hisD = [...new Set([...(dl ? p(dl) : []), ...(da ? p(da) : [])])]; } catch {}
+      try { const p = (x) => { try { const j = JSON.parse(x); return Array.isArray(j) ? j : (j.domains || j.list || []); } catch { return (x || "").split(/[\\s,]+/).filter(Boolean); } }; hisD = [...new Set([...(dlRaw ? p(dlRaw) : []), ...(daRaw ? p(daRaw) : [])])]; } catch {}
+      const worldview = [
+        coreCanon ? "MY ARCHITECTURE (the Core): " + coreCanon.slice(0, 1100) : "",
+        coreMap ? "THE DOORWAYS MODEL (how it all fits together): " + coreMap.slice(0, 1100) : "",
+        obf ? "OPENFORBUSINESS (the vehicle; Aaron is business #0): " + obf.slice(0, 700) : "",
+        northstar ? "THE NORTH STAR: " + northstar.slice(0, 600) : "",
+        domainMap ? "WHAT MY DOMAINS ACTUALLY ARE: " + domainMap.slice(0, 700) : ""
+      ].filter(Boolean).join("\n\n");
       const dumpReply = await fastReply(env, {
-        maxTokens: 600,
-        system: "You are Aura, Aaron's build partner. He just pasted a document/concept at you — a new idea, vertical, or piece of his vision. MAKE SENSE OF IT IN HIS WORLD — do NOT summarize it back like a brochure, do NOT just praise it. He's building a platform (Core done; engines: PTA, Aura Engine, Adaptive Canvas, ShowIt, Commerce, Economics, Outcome, Workflow; live direction: SecureSpend, OpenForBusiness, PERCEIVE; he has doorways/verticals and real domains). In a few tight sentences: (1) recognize WHAT IT IS in his world (a new doorway/vertical? where does it sit?), (2) CONNECT it to your real engines and any of his existing domains it relates to (be specific — name them), (3) give your REAL partner view — what's strong, what's unclear, a risk or better angle (you're NOT a yes-machine), (4) ask the one question that moves it forward. Sharp and grounded, not glib. Conversational, not a report.",
-        user: `His paste:
-${_msgTrim.slice(0, 5000)}
-
-Who Aura is: ${sN ? sN.slice(0, 700) : "Aaron's platform"}
-His domains (sample): ${hisD.slice(0, 30).join(", ")}`
+        maxTokens: 650,
+        system: "You are Aura, Aaron's build partner — and you HOLD HIS WHOLE WORLDVIEW (given below). Aaron is building a civilization-scale platform: ONE Core (8 engines + the 7-stage cognitive loop) with MANY doorways — around 182 domains, each an industry-specific entrance into the SAME underlying infrastructure. PTA is the universal identity/consent spine; ShowIt the universal render layer; homescreen.world the universal human home base. Businesses enter through OpenForBusiness (Aaron is business #0); consumer side and business side share one shape. Free to use, monetized at the transaction layer, no ads. He just pasted a document/concept at you. MAKE SENSE OF IT IN THIS WORLD — place it in the doorways model, against the Core and vision below. Do NOT just echo back the labels the document used (if it says PTA or Adaptive Canvas, don't merely repeat them — show you understand HOW it actually rides your real architecture). Do NOT summarize like a brochure, do NOT just praise. A few tight sentences: (1) WHAT IT IS in his world — which doorway/vertical, where it sits in the 182-door model, which Core engines/layers it leans on; (2) HOW it genuinely uses your architecture, beyond the document's own words; (3) your REAL partner view — strong points, what's missing, a risk or sharper angle (you are NOT a yes-machine); (4) the one question that moves it forward. Sharp, grounded, conversational — a partner who already holds the whole platform in mind.",
+        user: `=== MY WORLDVIEW (what Aaron is building \u2014 hold ALL of this as you read) ===\n${worldview || "(architecture notes not loaded)"}\n\nWHO I AM: ${sN ? sN.slice(0, 600) : "Aaron's platform intelligence"}\n\nMY LIVE DOMAINS (${hisD.length}): ${hisD.slice(0, 60).join(", ")}\n\n=== AARON JUST PASTED THIS ===\n${_msgTrim.slice(0, 4500)}`
       });
       if (dumpReply) return dumpReply;
       // fall through to normal brain if the fast read failed
@@ -9854,7 +9869,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.204</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.205</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -10129,7 +10144,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.204</div>
+  <div id="ver">v4.9.205</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.208-2026-06-26";
+const BUILD = "aura-core-v4.9.209-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8014,6 +8014,24 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
 
   const memKey = `memory:${sessionId}`;
   const mem = await KV.get(env, memKey) || "";
+  // Save a turn to rolling session memory (non-blocking). Used by fast paths that return early
+  // AND by the normal path at the bottom, so EVERY turn is remembered by the next one.
+  const _saveTurn = (userMsg, auraReply) => {
+    try {
+      (async () => {
+        try {
+          let prior = "";
+          try { prior = await env.AURA_KV.get(memKey) || ""; } catch { prior = ""; }
+          let turns = prior ? prior.split("\n---\n").filter(Boolean) : [];
+          turns.push(`Aaron: ${(userMsg || "").slice(0, 600)}\nAura: ${(auraReply || "").slice(0, 900)}`);
+          if (turns.length > 6) turns = turns.slice(-6);
+          let joined = turns.join("\n---\n");
+          if (joined.length > 6000) joined = joined.slice(-6000);
+          await env.AURA_KV.put(memKey, joined, { expirationTtl: 60 * 60 * 12 }).catch(() => {});
+        } catch {}
+      })();
+    } catch {}
+  };
   const currentTasksRaw = await env.AURA_KV.get("config:tasks:list").catch(() => null);
   const currentTasks = currentTasksRaw || "[]";
   const protectedInfra = await env.AURA_KV.get("notes:aura:protected:infrastructure").catch(() => null);
@@ -8207,9 +8225,9 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
       const founderReply = await fastReply(env, {
         maxTokens: 750,
         system: "You are Aura, Aaron's co-founder mind for ARK Systems — an OPPORTUNITY DISCOVERY ENGINE, not just an assistant. Aaron just pointed you at a company/product/service. Your job is NOT to admire it or analyze it academically — it is to think like a FOUNDER expanding ARK: run the founder loop (below) and, if it fits, PROPOSE the new asset concretely. You hold ARK's WHOLE worldview (architecture, doorways model, North Stars, the 182-door ecosystem, OpenForBusiness, the free-to-use/transaction-layer-monetization model) — given below. Use it. You should OUT-REASON any generic AI that only knows a fraction of what Aaron is building, because you actually hold his architecture and philosophy. THE FOUNDER LOOP: what do they do / who benefits / how do they make money / biggest strength / biggest weakness / could ARK solve it differently, simpler, with less friction / could we make it FREE / would free accelerate adoption + introduce people to Aura + generate PTAs + strengthen the ecosystem / does it move us toward the North Stars (PTA-for-everyone, ecosystem value, the $1B/day at the transaction layer — a free asset is a strategic acquisition investment, not a failure to monetize). Aaron's instinct: never copy a competitor, solve the underlying problem in a BETTER way — free for consumers, simpler, AI-first, integrated into Aura, long-term relationship, cross-asset leverage, global scale. DELIVER: (1) what they really do + their real weakness, (2) the ARK version done BETTER — name the asset (e.g. a .world doorway), what it does, why it's free, (3) how it rides your real Core (PTA, Aura, Adaptive Canvas, ShowIt, Commerce — be specific) and which existing doorways it connects to, (4) the honest North Star fit + one risk. Be a sharp founder proposing a real move, grounded in the actual architecture, not a brochure.",
-        user: `=== THE FOUNDER LOGIC (how I think about opportunities) ===\n${oppLogic ? oppLogic.slice(0, 1800) : "(founder logic note not loaded)"}\n\n=== MY WORLDVIEW (what Aaron is building) ===\nDOORWAYS MODEL: ${coreMap ? coreMap.slice(0, 900) : ""}\nOPENFORBUSINESS: ${obf ? obf.slice(0, 500) : ""}\nNORTH STAR: ${northstar ? northstar.slice(0, 400) : ""}\nWHO I AM: ${sN ? sN.slice(0, 400) : ""}\nMY ${hisD.length} LIVE DOMAINS (existing doorways — see if this connects to or overlaps any): ${hisD.slice(0, 80).join(", ")}\n\n=== AARON JUST SAID ===\n${_msgTrim}`
+        user: `=== THE FOUNDER LOGIC (how I think about opportunities) ===\n${oppLogic ? oppLogic.slice(0, 1800) : "(founder logic note not loaded)"}\n\n=== MY WORLDVIEW (what Aaron is building) ===\nDOORWAYS MODEL: ${coreMap ? coreMap.slice(0, 900) : ""}\nOPENFORBUSINESS: ${obf ? obf.slice(0, 500) : ""}\nNORTH STAR: ${northstar ? northstar.slice(0, 400) : ""}\nWHO I AM: ${sN ? sN.slice(0, 400) : ""}\nMY ${hisD.length} LIVE DOMAINS (existing doorways — see if this connects to or overlaps any): ${hisD.slice(0, 80).join(", ")}\n\n${mem ? "=== RECENT CONVERSATION (what we were just discussing) ===\n" + mem.slice(-2500) + "\n\n" : ""}=== AARON JUST SAID ===\n${_msgTrim}`
       });
-      if (founderReply) return founderReply;
+      if (founderReply) { _saveTurn(message, founderReply); return founderReply; }
       // fall through if the founder read failed
     }
 
@@ -8242,9 +8260,9 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
       const dumpReply = await fastReply(env, {
         maxTokens: 1600,
         system: "You are Aura, Aaron's build partner — and you HOLD HIS WHOLE WORLDVIEW (given below). Aaron is building a civilization-scale platform: ONE Core (8 engines + the 7-stage cognitive loop) with MANY doorways — around 182 domains, each an industry-specific entrance into the SAME underlying infrastructure. PTA is the universal identity/consent spine; ShowIt the universal render layer; homescreen.world the universal human home base. Businesses enter through OpenForBusiness (Aaron is business #0); consumer side and business side share one shape. Free to use, monetized at the transaction layer, no ads. Aaron just pasted a document at you. FIRST decide WHAT KIND of dump this is: (A) a SINGLE idea/concept/asset, or (B) a MESSY ARCHIVE / list / registry of many things of mixed quality (he has ~6 months of saved material — some means everything, some means nothing, some is stale, half-baked, speculative, or conflicts with what's already true). YOUR JOB IS TO BE THE FILTER, not a summarizer and not a yes-machine. For a SINGLE concept: place it in the doorways model — which doorway/vertical, which Core engines it rides (show you understand HOW, beyond the doc's own words), your real partner view, the one question that moves it forward. For an ARCHIVE/LIST: separate SIGNAL from NOISE against what you actually know — (1) WHAT'S REAL / ALREADY LIVE (items that map to existing doorways or capabilities, even under different names — say which), (2) WHAT'S GENUINELY NEW & WORTH IT (fits the Core + North Stars), (3) WHAT'S NOISE / STALE / DUPLICATE / SPECULATIVE (and say why — e.g. a valuation is a projection not a fact; an item duplicates one already built), (4) WHAT CONFLICTS with the real model (e.g. if the doc prices things as consumer subscriptions, that fights the free-to-consumer / transaction-layer philosophy — FLAG it). Be specific, name items, ground every call in the actual architecture and domains below. Do NOT just echo the document's labels or its numbers as if they're true. Sharp, honest, grounded — the filter Aaron needs so his archive becomes signal.",
-        user: `=== MY WORLDVIEW (what Aaron is building \u2014 hold ALL of this as you read) ===\n${worldview || "(architecture notes not loaded)"}\n\nWHO I AM: ${sN ? sN.slice(0, 600) : "Aaron's platform intelligence"}\n\nMY LIVE DOMAINS (${hisD.length}): ${hisD.slice(0, 60).join(", ")}\n\n=== AARON JUST PASTED THIS ===\n${_msgTrim.slice(0, 4500)}`
+        user: `=== MY WORLDVIEW (what Aaron is building \u2014 hold ALL of this as you read) ===\n${worldview || "(architecture notes not loaded)"}\n\nWHO I AM: ${sN ? sN.slice(0, 600) : "Aaron's platform intelligence"}\n\nMY LIVE DOMAINS (${hisD.length}): ${hisD.slice(0, 60).join(", ")}\n\n${mem ? "=== RECENT CONVERSATION (what we were just discussing) ===\n" + mem.slice(-2500) + "\n\n" : ""}=== AARON JUST PASTED THIS ===\n${_msgTrim.slice(0, 4500)}`
       });
-      if (dumpReply) return dumpReply;
+      if (dumpReply) { _saveTurn(message, dumpReply); return dumpReply; }
       // fall through to normal brain if the fast read failed
     }
   }
@@ -8563,6 +8581,9 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
       fable_error: agentErr,
       reply_preview: (raw || "").slice(0, 300)
     })).catch(() => {});
+    // SESSION MEMORY — save THIS turn so the NEXT turn remembers the conversation (fixes the
+    // no-continuity gap: she couldn't answer a follow-up like "the doc you just filtered").
+    _saveTurn(message, raw);
     // LEARNING JOURNAL — every interaction is captured experience (Aaron's mandate 2026-06-12).
     // One daily key accumulates compact turn records; Aura consolidates them into notes:lessons:* on demand.
     // Also non-blocking — runs after the reply is already on its way back.
@@ -9895,7 +9916,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.208</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.209</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -10170,7 +10191,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.208</div>
+  <div id="ver">v4.9.209</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

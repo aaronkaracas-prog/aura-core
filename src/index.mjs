@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.193-2026-06-26";
+const BUILD = "aura-core-v4.9.194-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8102,11 +8102,13 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
     // FETCH_PLACES out of reflex. That tool-pull is what makes her give a status report or a command
     // menu when Aaron wanted a thinking partner. Instead, reason INTENT-FIRST in his world: what is
     // this, where does it fit in what he's building, what is he likely trying to DO — and ASK if unsure.
+    // INTENT-FIRST short-circuit — fires ONLY for a bare DOMAIN or asset-like reference dropped alone
+    // (e.g. "highguide.world", "amazon.com"), NOT for normal short conversation ("hello", "thanks",
+    // "what's next"). Triggering on every short message turned trivial chat into an expensive model
+    // call. The signal must be an actual domain/url token, by itself, with no surrounding sentence.
     const _msgTrim = (message || "").trim();
-    const _looksBareFragment = _msgTrim.length > 0 && _msgTrim.length < 60
-      && _msgTrim.split(/\s+/).length <= 4
-      && !/[.!?].*\w/.test(_msgTrim.replace(/\b[a-z0-9-]+\.(world|guide|com|us|city|kids|network|systems|solutions|tools|business|org|net|io|co)\b/gi, "")) // strip domains before checking for sentence punctuation
-      && !/^(yes|no|ok|okay|go|stop|deploy|launch|build|status|help|what|why|how|who|when|where)\b/i.test(_msgTrim);
+    const _bareDomainOnly = /^https?:\/\/\S+$|^[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.(?:world|guide|com|us|city|kids|network|systems|solutions|tools|business|org|net|io|co|app|dev|xyz)\/?$/i.test(_msgTrim);
+    const _looksBareFragment = _bareDomainOnly;
     if (isOp && _looksBareFragment) {
       const sNote = await env.AURA_KV.get("notes:self").catch(() => null);
       const stNote = await env.AURA_KV.get("notes:STATE").catch(() => null);
@@ -9788,7 +9790,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.193</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.194</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -10063,7 +10065,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.193</div>
+  <div id="ver">v4.9.194</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

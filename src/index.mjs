@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.222-2026-06-26";
+const BUILD = "aura-core-v4.9.223-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -851,7 +851,7 @@ async function processCommand(line, env, isOp) {
       // Live AIS vessel data (Movement layer). PRIMARY PATH: read a snapshot written by an always-on
       // AIS collector (Durable Object or external process holding the aisstream WebSocket open and
       // writing ais:snapshot:<region> to KV every minute). A request-scoped Worker CANNOT itself hold
-      // the aisstream firehose open (confirmed v4.9.222: even a whole-planet 18s subscription received
+      // the aisstream firehose open (confirmed v4.9.223: even a whole-planet 18s subscription received
       // zero messages — Workers don't pump a long-lived outbound WS the way a persistent backend does).
       // So: if a collector snapshot exists, serve it (instant); otherwise return honest status, not a
       // misleading empty success. Movement signal is still available via WEB_SEARCH / NEWS_QUERY.
@@ -9788,7 +9788,7 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" } });
     }
 
-    if (request.method === "GET" && !_homescreenRoot && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/now" && url.pathname !== "/dashboard" && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/")) {
+    if (request.method === "GET" && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/now" && url.pathname !== "/dashboard" && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/")) {
       const page = await servePage(url.hostname, url.pathname === "/" ? "/" : url.pathname, env);
       if (page) return page;
     }
@@ -10010,13 +10010,10 @@ self.addEventListener('activate', function(e){
     // it installs full-screen like a native app, persistent session, one front door.
     // Built fetch-don't-inject: static shell, greeting + chat fetched after load. Cannot break.
     // First milestone: wraps the PROVEN chat. Home Screen layout comes after the shell is locked.
-    if (_isHomescreenHost && url.pathname === "/") {
-      // CONVERGE TO ONE HOME SCREEN. The root used to serve its own separate, older icon grid
-      // (tap-to-open, no drag) - and the installed app loads the root, so every /home edit was
-      // invisible. Redirect root -> /home, the single canonical Home Screen. Preserve query
-      // (e.g. the ?s= sign-in token) so installed-app auth still lands.
-      return new Response(null, { status: 302, headers: { "location": "/home" + (url.search || ""), "Cache-Control": "no-cache, no-store, must-revalidate" } });
-    }
+    // homescreen.world/ serves the dashboard from KV directly (same clean path as every other
+    // domain via servePage above). No redirect, no PWA shell, no shadowing. The /home + /auth
+    // routes below remain for the Google sign-in flow when the dashboard needs it.
+    // (root KV page already served by servePage above; nothing to do here)
 
     if (url.pathname === "/home" || (_isHomescreenHost && url.pathname === "/")) {
       const cookie = request.headers.get("cookie") || "";
@@ -10223,7 +10220,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.222</div>
+  <div id="ver">v4.9.223</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

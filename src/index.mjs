@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.241-2026-06-27";
+const BUILD = "aura-core-v4.9.242-2026-06-27";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -10029,7 +10029,7 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" } });
     }
 
-    if (request.method === "GET" && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/now" && url.pathname !== "/dashboard" && !url.pathname.startsWith("/brain") && !url.pathname.startsWith("/world") && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/") && !url.pathname.startsWith("/call-intel")) {
+    if (request.method === "GET" && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/now" && url.pathname !== "/dashboard" && !url.pathname.startsWith("/brain") && !url.pathname.startsWith("/world") && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/") && !url.pathname.startsWith("/call-intel") && url.pathname !== "/home/domains") {
       const page = await servePage(url.hostname, url.pathname === "/" ? "/" : url.pathname, env);
       if (page) return page;
     }
@@ -10674,6 +10674,24 @@ function openAlbum(idx){
       return jsonReply({ ok: !!p.ok, reply: p.reply || "…", refresh });
     }
 
+
+    // HOME DOMAINS - the signed-in person's domains, live ones first then idle.
+    // Feeds the Domains dropdown + the All view on the home page. Session-gated (your own home).
+    if (url.pathname === "/home/domains") {
+      const cookie = request.headers.get("cookie") || "";
+      const m = cookie.match(/aura_session=([a-f0-9]+)/);
+      if (!m) return jsonReply({ ok: false, authenticated: false });
+      let sess = null; try { const r = await env.AURA_KV.get(`session:${m[1]}`); if (r) sess = JSON.parse(r); } catch {}
+      if (!sess) return jsonReply({ ok: false, authenticated: false });
+      const norm = (a) => (Array.isArray(a) ? a : []).map((x) => typeof x === "string" ? x : (x && (x.domain || x.name || x.host)) || String(x)).filter(Boolean);
+      let launched = [], all = [];
+      try { launched = norm(JSON.parse(await env.AURA_KV.get("config:domains:launched") || "[]")); } catch {}
+      try { all = norm(JSON.parse(await env.AURA_KV.get("config:domains:all") || "[]")); } catch {}
+      const lset = new Set(launched);
+      const idle = all.filter((d) => !lset.has(d)).sort();
+      const live = launched.slice().sort();
+      return jsonReply({ ok: true, authenticated: true, live, idle, live_count: live.length, total: all.length || (live.length + idle.length) });
+    }
 
     // ===== PUBLIC PLAID ENDPOINTS =====
     // No operator token: these only create Plaid connections and read the resulting

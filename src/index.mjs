@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.236-2026-06-26";
+const BUILD = "aura-core-v4.9.237-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -6915,27 +6915,29 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         const start = new Date(end.getTime() - 30 * 24 * 3600 * 1000);
         return { start: start.toISOString().slice(0, 10) + "T00:00:00Z", end: end.toISOString().slice(0, 10) + "T00:00:00Z" };
       };
-      // Anthropic cost_report (USD)
+      // Anthropic cost_report. IMPORTANT: amounts are USD reported as decimal strings IN CENTS.
+      // So sum the string amounts then divide by 100. Window = current billing period (from the 1st).
       try {
         const aKey = await KV.get(env, "secret:anthropic_admin");
         if (aKey && services.anthropic) {
-          const w = spendWindow();
-          const u = "https://api.anthropic.com/v1/organizations/cost_report?starting_at=" + encodeURIComponent(w.start) + "&ending_at=" + encodeURIComponent(w.end);
+          const now = new Date();
+          const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 19) + "Z";
+          const periodEnd = now.toISOString().slice(0, 19) + "Z";
+          const u = "https://api.anthropic.com/v1/organizations/cost_report?starting_at=" + encodeURIComponent(periodStart) + "&ending_at=" + encodeURIComponent(periodEnd);
           const res = await Promise.race([
-            fetch(u, { headers: { "x-api-key": aKey, "anthropic-version": "2023-06-01" } }),
+            fetch(u, { headers: { "x-api-key": aKey, "anthropic-version": "2023-06-01", "content-type": "application/json" } }),
             new Promise((r) => setTimeout(() => r(null), 6000))
           ]);
           if (res && res.ok) {
             const j = await res.json();
-            let total = 0;
+            let centsTotal = 0;
             for (const bucket of (j.data || [])) {
               for (const item of (bucket.results || [])) {
-                const amt = item.amount ?? item.cost ?? (item.amount_usd) ?? 0;
-                total += Number(amt) || 0;
+                centsTotal += Number(item.amount) || 0;  // amount is a decimal string in CENTS
               }
             }
-            services.anthropic.spend_usd = Math.round(total * 100) / 100;
-            services.anthropic.spend_window = "30d";
+            services.anthropic.spend_usd = Math.round(centsTotal) / 100;  // cents -> dollars
+            services.anthropic.spend_window = "this month";
           } else if (res) {
             services.anthropic.spend_error = "http " + res.status;
           }

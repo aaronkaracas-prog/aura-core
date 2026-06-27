@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.238-2026-06-26";
+const BUILD = "aura-core-v4.9.239-2026-06-27";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -6926,7 +6926,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           const u = "https://api.anthropic.com/v1/organizations/cost_report?starting_at=" + encodeURIComponent(periodStart) + "&ending_at=" + encodeURIComponent(periodEnd);
           const res = await Promise.race([
             fetch(u, { headers: { "x-api-key": aKey, "anthropic-version": "2023-06-01", "content-type": "application/json" } }),
-            new Promise((r) => setTimeout(() => r(null), 6000))
+            new Promise((r) => setTimeout(() => r(null), 10000))
           ]);
           if (res && res.ok) {
             const j = await res.json();
@@ -6948,9 +6948,11 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         let oKey = await KV.get(env, "secret:openai_admin");
         if (oKey && oKey.startsWith("{")) { try { oKey = JSON.parse(oKey).api_key; } catch {} }
         if (oKey && services.openai) {
-          const end = Math.floor(Date.now() / 1000);
-          const start = end - 30 * 24 * 3600;
-          const u = "https://api.openai.com/v1/organization/costs?start_time=" + start + "&end_time=" + end + "&limit=180";
+          const nowD = new Date();
+          const monthStartD = new Date(Date.UTC(nowD.getUTCFullYear(), nowD.getUTCMonth(), 1));
+          const start = Math.floor(monthStartD.getTime() / 1000);
+          const end = Math.floor(nowD.getTime() / 1000);
+          const u = "https://api.openai.com/v1/organization/costs?start_time=" + start + "&end_time=" + end + "&bucket_width=1d&limit=31";
           const res = await Promise.race([
             fetch(u, { headers: { "Authorization": "Bearer " + oKey } }),
             new Promise((r) => setTimeout(() => r(null), 6000))
@@ -6965,7 +6967,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
               }
             }
             services.openai.spend_usd = Math.round(total * 100) / 100;
-            services.openai.spend_window = "30d";
+            services.openai.spend_window = "this month";
           } else if (res) {
             services.openai.spend_error = "http " + res.status;
           }
@@ -7046,6 +7048,40 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       } catch (e) { out.openai_usage = { error: String(e.message) }; }
 
       return { cmd: "RAW_COST", payload: { ok: true, ...out } };
+    }
+    case "TWILIO_INTEL": {
+      // The full call-system intelligence pull - everything Twilio exposes, raw, for analysis.
+      // This is the foundation of the licensable call system: phone lines (+ provision dates),
+      // call logs (in/out/duration/status), recordings, transcriptions, messages, usage.
+      if (!isOp) return { cmd: "TWILIO_INTEL", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const sid = await env.AURA_KV.get("secret:twilio_account_sid").catch(() => null);
+      const tok = await env.AURA_KV.get("secret:twilio_auth_token").catch(() => null);
+      if (!sid || !tok) return { cmd: "TWILIO_INTEL", payload: { ok: false, error: "Missing Twilio creds" } };
+      const auth = "Basic " + btoa(sid + ":" + tok);
+      const base = "https://api.twilio.com/2010-04-01/Accounts/" + sid;
+      const tw = async (path) => {
+        try {
+          const res = await fetch(base + path, { headers: { Authorization: auth } });
+          const text = await res.text();
+          let parsed = null; try { parsed = JSON.parse(text); } catch {}
+          return { http: res.status, raw: parsed || text };
+        } catch (e) { return { error: String(e.message) }; }
+      };
+      // Pull everything in parallel - raw, untouched.
+      const [numbers, calls, messages, recordings, transcriptions, balance, usage] = await Promise.all([
+        tw("/IncomingPhoneNumbers.json?PageSize=100"),                    // every line + date_created (provision date)
+        tw("/Calls.json?PageSize=100"),                                   // call logs: from/to/direction/duration/status/start/end
+        tw("/Messages.json?PageSize=100"),                                // SMS logs
+        tw("/Recordings.json?PageSize=100"),                              // call recordings (+ duration, call_sid)
+        tw("/Transcriptions.json?PageSize=100"),                          // transcriptions (the dictation)
+        tw("/Balance.json"),                                             // prepaid balance
+        tw("/Usage/Records/ThisMonth.json?PageSize=100")                 // usage by category this month
+      ]);
+      return { cmd: "TWILIO_INTEL", payload: {
+        ok: true, ts: new Date().toISOString(),
+        account_sid: sid,
+        numbers, calls, messages, recordings, transcriptions, balance, usage
+      } };
     }
     case "GENERATE_IMAGE": {
       if (!isOp) return { cmd: "GENERATE_IMAGE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
@@ -8773,7 +8809,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
           const reads = [...text.matchAll(/\[\[(?:READ|GETKV)\s+([^\]\s]+)\]\]/g)].map(m => m[1]).slice(0, 3);
           const runs = [
             ...[...text.matchAll(/\[\[RUN\s+([\s\S]*?)\]\]/g)].map(m => m[1].trim()),
-            ...[...text.matchAll(/\[\[((?:SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST)\s[\s\S]*?)\]\]/g)].map(m => m[1].trim())
+            ...[...text.matchAll(/\[\[((?:SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|TWILIO_INTEL)\s[\s\S]*?)\]\]/g)].map(m => m[1].trim())
           ].slice(0, 3);
           const fetches = [...text.matchAll(/\[\[FETCH\s+(https:\/\/[^\]\s]+)\]\]/g)].map(m => m[1]).slice(0, 2);
           const searches = [...text.matchAll(/\[\[SEARCH\s+([\s\S]*?)\]\]/g)].map(m => m[1].trim()).slice(0, 2);
@@ -8808,7 +8844,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
             convo.push({ role: "user", content: `RESULTS:${results}\nNow write your final answer for the user based on this real data.` });
             continue;
           }
-          raw = text.replace(/\[\[(READ|RUN|FETCH|SEARCH|GETKV|SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST)\b[\s\S]*?\]\]/g, "").trim() || text;
+          raw = text.replace(/\[\[(READ|RUN|FETCH|SEARCH|GETKV|SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|TWILIO_INTEL)\b[\s\S]*?\]\]/g, "").trim() || text;
           modelUsed = "openai";
         }
       }
@@ -8890,7 +8926,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
       const fbReads = [...raw.matchAll(/\[\[(?:READ|GETKV)\s+([^\]\s]+)\]\]/g)].map(m => m[1]).slice(0, 3);
       const fbRuns = [
         ...[...raw.matchAll(/\[\[RUN\s+([\s\S]*?)\]\]/g)].map(m => m[1].trim()),
-        ...[...raw.matchAll(/\[\[((?:SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST)\s[\s\S]*?)\]\]/g)].map(m => m[1].trim())
+        ...[...raw.matchAll(/\[\[((?:SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|TWILIO_INTEL)\s[\s\S]*?)\]\]/g)].map(m => m[1].trim())
       ].slice(0, 3);
       const PROTECTED2 = ["auras.guide", "console.auras.guide", "arksystems.world"];
       for (const cmdLine of fbRuns) {
@@ -8909,7 +8945,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
       }
     } catch {}
     if (fbResults) {
-      raw = raw.replace(/\[\[(READ|RUN|FETCH|GETKV|SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST)\b[\s\S]*?\]\]/g, "").trim();
+      raw = raw.replace(/\[\[(READ|RUN|FETCH|GETKV|SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|TWILIO_INTEL)\b[\s\S]*?\]\]/g, "").trim();
       raw = raw + "\n\nExecution results:" + fbResults;
     }
     raw = raw + "\n\n[fallback brain: " + modelUsed + " — actions executed by core]";
@@ -8926,7 +8962,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
   }
   try {
     const cmdLines = raw.split("\n");
-    const cmdPattern = /^(SETKV|GETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|RELAUNCH_ALL|EVENT_STORM|EVENT_STORM_REAL|READ_STORM|ENDURANCE|INTEGRITY_SCAN|DO_TEST|DO_STORM|DO_VERIFY|COLD_SURGE|SURGE_PROBE|FANOUT_STORM|HOT_ENTITY|HOT_SHARDED|GENERATE_IMAGE|SHOW_IT|RESOURCE_STATUS|CLOUDFLARE_STATUS|WORLD_MAP|LOADGEN|LOADTEST_APPEND|PLANT_INCONSISTENCY|LOOP_PROBE|STORM_CLEANUP|DEPLOY_CONSOLE|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|DOMAIN_STATUS|FETCH_PLACES|PING)(\s+.*)?$/;
+    const cmdPattern = /^(SETKV|GETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|RELAUNCH_ALL|EVENT_STORM|EVENT_STORM_REAL|READ_STORM|ENDURANCE|INTEGRITY_SCAN|DO_TEST|DO_STORM|DO_VERIFY|COLD_SURGE|SURGE_PROBE|FANOUT_STORM|HOT_ENTITY|HOT_SHARDED|GENERATE_IMAGE|SHOW_IT|RESOURCE_STATUS|CLOUDFLARE_STATUS|WORLD_MAP|LOADGEN|LOADTEST_APPEND|PLANT_INCONSISTENCY|LOOP_PROBE|STORM_CLEANUP|DEPLOY_CONSOLE|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|TWILIO_INTEL|DOMAIN_STATUS|FETCH_PLACES|PING)(\s+.*)?$/;
     const results = [];
     for (const ln of cmdLines) {
       const trimmed = ln.trim();
@@ -8945,7 +8981,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
         return null;
       }).filter(Boolean).join("\n");
       if (summary) {
-        raw = raw.replace(/^(SETKV|GETKV|DELKV|DOMAIN_LAUNCH|DEPLOY_CONSOLE|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|DOMAIN_STATUS).*$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
+        raw = raw.replace(/^(SETKV|GETKV|DELKV|DOMAIN_LAUNCH|DEPLOY_CONSOLE|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|TWILIO_INTEL|DOMAIN_STATUS).*$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
         raw = raw + "\n\n" + summary;
       }
     }
@@ -11342,7 +11378,7 @@ function openAlbum(idx){
       // AND character breakdown, because each tiny fragment lost the whole picture). A real COMMAND
       // BATCH has EVERY non-empty line starting with a known command verb. If ANY line is prose, the
       // whole body is a single human message.
-      const KNOWN_CMD_VERBS = /^(SETKV|GETKV|LISTKV|DELKV|PATCHKV|PING|HOST|DOMAIN_LAUNCH|DOMAIN_STATUS|DOMAIN_DIAGNOSE|FETCH_PLACES|WORLD_MAP|PTA_[A-Z_]+|COMMS|WORKFLOW|EMAIL_SEND|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|TWILIO[A-Z_]*|A2P_[A-Z]+|SMS_[A-Z]+|CAPABILITY|INDUSTRY|BUSINESS_STATE|CF_API|AURA_[A-Z_]+|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|SHOW_IT|SHOWIT|GENERATE_PAGE|DEPLOY_[A-Z]+|ROUTE_[A-Z_]+|GETKV|WEB_SEARCH|NEWS_QUERY|OIL_PRICE|MARINE_WX|AIS_QUERY|LOOP_PROBE)\b/i;
+      const KNOWN_CMD_VERBS = /^(SETKV|GETKV|LISTKV|DELKV|PATCHKV|PING|HOST|DOMAIN_LAUNCH|DOMAIN_STATUS|DOMAIN_DIAGNOSE|FETCH_PLACES|WORLD_MAP|PTA_[A-Z_]+|COMMS|WORKFLOW|EMAIL_SEND|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|TWILIO_INTEL|TWILIO[A-Z_]*|A2P_[A-Z]+|SMS_[A-Z]+|CAPABILITY|INDUSTRY|BUSINESS_STATE|CF_API|AURA_[A-Z_]+|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|SHOW_IT|SHOWIT|GENERATE_PAGE|DEPLOY_[A-Z]+|ROUTE_[A-Z_]+|GETKV|WEB_SEARCH|NEWS_QUERY|OIL_PRICE|MARINE_WX|AIS_QUERY|LOOP_PROBE)\b/i;
       const _rawLines = body.split("\n").map(l => l.trim()).filter(Boolean);
       const _looksLikeCommandBatch = _rawLines.length > 0 && _rawLines.every(l => KNOWN_CMD_VERBS.test(l));
       const _isProseDump = !_VALUE_BEARING.includes(_firstWord) && _rawLines.length > 1 && !_looksLikeCommandBatch;

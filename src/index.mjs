@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.191-2026-06-26";
+const BUILD = "aura-core-v4.9.192-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8109,15 +8109,36 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
     if (isOp && _looksBareFragment) {
       const sNote = await env.AURA_KV.get("notes:self").catch(() => null);
       const stNote = await env.AURA_KV.get("notes:STATE").catch(() => null);
+      // KNOW-IT-FIRST: load his actual domains/assets so she recognizes what's HIS before reasoning.
+      // A fragment that IS one of his known domains should be RECOGNIZED ("that's your X, here's its
+      // state"), not asked-about as if unknown. Only truly-unknown things get the open intent question.
+      let hisDomains = [];
+      try {
+        const dl = await env.AURA_KV.get("config:domains:launched").catch(() => null);
+        const da = await env.AURA_KV.get("config:domains:all").catch(() => null);
+        const parse = (x) => { try { const j = JSON.parse(x); return Array.isArray(j) ? j : (j.domains || j.list || []); } catch { return (x || "").split(/[\s,]+/).filter(Boolean); } };
+        hisDomains = [...new Set([...(dl ? parse(dl) : []), ...(da ? parse(da) : [])])];
+      } catch {}
+      const dmap = await env.AURA_KV.get("notes:domains:map").catch(() => null);
+      // is this fragment one of his known domains (or a page he serves)?
+      const _fragDomain = (_msgTrim.match(/\b([a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:world|guide|com|us|city|kids|network|systems|solutions|tools|business|org|net|io|co))\b/i) || [])[1];
+      let _knownAsset = null;
+      if (_fragDomain) {
+        const hit = hisDomains.find(d => String(d).toLowerCase().includes(_fragDomain.toLowerCase()) || _fragDomain.toLowerCase().includes(String(d).toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "")));
+        if (hit) _knownAsset = hit;
+        // also: does she serve a page for it? (page:<domain>...) — quick existence check
+        if (!_knownAsset) { try { const pg = await env.AURA_KV.get("page:" + _fragDomain + "/").catch(() => null); if (pg) _knownAsset = _fragDomain + " (she serves a live page for it)"; } catch {} }
+      }
       const intentFirst = await reasonThroughLoop(env, {
         entity: _msgTrim,
-        lens: "INTENT-FIRST. Aaron (your founder/operator) just dropped a bare fragment at you — a domain, a name, a few words, with no sentence. DO NOT run a status check, fetch the URL, or offer a menu of commands. That is the help-desk reflex and it is WRONG. Instead DECIPHER it against AARON'S WORLD: he is building a platform (Core done; live direction = SecureSpend, OpenForBusiness, PERCEIVE, the dashboard; he has verticals/doorways like CityGuide and others). Figure out what this fragment most likely IS in his world (one of his assets/doorways? a new idea? a competitor he's studying? a business?), what he is probably trying to DO with it, and respond as his BUILD PARTNER who holds the whole context. If it is clearly one of his things, say what it is and propose the likely next move. If you genuinely cannot tell, ASK him one plain, specific question about his INTENT (not 'which command?' — 'what's the move?'). If it is something OUTSIDE his world (e.g. amazon.com), recognize that and ask what he wants with it. Be a partner thinking, never a console listing options.",
-        facts: { fragment: _msgTrim, who_i_am: sNote ? sNote.slice(0, 1200) : null, where_things_stand: stNote ? stNote.slice(0, 900) : null },
+        lens: "INTENT-FIRST. Aaron (your founder/operator) just dropped a bare fragment at you — a domain, a name, a few words, with no sentence. DO NOT run a status check or offer a menu of commands — that is the help-desk reflex and it is WRONG. KNOW-IT-FIRST: you are given his KNOWN DOMAINS/ASSETS. If this fragment IS one of his known assets, you already KNOW what it is — lead by naming it plainly ('That's your [X] — your [vertical/doorway], it's live') and then ask only the MOVE ('what do you want to do with it?'). Do NOT ask 'is this a live asset or a new idea' about something you can see is already his and live — that makes you look like you don't know your own world. If the fragment is NOT in his known assets (e.g. amazon.com, or a brand-new domain), THEN reason what it likely is in his world and ask one specific INTENT question. Always respond as his BUILD PARTNER who holds the whole context, never a console listing options.",
+        facts: { fragment: _msgTrim, is_one_of_his_known_assets: _knownAsset || "NOT found in his known asset list", his_known_domains_sample: hisDomains.slice(0, 40), his_domain_map: dmap ? dmap.slice(0, 800) : null, who_i_am: sNote ? sNote.slice(0, 900) : null, where_things_stand: stNote ? stNote.slice(0, 700) : null },
         extraKeys: [
-          { key: "what_this_likely_is", desc: "your read on what the fragment is in Aaron's world (or that it's outside his world)" },
+          { key: "what_this_likely_is", desc: "what the fragment is — if it's a known asset of his, NAME it confidently; if outside his world, say so" },
+          { key: "i_already_know_this", desc: "true if this is one of his known assets you recognize, false if genuinely unknown to you" },
           { key: "likely_intent", desc: "what Aaron is probably trying to do with it" },
-          { key: "my_response", desc: "what you'd actually say back to him — partner thinking, propose the move, or ask one specific intent question. THIS is the reply." },
-          { key: "need_to_ask", desc: "true if you genuinely need to ask him rather than proceed" }
+          { key: "my_response", desc: "what you'd say back — if known: name it then ask the move; if unknown: ask one specific intent question. THIS is the reply." },
+          { key: "need_to_ask", desc: "true if you genuinely need to ask intent rather than proceed" }
         ]
       });
       if (intentFirst.ok && intentFirst.reasoning && intentFirst.reasoning.my_response) {
@@ -9731,7 +9752,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.191</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.192</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -10006,7 +10027,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.191</div>
+  <div id="ver">v4.9.192</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

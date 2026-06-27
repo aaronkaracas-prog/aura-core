@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.218-2026-06-26";
+const BUILD = "aura-core-v4.9.219-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -116,7 +116,14 @@ async function verifyOperator(request, env) {
   if (!auth.startsWith("Bearer ")) return false;
   const token = auth.slice(7).trim();
   const stored = await getOperatorToken(env);
-  return stored && token === stored;
+  if (stored && token === stored) return true;
+  // Dedicated home-screen token: a separate, revocable credential for Aaron's own Home Screen dashboard
+  // so it reaches the full real Aura (worldview + SituationTracker) without embedding the master operator
+  // token in a webpage. Set via: SETKV secret:homescreen_token <value>. Revoke any time without touching
+  // the master token. Same operator-level brain; isolated key.
+  const hs = await env.AURA_KV.get("secret:homescreen_token").catch(() => null);
+  if (hs && token === hs) return true;
+  return false;
 }
 
 const KV = {
@@ -844,7 +851,7 @@ async function processCommand(line, env, isOp) {
       // Live AIS vessel data (Movement layer). PRIMARY PATH: read a snapshot written by an always-on
       // AIS collector (Durable Object or external process holding the aisstream WebSocket open and
       // writing ais:snapshot:<region> to KV every minute). A request-scoped Worker CANNOT itself hold
-      // the aisstream firehose open (confirmed v4.9.218: even a whole-planet 18s subscription received
+      // the aisstream firehose open (confirmed v4.9.219: even a whole-planet 18s subscription received
       // zero messages — Workers don't pump a long-lived outbound WS the way a persistent backend does).
       // So: if a collector snapshot exists, serve it (instant); otherwise return honest status, not a
       // misleading empty success. Movement signal is still available via WEB_SEARCH / NEWS_QUERY.
@@ -9985,7 +9992,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.218</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.219</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -10260,7 +10267,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.218</div>
+  <div id="ver">v4.9.219</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

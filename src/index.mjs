@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.227-2026-06-26";
+const BUILD = "aura-core-v4.9.228-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -851,7 +851,7 @@ async function processCommand(line, env, isOp) {
       // Live AIS vessel data (Movement layer). PRIMARY PATH: read a snapshot written by an always-on
       // AIS collector (Durable Object or external process holding the aisstream WebSocket open and
       // writing ais:snapshot:<region> to KV every minute). A request-scoped Worker CANNOT itself hold
-      // the aisstream firehose open (confirmed v4.9.227: even a whole-planet 18s subscription received
+      // the aisstream firehose open (confirmed v4.9.228: even a whole-planet 18s subscription received
       // zero messages — Workers don't pump a long-lived outbound WS the way a persistent backend does).
       // So: if a collector snapshot exists, serve it (instant); otherwise return honest status, not a
       // misleading empty success. Movement signal is still available via WEB_SEARCH / NEWS_QUERY.
@@ -6856,8 +6856,15 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
 
       // helper: a key exists check
       const has = async (k) => { try { const v = await KV.get(env, k); return !!v; } catch { return false; } };
-      // helper: live ping returns true/false/null(unknown)
-      const ping = async (fn) => { try { return await fn(); } catch { return false; } };
+      // helper: live ping with a tight timeout so one slow API can't stall the whole snapshot
+      const ping = async (fn) => {
+        try {
+          return await Promise.race([
+            fn(),
+            new Promise((res) => setTimeout(() => res(null), 5000))  // 5s cap -> null (unknown)
+          ]);
+        } catch { return false; }
+      };
 
       // Define every service: key, label, what it powers, and a live check (null check = key-presence only)
       const defs = [
@@ -6884,7 +6891,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         { id: "github", label: "GitHub", powers: "code + auto-deploy", key: "secret:github_token", check: null }
       ];
 
-      for (const d of defs) {
+      await Promise.all(defs.map(async (d) => {
         const present = await has(d.key);
         let live = null;
         if (present && d.check) live = await ping(d.check);
@@ -6899,7 +6906,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           funding_note: r.funding_note || "",
           free_until: r.free_until || ""
         };
-      }
+      }));
       return { cmd: "SERVICE_STATUS", payload: { ok: true, ts: new Date().toISOString(), services } };
     }
     case "GENERATE_IMAGE": {
@@ -10280,7 +10287,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.227</div>
+  <div id="ver">v4.9.228</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

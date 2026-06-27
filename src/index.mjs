@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.216-2026-06-26";
+const BUILD = "aura-core-v4.9.217-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -844,10 +844,10 @@ async function processCommand(line, env, isOp) {
       // Live AIS vessel data via AISStream.io WebSocket (Movement layer). Reads secret:aisstream from KV.
       // Usage: AIS_QUERY <minLat> <minLon> <maxLat> <maxLon> [seconds]  — opens the stream, collects
       // position reports in the bounding box for a few seconds, then closes and returns a snapshot.
-      // Strait of Hormuz example: AIS_QUERY 25.5 55.5 27.5 57.5 8
+      // Strait of Hormuz example: AIS_QUERY 25.5 55.5 27.5 57.5 12
       const parts = line.replace(/^AIS_QUERY\s+/i, "").trim().split(/\s+/);
       const minLat = parseFloat(parts[0]), minLon = parseFloat(parts[1]), maxLat = parseFloat(parts[2]), maxLon = parseFloat(parts[3]);
-      const secs = Math.min(Math.max(parseInt(parts[4] || "8", 10) || 8, 3), 15);
+      const secs = Math.min(Math.max(parseInt(parts[4] || "12", 10) || 12, 3), 20);
       if ([minLat, minLon, maxLat, maxLon].some(isNaN)) return { cmd: "AIS_QUERY", payload: { ok: false, error: "Usage: AIS_QUERY <minLat> <minLon> <maxLat> <maxLon> [seconds]" } };
       const key = await env.AURA_KV.get("secret:aisstream").catch(() => null);
       if (!key) return { cmd: "AIS_QUERY", payload: { ok: false, error: "no aisstream key in KV (secret:aisstream)" } };
@@ -857,29 +857,34 @@ async function processCommand(line, env, isOp) {
         if (!ws) return { cmd: "AIS_QUERY", payload: { ok: false, error: "AIS websocket upgrade failed (edge may not support outbound ws to aisstream)" } };
         ws.accept();
         const vessels = new Map();
+        let apiError = null, msgCount = 0;
         ws.addEventListener("message", (ev) => {
           try {
-            const m = JSON.parse(typeof ev.data === "string" ? ev.data : "");
+            msgCount++;
+            const m = JSON.parse(typeof ev.data === "string" ? ev.data : new TextDecoder().decode(ev.data));
+            if (m.error) { apiError = m.error; return; }
             const meta = m.MetaData || m.Metadata || {};
-            const mmsi = meta.MMSI || m.MMSI;
+            const mmsi = meta.MMSI || meta.mmsi;
             if (!mmsi) return;
+            const cur = vessels.get(mmsi) || { mmsi };
+            if (meta.ShipName) cur.name = String(meta.ShipName).replace(/@+$/g, "").trim();
+            if (meta.latitude != null) { cur.lat = meta.latitude; cur.lon = meta.longitude; }
             const pr = m.Message?.PositionReport;
             const sd = m.Message?.ShipStaticData;
-            const cur = vessels.get(mmsi) || { mmsi };
-            if (meta.ShipName) cur.name = String(meta.ShipName).trim();
-            if (meta.latitude != null) { cur.lat = meta.latitude; cur.lon = meta.longitude; }
             if (pr) { cur.lat = pr.Latitude ?? cur.lat; cur.lon = pr.Longitude ?? cur.lon; cur.sog = pr.Sog; cur.cog = pr.Cog; cur.heading = pr.TrueHeading; cur.nav_status = pr.NavigationalStatus; }
-            if (sd) { cur.dest = sd.Destination?.trim(); cur.type = sd.Type; cur.imo = sd.ImoNumber; }
+            if (sd) { if (sd.Destination) cur.dest = sd.Destination.replace(/@+$/g, "").trim(); cur.type = sd.Type; cur.imo = sd.ImoNumber; if (sd.Name && !cur.name) cur.name = sd.Name.replace(/@+$/g, "").trim(); }
             vessels.set(mmsi, cur);
           } catch {}
         });
+        // Spec: BoundingBoxes is a LIST of boxes; each box is [[lat,lon],[lat,lon]]. Subscription must
+        // arrive within 3s of connecting. Send immediately.
         ws.send(JSON.stringify({ APIKey: key, BoundingBoxes: [[[minLat, minLon], [maxLat, maxLon]]] }));
         await new Promise(res => setTimeout(res, secs * 1000));
         try { ws.close(); } catch {}
         const list = [...vessels.values()];
         const moving = list.filter(v => (v.sog || 0) > 1).length;
         const anchored = list.filter(v => (v.sog || 0) <= 1).length;
-        return { cmd: "AIS_QUERY", payload: { ok: true, box: [minLat, minLon, maxLat, maxLon], window_s: secs, vessel_count: list.length, moving, anchored_or_loitering: anchored, vessels: list.slice(0, 40) } };
+        return { cmd: "AIS_QUERY", payload: { ok: true, box: [minLat, minLon, maxLat, maxLon], window_s: secs, messages_received: msgCount, api_error: apiError, vessel_count: list.length, moving, anchored_or_loitering: anchored, vessels: list.slice(0, 40) } };
       } catch (e) { return { cmd: "AIS_QUERY", payload: { ok: false, error: e.message } }; }
     }
 
@@ -10010,7 +10015,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.216</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.217</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -10285,7 +10290,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.216</div>
+  <div id="ver">v4.9.217</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

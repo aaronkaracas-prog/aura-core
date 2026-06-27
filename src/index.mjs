@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.202-2026-06-26";
+const BUILD = "aura-core-v4.9.203-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -7841,6 +7841,23 @@ async function recordCost(model, usage) {
 // Built in for ALL engines that use it: assumption-challenging (gap #1), data-trust / is-this-number-real
 // (gap #2), and honest push-back on the operator when their own frame is shaky (gap #5).
 // Fast (single call) but it genuinely thinks. Engines pass their specialized LENS; the thinking is shared.
+// LEAN FAST REPLY — one direct model call that just writes the answer. No 7-stage cognitive loop,
+// no structured multi-key JSON. For anything that needs THINKING but should be QUICK: a person's
+// question, deciphering a dump, an unknown domain. The heavy reasonThroughLoop is for deep internal
+// reasoning that produces structured engine output; this is for "just answer the human, fast."
+// Returns the reply string, or null if the call failed (caller decides the fallback).
+async function fastReply(env, { system, user, maxTokens = 700, model } = {}) {
+  try {
+    const apiKey = env.ANTHROPIC_API_KEY || await KV.get(env, "secret:anthropic");
+    if (!apiKey) return null;
+    const m = model || (await env.AURA_KV.get("config:fast:model").catch(() => null)) || "claude-haiku-4-5-20251001";
+    const d = await callAnthropic(apiKey, { model: m, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] });
+    if (!d.ok) return null;
+    const t = (d.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
+    return t || null;
+  } catch { return null; }
+}
+
 async function reasonThroughLoop(env, opts) {
   opts = opts || {};
   const apiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
@@ -8153,27 +8170,16 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
         return `That's your ${_fragDomain} — your ${role}, live in your portfolio. What's the move?`;
       }
 
-      // UNKNOWN fragment (e.g. amazon.com, or a brand-new domain) → worth ONE fast reasoning call to
-      // figure out what it likely is in his world and ask the right intent question.
-      const [sNote, stNote] = await Promise.all([
-        env.AURA_KV.get("notes:self").catch(() => null),
-        env.AURA_KV.get("notes:STATE").catch(() => null)
-      ]);
-      const intentFirst = await reasonThroughLoop(env, {
-        fast: true,
-        model: (await env.AURA_KV.get("config:fast:model").catch(() => null)) || "claude-haiku-4-5-20251001",
-        maxTokens: 700,
-        entity: _msgTrim.slice(0, 1500),
-        lens: "INTENT-FIRST. Aaron (your operator) dropped a bare domain/fragment that is NOT one of his known assets (it's not in his portfolio). Figure out what it likely is in HIS world — is it a competitor/reference he's studying, a brand-new domain he wants to set up, or something outside his world entirely (e.g. amazon.com is Amazon's)? DO NOT run a status check or list commands. Respond as his build partner in ONE or two sentences: recognize what it is (or that it's not his), and ask the one specific INTENT question that moves it forward. Never a console menu.",
-        facts: { fragment: _msgTrim, note: "NOT in his known asset list", his_known_domains_count: hisDomains.length, who_i_am: sNote ? sNote.slice(0, 600) : null },
-        extraKeys: [
-          { key: "my_response", desc: "one or two sentences — what it likely is (or that it's outside his world) + one specific intent question. THIS is the reply." }
-        ]
+      // UNKNOWN fragment (e.g. amazon.com, or a brand-new domain) → ONE lean fast call to figure out
+      // what it likely is in his world and ask the right intent question. No heavy cognitive loop.
+      const sNote = await env.AURA_KV.get("notes:self").catch(() => null);
+      const ufReply = await fastReply(env, {
+        maxTokens: 250,
+        system: "You are Aura, Aaron's build partner. He just dropped a bare domain that is NOT one of his portfolio assets. In ONE or two sentences: recognize what it likely is (a competitor/reference he's studying, a brand-new domain, or something outside his world like a big company's site), and ask the one specific INTENT question that moves it forward. Never a status report, never a command menu. Be sharp and brief.",
+        user: `Fragment: ${_msgTrim}\nIt is NOT in his ${hisDomains.length} portfolio domains.\nWho Aura is: ${sNote ? sNote.slice(0, 500) : "Aaron's platform"}`
       });
-      if (intentFirst.ok && intentFirst.reasoning && intentFirst.reasoning.my_response) {
-        return intentFirst.reasoning.my_response;
-      }
-      // fast read failed → give a clean partner question rather than falling into the 69s loop
+      if (ufReply) return ufReply;
+      // lean call failed → clean partner question, never the 69s loop
       return `That's not one of your live assets — what do you want to do with ${_fragDomain || _msgTrim}? Set it up as a new doorway, or are you pointing me at it for something else?`;
     }
 
@@ -8186,26 +8192,18 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
       && !/^(\s*)(SETKV|GETKV|LISTKV|DELKV|PATCHKV|DOMAIN_|PTA_|COMMS|WORKFLOW|AURA_|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|WORLD_MAP|CAPABILITY|TWILIO|SHOW_IT|GENERATE_PAGE)\b/i.test(_msgTrim);
     if (_isBigDump) {
       const sN = await env.AURA_KV.get("notes:self").catch(() => null);
-      const stN = await env.AURA_KV.get("notes:STATE").catch(() => null);
       let hisD = [];
       try { const dl = await env.AURA_KV.get("config:domains:launched").catch(() => null); const da = await env.AURA_KV.get("config:domains:all").catch(() => null); const p = (x) => { try { const j = JSON.parse(x); return Array.isArray(j) ? j : (j.domains || j.list || []); } catch { return (x || "").split(/[\s,]+/).filter(Boolean); } }; hisD = [...new Set([...(dl ? p(dl) : []), ...(da ? p(da) : [])])]; } catch {}
-      const dumpR = await reasonThroughLoop(env, {
-        fast: true,
-        model: (await env.AURA_KV.get("config:fast:model").catch(() => null)) || "claude-haiku-4-5-20251001",
-        maxTokens: 1100,
-        entity: _msgTrim.slice(0, 6000),
-        lens: "AARON DUMPED A DOCUMENT/CONCEPT AT YOU. This is a big paste — a new idea, vertical, doorway, or piece of his vision. Your job is to MAKE SENSE OF IT IN HIS WORLD, fast and real — NOT summarize it back like a brochure, NOT just praise it. He is building a platform (Core done; engines: PTA, Aura Engine, Adaptive Canvas, ShowIt, Commerce, Economics, Outcome, Workflow; live direction: SecureSpend, OpenForBusiness, PERCEIVE; he has doorways/verticals and real domains). READ this dump and: (1) recognize WHAT IT IS in his world (a new doorway/vertical? a layer on the Core? where does it sit?), (2) CONNECT it to what you already are — which of your engines and existing assets/domains does it use or relate to? (be specific — if it names PTA, Adaptive Canvas, Commerce, a domain you recognize, SAY so), (3) give your REAL partner view — what's strong, what's unclear, what it would need, do you see a risk or a better angle (you are NOT a yes-machine), (4) ask him the one real question that moves it forward (is this a doorway to start building, or thinking-it-through? where does it fit vs his existing assets?). Be sharp and grounded, not glib.",
-        facts: { the_dump: _msgTrim.slice(0, 6000), who_i_am: sN ? sN.slice(0, 900) : null, where_things_stand: stN ? stN.slice(0, 600) : null, his_known_domains_sample: hisD.slice(0, 40) },
-        extraKeys: [
-          { key: "what_it_is", desc: "what this is in his world — a new doorway/vertical/layer, and where it sits relative to the Core and his existing assets" },
-          { key: "connects_to", desc: "array — which of your real engines and which existing domains/assets this uses or relates to (be specific)" },
-          { key: "my_real_view", desc: "your honest partner take — what's strong, what's unclear or risky, a better angle if you see one" },
-          { key: "my_response", desc: "what you'd actually say back to Aaron — recognize it in his world, connect it, your view, then ask the one question that moves it forward. THIS is the reply." }
-        ]
+      const dumpReply = await fastReply(env, {
+        maxTokens: 600,
+        system: "You are Aura, Aaron's build partner. He just pasted a document/concept at you — a new idea, vertical, or piece of his vision. MAKE SENSE OF IT IN HIS WORLD — do NOT summarize it back like a brochure, do NOT just praise it. He's building a platform (Core done; engines: PTA, Aura Engine, Adaptive Canvas, ShowIt, Commerce, Economics, Outcome, Workflow; live direction: SecureSpend, OpenForBusiness, PERCEIVE; he has doorways/verticals and real domains). In a few tight sentences: (1) recognize WHAT IT IS in his world (a new doorway/vertical? where does it sit?), (2) CONNECT it to your real engines and any of his existing domains it relates to (be specific — name them), (3) give your REAL partner view — what's strong, what's unclear, a risk or better angle (you're NOT a yes-machine), (4) ask the one question that moves it forward. Sharp and grounded, not glib. Conversational, not a report.",
+        user: `His paste:
+${_msgTrim.slice(0, 5000)}
+
+Who Aura is: ${sN ? sN.slice(0, 700) : "Aaron's platform"}
+His domains (sample): ${hisD.slice(0, 30).join(", ")}`
       });
-      if (dumpR.ok && dumpR.reasoning && dumpR.reasoning.my_response) {
-        return dumpR.reasoning.my_response;
-      }
+      if (dumpReply) return dumpReply;
       // fall through to normal brain if the fast read failed
     }
   }
@@ -9856,7 +9854,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.202</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.203</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -10131,7 +10129,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.202</div>
+  <div id="ver">v4.9.203</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

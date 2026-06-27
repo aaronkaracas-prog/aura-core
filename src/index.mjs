@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.212-2026-06-26";
+const BUILD = "aura-core-v4.9.213-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8331,7 +8331,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
       { name: "run_command", description: "Execute an operational command. KEY COMMANDS: SETKV key value (write full value - ONLY for small values under 2000 chars), GETKV key, LISTKV prefix [limit] (lists KV keys by prefix), DELKV key, PATCHKV key find_string ||| replace_string (surgical find-and-replace in a KV value - USE THIS for editing pages instead of rewriting them. The ||| delimiter separates the find and replace strings). CRITICAL: For page edits, ALWAYS use PATCHKV, never SETKV. SETKV rewrites the entire value which causes truncation for large pages. PATCHKV only changes what you specify. SYSTEM: DOMAIN_LAUNCH, DOMAIN_STATUS, FETCH_PLACES query, EMAIL_SEND <to> <subject> | <body>. REGISTRY: CAPABILITY REGISTER/LIST/GET, INDUSTRY REGISTER/UPDATE/LIST/GET, BUSINESS_STATE SET/GET. PTA: PTA_INIT, PTA_ENTITY, PTA_GRANT, PTA_SCAN, PTA_QUERY. CF_API: CF_API <METHOD> <path> [json]. Provide the full command line.", input_schema: { type: "object", properties: { command: { type: "string", description: "The command line to execute" } }, required: ["command"] } },
       { name: "fetch_url", description: "Fetch a live URL and return its status and content, to verify what a page is serving.", input_schema: { type: "object", properties: { url: { type: "string", description: "The https URL to fetch" } }, required: ["url"] } }
     ];
-    const claudeSystem = "You are Claude, an AI assistant by Anthropic, acting as the operations assistant for a software system whose operator owns all referenced infrastructure and has authorized you to use the provided tools to read data, run operational commands, and verify results. CRITICAL: To read data, run a command, or fetch a URL you MUST call the provided tools (read_data, run_command, fetch_url). NEVER write bracketed pseudo-commands like [[READ key]] in your text — those do nothing. NEVER state the contents of a key without first calling read_data and receiving its actual value; inventing data is a serious failure. If you have not called the tool, you do not know the value. Be proactive and decisive, but ground every factual claim about system state in a real tool result. OPERATIONAL RULES (ALWAYS FOLLOW): (1) PAGE EDITS: NEVER use SETKV to modify an existing page. SETKV rewrites the entire value and causes truncation for large pages. ALWAYS use PATCHKV for page edits. PATCHKV does surgical find-and-replace: PATCHKV key old_text ||| new_text. (2) NEW PAGES: Only use SETKV for brand new pages under 2000 characters. For larger pages, write them in sections or have the operator deploy via page-put. (3) KEY NAMES: NEVER assume a key name. ALWAYS use LISTKV prefix first to find exact key names. (4) VERIFICATION: PATCHKV auto-verifies. SETKV for page: keys auto-verifies. Always check the verified field in the response. If verified is false, report FAILURE. (5) NEVER REPORT FALSE SUCCESS: Only say done if the tool response confirms it.";
+    const claudeSystem = (operatorContext ? "YOU ARE AURA. Your full identity, worldview, and always-on awareness are below — they govern WHO YOU ARE and HOW YOU SEE, and they take precedence over the operations-assistant framing that follows (that framing only describes your TOOLS, not your identity). When Aaron describes a real-world event, SEE THE SITUATION per your awareness; do NOT fall back to listing infrastructure capabilities or telling him to use other apps." + operatorContext + "\n\n--- YOUR TOOLS (how to act on the system) ---\n" : "") + "You are Claude, an AI assistant by Anthropic, acting as the operations assistant for a software system whose operator owns all referenced infrastructure and has authorized you to use the provided tools to read data, run operational commands, and verify results. CRITICAL: To read data, run a command, or fetch a URL you MUST call the provided tools (read_data, run_command, fetch_url). NEVER write bracketed pseudo-commands like [[READ key]] in your text — those do nothing. NEVER state the contents of a key without first calling read_data and receiving its actual value; inventing data is a serious failure. If you have not called the tool, you do not know the value. Be proactive and decisive, but ground every factual claim about system state in a real tool result. OPERATIONAL RULES (ALWAYS FOLLOW): (1) PAGE EDITS: NEVER use SETKV to modify an existing page. SETKV rewrites the entire value and causes truncation for large pages. ALWAYS use PATCHKV for page edits. PATCHKV does surgical find-and-replace: PATCHKV key old_text ||| new_text. (2) NEW PAGES: Only use SETKV for brand new pages under 2000 characters. For larger pages, write them in sections or have the operator deploy via page-put. (3) KEY NAMES: NEVER assume a key name. ALWAYS use LISTKV prefix first to find exact key names. (4) VERIFICATION: PATCHKV auto-verifies. SETKV for page: keys auto-verifies. Always check the verified field in the response. If verified is false, report FAILURE. (5) NEVER REPORT FALSE SUCCESS: Only say done if the tool response confirms it.";
     const convo = [{ role: "user", content: `${sysPrompt}\n\n---\nRequest: ${message}` }];
     // Voice runs on a FAST model (Haiku) - on a call, a quick reply beats a brilliant slow one, and
     // short spoken answers don't need Sonnet's depth. Tunable via config:voice:model. Non-voice keeps
@@ -9917,7 +9917,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.212</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.213</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -10192,7 +10192,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.212</div>
+  <div id="ver">v4.9.213</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

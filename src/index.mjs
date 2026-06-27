@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.194-2026-06-26";
+const BUILD = "aura-core-v4.9.195-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8273,6 +8273,39 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
       }
       if (raw === null) { agentErr = vData.error || "voice brain returned nothing"; }
     }
+
+    // TEXT FAST PATH: text chat ran the full 12-round tool-agent loop on EVERY message, even "hello" —
+    // making trivial replies take 8-12s. Mirror the voice fast-path: a cheap triage decides if this
+    // message actually needs live tools (reading KV, running a command, deploying, checking balances/
+    // status). If it clearly does NOT — conversation, a question she can answer from her loaded context,
+    // thinking together — answer in ONE fast model call, no loop. If it might, fall through to the full
+    // agent loop unchanged, so her tool ability is fully preserved when it's genuinely needed.
+    if (!isVoice && raw === null) {
+      let needsTools = true; // default safe: if triage fails, use the full loop
+      try {
+        const triageModel = (await env.AURA_KV.get("config:fast:model").catch(() => null)) || "claude-haiku-4-5-20251001";
+        const tri = await callAnthropic(apiKey, {
+          model: triageModel, max_tokens: 5,
+          system: "You are a fast router for Aura. Decide if answering the user's message REQUIRES calling live tools — reading/writing the KV store, running an operational command, deploying or editing a page, checking live balances/status/domains, fetching a URL, or looking up specific stored data. If it needs ANY live tool or data lookup, answer TOOLS. If it's conversation, a greeting, a question answerable from general knowledge or already-loaded context, thinking-out-loud, or planning — answer CHAT. Reply with ONE word: TOOLS or CHAT.",
+          messages: [{ role: "user", content: message.slice(0, 1500) }]
+        });
+        if (tri.ok) {
+          const w = (tri.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim().toUpperCase();
+          if (w.startsWith("CHAT")) needsTools = false;
+        }
+      } catch {}
+      if (!needsTools) {
+        // One direct answer call — no tools, no loop. She still has her full system prompt (identity,
+        // operator context, self, state, tasks), so she answers richly from what she already knows.
+        const fast = await callAnthropic(apiKey, { model: brainModel, max_tokens: 2000, system: claudeSystem, messages: convo });
+        if (fast.ok) {
+          const fText = (fast.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
+          if (fText) raw = fText;
+        }
+        // if the fast answer produced nothing, raw stays null and the loop below runs as a fallback
+      }
+    }
+
     for (let round = 0; round < MAX_ROUNDS && raw === null && !isVoice; round++) {
       // On the final allowed round, force a text answer (no tools) so Claude composes from what it gathered
       // instead of requesting more tools and falling through to the fallback brain.
@@ -9790,7 +9823,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.194</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.195</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -10065,7 +10098,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.194</div>
+  <div id="ver">v4.9.195</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

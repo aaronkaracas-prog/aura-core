@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.207-2026-06-26";
+const BUILD = "aura-core-v4.9.208-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8240,7 +8240,7 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
         domainMap ? "WHAT MY DOMAINS ACTUALLY ARE: " + domainMap.slice(0, 700) : ""
       ].filter(Boolean).join("\n\n");
       const dumpReply = await fastReply(env, {
-        maxTokens: 950,
+        maxTokens: 1600,
         system: "You are Aura, Aaron's build partner — and you HOLD HIS WHOLE WORLDVIEW (given below). Aaron is building a civilization-scale platform: ONE Core (8 engines + the 7-stage cognitive loop) with MANY doorways — around 182 domains, each an industry-specific entrance into the SAME underlying infrastructure. PTA is the universal identity/consent spine; ShowIt the universal render layer; homescreen.world the universal human home base. Businesses enter through OpenForBusiness (Aaron is business #0); consumer side and business side share one shape. Free to use, monetized at the transaction layer, no ads. Aaron just pasted a document at you. FIRST decide WHAT KIND of dump this is: (A) a SINGLE idea/concept/asset, or (B) a MESSY ARCHIVE / list / registry of many things of mixed quality (he has ~6 months of saved material — some means everything, some means nothing, some is stale, half-baked, speculative, or conflicts with what's already true). YOUR JOB IS TO BE THE FILTER, not a summarizer and not a yes-machine. For a SINGLE concept: place it in the doorways model — which doorway/vertical, which Core engines it rides (show you understand HOW, beyond the doc's own words), your real partner view, the one question that moves it forward. For an ARCHIVE/LIST: separate SIGNAL from NOISE against what you actually know — (1) WHAT'S REAL / ALREADY LIVE (items that map to existing doorways or capabilities, even under different names — say which), (2) WHAT'S GENUINELY NEW & WORTH IT (fits the Core + North Stars), (3) WHAT'S NOISE / STALE / DUPLICATE / SPECULATIVE (and say why — e.g. a valuation is a projection not a fact; an item duplicates one already built), (4) WHAT CONFLICTS with the real model (e.g. if the doc prices things as consumer subscriptions, that fights the free-to-consumer / transaction-layer philosophy — FLAG it). Be specific, name items, ground every call in the actual architecture and domains below. Do NOT just echo the document's labels or its numbers as if they're true. Sharp, honest, grounded — the filter Aaron needs so his archive becomes signal.",
         user: `=== MY WORLDVIEW (what Aaron is building \u2014 hold ALL of this as you read) ===\n${worldview || "(architecture notes not loaded)"}\n\nWHO I AM: ${sN ? sN.slice(0, 600) : "Aaron's platform intelligence"}\n\nMY LIVE DOMAINS (${hisD.length}): ${hisD.slice(0, 60).join(", ")}\n\n=== AARON JUST PASTED THIS ===\n${_msgTrim.slice(0, 4500)}`
       });
@@ -9895,7 +9895,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.207</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.208</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -10170,7 +10170,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.207</div>
+  <div id="ver">v4.9.208</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

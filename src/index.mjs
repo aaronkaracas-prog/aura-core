@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.199-2026-06-26";
+const BUILD = "aura-core-v4.9.200-2026-06-26";
 
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
@@ -8298,13 +8298,8 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
     // with NO model call (milliseconds). (B) other no-tool conversation gets ONE brief, capped model
     // call (not the loop, not a 500-token essay). Messages that need tools fall through to the full loop.
     if (!isVoice && raw === null) {
-      // (A) INSTANT — pure greeting / trivial acknowledgement, no model call at all.
-      const _m = (message || "").replace(/!!timing/gi, "").trim().toLowerCase().replace(/[!.,…]+$/, "");
-      const _greetings = new Set(["hi","hey","hello","yo","sup","hiya","hey there","hi there","gm","good morning","good afternoon","good evening","morning","howdy","hola","whats up","what's up","wassup"]);
-      const _acks = new Set(["thanks","thank you","thx","ty","ok","okay","kk","cool","nice","great","perfect","got it","gotcha","sounds good","awesome","yep","yup","yes","no","nope"]);
-      if (_greetings.has(_m)) { raw = "Hey Aaron. What's the move?"; _mark("greeting_instant"); }
-      else if (_acks.has(_m)) { raw = "On it — what's next?"; _mark("ack_instant"); }
-
+      // Greetings/acks already handled at the top of llmReply (instant, no setup). Here we only
+      // decide: does this conversational message need tools? If not, ONE brief capped call.
       if (raw === null) {
         // (B) decide if this needs tools; if not, ONE brief capped call.
         let needsTools = true;
@@ -9855,7 +9850,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,system-ui,sans-s
 .cbtn.send{background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff}
 .cbtn.rec{background:#ec4899;color:#fff}
 </style></head><body>
-<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.199</div></div>
+<div class="head"><div class="orb"></div><div class="htitle">Aura</div><div style="margin-left:auto;font-size:0.62rem;color:#44445a;font-family:monospace" id="ver">v4.9.200</div></div>
 <div class="grid" id="appgrid"></div>
 <div class="chat" id="chat"><div class="msg aura"><span class="lbl">AURA</span><span id="greet">…</span></div></div>
 <div class="composer"><div class="inbar">
@@ -10130,7 +10125,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <div class="top">
   <button class="ico" onclick="toggleMenu()">${icMenu}</button>
   <div class="toptitle">Home<span class="dot"></span></div>
-  <div id="ver">v4.9.199</div>
+  <div id="ver">v4.9.200</div>
   <button class="ico" onclick="askAura('Show me my cart')">${icCart}<span class="cartcount" id="cartCount" style="display:none">0</span></button>
 </div>
 

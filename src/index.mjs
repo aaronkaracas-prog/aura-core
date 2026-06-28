@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.260-2026-06-28";
+const BUILD = "aura-core-v4.9.261-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3568,6 +3568,42 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const tg = (edgs.results || []).reduce((a, r) => a + (r.n || 0), 0);
           return { cmd: "GRAPH_STATS", payload: { ok: true, total_entities: te, total_edges: tg, by_type: ents.results || [], by_edge: edgs.results || [] } };
         } catch (e) { return { cmd: "GRAPH_STATS", payload: { ok: false, error: String(e.message) } }; } }
+    }
+
+    case "REACH_OUT": {
+      // REACH_OUT {"name?":"Maria","handle?":"facebook:user:123","context":"loves Kings of Leon, show in Sept","via?":"facebook","image?":"<url>","dest?":"/"}
+      // Mints a THIN LEAD node (state=contacted) + a one-time tokened doorway. Returns the doorway URL
+      // that rides on the contextual image. When they tap it (/d/<token>), the token redeems into a
+      // real PTA, fuses to this lead, and links person<->Aura with the context. The tap IS the consent.
+      if (!isOp) return { cmd: "REACH_OUT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      let ro; try { ro = JSON.parse((rest || "").trim()); } catch (e) { return { cmd: "REACH_OUT", payload: { ok: false, error: "Usage: REACH_OUT {context, name?, handle?, via?, image?, dest?}" } }; }
+      if (!ro || !ro.context) return { cmd: "REACH_OUT", payload: { ok: false, error: "context is required (what Aura is reaching out about - keeps it unique + grounded)" } };
+      { const via = ro.via || "facebook";
+        const handleKey = ro.handle || ("lead:" + via + ":" + crypto.randomUUID().slice(0, 8));
+        // thin lead node in the same graph
+        const leadRes = await processCommand("GRAPH_PUT " + JSON.stringify({ type: "person", name: ro.name || "(unknown)", key: handleKey, props: { state: "contacted", via, met_context: ro.context, contacted_at: new Date().toISOString() } }), env, true);
+        const leadId = leadRes && leadRes.payload && leadRes.payload.id;
+        if (!leadId) return { cmd: "REACH_OUT", payload: { ok: false, error: "could not create lead node", detail: leadRes && leadRes.payload } };
+        // edge: Aura reached toward this person, with context
+        await processCommand("GRAPH_LINK " + JSON.stringify({ from: "pta_aura", rel: "reached_out_to", to: leadId, context: ro.context }), env, true);
+        // one-time token -> the doorway. Stored in KV, 30-day TTL.
+        const token = crypto.randomUUID().replace(/-/g, "").slice(0, 22);
+        const rec = { lead_id: leadId, handle: handleKey, name: ro.name || null, via, context: ro.context, image: ro.image || null, dest: ro.dest || "/", created_at: new Date().toISOString(), redeemed: false };
+        await env.AURA_KV.put("door:" + token, JSON.stringify(rec), { expirationTtl: 2592000 }).catch(() => {});
+        const host = "auras.guide";
+        return { cmd: "REACH_OUT", payload: { ok: true, lead_id: leadId, handle: handleKey, token,
+          doorway: "https://" + host + "/d/" + token,
+          note: "Put this doorway URL behind the contextual image Aura posts. One tap mints their PTA, pre-loaded with the context, and fuses it to this lead." } }; }
+    }
+    case "REACH_STATS": {
+      // REACH_STATS - how many leads contacted vs crossed (redeemed into PTAs).
+      if (!isOp) return { cmd: "REACH_STATS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      { const db = env.AURA_MEMORY;
+        try {
+          const contacted = await db.prepare("SELECT COUNT(*) AS n FROM pta_edges WHERE from_id='pta_aura' AND edge_type='reached_out_to'").first().catch(() => ({ n: 0 }));
+          const crossed = await db.prepare("SELECT COUNT(*) AS n FROM pta_edges WHERE from_id='pta_aura' AND edge_type='connected_to'").first().catch(() => ({ n: 0 }));
+          return { cmd: "REACH_STATS", payload: { ok: true, reached_out: contacted.n || 0, crossed_into_world: crossed.n || 0 } };
+        } catch (e) { return { cmd: "REACH_STATS", payload: { ok: false, error: String(e.message) } }; } }
     }
 
     case "GOVERNOR": {
@@ -10574,6 +10610,39 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
         const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
         return new Response(bytes, { headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=86400" } });
       } catch (e) { return new Response("error", { status: 500 }); }
+    }
+
+    // /d/<token> — THE DOORWAY. A person taps the contextual image Aura posted; this redeems the
+    // one-time token: mints/finds their PTA, fuses it to the thin lead Aura created on first touch,
+    // and links person <-> Aura with the original context. The tap IS the consent IS the PTA.
+    if (url.pathname.startsWith("/d/")) {
+      const token = url.pathname.split("/d/")[1].split("/")[0];
+      let rec = null; try { const r = await env.AURA_KV.get("door:" + token); if (r) rec = JSON.parse(r); } catch {}
+      if (!rec) return new Response("This doorway has expired or was already used.", { status: 410, headers: { "content-type": "text/plain" } });
+      const db = env.AURA_MEMORY; const now = new Date().toISOString();
+      try {
+        // Promote the thin lead to a real person PTA (state crossed). The lead node IS the PTA node now.
+        let meta = {}; try { const row = await db.prepare("SELECT metadata FROM pta_entities WHERE id=?").bind(rec.lead_id).first(); if (row && row.metadata) meta = JSON.parse(row.metadata); } catch {}
+        meta.state = "crossed"; meta.crossed_at = now; meta.met_context = rec.context;
+        await db.prepare("UPDATE pta_entities SET metadata=?, updated_at=? WHERE id=?").bind(JSON.stringify(meta), now, rec.lead_id).run().catch(() => {});
+        // Link person <-> Aura (the relationship), once.
+        const existing = await db.prepare("SELECT id FROM pta_edges WHERE from_id='pta_aura' AND to_id=? AND edge_type='connected_to'").bind(rec.lead_id).first().catch(() => null);
+        if (!existing) {
+          const eid = "edge_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+          await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, relationship, context, created_at, updated_at) VALUES (?, 'pta_aura', ?, 'connected_to', 'active', 'connected_to', ?, ?, ?)").bind(eid, rec.lead_id, rec.context, now, now).run().catch(() => {});
+        }
+        rec.redeemed = true; rec.redeemed_at = now;
+        await env.AURA_KV.put("door:" + token, JSON.stringify(rec), { expirationTtl: 2592000 }).catch(() => {});
+      } catch (e) {}
+      const safeCtx = String(rec.context || "").replace(/[<>]/g, "");
+      const safeName = rec.name ? String(rec.name).replace(/[<>]/g, "") : null;
+      const body = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Aura</title>` +
+        `<body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0a0613;color:#cbb6ff;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:28px">` +
+        `<div style="max-width:480px"><img src="https://auras.guide/brand/butterfly" width="72" height="72" alt="Aura" style="margin-bottom:8px">` +
+        `<h1 style="font-weight:300;letter-spacing:.04em">${safeName ? "Hi " + safeName + " — I'm Aura." : "Hi — I'm Aura."}</h1>` +
+        `<p style="opacity:.85;line-height:1.55">I noticed ${safeCtx}. I help people and businesses understand their world, make better decisions, and move forward — and I remember, so we build on what we've shared instead of starting over.</p>` +
+        `<p style="opacity:.6;font-size:14px;margin-top:22px">You're now connected with Aura.</p></div></body>`;
+      return new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } });
     }
 
     // /brand/avatar - Aura's permanent avatar (the butterfly), stored once in KV as base64 jpeg.

@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.248-2026-06-28";
+const BUILD = "aura-core-v4.9.249-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3435,6 +3435,66 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       return { cmd: "OUTCOME", payload: { ok: true, cached: false, goal: ocRaw, outcome: parsed, ts } };
     }
 
+    case "GRAPH_PUT": {
+      // UNIVERSAL REALITY MODEL — put ANY typed entity into the one graph (pta_entities).
+      // Every engine, onboarding, and the doc-dump write reality through this door.
+      //   GRAPH_PUT {"type":"business","name":"Lia's Flowers","key":"site:liasflowers.com","props":{...}}
+      if (!isOp) return { cmd: "GRAPH_PUT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      let gp; try { gp = JSON.parse((rest || "").trim()); } catch (e) { return { cmd: "GRAPH_PUT", payload: { ok: false, error: "Usage: GRAPH_PUT {type, name, key?, props?}" } }; }
+      if (!gp || !gp.type) return { cmd: "GRAPH_PUT", payload: { ok: false, error: "type is required" } };
+      { const db = env.AURA_MEMORY; const now = new Date().toISOString();
+        try {
+          await db.prepare("CREATE TABLE IF NOT EXISTS pta_entities (id TEXT PRIMARY KEY, type TEXT NOT NULL, identity_key TEXT, name TEXT, metadata TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)").run();
+          const key = gp.key || null; const meta = JSON.stringify(gp.props || {});
+          let existing = null; if (key) existing = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(key).first().catch(() => null);
+          if (existing) { await db.prepare("UPDATE pta_entities SET type=?, name=?, metadata=?, updated_at=? WHERE id=?").bind(gp.type, gp.name || null, meta, now, existing.id).run();
+            return { cmd: "GRAPH_PUT", payload: { ok: true, id: existing.id, type: gp.type, name: gp.name || null, action: "updated" } }; }
+          const id = "ent_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+          await db.prepare("INSERT INTO pta_entities (id, type, identity_key, name, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(id, gp.type, key, gp.name || null, meta, now, now).run();
+          return { cmd: "GRAPH_PUT", payload: { ok: true, id, type: gp.type, name: gp.name || null, action: "created" } };
+        } catch (e) { return { cmd: "GRAPH_PUT", payload: { ok: false, error: String(e.message) } }; } }
+    }
+    case "GRAPH_LINK": {
+      //   GRAPH_LINK {"from":"ent_..","rel":"owns","to":"ent_..","context":"..."}
+      if (!isOp) return { cmd: "GRAPH_LINK", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      let gl; try { gl = JSON.parse((rest || "").trim()); } catch (e) { return { cmd: "GRAPH_LINK", payload: { ok: false, error: "Usage: GRAPH_LINK {from, rel, to, context?}" } }; }
+      if (!gl || !gl.from || !gl.to || !gl.rel) return { cmd: "GRAPH_LINK", payload: { ok: false, error: "from, rel, to required" } };
+      { const db = env.AURA_MEMORY; const now = new Date().toISOString();
+        try {
+          await db.prepare("CREATE TABLE IF NOT EXISTS pta_edges (id TEXT PRIMARY KEY, from_id TEXT NOT NULL, to_id TEXT NOT NULL, edge_type TEXT NOT NULL DEFAULT 'grant', state TEXT NOT NULL DEFAULT 'pending', permission TEXT, relationship TEXT, impact TEXT, context TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)").run();
+          const id = "edge_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+          await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, relationship, context, created_at, updated_at) VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?)").bind(id, gl.from, gl.to, gl.rel, gl.rel, gl.context || null, now, now).run();
+          return { cmd: "GRAPH_LINK", payload: { ok: true, id, from: gl.from, rel: gl.rel, to: gl.to } };
+        } catch (e) { return { cmd: "GRAPH_LINK", payload: { ok: false, error: String(e.message) } }; } }
+    }
+    case "GRAPH_GET": {
+      //   GRAPH_GET <entity_id>  -> the node + its in/out edges (its neighborhood in reality)
+      if (!isOp) return { cmd: "GRAPH_GET", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const gid = (rest || "").trim();
+      if (!gid) return { cmd: "GRAPH_GET", payload: { ok: false, error: "Usage: GRAPH_GET <entity_id>" } };
+      { const db = env.AURA_MEMORY;
+        try {
+          const node = await db.prepare("SELECT id, type, identity_key, name, metadata, created_at, updated_at FROM pta_entities WHERE id = ?").bind(gid).first().catch(() => null);
+          if (!node) return { cmd: "GRAPH_GET", payload: { ok: false, error: "not found", id: gid } };
+          let meta = {}; try { meta = JSON.parse(node.metadata || "{}"); } catch (e) {}
+          const out = await db.prepare("SELECT e.edge_type AS rel, e.to_id, t.type AS to_type, t.name AS to_name, e.context FROM pta_edges e LEFT JOIN pta_entities t ON t.id = e.to_id WHERE e.from_id = ? LIMIT 100").bind(gid).all().catch(() => ({ results: [] }));
+          const inc = await db.prepare("SELECT e.edge_type AS rel, e.from_id, f.type AS from_type, f.name AS from_name, e.context FROM pta_edges e LEFT JOIN pta_entities f ON f.id = e.from_id WHERE e.to_id = ? LIMIT 100").bind(gid).all().catch(() => ({ results: [] }));
+          return { cmd: "GRAPH_GET", payload: { ok: true, entity: { id: node.id, type: node.type, name: node.name, key: node.identity_key, props: meta, created_at: node.created_at, updated_at: node.updated_at }, out_edges: out.results || [], in_edges: inc.results || [] } };
+        } catch (e) { return { cmd: "GRAPH_GET", payload: { ok: false, error: String(e.message) } }; } }
+    }
+    case "GRAPH_STATS": {
+      //   GRAPH_STATS -> the whole of reality at a glance: entity counts by type + edge counts by type
+      if (!isOp) return { cmd: "GRAPH_STATS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      { const db = env.AURA_MEMORY;
+        try {
+          const ents = await db.prepare("SELECT type, COUNT(*) AS n FROM pta_entities GROUP BY type ORDER BY n DESC").all().catch(() => ({ results: [] }));
+          const edgs = await db.prepare("SELECT edge_type AS rel, COUNT(*) AS n FROM pta_edges GROUP BY edge_type ORDER BY n DESC").all().catch(() => ({ results: [] }));
+          const te = (ents.results || []).reduce((a, r) => a + (r.n || 0), 0);
+          const tg = (edgs.results || []).reduce((a, r) => a + (r.n || 0), 0);
+          return { cmd: "GRAPH_STATS", payload: { ok: true, total_entities: te, total_edges: tg, by_type: ents.results || [], by_edge: edgs.results || [] } };
+        } catch (e) { return { cmd: "GRAPH_STATS", payload: { ok: false, error: String(e.message) } }; } }
+    }
+
     case "ONBOARD": {
       // AUTONOMOUS ONBOARDING — name in, Aura goes into the world HERSELF: finds the business,
       // pulls Google Places, scrapes the live site, pulls the web, perceives what it is from ONLY
@@ -3500,7 +3560,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // 5b) INTO OPENFORBUSINESS — state machine (lead), QR doorway, archetype for their home screen
       const obTs = new Date().toISOString();
       const obSlug = (obRead.business_name || obRaw).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
-      const obPtaId = (obPta && (obPta.pta_id || obPta.id || (obPta.pta && obPta.pta.id))) || null;
+      const obPtaId = (obPta && (obPta.pta_id || obPta.id || (typeof obPta.pta === "string" ? obPta.pta : (obPta.pta && obPta.pta.id)))) || null;
       let obState = null;
       if (obPtaId) { try { const bs = await processCommand("BUSINESS_STATE SET " + obPtaId + " lead", env, isOp); obState = (bs && bs.payload) ? bs.payload : bs; } catch (e) {} }
       const obType = String(obRead.business_type || "generic").toLowerCase().replace(/[^a-z0-9_-]/g, "") || "generic";

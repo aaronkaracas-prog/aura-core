@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.247-2026-06-28";
+const BUILD = "aura-core-v4.9.248-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3453,39 +3453,37 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       try { const fp = await processCommand("FETCH_PLACES " + obRaw, env, isOp); const pp = (fp && fp.payload) ? fp.payload : fp; if (pp && pp.ok && Array.isArray(pp.places) && pp.places.length) discovered.places = pp.places[0]; } catch (e) {}
       // 2) Live web signal
       try { const ws = await processCommand("WEB_SEARCH " + obRaw + " official website", env, isOp); const wp = (ws && ws.payload) ? ws.payload : ws; if (wp && wp.ok) discovered.web = { answer: wp.answer || null, sources: wp.sources || [] }; } catch (e) {}
-      // 3) SCRAPE — Tavily /extract (the real scraper we bought: pulls the whole page clean into AI)
+      // 3) SCRAPE — Tavily /extract across the homepage + the business's OWN sub-pages (everything).
       let obSiteUrl = (discovered.places && discovered.places.website) || (discovered.web && discovered.web.sources && discovered.web.sources[0] && discovered.web.sources[0].url) || null;
+      let obScrape = "";
       if (obSiteUrl) {
-        try { const tk = await env.AURA_KV.get("secret:tavily").catch(() => null);
+        try {
+          const tk = await env.AURA_KV.get("secret:tavily").catch(() => null);
           if (tk) {
-            const er = await fetch("https://api.tavily.com/extract", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + tk }, body: JSON.stringify({ urls: [obSiteUrl], extract_depth: "advanced" }) });
-            if (er.ok) { const ed = await er.json(); const f = (ed.results || [])[0]; discovered.site = f ? { url: f.url || obSiteUrl, text: String(f.raw_content || "").replace(/\s+/g, " ").trim().slice(0, 9000) } : { url: obSiteUrl, text: null, note: "tavily returned no content", failed: ed.failed_results || [] }; }
+            let host = ""; try { host = new URL(obSiteUrl).hostname.replace(/^www\./, ""); } catch (e) {}
+            const urlSet = new Set([obSiteUrl]);
+            try { const sr = await processCommand("WEB_SEARCH " + obRaw + " products specials reviews subscriptions", env, isOp); const sp = (sr && sr.payload) ? sr.payload : sr; ((sp && sp.sources) || []).forEach(function (x) { try { if (x.url && host && new URL(x.url).hostname.replace(/^www\./, "").endsWith(host)) urlSet.add(x.url); } catch (e) {} }); } catch (e) {}
+            const urls = Array.from(urlSet).slice(0, 5);
+            const er = await fetch("https://api.tavily.com/extract", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + tk }, body: JSON.stringify({ urls: urls, extract_depth: "advanced" }) });
+            if (er.ok) { const ed = await er.json(); const parts = (ed.results || []).map(function (r) { return "[" + (r.url || "") + "] " + String(r.raw_content || "").replace(/\s+/g, " ").trim(); }); obScrape = parts.join("\n\n").slice(0, 18000); discovered.site = { urls: urls, pages: (ed.results || []).length, text: obScrape || null, failed: ed.failed_results || [] }; }
             else { discovered.site = { url: obSiteUrl, text: null, note: "tavily extract http " + er.status }; }
           } else { discovered.site = { url: obSiteUrl, text: null, note: "no tavily key" }; }
         } catch (e) { discovered.site = { url: obSiteUrl, text: null, note: "extract failed: " + String(e.message) }; }
       }
-      // 4) PERCEIVE — a true structured read of ONLY what she pulled
-      const obLens = "ONBOARDING PERCEPTION — you are Aura meeting a real business for the FIRST time, having just gone into the world yourself and gathered what you could (Google Places, the live website text, the web). Read ONLY what is actually in FACTS; NEVER invent a detail you did not pull (no made-up phone, address, or offering). Build a true structured read: what this business is, who it serves, what it sells, how it operates, where its real gaps/opportunities are, and how to reach it. Then decide the onboarding move and draft a short warm outreach to its owner. This proves Aura can decipher any business from the outside, with no one feeding her the facts.";
-      const obR = await reasonThroughLoop(env, {
-        entity: obRaw,
-        lens: obLens,
-        facts: discovered,
-        maxTokens: 1800,
-        extraKeys: [
-          { key: "business_name", desc: "the real name as found" },
-          { key: "what_it_is", desc: "1-2 sentences grounded in what was pulled" },
-          { key: "offerings", desc: "array of real offerings found" },
-          { key: "serves", desc: "who/where it serves" },
-          { key: "contact", desc: "object {phone,email,address,website} - ONLY values actually found, else null" },
-          { key: "gaps", desc: "array of real gaps/opportunities Aura could help with" },
-          { key: "business_type", desc: "one slug for the home-screen archetype, e.g. florist" },
-          { key: "the_onboarding_move", desc: "the single most compelling specific thing Aura would do for this business first" },
-          { key: "outreach", desc: "a short warm message to the owner: what Aura saw + an offer to help, 3-4 sentences" },
-          { key: "data_quality", desc: "honest note on how much real signal was pulled vs missing" }
-        ]
-      });
-      if (!obR.ok) return { cmd: "ONBOARD", payload: { ok: false, error: "Perception failed: " + obR.error, discovered } };
-      const obRead = obR.reasoning || {};
+      // 4) UNDERSTAND — one focused, GROUNDED pass over everything she pulled. She captures the
+      // WHOLE business and tags certainty: she only "knows" what she actually pulled; anything unsure
+      // goes to grounding.unsure and is NEVER asserted. Detects socials and drafts the offer to manage.
+      const obApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      if (!obApiKey) return { cmd: "ONBOARD", payload: { ok: false, error: "Brain not configured (secret:anthropic)", discovered } };
+      const obSys = "You are Aura onboarding a real business you just researched. You are given FACTS you actually pulled: Google Places, the live website (scraped, possibly several pages), and web search. Build a COMPLETE, GROUNDED understanding from ONLY those facts. Capture EVERYTHING the site shows: every product and service, specials, subscriptions, collections, pricing, delivery area, hours, reviews and testimonials, and EVERY social account (Instagram, Facebook, X, YouTube, TikTok) with its handle and url. ABSOLUTE RULE: never state a fact you did not pull; if you are not certain, put it in grounding.unsure and do NOT assert it - Aura must never claim to know something she did not verify, it makes her look unreliable. Return ONLY JSON (no prose, no fences) with keys: business_name, business_type (one lowercase slug for the home-screen archetype, e.g. florist), what_it_is (2-3 sentences, confirmed facts only), offerings (array, comprehensive), highlights (array of standout items: specials, subscriptions, signature products), serves (who and where), contact (object email, phone, address, website - only real values found else null), socials (array of objects with platform, handle, url actually found), reviews (object rating, count, summary - nulls where unknown), the_move (the single most compelling first thing Aura would do for them), social_offer (if socials found, one warm sentence offering to manage them, else empty string), outreach (a warm 3-5 sentence message to the owner: the specific things Aura genuinely saw as proof, an offer to help, and the social_offer woven in if applicable), grounding (object with confirmed array and unsure array). Output JSON only.";
+      const obFactsStr = JSON.stringify({ places: discovered.places, website_scrape: obScrape || (discovered.site && discovered.site.text) || null, web: discovered.web }).slice(0, 24000);
+      let obRead = {};
+      try {
+        const d = await callAnthropic(obApiKey, { model: "claude-sonnet-4-5", max_tokens: 2600, system: obSys, messages: [{ role: "user", content: "FACTS:\n" + obFactsStr }] });
+        let t = ""; if (d && d.content) { for (const b of d.content) { if (b.type === "text") t += b.text; } }
+        t = t.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+        obRead = JSON.parse(t);
+      } catch (e) { return { cmd: "ONBOARD", payload: { ok: false, error: "Understanding pass failed: " + String(e.message), discovered } }; }
       // 5) MINT THE BUSINESS PTA from the identity she found
       let obPta = null;
       const obContact = obRead.contact || {};
@@ -3517,9 +3515,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (obPtaId) { try { await processCommand("BUSINESS_STATE SET " + obPtaId + " trial", env, isOp); } catch (e) {} }
       }
       return { cmd: "ONBOARD", payload: { ok: true, mode: obCommit ? "committed" : "proposed", subject: obRaw,
-        flow: { scraped: !!(discovered.site && discovered.site.text), perceived: true, pta_minted: !!obPtaId, in_openforbusiness: !!(obState && obState.ok), qr_ready: true, contacted: obSent },
+        flow: { scraped: !!(discovered.site && discovered.site.text), perceived: true, pta_minted: !!obPtaId, in_openforbusiness: !!(obState && obState.ok), qr_ready: true, socials_found: (obRead.socials || []).length, contacted: obSent },
         discovered: { places_found: !!discovered.places, site_url: obSiteUrl, site_scraped: !!(discovered.site && discovered.site.text), web_pulled: !!discovered.web },
-        read: obRead, pta: obPta, business_state: obState, business_type: obType, doorway: obDoorway, qr_url: obQr, outreach: obMessage, outreach_sent: obSent, slug: obSlug, ts: obTs } };
+        read: obRead, socials: obRead.socials || [], grounding: obRead.grounding || null, pta: obPta, business_state: obState, business_type: obType, doorway: obDoorway, qr_url: obQr, outreach: obMessage, outreach_sent: obSent, slug: obSlug, ts: obTs } };
     }
 
     case "MISSION_SET": {

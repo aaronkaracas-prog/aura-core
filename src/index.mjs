@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.258-2026-06-28";
+const BUILD = "aura-core-v4.9.259-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3494,6 +3494,37 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const tg = (edgs.results || []).reduce((a, r) => a + (r.n || 0), 0);
           return { cmd: "GRAPH_STATS", payload: { ok: true, total_entities: te, total_edges: tg, by_type: ents.results || [], by_edge: edgs.results || [] } };
         } catch (e) { return { cmd: "GRAPH_STATS", payload: { ok: false, error: String(e.message) } }; } }
+    }
+
+    case "FB_PAGES": {
+      // List the Facebook Pages Aura can operate (after /auth/facebook connect).
+      if (!isOp) return { cmd: "FB_PAGES", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      { const raw = await env.AURA_KV.get("secret:fb_pages").catch(() => null);
+        if (!raw) return { cmd: "FB_PAGES", payload: { ok: false, error: "Facebook not connected yet. Visit https://auras.guide/auth/facebook/start" } };
+        let m = {}; try { m = JSON.parse(raw); } catch (e) {}
+        const list = Object.keys(m).map((id) => ({ page_id: id, name: m[id].name, category: m[id].category }));
+        return { cmd: "FB_PAGES", payload: { ok: true, count: list.length, pages: list } }; }
+    }
+    case "FB_POST": {
+      // FB_POST {"page_id":"...","message":"..."}  - post to a Page via the Graph API (durable, sanctioned).
+      if (!isOp) return { cmd: "FB_POST", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      let fp; try { fp = JSON.parse((rest || "").trim()); } catch (e) { return { cmd: "FB_POST", payload: { ok: false, error: "Usage: FB_POST {page_id?, message}" } }; }
+      if (!fp || !fp.message) return { cmd: "FB_POST", payload: { ok: false, error: "message required" } };
+      { const raw = await env.AURA_KV.get("secret:fb_pages").catch(() => null);
+        if (!raw) return { cmd: "FB_POST", payload: { ok: false, error: "Facebook not connected. Visit https://auras.guide/auth/facebook/start" } };
+        let m = {}; try { m = JSON.parse(raw); } catch (e) {}
+        const ids = Object.keys(m);
+        const pid = fp.page_id || (ids.length === 1 ? ids[0] : null);
+        if (!pid) return { cmd: "FB_POST", payload: { ok: false, error: "page_id required (multiple pages) - run FB_PAGES", pages: ids.length } };
+        const pg = m[pid];
+        if (!pg || !pg.token) return { cmd: "FB_POST", payload: { ok: false, error: "no token for page " + pid + " (reconnect)" } };
+        const ver = (await env.AURA_KV.get("config:fb:graph_version").catch(() => null)) || "v21.0";
+        try {
+          const r = await fetch(`https://graph.facebook.com/${ver}/${pid}/feed`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message: fp.message, access_token: pg.token }) });
+          const d = await r.json();
+          if (!r.ok || d.error) return { cmd: "FB_POST", payload: { ok: false, error: d.error ? d.error.message : ("http " + r.status), raw: d } };
+          return { cmd: "FB_POST", payload: { ok: true, page: pg.name, page_id: pid, post_id: d.id || null } };
+        } catch (e) { return { cmd: "FB_POST", payload: { ok: false, error: String(e.message) } }; } }
     }
 
     case "HANDS_SEE": {
@@ -10495,6 +10526,77 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       } catch (e) {
         return jsonReply({ ok: false, error: String(e && e.message || e) });
       }
+    }
+
+    // ===== FACEBOOK CONNECT (operator authorizes Aura's app to manage Pages - the front door) =====
+    // /auth/facebook/start -> Facebook OAuth dialog (grant Page management). /auth/facebook/callback
+    // -> exchange code for a long-lived user token, pull the Pages + their tokens, store them. From
+    // then on Aura operates the Pages via the Graph API (durable, no cookies). app id/secret = KV data.
+    if (url.pathname === "/auth/facebook/start") {
+      const appId = await env.AURA_KV.get("secret:fb_app_id").catch(() => null);
+      if (!appId) return new Response("Facebook app not configured (secret:fb_app_id)", { status: 500 });
+      const ver = (await env.AURA_KV.get("config:fb:graph_version").catch(() => null)) || "v21.0";
+      const redirectUri = `https://${url.hostname}/auth/facebook/callback`;
+      const state = Array.from(crypto.getRandomValues(new Uint8Array(12))).map(b => b.toString(16).padStart(2, "0")).join("");
+      await env.AURA_KV.put(`oauth:state:${state}`, JSON.stringify({ host: url.hostname, kind: "facebook" }), { expirationTtl: 600 }).catch(() => {});
+      const scope = (await env.AURA_KV.get("config:fb:scopes").catch(() => null)) || "public_profile,pages_show_list,pages_manage_posts,pages_read_engagement,pages_manage_engagement,business_management";
+      const auth = new URL(`https://www.facebook.com/${ver}/dialog/oauth`);
+      auth.searchParams.set("client_id", appId);
+      auth.searchParams.set("redirect_uri", redirectUri);
+      auth.searchParams.set("response_type", "code");
+      auth.searchParams.set("state", state);
+      auth.searchParams.set("scope", scope);
+      return Response.redirect(auth.toString(), 302);
+    }
+    if (url.pathname === "/auth/facebook/callback") {
+      const code = url.searchParams.get("code");
+      const state = url.searchParams.get("state");
+      const ferr = url.searchParams.get("error_description") || url.searchParams.get("error");
+      if (ferr) return new Response("Facebook declined: " + ferr, { status: 400 });
+      if (!code || !state) return new Response("Missing code/state", { status: 400 });
+      let stateRec = null; try { const r = await env.AURA_KV.get(`oauth:state:${state}`); if (r) stateRec = JSON.parse(r); } catch {}
+      if (!stateRec) return new Response("Invalid or expired connect attempt. Please try again.", { status: 400 });
+      await env.AURA_KV.delete(`oauth:state:${state}`).catch(() => {});
+      const appId = await env.AURA_KV.get("secret:fb_app_id").catch(() => null);
+      const appSecret = await env.AURA_KV.get("secret:fb_app_secret").catch(() => null);
+      const ver = (await env.AURA_KV.get("config:fb:graph_version").catch(() => null)) || "v21.0";
+      const redirectUri = `https://${url.hostname}/auth/facebook/callback`;
+      let tok;
+      try {
+        const u = new URL(`https://graph.facebook.com/${ver}/oauth/access_token`);
+        u.searchParams.set("client_id", appId); u.searchParams.set("redirect_uri", redirectUri);
+        u.searchParams.set("client_secret", appSecret); u.searchParams.set("code", code);
+        tok = await (await fetch(u.toString())).json();
+      } catch (e) { return new Response("Token exchange failed", { status: 500 }); }
+      if (!tok || !tok.access_token) return new Response("Facebook did not return a token: " + JSON.stringify(tok), { status: 500 });
+      let longTok = tok.access_token;
+      try {
+        const u = new URL(`https://graph.facebook.com/${ver}/oauth/access_token`);
+        u.searchParams.set("grant_type", "fb_exchange_token"); u.searchParams.set("client_id", appId);
+        u.searchParams.set("client_secret", appSecret); u.searchParams.set("fb_exchange_token", tok.access_token);
+        const lt = await (await fetch(u.toString())).json();
+        if (lt && lt.access_token) longTok = lt.access_token;
+      } catch (e) {}
+      await env.AURA_KV.put("secret:fb_user_token", longTok).catch(() => {});
+      let pages = [];
+      try {
+        const pr = await (await fetch(`https://graph.facebook.com/${ver}/me/accounts?fields=id,name,access_token,category&access_token=${encodeURIComponent(longTok)}`)).json();
+        pages = (pr && pr.data) || [];
+      } catch (e) {}
+      const pageMap = {};
+      for (const p of pages) { if (p && p.id) pageMap[p.id] = { name: p.name || null, token: p.access_token || null, category: p.category || null }; }
+      await env.AURA_KV.put("secret:fb_pages", JSON.stringify(pageMap)).catch(() => {});
+      try {
+        for (const p of pages.slice(0, 25)) {
+          if (!p || !p.id) continue;
+          const r = await processCommand("GRAPH_PUT " + JSON.stringify({ type: "social_account", name: (p.name || "Page") + " (FB)", key: "facebook:page:" + p.id, props: { platform: "facebook", page_id: p.id, category: p.category || null, managed_by: "aura" } }), env, true);
+          const nid = r && r.payload && r.payload.id;
+          if (nid) await processCommand("GRAPH_LINK " + JSON.stringify({ from: "pta_aura", rel: "manages", to: nid }), env, true);
+        }
+      } catch (e) {}
+      const names = pages.map(p => p && p.name).filter(Boolean).map(n => String(n).replace(/[<>]/g, ""));
+      const body = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Aura connected to Facebook</title><body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0a0613;color:#cbb6ff;display:flex;min-height:100vh;align-items:center;justify-content:center;text-align:center;padding:24px"><div><img src="https://auras.guide/brand/butterfly" width="64" height="64" alt="Aura"><h2 style="font-weight:400">Aura is connected to Facebook</h2><p style="opacity:.7">Pages Aura can operate: ${names.length ? names.join(", ") : "(none yet - create a Page, then reconnect)"}</p></div></body>`;
+      return new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } });
     }
 
     // ===== GOOGLE SIGN-IN (the universal authenticated front door - no operator token) =====

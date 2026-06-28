@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.256-2026-06-28";
+const BUILD = "aura-core-v4.9.257-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -10417,6 +10417,26 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
 
     if (url.pathname === "/health") {
       return jsonReply({ ok: true, build: BUILD, ts: new Date().toISOString() });
+    }
+
+    // /brand/spark - the transparent butterfly (no bg, no wordmark) for the tiny thinking indicator.
+    if (url.pathname === "/brand/spark") {
+      try {
+        const b64 = await env.AURA_KV.get("asset:aura:spark");
+        if (!b64) return new Response("not found", { status: 404 });
+        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        return new Response(bytes, { headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=86400" } });
+      } catch (e) { return new Response("error", { status: 500 }); }
+    }
+
+    // /brand/butterfly - the transparent butterfly alone (no wordmark), for the thinking indicator.
+    if (url.pathname === "/brand/butterfly") {
+      try {
+        const b64 = await env.AURA_KV.get("asset:aura:butterfly");
+        if (!b64) return new Response("not found", { status: 404 });
+        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        return new Response(bytes, { headers: { "Content-Type": "image/png", "Cache-Control": "public, max-age=86400" } });
+      } catch (e) { return new Response("error", { status: 500 }); }
     }
 
     // /brand/avatar - Aura's permanent avatar (the butterfly), stored once in KV as base64 jpeg.

@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.250-2026-06-28";
+const BUILD = "aura-core-v4.9.251-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3493,6 +3493,48 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const tg = (edgs.results || []).reduce((a, r) => a + (r.n || 0), 0);
           return { cmd: "GRAPH_STATS", payload: { ok: true, total_entities: te, total_edges: tg, by_type: ents.results || [], by_edge: edgs.results || [] } };
         } catch (e) { return { cmd: "GRAPH_STATS", payload: { ok: false, error: String(e.message) } }; } }
+    }
+
+    case "PURCHASE": {
+      // FULL-CYCLE TEST — a customer buys from an onboarded business; the purchase propagates into a
+      // NEW relationship (the recipient of the gift). Charges via SecureSpend (test), and writes the
+      // whole cycle into the reality graph: customer + recipient + transaction nodes, all linked.
+      //   PURCHASE {"business":"site:liasflowers.com","buyer":"Maria Chen","amount":75,"item":"Designer's Choice Large","recipient":"Rosa Mendez","occasion":"birthday"}
+      if (!isOp) return { cmd: "PURCHASE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      let pu; try { pu = JSON.parse((rest || "").trim()); } catch (e) { return { cmd: "PURCHASE", payload: { ok: false, error: "Usage: PURCHASE {business, buyer, amount, item, recipient?, occasion?}" } }; }
+      if (!pu || !pu.buyer || pu.amount == null) return { cmd: "PURCHASE", payload: { ok: false, error: "buyer and amount are required" } };
+      { const db = env.AURA_MEMORY;
+        const bizKey = pu.business || "site:liasflowers.com";
+        const biz = await db.prepare("SELECT id, name FROM pta_entities WHERE identity_key = ?").bind(bizKey).first().catch(() => null);
+        if (!biz) return { cmd: "PURCHASE", payload: { ok: false, error: "Business not found in graph: " + bizKey + " (onboard it first)" } };
+        const slug = bizKey.replace(/^site:/, "").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+        // 1) CHARGE via SecureSpend (test mode — full flow, no real money)
+        let charge = null;
+        try { const cr = await processCommand("SECURESPEND_CHARGE " + JSON.stringify({ asset: slug, amount: pu.amount, item: pu.item || "purchase", buyer: { name: pu.buyer }, mode: "test", context: { recipient: pu.recipient || null, occasion: pu.occasion || null } }), env, isOp); charge = (cr && cr.payload) ? cr.payload : cr; } catch (e) { charge = { ok: false, error: String(e.message) }; }
+        // 2) GRAPH — the cycle becomes connected reality
+        const mk = async (o) => { const r = await processCommand("GRAPH_PUT " + JSON.stringify(o), env, isOp); return (r && r.payload && r.payload.id) || null; };
+        const lk = async (from, rel, to, context) => { if (from && to) await processCommand("GRAPH_LINK " + JSON.stringify({ from, rel, to, context: context || null }), env, isOp); };
+        const buyerSlug = String(pu.buyer).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40);
+        const custId = await mk({ type: "person", name: pu.buyer, key: "person:" + buyerSlug, props: { first_seen: "purchase", from_business: biz.name } });
+        const txKey = "tx:" + ((charge && (charge.tx_id || charge.id)) || (Date.now() + "-" + buyerSlug));
+        const txId = await mk({ type: "transaction", name: (pu.item || "purchase") + " $" + pu.amount, key: txKey, props: { amount: pu.amount, item: pu.item || null, occasion: pu.occasion || null, mode: "test", business: biz.name, ts: new Date().toISOString() } });
+        await lk(custId, "purchased", txId);
+        await lk(txId, "from_business", biz.id);
+        await lk(custId, "customer_of", biz.id);
+        let recipId = null;
+        if (pu.recipient) {
+          const rSlug = String(pu.recipient).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40);
+          recipId = await mk({ type: "person", name: pu.recipient, key: "person:" + rSlug, props: { first_seen: "received_gift", occasion: pu.occasion || null } });
+          await lk(custId, "sent_flowers_to", recipId, pu.occasion || null);
+          await lk(recipId, "received", txId);
+        }
+        return { cmd: "PURCHASE", payload: { ok: true,
+          cycle: { business: biz.name, buyer: pu.buyer, amount: pu.amount, item: pu.item || null, recipient: pu.recipient || null, occasion: pu.occasion || null },
+          charge: charge ? { ok: charge.ok, mode: charge.mode || "test", total: charge.total || charge.amount || null, tx: charge.tx_id || charge.id || null } : null,
+          graph: { business_id: biz.id, customer_id: custId, transaction_id: txId, recipient_id: recipId,
+            next_relationship: recipId ? (pu.buyer + " -> " + pu.recipient + " : the purchase became a new person in the graph") : null },
+          ts: new Date().toISOString() } };
+      }
     }
 
     case "ONBOARD": {

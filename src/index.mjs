@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.246-2026-06-27";
+const BUILD = "aura-core-v4.9.247-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3433,6 +3433,93 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const ts = new Date().toISOString();
       await env.AURA_KV.put(ocKey, JSON.stringify(parsed)).catch(() => {});
       return { cmd: "OUTCOME", payload: { ok: true, cached: false, goal: ocRaw, outcome: parsed, ts } };
+    }
+
+    case "ONBOARD": {
+      // AUTONOMOUS ONBOARDING — name in, Aura goes into the world HERSELF: finds the business,
+      // pulls Google Places, scrapes the live site, pulls the web, perceives what it is from ONLY
+      // what she gathered (never hand-fed), mints the business PTA, drafts the outreach. Discovery
+      // is the whole point — the operator does not give her the facts.
+      //   ONBOARD <business name>, <city>        e.g. ONBOARD Lia's Flowers, West Hills CA
+      //   ONBOARD COMMIT <business>, <city>      (also send the outreach email if one was found)
+      if (!isOp) return { cmd: "ONBOARD", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      let obRaw = (rest || "").trim();
+      let obCommit = false;
+      if (/^COMMIT\s+/i.test(obRaw)) { obCommit = true; obRaw = obRaw.replace(/^COMMIT\s+/i, "").trim(); }
+      if (!obRaw) return { cmd: "ONBOARD", payload: { ok: false, error: "Usage: ONBOARD <business name>, <city>  (Aura discovers, perceives, and mints the PTA herself)." } };
+      const obStrip = (h) => String(h || "").replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&[a-z#0-9]+;/gi, " ").replace(/\s+/g, " ").trim();
+      const discovered = { places: null, site: null, web: null };
+      // 1) GO INTO THE WORLD — Google Places (best effort; key may be unset -> fall through)
+      try { const fp = await processCommand("FETCH_PLACES " + obRaw, env, isOp); const pp = (fp && fp.payload) ? fp.payload : fp; if (pp && pp.ok && Array.isArray(pp.places) && pp.places.length) discovered.places = pp.places[0]; } catch (e) {}
+      // 2) Live web signal
+      try { const ws = await processCommand("WEB_SEARCH " + obRaw + " official website", env, isOp); const wp = (ws && ws.payload) ? ws.payload : ws; if (wp && wp.ok) discovered.web = { answer: wp.answer || null, sources: wp.sources || [] }; } catch (e) {}
+      // 3) SCRAPE — Tavily /extract (the real scraper we bought: pulls the whole page clean into AI)
+      let obSiteUrl = (discovered.places && discovered.places.website) || (discovered.web && discovered.web.sources && discovered.web.sources[0] && discovered.web.sources[0].url) || null;
+      if (obSiteUrl) {
+        try { const tk = await env.AURA_KV.get("secret:tavily").catch(() => null);
+          if (tk) {
+            const er = await fetch("https://api.tavily.com/extract", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + tk }, body: JSON.stringify({ urls: [obSiteUrl], extract_depth: "advanced" }) });
+            if (er.ok) { const ed = await er.json(); const f = (ed.results || [])[0]; discovered.site = f ? { url: f.url || obSiteUrl, text: String(f.raw_content || "").replace(/\s+/g, " ").trim().slice(0, 9000) } : { url: obSiteUrl, text: null, note: "tavily returned no content", failed: ed.failed_results || [] }; }
+            else { discovered.site = { url: obSiteUrl, text: null, note: "tavily extract http " + er.status }; }
+          } else { discovered.site = { url: obSiteUrl, text: null, note: "no tavily key" }; }
+        } catch (e) { discovered.site = { url: obSiteUrl, text: null, note: "extract failed: " + String(e.message) }; }
+      }
+      // 4) PERCEIVE — a true structured read of ONLY what she pulled
+      const obLens = "ONBOARDING PERCEPTION — you are Aura meeting a real business for the FIRST time, having just gone into the world yourself and gathered what you could (Google Places, the live website text, the web). Read ONLY what is actually in FACTS; NEVER invent a detail you did not pull (no made-up phone, address, or offering). Build a true structured read: what this business is, who it serves, what it sells, how it operates, where its real gaps/opportunities are, and how to reach it. Then decide the onboarding move and draft a short warm outreach to its owner. This proves Aura can decipher any business from the outside, with no one feeding her the facts.";
+      const obR = await reasonThroughLoop(env, {
+        entity: obRaw,
+        lens: obLens,
+        facts: discovered,
+        maxTokens: 1800,
+        extraKeys: [
+          { key: "business_name", desc: "the real name as found" },
+          { key: "what_it_is", desc: "1-2 sentences grounded in what was pulled" },
+          { key: "offerings", desc: "array of real offerings found" },
+          { key: "serves", desc: "who/where it serves" },
+          { key: "contact", desc: "object {phone,email,address,website} - ONLY values actually found, else null" },
+          { key: "gaps", desc: "array of real gaps/opportunities Aura could help with" },
+          { key: "business_type", desc: "one slug for the home-screen archetype, e.g. florist" },
+          { key: "the_onboarding_move", desc: "the single most compelling specific thing Aura would do for this business first" },
+          { key: "outreach", desc: "a short warm message to the owner: what Aura saw + an offer to help, 3-4 sentences" },
+          { key: "data_quality", desc: "honest note on how much real signal was pulled vs missing" }
+        ]
+      });
+      if (!obR.ok) return { cmd: "ONBOARD", payload: { ok: false, error: "Perception failed: " + obR.error, discovered } };
+      const obRead = obR.reasoning || {};
+      // 5) MINT THE BUSINESS PTA from the identity she found
+      let obPta = null;
+      const obContact = obRead.contact || {};
+      const obIdEmail = obContact.email && /@/.test(String(obContact.email)) ? ("email:" + String(obContact.email).trim()) : null;
+      const obIdPhone = obContact.phone ? ("phone:" + String(obContact.phone).replace(/[^0-9+]/g, "")) : null;
+      const obIdentity = obIdEmail || obIdPhone;
+      if (obIdentity) {
+        try {
+          const obAbout = ((obRead.what_it_is || "") + " Offerings: " + (Array.isArray(obRead.offerings) ? obRead.offerings.join(", ") : "") + ". Serves: " + (obRead.serves || "") + ".").slice(0, 900);
+          const obPcCmd = "PTA_CREATE " + JSON.stringify({ identity: obIdentity, name: obRead.business_name || obRaw, about: obAbout, app: "openforbusiness", email_welcome: false });
+          const pr = await processCommand(obPcCmd, env, isOp); obPta = (pr && pr.payload) ? pr.payload : pr;
+        } catch (e) { obPta = { ok: false, error: String(e.message) }; }
+      }
+      // 5b) INTO OPENFORBUSINESS — state machine (lead), QR doorway, archetype for their home screen
+      const obTs = new Date().toISOString();
+      const obSlug = (obRead.business_name || obRaw).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+      const obPtaId = (obPta && (obPta.pta_id || obPta.id || (obPta.pta && obPta.pta.id))) || null;
+      let obState = null;
+      if (obPtaId) { try { const bs = await processCommand("BUSINESS_STATE SET " + obPtaId + " lead", env, isOp); obState = (bs && bs.payload) ? bs.payload : bs; } catch (e) {} }
+      const obType = String(obRead.business_type || "generic").toLowerCase().replace(/[^a-z0-9_-]/g, "") || "generic";
+      const obDoorway = "https://openforbusiness.world/" + obSlug;
+      const obQr = "https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=" + encodeURIComponent(obDoorway);
+      await env.AURA_KV.put("onboard:" + obSlug, JSON.stringify({ subject: obRaw, slug: obSlug, read: obRead, pta_id: obPtaId, identity: obIdentity || null, business_type: obType, doorway: obDoorway, qr: obQr, state: (obState && obState.ok) ? "lead" : null, ts: obTs })).catch(() => {});
+      // 6) CONTACT — outreach carries the doorway + QR; on COMMIT send it and advance to trial
+      const obMessage = (obRead.outreach || "") + "  Your Open For Business doorway: " + obDoorway + "  |  Your QR: " + obQr;
+      let obSent = false;
+      if (obCommit && obContact.email && /@/.test(String(obContact.email)) && obRead.outreach) {
+        try { const es = await processCommand("EMAIL_SEND " + String(obContact.email).trim() + " Aura x " + (obRead.business_name || obRaw) + " | " + obMessage, env, isOp); const ep = (es && es.payload) ? es.payload : es; obSent = !!(ep && ep.ok); } catch (e) {}
+        if (obPtaId) { try { await processCommand("BUSINESS_STATE SET " + obPtaId + " trial", env, isOp); } catch (e) {} }
+      }
+      return { cmd: "ONBOARD", payload: { ok: true, mode: obCommit ? "committed" : "proposed", subject: obRaw,
+        flow: { scraped: !!(discovered.site && discovered.site.text), perceived: true, pta_minted: !!obPtaId, in_openforbusiness: !!(obState && obState.ok), qr_ready: true, contacted: obSent },
+        discovered: { places_found: !!discovered.places, site_url: obSiteUrl, site_scraped: !!(discovered.site && discovered.site.text), web_pulled: !!discovered.web },
+        read: obRead, pta: obPta, business_state: obState, business_type: obType, doorway: obDoorway, qr_url: obQr, outreach: obMessage, outreach_sent: obSent, slug: obSlug, ts: obTs } };
     }
 
     case "MISSION_SET": {

@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.249-2026-06-28";
+const BUILD = "aura-core-v4.9.250-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3574,10 +3574,31 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         try { const es = await processCommand("EMAIL_SEND " + String(obContact.email).trim() + " Aura x " + (obRead.business_name || obRaw) + " | " + obMessage, env, isOp); const ep = (es && es.payload) ? es.payload : es; obSent = !!(ep && ep.ok); } catch (e) {}
         if (obPtaId) { try { await processCommand("BUSINESS_STATE SET " + obPtaId + " trial", env, isOp); } catch (e) {} }
       }
+      // 6b) WRITE TO THE REALITY GRAPH — the business becomes typed nodes + edges, not freeform JSON.
+      const graphOut = { business: null, place: null, socials: [], linked_pta: false };
+      try {
+        const domainKey = "site:" + (String(obSiteUrl || obSlug).replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "") || obSlug);
+        const bizProps = { business_type: obType, what_it_is: obRead.what_it_is || null, offerings: obRead.offerings || [], highlights: obRead.highlights || [], reviews: obRead.reviews || null, serves: obRead.serves || null, contact: obContact || null, doorway: obDoorway, source: "onboard" };
+        const bp = await processCommand("GRAPH_PUT " + JSON.stringify({ type: "business", name: obRead.business_name || obRaw, key: domainKey, props: bizProps }), env, isOp);
+        const bpId = bp && bp.payload && bp.payload.id; graphOut.business = bpId || null;
+        if (bpId && obPtaId) { await processCommand("GRAPH_LINK " + JSON.stringify({ from: bpId, rel: "has_identity", to: obPtaId, context: "PTA for this business" }), env, isOp); graphOut.linked_pta = true; }
+        if (bpId && obContact && obContact.address) {
+          const pl = await processCommand("GRAPH_PUT " + JSON.stringify({ type: "place", name: obContact.address, key: "addr:" + String(obContact.address).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 60), props: { address: obContact.address } }), env, isOp);
+          const plId = pl && pl.payload && pl.payload.id; graphOut.place = plId || null;
+          if (plId) await processCommand("GRAPH_LINK " + JSON.stringify({ from: bpId, rel: "located_at", to: plId }), env, isOp);
+        }
+        if (bpId && Array.isArray(obRead.socials)) {
+          for (const s of obRead.socials.slice(0, 6)) {
+            if (!s || !s.url) continue;
+            const sp = await processCommand("GRAPH_PUT " + JSON.stringify({ type: "social_account", name: ((s.platform || "social") + (s.handle ? " " + s.handle : "")), key: "social:" + String(s.platform || "x").toLowerCase() + ":" + s.url, props: { platform: s.platform || null, handle: s.handle || null, url: s.url } }), env, isOp);
+            const spId = sp && sp.payload && sp.payload.id; if (spId) { await processCommand("GRAPH_LINK " + JSON.stringify({ from: bpId, rel: "has_account", to: spId }), env, isOp); graphOut.socials.push(spId); }
+          }
+        }
+      } catch (e) { graphOut.error = String(e.message); }
       return { cmd: "ONBOARD", payload: { ok: true, mode: obCommit ? "committed" : "proposed", subject: obRaw,
-        flow: { scraped: !!(discovered.site && discovered.site.text), perceived: true, pta_minted: !!obPtaId, in_openforbusiness: !!(obState && obState.ok), qr_ready: true, socials_found: (obRead.socials || []).length, contacted: obSent },
+        flow: { scraped: !!(discovered.site && discovered.site.text), perceived: true, pta_minted: !!obPtaId, in_openforbusiness: !!(obState && obState.ok), qr_ready: true, socials_found: (obRead.socials || []).length, graphed: !!graphOut.business, contacted: obSent },
         discovered: { places_found: !!discovered.places, site_url: obSiteUrl, site_scraped: !!(discovered.site && discovered.site.text), web_pulled: !!discovered.web },
-        read: obRead, socials: obRead.socials || [], grounding: obRead.grounding || null, pta: obPta, business_state: obState, business_type: obType, doorway: obDoorway, qr_url: obQr, outreach: obMessage, outreach_sent: obSent, slug: obSlug, ts: obTs } };
+        read: obRead, graph: graphOut, socials: obRead.socials || [], grounding: obRead.grounding || null, pta: obPta, business_state: obState, business_type: obType, doorway: obDoorway, qr_url: obQr, outreach: obMessage, outreach_sent: obSent, slug: obSlug, ts: obTs } };
     }
 
     case "MISSION_SET": {

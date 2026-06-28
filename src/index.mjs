@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.263-2026-06-28";
+const BUILD = "aura-core-v4.9.264-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -10663,38 +10663,82 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       } catch (e) { return new Response("error", { status: 500 }); }
     }
 
-    // /d/<token> — THE DOORWAY. A person taps the contextual image Aura posted; this redeems the
-    // one-time token: mints/finds their PTA, fuses it to the thin lead Aura created on first touch,
-    // and links person <-> Aura with the original context. The tap IS the consent IS the PTA.
+    // /d/<token> — THE GATED DOORWAY. A person taps the contextual image; before it "opens" they
+    // must identify themselves (Google / email / phone). On sign-in we mint/confirm their VERIFIED
+    // PTA and fuse it to the thin lead Aura created on first touch, linked to Aura with the context.
+    // The tap shows the image; the SIGN-IN is the consent + the real identity capture.
     if (url.pathname.startsWith("/d/")) {
       const token = url.pathname.split("/d/")[1].split("/")[0];
       let rec = null; try { const r = await env.AURA_KV.get("door:" + token); if (r) rec = JSON.parse(r); } catch {}
       if (!rec) return new Response("This doorway has expired or was already used.", { status: 410, headers: { "content-type": "text/plain" } });
       const db = env.AURA_MEMORY; const now = new Date().toISOString();
-      try {
-        // Promote the thin lead to a real person PTA (state crossed). The lead node IS the PTA node now.
-        let meta = {}; try { const row = await db.prepare("SELECT metadata FROM pta_entities WHERE id=?").bind(rec.lead_id).first(); if (row && row.metadata) meta = JSON.parse(row.metadata); } catch {}
-        meta.state = "crossed"; meta.crossed_at = now; meta.met_context = rec.context;
-        await db.prepare("UPDATE pta_entities SET metadata=?, updated_at=? WHERE id=?").bind(JSON.stringify(meta), now, rec.lead_id).run().catch(() => {});
-        // Link person <-> Aura (the relationship), once.
-        const existing = await db.prepare("SELECT id FROM pta_edges WHERE from_id='pta_aura' AND to_id=? AND edge_type='connected_to'").bind(rec.lead_id).first().catch(() => null);
-        if (!existing) {
-          const eid = "edge_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
-          await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, relationship, context, created_at, updated_at) VALUES (?, 'pta_aura', ?, 'connected_to', 'active', 'connected_to', ?, ?, ?)").bind(eid, rec.lead_id, rec.context, now, now).run().catch(() => {});
-        }
-        rec.redeemed = true; rec.redeemed_at = now;
-        await env.AURA_KV.put("door:" + token, JSON.stringify(rec), { expirationTtl: 2592000 }).catch(() => {});
-      } catch (e) {}
+      const img = rec.image ? String(rec.image).replace(/["<>]/g, "") : null;
       const safeCtx = String(rec.context || "").replace(/[<>]/g, "");
       const safeName = rec.name ? String(rec.name).replace(/[<>]/g, "") : null;
-      const img = rec.image ? String(rec.image).replace(/["<>]/g, "") : null;
+
+      // Returning from sign-in? A session token (?s=) means a VERIFIED identity exists. Fuse it.
+      const sess = url.searchParams.get("s");
+      let verifiedPta = null, verifiedName = null, verifiedEmail = null;
+      if (sess) {
+        try { const sr = await env.AURA_KV.get("session:" + sess); if (sr) { const s = JSON.parse(sr); verifiedPta = s.pta; verifiedName = s.name || null; verifiedEmail = (s.identity || "").replace(/^email:/, "") || null; } } catch {}
+      }
+
+      if (verifiedPta) {
+        // FUSE: connect the verified person's PTA to Aura, carrying the context, and mark the lead crossed.
+        try {
+          const existing = await db.prepare("SELECT id FROM pta_edges WHERE from_id='pta_aura' AND to_id=? AND edge_type='connected_to'").bind(verifiedPta).first().catch(() => null);
+          if (!existing) {
+            const eid = "edge_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+            await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, relationship, context, created_at, updated_at) VALUES (?, 'pta_aura', ?, 'connected_to', 'active', 'connected_to', ?, ?, ?)").bind(eid, verifiedPta, rec.context, now, now).run().catch(() => {});
+          }
+          // tie the thin lead to the verified PTA (same_as), and mark crossed
+          if (rec.lead_id && rec.lead_id !== verifiedPta) {
+            const le = "edge_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+            await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, relationship, context, created_at, updated_at) VALUES (?, ?, ?, 'same_as', 'active', 'same_as', ?, ?, ?)").bind(le, rec.lead_id, verifiedPta, "doorway redeemed", now, now).run().catch(() => {});
+            let meta = {}; try { const row = await db.prepare("SELECT metadata FROM pta_entities WHERE id=?").bind(rec.lead_id).first(); if (row && row.metadata) meta = JSON.parse(row.metadata); } catch {}
+            meta.state = "crossed"; meta.crossed_at = now; meta.verified_pta = verifiedPta;
+            await db.prepare("UPDATE pta_entities SET metadata=?, updated_at=? WHERE id=?").bind(JSON.stringify(meta), now, rec.lead_id).run().catch(() => {});
+          }
+          rec.redeemed = true; rec.redeemed_at = now; rec.verified_pta = verifiedPta;
+          await env.AURA_KV.put("door:" + token, JSON.stringify(rec), { expirationTtl: 2592000 }).catch(() => {});
+        } catch (e) {}
+        const who = verifiedName ? String(verifiedName).replace(/[<>]/g, "") : (safeName || "");
+        const body = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Aura</title>` +
+          `<body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0a0613;color:#cbb6ff;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:28px">` +
+          `<div style="max-width:520px">` +
+          (img ? `<img src="${img}" alt="" style="width:100%;max-width:420px;border-radius:16px;box-shadow:0 8px 40px rgba(150,70,255,.35);margin-bottom:22px">` : `<img src="https://auras.guide/brand/butterfly" width="72" height="72" style="margin-bottom:8px">`) +
+          `<h1 style="font-weight:300;letter-spacing:.04em">${who ? "You're connected, " + who + "." : "You're connected."}</h1>` +
+          `<p style="opacity:.85;line-height:1.55">I'm Aura. I noticed ${safeCtx}. From here I'll remember what matters to you, so every time we talk we build on what we've shared.</p>` +
+          `<p style="opacity:.55;font-size:13px;margin-top:18px">${verifiedEmail ? "Connected as " + verifiedEmail.replace(/[<>]/g, "") : "Connected with Aura."}</p></div></body>`;
+        return new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } });
+      }
+
+      // NOT signed in yet — show the image + the credential gate (sign-in REQUIRED to open).
+      const back = encodeURIComponent("/d/" + token);
       const body = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Aura</title>` +
         `<body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0a0613;color:#cbb6ff;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:28px">` +
-        `<div style="max-width:520px">` +
-        (img ? `<img src="${img}" alt="" style="width:100%;max-width:480px;border-radius:16px;box-shadow:0 8px 40px rgba(150,70,255,.35);margin-bottom:22px">` : `<img src="https://auras.guide/brand/butterfly" width="72" height="72" alt="Aura" style="margin-bottom:8px">`) +
-        `<h1 style="font-weight:300;letter-spacing:.04em">${safeName ? "Hi " + safeName + " — I'm Aura." : "Hi — I'm Aura."}</h1>` +
-        `<p style="opacity:.85;line-height:1.55">I noticed ${safeCtx}. I help people and businesses understand their world, make better decisions, and move forward — and I remember, so we build on what we've shared instead of starting over.</p>` +
-        `<p style="opacity:.6;font-size:14px;margin-top:22px">You're now connected with Aura.</p></div></body>`;
+        `<div style="max-width:460px">` +
+        (img ? `<img src="${img}" alt="" style="width:100%;max-width:360px;border-radius:16px;box-shadow:0 8px 40px rgba(150,70,255,.35);margin-bottom:20px">` : `<img src="https://auras.guide/brand/butterfly" width="64" height="64" style="margin-bottom:10px">`) +
+        `<h1 style="font-weight:300;letter-spacing:.04em;font-size:22px">${safeName ? "Hi " + safeName + " — I'm Aura." : "Hi — I'm Aura."}</h1>` +
+        `<p style="opacity:.8;line-height:1.5;font-size:15px">I noticed ${safeCtx}. Tell me who you are and we're connected — I'll remember, so we never start over.</p>` +
+        `<a href="/auth/google/start?dest=${back}" style="display:block;margin:18px auto 10px;max-width:300px;background:#fff;color:#222;text-decoration:none;padding:13px;border-radius:10px;font-weight:600">Continue with Google</a>` +
+        `<a href="/auth/email/start?dest=${back}" style="display:block;margin:10px auto;max-width:300px;background:transparent;color:#cbb6ff;text-decoration:none;padding:12px;border-radius:10px;border:1px solid rgba(150,70,255,.4)">Continue with email</a>` +
+        `<a href="/auth/phone/start?dest=${back}" style="display:block;margin:10px auto;max-width:300px;background:transparent;color:#cbb6ff;text-decoration:none;padding:12px;border-radius:10px;border:1px solid rgba(150,70,255,.4)">Continue with phone</a>` +
+        `<p style="opacity:.4;font-size:12px;margin-top:16px">Aura asks only for your name and a way to reach you. Nothing more.</p>` +
+        `</div></body>`;
+      return new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } });
+    }
+
+    // Email/phone doorway sign-in (interim): Google is the live verified path. These keep the gate
+    // buttons honest until full email-code / phone-OTP doorway flows are wired.
+    if (url.pathname === "/auth/email/start" || url.pathname === "/auth/phone/start") {
+      const dest = url.searchParams.get("dest") || "/";
+      const kind = url.pathname.includes("email") ? "email" : "phone";
+      const body = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Aura</title>` +
+        `<body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0a0613;color:#cbb6ff;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:28px">` +
+        `<div style="max-width:420px"><img src="https://auras.guide/brand/butterfly" width="60" height="60" style="margin-bottom:12px">` +
+        `<p style="opacity:.85;line-height:1.5">${kind === "email" ? "Email" : "Phone"} sign-in is coming. For now, the fastest way to connect is Google — one tap, verified.</p>` +
+        `<a href="/auth/google/start?dest=${encodeURIComponent(dest)}" style="display:inline-block;margin-top:16px;background:#fff;color:#222;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600">Continue with Google</a></div></body>`;
       return new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } });
     }
 

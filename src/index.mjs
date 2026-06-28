@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.264-2026-06-28";
+const BUILD = "aura-core-v4.9.265-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -354,9 +354,16 @@ async function sendEmail(env, to, subject, body, opts) {
   const payload = {
     to,
     from: fromAddr,
-    subject: subject || "Message from Aura",
-    text: body || subject || ""
+    subject: subject || "Message from Aura"
   };
+  // HTML when provided (Cloudflare's send API accepts an `html` field) - this is what makes a
+  // clickable-image email possible. Always include a text fallback for plain-text clients.
+  if (opts.html) {
+    payload.html = String(body || "");
+    payload.text = opts.text || String(body || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() || (subject || "");
+  } else {
+    payload.text = body || subject || "";
+  }
   try {
     const res = await fetch("https://api.cloudflare.com/client/v4/accounts/" + acct + "/email/sending/send", {
       method: "POST",
@@ -3624,14 +3631,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         }
         const door = await mintDoorway(env, { context: ro.context, name: ro.name || null, handle: ro.handle || null, via, image: imageUrl, dest: ro.dest || "/" });
         if (!door || !door.ok) return { cmd: "REACH_OUT", payload: { ok: false, error: (door && door.error) || "could not mint doorway" } };
-        // Optionally email the doorway link directly (Aura sends it herself). The /d/ landing SHOWS
-        // the image and mints the PTA on arrival. (sendEmail is text-only, so we send the link.)
+        // Optionally email the CLICKABLE IMAGE directly (Aura sends it herself, HTML). Tapping the
+        // image opens the doorway -> sign-in gate -> verified PTA. The /d/ landing also shows the image.
         let emailed = null;
         if (ro.email) {
           const greet = ro.name ? "Hi " + String(ro.name).replace(/[<>]/g, "") : "Hi";
-          const text = greet + " - I'm Aura. I noticed " + String(ro.context).replace(/[<>]/g, "") + ".\n\n" +
-            "I made something for you - tap to see it and connect with me:\n" + door.doorway + "\n\n- Aura";
-          try { emailed = await sendEmail(env, ro.email, (ro.subject || "A note from Aura"), text, {}); } catch (e) { emailed = { ok: false, error: String(e.message) }; }
+          const ctx = String(ro.context).replace(/[<>]/g, "");
+          const imgSrc = imageUrl || "https://auras.guide/brand/butterfly";
+          const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:520px;margin:0 auto;color:#222;line-height:1.5">` +
+            `<p>${greet} — I'm Aura. I noticed ${ctx}.</p>` +
+            `<a href="${door.doorway}" style="display:block;text-decoration:none"><img src="${imgSrc}" alt="From Aura — tap to connect" width="480" style="width:100%;max-width:480px;border-radius:14px;display:block;margin:14px 0;border:0"></a>` +
+            `<p style="opacity:.75;font-size:14px">Tap the image to connect with me.</p>` +
+            `<p style="opacity:.5;font-size:12px">Or open: <a href="${door.doorway}">${door.doorway}</a></p></div>`;
+          try { emailed = await sendEmail(env, ro.email, (ro.subject || "A note from Aura"), html, { html: true }); } catch (e) { emailed = { ok: false, error: String(e.message) }; }
         }
         return { cmd: "REACH_OUT", payload: { ok: true, lead_id: door.lead_id, handle: door.handle, token: door.token,
           doorway: door.doorway, image: imageUrl, emailed,

@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.261-2026-06-28";
+const BUILD = "aura-core-v4.9.262-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -278,6 +278,23 @@ async function governorRecord(env, action, pageId) {
     await env.AURA_KV.put(pk, JSON.stringify(page), { expirationTtl: 172800 }).catch(() => {});
   }
   return { page, acct };
+}
+
+// === DOORWAY MINT — the universal PTA-attach. Shared by REACH_OUT and showIt (every image) ===
+// Mints a thin lead node + a one-time token whose /d/<token> landing redeems into a real PTA,
+// fused to the lead, linked to Aura with context. This is the mechanism that makes ANY image
+// (ShowIt, canvas, email graphic) a PTA-minting doorway. Returns { token, doorway, lead_id }.
+async function mintDoorway(env, { context, name, handle, via, image, dest }) {
+  via = via || "system";
+  const handleKey = handle || ("lead:" + via + ":" + crypto.randomUUID().slice(0, 8));
+  const leadRes = await processCommand("GRAPH_PUT " + JSON.stringify({ type: "person", name: name || "(unknown)", key: handleKey, props: { state: "contacted", via, met_context: context || null, contacted_at: new Date().toISOString() } }), env, true);
+  const leadId = leadRes && leadRes.payload && leadRes.payload.id;
+  if (!leadId) return { ok: false, error: "could not create lead node" };
+  if (context) await processCommand("GRAPH_LINK " + JSON.stringify({ from: "pta_aura", rel: "reached_out_to", to: leadId, context }), env, true);
+  const token = crypto.randomUUID().replace(/-/g, "").slice(0, 22);
+  const rec = { lead_id: leadId, handle: handleKey, name: name || null, via, context: context || null, image: image || null, dest: dest || "/", created_at: new Date().toISOString(), redeemed: false };
+  await env.AURA_KV.put("door:" + token, JSON.stringify(rec), { expirationTtl: 2592000 }).catch(() => {});
+  return { ok: true, token, doorway: "https://auras.guide/d/" + token, lead_id: leadId, handle: handleKey };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1008,9 +1025,16 @@ async function processCommand(line, env, isOp) {
     }
 
     case "SHOW_IT": {
-      const subject = line.replace(/^SHOW_IT\s+/i, "").trim();
-      if (!subject) return { cmd: "SHOW_IT", payload: { ok: false, error: "Usage: SHOW_IT <what to show>" } };
-      const r = await showIt(subject, env, { source: "show_it_cmd" });
+      const after = line.replace(/^SHOW_IT\s+/i, "").trim();
+      if (!after) return { cmd: "SHOW_IT", payload: { ok: false, error: "Usage: SHOW_IT <what to show>   |   SHOW_IT PTA {subject, context, name?, via?, handle?}" } };
+      // PTA mode: the generated image is born as a doorway (a tap mints a PTA, pre-loaded with context).
+      if (/^PTA\b/i.test(after)) {
+        let p; try { p = JSON.parse(after.replace(/^PTA\s+/i, "").trim()); } catch (e) { return { cmd: "SHOW_IT", payload: { ok: false, error: "Usage: SHOW_IT PTA {subject, context, name?, via?, handle?}" } }; }
+        if (!p || !p.subject) return { cmd: "SHOW_IT", payload: { ok: false, error: "subject required (what to show)" } };
+        const r = await showIt(p.subject, env, { source: "show_it_pta", pta: true, context: p.context || p.subject, name: p.name || null, via: p.via || null, handle: p.handle || null, dest: p.dest || null });
+        return { cmd: "SHOW_IT", payload: r };
+      }
+      const r = await showIt(after, env, { source: "show_it_cmd" });
       return { cmd: "SHOW_IT", payload: r };
     }
 
@@ -3579,20 +3603,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       let ro; try { ro = JSON.parse((rest || "").trim()); } catch (e) { return { cmd: "REACH_OUT", payload: { ok: false, error: "Usage: REACH_OUT {context, name?, handle?, via?, image?, dest?}" } }; }
       if (!ro || !ro.context) return { cmd: "REACH_OUT", payload: { ok: false, error: "context is required (what Aura is reaching out about - keeps it unique + grounded)" } };
       { const via = ro.via || "facebook";
-        const handleKey = ro.handle || ("lead:" + via + ":" + crypto.randomUUID().slice(0, 8));
-        // thin lead node in the same graph
-        const leadRes = await processCommand("GRAPH_PUT " + JSON.stringify({ type: "person", name: ro.name || "(unknown)", key: handleKey, props: { state: "contacted", via, met_context: ro.context, contacted_at: new Date().toISOString() } }), env, true);
-        const leadId = leadRes && leadRes.payload && leadRes.payload.id;
-        if (!leadId) return { cmd: "REACH_OUT", payload: { ok: false, error: "could not create lead node", detail: leadRes && leadRes.payload } };
-        // edge: Aura reached toward this person, with context
-        await processCommand("GRAPH_LINK " + JSON.stringify({ from: "pta_aura", rel: "reached_out_to", to: leadId, context: ro.context }), env, true);
-        // one-time token -> the doorway. Stored in KV, 30-day TTL.
-        const token = crypto.randomUUID().replace(/-/g, "").slice(0, 22);
-        const rec = { lead_id: leadId, handle: handleKey, name: ro.name || null, via, context: ro.context, image: ro.image || null, dest: ro.dest || "/", created_at: new Date().toISOString(), redeemed: false };
-        await env.AURA_KV.put("door:" + token, JSON.stringify(rec), { expirationTtl: 2592000 }).catch(() => {});
-        const host = "auras.guide";
-        return { cmd: "REACH_OUT", payload: { ok: true, lead_id: leadId, handle: handleKey, token,
-          doorway: "https://" + host + "/d/" + token,
+        // Optionally generate the contextual image in the same shot (image + doorway as one artifact).
+        let imageUrl = ro.image || null;
+        if (ro.generate_image) {
+          try { const si = await showIt(ro.generate_image === true ? ro.context : String(ro.generate_image), env, { source: "reach_out" }); if (si && si.ok) imageUrl = si.image_url; } catch (e) {}
+        }
+        const door = await mintDoorway(env, { context: ro.context, name: ro.name || null, handle: ro.handle || null, via, image: imageUrl, dest: ro.dest || "/" });
+        if (!door || !door.ok) return { cmd: "REACH_OUT", payload: { ok: false, error: (door && door.error) || "could not mint doorway" } };
+        return { cmd: "REACH_OUT", payload: { ok: true, lead_id: door.lead_id, handle: door.handle, token: door.token,
+          doorway: door.doorway, image: imageUrl,
           note: "Put this doorway URL behind the contextual image Aura posts. One tap mints their PTA, pre-loaded with the context, and fuses it to this lead." } }; }
     }
     case "REACH_STATS": {
@@ -10362,7 +10381,16 @@ async function showIt(subject, env, opts = {}) {
   const prompt = opts.raw ? want : `${want}. High quality, visually striking, well-composed, detailed.`;
   const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null });
   if (!result || !result.ok) return { ok: false, error: result ? result.error : "generation failed" };
-  return { ok: true, id: result.id, image_url: result.image_url || `https://auras.guide/image/${result.id}`, showed: want };
+  const out = { ok: true, id: result.id, image_url: result.image_url || `https://auras.guide/image/${result.id}`, showed: want };
+  // PTA DOORWAY: when asked, this image is born as a doorway - a tap on it mints a PTA, pre-loaded
+  // with context. This is the universal "every image can be a relationship" wire.
+  if (opts.pta) {
+    try {
+      const door = await mintDoorway(env, { context: opts.context || want, name: opts.name || null, handle: opts.handle || null, via: opts.via || (opts.source || "showit"), image: out.image_url, dest: opts.dest || "/" });
+      if (door && door.ok) { out.doorway = door.doorway; out.token = door.token; out.lead_id = door.lead_id; }
+    } catch (e) {}
+  }
+  return out;
 }
 
 

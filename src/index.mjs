@@ -5,8 +5,45 @@
  */
 
 
-const BUILD = "aura-core-v4.9.244-2026-06-27";
+const BUILD = "aura-core-v4.9.245-2026-06-27";
 
+// ============================================================================
+// SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
+// This is the engine OUTPUT: given a business type, which rooms (nav) does its home
+// screen get, in what order. Seeds/defaults only; canonical per-type override lives in
+// KV at config:canvas:archetype:<type>; unknown types are synthesized by the Canvas
+// brain and cached there. Each room: {key,label,kind}. The shell maps kind -> view/icon.
+// kinds: chat | core money calls domains assets brain services (operator data views)
+//        storefront inventory orders reservations menu foh boh hours reviews customers gallery delivery commerce (business rooms)
+// ============================================================================
+const SEED_ARCHETYPES = {
+  operator: { type:"operator", label:"Operator", greeting:"Good {part}, {name}.", rooms:[
+    {key:"core",label:"The Core",kind:"core"},{key:"home",label:"Home",kind:"chat"},
+    {key:"money",label:"Money",kind:"money"},{key:"calls",label:"Call system",kind:"calls"},
+    {key:"situation",label:"SituationTracker",kind:"situation"},{key:"domains",label:"Domains",kind:"domains"},
+    {key:"assets",label:"Assets",kind:"assets"},{key:"brain",label:"Aura's brain",kind:"brain"},
+    {key:"services",label:"Services & APIs",kind:"services"} ] },
+  restaurant: { type:"restaurant", label:"Restaurant", greeting:"Your house is open.", rooms:[
+    {key:"home",label:"Home",kind:"chat"},{key:"reservations",label:"Reservations",kind:"reservations"},
+    {key:"menu",label:"Menu",kind:"menu"},{key:"foh",label:"Front of House",kind:"foh"},
+    {key:"boh",label:"Back of House",kind:"boh"},{key:"orders",label:"Orders",kind:"orders"},
+    {key:"hours",label:"Hours",kind:"hours"},{key:"reviews",label:"Reviews",kind:"reviews"},
+    {key:"money",label:"Money",kind:"money"} ] },
+  retail: { type:"retail", label:"Retail / Store", greeting:"Your store is open.", rooms:[
+    {key:"home",label:"Home",kind:"chat"},{key:"storefront",label:"Storefront",kind:"storefront"},
+    {key:"inventory",label:"Inventory",kind:"inventory"},{key:"orders",label:"Orders",kind:"orders"},
+    {key:"customers",label:"Customers",kind:"customers"},{key:"hours",label:"Hours",kind:"hours"},
+    {key:"money",label:"Money",kind:"money"} ] },
+  florist: { type:"florist", label:"Florist", greeting:"Fresh today.", rooms:[
+    {key:"home",label:"Home",kind:"chat"},{key:"orders",label:"Orders",kind:"orders"},
+    {key:"gallery",label:"Arrangements",kind:"gallery"},{key:"delivery",label:"Delivery",kind:"delivery"},
+    {key:"storefront",label:"Shop",kind:"storefront"},{key:"hours",label:"Hours",kind:"hours"},
+    {key:"money",label:"Money",kind:"money"} ] },
+  generic: { type:"generic", label:"Business", greeting:"Open for business.", rooms:[
+    {key:"home",label:"Home",kind:"chat"},{key:"storefront",label:"Storefront",kind:"storefront"},
+    {key:"orders",label:"Orders",kind:"orders"},{key:"hours",label:"Hours",kind:"hours"},
+    {key:"money",label:"Money",kind:"money"} ] }
+};
 // ============================================================================
 // CORE_MAP — COMPACT FALLBACK ONLY. The CANONICAL architecture map is DATA in KV at
 // config:core:map (set/edited via SETKV, no redeploy). /home/core reads KV first and
@@ -10716,6 +10753,33 @@ function openAlbum(idx){
         let core = null;
         try { core = JSON.parse(await env.AURA_KV.get("config:core:map") || "null"); } catch {}
         return new Response(JSON.stringify({ ok: true, build: BUILD, source: core ? "kv" : "fallback", core: core || CORE_MAP }), { headers: hCors });
+      }
+      if (url.pathname === "/home/layout") {
+        // ADAPTIVE CANVAS — generate the home-screen shape for a business type.
+        const type = (url.searchParams.get("type") || "operator").toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 40) || "operator";
+        let layout = null, source = "seed";
+        try { const k = await env.AURA_KV.get("config:canvas:archetype:" + type); if (k) { layout = JSON.parse(k); source = "kv"; } } catch {}
+        if (!layout && SEED_ARCHETYPES[type]) { layout = SEED_ARCHETYPES[type]; source = "seed"; }
+        if (!layout) {
+          // Unknown type -> the Canvas brain synthesizes a screen, then caches it.
+          try {
+            const apiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+            if (apiKey) {
+              const sys = "You are Aura's Adaptive Canvas engine. Given a business type, decide the SHAPE of that business's home screen: which rooms (left-nav sections) it gets and in what order, tailored to how that business actually operates. Return ONLY a JSON object, no prose, no code fences: {\"type\":\"<slug>\",\"label\":\"<Title>\",\"greeting\":\"<short on-brand greeting>\",\"rooms\":[{\"key\":\"<slug>\",\"label\":\"<Title>\",\"kind\":\"<kind>\"}]}. Use 5 to 8 rooms. ALWAYS include a first room {key:home,label:Home,kind:chat} and a {key:money,label:Money,kind:money} room. Choose each room's kind from EXACTLY this set: chat, storefront, inventory, orders, reservations, menu, foh, boh, hours, reviews, customers, gallery, delivery, commerce, money. Pick the rooms a real owner of this business would want as the operating surface.";
+              const d = await callAnthropic(apiKey, { model: "claude-sonnet-4-5", max_tokens: 700, system: sys, messages: [{ role: "user", content: "Business type: " + type }] });
+              let t = ""; if (d && d.content) { for (const b of d.content) { if (b.type === "text") t += b.text; } }
+              t = t.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+              const parsed = JSON.parse(t);
+              if (parsed && Array.isArray(parsed.rooms) && parsed.rooms.length) {
+                parsed.type = type;
+                layout = parsed; source = "synth";
+                await env.AURA_KV.put("config:canvas:archetype:" + type, JSON.stringify(parsed)).catch(() => {});
+              }
+            }
+          } catch {}
+        }
+        if (!layout) { layout = SEED_ARCHETYPES.generic; source = "generic"; }
+        return new Response(JSON.stringify({ ok: true, type, source, layout }), { headers: hCors });
       }
       const norm = (a) => (Array.isArray(a) ? a : []).map((x) => typeof x === "string" ? x : (x && (x.domain || x.name || x.title || x.label || x.host)) || String(x)).filter(Boolean);
       if (url.pathname === "/home/assets") {

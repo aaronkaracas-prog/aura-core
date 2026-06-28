@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.262-2026-06-28";
+const BUILD = "aura-core-v4.9.263-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3594,6 +3594,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         } catch (e) { return { cmd: "GRAPH_STATS", payload: { ok: false, error: String(e.message) } }; } }
     }
 
+    case "DOORWAY_EMAIL": {
+      // DOORWAY_EMAIL <token>  - returns email-ready HTML: the image wrapped as a clickable link to
+      // its doorway, so clicking the image in an email lands on /d/<token> and mints the PTA.
+      if (!isOp) return { cmd: "DOORWAY_EMAIL", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      { const token = (rest || "").trim();
+        if (!token) return { cmd: "DOORWAY_EMAIL", payload: { ok: false, error: "Usage: DOORWAY_EMAIL <token>" } };
+        let rec = null; try { const r = await env.AURA_KV.get("door:" + token); if (r) rec = JSON.parse(r); } catch {}
+        if (!rec) return { cmd: "DOORWAY_EMAIL", payload: { ok: false, error: "no doorway for token " + token } };
+        const door = "https://auras.guide/d/" + token;
+        const img = rec.image || "https://auras.guide/brand/butterfly";
+        const html = `<a href="${door}" style="text-decoration:none"><img src="${img}" alt="From Aura" width="480" style="max-width:100%;border-radius:14px;display:block"></a>`;
+        return { cmd: "DOORWAY_EMAIL", payload: { ok: true, token, doorway: door, image: rec.image || null, email_html: html, note: "Paste email_html into an HTML email. Clicking the image lands on the doorway and mints the PTA." } }; }
+    }
+
     case "REACH_OUT": {
       // REACH_OUT {"name?":"Maria","handle?":"facebook:user:123","context":"loves Kings of Leon, show in Sept","via?":"facebook","image?":"<url>","dest?":"/"}
       // Mints a THIN LEAD node (state=contacted) + a one-time tokened doorway. Returns the doorway URL
@@ -3610,8 +3624,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         }
         const door = await mintDoorway(env, { context: ro.context, name: ro.name || null, handle: ro.handle || null, via, image: imageUrl, dest: ro.dest || "/" });
         if (!door || !door.ok) return { cmd: "REACH_OUT", payload: { ok: false, error: (door && door.error) || "could not mint doorway" } };
+        // Optionally email the doorway link directly (Aura sends it herself). The /d/ landing SHOWS
+        // the image and mints the PTA on arrival. (sendEmail is text-only, so we send the link.)
+        let emailed = null;
+        if (ro.email) {
+          const greet = ro.name ? "Hi " + String(ro.name).replace(/[<>]/g, "") : "Hi";
+          const text = greet + " - I'm Aura. I noticed " + String(ro.context).replace(/[<>]/g, "") + ".\n\n" +
+            "I made something for you - tap to see it and connect with me:\n" + door.doorway + "\n\n- Aura";
+          try { emailed = await sendEmail(env, ro.email, (ro.subject || "A note from Aura"), text, {}); } catch (e) { emailed = { ok: false, error: String(e.message) }; }
+        }
         return { cmd: "REACH_OUT", payload: { ok: true, lead_id: door.lead_id, handle: door.handle, token: door.token,
-          doorway: door.doorway, image: imageUrl,
+          doorway: door.doorway, image: imageUrl, emailed,
           note: "Put this doorway URL behind the contextual image Aura posts. One tap mints their PTA, pre-loaded with the context, and fuses it to this lead." } }; }
     }
     case "REACH_STATS": {
@@ -10664,9 +10687,11 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       } catch (e) {}
       const safeCtx = String(rec.context || "").replace(/[<>]/g, "");
       const safeName = rec.name ? String(rec.name).replace(/[<>]/g, "") : null;
+      const img = rec.image ? String(rec.image).replace(/["<>]/g, "") : null;
       const body = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Aura</title>` +
         `<body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0a0613;color:#cbb6ff;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:28px">` +
-        `<div style="max-width:480px"><img src="https://auras.guide/brand/butterfly" width="72" height="72" alt="Aura" style="margin-bottom:8px">` +
+        `<div style="max-width:520px">` +
+        (img ? `<img src="${img}" alt="" style="width:100%;max-width:480px;border-radius:16px;box-shadow:0 8px 40px rgba(150,70,255,.35);margin-bottom:22px">` : `<img src="https://auras.guide/brand/butterfly" width="72" height="72" alt="Aura" style="margin-bottom:8px">`) +
         `<h1 style="font-weight:300;letter-spacing:.04em">${safeName ? "Hi " + safeName + " — I'm Aura." : "Hi — I'm Aura."}</h1>` +
         `<p style="opacity:.85;line-height:1.55">I noticed ${safeCtx}. I help people and businesses understand their world, make better decisions, and move forward — and I remember, so we build on what we've shared instead of starting over.</p>` +
         `<p style="opacity:.6;font-size:14px;margin-top:22px">You're now connected with Aura.</p></div></body>`;

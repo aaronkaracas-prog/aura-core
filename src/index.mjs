@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.251-2026-06-28";
+const BUILD = "aura-core-v4.9.252-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3493,6 +3493,34 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const tg = (edgs.results || []).reduce((a, r) => a + (r.n || 0), 0);
           return { cmd: "GRAPH_STATS", payload: { ok: true, total_entities: te, total_edges: tg, by_type: ents.results || [], by_edge: edgs.results || [] } };
         } catch (e) { return { cmd: "GRAPH_STATS", payload: { ok: false, error: String(e.message) } }; } }
+    }
+
+    case "HANDS_SEE": {
+      // THE HANDS - step 1: EYES. Aura sees a page through a REAL headless browser (post-JS),
+      // via Cloudflare Browser Rendering (in-stack, existing CF token in KV, no new infra).
+      // Self-probing: if the token lacks Browser Rendering permission, it returns the real error.
+      //   HANDS_SEE <url>
+      if (!isOp) return { cmd: "HANDS_SEE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const hsUrl = (rest || "").trim();
+      if (!/^https?:\/\//i.test(hsUrl)) return { cmd: "HANDS_SEE", payload: { ok: false, error: "Usage: HANDS_SEE <http(s) url>" } };
+      { const cfToken = env.CF_API_TOKEN || await KV.get(env, "secret:cf_api_token");
+        if (!cfToken) return { cmd: "HANDS_SEE", payload: { ok: false, error: "no CF API token (secret:cf_api_token)" } };
+        const acct = (await KV.get(env, "config:cf:account_id")) || "3db0de2c6fce92757e2c4e4f83d7eb16";
+        try {
+          const r = await fetch("https://api.cloudflare.com/client/v4/accounts/" + acct + "/browser-rendering/markdown", {
+            method: "POST",
+            headers: { "Authorization": "Bearer " + cfToken, "Content-Type": "application/json" },
+            body: JSON.stringify({ url: hsUrl, gotoOptions: { waitUntil: "networkidle0", timeout: 20000 } })
+          });
+          const status = r.status;
+          let data = null; try { data = await r.json(); } catch (e) {}
+          if (!r.ok || !data || data.success === false) {
+            return { cmd: "HANDS_SEE", payload: { ok: false, http: status, error: (data && data.errors) ? data.errors : ("browser-rendering http " + status), hint: status === 403 ? "CF token likely lacks Browser Rendering permission - switch to the Workers binding path (no token needed)" : null } };
+          }
+          const md = typeof data.result === "string" ? data.result : JSON.stringify(data.result || "");
+          return { cmd: "HANDS_SEE", payload: { ok: true, url: hsUrl, via: "cloudflare browser-rendering /markdown (real headless browser, post-JS)", chars: md.length, snippet: md.slice(0, 800) } };
+        } catch (e) { return { cmd: "HANDS_SEE", payload: { ok: false, error: String(e.message) } }; }
+      }
     }
 
     case "PURCHASE": {

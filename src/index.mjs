@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.259-2026-06-28";
+const BUILD = "aura-core-v4.9.260-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -205,6 +205,80 @@ const KV = {
     try { return await env.AURA_KV.delete(k); } catch {}
   }
 };
+
+// === GOVERNOR — THE PROPAGATION BRAKES ===
+// Every outbound social action must clear this BEFORE it happens. Tracks Aura's own pace
+// per Page and per account in KV and HARD-BLOCKS anything over safe thresholds (well under
+// Meta's real ceilings), so Aura is structurally incapable of tripping a spam flag. MODERATE
+// starting limits, tunable via KV (config:gov:*) with no redeploy. Pull never push; earn rope.
+//   action: "post" | "reply" | "reachout" | "comment"
+//   governorCheck(env, action, pageId) -> { allow, reason, counts }; record AFTER success.
+const GOV_DEFAULTS = {
+  posts_per_page_day: 10,
+  min_seconds_between_posts: 1800,
+  actions_per_page_day: 150,
+  actions_per_account_day: 1000,
+  min_seconds_between_actions: 8,
+  quiet_start_utc: 8,
+  quiet_end_utc: 14
+};
+async function govCfg(env) {
+  const c = { ...GOV_DEFAULTS };
+  for (const k of Object.keys(GOV_DEFAULTS)) {
+    const v = await env.AURA_KV.get("config:gov:" + k).catch(() => null);
+    if (v != null && v !== "" && !isNaN(Number(v))) c[k] = Number(v);
+  }
+  return c;
+}
+function govDayKey() { return new Date().toISOString().slice(0, 10); }
+async function govCounters(env, pageId) {
+  const day = govDayKey();
+  const pk = "gov:page:" + pageId + ":" + day;
+  const ak = "gov:acct:" + day;
+  let page = {}, acct = {};
+  try { const r = await env.AURA_KV.get(pk); if (r) page = JSON.parse(r); } catch {}
+  try { const r = await env.AURA_KV.get(ak); if (r) acct = JSON.parse(r); } catch {}
+  return { day, pk, ak, page, acct };
+}
+async function governorCheck(env, action, pageId) {
+  const cfg = await govCfg(env);
+  const now = Math.floor(Date.now() / 1000);
+  const hour = new Date().getUTCHours();
+  const { page, acct } = await govCounters(env, pageId || "none");
+  if (cfg.quiet_start_utc !== cfg.quiet_end_utc) {
+    const inQuiet = cfg.quiet_start_utc < cfg.quiet_end_utc
+      ? (hour >= cfg.quiet_start_utc && hour < cfg.quiet_end_utc)
+      : (hour >= cfg.quiet_start_utc || hour < cfg.quiet_end_utc);
+    if (inQuiet) return { allow: false, reason: "quiet hours (UTC " + cfg.quiet_start_utc + "-" + cfg.quiet_end_utc + ") - Aura rests", counts: { page, acct } };
+  }
+  if (acct.last && (now - acct.last) < cfg.min_seconds_between_actions)
+    return { allow: false, reason: "too fast - " + cfg.min_seconds_between_actions + "s between actions (human rhythm)", counts: { page, acct } };
+  if ((acct.actions || 0) >= cfg.actions_per_account_day)
+    return { allow: false, reason: "account daily cap reached (" + cfg.actions_per_account_day + " actions/24h)", counts: { page, acct } };
+  if (pageId) {
+    if ((page.actions || 0) >= cfg.actions_per_page_day)
+      return { allow: false, reason: "page daily action cap reached (" + cfg.actions_per_page_day + "/day)", counts: { page, acct } };
+    if (action === "post") {
+      if ((page.posts || 0) >= cfg.posts_per_page_day)
+        return { allow: false, reason: "page daily POST cap reached (" + cfg.posts_per_page_day + "/day)", counts: { page, acct } };
+      if (page.last_post && (now - page.last_post) < cfg.min_seconds_between_posts)
+        return { allow: false, reason: "posting too soon - wait " + cfg.min_seconds_between_posts + "s between posts on a Page", counts: { page, acct } };
+    }
+  }
+  return { allow: true, reason: "ok", counts: { page, acct } };
+}
+async function governorRecord(env, action, pageId) {
+  const now = Math.floor(Date.now() / 1000);
+  const { pk, ak, page, acct } = await govCounters(env, pageId || "none");
+  acct.actions = (acct.actions || 0) + 1; acct.last = now;
+  await env.AURA_KV.put(ak, JSON.stringify(acct), { expirationTtl: 172800 }).catch(() => {});
+  if (pageId) {
+    page.actions = (page.actions || 0) + 1; page.last = now;
+    if (action === "post") { page.posts = (page.posts || 0) + 1; page.last_post = now; }
+    await env.AURA_KV.put(pk, JSON.stringify(page), { expirationTtl: 172800 }).catch(() => {});
+  }
+  return { page, acct };
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // sendEmail — THE GLOBAL EMAIL CHOKEPOINT. Every email Aura sends, from any site,
@@ -3496,6 +3570,22 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         } catch (e) { return { cmd: "GRAPH_STATS", payload: { ok: false, error: String(e.message) } }; } }
     }
 
+    case "GOVERNOR": {
+      // GOVERNOR [page_id]  - show Aura's current pace, limits, and remaining headroom.
+      if (!isOp) return { cmd: "GOVERNOR", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      { const pid = (rest || "").trim() || null;
+        const cfg = await govCfg(env);
+        const { day, page, acct } = await govCounters(env, pid || "none");
+        const now = Math.floor(Date.now() / 1000);
+        const hour = new Date().getUTCHours();
+        const inQuiet = cfg.quiet_start_utc !== cfg.quiet_end_utc && (cfg.quiet_start_utc < cfg.quiet_end_utc
+          ? (hour >= cfg.quiet_start_utc && hour < cfg.quiet_end_utc)
+          : (hour >= cfg.quiet_start_utc || hour < cfg.quiet_end_utc));
+        return { cmd: "GOVERNOR", payload: { ok: true, day_utc: day, resting_now: inQuiet, limits: cfg,
+          account: { actions_today: acct.actions || 0, remaining: Math.max(0, cfg.actions_per_account_day - (acct.actions || 0)), seconds_since_last: acct.last ? now - acct.last : null },
+          page: pid ? { page_id: pid, posts_today: page.posts || 0, posts_remaining: Math.max(0, cfg.posts_per_page_day - (page.posts || 0)), actions_today: page.actions || 0, seconds_since_last_post: page.last_post ? now - page.last_post : null } : "pass a page_id for per-page detail" } }; }
+    }
+
     case "FB_PAGES": {
       // List the Facebook Pages Aura can operate (after /auth/facebook connect).
       if (!isOp) return { cmd: "FB_PAGES", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
@@ -3518,12 +3608,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (!pid) return { cmd: "FB_POST", payload: { ok: false, error: "page_id required (multiple pages) - run FB_PAGES", pages: ids.length } };
         const pg = m[pid];
         if (!pg || !pg.token) return { cmd: "FB_POST", payload: { ok: false, error: "no token for page " + pid + " (reconnect)" } };
+        // GOVERNOR — brakes before the action. Hard-block if over safe pace. (override: fp.force === true)
+        if (!fp.force) {
+          const gate = await governorCheck(env, "post", pid);
+          if (!gate.allow) return { cmd: "FB_POST", payload: { ok: false, blocked_by: "governor", reason: gate.reason, counts: gate.counts, hint: "add \"force\":true to override (not recommended)" } };
+        }
         const ver = (await env.AURA_KV.get("config:fb:graph_version").catch(() => null)) || "v21.0";
         try {
           const r = await fetch(`https://graph.facebook.com/${ver}/${pid}/feed`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message: fp.message, access_token: pg.token }) });
           const d = await r.json();
           if (!r.ok || d.error) return { cmd: "FB_POST", payload: { ok: false, error: d.error ? d.error.message : ("http " + r.status), raw: d } };
-          return { cmd: "FB_POST", payload: { ok: true, page: pg.name, page_id: pid, post_id: d.id || null } };
+          const rec = await governorRecord(env, "post", pid);
+          return { cmd: "FB_POST", payload: { ok: true, page: pg.name, page_id: pid, post_id: d.id || null, pace: { posts_today: rec.page.posts || 0, page_actions_today: rec.page.actions || 0, account_actions_today: rec.acct.actions || 0 } } };
         } catch (e) { return { cmd: "FB_POST", payload: { ok: false, error: String(e.message) } }; } }
     }
 

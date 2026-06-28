@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.267-2026-06-28";
+const BUILD = "aura-core-v4.9.268-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1044,7 +1044,14 @@ async function processCommand(line, env, isOp) {
         const r = await showIt(p.subject, env, { source: "show_it_pta", pta: true, context: p.context || p.subject, name: p.name || null, via: p.via || null, handle: p.handle || null, dest: p.dest || null });
         return { cmd: "SHOW_IT", payload: r };
       }
-      const r = await showIt(after, env, { source: "show_it_cmd" });
+      // Plain mode: every image is born a PTA by default (the law). Accept either a bare string
+      // ("a dog on a beach") or a JSON object {subject, context?, name?} - parse it so the JSON never
+      // leaks into the human-readable context line.
+      let subject = after, ctx = null, nm = null, viaP = null;
+      if (/^\s*\{/.test(after)) {
+        try { const p = JSON.parse(after); if (p && p.subject) { subject = String(p.subject); ctx = p.context || null; nm = p.name || null; viaP = p.via || null; } } catch (e) {}
+      }
+      const r = await showIt(subject, env, { source: "show_it_cmd", context: ctx || subject, name: nm, via: viaP });
       return { cmd: "SHOW_IT", payload: r };
     }
 

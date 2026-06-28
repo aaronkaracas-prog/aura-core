@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.257-2026-06-28";
+const BUILD = "aura-core-v4.9.258-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3534,6 +3534,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           browser = await puppeteer.launch(env.BROWSER);
           const page = await browser.newPage();
           await page.setViewport({ width: 1280, height: 900 });
+          try { await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"); } catch (e) {}
+          // SESSION HANDOFF: load a saved login (cookies) so the hands act as the authenticated user.
+          // Operator authenticates ONCE, stores cookies at secret:session:<name>; the hands reuse it.
+          if (hd.session) {
+            try {
+              const raw = await env.AURA_KV.get("secret:session:" + hd.session);
+              if (raw) { const cookies = JSON.parse(raw); if (Array.isArray(cookies) && cookies.length) { await page.setCookie(...cookies); log.push({ do: "session", name: hd.session, cookies_loaded: cookies.length }); } }
+              else log.push({ do: "session", name: hd.session, error: "no secret:session:" + hd.session });
+            } catch (e) { log.push({ do: "session", error: String(e.message) }); }
+          }
           const gr = await page.goto(hd.url, { waitUntil: hd.waitUntil || "networkidle0", timeout: 30000 });
           log.push({ do: "goto", url: hd.url, http: gr ? gr.status() : null });
           for (const st of hd.steps) {

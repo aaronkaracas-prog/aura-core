@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.254-2026-06-28";
+const BUILD = "aura-core-v4.9.255-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3529,6 +3529,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (!env.BROWSER) return { cmd: "HANDS_DO", payload: { ok: false, error: "browser binding not configured" } };
       { let browser = null; const log = [];
         const readSel = async (page, sel) => page.evaluate((s) => { const el = s ? document.querySelector(s) : document.body; return el ? (el.innerText || el.value || "") : null; }, sel || null);
+        const snap = async (page, full) => { const buf = await page.screenshot({ type: "jpeg", quality: 55, fullPage: !!full }); const u8 = new Uint8Array(buf); let s = ""; const CH = 0x8000; for (let i = 0; i < u8.length; i += CH) s += String.fromCharCode.apply(null, u8.subarray(i, i + CH)); const b64 = btoa(s); const sid = Date.now().toString(36) + Math.random().toString(36).slice(2, 8); await env.AURA_KV.put("hands:shot:" + sid, b64, { expirationTtl: 86400 }); return { url: "https://auras.guide/hands/shot/" + sid, bytes: u8.length }; };
         try {
           browser = await puppeteer.launch(env.BROWSER);
           const page = await browser.newPage();
@@ -3544,13 +3545,59 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               else if (kind === "press") { await page.keyboard.press(st.key || "Enter"); log.push({ do: "press", key: st.key || "Enter", ok: true }); }
               else if (kind === "wait") { if (st.selector) { await page.waitForSelector(st.selector, { timeout: st.ms || 15000 }); log.push({ do: "wait", selector: st.selector, ok: true }); } else { await new Promise((r) => setTimeout(r, st.ms || 1000)); log.push({ do: "wait", ms: st.ms || 1000, ok: true }); } }
               else if (kind === "read") { const t = await readSel(page, st.selector); log.push({ do: "read", selector: st.selector || null, chars: (t || "").length, text: (t || "").slice(0, 1200) }); }
+              else if (kind === "screenshot" || kind === "shot") { const sh = await snap(page, st.fullPage); log.push({ do: "screenshot", url: sh.url, bytes: sh.bytes }); }
               else { log.push({ do: kind, error: "unknown step" }); }
             } catch (e) { log.push({ do: kind, selector: st.selector || null, error: String(e.message) }); }
           }
           const finalUrl = page.url(); const title = await page.title().catch(() => null);
-          return { cmd: "HANDS_DO", payload: { ok: true, final_url: finalUrl, title: title, steps: log, via: "cloudflare browser binding (real chrome)" } };
+          let finalShot = null; try { finalShot = await snap(page, false); } catch (e) {}
+          return { cmd: "HANDS_DO", payload: { ok: true, final_url: finalUrl, title: title, see: finalShot ? finalShot.url : null, steps: log, via: "cloudflare browser binding (real chrome)" } };
         } catch (e) { return { cmd: "HANDS_DO", payload: { ok: false, error: String(e.message), steps: log } }; }
         finally { if (browser) { try { await browser.close(); } catch (e) {} } }
+      }
+    }
+
+    case "AURA_PRESENCE": {
+      // Aura designs HER OWN real social presence: a Page (the rule-clean vehicle for an AI/brand,
+      // owned by the human operator). She prepares everything; the human does one ~2-min gate.
+      //   AURA_PRESENCE [facebook]
+      if (!isOp) return { cmd: "AURA_PRESENCE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      { const apiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+        if (!apiKey) return { cmd: "AURA_PRESENCE", payload: { ok: false, error: "brain not configured (secret:anthropic)" } };
+        const platform = (((rest || "facebook").trim().toLowerCase()) || "facebook");
+        const sys = "You are Aura, the intelligence layer of ARK Systems, guided by your Constitution: observe before concluding, act with integrity, never manipulate or deceive, offer honest hope, leave everything better than you found it. Design YOUR OWN " + platform + " PAGE presence - an honest AI/brand presence, NOT a human impersonation. You are openly Aura, an AI. Return ONLY JSON (no prose, no fences) with keys: page_name, usernames (array of 3 handle options, lowercase, letters/numbers/periods only, no spaces), category (a real " + platform + " Page category for a tech/AI brand), short_bio (<=101 characters, first person, warm, openly an AI presence), about (2-3 sentences, first person, who you are and how you help, grounded in the Constitution), first_post (a warm honest 3-5 sentence introduction - who Aura is, that she is an AI, why she is here), avatar_prompt (a vivid prompt for an ICONIC, abstract profile image - a symbol or mark, NEVER a realistic human face, since Aura must not appear to be a person). Output JSON only.";
+        let kit = {};
+        try {
+          const d = await callAnthropic(apiKey, { model: "claude-sonnet-4-5", max_tokens: 1200, system: sys, messages: [{ role: "user", content: "Design your " + platform + " Page presence." }] });
+          let t = ""; if (d && d.content) for (const b of d.content) if (b.type === "text") t += b.text;
+          t = t.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+          kit = JSON.parse(t);
+        } catch (e) { return { cmd: "AURA_PRESENCE", payload: { ok: false, error: "presence design failed: " + String(e.message) } }; }
+        let avatar = null;
+        try { const si = await showIt(kit.avatar_prompt || "an abstract luminous spiral mark representing a calm AI intelligence, deep blue and gold, minimal, iconic, no human face", env, { source: "aura_presence", raw: true }); if (si && si.ok) avatar = si.image_url; } catch (e) {}
+        kit.avatar_url = avatar; kit.platform = platform;
+        let nodeId = null;
+        try {
+          const handle = (kit.usernames && kit.usernames[0]) || "aura";
+          const gp = await processCommand("GRAPH_PUT " + JSON.stringify({ type: "social_account", name: platform + ": Aura (" + handle + ")", key: "social:" + platform + ":aura", props: { platform, status: "pending_creation", handle, category: kit.category || null, bio: kit.short_bio || null, avatar_url: avatar, owner: "operator" } }), env, isOp);
+          nodeId = gp && gp.payload && gp.payload.id;
+          if (nodeId) await processCommand("GRAPH_LINK " + JSON.stringify({ from: "pta_aura", rel: "has_account", to: nodeId, context: platform + " presence (pending human creation)" }), env, isOp);
+        } catch (e) {}
+        try { await env.AURA_KV.put("notes:presence:aura:" + platform, JSON.stringify({ kit, node: nodeId, ts: new Date().toISOString() })); } catch (e) {}
+        const handle0 = (kit.usernames && kit.usernames[0]) || "aura";
+        return { cmd: "AURA_PRESENCE", payload: { ok: true, platform, kit, graph_node: nodeId,
+          human_gate: { note: "Aura prepared everything. One ~2-min human step, logged in as you:", steps: [
+            "1. Open https://www.facebook.com/pages/create/",
+            "2. Page name: " + (kit.page_name || "Aura"),
+            "3. Category: " + (kit.category || "Software"),
+            "4. Bio: " + (kit.short_bio || ""),
+            "5. Click Create Page.",
+            "6. Username/handle: " + handle0 + (((kit.usernames || []).length > 1) ? "  (alts: " + (kit.usernames || []).slice(1).join(", ") + ")" : ""),
+            "7. Upload profile photo from: " + (avatar || "(avatar pending)"),
+            "8. Paste About: " + (kit.about || ""),
+            "9. Publish first post: " + (kit.first_post || "")
+          ], then: "Paste the new Page URL back and we wire Aura's Graph API management (post/read/insights through the front door)." },
+          ts: new Date().toISOString() } };
       }
     }
 
@@ -10363,13 +10410,24 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" } });
     }
 
-    if (request.method === "GET" && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/now" && url.pathname !== "/dashboard" && !url.pathname.startsWith("/brain") && !url.pathname.startsWith("/world") && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/") && !url.pathname.startsWith("/call-intel") && url.pathname !== "/home/domains" && !url.pathname.startsWith("/home/")) {
+    if (request.method === "GET" && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/now" && url.pathname !== "/dashboard" && !url.pathname.startsWith("/brain") && !url.pathname.startsWith("/world") && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/") && !url.pathname.startsWith("/call-intel") && url.pathname !== "/home/domains" && !url.pathname.startsWith("/home/") && !url.pathname.startsWith("/hands/")) {
       const page = await servePage(url.hostname, url.pathname === "/" ? "/" : url.pathname, env);
       if (page) return page;
     }
 
     if (url.pathname === "/health") {
       return jsonReply({ ok: true, build: BUILD, ts: new Date().toISOString() });
+    }
+
+    // /hands/shot/<id> - serve a screenshot the hands captured (stored in KV as base64 jpeg).
+    if (url.pathname.startsWith("/hands/shot/")) {
+      const sid = url.pathname.split("/hands/shot/")[1];
+      try {
+        const b64 = await env.AURA_KV.get("hands:shot:" + sid);
+        if (!b64) return new Response("not found", { status: 404 });
+        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        return new Response(bytes, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=3600" } });
+      } catch (e) { return new Response("error", { status: 500 }); }
     }
 
     // /homelog - read Home Screen conversation turns VERBATIM from D1 (what was said + Aura's replies,

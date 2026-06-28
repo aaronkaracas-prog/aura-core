@@ -5,7 +5,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.245-2026-06-27";
+const BUILD = "aura-core-v4.9.246-2026-06-27";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -10744,7 +10744,7 @@ function openAlbum(idx){
 
     // HOME DOMAINS / ASSETS - token-gated snapshot feeds for the home left-nav views.
     // Page sends the homescreen token (same as /world/data). Live first, then idle.
-    if (url.pathname === "/home/domains" || url.pathname === "/home/assets" || url.pathname === "/home/core") {
+    if (url.pathname === "/home/domains" || url.pathname === "/home/assets" || url.pathname === "/home/core" || url.pathname === "/home/archetype") {
       const hCors = { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, content-type", "access-control-allow-methods": "GET, OPTIONS" };
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: hCors });
       const okOp = await verifyOperator(request, env);
@@ -10754,7 +10754,7 @@ function openAlbum(idx){
         try { core = JSON.parse(await env.AURA_KV.get("config:core:map") || "null"); } catch {}
         return new Response(JSON.stringify({ ok: true, build: BUILD, source: core ? "kv" : "fallback", core: core || CORE_MAP }), { headers: hCors });
       }
-      if (url.pathname === "/home/layout") {
+      if (url.pathname === "/home/archetype") {
         // ADAPTIVE CANVAS — generate the home-screen shape for a business type.
         const type = (url.searchParams.get("type") || "operator").toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 40) || "operator";
         let layout = null, source = "seed";

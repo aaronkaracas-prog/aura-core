@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.266-2026-06-28";
+const BUILD = "aura-core-v4.9.267-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -284,17 +284,20 @@ async function governorRecord(env, action, pageId) {
 // Mints a thin lead node + a one-time token whose /d/<token> landing redeems into a real PTA,
 // fused to the lead, linked to Aura with context. This is the mechanism that makes ANY image
 // (ShowIt, canvas, email graphic) a PTA-minting doorway. Returns { token, doorway, lead_id }.
-async function mintDoorway(env, { context, name, handle, via, image, dest }) {
+async function mintDoorway(env, { context, name, handle, via, image, dest, creator }) {
   via = via || "system";
   const handleKey = handle || ("lead:" + via + ":" + crypto.randomUUID().slice(0, 8));
   const leadRes = await processCommand("GRAPH_PUT " + JSON.stringify({ type: "person", name: name || "(unknown)", key: handleKey, props: { state: "contacted", via, met_context: context || null, contacted_at: new Date().toISOString() } }), env, true);
   const leadId = leadRes && leadRes.payload && leadRes.payload.id;
   if (!leadId) return { ok: false, error: "could not create lead node" };
-  if (context) await processCommand("GRAPH_LINK " + JSON.stringify({ from: "pta_aura", rel: "reached_out_to", to: leadId, context }), env, true);
+  // The crossing originates from the CREATOR if known, else from Aura herself. This is "the PTA is
+  // always with whoever created its identity" - the artifact carries its origin wherever it goes.
+  const origin = creator || "pta_aura";
+  if (context) await processCommand("GRAPH_LINK " + JSON.stringify({ from: origin, rel: "reached_out_to", to: leadId, context }), env, true);
   const token = crypto.randomUUID().replace(/-/g, "").slice(0, 22);
-  const rec = { lead_id: leadId, handle: handleKey, name: name || null, via, context: context || null, image: image || null, dest: dest || "/", created_at: new Date().toISOString(), redeemed: false };
+  const rec = { lead_id: leadId, handle: handleKey, name: name || null, via, context: context || null, image: image || null, dest: dest || "/", creator: creator || null, origin, created_at: new Date().toISOString(), redeemed: false };
   await env.AURA_KV.put("door:" + token, JSON.stringify(rec), { expirationTtl: 2592000 }).catch(() => {});
-  return { ok: true, token, doorway: "https://auras.guide/d/" + token, lead_id: leadId, handle: handleKey };
+  return { ok: true, token, doorway: "https://auras.guide/d/" + token, lead_id: leadId, handle: handleKey, origin };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -10417,11 +10420,13 @@ async function showIt(subject, env, opts = {}) {
   const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null });
   if (!result || !result.ok) return { ok: false, error: result ? result.error : "generation failed" };
   const out = { ok: true, id: result.id, image_url: result.image_url || `https://auras.guide/image/${result.id}`, showed: want };
-  // PTA DOORWAY: when asked, this image is born as a doorway - a tap on it mints a PTA, pre-loaded
-  // with context. This is the universal "every image can be a relationship" wire.
-  if (opts.pta) {
+  // THE LAW: every image Aura generates is BORN a PTA. The image is the relationship - a tap on it
+  // mints a PTA pre-loaded with context, and the creator's identity rides with the artifact wherever
+  // it travels. PTA-birth is the DEFAULT; pass opts.pta === false only for utility/system images that
+  // should not mint a relationship (icons, brand assets, diagnostics).
+  if (opts.pta !== false) {
     try {
-      const door = await mintDoorway(env, { context: opts.context || want, name: opts.name || null, handle: opts.handle || null, via: opts.via || (opts.source || "showit"), image: out.image_url, dest: opts.dest || "/" });
+      const door = await mintDoorway(env, { context: opts.context || want, name: opts.name || null, handle: opts.handle || null, via: opts.via || (opts.source || "showit"), image: out.image_url, dest: opts.dest || "/", creator: opts.creator || opts.entity || null });
       if (door && door.ok) { out.doorway = door.doorway; out.token = door.token; out.lead_id = door.lead_id; }
     } catch (e) {}
   }
@@ -10696,12 +10701,15 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       }
 
       if (verifiedPta) {
-        // FUSE: connect the verified person's PTA to Aura, carrying the context, and mark the lead crossed.
+        // FUSE: connect the verified person to the artifact's ORIGIN (the creator if known, else Aura),
+        // carrying the context, and mark the lead crossed. This is the relationship belonging to
+        // whoever created the image - Aaron's image crossing to his mom links Aaron->mom, not Aura->mom.
+        const origin = rec.origin || "pta_aura";
         try {
-          const existing = await db.prepare("SELECT id FROM pta_edges WHERE from_id='pta_aura' AND to_id=? AND edge_type='connected_to'").bind(verifiedPta).first().catch(() => null);
+          const existing = await db.prepare("SELECT id FROM pta_edges WHERE from_id=? AND to_id=? AND edge_type='connected_to'").bind(origin, verifiedPta).first().catch(() => null);
           if (!existing) {
             const eid = "edge_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
-            await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, relationship, context, created_at, updated_at) VALUES (?, 'pta_aura', ?, 'connected_to', 'active', 'connected_to', ?, ?, ?)").bind(eid, verifiedPta, rec.context, now, now).run().catch(() => {});
+            await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, relationship, context, created_at, updated_at) VALUES (?, ?, ?, 'connected_to', 'active', 'connected_to', ?, ?, ?)").bind(eid, origin, verifiedPta, rec.context, now, now).run().catch(() => {});
           }
           // tie the thin lead to the verified PTA (same_as), and mark crossed
           if (rec.lead_id && rec.lead_id !== verifiedPta) {

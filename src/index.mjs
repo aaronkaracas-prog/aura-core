@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.265-2026-06-28";
+const BUILD = "aura-core-v4.9.266-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -10741,16 +10741,55 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       return new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } });
     }
 
-    // Email/phone doorway sign-in (interim): Google is the live verified path. These keep the gate
-    // buttons honest until full email-code / phone-OTP doorway flows are wired.
-    if (url.pathname === "/auth/email/start" || url.pathname === "/auth/phone/start") {
+    // Doorway email identify (SELF-CONTROLLED path). The email the person types AT THE GATE is the
+    // identity - no external provider, nothing that can throw a redirect error. The crossing fires
+    // through the SAME AUTH_PROVIDER engine Google uses, sets the SAME session, and bounces back to
+    // /d/<token>?s=<session> where the proven fuse logic records the crossing. This proves the engine
+    // independent of the Google convenience leaf. (Phone OTP still routes to Google until built.)
+    if (url.pathname === "/auth/email/start") {
       const dest = url.searchParams.get("dest") || "/";
-      const kind = url.pathname.includes("email") ? "email" : "phone";
+      // POST = submit the typed email; GET = show the small email form.
+      if (request.method === "POST") {
+        let email = "", nm = "";
+        try { const form = await request.formData(); email = String(form.get("email") || "").trim(); nm = String(form.get("name") || "").trim(); } catch {}
+        if (!email || !email.includes("@")) {
+          return new Response(`<!doctype html><meta charset="utf-8"><body style="font-family:-apple-system,sans-serif;background:#0a0613;color:#cbb6ff;text-align:center;padding:40px">Please enter a valid email. <a href="/auth/email/start?dest=${encodeURIComponent(dest)}" style="color:#fff">Back</a></body>`, { headers: { "content-type": "text/html; charset=utf-8" } });
+        }
+        const identity = "email:" + email.toLowerCase();
+        const name = nm || email.split("@")[0];
+        let entId = null;
+        try {
+          const r = await processCommand(`AUTH_PROVIDER email ${identity} ${name.replace(/[\n\r]/g, " ")}`, env, true);
+          const pp = r && r.payload ? r.payload : r;
+          if (pp && pp.ok && pp.pta) entId = pp.pta;
+        } catch (e) {}
+        if (!entId) return new Response("Could not establish your PTA. Please try again.", { status: 500 });
+        await env.AURA_KV.put(`profile:email:${entId}`, JSON.stringify({ name, email, verified: false, at: new Date().toISOString() })).catch(() => {});
+        const session = Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b => b.toString(16).padStart(2, "0")).join("");
+        await env.AURA_KV.put(`session:${session}`, JSON.stringify({ pta: entId, identity, name, created: Date.now() }), { expirationTtl: 60 * 60 * 24 * 30 }).catch(() => {});
+        const destWithToken = dest + (dest.includes("?") ? "&" : "?") + "s=" + session;
+        return new Response(null, { status: 302, headers: { "location": destWithToken, "set-cookie": `aura_session=${session}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=${60 * 60 * 24 * 30}` } });
+      }
+      const body = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Aura</title>` +
+        `<body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0a0613;color:#cbb6ff;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:28px">` +
+        `<form method="POST" action="/auth/email/start?dest=${encodeURIComponent(dest)}" style="max-width:340px;width:100%">` +
+        `<img src="https://auras.guide/brand/butterfly" width="60" height="60" style="margin-bottom:14px">` +
+        `<h2 style="font-weight:300">Tell me who you are.</h2>` +
+        `<input name="name" placeholder="Your name" style="width:100%;box-sizing:border-box;margin:8px 0;padding:13px;border-radius:10px;border:1px solid rgba(150,70,255,.4);background:#140a22;color:#fff;font-size:15px">` +
+        `<input name="email" type="email" required placeholder="Your email" style="width:100%;box-sizing:border-box;margin:8px 0;padding:13px;border-radius:10px;border:1px solid rgba(150,70,255,.4);background:#140a22;color:#fff;font-size:15px">` +
+        `<button type="submit" style="width:100%;margin-top:10px;background:#fff;color:#222;border:0;padding:13px;border-radius:10px;font-weight:600;font-size:15px;cursor:pointer">Connect</button>` +
+        `<p style="opacity:.4;font-size:12px;margin-top:14px">Aura asks only for your name and email. Nothing more.</p>` +
+        `</form></body>`;
+      return new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } });
+    }
+    // Phone OTP not built yet - route to Google (the live verified path) honestly.
+    if (url.pathname === "/auth/phone/start") {
+      const dest = url.searchParams.get("dest") || "/";
       const body = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Aura</title>` +
         `<body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0a0613;color:#cbb6ff;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:28px">` +
         `<div style="max-width:420px"><img src="https://auras.guide/brand/butterfly" width="60" height="60" style="margin-bottom:12px">` +
-        `<p style="opacity:.85;line-height:1.5">${kind === "email" ? "Email" : "Phone"} sign-in is coming. For now, the fastest way to connect is Google — one tap, verified.</p>` +
-        `<a href="/auth/google/start?dest=${encodeURIComponent(dest)}" style="display:inline-block;margin-top:16px;background:#fff;color:#222;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600">Continue with Google</a></div></body>`;
+        `<p style="opacity:.85;line-height:1.5">Phone sign-in is coming. For now you can connect with email or Google.</p>` +
+        `<a href="/auth/email/start?dest=${encodeURIComponent(dest)}" style="display:inline-block;margin-top:16px;background:#fff;color:#222;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600">Continue with email</a></div></body>`;
       return new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } });
     }
 

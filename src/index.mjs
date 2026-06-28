@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.253-2026-06-28";
+const BUILD = "aura-core-v4.9.254-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3514,6 +3514,42 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const text = await page.evaluate(() => (document.body ? document.body.innerText : ""));
           return { cmd: "HANDS_SEE", payload: { ok: true, url: hsUrl, final_url: finalUrl, http: resp ? resp.status() : null, title: title || null, chars: (text || "").length, snippet: (text || "").slice(0, 800), via: "cloudflare browser binding (real headless chrome, post-JS)" } };
         } catch (e) { return { cmd: "HANDS_SEE", payload: { ok: false, error: String(e.message) } }; }
+        finally { if (browser) { try { await browser.close(); } catch (e) {} } }
+      }
+    }
+
+    case "HANDS_DO": {
+      // THE HANDS - step 2: ACTION. Run a sequence of real browser steps in real headless Chrome
+      // via the binding. Vocabulary: goto / fill / click / press / wait / read. Returns what it
+      // saw at each step so the action is verifiable.
+      //   HANDS_DO {"url":"https://...","steps":[{"do":"fill","selector":"#q","value":"hi"},{"do":"press","key":"Enter"},{"do":"wait","ms":1500},{"do":"read","selector":".results"}]}
+      if (!isOp) return { cmd: "HANDS_DO", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      let hd; try { hd = JSON.parse((rest || "").trim()); } catch (e) { return { cmd: "HANDS_DO", payload: { ok: false, error: "Usage: HANDS_DO {url, steps:[{do,selector?,value?,ms?,key?}]}" } }; }
+      if (!hd || !hd.url || !Array.isArray(hd.steps)) return { cmd: "HANDS_DO", payload: { ok: false, error: "url and steps[] required" } };
+      if (!env.BROWSER) return { cmd: "HANDS_DO", payload: { ok: false, error: "browser binding not configured" } };
+      { let browser = null; const log = [];
+        const readSel = async (page, sel) => page.evaluate((s) => { const el = s ? document.querySelector(s) : document.body; return el ? (el.innerText || el.value || "") : null; }, sel || null);
+        try {
+          browser = await puppeteer.launch(env.BROWSER);
+          const page = await browser.newPage();
+          await page.setViewport({ width: 1280, height: 900 });
+          const gr = await page.goto(hd.url, { waitUntil: hd.waitUntil || "networkidle0", timeout: 30000 });
+          log.push({ do: "goto", url: hd.url, http: gr ? gr.status() : null });
+          for (const st of hd.steps) {
+            const kind = String(st.do || st.type || "").toLowerCase();
+            try {
+              if (kind === "goto") { const r = await page.goto(st.url, { waitUntil: st.waitUntil || "networkidle0", timeout: 30000 }); log.push({ do: "goto", url: st.url, http: r ? r.status() : null }); }
+              else if (kind === "fill" || kind === "type") { await page.waitForSelector(st.selector, { timeout: 15000 }); await page.click(st.selector).catch(() => {}); await page.type(st.selector, String(st.value == null ? "" : st.value), { delay: 20 }); log.push({ do: "fill", selector: st.selector, ok: true }); }
+              else if (kind === "click") { await page.waitForSelector(st.selector, { timeout: 15000 }); await page.click(st.selector); log.push({ do: "click", selector: st.selector, ok: true }); }
+              else if (kind === "press") { await page.keyboard.press(st.key || "Enter"); log.push({ do: "press", key: st.key || "Enter", ok: true }); }
+              else if (kind === "wait") { if (st.selector) { await page.waitForSelector(st.selector, { timeout: st.ms || 15000 }); log.push({ do: "wait", selector: st.selector, ok: true }); } else { await new Promise((r) => setTimeout(r, st.ms || 1000)); log.push({ do: "wait", ms: st.ms || 1000, ok: true }); } }
+              else if (kind === "read") { const t = await readSel(page, st.selector); log.push({ do: "read", selector: st.selector || null, chars: (t || "").length, text: (t || "").slice(0, 1200) }); }
+              else { log.push({ do: kind, error: "unknown step" }); }
+            } catch (e) { log.push({ do: kind, selector: st.selector || null, error: String(e.message) }); }
+          }
+          const finalUrl = page.url(); const title = await page.title().catch(() => null);
+          return { cmd: "HANDS_DO", payload: { ok: true, final_url: finalUrl, title: title, steps: log, via: "cloudflare browser binding (real chrome)" } };
+        } catch (e) { return { cmd: "HANDS_DO", payload: { ok: false, error: String(e.message), steps: log } }; }
         finally { if (browser) { try { await browser.close(); } catch (e) {} } }
       }
     }

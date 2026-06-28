@@ -45,3 +45,6 @@ new_sqlite_classes = ["EntityDO"]
 
 [[send_email]]
 name = "SEND_EMAIL"
+
+[browser]
+binding = "BROWSER"

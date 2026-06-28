@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.255-2026-06-28";
+const BUILD = "aura-core-v4.9.256-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -10410,13 +10410,23 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" } });
     }
 
-    if (request.method === "GET" && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/now" && url.pathname !== "/dashboard" && !url.pathname.startsWith("/brain") && !url.pathname.startsWith("/world") && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/") && !url.pathname.startsWith("/call-intel") && url.pathname !== "/home/domains" && !url.pathname.startsWith("/home/") && !url.pathname.startsWith("/hands/")) {
+    if (request.method === "GET" && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/now" && url.pathname !== "/dashboard" && !url.pathname.startsWith("/brain") && !url.pathname.startsWith("/world") && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/") && !url.pathname.startsWith("/call-intel") && url.pathname !== "/home/domains" && !url.pathname.startsWith("/home/") && !url.pathname.startsWith("/hands/") && !url.pathname.startsWith("/brand/")) {
       const page = await servePage(url.hostname, url.pathname === "/" ? "/" : url.pathname, env);
       if (page) return page;
     }
 
     if (url.pathname === "/health") {
       return jsonReply({ ok: true, build: BUILD, ts: new Date().toISOString() });
+    }
+
+    // /brand/avatar - Aura's permanent avatar (the butterfly), stored once in KV as base64 jpeg.
+    if (url.pathname === "/brand/avatar") {
+      try {
+        const b64 = await env.AURA_KV.get("asset:aura:avatar");
+        if (!b64) return new Response("not found", { status: 404 });
+        const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+        return new Response(bytes, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=86400" } });
+      } catch (e) { return new Response("error", { status: 500 }); }
     }
 
     // /hands/shot/<id> - serve a screenshot the hands captured (stored in KV as base64 jpeg).

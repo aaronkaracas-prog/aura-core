@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.269-2026-06-28";
+const BUILD = "aura-core-v4.9.270-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1036,6 +1036,68 @@ async function processCommand(line, env, isOp) {
       }
       return { cmd: "AIS_QUERY", payload: { ok: false, source: "none", region,
         error: "No live AIS snapshot yet. The AIS collector (always-on WebSocket -> KV snapshot) is not deployed. A request-scoped Worker cannot hold the aisstream firehose open. For ship-movement signal right now, use WEB_SEARCH or NEWS_QUERY (e.g. 'Strait of Hormuz vessel traffic'). To enable live AIS: deploy the collector or switch to a REST AIS provider." } };
+    }
+
+    case "IMAGE": {
+      // THE LIVING IMAGE. An image is a node that accumulates a life: contributions from PTAs and
+      // derived versions, each attributed. This is the engine behind "the son makes a dog, grandma
+      // says it needs a black ear, and the image keeps expanding with context and the PTAs on it."
+      //   IMAGE ADD <image_id|entity_id> {by?, context}   - a person contributes to the image
+      //   IMAGE LIFE <image_id|entity_id>                  - read its whole life (timeline + lineage)
+      //   IMAGE EVOLVE <image_id|entity_id> {prompt, by?}  - regenerate a CHILD version, linked to parent
+      if (!isOp) return { cmd: "IMAGE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const db = env.AURA_MEMORY;
+      const sub = (args[0] || "").toUpperCase();
+      const ref = (args[1] || "").trim();
+      if (!sub || !ref) return { cmd: "IMAGE", payload: { ok: false, error: "Usage: IMAGE ADD|LIFE|EVOLVE <image_id|entity_id> {...}" } };
+      // resolve the image entity: accept either the entity id (ent_...) or the image id (img_... -> key image:img_...)
+      let ent = null;
+      if (ref.startsWith("ent_")) ent = await db.prepare("SELECT * FROM pta_entities WHERE id=? AND type='image'").bind(ref).first().catch(() => null);
+      if (!ent) ent = await db.prepare("SELECT * FROM pta_entities WHERE identity_key=?").bind(ref.startsWith("image:") ? ref : ("image:" + ref)).first().catch(() => null);
+      if (!ent) return { cmd: "IMAGE", payload: { ok: false, error: "No living image for: " + ref } };
+      let meta = {}; try { meta = JSON.parse(ent.metadata || "{}"); } catch {}
+      const now = new Date().toISOString();
+      const payloadStr = rest.slice(rest.indexOf(ref) + ref.length).trim();
+
+      if (sub === "ADD") {
+        let p; try { p = JSON.parse(payloadStr); } catch (e) { return { cmd: "IMAGE", payload: { ok: false, error: 'Usage: IMAGE ADD <ref> {"by?":"<pta>","context":"like my dog but a black ear"}' } }; }
+        if (!p || !p.context) return { cmd: "IMAGE", payload: { ok: false, error: "context is required (what they're adding)" } };
+        const by = p.by || "anonymous";
+        let evs = []; try { const tl = await env.AURA_KV.get(`pta:timeline:${ent.id}`); if (tl) evs = JSON.parse(tl) || []; } catch {}
+        evs.push({ ts: now, event: p.context, kind: "contribution", by });
+        await env.AURA_KV.put(`pta:timeline:${ent.id}`, JSON.stringify(evs)).catch(() => {});
+        // if the contributor is a real PTA, link them to the image too (they're part of its life)
+        if (p.by && /^(pta_|ent_)/.test(p.by)) await processCommand("GRAPH_LINK " + JSON.stringify({ from: p.by, rel: "contributed_to", to: ent.id, context: p.context.slice(0, 120) }), env, true).catch(() => {});
+        return { cmd: "IMAGE", payload: { ok: true, image: ent.id, added: p.context, by, total_events: evs.length } };
+      }
+
+      if (sub === "LIFE") {
+        let evs = []; try { const tl = await env.AURA_KV.get(`pta:timeline:${ent.id}`); if (tl) evs = JSON.parse(tl) || []; } catch {}
+        const parents = await db.prepare("SELECT to_id FROM pta_edges WHERE from_id=? AND edge_type='derived_from'").bind(ent.id).all().catch(() => ({ results: [] }));
+        const children = await db.prepare("SELECT from_id FROM pta_edges WHERE to_id=? AND edge_type='derived_from'").bind(ent.id).all().catch(() => ({ results: [] }));
+        const contributors = await db.prepare("SELECT DISTINCT from_id FROM pta_edges WHERE to_id=? AND edge_type IN ('created','contributed_to')").bind(ent.id).all().catch(() => ({ results: [] }));
+        return { cmd: "IMAGE", payload: { ok: true, image: { id: ent.id, name: ent.name, image_url: meta.image_url || null, subject: meta.subject || null, created_at: ent.created_at },
+          life: evs, event_count: evs.length,
+          lineage: { parents: (parents.results || []).map(r => r.to_id), children: (children.results || []).map(r => r.from_id) },
+          contributors: (contributors.results || []).map(r => r.from_id),
+          note: `This image has lived through ${evs.length} moment(s) with ${(contributors.results||[]).length} contributor(s).` } };
+      }
+
+      if (sub === "EVOLVE") {
+        let p; try { p = JSON.parse(payloadStr); } catch (e) { return { cmd: "IMAGE", payload: { ok: false, error: 'Usage: IMAGE EVOLVE <ref> {"prompt":"the dog but with a black ear","by?":"<pta>"}' } }; }
+        if (!p || !p.prompt) return { cmd: "IMAGE", payload: { ok: false, error: "prompt is required (what the new version should be)" } };
+        // regenerate as a CHILD: new image, derived_from the parent, carrying its subject forward.
+        const evolvedSubject = (meta.subject ? meta.subject + ". " : "") + p.prompt;
+        const r = await showIt(evolvedSubject, env, { source: "image_evolve", parent: ent.id, creator: p.by && /^(pta_|ent_)/.test(p.by) ? p.by : null, context: p.prompt });
+        if (!r || !r.ok) return { cmd: "IMAGE", payload: { ok: false, error: r ? r.error : "evolution failed" } };
+        // record the evolution on the PARENT's life too (so the parent knows it spawned a child)
+        let evs = []; try { const tl = await env.AURA_KV.get(`pta:timeline:${ent.id}`); if (tl) evs = JSON.parse(tl) || []; } catch {}
+        evs.push({ ts: now, event: `Spawned a new version: ${p.prompt}`, kind: "spawned_child", by: p.by || "anonymous", child: r.entity_id || null });
+        await env.AURA_KV.put(`pta:timeline:${ent.id}`, JSON.stringify(evs)).catch(() => {});
+        return { cmd: "IMAGE", payload: { ok: true, parent: ent.id, child: r.entity_id, child_image_id: r.id, image_url: r.image_url, doorway: r.doorway || null, evolved_with: p.prompt } };
+      }
+
+      return { cmd: "IMAGE", payload: { ok: false, error: "Unknown sub-command. Use ADD | LIFE | EVOLVE." } };
     }
 
     case "SHOW_IT": {
@@ -10462,6 +10524,21 @@ async function showIt(subject, env, opts = {}) {
   const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null });
   if (!result || !result.ok) return { ok: false, error: result ? result.error : "generation failed" };
   const out = { ok: true, id: result.id, image_url: result.image_url || `https://auras.guide/image/${result.id}`, showed: want };
+  // THE IMAGE IS A LIVING ENTITY. Register it as a first-class node in the graph (keyed image:<id>)
+  // with a creation event on its timeline. From here it can accumulate contributions from any PTA and
+  // spawn derived versions - a shared object a relationship lives inside, not a static file.
+  try {
+    const ent = await processCommand("GRAPH_PUT " + JSON.stringify({ type: "image", name: want.slice(0, 80), key: "image:" + result.id, props: { image_url: out.image_url, subject: want, source: opts.source || null, created_by: opts.creator || opts.entity || null, parent: opts.parent || null } }), env, true);
+    const entId = ent && ent.payload && ent.payload.id;
+    if (entId) {
+      out.entity_id = entId;
+      const ev = [{ ts: new Date().toISOString(), event: opts.parent ? `Evolved from a previous version: ${want}` : `Created: ${want}`, kind: opts.parent ? "evolved" : "created", by: opts.creator || opts.entity || "pta_aura" }];
+      let evs = ev; try { const tl = await env.AURA_KV.get(`pta:timeline:${entId}`); if (tl) evs = (JSON.parse(tl) || []).concat(ev); } catch {}
+      await env.AURA_KV.put(`pta:timeline:${entId}`, JSON.stringify(evs)).catch(() => {});
+      if (opts.creator) await processCommand("GRAPH_LINK " + JSON.stringify({ from: opts.creator, rel: "created", to: entId, context: want.slice(0, 120) }), env, true).catch(() => {});
+      if (opts.parent) await processCommand("GRAPH_LINK " + JSON.stringify({ from: entId, rel: "derived_from", to: opts.parent, context: want.slice(0, 120) }), env, true).catch(() => {});
+    }
+  } catch (e) {}
   // THE LAW: every image Aura generates is BORN a PTA. The image is the relationship - a tap on it
   // mints a PTA pre-loaded with context, and the creator's identity rides with the artifact wherever
   // it travels. PTA-birth is the DEFAULT; pass opts.pta === false only for utility/system images that

@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.270-2026-06-28";
+const BUILD = "aura-core-v4.9.271-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -284,6 +284,49 @@ async function governorRecord(env, action, pageId) {
 // Mints a thin lead node + a one-time token whose /d/<token> landing redeems into a real PTA,
 // fused to the lead, linked to Aura with context. This is the mechanism that makes ANY image
 // (ShowIt, canvas, email graphic) a PTA-minting doorway. Returns { token, doorway, lead_id }.
+// ===== SMART FILE ENGINE - the generic "every file is a living object" core =====
+// A Smart File is ANY file (image, pdf, doc, video, contract...) registered as a first-class graph
+// entity (type:"file", keyed file:<id>) with a permanent identity, a timeline of events, a lineage of
+// versions, attributed contributors, and travelling context. The file's BODY lives wherever it lives
+// (a URL, cloud storage, an inbox); this is its SOUL - the living record in Aura's graph. Image is
+// just filetype:"image". One engine, every file type.
+async function registerSmartFile(env, { id, filetype, name, url, subject, source, creator, parent, context }) {
+  const fileId = id || ("file_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16));
+  const ent = await processCommand("GRAPH_PUT " + JSON.stringify({ type: "file", name: (name || subject || fileId).slice(0, 80), key: "file:" + fileId, props: { filetype: filetype || "file", url: url || null, subject: subject || null, source: source || null, created_by: creator || null, parent: parent || null } }), env, true);
+  const entId = ent && ent.payload && ent.payload.id;
+  if (!entId) return { ok: false, error: "could not register smart file" };
+  const ev = [{ ts: new Date().toISOString(), event: parent ? `New version: ${subject || name || fileId}` : `Created: ${subject || name || fileId}`, kind: parent ? "versioned" : "created", by: creator || "pta_aura" }];
+  let evs = ev; try { const tl = await env.AURA_KV.get(`pta:timeline:${entId}`); if (tl) evs = (JSON.parse(tl) || []).concat(ev); } catch {}
+  await env.AURA_KV.put(`pta:timeline:${entId}`, JSON.stringify(evs)).catch(() => {});
+  if (creator) await processCommand("GRAPH_LINK " + JSON.stringify({ from: creator, rel: "created", to: entId, context: (context || subject || "").slice(0, 120) }), env, true).catch(() => {});
+  if (parent) await processCommand("GRAPH_LINK " + JSON.stringify({ from: entId, rel: "derived_from", to: parent, context: (context || subject || "").slice(0, 120) }), env, true).catch(() => {});
+  return { ok: true, entity_id: entId, file_id: fileId };
+}
+// resolve a smart file by entity id (ent_/file ent) or by file id / key - accepts legacy type:"image" too
+async function resolveSmartFile(db, ref) {
+  let ent = null;
+  if (ref.startsWith("ent_")) ent = await db.prepare("SELECT * FROM pta_entities WHERE id=? AND type IN ('file','image')").bind(ref).first().catch(() => null);
+  if (!ent) ent = await db.prepare("SELECT * FROM pta_entities WHERE identity_key=?").bind(ref.startsWith("file:") || ref.startsWith("image:") ? ref : ("file:" + ref)).first().catch(() => null);
+  if (!ent) ent = await db.prepare("SELECT * FROM pta_entities WHERE identity_key=?").bind("image:" + ref).first().catch(() => null);
+  return ent;
+}
+async function smartFileAdd(env, ent, { by, context, kind }) {
+  const now = new Date().toISOString();
+  let evs = []; try { const tl = await env.AURA_KV.get(`pta:timeline:${ent.id}`); if (tl) evs = JSON.parse(tl) || []; } catch {}
+  evs.push({ ts: now, event: context, kind: kind || "contribution", by: by || "anonymous" });
+  await env.AURA_KV.put(`pta:timeline:${ent.id}`, JSON.stringify(evs)).catch(() => {});
+  if (by && /^(pta_|ent_)/.test(by)) await processCommand("GRAPH_LINK " + JSON.stringify({ from: by, rel: "contributed_to", to: ent.id, context: String(context).slice(0, 120) }), env, true).catch(() => {});
+  return { total_events: evs.length };
+}
+async function smartFileLife(env, db, ent) {
+  let meta = {}; try { meta = JSON.parse(ent.metadata || "{}"); } catch {}
+  let evs = []; try { const tl = await env.AURA_KV.get(`pta:timeline:${ent.id}`); if (tl) evs = JSON.parse(tl) || []; } catch {}
+  const parents = await db.prepare("SELECT to_id FROM pta_edges WHERE from_id=? AND edge_type='derived_from'").bind(ent.id).all().catch(() => ({ results: [] }));
+  const children = await db.prepare("SELECT from_id FROM pta_edges WHERE to_id=? AND edge_type='derived_from'").bind(ent.id).all().catch(() => ({ results: [] }));
+  const contributors = await db.prepare("SELECT DISTINCT from_id FROM pta_edges WHERE to_id=? AND edge_type IN ('created','contributed_to')").bind(ent.id).all().catch(() => ({ results: [] }));
+  return { meta, life: evs, lineage: { parents: (parents.results || []).map(r => r.to_id), children: (children.results || []).map(r => r.from_id) }, contributors: (contributors.results || []).map(r => r.from_id) };
+}
+
 async function mintDoorway(env, { context, name, handle, via, image, dest, creator, identity }) {
   via = via || "system";
   // If Aura already knows WHO she's reaching (a real email/phone), the lead is born carrying that
@@ -1038,65 +1081,80 @@ async function processCommand(line, env, isOp) {
         error: "No live AIS snapshot yet. The AIS collector (always-on WebSocket -> KV snapshot) is not deployed. A request-scoped Worker cannot hold the aisstream firehose open. For ship-movement signal right now, use WEB_SEARCH or NEWS_QUERY (e.g. 'Strait of Hormuz vessel traffic'). To enable live AIS: deploy the collector or switch to a REST AIS provider." } };
     }
 
+    case "FILE": {
+      // THE SMART FILE ENGINE (generic - any file type). A file registered here becomes a living
+      // object: permanent identity, a timeline, a version lineage, attributed contributors, context.
+      //   FILE REGISTER {filetype, name, url, subject?, by?, parent?}  - make any file a Smart File
+      //   FILE ADD <ref> {by?, context}                                - someone contributes/acts on it
+      //   FILE LIFE <ref>                                              - read its whole life
+      //   FILE VERSION <ref> {url, by?, note}                          - register a new version (lineage)
+      if (!isOp) return { cmd: "FILE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const db = env.AURA_MEMORY;
+      const sub = (args[0] || "").toUpperCase();
+      if (sub === "REGISTER") {
+        let p; try { p = JSON.parse(rest.slice(rest.indexOf(sub) + sub.length).trim()); } catch (e) { return { cmd: "FILE", payload: { ok: false, error: 'Usage: FILE REGISTER {"filetype":"pdf","name":"Contract","url":"https://...","subject?":"...","by?":"<pta>"}' } }; }
+        if (!p || !p.filetype) return { cmd: "FILE", payload: { ok: false, error: "filetype is required (pdf, doc, video, image, contract, ...)" } };
+        const reg = await registerSmartFile(env, { filetype: p.filetype, name: p.name || null, url: p.url || null, subject: p.subject || p.name || null, source: p.source || "file_register", creator: (p.by && /^(pta_|ent_)/.test(p.by)) ? p.by : null, parent: p.parent || null, context: p.context || p.subject || null });
+        if (!reg.ok) return { cmd: "FILE", payload: reg };
+        return { cmd: "FILE", payload: { ok: true, entity_id: reg.entity_id, file_id: reg.file_id, filetype: p.filetype, note: "This file is now a living Smart File - it has identity, a timeline, and can carry relationships for life." } };
+      }
+      const ref = (args[1] || "").trim();
+      if (!ref) return { cmd: "FILE", payload: { ok: false, error: "Usage: FILE REGISTER|ADD|LIFE|VERSION <ref> {...}" } };
+      const ent = await resolveSmartFile(db, ref);
+      if (!ent) return { cmd: "FILE", payload: { ok: false, error: "No Smart File for: " + ref } };
+      const payloadStr = rest.slice(rest.indexOf(ref) + ref.length).trim();
+      if (sub === "ADD") {
+        let p; try { p = JSON.parse(payloadStr); } catch (e) { return { cmd: "FILE", payload: { ok: false, error: 'Usage: FILE ADD <ref> {"by?":"<pta>","context":"reviewed and approved"}' } }; }
+        if (!p || !p.context) return { cmd: "FILE", payload: { ok: false, error: "context is required (what they did / added)" } };
+        const r = await smartFileAdd(env, ent, { by: p.by || "anonymous", context: p.context, kind: p.kind || "contribution" });
+        return { cmd: "FILE", payload: { ok: true, file: ent.id, added: p.context, by: p.by || "anonymous", total_events: r.total_events } };
+      }
+      if (sub === "LIFE") {
+        const L = await smartFileLife(env, db, ent);
+        return { cmd: "FILE", payload: { ok: true, file: { id: ent.id, name: ent.name, filetype: L.meta.filetype || null, url: L.meta.url || L.meta.image_url || null, subject: L.meta.subject || null, created_at: ent.created_at }, life: L.life, event_count: L.life.length, lineage: L.lineage, contributors: L.contributors, note: `This file has lived through ${L.life.length} moment(s) with ${L.contributors.length} contributor(s).` } };
+      }
+      if (sub === "VERSION") {
+        let p; try { p = JSON.parse(payloadStr); } catch (e) { return { cmd: "FILE", payload: { ok: false, error: 'Usage: FILE VERSION <ref> {"url":"https://...","by?":"<pta>","note":"Revision 4 - approved"}' } }; }
+        let meta = {}; try { meta = JSON.parse(ent.metadata || "{}"); } catch {}
+        const reg = await registerSmartFile(env, { filetype: meta.filetype || "file", name: ent.name, url: p.url || null, subject: p.note || ent.name, source: "file_version", creator: (p.by && /^(pta_|ent_)/.test(p.by)) ? p.by : null, parent: ent.id, context: p.note || null });
+        if (!reg.ok) return { cmd: "FILE", payload: reg };
+        await smartFileAdd(env, ent, { by: p.by || "anonymous", context: `New version created: ${p.note || "(no note)"}`, kind: "spawned_version" });
+        return { cmd: "FILE", payload: { ok: true, parent: ent.id, child: reg.entity_id, child_file_id: reg.file_id, note: p.note || null } };
+      }
+      return { cmd: "FILE", payload: { ok: false, error: "Unknown sub-command. Use REGISTER | ADD | LIFE | VERSION." } };
+    }
+
     case "IMAGE": {
-      // THE LIVING IMAGE. An image is a node that accumulates a life: contributions from PTAs and
-      // derived versions, each attributed. This is the engine behind "the son makes a dog, grandma
-      // says it needs a black ear, and the image keeps expanding with context and the PTAs on it."
-      //   IMAGE ADD <image_id|entity_id> {by?, context}   - a person contributes to the image
-      //   IMAGE LIFE <image_id|entity_id>                  - read its whole life (timeline + lineage)
-      //   IMAGE EVOLVE <image_id|entity_id> {prompt, by?}  - regenerate a CHILD version, linked to parent
+      // The IMAGE engine is the image SUBTYPE of the Smart File engine. ADD/LIFE share the exact same
+      // helpers as FILE (no duplication); EVOLVE is image-specific - it REGENERATES a child version.
       if (!isOp) return { cmd: "IMAGE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const db = env.AURA_MEMORY;
       const sub = (args[0] || "").toUpperCase();
       const ref = (args[1] || "").trim();
       if (!sub || !ref) return { cmd: "IMAGE", payload: { ok: false, error: "Usage: IMAGE ADD|LIFE|EVOLVE <image_id|entity_id> {...}" } };
-      // resolve the image entity: accept either the entity id (ent_...) or the image id (img_... -> key image:img_...)
-      let ent = null;
-      if (ref.startsWith("ent_")) ent = await db.prepare("SELECT * FROM pta_entities WHERE id=? AND type='image'").bind(ref).first().catch(() => null);
-      if (!ent) ent = await db.prepare("SELECT * FROM pta_entities WHERE identity_key=?").bind(ref.startsWith("image:") ? ref : ("image:" + ref)).first().catch(() => null);
+      const ent = await resolveSmartFile(db, ref);
       if (!ent) return { cmd: "IMAGE", payload: { ok: false, error: "No living image for: " + ref } };
-      let meta = {}; try { meta = JSON.parse(ent.metadata || "{}"); } catch {}
-      const now = new Date().toISOString();
       const payloadStr = rest.slice(rest.indexOf(ref) + ref.length).trim();
-
       if (sub === "ADD") {
         let p; try { p = JSON.parse(payloadStr); } catch (e) { return { cmd: "IMAGE", payload: { ok: false, error: 'Usage: IMAGE ADD <ref> {"by?":"<pta>","context":"like my dog but a black ear"}' } }; }
         if (!p || !p.context) return { cmd: "IMAGE", payload: { ok: false, error: "context is required (what they're adding)" } };
-        const by = p.by || "anonymous";
-        let evs = []; try { const tl = await env.AURA_KV.get(`pta:timeline:${ent.id}`); if (tl) evs = JSON.parse(tl) || []; } catch {}
-        evs.push({ ts: now, event: p.context, kind: "contribution", by });
-        await env.AURA_KV.put(`pta:timeline:${ent.id}`, JSON.stringify(evs)).catch(() => {});
-        // if the contributor is a real PTA, link them to the image too (they're part of its life)
-        if (p.by && /^(pta_|ent_)/.test(p.by)) await processCommand("GRAPH_LINK " + JSON.stringify({ from: p.by, rel: "contributed_to", to: ent.id, context: p.context.slice(0, 120) }), env, true).catch(() => {});
-        return { cmd: "IMAGE", payload: { ok: true, image: ent.id, added: p.context, by, total_events: evs.length } };
+        const r = await smartFileAdd(env, ent, { by: p.by || "anonymous", context: p.context, kind: "contribution" });
+        return { cmd: "IMAGE", payload: { ok: true, image: ent.id, added: p.context, by: p.by || "anonymous", total_events: r.total_events } };
       }
-
       if (sub === "LIFE") {
-        let evs = []; try { const tl = await env.AURA_KV.get(`pta:timeline:${ent.id}`); if (tl) evs = JSON.parse(tl) || []; } catch {}
-        const parents = await db.prepare("SELECT to_id FROM pta_edges WHERE from_id=? AND edge_type='derived_from'").bind(ent.id).all().catch(() => ({ results: [] }));
-        const children = await db.prepare("SELECT from_id FROM pta_edges WHERE to_id=? AND edge_type='derived_from'").bind(ent.id).all().catch(() => ({ results: [] }));
-        const contributors = await db.prepare("SELECT DISTINCT from_id FROM pta_edges WHERE to_id=? AND edge_type IN ('created','contributed_to')").bind(ent.id).all().catch(() => ({ results: [] }));
-        return { cmd: "IMAGE", payload: { ok: true, image: { id: ent.id, name: ent.name, image_url: meta.image_url || null, subject: meta.subject || null, created_at: ent.created_at },
-          life: evs, event_count: evs.length,
-          lineage: { parents: (parents.results || []).map(r => r.to_id), children: (children.results || []).map(r => r.from_id) },
-          contributors: (contributors.results || []).map(r => r.from_id),
-          note: `This image has lived through ${evs.length} moment(s) with ${(contributors.results||[]).length} contributor(s).` } };
+        const L = await smartFileLife(env, db, ent);
+        return { cmd: "IMAGE", payload: { ok: true, image: { id: ent.id, name: ent.name, image_url: L.meta.url || L.meta.image_url || null, subject: L.meta.subject || null, created_at: ent.created_at }, life: L.life, event_count: L.life.length, lineage: L.lineage, contributors: L.contributors, note: `This image has lived through ${L.life.length} moment(s) with ${L.contributors.length} contributor(s).` } };
       }
-
       if (sub === "EVOLVE") {
         let p; try { p = JSON.parse(payloadStr); } catch (e) { return { cmd: "IMAGE", payload: { ok: false, error: 'Usage: IMAGE EVOLVE <ref> {"prompt":"the dog but with a black ear","by?":"<pta>"}' } }; }
         if (!p || !p.prompt) return { cmd: "IMAGE", payload: { ok: false, error: "prompt is required (what the new version should be)" } };
-        // regenerate as a CHILD: new image, derived_from the parent, carrying its subject forward.
+        let meta = {}; try { meta = JSON.parse(ent.metadata || "{}"); } catch {}
         const evolvedSubject = (meta.subject ? meta.subject + ". " : "") + p.prompt;
         const r = await showIt(evolvedSubject, env, { source: "image_evolve", parent: ent.id, creator: p.by && /^(pta_|ent_)/.test(p.by) ? p.by : null, context: p.prompt });
         if (!r || !r.ok) return { cmd: "IMAGE", payload: { ok: false, error: r ? r.error : "evolution failed" } };
-        // record the evolution on the PARENT's life too (so the parent knows it spawned a child)
-        let evs = []; try { const tl = await env.AURA_KV.get(`pta:timeline:${ent.id}`); if (tl) evs = JSON.parse(tl) || []; } catch {}
-        evs.push({ ts: now, event: `Spawned a new version: ${p.prompt}`, kind: "spawned_child", by: p.by || "anonymous", child: r.entity_id || null });
-        await env.AURA_KV.put(`pta:timeline:${ent.id}`, JSON.stringify(evs)).catch(() => {});
+        await smartFileAdd(env, ent, { by: p.by || "anonymous", context: `Spawned a new version: ${p.prompt}`, kind: "spawned_child" });
         return { cmd: "IMAGE", payload: { ok: true, parent: ent.id, child: r.entity_id, child_image_id: r.id, image_url: r.image_url, doorway: r.doorway || null, evolved_with: p.prompt } };
       }
-
       return { cmd: "IMAGE", payload: { ok: false, error: "Unknown sub-command. Use ADD | LIFE | EVOLVE." } };
     }
 
@@ -10524,20 +10582,12 @@ async function showIt(subject, env, opts = {}) {
   const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null });
   if (!result || !result.ok) return { ok: false, error: result ? result.error : "generation failed" };
   const out = { ok: true, id: result.id, image_url: result.image_url || `https://auras.guide/image/${result.id}`, showed: want };
-  // THE IMAGE IS A LIVING ENTITY. Register it as a first-class node in the graph (keyed image:<id>)
-  // with a creation event on its timeline. From here it can accumulate contributions from any PTA and
-  // spawn derived versions - a shared object a relationship lives inside, not a static file.
+  // THE IMAGE IS A LIVING SMART FILE. Register it through the generic Smart File engine as
+  // filetype:"image" - it gets the same identity, timeline, lineage, and attributed contributors any
+  // file gets. Image is just one filetype; the engine is universal.
   try {
-    const ent = await processCommand("GRAPH_PUT " + JSON.stringify({ type: "image", name: want.slice(0, 80), key: "image:" + result.id, props: { image_url: out.image_url, subject: want, source: opts.source || null, created_by: opts.creator || opts.entity || null, parent: opts.parent || null } }), env, true);
-    const entId = ent && ent.payload && ent.payload.id;
-    if (entId) {
-      out.entity_id = entId;
-      const ev = [{ ts: new Date().toISOString(), event: opts.parent ? `Evolved from a previous version: ${want}` : `Created: ${want}`, kind: opts.parent ? "evolved" : "created", by: opts.creator || opts.entity || "pta_aura" }];
-      let evs = ev; try { const tl = await env.AURA_KV.get(`pta:timeline:${entId}`); if (tl) evs = (JSON.parse(tl) || []).concat(ev); } catch {}
-      await env.AURA_KV.put(`pta:timeline:${entId}`, JSON.stringify(evs)).catch(() => {});
-      if (opts.creator) await processCommand("GRAPH_LINK " + JSON.stringify({ from: opts.creator, rel: "created", to: entId, context: want.slice(0, 120) }), env, true).catch(() => {});
-      if (opts.parent) await processCommand("GRAPH_LINK " + JSON.stringify({ from: entId, rel: "derived_from", to: opts.parent, context: want.slice(0, 120) }), env, true).catch(() => {});
-    }
+    const reg = await registerSmartFile(env, { id: result.id, filetype: "image", name: want.slice(0, 80), url: out.image_url, subject: want, source: opts.source || null, creator: opts.creator || opts.entity || null, parent: opts.parent || null, context: want });
+    if (reg && reg.ok) out.entity_id = reg.entity_id;
   } catch (e) {}
   // THE LAW: every image Aura generates is BORN a PTA. The image is the relationship - a tap on it
   // mints a PTA pre-loaded with context, and the creator's identity rides with the artifact wherever

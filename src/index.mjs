@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.312-2026-06-29";
+const BUILD = "aura-core-v4.9.313-2026-06-29";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -2074,7 +2074,8 @@ async function processCommand(line, env, isOp) {
         socal_fire: { domain: "fire", label: "Southern California wildfires", news: "Southern California wildfire evacuation", lat: 34.05, lon: -118.24, fire: "socal", search: "Southern California wildfire active evacuation today" },
         norcal_fire: { domain: "fire", label: "Northern California wildfires", news: "Northern California wildfire evacuation", lat: 38.58, lon: -121.49, fire: "norcal", search: "Northern California wildfire active evacuation today" },
         cottonwood_fire: { domain: "fire", label: "Cottonwood Fire, Beaver County Utah (nation's largest)", news: "Cottonwood Fire Utah Beaver evacuation", lat: 38.28, lon: -112.64, fire: "cottonwood", search: "Cottonwood Fire Utah acres containment evacuation today" },
-        global_quakes: { domain: "quake", label: "Significant earthquakes (past 24h)", news: "major earthquake today", quake: "significant", search: "significant earthquake today magnitude damage" }
+        global_quakes: { domain: "quake", label: "Significant earthquakes (past 24h)", news: "major earthquake today", quake: "significant", search: "significant earthquake today magnitude damage" },
+        venezuela_quake: { domain: "quake", label: "Venezuela earthquake + aftershocks (Caracas/La Guaira disaster)", news: "Venezuela earthquake Caracas La Guaira aftershock rescue", quake: "4.5", search: "Venezuela earthquake aftershock Caracas La Guaira death toll rescue today" }
       };
       const T = TOPICS[topicKey];
       if (!T) return { cmd: "SITUATION_PULL", payload: { ok: false, error: "unknown topic: " + topicKey, topics: Object.keys(TOPICS) } };
@@ -2108,11 +2109,16 @@ async function processCommand(line, env, isOp) {
           run(`QUAKE_QUERY ${T.quake}`),
           run(`WEB_SEARCH ${T.search}`)
         ]);
+        // region filter: if the topic names a place, keep only quakes near it (by place-name match)
+        let qlist = quake && quake.ok ? (quake.quakes || []) : [];
+        const placeHint = topicKey === "venezuela_quake" ? /venezuela|caracas|caraballeda|guaira|aragua|carabobo|falc|miranda/i : null;
+        let regionQuakes = placeHint ? qlist.filter(q => placeHint.test(q.place || "")) : qlist;
+        const regionLargest = regionQuakes.length ? regionQuakes.reduce((a, b) => (b.mag > a.mag ? b : a), regionQuakes[0]) : (quake && quake.largest) || null;
         snapshot = {
           topic: topicKey, domain, label: T.label, pulled_at: new Date().toISOString(),
           news: news && news.ok ? (news.news || []).slice(0, 10) : [], news_ok: !!(news && news.ok),
           web: web && web.ok ? (web.results || web.answer || web) : null, web_ok: !!(web && web.ok),
-          quakes: quake && quake.ok ? { source: quake.source, count: quake.quake_count ?? 0, largest: quake.largest || null, updated: quake.updated } : { count: 0, source: (quake && quake.source) || "none", note: (quake && quake.error) || "no quake feed" }
+          quakes: quake && quake.ok ? { source: quake.source, count: placeHint ? regionQuakes.length : (quake.quake_count ?? 0), largest: regionLargest, region_quakes: placeHint ? regionQuakes.slice(0, 10) : undefined, updated: quake.updated } : { count: 0, source: (quake && quake.source) || "none", note: (quake && quake.error) || "no quake feed" }
         };
         await env.AURA_KV.put(`situation:snapshot:${topicKey}`, JSON.stringify(snapshot), { expirationTtl: 3600 }).catch(() => {});
         return { cmd: "SITUATION_PULL", payload: { ok: true, topic: topicKey, domain, label: T.label, pulled_at: snapshot.pulled_at, feeds: { news: snapshot.news.length, web: snapshot.web_ok, quakes: snapshot.quakes.count }, note: "Quake snapshot stored. Run SITUATION_BRIEF " + topicKey + " for the analysis." } };

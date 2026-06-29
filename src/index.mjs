@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.307-2026-06-29";
+const BUILD = "aura-core-v4.9.308-2026-06-29";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -13980,9 +13980,12 @@ function openAlbum(idx){
 
         const _cmdWord = (line.split(/\s+/)[0] || "").toUpperCase();
         const _effIsOp = isOp || (_isInternal && INTERNAL_ALLOWED.includes(_cmdWord));
+        const _t0 = Date.now();
         const result = await processCommand(line, env, _effIsOp);
+        const _elapsed = Date.now() - _t0;
 
         if (result) {
+          if (result.payload && typeof result.payload === "object") result.payload.elapsed_ms = _elapsed;
           results.push(result);
           if (lines.length === 1) {
             const cmd = (line.split(/\s+/)[0] || "").toUpperCase();

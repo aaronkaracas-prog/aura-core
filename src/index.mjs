@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.273-2026-06-28";
+const BUILD = "aura-core-v4.9.274-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -317,6 +317,24 @@ async function smartFileAdd(env, ent, { by, context, kind }) {
   await env.AURA_KV.put(`pta:timeline:${ent.id}`, JSON.stringify(evs)).catch(() => {});
   if (by && /^(pta_|ent_)/.test(by)) await processCommand("GRAPH_LINK " + JSON.stringify({ from: by, rel: "contributed_to", to: ent.id, context: String(context).slice(0, 120) }), env, true).catch(() => {});
   return { total_events: evs.length };
+}
+// Enforce an action on a Smart File. PUBLIC files (propagation/collaboration) are open to all actions.
+// CONTROLLED files gate every action: owner always allowed, else the actor's PTA must hold the
+// permission (or "*"/"owner"). Returns { allowed, reason }. When no actor is named on a controlled
+// file, deny - controlled means someone must be accountable for the action.
+async function enforceFileAction(env, ent, actor, action) {
+  let meta = {}; try { meta = JSON.parse(ent.metadata || "{}"); } catch {}
+  if ((meta.access || "controlled") === "public") return { allowed: true, reason: "public file" };
+  const owner = meta.created_by || "pta_aura";
+  if (actor && actor === owner) return { allowed: true, reason: "owner" };
+  if (!actor || actor === "anonymous") return { allowed: false, reason: "controlled file requires an identified actor" };
+  let perms = { owner, grants: {} };
+  try { const pr = await env.AURA_KV.get(`file:perms:${ent.id}`); if (pr) perms = JSON.parse(pr); } catch {}
+  const g = (perms.grants || {})[actor];
+  if (!g) return { allowed: false, reason: "no grant (default-deny)" };
+  if (g.until && g.until < new Date().toISOString()) return { allowed: false, reason: "grant expired " + g.until };
+  const can = (g.can || []).includes(action) || (g.can || []).includes("owner") || (g.can || []).includes("*");
+  return { allowed: !!can, reason: can ? "granted" : "action not in grant" };
 }
 async function smartFileLife(env, db, ent) {
   let meta = {}; try { meta = JSON.parse(ent.metadata || "{}"); } catch {}
@@ -1106,6 +1124,8 @@ async function processCommand(line, env, isOp) {
       if (sub === "ADD") {
         let p; try { p = JSON.parse(payloadStr); } catch (e) { return { cmd: "FILE", payload: { ok: false, error: 'Usage: FILE ADD <ref> {"by?":"<pta>","context":"reviewed and approved"}' } }; }
         if (!p || !p.context) return { cmd: "FILE", payload: { ok: false, error: "context is required (what they did / added)" } };
+        const gate = await enforceFileAction(env, ent, p.by || null, "comment");
+        if (!gate.allowed) return { cmd: "FILE", payload: { ok: false, error: "permission denied: " + gate.reason, action: "comment", who: p.by || null } };
         const r = await smartFileAdd(env, ent, { by: p.by || "anonymous", context: p.context, kind: p.kind || "contribution" });
         return { cmd: "FILE", payload: { ok: true, file: ent.id, added: p.context, by: p.by || "anonymous", total_events: r.total_events } };
       }
@@ -1115,6 +1135,8 @@ async function processCommand(line, env, isOp) {
       }
       if (sub === "VERSION") {
         let p; try { p = JSON.parse(payloadStr); } catch (e) { return { cmd: "FILE", payload: { ok: false, error: 'Usage: FILE VERSION <ref> {"url":"https://...","by?":"<pta>","note":"Revision 4 - approved"}' } }; }
+        const gate = await enforceFileAction(env, ent, p.by || null, "version");
+        if (!gate.allowed) return { cmd: "FILE", payload: { ok: false, error: "permission denied: " + gate.reason, action: "version", who: p.by || null } };
         let meta = {}; try { meta = JSON.parse(ent.metadata || "{}"); } catch {}
         const reg = await registerSmartFile(env, { filetype: meta.filetype || "file", name: ent.name, url: p.url || null, subject: p.note || ent.name, source: "file_version", creator: (p.by && /^(pta_|ent_)/.test(p.by)) ? p.by : null, parent: ent.id, context: p.note || null });
         if (!reg.ok) return { cmd: "FILE", payload: reg };
@@ -1213,6 +1235,8 @@ async function processCommand(line, env, isOp) {
       if (sub === "EVOLVE") {
         let p; try { p = JSON.parse(payloadStr); } catch (e) { return { cmd: "IMAGE", payload: { ok: false, error: 'Usage: IMAGE EVOLVE <ref> {"prompt":"the dog but with a black ear","by?":"<pta>"}' } }; }
         if (!p || !p.prompt) return { cmd: "IMAGE", payload: { ok: false, error: "prompt is required (what the new version should be)" } };
+        const gate = await enforceFileAction(env, ent, p.by || null, "derive");
+        if (!gate.allowed) return { cmd: "IMAGE", payload: { ok: false, error: "permission denied: " + gate.reason, action: "derive", who: p.by || null } };
         let meta = {}; try { meta = JSON.parse(ent.metadata || "{}"); } catch {}
         const evolvedSubject = (meta.subject ? meta.subject + ". " : "") + p.prompt;
         const r = await showIt(evolvedSubject, env, { source: "image_evolve", parent: ent.id, creator: p.by && /^(pta_|ent_)/.test(p.by) ? p.by : null, context: p.prompt });

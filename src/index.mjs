@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.272-2026-06-28";
+const BUILD = "aura-core-v4.9.273-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -290,9 +290,9 @@ async function governorRecord(env, action, pageId) {
 // versions, attributed contributors, and travelling context. The file's BODY lives wherever it lives
 // (a URL, cloud storage, an inbox); this is its SOUL - the living record in Aura's graph. Image is
 // just filetype:"image". One engine, every file type.
-async function registerSmartFile(env, { id, filetype, name, url, subject, source, creator, parent, context }) {
+async function registerSmartFile(env, { id, filetype, name, url, subject, source, creator, parent, context, access }) {
   const fileId = id || ("file_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16));
-  const ent = await processCommand("GRAPH_PUT " + JSON.stringify({ type: "file", name: (name || subject || fileId).slice(0, 80), key: "file:" + fileId, props: { filetype: filetype || "file", url: url || null, subject: subject || null, source: source || null, created_by: creator || null, parent: parent || null } }), env, true);
+  const ent = await processCommand("GRAPH_PUT " + JSON.stringify({ type: "file", name: (name || subject || fileId).slice(0, 80), key: "file:" + fileId, props: { filetype: filetype || "file", url: url || null, subject: subject || null, source: source || null, created_by: creator || null, parent: parent || null, access: access || "controlled" } }), env, true);
   const entId = ent && ent.payload && ent.payload.id;
   if (!entId) return { ok: false, error: "could not register smart file" };
   const ev = [{ ts: new Date().toISOString(), event: parent ? `New version: ${subject || name || fileId}` : `Created: ${subject || name || fileId}`, kind: parent ? "versioned" : "created", by: creator || "pta_aura" }];
@@ -1175,7 +1175,18 @@ async function processCommand(line, env, isOp) {
           return { cmd: "FILE", payload: { ok: true, file: ent.id, revoked_from: p.from, revoked: p.can || "all" } };
         }
       }
-      return { cmd: "FILE", payload: { ok: false, error: "Unknown sub-command. Use REGISTER | ADD | LIFE | VERSION | GRANT | REVOKE | CAN | ACCESS." } };
+      if (sub === "SETACCESS") {
+        let p; try { p = JSON.parse(payloadStr); } catch (e) { return { cmd: "FILE", payload: { ok: false, error: 'Usage: FILE SETACCESS <ref> {"access":"public|controlled","by?":"<owner pta>"}' } }; }
+        if (!p || !["public", "controlled"].includes(p.access)) return { cmd: "FILE", payload: { ok: false, error: 'access must be "public" or "controlled"' } };
+        let meta = {}; try { meta = JSON.parse(ent.metadata || "{}"); } catch {}
+        const owner = meta.created_by || "pta_aura";
+        if (p.by && p.by !== owner) return { cmd: "FILE", payload: { ok: false, error: "only the owner can change access" } };
+        meta.access = p.access;
+        await db.prepare("UPDATE pta_entities SET metadata=?, updated_at=? WHERE id=?").bind(JSON.stringify(meta), new Date().toISOString(), ent.id).run().catch(() => {});
+        await smartFileAdd(env, ent, { by: p.by || owner, context: `Access set to ${p.access}`, kind: "access_change" });
+        return { cmd: "FILE", payload: { ok: true, file: ent.id, access: p.access, open_url: "https://auras.guide/f/" + ent.id } };
+      }
+      return { cmd: "FILE", payload: { ok: false, error: "Unknown sub-command. Use REGISTER | ADD | LIFE | VERSION | GRANT | REVOKE | CAN | ACCESS | SETACCESS." } };
     }
 
     case "IMAGE": {
@@ -10640,7 +10651,7 @@ async function showIt(subject, env, opts = {}) {
   // filetype:"image" - it gets the same identity, timeline, lineage, and attributed contributors any
   // file gets. Image is just one filetype; the engine is universal.
   try {
-    const reg = await registerSmartFile(env, { id: result.id, filetype: "image", name: want.slice(0, 80), url: out.image_url, subject: want, source: opts.source || null, creator: opts.creator || opts.entity || null, parent: opts.parent || null, context: want });
+    const reg = await registerSmartFile(env, { id: result.id, filetype: "image", name: want.slice(0, 80), url: out.image_url, subject: want, source: opts.source || null, creator: opts.creator || opts.entity || null, parent: opts.parent || null, context: want, access: "public" });
     if (reg && reg.ok) out.entity_id = reg.entity_id;
   } catch (e) {}
   // THE LAW: every image Aura generates is BORN a PTA. The image is the relationship - a tap on it
@@ -10874,7 +10885,7 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" } });
     }
 
-    if (request.method === "GET" && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/now" && url.pathname !== "/dashboard" && !url.pathname.startsWith("/brain") && !url.pathname.startsWith("/world") && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/") && !url.pathname.startsWith("/call-intel") && url.pathname !== "/home/domains" && !url.pathname.startsWith("/home/") && !url.pathname.startsWith("/hands/") && !url.pathname.startsWith("/brand/")) {
+    if (request.method === "GET" && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/now" && url.pathname !== "/dashboard" && !url.pathname.startsWith("/brain") && !url.pathname.startsWith("/world") && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/") && !url.pathname.startsWith("/call-intel") && url.pathname !== "/home/domains" && !url.pathname.startsWith("/home/") && !url.pathname.startsWith("/hands/") && !url.pathname.startsWith("/brand/") && !url.pathname.startsWith("/f/") && !url.pathname.startsWith("/d/")) {
       const page = await servePage(url.hostname, url.pathname === "/" ? "/" : url.pathname, env);
       if (page) return page;
     }
@@ -10907,6 +10918,40 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
     // must identify themselves (Google / email / phone). On sign-in we mint/confirm their VERIFIED
     // PTA and fuse it to the thin lead Aura created on first touch, linked to Aura with the context.
     // The tap shows the image; the SIGN-IN is the consent + the real identity capture.
+    // /f/<entId> - THE GATED FILE OPEN. This is where permissions BITE. Public files (propagation
+    // images) pass straight through to their body. Controlled files require a signed-in PTA who passes
+    // CAN open - otherwise denied. Every successful controlled open is logged to the file's life.
+    if (url.pathname.startsWith("/f/")) {
+      const fref = url.pathname.slice("/f/".length).split("/")[0].split("?")[0];
+      const db = env.AURA_MEMORY;
+      const ent = await resolveSmartFile(db, fref);
+      if (!ent) return new Response("File not found.", { status: 404, headers: { "content-type": "text/plain" } });
+      let fmeta = {}; try { fmeta = JSON.parse(ent.metadata || "{}"); } catch {}
+      const bodyUrl = fmeta.url || fmeta.image_url || null;
+      // PUBLIC files (propagation images): open, no gate - the whole tap-to-see loop depends on this.
+      if ((fmeta.access || "controlled") === "public") {
+        if (bodyUrl) return Response.redirect(bodyUrl, 302);
+        return new Response("This file has no viewable body.", { status: 404 });
+      }
+      // CONTROLLED: identify the requester (session), then enforce CAN open.
+      const sess = url.searchParams.get("s");
+      let who = null; if (sess) { try { const sr = await env.AURA_KV.get("session:" + sess); if (sr) who = (JSON.parse(sr)).pta; } catch {} }
+      const deny = (msg) => new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0a0613;color:#cbb6ff;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:28px"><div style="max-width:420px"><img src="https://auras.guide/brand/butterfly" width="60" height="60" style="margin-bottom:12px"><h2 style="font-weight:300">This file is private.</h2><p style="opacity:.8;line-height:1.5">${msg}</p></div></body>`, { headers: { "content-type": "text/html; charset=utf-8" } });
+      if (!who) {
+        // not signed in - send them through the gate, return here after
+        const back = encodeURIComponent("/f/" + fref);
+        return Response.redirect("https://auras.guide/auth/google/start?dest=" + back, 302);
+      }
+      // run the same CAN decision the engine uses
+      const can = await processCommand(`FILE CAN ${ent.id} ${JSON.stringify({ who, do: "open" })}`, env, true);
+      const allowed = can && can.payload && can.payload.allow;
+      if (!allowed) return deny("You don't have access to this file. Ask the owner to grant you access.");
+      // allowed - log the open to the file's life, then serve the body
+      try { await smartFileAdd(env, ent, { by: who, context: "Opened the file", kind: "viewed" }); } catch {}
+      if (bodyUrl) return Response.redirect(bodyUrl, 302);
+      return new Response("Access granted, but this file has no viewable body yet.", { status: 200, headers: { "content-type": "text/plain" } });
+    }
+
     if (url.pathname.startsWith("/d/")) {
       const token = url.pathname.split("/d/")[1].split("/")[0];
       let rec = null; try { const r = await env.AURA_KV.get("door:" + token); if (r) rec = JSON.parse(r); } catch {}

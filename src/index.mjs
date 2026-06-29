@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.310-2026-06-29";
+const BUILD = "aura-core-v4.9.311-2026-06-29";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1350,6 +1350,45 @@ async function processCommand(line, env, isOp) {
       } catch (e) { return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, source: "opensky_error", region: acRegion, error: String(e && e.message || e) } }; }
     }
 
+    case "FIRE_WEATHER": {
+      // NWS official fire weather alerts - Red Flag Warnings, Fire Weather Watches - via api.weather.gov.
+      // KEYLESS (just needs User-Agent). Point-based. The authoritative fire-danger signal, far better
+      // than a generic weather point. Takes a region (maps to a center) or raw lat lon.
+      //   FIRE_WEATHER <region>     or     FIRE_WEATHER <lat> <lon>
+      if (!isOp) return { cmd: "FIRE_WEATHER", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const fwArg = line.replace(/^FIRE_WEATHER\s+/i, "").trim();
+      const FW_CENTERS = {
+        cottonwood: { lat: 38.30, lon: -112.50, label: "Cottonwood Fire area" },
+        utah: { lat: 39.32, lon: -111.09, label: "Utah" },
+        socal: { lat: 34.05, lon: -118.24, label: "Southern California" },
+        norcal: { lat: 38.58, lon: -121.49, label: "Northern California" },
+        california: { lat: 36.78, lon: -119.42, label: "California" }
+      };
+      let fwLat, fwLon, fwLabel;
+      const fwParts = fwArg.split(/\s+/);
+      if (fwParts.length >= 2 && !isNaN(parseFloat(fwParts[0])) && !isNaN(parseFloat(fwParts[1]))) {
+        fwLat = parseFloat(fwParts[0]); fwLon = parseFloat(fwParts[1]); fwLabel = `${fwLat},${fwLon}`;
+      } else {
+        const c = FW_CENTERS[(fwArg || "cottonwood").toLowerCase()];
+        if (!c) return { cmd: "FIRE_WEATHER", payload: { ok: false, error: "unknown region: " + fwArg, regions: Object.keys(FW_CENTERS), or: "FIRE_WEATHER <lat> <lon>" } };
+        fwLat = c.lat; fwLon = c.lon; fwLabel = c.label;
+      }
+      try {
+        const url = `https://api.weather.gov/alerts/active?point=${fwLat},${fwLon}`;
+        const r = await fetch(url, { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)", "Accept": "application/geo+json" } });
+        if (!r.ok) return { cmd: "FIRE_WEATHER", payload: { ok: false, source: "nws_error", error: `nws http ${r.status}` } };
+        const d = await r.json();
+        const alerts = (d.features || []).map(f => {
+          const p = f.properties || {};
+          return { event: p.event, severity: p.severity, urgency: p.urgency, certainty: p.certainty, headline: p.headline, area: p.areaDesc, onset: p.onset, expires: p.expires, sender: p.senderName };
+        });
+        // pull out the fire-relevant ones
+        const fireAlerts = alerts.filter(a => /fire|red flag|wind|heat|smoke/i.test((a.event || "") + " " + (a.headline || "")));
+        const redFlag = alerts.filter(a => /red flag|fire weather/i.test(a.event || ""));
+        return { cmd: "FIRE_WEATHER", payload: { ok: true, source: "nws_live", location: fwLabel, point: { lat: fwLat, lon: fwLon }, total_alerts: alerts.length, red_flag_active: redFlag.length > 0, fire_relevant: fireAlerts.slice(0, 8), all_events: alerts.map(a => a.event).filter((v, i, s) => s.indexOf(v) === i), updated: new Date().toISOString(), note: redFlag.length ? "RED FLAG WARNING active - critical fire weather." : (fireAlerts.length ? "Fire-relevant weather alerts active." : "No active red flag warning at this point.") } };
+      } catch (e) { return { cmd: "FIRE_WEATHER", payload: { ok: false, source: "nws_error", error: String(e && e.message || e) } }; }
+    }
+
     case "FIRE_COORDINATE": {
       // RESPONDER-TO-RESPONDER coordination - the multi-agency awareness layer. The deadly gap in
       // firefighting is that agencies (CAL FIRE, USFS, county, mutual aid) operate on separate pictures.
@@ -2019,22 +2058,24 @@ async function processCommand(line, env, isOp) {
       const domain = T.domain || "maritime";
       let snapshot;
       if (domain === "fire") {
-        // FIRE DOMAIN: fire detections + news + weather (wind drives spread) + web
-        const [news, fire, wx, web] = await Promise.all([
+        // FIRE DOMAIN: fire detections + news + weather (wind drives spread) + official NWS fire weather + web
+        const [news, fire, wx, fwx, web] = await Promise.all([
           run(`NEWS_QUERY ${T.news}`),
           run(`FIRE_QUERY ${T.fire}`),
           run(`MARINE_WX ${T.lat} ${T.lon}`),
+          run(`FIRE_WEATHER ${T.lat} ${T.lon}`),
           run(`WEB_SEARCH ${T.search}`)
         ]);
         snapshot = {
           topic: topicKey, domain, label: T.label, pulled_at: new Date().toISOString(),
           news: news && news.ok ? (news.news || []).slice(0, 10) : [], news_ok: !!(news && news.ok),
           weather: wx && wx.ok ? wx : null,
+          fire_weather: fwx && fwx.ok ? { red_flag: fwx.red_flag_active, alerts: fwx.fire_relevant || [], events: fwx.all_events || [] } : null,
           web: web && web.ok ? (web.results || web.answer || web) : null, web_ok: !!(web && web.ok),
           fires: fire && fire.ok ? { source: fire.source, fire_count: fire.fire_count ?? 0, hottest: fire.hottest || null, updated: fire.updated } : { fire_count: 0, source: (fire && fire.source) || "none", note: (fire && fire.error) || "no fire feed connected yet" }
         };
         await env.AURA_KV.put(`situation:snapshot:${topicKey}`, JSON.stringify(snapshot), { expirationTtl: 3600 }).catch(() => {});
-        return { cmd: "SITUATION_PULL", payload: { ok: true, topic: topicKey, domain, label: T.label, pulled_at: snapshot.pulled_at, feeds: { news: snapshot.news.length, weather: !!snapshot.weather, web: snapshot.web_ok, fires: snapshot.fires.fire_count }, note: "Fire snapshot stored. Run SITUATION_BRIEF " + topicKey + " for the analysis." } };
+        return { cmd: "SITUATION_PULL", payload: { ok: true, topic: topicKey, domain, label: T.label, pulled_at: snapshot.pulled_at, feeds: { news: snapshot.news.length, weather: !!snapshot.weather, fire_weather: snapshot.fire_weather ? (snapshot.fire_weather.red_flag ? "RED FLAG" : snapshot.fire_weather.alerts.length) : false, web: snapshot.web_ok, fires: snapshot.fires.fire_count }, note: "Fire snapshot stored. Run SITUATION_BRIEF " + topicKey + " for the analysis." } };
       }
       // MARITIME DOMAIN (default)
       const [news, oil, wx, web, ais] = await Promise.all([
@@ -2076,8 +2117,9 @@ async function processCommand(line, env, isOp) {
       let sysPrompt, question;
       if (snapDomain === "fire") {
         const fireLine = snap.fires ? `${snap.fires.fire_count} active hotspots (${snap.fires.source})${snap.fires.hottest ? `, hottest at ${snap.fires.hottest.lat},${snap.fires.hottest.lon} FRP ${snap.fires.hottest.frp_mw}MW` : ""}` : "no fire feed";
+        const fwxLine = snap.fire_weather ? (snap.fire_weather.red_flag ? "RED FLAG WARNING ACTIVE - " : "") + (snap.fire_weather.alerts.length ? snap.fire_weather.alerts.map(a => a.event).join(", ") : "no active fire-weather alerts") : "fire weather unavailable";
         sysPrompt = "You are SituationTracker, an operational wildfire intelligence engine. You analyze a live fire situation for the people who must act: incident commanders, emergency managers, residents in the path, utilities, insurers. Wind drives fire spread - weigh it heavily. Be precise, factual, decision-oriented. Never invent numbers - use only the data given. Output STRICT JSON only, no markdown, with keys: status (one line: current state of the fire situation), drivers (array of 2-4 short strings: what is moving it now - wind, fuel, terrain), spread (one line: direction/threat and what is in the path if known), evacuation (one line: evacuation/shelter status if known), alerts (array of 0-3 short risk strings), outlook (array of 2-3 short 'if X then Y' prediction strings), confidence (low|medium|high).";
-        question = `Fire situation: ${snap.label}\nPulled: ${snap.pulled_at}\n\nLIVE NEWS:\n${newsLines}\n\nWEATHER (wind drives spread): ${wxLine}\nACTIVE FIRE DETECTIONS: ${fireLine}\n\nProduce the fire operator briefing JSON now.`;
+        question = `Fire situation: ${snap.label}\nPulled: ${snap.pulled_at}\n\nLIVE NEWS:\n${newsLines}\n\nWEATHER (wind drives spread): ${wxLine}\nOFFICIAL FIRE WEATHER (NWS): ${fwxLine}\nACTIVE FIRE DETECTIONS: ${fireLine}\n\nProduce the fire operator briefing JSON now.`;
       } else {
         const oilLine = snap.oil ? `${snap.oil.formatted || snap.oil.price} ${snap.oil.currency || ""} @ ${snap.oil.at || ""}` : "unavailable";
         const shipLine = snap.ships ? `${snap.ships.vessel_count} vessels (${snap.ships.source})` : "no AIS";

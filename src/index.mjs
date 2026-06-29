@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.308-2026-06-29";
+const BUILD = "aura-core-v4.9.309-2026-06-29";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1323,8 +1323,10 @@ async function processCommand(line, env, isOp) {
             const fireAc = ac.filter(a => a.likely_fire);
             return { cmd: "AIRCRAFT_QUERY", payload: { ok: true, source: "adsbexchange_live", region: acRegion, label: ctr.label, total_aircraft: ac.length, likely_firefighting: fireAc.length, fire_aircraft: fireAc.slice(0, 30), all_sample: ac.slice(0, 20), updated: new Date().toISOString(), note: fireAc.length ? "Flagged by callsign/registration - confirm against incident air-ops roster." : "No firefighting-pattern aircraft this pass (may be grounded/between sorties). Total air traffic shown." } };
           }
-          // fall through to opensky on non-ok
-        } catch (e) { /* fall through */ }
+          // ADS-B returned non-ok - report it LOUDLY, do not silently fall through
+          const errBody = await r.text().catch(() => "");
+          return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, source: "adsbexchange_error", region: acRegion, http: r.status, detail: errBody.slice(0, 160), hint: r.status === 403 ? "403 = key rejected. Re-copy the EXACT key from RapidAPI (Copy button) and SETKV secret:adsbexchange. The screenshot key was likely truncated." : "ADS-B Exchange returned an error." } };
+        } catch (e) { return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, source: "adsbexchange_exception", region: acRegion, error: String(e && e.message || e) } }; }
       }
       // FALLBACK: OpenSky (keyless/anonymous or credentialed)
       if (!acb) return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, error: "ADS-B Exchange unavailable and no OpenSky box for region " + acRegion } };

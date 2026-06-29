@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.275-2026-06-28";
+const BUILD = "aura-core-v4.9.276-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -328,13 +328,23 @@ async function enforceFileAction(env, ent, actor, action) {
   const owner = meta.created_by || "pta_aura";
   if (actor && actor === owner) return { allowed: true, reason: "owner" };
   if (!actor || actor === "anonymous") return { allowed: false, reason: "controlled file requires an identified actor" };
-  let perms = { owner, grants: {} };
-  try { const pr = await env.AURA_KV.get(`file:perms:${ent.id}`); if (pr) perms = JSON.parse(pr); } catch {}
+  let perms = { owner, grants: {}, roleGrants: {} };
+  try { const pr = await env.AURA_KV.get(`file:perms:${ent.id}`); if (pr) perms = Object.assign({ roleGrants: {} }, JSON.parse(pr)); } catch {}
+  const now = new Date().toISOString();
+  const hasAction = (g) => (g.can || []).includes(action) || (g.can || []).includes("owner") || (g.can || []).includes("*");
+  const live = (g) => !(g.until && g.until < now);
+  // 1) direct PTA grant
   const g = (perms.grants || {})[actor];
-  if (!g) return { allowed: false, reason: "no grant (default-deny)" };
-  if (g.until && g.until < new Date().toISOString()) return { allowed: false, reason: "grant expired " + g.until };
-  const can = (g.can || []).includes(action) || (g.can || []).includes("owner") || (g.can || []).includes("*");
-  return { allowed: !!can, reason: can ? "granted" : "action not in grant" };
+  if (g && live(g) && hasAction(g)) return { allowed: true, reason: "granted" };
+  if (g && !live(g)) return { allowed: false, reason: "grant expired " + g.until };
+  // 2) ROLE-BASED: does the actor hold any role this file grants the action to?
+  const roleGrants = perms.roleGrants || {};
+  if (Object.keys(roleGrants).length) {
+    let actorRoles = []; try { const rr = await env.AURA_KV.get(`pta:roles:${actor}`); if (rr) actorRoles = JSON.parse(rr) || []; } catch {}
+    for (const role of actorRoles) { const rg = roleGrants[role]; if (rg && live(rg) && hasAction(rg)) return { allowed: true, reason: "granted via role: " + role }; }
+  }
+  if (g) return { allowed: false, reason: "action not in grant" };
+  return { allowed: false, reason: "no grant (default-deny)" };
 }
 async function smartFileLife(env, db, ent) {
   let meta = {}; try { meta = JSON.parse(ent.metadata || "{}"); } catch {}
@@ -1150,15 +1160,17 @@ async function processCommand(line, env, isOp) {
       if (sub === "GRANT" || sub === "REVOKE" || sub === "CAN" || sub === "ACCESS") {
         let meta = {}; try { meta = JSON.parse(ent.metadata || "{}"); } catch {}
         const owner = meta.created_by || "pta_aura";
-        let perms = { owner, grants: {} };
-        try { const pr = await env.AURA_KV.get(`file:perms:${ent.id}`); if (pr) perms = JSON.parse(pr); } catch {}
+        let perms = { owner, grants: {}, roleGrants: {} };
+        try { const pr = await env.AURA_KV.get(`file:perms:${ent.id}`); if (pr) perms = Object.assign({ grants: {}, roleGrants: {} }, JSON.parse(pr)); } catch {}
         if (!perms.owner) perms.owner = owner;
+        if (!perms.roleGrants) perms.roleGrants = {};
         const now2 = new Date().toISOString();
 
         if (sub === "ACCESS") {
           // prune expired grants on read so the view is always truthful
           const live = {}; for (const [pta, g] of Object.entries(perms.grants || {})) { if (g.until && g.until < now2) continue; live[pta] = g; }
-          return { cmd: "FILE", payload: { ok: true, file: ent.id, owner: perms.owner, grants: live, note: `Owner ${perms.owner} + ${Object.keys(live).length} active grant(s).` } };
+          const liveRoles = {}; for (const [role, g] of Object.entries(perms.roleGrants || {})) { if (g.until && g.until < now2) continue; liveRoles[role] = g; }
+          return { cmd: "FILE", payload: { ok: true, file: ent.id, owner: perms.owner, grants: live, role_grants: liveRoles, note: `Owner ${perms.owner} + ${Object.keys(live).length} person grant(s) + ${Object.keys(liveRoles).length} role grant(s).` } };
         }
         if (sub === "CAN") {
           let p; try { p = JSON.parse(payloadStr); } catch (e) { return { cmd: "FILE", payload: { ok: false, error: 'Usage: FILE CAN <ref> {"who":"<pta>","do":"edit"}' } }; }
@@ -1172,14 +1184,22 @@ async function processCommand(line, env, isOp) {
         }
         // GRANT / REVOKE require operator OR the file's owner to be acting
         if (sub === "GRANT") {
-          let p; try { p = JSON.parse(payloadStr); } catch (e) { return { cmd: "FILE", payload: { ok: false, error: 'Usage: FILE GRANT <ref> {"to":"<pta>","can":["open","edit"],"until?":"2026-12-31T00:00:00Z","by?":"<owner pta>"}' } }; }
-          if (!p || !p.to || !p.can) return { cmd: "FILE", payload: { ok: false, error: "to and can are required (can = array like [\"open\",\"edit\",\"forward\"])" } };
+          let p; try { p = JSON.parse(payloadStr); } catch (e) { return { cmd: "FILE", payload: { ok: false, error: 'Usage: FILE GRANT <ref> {"to":"<pta>" OR "role":"counsel","can":["open","edit"],"until?":"2026-12-31T00:00:00Z","when?":{...},"by?":"<owner pta>"}' } }; }
+          if ((!p || (!p.to && !p.role)) || !p.can) return { cmd: "FILE", payload: { ok: false, error: "need (to OR role) and can (array like [\"open\",\"edit\"])" } };
           if (p.by && p.by !== perms.owner) return { cmd: "FILE", payload: { ok: false, error: "only the owner can grant on this file" } };
           const canArr = Array.isArray(p.can) ? p.can : [p.can];
-          perms.grants[p.to] = { can: canArr, until: p.until || null, granted_at: now2, granted_by: p.by || perms.owner };
+          if (!perms.roleGrants) perms.roleGrants = {};
+          if (p.role) {
+            const role = String(p.role).toLowerCase();
+            perms.roleGrants[role] = { can: canArr, until: p.until || null, when: p.when || null, granted_at: now2, granted_by: p.by || perms.owner };
+            await env.AURA_KV.put(`file:perms:${ent.id}`, JSON.stringify(perms)).catch(() => {});
+            await smartFileAdd(env, ent, { by: p.by || perms.owner, context: `Granted role "${role}": ${canArr.join(", ")}${p.until ? " (until " + p.until + ")" : ""}`, kind: "permission_grant" });
+            return { cmd: "FILE", payload: { ok: true, file: ent.id, granted_role: role, can: canArr, until: p.until || null, when: p.when || null } };
+          }
+          perms.grants[p.to] = { can: canArr, until: p.until || null, when: p.when || null, granted_at: now2, granted_by: p.by || perms.owner };
           await env.AURA_KV.put(`file:perms:${ent.id}`, JSON.stringify(perms)).catch(() => {});
           await smartFileAdd(env, ent, { by: p.by || perms.owner, context: `Granted ${p.to}: ${canArr.join(", ")}${p.until ? " (until " + p.until + ")" : ""}`, kind: "permission_grant" });
-          return { cmd: "FILE", payload: { ok: true, file: ent.id, granted_to: p.to, can: canArr, until: p.until || null } };
+          return { cmd: "FILE", payload: { ok: true, file: ent.id, granted_to: p.to, can: canArr, until: p.until || null, when: p.when || null } };
         }
         if (sub === "REVOKE") {
           let p; try { p = JSON.parse(payloadStr); } catch (e) { return { cmd: "FILE", payload: { ok: false, error: 'Usage: FILE REVOKE <ref> {"from":"<pta>","can?":["edit"],"by?":"<owner pta>"}' } }; }
@@ -5944,6 +5964,25 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         fragments: [...fragIds], fragment_count: fragIds.size,
         crossings, crossing_count: crossings.length,
         note: fragIds.size ? `This person is one identity with ${fragIds.size} resolved fragment(s) and ${crossings.length} crossing(s).` : `This person has ${crossings.length} crossing(s); no separate fragments to collapse.` } };
+    }
+
+    case "PTA_ROLE": {
+      // Roles a person holds (counsel, editor, family, employee...) - the basis for ROLE-BASED file
+      // access: a file granted to a role admits anyone who holds it. Stored at pta:roles:<entId>.
+      //   PTA_ROLE ADD <pta> <role>     PTA_ROLE LIST <pta>     PTA_ROLE REMOVE <pta> <role>
+      if (!isOp) return { cmd: "PTA_ROLE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const sub = (args[0] || "").toUpperCase();
+      const pta = (args[1] || "").trim();
+      if (!sub || !pta) return { cmd: "PTA_ROLE", payload: { ok: false, error: "Usage: PTA_ROLE ADD|LIST|REMOVE <pta> [role]" } };
+      let roles = []; try { const r = await env.AURA_KV.get(`pta:roles:${pta}`); if (r) roles = JSON.parse(r) || []; } catch {}
+      if (sub === "LIST") return { cmd: "PTA_ROLE", payload: { ok: true, pta, roles } };
+      const role = (args[2] || "").trim().toLowerCase();
+      if (!role) return { cmd: "PTA_ROLE", payload: { ok: false, error: "role is required" } };
+      if (sub === "ADD") { if (!roles.includes(role)) roles.push(role); }
+      else if (sub === "REMOVE") { roles = roles.filter(r => r !== role); }
+      else return { cmd: "PTA_ROLE", payload: { ok: false, error: "Use ADD | LIST | REMOVE" } };
+      await env.AURA_KV.put(`pta:roles:${pta}`, JSON.stringify(roles)).catch(() => {});
+      return { cmd: "PTA_ROLE", payload: { ok: true, pta, roles, action: sub.toLowerCase() } };
     }
 
     case "PTA_ENTITY": {

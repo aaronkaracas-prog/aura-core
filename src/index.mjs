@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.276-2026-06-28";
+const BUILD = "aura-core-v4.9.277-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1175,12 +1175,10 @@ async function processCommand(line, env, isOp) {
         if (sub === "CAN") {
           let p; try { p = JSON.parse(payloadStr); } catch (e) { return { cmd: "FILE", payload: { ok: false, error: 'Usage: FILE CAN <ref> {"who":"<pta>","do":"edit"}' } }; }
           if (!p || !p.who || !p.do) return { cmd: "FILE", payload: { ok: false, error: "who and do are required" } };
-          if (p.who === perms.owner) return { cmd: "FILE", payload: { ok: true, allow: true, who: p.who, do: p.do, reason: "owner" } };
-          const g = (perms.grants || {})[p.who];
-          if (!g) return { cmd: "FILE", payload: { ok: true, allow: false, who: p.who, do: p.do, reason: "no grant (default-deny)" } };
-          if (g.until && g.until < now2) return { cmd: "FILE", payload: { ok: true, allow: false, who: p.who, do: p.do, reason: "grant expired " + g.until } };
-          const can = (g.can || []).includes(p.do) || (g.can || []).includes("owner") || (g.can || []).includes("*");
-          return { cmd: "FILE", payload: { ok: true, allow: !!can, who: p.who, do: p.do, reason: can ? "granted" : "action not in grant" } };
+          // Use the SAME enforcement decision the real action paths use - so CAN can never drift from
+          // what actually happens (and so it honors role-based grants, expiry, public/controlled).
+          const d = await enforceFileAction(env, ent, p.who, p.do);
+          return { cmd: "FILE", payload: { ok: true, allow: d.allowed, who: p.who, do: p.do, reason: d.reason } };
         }
         // GRANT / REVOKE require operator OR the file's owner to be acting
         if (sub === "GRANT") {

@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.314-2026-06-29";
+const BUILD = "aura-core-v4.9.315-2026-06-29";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1350,6 +1350,44 @@ async function processCommand(line, env, isOp) {
       } catch (e) { return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, source: "opensky_error", region: acRegion, error: String(e && e.message || e) } }; }
     }
 
+    case "STORM_QUERY": {
+      // NWS national severe-weather feed - tornado, severe thunderstorm, flash flood, hurricane alerts.
+      // KEYLESS (api.weather.gov). The PREVENTATIVE layer: these warnings are issued AHEAD of impact.
+      // Same pipe as FIRE_WEATHER, filtered for storm hazards. National or by state.
+      //   STORM_QUERY            (all active severe storm alerts nationally)
+      //   STORM_QUERY tornado    (just tornado warnings/watches)
+      //   STORM_QUERY TX         (a state, 2-letter)
+      if (!isOp) return { cmd: "STORM_QUERY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const stArg = (line.replace(/^STORM_QUERY\s+/i, "").trim() || "all");
+      const STORM_EVENTS = /tornado|severe thunderstorm|flash flood|hurricane|tropical storm|storm surge|extreme wind|dust storm/i;
+      try {
+        // build URL: by state if a 2-letter code, else national active alerts
+        let url = "https://api.weather.gov/alerts/active";
+        const isState = /^[A-Za-z]{2}$/.test(stArg);
+        const filterEvent = stArg.toLowerCase();
+        if (isState) url += `?area=${stArg.toUpperCase()}`;
+        const r = await fetch(url, { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)", "Accept": "application/geo+json" } });
+        if (!r.ok) return { cmd: "STORM_QUERY", payload: { ok: false, source: "nws_error", error: `nws http ${r.status}` } };
+        const d = await r.json();
+        let alerts = (d.features || []).map(f => {
+          const p = f.properties || {};
+          return { event: p.event, severity: p.severity, urgency: p.urgency, certainty: p.certainty, headline: p.headline, area: p.areaDesc, onset: p.onset, expires: p.expires, sender: p.senderName };
+        });
+        // keep storm-type events
+        let storms = alerts.filter(a => STORM_EVENTS.test(a.event || ""));
+        // optional event filter (e.g. "tornado")
+        if (!isState && filterEvent !== "all" && filterEvent.length > 2) storms = storms.filter(a => (a.event || "").toLowerCase().includes(filterEvent));
+        // rank by severity
+        const sevRank = { Extreme: 4, Severe: 3, Moderate: 2, Minor: 1, Unknown: 0 };
+        storms.sort((a, b) => (sevRank[b.severity] || 0) - (sevRank[a.severity] || 0));
+        // tally by event type
+        const byType = {};
+        for (const s of storms) { byType[s.event] = (byType[s.event] || 0) + 1; }
+        const tornadoes = storms.filter(s => /tornado/i.test(s.event || "")).length;
+        return { cmd: "STORM_QUERY", payload: { ok: true, source: "nws_live", scope: isState ? stArg.toUpperCase() : (filterEvent !== "all" ? filterEvent : "national"), total_storm_alerts: storms.length, tornado_alerts: tornadoes, by_type: byType, top_alerts: storms.slice(0, 15), updated: new Date().toISOString(), note: tornadoes ? `${tornadoes} tornado alert(s) ACTIVE` : (storms.length ? `${storms.length} severe storm alerts active` : "No active severe storm alerts in scope.") } };
+      } catch (e) { return { cmd: "STORM_QUERY", payload: { ok: false, source: "nws_error", error: String(e && e.message || e) } }; }
+    }
+
     case "QUAKE_QUERY": {
       // USGS earthquake feed - KEYLESS, real-time, global GeoJSON. The THIRD domain (after maritime +
       // fire), proving the situation engine is truly generic. Sudden-onset disaster type.
@@ -2075,7 +2113,8 @@ async function processCommand(line, env, isOp) {
         norcal_fire: { domain: "fire", label: "Northern California wildfires", news: "Northern California wildfire evacuation", lat: 38.58, lon: -121.49, fire: "norcal", search: "Northern California wildfire active evacuation today" },
         cottonwood_fire: { domain: "fire", label: "Cottonwood Fire, Beaver County Utah (nation's largest)", news: "Cottonwood Fire Utah Beaver evacuation", lat: 38.28, lon: -112.64, fire: "cottonwood", search: "Cottonwood Fire Utah acres containment evacuation today" },
         global_quakes: { domain: "quake", label: "Significant earthquakes (past 24h)", news: "major earthquake today", quake: "significant", search: "significant earthquake today magnitude damage" },
-        venezuela_quake: { domain: "quake", label: "Venezuela earthquake + aftershocks (Caracas/La Guaira disaster)", news: "Venezuela earthquake Caracas La Guaira aftershock rescue", quake: "4.5", search: "Venezuela earthquake aftershock Caracas La Guaira death toll rescue today" }
+        venezuela_quake: { domain: "quake", label: "Venezuela earthquake + aftershocks (Caracas/La Guaira disaster)", news: "Venezuela earthquake Caracas La Guaira aftershock rescue", quake: "4.5", search: "Venezuela earthquake aftershock Caracas La Guaira death toll rescue today" },
+        us_storms: { domain: "storm", label: "US severe weather (tornado/storm warnings)", news: "tornado severe storm warning today", storm: "all", search: "tornado severe thunderstorm warning today United States" }
       };
       const T = TOPICS[topicKey];
       if (!T) return { cmd: "SITUATION_PULL", payload: { ok: false, error: "unknown topic: " + topicKey, topics: Object.keys(TOPICS) } };
@@ -2103,6 +2142,21 @@ async function processCommand(line, env, isOp) {
         return { cmd: "SITUATION_PULL", payload: { ok: true, topic: topicKey, domain, label: T.label, pulled_at: snapshot.pulled_at, feeds: { news: snapshot.news.length, weather: !!snapshot.weather, fire_weather: snapshot.fire_weather ? (snapshot.fire_weather.red_flag ? "RED FLAG" : snapshot.fire_weather.alerts.length) : false, web: snapshot.web_ok, fires: snapshot.fires.fire_count }, note: "Fire snapshot stored. Run SITUATION_BRIEF " + topicKey + " for the analysis." } };
       }
       // MARITIME DOMAIN (default)
+      if (domain === "storm") {
+        const [news, storm, web] = await Promise.all([
+          run(`NEWS_QUERY ${T.news}`),
+          run(`STORM_QUERY ${T.storm}`),
+          run(`WEB_SEARCH ${T.search}`)
+        ]);
+        snapshot = {
+          topic: topicKey, domain, label: T.label, pulled_at: new Date().toISOString(),
+          news: news && news.ok ? (news.news || []).slice(0, 10) : [], news_ok: !!(news && news.ok),
+          web: web && web.ok ? (web.results || web.answer || web) : null, web_ok: !!(web && web.ok),
+          storms: storm && storm.ok ? { source: storm.source, total: storm.total_storm_alerts ?? 0, tornadoes: storm.tornado_alerts ?? 0, by_type: storm.by_type || {}, top: storm.top_alerts || [], updated: storm.updated } : { total: 0, source: (storm && storm.source) || "none", note: (storm && storm.error) || "no storm feed" }
+        };
+        await env.AURA_KV.put(`situation:snapshot:${topicKey}`, JSON.stringify(snapshot), { expirationTtl: 3600 }).catch(() => {});
+        return { cmd: "SITUATION_PULL", payload: { ok: true, topic: topicKey, domain, label: T.label, pulled_at: snapshot.pulled_at, feeds: { news: snapshot.news.length, web: snapshot.web_ok, storm_alerts: snapshot.storms.total, tornadoes: snapshot.storms.tornadoes }, note: "Storm snapshot stored. Run SITUATION_BRIEF " + topicKey + " for the analysis." } };
+      }
       if (domain === "quake") {
         const [news, quake, web] = await Promise.all([
           run(`NEWS_QUERY ${T.news}`),
@@ -2160,7 +2214,13 @@ async function processCommand(line, env, isOp) {
       const wxLine = snap.weather ? `${snap.weather.conditions}, wind ${snap.weather.wind_ms}m/s, vis ${snap.weather.visibility_m}m` : "unavailable";
       const snapDomain = snap.domain || "maritime";
       let sysPrompt, question;
-      if (snapDomain === "quake") {
+      if (snapDomain === "storm") {
+        const st = snap.storms;
+        const stLine = st ? `${st.total} active storm alerts${st.tornadoes ? `, ${st.tornadoes} TORNADO` : ""}; types: ${Object.entries(st.by_type || {}).map(([k, v]) => k + " x" + v).join(", ") || "none"}` : "no storm data";
+        const topAreas = st && st.top ? st.top.slice(0, 6).map(a => `${a.event}: ${a.area} (${a.severity}, until ${a.expires ? a.expires.slice(11, 16) : "?"})`).join("\n") : "";
+        sysPrompt = "You are SituationTracker, an operational severe-weather intelligence engine. These NWS alerts are issued AHEAD of impact - your job is the preventative read: who is in the path, how much lead time, what to do now. You analyze for emergency managers, residents, and responders. Tornado warnings mean take cover immediately. Be precise, factual, decision-oriented. Never invent numbers - use only the data given. Output STRICT JSON only, no markdown, with keys: status (one line: current severe weather situation nationally/in scope), drivers (array of 2-4 short strings: what is active - tornado/storm/flood, where), threat (one line: the most urgent threat and who is in the path), lead_time (one line: how much warning time the alerts provide), alerts (array of 0-3 short actionable protective strings), outlook (array of 2-3 short 'if X then Y' strings), confidence (low|medium|high).";
+        question = `Severe weather situation: ${snap.label}\nPulled: ${snap.pulled_at}\n\nLIVE NEWS:\n${newsLines}\n\nNWS ACTIVE ALERTS: ${stLine}\n\nTOP ALERTS:\n${topAreas}\n\nProduce the severe-weather operator briefing JSON now.`;
+      } else if (snapDomain === "quake") {
         const qk = snap.quakes;
         const qLine = qk && qk.largest ? `${qk.count} quakes; largest M${qk.largest.mag} at ${qk.largest.place}, depth ${qk.largest.depth_km}km${qk.largest.tsunami ? ", TSUNAMI FLAG" : ""}${qk.largest.alert ? ", PAGER alert " + qk.largest.alert : ""}` : "no significant quakes";
         sysPrompt = "You are SituationTracker, an operational seismic intelligence engine used in real disasters. You analyze live earthquake activity for emergency managers, responders, and families seeking information. ACCURACY IS LIFE-CRITICAL. Rules: (1) USGS data is your source of truth for magnitude, depth, location, time. (2) NEVER state casualty, death, or missing-person counts as fact - these change constantly and a wrong number misallocates rescue resources. If news mentions such figures, write them ONLY as 'per news reports (unverified): ~X' and never invent or extrapolate a number. If unsure, say 'casualty figures still being confirmed.' (3) Never invent any number not present in the data. Be precise, factual, decision-oriented. Output STRICT JSON only, no markdown, with keys: status (one line: current seismic situation - lead with verified USGS facts), drivers (array of 2-4 short strings: magnitude, depth, aftershock pattern), impact (one line: affected area and severity - casualty figures only as 'unverified per news' if mentioned), aftershock (one line: aftershock/tsunami risk read from depth and sequence), alerts (array of 0-3 short actionable risk strings), outlook (array of 2-3 short 'if X then Y' strings), confidence (low|medium|high).";

@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.277-2026-06-28";
+const BUILD = "aura-core-v4.9.307-2026-06-29";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -126,6 +126,171 @@ export class EntityDO {
     } catch (e) {
       return Response.json({ ok: false, error: String(e.message) }, { status: 500 });
     }
+  }
+}
+
+// ============================================================================
+// AIS COLLECTOR (Durable Object). THE thing that makes the ships move. A request-
+// scoped Worker cannot hold the AISStream firehose open (proven v4.9.229: zero
+// messages). A Durable Object CAN - it is persistent and stateful. This DO opens
+// the AISStream WebSocket, subscribes to a region's bounding box, keeps the latest
+// position per vessel (by MMSI), and on a 60s alarm heartbeat writes a fresh
+// ais:snapshot:<region> to KV (exactly what AIS_QUERY reads) and re-arms. The alarm
+// is the heartbeat: if the socket died, the alarm reconnects it. Always-on by design.
+//   POST /start {region}  - begin (or confirm) collecting for a region
+//   GET  /status          - how many vessels, last write, socket state
+//   POST /stop            - stop collecting
+// Regions (bounding boxes [[lat_min,lon_min],[lat_max,lon_max]]) defined in REGIONS.
+const AIS_REGIONS = {
+  // Strait of Hormuz + Persian Gulf + Gulf of Oman - the launch theatre.
+  hormuz: { name: "Strait of Hormuz / Persian Gulf", box: [[23.5, 47.0], [30.5, 62.0]] },
+  // Red Sea + Bab-el-Mandeb + Suez approaches.
+  redsea: { name: "Red Sea / Bab-el-Mandeb / Suez", box: [[10.0, 32.0], [31.0, 45.0]] },
+  // Whole Middle East maritime (Hormuz + Red Sea + Arabian Sea).
+  mideast: { name: "Middle East maritime", box: [[5.0, 32.0], [31.0, 70.0]] }
+};
+export class AisCollectorDO {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+    this.ws = null;          // the live AISStream socket
+    this.region = null;      // which region this DO collects
+    this.vessels = new Map(); // mmsi -> { mmsi, name, type, lat, lon, sog, cog, heading, ts }
+    this.connectedAt = null;
+    this.lastMsgAt = null;
+    this.lastWriteAt = null;
+    this.msgCount = 0;
+    this.lastError = null;
+    this.state.blockConcurrencyWhile(async () => {
+      this.region = (await this.state.storage.get("region")) || null;
+      const saved = (await this.state.storage.get("vessels")) || null;
+      if (saved) { try { this.vessels = new Map(Object.entries(saved)); } catch {} }
+    });
+  }
+
+  async fetch(request) {
+    const url = new URL(request.url);
+    const op = url.pathname.slice(1);
+    try {
+      if (op === "start") {
+        const body = await request.json().catch(() => ({}));
+        const region = (body.region || "hormuz").toLowerCase();
+        if (!AIS_REGIONS[region]) return Response.json({ ok: false, error: "unknown region: " + region, regions: Object.keys(AIS_REGIONS) }, { status: 400 });
+        this.region = region;
+        await this.state.storage.put("region", region);
+        // immediate first burst so the snapshot has ships right away (awaited - DO stays awake)
+        await this.collectBurst(20);
+        const list = [...this.vessels.values()];
+        const snapshot = { region, name: AIS_REGIONS[region].name, box: AIS_REGIONS[region].box, vessel_count: list.length, updated: new Date().toISOString(), msg_count: this.msgCount, last_error: this.lastError || null, vessels: list.slice(0, 2000) };
+        try { await this.env.AURA_KV.put(`ais:snapshot:${region}`, JSON.stringify(snapshot), { expirationTtl: 1800 }); this.lastWriteAt = snapshot.updated; } catch {}
+        try { await this.state.storage.put("vessels", Object.fromEntries(this.vessels)); } catch {}
+        await this.state.storage.setAlarm(Date.now() + 60000); // heartbeat in 60s
+        return Response.json({ ok: true, region, name: AIS_REGIONS[region].name, vessels: list.length, msg_count: this.msgCount, last_error: this.lastError || null, note: "Collector started with an immediate burst; refreshes every 60s." });
+      }
+      if (op === "status") {
+        return Response.json({
+          ok: true, region: this.region, name: this.region ? AIS_REGIONS[this.region].name : null,
+          vessels: this.vessels.size, socket_open: !!(this.ws && this.ws.readyState === 1),
+          connected_at: this.connectedAt, last_msg_at: this.lastMsgAt, last_write_at: this.lastWriteAt,
+          msg_count: this.msgCount, last_error: this.lastError || null
+        });
+      }
+      if (op === "stop") {
+        try { if (this.ws) this.ws.close(); } catch {}
+        this.ws = null;
+        await this.state.storage.deleteAlarm();
+        await this.state.storage.put("region", null);
+        this.region = null;
+        return Response.json({ ok: true, stopped: true });
+      }
+      return Response.json({ ok: false, error: "unknown op" }, { status: 400 });
+    } catch (e) {
+      return Response.json({ ok: false, error: String(e && e.message || e) }, { status: 500 });
+    }
+  }
+
+  // Open the AISStream WebSocket and subscribe to the region's bounding box.
+  // Run ONE awaited collection burst: open the AISStream socket, drain position reports for ~20s
+  // while the DO is guaranteed awake (the await holds it alive - no hibernation socket-loss), then
+  // close. AIS floods in within seconds in a busy area like Hormuz, so a short burst each alarm
+  // builds a full picture. Returns when the burst ends. Records lastError on any failure.
+  async collectBurst(seconds = 20) {
+    const key = await this.env.AURA_KV.get("secret:aisstream");
+    if (!key) { this.lastError = "no secret:aisstream"; return; }
+    const box = AIS_REGIONS[this.region].box;
+    let ws = null;
+    try {
+      const resp = await fetch("https://stream.aisstream.io/v0/stream", { headers: { Upgrade: "websocket" } });
+      if (resp.status !== 101 || !resp.webSocket) {
+        this.lastError = "upgrade failed: status " + resp.status + (resp.webSocket ? "" : " (no webSocket)");
+        let b = ""; try { b = (await resp.text()).slice(0, 200); } catch {}
+        if (b) this.lastError += " body:" + b;
+        return;
+      }
+      ws = resp.webSocket;
+      ws.accept();
+      this.ws = ws;
+      this.connectedAt = new Date().toISOString();
+      this.lastError = null;
+      ws.send(JSON.stringify({ APIKey: key, BoundingBoxes: [box], FilterMessageTypes: ["PositionReport"] }));
+      // collect messages into this.vessels until the timer elapses or the socket closes
+      await new Promise((resolve) => {
+        let done = false;
+        const finish = () => { if (done) return; done = true; try { ws.close(); } catch {} resolve(); };
+        const timer = setTimeout(finish, seconds * 1000);
+        ws.addEventListener("message", (ev) => {
+          this.msgCount++;
+          this.lastMsgAt = new Date().toISOString();
+          try {
+            const m = JSON.parse(typeof ev.data === "string" ? ev.data : new TextDecoder().decode(ev.data));
+            if (m.error || m.Error) { this.lastError = "stream error: " + (m.error || m.Error); return; }
+            const meta = m.MetaData || {};
+            const pr = (m.Message && m.Message.PositionReport) || null;
+            if (!pr || meta.MMSI == null) return;
+            const mmsi = String(meta.MMSI);
+            this.vessels.set(mmsi, {
+              mmsi, name: (meta.ShipName || "").trim() || null,
+              lat: pr.Latitude, lon: pr.Longitude,
+              sog: pr.Sog ?? null, cog: pr.Cog ?? null, heading: pr.TrueHeading ?? null,
+              nav: pr.NavigationalStatus ?? null,
+              ts: meta.time_utc || new Date().toISOString()
+            });
+          } catch {}
+        });
+        ws.addEventListener("close", () => { clearTimeout(timer); finish(); });
+        ws.addEventListener("error", () => { this.lastError = "socket error event"; clearTimeout(timer); finish(); });
+      });
+    } catch (e) {
+      this.lastError = String(e && e.message || e);
+    } finally {
+      try { if (ws) ws.close(); } catch {}
+      this.ws = null;
+    }
+  }
+
+  // Heartbeat: prune stale vessels, write the snapshot to KV, re-arm, reconnect if dropped.
+  async alarm() {
+    if (!this.region) return; // collector was stopped
+    // run one awaited collection burst to refresh positions while the DO is awake
+    await this.collectBurst(20);
+    // prune vessels not seen in 30 min (left the area / stale)
+    const cutoff = Date.now() - 30 * 60 * 1000;
+    for (const [mmsi, v] of this.vessels) {
+      const t = Date.parse(v.ts || "");
+      if (t && t < cutoff) this.vessels.delete(mmsi);
+    }
+    const list = [...this.vessels.values()];
+    const snapshot = {
+      region: this.region, name: AIS_REGIONS[this.region].name, box: AIS_REGIONS[this.region].box,
+      vessel_count: list.length, updated: new Date().toISOString(),
+      msg_count: this.msgCount, last_error: this.lastError || null,
+      vessels: list.slice(0, 2000) // cap snapshot size
+    };
+    try { await this.env.AURA_KV.put(`ais:snapshot:${this.region}`, JSON.stringify(snapshot), { expirationTtl: 1800 }); this.lastWriteAt = snapshot.updated; } catch {}
+    // persist vessels so a DO restart keeps the picture
+    try { await this.state.storage.put("vessels", Object.fromEntries(this.vessels)); } catch {}
+    // re-arm the heartbeat
+    await this.state.storage.setAlarm(Date.now() + 60000);
   }
 }
 
@@ -1074,6 +1239,204 @@ async function processCommand(line, env, isOp) {
       } catch (e) { return { cmd: "OIL_PRICE", payload: { ok: false, error: e.message } }; }
     }
 
+    case "FIRE_OFFICIAL": {
+      // NIFC WFIGS - the AUTHORITATIVE fire incident feed (keyless ArcGIS REST, refreshes ~5 min).
+      // Official acreage, containment %, fire name, discovery date - the structured source behind every
+      // "94,000 acres, 0% contained" news line. Query by bounding box; returns the real incident records.
+      //   FIRE_OFFICIAL <region>     (reuses fire region boxes)
+      if (!isOp) return { cmd: "FIRE_OFFICIAL", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const foRegion = (line.replace(/^FIRE_OFFICIAL\s+/i, "").trim() || "cottonwood").toLowerCase();
+      const FO_STATES = {
+        cottonwood: "US-UT", utah: "US-UT", california: "US-CA", socal: "US-CA",
+        west: null // null = all
+      };
+      if (!(foRegion in FO_STATES)) return { cmd: "FIRE_OFFICIAL", payload: { ok: false, error: "unknown region: " + foRegion, regions: Object.keys(FO_STATES) } };
+      const stateFilter = FO_STATES[foRegion];
+      try {
+        const base = "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0/query";
+        const where = stateFilter ? encodeURIComponent(`POOState='${stateFilter}'`) : "1%3D1";
+        const url = `${base}?where=${where}&outFields=*&returnGeometry=true&outSR=4326&f=json`;
+        const r = await fetch(url, { headers: { "User-Agent": "SituationTracker/1.0" } });
+        if (!r.ok) return { cmd: "FIRE_OFFICIAL", payload: { ok: false, source: "nifc_error", region: foRegion, error: `nifc http ${r.status}` } };
+        const d = await r.json();
+        if (d.error) return { cmd: "FIRE_OFFICIAL", payload: { ok: false, source: "nifc_error", region: foRegion, error: JSON.stringify(d.error).slice(0, 200) } };
+        const feats = d.features || [];
+        const pick = (a, ...names) => { for (const n of names) { if (a[n] != null && a[n] !== "") return a[n]; } return null; };
+        const incidents = feats.map(f => {
+          const a = f.attributes || {};
+          const disc = pick(a, "FireDiscoveryDateTime", "CreatedOnDateTime_dt");
+          return {
+            name: pick(a, "IncidentName", "incident_name"),
+            size_acres: pick(a, "IncidentSize", "DailyAcres", "GISAcres"),
+            contained_pct: pick(a, "PercentContained"),
+            personnel: pick(a, "TotalIncidentPersonnel"),
+            type: pick(a, "IncidentTypeCategory", "FireCause"),
+            county: pick(a, "POOCounty"), state: pick(a, "POOState"),
+            discovered: disc ? new Date(disc).toISOString().slice(0, 10) : null,
+            lat: f.geometry ? f.geometry.y : null, lon: f.geometry ? f.geometry.x : null
+          };
+        }).filter(i => i.name);
+        // sort biggest first
+        incidents.sort((a, b) => (b.size_acres || 0) - (a.size_acres || 0));
+        return { cmd: "FIRE_OFFICIAL", payload: { ok: true, source: "nifc_wfigs_live", region: foRegion, incident_count: incidents.length, largest: incidents[0] || null, incidents: incidents.slice(0, 25), updated: new Date().toISOString(), note: "Authoritative NIFC/WFIGS incident data - official acreage and containment." } };
+      } catch (e) { return { cmd: "FIRE_OFFICIAL", payload: { ok: false, source: "nifc_error", region: foRegion, error: String(e && e.message || e) } }; }
+    }
+
+    case "AIRCRAFT_QUERY": {
+      // Live aircraft over a region - the aviation sibling of AIS_QUERY (ships) and FIRE_QUERY (fire).
+      // Source: OpenSky Network (keyless anonymous tier, rate-limited; REST bounding-box state vectors).
+      // Flags LIKELY firefighting aircraft by callsign pattern (tankers/air-attack/helicopters). Upgrade
+      // path: ADS-B Exchange (unfiltered, sees gov/blocked aircraft) when a key is added.
+      //   AIRCRAFT_QUERY <region>     (region maps to a bbox; reuses fire regions + maritime ones)
+      if (!isOp) return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const acRegion = (line.replace(/^AIRCRAFT_QUERY\s+/i, "").trim() || "cottonwood").toLowerCase();
+      const AC_BOXES = {
+        cottonwood: { lamin: 38.0, lamax: 38.7, lomin: -112.9, lomax: -112.1, label: "Cottonwood Fire airspace" },
+        socal: { lamin: 33.0, lamax: 34.8, lomin: -119.5, lomax: -116.0, label: "Southern California" },
+        norcal: { lamin: 38.0, lamax: 41.0, lomin: -123.5, lomax: -120.0, label: "Northern California" },
+        california: { lamin: 32.5, lamax: 42.0, lomin: -124.5, lomax: -114.0, label: "California" },
+        utah: { lamin: 37.0, lamax: 42.0, lomin: -114.0, lomax: -109.0, label: "Utah" }
+      };
+      const acCENTERS = {
+        cottonwood: { lat: 38.30, lon: -112.50, label: "Cottonwood Fire airspace" },
+        socal: { lat: 34.05, lon: -118.24, label: "Southern California" },
+        norcal: { lat: 38.58, lon: -121.49, label: "Northern California" },
+        california: { lat: 36.78, lon: -119.42, label: "California" },
+        utah: { lat: 39.32, lon: -111.09, label: "Utah" }
+      };
+      const acb = AC_BOXES[acRegion];
+      const ctr = acCENTERS[acRegion];
+      if (!acb && !ctr) return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, error: "unknown region: " + acRegion, regions: Object.keys(acCENTERS) } };
+      const FIRE_HINTS = /(^CFR|TANKER|^T\d{2,3}|^A\d{2,3}|FIRE|GUARD|^N\d+DF|COULSON|NEPTUNE|^MMF|HELITACK|^CWN|^GRAND|BRIDGER|^TNKR)/i;
+      // PRIMARY: ADS-B Exchange (RapidAPI) - unfiltered, sees government firefighting aircraft
+      const adsbKey = await env.AURA_KV.get("secret:adsbexchange").catch(() => null);
+      if (adsbKey && ctr) {
+        try {
+          const url = `https://adsbexchange-com1.p.rapidapi.com/v2/lat/${ctr.lat}/lon/${ctr.lon}/dist/150/`;
+          const r = await fetch(url, { headers: { "x-rapidapi-key": adsbKey, "x-rapidapi-host": "adsbexchange-com1.p.rapidapi.com" } });
+          if (r.ok) {
+            const d = await r.json();
+            const ac = (d.ac || []).map(a => {
+              const cs = (a.flight || "").trim();
+              return { icao24: a.hex, callsign: cs || null, lat: a.lat, lon: a.lon, alt_ft: a.alt_baro, vel_kt: a.gs, track_deg: a.track, type: a.t || null, registration: a.r || null, likely_fire: FIRE_HINTS.test(cs) || FIRE_HINTS.test(a.r || "") };
+            }).filter(a => a.lat != null && a.lon != null);
+            const fireAc = ac.filter(a => a.likely_fire);
+            return { cmd: "AIRCRAFT_QUERY", payload: { ok: true, source: "adsbexchange_live", region: acRegion, label: ctr.label, total_aircraft: ac.length, likely_firefighting: fireAc.length, fire_aircraft: fireAc.slice(0, 30), all_sample: ac.slice(0, 20), updated: new Date().toISOString(), note: fireAc.length ? "Flagged by callsign/registration - confirm against incident air-ops roster." : "No firefighting-pattern aircraft this pass (may be grounded/between sorties). Total air traffic shown." } };
+          }
+          // fall through to opensky on non-ok
+        } catch (e) { /* fall through */ }
+      }
+      // FALLBACK: OpenSky (keyless/anonymous or credentialed)
+      if (!acb) return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, error: "ADS-B Exchange unavailable and no OpenSky box for region " + acRegion } };
+      try {
+        const oUser = await env.AURA_KV.get("secret:opensky_user").catch(() => null);
+        const oPass = await env.AURA_KV.get("secret:opensky_pass").catch(() => null);
+        const url = `https://opensky-network.org/api/states/all?lamin=${acb.lamin}&lomin=${acb.lomin}&lamax=${acb.lamax}&lomax=${acb.lomax}`;
+        const headers = { "User-Agent": "SituationTracker/1.0" };
+        if (oUser && oPass) headers["Authorization"] = "Basic " + btoa(`${oUser}:${oPass}`);
+        const r = await fetch(url, { headers });
+        if (!r.ok) return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, source: "opensky_error", region: acRegion, error: `opensky http ${r.status}${(oUser ? " (authenticated)" : " (anonymous tier - flaky; add secret:opensky_user + secret:opensky_pass)")}` } };
+        const d = await r.json();
+        const states = d.states || [];
+        // OpenSky state vector indices: 0 icao24, 1 callsign, 5 lon, 6 lat, 7 baro_alt, 9 velocity, 10 true_track, 13 geo_alt
+        const aircraft = states.map(s => {
+          const cs = (s[1] || "").trim();
+          return { icao24: s[0], callsign: cs || null, lat: s[6], lon: s[5], alt_m: s[13] ?? s[7], vel_ms: s[9], track_deg: s[10], on_ground: s[8], likely_fire: FIRE_HINTS.test(cs) };
+        }).filter(a => a.lat != null && a.lon != null);
+        const fireAircraft = aircraft.filter(a => a.likely_fire);
+        return { cmd: "AIRCRAFT_QUERY", payload: { ok: true, source: "opensky_live", region: acRegion, label: acb.label, total_aircraft: aircraft.length, likely_firefighting: fireAircraft.length, fire_aircraft: fireAircraft.slice(0, 30), all_sample: aircraft.slice(0, 20), updated: new Date().toISOString(), note: fireAircraft.length ? "Flagged aircraft are heuristic matches by callsign - confirm against the incident air-ops roster." : "No firefighting-pattern callsigns in this pass (aircraft may be on the ground, between drops, or using non-standard callsigns). Total air traffic still shown." } };
+      } catch (e) { return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, source: "opensky_error", region: acRegion, error: String(e && e.message || e) } }; }
+    }
+
+    case "FIRE_PREDICT": {
+      // FIRE SPREAD PREDICTION - the high-value layer. Combines what we already have: current hotspots
+      // (FIRMS) + their MOVEMENT since last cycle (the diff = direction of advance) + live wind (what
+      // pushes the fire). Aura projects where it is heading and what is in the path. This is the
+      // "watch the wind shift, see where the fire goes" capability. Generic across any fire region.
+      //   FIRE_PREDICT <region>
+      if (!isOp) return { cmd: "FIRE_PREDICT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const fpRegion = (line.replace(/^FIRE_PREDICT\s+/i, "").trim() || "cottonwood").toLowerCase();
+      const step = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
+      // 1) current hotspots
+      const fire = await step(`FIRE_QUERY ${fpRegion}`);
+      if (!fire || !fire.ok) return { cmd: "FIRE_PREDICT", payload: { ok: false, error: "fire feed unavailable: " + (fire && fire.error) } };
+      const hot = (fire.hotspots || []).filter(h => h.lat && h.lon);
+      if (!hot.length) return { cmd: "FIRE_PREDICT", payload: { ok: true, region: fpRegion, label: fire.label, note: "No active hotspots to project from." } };
+      // centroid + leading edge (highest-FRP cluster) of the current fire
+      const centroid = { lat: hot.reduce((s, h) => s + h.lat, 0) / hot.length, lon: hot.reduce((s, h) => s + h.lon, 0) / hot.length };
+      const lead = hot.reduce((a, b) => ((b.frp_mw || 0) > (a.frp_mw || 0) ? b : a), hot[0]);
+      // 2) diff against last cycle - how the centroid MOVED = direction of advance
+      let prev = null;
+      try { const p = await env.AURA_KV.get(`fire:last:${fpRegion}`); if (p) prev = JSON.parse(p); } catch {}
+      let advance = null;
+      if (prev && prev.centroid) {
+        const dLat = centroid.lat - prev.centroid.lat, dLon = centroid.lon - prev.centroid.lon;
+        const dist_km = Math.sqrt((dLat * 111) ** 2 + (dLon * 88) ** 2);
+        let bearing = (Math.atan2(dLon, dLat) * 180 / Math.PI + 360) % 360; // 0=N,90=E
+        const compass = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(bearing / 45) % 8];
+        const hrs = prev.at ? Math.max(0.1, (Date.now() - new Date(prev.at).getTime()) / 3600000) : null;
+        advance = { moved_km: +dist_km.toFixed(2), bearing_deg: +bearing.toFixed(0), compass, over_hours: hrs ? +hrs.toFixed(1) : null, km_per_hr: hrs ? +(dist_km / hrs).toFixed(2) : null };
+      }
+      // 3) live wind at the leading edge (what pushes it next)
+      const wx = await step(`MARINE_WX ${lead.lat} ${lead.lon}`);
+      const wind = wx && wx.ok ? { speed_ms: wx.wind_ms, gust_ms: wx.wind_gust_ms, conditions: wx.conditions } : null;
+      // store this cycle as next baseline
+      await env.AURA_KV.put(`fire:last:${fpRegion}`, JSON.stringify({ centroid, lead: { lat: lead.lat, lon: lead.lon, frp: lead.frp_mw }, count: hot.length, at: new Date().toISOString() }), { expirationTtl: 172800 }).catch(() => {});
+      // 4) Aura projects - where is it heading, what is in the path
+      const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      let projection = null;
+      if (anthKey) {
+        const sys = "You are Aura, a wildfire spread analyst supporting incident command. Given the fire's current hotspots, how its center has MOVED since last cycle (observed advance), and the live wind, project the likely near-term spread. Be explicit that this is a data-driven estimate, not a substitute for FARSITE/incident modeling. Output STRICT JSON only: heading (one line: projected direction of advance and why - reconcile observed movement with wind), rate (one line: how fast, from observed km/hr if available), in_the_path (array of 1-3 short strings: what to check downwind - communities/roads/terrain, name only what is reasonable), confidence (low|medium|high), caveat (one line: the honest limit of this estimate).";
+        const usr = `Fire: ${fire.label}\nCurrent: ${hot.length} hotspots, centroid ${centroid.lat.toFixed(3)},${centroid.lon.toFixed(3)}, leading edge (highest FRP ${lead.frp_mw}MW) at ${lead.lat.toFixed(3)},${lead.lon.toFixed(3)}\nObserved advance since last cycle: ${advance ? JSON.stringify(advance) : "first cycle - no movement baseline yet"}\nLive wind at leading edge: ${wind ? `${wind.speed_ms} m/s gusting ${wind.gust_ms}, ${wind.conditions}` : "unavailable"}\n\nProject the spread JSON now.`;
+        try {
+          const res = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 500, system: sys, messages: [{ role: "user", content: usr }] })
+          });
+          if (res.ok) { const j = await res.json(); let t = (j.content && j.content[0] && j.content[0].text) ? j.content[0].text : ""; t = t.replace(/```json|```/g, "").trim(); try { projection = JSON.parse(t); } catch { projection = { heading: t.slice(0, 200), raw: true }; } }
+        } catch {}
+      }
+      return { cmd: "FIRE_PREDICT", payload: { ok: true, region: fpRegion, label: fire.label, current: { hotspots: hot.length, centroid, leading_edge: { lat: lead.lat, lon: lead.lon, frp_mw: lead.frp_mw } }, observed_advance: advance || "first cycle - run again next satellite pass to measure movement", live_wind: wind, projection } };
+    }
+
+    case "FIRE_QUERY": {
+      // NASA FIRMS active-fire detections - the fire-domain feed (sibling of AIS_QUERY for ships).
+      // Proves the SITUATION engine is generic: same shape, different feed/domain. Needs free MAP_KEY
+      // in secret:firms. Endpoint: /api/area/csv/<key>/<sensor>/<west,south,east,north>/<days>
+      //   FIRE_QUERY <region>     (region maps to a bbox below)
+      if (!isOp) return { cmd: "FIRE_QUERY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const fqRegion = (line.replace(/^FIRE_QUERY\s+/i, "").trim() || "socal").toLowerCase();
+      const FIRE_BOXES = {
+        // west,south,east,north
+        socal: { w: -119.5, s: 33.0, e: -116.0, n: 34.8, label: "Southern California" },
+        norcal: { w: -123.5, s: 38.0, e: -120.0, n: 41.0, label: "Northern California" },
+        california: { w: -124.5, s: 32.5, e: -114.0, n: 42.0, label: "California" },
+        cottonwood: { w: -112.9, s: 38.0, e: -112.1, n: 38.7, label: "Cottonwood Fire (Beaver/Piute County, Utah)" },
+        utah: { w: -114.0, s: 37.0, e: -109.0, n: 42.0, label: "Utah" },
+        greece: { w: 20.0, s: 35.0, e: 26.5, n: 41.0, label: "Greece" },
+        australia_se: { w: 145.0, s: -39.0, e: 154.0, n: -28.0, label: "SE Australia" }
+      };
+      const fb = FIRE_BOXES[fqRegion];
+      if (!fb) return { cmd: "FIRE_QUERY", payload: { ok: false, error: "unknown region: " + fqRegion, regions: Object.keys(FIRE_BOXES) } };
+      const fkey = await env.AURA_KV.get("secret:firms").catch(() => null);
+      if (!fkey) return { cmd: "FIRE_QUERY", payload: { ok: false, source: "no_key", region: fqRegion, label: fb.label, error: "No FIRMS MAP_KEY. Set secret:firms (free at firms.modaps.eosdis.nasa.gov/api/area/). The fire SITUATION engine is wired and will run the moment the key lands." } };
+      try {
+        const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${fkey}/VIIRS_NOAA20_NRT/${fb.w},${fb.s},${fb.e},${fb.n}/1`;
+        const r = await fetch(url);
+        if (!r.ok) return { cmd: "FIRE_QUERY", payload: { ok: false, source: "firms_error", region: fqRegion, error: `firms http ${r.status}` } };
+        const text = await r.text();
+        const lines = text.trim().split("\n");
+        if (lines.length < 2) return { cmd: "FIRE_QUERY", payload: { ok: true, source: "firms_live", region: fqRegion, label: fb.label, fire_count: 0, hotspots: [], note: "No active fire detections in this area in the last 24h." } };
+        const header = lines[0].split(",");
+        const li = (name) => header.indexOf(name);
+        const iLat = li("latitude"), iLon = li("longitude"), iBright = li("bright_ti4") >= 0 ? li("bright_ti4") : li("brightness"), iConf = li("confidence"), iFrp = li("frp"), iDate = li("acq_date"), iTime = li("acq_time");
+        const hotspots = lines.slice(1, 501).map(row => { const c = row.split(","); return { lat: parseFloat(c[iLat]), lon: parseFloat(c[iLon]), brightness_k: iBright >= 0 ? parseFloat(c[iBright]) : null, confidence: iConf >= 0 ? c[iConf] : null, frp_mw: iFrp >= 0 ? parseFloat(c[iFrp]) : null, at: (iDate >= 0 ? c[iDate] : "") + " " + (iTime >= 0 ? c[iTime] : "") }; }).filter(h => !isNaN(h.lat) && !isNaN(h.lon));
+        // quick clustering signal: highest-FRP hotspot = most intense detection
+        const hottest = hotspots.reduce((a, b) => ((b.frp_mw || 0) > (a.frp_mw || 0) ? b : a), hotspots[0] || {});
+        return { cmd: "FIRE_QUERY", payload: { ok: true, source: "firms_live", region: fqRegion, label: fb.label, box: fb, fire_count: hotspots.length, hottest: hottest && hottest.lat ? hottest : null, updated: new Date().toISOString(), hotspots: hotspots.slice(0, 100) } };
+      } catch (e) { return { cmd: "FIRE_QUERY", payload: { ok: false, source: "firms_error", region: fqRegion, error: String(e && e.message || e) } }; }
+    }
+
     case "MARINE_WX": {
       // Live weather via OpenWeatherMap (Environment layer). Reads secret:openweather from KV.
       // Usage: MARINE_WX <lat> <lon>   e.g. Strait of Hormuz ~ MARINE_WX 26.57 56.25
@@ -1091,6 +1454,650 @@ async function processCommand(line, env, isOp) {
       } catch (e) { return { cmd: "MARINE_WX", payload: { ok: false, error: e.message } }; }
     }
 
+    case "DIGEST": {
+      // THE DAILY OPERATING DIGEST - the standing rhythm (Aura's own prescription). Turns episodic
+      // snapshots into a continuous loop: pull the actor's live picture, DIFF against the stored last
+      // cycle, surface ONLY what changed + ONE action. Generic - actor type selects the template.
+      // State (last cycle) lives in KV digest:state:<actorKey>. This is what makes it a rhythm, not a report.
+      //   DIGEST SHIP ::: {"actor":"master@vessel","vessel":"MV X","imo":"...","lat":..,"lon":..,"voyage":"...","destination":"..."}
+      //   DIGEST READ <actorKey>     (read the last computed digest)
+      if (!isOp) return { cmd: "DIGEST", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const dgType = (args[0] || "").toUpperCase();
+      const dgAfter = rest.replace(/^DIGEST\s+/i, "").replace(new RegExp("^" + dgType + "\\s*", "i"), "");
+
+      if (dgType === "READ") {
+        const k = dgAfter.trim();
+        const s = await env.AURA_KV.get(`digest:last:${k}`).catch(() => null);
+        if (!s) return { cmd: "DIGEST", payload: { ok: false, error: "no digest yet for " + k } };
+        try { return { cmd: "DIGEST", payload: { ok: true, ...JSON.parse(s) } }; } catch { return { cmd: "DIGEST", payload: { ok: false, error: "corrupt digest" } }; }
+      }
+
+      const dgPayload = dgAfter.includes(":::") ? dgAfter.slice(dgAfter.indexOf(":::") + 3).trim() : "";
+      let dg; try { dg = JSON.parse(dgPayload); } catch { return { cmd: "DIGEST", payload: { ok: false, error: 'Usage: DIGEST SHIP ::: {"actor","vessel","imo","lat","lon","voyage","destination"}' } }; }
+
+      const step = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
+
+      if (dgType === "SHIP") {
+        if (dg.lat == null || dg.lon == null) return { cmd: "DIGEST", payload: { ok: false, error: "lat and lon required" } };
+        const actorKey = (dg.actor || dg.vessel || ("ship_" + dg.lat + "_" + dg.lon)).replace(/[^a-zA-Z0-9_@.-]/g, "_");
+        // 1) PULL the live picture (the actor's standing questions: sea state, fuel, situation ahead)
+        const [marine, wx, oil] = await Promise.all([
+          step(`MARINE_ROUTE ${dg.lat} ${dg.lon}`),
+          step(`MARINE_WX ${dg.lat} ${dg.lon}`),
+          step(`OIL_PRICE BRENT_CRUDE_USD`)
+        ]);
+        const now = {
+          wave_m: marine && marine.ok ? marine.wave_height_m : null,
+          swell_m: marine && marine.ok ? marine.swell_height_m : null,
+          swell_period_s: marine && marine.ok ? marine.swell_period_s : null,
+          wind_ms: wx && wx.ok ? wx.wind_ms : null,
+          gust_ms: wx && wx.ok ? wx.wind_gust_ms : null,
+          bunker: oil && oil.ok ? (oil.price || null) : null
+        };
+        // 2) DIFF against last cycle
+        let prev = null;
+        try { const p = await env.AURA_KV.get(`digest:state:${actorKey}`); if (p) prev = JSON.parse(p); } catch {}
+        const changes = [];
+        const num = (x) => (typeof x === "number" ? x : (x != null && !isNaN(parseFloat(x)) ? parseFloat(x) : null));
+        const moved = (a, b, thresh) => { a = num(a); b = num(b); return a != null && b != null && Math.abs(a - b) >= thresh; };
+        if (!prev) {
+          changes.push("First cycle - baseline established (no prior to compare).");
+        } else {
+          if (moved(now.wave_m, prev.wave_m, 0.5)) changes.push(`Wave height ${prev.wave_m}m -> ${now.wave_m}m`);
+          if (moved(now.swell_m, prev.swell_m, 0.5)) changes.push(`Swell ${prev.swell_m}m -> ${now.swell_m}m`);
+          if (moved(now.gust_ms, prev.gust_ms, 3)) changes.push(`Wind gusts ${prev.gust_ms}m/s -> ${now.gust_ms}m/s`);
+          if (moved(now.bunker, prev.bunker, 1.5)) changes.push(`Bunker proxy (Brent) ${prev.bunker} -> ${now.bunker}`);
+          if (!changes.length) changes.push("No material change since last cycle.");
+        }
+        // 3) Aura writes ONE action. Material = there IS a prior cycle AND real deltas were found.
+        const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+        let headline = null, action = null, status_word = null;
+        const material = !!(prev && changes.length && !changes[0].startsWith("No material") && !changes[0].startsWith("First cycle"));
+        if (anthKey && material) {
+          const sys = "You are Aura, standing watch for a ship master. You are given THIS CYCLE's live conditions and WHAT CHANGED since last cycle. Something HAS changed - write a watch-cycle digest as if texting the master, extremely short. Output STRICT JSON only: status_word (one word: watch if conditions easing/minor, act if building/dangerous), headline (one short line naming what changed and why it matters to a loaded vessel), action (one short imperative the master does now). Use only the numbers given; never invent.";
+          const usr = `Vessel: ${dg.vessel || "vessel"} | Voyage: ${dg.voyage || "underway"} -> ${dg.destination || "destination"}\nThis cycle: waves ${now.wave_m ?? "n/a"}m, swell ${now.swell_m ?? "n/a"}m/${now.swell_period_s ?? "n/a"}s, wind gust ${now.gust_ms ?? "n/a"}m/s, bunker ${now.bunker ?? "n/a"}\nChanged since last cycle: ${changes.join("; ")}\n\nWrite the master's watch digest JSON.`;
+          try {
+            const res = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+              body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 300, system: sys, messages: [{ role: "user", content: usr }] })
+            });
+            if (res.ok) { const j = await res.json(); let t = (j.content && j.content[0] && j.content[0].text) ? j.content[0].text : ""; t = t.replace(/```json|```/g, "").trim(); try { const d = JSON.parse(t); headline = d.headline; action = d.action; status_word = d.status_word; } catch { headline = t.slice(0, 160); } }
+          } catch {}
+        }
+        // when nothing material changed, stay quiet by design (anti alert-fatigue)
+        if (!material) { status_word = "steady"; headline = "All steady"; action = "Hold course, nothing required"; }
+        // safety: if material but the model didn't answer, speak the raw deltas rather than going silent
+        if (material && !headline) { status_word = status_word || "watch"; headline = "Conditions changed: " + changes.join("; "); action = action || "Review sea state and adjust as needed"; }
+        // 4) STORE this cycle as the new baseline + the rendered digest
+        await env.AURA_KV.put(`digest:state:${actorKey}`, JSON.stringify(now), { expirationTtl: 172800 }).catch(() => {});
+        const digest = { actor_key: actorKey, type: "ship_master", vessel: dg.vessel || null, cycle_at: new Date().toISOString(), status_word, headline, action, changes, live: now };
+        await env.AURA_KV.put(`digest:last:${actorKey}`, JSON.stringify(digest), { expirationTtl: 172800 }).catch(() => {});
+        return { cmd: "DIGEST", payload: { ok: true, ...digest } };
+      }
+
+      if (dgType === "PORT") {
+        const actorKey = (dg.actor || dg.port || "port").replace(/[^a-zA-Z0-9_@.-]/g, "_");
+        // 1) PULL the live inbound picture. inbound[] given by the port; we diff the SET + each ETA.
+        const inbound = Array.isArray(dg.inbound) ? dg.inbound : [];
+        // optionally enrich with who's actually in the approach box right now (live AIS)
+        let aisCount = null;
+        if (dg.region) { const a = await step(`AIS_QUERY ${dg.region}`); if (a && a.ok) aisCount = a.vessel_count; }
+        const now = {
+          inbound_keys: inbound.map(i => (i.vessel || "") + "|" + (i.eta || "")).sort(),
+          vessel_set: inbound.map(i => i.vessel).filter(Boolean).sort(),
+          ais_count: aisCount
+        };
+        // 2) DIFF against last cycle - what entered the queue, what left, what's now urgent
+        let prev = null;
+        try { const p = await env.AURA_KV.get(`digest:state:${actorKey}`); if (p) prev = JSON.parse(p); } catch {}
+        const changes = [];
+        if (!prev) {
+          changes.push(`First cycle - baseline queue of ${now.vessel_set.length} inbound vessels established.`);
+        } else {
+          const prevSet = new Set(prev.vessel_set || []);
+          const nowSet = new Set(now.vessel_set || []);
+          const arrived = (now.vessel_set || []).filter(v => !prevSet.has(v));
+          const departed = (prev.vessel_set || []).filter(v => !nowSet.has(v));
+          // ETA changes for vessels in both cycles
+          const prevEta = {}; (prev.inbound_keys || []).forEach(k => { const [v, e] = k.split("|"); prevEta[v] = e; });
+          const etaChanged = [];
+          inbound.forEach(i => { if (i.vessel && prevEta[i.vessel] != null && prevEta[i.vessel] !== (i.eta || "")) etaChanged.push(`${i.vessel} ETA ${prevEta[i.vessel]} -> ${i.eta}`); });
+          if (arrived.length) changes.push("New inbound: " + arrived.join(", "));
+          if (departed.length) changes.push("Cleared/left queue: " + departed.join(", "));
+          etaChanged.forEach(c => changes.push(c));
+          if (typeof now.ais_count === "number" && typeof prev.ais_count === "number" && Math.abs(now.ais_count - prev.ais_count) >= 3) changes.push(`Approach traffic ${prev.ais_count} -> ${now.ais_count} vessels`);
+          if (!changes.length) changes.push("No material change in the queue since last cycle.");
+        }
+        // 3) Aura speaks only on material change - the next berth move
+        const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+        let headline = null, action = null, status_word = null;
+        const material = !!(prev && changes.length && !changes[0].startsWith("No material") && !changes[0].startsWith("First cycle"));
+        if (anthKey && material) {
+          const sys = "You are Aura, standing watch for a port controller. The inbound queue CHANGED since last cycle. Write a short watch digest, like texting the controller. Output STRICT JSON only: status_word (watch|act), headline (one line: what changed in the queue and why it matters to berth planning), action (one short imperative: the next berth/sequencing move). Use only what is given; never invent berth numbers not provided.";
+          const inboundLine = inbound.map(i => `${i.vessel} ETA ${i.eta || "?"} needs ${i.need || "berth"}`).join("; ");
+          const usr = `Port: ${dg.port || "port"}\nNeighbor ports: ${(dg.neighbor_ports || []).join(", ") || "none"}\nCurrent inbound: ${inboundLine}\nChanged since last cycle: ${changes.join("; ")}\n\nWrite the controller's watch digest JSON.`;
+          try {
+            const res = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+              body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 350, system: sys, messages: [{ role: "user", content: usr }] })
+            });
+            if (res.ok) { const j = await res.json(); let t = (j.content && j.content[0] && j.content[0].text) ? j.content[0].text : ""; t = t.replace(/```json|```/g, "").trim(); try { const d = JSON.parse(t); headline = d.headline; action = d.action; status_word = d.status_word; } catch { headline = t.slice(0, 160); } }
+          } catch {}
+        }
+        if (!material) { status_word = "steady"; headline = "Queue steady"; action = "No berth change required"; }
+        if (material && !headline) { status_word = status_word || "watch"; headline = "Queue changed: " + changes.join("; "); action = action || "Re-sequence berths per the change"; }
+        await env.AURA_KV.put(`digest:state:${actorKey}`, JSON.stringify(now), { expirationTtl: 172800 }).catch(() => {});
+        const digest = { actor_key: actorKey, type: "port_controller", port: dg.port || null, cycle_at: new Date().toISOString(), status_word, headline, action, changes, inbound_count: inbound.length, ais_approach: now.ais_count };
+        await env.AURA_KV.put(`digest:last:${actorKey}`, JSON.stringify(digest), { expirationTtl: 172800 }).catch(() => {});
+        return { cmd: "DIGEST", payload: { ok: true, ...digest } };
+      }
+
+      if (dgType === "SHIPPER") {
+        const actorKey = (dg.actor || dg.shipper || dg.cargo || "shipper").replace(/[^a-zA-Z0-9_@.-]/g, "_");
+        // The shipper's standing questions: is my cargo on schedule, what does a slip cost, am I paying on time.
+        // Inputs: cargo {name, ref}, voyage {eta, lat, lon}, value {cargo_value, daily_delay_cost}, payment {milestone, due}
+        const now = {
+          eta: dg.eta || (dg.voyage && dg.voyage.eta) || null,
+          lat: dg.lat ?? (dg.voyage && dg.voyage.lat) ?? null,
+          lon: dg.lon ?? (dg.voyage && dg.voyage.lon) ?? null,
+          payment_due: dg.payment_due || (dg.payment && dg.payment.due) || null,
+          payment_milestone: dg.payment_milestone || (dg.payment && dg.payment.milestone) || null
+        };
+        // optional live position enrich
+        if (now.lat != null && now.lon != null) { const m = await step(`MARINE_ROUTE ${now.lat} ${now.lon}`); if (m && m.ok) now.sea_state = { wave_m: m.wave_height_m, swell_m: m.swell_height_m }; }
+        let prev = null;
+        try { const p = await env.AURA_KV.get(`digest:state:${actorKey}`); if (p) prev = JSON.parse(p); } catch {}
+        const changes = [];
+        if (!prev) {
+          changes.push(`First cycle - baseline for cargo ${dg.cargo || dg.cargo_ref || "shipment"} (ETA ${now.eta || "TBD"}) established.`);
+        } else {
+          if (prev.eta !== now.eta && now.eta) changes.push(`ETA ${prev.eta || "TBD"} -> ${now.eta}`);
+          if (prev.payment_milestone !== now.payment_milestone && now.payment_milestone) changes.push(`Payment milestone now: ${now.payment_milestone}`);
+          if (prev.payment_due !== now.payment_due && now.payment_due) changes.push(`Payment due: ${now.payment_due}`);
+          if (now.sea_state && prev.sea_state && Math.abs((now.sea_state.wave_m||0) - (prev.sea_state.wave_m||0)) >= 0.7) changes.push(`Sea state on route shifted to ${now.sea_state.wave_m}m waves (may affect ETA)`);
+          if (!changes.length) changes.push("No material change to your shipment since last cycle.");
+        }
+        const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+        let headline = null, action = null, status_word = null;
+        const material = !!(prev && changes.length && !changes[0].startsWith("No material") && !changes[0].startsWith("First cycle"));
+        if (anthKey && material) {
+          const sys = "You are Aura, standing watch for a cargo owner/shipper. Their shipment situation CHANGED. Their standing questions: is my cargo on schedule, what does a delay cost, who is responsible, and am I paying/getting paid on time. Write a short digest like texting the shipper. Output STRICT JSON only: status_word (watch|act), headline (one line: what changed and its schedule/cost/payment implication), action (one short imperative: what the shipper does now - e.g. notify consignee, prepare payment, claim against delay). Use only given facts; if a delay cost is given use it, never invent figures.";
+          const costLine = dg.daily_delay_cost ? `Stated cost of delay: ${dg.daily_delay_cost} per day.` : "No delay-cost figure provided.";
+          const usr = `Cargo: ${dg.cargo || dg.cargo_ref || "shipment"} | Value: ${dg.cargo_value || "n/a"}\nCurrent ETA: ${now.eta || "TBD"} | Payment: ${now.payment_milestone || "n/a"} due ${now.payment_due || "n/a"}\n${costLine}\nChanged since last cycle: ${changes.join("; ")}\n\nWrite the shipper's watch digest JSON.`;
+          try {
+            const res = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+              body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 350, system: sys, messages: [{ role: "user", content: usr }] })
+            });
+            if (res.ok) { const j = await res.json(); let t = (j.content && j.content[0] && j.content[0].text) ? j.content[0].text : ""; t = t.replace(/```json|```/g, "").trim(); try { const d = JSON.parse(t); headline = d.headline; action = d.action; status_word = d.status_word; } catch { headline = t.slice(0, 160); } }
+          } catch {}
+        }
+        if (!material) { status_word = "steady"; headline = "Shipment on track"; action = "Nothing required"; }
+        if (material && !headline) { status_word = status_word || "watch"; headline = "Shipment update: " + changes.join("; "); action = action || "Review schedule and payment status"; }
+        await env.AURA_KV.put(`digest:state:${actorKey}`, JSON.stringify(now), { expirationTtl: 172800 }).catch(() => {});
+        const digest = { actor_key: actorKey, type: "shipper", cargo: dg.cargo || dg.cargo_ref || null, cycle_at: new Date().toISOString(), status_word, headline, action, changes, eta: now.eta };
+        await env.AURA_KV.put(`digest:last:${actorKey}`, JSON.stringify(digest), { expirationTtl: 172800 }).catch(() => {});
+        return { cmd: "DIGEST", payload: { ok: true, ...digest } };
+      }
+
+      return { cmd: "DIGEST", payload: { ok: false, error: "Unknown digest type. Use: DIGEST SHIP ::: {...}  |  DIGEST PORT ::: {...}  |  DIGEST SHIPPER ::: {...}  |  DIGEST READ <actorKey>" } };
+    }
+
+    case "OPERATOR_ONBOARD": {
+      // THE SEAMLESS INGESTION - answers "how do we ingest their world without making them type vessel
+      // numbers?" The operator DECLARES IDENTITY in their own words (one line). Aura: (1) creates their
+      // PTA, (2) AUTO-DISCOVERS their fleet via VesselAPI search-by-name/owner (no IMO entry), (3) links
+      // the vessels to their PTA, (4) returns their live fleet. Identity in -> their whole world out.
+      //   OPERATOR_ONBOARD ::: {"identity":"email:ops@meridian.com","name":"Meridian Shipping","about":"we run bulk carriers out of Mumbai","fleet_query":"Meridian"}
+      if (!isOp) return { cmd: "OPERATOR_ONBOARD", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const obPayload = rest.includes(":::") ? rest.slice(rest.indexOf(":::") + 3).trim() : "";
+      let ob; try { ob = JSON.parse(obPayload); } catch { return { cmd: "OPERATOR_ONBOARD", payload: { ok: false, error: 'Usage: OPERATOR_ONBOARD ::: {"identity":"email:...","name":"...","about":"who they are","fleet_query":"name or owner to search vessels by"}' } }; }
+      if (!ob || !ob.name) return { cmd: "OPERATOR_ONBOARD", payload: { ok: false, error: "name required (the company)" } };
+      const step = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
+      const out = { ok: true, onboarding: ob.name, steps: {} };
+
+      // 1) CREATE THE OPERATOR'S PTA (they declared who they are - no form)
+      let companyPtaId = null;
+      if (ob.identity && /^(email|phone):/i.test(ob.identity)) {
+        const pc = await step(`PTA_CREATE ${JSON.stringify({ identity: ob.identity, name: ob.name, about: ob.about || ("Shipping operator: " + ob.name), app: "situationtracker" })}`);
+        companyPtaId = pc && (pc.pta || pc.pta_id || pc.entity_id || (pc.entity && pc.entity.id)) || null;
+        out.steps.pta = { id: companyPtaId, ok: !!(pc && pc.ok !== false) };
+      } else {
+        const ent = await step(`PTA_ENTITY CREATE business ${JSON.stringify(ob.name).replace(/^"|"$/g, "")}`);
+        companyPtaId = ent && ent.entity ? ent.entity.id : null;
+        out.steps.pta = { id: companyPtaId, ok: !!companyPtaId, note: "no email identity given - created as business entity" };
+      }
+
+      // 2) AUTO-DISCOVER THE FLEET via VesselAPI search (by name/owner) - THE no-typing move
+      const vkey = await env.AURA_KV.get("secret:vesselapi").catch(() => null);
+      const query = ob.fleet_query || ob.name;
+      let fleet = [], fleetErr = null;
+      if (vkey) {
+        try {
+          const u = `https://api.vesselapi.com/v1/search/vessels?filter.name=${encodeURIComponent(query)}`;
+          const r = await fetch(u, { headers: { "Authorization": "Bearer " + vkey } });
+          if (r.ok) {
+            const d = await r.json();
+            const raw = d.data || d.vessels || [];
+            fleet = raw.slice(0, 50).map(v => ({ name: v.vesselName || v.name || null, mmsi: v.mmsi != null ? String(v.mmsi) : null, imo: v.imo || null, type: v.vesselType || v.type || null, flag: v.flag || v.country || null }));
+          } else { fleetErr = `vesselapi search http ${r.status}`; }
+        } catch (e) { fleetErr = String(e && e.message || e); }
+      } else { fleetErr = "no secret:vesselapi"; }
+      out.steps.fleet_discovery = { query, found: fleet.length, error: fleetErr };
+
+      // 3) LINK discovered vessels to the operator's PTA (each vessel becomes an entity tied to them)
+      let linked = 0;
+      if (companyPtaId && fleet.length) {
+        for (const v of fleet.slice(0, 25)) {
+          if (!v.name) continue;
+          const vn = v.name.replace(/[\n\r"]/g, " ").slice(0, 60);
+          const ve = await step(`PTA_ENTITY CREATE vessel ${JSON.stringify(vn).replace(/^"|"$/g, "")}${v.imo ? " identity:imo:" + v.imo : ""}`);
+          if (ve && ve.entity) linked++;
+        }
+      }
+      out.steps.linked_vessels = linked;
+
+      // 4) RETURN their live fleet picture - what they see the moment they onboard
+      out.fleet = fleet;
+      out.summary = `${ob.name} declared who they are in one line. Aura created their identity, searched live vessel data for "${query}", found ${fleet.length} vessel(s), and linked ${linked} to their world - with ZERO vessel numbers typed. This is seamless ingestion: identity in, their fleet out.`;
+      out.note = fleet.length === 0 ? "No vessels matched the search term on the free tier (ownership/name coverage varies). The flow is proven; richer fleet matching may need a fuller data tier or the owner-filter." : "Live fleet discovered and linked.";
+      return { cmd: "OPERATOR_ONBOARD", payload: out };
+    }
+
+    case "FLEET_COORDINATE": {
+      // THE FLEET LAYER (multilateral). A company does not want 22 separate briefings - it wants its
+      // WHOLE fleet at once: which vessels need a decision today, which to reroute, where two of its own
+      // ships (or ships near each other) should coordinate. This is the value to the COMPANY, and the
+      // first step into network coordination. Orchestrates: live marine weather per vessel + Aura's
+      // fleet-level reasoning. Generic - works for any fleet passed in.
+      //   FLEET_COORDINATE ::: {"company":"...","vessels":[{"name":"...","lat":..,"lon":..,"voyage":"..."}, ...]}
+      if (!isOp) return { cmd: "FLEET_COORDINATE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const fcPayload = rest.includes(":::") ? rest.slice(rest.indexOf(":::") + 3).trim() : "";
+      let fc; try { fc = JSON.parse(fcPayload); } catch { return { cmd: "FLEET_COORDINATE", payload: { ok: false, error: 'Usage: FLEET_COORDINATE ::: {"company":"...","vessels":[{"name","lat","lon","voyage"}]}' } }; }
+      if (!fc || !Array.isArray(fc.vessels) || !fc.vessels.length) return { cmd: "FLEET_COORDINATE", payload: { ok: false, error: "vessels array required" } };
+      const step = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
+      // pull live sea state for every vessel in parallel
+      const seaStates = await Promise.all(fc.vessels.slice(0, 25).map(async (v) => {
+        const m = await step(`MARINE_ROUTE ${v.lat} ${v.lon}`);
+        return { name: v.name, lat: v.lat, lon: v.lon, voyage: v.voyage || "", wave_m: m && m.ok ? m.wave_height_m : null, swell_m: m && m.ok ? m.swell_height_m : null, swell_period_s: m && m.ok ? m.swell_period_s : null };
+      }));
+      // Aura reasons across the WHOLE fleet at once (fast path)
+      const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      if (!anthKey) return { cmd: "FLEET_COORDINATE", payload: { ok: false, error: "no secret:anthropic" } };
+      const fleetData = seaStates.map(s => `- ${s.name} @ (${s.lat},${s.lon}) [${s.voyage}]: waves ${s.wave_m ?? "n/a"}m, swell ${s.swell_m ?? "n/a"}m/${s.swell_period_s ?? "n/a"}s`).join("\n");
+      const sys = "You are Aura, fleet operations intelligence for a shipping company. You see the WHOLE fleet at once with live sea state per vessel. Give the company what it cannot get from per-ship tools: the fleet-level picture and the few decisions that matter TODAY. Never invent positions/numbers beyond the data. Output STRICT JSON only, keys: fleet_status (one line summary of the whole fleet), needs_decision_today (array of {vessel, decision} - only vessels genuinely needing action now), reroute_candidates (array of {vessel, why} - vessels facing sea state worth a reroute/speed change), coordinate_opportunities (array of strings - where two vessels, or a vessel and a port, should coordinate), bottom_line (one line for the fleet manager).";
+      const usr = `Company: ${fc.company || "the fleet"}\nFleet (${seaStates.length} vessels), live sea state:\n${fleetData}\n\nGive the fleet coordination JSON now.`;
+      try {
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 800, system: sys, messages: [{ role: "user", content: usr }] })
+        });
+        if (!res.ok) return { cmd: "FLEET_COORDINATE", payload: { ok: false, error: "anthropic http " + res.status } };
+        const j = await res.json();
+        let t = (j && j.content && j.content[0] && j.content[0].text) ? j.content[0].text : "";
+        t = t.replace(/```json|```/g, "").trim();
+        let coord = null; try { coord = JSON.parse(t); } catch { coord = { fleet_status: t.slice(0, 300), raw: true }; }
+        return { cmd: "FLEET_COORDINATE", payload: { ok: true, company: fc.company || null, vessel_count: seaStates.length, live_sea_states: seaStates, coordination: coord } };
+      } catch (e) { return { cmd: "FLEET_COORDINATE", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "PORT_VALUE": {
+      // THE PORT VALUE TEST (multilateral). What a port gets that it cannot get elsewhere: its WHOLE
+      // inbound queue at once, Aura's throughput coordination, and cross-port load balancing (send the
+      // overflow to a neighbor port - both win). This answers "what is the value for the port?"
+      //   PORT_VALUE ::: {"port":"...","inbound":[{"vessel":"...","eta":"...","need":"..."}],"neighbor_ports":["..."]}
+      if (!isOp) return { cmd: "PORT_VALUE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const pvPayload = rest.includes(":::") ? rest.slice(rest.indexOf(":::") + 3).trim() : "";
+      let pv; try { pv = JSON.parse(pvPayload); } catch { return { cmd: "PORT_VALUE", payload: { ok: false, error: 'Usage: PORT_VALUE ::: {"port":"...","inbound":[{vessel,eta,need}],"neighbor_ports":[...]}' } }; }
+      if (!pv || !Array.isArray(pv.inbound) || !pv.inbound.length) return { cmd: "PORT_VALUE", payload: { ok: false, error: "inbound array required" } };
+      const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      if (!anthKey) return { cmd: "PORT_VALUE", payload: { ok: false, error: "no secret:anthropic" } };
+      const inboundData = pv.inbound.map(i => `- ${i.vessel} | ETA ${i.eta || "?"} | needs: ${i.need || "berth"}`).join("\n");
+      const sys = "You are Aura, port operations intelligence. You see the port's WHOLE inbound queue at once and can coordinate across neighbor ports. Give port operations what no single-vessel tool can: queue-level throughput decisions and cross-port load balancing (when the port is full, routing overflow to a named neighbor port helps BOTH ports and the vessel). CRITICAL OUTPUT RULE: respond with ONE flat JSON object and NOTHING else - do NOT nest a JSON string inside any field, do NOT repeat the JSON, do NOT wrap it in another object. The keys are: queue_status (a plain one-line string), throughput_moves (array of {action, why}), load_balance (array of {vessel, suggested_port, why}), revenue_and_relationship (a plain one-line string, no invented figures), bottom_line (a plain one-line string). Each value is plain text or the specified array - never a JSON string.";
+      const usr = `Port: ${pv.port || "the port"}\nNeighbor ports available for balancing: ${(pv.neighbor_ports || []).join(", ") || "none specified"}\nInbound queue:\n${inboundData}\n\nGive the port value JSON now.`;
+      try {
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1100, system: sys, messages: [{ role: "user", content: usr }] })
+        });
+        if (!res.ok) return { cmd: "PORT_VALUE", payload: { ok: false, error: "anthropic http " + res.status } };
+        const j = await res.json();
+        let t = (j && j.content && j.content[0] && j.content[0].text) ? j.content[0].text : "";
+        t = t.replace(/```json|```/g, "").trim();
+        let val = null;
+        try { val = JSON.parse(t); } catch { val = null; }
+        if (val && typeof val.queue_status === "string" && val.queue_status.trim().startsWith("{")) {
+          try { const inner = JSON.parse(val.queue_status); if (inner && inner.queue_status) val = inner; } catch {}
+        }
+        if (!val) val = { queue_status: t.slice(0, 300), raw: true };
+        return { cmd: "PORT_VALUE", payload: { ok: true, port: pv.port || null, inbound_count: pv.inbound.length, port_value: val } };
+      } catch (e) { return { cmd: "PORT_VALUE", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "PORT_BRIEF": {
+      // Value TO THE PORT: given an inbound vessel, Aura produces the port's coordination intelligence -
+      // why this call matters, the service move that builds the relationship, and whether commerce is the
+      // step now or later. Fast path (haiku), mirrors SHIP_BRIEF. Conflict-agnostic.
+      //   PORT_BRIEF ::: {"port":"...","vessel":"...","context":"..."}
+      if (!isOp) return { cmd: "PORT_BRIEF", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const pbPayload = rest.includes(":::") ? rest.slice(rest.indexOf(":::") + 3).trim() : "";
+      let pb; try { pb = JSON.parse(pbPayload); } catch { return { cmd: "PORT_BRIEF", payload: { ok: false, error: 'Usage: PORT_BRIEF ::: {"port":"...","vessel":"...","context":"..."}' } }; }
+      const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      if (!anthKey) return { cmd: "PORT_BRIEF", payload: { ok: false, error: "no secret:anthropic" } };
+      const sys = "You are Aura, the operational intelligence for a major port, advising port operations on an inbound vessel. Turn a routine call into a coordinated relationship that creates value for BOTH the port and the vessel. Commerce is one option, not the default - trust/coordination often comes first. Output STRICT JSON only, keys: why_this_call_matters (one line), service_move (one line: the coordination/service step that builds the relationship), is_commerce_now (boolean), revenue_path (one line: where revenue comes from IF the relationship deepens - no invented figures), bottom_line (one line port ops acts on).";
+      const usr = `Port: ${pb.port}\nInbound vessel: ${pb.vessel}\nContext: ${pb.context || ""}\n\nGive the port operations briefing JSON now.`;
+      try {
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 600, system: sys, messages: [{ role: "user", content: usr }] })
+        });
+        if (!res.ok) return { cmd: "PORT_BRIEF", payload: { ok: false, error: "anthropic http " + res.status } };
+        const j = await res.json();
+        let t = (j && j.content && j.content[0] && j.content[0].text) ? j.content[0].text : "";
+        t = t.replace(/```json|```/g, "").trim();
+        let briefing = null; try { briefing = JSON.parse(t); } catch { briefing = { bottom_line: t.slice(0, 300), raw: true }; }
+        return { cmd: "PORT_BRIEF", payload: { ok: true, briefing } };
+      } catch (e) { return { cmd: "PORT_BRIEF", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "MARINE_ROUTE": {
+      // Marine/voyage weather via Open-Meteo Marine API (KEYLESS, free). Waves, swell, wind, current
+      // for a point on a voyage - the data behind "reroute to save fuel / avoid this swell." Generic.
+      //   MARINE_ROUTE <lat> <lon>
+      const mp = line.replace(/^MARINE_ROUTE\s+/i, "").trim().split(/\s+/);
+      const mlat = parseFloat(mp[0]), mlon = parseFloat(mp[1]);
+      if (isNaN(mlat) || isNaN(mlon)) return { cmd: "MARINE_ROUTE", payload: { ok: false, error: "Usage: MARINE_ROUTE <lat> <lon>" } };
+      try {
+        const u = `https://marine-api.open-meteo.com/v1/marine?latitude=${mlat}&longitude=${mlon}&current=wave_height,wave_direction,wave_period,swell_wave_height,swell_wave_period,wind_wave_height&hourly=wave_height&timezone=auto`;
+        const r = await fetch(u);
+        if (!r.ok) return { cmd: "MARINE_ROUTE", payload: { ok: false, error: `open-meteo marine http ${r.status}` } };
+        const d = await r.json();
+        const c = d.current || {};
+        return { cmd: "MARINE_ROUTE", payload: { ok: true, lat: mlat, lon: mlon, wave_height_m: c.wave_height, wave_period_s: c.wave_period, wave_dir_deg: c.wave_direction, swell_height_m: c.swell_wave_height, swell_period_s: c.swell_wave_period, wind_wave_height_m: c.wind_wave_height, at: c.time } };
+      } catch (e) { return { cmd: "MARINE_ROUTE", payload: { ok: false, error: e.message } }; }
+    }
+
+    case "MARITIME_VALUE": {
+      // THE FULL VALUE-CHAIN TEST (conflict-agnostic). Proves the asset is ALIVE by delivering concrete
+      // value to EACH party in a vessel's ongoing life - not a one-time situation. Orchestrates proven
+      // engines + real marine weather. The ship's life, the company's life, the port's life.
+      //   MARITIME_VALUE   (runs the default Gulf Carrier voyage)
+      //   MARITIME_VALUE <lat> <lon> ::: <free description of the voyage/ship/company/port>
+      if (!isOp) return { cmd: "MARITIME_VALUE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const step = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
+      // voyage params (default: a bulk carrier mid-Indian-Ocean bound for Rotterdam - NOT conflict-framed)
+      let vlat = 14.5, vlon = 65.0, ctx = "MV Gulf Carrier, a Panamax bulk carrier owned by Meridian Shipping Co, mid-voyage in the Arabian Sea carrying 38,000t steel coil from Mumbai to Rotterdam, ETA 18 days. Operated by a 22-vessel company. Inbound to call at Jebel Ali for bunkers en route.";
+      const after = rest.replace(/^MARITIME_VALUE\s*/i, "");
+      if (after.includes(":::")) {
+        const head = after.slice(0, after.indexOf(":::")).trim().split(/\s+/);
+        if (!isNaN(parseFloat(head[0])) && !isNaN(parseFloat(head[1]))) { vlat = parseFloat(head[0]); vlon = parseFloat(head[1]); }
+        ctx = after.slice(after.indexOf(":::") + 3).trim() || ctx;
+      }
+      const out = { ok: true, test: "full value chain - ship + company + port", voyage: { lat: vlat, lon: vlon, context: ctx }, value: {} };
+
+      // --- REAL DATA: pull marine weather (routing), point weather, and oil/bunker price ---
+      const [marine, wx, oil] = await Promise.all([
+        step(`MARINE_ROUTE ${vlat} ${vlon}`),
+        step(`MARINE_WX ${vlat} ${vlon}`),
+        step(`OIL_PRICE BRENT_CRUDE_USD`)
+      ]);
+      out.live_data = {
+        marine: marine && marine.ok ? { wave_m: marine.wave_height_m, swell_m: marine.swell_height_m, swell_period_s: marine.swell_period_s, wave_dir: marine.wave_dir_deg } : { error: marine && marine.error },
+        weather: wx && wx.ok ? { conditions: wx.conditions, wind_ms: wx.wind_ms, gust_ms: wx.wind_gust_ms } : { error: wx && wx.error },
+        bunker_proxy: oil && oil.ok ? (oil.formatted || oil.price) : null
+      };
+
+      // --- VALUE TO THE SHIP and TO THE PORT, in PARALLEL (both fast-path briefings) ---
+      const shipFacts = `Marine weather at vessel position (${vlat},${vlon}): wave height ${out.live_data.marine.wave_m ?? "n/a"}m, swell ${out.live_data.marine.swell_m ?? "n/a"}m at ${out.live_data.marine.swell_period_s ?? "n/a"}s period, wave direction ${out.live_data.marine.wave_dir ?? "n/a"} deg. Surface wind ${out.live_data.weather.wind_ms ?? "n/a"} m/s gusting ${out.live_data.weather.gust_ms ?? "n/a"}. Fuel/bunker price proxy (Brent): ${out.live_data.bunker_proxy ?? "n/a"}.`;
+      const [shipBrief, portBrief] = await Promise.all([
+        step(`SHIP_BRIEF ::: ${JSON.stringify({ voyage: ctx, conditions: shipFacts })}`),
+        step(`PORT_BRIEF ::: ${JSON.stringify({ port: "Jebel Ali Port", vessel: ctx.split(",")[0], context: "Inbound to call for bunkers mid-voyage. Port wants to convert a routine bunker call into a coordinated, high-service relationship and capture the vessel's future regional calls. Vessel wants fast turnaround, fair bunker price, reliable scheduling." })}`)
+      ]);
+      out.value.to_ship = shipBrief && shipBrief.briefing ? shipBrief.briefing : (shipBrief && shipBrief.raw ? shipBrief.raw : shipBrief);
+      out.value.to_port = portBrief && portBrief.briefing ? portBrief.briefing : (portBrief && portBrief.raw ? portBrief.raw : portBrief);
+
+      out.summary = "Pulled LIVE marine weather (waves/swell), surface weather, and bunker-price proxy at the vessel's real position; Aura produced a voyage briefing with routing/fuel guidance for the SHIP, and a coordination move for the PORT. This is the ship's ongoing life - value delivered continuously, independent of any conflict.";
+      return { cmd: "MARITIME_VALUE", payload: out };
+    }
+
+    case "SHIP_BRIEF": {
+      // Value TO THE SHIP: Aura reads the live voyage conditions and gives the master concrete,
+      // money-and-safety guidance (routing, speed, fuel, what to watch) - the "she just tells the ship
+      // to route this way to save gas / avoid this weather" capability. Fast path (haiku).
+      //   SHIP_BRIEF ::: {"voyage":"...","conditions":"..."}
+      if (!isOp) return { cmd: "SHIP_BRIEF", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const sbPayload = rest.includes(":::") ? rest.slice(rest.indexOf(":::") + 3).trim() : "";
+      let sb; try { sb = JSON.parse(sbPayload); } catch { return { cmd: "SHIP_BRIEF", payload: { ok: false, error: 'Usage: SHIP_BRIEF ::: {"voyage":"...","conditions":"..."}' } }; }
+      const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      if (!anthKey) return { cmd: "SHIP_BRIEF", payload: { ok: false, error: "no secret:anthropic" } };
+      const sys = "You are Aura, the operational intelligence aboard a merchant vessel, speaking to the master/owner. Using ONLY the live conditions given, produce a concise, decision-grade voyage briefing. Be specific and practical - this saves fuel, time, and risk. Never invent numbers not derived from the data. Output STRICT JSON only, keys: routing (one line: hold course / ease / adjust, with the reason from the sea state), speed_fuel (one line: speed/fuel guidance given the swell and bunker cost), watch (array of 1-3 things to monitor), comfort_safety (one line: motion/safety note from wave+swell), bottom_line (one line the master acts on).";
+      const usr = `Voyage: ${sb.voyage}\n\nLive conditions: ${sb.conditions}\n\nGive the master's briefing JSON now.`;
+      try {
+        const res = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 700, system: sys, messages: [{ role: "user", content: usr }] })
+        });
+        if (!res.ok) return { cmd: "SHIP_BRIEF", payload: { ok: false, error: "anthropic http " + res.status } };
+        const j = await res.json();
+        let t = (j && j.content && j.content[0] && j.content[0].text) ? j.content[0].text : "";
+        t = t.replace(/```json|```/g, "").trim();
+        let briefing = null; try { briefing = JSON.parse(t); } catch { briefing = { bottom_line: t.slice(0, 300), raw: true }; }
+        return { cmd: "SHIP_BRIEF", payload: { ok: true, briefing } };
+      } catch (e) { return { cmd: "SHIP_BRIEF", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "MARITIME_DEMO": {
+      // END-TO-END COORDINATION LOOP - proves the actual product by ORCHESTRATING proven engines
+      // (no new core logic): births a PORT and a SHIP as PTAs, registers the CARGO as a Smart File,
+      // runs RELATIONSHIP_VALUE to find the coordination move, and if value warrants, runs COMMERCE to
+      // structure the transaction. This is identity -> coordination -> action -> commerce, end to end,
+      // with real entities. It is a DEMO orchestrator: it calls generic engines, adds none.
+      //   MARITIME_DEMO
+      if (!isOp) return { cmd: "MARITIME_DEMO", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const step = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
+      const out = { ok: true, loop: "port <-> ship <-> cargo coordination", steps: {} };
+      // 1) PORT as a PTA (business entity)
+      const port = await step('PTA_ENTITY CREATE business "Jebel Ali Port Operations" identity:email:ops@jebelali.demo');
+      const portId = port && port.entity ? port.entity.id : null;
+      out.steps.port = { id: portId, mode: port && port.mode };
+      // 2) SHIP as a PTA (vessel entity)
+      const ship = await step('PTA_ENTITY CREATE vessel "MV Gulf Carrier (IMO 9876543)" identity:email:master@gulfcarrier.demo');
+      const shipId = ship && ship.entity ? ship.entity.id : null;
+      out.steps.ship = { id: shipId, mode: ship && ship.mode };
+      // 3) CARGO as a Smart File (living object, owned by the ship)
+      const cargo = await step(`FILE REGISTER ${JSON.stringify({ filetype: "cargo_manifest", name: "Cargo Manifest - 38,000t steel coil", subject: "Bulk cargo awaiting Hormuz transit", by: shipId || "pta_aura" })}`);
+      const cargoId = cargo && cargo.entity_id ? cargo.entity_id : (cargo && cargo.file ? cargo.file : null);
+      out.steps.cargo = { id: cargoId, ok: !!(cargo && (cargo.ok !== false)) };
+      // 4) RELATIONSHIP_VALUE finds the coordination move between port and ship
+      const rel = await step('RELATIONSHIP_VALUE Jebel Ali Port Operations and the master/owner of MV Gulf Carrier, a bulk carrier anchored 6 days off Fujairah awaiting safe Hormuz transit carrying 38,000t steel coil. No direct relationship yet. Port wants throughput and regional relationships; owner wants safe-passage intelligence and to get the cargo moving and earning.');
+      const relV = rel && rel.value ? rel.value : rel;
+      out.steps.relationship_value = relV && (relV.highest_value_step || relV.the_move) ? {
+        highest_value_step: relV.highest_value_step || null,
+        is_commerce: relV.is_commerce ?? null,
+        the_action: relV.the_action || relV.act || null,
+        why_it_helps_both: relV.why_it_helps_both || relV.why || null
+      } : { raw: relV };
+      // 5) COMMERCE structures the transaction IF (and only if) value warrants - honoring the engine's own judgment
+      const isCommerce = out.steps.relationship_value && out.steps.relationship_value.is_commerce === true;
+      if (isCommerce) {
+        const com = await step('COMMERCE STRUCTURE ::: ' + JSON.stringify({ what: "Port coordination + safe-passage advisory + priority berth for MV Gulf Carrier", who: "Jebel Ali Port (seller-face) and the vessel owner (buyer-face)", goal: "get the stranded cargo moving with port support", constraints: "owner is cost-sensitive and time-pressured; relationship is new so trust must come first" }));
+        out.steps.commerce = com && com.reasoning ? { structure: com.reasoning.structure, why: com.reasoning.why_this_structure } : { raw: com };
+      } else {
+        out.steps.commerce = { skipped: true, reason: "RELATIONSHIP_VALUE judged the highest-value step is NOT commerce yet - coordination/trust first. Commerce follows trust, not the reverse." };
+      }
+      out.summary = "Born a port PTA and a ship PTA, registered the cargo as a living Smart File owned by the ship, had Aura find the coordination move between them, and " + (isCommerce ? "structured the transaction" : "correctly held commerce until trust exists") + " - end to end through proven engines, no new core logic.";
+      return { cmd: "MARITIME_DEMO", payload: out };
+    }
+
+    case "RELATIONSHIP_VALUE":
+    case "RELVALUE": {
+      // ===== THE RELATIONSHIP VALUE ENGINE - the proactive brain =====
+      // Sibling of OPPORTUNITY. OPPORTUNITY looks at a BUSINESS and finds the hidden leak;
+      // RELATIONSHIP_VALUE looks at a RELATIONSHIP (creator<->fan, port<->ship, business<->customer,
+      // parent<->child) and asks "how does this become more valuable for EVERYONE in it, right now?"
+      // Commerce is ONE possible output, never the default - "nothing" is a valid answer. This is what
+      // lets Aura ACT proactively in a relationship instead of waiting to be asked. In maritime it is
+      // the engine that makes ports/ships/cargo coordinate instead of just sit on a map.
+      // Reasons through the shared mind, so it finds the real next step and never inflates.
+      //   RELATIONSHIP_VALUE <the relationship: who <-> who, history, context, goals>
+      let rvRaw = (rest || "").trim();
+      if (!rvRaw) return { cmd: "RELATIONSHIP_VALUE", payload: { ok: false, error: "Usage: RELATIONSHIP_VALUE <who <-> who + history/context/goals>" } };
+      const rvActions = "Possible next steps Aura can recommend (pick the HIGHEST-VALUE one for everyone, or 'nothing' if nothing genuinely helps right now): communication, an introduction, a project, an event, a community, a transaction/commerce, a volunteer opportunity, mentoring, learning, a collaboration, recognition, a shared experience, a meetup, a partnership, a donation, support. The point is to STRENGTHEN the relationship and create real value for BOTH/ALL parties - not to extract a transaction.";
+      const rvLens = "RELATIONSHIP VALUE INTELLIGENCE - look at this relationship and ask the ONE question: how does it become more valuable for EVERYONE involved, right now? Do NOT default to 'sell something' - current platforms optimize followers/clicks/transactions; this engine optimizes relationship strength, trust, participation, and real-world outcomes. The best next step is often NOT commerce (an introduction, recognition, a shared project, coordination between the two parties). Sometimes the honest answer is 'nothing right now' - a relationship pushed for value when there is none to add is damaged, not strengthened. Find the move that BOTH sides would be glad happened. Be specific and real to THIS relationship, never generic.";
+      const rvR = await reasonThroughLoop(env, {
+        entity: rvRaw,
+        lens: rvLens,
+        facts: { possible_steps: rvActions },
+        extraKeys: [
+          { key: "relationship", desc: "one line - who <-> who, and what they currently exchange" },
+          { key: "where_value_is_leaking", desc: "the value NOT being created right now that easily could be - the thing both sides would benefit from but nobody initiated" },
+          { key: "highest_value_step", desc: "the single best next step from the possible-steps list (or 'nothing' with why) - what creates the most value for EVERYONE in the relationship now" },
+          { key: "why_it_helps_both", desc: "one sentence - the direct benefit to EACH party, in plain terms. NEVER invent figures; describe the real mechanism, not a fabricated number" },
+          { key: "is_commerce", desc: "boolean - is the highest-value step a transaction? (often false - be honest)" },
+          { key: "buildable_now", desc: "boolean - can Aura initiate this step autonomously today (a message, an introduction, a MOMENT, a page, a coordination) vs it being a project" },
+          { key: "the_action", desc: "if buildable_now: the concrete first move Aura would make, named exactly (e.g. 'introduce port-ops PTA to the stranded vessel's owner PTA with the coordination both need'); if a project: what it would take" }
+        ]
+      });
+      if (!rvR.ok) return { cmd: "RELATIONSHIP_VALUE", payload: { ok: false, error: rvR.error } };
+      return { cmd: "RELATIONSHIP_VALUE", payload: { ok: true, relationship: rvRaw, value: rvR.reasoning } };
+    }
+
+    case "SITUATION_PULL": {
+      // LAYER 1+2 of SituationTracker. Gather ALL live feeds for a topic into ONE structured
+      // situation snapshot in KV. Generic: the topic is the input; Hormuz is just the first one.
+      // Reuses the proven feeds (news/oil/weather/search) + the AIS snapshot when a collector runs.
+      //   SITUATION_PULL hormuz
+      if (!isOp) return { cmd: "SITUATION_PULL", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const topicKey = (line.replace(/^SITUATION_PULL\s*/i, "").trim() || "hormuz").toLowerCase();
+      // Topic definitions - each maps a situation to its feed parameters. Add topics here, not logic.
+      const TOPICS = {
+        hormuz: { domain: "maritime", label: "Strait of Hormuz", news: "Strait of Hormuz shipping Iran", lat: 26.57, lon: 56.25, oil: "BRENT_CRUDE_USD", ais: "hormuz", search: "Strait of Hormuz vessel traffic toll status today" },
+        socal_fire: { domain: "fire", label: "Southern California wildfires", news: "Southern California wildfire evacuation", lat: 34.05, lon: -118.24, fire: "socal", search: "Southern California wildfire active evacuation today" },
+        norcal_fire: { domain: "fire", label: "Northern California wildfires", news: "Northern California wildfire evacuation", lat: 38.58, lon: -121.49, fire: "norcal", search: "Northern California wildfire active evacuation today" },
+        cottonwood_fire: { domain: "fire", label: "Cottonwood Fire, Beaver County Utah (nation's largest)", news: "Cottonwood Fire Utah Beaver evacuation", lat: 38.28, lon: -112.64, fire: "cottonwood", search: "Cottonwood Fire Utah acres containment evacuation today" }
+      };
+      const T = TOPICS[topicKey];
+      if (!T) return { cmd: "SITUATION_PULL", payload: { ok: false, error: "unknown topic: " + topicKey, topics: Object.keys(TOPICS) } };
+      const run = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
+      const domain = T.domain || "maritime";
+      let snapshot;
+      if (domain === "fire") {
+        // FIRE DOMAIN: fire detections + news + weather (wind drives spread) + web
+        const [news, fire, wx, web] = await Promise.all([
+          run(`NEWS_QUERY ${T.news}`),
+          run(`FIRE_QUERY ${T.fire}`),
+          run(`MARINE_WX ${T.lat} ${T.lon}`),
+          run(`WEB_SEARCH ${T.search}`)
+        ]);
+        snapshot = {
+          topic: topicKey, domain, label: T.label, pulled_at: new Date().toISOString(),
+          news: news && news.ok ? (news.news || []).slice(0, 10) : [], news_ok: !!(news && news.ok),
+          weather: wx && wx.ok ? wx : null,
+          web: web && web.ok ? (web.results || web.answer || web) : null, web_ok: !!(web && web.ok),
+          fires: fire && fire.ok ? { source: fire.source, fire_count: fire.fire_count ?? 0, hottest: fire.hottest || null, updated: fire.updated } : { fire_count: 0, source: (fire && fire.source) || "none", note: (fire && fire.error) || "no fire feed connected yet" }
+        };
+        await env.AURA_KV.put(`situation:snapshot:${topicKey}`, JSON.stringify(snapshot), { expirationTtl: 3600 }).catch(() => {});
+        return { cmd: "SITUATION_PULL", payload: { ok: true, topic: topicKey, domain, label: T.label, pulled_at: snapshot.pulled_at, feeds: { news: snapshot.news.length, weather: !!snapshot.weather, web: snapshot.web_ok, fires: snapshot.fires.fire_count }, note: "Fire snapshot stored. Run SITUATION_BRIEF " + topicKey + " for the analysis." } };
+      }
+      // MARITIME DOMAIN (default)
+      const [news, oil, wx, web, ais] = await Promise.all([
+        run(`NEWS_QUERY ${T.news}`),
+        run(`OIL_PRICE ${T.oil}`),
+        run(`MARINE_WX ${T.lat} ${T.lon}`),
+        run(`WEB_SEARCH ${T.search}`),
+        run(`AIS_QUERY ${T.ais}`)
+      ]);
+      snapshot = {
+        topic: topicKey, domain, label: T.label, pulled_at: new Date().toISOString(),
+        news: news && news.ok ? (news.news || []).slice(0, 10) : [], news_ok: !!(news && news.ok),
+        oil: oil && oil.ok ? { price: oil.price, currency: oil.currency, formatted: oil.formatted, at: oil.created_at } : null,
+        weather: wx && wx.ok ? wx : null,
+        web: web && web.ok ? (web.results || web.answer || web) : null, web_ok: !!(web && web.ok),
+        ships: ais && ais.ok ? { source: ais.source, vessel_count: ais.vessel_count ?? (ais.vessels ? ais.vessels.length : 0), updated: ais.updated } : { vessel_count: 0, source: "none", note: "no AIS feed connected yet" }
+      };
+      await env.AURA_KV.put(`situation:snapshot:${topicKey}`, JSON.stringify(snapshot), { expirationTtl: 3600 }).catch(() => {});
+      return { cmd: "SITUATION_PULL", payload: { ok: true, topic: topicKey, domain, label: T.label, pulled_at: snapshot.pulled_at, feeds: { news: snapshot.news.length, oil: !!snapshot.oil, weather: !!snapshot.weather, web: snapshot.web_ok, ships: snapshot.ships.vessel_count }, note: "Snapshot stored at situation:snapshot:" + topicKey + ". Run SITUATION_BRIEF " + topicKey + " for the analysis." } };
+    }
+
+    case "SITUATION_BRIEF": {
+      // THE MOAT. Aura reads the situation snapshot and produces the assessment a buyer pays for:
+      // what's happening, why it moved, the toll/passage status, market reaction, and the prediction
+      // read (if A then B). Generic - analyzes whatever snapshot SITUATION_PULL built.
+      //   SITUATION_BRIEF hormuz
+      if (!isOp) return { cmd: "SITUATION_BRIEF", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const topicKey = (line.replace(/^SITUATION_BRIEF\s*/i, "").trim() || "hormuz").toLowerCase();
+      let snap = null;
+      try { const s = await env.AURA_KV.get(`situation:snapshot:${topicKey}`); if (s) snap = JSON.parse(s); } catch {}
+      if (!snap) return { cmd: "SITUATION_BRIEF", payload: { ok: false, error: "No snapshot for " + topicKey + ". Run SITUATION_PULL " + topicKey + " first." } };
+      const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const grokKey = await env.AURA_KV.get("secret:grok_api_key").catch(() => null);
+      if (!anthKey && !grokKey) return { cmd: "SITUATION_BRIEF", payload: { ok: false, error: "no reasoning key (secret:anthropic or secret:grok_api_key) for analysis" } };
+      // compact the snapshot for the model
+      const newsLines = (snap.news || []).map(n => `- ${n.title} (${n.published || ""})`).join("\n").slice(0, 2500);
+      const wxLine = snap.weather ? `${snap.weather.conditions}, wind ${snap.weather.wind_ms}m/s, vis ${snap.weather.visibility_m}m` : "unavailable";
+      const snapDomain = snap.domain || "maritime";
+      let sysPrompt, question;
+      if (snapDomain === "fire") {
+        const fireLine = snap.fires ? `${snap.fires.fire_count} active hotspots (${snap.fires.source})${snap.fires.hottest ? `, hottest at ${snap.fires.hottest.lat},${snap.fires.hottest.lon} FRP ${snap.fires.hottest.frp_mw}MW` : ""}` : "no fire feed";
+        sysPrompt = "You are SituationTracker, an operational wildfire intelligence engine. You analyze a live fire situation for the people who must act: incident commanders, emergency managers, residents in the path, utilities, insurers. Wind drives fire spread - weigh it heavily. Be precise, factual, decision-oriented. Never invent numbers - use only the data given. Output STRICT JSON only, no markdown, with keys: status (one line: current state of the fire situation), drivers (array of 2-4 short strings: what is moving it now - wind, fuel, terrain), spread (one line: direction/threat and what is in the path if known), evacuation (one line: evacuation/shelter status if known), alerts (array of 0-3 short risk strings), outlook (array of 2-3 short 'if X then Y' prediction strings), confidence (low|medium|high).";
+        question = `Fire situation: ${snap.label}\nPulled: ${snap.pulled_at}\n\nLIVE NEWS:\n${newsLines}\n\nWEATHER (wind drives spread): ${wxLine}\nACTIVE FIRE DETECTIONS: ${fireLine}\n\nProduce the fire operator briefing JSON now.`;
+      } else {
+        const oilLine = snap.oil ? `${snap.oil.formatted || snap.oil.price} ${snap.oil.currency || ""} @ ${snap.oil.at || ""}` : "unavailable";
+        const shipLine = snap.ships ? `${snap.ships.vessel_count} vessels (${snap.ships.source})` : "no AIS";
+        sysPrompt = "You are SituationTracker, an operational maritime intelligence engine. You analyze a live situation for paying operators (shipping lines, insurers, energy traders, newsrooms). Be precise, factual, and decision-oriented. Never invent numbers - use only the data given. Output STRICT JSON only, no markdown, with keys: status (one line: current state of the situation), drivers (array of 2-4 short strings: what is moving it right now), passage (one line: who can transit / toll/fee status if known), market (one line: oil/price reaction), alerts (array of 0-3 short risk strings), outlook (array of 2-3 short 'if X then Y' prediction strings), confidence (low|medium|high).";
+        question = `Situation: ${snap.label}\nPulled: ${snap.pulled_at}\n\nLIVE NEWS:\n${newsLines}\n\nOIL: ${oilLine}\nWEATHER (strait): ${wxLine}\nSHIPS: ${shipLine}\n\nProduce the operator briefing JSON now.`;
+      }
+      let text = "", provider = null, lastErr = null;
+      // 1) Anthropic - Aura's primary brain
+      if (anthKey) {
+        try {
+          const res = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 900, system: sysPrompt, messages: [{ role: "user", content: question }] })
+          });
+          if (res.ok) { const j = await res.json(); text = (j && j.content && j.content[0] && j.content[0].text) ? j.content[0].text : ""; if (text) provider = "anthropic"; }
+          else { lastErr = "anthropic http " + res.status; }
+        } catch (e) { lastErr = "anthropic " + String(e && e.message || e); }
+      }
+      // 2) Grok fallback
+      if (!text && grokKey) {
+        try {
+          const res = await fetch("https://api.x.ai/v1/chat/completions", {
+            method: "POST", headers: { "Authorization": "Bearer " + grokKey, "Content-Type": "application/json" },
+            body: JSON.stringify({ model: "grok-3-mini", max_tokens: 700, messages: [{ role: "system", content: sysPrompt }, { role: "user", content: question }] })
+          });
+          if (res.ok) { const data = await res.json(); text = data?.choices?.[0]?.message?.content || ""; if (text) provider = "grok"; }
+          else { lastErr = (lastErr ? lastErr + "; " : "") + "grok http " + res.status; }
+        } catch (e) { lastErr = (lastErr ? lastErr + "; " : "") + "grok " + String(e && e.message || e); }
+      }
+      if (!text) return { cmd: "SITUATION_BRIEF", payload: { ok: false, error: "all reasoning providers failed: " + (lastErr || "unknown") } };
+      try {
+        text = text.replace(/```json|```/g, "").trim();
+        let brief = null; try { brief = JSON.parse(text); } catch { brief = { status: text.slice(0, 400), raw: true }; }
+        const out = { topic: topicKey, label: snap.label, pulled_at: snap.pulled_at, briefed_at: new Date().toISOString(), provider, brief, sources: { news: (snap.news || []).length, oil: !!snap.oil, ships: snap.ships ? snap.ships.vessel_count : 0 } };
+        await env.AURA_KV.put(`situation:brief:${topicKey}`, JSON.stringify(out), { expirationTtl: 3600 }).catch(() => {});
+        return { cmd: "SITUATION_BRIEF", payload: { ok: true, ...out } };
+      } catch (e) { return { cmd: "SITUATION_BRIEF", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "AIS_COLLECTOR": {
+      // Control the always-on AIS collector Durable Object (the thing that makes ships move).
+      //   AIS_COLLECTOR START <region>   - begin collecting (hormuz | redsea | mideast)
+      //   AIS_COLLECTOR STATUS <region>  - vessels held, socket state, last write
+      //   AIS_COLLECTOR STOP <region>
+      if (!isOp) return { cmd: "AIS_COLLECTOR", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      if (!env.AIS_COLLECTOR) return { cmd: "AIS_COLLECTOR", payload: { ok: false, error: "AIS_COLLECTOR DO not bound yet - add the binding + migration to wrangler.toml and redeploy (see notes)." } };
+      const parts = line.replace(/^AIS_COLLECTOR\s+/i, "").trim().split(/\s+/);
+      const action = (parts[0] || "STATUS").toLowerCase();
+      const region = (parts[1] || "hormuz").toLowerCase();
+      const id = env.AIS_COLLECTOR.idFromName(region);
+      const stub = env.AIS_COLLECTOR.get(id);
+      const op = action === "start" ? "start" : action === "stop" ? "stop" : "status";
+      const r = await stub.fetch(`https://do/${op}`, { method: op === "status" ? "GET" : "POST", body: JSON.stringify({ region }) });
+      const j = await r.json().catch(() => ({ ok: false, error: "bad DO response" }));
+      return { cmd: "AIS_COLLECTOR", payload: j };
+    }
+
     case "AIS_QUERY": {
       // Live AIS vessel data (Movement layer). PRIMARY PATH: read a snapshot written by an always-on
       // AIS collector (Durable Object or external process holding the aisstream WebSocket open and
@@ -1103,10 +2110,45 @@ async function processCommand(line, env, isOp) {
       const region = (parts[0] && isNaN(parseFloat(parts[0]))) ? parts[0].toLowerCase() : "hormuz";
       const snap = await env.AURA_KV.get(`ais:snapshot:${region}`).catch(() => null);
       if (snap) {
-        try { return { cmd: "AIS_QUERY", payload: { ok: true, source: "collector_snapshot", region, ...JSON.parse(snap) } }; } catch {}
+        try { const s = JSON.parse(snap); if (s.vessel_count > 0) return { cmd: "AIS_QUERY", payload: { ok: true, source: "collector_snapshot", region, ...s } }; } catch {}
+      }
+      // LIVE REST PATH: VesselAPI bounding-box (free tier, instant). Real dots without a WebSocket.
+      const vkey = await env.AURA_KV.get("secret:vesselapi").catch(() => null);
+      const BOXES = {
+        hormuz: { latBottom: 25.5, latTop: 27.5, lonLeft: 55.5, lonRight: 57.5 },
+        fujairah: { latBottom: 24.8, latTop: 26.0, lonLeft: 56.0, lonRight: 57.0 },
+        jebelali: { latBottom: 24.8, latTop: 25.4, lonLeft: 54.8, lonRight: 55.4 },
+        rotterdam: { latBottom: 51.85, latTop: 52.05, lonLeft: 3.95, lonRight: 4.20 },
+        singapore: { latBottom: 1.0, latTop: 1.5, lonLeft: 103.5, lonRight: 104.2 }
+      };
+      const aisBox = BOXES[region];
+      if (vkey && aisBox) {
+        try {
+          const u = `https://api.vesselapi.com/v1/location/vessels/bounding-box?filter.latBottom=${aisBox.latBottom}&filter.latTop=${aisBox.latTop}&filter.lonLeft=${aisBox.lonLeft}&filter.lonRight=${aisBox.lonRight}`;
+          const r = await fetch(u, { headers: { "Authorization": "Bearer " + vkey } });
+          if (r.ok) {
+            const d = await r.json();
+            const raw = d.data || d.vessels || [];
+            const seen = new Set();
+            const vessels = raw.slice(0, 1000).map(v => ({
+              mmsi: v.mmsi != null ? String(v.mmsi) : null, imo: v.imo || null,
+              name: v.vesselName || v.name || null,
+              lat: v.latitude ?? v.lat, lon: v.longitude ?? v.lon,
+              sog: v.sog ?? null, cog: v.cog ?? null, heading: v.heading ?? null,
+              nav: v.navStatus || v.navigationalStatus || null, ts: v.timestamp || null
+            })).filter(v => {
+              if (v.lat == null || v.lon == null) return false;
+              const k = v.mmsi || (v.lat + "," + v.lon);
+              if (seen.has(k)) return false;
+              seen.add(k); return true;
+            }).slice(0, 500);
+            return { cmd: "AIS_QUERY", payload: { ok: true, source: "vesselapi_live", region, box: aisBox, vessel_count: vessels.length, updated: new Date().toISOString(), vessels } };
+          }
+          return { cmd: "AIS_QUERY", payload: { ok: false, source: "vesselapi_error", region, error: `vesselapi http ${r.status}` } };
+        } catch (e) { return { cmd: "AIS_QUERY", payload: { ok: false, source: "vesselapi_error", region, error: String(e && e.message || e) } }; }
       }
       return { cmd: "AIS_QUERY", payload: { ok: false, source: "none", region,
-        error: "No live AIS snapshot yet. The AIS collector (always-on WebSocket -> KV snapshot) is not deployed. A request-scoped Worker cannot hold the aisstream firehose open. For ship-movement signal right now, use WEB_SEARCH or NEWS_QUERY (e.g. 'Strait of Hormuz vessel traffic'). To enable live AIS: deploy the collector or switch to a REST AIS provider." } };
+        error: "No AIS snapshot and no VesselAPI key/region. Set secret:vesselapi and use a known region (hormuz|redsea|mideast|rotterdam|singapore), or run the collector." } };
     }
 
     case "FILE": {
@@ -6828,6 +7870,173 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
     // ═══════════════════════════════════════════════════════════
     // ═══════════════════════════════════════════════════════════
+
+    case "LIFECYCLE": {
+      // THE WHOLE ASSET, BREATHING - the full maritime lifecycle end-to-end in one call. Stitches every
+      // proven engine into one arc so you can watch it live: onboard -> sail -> approach -> arrive ->
+      // invoice -> reconcile -> unlock. Pure orchestration of proven commands; no new logic.
+      //   LIFECYCLE   (runs the default Meridian->Jebel Ali arc)
+      if (!isOp) return { cmd: "LIFECYCLE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const step = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
+      const arc = { ok: true, lifecycle: "onboard (free) -> invoice (activate) -> pay -> UNLOCK -> sail -> approach -> arrive", stages: {} };
+
+      // 1) ONBOARD (FREE) - operator declares identity, Aura auto-discovers fleet. The hook. Costs nothing.
+      const onb = await step('OPERATOR_ONBOARD ::: ' + JSON.stringify({ identity: "email:ops@meridian-demo.com", name: "Meridian Shipping Co", about: "regional bulk carrier operator", fleet_query: "MAERSK" }));
+      const fleetN = onb && onb.ok && onb.steps && onb.steps.fleet_discovery ? onb.steps.fleet_discovery.found : 0;
+      arc.stages["1_onboard_free"] = onb && onb.ok ? { operator: onb.onboarding, fleet_found: fleetN, linked: onb.steps ? onb.steps.linked_vessels : 0, pta: onb.steps && onb.steps.pta ? onb.steps.pta.id : null, note: "Free. They declared who they are and saw their whole fleet appear - the hook." } : { error: onb && onb.error };
+
+      // 2) INVOICE TO ACTIVATE - the moment they want the engine ON, before it does any work. Enterprise rails.
+      const inv = await step('INVOICE CREATE ::: ' + JSON.stringify({ customer: "Meridian Shipping Co", amount: 15000, description: "SituationTracker engine activation - mid fleet tier, monthly (live watch + coordination across the fleet)", terms: "Net 30" }));
+      const invId = inv && inv.id ? inv.id : null;
+      arc.stages["2_invoice_to_activate"] = inv && inv.ok ? { id: invId, amount: inv.amount, methods: inv.methods, pay_to: inv.pay_to, card_note: inv.card_note, note: "Invoice issued to ACTIVATE the engine - charged before any watch/coordination runs." } : { error: inv && inv.error };
+
+      // 3) PAY & RECONCILE - scan live Mercury deposits, match the activation invoice
+      const rec = await step('INVOICE RECONCILE ' + (invId || ""));
+      const paid = rec && rec.ok && rec.matched_count > 0;
+      arc.stages["3_pay_reconcile"] = rec && rec.ok ? { scanned_credits: rec.scanned_credits, matched_count: rec.matched_count, note: rec.note } : { error: rec && rec.error };
+
+      // 4) THE GATE - everything below is UNLOCKED only on payment. This is the whole revenue logic.
+      arc.stages["4_gate"] = { paid, engine: paid ? "ACTIVE - the watch is on" : "LOCKED - awaiting activation payment (correct: invoice unpaid). On a real ACH/wire arrival, INVOICE RECONCILE flips this and the engine turns on automatically." };
+
+      if (!paid) {
+        arc.stages["5_sail"] = { status: "locked", note: "Engine not activated - no watch runs until the activation invoice is paid. This is the pay-to-activate gate working: free to see your fleet, paid to put it to work." };
+        arc.summary = "Pay-to-activate lifecycle: Meridian onboarded FREE (fleet auto-discovered, the hook), was invoiced to ACTIVATE the engine on real Mercury enterprise rails, and the watch/coordination correctly stayed LOCKED because the activation invoice is unpaid. Free to see your world; paid to turn it on. On a real ACH/wire arrival, the engine activates automatically and everything below unlocks.";
+        return { cmd: "LIFECYCLE", payload: arc };
+      }
+
+      // ===== BELOW HERE ONLY RUNS ONCE ACTIVATED (paid) =====
+      // 5) SAIL - the watch is on. A vessel underway, the daily digest stands watch (live sea state)
+      const sailKey = "lifecycle_vessel_" + Date.now().toString(36);
+      const sail = await step('DIGEST SHIP ::: ' + JSON.stringify({ actor: sailKey, vessel: "MV Gulf Carrier", lat: 14.5, lon: 65.0, voyage: "Mumbai->Jebel Ali, 38000t steel coil", destination: "Jebel Ali" }));
+      arc.stages["5_sail"] = sail && sail.ok ? { vessel: sail.vessel, status: sail.status_word, watch: sail.headline, live: sail.live } : { error: sail && sail.error };
+
+      // 6) APPROACH - vessel nears harbor, the port sees it in its whole queue
+      const approach = await step('PORT_VALUE ::: ' + JSON.stringify({ port: "Jebel Ali Port", neighbor_ports: ["Fujairah", "Khor Fakkan"], inbound: [{ vessel: "MV Gulf Carrier", eta: "6 hours", need: "bulk discharge + bunkers" }, { vessel: "MV Ocean Titan", eta: "12 hours", need: "container discharge" }] }));
+      const apv = approach && approach.port_value ? approach.port_value : approach;
+      arc.stages["6_approach"] = apv ? { queue_status: apv.queue_status, next_move: apv.bottom_line || (apv.throughput_moves && apv.throughput_moves[0] ? apv.throughput_moves[0].action : null) } : { error: "approach failed" };
+
+      // 7) ARRIVE - the coordination move between ship and port (relationship value, trust before commerce)
+      const arrive = await step('RELATIONSHIP_VALUE Jebel Ali Port and MV Gulf Carrier (Meridian Shipping) arriving to discharge 38000t steel coil and take bunkers. First call. Port wants the relationship and future calls; vessel wants fast turnaround and fair bunker price.');
+      const arv = arrive && arrive.value ? arrive.value : arrive;
+      arc.stages["7_arrive"] = arv ? { highest_value_step: arv.highest_value_step || arv.the_move || null, is_commerce: arv.is_commerce ?? null } : { error: "arrive failed" };
+
+      arc.summary = "Full pay-to-activate lifecycle, all live engines: Meridian onboarded FREE (fleet auto-discovered - the hook), was invoiced to ACTIVATE on real Mercury enterprise rails, payment reconciled, the engine UNLOCKED, and only THEN did the watch run - sailed under Aura's watch (live sea state), approached Jebel Ali (whole-queue view), arrived (coordination, trust-before-commerce). Free to see your world; paid to turn it on; the engine does the work only after settlement. The whole asset, breathing, on the back end.";
+      return { cmd: "LIFECYCLE", payload: arc };
+    }
+
+    case "INVOICE": {
+      // ===== ENTERPRISE BILLING ENGINE - the industry payment layer (not consumer checkout) =====
+      // Per the cargo/logistics billing model: invoice-FIRST, ACH/wire via Mercury PRIMARY, card optional.
+      // The objective is to be the trusted settlement layer that moves money through the ecosystem with
+      // lowest friction + lowest cost. Mercury is the destination (its API: accounts/transactions/recipients/
+      // send-money already wired). Reconciliation = watch incoming Mercury transactions, match to invoice.
+      //   INVOICE CREATE ::: {customer, customer_id?, amount, currency?, description, terms?, methods?}
+      //   INVOICE GET <invId>
+      //   INVOICE LIST [status]
+      //   INVOICE RECONCILE [invId]      - match incoming Mercury deposits to open invoices
+      //   INVOICE MARK <invId> <paid|void> [ref]
+      if (!isOp) return { cmd: "INVOICE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const inSub = (args[0] || "").toUpperCase();
+      const inAfter = rest.replace(/^INVOICE\s+/i, "").replace(new RegExp("^" + inSub + "\\s*", "i"), "");
+      const inJson = inAfter.includes(":::") ? inAfter.slice(inAfter.indexOf(":::") + 3).trim() : "";
+
+      // Mercury's own account number/routing - where ACH/wire lands. Read from the live accounts endpoint.
+      const bankFace = async () => {
+        try { const a = await getMercuryAccounts(env); if (a.ok && a.accounts.length) { const acct = a.accounts.find(x => (x.kind || "").toLowerCase().includes("checking")) || a.accounts[0]; return { ok: true, bank: "Mercury", account_name: acct.name, account_id: acct.id, routing: acct.routingNumber || null, account_number: acct.accountNumber || null }; } } catch {}
+        return { ok: false };
+      };
+
+      if (inSub === "CREATE") {
+        let iv; try { iv = JSON.parse(inJson); } catch { return { cmd: "INVOICE", payload: { ok: false, error: 'Usage: INVOICE CREATE ::: {customer, amount, description, terms?, methods?}' } }; }
+        if (!iv.customer || iv.amount == null) return { cmd: "INVOICE", payload: { ok: false, error: "customer and amount required" } };
+        const invId = "inv_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        // PRIMARY methods are enterprise rails; card is optional fallback only (high-ticket card fees rejected by design)
+        const methods = Array.isArray(iv.methods) && iv.methods.length ? iv.methods : ["ach", "domestic_wire", "international_wire"];
+        const bank = await bankFace();
+        const amount = Number(iv.amount);
+        const card_note = amount > 2500 ? "Card intentionally NOT offered as primary on this invoice (processing fees uneconomical at this value); ACH/wire preferred. Card available on request only." : "Card available as optional fallback.";
+        const invoice = {
+          id: invId, status: "open", customer: iv.customer, customer_id: iv.customer_id || null,
+          amount, currency: iv.currency || "USD", description: iv.description || "Services",
+          terms: iv.terms || "Net 30", methods, created_at: new Date().toISOString(),
+          pay_to: bank.ok ? { bank: bank.bank, account_name: bank.account_name, routing: bank.routing, account_number: bank.account_number } : { bank: "Mercury", note: "account details fetched at send time" },
+          card_optional: true, card_note, reconciled: false, paid_at: null, payment_ref: null
+        };
+        await env.AURA_KV.put(`invoice:${invId}`, JSON.stringify(invoice)).catch(() => {});
+        // index for listing
+        try { const idxRaw = await env.AURA_KV.get("invoice:index"); const idx = idxRaw ? JSON.parse(idxRaw) : []; idx.unshift({ id: invId, customer: iv.customer, amount, status: "open", created_at: invoice.created_at }); await env.AURA_KV.put("invoice:index", JSON.stringify(idx.slice(0, 500))); } catch {}
+        return { cmd: "INVOICE", payload: { ok: true, ...invoice, note: "Invoice created (enterprise rails - ACH/wire primary). Customer remits to the Mercury account; run INVOICE RECONCILE to auto-match the incoming deposit." } };
+      }
+
+      if (inSub === "GET") {
+        const id = inAfter.trim();
+        const s = await env.AURA_KV.get(`invoice:${id}`).catch(() => null);
+        if (!s) return { cmd: "INVOICE", payload: { ok: false, error: "no invoice " + id } };
+        return { cmd: "INVOICE", payload: { ok: true, ...JSON.parse(s) } };
+      }
+
+      if (inSub === "LIST") {
+        const filter = (inAfter.trim() || "").toLowerCase();
+        const idxRaw = await env.AURA_KV.get("invoice:index").catch(() => null);
+        let idx = idxRaw ? JSON.parse(idxRaw) : [];
+        if (filter) idx = idx.filter(i => (i.status || "").toLowerCase() === filter);
+        return { cmd: "INVOICE", payload: { ok: true, count: idx.length, invoices: idx.slice(0, 50) } };
+      }
+
+      if (inSub === "MARK") {
+        const parts = inAfter.trim().split(/\s+/);
+        const id = parts[0]; const newStatus = (parts[1] || "").toLowerCase(); const ref = parts.slice(2).join(" ") || null;
+        if (!id || !["paid", "void"].includes(newStatus)) return { cmd: "INVOICE", payload: { ok: false, error: "Usage: INVOICE MARK <invId> <paid|void> [ref]" } };
+        const s = await env.AURA_KV.get(`invoice:${id}`).catch(() => null);
+        if (!s) return { cmd: "INVOICE", payload: { ok: false, error: "no invoice " + id } };
+        const inv = JSON.parse(s);
+        inv.status = newStatus; if (newStatus === "paid") { inv.reconciled = true; inv.paid_at = new Date().toISOString(); inv.payment_ref = ref; }
+        await env.AURA_KV.put(`invoice:${id}`, JSON.stringify(inv)).catch(() => {});
+        try { const idxRaw = await env.AURA_KV.get("invoice:index"); let idx = idxRaw ? JSON.parse(idxRaw) : []; idx = idx.map(i => i.id === id ? { ...i, status: newStatus } : i); await env.AURA_KV.put("invoice:index", JSON.stringify(idx)); } catch {}
+        return { cmd: "INVOICE", payload: { ok: true, id, status: newStatus, note: "Invoice " + newStatus + (newStatus === "paid" ? " - service/shipment status can now advance." : ".") } };
+      }
+
+      if (inSub === "SETUP") {
+        // One-time: fetch Mercury accounts and store the checking account ID for reconciliation.
+        const a = await getMercuryAccounts(env);
+        if (!a.ok) return { cmd: "INVOICE", payload: { ok: false, error: "Mercury accounts unavailable: " + a.error } };
+        const acct = a.accounts.find(x => (x.kind || "").toLowerCase().includes("checking")) || a.accounts[0];
+        if (!acct) return { cmd: "INVOICE", payload: { ok: false, error: "no Mercury account found" } };
+        await env.AURA_KV.put("config:mercury:checking_id", acct.id).catch(() => {});
+        return { cmd: "INVOICE", payload: { ok: true, configured: true, account_name: acct.name, account_id: acct.id, all_accounts: a.accounts.map(x => ({ name: x.name, kind: x.kind, id: x.id })), note: "Mercury checking account ID stored. INVOICE RECONCILE will now scan this account's incoming deposits." } };
+      }
+
+      if (inSub === "RECONCILE") {
+        // Watch incoming Mercury deposits, match to open invoices by amount (the auto-reconcile loop).
+        const onlyId = inAfter.trim() || null;
+        const mTx = await getMercuryTransactions(env, null, 50);
+        if (!mTx.ok) return { cmd: "INVOICE", payload: { ok: false, error: "Mercury transactions unavailable: " + mTx.error } };
+        // incoming, posted credits only
+        const credits = (mTx.transactions || []).filter(t => Number(t.amount) > 0 && (t.status === "sent" || t.status === "posted" || !t.status));
+        const idxRaw = await env.AURA_KV.get("invoice:index").catch(() => null);
+        let idx = idxRaw ? JSON.parse(idxRaw) : [];
+        let openIds = idx.filter(i => i.status === "open").map(i => i.id);
+        if (onlyId) openIds = openIds.filter(x => x === onlyId);
+        const matched = [];
+        for (const id of openIds) {
+          const s = await env.AURA_KV.get(`invoice:${id}`).catch(() => null); if (!s) continue;
+          const inv = JSON.parse(s);
+          const hit = credits.find(c => Math.abs(Number(c.amount) - Number(inv.amount)) < 0.01);
+          if (hit) {
+            inv.status = "paid"; inv.reconciled = true; inv.paid_at = new Date().toISOString();
+            inv.payment_ref = hit.bankDescription || hit.counterpartyName || hit.id || "mercury_match";
+            inv.matched_tx = { amount: hit.amount, desc: hit.bankDescription || hit.counterpartyName || null, date: (hit.postedAt || hit.createdAt || "").slice(0, 10) };
+            await env.AURA_KV.put(`invoice:${id}`, JSON.stringify(inv)).catch(() => {});
+            idx = idx.map(i => i.id === id ? { ...i, status: "paid" } : i);
+            matched.push({ id, amount: inv.amount, customer: inv.customer, via: inv.payment_ref });
+          }
+        }
+        await env.AURA_KV.put("invoice:index", JSON.stringify(idx)).catch(() => {});
+        return { cmd: "INVOICE", payload: { ok: true, scanned_credits: credits.length, open_checked: openIds.length, matched_count: matched.length, matched, note: matched.length ? "Matched incoming Mercury deposits to invoices; their shipment/service status can now advance." : "No incoming deposit matched an open invoice this cycle." } };
+      }
+
+      return { cmd: "INVOICE", payload: { ok: false, error: "Usage: INVOICE CREATE|GET|LIST|RECONCILE|MARK" } };
+    }
 
     case "COMMERCE": {
       // ===== THE COMMERCE ENGINE — universal value-exchange reasoning ("HOW is value exchanged?") =====

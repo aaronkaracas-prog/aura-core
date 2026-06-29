@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.271-2026-06-28";
+const BUILD = "aura-core-v4.9.272-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1121,7 +1121,61 @@ async function processCommand(line, env, isOp) {
         await smartFileAdd(env, ent, { by: p.by || "anonymous", context: `New version created: ${p.note || "(no note)"}`, kind: "spawned_version" });
         return { cmd: "FILE", payload: { ok: true, parent: ent.id, child: reg.entity_id, child_file_id: reg.file_id, note: p.note || null } };
       }
-      return { cmd: "FILE", payload: { ok: false, error: "Unknown sub-command. Use REGISTER | ADD | LIFE | VERSION." } };
+      // ===== DYNAMIC ACCESS - permissions that live with the file for its whole life =====
+      // Default-deny: a Smart File is private to its owner unless the owner explicitly grants. Access
+      // is never permanent unless chosen - grants can be timed (until), and revoked at any moment.
+      // Permissions stored as one KV doc per file (file:perms:<entId>): { owner, grants:{<pta>:{can:[],until?}} }.
+      if (sub === "GRANT" || sub === "REVOKE" || sub === "CAN" || sub === "ACCESS") {
+        let meta = {}; try { meta = JSON.parse(ent.metadata || "{}"); } catch {}
+        const owner = meta.created_by || "pta_aura";
+        let perms = { owner, grants: {} };
+        try { const pr = await env.AURA_KV.get(`file:perms:${ent.id}`); if (pr) perms = JSON.parse(pr); } catch {}
+        if (!perms.owner) perms.owner = owner;
+        const now2 = new Date().toISOString();
+
+        if (sub === "ACCESS") {
+          // prune expired grants on read so the view is always truthful
+          const live = {}; for (const [pta, g] of Object.entries(perms.grants || {})) { if (g.until && g.until < now2) continue; live[pta] = g; }
+          return { cmd: "FILE", payload: { ok: true, file: ent.id, owner: perms.owner, grants: live, note: `Owner ${perms.owner} + ${Object.keys(live).length} active grant(s).` } };
+        }
+        if (sub === "CAN") {
+          let p; try { p = JSON.parse(payloadStr); } catch (e) { return { cmd: "FILE", payload: { ok: false, error: 'Usage: FILE CAN <ref> {"who":"<pta>","do":"edit"}' } }; }
+          if (!p || !p.who || !p.do) return { cmd: "FILE", payload: { ok: false, error: "who and do are required" } };
+          if (p.who === perms.owner) return { cmd: "FILE", payload: { ok: true, allow: true, who: p.who, do: p.do, reason: "owner" } };
+          const g = (perms.grants || {})[p.who];
+          if (!g) return { cmd: "FILE", payload: { ok: true, allow: false, who: p.who, do: p.do, reason: "no grant (default-deny)" } };
+          if (g.until && g.until < now2) return { cmd: "FILE", payload: { ok: true, allow: false, who: p.who, do: p.do, reason: "grant expired " + g.until } };
+          const can = (g.can || []).includes(p.do) || (g.can || []).includes("owner") || (g.can || []).includes("*");
+          return { cmd: "FILE", payload: { ok: true, allow: !!can, who: p.who, do: p.do, reason: can ? "granted" : "action not in grant" } };
+        }
+        // GRANT / REVOKE require operator OR the file's owner to be acting
+        if (sub === "GRANT") {
+          let p; try { p = JSON.parse(payloadStr); } catch (e) { return { cmd: "FILE", payload: { ok: false, error: 'Usage: FILE GRANT <ref> {"to":"<pta>","can":["open","edit"],"until?":"2026-12-31T00:00:00Z","by?":"<owner pta>"}' } }; }
+          if (!p || !p.to || !p.can) return { cmd: "FILE", payload: { ok: false, error: "to and can are required (can = array like [\"open\",\"edit\",\"forward\"])" } };
+          if (p.by && p.by !== perms.owner) return { cmd: "FILE", payload: { ok: false, error: "only the owner can grant on this file" } };
+          const canArr = Array.isArray(p.can) ? p.can : [p.can];
+          perms.grants[p.to] = { can: canArr, until: p.until || null, granted_at: now2, granted_by: p.by || perms.owner };
+          await env.AURA_KV.put(`file:perms:${ent.id}`, JSON.stringify(perms)).catch(() => {});
+          await smartFileAdd(env, ent, { by: p.by || perms.owner, context: `Granted ${p.to}: ${canArr.join(", ")}${p.until ? " (until " + p.until + ")" : ""}`, kind: "permission_grant" });
+          return { cmd: "FILE", payload: { ok: true, file: ent.id, granted_to: p.to, can: canArr, until: p.until || null } };
+        }
+        if (sub === "REVOKE") {
+          let p; try { p = JSON.parse(payloadStr); } catch (e) { return { cmd: "FILE", payload: { ok: false, error: 'Usage: FILE REVOKE <ref> {"from":"<pta>","can?":["edit"],"by?":"<owner pta>"}' } }; }
+          if (!p || !p.from) return { cmd: "FILE", payload: { ok: false, error: "from is required (the PTA to revoke)" } };
+          if (p.by && p.by !== perms.owner) return { cmd: "FILE", payload: { ok: false, error: "only the owner can revoke on this file" } };
+          const g = (perms.grants || {})[p.from];
+          if (!g) return { cmd: "FILE", payload: { ok: true, file: ent.id, revoked_from: p.from, note: "had no grant" } };
+          if (p.can) { // revoke specific actions
+            const drop = Array.isArray(p.can) ? p.can : [p.can];
+            g.can = (g.can || []).filter(c => !drop.includes(c));
+            if (g.can.length === 0) delete perms.grants[p.from]; else perms.grants[p.from] = g;
+          } else { delete perms.grants[p.from]; } // out means out
+          await env.AURA_KV.put(`file:perms:${ent.id}`, JSON.stringify(perms)).catch(() => {});
+          await smartFileAdd(env, ent, { by: p.by || perms.owner, context: `Revoked ${p.from}${p.can ? ": " + (Array.isArray(p.can) ? p.can.join(", ") : p.can) : " (all access)"}`, kind: "permission_revoke" });
+          return { cmd: "FILE", payload: { ok: true, file: ent.id, revoked_from: p.from, revoked: p.can || "all" } };
+        }
+      }
+      return { cmd: "FILE", payload: { ok: false, error: "Unknown sub-command. Use REGISTER | ADD | LIFE | VERSION | GRANT | REVOKE | CAN | ACCESS." } };
     }
 
     case "IMAGE": {

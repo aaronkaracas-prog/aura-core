@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.274-2026-06-28";
+const BUILD = "aura-core-v4.9.275-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1197,6 +1197,42 @@ async function processCommand(line, env, isOp) {
           return { cmd: "FILE", payload: { ok: true, file: ent.id, revoked_from: p.from, revoked: p.can || "all" } };
         }
       }
+      if (sub === "FORWARD") {
+        // Pass a file onward to someone. Enforced (forward). On a file with a body, mints a fresh
+        // doorway crossing so the recipient meets it with context - propagation, but permissioned.
+        let p; try { p = JSON.parse(payloadStr); } catch (e) { return { cmd: "FILE", payload: { ok: false, error: 'Usage: FILE FORWARD <ref> {"by?":"<pta>","to?":"<name/handle>","context?":"why you are sending it"}' } }; }
+        const gate = await enforceFileAction(env, ent, p.by || null, "forward");
+        if (!gate.allowed) return { cmd: "FILE", payload: { ok: false, error: "permission denied: " + gate.reason, action: "forward", who: p.by || null } };
+        let meta = {}; try { meta = JSON.parse(ent.metadata || "{}"); } catch {}
+        let door = null;
+        try { const d = await mintDoorway(env, { context: p.context || ("Shared with you: " + (ent.name || "a file")), name: p.to || null, via: "forward", image: meta.url || meta.image_url || null, dest: "/", creator: (p.by && /^(pta_|ent_)/.test(p.by)) ? p.by : null }); if (d && d.ok) door = d; } catch {}
+        await smartFileAdd(env, ent, { by: p.by || "anonymous", context: `Forwarded${p.to ? " to " + String(p.to).replace(/[<>]/g, "") : ""}${p.context ? ": " + p.context : ""}`, kind: "forwarded" });
+        return { cmd: "FILE", payload: { ok: true, file: ent.id, forwarded_by: p.by || null, to: p.to || null, doorway: door ? door.doorway : null, token: door ? door.token : null } };
+      }
+      if (sub === "DOWNLOAD") {
+        // Record an intent/grant to take a copy. Enforced (download). Returns the body URL if allowed.
+        let p; try { p = JSON.parse(payloadStr || "{}"); } catch (e) { p = {}; }
+        const gate = await enforceFileAction(env, ent, p.by || null, "download");
+        if (!gate.allowed) return { cmd: "FILE", payload: { ok: false, error: "permission denied: " + gate.reason, action: "download", who: p.by || null } };
+        let meta = {}; try { meta = JSON.parse(ent.metadata || "{}"); } catch {}
+        await smartFileAdd(env, ent, { by: p.by || "anonymous", context: "Downloaded the file", kind: "downloaded" });
+        return { cmd: "FILE", payload: { ok: true, file: ent.id, downloaded_by: p.by || null, url: meta.url || meta.image_url || null } };
+      }
+      if (sub === "LICENSE") {
+        // Record a license grant on the file (the commercial action). Enforced (license). Captures
+        // terms in the file life. The transaction itself rides Commerce; this is the file-side record.
+        let p; try { p = JSON.parse(payloadStr); } catch (e) { return { cmd: "FILE", payload: { ok: false, error: 'Usage: FILE LICENSE <ref> {"by?":"<owner/licensor pta>","to":"<pta>","terms":"non-exclusive, 1yr","price?":"..."}' } }; }
+        if (!p || !p.to) return { cmd: "FILE", payload: { ok: false, error: "to is required (who is being licensed)" } };
+        const gate = await enforceFileAction(env, ent, p.by || null, "license");
+        if (!gate.allowed) return { cmd: "FILE", payload: { ok: false, error: "permission denied: " + gate.reason, action: "license", who: p.by || null } };
+        // a license is also an access grant: the licensee gets open (+ whatever the terms allow)
+        let perms = { owner: (JSON.parse(ent.metadata || "{}").created_by) || "pta_aura", grants: {} };
+        try { const pr = await env.AURA_KV.get(`file:perms:${ent.id}`); if (pr) perms = JSON.parse(pr); } catch {}
+        perms.grants[p.to] = { can: Array.isArray(p.can) ? p.can : ["open"], until: p.until || null, granted_at: new Date().toISOString(), granted_by: p.by || perms.owner, license: { terms: p.terms || null, price: p.price || null } };
+        await env.AURA_KV.put(`file:perms:${ent.id}`, JSON.stringify(perms)).catch(() => {});
+        await smartFileAdd(env, ent, { by: p.by || "anonymous", context: `Licensed to ${p.to}${p.terms ? " (" + p.terms + ")" : ""}${p.price ? " - " + p.price : ""}`, kind: "licensed" });
+        return { cmd: "FILE", payload: { ok: true, file: ent.id, licensed_to: p.to, terms: p.terms || null, price: p.price || null } };
+      }
       if (sub === "SETACCESS") {
         let p; try { p = JSON.parse(payloadStr); } catch (e) { return { cmd: "FILE", payload: { ok: false, error: 'Usage: FILE SETACCESS <ref> {"access":"public|controlled","by?":"<owner pta>"}' } }; }
         if (!p || !["public", "controlled"].includes(p.access)) return { cmd: "FILE", payload: { ok: false, error: 'access must be "public" or "controlled"' } };
@@ -1208,7 +1244,7 @@ async function processCommand(line, env, isOp) {
         await smartFileAdd(env, ent, { by: p.by || owner, context: `Access set to ${p.access}`, kind: "access_change" });
         return { cmd: "FILE", payload: { ok: true, file: ent.id, access: p.access, open_url: "https://auras.guide/f/" + ent.id } };
       }
-      return { cmd: "FILE", payload: { ok: false, error: "Unknown sub-command. Use REGISTER | ADD | LIFE | VERSION | GRANT | REVOKE | CAN | ACCESS | SETACCESS." } };
+      return { cmd: "FILE", payload: { ok: false, error: "Unknown sub-command. Use REGISTER | ADD | LIFE | VERSION | GRANT | REVOKE | CAN | ACCESS | SETACCESS | FORWARD | DOWNLOAD | LICENSE." } };
     }
 
     case "IMAGE": {

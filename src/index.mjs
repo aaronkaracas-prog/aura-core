@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.268-2026-06-28";
+const BUILD = "aura-core-v4.9.269-2026-06-28";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -284,10 +284,14 @@ async function governorRecord(env, action, pageId) {
 // Mints a thin lead node + a one-time token whose /d/<token> landing redeems into a real PTA,
 // fused to the lead, linked to Aura with context. This is the mechanism that makes ANY image
 // (ShowIt, canvas, email graphic) a PTA-minting doorway. Returns { token, doorway, lead_id }.
-async function mintDoorway(env, { context, name, handle, via, image, dest, creator }) {
+async function mintDoorway(env, { context, name, handle, via, image, dest, creator, identity }) {
   via = via || "system";
-  const handleKey = handle || ("lead:" + via + ":" + crypto.randomUUID().slice(0, 8));
-  const leadRes = await processCommand("GRAPH_PUT " + JSON.stringify({ type: "person", name: name || "(unknown)", key: handleKey, props: { state: "contacted", via, met_context: context || null, contacted_at: new Date().toISOString() } }), env, true);
+  // If Aura already knows WHO she's reaching (a real email/phone), the lead is born carrying that
+  // identity_key - so it resolves through the same dedup that verified sign-ins use, instead of being
+  // born anonymous and orphaned. This is deterministic resolution: never throw away identity we have.
+  const idKey = identity ? String(identity).toLowerCase().trim() : null;
+  const handleKey = idKey || handle || ("lead:" + via + ":" + crypto.randomUUID().slice(0, 8));
+  const leadRes = await processCommand("GRAPH_PUT " + JSON.stringify({ type: "person", name: name || "(unknown)", key: handleKey, props: { state: "contacted", via, identity: idKey || null, met_context: context || null, contacted_at: new Date().toISOString() } }), env, true);
   const leadId = leadRes && leadRes.payload && leadRes.payload.id;
   if (!leadId) return { ok: false, error: "could not create lead node" };
   // The crossing originates from the CREATOR if known, else from Aura herself. This is "the PTA is
@@ -295,9 +299,9 @@ async function mintDoorway(env, { context, name, handle, via, image, dest, creat
   const origin = creator || "pta_aura";
   if (context) await processCommand("GRAPH_LINK " + JSON.stringify({ from: origin, rel: "reached_out_to", to: leadId, context }), env, true);
   const token = crypto.randomUUID().replace(/-/g, "").slice(0, 22);
-  const rec = { lead_id: leadId, handle: handleKey, name: name || null, via, context: context || null, image: image || null, dest: dest || "/", creator: creator || null, origin, created_at: new Date().toISOString(), redeemed: false };
+  const rec = { lead_id: leadId, handle: handleKey, name: name || null, via, context: context || null, image: image || null, dest: dest || "/", creator: creator || null, origin, identity: idKey || null, created_at: new Date().toISOString(), redeemed: false };
   await env.AURA_KV.put("door:" + token, JSON.stringify(rec), { expirationTtl: 2592000 }).catch(() => {});
-  return { ok: true, token, doorway: "https://auras.guide/d/" + token, lead_id: leadId, handle: handleKey, origin };
+  return { ok: true, token, doorway: "https://auras.guide/d/" + token, lead_id: leadId, handle: handleKey, origin, identity: idKey || null };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -3639,7 +3643,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (ro.generate_image) {
           try { const si = await showIt(ro.generate_image === true ? ro.context : String(ro.generate_image), env, { source: "reach_out" }); if (si && si.ok) imageUrl = si.image_url; } catch (e) {}
         }
-        const door = await mintDoorway(env, { context: ro.context, name: ro.name || null, handle: ro.handle || null, via, image: imageUrl, dest: ro.dest || "/" });
+        const door = await mintDoorway(env, { context: ro.context, name: ro.name || null, handle: ro.handle || null, via, image: imageUrl, dest: ro.dest || "/", identity: ro.email ? ("email:" + String(ro.email).toLowerCase().trim()) : (ro.identity || null) });
         if (!door || !door.ok) return { cmd: "REACH_OUT", payload: { ok: false, error: (door && door.error) || "could not mint doorway" } };
         // Optionally email the CLICKABLE IMAGE directly (Aura sends it herself, HTML). Tapping the
         // image opens the doorway -> sign-in gate -> verified PTA. The /d/ landing also shows the image.
@@ -5664,6 +5668,37 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         ).bind("phone_" + cleanPhone, phEntity).run();
       } catch (e) { return { cmd: "PTA_PHONE", payload: { ok: false, error: "PTA created but session-map write failed: " + e.message, pta: phEntity } }; }
       return { cmd: "PTA_PHONE", payload: { ok: true, pta: phEntity, mode: phMode, born: phMode === "created", phone: cleanPhone, session_id: "phone_" + cleanPhone } };
+    }
+
+    case "RESOLVE": {
+      // RESOLVE <identity_key>   e.g. RESOLVE email:mom@example.com
+      // The resolution lens: "is this the same person?" answered. Finds the canonical entity by
+      // identity, gathers every node same_as-linked to it (the fragments that have been collapsed),
+      // and lists every crossing (who reached them, about what). This is what turns scattered
+      // crossings into one human. Deterministic only - it resolves on shared identity, never guesses.
+      if (!isOp) return { cmd: "RESOLVE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const db = env.AURA_MEMORY;
+      const key = (args[0] || "").toLowerCase().trim();
+      if (!key) return { cmd: "RESOLVE", payload: { ok: false, error: "Usage: RESOLVE <identity_key> (e.g. RESOLVE email:mom@example.com)" } };
+      // 1) the canonical node for this identity
+      const canon = await db.prepare("SELECT id, type, identity_key, name, verification_level, created_at FROM pta_entities WHERE identity_key = ?").bind(key).first().catch(() => null);
+      if (!canon) return { cmd: "RESOLVE", payload: { ok: true, found: false, identity: key, note: "No one resolves to this identity yet - they haven't crossed or signed in." } };
+      // 2) every node same_as-linked to it (both directions) - the collapsed fragments
+      const fragRows = await db.prepare("SELECT from_id, to_id FROM pta_edges WHERE edge_type='same_as' AND (from_id=? OR to_id=?)").bind(canon.id, canon.id).all().catch(() => ({ results: [] }));
+      const fragIds = new Set();
+      for (const r of (fragRows.results || [])) { if (r.from_id !== canon.id) fragIds.add(r.from_id); if (r.to_id !== canon.id) fragIds.add(r.to_id); }
+      // 3) every crossing INTO this person (who reached them, about what) across canon + fragments
+      const allIds = [canon.id, ...fragIds];
+      const crossings = [];
+      for (const pid of allIds) {
+        const inc = await db.prepare("SELECT from_id, edge_type, context, created_at FROM pta_edges WHERE to_id=? AND edge_type IN ('reached_out_to','connected_to')").bind(pid).all().catch(() => ({ results: [] }));
+        for (const e of (inc.results || [])) crossings.push({ from: e.from_id, kind: e.edge_type, context: e.context, at: e.created_at });
+      }
+      return { cmd: "RESOLVE", payload: { ok: true, found: true, identity: key,
+        person: { id: canon.id, name: canon.name, verification: canon.verification_level || "unverified", since: canon.created_at },
+        fragments: [...fragIds], fragment_count: fragIds.size,
+        crossings, crossing_count: crossings.length,
+        note: fragIds.size ? `This person is one identity with ${fragIds.size} resolved fragment(s) and ${crossings.length} crossing(s).` : `This person has ${crossings.length} crossing(s); no separate fragments to collapse.` } };
     }
 
     case "PTA_ENTITY": {

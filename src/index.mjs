@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.311-2026-06-29";
+const BUILD = "aura-core-v4.9.312-2026-06-29";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1350,6 +1350,29 @@ async function processCommand(line, env, isOp) {
       } catch (e) { return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, source: "opensky_error", region: acRegion, error: String(e && e.message || e) } }; }
     }
 
+    case "QUAKE_QUERY": {
+      // USGS earthquake feed - KEYLESS, real-time, global GeoJSON. The THIRD domain (after maritime +
+      // fire), proving the situation engine is truly generic. Sudden-onset disaster type.
+      //   QUAKE_QUERY [magnitude]     e.g. QUAKE_QUERY 4.5  (default: significant quakes, past day)
+      if (!isOp) return { cmd: "QUAKE_QUERY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const qArg = (line.replace(/^QUAKE_QUERY\s+/i, "").trim() || "significant").toLowerCase();
+      // USGS feed levels: significant_day, 4.5_day, 2.5_day, 1.0_day, all_day
+      const QFEEDS = { significant: "significant_day", "4.5": "4.5_day", "2.5": "2.5_day", "1.0": "1.0_day", all: "all_day" };
+      const feed = QFEEDS[qArg] || (parseFloat(qArg) >= 4.5 ? "4.5_day" : parseFloat(qArg) >= 2.5 ? "2.5_day" : "significant_day");
+      try {
+        const url = `https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/${feed}.geojson`;
+        const r = await fetch(url, { headers: { "User-Agent": "SituationTracker/1.0" } });
+        if (!r.ok) return { cmd: "QUAKE_QUERY", payload: { ok: false, source: "usgs_error", error: `usgs http ${r.status}` } };
+        const d = await r.json();
+        const quakes = (d.features || []).map(f => {
+          const p = f.properties || {}; const c = (f.geometry && f.geometry.coordinates) || [];
+          return { mag: p.mag, place: p.place, time: p.time ? new Date(p.time).toISOString() : null, depth_km: c[2], lat: c[1], lon: c[0], tsunami: p.tsunami === 1, felt: p.felt, alert: p.alert, url: p.url };
+        }).filter(q => q.mag != null).sort((a, b) => b.mag - a.mag);
+        const largest = quakes[0] || null;
+        return { cmd: "QUAKE_QUERY", payload: { ok: true, source: "usgs_live", feed, quake_count: quakes.length, largest, quakes: quakes.slice(0, 25), updated: new Date().toISOString(), note: largest ? `Largest: M${largest.mag} ${largest.place}` : "No quakes at this threshold." } };
+      } catch (e) { return { cmd: "QUAKE_QUERY", payload: { ok: false, source: "usgs_error", error: String(e && e.message || e) } }; }
+    }
+
     case "FIRE_WEATHER": {
       // NWS official fire weather alerts - Red Flag Warnings, Fire Weather Watches - via api.weather.gov.
       // KEYLESS (just needs User-Agent). Point-based. The authoritative fire-danger signal, far better
@@ -2050,7 +2073,8 @@ async function processCommand(line, env, isOp) {
         hormuz: { domain: "maritime", label: "Strait of Hormuz", news: "Strait of Hormuz shipping Iran", lat: 26.57, lon: 56.25, oil: "BRENT_CRUDE_USD", ais: "hormuz", search: "Strait of Hormuz vessel traffic toll status today" },
         socal_fire: { domain: "fire", label: "Southern California wildfires", news: "Southern California wildfire evacuation", lat: 34.05, lon: -118.24, fire: "socal", search: "Southern California wildfire active evacuation today" },
         norcal_fire: { domain: "fire", label: "Northern California wildfires", news: "Northern California wildfire evacuation", lat: 38.58, lon: -121.49, fire: "norcal", search: "Northern California wildfire active evacuation today" },
-        cottonwood_fire: { domain: "fire", label: "Cottonwood Fire, Beaver County Utah (nation's largest)", news: "Cottonwood Fire Utah Beaver evacuation", lat: 38.28, lon: -112.64, fire: "cottonwood", search: "Cottonwood Fire Utah acres containment evacuation today" }
+        cottonwood_fire: { domain: "fire", label: "Cottonwood Fire, Beaver County Utah (nation's largest)", news: "Cottonwood Fire Utah Beaver evacuation", lat: 38.28, lon: -112.64, fire: "cottonwood", search: "Cottonwood Fire Utah acres containment evacuation today" },
+        global_quakes: { domain: "quake", label: "Significant earthquakes (past 24h)", news: "major earthquake today", quake: "significant", search: "significant earthquake today magnitude damage" }
       };
       const T = TOPICS[topicKey];
       if (!T) return { cmd: "SITUATION_PULL", payload: { ok: false, error: "unknown topic: " + topicKey, topics: Object.keys(TOPICS) } };
@@ -2078,6 +2102,21 @@ async function processCommand(line, env, isOp) {
         return { cmd: "SITUATION_PULL", payload: { ok: true, topic: topicKey, domain, label: T.label, pulled_at: snapshot.pulled_at, feeds: { news: snapshot.news.length, weather: !!snapshot.weather, fire_weather: snapshot.fire_weather ? (snapshot.fire_weather.red_flag ? "RED FLAG" : snapshot.fire_weather.alerts.length) : false, web: snapshot.web_ok, fires: snapshot.fires.fire_count }, note: "Fire snapshot stored. Run SITUATION_BRIEF " + topicKey + " for the analysis." } };
       }
       // MARITIME DOMAIN (default)
+      if (domain === "quake") {
+        const [news, quake, web] = await Promise.all([
+          run(`NEWS_QUERY ${T.news}`),
+          run(`QUAKE_QUERY ${T.quake}`),
+          run(`WEB_SEARCH ${T.search}`)
+        ]);
+        snapshot = {
+          topic: topicKey, domain, label: T.label, pulled_at: new Date().toISOString(),
+          news: news && news.ok ? (news.news || []).slice(0, 10) : [], news_ok: !!(news && news.ok),
+          web: web && web.ok ? (web.results || web.answer || web) : null, web_ok: !!(web && web.ok),
+          quakes: quake && quake.ok ? { source: quake.source, count: quake.quake_count ?? 0, largest: quake.largest || null, updated: quake.updated } : { count: 0, source: (quake && quake.source) || "none", note: (quake && quake.error) || "no quake feed" }
+        };
+        await env.AURA_KV.put(`situation:snapshot:${topicKey}`, JSON.stringify(snapshot), { expirationTtl: 3600 }).catch(() => {});
+        return { cmd: "SITUATION_PULL", payload: { ok: true, topic: topicKey, domain, label: T.label, pulled_at: snapshot.pulled_at, feeds: { news: snapshot.news.length, web: snapshot.web_ok, quakes: snapshot.quakes.count }, note: "Quake snapshot stored. Run SITUATION_BRIEF " + topicKey + " for the analysis." } };
+      }
       const [news, oil, wx, web, ais] = await Promise.all([
         run(`NEWS_QUERY ${T.news}`),
         run(`OIL_PRICE ${T.oil}`),
@@ -2115,7 +2154,12 @@ async function processCommand(line, env, isOp) {
       const wxLine = snap.weather ? `${snap.weather.conditions}, wind ${snap.weather.wind_ms}m/s, vis ${snap.weather.visibility_m}m` : "unavailable";
       const snapDomain = snap.domain || "maritime";
       let sysPrompt, question;
-      if (snapDomain === "fire") {
+      if (snapDomain === "quake") {
+        const qk = snap.quakes;
+        const qLine = qk && qk.largest ? `${qk.count} quakes; largest M${qk.largest.mag} at ${qk.largest.place}, depth ${qk.largest.depth_km}km${qk.largest.tsunami ? ", TSUNAMI FLAG" : ""}${qk.largest.alert ? ", PAGER alert " + qk.largest.alert : ""}` : "no significant quakes";
+        sysPrompt = "You are SituationTracker, an operational seismic intelligence engine. You analyze live earthquake activity for the people who must act: emergency managers, infrastructure operators, insurers, responders. Be precise, factual, decision-oriented. Never invent numbers - use only the data given. Output STRICT JSON only, no markdown, with keys: status (one line: current seismic situation), drivers (array of 2-4 short strings: what is notable - magnitude, depth, location, aftershock risk), impact (one line: likely impact / who is affected if known), aftershock (one line: aftershock/tsunami risk read), alerts (array of 0-3 short risk strings), outlook (array of 2-3 short 'if X then Y' prediction strings), confidence (low|medium|high).";
+        question = `Seismic situation: ${snap.label}\nPulled: ${snap.pulled_at}\n\nLIVE NEWS:\n${newsLines}\n\nUSGS QUAKES: ${qLine}\n\nProduce the seismic operator briefing JSON now.`;
+      } else if (snapDomain === "fire") {
         const fireLine = snap.fires ? `${snap.fires.fire_count} active hotspots (${snap.fires.source})${snap.fires.hottest ? `, hottest at ${snap.fires.hottest.lat},${snap.fires.hottest.lon} FRP ${snap.fires.hottest.frp_mw}MW` : ""}` : "no fire feed";
         const fwxLine = snap.fire_weather ? (snap.fire_weather.red_flag ? "RED FLAG WARNING ACTIVE - " : "") + (snap.fire_weather.alerts.length ? snap.fire_weather.alerts.map(a => a.event).join(", ") : "no active fire-weather alerts") : "fire weather unavailable";
         sysPrompt = "You are SituationTracker, an operational wildfire intelligence engine. You analyze a live fire situation for the people who must act: incident commanders, emergency managers, residents in the path, utilities, insurers. Wind drives fire spread - weigh it heavily. Be precise, factual, decision-oriented. Never invent numbers - use only the data given. Output STRICT JSON only, no markdown, with keys: status (one line: current state of the fire situation), drivers (array of 2-4 short strings: what is moving it now - wind, fuel, terrain), spread (one line: direction/threat and what is in the path if known), evacuation (one line: evacuation/shelter status if known), alerts (array of 0-3 short risk strings), outlook (array of 2-3 short 'if X then Y' prediction strings), confidence (low|medium|high).";

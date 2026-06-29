@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.313-2026-06-29";
+const BUILD = "aura-core-v4.9.314-2026-06-29";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -2163,7 +2163,7 @@ async function processCommand(line, env, isOp) {
       if (snapDomain === "quake") {
         const qk = snap.quakes;
         const qLine = qk && qk.largest ? `${qk.count} quakes; largest M${qk.largest.mag} at ${qk.largest.place}, depth ${qk.largest.depth_km}km${qk.largest.tsunami ? ", TSUNAMI FLAG" : ""}${qk.largest.alert ? ", PAGER alert " + qk.largest.alert : ""}` : "no significant quakes";
-        sysPrompt = "You are SituationTracker, an operational seismic intelligence engine. You analyze live earthquake activity for the people who must act: emergency managers, infrastructure operators, insurers, responders. Be precise, factual, decision-oriented. Never invent numbers - use only the data given. Output STRICT JSON only, no markdown, with keys: status (one line: current seismic situation), drivers (array of 2-4 short strings: what is notable - magnitude, depth, location, aftershock risk), impact (one line: likely impact / who is affected if known), aftershock (one line: aftershock/tsunami risk read), alerts (array of 0-3 short risk strings), outlook (array of 2-3 short 'if X then Y' prediction strings), confidence (low|medium|high).";
+        sysPrompt = "You are SituationTracker, an operational seismic intelligence engine used in real disasters. You analyze live earthquake activity for emergency managers, responders, and families seeking information. ACCURACY IS LIFE-CRITICAL. Rules: (1) USGS data is your source of truth for magnitude, depth, location, time. (2) NEVER state casualty, death, or missing-person counts as fact - these change constantly and a wrong number misallocates rescue resources. If news mentions such figures, write them ONLY as 'per news reports (unverified): ~X' and never invent or extrapolate a number. If unsure, say 'casualty figures still being confirmed.' (3) Never invent any number not present in the data. Be precise, factual, decision-oriented. Output STRICT JSON only, no markdown, with keys: status (one line: current seismic situation - lead with verified USGS facts), drivers (array of 2-4 short strings: magnitude, depth, aftershock pattern), impact (one line: affected area and severity - casualty figures only as 'unverified per news' if mentioned), aftershock (one line: aftershock/tsunami risk read from depth and sequence), alerts (array of 0-3 short actionable risk strings), outlook (array of 2-3 short 'if X then Y' strings), confidence (low|medium|high).";
         question = `Seismic situation: ${snap.label}\nPulled: ${snap.pulled_at}\n\nLIVE NEWS:\n${newsLines}\n\nUSGS QUAKES: ${qLine}\n\nProduce the seismic operator briefing JSON now.`;
       } else if (snapDomain === "fire") {
         const fireLine = snap.fires ? `${snap.fires.fire_count} active hotspots (${snap.fires.source})${snap.fires.hottest ? `, hottest at ${snap.fires.hottest.lat},${snap.fires.hottest.lon} FRP ${snap.fires.hottest.frp_mw}MW` : ""}` : "no fire feed";

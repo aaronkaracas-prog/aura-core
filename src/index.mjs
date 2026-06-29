@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.309-2026-06-29";
+const BUILD = "aura-core-v4.9.310-2026-06-29";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1348,6 +1348,41 @@ async function processCommand(line, env, isOp) {
         const fireAircraft = aircraft.filter(a => a.likely_fire);
         return { cmd: "AIRCRAFT_QUERY", payload: { ok: true, source: "opensky_live", region: acRegion, label: acb.label, total_aircraft: aircraft.length, likely_firefighting: fireAircraft.length, fire_aircraft: fireAircraft.slice(0, 30), all_sample: aircraft.slice(0, 20), updated: new Date().toISOString(), note: fireAircraft.length ? "Flagged aircraft are heuristic matches by callsign - confirm against the incident air-ops roster." : "No firefighting-pattern callsigns in this pass (aircraft may be on the ground, between drops, or using non-standard callsigns). Total air traffic still shown." } };
       } catch (e) { return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, source: "opensky_error", region: acRegion, error: String(e && e.message || e) } }; }
+    }
+
+    case "FIRE_COORDINATE": {
+      // RESPONDER-TO-RESPONDER coordination - the multi-agency awareness layer. The deadly gap in
+      // firefighting is that agencies (CAL FIRE, USFS, county, mutual aid) operate on separate pictures.
+      // This pulls ALL active fires in a region (NIFC live) + the whole resource picture, and Aura
+      // reasons about where mutual aid should flow. The fire equivalent of FLEET_COORDINATE (maritime).
+      //   FIRE_COORDINATE <region>     (region = a state: utah, california)
+      if (!isOp) return { cmd: "FIRE_COORDINATE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const fcRegion = (line.replace(/^FIRE_COORDINATE\s+/i, "").trim() || "utah").toLowerCase();
+      const step = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
+      // pull all active fires (authoritative)
+      const off = await step(`FIRE_OFFICIAL ${fcRegion}`);
+      if (!off || !off.ok) return { cmd: "FIRE_COORDINATE", payload: { ok: false, error: "official feed unavailable: " + (off && off.error) } };
+      const fires = (off.incidents || []).filter(f => f.size_acres != null);
+      if (!fires.length) return { cmd: "FIRE_COORDINATE", payload: { ok: true, region: fcRegion, note: "No active incidents to coordinate." } };
+      // resource picture: active (uncontained, growing) vs winding-down (high containment, freeable)
+      const active = fires.filter(f => (f.contained_pct == null || f.contained_pct < 50) && (f.size_acres || 0) >= 100);
+      const winding = fires.filter(f => (f.contained_pct != null && f.contained_pct >= 90));
+      const summary = fires.map(f => `${f.name}: ${f.size_acres}ac, ${f.contained_pct == null ? "?" : f.contained_pct}% contained, ${f.personnel || "?"} personnel, ${f.county || "?"} Co (discovered ${f.discovered || "?"})`).join("\n");
+      // Aura reasons about coordination
+      const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      let coord = null;
+      if (anthKey) {
+        const sys = "You are Aura, a multi-agency wildfire coordination analyst. You see ALL active fires in a region at once - something no single agency's system shows them. Reason about RESOURCE COORDINATION across incidents: which fires are resource-starved relative to their size and growth, which are winding down (high containment) and could free crews/engines/aircraft, and where mutual aid should flow. You do NOT command - you surface the cross-incident picture an incident commander or GACC (Geographic Area Coordination Center) would want. Output STRICT JSON only: picture (one line: the regional fire situation in aggregate), starved (array of 1-3 short strings: incidents under-resourced for their size/growth, name them), freeable (array of 0-2 short strings: incidents winding down that could release resources, name them), moves (array of 1-3 short strings: specific coordination moves - from which incident to which), caveat (one line: honest limit - you see acreage/containment/personnel, not real-time crew availability or agency agreements).";
+        const usr = `Region: ${fcRegion}\nActive incidents (${fires.length} total, ${active.length} growing, ${winding.length} winding down):\n${summary}\n\nProduce the coordination JSON now.`;
+        try {
+          const res = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 600, system: sys, messages: [{ role: "user", content: usr }] })
+          });
+          if (res.ok) { const j = await res.json(); let t = (j.content && j.content[0] && j.content[0].text) ? j.content[0].text : ""; t = t.replace(/```json|```/g, "").trim(); try { coord = JSON.parse(t); } catch { coord = { picture: t.slice(0, 200), raw: true }; } }
+        } catch {}
+      }
+      return { cmd: "FIRE_COORDINATE", payload: { ok: true, region: fcRegion, total_incidents: fires.length, growing: active.length, winding_down: winding.length, total_personnel: fires.reduce((s, f) => s + (f.personnel || 0), 0), largest: off.largest ? off.largest.name : null, coordination: coord, note: "Cross-incident coordination view - the multi-agency picture no single agency system shows." } };
     }
 
     case "FIRE_PREDICT": {

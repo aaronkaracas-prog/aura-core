@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.317-2026-06-29";
+const BUILD = "aura-core-v4.9.319-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1364,19 +1364,53 @@ async function processCommand(line, env, isOp) {
         let discussions = [];
         if (mdR.ok) {
           const md = await mdR.json();
+          // field names on NOAA vector services are unpredictable (idp_ prefixes, aliases). Instead of
+          // guessing keys, scan each feature's attributes by pattern - same approach that fixed NIFC.
+          // CONFIRMED from layer schema: real fields are name (carries the discussion number, e.g.
+          // "Mesoscale Discussion 1234"), folderpath, popupinfo (a link). The meteorological TEXT is
+          // NOT in this layer - it lives in SPC's raw product, fetched below by number.
           discussions = (md.features || []).map(f => {
             const a = f.attributes || {};
+            const pick = (re) => { for (const k of Object.keys(a)) { if (re.test(k) && a[k] != null && String(a[k]).trim() !== "") return a[k]; } return null; };
+            const nameStr = String(pick(/^name$|discussion|^md/i) || "");
+            const link = pick(/popup|folder|url|link/i) || "";
+            const numMatch = nameStr.match(/(\d{1,4})/) || String(link).match(/md(\d{3,4})/i);
             return {
-              md_number: a.mdnumber ?? a.MDNUMBER ?? null,
-              summary: a.summary ?? a.SUMMARY ?? null,
-              concerning: a.concerning ?? a.CONCERNING ?? null,
-              discussion: (a.discussion ?? a.DISCUSSION ?? "").slice(0, 1200),
-              valid: a.valid ?? a.VALID ?? null,
-              expire: a.expire ?? a.EXPIRE ?? null,
-              watch_prob: a.watchprob ?? a.WATCHPROB ?? null
+              md_number: numMatch ? numMatch[1] : null,
+              name: nameStr || null,
+              link: link || null,
+              concerning: null,
+              watch_prob: null,
+              discussion: "",
+              all_fields: Object.keys(a)
             };
           });
         }
+        // The ArcGIS polygon layer carries only the number + link, never the prose. Fetch the actual
+        // SPC MD text product for the real meteorology. CONFIRMED URL pattern includes the YEAR.
+        const mdYear = new Date().getUTCFullYear();
+        for (const d of discussions) {
+          if (d.md_number) {
+            try {
+              const num = String(parseInt(d.md_number)).padStart(4, "0");
+              const tr = await fetch(`https://www.spc.noaa.gov/products/md/${mdYear}/md${num}.html`, { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)" } });
+              if (tr.ok) {
+                const html = await tr.text();
+                const pre = html.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
+                let text = pre && pre[1] ? pre[1] : html;
+                text = text.replace(/<[^>]+>/g, "").replace(/&[a-z]+;/gi, " ").replace(/\r/g, "").replace(/[ \t]+/g, " ").trim();
+                if (text.length > 80) {
+                  d.discussion = text.slice(0, 1800);
+                  const conc = text.match(/CONCERNING\.\.\.\s*([^\n]+)/i);
+                  if (conc) d.concerning = conc[1].trim().slice(0, 200);
+                  const wp = text.match(/PROBABILITY OF WATCH ISSUANCE\.\.\.\s*(\d+)\s*PERCENT/i);
+                  if (wp) d.watch_prob = wp[1] + "%";
+                }
+              }
+            } catch {}
+          }
+        }
+        const mdFieldsSeen = (discussions[0] && discussions[0].all_fields) ? discussions[0].all_fields : [];
         // also try to pull current alerts so Aura can compare "what's forming" vs "what's already warned"
         const stormNow = await (async () => { try { const r = await processCommand("STORM_QUERY all", env, true); return (r && r.payload) ? r.payload : null; } catch { return null; } })();
         // 2) Aura reasons on the raw meteorology
@@ -1384,7 +1418,7 @@ async function processCommand(line, env, isOp) {
         let prediction = null;
         if (anthKey) {
           const sys = "You are Aura, a severe-storm formation analyst. You are given SPC Mesoscale Discussions - the forecasters' raw reasoning about where convection is ABOUT TO develop in the next 1-6 hours, issued BEFORE watches - plus any alerts already active. Your job is the FORMATION read that gets people out sooner: reason about the meteorology (instability/CAPE, wind shear, helicity, boundaries, storm mode) to identify where tornado/severe potential is escalating and how much lead time exists BEFORE a warning would fire. You synthesize across the discussions - you do not just relay them. Be precise and never invent data. Output STRICT JSON only: forming (array of 1-3 short strings: where severe/tornado potential is building and the key ingredient driving it), escalation (one line: which area is most likely to go from discussion->watch->warning next, and why), lead_time_gained (one line: how much earlier this signal is than waiting for a warning), watch_out (array of 1-3 short strings: specific areas/populations to pre-position or alert NOW), confidence (low|medium|high), caveat (one line: the honest limit - this complements SPC/NWS, not replaces their models).";
-          const discText = discussions.length ? discussions.map(d => `MD#${d.md_number} (watch prob ${d.watch_prob || "?"}): ${d.concerning || ""} | ${d.summary || d.discussion || ""}`).join("\n\n").slice(0, 4000) : "No active mesoscale discussions right now.";
+          const discText = discussions.length ? discussions.map(d => `MD#${d.md_number} (watch prob ${d.watch_prob || "?"}): CONCERNING ${d.concerning || "?"}\n${d.discussion || ""}`).join("\n\n---\n\n").slice(0, 5000) : "No active mesoscale discussions right now.";
           const nowText = stormNow && stormNow.ok ? `Active alerts: ${stormNow.total_storm_alerts} (${stormNow.tornado_alerts} tornado). Types: ${Object.entries(stormNow.by_type || {}).map(([k, v]) => k + " x" + v).join(", ")}` : "alerts unavailable";
           const usr = `SPC MESOSCALE DISCUSSIONS (the pre-watch reasoning layer):\n${discText}\n\nALREADY ACTIVE: ${nowText}\n\nProduce the formation-prediction JSON now.`;
           try {
@@ -1395,7 +1429,7 @@ async function processCommand(line, env, isOp) {
             if (res.ok) { const j = await res.json(); let t = (j.content && j.content[0] && j.content[0].text) ? j.content[0].text : ""; t = t.replace(/```json|```/g, "").trim(); try { prediction = JSON.parse(t); } catch { prediction = { forming: [t.slice(0, 200)], raw: true }; } }
           } catch {}
         }
-        return { cmd: "STORM_PREDICT", payload: { ok: true, source: "spc_mcd_live", active_discussions: discussions.length, discussions: discussions.slice(0, 6), prediction, updated: new Date().toISOString(), note: discussions.length ? `${discussions.length} active mesoscale discussion(s) - reasoning on formation potential` : "No active SPC mesoscale discussions; no convective development flagged right now." } };
+        return { cmd: "STORM_PREDICT", payload: { ok: true, source: "spc_mcd_live", active_discussions: discussions.length, md_fields_seen: mdFieldsSeen, discussions: discussions.slice(0, 6).map(({ all_fields, ...d }) => d), prediction, updated: new Date().toISOString(), note: discussions.length ? `${discussions.length} active mesoscale discussion(s) - reasoning on formation potential` : "No active SPC mesoscale discussions; no convective development flagged right now." } };
       } catch (e) { return { cmd: "STORM_PREDICT", payload: { ok: false, source: "spc_error", error: String(e && e.message || e) } }; }
     }
 

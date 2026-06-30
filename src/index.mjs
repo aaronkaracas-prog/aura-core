@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.324-2026-06-30";
+const BUILD = "aura-core-v4.9.325-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -851,11 +851,21 @@ async function processCommand(line, env, isOp) {
       if (!isOp) return { cmd: "INDEX_AUDIT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const verbose = /verbose/i.test(rest);
       let src;
+      let srcStale = false, srcAt = null;
       try {
         const sr = await fetch("https://raw.githubusercontent.com/aaronkaracas-prog/aura-core/main/src/index.mjs", { headers: { "User-Agent": "aura-index-audit" } });
-        if (!sr.ok) return { cmd: "INDEX_AUDIT", payload: { ok: false, error: "Could not fetch self from GitHub: HTTP " + sr.status } };
-        src = await sr.text();
-      } catch (e) { return { cmd: "INDEX_AUDIT", payload: { ok: false, error: String(e && e.message || e) } }; }
+        if (sr.ok) {
+          src = await sr.text();
+          srcAt = new Date().toISOString();
+          // cache the good read so a later 429/DNS blip can't masquerade as drift
+          await env.AURA_KV.put("cache:self_source", JSON.stringify({ src, at: srcAt }), { expirationTtl: 86400 }).catch(() => {});
+        }
+      } catch (e) { /* fall through to cache */ }
+      if (!src) {
+        // GitHub unavailable (rate-limit / DNS) - use the last cached read so we still return a verdict
+        try { const c = await env.AURA_KV.get("cache:self_source"); if (c) { const cj = JSON.parse(c); src = cj.src; srcAt = cj.at; srcStale = true; } } catch {}
+      }
+      if (!src) return { cmd: "INDEX_AUDIT", payload: { ok: false, error: "Could not fetch self from GitHub (rate-limited?) and no cached copy yet. Retry in a minute - the first successful read seeds the cache." } };
       const lines = src.split("\n");
       const buildMatch = src.match(/const BUILD = "([^"]+)"/);
       // Each check: a name, a per-line test, and whether matches in a *_FALLBACK / *_SAFETY / FB_ block are OK (allowed floor)
@@ -888,7 +898,7 @@ async function processCommand(line, env, isOp) {
       const verdict = structuralDrift === 0
         ? (promptDrift === 0 ? "CLEAN - no hardcoded content drift detected" : `SITUATION ENGINE CLEAN - ${promptDrift} inline prompts remain (known: cognition-layer prompts, a planned migration, not situation-engine drift)`)
         : `DRIFT DETECTED - ${structuralDrift} hardcoded item(s) that should be in KV (excluding known prompt migration)`;
-      return { cmd: "INDEX_AUDIT", payload: { ok: true, build: buildMatch ? buildMatch[1] : null, total_lines: lines.length, verdict, structural_drift: structuralDrift, prompt_drift: promptDrift, findings, note: "Run after every session. 'Floor' fallbacks (TOPICS_SAFETY, *_FALLBACK, FB_*) are intentional and excluded. Structural drift > 0 = something that should be in KV crept into code." } };
+      return { cmd: "INDEX_AUDIT", payload: { ok: true, build: buildMatch ? buildMatch[1] : null, total_lines: lines.length, verdict, structural_drift: structuralDrift, prompt_drift: promptDrift, findings, source_at: srcAt, stale: srcStale, note: (srcStale ? "NOTE: GitHub was unavailable; audited the last cached source copy. " : "") + "Run after every session. 'Floor' fallbacks (TOPICS_SAFETY, *_FALLBACK, FB_*) are intentional and excluded. Structural drift > 0 = something that should be in KV crept into code." } };
     }
 
     case "WHO_AM_I":

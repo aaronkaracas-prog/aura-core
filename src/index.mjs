@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.335-2026-06-30";
+const BUILD = "aura-core-v4.9.336-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -2377,6 +2377,25 @@ async function processCommand(line, env, isOp) {
       return { cmd: "SITUATION_TOPICS", payload: { ok: true, source: src, topic_count: keys.length, topics: keys, by_domain: topics ? byDomain : "(fallback - run with KV seeded to see domain grouping)", registries: { topics: src, prompts: promptsSrc, regions: regionsSrc, region_types: regionTypes }, note: src === "kv" ? "Topics loaded from KV - new situations need no deploy." : "Topics from in-code fallback. Seed situation:topics in KV to migrate." } };
     }
 
+    case "SITUATION_TOPIC_ADD": {
+      // Add (or update) ONE industry/situation topic in KV - the "make a new industry as easy as a
+      // region" verb. Merges into situation:topics; never rewrites the whole map by hand. After this,
+      // SITUATION_PULL <key> -> SITUATION_BRIEF <key> work immediately, no deploy.
+      //   SITUATION_TOPIC_ADD <key> ::: {"domain":"agriculture","label":"...","news":"...","search":"..."}
+      //   (maritime/fire/quake/storm domains also accept their feed keys: oil, ais, fire, quake, storm, lat, lon)
+      if (!isOp) return { cmd: "SITUATION_TOPIC_ADD", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const taKey = (rest.split(":::")[0] || "").trim();
+      const taJson = rest.includes(":::") ? rest.slice(rest.indexOf(":::") + 3).trim() : "";
+      if (!taKey || !taJson) return { cmd: "SITUATION_TOPIC_ADD", payload: { ok: false, error: 'Usage: SITUATION_TOPIC_ADD <key> ::: {"domain":"...","label":"...","news":"...","search":"..."}' } };
+      let taDef; try { taDef = JSON.parse(taJson); } catch (e) { return { cmd: "SITUATION_TOPIC_ADD", payload: { ok: false, error: "invalid JSON: " + String(e && e.message || e) } }; }
+      if (!taDef.domain || !taDef.label) return { cmd: "SITUATION_TOPIC_ADD", payload: { ok: false, error: "topic needs at least { domain, label, news, search }" } };
+      let taTopics = {}; try { const t = await env.AURA_KV.get("situation:topics"); if (t) taTopics = JSON.parse(t); } catch {}
+      const taExisted = !!taTopics[taKey];
+      taTopics[taKey] = taDef;
+      await env.AURA_KV.put("situation:topics", JSON.stringify(taTopics));
+      return { cmd: "SITUATION_TOPIC_ADD", payload: { ok: true, key: taKey, domain: taDef.domain, action: taExisted ? "updated" : "added", topic_count: Object.keys(taTopics).length, note: "Live in KV. Run SITUATION_PULL " + taKey + " then SITUATION_BRIEF " + taKey + " - no deploy." } };
+    }
+
     case "SITUATION_PULL": {
       // LAYER 1+2 of SituationTracker. Gather ALL live feeds for a topic into ONE structured
       // situation snapshot in KV. Generic: the topic is the input; Hormuz is just the first one.
@@ -2461,6 +2480,23 @@ async function processCommand(line, env, isOp) {
         await env.AURA_KV.put(`situation:snapshot:${topicKey}`, JSON.stringify(snapshot), { expirationTtl: 3600 }).catch(() => {});
         return { cmd: "SITUATION_PULL", payload: { ok: true, topic: topicKey, domain, label: T.label, pulled_at: snapshot.pulled_at, feeds: { news: snapshot.news.length, web: snapshot.web_ok, quakes: snapshot.quakes.count }, note: "Quake snapshot stored. Run SITUATION_BRIEF " + topicKey + " for the analysis." } };
       }
+      // GENERIC INDUSTRY DOMAIN: any domain not wired with its own feeds (fire/storm/quake/maritime
+      // already returned above) gets the UNIVERSAL feeds - news + web search. THIS is what makes a new
+      // industry a KV write, not code: add a topic with any domain string + news/search terms and its
+      // awareness asset works end to end (PULL + BRIEF), zero deploy.
+      if (domain !== "maritime") {
+        const [news, web] = await Promise.all([
+          run(`NEWS_QUERY ${T.news}`),
+          run(`WEB_SEARCH ${T.search}`)
+        ]);
+        snapshot = {
+          topic: topicKey, domain, label: T.label, pulled_at: new Date().toISOString(),
+          news: news && news.ok ? (news.news || []).slice(0, 10) : [], news_ok: !!(news && news.ok),
+          web: web && web.ok ? (web.results || web.answer || web) : null, web_ok: !!(web && web.ok)
+        };
+        await env.AURA_KV.put(`situation:snapshot:${topicKey}`, JSON.stringify(snapshot), { expirationTtl: 3600 }).catch(() => {});
+        return { cmd: "SITUATION_PULL", payload: { ok: true, topic: topicKey, domain, label: T.label, pulled_at: snapshot.pulled_at, feeds: { news: snapshot.news.length, web: snapshot.web_ok }, note: "Generic industry snapshot stored (news+web). Run SITUATION_BRIEF " + topicKey + " for the analysis." } };
+      }
       const [news, oil, wx, web, ais] = await Promise.all([
         run(`NEWS_QUERY ${T.news}`),
         run(`OIL_PRICE ${T.oil}`),
@@ -2535,8 +2571,17 @@ async function processCommand(line, env, isOp) {
       } else {
         const oilLine = snap.oil ? `${snap.oil.formatted || snap.oil.price} ${snap.oil.currency || ""} @ ${snap.oil.at || ""}` : "unavailable";
         const shipLine = snap.ships ? `${snap.ships.vessel_count} vessels (${snap.ships.source})` : "no AIS";
-        sysPrompt = PROMPTS.maritime || FB_MARITIME;
-        question = `Situation: ${snap.label}\nPulled: ${snap.pulled_at}\n\nLIVE NEWS:\n${newsLines}\n\nOIL: ${oilLine}\nWEATHER (strait): ${wxLine}\nSHIPS: ${shipLine}\n\nProduce the operator briefing JSON now.`;
+        if (snapDomain === "maritime") {
+          sysPrompt = PROMPTS.maritime || FB_MARITIME;
+          question = `Situation: ${snap.label}\nPulled: ${snap.pulled_at}\n\nLIVE NEWS:\n${newsLines}\n\nOIL: ${oilLine}\nWEATHER (strait): ${wxLine}\nSHIPS: ${shipLine}\n\nProduce the operator briefing JSON now.`;
+        } else {
+          // GENERIC INDUSTRY DOMAIN brief: any new vertical (agriculture, trucking, energy, ...) uses its
+          // KV-tuned prompt situation:prompts[domain] if seeded, else a universal situation-analyst floor.
+          // News + web only. New industry's awareness asset = a KV topic write, no code.
+          const FB_GENERIC = "You are SituationTracker, a universal operational intelligence engine. You are given a live situation in a specific industry/domain, assembled from current news and web search. Produce the decision-grade brief a professional in that domain would actually pay for: what is genuinely happening, what changed, what it means for operations, and what to watch next. Ground every claim in the provided sources; never invent figures - tag any casualty/impact numbers as per reports (unverified). Output STRICT JSON only with keys: status (one line: the situation now), drivers (array: the forces behind it), threat (one line: the primary operational risk/opportunity), lead_time (one line: how much warning or runway exists), alerts (array: what to do now), outlook (array of if-then forward reads), confidence (low|medium|high).";
+          sysPrompt = PROMPTS[snapDomain] || PROMPTS.generic || FB_GENERIC;
+          question = `Situation: ${snap.label}\nDomain: ${snapDomain}\nPulled: ${snap.pulled_at}\n\nLIVE NEWS:\n${newsLines}\n\nWEB SEARCH:\n${typeof snap.web === "string" ? snap.web : JSON.stringify(snap.web || "").slice(0, 1500)}\n\nProduce the operator briefing JSON now.`;
+        }
       }
       let text = "", provider = null, lastErr = null;
       // 1) Anthropic - Aura's primary brain

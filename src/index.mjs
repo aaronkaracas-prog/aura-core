@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.348-2026-06-30";
+const BUILD = "aura-core-v4.9.349-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -401,6 +401,55 @@ async function resolveFeedUrl(env, key, params = {}, fallbackTemplate = "") {
     url = url.split("{" + k + "}").join(encodeURIComponent(String(v == null ? "" : v)));
   }
   return url;
+}
+
+// LIVE-EVENT FINDER - scan the whole country for the most significant ACTIVE NWS hazards right now
+// (severity Severe/Extreme), rank them (tornado > flash-flood-emergency > severe-tstorm > flash-flood >
+// watches), and attach a polygon-centroid lat/lon so Aura can aim deep multi-model analysis at a REAL
+// event instead of a typed-in coordinate. Keyless (api.weather.gov). Shared by LIVE_EVENTS and STORM_HUNT.
+async function scanLiveEvents(env, topN = 8) {
+  const url = await resolveFeedUrl(env, "alerts_nws_active", {}, `https://api.weather.gov/alerts/active?status=actual&message_type=alert&severity=Extreme,Severe&urgency=Immediate,Expected&limit=500`);
+  const r = await fetchWithTimeout(url, { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)", "Accept": "application/geo+json" } }, 9000);
+  if (!r.ok) return { ok: false, error: `nws alerts http ${r.status}` };
+  const d = await r.json();
+  const feats = Array.isArray(d.features) ? d.features : [];
+  const rank = (ev) => {
+    const e = (ev || "").toLowerCase();
+    if (e.includes("tornado") && e.includes("emergency")) return 100;
+    if (e.includes("tornado warning")) return 92;
+    if (e.includes("flash flood") && e.includes("emergency")) return 88;
+    if (e.includes("severe thunderstorm warning")) return 78;
+    if (e.includes("flash flood warning")) return 72;
+    if (e.includes("tornado watch")) return 55;
+    if (e.includes("severe thunderstorm watch")) return 50;
+    if (e.includes("flood warning")) return 42;
+    if (e.includes("flood watch") || e.includes("flood advisory")) return 30;
+    return 12;
+  };
+  const centroid = (geom) => {
+    if (!geom || geom.type !== "Polygon" || !Array.isArray(geom.coordinates)) return null;
+    const ring = geom.coordinates[0] || [];
+    let sx = 0, sy = 0, n = 0;
+    for (const pt of ring) { if (Array.isArray(pt) && pt.length >= 2) { sx += pt[0]; sy += pt[1]; n++; } }
+    if (!n) return null;
+    return { lat: Math.round(sy / n * 1000) / 1000, lon: Math.round(sx / n * 1000) / 1000 };
+  };
+  const all = feats.map(f => {
+    const p = f.properties || {}; const c = centroid(f.geometry);
+    return { event: p.event || "", severity: p.severity || "", urgency: p.urgency || "", certainty: p.certainty || "",
+      area: (p.areaDesc || "").slice(0, 120), expires: p.expires || "", headline: (p.headline || "").slice(0, 160),
+      lat: c ? c.lat : null, lon: c ? c.lon : null, _rank: rank(p.event) };
+  }).filter(e => e.lat !== null).sort((a, b) => b._rank - a._rank || (a.expires < b.expires ? -1 : 1));
+  // spread the picks geographically: skip a near-duplicate of an already-picked same-type event (~0.4 deg)
+  const top = [];
+  for (const e of all) {
+    if (top.length >= topN) break;
+    if (top.find(p => p.event === e.event && Math.abs(p.lat - e.lat) < 0.4 && Math.abs(p.lon - e.lon) < 0.4)) continue;
+    const { _rank, ...clean } = e; top.push(clean);
+  }
+  const by_type = {};
+  for (const f of feats) { const ev = (f.properties || {}).event || "other"; by_type[ev] = (by_type[ev] || 0) + 1; }
+  return { ok: true, total_active: feats.length, by_type, top };
 }
 
 async function getOperatorToken(env) {
@@ -1578,6 +1627,39 @@ async function processCommand(line, env, isOp) {
         if (!reasoning) reasoning = { headline: text.slice(0, 300), raw: true };
       }
       return { cmd: "WEATHER_REASON", payload: { ok: true, lat: wrLat, lon: wrLon, models: wrModels.models, spread: wrModels.compare, official_watches: wrAlerts, reasoning, provider: "anthropic", note: "Bias-aware multi-model meteorological reasoning. Model knowledge in KV (cognition:prompts.weather_meteorologist); floor in code." } };
+    }
+
+    case "LIVE_EVENTS": {
+      // THE FINDER - ranked active hazards nationwide with coordinates. Fast, no LLM. The menu Aura hunts from.
+      //   LIVE_EVENTS          (top 8)    |    LIVE_EVENTS 15
+      const leN = Math.min(Math.max(parseInt(line.replace(/^LIVE_EVENTS\s*/i, "").trim()) || 8, 1), 25);
+      try {
+        const scan = await scanLiveEvents(env, leN);
+        if (!scan.ok) return { cmd: "LIVE_EVENTS", payload: scan };
+        return { cmd: "LIVE_EVENTS", payload: { ok: true, total_active: scan.total_active, by_type: scan.by_type, top: scan.top,
+          note: "Most significant ACTIVE NWS hazards nationwide right now (severity Severe/Extreme), ranked tornado>flash-flood-emergency>severe-tstorm>flash-flood>watches, each with a polygon-centroid lat/lon. Feed any to WEATHER_REASON <lat> <lon>, or run STORM_HUNT to auto-analyze the worst one." } };
+      } catch (e) { return { cmd: "LIVE_EVENTS", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "STORM_HUNT": {
+      // SHE PICKS THE STORM - find the single most dangerous active hazard in the country (optionally
+      // filtered: tornado | flood | thunderstorm), then run full bias-aware multi-model reasoning at its
+      // location. Finder + meteorologist in one verb - the asset aiming itself at the real event.
+      //   STORM_HUNT           (worst active event)   |    STORM_HUNT tornado   |    STORM_HUNT flood
+      const shFilter = line.replace(/^STORM_HUNT\s*/i, "").trim().toLowerCase();
+      try {
+        const scan = await scanLiveEvents(env, 25);
+        if (!scan.ok) return { cmd: "STORM_HUNT", payload: scan };
+        let pool = scan.top;
+        if (shFilter) pool = pool.filter(e => e.event.toLowerCase().includes(shFilter));
+        const pick = pool[0];
+        if (!pick) return { cmd: "STORM_HUNT", payload: { ok: true, found: false, total_active: scan.total_active, by_type: scan.by_type,
+          note: shFilter ? `No active '${shFilter}' hazard with a mappable location right now.` : "No mappable severe/extreme hazard active right now." } };
+        const wr = await processCommand(`WEATHER_REASON ${pick.lat} ${pick.lon}`, env, true);
+        const wrp = (wr && wr.payload) ? wr.payload : wr;
+        return { cmd: "STORM_HUNT", payload: { ok: true, found: true, hunting: pick, also_active: pool.slice(1, 6), total_active: scan.total_active,
+          analysis: wrp, note: "Aura scanned every active NWS hazard nationwide, locked the most dangerous one, and ran full bias-aware multi-model reasoning at its location. 'hunting' = the event she chose; 'analysis' = her forecast for that exact spot." } };
+      } catch (e) { return { cmd: "STORM_HUNT", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 
     case "STORM_PREDICT": {

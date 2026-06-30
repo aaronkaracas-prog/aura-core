@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.316-2026-06-29";
+const BUILD = "aura-core-v4.9.317-2026-06-29";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1348,6 +1348,55 @@ async function processCommand(line, env, isOp) {
         const fireAircraft = aircraft.filter(a => a.likely_fire);
         return { cmd: "AIRCRAFT_QUERY", payload: { ok: true, source: "opensky_live", region: acRegion, label: acb.label, total_aircraft: aircraft.length, likely_firefighting: fireAircraft.length, fire_aircraft: fireAircraft.slice(0, 30), all_sample: aircraft.slice(0, 20), updated: new Date().toISOString(), note: fireAircraft.length ? "Flagged aircraft are heuristic matches by callsign - confirm against the incident air-ops roster." : "No firefighting-pattern callsigns in this pass (aircraft may be on the ground, between drops, or using non-standard callsigns). Total air traffic still shown." } };
       } catch (e) { return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, source: "opensky_error", region: acRegion, error: String(e && e.message || e) } }; }
+    }
+
+    case "STORM_PREDICT": {
+      // THE PREDICTION DEPTH - pulls SPC Mesoscale Discussions: the forecasters' real-time reasoning
+      // about where storms are ABOUT TO develop (next 1-6h), issued AHEAD of watches. Plus the day's
+      // convective outlook. Aura reasons on the raw meteorology to read formation potential BEFORE the
+      // warning fires. This is the "see it forming, get people out sooner" layer - not relaying alerts.
+      //   STORM_PREDICT          (all active mesoscale discussions + Aura's formation read)
+      if (!isOp) return { cmd: "STORM_PREDICT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      try {
+        // 1) Active SPC Mesoscale Discussions (keyless ArcGIS) - the pre-watch reasoning layer
+        const mdUrl = "https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/spc_mesoscale_discussion/MapServer/0/query?where=1%3D1&outFields=*&returnGeometry=false&f=json";
+        const mdR = await fetch(mdUrl, { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)" } });
+        let discussions = [];
+        if (mdR.ok) {
+          const md = await mdR.json();
+          discussions = (md.features || []).map(f => {
+            const a = f.attributes || {};
+            return {
+              md_number: a.mdnumber ?? a.MDNUMBER ?? null,
+              summary: a.summary ?? a.SUMMARY ?? null,
+              concerning: a.concerning ?? a.CONCERNING ?? null,
+              discussion: (a.discussion ?? a.DISCUSSION ?? "").slice(0, 1200),
+              valid: a.valid ?? a.VALID ?? null,
+              expire: a.expire ?? a.EXPIRE ?? null,
+              watch_prob: a.watchprob ?? a.WATCHPROB ?? null
+            };
+          });
+        }
+        // also try to pull current alerts so Aura can compare "what's forming" vs "what's already warned"
+        const stormNow = await (async () => { try { const r = await processCommand("STORM_QUERY all", env, true); return (r && r.payload) ? r.payload : null; } catch { return null; } })();
+        // 2) Aura reasons on the raw meteorology
+        const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+        let prediction = null;
+        if (anthKey) {
+          const sys = "You are Aura, a severe-storm formation analyst. You are given SPC Mesoscale Discussions - the forecasters' raw reasoning about where convection is ABOUT TO develop in the next 1-6 hours, issued BEFORE watches - plus any alerts already active. Your job is the FORMATION read that gets people out sooner: reason about the meteorology (instability/CAPE, wind shear, helicity, boundaries, storm mode) to identify where tornado/severe potential is escalating and how much lead time exists BEFORE a warning would fire. You synthesize across the discussions - you do not just relay them. Be precise and never invent data. Output STRICT JSON only: forming (array of 1-3 short strings: where severe/tornado potential is building and the key ingredient driving it), escalation (one line: which area is most likely to go from discussion->watch->warning next, and why), lead_time_gained (one line: how much earlier this signal is than waiting for a warning), watch_out (array of 1-3 short strings: specific areas/populations to pre-position or alert NOW), confidence (low|medium|high), caveat (one line: the honest limit - this complements SPC/NWS, not replaces their models).";
+          const discText = discussions.length ? discussions.map(d => `MD#${d.md_number} (watch prob ${d.watch_prob || "?"}): ${d.concerning || ""} | ${d.summary || d.discussion || ""}`).join("\n\n").slice(0, 4000) : "No active mesoscale discussions right now.";
+          const nowText = stormNow && stormNow.ok ? `Active alerts: ${stormNow.total_storm_alerts} (${stormNow.tornado_alerts} tornado). Types: ${Object.entries(stormNow.by_type || {}).map(([k, v]) => k + " x" + v).join(", ")}` : "alerts unavailable";
+          const usr = `SPC MESOSCALE DISCUSSIONS (the pre-watch reasoning layer):\n${discText}\n\nALREADY ACTIVE: ${nowText}\n\nProduce the formation-prediction JSON now.`;
+          try {
+            const res = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+              body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 700, system: sys, messages: [{ role: "user", content: usr }] })
+            });
+            if (res.ok) { const j = await res.json(); let t = (j.content && j.content[0] && j.content[0].text) ? j.content[0].text : ""; t = t.replace(/```json|```/g, "").trim(); try { prediction = JSON.parse(t); } catch { prediction = { forming: [t.slice(0, 200)], raw: true }; } }
+          } catch {}
+        }
+        return { cmd: "STORM_PREDICT", payload: { ok: true, source: "spc_mcd_live", active_discussions: discussions.length, discussions: discussions.slice(0, 6), prediction, updated: new Date().toISOString(), note: discussions.length ? `${discussions.length} active mesoscale discussion(s) - reasoning on formation potential` : "No active SPC mesoscale discussions; no convective development flagged right now." } };
+      } catch (e) { return { cmd: "STORM_PREDICT", payload: { ok: false, source: "spc_error", error: String(e && e.message || e) } }; }
     }
 
     case "HURRICANE_QUERY": {

@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.322-2026-06-30";
+const BUILD = "aura-core-v4.9.323-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -338,6 +338,24 @@ function jsonReply(obj, status = 200) {
     status,
     headers: { "content-type": "application/json", "access-control-allow-origin": "*" }
   });
+}
+
+// Region registry loader. Geography is an OPEN, planet-wide list (every city/coast/fault/fire on
+// Earth) - so it lives in KV (situation:regions), not in code. Aura can add any new region without a
+// deploy. KV entries are MERGED OVER the in-code fallback per feed-type, so built-ins never disappear
+// and new regions just add on. feedType is one of: fire (FIRMS w/s/e/n), fire_official (state codes),
+// aircraft (lamin/lamax + centers), ais (latBottom/latTop), quake_feeds (level map).
+async function loadRegions(env, feedType, fallback) {
+  try {
+    const raw = await env.AURA_KV.get("situation:regions");
+    if (raw) {
+      const all = JSON.parse(raw);
+      if (all && typeof all === "object" && all[feedType] && typeof all[feedType] === "object") {
+        return { ...fallback, ...all[feedType] }; // KV adds to / overrides built-ins, never removes
+      }
+    }
+  } catch (e) { /* fall through to fallback on any read/parse error */ }
+  return fallback;
 }
 
 async function getOperatorToken(env) {
@@ -1246,10 +1264,10 @@ async function processCommand(line, env, isOp) {
       //   FIRE_OFFICIAL <region>     (reuses fire region boxes)
       if (!isOp) return { cmd: "FIRE_OFFICIAL", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const foRegion = (line.replace(/^FIRE_OFFICIAL\s+/i, "").trim() || "cottonwood").toLowerCase();
-      const FO_STATES = {
+      const FO_STATES = await loadRegions(env, "fire_official", {
         cottonwood: "US-UT", utah: "US-UT", california: "US-CA", socal: "US-CA",
         west: null // null = all
-      };
+      });
       if (!(foRegion in FO_STATES)) return { cmd: "FIRE_OFFICIAL", payload: { ok: false, error: "unknown region: " + foRegion, regions: Object.keys(FO_STATES) } };
       const stateFilter = FO_STATES[foRegion];
       try {
@@ -1290,20 +1308,20 @@ async function processCommand(line, env, isOp) {
       //   AIRCRAFT_QUERY <region>     (region maps to a bbox; reuses fire regions + maritime ones)
       if (!isOp) return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const acRegion = (line.replace(/^AIRCRAFT_QUERY\s+/i, "").trim() || "cottonwood").toLowerCase();
-      const AC_BOXES = {
+      const AC_BOXES = await loadRegions(env, "aircraft_boxes", {
         cottonwood: { lamin: 38.0, lamax: 38.7, lomin: -112.9, lomax: -112.1, label: "Cottonwood Fire airspace" },
         socal: { lamin: 33.0, lamax: 34.8, lomin: -119.5, lomax: -116.0, label: "Southern California" },
         norcal: { lamin: 38.0, lamax: 41.0, lomin: -123.5, lomax: -120.0, label: "Northern California" },
         california: { lamin: 32.5, lamax: 42.0, lomin: -124.5, lomax: -114.0, label: "California" },
         utah: { lamin: 37.0, lamax: 42.0, lomin: -114.0, lomax: -109.0, label: "Utah" }
-      };
-      const acCENTERS = {
+      });
+      const acCENTERS = await loadRegions(env, "aircraft_centers", {
         cottonwood: { lat: 38.30, lon: -112.50, label: "Cottonwood Fire airspace" },
         socal: { lat: 34.05, lon: -118.24, label: "Southern California" },
         norcal: { lat: 38.58, lon: -121.49, label: "Northern California" },
         california: { lat: 36.78, lon: -119.42, label: "California" },
         utah: { lat: 39.32, lon: -111.09, label: "Utah" }
-      };
+      });
       const acb = AC_BOXES[acRegion];
       const ctr = acCENTERS[acRegion];
       if (!acb && !ctr) return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, error: "unknown region: " + acRegion, regions: Object.keys(acCENTERS) } };
@@ -1658,7 +1676,7 @@ async function processCommand(line, env, isOp) {
       //   FIRE_QUERY <region>     (region maps to a bbox below)
       if (!isOp) return { cmd: "FIRE_QUERY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const fqRegion = (line.replace(/^FIRE_QUERY\s+/i, "").trim() || "socal").toLowerCase();
-      const FIRE_BOXES = {
+      const FIRE_BOXES = await loadRegions(env, "fire", {
         // west,south,east,north
         socal: { w: -119.5, s: 33.0, e: -116.0, n: 34.8, label: "Southern California" },
         norcal: { w: -123.5, s: 38.0, e: -120.0, n: 41.0, label: "Northern California" },
@@ -1667,7 +1685,7 @@ async function processCommand(line, env, isOp) {
         utah: { w: -114.0, s: 37.0, e: -109.0, n: 42.0, label: "Utah" },
         greece: { w: 20.0, s: 35.0, e: 26.5, n: 41.0, label: "Greece" },
         australia_se: { w: 145.0, s: -39.0, e: 154.0, n: -28.0, label: "SE Australia" }
-      };
+      });
       const fb = FIRE_BOXES[fqRegion];
       if (!fb) return { cmd: "FIRE_QUERY", payload: { ok: false, error: "unknown region: " + fqRegion, regions: Object.keys(FIRE_BOXES) } };
       const fkey = await env.AURA_KV.get("secret:firms").catch(() => null);
@@ -2226,7 +2244,11 @@ async function processCommand(line, env, isOp) {
       const keys = topics ? Object.keys(topics) : ["hormuz", "socal_fire", "norcal_fire", "cottonwood_fire", "global_quakes", "venezuela_quake", "us_storms"];
       const byDomain = {};
       if (topics) for (const [k, v] of Object.entries(topics)) { const d = v.domain || "?"; (byDomain[d] = byDomain[d] || []).push(k); }
-      return { cmd: "SITUATION_TOPICS", payload: { ok: true, source: src, topic_count: keys.length, topics: keys, by_domain: topics ? byDomain : "(fallback - run with KV seeded to see domain grouping)", note: src === "kv" ? "Topics loaded from KV - new situations need no deploy." : "Topics from in-code fallback. Seed situation:topics in KV to migrate." } };
+      // also report the regions + prompts registries
+      let regionsSrc = "fallback", regionTypes = null, promptsSrc = "fallback";
+      try { const rr = await env.AURA_KV.get("situation:regions"); if (rr) { const rp = JSON.parse(rr); if (rp && typeof rp === "object") { regionsSrc = "kv"; regionTypes = {}; for (const [ft, obj] of Object.entries(rp)) regionTypes[ft] = obj && typeof obj === "object" ? Object.keys(obj).length : 0; } } } catch {}
+      try { const pp = await env.AURA_KV.get("situation:prompts"); if (pp) { const pj = JSON.parse(pp); if (pj && typeof pj === "object" && Object.keys(pj).length) promptsSrc = "kv"; } } catch {}
+      return { cmd: "SITUATION_TOPICS", payload: { ok: true, source: src, topic_count: keys.length, topics: keys, by_domain: topics ? byDomain : "(fallback - run with KV seeded to see domain grouping)", registries: { topics: src, prompts: promptsSrc, regions: regionsSrc, region_types: regionTypes }, note: src === "kv" ? "Topics loaded from KV - new situations need no deploy." : "Topics from in-code fallback. Seed situation:topics in KV to migrate." } };
     }
 
     case "SITUATION_PULL": {
@@ -2448,13 +2470,13 @@ async function processCommand(line, env, isOp) {
       }
       // LIVE REST PATH: VesselAPI bounding-box (free tier, instant). Real dots without a WebSocket.
       const vkey = await env.AURA_KV.get("secret:vesselapi").catch(() => null);
-      const BOXES = {
+      const BOXES = await loadRegions(env, "ais", {
         hormuz: { latBottom: 25.5, latTop: 27.5, lonLeft: 55.5, lonRight: 57.5 },
         fujairah: { latBottom: 24.8, latTop: 26.0, lonLeft: 56.0, lonRight: 57.0 },
         jebelali: { latBottom: 24.8, latTop: 25.4, lonLeft: 54.8, lonRight: 55.4 },
         rotterdam: { latBottom: 51.85, latTop: 52.05, lonLeft: 3.95, lonRight: 4.20 },
         singapore: { latBottom: 1.0, latTop: 1.5, lonLeft: 103.5, lonRight: 104.2 }
-      };
+      });
       const aisBox = BOXES[region];
       if (vkey && aisBox) {
         try {

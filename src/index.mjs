@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.358-2026-06-30";
+const BUILD = "aura-core-v4.9.359-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1739,11 +1739,19 @@ async function processCommand(line, env, isOp) {
         const snapMax = (field) => { let mx = null; for (const m of Object.values(wrModels.compare || {})) { const v = m[field] && m[field].now; if (typeof v === "number") mx = (mx == null ? v : Math.max(mx, v)); } return mx; };
         const tIso = new Date().toISOString();
         const hadWarning = !!(wrAlerts && wrAlerts.alerts && wrAlerts.alerts.some(a => /warning/i.test(a.event || "")));
+        // each model's NAIVE severe call from its own ingredients (the baseline Aura is measured against):
+        // severe if (CAPE>=1000 AND 0-6km shear>=40 km/h) OR CAPE>=2500. Applied identically to every model.
+        const model_calls = {};
+        for (const [m, mc] of Object.entries(wrModels.compare || {})) {
+          const cape = mc.cape_jkg && mc.cape_jkg.now, sh = mc.shear_sfc500_kmh && mc.shear_sfc500_kmh.now;
+          model_calls[m.split("_")[0]] = (typeof cape === "number" && typeof sh === "number") ? (((cape >= 1000 && sh >= 40) || cape >= 2500)) : null;
+        }
+        const aura_pred = ["likely", "occurring"].includes((reasoning && reasoning.severe_risk));
         const rec = { t: tIso, lat: wrLat, lon: wrLon, window_h: 6, window_end: new Date(Date.now() + 6 * 3600 * 1000).toISOString(),
           severe_risk: (reasoning && reasoning.severe_risk) || null, threats: (reasoning && reasoning.primary_threats) || [],
           confidence: (reasoning && reasoning.confidence) || null, headline: ((reasoning && reasoning.headline) || "").slice(0, 200),
           had_warning: hadWarning, ingredients: { cape: snapMax("cape_jkg"), shear06: snapMax("shear_sfc500_kmh"), shear01: snapMax("shear_sfc850_kmh"), lapse: snapMax("mid_lapse_c_km") },
-          verdict: null, verified_at: null };
+          aura_pred, model_calls, verdict: null, verified_at: null };
         await env.AURA_KV.put(`forecast:log:${tIso}:${wrLat}_${wrLon}`, JSON.stringify(rec), { expirationTtl: 60 * 60 * 24 * 30 }).catch(() => {});
       } catch {}
       return { cmd: "WEATHER_REASON", payload: { ok: true, lat: wrLat, lon: wrLon, models: wrModels.models, spread: wrModels.compare, official_watches: wrAlerts, storm_reports: wrReports, marine: wrMarine, reasoning, provider: "anthropic", note: "Bias-aware multi-model meteorological reasoning. Model knowledge in KV (cognition:prompts.weather_meteorologist); floor in code." } };
@@ -1820,10 +1828,23 @@ async function processCommand(line, env, isOp) {
         const tally = { hit: 0, miss: 0, false_alarm: 0, correct_null: 0, marginal: 0 };
         let scored_now = 0, pending = 0, total = 0;
         const recent = [];
+        // HEAD-TO-HEAD: tally hit/miss/false_alarm/correct_null for Aura AND each raw model, same ground truth
+        const h2h = {};
+        const bump = (who, pred, act) => {
+          if (pred == null || who == null) return;
+          if (!h2h[who]) h2h[who] = { h: 0, m: 0, fa: 0, cn: 0 };
+          const t = h2h[who];
+          if (pred && act) t.h++; else if (pred && !act) t.fa++; else if (!pred && act) t.m++; else t.cn++;
+        };
+        const scoreH2H = (rec) => {
+          if (typeof rec.actual_severe !== "boolean") return;
+          if (typeof rec.aura_pred === "boolean") bump("aura", rec.aura_pred, rec.actual_severe);
+          if (rec.model_calls) for (const [who, pred] of Object.entries(rec.model_calls)) bump(who, pred, rec.actual_severe);
+        };
         for (const k of keys) {
           let rec; try { rec = JSON.parse(await env.AURA_KV.get(k)); } catch { continue; }
           if (!rec) continue; total++;
-          if (rec.verdict) { tally[rec.verdict] = (tally[rec.verdict] || 0) + 1; recent.push(rec); continue; }
+          if (rec.verdict) { tally[rec.verdict] = (tally[rec.verdict] || 0) + 1; scoreH2H(rec); recent.push(rec); continue; }
           if (Date.parse(rec.window_end) > nowMs) { pending++; continue; } // window not elapsed yet
           // grade it: pull reports in [t-1h, window_end] near the point (the extra hour catches in-progress 'occurring' storms)
           const rep = await fetchStormReports(env, rec.lat, rec.lon, (rec.window_h || 6) + 1, 1.2, new Date(rec.window_end));
@@ -1839,13 +1860,26 @@ async function processCommand(line, env, isOp) {
           else verdict = "marginal";
           rec.verdict = verdict; rec.verified_at = new Date().toISOString(); rec.actual_severe = actual; rec.actual_reports = sev.length;
           await env.AURA_KV.put(k, JSON.stringify(rec), { expirationTtl: 60 * 60 * 24 * 30 }).catch(() => {});
-          tally[verdict] = (tally[verdict] || 0) + 1; scored_now++; recent.push(rec);
+          tally[verdict] = (tally[verdict] || 0) + 1; scored_now++; scoreH2H(rec); recent.push(rec);
         }
         const graded = tally.hit + tally.miss + tally.false_alarm + tally.correct_null;
         const accuracy = graded ? Math.round((tally.hit + tally.correct_null) / graded * 100) : null;
+        // per-forecaster skill: CSI = hits/(hits+misses+false_alarms) - the honest single number for rare events
+        const pct = (x) => x == null ? null : Math.round(x * 100);
+        const scoreboard = {};
+        for (const [who, t] of Object.entries(h2h)) {
+          const n = t.h + t.m + t.fa + t.cn;
+          scoreboard[who] = { samples: n, hits: t.h, misses: t.m, false_alarms: t.fa, correct_nulls: t.cn,
+            CSI: (t.h + t.m + t.fa) ? pct(t.h / (t.h + t.m + t.fa)) : null,           // 0-100, higher better
+            detection_pct: (t.h + t.m) ? pct(t.h / (t.h + t.m)) : null,               // POD: of severe that happened, how many caught
+            false_alarm_pct: (t.h + t.fa) ? pct(t.fa / (t.h + t.fa)) : null,          // FAR: of severe calls, how many wrong
+            accuracy_pct: n ? pct((t.h + t.cn) / n) : null };
+        }
+        const aCSI = scoreboard.aura && scoreboard.aura.CSI;
+        const headline = (aCSI != null) ? `Aura CSI ${aCSI} vs ` + ["ecmwf", "gfs", "icon", "gem"].filter(m => scoreboard[m]).map(m => `${m.toUpperCase()} ${scoreboard[m].CSI}`).join(", ") : "not enough graded forecasts yet";
         return { cmd: "FORECAST_SCORE", payload: { ok: true, total_logged: total, graded, pending, newly_scored: scored_now, tally,
-          accuracy_pct: accuracy, recent: recent.slice(-12),
-          note: "Report-based verification (lower bound - LSRs are sparse, so 'no report' is not proof nothing happened). hit=predicted severe & severe reported; miss=said none but severe reported; false_alarm=predicted severe, none reported; correct_null=said none, none reported. Accuracy = (hit+correct_null)/graded. Track record grows as more forecasts' windows elapse." } };
+          accuracy_pct: accuracy, head_to_head: scoreboard, scoreboard_headline: headline, recent: recent.slice(-12),
+          note: "Report-based head-to-head (lower bound - LSRs sparse). head_to_head scores Aura AND each raw model on the SAME severe yes/no question vs the SAME ground truth. CSI (critical success index, 0-100) is the honest single number for rare events: higher = better; detection_pct = of severe that happened, how many caught; false_alarm_pct = of severe calls, how many were wrong. Aura's edge comes from synthesizing radar+reports the raw models don't see. NUMBER IS NOISE until dozens-hundreds of forecasts accumulate over days - run periodically." } };
       } catch (e) { return { cmd: "FORECAST_SCORE", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 

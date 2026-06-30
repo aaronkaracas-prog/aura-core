@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.338-2026-06-30";
+const BUILD = "aura-core-v4.9.339-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -907,7 +907,8 @@ async function processCommand(line, env, isOp) {
         { id: "inline_topic_maps", desc: "Topic definitions hardcoded in code (should be in situation:topics)", re: /\bdomain:\s*"(maritime|fire|quake|storm)".*label:/, floorOk: true },
         { id: "inline_region_boxes", desc: "Region bounding boxes hardcoded (should be in situation:regions)", re: /(lamin:\s*-?\d|latBottom:\s*-?\d|\bw:\s*-?\d+\.\d.*\bs:\s*-?\d)/, floorOk: true },
         { id: "inline_prompts", desc: "System prompts hardcoded inline (candidates for cognition:prompts:* in KV)", re: /"You are /, floorOk: true },
-        { id: "demo_content", desc: "Hardcoded demo/business names (belong in KV or a demo file)", re: /Jebel Ali|MV Gulf Carrier/, floorOk: false }
+        { id: "demo_content", desc: "Hardcoded demo/business names (belong in KV or a demo file)", re: /Jebel Ali|MV Gulf Carrier/, floorOk: false },
+        { id: "hardcoded_endpoints", desc: "External endpoint/feed URLs hardcoded in source (should live in KV feeds:registry / integration config - index keeps only the generic fetch machinery)", re: /https?:\/\/(?!(?:api\.anthropic\.com|api\.openai\.com|api\.x\.ai|api\.cloudflare\.com|api\.github\.com|github\.com|raw\.githubusercontent\.com|[a-z0-9.-]*\.workers\.dev|auras\.guide|console\.auras\.guide|openforbusiness\.world|mypta\.world|homescreen\.world|accounts\.google\.com|oauth2\.googleapis\.com|www\.googleapis\.com|cdn\.jsdelivr\.net))[a-z0-9-]+\.[a-z][a-z0-9.-]*/i, floorOk: false }
       ];
       const findings = [];
       for (const c of checks) {
@@ -927,11 +928,15 @@ async function processCommand(line, env, isOp) {
       const totalDrift = findings.reduce((a, f) => a + f.drift_count, 0);
       // separate the "expected/known" prompt-drift (cognition layer, a known future migration) from true surprises
       const promptDrift = findings.find(f => f.check === "inline_prompts").drift_count;
-      const structuralDrift = totalDrift - promptDrift;
+      const endpointDrift = (findings.find(f => f.check === "hardcoded_endpoints") || {}).drift_count || 0;
+      const structuralDrift = totalDrift - promptDrift - endpointDrift;
+      const knownMig = [];
+      if (promptDrift) knownMig.push(`${promptDrift} inline prompts -> cognition:prompts`);
+      if (endpointDrift) knownMig.push(`${endpointDrift} hardcoded endpoints -> feeds:registry`);
       const verdict = structuralDrift === 0
-        ? (promptDrift === 0 ? "CLEAN - no hardcoded content drift detected" : `SITUATION ENGINE CLEAN - ${promptDrift} inline prompts remain (known: cognition-layer prompts, a planned migration, not situation-engine drift)`)
-        : `DRIFT DETECTED - ${structuralDrift} hardcoded item(s) that should be in KV (excluding known prompt migration)`;
-      return { cmd: "INDEX_AUDIT", payload: { ok: true, build: buildMatch ? buildMatch[1] : null, total_lines: lines.length, verdict, structural_drift: structuralDrift, prompt_drift: promptDrift, findings, source_at: srcAt, stale: srcStale, note: (srcStale ? "NOTE: GitHub was unavailable; audited the last cached source copy. " : "") + "Run after every session. 'Floor' fallbacks (TOPICS_SAFETY, *_FALLBACK, FB_*) are intentional and excluded. Structural drift > 0 = something that should be in KV crept into code." } };
+        ? (knownMig.length === 0 ? "CLEAN - no hardcoded content drift detected" : `STRUCTURALLY CLEAN - known planned KV migrations remain: ${knownMig.join(" + ")} (not surprise drift)`)
+        : `DRIFT DETECTED - ${structuralDrift} hardcoded item(s) that should be in KV (excluding known prompt/endpoint migrations)`;
+      return { cmd: "INDEX_AUDIT", payload: { ok: true, build: buildMatch ? buildMatch[1] : null, total_lines: lines.length, verdict, structural_drift: structuralDrift, prompt_drift: promptDrift, endpoint_drift: endpointDrift, findings, source_at: srcAt, stale: srcStale, note: (srcStale ? "NOTE: GitHub was unavailable; audited the last cached source copy. " : "") + "Run after every session. 'Floor' fallbacks (TOPICS_SAFETY, *_FALLBACK, FB_*) are intentional and excluded. Structural drift > 0 = something that should be in KV crept into code." } };
     }
 
     case "WHO_AM_I":

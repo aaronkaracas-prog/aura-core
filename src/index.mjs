@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.325-2026-06-30";
+const BUILD = "aura-core-v4.9.326-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -884,9 +884,13 @@ async function processCommand(line, env, isOp) {
       for (const c of checks) {
         const hits = [];
         for (let i = 0; i < lines.length; i++) {
-          if (c.re.test(lines[i])) {
+          const ln = lines[i];
+          // skip comment lines and the audit's OWN pattern-definition lines (re: /.../ ) - those are not drift
+          const trimmed = ln.trim();
+          if (trimmed.startsWith("//") || trimmed.startsWith("*") || /\bre:\s*\//.test(ln) || /desc:\s*"/.test(ln)) continue;
+          if (c.re.test(ln)) {
             const onFloor = c.floorOk && isAllowedFloor(i);
-            if (!onFloor) hits.push({ line: i + 1, text: lines[i].trim().slice(0, 120) });
+            if (!onFloor) hits.push({ line: i + 1, text: trimmed.slice(0, 120) });
           }
         }
         findings.push({ check: c.id, desc: c.desc, drift_count: hits.length, samples: verbose ? hits.slice(0, 8) : hits.slice(0, 3).map(h => h.line) });
@@ -1978,7 +1982,7 @@ async function processCommand(line, env, isOp) {
       // numbers?" The operator DECLARES IDENTITY in their own words (one line). Aura: (1) creates their
       // PTA, (2) AUTO-DISCOVERS their fleet via VesselAPI search-by-name/owner (no IMO entry), (3) links
       // the vessels to their PTA, (4) returns their live fleet. Identity in -> their whole world out.
-      //   OPERATOR_ONBOARD ::: {"identity":"email:ops@meridian.com","name":"Meridian Shipping","about":"we run bulk carriers out of Mumbai","fleet_query":"Meridian"}
+      //   OPERATOR_ONBOARD ::: {"identity":"email:ops@operator.example","name":"Operator Name","about":"fleet description","fleet_query":"SEARCH"}
       if (!isOp) return { cmd: "OPERATOR_ONBOARD", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const obPayload = rest.includes(":::") ? rest.slice(rest.indexOf(":::") + 3).trim() : "";
       let ob; try { ob = JSON.parse(obPayload); } catch { return { cmd: "OPERATOR_ONBOARD", payload: { ok: false, error: 'Usage: OPERATOR_ONBOARD ::: {"identity":"email:...","name":"...","about":"who they are","fleet_query":"name or owner to search vessels by"}' } }; }
@@ -2155,8 +2159,10 @@ async function processCommand(line, env, isOp) {
       //   MARITIME_VALUE <lat> <lon> ::: <free description of the voyage/ship/company/port>
       if (!isOp) return { cmd: "MARITIME_VALUE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const step = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
+      // demo voyage fixture loads from KV (demo:maritime) so no fictional content is hardcoded in the engine
+      const demoMar = await (async () => { try { const d = await env.AURA_KV.get("demo:maritime"); if (d) return JSON.parse(d); } catch {} return null; })();
       // voyage params (default: a bulk carrier mid-Indian-Ocean bound for Rotterdam - NOT conflict-framed)
-      let vlat = 14.5, vlon = 65.0, ctx = "MV Gulf Carrier, a Panamax bulk carrier owned by Meridian Shipping Co, mid-voyage in the Arabian Sea carrying 38,000t steel coil from Mumbai to Rotterdam, ETA 18 days. Operated by a 22-vessel company. Inbound to call at Jebel Ali for bunkers en route.";
+      let vlat = (demoMar && demoMar.lat) ?? 14.5, vlon = (demoMar && demoMar.lon) ?? 65.0, ctx = (demoMar && demoMar.voyage_ctx) || "a Panamax bulk carrier mid-voyage in the Arabian Sea carrying bulk cargo, inbound to call for bunkers en route";
       const after = rest.replace(/^MARITIME_VALUE\s*/i, "");
       if (after.includes(":::")) {
         const head = after.slice(0, after.indexOf(":::")).trim().split(/\s+/);
@@ -2181,7 +2187,7 @@ async function processCommand(line, env, isOp) {
       const shipFacts = `Marine weather at vessel position (${vlat},${vlon}): wave height ${out.live_data.marine.wave_m ?? "n/a"}m, swell ${out.live_data.marine.swell_m ?? "n/a"}m at ${out.live_data.marine.swell_period_s ?? "n/a"}s period, wave direction ${out.live_data.marine.wave_dir ?? "n/a"} deg. Surface wind ${out.live_data.weather.wind_ms ?? "n/a"} m/s gusting ${out.live_data.weather.gust_ms ?? "n/a"}. Fuel/bunker price proxy (Brent): ${out.live_data.bunker_proxy ?? "n/a"}.`;
       const [shipBrief, portBrief] = await Promise.all([
         step(`SHIP_BRIEF ::: ${JSON.stringify({ voyage: ctx, conditions: shipFacts })}`),
-        step(`PORT_BRIEF ::: ${JSON.stringify({ port: "Jebel Ali Port", vessel: ctx.split(",")[0], context: "Inbound to call for bunkers mid-voyage. Port wants to convert a routine bunker call into a coordinated, high-service relationship and capture the vessel's future regional calls. Vessel wants fast turnaround, fair bunker price, reliable scheduling." })}`)
+        step(`PORT_BRIEF ::: ${JSON.stringify({ port: (demoMar && demoMar.port_name) || "the destination port", vessel: ctx.split(",")[0], context: "Inbound to call for bunkers mid-voyage. Port wants to convert a routine bunker call into a coordinated, high-service relationship and capture the vessel's future regional calls. Vessel wants fast turnaround, fair bunker price, reliable scheduling." })}`)
       ]);
       out.value.to_ship = shipBrief && shipBrief.briefing ? shipBrief.briefing : (shipBrief && shipBrief.raw ? shipBrief.raw : shipBrief);
       out.value.to_port = portBrief && portBrief.briefing ? portBrief.briefing : (portBrief && portBrief.raw ? portBrief.raw : portBrief);
@@ -2225,21 +2231,33 @@ async function processCommand(line, env, isOp) {
       //   MARITIME_DEMO
       if (!isOp) return { cmd: "MARITIME_DEMO", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const step = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
-      const out = { ok: true, loop: "port <-> ship <-> cargo coordination", steps: {} };
+      // demo fixture loads from KV (demo:maritime) - no fictional names hardcoded in the engine. Generic
+      // placeholder defaults if unseeded; seed a richer scenario with SETKV demo:maritime {...}.
+      const dm = await (async () => { try { const d = await env.AURA_KV.get("demo:maritime"); if (d) return JSON.parse(d); } catch {} return {}; })();
+      const D = {
+        port_name: dm.port_name || "Demo Port Operations",
+        port_email: dm.port_email || "ops@demo-port.example",
+        ship_name: dm.ship_name || "Demo Bulk Carrier",
+        ship_email: dm.ship_email || "master@demo-vessel.example",
+        cargo: dm.cargo || "bulk cargo",
+        rel_ctx: dm.rel_ctx || "a demo port and the master/owner of a bulk carrier awaiting transit. No direct relationship yet. Port wants throughput and regional relationships; owner wants passage intelligence and to get the cargo moving.",
+        commerce_what: dm.commerce_what || "Port coordination + advisory + priority berth for the vessel"
+      };
+      const out = { ok: true, loop: "port <-> ship <-> cargo coordination", fixture: dm.port_name ? "demo:maritime (KV)" : "generic default", steps: {} };
       // 1) PORT as a PTA (business entity)
-      const port = await step('PTA_ENTITY CREATE business "Jebel Ali Port Operations" identity:email:ops@jebelali.demo');
+      const port = await step(`PTA_ENTITY CREATE business "${D.port_name}" identity:email:${D.port_email}`);
       const portId = port && port.entity ? port.entity.id : null;
       out.steps.port = { id: portId, mode: port && port.mode };
       // 2) SHIP as a PTA (vessel entity)
-      const ship = await step('PTA_ENTITY CREATE vessel "MV Gulf Carrier (IMO 9876543)" identity:email:master@gulfcarrier.demo');
+      const ship = await step(`PTA_ENTITY CREATE vessel "${D.ship_name}" identity:email:${D.ship_email}`);
       const shipId = ship && ship.entity ? ship.entity.id : null;
       out.steps.ship = { id: shipId, mode: ship && ship.mode };
       // 3) CARGO as a Smart File (living object, owned by the ship)
-      const cargo = await step(`FILE REGISTER ${JSON.stringify({ filetype: "cargo_manifest", name: "Cargo Manifest - 38,000t steel coil", subject: "Bulk cargo awaiting Hormuz transit", by: shipId || "pta_aura" })}`);
+      const cargo = await step(`FILE REGISTER ${JSON.stringify({ filetype: "cargo_manifest", name: "Cargo Manifest - " + D.cargo, subject: "Cargo awaiting transit", by: shipId || "pta_aura" })}`);
       const cargoId = cargo && cargo.entity_id ? cargo.entity_id : (cargo && cargo.file ? cargo.file : null);
       out.steps.cargo = { id: cargoId, ok: !!(cargo && (cargo.ok !== false)) };
       // 4) RELATIONSHIP_VALUE finds the coordination move between port and ship
-      const rel = await step('RELATIONSHIP_VALUE Jebel Ali Port Operations and the master/owner of MV Gulf Carrier, a bulk carrier anchored 6 days off Fujairah awaiting safe Hormuz transit carrying 38,000t steel coil. No direct relationship yet. Port wants throughput and regional relationships; owner wants safe-passage intelligence and to get the cargo moving and earning.');
+      const rel = await step('RELATIONSHIP_VALUE ' + D.rel_ctx);
       const relV = rel && rel.value ? rel.value : rel;
       out.steps.relationship_value = relV && (relV.highest_value_step || relV.the_move) ? {
         highest_value_step: relV.highest_value_step || null,
@@ -2250,7 +2268,7 @@ async function processCommand(line, env, isOp) {
       // 5) COMMERCE structures the transaction IF (and only if) value warrants - honoring the engine's own judgment
       const isCommerce = out.steps.relationship_value && out.steps.relationship_value.is_commerce === true;
       if (isCommerce) {
-        const com = await step('COMMERCE STRUCTURE ::: ' + JSON.stringify({ what: "Port coordination + safe-passage advisory + priority berth for MV Gulf Carrier", who: "Jebel Ali Port (seller-face) and the vessel owner (buyer-face)", goal: "get the stranded cargo moving with port support", constraints: "owner is cost-sensitive and time-pressured; relationship is new so trust must come first" }));
+        const com = await step('COMMERCE STRUCTURE ::: ' + JSON.stringify({ what: D.commerce_what, who: D.port_name + " (seller-face) and the vessel owner (buyer-face)", goal: "get the cargo moving with port support", constraints: "owner is cost-sensitive and time-pressured; relationship is new so trust must come first" }));
         out.steps.commerce = com && com.reasoning ? { structure: com.reasoning.structure, why: com.reasoning.why_this_structure } : { raw: com };
       } else {
         out.steps.commerce = { skipped: true, reason: "RELATIONSHIP_VALUE judged the highest-value step is NOT commerce yet - coordination/trust first. Commerce follows trust, not the reverse." };
@@ -8291,18 +8309,32 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // THE WHOLE ASSET, BREATHING - the full maritime lifecycle end-to-end in one call. Stitches every
       // proven engine into one arc so you can watch it live: onboard -> sail -> approach -> arrive ->
       // invoice -> reconcile -> unlock. Pure orchestration of proven commands; no new logic.
-      //   LIFECYCLE   (runs the default Meridian->Jebel Ali arc)
+      //   LIFECYCLE   (runs the default demo arc from demo:maritime KV fixture)
       if (!isOp) return { cmd: "LIFECYCLE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const step = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
-      const arc = { ok: true, lifecycle: "onboard (free) -> invoice (activate) -> pay -> UNLOCK -> sail -> approach -> arrive", stages: {} };
+      // demo fixture from KV (demo:maritime) - no fictional names hardcoded. Generic defaults if unseeded.
+      const dmL = await (async () => { try { const d = await env.AURA_KV.get("demo:maritime"); if (d) return JSON.parse(d); } catch {} return {}; })();
+      const DL = {
+        operator_name: dmL.operator_name || "Demo Shipping Co",
+        operator_email: dmL.operator_email || "ops@demo-operator.example",
+        fleet_query: dmL.fleet_query || "MAERSK",
+        ship_name: dmL.ship_name || "Demo Bulk Carrier",
+        port_name: dmL.port_name || "Demo Port",
+        neighbor_ports: dmL.neighbor_ports || ["Neighbor Port A", "Neighbor Port B"],
+        voyage: dmL.voyage || "origin->destination, bulk cargo",
+        ship2_name: dmL.ship2_name || "Demo Container Vessel",
+        invoice_amount: dmL.invoice_amount || 15000,
+        lat: dmL.lat ?? 14.5, lon: dmL.lon ?? 65.0
+      };
+      const arc = { ok: true, lifecycle: "onboard (free) -> invoice (activate) -> pay -> UNLOCK -> sail -> approach -> arrive", fixture: dmL.operator_name ? "demo:maritime (KV)" : "generic default", stages: {} };
 
       // 1) ONBOARD (FREE) - operator declares identity, Aura auto-discovers fleet. The hook. Costs nothing.
-      const onb = await step('OPERATOR_ONBOARD ::: ' + JSON.stringify({ identity: "email:ops@meridian-demo.com", name: "Meridian Shipping Co", about: "regional bulk carrier operator", fleet_query: "MAERSK" }));
+      const onb = await step('OPERATOR_ONBOARD ::: ' + JSON.stringify({ identity: "email:" + DL.operator_email, name: DL.operator_name, about: "regional bulk carrier operator", fleet_query: DL.fleet_query }));
       const fleetN = onb && onb.ok && onb.steps && onb.steps.fleet_discovery ? onb.steps.fleet_discovery.found : 0;
       arc.stages["1_onboard_free"] = onb && onb.ok ? { operator: onb.onboarding, fleet_found: fleetN, linked: onb.steps ? onb.steps.linked_vessels : 0, pta: onb.steps && onb.steps.pta ? onb.steps.pta.id : null, note: "Free. They declared who they are and saw their whole fleet appear - the hook." } : { error: onb && onb.error };
 
       // 2) INVOICE TO ACTIVATE - the moment they want the engine ON, before it does any work. Enterprise rails.
-      const inv = await step('INVOICE CREATE ::: ' + JSON.stringify({ customer: "Meridian Shipping Co", amount: 15000, description: "SituationTracker engine activation - mid fleet tier, monthly (live watch + coordination across the fleet)", terms: "Net 30" }));
+      const inv = await step('INVOICE CREATE ::: ' + JSON.stringify({ customer: DL.operator_name, amount: DL.invoice_amount, description: "SituationTracker engine activation - mid fleet tier, monthly (live watch + coordination across the fleet)", terms: "Net 30" }));
       const invId = inv && inv.id ? inv.id : null;
       arc.stages["2_invoice_to_activate"] = inv && inv.ok ? { id: invId, amount: inv.amount, methods: inv.methods, pay_to: inv.pay_to, card_note: inv.card_note, note: "Invoice issued to ACTIVATE the engine - charged before any watch/coordination runs." } : { error: inv && inv.error };
 
@@ -8316,27 +8348,27 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
       if (!paid) {
         arc.stages["5_sail"] = { status: "locked", note: "Engine not activated - no watch runs until the activation invoice is paid. This is the pay-to-activate gate working: free to see your fleet, paid to put it to work." };
-        arc.summary = "Pay-to-activate lifecycle: Meridian onboarded FREE (fleet auto-discovered, the hook), was invoiced to ACTIVATE the engine on real Mercury enterprise rails, and the watch/coordination correctly stayed LOCKED because the activation invoice is unpaid. Free to see your world; paid to turn it on. On a real ACH/wire arrival, the engine activates automatically and everything below unlocks.";
+        arc.summary = "Pay-to-activate lifecycle: " + DL.operator_name + " onboarded FREE (fleet auto-discovered, the hook), was invoiced to ACTIVATE the engine on real Mercury enterprise rails, and the watch/coordination correctly stayed LOCKED because the activation invoice is unpaid. Free to see your world; paid to turn it on. On a real ACH/wire arrival, the engine activates automatically and everything below unlocks.";
         return { cmd: "LIFECYCLE", payload: arc };
       }
 
       // ===== BELOW HERE ONLY RUNS ONCE ACTIVATED (paid) =====
       // 5) SAIL - the watch is on. A vessel underway, the daily digest stands watch (live sea state)
       const sailKey = "lifecycle_vessel_" + Date.now().toString(36);
-      const sail = await step('DIGEST SHIP ::: ' + JSON.stringify({ actor: sailKey, vessel: "MV Gulf Carrier", lat: 14.5, lon: 65.0, voyage: "Mumbai->Jebel Ali, 38000t steel coil", destination: "Jebel Ali" }));
+      const sail = await step('DIGEST SHIP ::: ' + JSON.stringify({ actor: sailKey, vessel: DL.ship_name, lat: DL.lat, lon: DL.lon, voyage: DL.voyage, destination: DL.port_name }));
       arc.stages["5_sail"] = sail && sail.ok ? { vessel: sail.vessel, status: sail.status_word, watch: sail.headline, live: sail.live } : { error: sail && sail.error };
 
       // 6) APPROACH - vessel nears harbor, the port sees it in its whole queue
-      const approach = await step('PORT_VALUE ::: ' + JSON.stringify({ port: "Jebel Ali Port", neighbor_ports: ["Fujairah", "Khor Fakkan"], inbound: [{ vessel: "MV Gulf Carrier", eta: "6 hours", need: "bulk discharge + bunkers" }, { vessel: "MV Ocean Titan", eta: "12 hours", need: "container discharge" }] }));
+      const approach = await step('PORT_VALUE ::: ' + JSON.stringify({ port: DL.port_name, neighbor_ports: DL.neighbor_ports, inbound: [{ vessel: DL.ship_name, eta: "6 hours", need: "bulk discharge + bunkers" }, { vessel: DL.ship2_name, eta: "12 hours", need: "container discharge" }] }));
       const apv = approach && approach.port_value ? approach.port_value : approach;
       arc.stages["6_approach"] = apv ? { queue_status: apv.queue_status, next_move: apv.bottom_line || (apv.throughput_moves && apv.throughput_moves[0] ? apv.throughput_moves[0].action : null) } : { error: "approach failed" };
 
       // 7) ARRIVE - the coordination move between ship and port (relationship value, trust before commerce)
-      const arrive = await step('RELATIONSHIP_VALUE Jebel Ali Port and MV Gulf Carrier (Meridian Shipping) arriving to discharge 38000t steel coil and take bunkers. First call. Port wants the relationship and future calls; vessel wants fast turnaround and fair bunker price.');
+      const arrive = await step('RELATIONSHIP_VALUE ' + DL.port_name + ' and ' + DL.ship_name + ' (' + DL.operator_name + ') arriving to discharge cargo and take bunkers. First call. Port wants the relationship and future calls; vessel wants fast turnaround and fair bunker price.');
       const arv = arrive && arrive.value ? arrive.value : arrive;
       arc.stages["7_arrive"] = arv ? { highest_value_step: arv.highest_value_step || arv.the_move || null, is_commerce: arv.is_commerce ?? null } : { error: "arrive failed" };
 
-      arc.summary = "Full pay-to-activate lifecycle, all live engines: Meridian onboarded FREE (fleet auto-discovered - the hook), was invoiced to ACTIVATE on real Mercury enterprise rails, payment reconciled, the engine UNLOCKED, and only THEN did the watch run - sailed under Aura's watch (live sea state), approached Jebel Ali (whole-queue view), arrived (coordination, trust-before-commerce). Free to see your world; paid to turn it on; the engine does the work only after settlement. The whole asset, breathing, on the back end.";
+      arc.summary = "Full pay-to-activate lifecycle, all live engines: " + DL.operator_name + " onboarded FREE (fleet auto-discovered - the hook), was invoiced to ACTIVATE on real Mercury enterprise rails, payment reconciled, the engine UNLOCKED, and only THEN did the watch run - sailed under Aura's watch (live sea state), approached the port (whole-queue view), arrived (coordination, trust-before-commerce). Free to see your world; paid to turn it on; the engine does the work only after settlement. The whole asset, breathing, on the back end.";
       return { cmd: "LIFECYCLE", payload: arc };
     }
 

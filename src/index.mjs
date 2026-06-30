@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.320-2026-06-30";
+const BUILD = "aura-core-v4.9.321-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -2236,26 +2236,20 @@ async function processCommand(line, env, isOp) {
       //   SITUATION_PULL hormuz
       if (!isOp) return { cmd: "SITUATION_PULL", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const topicKey = (line.replace(/^SITUATION_PULL\s*/i, "").trim() || "hormuz").toLowerCase();
-      // Topic definitions. Now loaded from KV (situation:topics) so new situations need ZERO deploys -
-      // Aura can add topics herself. The in-code map below is the FALLBACK if KV is absent, so behavior
-      // is identical during migration. Once KV is seeded and proven, the fallback can be trimmed.
-      const TOPICS_FALLBACK = {
-        hormuz: { domain: "maritime", label: "Strait of Hormuz", news: "Strait of Hormuz shipping Iran", lat: 26.57, lon: 56.25, oil: "BRENT_CRUDE_USD", ais: "hormuz", search: "Strait of Hormuz vessel traffic toll status today" },
-        socal_fire: { domain: "fire", label: "Southern California wildfires", news: "Southern California wildfire evacuation", lat: 34.05, lon: -118.24, fire: "socal", search: "Southern California wildfire active evacuation today" },
-        norcal_fire: { domain: "fire", label: "Northern California wildfires", news: "Northern California wildfire evacuation", lat: 38.58, lon: -121.49, fire: "norcal", search: "Northern California wildfire active evacuation today" },
-        cottonwood_fire: { domain: "fire", label: "Cottonwood Fire, Beaver County Utah (nation's largest)", news: "Cottonwood Fire Utah Beaver evacuation", lat: 38.28, lon: -112.64, fire: "cottonwood", search: "Cottonwood Fire Utah acres containment evacuation today" },
-        global_quakes: { domain: "quake", label: "Significant earthquakes (past 24h)", news: "major earthquake today", quake: "significant", search: "significant earthquake today magnitude damage" },
-        venezuela_quake: { domain: "quake", label: "Venezuela earthquake + aftershocks (Caracas/La Guaira disaster)", news: "Venezuela earthquake Caracas La Guaira aftershock rescue", quake: "4.5", search: "Venezuela earthquake aftershock Caracas La Guaira death toll rescue today" },
-        us_storms: { domain: "storm", label: "US severe weather (tornado/storm warnings)", news: "tornado severe storm warning today", storm: "all", search: "tornado severe thunderstorm warning today United States" }
+      // Topic definitions now live in KV (situation:topics) - Aura adds situations with ZERO deploys.
+      // Only a minimal 1-topic safety net remains in-code, so the engine never hard-crashes if KV is
+      // ever wiped. To add/edit topics: SETKV situation:topics {...}. Proven v4.9.320-321.
+      const TOPICS_SAFETY = {
+        hormuz: { domain: "maritime", label: "Strait of Hormuz", news: "Strait of Hormuz shipping Iran", lat: 26.57, lon: 56.25, oil: "BRENT_CRUDE_USD", ais: "hormuz", search: "Strait of Hormuz vessel traffic toll status today" }
       };
-      let TOPICS = TOPICS_FALLBACK;
-      let topicsSource = "fallback";
+      let TOPICS = TOPICS_SAFETY;
+      let topicsSource = "safety_fallback";
       try {
         const kvTopics = await env.AURA_KV.get("situation:topics");
         if (kvTopics) { const parsed = JSON.parse(kvTopics); if (parsed && typeof parsed === "object" && Object.keys(parsed).length) { TOPICS = parsed; topicsSource = "kv"; } }
-      } catch (e) { /* keep fallback on any parse/read error */ }
+      } catch (e) { /* keep safety net on any parse/read error */ }
       const T = TOPICS[topicKey];
-      if (!T) return { cmd: "SITUATION_PULL", payload: { ok: false, error: "unknown topic: " + topicKey, topics: Object.keys(TOPICS), topics_source: topicsSource } };
+      if (!T) return { cmd: "SITUATION_PULL", payload: { ok: false, error: "unknown topic: " + topicKey, topics: Object.keys(TOPICS), topics_source: topicsSource, hint: topicsSource !== "kv" ? "KV registry not loaded - check situation:topics" : "add this topic via SETKV situation:topics" } };
       const run = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
       const domain = T.domain || "maritime";
       let snapshot;

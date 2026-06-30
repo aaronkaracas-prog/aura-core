@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.361-2026-06-30";
+const BUILD = "aura-core-v4.9.362-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -503,6 +503,36 @@ async function fetchTropicalCyclones(env) {
   });
   storms.sort((a, b) => (b.wind_kt || 0) - (a.wind_kt || 0)); // strongest first
   return { ok: true, count: storms.length, storms };
+}
+
+// ENSEMBLE forecast confidence (open-meteo GFS ensemble, 31 members, keyless). Member spread = uncertainty:
+// tight band = high confidence, wide = low. Surfaces raw member products (probabilities + spread bands), not a fabricated %.
+async function fetchEnsemble(env, lat, lon) {
+  const pull = async (withCape) => {
+    const url = withCape
+      ? await resolveFeedUrl(env, "ensemble_gfs", { lat, lon }, `https://ensemble-api.open-meteo.com/v1/ensemble?latitude={lat}&longitude={lon}&models=gfs025&hourly=temperature_2m,precipitation,wind_speed_10m,cape&forecast_days=2&wind_speed_unit=kmh`)
+      : await resolveFeedUrl(env, "ensemble_gfs", { lat, lon }, `https://ensemble-api.open-meteo.com/v1/ensemble?latitude={lat}&longitude={lon}&models=gfs025&hourly=temperature_2m,precipitation,wind_speed_10m&forecast_days=2&wind_speed_unit=kmh`);
+    const r = await fetchWithTimeout(url, {}, 9000);
+    if (!r.ok) { let b = ""; try { b = (await r.text()).slice(0, 160); } catch {} return { _fail: true, status: r.status, detail: b }; }
+    try { return await r.json(); } catch (e) { return { _fail: true, error: String(e && e.message || e) }; }
+  };
+  let j = await pull(true);
+  if (!j || j._fail || !j.hourly) j = await pull(false); // cape may be unsupported in ensemble - retry without it
+  if (!j || !j.hourly || !j.hourly.time) return { ok: false, error: (j && (j.error || (j.status ? `ensemble http ${j.status}` : null))) || "no hourly", detail: j && j.detail };
+  const h = j.hourly, n = Math.min(h.time.length, 24);
+  const memberSeries = (base) => Object.keys(h).filter(k => k === base || k.startsWith(base + "_member")).map(k => h[k]).filter(Array.isArray);
+  const stats = (arr) => { const s = arr.filter(v => typeof v === "number").sort((a, b) => a - b); if (!s.length) return null; const q = (p) => s[Math.min(s.length - 1, Math.round(p * (s.length - 1)))]; return { min: +s[0].toFixed(1), p10: +q(.1).toFixed(1), median: +q(.5).toFixed(1), p90: +q(.9).toFixed(1), max: +s[s.length - 1].toFixed(1) }; };
+  const peakPer = (series) => series.map(s => { const w = s.slice(0, n).filter(v => typeof v === "number"); return w.length ? Math.max(...w) : null; }).filter(v => v != null);
+  const out = { ok: true, lat, lon, window_h: n, members: 0, vars: {} };
+  const tS = memberSeries("temperature_2m"); out.members = tS.length;
+  if (tS.length) out.vars.temp_peak_c = stats(peakPer(tS));
+  const pS = memberSeries("precipitation");
+  if (pS.length) { const totals = pS.map(s => s.slice(0, n).reduce((a, v) => a + (typeof v === "number" ? v : 0), 0)); const wet = totals.filter(t => t >= 1).length; out.vars.precip_mm_total = stats(totals); out.precip_probability_pct = Math.round(wet / totals.length * 100); }
+  const wS = memberSeries("wind_speed_10m");
+  if (wS.length) out.vars.wind_peak_kmh = stats(peakPer(wS));
+  const cS = memberSeries("cape");
+  if (cS.length) { const peaks = peakPer(cS); const sev = peaks.filter(c => c >= 1000).length; out.vars.cape_peak = stats(peaks); out.severe_cape_probability_pct = peaks.length ? Math.round(sev / peaks.length * 100) : null; }
+  return out;
 }
 
 // LIVE-EVENT FINDER - scan the whole country for the most significant ACTIVE NWS hazards right now
@@ -1834,6 +1864,17 @@ async function processCommand(line, env, isOp) {
         return { cmd: "HURRICANES", payload: { ok: true, count: tc.count, storms: tc.storms,
           note: tc.count ? "Active tropical cyclones (NHC, keyless, all basins), strongest first. category from max sustained wind; moving.toward = compass heading the storm is traveling; wind in kt and mph; pressure in mb. Run HURRICANE_REASON for Aura's intensity/track outlook on the strongest." : "No active tropical cyclones in any basin right now (common outside peak season). The finder is live and will populate the moment a system is named." } };
       } catch (e) { return { cmd: "HURRICANES", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "ENSEMBLE": {
+      // Forecast confidence from ensemble member spread. ENSEMBLE <lat> <lon>
+      const enArgs = line.replace(/^ENSEMBLE\s*/i, "").trim().split(/\s+/).filter(Boolean);
+      const enLat = parseFloat(enArgs[0]), enLon = parseFloat(enArgs[1]);
+      if (isNaN(enLat) || isNaN(enLon)) return { cmd: "ENSEMBLE", payload: { ok: false, error: "Usage: ENSEMBLE <lat> <lon>" } };
+      try {
+        const e = await fetchEnsemble(env, enLat, enLon);
+        return { cmd: "ENSEMBLE", payload: { ...e, note: e.ok ? `GFS ensemble, ${e.members} members (open-meteo, keyless), next ${e.window_h}h. Spread band (min/p10/median/p90/max) = forecast uncertainty: tight = high confidence, wide = low. precip_probability_pct = share of members with >=1mm (the honest 'chance of rain'); severe_cape_probability_pct = share reaching severe-supporting CAPE. Raw member products, not a fabricated single number.` : undefined } };
+      } catch (e) { return { cmd: "ENSEMBLE", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 
     case "HURRICANE_REASON": {

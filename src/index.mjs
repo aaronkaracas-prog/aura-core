@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.341-2026-06-30";
+const BUILD = "aura-core-v4.9.342-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -733,7 +733,7 @@ async function webSearch(query, env) {
     if (provider === "tavily") {
       const key = await env.AURA_KV.get("secret:tavily").catch(() => null);
       if (!key) return { ok: false, error: "no tavily key in KV (secret:tavily)" };
-      const res = await fetchWithTimeout("https://api.tavily.com/search", {
+      const res = await fetchWithTimeout(await resolveFeedUrl(env, "search_tavily", {}, "https://api.tavily.com/search"), {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
         body: JSON.stringify({ query: query.trim(), search_depth: "basic", include_answer: true, max_results: 5 })
@@ -746,7 +746,7 @@ async function webSearch(query, env) {
     if (provider === "brave") {
       const key = await env.AURA_KV.get("secret:brave_search").catch(() => null);
       if (!key) return { ok: false, error: "no brave key in KV (secret:brave_search)" };
-      const res = await fetchWithTimeout(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query.trim())}&count=5`, {
+      const res = await fetchWithTimeout(await resolveFeedUrl(env, "search_brave", { q: query.trim() }, `https://api.search.brave.com/res/v1/web/search?q={q}&count=5`), {
         headers: { "Accept": "application/json", "X-Subscription-Token": key }
       }, 8000);
       if (!res.ok) return { ok: false, error: `brave http ${res.status}` };
@@ -1385,7 +1385,7 @@ async function processCommand(line, env, isOp) {
       if (!(foRegion in FO_STATES)) return { cmd: "FIRE_OFFICIAL", payload: { ok: false, error: "unknown region: " + foRegion, regions: Object.keys(FO_STATES) } };
       const stateFilter = FO_STATES[foRegion];
       try {
-        const base = "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0/query";
+        const base = await resolveFeedUrl(env, "fire_arcgis_wfigs", {}, "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0/query");
         const where = stateFilter ? encodeURIComponent(`POOState='${stateFilter}'`) : "1%3D1";
         const url = `${base}?where=${where}&outFields=*&returnGeometry=true&outSR=4326&f=json`;
         const r = await fetchWithTimeout(url, { headers: { "User-Agent": "SituationTracker/1.0" } }, 8000);
@@ -1491,7 +1491,7 @@ async function processCommand(line, env, isOp) {
       if (!isOp) return { cmd: "STORM_PREDICT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       try {
         // 1) Active SPC Mesoscale Discussions (keyless ArcGIS) - the pre-watch reasoning layer
-        const mdUrl = "https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/spc_mesoscale_discussion/MapServer/0/query?where=1%3D1&outFields=*&returnGeometry=false&f=json";
+        const mdUrl = await resolveFeedUrl(env, "spc_mesoscale", {}, "https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/spc_mesoscale_discussion/MapServer/0/query?where=1%3D1&outFields=*&returnGeometry=false&f=json");
         const mdR = await fetchWithTimeout(mdUrl, { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)" } }, 8000);
         let discussions = [];
         if (mdR.ok) {
@@ -1525,7 +1525,7 @@ async function processCommand(line, env, isOp) {
           if (d.md_number) {
             try {
               const num = String(parseInt(d.md_number)).padStart(4, "0");
-              const tr = await fetchWithTimeout(`https://www.spc.noaa.gov/products/md/${mdYear}/md${num}.html`, { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)" } }, 8000);
+              const tr = await fetchWithTimeout(await resolveFeedUrl(env, "spc_md_html", { mdYear, num }, `https://www.spc.noaa.gov/products/md/{mdYear}/md{num}.html`), { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)" } }, 8000);
               if (tr.ok) {
                 const html = await tr.text();
                 const pre = html.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
@@ -1805,7 +1805,7 @@ async function processCommand(line, env, isOp) {
       const fkey = await env.AURA_KV.get("secret:firms").catch(() => null);
       if (!fkey) return { cmd: "FIRE_QUERY", payload: { ok: false, source: "no_key", region: fqRegion, label: fb.label, error: "No FIRMS MAP_KEY. Set secret:firms (free at firms.modaps.eosdis.nasa.gov/api/area/). The fire SITUATION engine is wired and will run the moment the key lands." } };
       try {
-        const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${fkey}/VIIRS_NOAA20_NRT/${fb.w},${fb.s},${fb.e},${fb.n}/1`;
+        const url = await resolveFeedUrl(env, "fire_firms", { fkey, w: fb.w, s: fb.s, e: fb.e, n: fb.n }, `https://firms.modaps.eosdis.nasa.gov/api/area/csv/{fkey}/VIIRS_NOAA20_NRT/{w},{s},{e},{n}/1`);
         const r = await fetchWithTimeout(url, {}, 8000);
         if (!r.ok) return { cmd: "FIRE_QUERY", payload: { ok: false, source: "firms_error", region: fqRegion, error: `firms http ${r.status}` } };
         const text = await r.text();
@@ -2058,7 +2058,7 @@ async function processCommand(line, env, isOp) {
       let fleet = [], fleetErr = null;
       if (vkey) {
         try {
-          const u = `https://api.vesselapi.com/v1/search/vessels?filter.name=${encodeURIComponent(query)}`;
+          const u = await resolveFeedUrl(env, "vessel_search", { query }, `https://api.vesselapi.com/v1/search/vessels?filter.name={query}`);
           const r = await fetch(u, { headers: { "Authorization": "Bearer " + vkey } });
           if (r.ok) {
             const d = await r.json();
@@ -2211,7 +2211,7 @@ async function processCommand(line, env, isOp) {
       const mlat = parseFloat(mp[0]), mlon = parseFloat(mp[1]);
       if (isNaN(mlat) || isNaN(mlon)) return { cmd: "MARINE_ROUTE", payload: { ok: false, error: "Usage: MARINE_ROUTE <lat> <lon>" } };
       try {
-        const u = `https://marine-api.open-meteo.com/v1/marine?latitude=${mlat}&longitude=${mlon}&current=wave_height,wave_direction,wave_period,swell_wave_height,swell_wave_period,wind_wave_height&hourly=wave_height&timezone=auto`;
+        const u = await resolveFeedUrl(env, "marine_openmeteo", { mlat, mlon }, `https://marine-api.open-meteo.com/v1/marine?latitude={mlat}&longitude={mlon}&current=wave_height,wave_direction,wave_period,swell_wave_height,swell_wave_period,wind_wave_height&hourly=wave_height&timezone=auto`);
         const r = await fetchWithTimeout(u, {}, 8000);
         if (!r.ok) return { cmd: "MARINE_ROUTE", payload: { ok: false, error: `open-meteo marine http ${r.status}` } };
         const d = await r.json();
@@ -2695,7 +2695,7 @@ async function processCommand(line, env, isOp) {
       const aisBox = BOXES[region];
       if (vkey && aisBox) {
         try {
-          const u = `https://api.vesselapi.com/v1/location/vessels/bounding-box?filter.latBottom=${aisBox.latBottom}&filter.latTop=${aisBox.latTop}&filter.lonLeft=${aisBox.lonLeft}&filter.lonRight=${aisBox.lonRight}`;
+          const u = await resolveFeedUrl(env, "vessel_bbox", { latBottom: aisBox.latBottom, latTop: aisBox.latTop, lonLeft: aisBox.lonLeft, lonRight: aisBox.lonRight }, `https://api.vesselapi.com/v1/location/vessels/bounding-box?filter.latBottom={latBottom}&filter.latTop={latTop}&filter.lonLeft={lonLeft}&filter.lonRight={lonRight}`);
           const r = await fetchWithTimeout(u, { headers: { "Authorization": "Bearer " + vkey } }, 8000);
           if (r.ok) {
             const d = await r.json();
@@ -5789,7 +5789,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const urlSet = new Set([obSiteUrl]);
             try { const sr = await processCommand("WEB_SEARCH " + obRaw + " products specials reviews subscriptions", env, isOp); const sp = (sr && sr.payload) ? sr.payload : sr; ((sp && sp.sources) || []).forEach(function (x) { try { if (x.url && host && new URL(x.url).hostname.replace(/^www\./, "").endsWith(host)) urlSet.add(x.url); } catch (e) {} }); } catch (e) {}
             const urls = Array.from(urlSet).slice(0, 5);
-            const er = await fetch("https://api.tavily.com/extract", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + tk }, body: JSON.stringify({ urls: urls, extract_depth: "advanced" }) });
+            const er = await fetch(await resolveFeedUrl(env, "extract_tavily", {}, "https://api.tavily.com/extract"), { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + tk }, body: JSON.stringify({ urls: urls, extract_depth: "advanced" }) });
             if (er.ok) { const ed = await er.json(); const parts = (ed.results || []).map(function (r) { return "[" + (r.url || "") + "] " + String(r.raw_content || "").replace(/\s+/g, " ").trim(); }); obScrape = parts.join("\n\n").slice(0, 18000); discovered.site = { urls: urls, pages: (ed.results || []).length, text: obScrape || null, failed: ed.failed_results || [] }; }
             else { discovered.site = { url: obSiteUrl, text: null, note: "tavily extract http " + er.status }; }
           } else { discovered.site = { url: obSiteUrl, text: null, note: "no tavily key" }; }

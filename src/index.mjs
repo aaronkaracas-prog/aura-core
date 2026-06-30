@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.319-2026-06-30";
+const BUILD = "aura-core-v4.9.320-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -2214,6 +2214,21 @@ async function processCommand(line, env, isOp) {
       return { cmd: "RELATIONSHIP_VALUE", payload: { ok: true, relationship: rvRaw, value: rvR.reasoning } };
     }
 
+    case "SITUATION_TOPICS": {
+      // Probe: shows the loaded topic registry and whether it came from KV or the in-code fallback.
+      // Used to verify the KV migration without changing engine behavior.
+      if (!isOp) return { cmd: "SITUATION_TOPICS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      let src = "fallback", topics = null;
+      try {
+        const kvTopics = await env.AURA_KV.get("situation:topics");
+        if (kvTopics) { const parsed = JSON.parse(kvTopics); if (parsed && typeof parsed === "object" && Object.keys(parsed).length) { topics = parsed; src = "kv"; } }
+      } catch (e) { return { cmd: "SITUATION_TOPICS", payload: { ok: false, error: "KV parse error: " + String(e && e.message || e), source: "kv_broken" } }; }
+      const keys = topics ? Object.keys(topics) : ["hormuz", "socal_fire", "norcal_fire", "cottonwood_fire", "global_quakes", "venezuela_quake", "us_storms"];
+      const byDomain = {};
+      if (topics) for (const [k, v] of Object.entries(topics)) { const d = v.domain || "?"; (byDomain[d] = byDomain[d] || []).push(k); }
+      return { cmd: "SITUATION_TOPICS", payload: { ok: true, source: src, topic_count: keys.length, topics: keys, by_domain: topics ? byDomain : "(fallback - run with KV seeded to see domain grouping)", note: src === "kv" ? "Topics loaded from KV - new situations need no deploy." : "Topics from in-code fallback. Seed situation:topics in KV to migrate." } };
+    }
+
     case "SITUATION_PULL": {
       // LAYER 1+2 of SituationTracker. Gather ALL live feeds for a topic into ONE structured
       // situation snapshot in KV. Generic: the topic is the input; Hormuz is just the first one.
@@ -2221,8 +2236,10 @@ async function processCommand(line, env, isOp) {
       //   SITUATION_PULL hormuz
       if (!isOp) return { cmd: "SITUATION_PULL", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const topicKey = (line.replace(/^SITUATION_PULL\s*/i, "").trim() || "hormuz").toLowerCase();
-      // Topic definitions - each maps a situation to its feed parameters. Add topics here, not logic.
-      const TOPICS = {
+      // Topic definitions. Now loaded from KV (situation:topics) so new situations need ZERO deploys -
+      // Aura can add topics herself. The in-code map below is the FALLBACK if KV is absent, so behavior
+      // is identical during migration. Once KV is seeded and proven, the fallback can be trimmed.
+      const TOPICS_FALLBACK = {
         hormuz: { domain: "maritime", label: "Strait of Hormuz", news: "Strait of Hormuz shipping Iran", lat: 26.57, lon: 56.25, oil: "BRENT_CRUDE_USD", ais: "hormuz", search: "Strait of Hormuz vessel traffic toll status today" },
         socal_fire: { domain: "fire", label: "Southern California wildfires", news: "Southern California wildfire evacuation", lat: 34.05, lon: -118.24, fire: "socal", search: "Southern California wildfire active evacuation today" },
         norcal_fire: { domain: "fire", label: "Northern California wildfires", news: "Northern California wildfire evacuation", lat: 38.58, lon: -121.49, fire: "norcal", search: "Northern California wildfire active evacuation today" },
@@ -2231,8 +2248,14 @@ async function processCommand(line, env, isOp) {
         venezuela_quake: { domain: "quake", label: "Venezuela earthquake + aftershocks (Caracas/La Guaira disaster)", news: "Venezuela earthquake Caracas La Guaira aftershock rescue", quake: "4.5", search: "Venezuela earthquake aftershock Caracas La Guaira death toll rescue today" },
         us_storms: { domain: "storm", label: "US severe weather (tornado/storm warnings)", news: "tornado severe storm warning today", storm: "all", search: "tornado severe thunderstorm warning today United States" }
       };
+      let TOPICS = TOPICS_FALLBACK;
+      let topicsSource = "fallback";
+      try {
+        const kvTopics = await env.AURA_KV.get("situation:topics");
+        if (kvTopics) { const parsed = JSON.parse(kvTopics); if (parsed && typeof parsed === "object" && Object.keys(parsed).length) { TOPICS = parsed; topicsSource = "kv"; } }
+      } catch (e) { /* keep fallback on any parse/read error */ }
       const T = TOPICS[topicKey];
-      if (!T) return { cmd: "SITUATION_PULL", payload: { ok: false, error: "unknown topic: " + topicKey, topics: Object.keys(TOPICS) } };
+      if (!T) return { cmd: "SITUATION_PULL", payload: { ok: false, error: "unknown topic: " + topicKey, topics: Object.keys(TOPICS), topics_source: topicsSource } };
       const run = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
       const domain = T.domain || "maritime";
       let snapshot;

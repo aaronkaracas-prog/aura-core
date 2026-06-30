@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.352-2026-06-30";
+const BUILD = "aura-core-v4.9.353-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -416,6 +416,31 @@ function nwsRadarRead(p) {
   const tT = first("thunderstormDamageThreat"); if (tT) out.damage_threat = tT;
   const ff = first("flashFloodDamageThreat"); if (ff) out.flood_threat = ff;
   return Object.keys(out).length ? out : null;
+}
+
+// STORM REPORTS (LSRs) - confirmed ground-truth observations from the Iowa Environmental Mesonet (keyless):
+// what spotters/ASOS/officials actually reported - measured hail, recorded wind, sighted tornadoes, flooding.
+// Pull the last `hours` nationwide, keep reports within `radiusDeg` of the point. This is the highest ground truth.
+async function fetchStormReports(env, lat, lon, hours = 6, radiusDeg = 1.2) {
+  const ets = new Date(); const sts = new Date(ets.getTime() - hours * 3600 * 1000);
+  const fmt = (d) => d.toISOString().slice(0, 16) + "Z"; // YYYY-MM-DDTHH:MMZ
+  const url = await resolveFeedUrl(env, "lsr_iem", {}, `https://mesonet.agron.iastate.edu/geojson/lsr.geojson?sts=${fmt(sts)}&ets=${fmt(ets)}`);
+  const r = await fetchWithTimeout(url, { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)", "Accept": "application/geo+json" } }, 9000);
+  if (!r.ok) { let body = ""; try { body = (await r.text()).slice(0, 200); } catch {} return { ok: false, error: `iem lsr http ${r.status}`, detail: body }; }
+  const d = await r.json();
+  const feats = Array.isArray(d.features) ? d.features : [];
+  const reports = [];
+  for (const f of feats) {
+    const g = f.geometry || {}; const p = f.properties || {};
+    if (!g.coordinates || g.coordinates.length < 2) continue;
+    const rlon = g.coordinates[0], rlat = g.coordinates[1];
+    if (Math.abs(rlat - lat) > radiusDeg || Math.abs(rlon - lon) > radiusDeg) continue;
+    reports.push({ type: p.typetext || p.type || "", magnitude: (p.magnitude ?? p.mag ?? null), unit: p.unit || "",
+      city: p.city || "", county: p.county || "", st: p.st || p.state || "", time: p.valid || p.utc_valid || "",
+      source: p.source || "", remark: (p.remark || "").slice(0, 160), lat: Math.round(rlat * 1000) / 1000, lon: Math.round(rlon * 1000) / 1000 });
+  }
+  reports.sort((a, b) => (a.time < b.time ? 1 : -1)); // newest first
+  return { ok: true, window_hours: hours, count: reports.length, reports: reports.slice(0, 25) };
 }
 
 // LIVE-EVENT FINDER - scan the whole country for the most significant ACTIVE NWS hazards right now
@@ -1648,11 +1673,13 @@ async function processCommand(line, env, isOp) {
           wrAlerts = { count: feats.length, alerts: feats.slice(0, 6).map(p => ({ event: p.event, severity: p.severity, urgency: p.urgency, certainty: p.certainty, radar: nwsRadarRead(p), headline: (p.headline || "").slice(0, 160), area: (p.areaDesc || "").slice(0, 120) })) };
         }
       } catch {}
+      let wrReports = null;
+      try { wrReports = await fetchStormReports(env, wrLat, wrLon, 6, 1.2); } catch {}
       const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
       if (!anthKey) return { cmd: "WEATHER_REASON", payload: { ok: false, error: "no reasoning key (secret:anthropic)" } };
-      const FB_METEOROLOGIST = "You are Aura's meteorology engine - an experienced operational forecaster, not a model parrot. You are given the SAME forecast from several global numerical weather models for one point, plus any official NWS/SPC watches active nationally. Reason across the models the way a working forecaster does, using these KNOWN MODEL TENDENCIES as heuristics (never absolutes - always cross-check the live spread and official products): ECMWF (European/IFS) is generally the most skillful for synoptic and medium-range pattern evolution and is the benchmark for large-scale systems; it tends to be smoother and can under-do small-scale convective extremes. GFS (American) is a capable global baseline but tends to over-amplify systems and over-forecast convective precipitation and intensity, especially beyond ~48h. ICON (German/DWD) is higher-resolution and strong for mesoscale and short-range convective structure. GEM (Canadian) is a reasonable global model but is more often the timing/amplitude outlier. SEVERE-WEATHER INGREDIENTS: CAPE (convective available potential energy, J/kg) measures instability - the fuel for thunderstorms: under ~500 is stable, 1000-2500 is moderate instability, 2500-4000 is strong, 4000+ is extreme. High CAPE alone is potential, not a storm - it needs a trigger and (for severe/rotating storms) wind shear to organize. When CAPE is elevated AND official Severe Thunderstorm or Tornado watches are posted at the point, treat the convective/severe threat as real and say so; when CAPE is low, large model wind/precip differences are less likely to be convective. WIND SHEAR (shear_sfc500_kmh = surface-to-500hPa bulk shear) organizes storms: under ~40 km/h is weak (pulse/disorganized storms that fade fast), ~40-65 is marginal, 65+ km/h supports organized multicell and supercell structure with rotation potential. THE SEVERE COMBO: high CAPE (fuel) AND strong shear (organization) together = supercell/tornado potential - this is what turns 'storms possible' into 'rotating supercells possible'; high CAPE with weak shear means pulse storms (brief, locally heavy, less organized); strong shear with low CAPE means wind/rain but limited convective severity. State the CAPE/shear combo explicitly when a severe threat exists. RADAR GROUND TRUTH: when an official alert includes a 'radar' read, that is OBSERVATION, not forecast, and it OUTRANKS model shear. tornado=OBSERVED means a tornado is confirmed on the ground RIGHT NOW - lead with it; tornado=RADAR INDICATED means radar shows rotation now even if model shear looked weak (trust the radar over the model and say organization is occurring); a damage_threat of CONSIDERABLE or DESTRUCTIVE, or large max_hail_in / strong max_wind, means the storm is already producing severe weather - your forecast must reflect what the radar already sees, not argue with it. If models show weak shear but radar indicates rotation, explicitly note the models under-resolved it. METHOD: when the models AGREE, confidence is high and you state the consensus; when they SPLIT, name the outlier, then decide whether the consensus or the outlier is more credible GIVEN the regime and the official watches, and explain why using the bias heuristics - e.g. if ECMWF and ICON show a windy/wet/convective solution and official Severe Thunderstorm or Tornado watches are already posted near the point, lean to the active solution even if GFS looks calm; conversely treat a lone over-amplified GFS signal with caution. NEVER invent numbers - reason only from the provided spread and alerts. Output STRICT JSON only with keys: headline (one line: what is actually going to happen at this point over the next 48h), model_agreement (high|medium|low), the_split (one line: where and how the models disagree, naming which model says what), favored_solution (one line: which model(s) you lean toward here and WHY, citing the bias heuristics and any official watches), confidence (low|medium|high), forecaster_note (1-2 lines in the voice of a TV meteorologist explaining the call on air), watch_for (array of strings: the specific trigger(s) that would change this forecast).";
+      const FB_METEOROLOGIST = "You are Aura's meteorology engine - an experienced operational forecaster, not a model parrot. You are given the SAME forecast from several global numerical weather models for one point, plus any official NWS/SPC watches active nationally. Reason across the models the way a working forecaster does, using these KNOWN MODEL TENDENCIES as heuristics (never absolutes - always cross-check the live spread and official products): ECMWF (European/IFS) is generally the most skillful for synoptic and medium-range pattern evolution and is the benchmark for large-scale systems; it tends to be smoother and can under-do small-scale convective extremes. GFS (American) is a capable global baseline but tends to over-amplify systems and over-forecast convective precipitation and intensity, especially beyond ~48h. ICON (German/DWD) is higher-resolution and strong for mesoscale and short-range convective structure. GEM (Canadian) is a reasonable global model but is more often the timing/amplitude outlier. SEVERE-WEATHER INGREDIENTS: CAPE (convective available potential energy, J/kg) measures instability - the fuel for thunderstorms: under ~500 is stable, 1000-2500 is moderate instability, 2500-4000 is strong, 4000+ is extreme. High CAPE alone is potential, not a storm - it needs a trigger and (for severe/rotating storms) wind shear to organize. When CAPE is elevated AND official Severe Thunderstorm or Tornado watches are posted at the point, treat the convective/severe threat as real and say so; when CAPE is low, large model wind/precip differences are less likely to be convective. WIND SHEAR (shear_sfc500_kmh = surface-to-500hPa bulk shear) organizes storms: under ~40 km/h is weak (pulse/disorganized storms that fade fast), ~40-65 is marginal, 65+ km/h supports organized multicell and supercell structure with rotation potential. THE SEVERE COMBO: high CAPE (fuel) AND strong shear (organization) together = supercell/tornado potential - this is what turns 'storms possible' into 'rotating supercells possible'; high CAPE with weak shear means pulse storms (brief, locally heavy, less organized); strong shear with low CAPE means wind/rain but limited convective severity. State the CAPE/shear combo explicitly when a severe threat exists. RADAR GROUND TRUTH: when an official alert includes a 'radar' read, that is OBSERVATION, not forecast, and it OUTRANKS model shear. tornado=OBSERVED means a tornado is confirmed on the ground RIGHT NOW - lead with it; tornado=RADAR INDICATED means radar shows rotation now even if model shear looked weak (trust the radar over the model and say organization is occurring); a damage_threat of CONSIDERABLE or DESTRUCTIVE, or large max_hail_in / strong max_wind, means the storm is already producing severe weather - your forecast must reflect what the radar already sees, not argue with it. If models show weak shear but radar indicates rotation, explicitly note the models under-resolved it. CONFIRMED STORM REPORTS (LSRs) are the HIGHEST ground truth of all - they are observations of what ALREADY happened on the ground (measured hail diameter, recorded wind gust, sighted/confirmed tornado, observed flooding). When reports exist near the point, they are fact, not forecast: lead with what was actually reported (e.g. 'spotters have confirmed 2-inch hail and wind damage in the last hour'), and use them to verify or correct both the models and the radar read. The ground-truth hierarchy is: confirmed storm reports > radar read > model guidance. METHOD: when the models AGREE, confidence is high and you state the consensus; when they SPLIT, name the outlier, then decide whether the consensus or the outlier is more credible GIVEN the regime and the official watches, and explain why using the bias heuristics - e.g. if ECMWF and ICON show a windy/wet/convective solution and official Severe Thunderstorm or Tornado watches are already posted near the point, lean to the active solution even if GFS looks calm; conversely treat a lone over-amplified GFS signal with caution. NEVER invent numbers - reason only from the provided spread and alerts. Output STRICT JSON only with keys: headline (one line: what is actually going to happen at this point over the next 48h), model_agreement (high|medium|low), the_split (one line: where and how the models disagree, naming which model says what), favored_solution (one line: which model(s) you lean toward here and WHY, citing the bias heuristics and any official watches), confidence (low|medium|high), forecaster_note (1-2 lines in the voice of a TV meteorologist explaining the call on air), watch_for (array of strings: the specific trigger(s) that would change this forecast).";
       const sysPrompt = await loadPrompt(env, "weather_meteorologist", FB_METEOROLOGIST);
-      const question = `Point: ${wrLat}, ${wrLon}\n\nMULTI-MODEL SPREAD (now / +24h / +48h):\n${JSON.stringify(wrModels.compare, null, 1)}\n\nOFFICIAL NWS ALERTS ACTIVE AT THIS EXACT POINT (ground truth, US only; each alert's 'radar' field, when present, is the radar operator's LIVE read - rotation indicated/observed, hail, wind, damage threat - and outranks model shear):\n${wrAlerts ? JSON.stringify(wrAlerts) : "none retrieved"}\n\nProduce the forecaster's reasoning JSON now.`;
+      const question = `Point: ${wrLat}, ${wrLon}\n\nMULTI-MODEL SPREAD (now / +24h / +48h):\n${JSON.stringify(wrModels.compare, null, 1)}\n\nOFFICIAL NWS ALERTS ACTIVE AT THIS EXACT POINT (ground truth, US only; each alert's 'radar' field, when present, is the radar operator's LIVE read - rotation indicated/observed, hail, wind, damage threat - and outranks model shear):\n${wrAlerts ? JSON.stringify(wrAlerts) : "none retrieved"}\n\nCONFIRMED STORM REPORTS near this point in the last 6h (US only; HIGHEST ground truth - what was actually measured/observed on the ground: hail size, wind, tornadoes, flooding):\n${wrReports && wrReports.ok ? (wrReports.count ? JSON.stringify(wrReports.reports) : "none in the last 6h") : "not retrieved"}\n\nProduce the forecaster's reasoning JSON now.`;
       const ai = await callAnthropic(anthKey, { model: "claude-haiku-4-5-20251001", max_tokens: 1400, system: sysPrompt, messages: [{ role: "user", content: question }] });
       if (!ai || !ai.ok) return { cmd: "WEATHER_REASON", payload: { ok: false, error: "reasoning failed: " + (ai && ai.error || "unknown") } };
       let text = (ai.content || []).map(b => b.text || "").join("").replace(/```json|```/g, "").trim();
@@ -1662,7 +1689,7 @@ async function processCommand(line, env, isOp) {
         if (first !== -1 && last > first) { try { reasoning = JSON.parse(text.slice(first, last + 1)); } catch {} }
         if (!reasoning) reasoning = { headline: text.slice(0, 300), raw: true };
       }
-      return { cmd: "WEATHER_REASON", payload: { ok: true, lat: wrLat, lon: wrLon, models: wrModels.models, spread: wrModels.compare, official_watches: wrAlerts, reasoning, provider: "anthropic", note: "Bias-aware multi-model meteorological reasoning. Model knowledge in KV (cognition:prompts.weather_meteorologist); floor in code." } };
+      return { cmd: "WEATHER_REASON", payload: { ok: true, lat: wrLat, lon: wrLon, models: wrModels.models, spread: wrModels.compare, official_watches: wrAlerts, storm_reports: wrReports, reasoning, provider: "anthropic", note: "Bias-aware multi-model meteorological reasoning. Model knowledge in KV (cognition:prompts.weather_meteorologist); floor in code." } };
     }
 
     case "LIVE_EVENTS": {
@@ -1675,6 +1702,21 @@ async function processCommand(line, env, isOp) {
         return { cmd: "LIVE_EVENTS", payload: { ok: true, total_active: scan.total_active, by_type: scan.by_type, top: scan.top,
           note: "Most significant ACTIVE NWS hazards nationwide right now (severity Severe/Extreme), ranked tornado>flash-flood-emergency>severe-tstorm>flash-flood>watches, each with a polygon-centroid lat/lon. Feed any to WEATHER_REASON <lat> <lon>, or run STORM_HUNT to auto-analyze the worst one." } };
       } catch (e) { return { cmd: "LIVE_EVENTS", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "STORM_REPORTS": {
+      // Confirmed ground reports (LSRs) near a point - what was actually measured/observed on the ground.
+      //   STORM_REPORTS <lat> <lon>            (last 6h, ~80mi)
+      //   STORM_REPORTS <lat> <lon> <hours>
+      const srArgs = line.replace(/^STORM_REPORTS\s*/i, "").trim().split(/\s+/).filter(Boolean);
+      const srLat = parseFloat(srArgs[0]), srLon = parseFloat(srArgs[1]);
+      const srHours = Math.min(Math.max(parseInt(srArgs[2]) || 6, 1), 24);
+      if (isNaN(srLat) || isNaN(srLon)) return { cmd: "STORM_REPORTS", payload: { ok: false, error: "Usage: STORM_REPORTS <lat> <lon> [hours]" } };
+      try {
+        const sr = await fetchStormReports(env, srLat, srLon, srHours, 1.2);
+        return { cmd: "STORM_REPORTS", payload: { ...sr, lat: srLat, lon: srLon,
+          note: "Confirmed Local Storm Reports (Iowa Env Mesonet, keyless) within ~80mi of the point - measured hail, recorded wind, sighted tornadoes, flooding. Ground truth of what actually happened. US only." } };
+      } catch (e) { return { cmd: "STORM_REPORTS", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 
     case "STORM_HUNT": {

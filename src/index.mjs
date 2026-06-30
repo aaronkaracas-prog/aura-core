@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.340-2026-06-30";
+const BUILD = "aura-core-v4.9.341-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1345,7 +1345,7 @@ async function processCommand(line, env, isOp) {
       const key = await env.AURA_KV.get("secret:currents").catch(() => null);
       if (!key) return { cmd: "NEWS_QUERY", payload: { ok: false, error: "no currents key in KV (secret:currents)" } };
       try {
-        const url = `https://api.currentsapi.services/v1/search?keywords=${encodeURIComponent(q)}&language=en&apiKey=${key}`;
+        const url = await resolveFeedUrl(env, "news_currents", { q, key }, `https://api.currentsapi.services/v1/search?keywords={q}&language=en&apiKey={key}`);
         const r = await fetchWithTimeout(url, { headers: { "cache-control": "no-cache" } }, 8000);
         if (!r.ok) return { cmd: "NEWS_QUERY", payload: { ok: false, error: `currents http ${r.status}` } };
         const d = await r.json();
@@ -1362,7 +1362,7 @@ async function processCommand(line, env, isOp) {
       const key = await env.AURA_KV.get("secret:oilprice").catch(() => null);
       if (!key) return { cmd: "OIL_PRICE", payload: { ok: false, error: "no oilprice key in KV (secret:oilprice)" } };
       try {
-        const url = `https://api.oilpriceapi.com/v1/prices/latest?by_code=${encodeURIComponent(code)}`;
+        const url = await resolveFeedUrl(env, "oil_oilpriceapi", { code }, `https://api.oilpriceapi.com/v1/prices/latest?by_code={code}`);
         const r = await fetchWithTimeout(url, { headers: { "Authorization": `Token ${key}`, "Content-Type": "application/json" } }, 8000);
         if (!r.ok) return { cmd: "OIL_PRICE", payload: { ok: false, error: `oilprice http ${r.status}` } };
         const d = await r.json();
@@ -1572,7 +1572,7 @@ async function processCommand(line, env, isOp) {
       //   HURRICANE_QUERY        (all active tropical systems, both basins)
       if (!isOp) return { cmd: "HURRICANE_QUERY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       try {
-        const r = await fetchWithTimeout("https://www.nhc.noaa.gov/CurrentStorms.json", { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)" } }, 8000);
+        const r = await fetchWithTimeout(await resolveFeedUrl(env, "hurricane_nhc", {}, "https://www.nhc.noaa.gov/CurrentStorms.json"), { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)" } }, 8000);
         if (!r.ok) return { cmd: "HURRICANE_QUERY", payload: { ok: false, source: "nhc_error", error: `nhc http ${r.status}` } };
         const d = await r.json();
         const list = d.activeStorms || d.storms || [];
@@ -1609,7 +1609,7 @@ async function processCommand(line, env, isOp) {
       const STORM_EVENTS = /tornado|severe thunderstorm|flash flood|hurricane|tropical storm|storm surge|extreme wind|dust storm/i;
       try {
         // build URL: by state if a 2-letter code, else national active alerts
-        let url = "https://api.weather.gov/alerts/active";
+        let url = await resolveFeedUrl(env, "storm_nws_alerts", {}, "https://api.weather.gov/alerts/active");
         const isState = /^[A-Za-z]{2}$/.test(stArg);
         const filterEvent = stArg.toLowerCase();
         if (isState) url += `?area=${stArg.toUpperCase()}`;
@@ -1682,7 +1682,7 @@ async function processCommand(line, env, isOp) {
         fwLat = c.lat; fwLon = c.lon; fwLabel = c.label;
       }
       try {
-        const url = `https://api.weather.gov/alerts/active?point=${fwLat},${fwLon}`;
+        const url = await resolveFeedUrl(env, "fire_weather_nws", { fwLat, fwLon }, `https://api.weather.gov/alerts/active?point={fwLat},{fwLon}`);
         const r = await fetchWithTimeout(url, { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)", "Accept": "application/geo+json" } }, 8000);
         if (!r.ok) return { cmd: "FIRE_WEATHER", payload: { ok: false, source: "nws_error", error: `nws http ${r.status}` } };
         const d = await r.json();
@@ -1830,7 +1830,7 @@ async function processCommand(line, env, isOp) {
       const key = await env.AURA_KV.get("secret:openweather").catch(() => null);
       if (!key) return { cmd: "MARINE_WX", payload: { ok: false, error: "no openweather key in KV (secret:openweather)" } };
       try {
-        const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${key}`;
+        const url = await resolveFeedUrl(env, "marine_owm", { lat, lon, key }, `https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&units=metric&appid={key}`);
         const r = await fetchWithTimeout(url, {}, 8000);
         if (!r.ok) return { cmd: "MARINE_WX", payload: { ok: false, error: `openweather http ${r.status}` } };
         const d = await r.json();

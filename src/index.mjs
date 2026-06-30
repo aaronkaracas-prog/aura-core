@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.339-2026-06-30";
+const BUILD = "aura-core-v4.9.340-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -385,6 +385,22 @@ async function fetchWithTimeout(url, opts = {}, ms = 8000) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+// Feed/endpoint URLs live in KV (feeds:registry) so a new feed or provider is a KV write, not code.
+// Resolves a feed URL: KV registry override if present, else the in-code template floor; then substitutes
+// {placeholder} params (URL-encoded). Index keeps only the generic fetch machinery. Mirrors loadPrompt/loadRegions.
+async function resolveFeedUrl(env, key, params = {}, fallbackTemplate = "") {
+  let tmpl = fallbackTemplate;
+  try {
+    const raw = await env.AURA_KV.get("feeds:registry");
+    if (raw) { const all = JSON.parse(raw); if (all && all[key] && typeof all[key].url === "string" && all[key].url.trim()) tmpl = all[key].url; }
+  } catch (e) { /* fall through to in-code template floor */ }
+  let url = tmpl;
+  for (const [k, v] of Object.entries(params)) {
+    url = url.split("{" + k + "}").join(encodeURIComponent(String(v == null ? "" : v)));
+  }
+  return url;
 }
 
 async function getOperatorToken(env) {
@@ -900,7 +916,7 @@ async function processCommand(line, env, isOp) {
       // Each check: a name, a per-line test, and whether matches in a *_FALLBACK / *_SAFETY / FB_ block are OK (allowed floor)
       const isAllowedFloor = (idx) => {
         // look back up to 8 lines for a fallback/safety marker that legitimizes an in-code default
-        for (let i = Math.max(0, idx - 8); i <= idx; i++) { if (/TOPICS_SAFETY|_FALLBACK|loadRegions\(env,|loadPrompt\(env,|FB_STORM|FB_QUAKE|FB_FIRE|FB_MARITIME|const FB_/.test(lines[i])) return true; }
+        for (let i = Math.max(0, idx - 8); i <= idx; i++) { if (/TOPICS_SAFETY|_FALLBACK|loadRegions\(env,|loadPrompt\(env,|resolveFeedUrl\(env,|FB_STORM|FB_QUAKE|FB_FIRE|FB_MARITIME|const FB_/.test(lines[i])) return true; }
         return false;
       };
       const checks = [
@@ -908,7 +924,7 @@ async function processCommand(line, env, isOp) {
         { id: "inline_region_boxes", desc: "Region bounding boxes hardcoded (should be in situation:regions)", re: /(lamin:\s*-?\d|latBottom:\s*-?\d|\bw:\s*-?\d+\.\d.*\bs:\s*-?\d)/, floorOk: true },
         { id: "inline_prompts", desc: "System prompts hardcoded inline (candidates for cognition:prompts:* in KV)", re: /"You are /, floorOk: true },
         { id: "demo_content", desc: "Hardcoded demo/business names (belong in KV or a demo file)", re: /Jebel Ali|MV Gulf Carrier/, floorOk: false },
-        { id: "hardcoded_endpoints", desc: "External endpoint/feed URLs hardcoded in source (should live in KV feeds:registry / integration config - index keeps only the generic fetch machinery)", re: /https?:\/\/(?!(?:api\.anthropic\.com|api\.openai\.com|api\.x\.ai|api\.cloudflare\.com|api\.github\.com|github\.com|raw\.githubusercontent\.com|[a-z0-9.-]*\.workers\.dev|auras\.guide|console\.auras\.guide|openforbusiness\.world|mypta\.world|homescreen\.world|accounts\.google\.com|oauth2\.googleapis\.com|www\.googleapis\.com|cdn\.jsdelivr\.net))[a-z0-9-]+\.[a-z][a-z0-9.-]*/i, floorOk: false }
+        { id: "hardcoded_endpoints", desc: "External endpoint/feed URLs hardcoded in source (should live in KV feeds:registry / integration config - index keeps only the generic fetch machinery)", re: /https?:\/\/(?!(?:api\.anthropic\.com|api\.openai\.com|api\.x\.ai|api\.cloudflare\.com|api\.github\.com|github\.com|raw\.githubusercontent\.com|[a-z0-9.-]*\.workers\.dev|auras\.guide|console\.auras\.guide|openforbusiness\.world|mypta\.world|homescreen\.world|accounts\.google\.com|oauth2\.googleapis\.com|www\.googleapis\.com|cdn\.jsdelivr\.net))[a-z0-9-]+\.[a-z][a-z0-9.-]*/i, floorOk: true }
       ];
       const findings = [];
       for (const c of checks) {
@@ -919,7 +935,7 @@ async function processCommand(line, env, isOp) {
           const trimmed = ln.trim();
           if (trimmed.startsWith("//") || trimmed.startsWith("*") || /\bre:\s*\//.test(ln) || /desc:\s*"/.test(ln)) continue;
           if (c.re.test(ln)) {
-            const onFloor = c.floorOk && isAllowedFloor(i);
+            const onFloor = c.floorOk && (c.id === "hardcoded_endpoints" ? /resolveFeedUrl\(env,/.test(ln) : isAllowedFloor(i));
             if (!onFloor) hits.push({ line: i + 1, text: trimmed.slice(0, 120) });
           }
         }
@@ -1629,7 +1645,7 @@ async function processCommand(line, env, isOp) {
       const QFEEDS = { significant: "significant_day", "4.5": "4.5_day", "2.5": "2.5_day", "1.0": "1.0_day", all: "all_day" };
       const feed = QFEEDS[qArg] || (parseFloat(qArg) >= 4.5 ? "4.5_day" : parseFloat(qArg) >= 2.5 ? "2.5_day" : "significant_day");
       try {
-        const url = `https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/${feed}.geojson`;
+        const url = await resolveFeedUrl(env, "quake_usgs", { feed }, `https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/{feed}.geojson`);
         const r = await fetchWithTimeout(url, { headers: { "User-Agent": "SituationTracker/1.0" } }, 8000);
         if (!r.ok) return { cmd: "QUAKE_QUERY", payload: { ok: false, source: "usgs_error", error: `usgs http ${r.status}` } };
         const d = await r.json();

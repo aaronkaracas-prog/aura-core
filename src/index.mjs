@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.360-2026-06-30";
+const BUILD = "aura-core-v4.9.361-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1834,6 +1834,44 @@ async function processCommand(line, env, isOp) {
         return { cmd: "HURRICANES", payload: { ok: true, count: tc.count, storms: tc.storms,
           note: tc.count ? "Active tropical cyclones (NHC, keyless, all basins), strongest first. category from max sustained wind; moving.toward = compass heading the storm is traveling; wind in kt and mph; pressure in mb. Run HURRICANE_REASON for Aura's intensity/track outlook on the strongest." : "No active tropical cyclones in any basin right now (common outside peak season). The finder is live and will populate the moment a system is named." } };
       } catch (e) { return { cmd: "HURRICANES", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "HURRICANE_REASON": {
+      // Aura's tropical intensity outlook: take a storm, project its path, read SST (fuel) along it, call the trend.
+      try {
+        const hrArg = line.replace(/^HURRICANE_REASON\s*/i, "").trim();
+        const tc = await fetchTropicalCyclones(env);
+        if (!tc.ok) return { cmd: "HURRICANE_REASON", payload: tc };
+        if (!tc.count) return { cmd: "HURRICANE_REASON", payload: { ok: true, no_active_storms: true, note: "No active tropical cyclones to analyze right now. This outlook lights up the moment NHC names a system." } };
+        const storm = hrArg ? (tc.storms.find(s => (s.name || "").toLowerCase() === hrArg.toLowerCase()) || tc.storms[0]) : tc.storms[0];
+        // project the track forward from current position along its heading
+        const project = (lat, lon, dirDeg, speedKt, hours) => {
+          if (dirDeg == null || speedKt == null || lat == null || lon == null) return null;
+          const dd = (speedKt * hours) / 60; const rad = dirDeg * Math.PI / 180;
+          return { lat: +(lat + dd * Math.cos(rad)).toFixed(2), lon: +(lon + dd * Math.sin(rad) / Math.cos(lat * Math.PI / 180)).toFixed(2), hours };
+        };
+        const path = [{ lat: storm.lat, lon: storm.lon, hours: 0 }, project(storm.lat, storm.lon, storm.moving.toward_deg, storm.moving.speed_kt, 24), project(storm.lat, storm.lon, storm.moving.toward_deg, storm.moving.speed_kt, 48)].filter(Boolean);
+        // sample SST (fuel) at each path point from nearby buoys - null in open ocean (buoy-sparse), present near US coast/Gulf
+        const sst_along_path = [];
+        for (const p of path) {
+          let sst = null, buoy = null;
+          try { const m = await fetchMarineConditions(env, p.lat, p.lon, 4); if (m && m.ok && m.count) { const withSst = m.buoys.find(b => b.sst_c != null); if (withSst) { sst = withSst.sst_c; buoy = withSst.station; } } } catch {}
+          sst_along_path.push({ hours: p.hours, lat: p.lat, lon: p.lon, sst_c: sst, buoy });
+        }
+        const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+        if (!anthKey) return { cmd: "HURRICANE_REASON", payload: { ok: true, storm, path, sst_along_path, reasoning: null, note: "SST fuel read only (no reasoning key)." } };
+        const FB_HURRICANE = "You are Aura's tropical cyclone intensity analyst. You are given a storm's current state (category, max sustained wind, central pressure, position, heading) and the sea-surface temperatures sampled along its PROJECTED path. SST is the primary fuel for a tropical cyclone: below ~26C starves it (weakening); 26-28C supports maintenance; above ~28-29C supports intensification, and very warm water (29C+) with a storm that is already organized is the setup for rapid intensification IF other factors align. Warmer water AHEAD on the track means more fuel and an intensifying bias; cooler water, or land, ahead means a weakening bias. Central pressure is an intensity check: a falling/low pressure for the category indicates a strong, well-organized core. CRITICAL HONESTY: you have ONLY SST and the storm's current state here. You do NOT have upper-level wind shear, mid-level dry air (e.g. Saharan air), or oceanic heat content (depth of the warm layer). High wind shear or dry air can wreck a storm over warm water, so SST-favorable does NOT guarantee strengthening. Frame your output explicitly as a FUEL-BASED outlook, not a complete NHC intensity forecast, and name the factors you cannot see. Where SST along the path is null (open ocean, no buoys nearby), say the fuel read is unavailable there and lower your confidence. NEVER invent numbers - reason only from what is given. Output STRICT JSON only with keys: headline (one line: the storm, its current strength, and where it is heading), intensity_outlook (one of: intensifying | maintaining | weakening | rapid_intensification_possible), peak_risk (one line: the realistic worst-case near-term intensity/impact given the fuel), track_note (one line: where it is heading and what is in its path), fuel_read (one line: what the SST along the path tells you), reasoning (2-3 sentences tying SST + current state + pressure together), confidence (low|medium|high), caveats (array of strings: the things you cannot see that could change this - shear, dry air, land interaction, sparse SST data).";
+        const sys = await loadPrompt(env, "weather_hurricane", FB_HURRICANE);
+        const q = `STORM: ${storm.name} (${storm.category}, ${storm.classification})\nCurrent: ${storm.wind_kt} kt / ${storm.wind_mph} mph sustained, central pressure ${storm.pressure_mb} mb, position ${storm.lat}, ${storm.lon}, moving ${storm.moving.toward} (${storm.moving.toward_deg} deg) at ${storm.moving.speed_kt} kt.\n\nSEA-SURFACE TEMPERATURE ALONG THE PROJECTED PATH (the fuel; null = no buoy near that point):\n${JSON.stringify(sst_along_path)}\n\nProduce the tropical intensity outlook JSON now.`;
+        const ai = await callAnthropic(anthKey, { model: "claude-haiku-4-5-20251001", max_tokens: 1100, system: sys, messages: [{ role: "user", content: q }] });
+        let reasoning = null;
+        if (ai && ai.ok) {
+          let text = (ai.content || []).map(b => b.text || "").join("").replace(/```json|```/g, "").trim();
+          try { reasoning = JSON.parse(text); } catch { const f = text.indexOf("{"), l = text.lastIndexOf("}"); if (f !== -1 && l > f) { try { reasoning = JSON.parse(text.slice(f, l + 1)); } catch {} } if (!reasoning) reasoning = { headline: text.slice(0, 300), raw: true }; }
+        }
+        return { cmd: "HURRICANE_REASON", payload: { ok: true, storm, path, sst_along_path, reasoning, provider: "anthropic",
+          note: "Fuel-based tropical intensity outlook: projects the storm's track, reads SST (hurricane fuel) along it, and reasons. SST from NDBC buoys (null in open ocean). Does NOT include upper-level shear or dry-air - a fuel outlook, not a full NHC forecast." } };
+      } catch (e) { return { cmd: "HURRICANE_REASON", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 
     case "FORECAST_LOG": {

@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.337-2026-06-30";
+const BUILD = "aura-core-v4.9.338-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1325,7 +1325,7 @@ async function processCommand(line, env, isOp) {
       if (!key) return { cmd: "NEWS_QUERY", payload: { ok: false, error: "no currents key in KV (secret:currents)" } };
       try {
         const url = `https://api.currentsapi.services/v1/search?keywords=${encodeURIComponent(q)}&language=en&apiKey=${key}`;
-        const r = await fetch(url, { headers: { "cache-control": "no-cache" } });
+        const r = await fetchWithTimeout(url, { headers: { "cache-control": "no-cache" } }, 8000);
         if (!r.ok) return { cmd: "NEWS_QUERY", payload: { ok: false, error: `currents http ${r.status}` } };
         const d = await r.json();
         const news = (d.news || []).slice(0, 12).map(n => ({ title: n.title, description: (n.description || "").slice(0, 300), url: n.url, published: n.published, source: n.author || (n.category || []).join(",") }));
@@ -1367,7 +1367,7 @@ async function processCommand(line, env, isOp) {
         const base = "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0/query";
         const where = stateFilter ? encodeURIComponent(`POOState='${stateFilter}'`) : "1%3D1";
         const url = `${base}?where=${where}&outFields=*&returnGeometry=true&outSR=4326&f=json`;
-        const r = await fetch(url, { headers: { "User-Agent": "SituationTracker/1.0" } });
+        const r = await fetchWithTimeout(url, { headers: { "User-Agent": "SituationTracker/1.0" } }, 8000);
         if (!r.ok) return { cmd: "FIRE_OFFICIAL", payload: { ok: false, source: "nifc_error", region: foRegion, error: `nifc http ${r.status}` } };
         const d = await r.json();
         if (d.error) return { cmd: "FIRE_OFFICIAL", payload: { ok: false, source: "nifc_error", region: foRegion, error: JSON.stringify(d.error).slice(0, 200) } };
@@ -1471,7 +1471,7 @@ async function processCommand(line, env, isOp) {
       try {
         // 1) Active SPC Mesoscale Discussions (keyless ArcGIS) - the pre-watch reasoning layer
         const mdUrl = "https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/spc_mesoscale_discussion/MapServer/0/query?where=1%3D1&outFields=*&returnGeometry=false&f=json";
-        const mdR = await fetch(mdUrl, { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)" } });
+        const mdR = await fetchWithTimeout(mdUrl, { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)" } }, 8000);
         let discussions = [];
         if (mdR.ok) {
           const md = await mdR.json();
@@ -1504,7 +1504,7 @@ async function processCommand(line, env, isOp) {
           if (d.md_number) {
             try {
               const num = String(parseInt(d.md_number)).padStart(4, "0");
-              const tr = await fetch(`https://www.spc.noaa.gov/products/md/${mdYear}/md${num}.html`, { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)" } });
+              const tr = await fetchWithTimeout(`https://www.spc.noaa.gov/products/md/${mdYear}/md${num}.html`, { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)" } }, 8000);
               if (tr.ok) {
                 const html = await tr.text();
                 const pre = html.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
@@ -1551,7 +1551,7 @@ async function processCommand(line, env, isOp) {
       //   HURRICANE_QUERY        (all active tropical systems, both basins)
       if (!isOp) return { cmd: "HURRICANE_QUERY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       try {
-        const r = await fetch("https://www.nhc.noaa.gov/CurrentStorms.json", { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)" } });
+        const r = await fetchWithTimeout("https://www.nhc.noaa.gov/CurrentStorms.json", { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)" } }, 8000);
         if (!r.ok) return { cmd: "HURRICANE_QUERY", payload: { ok: false, source: "nhc_error", error: `nhc http ${r.status}` } };
         const d = await r.json();
         const list = d.activeStorms || d.storms || [];
@@ -1592,7 +1592,7 @@ async function processCommand(line, env, isOp) {
         const isState = /^[A-Za-z]{2}$/.test(stArg);
         const filterEvent = stArg.toLowerCase();
         if (isState) url += `?area=${stArg.toUpperCase()}`;
-        const r = await fetch(url, { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)", "Accept": "application/geo+json" } });
+        const r = await fetchWithTimeout(url, { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)", "Accept": "application/geo+json" } }, 8000);
         if (!r.ok) return { cmd: "STORM_QUERY", payload: { ok: false, source: "nws_error", error: `nws http ${r.status}` } };
         const d = await r.json();
         let alerts = (d.features || []).map(f => {
@@ -1625,7 +1625,7 @@ async function processCommand(line, env, isOp) {
       const feed = QFEEDS[qArg] || (parseFloat(qArg) >= 4.5 ? "4.5_day" : parseFloat(qArg) >= 2.5 ? "2.5_day" : "significant_day");
       try {
         const url = `https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/${feed}.geojson`;
-        const r = await fetch(url, { headers: { "User-Agent": "SituationTracker/1.0" } });
+        const r = await fetchWithTimeout(url, { headers: { "User-Agent": "SituationTracker/1.0" } }, 8000);
         if (!r.ok) return { cmd: "QUAKE_QUERY", payload: { ok: false, source: "usgs_error", error: `usgs http ${r.status}` } };
         const d = await r.json();
         const quakes = (d.features || []).map(f => {
@@ -1662,7 +1662,7 @@ async function processCommand(line, env, isOp) {
       }
       try {
         const url = `https://api.weather.gov/alerts/active?point=${fwLat},${fwLon}`;
-        const r = await fetch(url, { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)", "Accept": "application/geo+json" } });
+        const r = await fetchWithTimeout(url, { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)", "Accept": "application/geo+json" } }, 8000);
         if (!r.ok) return { cmd: "FIRE_WEATHER", payload: { ok: false, source: "nws_error", error: `nws http ${r.status}` } };
         const d = await r.json();
         const alerts = (d.features || []).map(f => {
@@ -1785,7 +1785,7 @@ async function processCommand(line, env, isOp) {
       if (!fkey) return { cmd: "FIRE_QUERY", payload: { ok: false, source: "no_key", region: fqRegion, label: fb.label, error: "No FIRMS MAP_KEY. Set secret:firms (free at firms.modaps.eosdis.nasa.gov/api/area/). The fire SITUATION engine is wired and will run the moment the key lands." } };
       try {
         const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${fkey}/VIIRS_NOAA20_NRT/${fb.w},${fb.s},${fb.e},${fb.n}/1`;
-        const r = await fetch(url);
+        const r = await fetchWithTimeout(url, {}, 8000);
         if (!r.ok) return { cmd: "FIRE_QUERY", payload: { ok: false, source: "firms_error", region: fqRegion, error: `firms http ${r.status}` } };
         const text = await r.text();
         const lines = text.trim().split("\n");
@@ -1810,7 +1810,7 @@ async function processCommand(line, env, isOp) {
       if (!key) return { cmd: "MARINE_WX", payload: { ok: false, error: "no openweather key in KV (secret:openweather)" } };
       try {
         const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${key}`;
-        const r = await fetch(url);
+        const r = await fetchWithTimeout(url, {}, 8000);
         if (!r.ok) return { cmd: "MARINE_WX", payload: { ok: false, error: `openweather http ${r.status}` } };
         const d = await r.json();
         return { cmd: "MARINE_WX", payload: { ok: true, place: d.name || `${lat},${lon}`, conditions: (d.weather || [{}])[0].description, temp_c: d.main?.temp, wind_ms: d.wind?.speed, wind_gust_ms: d.wind?.gust, wind_deg: d.wind?.deg, visibility_m: d.visibility, pressure: d.main?.pressure } };
@@ -2675,7 +2675,7 @@ async function processCommand(line, env, isOp) {
       if (vkey && aisBox) {
         try {
           const u = `https://api.vesselapi.com/v1/location/vessels/bounding-box?filter.latBottom=${aisBox.latBottom}&filter.latTop=${aisBox.latTop}&filter.lonLeft=${aisBox.lonLeft}&filter.lonRight=${aisBox.lonRight}`;
-          const r = await fetch(u, { headers: { "Authorization": "Bearer " + vkey } });
+          const r = await fetchWithTimeout(u, { headers: { "Authorization": "Bearer " + vkey } }, 8000);
           if (r.ok) {
             const d = await r.json();
             const raw = d.data || d.vessels || [];

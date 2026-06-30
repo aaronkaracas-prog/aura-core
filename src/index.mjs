@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.333-2026-06-30";
+const BUILD = "aura-core-v4.9.334-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -2102,6 +2102,25 @@ async function processCommand(line, env, isOp) {
         let coord = null; try { coord = JSON.parse(t); } catch { coord = { fleet_status: t.slice(0, 300), raw: true }; }
         return { cmd: "FLEET_COORDINATE", payload: { ok: true, company: fc.company || null, vessel_count: seaStates.length, live_sea_states: seaStates, coordination: coord } };
       } catch (e) { return { cmd: "FLEET_COORDINATE", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "FLEET_LIVE": {
+      // CONVERGENCE: the harbor view of a live region in ONE command. Reads live AIS for the region,
+      // maps the vessels into the fleet-coordination input, and delegates to the proven FLEET_COORDINATE
+      // engine - zero hand-assembled JSON, zero logic duplication. "Harbor view of Hormuz" = FLEET_LIVE hormuz.
+      //   FLEET_LIVE <ais region>   (e.g. hormuz, singapore, rotterdam, fujairah, jebelali)
+      if (!isOp) return { cmd: "FLEET_LIVE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const flRegion = (rest || "").trim().toLowerCase();
+      if (!flRegion) return { cmd: "FLEET_LIVE", payload: { ok: false, error: "Usage: FLEET_LIVE <ais region> (e.g. hormuz, singapore, rotterdam)" } };
+      const flAis = await processCommand("AIS_QUERY " + flRegion, env, true);
+      const flAp = (flAis && flAis.payload) ? flAis.payload : flAis;
+      if (!flAp || !flAp.ok || !Array.isArray(flAp.vessels) || !flAp.vessels.length) {
+        return { cmd: "FLEET_LIVE", payload: { ok: false, error: "No live vessels for region '" + flRegion + "' (AIS empty or collector not running)", ais: flAp || null } };
+      }
+      const flVessels = flAp.vessels.slice(0, 25).map(v => ({ name: v.name || ("MMSI" + v.mmsi), lat: v.lat, lon: v.lon, voyage: "", sog: v.sog, cog: v.cog }));
+      const flFc = await processCommand("FLEET_COORDINATE ::: " + JSON.stringify({ company: "Live " + flRegion + " traffic", vessels: flVessels }), env, true);
+      const flFp = (flFc && flFc.payload) ? flFc.payload : flFc;
+      return { cmd: "FLEET_LIVE", payload: { ok: !!(flFp && flFp.ok), region: flRegion, vessel_count: flVessels.length, ais_updated: flAp.updated || null, coordination: (flFp && flFp.coordination) || null, live_sea_states: (flFp && flFp.live_sea_states) || null, error: (flFp && !flFp.ok) ? flFp.error : undefined } };
     }
 
     case "PORT_VALUE": {

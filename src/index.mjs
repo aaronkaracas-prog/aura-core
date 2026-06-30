@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.323-2026-06-30";
+const BUILD = "aura-core-v4.9.324-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -839,6 +839,56 @@ async function processCommand(line, env, isOp) {
         } catch (e) { return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Analyze failed: " + e.message } }; }
       }
       return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Usage: AURA_READ_SELF GREP <term> | SECTION <start> <end> | ANALYZE <term> ::: <question> | STAT" } };
+    }
+
+    case "INDEX_AUDIT": {
+      // THE LOCK. Makes "is the index clean?" a 200ms check instead of a 14000-line faith exercise.
+      // Reads the live source from the clean GitHub mirror and scans for DRIFT: hardcoded content that
+      // should live in KV (topic maps, region boxes, inline prompts, demo names). Returns a clean/dirty
+      // verdict with counts + sample line numbers. Run after every session. Drift caught = drift fixed.
+      //   INDEX_AUDIT            full audit
+      //   INDEX_AUDIT VERBOSE    include sample matching lines
+      if (!isOp) return { cmd: "INDEX_AUDIT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const verbose = /verbose/i.test(rest);
+      let src;
+      try {
+        const sr = await fetch("https://raw.githubusercontent.com/aaronkaracas-prog/aura-core/main/src/index.mjs", { headers: { "User-Agent": "aura-index-audit" } });
+        if (!sr.ok) return { cmd: "INDEX_AUDIT", payload: { ok: false, error: "Could not fetch self from GitHub: HTTP " + sr.status } };
+        src = await sr.text();
+      } catch (e) { return { cmd: "INDEX_AUDIT", payload: { ok: false, error: String(e && e.message || e) } }; }
+      const lines = src.split("\n");
+      const buildMatch = src.match(/const BUILD = "([^"]+)"/);
+      // Each check: a name, a per-line test, and whether matches in a *_FALLBACK / *_SAFETY / FB_ block are OK (allowed floor)
+      const isAllowedFloor = (idx) => {
+        // look back up to 8 lines for a fallback/safety marker that legitimizes an in-code default
+        for (let i = Math.max(0, idx - 8); i <= idx; i++) { if (/TOPICS_SAFETY|_FALLBACK|loadRegions\(env,|FB_STORM|FB_QUAKE|FB_FIRE|FB_MARITIME|const FB_/.test(lines[i])) return true; }
+        return false;
+      };
+      const checks = [
+        { id: "inline_topic_maps", desc: "Topic definitions hardcoded in code (should be in situation:topics)", re: /\bdomain:\s*"(maritime|fire|quake|storm)".*label:/, floorOk: true },
+        { id: "inline_region_boxes", desc: "Region bounding boxes hardcoded (should be in situation:regions)", re: /(lamin:\s*-?\d|latBottom:\s*-?\d|\bw:\s*-?\d+\.\d.*\bs:\s*-?\d)/, floorOk: true },
+        { id: "inline_prompts", desc: "System prompts hardcoded inline (candidates for cognition:prompts:* in KV)", re: /"You are /, floorOk: true },
+        { id: "demo_content", desc: "Hardcoded demo/business names (belong in KV or a demo file)", re: /Jebel Ali|MV Gulf Carrier/, floorOk: false }
+      ];
+      const findings = [];
+      for (const c of checks) {
+        const hits = [];
+        for (let i = 0; i < lines.length; i++) {
+          if (c.re.test(lines[i])) {
+            const onFloor = c.floorOk && isAllowedFloor(i);
+            if (!onFloor) hits.push({ line: i + 1, text: lines[i].trim().slice(0, 120) });
+          }
+        }
+        findings.push({ check: c.id, desc: c.desc, drift_count: hits.length, samples: verbose ? hits.slice(0, 8) : hits.slice(0, 3).map(h => h.line) });
+      }
+      const totalDrift = findings.reduce((a, f) => a + f.drift_count, 0);
+      // separate the "expected/known" prompt-drift (cognition layer, a known future migration) from true surprises
+      const promptDrift = findings.find(f => f.check === "inline_prompts").drift_count;
+      const structuralDrift = totalDrift - promptDrift;
+      const verdict = structuralDrift === 0
+        ? (promptDrift === 0 ? "CLEAN - no hardcoded content drift detected" : `SITUATION ENGINE CLEAN - ${promptDrift} inline prompts remain (known: cognition-layer prompts, a planned migration, not situation-engine drift)`)
+        : `DRIFT DETECTED - ${structuralDrift} hardcoded item(s) that should be in KV (excluding known prompt migration)`;
+      return { cmd: "INDEX_AUDIT", payload: { ok: true, build: buildMatch ? buildMatch[1] : null, total_lines: lines.length, verdict, structural_drift: structuralDrift, prompt_drift: promptDrift, findings, note: "Run after every session. 'Floor' fallbacks (TOPICS_SAFETY, *_FALLBACK, FB_*) are intentional and excluded. Structural drift > 0 = something that should be in KV crept into code." } };
     }
 
     case "WHO_AM_I":

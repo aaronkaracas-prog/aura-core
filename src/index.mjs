@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.359-2026-06-30";
+const BUILD = "aura-core-v4.9.360-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -474,6 +474,35 @@ async function fetchMarineConditions(env, lat, lon, radiusDeg = 2.5) {
   }
   buoys.sort((a, b) => a.dist - b.dist);
   return { ok: true, count: buoys.length, buoys: buoys.slice(0, 12) };
+}
+
+// TROPICAL CYCLONES from NHC (keyless). One JSON holds every active storm in every basin (Atlantic, E Pacific,
+// Central Pacific) with current position, intensity, pressure, and movement. Saffir-Simpson derived from max wind.
+async function fetchTropicalCyclones(env) {
+  const url = await resolveFeedUrl(env, "nhc_current_storms", {}, `https://www.nhc.noaa.gov/CurrentStorms.json`);
+  const r = await fetchWithTimeout(url, { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)" } }, 9000);
+  if (!r.ok) { let b = ""; try { b = (await r.text()).slice(0, 160); } catch {} return { ok: false, error: `nhc http ${r.status}`, detail: b }; }
+  let j; try { j = await r.json(); } catch (e) { return { ok: false, error: "nhc parse " + (e && e.message || e) }; }
+  const arr = (j && j.activeStorms) || [];
+  const cat = (kt) => { const w = parseFloat(kt); if (isNaN(w)) return "Unknown"; if (w < 34) return "Tropical Depression"; if (w < 64) return "Tropical Storm"; if (w < 83) return "Category 1 Hurricane"; if (w < 96) return "Category 2 Hurricane"; if (w < 113) return "Category 3 Hurricane"; if (w < 137) return "Category 4 Hurricane"; return "Category 5 Hurricane"; };
+  const coord = (s, n) => { if (typeof n === "number") return n; if (!s) return null; const m = String(s).match(/([\d.]+)\s*([NSEW])/i); if (!m) { const v = parseFloat(s); return isNaN(v) ? null : v; } let v = parseFloat(m[1]); const d = m[2].toUpperCase(); if (d === "S" || d === "W") v = -v; return v; };
+  const compass = (deg) => { if (deg == null || isNaN(deg)) return null; const dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]; return dirs[Math.round((deg % 360) / 22.5) % 16]; };
+  const storms = arr.map(s => {
+    const wind_kt = parseFloat(s.intensity);
+    const dir = (s.movementDir != null && s.movementDir !== "") ? parseFloat(s.movementDir) : null;
+    return {
+      id: s.id, name: s.name, basin: s.binNumber || null,
+      classification: s.classification || null, category: cat(s.intensity),
+      wind_kt: isNaN(wind_kt) ? null : wind_kt, wind_mph: isNaN(wind_kt) ? null : Math.round(wind_kt * 1.15078),
+      pressure_mb: (s.pressure != null && s.pressure !== "") ? parseFloat(s.pressure) : null,
+      lat: coord(s.latitude, s.latitudeNumeric), lon: coord(s.longitude, s.longitudeNumeric),
+      moving: { toward_deg: dir, toward: compass(dir), speed_kt: (s.movementSpeed != null && s.movementSpeed !== "") ? parseFloat(s.movementSpeed) : null },
+      last_update: s.lastUpdate || null,
+      advisory_url: (s.publicAdvisory && s.publicAdvisory.url) || null
+    };
+  });
+  storms.sort((a, b) => (b.wind_kt || 0) - (a.wind_kt || 0)); // strongest first
+  return { ok: true, count: storms.length, storms };
 }
 
 // LIVE-EVENT FINDER - scan the whole country for the most significant ACTIVE NWS hazards right now
@@ -1794,6 +1823,17 @@ async function processCommand(line, env, isOp) {
         return { cmd: "MARINE_CONDITIONS", payload: { ...m, lat: mcLat, lon: mcLon,
           note: "Live buoy observations (NDBC, keyless) within ~200mi: sst_c = sea-surface temp (hurricane fuel; >26C supports tropical cyclones), wave_m/wave_period_s = sea state, wind_ms/gust_ms in m/s, pressure_hpa. Ground truth for marine/hurricane/coastal points; empty inland." } };
       } catch (e) { return { cmd: "MARINE_CONDITIONS", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "HURRICANES":
+    case "TROPICAL": {
+      // Every active tropical cyclone worldwide (NHC, keyless): position, Saffir-Simpson category, wind, pressure, heading.
+      try {
+        const tc = await fetchTropicalCyclones(env);
+        if (!tc.ok) return { cmd: "HURRICANES", payload: tc };
+        return { cmd: "HURRICANES", payload: { ok: true, count: tc.count, storms: tc.storms,
+          note: tc.count ? "Active tropical cyclones (NHC, keyless, all basins), strongest first. category from max sustained wind; moving.toward = compass heading the storm is traveling; wind in kt and mph; pressure in mb. Run HURRICANE_REASON for Aura's intensity/track outlook on the strongest." : "No active tropical cyclones in any basin right now (common outside peak season). The finder is live and will populate the moment a system is named." } };
+      } catch (e) { return { cmd: "HURRICANES", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 
     case "FORECAST_LOG": {

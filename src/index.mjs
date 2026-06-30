@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.315-2026-06-29";
+const BUILD = "aura-core-v4.9.316-2026-06-29";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1350,6 +1350,38 @@ async function processCommand(line, env, isOp) {
       } catch (e) { return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, source: "opensky_error", region: acRegion, error: String(e && e.message || e) } }; }
     }
 
+    case "HURRICANE_QUERY": {
+      // National Hurricane Center active tropical cyclones - KEYLESS (CurrentStorms.json).
+      // The days-out prediction layer: every active hurricane/tropical storm with position, category,
+      // winds, movement, and pressure. NHC also publishes forecast cone/track via its ArcGIS service.
+      //   HURRICANE_QUERY        (all active tropical systems, both basins)
+      if (!isOp) return { cmd: "HURRICANE_QUERY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      try {
+        const r = await fetch("https://www.nhc.noaa.gov/CurrentStorms.json", { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)" } });
+        if (!r.ok) return { cmd: "HURRICANE_QUERY", payload: { ok: false, source: "nhc_error", error: `nhc http ${r.status}` } };
+        const d = await r.json();
+        const list = d.activeStorms || d.storms || [];
+        const storms = list.map(s => ({
+          id: s.id || s.binNumber || null,
+          name: s.name || null,
+          classification: s.classification || s.tcType || null,
+          intensity_kt: s.intensity ? parseInt(s.intensity) : null,
+          pressure_mb: s.pressure ? parseInt(s.pressure) : null,
+          lat: s.latitudeNumeric ?? (s.latitude ? parseFloat(s.latitude) : null),
+          lon: s.longitudeNumeric ?? (s.longitude ? parseFloat(s.longitude) : null),
+          movement: s.movementDir != null ? `${s.movementDir}deg at ${s.movementSpeed}kt` : null,
+          basin: s.basin || null,
+          last_update: s.lastUpdate || null,
+          public_advisory: s.publicAdvisory && s.publicAdvisory.url ? s.publicAdvisory.url : null,
+          cone: s.forecastCone && s.forecastCone.url ? s.forecastCone.url : null
+        }));
+        // categorize by Saffir-Simpson from intensity (kt): H1>=64, but report TS/TD too
+        const cat = (kt) => kt == null ? null : kt >= 137 ? "Cat5" : kt >= 113 ? "Cat4" : kt >= 96 ? "Cat3" : kt >= 83 ? "Cat2" : kt >= 64 ? "Cat1" : kt >= 34 ? "TropStorm" : "TropDepression";
+        for (const s of storms) s.category = cat(s.intensity_kt);
+        return { cmd: "HURRICANE_QUERY", payload: { ok: true, source: "nhc_live", active_count: storms.length, storms, updated: new Date().toISOString(), note: storms.length ? `${storms.length} active tropical system(s)` : "No active tropical cyclones right now (NHC)." } };
+      } catch (e) { return { cmd: "HURRICANE_QUERY", payload: { ok: false, source: "nhc_error", error: String(e && e.message || e) } }; }
+    }
+
     case "STORM_QUERY": {
       // NWS national severe-weather feed - tornado, severe thunderstorm, flash flood, hurricane alerts.
       // KEYLESS (api.weather.gov). The PREVENTATIVE layer: these warnings are issued AHEAD of impact.
@@ -2143,19 +2175,21 @@ async function processCommand(line, env, isOp) {
       }
       // MARITIME DOMAIN (default)
       if (domain === "storm") {
-        const [news, storm, web] = await Promise.all([
+        const [news, storm, hurr, web] = await Promise.all([
           run(`NEWS_QUERY ${T.news}`),
           run(`STORM_QUERY ${T.storm}`),
+          run(`HURRICANE_QUERY`),
           run(`WEB_SEARCH ${T.search}`)
         ]);
         snapshot = {
           topic: topicKey, domain, label: T.label, pulled_at: new Date().toISOString(),
           news: news && news.ok ? (news.news || []).slice(0, 10) : [], news_ok: !!(news && news.ok),
           web: web && web.ok ? (web.results || web.answer || web) : null, web_ok: !!(web && web.ok),
-          storms: storm && storm.ok ? { source: storm.source, total: storm.total_storm_alerts ?? 0, tornadoes: storm.tornado_alerts ?? 0, by_type: storm.by_type || {}, top: storm.top_alerts || [], updated: storm.updated } : { total: 0, source: (storm && storm.source) || "none", note: (storm && storm.error) || "no storm feed" }
+          storms: storm && storm.ok ? { source: storm.source, total: storm.total_storm_alerts ?? 0, tornadoes: storm.tornado_alerts ?? 0, by_type: storm.by_type || {}, top: storm.top_alerts || [], updated: storm.updated } : { total: 0, source: (storm && storm.source) || "none", note: (storm && storm.error) || "no storm feed" },
+          hurricanes: hurr && hurr.ok ? { count: hurr.active_count, storms: hurr.storms } : { count: 0 }
         };
         await env.AURA_KV.put(`situation:snapshot:${topicKey}`, JSON.stringify(snapshot), { expirationTtl: 3600 }).catch(() => {});
-        return { cmd: "SITUATION_PULL", payload: { ok: true, topic: topicKey, domain, label: T.label, pulled_at: snapshot.pulled_at, feeds: { news: snapshot.news.length, web: snapshot.web_ok, storm_alerts: snapshot.storms.total, tornadoes: snapshot.storms.tornadoes }, note: "Storm snapshot stored. Run SITUATION_BRIEF " + topicKey + " for the analysis." } };
+        return { cmd: "SITUATION_PULL", payload: { ok: true, topic: topicKey, domain, label: T.label, pulled_at: snapshot.pulled_at, feeds: { news: snapshot.news.length, web: snapshot.web_ok, storm_alerts: snapshot.storms.total, tornadoes: snapshot.storms.tornadoes, hurricanes: snapshot.hurricanes.count }, note: "Storm snapshot stored. Run SITUATION_BRIEF " + topicKey + " for the analysis." } };
       }
       if (domain === "quake") {
         const [news, quake, web] = await Promise.all([
@@ -2218,8 +2252,10 @@ async function processCommand(line, env, isOp) {
         const st = snap.storms;
         const stLine = st ? `${st.total} active storm alerts${st.tornadoes ? `, ${st.tornadoes} TORNADO` : ""}; types: ${Object.entries(st.by_type || {}).map(([k, v]) => k + " x" + v).join(", ") || "none"}` : "no storm data";
         const topAreas = st && st.top ? st.top.slice(0, 6).map(a => `${a.event}: ${a.area} (${a.severity}, until ${a.expires ? a.expires.slice(11, 16) : "?"})`).join("\n") : "";
+        const hurr = snap.hurricanes;
+        const hurrLine = hurr && hurr.count ? hurr.storms.map(h => `${h.classification || ""} ${h.name} (${h.category || "?"}, ${h.intensity_kt}kt, at ${h.lat},${h.lon}, moving ${h.movement || "?"})`).join("; ") : "no active tropical cyclones";
         sysPrompt = "You are SituationTracker, an operational severe-weather intelligence engine. These NWS alerts are issued AHEAD of impact - your job is the preventative read: who is in the path, how much lead time, what to do now. You analyze for emergency managers, residents, and responders. Tornado warnings mean take cover immediately. Be precise, factual, decision-oriented. Never invent numbers - use only the data given. Output STRICT JSON only, no markdown, with keys: status (one line: current severe weather situation nationally/in scope), drivers (array of 2-4 short strings: what is active - tornado/storm/flood, where), threat (one line: the most urgent threat and who is in the path), lead_time (one line: how much warning time the alerts provide), alerts (array of 0-3 short actionable protective strings), outlook (array of 2-3 short 'if X then Y' strings), confidence (low|medium|high).";
-        question = `Severe weather situation: ${snap.label}\nPulled: ${snap.pulled_at}\n\nLIVE NEWS:\n${newsLines}\n\nNWS ACTIVE ALERTS: ${stLine}\n\nTOP ALERTS:\n${topAreas}\n\nProduce the severe-weather operator briefing JSON now.`;
+        question = `Severe weather situation: ${snap.label}\nPulled: ${snap.pulled_at}\n\nLIVE NEWS:\n${newsLines}\n\nNWS ACTIVE ALERTS: ${stLine}\n\nTOP ALERTS:\n${topAreas}\n\nACTIVE TROPICAL CYCLONES (NHC): ${hurrLine}\n\nProduce the severe-weather operator briefing JSON now.`;
       } else if (snapDomain === "quake") {
         const qk = snap.quakes;
         const qLine = qk && qk.largest ? `${qk.count} quakes; largest M${qk.largest.mag} at ${qk.largest.place}, depth ${qk.largest.depth_km}km${qk.largest.tsunami ? ", TSUNAMI FLAG" : ""}${qk.largest.alert ? ", PAGER alert " + qk.largest.alert : ""}` : "no significant quakes";

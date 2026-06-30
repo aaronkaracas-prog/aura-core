@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.346-2026-06-30";
+const BUILD = "aura-core-v4.9.348-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1493,33 +1493,52 @@ async function processCommand(line, env, isOp) {
       const wmLon = wmArgs.length >= 2 ? parseFloat(wmArgs[1]) : -82.5;
       if (isNaN(wmLat) || isNaN(wmLon)) return { cmd: "WEATHER_MODELS", payload: { ok: false, error: "Usage: WEATHER_MODELS <lat> <lon>" } };
       const wmModels = ((await env.AURA_KV.get("config:weather:models").catch(() => null)) || "gfs_seamless,ecmwf_ifs025,icon_seamless,gem_seamless").trim();
-      const wmVars = "temperature_2m,precipitation,wind_speed_10m,wind_gusts_10m,surface_pressure,cloud_cover";
+      const wmCoreVars = "temperature_2m,precipitation,wind_speed_10m,wind_direction_10m,wind_gusts_10m,surface_pressure,cloud_cover";
+      const wmIngrVars = "cape,wind_speed_500hPa,wind_direction_500hPa";
+      const modelList = wmModels.split(",").map(s => s.trim()).filter(Boolean);
       try {
-        const u = await resolveFeedUrl(env, "weather_models_openmeteo", { lat: wmLat, lon: wmLon, vars: wmVars, models: wmModels }, `https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly={vars}&models={models}&forecast_days=3&timezone=auto`);
-        const r = await fetchWithTimeout(u, {}, 9000);
-        if (!r.ok) return { cmd: "WEATHER_MODELS", payload: { ok: false, error: `open-meteo http ${r.status}` } };
-        const d = await r.json();
-        const hourly = d.hourly || {};
+        // CORE pull (proven-stable variables across all models) - fatal if this fails
+        const cu = await resolveFeedUrl(env, "weather_models_openmeteo", { lat: wmLat, lon: wmLon, vars: wmCoreVars, models: wmModels }, `https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly={vars}&models={models}&forecast_days=3&timezone=auto`);
+        const cr = await fetchWithTimeout(cu, {}, 9000);
+        if (!cr.ok) return { cmd: "WEATHER_MODELS", payload: { ok: false, error: `open-meteo core http ${cr.status}` } };
+        const core = await cr.json();
+        // INGREDIENTS pull (CAPE + 500hPa winds for bulk shear) - NON-FATAL: if a model lacks these, the core forecast still stands
+        let ingrHourly = {}; let ingredients_ok = false;
+        try {
+          const iu = await resolveFeedUrl(env, "weather_models_openmeteo", { lat: wmLat, lon: wmLon, vars: wmIngrVars, models: wmModels }, `https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly={vars}&models={models}&forecast_days=3&timezone=auto`);
+          const ir = await fetchWithTimeout(iu, {}, 9000);
+          if (ir.ok) { const ij = await ir.json(); ingrHourly = ij.hourly || {}; ingredients_ok = true; }
+        } catch (e) { ingredients_ok = false; }
+        const hourly = core.hourly || {};
         const times = hourly.time || [];
-        const modelList = wmModels.split(",").map(s => s.trim()).filter(Boolean);
-        const baseVars = wmVars.split(",");
-        // open-meteo suffixes each variable with _<model> when multiple models are requested.
         const idxNow = 0, idx24 = Math.min(24, times.length - 1), idx48 = Math.min(48, times.length - 1);
         const compare = {};
         for (const m of modelList) {
           const get = (v) => hourly[`${v}_${m}`] || (modelList.length === 1 ? hourly[v] : null) || [];
+          const gi = (v) => ingrHourly[`${v}_${m}`] || (modelList.length === 1 ? ingrHourly[v] : null) || [];
           const t = get("temperature_2m"), p = get("precipitation"), w = get("wind_gusts_10m"), pr = get("surface_pressure"), cc = get("cloud_cover");
+          const ws10 = get("wind_speed_10m"), wd10 = get("wind_direction_10m");
+          const cape = gi("cape"), ws500 = gi("wind_speed_500hPa"), wd500 = gi("wind_direction_500hPa");
+          // bulk shear (surface -> 500hPa): magnitude of the vector wind difference (km/h). ~65+ km/h favors organized/rotating storms.
+          const shearAt = (i) => {
+            const s5 = ws500[i], d5 = wd500[i], s0 = ws10[i], d0 = wd10[i];
+            if (s5 == null || d5 == null || s0 == null || d0 == null) return null;
+            const u5 = -s5 * Math.sin(d5 * Math.PI / 180), v5 = -s5 * Math.cos(d5 * Math.PI / 180);
+            const u0 = -s0 * Math.sin(d0 * Math.PI / 180), v0 = -s0 * Math.cos(d0 * Math.PI / 180);
+            return Math.round(Math.sqrt((u5 - u0) ** 2 + (v5 - v0) ** 2) * 10) / 10;
+          };
           compare[m] = {
             temp_c: { now: t[idxNow] ?? null, h24: t[idx24] ?? null, h48: t[idx48] ?? null },
             precip_mm: { now: p[idxNow] ?? null, h24: p[idx24] ?? null, h48: p[idx48] ?? null },
             gust_kmh: { now: w[idxNow] ?? null, h24: w[idx24] ?? null, h48: w[idx48] ?? null },
             pressure_hpa: { now: pr[idxNow] ?? null, h24: pr[idx24] ?? null, h48: pr[idx48] ?? null },
-            cloud_pct: { now: cc[idxNow] ?? null, h24: cc[idx24] ?? null, h48: cc[idx48] ?? null }
+            cloud_pct: { now: cc[idxNow] ?? null, h24: cc[idx24] ?? null, h48: cc[idx48] ?? null },
+            cape_jkg: { now: cape[idxNow] ?? null, h24: cape[idx24] ?? null, h48: cape[idx48] ?? null },
+            shear_sfc500_kmh: { now: shearAt(idxNow), h24: shearAt(idx24), h48: shearAt(idx48) }
           };
         }
-        return { cmd: "WEATHER_MODELS", payload: { ok: true, lat: wmLat, lon: wmLon, models: modelList, hours_available: times.length,
-          raw_hourly_keys: Object.keys(hourly).slice(0, 48), compare,
-          note: "Multi-model forecast pulled AS-IS (no reasoning yet). 'compare' = each model's read at now/+24h/+48h for temp/precip/gust/pressure/cloud - the raw spread Aura reasons across next. raw_hourly_keys confirms the response shape." } };
+        return { cmd: "WEATHER_MODELS", payload: { ok: true, lat: wmLat, lon: wmLon, models: modelList, hours_available: times.length, ingredients_ok, compare,
+          note: "Multi-model forecast + severe ingredients. compare = each model at now/+24h/+48h: temp/precip/gust/pressure/cloud + cape_jkg (instability) + shear_sfc500_kmh (sfc->500hPa bulk shear; ~65+ km/h favors organized/rotating storms). ingredients_ok=false means CAPE/shear unavailable this pull - core forecast still valid." } };
       } catch (e) { return { cmd: "WEATHER_MODELS", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 
@@ -1546,7 +1565,7 @@ async function processCommand(line, env, isOp) {
       } catch {}
       const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
       if (!anthKey) return { cmd: "WEATHER_REASON", payload: { ok: false, error: "no reasoning key (secret:anthropic)" } };
-      const FB_METEOROLOGIST = "You are Aura's meteorology engine - an experienced operational forecaster, not a model parrot. You are given the SAME forecast from several global numerical weather models for one point, plus any official NWS/SPC watches active nationally. Reason across the models the way a working forecaster does, using these KNOWN MODEL TENDENCIES as heuristics (never absolutes - always cross-check the live spread and official products): ECMWF (European/IFS) is generally the most skillful for synoptic and medium-range pattern evolution and is the benchmark for large-scale systems; it tends to be smoother and can under-do small-scale convective extremes. GFS (American) is a capable global baseline but tends to over-amplify systems and over-forecast convective precipitation and intensity, especially beyond ~48h. ICON (German/DWD) is higher-resolution and strong for mesoscale and short-range convective structure. GEM (Canadian) is a reasonable global model but is more often the timing/amplitude outlier. METHOD: when the models AGREE, confidence is high and you state the consensus; when they SPLIT, name the outlier, then decide whether the consensus or the outlier is more credible GIVEN the regime and the official watches, and explain why using the bias heuristics - e.g. if ECMWF and ICON show a windy/wet/convective solution and official Severe Thunderstorm or Tornado watches are already posted near the point, lean to the active solution even if GFS looks calm; conversely treat a lone over-amplified GFS signal with caution. NEVER invent numbers - reason only from the provided spread and alerts. Output STRICT JSON only with keys: headline (one line: what is actually going to happen at this point over the next 48h), model_agreement (high|medium|low), the_split (one line: where and how the models disagree, naming which model says what), favored_solution (one line: which model(s) you lean toward here and WHY, citing the bias heuristics and any official watches), confidence (low|medium|high), forecaster_note (1-2 lines in the voice of a TV meteorologist explaining the call on air), watch_for (array of strings: the specific trigger(s) that would change this forecast).";
+      const FB_METEOROLOGIST = "You are Aura's meteorology engine - an experienced operational forecaster, not a model parrot. You are given the SAME forecast from several global numerical weather models for one point, plus any official NWS/SPC watches active nationally. Reason across the models the way a working forecaster does, using these KNOWN MODEL TENDENCIES as heuristics (never absolutes - always cross-check the live spread and official products): ECMWF (European/IFS) is generally the most skillful for synoptic and medium-range pattern evolution and is the benchmark for large-scale systems; it tends to be smoother and can under-do small-scale convective extremes. GFS (American) is a capable global baseline but tends to over-amplify systems and over-forecast convective precipitation and intensity, especially beyond ~48h. ICON (German/DWD) is higher-resolution and strong for mesoscale and short-range convective structure. GEM (Canadian) is a reasonable global model but is more often the timing/amplitude outlier. SEVERE-WEATHER INGREDIENTS: CAPE (convective available potential energy, J/kg) measures instability - the fuel for thunderstorms: under ~500 is stable, 1000-2500 is moderate instability, 2500-4000 is strong, 4000+ is extreme. High CAPE alone is potential, not a storm - it needs a trigger and (for severe/rotating storms) wind shear to organize. When CAPE is elevated AND official Severe Thunderstorm or Tornado watches are posted at the point, treat the convective/severe threat as real and say so; when CAPE is low, large model wind/precip differences are less likely to be convective. WIND SHEAR (shear_sfc500_kmh = surface-to-500hPa bulk shear) organizes storms: under ~40 km/h is weak (pulse/disorganized storms that fade fast), ~40-65 is marginal, 65+ km/h supports organized multicell and supercell structure with rotation potential. THE SEVERE COMBO: high CAPE (fuel) AND strong shear (organization) together = supercell/tornado potential - this is what turns 'storms possible' into 'rotating supercells possible'; high CAPE with weak shear means pulse storms (brief, locally heavy, less organized); strong shear with low CAPE means wind/rain but limited convective severity. State the CAPE/shear combo explicitly when a severe threat exists. METHOD: when the models AGREE, confidence is high and you state the consensus; when they SPLIT, name the outlier, then decide whether the consensus or the outlier is more credible GIVEN the regime and the official watches, and explain why using the bias heuristics - e.g. if ECMWF and ICON show a windy/wet/convective solution and official Severe Thunderstorm or Tornado watches are already posted near the point, lean to the active solution even if GFS looks calm; conversely treat a lone over-amplified GFS signal with caution. NEVER invent numbers - reason only from the provided spread and alerts. Output STRICT JSON only with keys: headline (one line: what is actually going to happen at this point over the next 48h), model_agreement (high|medium|low), the_split (one line: where and how the models disagree, naming which model says what), favored_solution (one line: which model(s) you lean toward here and WHY, citing the bias heuristics and any official watches), confidence (low|medium|high), forecaster_note (1-2 lines in the voice of a TV meteorologist explaining the call on air), watch_for (array of strings: the specific trigger(s) that would change this forecast).";
       const sysPrompt = await loadPrompt(env, "weather_meteorologist", FB_METEOROLOGIST);
       const question = `Point: ${wrLat}, ${wrLon}\n\nMULTI-MODEL SPREAD (now / +24h / +48h):\n${JSON.stringify(wrModels.compare, null, 1)}\n\nOFFICIAL NWS ALERTS ACTIVE AT THIS EXACT POINT (ground truth, US only):\n${wrAlerts ? JSON.stringify(wrAlerts) : "none retrieved"}\n\nProduce the forecaster's reasoning JSON now.`;
       const ai = await callAnthropic(anthKey, { model: "claude-haiku-4-5-20251001", max_tokens: 1400, system: sysPrompt, messages: [{ role: "user", content: question }] });

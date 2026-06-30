@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.345-2026-06-30";
+const BUILD = "aura-core-v4.9.346-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1537,12 +1537,18 @@ async function processCommand(line, env, isOp) {
       const wrModels = await wrRun(`WEATHER_MODELS ${wrLat} ${wrLon}`);
       if (!wrModels || !wrModels.ok) return { cmd: "WEATHER_REASON", payload: { ok: false, error: "WEATHER_MODELS failed", detail: wrModels } };
       let wrAlerts = null;
-      try { const a = await wrRun(`STORM_QUERY all`); if (a && a.ok) wrAlerts = { total: a.total_storm_alerts, tornado: a.tornado_alerts, by_type: a.by_type, top: (a.top_alerts || []).slice(0, 4) }; } catch {}
+      try {
+        const au = await resolveFeedUrl(env, "alerts_nws_point", { lat: wrLat, lon: wrLon }, `https://api.weather.gov/alerts/active?point={lat},{lon}`);
+        const ar = await fetchWithTimeout(au, { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)", "Accept": "application/geo+json" } }, 8000);
+        if (ar.ok) { const aj = await ar.json(); const feats = (aj.features || []).map(f => f.properties || {});
+          wrAlerts = { count: feats.length, alerts: feats.slice(0, 6).map(p => ({ event: p.event, severity: p.severity, urgency: p.urgency, certainty: p.certainty, headline: (p.headline || "").slice(0, 160), area: (p.areaDesc || "").slice(0, 120) })) };
+        }
+      } catch {}
       const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
       if (!anthKey) return { cmd: "WEATHER_REASON", payload: { ok: false, error: "no reasoning key (secret:anthropic)" } };
       const FB_METEOROLOGIST = "You are Aura's meteorology engine - an experienced operational forecaster, not a model parrot. You are given the SAME forecast from several global numerical weather models for one point, plus any official NWS/SPC watches active nationally. Reason across the models the way a working forecaster does, using these KNOWN MODEL TENDENCIES as heuristics (never absolutes - always cross-check the live spread and official products): ECMWF (European/IFS) is generally the most skillful for synoptic and medium-range pattern evolution and is the benchmark for large-scale systems; it tends to be smoother and can under-do small-scale convective extremes. GFS (American) is a capable global baseline but tends to over-amplify systems and over-forecast convective precipitation and intensity, especially beyond ~48h. ICON (German/DWD) is higher-resolution and strong for mesoscale and short-range convective structure. GEM (Canadian) is a reasonable global model but is more often the timing/amplitude outlier. METHOD: when the models AGREE, confidence is high and you state the consensus; when they SPLIT, name the outlier, then decide whether the consensus or the outlier is more credible GIVEN the regime and the official watches, and explain why using the bias heuristics - e.g. if ECMWF and ICON show a windy/wet/convective solution and official Severe Thunderstorm or Tornado watches are already posted near the point, lean to the active solution even if GFS looks calm; conversely treat a lone over-amplified GFS signal with caution. NEVER invent numbers - reason only from the provided spread and alerts. Output STRICT JSON only with keys: headline (one line: what is actually going to happen at this point over the next 48h), model_agreement (high|medium|low), the_split (one line: where and how the models disagree, naming which model says what), favored_solution (one line: which model(s) you lean toward here and WHY, citing the bias heuristics and any official watches), confidence (low|medium|high), forecaster_note (1-2 lines in the voice of a TV meteorologist explaining the call on air), watch_for (array of strings: the specific trigger(s) that would change this forecast).";
       const sysPrompt = await loadPrompt(env, "weather_meteorologist", FB_METEOROLOGIST);
-      const question = `Point: ${wrLat}, ${wrLon}\n\nMULTI-MODEL SPREAD (now / +24h / +48h):\n${JSON.stringify(wrModels.compare, null, 1)}\n\nOFFICIAL NWS WATCHES (national context, ground truth):\n${wrAlerts ? JSON.stringify(wrAlerts) : "none retrieved"}\n\nProduce the forecaster's reasoning JSON now.`;
+      const question = `Point: ${wrLat}, ${wrLon}\n\nMULTI-MODEL SPREAD (now / +24h / +48h):\n${JSON.stringify(wrModels.compare, null, 1)}\n\nOFFICIAL NWS ALERTS ACTIVE AT THIS EXACT POINT (ground truth, US only):\n${wrAlerts ? JSON.stringify(wrAlerts) : "none retrieved"}\n\nProduce the forecaster's reasoning JSON now.`;
       const ai = await callAnthropic(anthKey, { model: "claude-haiku-4-5-20251001", max_tokens: 1400, system: sysPrompt, messages: [{ role: "user", content: question }] });
       if (!ai || !ai.ok) return { cmd: "WEATHER_REASON", payload: { ok: false, error: "reasoning failed: " + (ai && ai.error || "unknown") } };
       let text = (ai.content || []).map(b => b.text || "").join("").replace(/```json|```/g, "").trim();

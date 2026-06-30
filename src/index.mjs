@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.344-2026-06-30";
+const BUILD = "aura-core-v4.9.345-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1533,10 +1533,11 @@ async function processCommand(line, env, isOp) {
       const wrLat = wrArgs.length >= 2 ? parseFloat(wrArgs[0]) : 27.9;
       const wrLon = wrArgs.length >= 2 ? parseFloat(wrArgs[1]) : -82.5;
       if (isNaN(wrLat) || isNaN(wrLon)) return { cmd: "WEATHER_REASON", payload: { ok: false, error: "Usage: WEATHER_REASON <lat> <lon>" } };
-      const wrModels = await run(`WEATHER_MODELS ${wrLat} ${wrLon}`);
+      const wrRun = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
+      const wrModels = await wrRun(`WEATHER_MODELS ${wrLat} ${wrLon}`);
       if (!wrModels || !wrModels.ok) return { cmd: "WEATHER_REASON", payload: { ok: false, error: "WEATHER_MODELS failed", detail: wrModels } };
       let wrAlerts = null;
-      try { const a = await run(`STORM_QUERY all`); if (a && a.ok) wrAlerts = { total: a.total_storm_alerts, tornado: a.tornado_alerts, by_type: a.by_type, top: (a.top_alerts || []).slice(0, 4) }; } catch {}
+      try { const a = await wrRun(`STORM_QUERY all`); if (a && a.ok) wrAlerts = { total: a.total_storm_alerts, tornado: a.tornado_alerts, by_type: a.by_type, top: (a.top_alerts || []).slice(0, 4) }; } catch {}
       const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
       if (!anthKey) return { cmd: "WEATHER_REASON", payload: { ok: false, error: "no reasoning key (secret:anthropic)" } };
       const FB_METEOROLOGIST = "You are Aura's meteorology engine - an experienced operational forecaster, not a model parrot. You are given the SAME forecast from several global numerical weather models for one point, plus any official NWS/SPC watches active nationally. Reason across the models the way a working forecaster does, using these KNOWN MODEL TENDENCIES as heuristics (never absolutes - always cross-check the live spread and official products): ECMWF (European/IFS) is generally the most skillful for synoptic and medium-range pattern evolution and is the benchmark for large-scale systems; it tends to be smoother and can under-do small-scale convective extremes. GFS (American) is a capable global baseline but tends to over-amplify systems and over-forecast convective precipitation and intensity, especially beyond ~48h. ICON (German/DWD) is higher-resolution and strong for mesoscale and short-range convective structure. GEM (Canadian) is a reasonable global model but is more often the timing/amplitude outlier. METHOD: when the models AGREE, confidence is high and you state the consensus; when they SPLIT, name the outlier, then decide whether the consensus or the outlier is more credible GIVEN the regime and the official watches, and explain why using the bias heuristics - e.g. if ECMWF and ICON show a windy/wet/convective solution and official Severe Thunderstorm or Tornado watches are already posted near the point, lean to the active solution even if GFS looks calm; conversely treat a lone over-amplified GFS signal with caution. NEVER invent numbers - reason only from the provided spread and alerts. Output STRICT JSON only with keys: headline (one line: what is actually going to happen at this point over the next 48h), model_agreement (high|medium|low), the_split (one line: where and how the models disagree, naming which model says what), favored_solution (one line: which model(s) you lean toward here and WHY, citing the bias heuristics and any official watches), confidence (low|medium|high), forecaster_note (1-2 lines in the voice of a TV meteorologist explaining the call on air), watch_for (array of strings: the specific trigger(s) that would change this forecast).";

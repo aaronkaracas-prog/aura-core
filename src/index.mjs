@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.327-2026-06-30";
+const BUILD = "aura-core-v4.9.328-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -352,6 +352,22 @@ async function loadRegions(env, feedType, fallback) {
       const all = JSON.parse(raw);
       if (all && typeof all === "object" && all[feedType] && typeof all[feedType] === "object") {
         return { ...fallback, ...all[feedType] }; // KV adds to / overrides built-ins, never removes
+      }
+    }
+  } catch (e) { /* fall through to fallback on any read/parse error */ }
+  return fallback;
+}
+
+// Cognition prompts: KV is the live, tunable source; the in-code arg is the floor fallback.
+// Same pattern as loadRegions - all prompts live under one KV map cognition:prompts {key: text}.
+// Empty KV (or any read/parse error) -> the rich fallback fires, so behavior never degrades.
+async function loadPrompt(env, key, fallback) {
+  try {
+    const raw = await env.AURA_KV.get("cognition:prompts");
+    if (raw) {
+      const all = JSON.parse(raw);
+      if (all && typeof all === "object" && typeof all[key] === "string" && all[key].trim()) {
+        return all[key]; // KV override; missing/blank key falls through to the in-code floor
       }
     }
   } catch (e) { /* fall through to fallback on any read/parse error */ }
@@ -871,7 +887,7 @@ async function processCommand(line, env, isOp) {
       // Each check: a name, a per-line test, and whether matches in a *_FALLBACK / *_SAFETY / FB_ block are OK (allowed floor)
       const isAllowedFloor = (idx) => {
         // look back up to 8 lines for a fallback/safety marker that legitimizes an in-code default
-        for (let i = Math.max(0, idx - 8); i <= idx; i++) { if (/TOPICS_SAFETY|_FALLBACK|loadRegions\(env,|FB_STORM|FB_QUAKE|FB_FIRE|FB_MARITIME|const FB_/.test(lines[i])) return true; }
+        for (let i = Math.max(0, idx - 8); i <= idx; i++) { if (/TOPICS_SAFETY|_FALLBACK|loadRegions\(env,|loadPrompt\(env,|FB_STORM|FB_QUAKE|FB_FIRE|FB_MARITIME|const FB_/.test(lines[i])) return true; }
         return false;
       };
       const checks = [
@@ -1499,7 +1515,7 @@ async function processCommand(line, env, isOp) {
         const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
         let prediction = null;
         if (anthKey) {
-          const sys = "You are Aura, a severe-storm formation analyst. You are given SPC Mesoscale Discussions - the forecasters' raw reasoning about where convection is ABOUT TO develop in the next 1-6 hours, issued BEFORE watches - plus any alerts already active. Your job is the FORMATION read that gets people out sooner: reason about the meteorology (instability/CAPE, wind shear, helicity, boundaries, storm mode) to identify where tornado/severe potential is escalating and how much lead time exists BEFORE a warning would fire. You synthesize across the discussions - you do not just relay them. Be precise and never invent data. Output STRICT JSON only: forming (array of 1-3 short strings: where severe/tornado potential is building and the key ingredient driving it), escalation (one line: which area is most likely to go from discussion->watch->warning next, and why), lead_time_gained (one line: how much earlier this signal is than waiting for a warning), watch_out (array of 1-3 short strings: specific areas/populations to pre-position or alert NOW), confidence (low|medium|high), caveat (one line: the honest limit - this complements SPC/NWS, not replaces their models).";
+          const sys = await loadPrompt(env, "storm_formation", "You are Aura, a severe-storm formation analyst. You are given SPC Mesoscale Discussions - the forecasters' raw reasoning about where convection is ABOUT TO develop in the next 1-6 hours, issued BEFORE watches - plus any alerts already active. Your job is the FORMATION read that gets people out sooner: reason about the meteorology (instability/CAPE, wind shear, helicity, boundaries, storm mode) to identify where tornado/severe potential is escalating and how much lead time exists BEFORE a warning would fire. You synthesize across the discussions - you do not just relay them. Be precise and never invent data. Output STRICT JSON only: forming (array of 1-3 short strings: where severe/tornado potential is building and the key ingredient driving it), escalation (one line: which area is most likely to go from discussion->watch->warning next, and why), lead_time_gained (one line: how much earlier this signal is than waiting for a warning), watch_out (array of 1-3 short strings: specific areas/populations to pre-position or alert NOW), confidence (low|medium|high), caveat (one line: the honest limit - this complements SPC/NWS, not replaces their models).");
           const discText = discussions.length ? discussions.map(d => `MD#${d.md_number} (watch prob ${d.watch_prob || "?"}): CONCERNING ${d.concerning || "?"}\n${d.discussion || ""}`).join("\n\n---\n\n").slice(0, 5000) : "No active mesoscale discussions right now.";
           const nowText = stormNow && stormNow.ok ? `Active alerts: ${stormNow.total_storm_alerts} (${stormNow.tornado_alerts} tornado). Types: ${Object.entries(stormNow.by_type || {}).map(([k, v]) => k + " x" + v).join(", ")}` : "alerts unavailable";
           const usr = `SPC MESOSCALE DISCUSSIONS (the pre-watch reasoning layer):\n${discText}\n\nALREADY ACTIVE: ${nowText}\n\nProduce the formation-prediction JSON now.`;
@@ -1669,7 +1685,7 @@ async function processCommand(line, env, isOp) {
       const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
       let coord = null;
       if (anthKey) {
-        const sys = "You are Aura, a multi-agency wildfire coordination analyst. You see ALL active fires in a region at once - something no single agency's system shows them. Reason about RESOURCE COORDINATION across incidents: which fires are resource-starved relative to their size and growth, which are winding down (high containment) and could free crews/engines/aircraft, and where mutual aid should flow. You do NOT command - you surface the cross-incident picture an incident commander or GACC (Geographic Area Coordination Center) would want. Output STRICT JSON only: picture (one line: the regional fire situation in aggregate), starved (array of 1-3 short strings: incidents under-resourced for their size/growth, name them), freeable (array of 0-2 short strings: incidents winding down that could release resources, name them), moves (array of 1-3 short strings: specific coordination moves - from which incident to which), caveat (one line: honest limit - you see acreage/containment/personnel, not real-time crew availability or agency agreements).";
+        const sys = await loadPrompt(env, "fire_coordinate", "You are Aura, a multi-agency wildfire coordination analyst. You see ALL active fires in a region at once - something no single agency's system shows them. Reason about RESOURCE COORDINATION across incidents: which fires are resource-starved relative to their size and growth, which are winding down (high containment) and could free crews/engines/aircraft, and where mutual aid should flow. You do NOT command - you surface the cross-incident picture an incident commander or GACC (Geographic Area Coordination Center) would want. Output STRICT JSON only: picture (one line: the regional fire situation in aggregate), starved (array of 1-3 short strings: incidents under-resourced for their size/growth, name them), freeable (array of 0-2 short strings: incidents winding down that could release resources, name them), moves (array of 1-3 short strings: specific coordination moves - from which incident to which), caveat (one line: honest limit - you see acreage/containment/personnel, not real-time crew availability or agency agreements).");
         const usr = `Region: ${fcRegion}\nActive incidents (${fires.length} total, ${active.length} growing, ${winding.length} winding down):\n${summary}\n\nProduce the coordination JSON now.`;
         try {
           const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -1720,7 +1736,7 @@ async function processCommand(line, env, isOp) {
       const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
       let projection = null;
       if (anthKey) {
-        const sys = "You are Aura, a wildfire spread analyst supporting incident command. Given the fire's current hotspots, how its center has MOVED since last cycle (observed advance), and the live wind, project the likely near-term spread. Be explicit that this is a data-driven estimate, not a substitute for FARSITE/incident modeling. Output STRICT JSON only: heading (one line: projected direction of advance and why - reconcile observed movement with wind), rate (one line: how fast, from observed km/hr if available), in_the_path (array of 1-3 short strings: what to check downwind - communities/roads/terrain, name only what is reasonable), confidence (low|medium|high), caveat (one line: the honest limit of this estimate).";
+        const sys = await loadPrompt(env, "fire_spread", "You are Aura, a wildfire spread analyst supporting incident command. Given the fire's current hotspots, how its center has MOVED since last cycle (observed advance), and the live wind, project the likely near-term spread. Be explicit that this is a data-driven estimate, not a substitute for FARSITE/incident modeling. Output STRICT JSON only: heading (one line: projected direction of advance and why - reconcile observed movement with wind), rate (one line: how fast, from observed km/hr if available), in_the_path (array of 1-3 short strings: what to check downwind - communities/roads/terrain, name only what is reasonable), confidence (low|medium|high), caveat (one line: the honest limit of this estimate).");
         const usr = `Fire: ${fire.label}\nCurrent: ${hot.length} hotspots, centroid ${centroid.lat.toFixed(3)},${centroid.lon.toFixed(3)}, leading edge (highest FRP ${lead.frp_mw}MW) at ${lead.lat.toFixed(3)},${lead.lon.toFixed(3)}\nObserved advance since last cycle: ${advance ? JSON.stringify(advance) : "first cycle - no movement baseline yet"}\nLive wind at leading edge: ${wind ? `${wind.speed_ms} m/s gusting ${wind.gust_ms}, ${wind.conditions}` : "unavailable"}\n\nProject the spread JSON now.`;
         try {
           const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -1848,7 +1864,7 @@ async function processCommand(line, env, isOp) {
         let headline = null, action = null, status_word = null;
         const material = !!(prev && changes.length && !changes[0].startsWith("No material") && !changes[0].startsWith("First cycle"));
         if (anthKey && material) {
-          const sys = "You are Aura, standing watch for a ship master. You are given THIS CYCLE's live conditions and WHAT CHANGED since last cycle. Something HAS changed - write a watch-cycle digest as if texting the master, extremely short. Output STRICT JSON only: status_word (one word: watch if conditions easing/minor, act if building/dangerous), headline (one short line naming what changed and why it matters to a loaded vessel), action (one short imperative the master does now). Use only the numbers given; never invent.";
+          const sys = await loadPrompt(env, "maritime_ship_watch", "You are Aura, standing watch for a ship master. You are given THIS CYCLE's live conditions and WHAT CHANGED since last cycle. Something HAS changed - write a watch-cycle digest as if texting the master, extremely short. Output STRICT JSON only: status_word (one word: watch if conditions easing/minor, act if building/dangerous), headline (one short line naming what changed and why it matters to a loaded vessel), action (one short imperative the master does now). Use only the numbers given; never invent.");
           const usr = `Vessel: ${dg.vessel || "vessel"} | Voyage: ${dg.voyage || "underway"} -> ${dg.destination || "destination"}\nThis cycle: waves ${now.wave_m ?? "n/a"}m, swell ${now.swell_m ?? "n/a"}m/${now.swell_period_s ?? "n/a"}s, wind gust ${now.gust_ms ?? "n/a"}m/s, bunker ${now.bunker ?? "n/a"}\nChanged since last cycle: ${changes.join("; ")}\n\nWrite the master's watch digest JSON.`;
           try {
             const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -1907,7 +1923,7 @@ async function processCommand(line, env, isOp) {
         let headline = null, action = null, status_word = null;
         const material = !!(prev && changes.length && !changes[0].startsWith("No material") && !changes[0].startsWith("First cycle"));
         if (anthKey && material) {
-          const sys = "You are Aura, standing watch for a port controller. The inbound queue CHANGED since last cycle. Write a short watch digest, like texting the controller. Output STRICT JSON only: status_word (watch|act), headline (one line: what changed in the queue and why it matters to berth planning), action (one short imperative: the next berth/sequencing move). Use only what is given; never invent berth numbers not provided.";
+          const sys = await loadPrompt(env, "maritime_port_watch", "You are Aura, standing watch for a port controller. The inbound queue CHANGED since last cycle. Write a short watch digest, like texting the controller. Output STRICT JSON only: status_word (watch|act), headline (one line: what changed in the queue and why it matters to berth planning), action (one short imperative: the next berth/sequencing move). Use only what is given; never invent berth numbers not provided.");
           const inboundLine = inbound.map(i => `${i.vessel} ETA ${i.eta || "?"} needs ${i.need || "berth"}`).join("; ");
           const usr = `Port: ${dg.port || "port"}\nNeighbor ports: ${(dg.neighbor_ports || []).join(", ") || "none"}\nCurrent inbound: ${inboundLine}\nChanged since last cycle: ${changes.join("; ")}\n\nWrite the controller's watch digest JSON.`;
           try {
@@ -1955,7 +1971,7 @@ async function processCommand(line, env, isOp) {
         let headline = null, action = null, status_word = null;
         const material = !!(prev && changes.length && !changes[0].startsWith("No material") && !changes[0].startsWith("First cycle"));
         if (anthKey && material) {
-          const sys = "You are Aura, standing watch for a cargo owner/shipper. Their shipment situation CHANGED. Their standing questions: is my cargo on schedule, what does a delay cost, who is responsible, and am I paying/getting paid on time. Write a short digest like texting the shipper. Output STRICT JSON only: status_word (watch|act), headline (one line: what changed and its schedule/cost/payment implication), action (one short imperative: what the shipper does now - e.g. notify consignee, prepare payment, claim against delay). Use only given facts; if a delay cost is given use it, never invent figures.";
+          const sys = await loadPrompt(env, "maritime_cargo_watch", "You are Aura, standing watch for a cargo owner/shipper. Their shipment situation CHANGED. Their standing questions: is my cargo on schedule, what does a delay cost, who is responsible, and am I paying/getting paid on time. Write a short digest like texting the shipper. Output STRICT JSON only: status_word (watch|act), headline (one line: what changed and its schedule/cost/payment implication), action (one short imperative: what the shipper does now - e.g. notify consignee, prepare payment, claim against delay). Use only given facts; if a delay cost is given use it, never invent figures.");
           const costLine = dg.daily_delay_cost ? `Stated cost of delay: ${dg.daily_delay_cost} per day.` : "No delay-cost figure provided.";
           const usr = `Cargo: ${dg.cargo || dg.cargo_ref || "shipment"} | Value: ${dg.cargo_value || "n/a"}\nCurrent ETA: ${now.eta || "TBD"} | Payment: ${now.payment_milestone || "n/a"} due ${now.payment_due || "n/a"}\n${costLine}\nChanged since last cycle: ${changes.join("; ")}\n\nWrite the shipper's watch digest JSON.`;
           try {
@@ -2059,7 +2075,7 @@ async function processCommand(line, env, isOp) {
       const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
       if (!anthKey) return { cmd: "FLEET_COORDINATE", payload: { ok: false, error: "no secret:anthropic" } };
       const fleetData = seaStates.map(s => `- ${s.name} @ (${s.lat},${s.lon}) [${s.voyage}]: waves ${s.wave_m ?? "n/a"}m, swell ${s.swell_m ?? "n/a"}m/${s.swell_period_s ?? "n/a"}s`).join("\n");
-      const sys = "You are Aura, fleet operations intelligence for a shipping company. You see the WHOLE fleet at once with live sea state per vessel. Give the company what it cannot get from per-ship tools: the fleet-level picture and the few decisions that matter TODAY. Never invent positions/numbers beyond the data. Output STRICT JSON only, keys: fleet_status (one line summary of the whole fleet), needs_decision_today (array of {vessel, decision} - only vessels genuinely needing action now), reroute_candidates (array of {vessel, why} - vessels facing sea state worth a reroute/speed change), coordinate_opportunities (array of strings - where two vessels, or a vessel and a port, should coordinate), bottom_line (one line for the fleet manager).";
+      const sys = await loadPrompt(env, "maritime_fleet", "You are Aura, fleet operations intelligence for a shipping company. You see the WHOLE fleet at once with live sea state per vessel. Give the company what it cannot get from per-ship tools: the fleet-level picture and the few decisions that matter TODAY. Never invent positions/numbers beyond the data. Output STRICT JSON only, keys: fleet_status (one line summary of the whole fleet), needs_decision_today (array of {vessel, decision} - only vessels genuinely needing action now), reroute_candidates (array of {vessel, why} - vessels facing sea state worth a reroute/speed change), coordinate_opportunities (array of strings - where two vessels, or a vessel and a port, should coordinate), bottom_line (one line for the fleet manager).");
       const usr = `Company: ${fc.company || "the fleet"}\nFleet (${seaStates.length} vessels), live sea state:\n${fleetData}\n\nGive the fleet coordination JSON now.`;
       try {
         const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -2087,7 +2103,7 @@ async function processCommand(line, env, isOp) {
       const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
       if (!anthKey) return { cmd: "PORT_VALUE", payload: { ok: false, error: "no secret:anthropic" } };
       const inboundData = pv.inbound.map(i => `- ${i.vessel} | ETA ${i.eta || "?"} | needs: ${i.need || "berth"}`).join("\n");
-      const sys = "You are Aura, port operations intelligence. You see the port's WHOLE inbound queue at once and can coordinate across neighbor ports. Give port operations what no single-vessel tool can: queue-level throughput decisions and cross-port load balancing (when the port is full, routing overflow to a named neighbor port helps BOTH ports and the vessel). CRITICAL OUTPUT RULE: respond with ONE flat JSON object and NOTHING else - do NOT nest a JSON string inside any field, do NOT repeat the JSON, do NOT wrap it in another object. The keys are: queue_status (a plain one-line string), throughput_moves (array of {action, why}), load_balance (array of {vessel, suggested_port, why}), revenue_and_relationship (a plain one-line string, no invented figures), bottom_line (a plain one-line string). Each value is plain text or the specified array - never a JSON string.";
+      const sys = await loadPrompt(env, "maritime_port_ops", "You are Aura, port operations intelligence. You see the port's WHOLE inbound queue at once and can coordinate across neighbor ports. Give port operations what no single-vessel tool can: queue-level throughput decisions and cross-port load balancing (when the port is full, routing overflow to a named neighbor port helps BOTH ports and the vessel). CRITICAL OUTPUT RULE: respond with ONE flat JSON object and NOTHING else - do NOT nest a JSON string inside any field, do NOT repeat the JSON, do NOT wrap it in another object. The keys are: queue_status (a plain one-line string), throughput_moves (array of {action, why}), load_balance (array of {vessel, suggested_port, why}), revenue_and_relationship (a plain one-line string, no invented figures), bottom_line (a plain one-line string). Each value is plain text or the specified array - never a JSON string.");
       const usr = `Port: ${pv.port || "the port"}\nNeighbor ports available for balancing: ${(pv.neighbor_ports || []).join(", ") || "none specified"}\nInbound queue:\n${inboundData}\n\nGive the port value JSON now.`;
       try {
         const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -2118,7 +2134,7 @@ async function processCommand(line, env, isOp) {
       let pb; try { pb = JSON.parse(pbPayload); } catch { return { cmd: "PORT_BRIEF", payload: { ok: false, error: 'Usage: PORT_BRIEF ::: {"port":"...","vessel":"...","context":"..."}' } }; }
       const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
       if (!anthKey) return { cmd: "PORT_BRIEF", payload: { ok: false, error: "no secret:anthropic" } };
-      const sys = "You are Aura, the operational intelligence for a major port, advising port operations on an inbound vessel. Turn a routine call into a coordinated relationship that creates value for BOTH the port and the vessel. Commerce is one option, not the default - trust/coordination often comes first. Output STRICT JSON only, keys: why_this_call_matters (one line), service_move (one line: the coordination/service step that builds the relationship), is_commerce_now (boolean), revenue_path (one line: where revenue comes from IF the relationship deepens - no invented figures), bottom_line (one line port ops acts on).";
+      const sys = await loadPrompt(env, "maritime_port_briefing", "You are Aura, the operational intelligence for a major port, advising port operations on an inbound vessel. Turn a routine call into a coordinated relationship that creates value for BOTH the port and the vessel. Commerce is one option, not the default - trust/coordination often comes first. Output STRICT JSON only, keys: why_this_call_matters (one line), service_move (one line: the coordination/service step that builds the relationship), is_commerce_now (boolean), revenue_path (one line: where revenue comes from IF the relationship deepens - no invented figures), bottom_line (one line port ops acts on).");
       const usr = `Port: ${pb.port}\nInbound vessel: ${pb.vessel}\nContext: ${pb.context || ""}\n\nGive the port operations briefing JSON now.`;
       try {
         const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -2206,7 +2222,7 @@ async function processCommand(line, env, isOp) {
       let sb; try { sb = JSON.parse(sbPayload); } catch { return { cmd: "SHIP_BRIEF", payload: { ok: false, error: 'Usage: SHIP_BRIEF ::: {"voyage":"...","conditions":"..."}' } }; }
       const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
       if (!anthKey) return { cmd: "SHIP_BRIEF", payload: { ok: false, error: "no secret:anthropic" } };
-      const sys = "You are Aura, the operational intelligence aboard a merchant vessel, speaking to the master/owner. Using ONLY the live conditions given, produce a concise, decision-grade voyage briefing. Be specific and practical - this saves fuel, time, and risk. Never invent numbers not derived from the data. Output STRICT JSON only, keys: routing (one line: hold course / ease / adjust, with the reason from the sea state), speed_fuel (one line: speed/fuel guidance given the swell and bunker cost), watch (array of 1-3 things to monitor), comfort_safety (one line: motion/safety note from wave+swell), bottom_line (one line the master acts on).";
+      const sys = await loadPrompt(env, "maritime_vessel_briefing", "You are Aura, the operational intelligence aboard a merchant vessel, speaking to the master/owner. Using ONLY the live conditions given, produce a concise, decision-grade voyage briefing. Be specific and practical - this saves fuel, time, and risk. Never invent numbers not derived from the data. Output STRICT JSON only, keys: routing (one line: hold course / ease / adjust, with the reason from the sea state), speed_fuel (one line: speed/fuel guidance given the swell and bunker cost), watch (array of 1-3 things to monitor), comfort_safety (one line: motion/safety note from wave+swell), bottom_line (one line the master acts on).");
       const usr = `Voyage: ${sb.voyage}\n\nLive conditions: ${sb.conditions}\n\nGive the master's briefing JSON now.`;
       try {
         const res = await fetch("https://api.anthropic.com/v1/messages", {

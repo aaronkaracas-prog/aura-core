@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.336-2026-06-30";
+const BUILD = "aura-core-v4.9.337-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -2589,7 +2589,7 @@ async function processCommand(line, env, isOp) {
         try {
           const res = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-            body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 900, system: sysPrompt, messages: [{ role: "user", content: question }] })
+            body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1400, system: sysPrompt, messages: [{ role: "user", content: question }] })
           });
           if (res.ok) { const j = await res.json(); text = (j && j.content && j.content[0] && j.content[0].text) ? j.content[0].text : ""; if (text) provider = "anthropic"; }
           else { lastErr = "anthropic http " + res.status; }
@@ -2609,7 +2609,21 @@ async function processCommand(line, env, isOp) {
       if (!text) return { cmd: "SITUATION_BRIEF", payload: { ok: false, error: "all reasoning providers failed: " + (lastErr || "unknown") } };
       try {
         text = text.replace(/```json|```/g, "").trim();
-        let brief = null; try { brief = JSON.parse(text); } catch { brief = { status: text.slice(0, 400), raw: true }; }
+        let brief = null;
+        try { brief = JSON.parse(text); } catch (e1) {
+          // salvage truncated/prose-wrapped JSON instead of dumping it raw into status.
+          const first = text.indexOf("{"), last = text.lastIndexOf("}");
+          if (first !== -1 && last > first) { try { brief = JSON.parse(text.slice(first, last + 1)); } catch {} }
+          if (!brief && first !== -1) {
+            let frag = text.slice(first).replace(/,\s*$/, "");
+            const opens = (frag.match(/\{/g) || []).length, closes = (frag.match(/\}/g) || []).length;
+            const quotes = (frag.match(/(?<!\\)"/g) || []).length;
+            if (quotes % 2 === 1) frag += '"';
+            frag += "}".repeat(Math.max(0, opens - closes));
+            try { brief = JSON.parse(frag); brief._recovered = true; } catch {}
+          }
+          if (!brief) brief = { status: text.slice(0, 400), raw: true };
+        }
         const out = { topic: topicKey, label: snap.label, pulled_at: snap.pulled_at, briefed_at: new Date().toISOString(), provider, brief, sources: { news: (snap.news || []).length, oil: !!snap.oil, ships: snap.ships ? snap.ships.vessel_count : 0 } };
         await env.AURA_KV.put(`situation:brief:${topicKey}`, JSON.stringify(out), { expirationTtl: 3600 }).catch(() => {});
         return { cmd: "SITUATION_BRIEF", payload: { ok: true, ...out } };

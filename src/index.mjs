@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.334-2026-06-30";
+const BUILD = "aura-core-v4.9.335-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -717,11 +717,11 @@ async function webSearch(query, env) {
     if (provider === "tavily") {
       const key = await env.AURA_KV.get("secret:tavily").catch(() => null);
       if (!key) return { ok: false, error: "no tavily key in KV (secret:tavily)" };
-      const res = await fetch("https://api.tavily.com/search", {
+      const res = await fetchWithTimeout("https://api.tavily.com/search", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
         body: JSON.stringify({ query: query.trim(), search_depth: "basic", include_answer: true, max_results: 5 })
-      });
+      }, 8000);
       if (!res.ok) return { ok: false, error: `tavily http ${res.status}` };
       const data = await res.json();
       const sources = (data.results || []).slice(0, 5).map(r => ({ title: r.title, url: r.url, snippet: (r.content || "").slice(0, 400) }));
@@ -730,9 +730,9 @@ async function webSearch(query, env) {
     if (provider === "brave") {
       const key = await env.AURA_KV.get("secret:brave_search").catch(() => null);
       if (!key) return { ok: false, error: "no brave key in KV (secret:brave_search)" };
-      const res = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query.trim())}&count=5`, {
+      const res = await fetchWithTimeout(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query.trim())}&count=5`, {
         headers: { "Accept": "application/json", "X-Subscription-Token": key }
-      });
+      }, 8000);
       if (!res.ok) return { ok: false, error: `brave http ${res.status}` };
       const data = await res.json();
       const sources = ((data.web && data.web.results) || []).slice(0, 5).map(r => ({ title: r.title, url: r.url, snippet: (r.description || "").slice(0, 400) }));
@@ -2191,7 +2191,7 @@ async function processCommand(line, env, isOp) {
       if (isNaN(mlat) || isNaN(mlon)) return { cmd: "MARINE_ROUTE", payload: { ok: false, error: "Usage: MARINE_ROUTE <lat> <lon>" } };
       try {
         const u = `https://marine-api.open-meteo.com/v1/marine?latitude=${mlat}&longitude=${mlon}&current=wave_height,wave_direction,wave_period,swell_wave_height,swell_wave_period,wind_wave_height&hourly=wave_height&timezone=auto`;
-        const r = await fetch(u);
+        const r = await fetchWithTimeout(u, {}, 8000);
         if (!r.ok) return { cmd: "MARINE_ROUTE", payload: { ok: false, error: `open-meteo marine http ${r.status}` } };
         const d = await r.json();
         const c = d.current || {};

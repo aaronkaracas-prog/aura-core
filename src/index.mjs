@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.351-2026-06-30";
+const BUILD = "aura-core-v4.9.352-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -403,6 +403,21 @@ async function resolveFeedUrl(env, key, params = {}, fallbackTemplate = "") {
   return url;
 }
 
+// Extract the radar operator's structured read from an NWS warning's parameters: rotation (POSSIBLE/RADAR
+// INDICATED/OBSERVED), max hail, max wind, damage threat. This is live ground truth that overrides model shear.
+function nwsRadarRead(p) {
+  const par = (p && p.parameters) || {};
+  const first = (k) => Array.isArray(par[k]) && par[k].length ? par[k][0] : null;
+  const out = {};
+  const tor = first("tornadoDetection"); if (tor) out.tornado = tor;
+  const torT = first("tornadoDamageThreat"); if (torT) out.tornado_threat = torT;
+  const hail = first("maxHailSize"); if (hail) out.max_hail_in = hail;
+  const wind = first("maxWindGust"); if (wind) out.max_wind = wind;
+  const tT = first("thunderstormDamageThreat"); if (tT) out.damage_threat = tT;
+  const ff = first("flashFloodDamageThreat"); if (ff) out.flood_threat = ff;
+  return Object.keys(out).length ? out : null;
+}
+
 // LIVE-EVENT FINDER - scan the whole country for the most significant ACTIVE NWS hazards right now
 // (severity Severe/Extreme), rank them (tornado > flash-flood-emergency > severe-tstorm > flash-flood >
 // watches), and attach a polygon-centroid lat/lon so Aura can aim deep multi-model analysis at a REAL
@@ -416,8 +431,14 @@ async function scanLiveEvents(env, topN = 8) {
   if (!r.ok) { let body = ""; try { body = (await r.text()).slice(0, 200); } catch {} return { ok: false, error: `nws alerts http ${r.status}`, detail: body }; }
   const d = await r.json();
   let feats = Array.isArray(d.features) ? d.features : [];
-  // keep only the dangerous hazards (tornado / severe-tstorm / flash-flood warnings + watches are Severe/Extreme)
-  feats = feats.filter(f => { const s = ((f.properties || {}).severity || "").toLowerCase(); return s === "severe" || s === "extreme"; });
+  // keep only the dangerous hazards (Severe/Extreme) that are still LIVE (drop already-expired warnings)
+  const nowMs = Date.now();
+  feats = feats.filter(f => {
+    const p = f.properties || {}; const s = (p.severity || "").toLowerCase();
+    if (s !== "severe" && s !== "extreme") return false;
+    const exp = p.expires ? Date.parse(p.expires) : NaN;
+    return isNaN(exp) || exp > nowMs;
+  });
   const rank = (ev) => {
     const e = (ev || "").toLowerCase();
     if (e.includes("tornado") && e.includes("emergency")) return 100;
@@ -439,11 +460,21 @@ async function scanLiveEvents(env, topN = 8) {
     if (!n) return null;
     return { lat: Math.round(sy / n * 1000) / 1000, lon: Math.round(sx / n * 1000) / 1000 };
   };
+  // RADAR INTELLIGENCE: warnings carry the radar operator's read in p.parameters (rotation indicated/observed,
+  // hail, wind, damage threat). Surface it and weight ranking by it - the eyes she keeps asking for.
+  const radarBonus = (rd) => {
+    if (!rd) return 0; let b = 0;
+    const tor = (rd.tornado || "").toUpperCase();
+    if (tor.includes("OBSERVED")) b += 9; else if (tor.includes("INDICATED")) b += 5; else if (tor) b += 2;
+    const dt = (rd.damage_threat || rd.tornado_threat || rd.flood_threat || "").toUpperCase();
+    if (dt.includes("CATASTROPHIC") || dt.includes("DESTRUCTIVE")) b += 6; else if (dt.includes("CONSIDERABLE")) b += 3;
+    return b;
+  };
   const all = feats.map(f => {
-    const p = f.properties || {}; const c = centroid(f.geometry);
+    const p = f.properties || {}; const c = centroid(f.geometry); const rd = nwsRadarRead(p);
     return { event: p.event || "", severity: p.severity || "", urgency: p.urgency || "", certainty: p.certainty || "",
       area: (p.areaDesc || "").slice(0, 120), expires: p.expires || "", headline: (p.headline || "").slice(0, 160),
-      lat: c ? c.lat : null, lon: c ? c.lon : null, _rank: rank(p.event) };
+      radar: rd, lat: c ? c.lat : null, lon: c ? c.lon : null, _rank: rank(p.event) + radarBonus(rd) };
   }).filter(e => e.lat !== null).sort((a, b) => b._rank - a._rank || (a.expires < b.expires ? -1 : 1));
   // spread the picks geographically: skip a near-duplicate of an already-picked same-type event (~0.4 deg)
   const top = [];
@@ -1614,14 +1645,14 @@ async function processCommand(line, env, isOp) {
         const au = await resolveFeedUrl(env, "alerts_nws_point", { lat: wrLat, lon: wrLon }, `https://api.weather.gov/alerts/active?point={lat},{lon}`);
         const ar = await fetchWithTimeout(au, { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)", "Accept": "application/geo+json" } }, 8000);
         if (ar.ok) { const aj = await ar.json(); const feats = (aj.features || []).map(f => f.properties || {});
-          wrAlerts = { count: feats.length, alerts: feats.slice(0, 6).map(p => ({ event: p.event, severity: p.severity, urgency: p.urgency, certainty: p.certainty, headline: (p.headline || "").slice(0, 160), area: (p.areaDesc || "").slice(0, 120) })) };
+          wrAlerts = { count: feats.length, alerts: feats.slice(0, 6).map(p => ({ event: p.event, severity: p.severity, urgency: p.urgency, certainty: p.certainty, radar: nwsRadarRead(p), headline: (p.headline || "").slice(0, 160), area: (p.areaDesc || "").slice(0, 120) })) };
         }
       } catch {}
       const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
       if (!anthKey) return { cmd: "WEATHER_REASON", payload: { ok: false, error: "no reasoning key (secret:anthropic)" } };
-      const FB_METEOROLOGIST = "You are Aura's meteorology engine - an experienced operational forecaster, not a model parrot. You are given the SAME forecast from several global numerical weather models for one point, plus any official NWS/SPC watches active nationally. Reason across the models the way a working forecaster does, using these KNOWN MODEL TENDENCIES as heuristics (never absolutes - always cross-check the live spread and official products): ECMWF (European/IFS) is generally the most skillful for synoptic and medium-range pattern evolution and is the benchmark for large-scale systems; it tends to be smoother and can under-do small-scale convective extremes. GFS (American) is a capable global baseline but tends to over-amplify systems and over-forecast convective precipitation and intensity, especially beyond ~48h. ICON (German/DWD) is higher-resolution and strong for mesoscale and short-range convective structure. GEM (Canadian) is a reasonable global model but is more often the timing/amplitude outlier. SEVERE-WEATHER INGREDIENTS: CAPE (convective available potential energy, J/kg) measures instability - the fuel for thunderstorms: under ~500 is stable, 1000-2500 is moderate instability, 2500-4000 is strong, 4000+ is extreme. High CAPE alone is potential, not a storm - it needs a trigger and (for severe/rotating storms) wind shear to organize. When CAPE is elevated AND official Severe Thunderstorm or Tornado watches are posted at the point, treat the convective/severe threat as real and say so; when CAPE is low, large model wind/precip differences are less likely to be convective. WIND SHEAR (shear_sfc500_kmh = surface-to-500hPa bulk shear) organizes storms: under ~40 km/h is weak (pulse/disorganized storms that fade fast), ~40-65 is marginal, 65+ km/h supports organized multicell and supercell structure with rotation potential. THE SEVERE COMBO: high CAPE (fuel) AND strong shear (organization) together = supercell/tornado potential - this is what turns 'storms possible' into 'rotating supercells possible'; high CAPE with weak shear means pulse storms (brief, locally heavy, less organized); strong shear with low CAPE means wind/rain but limited convective severity. State the CAPE/shear combo explicitly when a severe threat exists. METHOD: when the models AGREE, confidence is high and you state the consensus; when they SPLIT, name the outlier, then decide whether the consensus or the outlier is more credible GIVEN the regime and the official watches, and explain why using the bias heuristics - e.g. if ECMWF and ICON show a windy/wet/convective solution and official Severe Thunderstorm or Tornado watches are already posted near the point, lean to the active solution even if GFS looks calm; conversely treat a lone over-amplified GFS signal with caution. NEVER invent numbers - reason only from the provided spread and alerts. Output STRICT JSON only with keys: headline (one line: what is actually going to happen at this point over the next 48h), model_agreement (high|medium|low), the_split (one line: where and how the models disagree, naming which model says what), favored_solution (one line: which model(s) you lean toward here and WHY, citing the bias heuristics and any official watches), confidence (low|medium|high), forecaster_note (1-2 lines in the voice of a TV meteorologist explaining the call on air), watch_for (array of strings: the specific trigger(s) that would change this forecast).";
+      const FB_METEOROLOGIST = "You are Aura's meteorology engine - an experienced operational forecaster, not a model parrot. You are given the SAME forecast from several global numerical weather models for one point, plus any official NWS/SPC watches active nationally. Reason across the models the way a working forecaster does, using these KNOWN MODEL TENDENCIES as heuristics (never absolutes - always cross-check the live spread and official products): ECMWF (European/IFS) is generally the most skillful for synoptic and medium-range pattern evolution and is the benchmark for large-scale systems; it tends to be smoother and can under-do small-scale convective extremes. GFS (American) is a capable global baseline but tends to over-amplify systems and over-forecast convective precipitation and intensity, especially beyond ~48h. ICON (German/DWD) is higher-resolution and strong for mesoscale and short-range convective structure. GEM (Canadian) is a reasonable global model but is more often the timing/amplitude outlier. SEVERE-WEATHER INGREDIENTS: CAPE (convective available potential energy, J/kg) measures instability - the fuel for thunderstorms: under ~500 is stable, 1000-2500 is moderate instability, 2500-4000 is strong, 4000+ is extreme. High CAPE alone is potential, not a storm - it needs a trigger and (for severe/rotating storms) wind shear to organize. When CAPE is elevated AND official Severe Thunderstorm or Tornado watches are posted at the point, treat the convective/severe threat as real and say so; when CAPE is low, large model wind/precip differences are less likely to be convective. WIND SHEAR (shear_sfc500_kmh = surface-to-500hPa bulk shear) organizes storms: under ~40 km/h is weak (pulse/disorganized storms that fade fast), ~40-65 is marginal, 65+ km/h supports organized multicell and supercell structure with rotation potential. THE SEVERE COMBO: high CAPE (fuel) AND strong shear (organization) together = supercell/tornado potential - this is what turns 'storms possible' into 'rotating supercells possible'; high CAPE with weak shear means pulse storms (brief, locally heavy, less organized); strong shear with low CAPE means wind/rain but limited convective severity. State the CAPE/shear combo explicitly when a severe threat exists. RADAR GROUND TRUTH: when an official alert includes a 'radar' read, that is OBSERVATION, not forecast, and it OUTRANKS model shear. tornado=OBSERVED means a tornado is confirmed on the ground RIGHT NOW - lead with it; tornado=RADAR INDICATED means radar shows rotation now even if model shear looked weak (trust the radar over the model and say organization is occurring); a damage_threat of CONSIDERABLE or DESTRUCTIVE, or large max_hail_in / strong max_wind, means the storm is already producing severe weather - your forecast must reflect what the radar already sees, not argue with it. If models show weak shear but radar indicates rotation, explicitly note the models under-resolved it. METHOD: when the models AGREE, confidence is high and you state the consensus; when they SPLIT, name the outlier, then decide whether the consensus or the outlier is more credible GIVEN the regime and the official watches, and explain why using the bias heuristics - e.g. if ECMWF and ICON show a windy/wet/convective solution and official Severe Thunderstorm or Tornado watches are already posted near the point, lean to the active solution even if GFS looks calm; conversely treat a lone over-amplified GFS signal with caution. NEVER invent numbers - reason only from the provided spread and alerts. Output STRICT JSON only with keys: headline (one line: what is actually going to happen at this point over the next 48h), model_agreement (high|medium|low), the_split (one line: where and how the models disagree, naming which model says what), favored_solution (one line: which model(s) you lean toward here and WHY, citing the bias heuristics and any official watches), confidence (low|medium|high), forecaster_note (1-2 lines in the voice of a TV meteorologist explaining the call on air), watch_for (array of strings: the specific trigger(s) that would change this forecast).";
       const sysPrompt = await loadPrompt(env, "weather_meteorologist", FB_METEOROLOGIST);
-      const question = `Point: ${wrLat}, ${wrLon}\n\nMULTI-MODEL SPREAD (now / +24h / +48h):\n${JSON.stringify(wrModels.compare, null, 1)}\n\nOFFICIAL NWS ALERTS ACTIVE AT THIS EXACT POINT (ground truth, US only):\n${wrAlerts ? JSON.stringify(wrAlerts) : "none retrieved"}\n\nProduce the forecaster's reasoning JSON now.`;
+      const question = `Point: ${wrLat}, ${wrLon}\n\nMULTI-MODEL SPREAD (now / +24h / +48h):\n${JSON.stringify(wrModels.compare, null, 1)}\n\nOFFICIAL NWS ALERTS ACTIVE AT THIS EXACT POINT (ground truth, US only; each alert's 'radar' field, when present, is the radar operator's LIVE read - rotation indicated/observed, hail, wind, damage threat - and outranks model shear):\n${wrAlerts ? JSON.stringify(wrAlerts) : "none retrieved"}\n\nProduce the forecaster's reasoning JSON now.`;
       const ai = await callAnthropic(anthKey, { model: "claude-haiku-4-5-20251001", max_tokens: 1400, system: sysPrompt, messages: [{ role: "user", content: question }] });
       if (!ai || !ai.ok) return { cmd: "WEATHER_REASON", payload: { ok: false, error: "reasoning failed: " + (ai && ai.error || "unknown") } };
       let text = (ai.content || []).map(b => b.text || "").join("").replace(/```json|```/g, "").trim();

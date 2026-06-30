@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.350-2026-06-30";
+const BUILD = "aura-core-v4.9.351-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -409,13 +409,14 @@ async function resolveFeedUrl(env, key, params = {}, fallbackTemplate = "") {
 // event instead of a typed-in coordinate. Keyless (api.weather.gov). Shared by LIVE_EVENTS and STORM_HUNT.
 async function scanLiveEvents(env, topN = 8) {
   const ua = { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)", "Accept": "application/geo+json" } };
-  const url1 = await resolveFeedUrl(env, "alerts_nws_active", {}, `https://api.weather.gov/alerts/active?status=actual&severity=Severe,Extreme&limit=500`);
-  let r = await fetchWithTimeout(url1, ua, 9000);
-  if (!r.ok) { const url2 = await resolveFeedUrl(env, "alerts_nws_active", {}, `https://api.weather.gov/alerts/active?status=actual&limit=500`); r = await fetchWithTimeout(url2, ua, 9000); }
-  if (!r.ok) return { ok: false, error: `nws alerts http ${r.status}` };
+  // api.weather.gov rejects extra query params on /alerts/active with a 400; the BARE endpoint is the safe floor
+  // (same path the point-scoped alerts use successfully). Pull every active alert, filter to Severe/Extreme in code.
+  const url = await resolveFeedUrl(env, "alerts_nws_active", {}, `https://api.weather.gov/alerts/active`);
+  const r = await fetchWithTimeout(url, ua, 9000);
+  if (!r.ok) { let body = ""; try { body = (await r.text()).slice(0, 200); } catch {} return { ok: false, error: `nws alerts http ${r.status}`, detail: body }; }
   const d = await r.json();
   let feats = Array.isArray(d.features) ? d.features : [];
-  // keep only Severe/Extreme (covers the minimal-fallback path, which has no severity filter)
+  // keep only the dangerous hazards (tornado / severe-tstorm / flash-flood warnings + watches are Severe/Extreme)
   feats = feats.filter(f => { const s = ((f.properties || {}).severity || "").toLowerCase(); return s === "severe" || s === "extreme"; });
   const rank = (ev) => {
     const e = (ev || "").toLowerCase();

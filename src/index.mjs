@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.326-2026-06-30";
+const BUILD = "aura-core-v4.9.327-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -2375,10 +2375,11 @@ async function processCommand(line, env, isOp) {
       }
       // MARITIME DOMAIN (default)
       if (domain === "storm") {
-        const [news, storm, hurr, web] = await Promise.all([
+        const [news, storm, hurr, predict, web] = await Promise.all([
           run(`NEWS_QUERY ${T.news}`),
           run(`STORM_QUERY ${T.storm}`),
           run(`HURRICANE_QUERY`),
+          run(`STORM_PREDICT`),
           run(`WEB_SEARCH ${T.search}`)
         ]);
         snapshot = {
@@ -2386,10 +2387,11 @@ async function processCommand(line, env, isOp) {
           news: news && news.ok ? (news.news || []).slice(0, 10) : [], news_ok: !!(news && news.ok),
           web: web && web.ok ? (web.results || web.answer || web) : null, web_ok: !!(web && web.ok),
           storms: storm && storm.ok ? { source: storm.source, total: storm.total_storm_alerts ?? 0, tornadoes: storm.tornado_alerts ?? 0, by_type: storm.by_type || {}, top: storm.top_alerts || [], updated: storm.updated } : { total: 0, source: (storm && storm.source) || "none", note: (storm && storm.error) || "no storm feed" },
-          hurricanes: hurr && hurr.ok ? { count: hurr.active_count, storms: hurr.storms } : { count: 0 }
+          hurricanes: hurr && hurr.ok ? { count: hurr.active_count, storms: hurr.storms } : { count: 0 },
+          formation: predict && predict.ok ? { active_discussions: predict.active_discussions ?? 0, prediction: predict.prediction || null } : { active_discussions: 0, prediction: null }
         };
         await env.AURA_KV.put(`situation:snapshot:${topicKey}`, JSON.stringify(snapshot), { expirationTtl: 3600 }).catch(() => {});
-        return { cmd: "SITUATION_PULL", payload: { ok: true, topic: topicKey, domain, label: T.label, pulled_at: snapshot.pulled_at, feeds: { news: snapshot.news.length, web: snapshot.web_ok, storm_alerts: snapshot.storms.total, tornadoes: snapshot.storms.tornadoes, hurricanes: snapshot.hurricanes.count }, note: "Storm snapshot stored. Run SITUATION_BRIEF " + topicKey + " for the analysis." } };
+        return { cmd: "SITUATION_PULL", payload: { ok: true, topic: topicKey, domain, label: T.label, pulled_at: snapshot.pulled_at, feeds: { news: snapshot.news.length, web: snapshot.web_ok, storm_alerts: snapshot.storms.total, tornadoes: snapshot.storms.tornadoes, hurricanes: snapshot.hurricanes.count, mesoscale_discussions: snapshot.formation.active_discussions }, note: "Storm snapshot stored (now includes formation prediction). Run SITUATION_BRIEF " + topicKey + " for the analysis." } };
       }
       if (domain === "quake") {
         const [news, quake, web] = await Promise.all([
@@ -2463,8 +2465,15 @@ async function processCommand(line, env, isOp) {
         const topAreas = st && st.top ? st.top.slice(0, 6).map(a => `${a.event}: ${a.area} (${a.severity}, until ${a.expires ? a.expires.slice(11, 16) : "?"})`).join("\n") : "";
         const hurr = snap.hurricanes;
         const hurrLine = hurr && hurr.count ? hurr.storms.map(h => `${h.classification || ""} ${h.name} (${h.category || "?"}, ${h.intensity_kt}kt, at ${h.lat},${h.lon}, moving ${h.movement || "?"})`).join("; ") : "no active tropical cyclones";
+        const fm = snap.formation;
+        let formLine = "no pre-watch mesoscale discussions active";
+        if (fm && fm.prediction) {
+          const p = fm.prediction;
+          const forming = Array.isArray(p.forming) ? p.forming.join(" | ") : (p.forming || "");
+          formLine = `${fm.active_discussions} SPC mesoscale discussion(s). FORMING: ${forming}. ESCALATION: ${p.escalation || "?"}. LEAD TIME: ${p.lead_time_gained || "?"}`;
+        }
         sysPrompt = PROMPTS.storm || FB_STORM;
-        question = `Severe weather situation: ${snap.label}\nPulled: ${snap.pulled_at}\n\nLIVE NEWS:\n${newsLines}\n\nNWS ACTIVE ALERTS: ${stLine}\n\nTOP ALERTS:\n${topAreas}\n\nACTIVE TROPICAL CYCLONES (NHC): ${hurrLine}\n\nProduce the severe-weather operator briefing JSON now.`;
+        question = `Severe weather situation: ${snap.label}\nPulled: ${snap.pulled_at}\n\nLIVE NEWS:\n${newsLines}\n\nNWS ACTIVE ALERTS: ${stLine}\n\nTOP ALERTS:\n${topAreas}\n\nACTIVE TROPICAL CYCLONES (NHC): ${hurrLine}\n\nFORMATION PREDICTION (pre-watch, ahead of warnings): ${formLine}\n\nProduce the severe-weather operator briefing JSON now. Weave the formation prediction into your threat and lead_time - this is what lets people act BEFORE warnings fire.`;
       } else if (snapDomain === "quake") {
         const qk = snap.quakes;
         const qLine = qk && qk.largest ? `${qk.count} quakes; largest M${qk.largest.mag} at ${qk.largest.place}, depth ${qk.largest.depth_km}km${qk.largest.tsunami ? ", TSUNAMI FLAG" : ""}${qk.largest.alert ? ", PAGER alert " + qk.largest.alert : ""}` : "no significant quakes";

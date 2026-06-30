@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.342-2026-06-30";
+const BUILD = "aura-core-v4.9.343-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1480,6 +1480,47 @@ async function processCommand(line, env, isOp) {
         const fireAircraft = aircraft.filter(a => a.likely_fire);
         return { cmd: "AIRCRAFT_QUERY", payload: { ok: true, source: "opensky_live", region: acRegion, label: acb.label, total_aircraft: aircraft.length, likely_firefighting: fireAircraft.length, fire_aircraft: fireAircraft.slice(0, 30), all_sample: aircraft.slice(0, 20), updated: new Date().toISOString(), note: fireAircraft.length ? "Flagged aircraft are heuristic matches by callsign - confirm against the incident air-ops roster." : "No firefighting-pattern callsigns in this pass (aircraft may be on the ground, between drops, or using non-standard callsigns). Total air traffic still shown." } };
       } catch (e) { return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, source: "opensky_error", region: acRegion, error: String(e && e.message || e) } }; }
+    }
+
+    case "WEATHER_MODELS": {
+      // MULTI-MODEL WEATHER - pull the SAME forecast from several global models (GFS / ECMWF / ICON / GEM)
+      // for one point so Aura can compare them the way broadcast meteorologists do ("the European vs the
+      // American"). v1: pull the models AS-IS and surface the raw spread; the reasoning layer comes next.
+      // Models list is KV-tunable (config:weather:models); endpoint is in feeds:registry. No code to add a model.
+      //   WEATHER_MODELS <lat> <lon>    (default: Tampa Bay, hurricane-prone)
+      const wmArgs = line.replace(/^WEATHER_MODELS\s*/i, "").trim().split(/\s+/).filter(Boolean);
+      const wmLat = wmArgs.length >= 2 ? parseFloat(wmArgs[0]) : 27.9;
+      const wmLon = wmArgs.length >= 2 ? parseFloat(wmArgs[1]) : -82.5;
+      if (isNaN(wmLat) || isNaN(wmLon)) return { cmd: "WEATHER_MODELS", payload: { ok: false, error: "Usage: WEATHER_MODELS <lat> <lon>" } };
+      const wmModels = ((await env.AURA_KV.get("config:weather:models").catch(() => null)) || "gfs_seamless,ecmwf_ifs025,icon_seamless,gem_seamless").trim();
+      const wmVars = "temperature_2m,precipitation,wind_speed_10m,wind_gusts_10m,surface_pressure,cloud_cover";
+      try {
+        const u = await resolveFeedUrl(env, "weather_models_openmeteo", { lat: wmLat, lon: wmLon, vars: wmVars, models: wmModels }, `https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly={vars}&models={models}&forecast_days=3&timezone=auto`);
+        const r = await fetchWithTimeout(u, {}, 9000);
+        if (!r.ok) return { cmd: "WEATHER_MODELS", payload: { ok: false, error: `open-meteo http ${r.status}` } };
+        const d = await r.json();
+        const hourly = d.hourly || {};
+        const times = hourly.time || [];
+        const modelList = wmModels.split(",").map(s => s.trim()).filter(Boolean);
+        const baseVars = wmVars.split(",");
+        // open-meteo suffixes each variable with _<model> when multiple models are requested.
+        const idxNow = 0, idx24 = Math.min(24, times.length - 1), idx48 = Math.min(48, times.length - 1);
+        const compare = {};
+        for (const m of modelList) {
+          const get = (v) => hourly[`${v}_${m}`] || (modelList.length === 1 ? hourly[v] : null) || [];
+          const t = get("temperature_2m"), p = get("precipitation"), w = get("wind_gusts_10m"), pr = get("surface_pressure"), cc = get("cloud_cover");
+          compare[m] = {
+            temp_c: { now: t[idxNow] ?? null, h24: t[idx24] ?? null, h48: t[idx48] ?? null },
+            precip_mm: { now: p[idxNow] ?? null, h24: p[idx24] ?? null, h48: p[idx48] ?? null },
+            gust_kmh: { now: w[idxNow] ?? null, h24: w[idx24] ?? null, h48: w[idx48] ?? null },
+            pressure_hpa: { now: pr[idxNow] ?? null, h24: pr[idx24] ?? null, h48: pr[idx48] ?? null },
+            cloud_pct: { now: cc[idxNow] ?? null, h24: cc[idx24] ?? null, h48: cc[idx48] ?? null }
+          };
+        }
+        return { cmd: "WEATHER_MODELS", payload: { ok: true, lat: wmLat, lon: wmLon, models: modelList, hours_available: times.length,
+          raw_hourly_keys: Object.keys(hourly).slice(0, 48), compare,
+          note: "Multi-model forecast pulled AS-IS (no reasoning yet). 'compare' = each model's read at now/+24h/+48h for temp/precip/gust/pressure/cloud - the raw spread Aura reasons across next. raw_hourly_keys confirms the response shape." } };
+      } catch (e) { return { cmd: "WEATHER_MODELS", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 
     case "STORM_PREDICT": {

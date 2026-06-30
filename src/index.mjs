@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.332-2026-06-30";
+const BUILD = "aura-core-v4.9.333-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -372,6 +372,19 @@ async function loadPrompt(env, key, fallback) {
     }
   } catch (e) { /* fall through to fallback on any read/parse error */ }
   return fallback;
+}
+
+// Bound any external fetch with a hard timeout. A fetch with no timeout is a silent failure:
+// one slow/hung API (proven: OilPriceAPI) stalls the whole pull. On timeout the request aborts
+// and rejects (AbortError), so the caller's try/catch degrades just THAT feed, not everything.
+async function fetchWithTimeout(url, opts = {}, ms = 8000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...opts, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function getOperatorToken(env) {
@@ -1329,7 +1342,7 @@ async function processCommand(line, env, isOp) {
       if (!key) return { cmd: "OIL_PRICE", payload: { ok: false, error: "no oilprice key in KV (secret:oilprice)" } };
       try {
         const url = `https://api.oilpriceapi.com/v1/prices/latest?by_code=${encodeURIComponent(code)}`;
-        const r = await fetch(url, { headers: { "Authorization": `Token ${key}`, "Content-Type": "application/json" } });
+        const r = await fetchWithTimeout(url, { headers: { "Authorization": `Token ${key}`, "Content-Type": "application/json" } }, 8000);
         if (!r.ok) return { cmd: "OIL_PRICE", payload: { ok: false, error: `oilprice http ${r.status}` } };
         const d = await r.json();
         const p = d.data || d;
@@ -2366,7 +2379,7 @@ async function processCommand(line, env, isOp) {
       } catch (e) { /* keep safety net on any parse/read error */ }
       const T = TOPICS[topicKey];
       if (!T) return { cmd: "SITUATION_PULL", payload: { ok: false, error: "unknown topic: " + topicKey, topics: Object.keys(TOPICS), topics_source: topicsSource, hint: topicsSource !== "kv" ? "KV registry not loaded - check situation:topics" : "add this topic via SETKV situation:topics" } };
-      const run = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
+      const run = async (cmd, ms = 20000) => { try { const r = await Promise.race([ processCommand(cmd, env, true), new Promise((_, rej) => setTimeout(() => rej(new Error("feed timeout after " + ms + "ms")), ms)) ]); return (r && r.payload) ? r.payload : r; } catch (e) { const msg = String(e && e.message || e); return { ok: false, error: msg, timed_out: /feed timeout/.test(msg) }; } };
       const domain = T.domain || "maritime";
       let snapshot;
       if (domain === "fire") {

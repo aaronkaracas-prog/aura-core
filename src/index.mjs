@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.384-2026-07-01";
+const BUILD = "aura-core-v4.9.385-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -2650,7 +2650,9 @@ async function processCommand(line, env, isOp) {
         let truthLat = null, truthLon = null;
         try { const off = await step(`FIRE_OFFICIAL ${fpFirst}`); const inc = off && off.incidents && off.incidents.find(f => f.name && f.name.toLowerCase().includes(fpFirst.toLowerCase())); if (inc) { truthLat = inc.lat; truthLon = inc.lon; } } catch {}
         // PUBLIC keyless WFIGS YearToDate perimeters (no token; the Current layer requires auth - we use the open one)
-        const where = encodeURIComponent(`UPPER(poly_IncidentName) LIKE UPPER('%${fpFirst}%')`);
+        // NOTE: pass the where clause RAW - resolveFeedUrl encodes substituted params exactly once. Pre-encoding here
+        // would double-encode (%25 -> %2525) and silently return zero features.
+        const where = `UPPER(poly_IncidentName) LIKE UPPER('%${fpFirst}%')`;
         const url = await resolveFeedUrl(env, "fire_perimeter", { where }, `https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Interagency_Perimeters_YearToDate/FeatureServer/0/query?where={where}&outFields=poly_IncidentName,poly_GISAcres,attr_PercentContained,poly_DateCurrent,attr_IrwinID&returnGeometry=true&outSR=4326&f=geojson`);
         const r = await fetchWithTimeout(url, {}, 9000);
         if (!r.ok) { let b = ""; try { b = (await r.text()).slice(0, 160); } catch {}; return { cmd: "FIRE_PERIMETER", payload: { ok: false, error: `wfigs perimeter http ${r.status}`, detail: b } }; }

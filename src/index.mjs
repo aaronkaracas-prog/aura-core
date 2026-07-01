@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.368-2026-07-01";
+const BUILD = "aura-core-v4.9.369-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -588,23 +588,49 @@ async function fetchSPCOutlook(env, lat, lon) {
   return { ok: true, category: best ? best.code : "none", category_name: best ? best.name : "No thunderstorm risk", level: best ? best.level : 0, severe_forecast: best ? best.level >= 2 : false };
 }
 
-// MeteoAlarm (official European warning aggregator, keyless) - PROBE build. Fetches the Europe-wide feed and returns a
-// best-effort parse PLUS a raw sample so the real structure can be seen and a point-aware parser built against reality.
-async function fetchMeteoAlarm(env) {
-  const url = await resolveFeedUrl(env, "meteoalarm_europe", {}, `https://feeds.meteoalarm.org/feeds/meteoalarm-legacy-atom-europe`);
+// MeteoAlarm (official European warning aggregator, keyless). Feeds are PER-COUNTRY ATOM (legacy RSS sunset 2026-01-14).
+// CAP carries awareness_type (1=Wind,2=snow/ice,3=Thunderstorm,4=Fog,5=high-temp,6=low-temp,7=coastal,8=forest-fire,9=avalanche,10=rain,11=flood,12=rain-flood)
+// and awareness_level (1=green,2=yellow,3=orange,4=red). We resolve the point's country by bounding box, then fetch that country's feed.
+function euCountryForPoint(lat, lon) {
+  // coarse bounding boxes for major European countries [name, latMin, latMax, lonMin, lonMax]
+  const boxes = [
+    ["france", 41.3, 51.1, -5.2, 8.3], ["germany", 47.2, 55.1, 5.8, 15.1], ["italy", 36.6, 47.1, 6.6, 18.6],
+    ["spain", 36.0, 43.8, -9.4, 3.4], ["portugal", 36.9, 42.2, -9.6, -6.1], ["united-kingdom", 49.9, 58.7, -8.2, 1.8],
+    ["ireland", 51.4, 55.4, -10.6, -5.9], ["belgium", 49.5, 51.5, 2.5, 6.4], ["netherlands", 50.7, 53.6, 3.3, 7.2],
+    ["switzerland", 45.8, 47.8, 5.9, 10.5], ["austria", 46.3, 49.0, 9.5, 17.2], ["poland", 49.0, 54.9, 14.1, 24.2],
+    ["czechia", 48.5, 51.1, 12.0, 18.9], ["denmark", 54.5, 57.8, 8.0, 12.7], ["norway", 57.9, 71.2, 4.5, 31.1],
+    ["sweden", 55.3, 69.1, 11.1, 24.2], ["finland", 59.7, 70.1, 20.5, 31.6], ["greece", 34.8, 41.8, 19.3, 28.3],
+    ["croatia", 42.4, 46.6, 13.5, 19.4], ["romania", 43.6, 48.3, 20.2, 29.7], ["hungary", 45.7, 48.6, 16.1, 22.9]
+  ];
+  for (const [name, la1, la2, lo1, lo2] of boxes) if (lat >= la1 && lat <= la2 && lon >= lo1 && lon <= lo2) return name;
+  return null;
+}
+async function fetchMeteoAlarm(env, lat, lon) {
+  const country = euCountryForPoint(lat, lon);
+  if (!country) return { ok: true, in_europe: false, note: "point is outside the mapped European country boxes" };
+  const url = await resolveFeedUrl(env, "meteoalarm_atom", { country }, `https://feeds.meteoalarm.org/feeds/meteoalarm-legacy-atom-{country}`);
   const r = await fetchWithTimeout(url, { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)", "Accept": "application/atom+xml,application/xml,text/xml,*/*" } }, 9000);
-  if (!r.ok) { let b = ""; try { b = (await r.text()).slice(0, 200); } catch {} return { ok: false, error: `meteoalarm http ${r.status}`, detail: b }; }
+  if (!r.ok) { let b = ""; try { b = (await r.text()).slice(0, 200); } catch {} return { ok: false, country, error: `meteoalarm http ${r.status}`, detail: b }; }
   const xml = await r.text();
-  // best-effort structural probe: count entries, pull country titles + any awareness level/type tokens present
+  const typeName = { "1": "Wind", "2": "Snow/Ice", "3": "Thunderstorm", "4": "Fog", "5": "Extreme high temp", "6": "Extreme low temp", "7": "Coastal event", "8": "Forest fire", "9": "Avalanche", "10": "Rain", "11": "Flood", "12": "Rain/Flood" };
+  const levelName = { "1": "green", "2": "yellow", "3": "orange", "4": "red" };
+  // parse each entry for its awareness level + type + area
   const entries = xml.split(/<entry[\s>]/i).slice(1);
-  const awarenessLevels = [...xml.matchAll(/awareness_level["'>:\s]*([^<"']+)/gi)].slice(0, 8).map(m => m[1].trim());
-  const awarenessTypes = [...xml.matchAll(/awareness_type["'>:\s]*([^<"']+)/gi)].slice(0, 8).map(m => m[1].trim());
-  const titles = [...xml.matchAll(/<title[^>]*>([^<]+)<\/title>/gi)].slice(0, 6).map(m => m[1].trim());
-  const hasPolygon = /<(?:georss:)?polygon>/i.test(xml) || /<cap:polygon>/i.test(xml) || /"polygon"/i.test(xml);
-  const hasGeocode = /geocode|EMMA_ID|<cap:geocode>/i.test(xml);
-  return { ok: true, probe: true, entry_count: entries.length, content_type: r.headers.get("content-type") || null,
-    sample_titles: titles, awareness_levels_found: awarenessLevels, awareness_types_found: awarenessTypes,
-    has_polygons: hasPolygon, has_geocodes: hasGeocode, raw_sample: xml.slice(0, 1600) };
+  const alerts = [];
+  for (const e of entries) {
+    const lvl = (e.match(/awareness_level[^0-9]*([1-4])/i) || [])[1];
+    const typ = (e.match(/awareness_type[^0-9]*([0-9]{1,2})/i) || [])[1];
+    const area = (e.match(/<cap:areaDesc>([^<]+)<\/cap:areaDesc>/i) || e.match(/<title[^>]*>([^<]+)<\/title>/i) || [])[1];
+    if (!lvl && !typ) continue;
+    alerts.push({ level: lvl ? +lvl : null, level_name: lvl ? levelName[lvl] : null, type: typ ? typeName[typ] || typ : null, area: area ? area.trim().slice(0, 80) : null });
+  }
+  // highest severe-convective level (thunderstorm / wind / rain / flood are the severe-relevant types)
+  const severeTypes = ["Thunderstorm", "Wind", "Rain", "Flood", "Rain/Flood"];
+  const severe = alerts.filter(a => a.level && a.level >= 2 && severeTypes.includes(a.type));
+  const top = severe.reduce((m, a) => (!m || a.level > m.level ? a : m), null);
+  return { ok: true, in_europe: true, country, alert_count: alerts.length,
+    top_severe: top, max_level: top ? top.level : (alerts.some(a => a.level) ? 1 : 0),
+    severe_forecast: !!(top && top.level >= 2), alerts: alerts.slice(0, 12) };
 }
 
 // LIVE-EVENT FINDER - scan the whole country for the most significant ACTIVE NWS hazards right now
@@ -1946,10 +1972,14 @@ async function processCommand(line, env, isOp) {
 
     case "METEOALARM":
     case "EU_ALERTS": {
-      // PROBE: fetch the live MeteoAlarm Europe feed and show its real structure so we can build the point-aware parser.
+      // Official European severe-weather awareness at a point (MeteoAlarm, keyless). METEOALARM <lat> <lon>
+      const maArgs = line.replace(/^(METEOALARM|EU_ALERTS)\s*/i, "").trim().split(/\s+/).filter(Boolean);
+      const maLat = parseFloat(maArgs[0]), maLon = parseFloat(maArgs[1]);
+      if (isNaN(maLat) || isNaN(maLon)) return { cmd: "METEOALARM", payload: { ok: false, error: "Usage: METEOALARM <lat> <lon>" } };
       try {
-        const m = await fetchMeteoAlarm(env);
-        return { cmd: "METEOALARM", payload: { ...m, note: m.ok ? "PROBE build: shows the live MeteoAlarm feed structure (entry_count, whether it carries polygons or geocodes, awareness tokens, raw_sample). has_polygons=true means we can point-in-polygon like SPC; has_geocodes-only means we need region-geometry mapping. Next build = the point-aware parser against this reality." : undefined } };
+        const m = await fetchMeteoAlarm(env, maLat, maLon);
+        return { cmd: "METEOALARM", payload: { ...m, lat: maLat, lon: maLon,
+          note: m.ok ? "Official European severe-weather warnings (MeteoAlarm, keyless). Country resolved by bounding box (country-level, not point-precise yet). awareness levels: 1 green < 2 yellow < 3 orange < 4 red; severe_forecast=true means an official yellow+ warning for a severe-convective hazard (thunderstorm/wind/rain/flood). This is the European official starting prior, analogous to SPC for the US." : undefined } };
       } catch (e) { return { cmd: "METEOALARM", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 

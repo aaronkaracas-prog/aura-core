@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.373-2026-07-01";
+const BUILD = "aura-core-v4.9.374-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -2437,7 +2437,7 @@ async function processCommand(line, env, isOp) {
       const fire = await step(`FIRE_QUERY ${fpRegion}`);
       if (!fire || !fire.ok) return { cmd: "FIRE_PREDICT", payload: { ok: false, error: "fire feed unavailable: " + (fire && fire.error) } };
       const hot = (fire.hotspots || []).filter(h => h.lat && h.lon);
-      if (!hot.length) return { cmd: "FIRE_PREDICT", payload: { ok: true, region: fpRegion, label: fire.label, note: "No active hotspots to project from." } };
+      if (!hot.length) return { cmd: "FIRE_PREDICT", payload: { ok: true, region: fpRegion, label: fire.label, detection_gap: !!fire.detection_gap, sensor_counts: fire.sensor_counts || null, spread_available: false, note: fire.detection_gap ? ("SATELLITE DETECTION GAP - cannot project spread this cycle because FIRMS returned no hotspots across all sensors, BUT the fire is CONFIRMED ACTIVE by NIFC. " + (fire.note || "") + " Spread projection will resume on the next clean satellite pass.") : "No active hotspots detected across multiple sensors, and no large active incident confirmed by NIFC in this box - likely no significant active fire here right now." } };
       // centroid + leading edge (highest-FRP cluster) of the current fire
       const centroid = { lat: hot.reduce((s, h) => s + h.lat, 0) / hot.length, lon: hot.reduce((s, h) => s + h.lon, 0) / hot.length };
       const lead = hot.reduce((a, b) => ((b.frp_mw || 0) > (a.frp_mw || 0) ? b : a), hot[0]);
@@ -2497,19 +2497,43 @@ async function processCommand(line, env, isOp) {
       const fkey = await env.AURA_KV.get("secret:firms").catch(() => null);
       if (!fkey) return { cmd: "FIRE_QUERY", payload: { ok: false, source: "no_key", region: fqRegion, label: fb.label, error: "No FIRMS MAP_KEY. Set secret:firms (free at firms.modaps.eosdis.nasa.gov/api/area/). The fire SITUATION engine is wired and will run the moment the key lands." } };
       try {
-        const url = await resolveFeedUrl(env, "fire_firms", { fkey, w: fb.w, s: fb.s, e: fb.e, n: fb.n }, `https://firms.modaps.eosdis.nasa.gov/api/area/csv/{fkey}/VIIRS_NOAA20_NRT/{w},{s},{e},{n}/1`);
-        const r = await fetchWithTimeout(url, {}, 8000);
-        if (!r.ok) return { cmd: "FIRE_QUERY", payload: { ok: false, source: "firms_error", region: fqRegion, error: `firms http ${r.status}` } };
-        const text = await r.text();
-        const lines = text.trim().split("\n");
-        if (lines.length < 2) return { cmd: "FIRE_QUERY", payload: { ok: true, source: "firms_live", region: fqRegion, label: fb.label, fire_count: 0, hotspots: [], note: "No active fire detections in this area in the last 24h." } };
-        const header = lines[0].split(",");
-        const li = (name) => header.indexOf(name);
-        const iLat = li("latitude"), iLon = li("longitude"), iBright = li("bright_ti4") >= 0 ? li("bright_ti4") : li("brightness"), iConf = li("confidence"), iFrp = li("frp"), iDate = li("acq_date"), iTime = li("acq_time");
-        const hotspots = lines.slice(1, 501).map(row => { const c = row.split(","); return { lat: parseFloat(c[iLat]), lon: parseFloat(c[iLon]), brightness_k: iBright >= 0 ? parseFloat(c[iBright]) : null, confidence: iConf >= 0 ? c[iConf] : null, frp_mw: iFrp >= 0 ? parseFloat(c[iFrp]) : null, at: (iDate >= 0 ? c[iDate] : "") + " " + (iTime >= 0 ? c[iTime] : "") }; }).filter(h => !isNaN(h.lat) && !isNaN(h.lon));
-        // quick clustering signal: highest-FRP hotspot = most intense detection
+        // MULTI-SENSOR + 2-DAY: one satellite missing an overpass (or smoke/cloud on its pass) must NOT
+        // produce a false zero on a large active fire. Query all FIRMS sensors and merge; dedupe near-identical points.
+        const sensors = ["VIIRS_NOAA20_NRT", "VIIRS_SNPP_NRT", "MODIS_NRT"];
+        const days = 2;
+        const parseCsv = (text, sensor) => {
+          const lines = text.trim().split("\n");
+          if (lines.length < 2) return [];
+          const header = lines[0].split(",");
+          const li = (name) => header.indexOf(name);
+          const iLat = li("latitude"), iLon = li("longitude"), iBright = li("bright_ti4") >= 0 ? li("bright_ti4") : li("brightness"), iConf = li("confidence"), iFrp = li("frp"), iDate = li("acq_date"), iTime = li("acq_time");
+          return lines.slice(1, 2001).map(row => { const c = row.split(","); return { lat: parseFloat(c[iLat]), lon: parseFloat(c[iLon]), brightness_k: iBright >= 0 ? parseFloat(c[iBright]) : null, confidence: iConf >= 0 ? c[iConf] : null, frp_mw: iFrp >= 0 ? parseFloat(c[iFrp]) : null, sensor, at: (iDate >= 0 ? c[iDate] : "") + " " + (iTime >= 0 ? c[iTime] : "") }; }).filter(h => !isNaN(h.lat) && !isNaN(h.lon));
+        };
+        let all = [];
+        const sensorCounts = {};
+        for (const sensor of sensors) {
+          try {
+            const url = await resolveFeedUrl(env, "fire_firms", { fkey, sensor, w: fb.w, s: fb.s, e: fb.e, n: fb.n, days }, `https://firms.modaps.eosdis.nasa.gov/api/area/csv/{fkey}/{sensor}/{w},{s},{e},{n}/{days}`);
+            const r = await fetchWithTimeout(url, {}, 8000);
+            if (r.ok) { const rows = parseCsv(await r.text(), sensor); sensorCounts[sensor] = rows.length; all = all.concat(rows); }
+            else { sensorCounts[sensor] = `http ${r.status}`; }
+          } catch (e) { sensorCounts[sensor] = "err"; }
+        }
+        // dedupe: points within ~0.005deg (~500m) collapsed, keep highest FRP
+        all.sort((a, b) => (b.frp_mw || 0) - (a.frp_mw || 0));
+        const dedup = [];
+        for (const h of all) { if (!dedup.some(d => Math.abs(d.lat - h.lat) < 0.005 && Math.abs(d.lon - h.lon) < 0.005)) dedup.push(h); }
+        const hotspots = dedup;
+        if (!hotspots.length) {
+          // FIRMS silent - but this may be a detection gap, NOT absence of fire. Cross-check NIFC before declaring "no fire".
+          let nifcActive = null;
+          try { const off = await processCommand(`FIRE_OFFICIAL ${fqRegion}`, env, true); const inc = off && off.payload && off.payload.incidents; if (inc && inc.length) { const big = inc.filter(f => (f.size_acres || 0) >= 1000 && (f.contained_pct == null || f.contained_pct < 100)); if (big.length) nifcActive = big.slice(0, 3).map(f => `${f.name} ${f.size_acres}ac ${f.contained_pct == null ? "?" : f.contained_pct}% contained`); } } catch {}
+          return { cmd: "FIRE_QUERY", payload: { ok: true, source: "firms_live", region: fqRegion, label: fb.label, fire_count: 0, hotspots: [], sensor_counts: sensorCounts,
+            detection_gap: !!nifcActive,
+            note: nifcActive ? `SATELLITE DETECTION GAP - FIRMS returned 0 hotspots across ${sensors.length} sensors over ${days}d, but NIFC confirms ACTIVE fire(s): ${nifcActive.join("; ")}. This is a satellite coverage/cloud/smoke gap, NOT absence of fire. Do not report "no fire." Spread projection unavailable this cycle; incident is confirmed active by official data.` : `No active fire detections across ${sensors.length} sensors over ${days}d, and NIFC shows no large active incident in this box.` } };
+        }
         const hottest = hotspots.reduce((a, b) => ((b.frp_mw || 0) > (a.frp_mw || 0) ? b : a), hotspots[0] || {});
-        return { cmd: "FIRE_QUERY", payload: { ok: true, source: "firms_live", region: fqRegion, label: fb.label, box: fb, fire_count: hotspots.length, hottest: hottest && hottest.lat ? hottest : null, updated: new Date().toISOString(), hotspots: hotspots.slice(0, 100) } };
+        return { cmd: "FIRE_QUERY", payload: { ok: true, source: "firms_live", region: fqRegion, label: fb.label, box: fb, fire_count: hotspots.length, sensor_counts: sensorCounts, hottest: hottest && hottest.lat ? hottest : null, updated: new Date().toISOString(), hotspots: hotspots.slice(0, 100) } };
       } catch (e) { return { cmd: "FIRE_QUERY", payload: { ok: false, source: "firms_error", region: fqRegion, error: String(e && e.message || e) } }; }
     }
 

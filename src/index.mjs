@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.397-2026-07-01";
+const BUILD = "aura-core-v4.9.398-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3827,7 +3827,9 @@ async function processCommand(line, env, isOp) {
       } catch (e) { /* keep safety net on any parse/read error */ }
       const T = TOPICS[topicKey];
       if (!T) return { cmd: "SITUATION_PULL", payload: { ok: false, error: "unknown topic: " + topicKey, topics: Object.keys(TOPICS), topics_source: topicsSource, hint: topicsSource !== "kv" ? "KV registry not loaded - check situation:topics" : "add this topic via SETKV situation:topics" } };
-      const run = async (cmd, ms = 20000) => { try { const r = await Promise.race([ processCommand(cmd, env, true), new Promise((_, rej) => setTimeout(() => rej(new Error("feed timeout after " + ms + "ms")), ms)) ]); return (r && r.payload) ? r.payload : r; } catch (e) { const msg = String(e && e.message || e); return { ok: false, error: msg, timed_out: /feed timeout/.test(msg) }; } };
+      // Feed leash tightened 20s->8s (v4.9.398): a live product cannot wait 20s on one slow feed.
+      // A feed slower than 8s is marked unavailable (honest) rather than holding the whole brief hostage.
+      const run = async (cmd, ms = 8000) => { try { const r = await Promise.race([ processCommand(cmd, env, true), new Promise((_, rej) => setTimeout(() => rej(new Error("feed timeout after " + ms + "ms")), ms)) ]); return (r && r.payload) ? r.payload : r; } catch (e) { const msg = String(e && e.message || e); return { ok: false, error: msg, timed_out: /feed timeout/.test(msg) }; } };
       const domain = T.domain || "maritime";
       let snapshot;
       if (domain === "fire") {
@@ -4043,6 +4045,43 @@ async function processCommand(line, env, isOp) {
         await env.AURA_KV.put(`situation:brief:${topicKey}`, JSON.stringify(out), { expirationTtl: 3600 }).catch(() => {});
         return { cmd: "SITUATION_BRIEF", payload: { ok: true, ...out } };
       } catch (e) { return { cmd: "SITUATION_BRIEF", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "SITUATION_LIVE": {
+      // THE PUBLIC-FACING, INSTANT read (v4.9.398 - the latency fix). A newsroom/ship captain/enterprise
+      // hits THIS, not SITUATION_BRIEF. It serves the cron-precomputed brief from KV in sub-second time
+      // with an HONEST "as of" freshness stamp. Only if no precompute exists yet does it fall back to a
+      // live (slower) brief - and it marks the topic hot so the cron keeps it warm from then on.
+      //   SITUATION_LIVE hormuz
+      if (!isOp) return { cmd: "SITUATION_LIVE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const slTopic = (line.replace(/^SITUATION_LIVE\s*/i, "").trim() || "hormuz").toLowerCase();
+      // 1) try the precomputed cache - the instant path
+      try {
+        const cached = await env.AURA_KV.get(`situation:brief_cache:${slTopic}`);
+        if (cached) {
+          const cj = JSON.parse(cached);
+          if (cj && cj.brief && cj.computed_at) {
+            const ageMs = Date.now() - new Date(cj.computed_at).getTime();
+            const ageMin = Math.round(ageMs / 60000);
+            return { cmd: "SITUATION_LIVE", payload: { ok: true, topic: slTopic, served: "instant_cache", as_of: cj.computed_at, age_minutes: ageMin, freshness: ageMin <= 6 ? "fresh" : "stale-refreshing", ...cj.brief } };
+          }
+        }
+      } catch {}
+      // 2) no cache yet - compute live once (slower), and mark the topic HOT so the cron keeps it warm
+      try {
+        const hotRaw = await env.AURA_KV.get("situation:hot_topics").catch(() => null);
+        let hot = [];
+        try { if (hotRaw) { const p = JSON.parse(hotRaw); if (Array.isArray(p)) hot = p; } } catch {}
+        if (!hot.includes(slTopic)) { hot.push(slTopic); await env.AURA_KV.put("situation:hot_topics", JSON.stringify(hot)).catch(() => {}); }
+      } catch {}
+      const liveBr = await processCommand(`SITUATION_BRIEF ${slTopic}`, env, true);
+      const lp = (liveBr && liveBr.payload) ? liveBr.payload : liveBr;
+      if (lp && lp.ok) {
+        // seed the cache so the NEXT hit is instant
+        await env.AURA_KV.put(`situation:brief_cache:${slTopic}`, JSON.stringify({ topic: slTopic, brief: lp, computed_at: new Date().toISOString() }), { expirationTtl: 3600 }).catch(() => {});
+        return { cmd: "SITUATION_LIVE", payload: { ok: true, topic: slTopic, served: "computed_live_now", as_of: new Date().toISOString(), age_minutes: 0, freshness: "fresh", note: "First hit computed live and cached; marked hot so the cron keeps it instant from now on.", ...lp } };
+      }
+      return { cmd: "SITUATION_LIVE", payload: { ok: false, topic: slTopic, error: (lp && lp.error) || "could not produce a brief", served: "failed" } };
     }
 
     case "AIS_COLLECTOR": {
@@ -13947,6 +13986,37 @@ async function deployConsole(env) {
 
 // A2P campaign watcher â€” ends the submit-and-lose-track circle.
 // Checks campaign status each cron tick; on ANY change writes a loud flag to notes:alert:a2p.
+// PRECOMPUTE HOT BRIEFS (v4.9.398) - the latency fix for public launch. A newsroom or ship captain
+// hitting SituationTracker cannot wait 30-90s for a live brief. So the cron keeps the HOT topics'
+// briefs freshly computed in KV; a public read serves the stored brief INSTANTLY (sub-second) with an
+// honest "as of HH:MM" stamp, while this refreshes it in the background. Hot topics live in KV
+// (situation:hot_topics = JSON array of topic keys) so Aura adds/removes them with NO deploy.
+// Staggered: each topic refreshes at most every REFRESH_MS, so we don't burn an LLM call per topic
+// every single minute - the brief is "a few minutes fresh," which for a situation read is correct.
+async function precomputeHotBriefs(env) {
+  try {
+    const REFRESH_MS = 4 * 60 * 1000; // refresh each hot brief at most every 4 minutes
+    let topics = [];
+    try { const t = await env.AURA_KV.get("situation:hot_topics"); if (t) { const p = JSON.parse(t); if (Array.isArray(p)) topics = p.filter(x => typeof x === "string"); } } catch {}
+    if (!topics.length) return; // nothing marked hot -> nothing to precompute
+    const now = Date.now();
+    for (const topic of topics.slice(0, 12)) { // hard cap so a long list can't run away
+      try {
+        const stampKey = `situation:brief_cache:${topic}`;
+        let due = true;
+        try { const existing = await env.AURA_KV.get(stampKey); if (existing) { const ej = JSON.parse(existing); if (ej && ej.computed_at && (now - new Date(ej.computed_at).getTime()) < REFRESH_MS) due = false; } } catch {}
+        if (!due) continue;
+        // recompute: pull fresh feeds then brief, store with an honest freshness stamp
+        const br = await processCommand(`SITUATION_BRIEF ${topic}`, env, true);
+        const payload = (br && br.payload) ? br.payload : br;
+        if (payload && payload.ok) {
+          await env.AURA_KV.put(stampKey, JSON.stringify({ topic, brief: payload, computed_at: new Date().toISOString() }), { expirationTtl: 3600 }).catch(() => {});
+        }
+      } catch { /* one bad topic never stops the rest */ }
+    }
+  } catch { /* cron helper never throws */ }
+}
+
 async function watchA2P(env) {
   try {
     const res = await env.AURA_COMMS.fetch(new Request("https://aura-comms/chat", {
@@ -14215,6 +14285,7 @@ export default {
     ctx.waitUntil(watchResources(env));
     ctx.waitUntil(drainSchedule(env));
     ctx.waitUntil(drainWorkflows(env));
+    ctx.waitUntil(precomputeHotBriefs(env));
   },
 
   async fetch(request, env) {

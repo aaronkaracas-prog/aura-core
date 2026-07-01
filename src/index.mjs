@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.398-2026-07-01";
+const BUILD = "aura-core-v4.9.399-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -4110,22 +4110,34 @@ async function processCommand(line, env, isOp) {
       // zero messages â€” Workers don't pump a long-lived outbound WS the way a persistent backend does).
       // So: if a collector snapshot exists, serve it (instant); otherwise return honest status, not a
       // misleading empty success. Movement signal is still available via WEB_SEARCH / NEWS_QUERY.
+      // Parse EITHER a named region (hormuz) OR a raw bounding box (any 4 numbers: latBottom lonLeft latTop lonRight).
+      // The region is an INPUT, not a fixed catalog - "show me ships anywhere" works for ANY box on earth.
       const parts = line.replace(/^AIS_QUERY\s+/i, "").trim().split(/\s+/);
-      const region = (parts[0] && isNaN(parseFloat(parts[0]))) ? parts[0].toLowerCase() : "hormuz";
-      const snap = await env.AURA_KV.get(`ais:snapshot:${region}`).catch(() => null);
+      const nums = parts.map(p => parseFloat(p)).filter(n => !isNaN(n));
+      let rawBox = null, region;
+      if (nums.length >= 4) {
+        // raw coords: latBottom lonLeft latTop lonRight (order-tolerant - we sort min/max so any corner order works)
+        const lats = [nums[0], nums[2]].sort((a, b) => a - b);
+        const lons = [nums[1], nums[3]].sort((a, b) => a - b);
+        rawBox = { latBottom: lats[0], latTop: lats[1], lonLeft: lons[0], lonRight: lons[1] };
+        region = `box_${rawBox.latBottom}_${rawBox.lonLeft}_${rawBox.latTop}_${rawBox.lonRight}`;
+      } else {
+        region = (parts[0] && isNaN(parseFloat(parts[0]))) ? parts[0].toLowerCase() : "hormuz";
+      }
+      const snap = !rawBox ? await env.AURA_KV.get(`ais:snapshot:${region}`).catch(() => null) : null;
       if (snap) {
         try { const s = JSON.parse(snap); if (s.vessel_count > 0) return { cmd: "AIS_QUERY", payload: { ok: true, source: "collector_snapshot", region, ...s } }; } catch {}
       }
       // LIVE REST PATH: VesselAPI bounding-box (free tier, instant). Real dots without a WebSocket.
       const vkey = await env.AURA_KV.get("secret:vesselapi").catch(() => null);
       const BOXES = await loadRegions(env, "ais", {
-        hormuz: { latBottom: 25.5, latTop: 27.5, lonLeft: 55.5, lonRight: 57.5 },
+        hormuz: { latBottom: 24.4, latTop: 27.2, lonLeft: 55.0, lonRight: 57.8 },
         fujairah: { latBottom: 24.8, latTop: 26.0, lonLeft: 56.0, lonRight: 57.0 },
         jebelali: { latBottom: 24.8, latTop: 25.4, lonLeft: 54.8, lonRight: 55.4 },
         rotterdam: { latBottom: 51.85, latTop: 52.05, lonLeft: 3.95, lonRight: 4.20 },
         singapore: { latBottom: 1.0, latTop: 1.5, lonLeft: 103.5, lonRight: 104.2 }
       });
-      const aisBox = BOXES[region];
+      const aisBox = rawBox || BOXES[region];
       if (vkey && aisBox) {
         try {
           const u = await resolveFeedUrl(env, "vessel_bbox", { latBottom: aisBox.latBottom, latTop: aisBox.latTop, lonLeft: aisBox.lonLeft, lonRight: aisBox.lonRight }, `https://api.vesselapi.com/v1/location/vessels/bounding-box?filter.latBottom={latBottom}&filter.latTop={latTop}&filter.lonLeft={lonLeft}&filter.lonRight={lonRight}`);

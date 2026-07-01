@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.380-2026-07-01";
+const BUILD = "aura-core-v4.9.381-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -614,17 +614,20 @@ async function logFireOutlook(env, region, label, edge, fwx, science, outlook, o
     const dirs = (fwx || []).map(d => d.wind_dir_deg).filter(x => x != null);
     const avgFrom = dirs.length ? dirs.reduce((s, x) => s + x, 0) / dirs.length : null;
     const windPushTo = avgFrom == null ? null : (avgFrom + 180) % 360; // 'from' -> 'toward'
-    // PRIMARY projected direction = the fire's actual MEASURED advance bearing when we have one (that's what
-    // the outlook actually reasons from); fall back to wind-push only when no movement vector exists yet.
+    // PRIMARY projected direction, in priority order: (1) the fire's actual MEASURED advance bearing (ground truth),
+    // (2) Aura's OWN stated projected_bearing_deg from her reasoning, (3) raw wind-push as last resort.
     const measuredBearing = (observedAdvance && observedAdvance.bearing_deg != null) ? observedAdvance.bearing_deg : null;
-    const projectedPush = measuredBearing != null ? measuredBearing : windPushTo;
+    const auraBearing = (outlook && outlook.projected_bearing_deg != null && !isNaN(+outlook.projected_bearing_deg)) ? ((+outlook.projected_bearing_deg % 360) + 360) % 360 : null;
+    const projectedPush = measuredBearing != null ? measuredBearing : (auraBearing != null ? auraBearing : windPushTo);
+    const basis = measuredBearing != null ? "measured_advance" : (auraBearing != null ? "aura_stated" : "wind_forecast");
     const rec = {
       region, label, at: new Date().toISOString(),
       origin: { lat: edge.lat, lon: edge.lon },
       projected_push_deg: projectedPush == null ? null : +projectedPush.toFixed(0),
-      projected_push_basis: measuredBearing != null ? "measured_advance" : "wind_forecast",
+      projected_push_basis: basis,
       wind_push_deg: windPushTo == null ? null : +windPushTo.toFixed(0),
       measured_advance_deg: measuredBearing,
+      aura_stated_deg: auraBearing == null ? null : +auraBearing.toFixed(0),
       projected_where: outlook && outlook.where_in_3_days ? String(outlook.where_in_3_days).slice(0, 200) : null,
       haines: science && science.ok ? science.haines_index : null,
       min_rh_forecast: (fwx || []).map(d => d.rh_min_pct).filter(x => x != null).length ? Math.min(...(fwx.map(d => d.rh_min_pct).filter(x => x != null))) : null,
@@ -2701,7 +2704,7 @@ async function processCommand(line, env, isOp) {
       const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
       let outlook = null;
       if (anthKey) {
-        const sys = await loadPrompt(env, "fire_outlook", "You are Aura, a fire-behavior analyst producing a 3-day OUTLOOK for incident command. You are given the fire's current leading edge, its OBSERVED recent movement, REAL fire-behavior indices (Haines Index, VPD, fuel dryness), and a day-by-day fire-weather forecast (max temp, MINIMUM relative humidity, max wind speed/gust, dominant wind direction, precip) at the fire. Reason about how the weather PATTERN will drive spread each day. Use the SCIENCE: Haines Index 5-6 = high potential for large/erratic PLUME-dominated fire (convection-driven, can throw embers/spot); high VPD = fuel drying fast; low RH (<20-25%) + wind = active wind-driven spread. Distinguish plume-dominated (Haines-driven) from wind-driven (wind+RH-driven) behavior. Wind DIRECTION sets the push (wind FROM the west pushes fire EAST) - convert 'from' to the direction the fire is PUSHED toward. Output STRICT JSON only: summary (one line: the 3-day trajectory - where and how fast), day1 / day2 / day3 (each one line: that day's fire-weather + what it means, include pushed direction), peak_risk_day (which day is worst and why, one line), where_in_3_days (one line: best estimate of where the fire front will be relative to now - direction and rough distance, hedged), behavior_type (one line: plume-dominated vs wind-driven vs both, cite the Haines/wind reasoning), confidence (low|medium|high), caveat (one line: WEATHER+INDEX-driven outlook, not a FARSITE physics model; no terrain/fuel-type/spotting model; situational awareness only).");
+        const sys = await loadPrompt(env, "fire_outlook", "You are Aura, a fire-behavior analyst producing a 3-day OUTLOOK for incident command. You are given the fire's current leading edge, its OBSERVED recent movement, REAL fire-behavior indices (Haines Index, VPD, fuel dryness), and a day-by-day fire-weather forecast (max temp, MINIMUM relative humidity, max wind speed/gust, dominant wind direction, precip) at the fire. Reason about how the weather PATTERN will drive spread each day. Use the SCIENCE: Haines Index 5-6 = high potential for large/erratic PLUME-dominated fire (convection-driven, can throw embers/spot); high VPD = fuel drying fast; low RH (<20-25%) + wind = active wind-driven spread. Distinguish plume-dominated (Haines-driven) from wind-driven (wind+RH-driven) behavior. Wind DIRECTION sets the push (wind FROM the west pushes fire EAST) - convert 'from' to the direction the fire is PUSHED toward. Output STRICT JSON only: summary (one line: the 3-day trajectory - where and how fast), day1 / day2 / day3 (each one line: that day's fire-weather + what it means, include pushed direction), peak_risk_day (which day is worst and why, one line), where_in_3_days (one line: best estimate of where the fire front will be relative to now - direction and rough distance, hedged), projected_bearing_deg (a SINGLE integer 0-359: the compass bearing the fire front will ADVANCE toward over the 3 days - this is the direction the fire MOVES, e.g. east=90, must be consistent with your where_in_3_days), behavior_type (one line: plume-dominated vs wind-driven vs both, cite the Haines/wind reasoning), confidence (low|medium|high), caveat (one line: WEATHER+INDEX-driven outlook, not a FARSITE physics model; no terrain/fuel-type/spotting model; situational awareness only).");
         const usr = `Fire: ${pred.label}\nCurrent leading edge: ${edge.lat.toFixed(3)}, ${edge.lon.toFixed(3)}\nObserved recent movement (fire's actual measured advance): ${outlookAdvance && outlookAdvance.moved_km != null ? JSON.stringify(outlookAdvance) : "no measured advance vector yet (baseline just set - reason from wind direction only, and say so)"}\nCurrent hotspot count: ${pred.current.hotspots}\n\nREAL fire-behavior indices at the fire right now:\n${science && science.ok ? `Haines Index: ${science.haines_index} (${science.haines_meaning}); VPD: ${science.vpd_kpa} kPa; fuel dryness: ${science.fuel_dryness}; surface RH: ${science.surface_rh_pct}%; 700-500mb lapse: ${science.inputs.lapse_700_500_c}C; 700mb dewpoint depression: ${science.inputs.dewpoint_depression_700_c}C` : "indices unavailable this cycle"}\n\nDay-by-day fire-weather forecast at the fire:\n${fwx.map((d, i) => `${i === 0 ? "TODAY" : "Day+" + i} ${d.date}: max ${d.temp_max_c}C, min RH ${d.rh_min_pct}%, wind max ${d.wind_max_kmh} km/h gust ${d.gust_max_kmh}, wind from ${d.wind_dir_deg}deg, precip ${d.precip_mm}mm`).join("\n")}\n\nProduce the 3-day fire outlook JSON now. Keep each field to ONE concise line so the JSON completes.`;
         try {
           const res = await fetch("https://api.anthropic.com/v1/messages", {

@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.395-2026-07-01";
+const BUILD = "aura-core-v4.9.396-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -7868,6 +7868,66 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       });
       if (!opR.ok) return { cmd: "OPPORTUNITY", payload: { ok: false, error: opR.error } };
       return { cmd: "OPPORTUNITY", payload: { ok: true, business: opRaw, opportunity: opR.reasoning } };
+    }
+
+    case "ADVISE": {
+      // AURA AS ANALYST - the North Star engine (notes:doctrine:aura_as_analyst made executable).
+      // NOT OPPORTUNITY (that looks OUTWARD at a prospect's business). ADVISE looks at AARON'S OWN WORLD:
+      // reads her whole strategic brain (who she is, her goal, ALL her assets/doorways, her recorded live
+      // state, her leverage doctrine) + her real capability count, and reasons FROM A CLEAN POSITION to
+      // the single highest-value move. NO conclusion is seeded - she draws it herself. The honesty law is
+      // enforced by reasonThroughLoop (never invents dollar figures; says where value density LOOKS
+      // highest + what to TEST, dollars only after real loop data). She may reflect second-order: if the
+      // best move depends on something (e.g. getting PTAs out), reason how that is done from her own assets.
+      //   ADVISE                 -> full clean-position analysis: what should Aaron focus on first, and why
+      //   ADVISE ::: <question>  -> same brain, pointed at a specific strategic question
+      if (!isOp) return { cmd: "ADVISE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const adFocus = rest.includes(":::") ? rest.slice(rest.indexOf(":::") + 3).trim() : "";
+      // 1) HER REAL CAPABILITIES (live count from source) - what she can actually DO
+      let adEngines = [];
+      try {
+        const sr = await fetch("https://raw.githubusercontent.com/aaronkaracas-prog/aura-core/main/src/index.mjs", { headers: { "User-Agent": "aura-advise" } });
+        if (sr.ok) { const src = await sr.text(); const m = src.match(/case\s+"[A-Z_]+"\s*:/g) || []; adEngines = [...new Set(m.map(s => (s.match(/"([A-Z_]+)"/) || [])[1]).filter(Boolean))]; }
+      } catch {}
+      if (!adEngines.length) { try { const c = await env.AURA_KV.get("cache:self_source"); if (c) { const cj = JSON.parse(c); const m = cj.src.match(/case\s+"[A-Z_]+"\s*:/g) || []; adEngines = [...new Set(m.map(s => (s.match(/"([A-Z_]+)"/) || [])[1]).filter(Boolean))]; } } catch {} }
+      // 2) HER WHOLE STRATEGIC BRAIN - read broadly and uncurated. NO note is "the answer"; the set is
+      //    her identity, her goal, ALL her assets, her doorways, her recorded state, her leverage doctrine.
+      const adKeys = [
+        // identity + goal + doctrine (the frame she reasons within)
+        "notes:vision:northstar", "notes:doctrine:aura_as_analyst", "notes:doctrine:value_circle", "notes:doctrine:switzerland", "notes:canon:world_structure",
+        // the assets (what each doorway actually does / is worth)
+        "notes:asset:situationtracker", "notes:asset:situationtracker:launch", "notes:asset:situationtracker:pricing",
+        "notes:world:airquality", "notes:world:fireos", "notes:world:fireos_platform", "notes:world:climate_intelligence",
+        "notes:asset:homescreen", "notes:openforbusiness", "notes:canon:maritime_value_chain", "notes:canon:maritime_pricing",
+        // the doorways / go-to-market
+        "notes:canon:domain_census", "notes:world:doorway_gtm", "notes:world:gtm",
+        // the recorded live picture (state) - what is proven/active, honestly stamped
+        "notes:STATE", "notes:backlog:next", "notes:state:hormuz_vertical", "notes:state:industry_engine", "notes:state:weather_build",
+        // leverage doctrine
+        "notes:context:leverage_engine", "notes:capability:opportunity_discovery"
+      ];
+      const adNotes = {};
+      for (const k of adKeys) { try { const v = await env.AURA_KV.get(k); if (v) adNotes[k] = v.slice(0, 1600); } catch {} }
+      // 3) REASON FROM A CLEAN POSITION. The lens seeds NO conclusion - it hands her the frame and asks
+      //    for the highest-value move, drawn from her own brain. reasonThroughLoop enforces the honesty law.
+      const adLens = "AURA AS ANALYST - you are Aaron's strategic analyst looking at HIS OWN WORLD (not a customer's). You have been handed, as facts: your real capability list (what you can actually do), your North Star and doctrines (your goal and the rails), your ASSETS (what each doorway/product does and is worth), your DOORWAY portfolio, your recorded STATE (what is proven and live right now, honestly stamped), and your leverage doctrine. Your job: from a COMPLETELY CLEAN POSITION, reason to the single highest-value move Aaron should focus on FIRST to serve the North Star. Do NOT be handed a conclusion - derive it. Look across everything: which asset is most PROVEN, which addresses the largest or most-ready-to-pay audience, where value density looks highest, what is already working versus still theoretical. Rank the real options and pick. CRITICAL HONESTY LAW (same as the fire CSI discipline): you may NOT state a dollar figure that is not a real measured number in the facts - say where value density LOOKS highest and what to TEST first; the dollars come AFTER real loop data, never as a guess dressed as analysis. If the best move DEPENDS on something (e.g. getting identity/PTAs into the world, or a launch gate), reflect second-order: name what that dependency is and which of your own assets/capabilities addresses it. Be the analyst who tells the founder the honest, non-obvious truth about where to point - grounded entirely in what is really proven and real in the facts, never in outside assumptions.";
+      const adR = await reasonThroughLoop(env, {
+        entity: adFocus || "From a clean position, looking at everything I can do and everything I have: what is the single highest-value move Aaron should focus on first to serve the North Star? Rank the real options and pick, honestly.",
+        lens: adLens,
+        facts: { my_capabilities: adEngines, my_capability_count: adEngines.length, my_strategic_brain: adNotes },
+        maxTokens: 3000,
+        extraKeys: [
+          { key: "the_landscape", desc: "array - the real options you see across your assets/doorways, each with: asset, what it does (A/B/C), how proven it is, who its audience is, why it could pay - grounded ONLY in the notes" },
+          { key: "highest_value_move", desc: "the single move you would tell Aaron to focus on FIRST, and the honest reason - value density, proven-ness, readiness" },
+          { key: "why_this_over_others", desc: "one or two sentences - why this beats the runner-up options" },
+          { key: "what_it_depends_on", desc: "if the move depends on something (PTAs out, a launch gate, a data feed), name it and which of your OWN assets addresses that dependency (second-order reasoning)" },
+          { key: "what_to_test", desc: "the concrete first test that would EARN the dollar figure - what to measure before claiming revenue (honesty law)" },
+          { key: "the_runner_up", desc: "the second-best move, briefly - so Aaron sees the alternative you weighed" }
+        ]
+      });
+      if (!adR.ok) return { cmd: "ADVISE", payload: { ok: false, error: adR.error } };
+      return { cmd: "ADVISE", payload: { ok: true, capability_count: adEngines.length, notes_read: Object.keys(adNotes).length, analysis: adR.reasoning,
+        note: "Clean-position strategic analysis (notes:doctrine:aura_as_analyst). No conclusion was seeded - Aura derived this from her own capabilities + strategic brain. Honesty law enforced: value density and tests, not invented dollars. Add ::: <question> to point the same brain at a specific question." } };
     }
 
     case "ROUTER":

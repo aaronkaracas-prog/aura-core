@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.388-2026-07-01";
+const BUILD = "aura-core-v4.9.389-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -639,6 +639,8 @@ async function logFireOutlook(env, region, label, edge, fwx, science, outlook, o
     return { key, target_time: rec.target_time, projected_push_deg: rec.projected_push_deg, basis: rec.projected_push_basis, note: "projection logged for verification - gradeable in 72h against where the fire actually went" };
   } catch { return null; }
 }
+
+function aqiCategory(aqi) { if (aqi == null) return null; if (aqi <= 50) return "good"; if (aqi <= 100) return "moderate"; if (aqi <= 150) return "unhealthy for sensitive groups"; if (aqi <= 200) return "unhealthy"; if (aqi <= 300) return "very unhealthy"; return "hazardous"; }
 
 // Fire behavior-signature helpers (NWCG size classes; containment stage buckets) for pattern-matching.
 function sizeClass(acres) { if (acres == null) return null; if (acres < 0.26) return "A"; if (acres < 10) return "B"; if (acres < 100) return "C"; if (acres < 300) return "D"; if (acres < 1000) return "E"; if (acres < 5000) return "F"; return "G"; }
@@ -2655,6 +2657,47 @@ async function processCommand(line, env, isOp) {
         outlook_3day: outlook && outlook.ok ? outlook.outlook : null,
         advice,
         note: "Full operational SITREP - live ground status + aircraft + fire science + 3-day outlook + command-level advice. Live data is real; advice is Aura's analysis, not a substitute for incident command." } };
+    }
+
+    case "FIRE_SMOKE": {
+      // SMOKE PLUME + DOWNWIND AIR QUALITY. Samples AQI at the fire and at points downwind (wind direction) at
+      // 25/50/100km via keyless Open-Meteo air quality (CAMS - includes wildfire smoke). Who's breathing it.
+      //   FIRE_SMOKE <region>
+      if (!isOp) return { cmd: "FIRE_SMOKE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const smRegion = (line.replace(/^FIRE_SMOKE\s+/i, "").trim() || "cottonwood").toLowerCase();
+      const step = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
+      // 1) fire position + downwind direction (from the outlook's wind, or fire weather)
+      const pred = await step(`FIRE_PREDICT ${smRegion}`);
+      if (!pred || !pred.current || !pred.current.leading_edge) { const c = pred && pred.current && pred.current.centroid; if (!c) return { cmd: "FIRE_SMOKE", payload: { ok: false, error: "no fire position to trace smoke from", detail: pred && pred.note } }; }
+      const fpos = (pred.current.leading_edge || pred.current.centroid);
+      // wind: pull current wind direction at the fire (open-meteo forecast, keyless)
+      let windFromDeg = null, windKmh = null;
+      try {
+        const wurl = await resolveFeedUrl(env, "openmeteo_wind", { lat: fpos.lat.toFixed(3), lon: fpos.lon.toFixed(3) }, `https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=wind_speed_10m,wind_direction_10m`);
+        const wr = await fetchWithTimeout(wurl, {}, 7000);
+        if (wr.ok) { const wj = await wr.json(); if (wj.current) { windFromDeg = wj.current.wind_direction_10m; windKmh = wj.current.wind_speed_10m; } }
+      } catch {}
+      const smokeToDeg = windFromDeg == null ? null : (windFromDeg + 180) % 360; // smoke blows downwind
+      // 2) sample AQI at the fire + downwind at 25/50/100 km
+      const samplePts = [{ label: "at fire", km: 0, lat: fpos.lat, lon: fpos.lon }];
+      if (smokeToDeg != null) { for (const km of [25, 50, 100]) { const rad = smokeToDeg * Math.PI / 180; const dLat = (km * Math.cos(rad)) / 111; const dLon = (km * Math.sin(rad)) / 88; samplePts.push({ label: `${km}km downwind`, km, lat: +(fpos.lat + dLat).toFixed(4), lon: +(fpos.lon + dLon).toFixed(4) }); } }
+      const aqiOf = async (lat, lon) => {
+        try { const url = await resolveFeedUrl(env, "openmeteo_aqi", { lat: lat.toFixed(4), lon: lon.toFixed(4) }, `https://air-quality-api.open-meteo.com/v1/air-quality?latitude={lat}&longitude={lon}&current=us_aqi,pm2_5,pm10&forecast_days=1`); const r = await fetchWithTimeout(url, {}, 7000); if (r.ok) { const j = await r.json(); if (j.current) return { us_aqi: j.current.us_aqi, pm2_5: j.current.pm2_5, pm10: j.current.pm10 }; } } catch {} return null;
+      };
+      const samples = [];
+      for (const pt of samplePts) { const aq = await aqiOf(pt.lat, pt.lon); samples.push({ ...pt, air: aq, category: aq ? aqiCategory(aq.us_aqi) : null }); }
+      // 3) populated places under the plume (reuse GeoNames if available, else note it's key-gated)
+      let downwind_places = null;
+      const gnUser = await env.AURA_KV.get("secret:geonames").catch(() => null);
+      if (gnUser && smokeToDeg != null) {
+        try { const midPt = samplePts.find(p => p.km === 50) || samplePts[samplePts.length - 1]; const url = await resolveFeedUrl(env, "geonames_nearby", { lat: midPt.lat.toFixed(3), lon: midPt.lon.toFixed(3), user: gnUser }, `http://api.geonames.org/findNearbyPlaceNameJSON?lat={lat}&lng={lon}&radius=40&maxRows=15&cities=cities1000&username={user}`); const r = await fetchWithTimeout(url, {}, 7000); if (r.ok) { const j = await r.json(); downwind_places = (j.geonames || []).map(p => ({ name: p.name, admin: p.adminName1, population: p.population ? +p.population : null })).slice(0, 10); } } catch {}
+      }
+      const worst = samples.filter(s => s.air && s.air.us_aqi != null).sort((a, b) => b.air.us_aqi - a.air.us_aqi)[0];
+      return { cmd: "FIRE_SMOKE", payload: { ok: true, region: smRegion, fire: pred.label,
+        fire_position: { lat: fpos.lat, lon: fpos.lon }, wind_from_deg: windFromDeg, wind_kmh: windKmh, smoke_blowing_toward_deg: smokeToDeg,
+        samples, worst_aqi: worst ? { where: worst.label, us_aqi: worst.air.us_aqi, category: worst.category } : null,
+        downwind_places, downwind_places_note: gnUser ? null : "populated-places-under-plume needs the GeoNames key (see to-do); AQI sampling works without it",
+        note: "Smoke plume traced downwind from the fire using live wind + keyless Open-Meteo air quality (CAMS model, includes wildfire smoke). us_aqi: 0-50 good, 51-100 moderate, 101-150 unhealthy-sensitive, 151-200 unhealthy, 201-300 very unhealthy, 301+ hazardous. Serves the downwind health/aviation audience - hospitals, schools, airports. " + (smokeToDeg == null ? "NO WIND DATA this cycle - only the at-fire sample available." : "") } };
     }
 
     case "FIRE_LESSON": {

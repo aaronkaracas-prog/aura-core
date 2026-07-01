@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.392-2026-07-01";
+const BUILD = "aura-core-v4.9.393-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3047,16 +3047,29 @@ async function processCommand(line, env, isOp) {
         try {
           const res = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-            body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1100, system: sys, messages: [{ role: "user", content: usr }] })
+            body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1500, system: sys, messages: [{ role: "user", content: usr }] })
           });
           if (res.ok) {
             const j = await res.json(); let t = (j.content && j.content[0] && j.content[0].text) ? j.content[0].text : "";
             t = t.replace(/```json|```/g, "").trim();
-            // robust parse: grab the outermost {...} object even if the model added prose or wrapping
-            const first = t.indexOf("{"), last = t.lastIndexOf("}");
-            const jsonSlice = (first >= 0 && last > first) ? t.slice(first, last + 1) : t;
-            try { outlook = JSON.parse(jsonSlice); }
-            catch { try { outlook = JSON.parse(t); } catch { outlook = { summary: t.slice(0, 400), parse_failed: true }; } }
+            // robust parse: grab the outermost {...}; if truncated (no closing brace), repair by balancing brackets
+            const first = t.indexOf("{");
+            let jsonSlice = first >= 0 ? t.slice(first) : t;
+            const last = jsonSlice.lastIndexOf("}");
+            if (last > 0) jsonSlice = jsonSlice.slice(0, last + 1);
+            const tryParse = (s) => { try { return JSON.parse(s); } catch { return null; } };
+            outlook = tryParse(jsonSlice) || tryParse(t);
+            if (!outlook && first >= 0) {
+              // truncation repair: close any open string, then balance braces
+              let repair = t.slice(first);
+              const openBraces = (repair.match(/\{/g) || []).length, closeBraces = (repair.match(/\}/g) || []).length;
+              const quotes = (repair.match(/"/g) || []).length;
+              if (quotes % 2 === 1) repair += '"';            // close a dangling string
+              repair = repair.replace(/,\s*$/, "");            // drop trailing comma
+              repair += "}".repeat(Math.max(0, openBraces - closeBraces));
+              outlook = tryParse(repair);
+            }
+            if (!outlook) outlook = { summary: t.slice(0, 400), parse_failed: true };
             // unwrap accidental double-nesting ({summary:{summary:...}})
             if (outlook && outlook.summary && typeof outlook.summary === "object") outlook = outlook.summary;
           }

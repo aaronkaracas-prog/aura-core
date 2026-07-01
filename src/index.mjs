@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.367-2026-07-01";
+const BUILD = "aura-core-v4.9.368-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -586,6 +586,25 @@ async function fetchSPCOutlook(env, lat, lon) {
     if (pipGeom(lat, lon, f.geometry)) { if (!best || rank[lab] > best.level) best = { code: lab, name: p.LABEL2 || p.label2 || lab, level: rank[lab] }; }
   }
   return { ok: true, category: best ? best.code : "none", category_name: best ? best.name : "No thunderstorm risk", level: best ? best.level : 0, severe_forecast: best ? best.level >= 2 : false };
+}
+
+// MeteoAlarm (official European warning aggregator, keyless) - PROBE build. Fetches the Europe-wide feed and returns a
+// best-effort parse PLUS a raw sample so the real structure can be seen and a point-aware parser built against reality.
+async function fetchMeteoAlarm(env) {
+  const url = await resolveFeedUrl(env, "meteoalarm_europe", {}, `https://feeds.meteoalarm.org/feeds/meteoalarm-legacy-atom-europe`);
+  const r = await fetchWithTimeout(url, { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)", "Accept": "application/atom+xml,application/xml,text/xml,*/*" } }, 9000);
+  if (!r.ok) { let b = ""; try { b = (await r.text()).slice(0, 200); } catch {} return { ok: false, error: `meteoalarm http ${r.status}`, detail: b }; }
+  const xml = await r.text();
+  // best-effort structural probe: count entries, pull country titles + any awareness level/type tokens present
+  const entries = xml.split(/<entry[\s>]/i).slice(1);
+  const awarenessLevels = [...xml.matchAll(/awareness_level["'>:\s]*([^<"']+)/gi)].slice(0, 8).map(m => m[1].trim());
+  const awarenessTypes = [...xml.matchAll(/awareness_type["'>:\s]*([^<"']+)/gi)].slice(0, 8).map(m => m[1].trim());
+  const titles = [...xml.matchAll(/<title[^>]*>([^<]+)<\/title>/gi)].slice(0, 6).map(m => m[1].trim());
+  const hasPolygon = /<(?:georss:)?polygon>/i.test(xml) || /<cap:polygon>/i.test(xml) || /"polygon"/i.test(xml);
+  const hasGeocode = /geocode|EMMA_ID|<cap:geocode>/i.test(xml);
+  return { ok: true, probe: true, entry_count: entries.length, content_type: r.headers.get("content-type") || null,
+    sample_titles: titles, awareness_levels_found: awarenessLevels, awareness_types_found: awarenessTypes,
+    has_polygons: hasPolygon, has_geocodes: hasGeocode, raw_sample: xml.slice(0, 1600) };
 }
 
 // LIVE-EVENT FINDER - scan the whole country for the most significant ACTIVE NWS hazards right now
@@ -1923,6 +1942,15 @@ async function processCommand(line, env, isOp) {
         return { cmd: "HURRICANES", payload: { ok: true, count: tc.count, storms: tc.storms,
           note: tc.count ? "Active tropical cyclones (NHC, keyless, all basins), strongest first. category from max sustained wind; moving.toward = compass heading the storm is traveling; wind in kt and mph; pressure in mb. Run HURRICANE_REASON for Aura's intensity/track outlook on the strongest." : "No active tropical cyclones in any basin right now (common outside peak season). The finder is live and will populate the moment a system is named." } };
       } catch (e) { return { cmd: "HURRICANES", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "METEOALARM":
+    case "EU_ALERTS": {
+      // PROBE: fetch the live MeteoAlarm Europe feed and show its real structure so we can build the point-aware parser.
+      try {
+        const m = await fetchMeteoAlarm(env);
+        return { cmd: "METEOALARM", payload: { ...m, note: m.ok ? "PROBE build: shows the live MeteoAlarm feed structure (entry_count, whether it carries polygons or geocodes, awareness tokens, raw_sample). has_polygons=true means we can point-in-polygon like SPC; has_geocodes-only means we need region-geometry mapping. Next build = the point-aware parser against this reality." : undefined } };
+      } catch (e) { return { cmd: "METEOALARM", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 
     case "SPC_OUTLOOK":

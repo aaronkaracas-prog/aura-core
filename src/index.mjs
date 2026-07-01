@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.386-2026-07-01";
+const BUILD = "aura-core-v4.9.387-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -639,6 +639,11 @@ async function logFireOutlook(env, region, label, edge, fwx, science, outlook, o
     return { key, target_time: rec.target_time, projected_push_deg: rec.projected_push_deg, basis: rec.projected_push_basis, note: "projection logged for verification - gradeable in 72h against where the fire actually went" };
   } catch { return null; }
 }
+
+// Fire behavior-signature helpers (NWCG size classes; containment stage buckets) for pattern-matching.
+function sizeClass(acres) { if (acres == null) return null; if (acres < 0.26) return "A"; if (acres < 10) return "B"; if (acres < 100) return "C"; if (acres < 300) return "D"; if (acres < 1000) return "E"; if (acres < 5000) return "F"; return "G"; }
+function sizeClassRank(c) { return { A: 0, B: 1, C: 2, D: 3, E: 4, F: 5, G: 6 }[c] ?? -1; }
+function containStage(pct) { if (pct == null) return null; if (pct < 10) return "early (<10%)"; if (pct < 40) return "building (10-40%)"; if (pct < 75) return "advancing (40-75%)"; if (pct < 100) return "closing (75-99%)"; return "contained (100%)"; }
 
 // FIRE SCIENCE: computes the real fire-behavior indices used by fire agencies, from live atmospheric data.
 // Haines Index (high variant, 700-500mb - correct for western mountain fires like Utah): the standard measure
@@ -2650,6 +2655,78 @@ async function processCommand(line, env, isOp) {
         outlook_3day: outlook && outlook.ok ? outlook.outlook : null,
         advice,
         note: "Full operational SITREP - live ground status + aircraft + fire science + 3-day outlook + command-level advice. Live data is real; advice is Aura's analysis, not a substitute for incident command." } };
+    }
+
+    case "FIRE_LESSON": {
+      // DISTILL a fire into a permanent lesson (the AI-native ingest: understand once, store the understanding,
+      // discard the raw). Works on any fire - live or historical. This is how the lesson library grows.
+      //   FIRE_LESSON <fire-name>   (later: fed historical fires to build the corpus)
+      if (!isOp) return { cmd: "FIRE_LESSON", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const flName = (line.replace(/^FIRE_LESSON\s+/i, "").trim() || "cottonwood");
+      const step = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
+      const off = await step(`FIRE_OFFICIAL ${flName.split(/\s+/)[0]}`);
+      const inc = off && off.incidents && off.incidents.find(f => f.name && f.name.toLowerCase().includes(flName.split(/\s+/)[0].toLowerCase()));
+      if (!inc) return { cmd: "FIRE_LESSON", payload: { ok: false, error: `no incident found for ${flName}` } };
+      const traj = await step(`FIRE_TRAJECTORY ${inc.name} ${(inc.state || "").replace("US-", "")}`);
+      // the distilled lesson: compact behavior signature + outcome (understanding, not raw data)
+      const lesson = {
+        name: inc.name, state: inc.state, distilled_at: new Date().toISOString(),
+        signature: { fuel_model: inc.fuel_model || null, size_class: sizeClass(inc.size_acres), size_acres: inc.size_acres, growth_potential: inc.growth_potential || null, containment_stage: containStage(inc.contained_pct), fire_type: inc.type || null },
+        outcome: traj && traj.trajectory_available ? { verdict: traj.verdict, containment_per_day: traj.change && traj.change.containment_per_day, acres_per_day: traj.change && traj.change.acres_per_day } : { verdict: "still active / insufficient history" },
+        personnel_at_distill: inc.personnel || null
+      };
+      const lk = `fire:lesson:${(inc.name + "_" + (inc.state || "")).toLowerCase().replace(/[^a-z0-9_]/g, "")}`;
+      await env.AURA_KV.put(lk, JSON.stringify(lesson), { expirationTtl: 60 * 60 * 24 * 365 }).catch(() => {});
+      return { cmd: "FIRE_LESSON", payload: { ok: true, distilled: lesson, key: lk,
+        note: "Fire distilled into a permanent lesson (behavior signature + outcome). This is the AI-native ingest: understood once, stored compact, raw data disposable. FIRE_SIMILAR matches against these lessons. Feed historical fires here to grow the corpus - same command, same library." } };
+    }
+
+    case "FIRE_SIMILAR": {
+      // PATTERN MATCHING. Matches a fire's behavior signature against the lesson library (live fires now +
+      // distilled historical lessons as they're added) and has Aura reason about what the closest matches teach.
+      //   FIRE_SIMILAR <fire-name>
+      if (!isOp) return { cmd: "FIRE_SIMILAR", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const fsName = (line.replace(/^FIRE_SIMILAR\s+/i, "").trim() || "cottonwood");
+      const step = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
+      // 1) target fire signature (from live NIFC)
+      const off = await step(`FIRE_OFFICIAL ${fsName.split(/\s+/)[0]}`);
+      if (!off || !off.incidents) return { cmd: "FIRE_SIMILAR", payload: { ok: false, error: "could not load fires to match against" } };
+      const target = off.incidents.find(f => f.name && f.name.toLowerCase().includes(fsName.split(/\s+/)[0].toLowerCase()));
+      if (!target) return { cmd: "FIRE_SIMILAR", payload: { ok: false, error: `target fire "${fsName}" not found` } };
+      const sig = (f) => ({ fuel: f.fuel_model || null, size_class: sizeClass(f.size_acres), growth: f.growth_potential || null, contain_stage: containStage(f.contained_pct) });
+      const tSig = sig(target);
+      // 2) candidate corpus = other live fires + any distilled historical lessons
+      const candidates = [];
+      for (const f of off.incidents) { if (f.name !== target.name) candidates.push({ source: "live", name: f.name, state: f.state, size_acres: f.size_acres, contained_pct: f.contained_pct, sig: sig(f) }); }
+      try {
+        const lessons = await env.AURA_KV.list({ prefix: "fire:lesson:" });
+        for (const k of (lessons.keys || [])) { const raw = await env.AURA_KV.get(k.name); if (!raw) continue; const L = JSON.parse(raw); if (L.name === target.name) continue; candidates.push({ source: "historical_lesson", name: L.name, state: L.state, size_acres: L.signature && L.signature.size_acres, sig: { fuel: L.signature && L.signature.fuel_model, size_class: L.signature && L.signature.size_class, growth: L.signature && L.signature.growth_potential, contain_stage: L.signature && L.signature.containment_stage }, outcome: L.outcome }); }
+      } catch {}
+      // 3) score similarity (fuel match strongest, then size class, growth, containment stage)
+      const scored = candidates.map(c => {
+        let s = 0, max = 0;
+        max += 40; if (c.sig.fuel && tSig.fuel) s += (c.sig.fuel === tSig.fuel ? 40 : (c.sig.fuel.split(" ")[0] === tSig.fuel.split(" ")[0] ? 20 : 0));
+        max += 25; if (c.sig.size_class && tSig.size_class) s += (c.sig.size_class === tSig.size_class ? 25 : (Math.abs(sizeClassRank(c.sig.size_class) - sizeClassRank(tSig.size_class)) === 1 ? 12 : 0));
+        max += 20; if (c.sig.growth && tSig.growth) s += (c.sig.growth === tSig.growth ? 20 : 0);
+        max += 15; if (c.sig.contain_stage && tSig.contain_stage) s += (c.sig.contain_stage === tSig.contain_stage ? 15 : 0);
+        return { ...c, similarity_pct: max ? Math.round(s / max * 100) : null };
+      }).filter(c => c.similarity_pct != null).sort((a, b) => b.similarity_pct - a.similarity_pct);
+      // 4) Aura reasons about the top matches
+      const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      let insight = null;
+      const top = scored.slice(0, 5);
+      if (anthKey && top.length) {
+        const sys = await loadPrompt(env, "fire_similar", "You are Aura doing fire pattern-matching for incident command. Given a TARGET fire's behavior signature and the most similar fires (by fuel, size, growth potential, containment stage), reason about what the matches tell command. If a match is a live fire, note it's a parallel situation to watch. If a match is a historical lesson with an outcome, note what that outcome suggests. Be honest about the small corpus - do NOT overclaim statistical significance from a handful of fires. Output STRICT JSON: read (one line: what the closest match reveals about the target), watch (one line: which similar fire to watch and why), caveat (one line: honest limits of matching on this few fires). No preamble.");
+        const usr = `TARGET: ${target.name} (${target.state}) - ${target.size_acres} acres, ${target.contained_pct}% contained. Signature: ${JSON.stringify(tSig)}\n\nMOST SIMILAR:\n${top.map(c => `- ${c.name} (${c.source}, ${c.similarity_pct}% match): ${JSON.stringify(c.sig)}${c.outcome ? " outcome:" + JSON.stringify(c.outcome) : ""}`).join("\n")}\n\nReason about what these matches teach command about the target fire.`;
+        try {
+          const res = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 500, system: sys, messages: [{ role: "user", content: usr }] }) });
+          if (res.ok) { const j = await res.json(); let t = (j.content && j.content[0] && j.content[0].text) || ""; t = t.replace(/```json|```/g, "").trim(); const a = t.indexOf("{"), b = t.lastIndexOf("}"); try { insight = JSON.parse(a >= 0 ? t.slice(a, b + 1) : t); } catch { insight = { read: t.slice(0, 300) }; } }
+        } catch {}
+      }
+      return { cmd: "FIRE_SIMILAR", payload: { ok: true, target: { name: target.name, state: target.state, size_acres: target.size_acres, signature: tSig },
+        corpus_size: candidates.length, live_fires: candidates.filter(c => c.source === "live").length, historical_lessons: candidates.filter(c => c.source === "historical_lesson").length,
+        matches: top, insight,
+        note: "Behavior-signature matching against the lesson library (live fires + distilled historical lessons). Similarity = fuel(40) + size class(25) + growth(20) + containment stage(15). Corpus is currently small (mostly live fires) - the same engine scales to thousands as historical lessons are distilled via FIRE_LESSON. Not a statistical claim; a 'this resembles that' operational aid." } };
     }
 
     case "FIRE_TRAJECTORY": {

@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.378-2026-07-01";
+const BUILD = "aura-core-v4.9.379-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -604,6 +604,30 @@ function euCountryForPoint(lat, lon) {
   ];
   for (const [name, la1, la2, lo1, lo2] of boxes) if (lat >= la1 && lat <= la2 && lon >= lo1 && lon <= lo2) return name;
   return null;
+}
+
+// FIRE VERIFICATION ENGINE - every fire projection is preserved, then scored against where the fire ACTUALLY went.
+// This is the learning loop: log now (projected edge + push direction), grade later (did it go where we said?).
+async function logFireOutlook(env, region, label, edge, fwx, science, outlook) {
+  try {
+    // dominant forecast wind direction over the 3-day window (where the fire is being pushed)
+    const dirs = (fwx || []).map(d => d.wind_dir_deg).filter(x => x != null);
+    const avgFrom = dirs.length ? dirs.reduce((s, x) => s + x, 0) / dirs.length : null;
+    const pushedTo = avgFrom == null ? null : (avgFrom + 180) % 360; // 'from' -> 'toward'
+    const rec = {
+      region, label, at: new Date().toISOString(),
+      origin: { lat: edge.lat, lon: edge.lon },
+      projected_push_deg: pushedTo == null ? null : +pushedTo.toFixed(0),
+      projected_where: outlook && outlook.where_in_3_days ? String(outlook.where_in_3_days).slice(0, 200) : null,
+      haines: science && science.ok ? science.haines_index : null,
+      min_rh_forecast: (fwx || []).map(d => d.rh_min_pct).filter(x => x != null).length ? Math.min(...(fwx.map(d => d.rh_min_pct).filter(x => x != null))) : null,
+      target_time: new Date(Date.now() + 72 * 3600000).toISOString(), // gradeable after 72h
+      scored: false, verdict: null, actual_advance: null, scored_at: null
+    };
+    const key = `fire:verify:${region}:${rec.at}`;
+    await env.AURA_KV.put(key, JSON.stringify(rec), { expirationTtl: 60 * 60 * 24 * 30 }).catch(() => {});
+    return { key, target_time: rec.target_time, note: "projection logged for verification - gradeable in 72h against where the fire actually went" };
+  } catch { return null; }
 }
 
 // FIRE SCIENCE: computes the real fire-behavior indices used by fire agencies, from live atmospheric data.
@@ -2498,6 +2522,68 @@ async function processCommand(line, env, isOp) {
       } catch (e) { return { cmd: "FIRE_SCIENCE", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 
+    case "FIRE_VERIFY_LOG": {
+      // The fire verification ledger - every projection FIRE_OUTLOOK has logged, and whether it's been graded.
+      if (!isOp) return { cmd: "FIRE_VERIFY_LOG", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const vlRegion = line.replace(/^FIRE_VERIFY_LOG\s*/i, "").trim().toLowerCase();
+      try {
+        const prefix = vlRegion ? `fire:verify:${vlRegion}:` : "fire:verify:";
+        const list = await env.AURA_KV.list({ prefix, limit: 1000 });
+        const rows = [];
+        for (const k of (list.keys || []).slice(-25)) { const v = await env.AURA_KV.get(k.name); if (v) rows.push(JSON.parse(v)); }
+        rows.sort((a, b) => new Date(b.at) - new Date(a.at));
+        const scored = rows.filter(r => r.scored).length;
+        return { cmd: "FIRE_VERIFY_LOG", payload: { ok: true, total: (list.keys || []).length, showing: rows.length, scored, pending: rows.length - scored, projections: rows.slice(0, 15),
+          note: "Fire projection ledger. Each projection is gradeable 72h after logging, against where the fire actually advanced (FIRMS). Run FIRE_VERIFY_SCORE to grade the mature ones." } };
+      } catch (e) { return { cmd: "FIRE_VERIFY_LOG", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "FIRE_VERIFY_SCORE": {
+      // THE LEARNING LOOP. Grade matured projections: did the fire go where we said? Compares the projected push
+      // direction to the fire's ACTUAL measured advance (current FIRMS centroid vs the logged origin).
+      if (!isOp) return { cmd: "FIRE_VERIFY_SCORE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const vsRegion = line.replace(/^FIRE_VERIFY_SCORE\s*/i, "").trim().toLowerCase();
+      const step = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
+      try {
+        const prefix = vsRegion ? `fire:verify:${vsRegion}:` : "fire:verify:";
+        const list = await env.AURA_KV.list({ prefix, limit: 1000 });
+        const now = Date.now();
+        let graded = 0, hits = 0, misses = 0; const results = [];
+        // cache current fire positions per region so we don't re-query
+        const posCache = {};
+        for (const k of (list.keys || [])) {
+          const v = await env.AURA_KV.get(k.name); if (!v) continue;
+          const rec = JSON.parse(v);
+          if (rec.scored) continue;
+          if (new Date(rec.target_time).getTime() > now) continue; // not mature yet
+          // get the fire's current position now (actual)
+          if (!posCache[rec.region]) { const p = await step(`FIRE_PREDICT ${rec.region}`); posCache[rec.region] = (p && p.current) ? (p.current.centroid || p.current.leading_edge) : null; }
+          const actualPos = posCache[rec.region];
+          if (!actualPos || !rec.origin) { continue; }
+          // actual advance vector from logged origin to current position
+          const dLat = actualPos.lat - rec.origin.lat, dLon = actualPos.lon - rec.origin.lon;
+          const dist_km = Math.sqrt((dLat * 111) ** 2 + (dLon * 88) ** 2);
+          const actualBearing = (Math.atan2(dLon, dLat) * 180 / Math.PI + 360) % 360;
+          // did it go the direction we projected? (within +/-45 deg = a hit, if it moved a meaningful distance)
+          let verdict;
+          if (dist_km < 1) verdict = "minimal_movement";
+          else if (rec.projected_push_deg == null) verdict = "no_projection";
+          else { const diff = Math.min(Math.abs(actualBearing - rec.projected_push_deg), 360 - Math.abs(actualBearing - rec.projected_push_deg)); verdict = diff <= 45 ? "hit" : "miss"; }
+          rec.scored = true; rec.scored_at = new Date().toISOString();
+          rec.actual_advance = { moved_km: +dist_km.toFixed(2), actual_bearing_deg: +actualBearing.toFixed(0), projected_push_deg: rec.projected_push_deg };
+          rec.verdict = verdict;
+          await env.AURA_KV.put(k.name, JSON.stringify(rec), { expirationTtl: 60 * 60 * 24 * 30 }).catch(() => {});
+          graded++; if (verdict === "hit") hits++; else if (verdict === "miss") misses++;
+          results.push({ region: rec.region, logged: rec.at, verdict, projected_push_deg: rec.projected_push_deg, actual: rec.actual_advance });
+        }
+        const directional = hits + misses;
+        return { cmd: "FIRE_VERIFY_SCORE", payload: { ok: true, newly_graded: graded, hits, misses,
+          direction_accuracy_pct: directional ? Math.round(hits / directional * 100) : null,
+          results,
+          note: graded ? "Fire direction-projection scorecard. hit = fire advanced within 45deg of the projected push direction. This is the honest number - meaningful only as sample size grows across many fires/cycles. Feeds the learning loop." : "No matured projections to grade yet (each needs 72h). Log more with FIRE_OUTLOOK and re-run over days." } };
+      } catch (e) { return { cmd: "FIRE_VERIFY_SCORE", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
     case "FIRE_SITREP": {
       // FULL OPERATIONAL PICTURE + ADVICE. The commander's-eye view of one fire: who/what is on it (ground
       // personnel + containment), what aircraft are working the airspace (live ADS-B), the real fire science
@@ -2632,6 +2718,7 @@ async function processCommand(line, env, isOp) {
         leading_edge: edge, observed_advance: outlookAdvance, hotspots: pred.current.hotspots,
         fire_science: science && science.ok ? { haines_index: science.haines_index, haines_meaning: science.haines_meaning, vpd_kpa: science.vpd_kpa, fuel_dryness: science.fuel_dryness } : null,
         fire_weather_forecast: fwx, outlook,
+        logged: await logFireOutlook(env, foRegion, pred.label, edge, fwx, science, outlook),
         note: "3-day WEATHER-DRIVEN fire outlook - combines the fire's real position/movement with the multi-day fire-weather pattern. Situational awareness, not a FARSITE tactical model." } };
     }
 

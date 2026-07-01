@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.376-2026-07-01";
+const BUILD = "aura-core-v4.9.377-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -605,6 +605,53 @@ function euCountryForPoint(lat, lon) {
   for (const [name, la1, la2, lo1, lo2] of boxes) if (lat >= la1 && lat <= la2 && lon >= lo1 && lon <= lo2) return name;
   return null;
 }
+
+// FIRE SCIENCE: computes the real fire-behavior indices used by fire agencies, from live atmospheric data.
+// Haines Index (high variant, 700-500mb - correct for western mountain fires like Utah): the standard measure
+// of a dry/unstable atmosphere's potential to make a fire large or erratic (plume-dominated). Formula per
+// Haines 1988 / NWCG: A(stability) = T700 - T500 -> 1(<18C) 2(18-21C) 3(>=22C); B(moisture) = dewpoint
+// depression at 700mb -> 1(<15C) 2(15-20C) 3(>=21C); HI = A+B, ranges 2-6. Also VPD (vapor pressure deficit,
+// the modern fuel-drying driver) and a plain fuel-dryness read from surface RH. All keyless open-meteo.
+async function computeFireScience(env, lat, lon) {
+  const url = await resolveFeedUrl(env, "fire_science_wx", { lat: lat.toFixed(3), lon: lon.toFixed(3) }, `https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,relative_humidity_2m,dew_point_2m,temperature_700hPa,temperature_500hPa,dew_point_700hPa,wind_speed_10m&forecast_days=1&timezone=auto`);
+  const r = await fetchWithTimeout(url, {}, 8000);
+  if (!r.ok) { let b = ""; try { b = (await r.text()).slice(0, 160); } catch {} return { ok: false, error: `fire-science wx http ${r.status}`, detail: b }; }
+  const j = await r.json();
+  const h = j.hourly || {};
+  // pick the current hour (nearest to now)
+  const times = h.time || [];
+  let idx = 0; const nowIso = new Date().toISOString().slice(0, 13);
+  const found = times.findIndex(t => t.slice(0, 13) === nowIso);
+  if (found >= 0) idx = found;
+  const at = (arr) => (arr && arr[idx] != null) ? arr[idx] : null;
+  const t700 = at(h.temperature_700hPa), t500 = at(h.temperature_500hPa), td700 = at(h.dew_point_700hPa);
+  const sfcT = at(h.temperature_2m), sfcRH = at(h.relative_humidity_2m), sfcTd = at(h.dew_point_2m), wind = at(h.wind_speed_10m);
+  // Haines high variant
+  let haines = null, hA = null, hB = null;
+  if (t700 != null && t500 != null && td700 != null) {
+    const stability = t700 - t500;                 // A term
+    const ddep = t700 - td700;                       // B term (dewpoint depression at 700mb)
+    hA = stability >= 22 ? 3 : stability >= 18 ? 2 : 1;
+    hB = ddep >= 21 ? 3 : ddep >= 15 ? 2 : 1;
+    haines = hA + hB;
+  }
+  const hainesText = haines == null ? null : (haines >= 6 ? "6 - VERY HIGH potential for large/erratic plume-dominated fire" : haines === 5 ? "5 - HIGH potential" : haines === 4 ? "4 - moderate potential" : haines === 3 ? "3 - low potential" : "2 - very low potential (moist/stable)");
+  // VPD (kPa) from surface T and dewpoint - modern fuel-drying metric; higher = faster fuel drying
+  let vpd = null;
+  if (sfcT != null && sfcTd != null) {
+    const es = 0.6108 * Math.exp(17.27 * sfcT / (sfcT + 237.3));
+    const ea = 0.6108 * Math.exp(17.27 * sfcTd / (sfcTd + 237.3));
+    vpd = Math.round((es - ea) * 100) / 100;
+  }
+  // plain fuel-dryness read from surface RH (fine-fuel responsiveness)
+  const dryness = sfcRH == null ? null : (sfcRH < 10 ? "extreme (RH<10%)" : sfcRH < 15 ? "critical (RH<15%)" : sfcRH < 25 ? "high (RH<25%)" : sfcRH < 40 ? "moderate" : "low");
+  return { ok: true, lat, lon,
+    haines_index: haines, haines_stability_term: hA, haines_moisture_term: hB, haines_meaning: hainesText,
+    vpd_kpa: vpd, surface_rh_pct: sfcRH, fuel_dryness: dryness, surface_wind_kmh: wind,
+    inputs: { t700_c: t700, t500_c: t500, td700_c: td700, lapse_700_500_c: t700 != null && t500 != null ? Math.round((t700 - t500) * 10) / 10 : null, dewpoint_depression_700_c: t700 != null && td700 != null ? Math.round((t700 - td700) * 10) / 10 : null },
+    note: "Real fire-behavior indices. Haines high-variant (700-500mb) per Haines 1988/NWCG - measures plume-dominated erratic-fire potential (does NOT capture wind-driven runs; pair with wind). VPD = fuel-drying rate. Keyless." };
+}
+
 async function fetchMeteoAlarm(env, lat, lon) {
   const country = euCountryForPoint(lat, lon);
   if (!country) return { ok: true, in_europe: false, note: "point is outside the mapped European country boxes" };
@@ -2424,6 +2471,24 @@ async function processCommand(line, env, isOp) {
       return { cmd: "FIRE_COORDINATE", payload: { ok: true, region: fcRegion, total_incidents: fires.length, growing: active.length, winding_down: winding.length, total_personnel: fires.reduce((s, f) => s + (f.personnel || 0), 0), largest: off.largest ? off.largest.name : null, coordination: coord, note: "Cross-incident coordination view - the multi-agency picture no single agency system shows." } };
     }
 
+    case "FIRE_SCIENCE": {
+      // Real fire-behavior indices (Haines high-variant, VPD, fuel dryness) at a point or a named fire's leading edge.
+      //   FIRE_SCIENCE <lat> <lon>   OR   FIRE_SCIENCE <region>
+      if (!isOp) return { cmd: "FIRE_SCIENCE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const fsArgs = line.replace(/^FIRE_SCIENCE\s*/i, "").trim().split(/\s+/).filter(Boolean);
+      let fsLat = parseFloat(fsArgs[0]), fsLon = parseFloat(fsArgs[1]), fsLabel = null;
+      if (isNaN(fsLat) || isNaN(fsLon)) {
+        // treat as a region: pull the fire's leading edge
+        const reg = (fsArgs[0] || "cottonwood").toLowerCase();
+        try { const pr = await processCommand(`FIRE_PREDICT ${reg}`, env, true); const p = pr && pr.payload; if (p && p.current) { const e = p.current.leading_edge || p.current.centroid; fsLat = e.lat; fsLon = e.lon; fsLabel = p.label; } } catch {}
+        if (isNaN(fsLat) || isNaN(fsLon)) return { cmd: "FIRE_SCIENCE", payload: { ok: false, error: "Usage: FIRE_SCIENCE <lat> <lon>  OR  FIRE_SCIENCE <region>. Region had no active fire position." } };
+      }
+      try {
+        const sci = await computeFireScience(env, fsLat, fsLon);
+        return { cmd: "FIRE_SCIENCE", payload: { ...sci, label: fsLabel } };
+      } catch (e) { return { cmd: "FIRE_SCIENCE", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
     case "FIRE_OUTLOOK": {
       // 3-DAY WEATHER-DRIVEN FIRE OUTLOOK. Chains the fire's real position+movement (FIRE_PREDICT) with a
       // multi-day fire-weather forecast (wind/humidity/temp) at the leading edge. Aura reasons day-by-day
@@ -2485,12 +2550,15 @@ async function processCommand(line, env, isOp) {
         }
       } catch {}
       if (!fwx || !fwx.length) return { cmd: "FIRE_OUTLOOK", payload: { ok: false, error: "multi-day fire-weather forecast unavailable at leading edge" } };
+      // 2b) REAL fire-behavior science at the leading edge (Haines, VPD, fuel dryness)
+      let science = null;
+      try { science = await computeFireScience(env, edge.lat, edge.lon); } catch {}
       // 3) Aura reasons day-by-day: how the pattern drives spread
       const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
       let outlook = null;
       if (anthKey) {
-        const sys = await loadPrompt(env, "fire_outlook", "You are Aura, a fire-behavior analyst producing a 3-day OUTLOOK for incident command. You are given the fire's current leading edge, its OBSERVED recent movement, and a day-by-day fire-weather forecast (max temp, MINIMUM relative humidity, max wind speed/gust, dominant wind direction, precip) at the fire. Reason about how the weather PATTERN will drive spread each day. Key fire-weather logic: low RH (<20-25%) + wind = active spread; wind DIRECTION sets the direction of push (wind FROM the west pushes fire EAST); rising temp + falling RH = worsening; precip or RH recovery = laying down. Wind direction is 'from' - convert to the compass direction the fire will be PUSHED toward. Output STRICT JSON only: summary (one line: the 3-day trajectory in plain language - where and how fast), day1 / day2 / day3 (each one line: that day's fire-weather and what it means for spread, include the pushed direction), peak_risk_day (which day is worst and why, one line), where_in_3_days (one line: best estimate of where the fire front will be relative to now - direction and rough distance, hedged appropriately), confidence (low|medium|high), caveat (one line: this is a WEATHER-DRIVEN outlook, not a FARSITE physics model; it does not model terrain/fuel/spotting; use for situational awareness, not tactical decisions).");
-        const usr = `Fire: ${pred.label}\nCurrent leading edge: ${edge.lat.toFixed(3)}, ${edge.lon.toFixed(3)}\nObserved recent movement (fire's actual measured advance): ${outlookAdvance && outlookAdvance.moved_km != null ? JSON.stringify(outlookAdvance) : "no measured advance vector yet (baseline just set - reason from wind direction only, and say so)"}\nCurrent hotspot count: ${pred.current.hotspots}\n\nDay-by-day fire-weather forecast at the fire:\n${fwx.map((d, i) => `${i === 0 ? "TODAY" : "Day+" + i} ${d.date}: max ${d.temp_max_c}C, min RH ${d.rh_min_pct}%, wind max ${d.wind_max_kmh} km/h gust ${d.gust_max_kmh}, wind from ${d.wind_dir_deg}deg, precip ${d.precip_mm}mm`).join("\n")}\n\nProduce the 3-day fire outlook JSON now. Keep each field to ONE concise line so the JSON completes.`;
+        const sys = await loadPrompt(env, "fire_outlook", "You are Aura, a fire-behavior analyst producing a 3-day OUTLOOK for incident command. You are given the fire's current leading edge, its OBSERVED recent movement, REAL fire-behavior indices (Haines Index, VPD, fuel dryness), and a day-by-day fire-weather forecast (max temp, MINIMUM relative humidity, max wind speed/gust, dominant wind direction, precip) at the fire. Reason about how the weather PATTERN will drive spread each day. Use the SCIENCE: Haines Index 5-6 = high potential for large/erratic PLUME-dominated fire (convection-driven, can throw embers/spot); high VPD = fuel drying fast; low RH (<20-25%) + wind = active wind-driven spread. Distinguish plume-dominated (Haines-driven) from wind-driven (wind+RH-driven) behavior. Wind DIRECTION sets the push (wind FROM the west pushes fire EAST) - convert 'from' to the direction the fire is PUSHED toward. Output STRICT JSON only: summary (one line: the 3-day trajectory - where and how fast), day1 / day2 / day3 (each one line: that day's fire-weather + what it means, include pushed direction), peak_risk_day (which day is worst and why, one line), where_in_3_days (one line: best estimate of where the fire front will be relative to now - direction and rough distance, hedged), behavior_type (one line: plume-dominated vs wind-driven vs both, cite the Haines/wind reasoning), confidence (low|medium|high), caveat (one line: WEATHER+INDEX-driven outlook, not a FARSITE physics model; no terrain/fuel-type/spotting model; situational awareness only).");
+        const usr = `Fire: ${pred.label}\nCurrent leading edge: ${edge.lat.toFixed(3)}, ${edge.lon.toFixed(3)}\nObserved recent movement (fire's actual measured advance): ${outlookAdvance && outlookAdvance.moved_km != null ? JSON.stringify(outlookAdvance) : "no measured advance vector yet (baseline just set - reason from wind direction only, and say so)"}\nCurrent hotspot count: ${pred.current.hotspots}\n\nREAL fire-behavior indices at the fire right now:\n${science && science.ok ? `Haines Index: ${science.haines_index} (${science.haines_meaning}); VPD: ${science.vpd_kpa} kPa; fuel dryness: ${science.fuel_dryness}; surface RH: ${science.surface_rh_pct}%; 700-500mb lapse: ${science.inputs.lapse_700_500_c}C; 700mb dewpoint depression: ${science.inputs.dewpoint_depression_700_c}C` : "indices unavailable this cycle"}\n\nDay-by-day fire-weather forecast at the fire:\n${fwx.map((d, i) => `${i === 0 ? "TODAY" : "Day+" + i} ${d.date}: max ${d.temp_max_c}C, min RH ${d.rh_min_pct}%, wind max ${d.wind_max_kmh} km/h gust ${d.gust_max_kmh}, wind from ${d.wind_dir_deg}deg, precip ${d.precip_mm}mm`).join("\n")}\n\nProduce the 3-day fire outlook JSON now. Keep each field to ONE concise line so the JSON completes.`;
         try {
           const res = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
@@ -2511,6 +2579,7 @@ async function processCommand(line, env, isOp) {
       }
       return { cmd: "FIRE_OUTLOOK", payload: { ok: true, region: foRegion, label: pred.label, outlook_available: true,
         leading_edge: edge, observed_advance: outlookAdvance, hotspots: pred.current.hotspots,
+        fire_science: science && science.ok ? { haines_index: science.haines_index, haines_meaning: science.haines_meaning, vpd_kpa: science.vpd_kpa, fuel_dryness: science.fuel_dryness } : null,
         fire_weather_forecast: fwx, outlook,
         note: "3-day WEATHER-DRIVEN fire outlook - combines the fire's real position/movement with the multi-day fire-weather pattern. Situational awareness, not a FARSITE tactical model." } };
     }

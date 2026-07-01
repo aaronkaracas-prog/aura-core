@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.385-2026-07-01";
+const BUILD = "aura-core-v4.9.386-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1805,6 +1805,22 @@ async function processCommand(line, env, isOp) {
         }).filter(i => i.name);
         // sort biggest first
         incidents.sort((a, b) => (b.size_acres || 0) - (a.size_acres || 0));
+        // log a containment-history point per incident (fire being won or lost over time) - keyed by name+state
+        try {
+          for (const inc of incidents.slice(0, 25)) {
+            if (!inc.name || inc.size_acres == null) continue;
+            const hk = `fire:trajectory:${(inc.name + "_" + (inc.state || "")).toLowerCase().replace(/[^a-z0-9_]/g, "")}`;
+            let hist = [];
+            try { const raw = await env.AURA_KV.get(hk); if (raw) hist = JSON.parse(raw); } catch {}
+            const last = hist[hist.length - 1];
+            // only append if >=30min since last point (avoid spamming history on rapid re-runs)
+            if (!last || (Date.now() - new Date(last.at).getTime()) >= 30 * 60000) {
+              hist.push({ at: new Date().toISOString(), acres: inc.size_acres, contained: inc.contained_pct ?? null, personnel: inc.personnel ?? null });
+              if (hist.length > 200) hist = hist.slice(-200);
+              await env.AURA_KV.put(hk, JSON.stringify(hist), { expirationTtl: 60 * 60 * 24 * 30 }).catch(() => {});
+            }
+          }
+        } catch {}
         return { cmd: "FIRE_OFFICIAL", payload: { ok: true, source: "nifc_wfigs_live", region: foRegion, incident_count: incidents.length, largest: incidents[0] || null, incidents: incidents.slice(0, 25), updated: new Date().toISOString(), note: "Authoritative NIFC/WFIGS incident data - official acreage and containment." } };
       } catch (e) { return { cmd: "FIRE_OFFICIAL", payload: { ok: false, source: "nifc_error", region: foRegion, error: String(e && e.message || e) } }; }
     }
@@ -2634,6 +2650,51 @@ async function processCommand(line, env, isOp) {
         outlook_3day: outlook && outlook.ok ? outlook.outlook : null,
         advice,
         note: "Full operational SITREP - live ground status + aircraft + fire science + 3-day outlook + command-level advice. Live data is real; advice is Aura's analysis, not a substitute for incident command." } };
+    }
+
+    case "FIRE_TRAJECTORY": {
+      // IS THIS FIRE BEING WON OR LOST? Reads the containment/acreage history logged by FIRE_OFFICIAL and computes
+      // the trend: containment velocity (%/day), acreage growth rate, and a plain verdict + contained-by projection.
+      //   FIRE_TRAJECTORY <fire-name> [state]   (state helps disambiguate, e.g. FIRE_TRAJECTORY cottonwood UT)
+      if (!isOp) return { cmd: "FIRE_TRAJECTORY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const trArgs = line.replace(/^FIRE_TRAJECTORY\s+/i, "").trim().split(/\s+/).filter(Boolean);
+      const trName = (trArgs[0] || "cottonwood").toLowerCase();
+      const trState = (trArgs[1] || "").toLowerCase().replace(/[^a-z]/g, "");
+      try {
+        // find the history key (name + state); if state omitted, list-scan for the best name match
+        let hk = null, hist = null;
+        if (trState) { hk = `fire:trajectory:${(trName + "_" + trState).replace(/[^a-z0-9_]/g, "")}`; try { const raw = await env.AURA_KV.get(hk); if (raw) hist = JSON.parse(raw); } catch {} }
+        if (!hist) {
+          const list = await env.AURA_KV.list({ prefix: "fire:trajectory:" });
+          const matchKey = (list.keys || []).map(k => k.name).find(n => n.includes(trName));
+          if (matchKey) { hk = matchKey; try { const raw = await env.AURA_KV.get(matchKey); if (raw) hist = JSON.parse(raw); } catch {} }
+        }
+        if (!hist || hist.length < 2) return { cmd: "FIRE_TRAJECTORY", payload: { ok: true, fire: trName, trajectory_available: false, points: hist ? hist.length : 0, note: "Not enough history yet to compute a trajectory (need >=2 FIRE_OFFICIAL pulls >=30min apart). Run FIRE_OFFICIAL periodically over hours/days - the trend builds automatically. This is the 'is the fire being won or lost' signal." } };
+        const first = hist[0], last = hist[hist.length - 1];
+        const hrs = (new Date(last.at).getTime() - new Date(first.at).getTime()) / 3600000;
+        const days = hrs / 24;
+        const dContain = (last.contained ?? 0) - (first.contained ?? 0);
+        const dAcres = (last.acres ?? 0) - (first.acres ?? 0);
+        const containPerDay = days > 0 ? +(dContain / days).toFixed(2) : null;
+        const acresPerDay = days > 0 ? +(dAcres / days).toFixed(0) : null;
+        // verdict
+        let verdict, reason;
+        if (dContain >= 3 && dAcres <= (first.acres || 0) * 0.05) { verdict = "being won"; reason = "containment rising and acreage roughly holding"; }
+        else if (dContain >= 3) { verdict = "gaining containment but still growing"; reason = "crews making perimeter progress even as the fire spreads"; }
+        else if (dAcres > (first.acres || 0) * 0.1 && dContain <= 0) { verdict = "being lost"; reason = "acreage growing and containment flat or falling"; }
+        else if (Math.abs(dContain) < 3 && Math.abs(dAcres) < (first.acres || 1) * 0.05) { verdict = "holding steady"; reason = "little change in containment or size"; }
+        else { verdict = "mixed"; reason = "no clear trend yet"; }
+        // contained-by projection (only meaningful if containment is rising)
+        let contained_by = null;
+        if (containPerDay && containPerDay > 0.5 && (last.contained ?? 0) < 100) { const daysLeft = (100 - (last.contained ?? 0)) / containPerDay; contained_by = { est_days_to_full_containment: +daysLeft.toFixed(1), est_date: new Date(Date.now() + daysLeft * 86400000).toISOString().slice(0, 10), caveat: "linear extrapolation of recent containment rate - real containment is non-linear (last 10% is often slowest); treat as a rough floor" }; }
+        return { cmd: "FIRE_TRAJECTORY", payload: { ok: true, fire: trName, trajectory_available: true,
+          window_hours: +hrs.toFixed(1), data_points: hist.length,
+          now: { acres: last.acres, contained_pct: last.contained, personnel: last.personnel },
+          change: { containment_pts: +dContain.toFixed(1), acres: dAcres, containment_per_day: containPerDay, acres_per_day: acresPerDay },
+          verdict, reason, contained_by,
+          history: hist.slice(-8),
+          note: "Fire trajectory from real NIFC containment/acreage history. verdict = whether crews are winning or losing ground. Builds automatically as FIRE_OFFICIAL runs over time - more points = sharper trend. " + (hrs < 6 ? "Short window so far - trend firms up over days." : "") } };
+      } catch (e) { return { cmd: "FIRE_TRAJECTORY", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 
     case "FIRE_PERIMETER": {

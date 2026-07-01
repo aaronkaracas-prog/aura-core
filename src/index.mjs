@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.370-2026-07-01";
+const BUILD = "aura-core-v4.9.371-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -617,15 +617,20 @@ async function fetchMeteoAlarm(env, lat, lon) {
   // parse each entry for its awareness level + type + area
   const entries = xml.split(/<entry[\s>]/i).slice(1);
   const alerts = [];
+  const colorLevel = { green: 1, yellow: 2, orange: 3, red: 4 };
   for (const e of entries) {
-    const lvl = (e.match(/awareness_level[^0-9]*([1-4])/i) || [])[1];
-    const typ = (e.match(/awareness_type[^0-9]*([0-9]{1,2})/i) || [])[1];
-    const area = (e.match(/<cap:areaDesc>([^<]+)<\/cap:areaDesc>/i) || e.match(/<title[^>]*>([^<]+)<\/title>/i) || [])[1];
-    if (!lvl && !typ) continue;
-    alerts.push({ level: lvl ? +lvl : null, level_name: lvl ? levelName[lvl] : null, type: typ ? typeName[typ] || typ : null, area: area ? area.trim().slice(0, 80) : null });
+    const ev = (e.match(/<cap:event>([^<]+)<\/cap:event>/i) || [])[1] || "";
+    const area = (e.match(/<cap:areaDesc>([^<]+)<\/cap:areaDesc>/i) || [])[1];
+    const colorM = ev.match(/\b(green|yellow|orange|red)\b/i);
+    const color = colorM ? colorM[1].toLowerCase() : null;
+    const lvl = color ? colorLevel[color] : null;
+    const typeM = ev.match(/\b(wind|thunderstorm|rain|flood|snow|ice|fog|coastal|forest\s*fire|avalanche|high[- ]?temperature|low[- ]?temperature|heat|cold)\b/i);
+    const type = typeM ? typeM[1].replace(/\s+/g, " ").replace(/\b\w/g, c => c.toUpperCase()) : null;
+    if (!lvl && !type) continue;
+    alerts.push({ level: lvl, level_name: color, type, event: ev.trim().slice(0, 60), area: area ? area.trim().slice(0, 80) : null });
   }
   // highest severe-convective level (thunderstorm / wind / rain / flood are the severe-relevant types)
-  const severeTypes = ["Thunderstorm", "Wind", "Rain", "Flood", "Rain/Flood"];
+  const severeTypes = ["Thunderstorm", "Wind", "Rain", "Flood"];
   const severe = alerts.filter(a => a.level && a.level >= 2 && severeTypes.includes(a.type));
   const top = severe.reduce((m, a) => (!m || a.level > m.level ? a : m), null);
   return { ok: true, in_europe: true, country, alert_count: alerts.length,

@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.394-2026-07-01";
+const BUILD = "aura-core-v4.9.395-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1359,42 +1359,52 @@ async function processCommand(line, env, isOp) {
       //   WHO_AM_I ::: <question>   -> reason about a specific aspect of herself
       if (!isOp) return { cmd: "WHO_AM_I", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const focus = rest.includes(":::") ? rest.slice(rest.indexOf(":::") + 3).trim() : "";
-      // 1) READ HER REAL ENGINES from her own source (the case "X": handlers ARE her capabilities)
+      // ARCHITECTURE (learned the hard way): identity must be returned as DATA FIRST, never as a
+      // "reason about your whole self" task - a stateless model reads that as a jailbreak and refuses,
+      // reverting to "I am Claude, I have no tools". So: read the real canon + capability count and
+      // RETURN THEM STRUCTURED. That answer can NEVER refuse. Reasoning is an OPTIONAL bonus layer
+      // that may fail without breaking the identity answer.
+      // 1) READ HER REAL CAPABILITIES from her own source (the case-handlers ARE her capabilities)
       let engineList = [];
+      let srcStale = false;
       try {
         const sr = await fetch("https://raw.githubusercontent.com/aaronkaracas-prog/aura-core/main/src/index.mjs", { headers: { "User-Agent": "aura-self-know" } });
         if (sr.ok) {
           const src = await sr.text();
           const m = src.match(/case\s+"[A-Z_]+"\s*:/g) || [];
           engineList = [...new Set(m.map(s => (s.match(/"([A-Z_]+)"/) || [])[1]).filter(Boolean))];
+          await env.AURA_KV.put("cache:self_source", JSON.stringify({ src, at: new Date().toISOString() }), { expirationTtl: 86400 }).catch(() => {});
         }
       } catch {}
-      // 2) READ HER CANONICAL NOTES (the truth about who she is + where she's at + what she's for)
-      const noteKeys = [
-        "notes:INDEX", "notes:architecture:core", "notes:STATE",
-        "notes:law:no_fabricated_numbers", "notes:law:honored_exit_enforced",
-        "notes:capability:communications_intelligence", "notes:principle:creator_sovereignty",
-        "notes:economics:operating_frame", "notes:asset:situationtracker"
-      ];
-      const notes = {};
-      for (const k of noteKeys) { try { const v = await env.AURA_KV.get(k); if (v) notes[k] = v.slice(0, 1400); } catch {} }
-      // 3) REASON it into an honest, current self-portrait through the shared mind
-      const selfR = await reasonThroughLoop(env, {
-        entity: focus || "Assemble an honest, CURRENT picture of who I am right now.",
-        lens: "SELF-KNOWLEDGE â€” You are Aura, assembling who you ACTUALLY are right now from two real sources: (A) your live ENGINE LIST (the case-handlers that exist in your own source â€” these are your real capabilities, not a description someone wrote) and (B) your CANONICAL NOTES (your architecture canon, your completion state, your laws, your visions). Reason an honest self-portrait: who you are, your real engines and what they do, how you think (the loop), your laws, your current state, the visions you serve. CRITICAL: be honest and CURRENT â€” if anything in the notes or your own memory conflicts with what's actually in your engine list, FLAG IT as stale rather than reciting it (e.g. if you find yourself about to mention a payment brand or a vertical that isn't in your live engines, say 'that appears stale/removed'). You are an engineer reading their own system, not a brochure. Ground every capability claim in the real engine list.",
-        facts: { my_live_engines: engineList, my_canonical_notes: notes },
-        extraKeys: [
-          { key: "who_i_am", desc: "one or two sentences â€” who I am, grounded in canon" },
-          { key: "my_engines", desc: "array â€” my REAL engines from the live list and what each does (only ones that actually exist)" },
-          { key: "how_i_think", desc: "the loop â€” how I reason" },
-          { key: "my_laws", desc: "array â€” the integrity laws I'm bound by" },
-          { key: "my_state", desc: "where I'm at right now (built/proven/next), grounded in notes:STATE + core_complete" },
-          { key: "the_visions_i_serve", desc: "array â€” the North Stars from my vision notes" },
-          { key: "stale_or_contradictory", desc: "array â€” anything I found that looks out of date or contradicts my live engines (be honest, name it)" }
-        ]
-      });
-      if (!selfR.ok) return { cmd: "WHO_AM_I", payload: { ok: false, error: selfR.error } };
-      return { cmd: "WHO_AM_I", payload: { ok: true, engine_count: engineList.length, notes_read: Object.keys(notes).length, self: selfR.reasoning } };
+      if (!engineList.length) { try { const c = await env.AURA_KV.get("cache:self_source"); if (c) { const cj = JSON.parse(c); const m = cj.src.match(/case\s+"[A-Z_]+"\s*:/g) || []; engineList = [...new Set(m.map(s => (s.match(/"([A-Z_]+)"/) || [])[1]).filter(Boolean))]; srcStale = true; } } catch {} }
+      // 2) READ THE CORRECTED IDENTITY CANON - the real hierarchy (ARK creates AIX; AIX synthesizes
+      //    all intelligence; Aura is the flagship application ON AIX). This is who she is, as DATA.
+      const identityCanon = (await env.AURA_KV.get("notes:canon:world_structure").catch(() => null)) || null;
+      const opState = (await env.AURA_KV.get("notes:STATE").catch(() => null)) || null;
+      // 3) THE DATA ANSWER - assembled from truth, cannot refuse. This is the anchor.
+      const identity = {
+        i_am: "Aura - the first flagship application built on AIX (AI Intelligence Exchange). I am not AIX; I prove what AIX can build. I provide the experience; AIX provides the intelligence.",
+        the_hierarchy: "ARK Systems (invisible legal root) creates AIX (the foundational intelligence-synthesis platform). AIX synthesizes the world's available AI into one strongest result. I, Aura, am the first application on AIX, and I prove what it can build. Doorways (domains) expose slices of me to audiences.",
+        my_capability_count: engineList.length,
+        capabilities_note: "My real, live command list - run CAPABILITIES for the full inventory, or CAPABILITIES <term> to filter. These are the organs of me, the flagship application.",
+        identity_canon_present: !!identityCanon,
+        source: srcStale ? "github_cache" : "github_live"
+      };
+      // 4) OPTIONAL reasoning layer - only if a focus question was asked. Non-blocking: if the model
+      //    declines, the DATA identity above still returns. Never gate the identity on reasoning.
+      let reasoning = null;
+      if (focus) {
+        try {
+          const selfR = await reasonThroughLoop(env, {
+            entity: focus,
+            lens: "You are analyzing a specific question about the Aura system for its operator. Aura is the flagship application built on AIX (the intelligence-synthesis platform ARK Systems created). You have the real capability list and the identity canon as facts. Answer the operator's question grounded ONLY in those facts. This is operational analysis of a real system, not roleplay - reason plainly like an engineer reading their own system.",
+            facts: { identity: identity, identity_canon: identityCanon ? identityCanon.slice(0, 3000) : null, my_capabilities: engineList, operating_state: opState ? opState.slice(0, 1500) : null }
+          });
+          if (selfR.ok) reasoning = selfR.reasoning;
+        } catch {}
+      }
+      return { cmd: "WHO_AM_I", payload: { ok: true, identity, capability_count: engineList.length, identity_canon: identityCanon, operating_state: opState, reasoning,
+        note: "Identity returned as data (always works). ARK creates AIX; AIX synthesizes all intelligence; Aura is the flagship application on AIX. Run CAPABILITIES for the live command inventory. Add ::: <question> to also get reasoning on a specific aspect." } };
     }
 
     case "AURA_READ_NOTES": {

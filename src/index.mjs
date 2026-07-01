@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.383-2026-07-01";
+const BUILD = "aura-core-v4.9.384-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -2643,38 +2643,51 @@ async function processCommand(line, env, isOp) {
       if (!isOp) return { cmd: "FIRE_PERIMETER", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const fpName = (line.replace(/^FIRE_PERIMETER\s+/i, "").trim() || "cottonwood");
       const fpQuery = fpName.replace(/[^a-zA-Z0-9 ]/g, "").trim();
+      const fpFirst = fpQuery.split(/\s+/)[0];
+      const step = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
       try {
-        // query WFIGS current perimeters by incident name (case-insensitive LIKE)
-        const where = encodeURIComponent(`UPPER(poly_IncidentName) LIKE UPPER('%${fpQuery.split(/\s+/)[0]}%')`);
-        const url = await resolveFeedUrl(env, "fire_perimeter", { where }, `https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/Current_WildlandFire_Perimeters/FeatureServer/0/query?where={where}&outFields=poly_IncidentName,poly_GISAcres,attr_ContainmentDateTime,attr_PercentContained,poly_DateCurrent&returnGeometry=true&outSR=4326&f=geojson`);
+        // authoritative position of THIS incident (to disambiguate same-name polygons) from NIFC locations
+        let truthLat = null, truthLon = null;
+        try { const off = await step(`FIRE_OFFICIAL ${fpFirst}`); const inc = off && off.incidents && off.incidents.find(f => f.name && f.name.toLowerCase().includes(fpFirst.toLowerCase())); if (inc) { truthLat = inc.lat; truthLon = inc.lon; } } catch {}
+        // PUBLIC keyless WFIGS YearToDate perimeters (no token; the Current layer requires auth - we use the open one)
+        const where = encodeURIComponent(`UPPER(poly_IncidentName) LIKE UPPER('%${fpFirst}%')`);
+        const url = await resolveFeedUrl(env, "fire_perimeter", { where }, `https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Interagency_Perimeters_YearToDate/FeatureServer/0/query?where={where}&outFields=poly_IncidentName,poly_GISAcres,attr_PercentContained,poly_DateCurrent,attr_IrwinID&returnGeometry=true&outSR=4326&f=geojson`);
         const r = await fetchWithTimeout(url, {}, 9000);
         if (!r.ok) { let b = ""; try { b = (await r.text()).slice(0, 160); } catch {}; return { cmd: "FIRE_PERIMETER", payload: { ok: false, error: `wfigs perimeter http ${r.status}`, detail: b } }; }
         const gj = await r.json();
         const feats = (gj.features || []).filter(f => f.geometry);
-        if (!feats.length) return { cmd: "FIRE_PERIMETER", payload: { ok: true, fire: fpName, perimeter_available: false, note: `No WFIGS perimeter polygon published for "${fpName}" yet. Perimeters aren't available for every incident (many small/new fires have points only); the incident may still be tracked via FIRE_OFFICIAL. WFIGS falls off small fires after a few days.` } };
-        // largest matching polygon
-        const feat = feats.reduce((a, b) => ((b.properties && b.properties.poly_GISAcres || 0) > (a.properties && a.properties.poly_GISAcres || 0) ? b : a), feats[0]);
+        if (!feats.length) return { cmd: "FIRE_PERIMETER", payload: { ok: true, fire: fpName, perimeter_available: false, note: `No WFIGS perimeter polygon found for "${fpName}" in the public YearToDate layer. Perimeters aren't published for every incident (small/new fires have points only).` } };
+        // compute centroid+extent for a polygon feature
+        const polyStats = (feat) => {
+          let minLat = 90, maxLat = -90, minLon = 180, maxLon = -180, sumLat = 0, sumLon = 0, n = 0;
+          const rings = feat.geometry.type === "MultiPolygon" ? feat.geometry.coordinates.flat() : feat.geometry.coordinates;
+          for (const ring of rings) for (const [lon, lat] of ring) { if (lat < minLat) minLat = lat; if (lat > maxLat) maxLat = lat; if (lon < minLon) minLon = lon; if (lon > maxLon) maxLon = lon; sumLat += lat; sumLon += lon; n++; }
+          return { centroid: n ? { lat: +(sumLat / n).toFixed(5), lon: +(sumLon / n).toFixed(5) } : null, extent_km: { ns: +((maxLat - minLat) * 111).toFixed(1), ew: +((maxLon - minLon) * 88).toFixed(1) }, bbox: { w: +minLon.toFixed(4), s: +minLat.toFixed(4), e: +maxLon.toFixed(4), n: +maxLat.toFixed(4) }, vertices: n };
+        };
+        // DISAMBIGUATE: if we know the incident's true position, pick the polygon whose centroid is closest to it
+        // (guards against a different same-named fire in another state). Else fall back to largest.
+        let feat, matchBasis;
+        const withStats = feats.map(f => ({ f, s: polyStats(f), acres: (f.properties && f.properties.poly_GISAcres) || 0 }));
+        if (truthLat != null && truthLon != null) {
+          withStats.forEach(w => { w.dist = w.s.centroid ? Math.sqrt(((w.s.centroid.lat - truthLat) * 111) ** 2 + ((w.s.centroid.lon - truthLon) * 88) ** 2) : 9999; });
+          const near = withStats.filter(w => w.dist < 60).sort((a, b) => b.acres - a.acres); // within 60km of the real fire, largest
+          if (near.length) { feat = near[0].f; matchBasis = `centroid within ${near[0].dist.toFixed(0)}km of NIFC incident location (${near.length} polygon(s) matched)`; }
+        }
+        if (!feat) { const big = withStats.sort((a, b) => b.acres - a.acres)[0]; feat = big.f; matchBasis = truthLat != null ? "no polygon near the incident location - using largest by name (VERIFY: may be a different same-named fire)" : "largest by name (no incident location to verify against)"; }
         const p = feat.properties || {};
-        // compute bbox + centroid + vertex count from the polygon geometry (handles Polygon + MultiPolygon)
-        let minLat = 90, maxLat = -90, minLon = 180, maxLon = -180, sumLat = 0, sumLon = 0, n = 0;
-        const rings = feat.geometry.type === "MultiPolygon" ? feat.geometry.coordinates.flat() : feat.geometry.coordinates;
-        for (const ring of rings) for (const [lon, lat] of ring) { if (lat < minLat) minLat = lat; if (lat > maxLat) maxLat = lat; if (lon < minLon) minLon = lon; if (lon > maxLon) maxLon = lon; sumLat += lat; sumLon += lon; n++; }
-        const centroid = n ? { lat: +(sumLat / n).toFixed(5), lon: +(sumLon / n).toFixed(5) } : null;
-        const extent_km = { ns: +((maxLat - minLat) * 111).toFixed(1), ew: +((maxLon - minLon) * 88).toFixed(1) };
+        const st = polyStats(feat);
         const acres = p.poly_GISAcres != null ? Math.round(p.poly_GISAcres) : null;
-        // GROWTH: compare to last logged perimeter for this fire
+        // GROWTH vs last logged pull (keyed by irwin id when available, else name)
+        const gkey = `fire:perimeter:${(p.attr_IrwinID || fpFirst).toString().toLowerCase()}`;
         let growth = null;
-        try {
-          const prevRaw = await env.AURA_KV.get(`fire:perimeter:${fpQuery.split(/\s+/)[0].toLowerCase()}`);
-          if (prevRaw) { const prev = JSON.parse(prevRaw); const hrs = (Date.now() - new Date(prev.at).getTime()) / 3600000; if (prev.acres != null && acres != null && hrs >= 0.5) { const dA = acres - prev.acres; growth = { acres_gained: dA, over_hours: +hrs.toFixed(1), acres_per_hour: +(dA / hrs).toFixed(1), prev_acres: prev.acres, prev_centroid: prev.centroid }; } }
-        } catch {}
-        // log this pull for next-time growth
-        await env.AURA_KV.put(`fire:perimeter:${fpQuery.split(/\s+/)[0].toLowerCase()}`, JSON.stringify({ acres, centroid, at: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 14 }).catch(() => {});
+        try { const prevRaw = await env.AURA_KV.get(gkey); if (prevRaw) { const prev = JSON.parse(prevRaw); const hrs = (Date.now() - new Date(prev.at).getTime()) / 3600000; if (prev.acres != null && acres != null && hrs >= 0.5) { const dA = acres - prev.acres; growth = { acres_gained: dA, over_hours: +hrs.toFixed(1), acres_per_hour: +(dA / hrs).toFixed(1), prev_acres: prev.acres }; } } } catch {}
+        await env.AURA_KV.put(gkey, JSON.stringify({ acres, centroid: st.centroid, at: new Date().toISOString() }), { expirationTtl: 60 * 60 * 24 * 14 }).catch(() => {});
         return { cmd: "FIRE_PERIMETER", payload: { ok: true, fire: p.poly_IncidentName || fpName, perimeter_available: true,
-          acres, percent_contained: p.attr_PercentContained ?? null, perimeter_updated: p.poly_DateCurrent ? new Date(p.poly_DateCurrent).toISOString() : null,
-          centroid, extent_km, bbox: { w: +minLon.toFixed(4), s: +minLat.toFixed(4), e: +maxLon.toFixed(4), n: +maxLat.toFixed(4) }, vertices: n,
-          growth,
-          note: "Authoritative WFIGS fire perimeter polygon (the real fire edge, ~5min refresh). extent_km = fire's footprint dimensions; centroid = polygon center. growth = acreage change since last FIRE_PERIMETER pull (run periodically to track spread rate from the real edge, not just hotspots)." + (growth ? "" : " No growth baseline yet - run again later to measure perimeter growth.") } };
+          acres, percent_contained: p.attr_PercentContained ?? null, irwin_id: p.attr_IrwinID || null,
+          perimeter_updated: p.poly_DateCurrent ? new Date(p.poly_DateCurrent).toISOString() : null,
+          centroid: st.centroid, extent_km: st.extent_km, bbox: st.bbox, vertices: st.vertices,
+          match_basis: matchBasis, growth,
+          note: "Authoritative WFIGS perimeter polygon (public keyless YearToDate layer). Disambiguated by matching polygon location to the NIFC incident position - not name alone. extent_km = footprint; growth = acreage change since last pull (run periodically). " + (matchBasis && matchBasis.includes("VERIFY") ? "WARNING: could not verify this is the right same-named fire - check match_basis." : "") + (growth ? "" : " No growth baseline yet - run again later.") } };
       } catch (e) { return { cmd: "FIRE_PERIMETER", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 

@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.393-2026-07-01";
+const BUILD = "aura-core-v4.9.394-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -10057,6 +10057,46 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       return { cmd: "COMMERCE", payload: { ok: false, error: "Usage: COMMERCE STRUCTURE ::: {what,who,goal,constraints} | COMMERCE PROVIDERS | COMMERCE PROVIDER ADD ::: {json}" } };
     }
 
+
+    case "CAPABILITIES": {
+      // THE LIVE COMMAND INVENTORY. Reads Aura's REAL current source from GitHub (same proven path as
+      // INDEX_AUDIT) and extracts every command (case "NAME":) with the description comment above/below it.
+      // ALWAYS CURRENT - never a snapshot. If a command exists in the source, it appears here; if not, it doesn't.
+      // This is THE trustworthy answer to "what can Aura do?" - supersedes any hand-written list (those rot).
+      //   CAPABILITIES              full list, grouped
+      //   CAPABILITIES <search>     only commands whose name/description matches the term (e.g. CAPABILITIES twilio)
+      if (!isOp) return { cmd: "CAPABILITIES", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const capFilter = rest.trim().toLowerCase();
+      let capSrc, capStale = false, capAt = null;
+      try {
+        const cr = await fetch("https://raw.githubusercontent.com/aaronkaracas-prog/aura-core/main/src/index.mjs", { headers: { "User-Agent": "aura-capabilities" } });
+        if (cr.ok) { capSrc = await cr.text(); capAt = new Date().toISOString(); await env.AURA_KV.put("cache:self_source", JSON.stringify({ src: capSrc, at: capAt }), { expirationTtl: 86400 }).catch(() => {}); }
+      } catch (e) { /* fall through to cache */ }
+      if (!capSrc) { try { const c = await env.AURA_KV.get("cache:self_source"); if (c) { const cj = JSON.parse(c); capSrc = cj.src; capAt = cj.at; capStale = true; } } catch {} }
+      if (!capSrc) return { cmd: "CAPABILITIES", payload: { ok: false, error: "Could not fetch self from GitHub (rate-limited?) and no cached copy. Retry in a minute." } };
+      const capLines = capSrc.split("\n");
+      const capBuild = (capSrc.match(/const BUILD = "([^"]+)"/) || [])[1] || null;
+      const cmds = [];
+      const seen = new Set();
+      for (let i = 0; i < capLines.length; i++) {
+        const m = capLines[i].match(/^\s*case\s+"([A-Z][A-Z0-9_]+)":/);
+        if (!m) continue;
+        const name = m[1];
+        if (seen.has(name)) continue; // dedupe shared handlers (first wins)
+        seen.add(name);
+        // nearest description comment within the next 8 lines (commands document themselves with a leading // comment)
+        let desc = "";
+        for (let j = i + 1; j < Math.min(i + 9, capLines.length); j++) {
+          const c = capLines[j].match(/^\s*\/\/\s*(.+)/);
+          if (c) { desc = c[1].trim().replace(/[^\x20-\x7E]/g, "").replace(/\s+/g, " ").slice(0, 90); break; }
+        }
+        cmds.push({ name, desc });
+      }
+      cmds.sort((a, b) => a.name.localeCompare(b.name));
+      const filtered = capFilter ? cmds.filter(c => c.name.toLowerCase().includes(capFilter) || c.desc.toLowerCase().includes(capFilter)) : cmds;
+      return { cmd: "CAPABILITIES", payload: { ok: true, source: capStale ? "github_cache" : "github_live", source_at: capAt, source_stale: capStale, build: capBuild, total_commands: cmds.length, showing: filtered.length, filter: capFilter || null, commands: filtered,
+        note: "Live command inventory read from Aura's real source on GitHub. Always current - if a command is in the deployed source it is here. This is THE trustworthy 'what can Aura do' answer; never trust a hand-written command list. Filter with: CAPABILITIES <term> (e.g. CAPABILITIES twilio)." } };
+    }
 
     case "CAPABILITY": {
       if (!isOp) return { cmd: "CAPABILITY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };

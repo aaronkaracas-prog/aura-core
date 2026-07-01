@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.363-2026-06-30";
+const BUILD = "aura-core-v4.9.364-2026-06-30";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -533,6 +533,19 @@ async function fetchEnsemble(env, lat, lon) {
   const cS = memberSeries("cape");
   if (cS.length) { const peaks = peakPer(cS); const sev = peaks.filter(c => c >= 1000).length; out.vars.cape_peak = stats(peaks); out.severe_cape_probability_pct = peaks.length ? Math.round(sev / peaks.length * 100) : null; }
   return out;
+}
+
+// GRIDDED sea-surface temperature (open-meteo marine, keyless). Works in the OPEN OCEAN where buoys are absent -
+// fills the hurricane-fuel gap the buoy-only marine tier leaves mid-ocean. >26C supports tropical cyclones; >28-29C is RI-favorable.
+async function fetchGriddedSST(env, lat, lon) {
+  const url = await resolveFeedUrl(env, "sst_gridded", { lat, lon }, `https://marine-api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&hourly=sea_surface_temperature&forecast_days=1`);
+  const r = await fetchWithTimeout(url, {}, 8000);
+  if (!r.ok) { let b = ""; try { b = (await r.text()).slice(0, 160); } catch {} return { ok: false, error: `sst http ${r.status}`, detail: b }; }
+  let j; try { j = await r.json(); } catch (e) { return { ok: false, error: "sst parse " + (e && e.message || e) }; }
+  const arr = j && j.hourly && j.hourly.sea_surface_temperature;
+  if (!Array.isArray(arr)) return { ok: false, error: "no sst in response" };
+  const v = arr.find(x => typeof x === "number");
+  return { ok: typeof v === "number", sst_c: typeof v === "number" ? +v.toFixed(1) : null };
 }
 
 // LIVE-EVENT FINDER - scan the whole country for the most significant ACTIVE NWS hazards right now
@@ -1868,6 +1881,20 @@ async function processCommand(line, env, isOp) {
       } catch (e) { return { cmd: "HURRICANES", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 
+    case "SST": {
+      // Sea-surface temp at a point: gridded (open-ocean capable) + nearest buoy cross-check. SST <lat> <lon>
+      const ssArgs = line.replace(/^SST\s*/i, "").trim().split(/\s+/).filter(Boolean);
+      const ssLat = parseFloat(ssArgs[0]), ssLon = parseFloat(ssArgs[1]);
+      if (isNaN(ssLat) || isNaN(ssLon)) return { cmd: "SST", payload: { ok: false, error: "Usage: SST <lat> <lon>" } };
+      try {
+        const g = await fetchGriddedSST(env, ssLat, ssLon);
+        let buoy = null;
+        try { const m = await fetchMarineConditions(env, ssLat, ssLon, 3); if (m && m.ok && m.count) { const b = m.buoys.find(x => x.sst_c != null); if (b) buoy = { sst_c: b.sst_c, station: b.station, dist: b.dist }; } } catch {}
+        return { cmd: "SST", payload: { ok: g.ok || !!buoy, lat: ssLat, lon: ssLon, gridded_sst_c: g.ok ? g.sst_c : null, gridded_error: g.ok ? undefined : g.error, gridded_detail: g.ok ? undefined : g.detail, nearest_buoy: buoy,
+          note: "Sea-surface temperature. gridded_sst_c (open-meteo marine, keyless) works in the open ocean where buoys are absent; nearest_buoy is the NDBC cross-check near coasts. >26C supports tropical cyclones, >28-29C is rapid-intensification-favorable." } };
+      } catch (e) { return { cmd: "SST", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
     case "ENSEMBLE": {
       // Forecast confidence from ensemble member spread. ENSEMBLE <lat> <lon>
       const enArgs = line.replace(/^ENSEMBLE\s*/i, "").trim().split(/\s+/).filter(Boolean);
@@ -1897,9 +1924,10 @@ async function processCommand(line, env, isOp) {
         // sample SST (fuel) at each path point from nearby buoys - null in open ocean (buoy-sparse), present near US coast/Gulf
         const sst_along_path = [];
         for (const p of path) {
-          let sst = null, buoy = null;
-          try { const m = await fetchMarineConditions(env, p.lat, p.lon, 4); if (m && m.ok && m.count) { const withSst = m.buoys.find(b => b.sst_c != null); if (withSst) { sst = withSst.sst_c; buoy = withSst.station; } } } catch {}
-          sst_along_path.push({ hours: p.hours, lat: p.lat, lon: p.lon, sst_c: sst, buoy });
+          let sst = null, source = null;
+          try { const g = await fetchGriddedSST(env, p.lat, p.lon); if (g.ok && g.sst_c != null) { sst = g.sst_c; source = "gridded"; } } catch {}
+          if (sst == null) { try { const m = await fetchMarineConditions(env, p.lat, p.lon, 4); if (m && m.ok && m.count) { const b = m.buoys.find(x => x.sst_c != null); if (b) { sst = b.sst_c; source = "buoy:" + b.station; } } } catch {} }
+          sst_along_path.push({ hours: p.hours, lat: p.lat, lon: p.lon, sst_c: sst, source });
         }
         const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
         if (!anthKey) return { cmd: "HURRICANE_REASON", payload: { ok: true, storm, path, sst_along_path, reasoning: null, note: "SST fuel read only (no reasoning key)." } };

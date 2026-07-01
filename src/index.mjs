@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.377-2026-07-01";
+const BUILD = "aura-core-v4.9.378-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1757,6 +1757,15 @@ async function processCommand(line, env, isOp) {
             type: pick(a, "IncidentTypeCategory", "FireCause"),
             county: pick(a, "POOCounty"), state: pick(a, "POOState"),
             discovered: disc ? new Date(disc).toISOString().slice(0, 10) : null,
+            structures_threatened: pick(a, "StructuresThreatened"),
+            structures_destroyed: pick(a, "StructuresDestroyed", "ResidencesDestroyed"),
+            injuries: pick(a, "Injuries", "InjuriesToDate"),
+            fatalities: pick(a, "Fatalities"),
+            fuel_model: pick(a, "PredominantFuelModel", "PrimaryFuelModel"),
+            growth_potential: pick(a, "FireBehaviorGeneral", "GrowthPotential"),
+            terrain: pick(a, "TerrainDifficulty"),
+            ic_name: pick(a, "IncidentCommanderName", "IncidentManagementOrganization"),
+            complex: pick(a, "ComplexName"),
             lat: f.geometry ? f.geometry.y : null, lon: f.geometry ? f.geometry.x : null
           };
         }).filter(i => i.name);
@@ -2487,6 +2496,48 @@ async function processCommand(line, env, isOp) {
         const sci = await computeFireScience(env, fsLat, fsLon);
         return { cmd: "FIRE_SCIENCE", payload: { ...sci, label: fsLabel } };
       } catch (e) { return { cmd: "FIRE_SCIENCE", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "FIRE_SITREP": {
+      // FULL OPERATIONAL PICTURE + ADVICE. The commander's-eye view of one fire: who/what is on it (ground
+      // personnel + containment), what aircraft are working the airspace (live ADS-B), the real fire science
+      // (Haines/VPD), and the 3-day outlook - then Aura advises what they SHOULD be doing over the next 3 days.
+      //   FIRE_SITREP <region>
+      if (!isOp) return { cmd: "FIRE_SITREP", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const srRegion = (line.replace(/^FIRE_SITREP\s+/i, "").trim() || "cottonwood").toLowerCase();
+      const step = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
+      // 1) the incident itself (find the named/largest fire in this region)
+      const offR = await step(`FIRE_OFFICIAL ${srRegion}`);
+      let incident = null;
+      if (offR && offR.ok && offR.incidents && offR.incidents.length) {
+        // match region name to an incident, else take largest
+        incident = offR.incidents.find(f => f.name && srRegion.includes(f.name.toLowerCase().split(" ")[0])) || offR.largest || offR.incidents[0];
+      }
+      if (!incident) return { cmd: "FIRE_SITREP", payload: { ok: false, error: "no incident found for " + srRegion } };
+      // 2) aircraft working the fire (live), 3) science at the fire, 4) 3-day outlook, 5) spread now
+      const [air, sci, outlook] = await Promise.all([ step(`AIRCRAFT_QUERY ${srRegion}`), (async () => { try { return await computeFireScience(env, incident.lat, incident.lon); } catch { return null; } })(), step(`FIRE_OUTLOOK ${srRegion}`) ]);
+      const aircraftSummary = air && air.ok ? { total: air.aircraft_count ?? (air.aircraft ? air.aircraft.length : 0), firefighting_likely: air.firefighting_count ?? null, note: air.note || null } : { unavailable: true, why: air && air.error ? air.error : "aircraft feed returned nothing (OpenSky anon tier is rate-limited/sparse; gov firefighting aircraft are often ADS-B-blocked)" };
+      // 6) Aura's command-level advice
+      const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      let advice = null;
+      if (anthKey) {
+        const sys = await loadPrompt(env, "fire_sitrep", "You are Aura, a wildfire operations advisor briefing incident command. You are given a fire's CURRENT status (size, containment, personnel, structures/injuries if reported), the aircraft working it, the real fire-behavior science (Haines Index, VPD, fuel dryness), and a 3-day fire-weather outlook. Produce a decision-focused SITREP. Be concrete and honest - if the 3-day outlook shows worsening (low RH, wind, no rain), say what that means for THIS fire given its current containment and staffing, and what command should do NOW to be ahead of it in 3 days (where to stage, which flank to reinforce, when the critical window is). Distinguish what you KNOW (live data) from what you INFER. Output STRICT JSON only: current_picture (one line: the fire right now in plain command language), whats_working (one line: assessment of current resourcing vs the threat), three_day_threat (one line: how the outlook changes the fire, name the peak day), recommended_actions (array of 2-4 short imperative strings: what command should do over the next 3 days, specific), staging_advice (one line: given the projected push direction, where to get ahead of it), confidence (low|medium|high), honest_limits (one line: what you do NOT see - real crew positions, agency agreements, ground truth).");
+        const usr = `FIRE SITREP REQUEST - ${incident.name} Fire\n\nCURRENT STATUS (live NIFC/WFIGS):\n- Size: ${incident.size_acres} acres, ${incident.contained_pct == null ? "?" : incident.contained_pct}% contained\n- Personnel assigned: ${incident.personnel || "?"}\n- County: ${incident.county}, discovered ${incident.discovered}\n- Structures threatened: ${incident.structures_threatened ?? "not reported"}, destroyed: ${incident.structures_destroyed ?? "not reported"}\n- Injuries: ${incident.injuries ?? "not reported"}, fatalities: ${incident.fatalities ?? "not reported"}\n- Fuel: ${incident.fuel_model ?? "not reported"}, terrain: ${incident.terrain ?? "not reported"}\n\nAIRCRAFT WORKING THE FIRE: ${aircraftSummary.unavailable ? "no live aircraft data this cycle (" + aircraftSummary.why + ")" : JSON.stringify(aircraftSummary)}\n\nFIRE SCIENCE NOW: ${sci && sci.ok ? `Haines ${sci.haines_index} (${sci.haines_meaning}), VPD ${sci.vpd_kpa} kPa, fuel dryness ${sci.fuel_dryness}, surface RH ${sci.surface_rh_pct}%` : "unavailable"}\n\n3-DAY OUTLOOK: ${outlook && outlook.ok && outlook.outlook ? JSON.stringify(outlook.outlook).slice(0, 900) : "unavailable"}\n\nProduce the command SITREP JSON now.`;
+        try {
+          const res = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1000, system: sys, messages: [{ role: "user", content: usr }] })
+          });
+          if (res.ok) { const j = await res.json(); let t = (j.content && j.content[0] && j.content[0].text) ? j.content[0].text : ""; t = t.replace(/```json|```/g, "").trim(); const f = t.indexOf("{"), l = t.lastIndexOf("}"); try { advice = JSON.parse(f >= 0 && l > f ? t.slice(f, l + 1) : t); } catch { advice = { current_picture: t.slice(0, 400), parse_failed: true }; } }
+        } catch {}
+      }
+      return { cmd: "FIRE_SITREP", payload: { ok: true, region: srRegion, fire: incident.name,
+        status: { size_acres: incident.size_acres, contained_pct: incident.contained_pct, personnel: incident.personnel, structures_threatened: incident.structures_threatened, structures_destroyed: incident.structures_destroyed, injuries: incident.injuries, county: incident.county, position: { lat: incident.lat, lon: incident.lon } },
+        aircraft: aircraftSummary,
+        fire_science: sci && sci.ok ? { haines_index: sci.haines_index, haines_meaning: sci.haines_meaning, vpd_kpa: sci.vpd_kpa, fuel_dryness: sci.fuel_dryness } : null,
+        outlook_3day: outlook && outlook.ok ? outlook.outlook : null,
+        advice,
+        note: "Full operational SITREP - live ground status + aircraft + fire science + 3-day outlook + command-level advice. Live data is real; advice is Aura's analysis, not a substitute for incident command." } };
     }
 
     case "FIRE_OUTLOOK": {

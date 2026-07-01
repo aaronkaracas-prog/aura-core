@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.389-2026-07-01";
+const BUILD = "aura-core-v4.9.390-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -2657,6 +2657,51 @@ async function processCommand(line, env, isOp) {
         outlook_3day: outlook && outlook.ok ? outlook.outlook : null,
         advice,
         note: "Full operational SITREP - live ground status + aircraft + fire science + 3-day outlook + command-level advice. Live data is real; advice is Aura's analysis, not a substitute for incident command." } };
+    }
+
+    case "FIRE_INGEST": {
+      // HISTORICAL INGEST. Distills a PAST fire from the WFIGS full-history perimeter layer (public keyless) into
+      // a lesson in the same library FIRE_SIMILAR reads. Historical data is THINNER than live (no fuel/containment
+      // timeline in the public history layer) - we capture what's genuinely there and flag the rest as unknown.
+      //   FIRE_INGEST <fire-name> [year]
+      if (!isOp) return { cmd: "FIRE_INGEST", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const inArgs = line.replace(/^FIRE_INGEST\s+/i, "").trim();
+      const yearMatch = inArgs.match(/\b(19|20)\d{2}\b/);
+      const inYear = yearMatch ? yearMatch[0] : null;
+      const inName = inArgs.replace(/\b(19|20)\d{2}\b/, "").trim();
+      if (!inName) return { cmd: "FIRE_INGEST", payload: { ok: false, error: "usage: FIRE_INGEST <fire-name> [year]" } };
+      try {
+        // full-history perimeter layer (public, keyless, all years). Field: poly_IncidentName + attr_FireYear on YTD,
+        // but the history view uses INCIDENT + FIRE_YEAR. Query by incident name LIKE, optionally filter year.
+        let where = `UPPER(INCIDENT) LIKE UPPER('%${inName.replace(/[^a-zA-Z0-9 ]/g, "")}%')`;
+        if (inYear) where += ` AND FIRE_YEAR=${inYear}`;
+        const url = await resolveFeedUrl(env, "fire_history", { where }, `https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/InterAgencyFirePerimeterHistory_All_Years_View/FeatureServer/0/query?where={where}&outFields=INCIDENT,FIRE_YEAR,GIS_ACRES,AGENCY,STATE&returnGeometry=true&outSR=4326&resultRecordCount=10&f=geojson`);
+        const r = await fetchWithTimeout(url, {}, 10000);
+        if (!r.ok) { let b = ""; try { b = (await r.text()).slice(0, 200); } catch {}; return { cmd: "FIRE_INGEST", payload: { ok: false, error: `fire history http ${r.status}`, detail: b } }; }
+        const gj = await r.json();
+        const feats = (gj.features || []).filter(f => f.properties);
+        if (!feats.length) return { cmd: "FIRE_INGEST", payload: { ok: false, error: `no historical fire found matching "${inName}"${inYear ? " (" + inYear + ")" : ""} in the WFIGS full-history layer` } };
+        // largest matching polygon (the main fire, not a same-name small one)
+        const feat = feats.reduce((a, b) => ((b.properties.GIS_ACRES || 0) > (a.properties.GIS_ACRES || 0) ? b : a), feats[0]);
+        const p = feat.properties;
+        // centroid from geometry
+        let sumLat = 0, sumLon = 0, n = 0;
+        if (feat.geometry) { const rings = feat.geometry.type === "MultiPolygon" ? feat.geometry.coordinates.flat() : feat.geometry.coordinates; for (const ring of rings) for (const [lon, lat] of ring) { sumLat += lat; sumLon += lon; n++; } }
+        const centroid = n ? { lat: +(sumLat / n).toFixed(4), lon: +(sumLon / n).toFixed(4) } : null;
+        const acres = p.GIS_ACRES != null ? Math.round(p.GIS_ACRES) : null;
+        // the historical lesson - HONEST about what's known vs not (public history has no fuel/containment/personnel)
+        const lesson = {
+          name: p.INCIDENT, state: p.STATE || null, fire_year: p.FIRE_YEAR, distilled_at: new Date().toISOString(), source: "wfigs_history",
+          signature: { fuel_model: null, size_class: sizeClass(acres), size_acres: acres, growth_potential: null, containment_stage: "final (historical)", fire_type: "WF" },
+          location: centroid, agency: p.AGENCY || null,
+          outcome: { final_acres: acres, note: "historical final size; public history layer has no containment-timeline/fuel/personnel detail" },
+          known_limits: "Distilled from WFIGS full-history perimeter (public). Contains name/year/final-acres/location only. Fuel model, containment progression, resources, casualties NOT in this source - would need ICS-209 archives (a separate ingest)."
+        };
+        const lk = `fire:lesson:${(p.INCIDENT + "_" + (p.STATE || "") + "_" + p.FIRE_YEAR).toLowerCase().replace(/[^a-z0-9_]/g, "")}`;
+        await env.AURA_KV.put(lk, JSON.stringify(lesson), { expirationTtl: 60 * 60 * 24 * 365 * 2 }).catch(() => {});
+        return { cmd: "FIRE_INGEST", payload: { ok: true, ingested: lesson, key: lk, matches_found: feats.length,
+          note: "Historical fire distilled into a lesson from the WFIGS full-history layer (public keyless). Thinner than a live-fire lesson - history layer has geometry/acres/year but no fuel/containment/personnel. For the rich signature we'd add ICS-209 archives later. FIRE_SIMILAR now includes this in its corpus." } };
+      } catch (e) { return { cmd: "FIRE_INGEST", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 
     case "FIRE_SMOKE": {

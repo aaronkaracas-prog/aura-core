@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.371-2026-07-01";
+const BUILD = "aura-core-v4.9.373-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -635,7 +635,7 @@ async function fetchMeteoAlarm(env, lat, lon) {
   const top = severe.reduce((m, a) => (!m || a.level > m.level ? a : m), null);
   return { ok: true, in_europe: true, country, alert_count: alerts.length,
     top_severe: top, max_level: top ? top.level : (alerts.some(a => a.level) ? 1 : 0),
-    severe_forecast: !!(top && top.level >= 2), alerts: alerts.slice(0, 12), _debug: { entry_count: entries.length, bytes: xml.length, has_awareness: /awareness_level/i.test(xml), has_cap: /<cap:/i.test(xml), sample: alerts.length ? undefined : xml.slice(0, 1400) } };
+    severe_forecast: !!(top && top.level >= 2), alerts: alerts.slice(0, 12) };
 }
 
 // LIVE-EVENT FINDER - scan the whole country for the most significant ACTIVE NWS hazards right now
@@ -3238,7 +3238,12 @@ async function processCommand(line, env, isOp) {
       const topicKey = (line.replace(/^SITUATION_BRIEF\s*/i, "").trim() || "hormuz").toLowerCase();
       let snap = null;
       try { const s = await env.AURA_KV.get(`situation:snapshot:${topicKey}`); if (s) snap = JSON.parse(s); } catch {}
-      if (!snap) return { cmd: "SITUATION_BRIEF", payload: { ok: false, error: "No snapshot for " + topicKey + ". Run SITUATION_PULL " + topicKey + " first." } };
+      // auto-pull if no snapshot exists yet - BRIEF is self-sufficient, no two-step trap
+      let autoPulled = false;
+      if (!snap) {
+        try { const pr = await processCommand(`SITUATION_PULL ${topicKey}`, env, true); if (pr && pr.payload && pr.payload.ok) { const s2 = await env.AURA_KV.get(`situation:snapshot:${topicKey}`); if (s2) { snap = JSON.parse(s2); autoPulled = true; } } } catch {}
+      }
+      if (!snap) return { cmd: "SITUATION_BRIEF", payload: { ok: false, error: "No snapshot for " + topicKey + " and auto-pull failed. Check that SITUATION_PULL " + topicKey + " works (topic may not be defined)." } };
       const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
       const grokKey = await env.AURA_KV.get("secret:grok_api_key").catch(() => null);
       if (!anthKey && !grokKey) return { cmd: "SITUATION_BRIEF", payload: { ok: false, error: "no reasoning key (secret:anthropic or secret:grok_api_key) for analysis" } };
@@ -3337,7 +3342,7 @@ async function processCommand(line, env, isOp) {
           }
           if (!brief) brief = { status: text.slice(0, 400), raw: true };
         }
-        const out = { topic: topicKey, label: snap.label, pulled_at: snap.pulled_at, briefed_at: new Date().toISOString(), provider, brief, sources: { news: (snap.news || []).length, oil: !!snap.oil, ships: snap.ships ? snap.ships.vessel_count : 0 } };
+        const out = { topic: topicKey, label: snap.label, pulled_at: snap.pulled_at, briefed_at: new Date().toISOString(), auto_pulled: autoPulled, provider, brief, sources: { news: (snap.news || []).length, oil: !!snap.oil, ships: snap.ships ? snap.ships.vessel_count : 0 } };
         await env.AURA_KV.put(`situation:brief:${topicKey}`, JSON.stringify(out), { expirationTtl: 3600 }).catch(() => {});
         return { cmd: "SITUATION_BRIEF", payload: { ok: true, ...out } };
       } catch (e) { return { cmd: "SITUATION_BRIEF", payload: { ok: false, error: String(e && e.message || e) } }; }

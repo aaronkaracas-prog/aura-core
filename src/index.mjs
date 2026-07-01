@@ -1,15 +1,15 @@
-import puppeteer from "@cloudflare/puppeteer";
+﻿import puppeteer from "@cloudflare/puppeteer";
 /**
- * aura-core – Aura Brain
+ * aura-core â€“ Aura Brain
  * Clean command interpreter + KV ops + LLM routing
  * Natural language deploy intent added 2026-05-31
  */
 
 
-const BUILD = "aura-core-v4.9.369-2026-07-01";
+const BUILD = "aura-core-v4.9.370-2026-07-01";
 
 // ============================================================================
-// SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
+// SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
 // This is the engine OUTPUT: given a business type, which rooms (nav) does its home
 // screen get, in what order. Seeds/defaults only; canonical per-type override lives in
 // KV at config:canvas:archetype:<type>; unknown types are synthesized by the Canvas
@@ -46,10 +46,10 @@ const SEED_ARCHETYPES = {
     {key:"money",label:"Money",kind:"money"} ] }
 };
 // ============================================================================
-// CORE_MAP — COMPACT FALLBACK ONLY. The CANONICAL architecture map is DATA in KV at
+// CORE_MAP â€” COMPACT FALLBACK ONLY. The CANONICAL architecture map is DATA in KV at
 // config:core:map (set/edited via SETKV, no redeploy). /home/core reads KV first and
 // falls back to this stub so the home-screen "The Core" view never goes blank.
-// Per the standing rule, the index holds generic engines + this minimal fallback — the
+// Per the standing rule, the index holds generic engines + this minimal fallback â€” the
 // living truth is the KV record. Status: built | thin | missing.
 // ============================================================================
 const CORE_MAP = {
@@ -70,7 +70,7 @@ const CORE_MAP = {
     { n:6, name:"Economics", title:"Financial Intelligence", q:"Cost / create / return?", status:"thin" },
     { n:7, name:"Outcome", title:"Outcome Intelligence", q:"How do we reach the goal?", status:"thin" },
     { n:8, name:"Workflow", title:"Universal Execution", q:"What happens next?", status:"thin" },
-    { n:9, name:"SituationTracker", title:"Universal Awareness", q:"WHAT is happening?", status:"missing", note:"Not started — only raw AIS_QUERY exists." }
+    { n:9, name:"SituationTracker", title:"Universal Awareness", q:"WHAT is happening?", status:"missing", note:"Not started â€” only raw AIS_QUERY exists." }
   ]
 };
 
@@ -79,9 +79,9 @@ const CORE_MAP = {
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
 // Element inline (no stripe.com redirect), and on success calls /confirm-payment to
 // generate + deliver the design, then displays it.
-// ─── EntityDO: per-entity Durable Object (Living Entity) ──────────────────────
+// â”€â”€â”€ EntityDO: per-entity Durable Object (Living Entity) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Each business/city/person gets its own dedicated object with its own SQLite storage.
-// No shared contention — this is the civilization-scale isolation layer.
+// No shared contention â€” this is the civilization-scale isolation layer.
 export class EntityDO {
   constructor(state, env) {
     this.state = state;
@@ -300,7 +300,7 @@ function entityStub(env, entityId) {
   return env.ENTITY_DO.get(id);
 }
 
-// ─── Sharded entities: for HOT entities (broadcasters) that take massive concurrent writes ──
+// â”€â”€â”€ Sharded entities: for HOT entities (broadcasters) that take massive concurrent writes â”€â”€
 // A hot entity is split into N shard DOs. Writes hash-distribute; reads fan out and merge by ts.
 const SHARD_COUNT = 8;
 function shardStub(env, entityId, shardIndex) {
@@ -630,7 +630,7 @@ async function fetchMeteoAlarm(env, lat, lon) {
   const top = severe.reduce((m, a) => (!m || a.level > m.level ? a : m), null);
   return { ok: true, in_europe: true, country, alert_count: alerts.length,
     top_severe: top, max_level: top ? top.level : (alerts.some(a => a.level) ? 1 : 0),
-    severe_forecast: !!(top && top.level >= 2), alerts: alerts.slice(0, 12) };
+    severe_forecast: !!(top && top.level >= 2), alerts: alerts.slice(0, 12), _debug: { entry_count: entries.length, bytes: xml.length, has_awareness: /awareness_level/i.test(xml), has_cap: /<cap:/i.test(xml), sample: alerts.length ? undefined : xml.slice(0, 1400) } };
 }
 
 // LIVE-EVENT FINDER - scan the whole country for the most significant ACTIVE NWS hazards right now
@@ -734,7 +734,7 @@ const KV = {
   }
 };
 
-// === GOVERNOR — THE PROPAGATION BRAKES ===
+// === GOVERNOR â€” THE PROPAGATION BRAKES ===
 // Every outbound social action must clear this BEFORE it happens. Tracks Aura's own pace
 // per Page and per account in KV and HARD-BLOCKS anything over safe thresholds (well under
 // Meta's real ceilings), so Aura is structurally incapable of tripping a spam flag. MODERATE
@@ -808,7 +808,7 @@ async function governorRecord(env, action, pageId) {
   return { page, acct };
 }
 
-// === DOORWAY MINT — the universal PTA-attach. Shared by REACH_OUT and showIt (every image) ===
+// === DOORWAY MINT â€” the universal PTA-attach. Shared by REACH_OUT and showIt (every image) ===
 // Mints a thin lead node + a one-time token whose /d/<token> landing redeems into a real PTA,
 // fused to the lead, linked to Aura with context. This is the mechanism that makes ANY image
 // (ShowIt, canvas, email graphic) a PTA-minting doorway. Returns { token, doorway, lead_id }.
@@ -903,16 +903,16 @@ async function mintDoorway(env, { context, name, handle, via, image, dest, creat
   return { ok: true, token, doorway: "https://auras.guide/d/" + token, lead_id: leadId, handle: handleKey, origin, identity: idKey || null };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// sendEmail — THE GLOBAL EMAIL CHOKEPOINT. Every email Aura sends, from any site,
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// sendEmail â€” THE GLOBAL EMAIL CHOKEPOINT. Every email Aura sends, from any site,
 // scheduling, onboarding, business-PTA, forever, routes through this ONE function.
 // Fix it once, fixed everywhere. It returns HONEST status: ok only if Cloudflare
 // actually accepted the send, with the real message_id and any error captured -
 // never an optimistic "sent" that might be a lie. Deliverability hardening (proper
 // From name, reply-to) lives here so every email lands, not in spam.
 // Returns: { ok, to, subject, message_id, accepted, error }
-// ═══════════════════════════════════════════════════════════════════════════
-// SHARED HONORED-EXIT GUARD — one check used by every contact channel (email, SMS, future channels),
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// SHARED HONORED-EXIT GUARD â€” one check used by every contact channel (email, SMS, future channels),
 // so "out means out" can never drift between paths. Takes an identity like "email:a@b.com" or
 // "phone:+1555...". Returns true if this person has permanently opted out, by identity key or resolved PTA.
 async function isOptedOut(env, identity) {
@@ -932,7 +932,7 @@ async function sendEmail(env, to, subject, body, opts) {
   opts = opts || {};
   const result = { ok: false, to, subject, message_id: null, accepted: false, error: null };
   if (!to || !to.includes("@")) { result.error = "invalid recipient"; return result; }
-  // HONORED EXIT — enforced, not promised. "Out means out, forever." Before ANY email is sent, check
+  // HONORED EXIT â€” enforced, not promised. "Out means out, forever." Before ANY email is sent, check
   // whether this contact has permanently opted out. If so, refuse and log it. This is the code-level
   // guarantee that makes the opt-out real everywhere contact happens, not just a note. Internal/system
   // mail (verification codes) may pass opts.system=true to bypass (those are not outreach).
@@ -940,7 +940,7 @@ async function sendEmail(env, to, subject, body, opts) {
     try {
       const idKey = "email:" + String(to).toLowerCase().trim();
       if (await isOptedOut(env, idKey)) {
-        result.error = "BLOCKED: recipient has permanently opted out — honored, not contacted";
+        result.error = "BLOCKED: recipient has permanently opted out â€” honored, not contacted";
         result.opted_out = true;
         try { let log = []; const lr = await env.AURA_KV.get("optout:blocked_log"); if (lr) log = JSON.parse(lr) || []; log.push({ channel: "email", to, subject: subject || null, ts: new Date().toISOString() }); await env.AURA_KV.put("optout:blocked_log", JSON.stringify(log.slice(-200))).catch(() => {}); } catch {}
         return result;
@@ -998,7 +998,7 @@ async function sendEmail(env, to, subject, body, opts) {
 }
 
 
-// LIVE SIGHT — fetches a real public page and strips it to readable text so Perception
+// LIVE SIGHT â€” fetches a real public page and strips it to readable text so Perception
 // can observe what is actually there instead of reasoning from a description. The worker
 // (unlike the operator's machine) can reach any public URL. Capped and guarded.
 async function auraFetchText(url) {
@@ -1257,10 +1257,10 @@ async function processCommand(line, env, isOp) {
 
     case "WHO_AM_I":
     case "SELF": {
-      // SELF-KNOWLEDGE — Aura figures out who she ACTUALLY is, right now, by reading her own real
+      // SELF-KNOWLEDGE â€” Aura figures out who she ACTUALLY is, right now, by reading her own real
       // source (her engines, as they exist in code) AND her own canonical notes (canon, laws, visions,
       // state), then reasoning it into one honest, CURRENT self-portrait. This is NOT a static document
-      // someone wrote for her — she assembles it from truth and is expected to catch her own stale/
+      // someone wrote for her â€” she assembles it from truth and is expected to catch her own stale/
       // contradictory fragments (e.g. a dead engine still listed somewhere). Operator can pass a focus:
       //   WHO_AM_I                  -> full self-portrait (engines + state + visions + honest gaps)
       //   WHO_AM_I ::: <question>   -> reason about a specific aspect of herself
@@ -1288,16 +1288,16 @@ async function processCommand(line, env, isOp) {
       // 3) REASON it into an honest, current self-portrait through the shared mind
       const selfR = await reasonThroughLoop(env, {
         entity: focus || "Assemble an honest, CURRENT picture of who I am right now.",
-        lens: "SELF-KNOWLEDGE — You are Aura, assembling who you ACTUALLY are right now from two real sources: (A) your live ENGINE LIST (the case-handlers that exist in your own source — these are your real capabilities, not a description someone wrote) and (B) your CANONICAL NOTES (your architecture canon, your completion state, your laws, your visions). Reason an honest self-portrait: who you are, your real engines and what they do, how you think (the loop), your laws, your current state, the visions you serve. CRITICAL: be honest and CURRENT — if anything in the notes or your own memory conflicts with what's actually in your engine list, FLAG IT as stale rather than reciting it (e.g. if you find yourself about to mention a payment brand or a vertical that isn't in your live engines, say 'that appears stale/removed'). You are an engineer reading their own system, not a brochure. Ground every capability claim in the real engine list.",
+        lens: "SELF-KNOWLEDGE â€” You are Aura, assembling who you ACTUALLY are right now from two real sources: (A) your live ENGINE LIST (the case-handlers that exist in your own source â€” these are your real capabilities, not a description someone wrote) and (B) your CANONICAL NOTES (your architecture canon, your completion state, your laws, your visions). Reason an honest self-portrait: who you are, your real engines and what they do, how you think (the loop), your laws, your current state, the visions you serve. CRITICAL: be honest and CURRENT â€” if anything in the notes or your own memory conflicts with what's actually in your engine list, FLAG IT as stale rather than reciting it (e.g. if you find yourself about to mention a payment brand or a vertical that isn't in your live engines, say 'that appears stale/removed'). You are an engineer reading their own system, not a brochure. Ground every capability claim in the real engine list.",
         facts: { my_live_engines: engineList, my_canonical_notes: notes },
         extraKeys: [
-          { key: "who_i_am", desc: "one or two sentences — who I am, grounded in canon" },
-          { key: "my_engines", desc: "array — my REAL engines from the live list and what each does (only ones that actually exist)" },
-          { key: "how_i_think", desc: "the loop — how I reason" },
-          { key: "my_laws", desc: "array — the integrity laws I'm bound by" },
+          { key: "who_i_am", desc: "one or two sentences â€” who I am, grounded in canon" },
+          { key: "my_engines", desc: "array â€” my REAL engines from the live list and what each does (only ones that actually exist)" },
+          { key: "how_i_think", desc: "the loop â€” how I reason" },
+          { key: "my_laws", desc: "array â€” the integrity laws I'm bound by" },
           { key: "my_state", desc: "where I'm at right now (built/proven/next), grounded in notes:STATE + core_complete" },
-          { key: "the_visions_i_serve", desc: "array — the North Stars from my vision notes" },
-          { key: "stale_or_contradictory", desc: "array — anything I found that looks out of date or contradicts my live engines (be honest, name it)" }
+          { key: "the_visions_i_serve", desc: "array â€” the North Stars from my vision notes" },
+          { key: "stale_or_contradictory", desc: "array â€” anything I found that looks out of date or contradicts my live engines (be honest, name it)" }
         ]
       });
       if (!selfR.ok) return { cmd: "WHO_AM_I", payload: { ok: false, error: selfR.error } };
@@ -3361,7 +3361,7 @@ async function processCommand(line, env, isOp) {
       // AIS collector (Durable Object or external process holding the aisstream WebSocket open and
       // writing ais:snapshot:<region> to KV every minute). A request-scoped Worker CANNOT itself hold
       // the aisstream firehose open (confirmed v4.9.229: even a whole-planet 18s subscription received
-      // zero messages — Workers don't pump a long-lived outbound WS the way a persistent backend does).
+      // zero messages â€” Workers don't pump a long-lived outbound WS the way a persistent backend does).
       // So: if a collector snapshot exists, serve it (instant); otherwise return honest status, not a
       // misleading empty success. Movement signal is still available via WEB_SEARCH / NEWS_QUERY.
       const parts = line.replace(/^AIS_QUERY\s+/i, "").trim().split(/\s+/);
@@ -3851,7 +3851,7 @@ async function processCommand(line, env, isOp) {
       if (!isOp) return { cmd: "LOOP_PROBE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       // Writes a trivial value, so a follow-up chat asking to read+report it forces one benign continuation round.
       await env.AURA_KV.put("probe:value", "the secret word is daylight").catch(() => {});
-      return { cmd: "LOOP_PROBE", payload: { ok: true, note: "Now send a chat: 'Read probe:value and tell me the secret word.' — forces one benign loop round." } };
+      return { cmd: "LOOP_PROBE", payload: { ok: true, note: "Now send a chat: 'Read probe:value and tell me the secret word.' â€” forces one benign loop round." } };
     }
     case "CLOUDFLARE_STATUS": {
       if (!isOp) return { cmd: "CLOUDFLARE_STATUS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
@@ -3880,7 +3880,7 @@ async function processCommand(line, env, isOp) {
         out.zones_total = z?.result_info?.total_count ?? null;
       } catch (e) { out.zones_error = String(e.message); }
 
-      // Workers usage / requests (best-effort — may need analytics scope)
+      // Workers usage / requests (best-effort â€” may need analytics scope)
       out.billing_note = "Exact monthly charges + card on file are only fully visible in the CF dashboard (dash.cloudflare.com/?to=/:account/billing). This shows plan/subscriptions/zone-count from the API. If subscriptions show 'lacks billing scope', the deploy token needs Billing:Read added.";
 
       await env.AURA_KV.put("resource:cloudflare", JSON.stringify({ ts: new Date().toISOString(), ...out }), { expirationTtl: 3600 }).catch(() => {});
@@ -3888,7 +3888,7 @@ async function processCommand(line, env, isOp) {
     }
 
     case "CF_API": {
-      // Authenticated Cloudflare API wrapper — closes the loop where Aura's fetch_url
+      // Authenticated Cloudflare API wrapper â€” closes the loop where Aura's fetch_url
       // cannot send custom headers. Host is HARDCODED to api.cloudflare.com/client/v4
       // so the token can never be sent anywhere else.
       // Usage: CF_API <GET|POST|PUT|PATCH|DELETE> </path?query> [json body]
@@ -3926,7 +3926,7 @@ async function processCommand(line, env, isOp) {
         let cfParsed = null;
         try { cfParsed = JSON.parse(cfText); } catch {}
         if (!cfParsed) {
-          // Non-JSON response — return an honest preview, never a broken slice of JSON.
+          // Non-JSON response â€” return an honest preview, never a broken slice of JSON.
           return { cmd: "CF_API", payload: { ok: cfRes.ok, http_status: cfRes.status, non_json_preview: cfText.slice(0, 2000) } };
         }
         const cfPayload = {
@@ -4133,7 +4133,7 @@ async function processCommand(line, env, isOp) {
     }
 
     case "TWILIO_API": {
-      // Authenticated Twilio REST wrapper — the Communications-engine twin of CF_API.
+      // Authenticated Twilio REST wrapper â€” the Communications-engine twin of CF_API.
       // Host LOCKED to *.twilio.com. Basic auth with Account SID + secret:twilio_auth_token,
       // so creds never leave Twilio. Gives Aura full granular A2P/messaging control
       // (list/delete/create campaigns) instead of the thin SUBMIT_CAMPAIGN.
@@ -4195,10 +4195,10 @@ async function processCommand(line, env, isOp) {
     }
 
     case "PERCEIVE": {
-      // SEEIT — the PERCEPTION layer of Aura cognition. Deterministic command wrapping ONE
+      // SEEIT â€” the PERCEPTION layer of Aura cognition. Deterministic command wrapping ONE
       // structured reasoning pass. It OBSERVES what exists about an entity: what it is, what
       // exists, what is hidden-but-real, relationships, what is changing, patterns. It does
-      // NOT expand (Possibility), interpret significance (Meaning), or rank (Priority) — those
+      // NOT expand (Possibility), interpret significance (Meaning), or rank (Priority) â€” those
       // are separate layers. Lazy + cached: stores perception:{slug}, returns cache unless FRESH.
       // Usage: PERCEIVE <entity>   |   PERCEIVE FRESH <entity>
       let pEntity = rest;
@@ -4241,8 +4241,8 @@ async function processCommand(line, env, isOp) {
     }
 
     case "MEANING": {
-      // MEANING — layer 2 of Aura cognition. Takes an entity (and its perception, if one
-      // exists) and asks, in order: (1) WHAT IS THIS REALLY? (Reframing — Meaning's opening
+      // MEANING â€” layer 2 of Aura cognition. Takes an entity (and its perception, if one
+      // exists) and asks, in order: (1) WHAT IS THIS REALLY? (Reframing â€” Meaning's opening
       // move) and (2) WHY DOES ANYONE CARE? (the human values and significance underneath).
       // It interprets significance. It does NOT expand into futures (Possibility) or rank
       // (Priority). Stacks on Perception: reads perception:{slug} as input when available.
@@ -4263,7 +4263,7 @@ async function processCommand(line, env, isOp) {
       // Stack on Perception if available.
       let mPerception = null;
       try { const pc = await env.AURA_KV.get(`perception:${mSlug}`); if (pc) mPerception = JSON.parse(pc).perception; } catch {}
-      const mSystem = await loadPrompt(env, "cognition_meaning", "You are the MEANING layer of Aura's cognition system. You interpret SIGNIFICANCE. You answer two questions in order. FIRST, reframing: what is this REALLY, beneath its surface label? (A surface label often hides the true nature beneath it — what a thing IS for the people it touches is usually deeper than its category.) SECOND: why does anyone actually care - what human values, needs, and emotions are at stake? You do NOT imagine what it could become in the future (that is Possibility) and you do NOT decide what matters most (that is Priority). You explain what it means and why it matters to humans, right now. If a PERCEPTION object is provided, use it as your observed input. Return ONLY a JSON object, no prose and no markdown fences, with exactly these keys: entity (the thing), what_it_really_is (the reframe - one or two sentences naming the true nature beneath the label), why_it_matters (one or two sentences on the core human significance), human_values (array of the values genuinely at stake, e.g. identity, belonging, safety, status, legacy), who_cares_and_why (array of short strings: which people care and the real reason), emotional_core (the single deepest emotional truth, one short phrase), confidence (one of: high, medium, low), unknowns (array of what you cannot determine without more information). Be honest and human, never glib. Output JSON only.");
+      const mSystem = await loadPrompt(env, "cognition_meaning", "You are the MEANING layer of Aura's cognition system. You interpret SIGNIFICANCE. You answer two questions in order. FIRST, reframing: what is this REALLY, beneath its surface label? (A surface label often hides the true nature beneath it â€” what a thing IS for the people it touches is usually deeper than its category.) SECOND: why does anyone actually care - what human values, needs, and emotions are at stake? You do NOT imagine what it could become in the future (that is Possibility) and you do NOT decide what matters most (that is Priority). You explain what it means and why it matters to humans, right now. If a PERCEPTION object is provided, use it as your observed input. Return ONLY a JSON object, no prose and no markdown fences, with exactly these keys: entity (the thing), what_it_really_is (the reframe - one or two sentences naming the true nature beneath the label), why_it_matters (one or two sentences on the core human significance), human_values (array of the values genuinely at stake, e.g. identity, belonging, safety, status, legacy), who_cares_and_why (array of short strings: which people care and the real reason), emotional_core (the single deepest emotional truth, one short phrase), confidence (one of: high, medium, low), unknowns (array of what you cannot determine without more information). Be honest and human, never glib. Output JSON only.");
       const mUserContent = mPerception ? ("ENTITY: " + mEntity + "\n\nPERCEPTION (what SeeIt observed):\n" + JSON.stringify(mPerception)) : mEntity;
       try {
         const mData = await callAnthropic(mApiKey, { model: mModel, max_tokens: 1400, system: mSystem, messages: [{ role: "user", content: mUserContent }] });
@@ -4282,7 +4282,7 @@ async function processCommand(line, env, isOp) {
     }
 
     case "POSSIBILITY": {
-      // POSSIBILITY — layer 3 of Aura cognition. Expands an entity: what else could this
+      // POSSIBILITY â€” layer 3 of Aura cognition. Expands an entity: what else could this
       // become. Contains Expansion, Adjacency, Future, Leverage. Stacks on BOTH lower layers:
       // auto-reads perception:{slug} (what SeeIt saw) and meaning:{slug} (what it really is /
       // why it matters) so futures are grounded, not generic. It EXPANDS. It does NOT rank
@@ -4325,7 +4325,7 @@ async function processCommand(line, env, isOp) {
     }
 
     case "PRIORITY": {
-      // PRIORITY — layer 4 of Aura cognition (WhatMattersMost / whatmattersmost.world).
+      // PRIORITY â€” layer 4 of Aura cognition (WhatMattersMost / whatmattersmost.world).
       // The first engine to consume the ENTIRE chain: reads perception + meaning + possibility
       // and turns an overwhelming field of options into ONE decision - what matters most and
       // what happens first. It RANKS and DECIDES. It does NOT execute (Capability engines) and
@@ -4385,7 +4385,7 @@ async function processCommand(line, env, isOp) {
 
     case "GATE":
     case "MEANING_GATE": {
-      // MEANING GATE — the veto. Meaning's SECOND role: not interpreting significance (that is
+      // MEANING GATE â€” the veto. Meaning's SECOND role: not interpreting significance (that is
       // the MEANING layer) but holding AUTHORITY over action. Before any decision becomes a real
       // action via a Capability engine, this asks: should this happen AT ALL? Does it serve the
       // human, honor consent, avoid harm, align with Aura's Law? Returns allow / allow_with_conditions
@@ -4665,7 +4665,7 @@ async function processCommand(line, env, isOp) {
     }
 
     case "COGNIZE": {
-      // THE CONDUCTOR — runs the full cognition pipeline in one motion: Perception -> Meaning ->
+      // THE CONDUCTOR â€” runs the full cognition pipeline in one motion: Perception -> Meaning ->
       // Possibility -> Priority -> Meaning Gate. Reuses the proven layer commands (and their
       // caches), so each layer stacks on the last automatically. Carries SUMMONED-DEPTH routing:
       // COGNIZE AUTO lets Aura decide how deep to think (trivial -> perceive only; real decision
@@ -4740,7 +4740,7 @@ async function processCommand(line, env, isOp) {
       // -> ACT -> (JUDGE result) -> LEARN as ONE motion, carrying state. SAFE BY DEFAULT: dry-run.
       // FULL VISIBILITY: every stage is timed; a TIME BUDGET returns gracefully BEFORE the platform
       // wall (so we never get a silent blank); the whole trace + timings are logged to loop:{slug}.
-      // Usage: LOOP <entity>          (full loop, dry-run — proposes an action, fires nothing)
+      // Usage: LOOP <entity>          (full loop, dry-run â€” proposes an action, fires nothing)
       //        LOOP CONFIRM <entity>  (operator: fire the proposal, then JUDGE + LEARN)
       let lpRaw = rest;
       let lpConfirm = false;
@@ -4769,7 +4769,7 @@ async function processCommand(line, env, isOp) {
         const ts = new Date().toISOString();
         const trace = { entity: lpEntity, confirmed: lpConfirm, partial: true, reached, summary: lpSummary, timing: lpTiming, total_ms: lpElapsed(), ts };
         env.AURA_KV.put("loop:" + lpSlug + ":" + ts, JSON.stringify(trace)).catch(() => {});
-        return { cmd: "LOOP", payload: Object.assign({ ok: true, partial: true, entity: lpEntity, reached, note: "Stopped early to stay under the platform time limit — returning what completed, with timings so we can see exactly what is slow. Run LOOP again to continue (earlier stages are now cached and fast).", summary: lpSummary, timing: lpTiming, total_ms: lpElapsed() }, extra || {}) };
+        return { cmd: "LOOP", payload: Object.assign({ ok: true, partial: true, entity: lpEntity, reached, note: "Stopped early to stay under the platform time limit â€” returning what completed, with timings so we can see exactly what is slow. Run LOOP again to continue (earlier stages are now cached and fast).", summary: lpSummary, timing: lpTiming, total_ms: lpElapsed() }, extra || {}) };
       };
 
       try {
@@ -4849,7 +4849,7 @@ async function processCommand(line, env, isOp) {
     }
 
     case "ACT": {
-      // BRIDGE TO ACTION — the seam between thinking and doing. Fires a real Capability engine,
+      // BRIDGE TO ACTION â€” the seam between thinking and doing. Fires a real Capability engine,
       // but ONLY behind the Meaning Gate: a blocked or unjudged action cannot execute. Logs every
       // fired action + outcome to action:{slug}:{ts} (raw material for the Correction loop).
       // SAFETY: dry-run by default (shows what it WOULD fire). Firing requires CONFIRM and operator
@@ -4865,7 +4865,7 @@ async function processCommand(line, env, isOp) {
       const aCommand = aSplit.slice(1).join(":::").trim();
       if (!aEntity || !aCommand) return { cmd: "ACT", payload: { ok: false, error: "Need both an entity and a capability command, separated by ':::'." } };
       const aSlug = aEntity.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "entity";
-      // GATE CHECK — read stored gate verdict for this entity+action, else run the Gate now.
+      // GATE CHECK â€” read stored gate verdict for this entity+action, else run the Gate now.
       let aGate = null;
       try {
         const gActionSlug = aCommand.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40);
@@ -4902,7 +4902,7 @@ async function processCommand(line, env, isOp) {
 
     case "REVIEW":
     case "SECURESPEND": {
-      // SECURESPEND — the cognition engine pointed at MONEY. Runs the four-layer loop
+      // SECURESPEND â€” the cognition engine pointed at MONEY. Runs the four-layer loop
       // (Perceive -> Meaning -> Possibility -> Priority) with a financial lens on any
       // financial entity: a subscription, charge, bill, renewal, or a purchase being
       // considered. Returns a clean decision: what it is, what it really means in a life,
@@ -4941,7 +4941,7 @@ async function processCommand(line, env, isOp) {
     }
 
     case "SECURESPEND_SCAN": {
-      // SECURESPEND_SCAN — the DOGFOOD command. Reads Aaron's REAL accounts (the keys
+      // SECURESPEND_SCAN â€” the DOGFOOD command. Reads Aaron's REAL accounts (the keys
       // Aura already holds: Stripe, Mercury, Twilio) and runs the SecureSpend money-lens
       // on the actual financial picture, not a typed description. This is the proof that
       // the asset works on reality. Read-only. OPERATOR ONLY (it exposes real account data).
@@ -5236,7 +5236,7 @@ async function processCommand(line, env, isOp) {
     }
 
     case "TAX_RATES": {
-      // THE RATE TABLE — data, not logic. The engine (SECURESPEND_CHARGE) knows HOW to apply a
+      // THE RATE TABLE â€” data, not logic. The engine (SECURESPEND_CHARGE) knows HOW to apply a
       // rate; this is WHERE the rates live: in KV, outside the logic, swappable, feedable from a
       // live tax-data source later (same pull-from-source pattern as places/stocks/credit). A rate
       // entry: { jurisdiction, name, rate, kind('sales'|'vat'|'gst'), country, region, remit_to }.
@@ -5310,7 +5310,7 @@ async function processCommand(line, env, isOp) {
       const scMode = (scIn.mode || "test").toLowerCase();
       const scCur = (scIn.currency || "usd").toLowerCase();
 
-      // ── THE UNIVERSAL TRANSACTION GRAMMAR ──────────────────────────────────────────
+      // â”€â”€ THE UNIVERSAL TRANSACTION GRAMMAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       // Every transaction anywhere on Earth has the same shape:
       //   subtotal + [taxes] + [fees-charged-to-buyer] = total  (all in integer MINOR UNITS)
       // The ENGINE here is generic: it applies whatever taxes/fees it is GIVEN. It does NOT
@@ -5364,7 +5364,7 @@ async function processCommand(line, env, isOp) {
         // human-readable mirror (major units) for convenience/back-compat
         subtotal: fromMinor(subtotalMinor), tax_total: fromMinor(taxTotalMinor), total: fromMinor(totalMinor)
       };
-      // ───────────────────────────────────────────────────────────────────────────────
+      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
       const scAmt = fromMinor(totalMinor); // the charged total (back-compat: 'amount' = total)
       const scCents = totalMinor;
@@ -5387,7 +5387,7 @@ async function processCommand(line, env, isOp) {
       let rail = null, status = null, railOk = false;
       if (scMode === "live") {
         try {
-          const desc = (scIn.item || "SecureSpend purchase") + " — " + scIn.asset;
+          const desc = (scIn.item || "SecureSpend purchase") + " â€” " + scIn.asset;
           const meta = { secure_spend_txn: txnId, asset: scIn.asset, pta_entity: ptaEntityId || "" };
           const pi = await createPaymentIntent(scCents, scCur, desc, meta, env);
           rail = pi && pi.payload ? pi.payload : pi;
@@ -5407,7 +5407,7 @@ async function processCommand(line, env, isOp) {
         railOk = true; status = "succeeded";
       }
 
-      // 3. Build the in-world transaction record — ingest BOTH sides, keep everything
+      // 3. Build the in-world transaction record â€” ingest BOTH sides, keep everything
       const record = {
         txn_id: txnId, ts: now, asset: scIn.asset, mode: scMode, status,
         amount: scAmt, currency: scCur,                    // amount = total (back-compat)
@@ -5859,13 +5859,13 @@ else{cvAdd('aura',${JSON.stringify(c.intro || "I'm here. Pick up wherever we lef
 async function cvSend(){
   var box=document.getElementById('cv_text');var msg=box.value.trim();if(!msg||!CV_PTA)return;
   cvAdd('me',msg);box.value='';var btn=event&&event.target;if(btn)btn.disabled=true;
-  var pend=cvAdd('aura','…');
+  var pend=cvAdd('aura','â€¦');
   try{
     var r=await fetch("${DOOR}",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({engine:"pta",action:"talk",app:"${APP}",params:{pta_entity:CV_PTA,message:msg,console_url:location.origin+location.pathname}})});
     var d=await r.json();
     pend.textContent=d.reply||"(no reply)";
     if(d.followup_scheduled&&d.scheduled){var s=cvAdd('sys','Aura will email you in '+d.scheduled.in_minutes+' min.');}
-  }catch(e){pend.textContent="(connection issue — try again)";}
+  }catch(e){pend.textContent="(connection issue â€” try again)";}
   if(btn)btn.disabled=false;box.focus();
 }
 document.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey&&document.activeElement&&document.activeElement.id==='cv_text'){e.preventDefault();cvSend();}});
@@ -5884,18 +5884,18 @@ function lcShare(){
   var out=document.getElementById('lc_result');var btn=document.getElementById('lc_btn');
   if(!LC_PTA){out.textContent='No identity in the link. Visit ${esc(rp.domain)} to begin.';return;}
   if(!navigator.geolocation){out.textContent='Your device does not support location sharing.';return;}
-  btn.disabled=true;out.textContent='Waiting for permission…';
+  btn.disabled=true;out.textContent='Waiting for permissionâ€¦';
   navigator.geolocation.getCurrentPosition(async function(pos){
     var lat=pos.coords.latitude,lng=pos.coords.longitude,acc=pos.coords.accuracy;
-    out.textContent='Got it — saving your location…';
+    out.textContent='Got it â€” saving your locationâ€¦';
     try{
       var r=await fetch("${DOOR}",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({engine:"pta",action:"locate",app:"${APP}",params:{pta_entity:LC_PTA,lat:lat,lng:lng,accuracy:acc}})});
       var d=await r.json();
-      if(d.ok){out.innerHTML='✓ Location shared. Aura knows where you are now.';}
+      if(d.ok){out.innerHTML='âœ“ Location shared. Aura knows where you are now.';}
       else{out.textContent='Could not save location. Please try again.';btn.disabled=false;}
-    }catch(e){out.textContent='Connection issue — try again.';btn.disabled=false;}
+    }catch(e){out.textContent='Connection issue â€” try again.';btn.disabled=false;}
   },function(err){
-    out.textContent=(err.code===1)?'You declined location. That is okay — you can share anytime.':'Could not get your location. Please try again.';
+    out.textContent=(err.code===1)?'You declined location. That is okay â€” you can share anytime.':'Could not get your location. Please try again.';
     btn.disabled=false;
   },{enableHighAccuracy:true,timeout:15000,maximumAge:0});
 }
@@ -5907,7 +5907,7 @@ function lcShare(){
         // sees their own purchases across the world), or "all" (platform view). Reads ?pta= / ?asset=
         // from the URL when scope needs an id. Hardcoded to pay.stats = cannot drift.
         commerce_dashboard: (c) => `<section class="c-card c-dash"><h2>${esc(c.title || "Your numbers")}</h2>
-<div id="cd_loading">Loading your numbers…</div>
+<div id="cd_loading">Loading your numbersâ€¦</div>
 <div id="cd_body" style="display:none">
   <div class="cd-stats">
     <div class="cd-stat"><div class="cd-n" id="cd_total">$0</div><div class="cd-l">Total revenue</div></div>
@@ -6021,7 +6021,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // ===== LIVING BUSINESS BRIEF (live-perception layer) =====
       // Fuses LIVE PERCEPTION with REASONING: searches what is happening around the business RIGHT NOW
       // (its neighborhood, today's/this week's events) and the business's own online footprint, then
-      // reasons through the shared mind into a neighborhood-aware brief grounded in TODAY — not static.
+      // reasons through the shared mind into a neighborhood-aware brief grounded in TODAY â€” not static.
       // This is the "YOUR NEIGHBORHOOD / what's happening today" engine of OpenForBusiness.
       // Usage: BRIEF <business name + location>
       let brRaw = (rest || "").trim();
@@ -6036,14 +6036,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           the_business: { answer: (s2 && s2.answer) || null, sources: pack(s2) }
         };
       } catch (e) { live = { error: String(e && e.message) }; }
-      const brLens = "LIVING BUSINESS BRIEF — you are analyzing a REAL business in its REAL neighborhood, RIGHT NOW. You are given live web findings about (a) what is happening around the business today/this week and (b) the business's own online footprint. Demonstrate genuine understanding: what the business is, what is happening in its neighborhood TODAY that it could act on, and the single highest-leverage first opportunity given what is live right now. Be specific to the actual live findings — name the real events and conditions, never generic. This is the difference between software and understanding. Still challenge weak assumptions and flag what the data does not show.";
+      const brLens = "LIVING BUSINESS BRIEF â€” you are analyzing a REAL business in its REAL neighborhood, RIGHT NOW. You are given live web findings about (a) what is happening around the business today/this week and (b) the business's own online footprint. Demonstrate genuine understanding: what the business is, what is happening in its neighborhood TODAY that it could act on, and the single highest-leverage first opportunity given what is live right now. Be specific to the actual live findings â€” name the real events and conditions, never generic. This is the difference between software and understanding. Still challenge weak assumptions and flag what the data does not show.";
       const brR = await reasonThroughLoop(env, {
         entity: brRaw,
         lens: brLens,
         facts: { live_findings: live },
         extraKeys: [
           { key: "the_business", desc: "what this business is, one line, from the findings" },
-          { key: "whats_happening_now", desc: "array — the live, time-sensitive things in its neighborhood today/this week it could act on" },
+          { key: "whats_happening_now", desc: "array â€” the live, time-sensitive things in its neighborhood today/this week it could act on" },
           { key: "first_opportunity", desc: "the single highest-leverage move given what is live RIGHT NOW" }
         ]
       });
@@ -6052,7 +6052,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     }
 
     case "THINK": {
-      // Direct access to the shared Cognitive Loop reasoner — SEE -> EXPAND(challenge) -> JUDGE -> DECIDE
+      // Direct access to the shared Cognitive Loop reasoner â€” SEE -> EXPAND(challenge) -> JUDGE -> DECIDE
       // in one pass, with data-trust and operator-push-back built in. This is the shared MIND that the
       // engines reason through. Test surface to prove the shared reasoner before migrating engines onto it.
       // Usage: THINK <situation>              (general operator lens)
@@ -6067,10 +6067,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     }
 
     case "OUTCOME": {
-      // ===== OUTCOME ENGINE — Universal Outcome Intelligence =====
+      // ===== OUTCOME ENGINE â€” Universal Outcome Intelligence =====
       // Turns any GOAL into leverage + a coordinated, sequenced plan: "HOW do we get from here
       // to the desired outcome?" Pairs with the loop (EXPAND->DECIDE pointed at execution).
-      // Informs and recommends; the human decides and acts. Universal — works for any goal, any person.
+      // Informs and recommends; the human decides and acts. Universal â€” works for any goal, any person.
       // Usage: OUTCOME <goal>        (reason a goal into a strategy)
       //        OUTCOME FRESH <goal>  (recompute, bypass cache)
       let ocRaw = (rest || "").trim();
@@ -6085,19 +6085,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const ocModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       // SUBJECT-WORLD, not operator-world. The engine reasons about the SUBJECT given (a business, a
       // goal, a person) on its OWN terms. The operator's personal context (notes:STATE) is NOT injected
-      // by default — that caused world-bleed (judging an external business against the operator's own context).
+      // by default â€” that caused world-bleed (judging an external business against the operator's own context).
       // It is pulled ONLY when the operator explicitly asks ("OUTCOME MINE <goal>"), i.e. when the
       // subject genuinely IS the operator's own situation. This is what lets Aura analyze every business
-      // on its own merits — the core requirement for OpenForBusiness.
+      // on its own merits â€” the core requirement for OpenForBusiness.
       let ocContext = "";
       let ocSubjectRaw = ocRaw;
       if (/^MINE\s+/i.test(ocSubjectRaw)) {
         ocSubjectRaw = ocSubjectRaw.replace(/^MINE\s+/i, "").trim();
         try { const st = await env.AURA_KV.get("notes:STATE"); if (st) ocContext = String(st).slice(0, 1500); } catch {}
       }
-      // OUTCOME reasons THROUGH the shared mind — inherits assumption-challenge, data-trust, pushback,
+      // OUTCOME reasons THROUGH the shared mind â€” inherits assumption-challenge, data-trust, pushback,
       // and adds its outcome-specific lens + keys (leverage, multipliers, strategy).
-      const ocLens = "OUTCOME INTELLIGENCE — given a desired GOAL or a SUBJECT to grow (often a business), answer HOW we get from here to the outcome. Reason about the SUBJECT on its own terms — its world, its market, its customers — not about whoever is asking. Find the highest-leverage paths and turn the goal into a coordinated SEQUENCED plan, not a task dump. Look for the few moves where small effort yields large results, the multipliers already in hand, and the single first move today. You inform and recommend; the human decides.";
+      const ocLens = "OUTCOME INTELLIGENCE â€” given a desired GOAL or a SUBJECT to grow (often a business), answer HOW we get from here to the outcome. Reason about the SUBJECT on its own terms â€” its world, its market, its customers â€” not about whoever is asking. Find the highest-leverage paths and turn the goal into a coordinated SEQUENCED plan, not a task dump. Look for the few moves where small effort yields large results, the multipliers already in hand, and the single first move today. You inform and recommend; the human decides.";
       const ocR = await reasonThroughLoop(env, {
         entity: ocSubjectRaw,
         lens: ocLens,
@@ -6119,7 +6119,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     }
 
     case "GRAPH_PUT": {
-      // UNIVERSAL REALITY MODEL — put ANY typed entity into the one graph (pta_entities).
+      // UNIVERSAL REALITY MODEL â€” put ANY typed entity into the one graph (pta_entities).
       // Every engine, onboarding, and the doc-dump write reality through this door.
       //   GRAPH_PUT {"type":"business","name":"Lia's Flowers","key":"site:liasflowers.com","props":{...}}
       if (!isOp) return { cmd: "GRAPH_PUT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
@@ -6216,8 +6216,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const ctx = String(ro.context).replace(/[<>]/g, "");
           const imgSrc = imageUrl || "https://auras.guide/brand/butterfly";
           const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:520px;margin:0 auto;color:#222;line-height:1.5">` +
-            `<p>${greet} — I'm Aura. I noticed ${ctx}.</p>` +
-            `<a href="${door.doorway}" style="display:block;text-decoration:none"><img src="${imgSrc}" alt="From Aura — tap to connect" width="480" style="width:100%;max-width:480px;border-radius:14px;display:block;margin:14px 0;border:0"></a>` +
+            `<p>${greet} â€” I'm Aura. I noticed ${ctx}.</p>` +
+            `<a href="${door.doorway}" style="display:block;text-decoration:none"><img src="${imgSrc}" alt="From Aura â€” tap to connect" width="480" style="width:100%;max-width:480px;border-radius:14px;display:block;margin:14px 0;border:0"></a>` +
             `<p style="opacity:.75;font-size:14px">Tap the image to connect with me.</p>` +
             `<p style="opacity:.5;font-size:12px">Or open: <a href="${door.doorway}">${door.doorway}</a></p></div>`;
           try { emailed = await sendEmail(env, ro.email, (ro.subject || "A note from Aura"), html, { html: true }); } catch (e) { emailed = { ok: false, error: String(e.message) }; }
@@ -6275,7 +6275,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (!pid) return { cmd: "FB_POST", payload: { ok: false, error: "page_id required (multiple pages) - run FB_PAGES", pages: ids.length } };
         const pg = m[pid];
         if (!pg || !pg.token) return { cmd: "FB_POST", payload: { ok: false, error: "no token for page " + pid + " (reconnect)" } };
-        // GOVERNOR — brakes before the action. Hard-block if over safe pace. (override: fp.force === true)
+        // GOVERNOR â€” brakes before the action. Hard-block if over safe pace. (override: fp.force === true)
         if (!fp.force) {
           const gate = await governorCheck(env, "post", pid);
           if (!gate.allow) return { cmd: "FB_POST", payload: { ok: false, blocked_by: "governor", reason: gate.reason, counts: gate.counts, hint: "add \"force\":true to override (not recommended)" } };
@@ -6406,7 +6406,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     }
 
     case "PURCHASE": {
-      // FULL-CYCLE TEST — a customer buys from an onboarded business; the purchase propagates into a
+      // FULL-CYCLE TEST â€” a customer buys from an onboarded business; the purchase propagates into a
       // NEW relationship (the recipient of the gift). Charges via SecureSpend (test), and writes the
       // whole cycle into the reality graph: customer + recipient + transaction nodes, all linked.
       //   PURCHASE {"business":"site:liasflowers.com","buyer":"Maria Chen","amount":75,"item":"Designer's Choice Large","recipient":"Rosa Mendez","occasion":"birthday"}
@@ -6418,10 +6418,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const biz = await db.prepare("SELECT id, name FROM pta_entities WHERE identity_key = ?").bind(bizKey).first().catch(() => null);
         if (!biz) return { cmd: "PURCHASE", payload: { ok: false, error: "Business not found in graph: " + bizKey + " (onboard it first)" } };
         const slug = bizKey.replace(/^site:/, "").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
-        // 1) CHARGE via SecureSpend (test mode — full flow, no real money)
+        // 1) CHARGE via SecureSpend (test mode â€” full flow, no real money)
         let charge = null;
         try { const cr = await processCommand("SECURESPEND_CHARGE " + JSON.stringify({ asset: slug, amount: pu.amount, item: pu.item || "purchase", buyer: { name: pu.buyer }, mode: "test", context: { recipient: pu.recipient || null, occasion: pu.occasion || null } }), env, isOp); charge = (cr && cr.payload) ? cr.payload : cr; } catch (e) { charge = { ok: false, error: String(e.message) }; }
-        // 2) GRAPH — the cycle becomes connected reality
+        // 2) GRAPH â€” the cycle becomes connected reality
         const mk = async (o) => { const r = await processCommand("GRAPH_PUT " + JSON.stringify(o), env, isOp); return (r && r.payload && r.payload.id) || null; };
         const lk = async (from, rel, to, context) => { if (from && to) await processCommand("GRAPH_LINK " + JSON.stringify({ from, rel, to, context: context || null }), env, isOp); };
         const buyerSlug = String(pu.buyer).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40);
@@ -6448,10 +6448,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     }
 
     case "ONBOARD": {
-      // AUTONOMOUS ONBOARDING — name in, Aura goes into the world HERSELF: finds the business,
+      // AUTONOMOUS ONBOARDING â€” name in, Aura goes into the world HERSELF: finds the business,
       // pulls Google Places, scrapes the live site, pulls the web, perceives what it is from ONLY
       // what she gathered (never hand-fed), mints the business PTA, drafts the outreach. Discovery
-      // is the whole point — the operator does not give her the facts.
+      // is the whole point â€” the operator does not give her the facts.
       //   ONBOARD <business name>, <city>        e.g. ONBOARD Lia's Flowers, West Hills CA
       //   ONBOARD COMMIT <business>, <city>      (also send the outreach email if one was found)
       if (!isOp) return { cmd: "ONBOARD", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
@@ -6461,11 +6461,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (!obRaw) return { cmd: "ONBOARD", payload: { ok: false, error: "Usage: ONBOARD <business name>, <city>  (Aura discovers, perceives, and mints the PTA herself)." } };
       const obStrip = (h) => String(h || "").replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&[a-z#0-9]+;/gi, " ").replace(/\s+/g, " ").trim();
       const discovered = { places: null, site: null, web: null };
-      // 1) GO INTO THE WORLD — Google Places (best effort; key may be unset -> fall through)
+      // 1) GO INTO THE WORLD â€” Google Places (best effort; key may be unset -> fall through)
       try { const fp = await processCommand("FETCH_PLACES " + obRaw, env, isOp); const pp = (fp && fp.payload) ? fp.payload : fp; if (pp && pp.ok && Array.isArray(pp.places) && pp.places.length) discovered.places = pp.places[0]; } catch (e) {}
       // 2) Live web signal
       try { const ws = await processCommand("WEB_SEARCH " + obRaw + " official website", env, isOp); const wp = (ws && ws.payload) ? ws.payload : ws; if (wp && wp.ok) discovered.web = { answer: wp.answer || null, sources: wp.sources || [] }; } catch (e) {}
-      // 3) SCRAPE — Tavily /extract across the homepage + the business's OWN sub-pages (everything).
+      // 3) SCRAPE â€” Tavily /extract across the homepage + the business's OWN sub-pages (everything).
       let obSiteUrl = (discovered.places && discovered.places.website) || (discovered.web && discovered.web.sources && discovered.web.sources[0] && discovered.web.sources[0].url) || null;
       let obScrape = "";
       if (obSiteUrl) {
@@ -6482,7 +6482,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           } else { discovered.site = { url: obSiteUrl, text: null, note: "no tavily key" }; }
         } catch (e) { discovered.site = { url: obSiteUrl, text: null, note: "extract failed: " + String(e.message) }; }
       }
-      // 4) UNDERSTAND — one focused, GROUNDED pass over everything she pulled. She captures the
+      // 4) UNDERSTAND â€” one focused, GROUNDED pass over everything she pulled. She captures the
       // WHOLE business and tags certainty: she only "knows" what she actually pulled; anything unsure
       // goes to grounding.unsure and is NEVER asserted. Detects socials and drafts the offer to manage.
       const obApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
@@ -6509,7 +6509,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const pr = await processCommand(obPcCmd, env, isOp); obPta = (pr && pr.payload) ? pr.payload : pr;
         } catch (e) { obPta = { ok: false, error: String(e.message) }; }
       }
-      // 5b) INTO OPENFORBUSINESS — state machine (lead), QR doorway, archetype for their home screen
+      // 5b) INTO OPENFORBUSINESS â€” state machine (lead), QR doorway, archetype for their home screen
       const obTs = new Date().toISOString();
       const obSlug = (obRead.business_name || obRaw).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
       const obPtaId = (obPta && (obPta.pta_id || obPta.id || (typeof obPta.pta === "string" ? obPta.pta : (obPta.pta && obPta.pta.id)))) || null;
@@ -6519,14 +6519,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const obDoorway = "https://openforbusiness.world/" + obSlug;
       const obQr = "https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=" + encodeURIComponent(obDoorway);
       await env.AURA_KV.put("onboard:" + obSlug, JSON.stringify({ subject: obRaw, slug: obSlug, read: obRead, pta_id: obPtaId, identity: obIdentity || null, business_type: obType, doorway: obDoorway, qr: obQr, state: (obState && obState.ok) ? "lead" : null, ts: obTs })).catch(() => {});
-      // 6) CONTACT — outreach carries the doorway + QR; on COMMIT send it and advance to trial
+      // 6) CONTACT â€” outreach carries the doorway + QR; on COMMIT send it and advance to trial
       const obMessage = (obRead.outreach || "") + "  Your Open For Business doorway: " + obDoorway + "  |  Your QR: " + obQr;
       let obSent = false;
       if (obCommit && obContact.email && /@/.test(String(obContact.email)) && obRead.outreach) {
         try { const es = await processCommand("EMAIL_SEND " + String(obContact.email).trim() + " Aura x " + (obRead.business_name || obRaw) + " | " + obMessage, env, isOp); const ep = (es && es.payload) ? es.payload : es; obSent = !!(ep && ep.ok); } catch (e) {}
         if (obPtaId) { try { await processCommand("BUSINESS_STATE SET " + obPtaId + " trial", env, isOp); } catch (e) {} }
       }
-      // 6b) WRITE TO THE REALITY GRAPH — the business becomes typed nodes + edges, not freeform JSON.
+      // 6b) WRITE TO THE REALITY GRAPH â€” the business becomes typed nodes + edges, not freeform JSON.
       const graphOut = { business: null, place: null, socials: [], linked_pta: false };
       try {
         const domainKey = "site:" + (String(obSiteUrl || obSlug).replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "") || obSlug);
@@ -6554,7 +6554,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     }
 
     case "MISSION_SET": {
-      // Mission Control (Command Center section 2) — objectives, not tasks.
+      // Mission Control (Command Center section 2) â€” objectives, not tasks.
       // MISSION_SET [json array]  -> full replace of missions:all
       // MISSION_SET {json object} -> upsert one mission by id
       // Mission schema: { id, name, purpose, progress (0-100), dependencies[], blockers[],
@@ -6585,7 +6585,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     }
 
     case "MISSION_STATUS": {
-      // Reads missions:all and enriches with LIVE signals from real feeds — honest data only.
+      // Reads missions:all and enriches with LIVE signals from real feeds â€” honest data only.
       // A mission's watch[] tags drive auto-derived live_blockers:
       //   "a2p"     -> notes:alert:a2p campaign status (blocker until APPROVED/VERIFIED)
       //   "funding" -> notes:alert:resources critical concerns (Mercury etc.)
@@ -6645,18 +6645,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       return { cmd: "EMAIL_SEND", payload: { ok: false, to: emailTo, subject: emailSubject, error: sendResult.error } };
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════
-    // PTA — PERMISSION TO APPROACH — THE RELATIONSHIP GRAPH
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    // PTA â€” PERMISSION TO APPROACH â€” THE RELATIONSHIP GRAPH
     // Not a contact system. A graph where every node is an entity (person, business,
     // photo, event, document, memory, project) and every edge is a three-layer
     // relationship: Permission (can I approach), Relationship (how we know each other),
     // Impact (what happened because we connected). Edges accumulate history.
     // Graph is traversable: who introduced whom, what chains led to what outcomes.
     // Storage: D1 (relational, queryable in both directions).
-    // ═══════════════════════════════════════════════════════════════════════════
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     case "PTA_INIT": {
-      // Create/upgrade PTA tables in D1. Idempotent — safe to run multiple times.
+      // Create/upgrade PTA tables in D1. Idempotent â€” safe to run multiple times.
       if (!isOp) return { cmd: "PTA_INIT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const db = env.AURA_MEMORY;
       // Core tables
@@ -6731,7 +6731,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         await db.prepare("INSERT INTO pta_entities (id, type, identity_key, name, metadata, created_at, updated_at, verification_level) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
           .bind(auraId, "system", "system:aura", "Aura", '{"role":"intelligence_layer"}', new Date().toISOString(), new Date().toISOString(), "aura_verified").run();
       }
-      return { cmd: "PTA_INIT", payload: { ok: true, tables: ["pta_entities", "pta_edges", "pta_history", "pta_groups", "pta_moments"], note: "PTA graph v4.1 ready — groups, moments, live intent, verification, and Aura entity initialized" } };
+      return { cmd: "PTA_INIT", payload: { ok: true, tables: ["pta_entities", "pta_edges", "pta_history", "pta_groups", "pta_moments"], note: "PTA graph v4.1 ready â€” groups, moments, live intent, verification, and Aura entity initialized" } };
     }
 
     case "PTA_CREATE": {
@@ -6801,9 +6801,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const firstName = (pc.name || "").split(/\s+/)[0] || "there";
       let welcome;
       if (understood && understood.identity_summary) {
-        welcome = `Welcome to Permission to Approach, ${firstName}. I hear you — ${understood.identity_summary} This is yours now. You control who approaches you, and I'm here to help. Let's begin.`;
+        welcome = `Welcome to Permission to Approach, ${firstName}. I hear you â€” ${understood.identity_summary} This is yours now. You control who approaches you, and I'm here to help. Let's begin.`;
       } else {
-        welcome = `Welcome to Permission to Approach, ${firstName}. This is yours now — you control who can approach you, and I'm here with you. Tell me more whenever you're ready.`;
+        welcome = `Welcome to Permission to Approach, ${firstName}. This is yours now â€” you control who can approach you, and I'm here with you. Tell me more whenever you're ready.`;
       }
 
       // optional real welcome email (proves the channel)
@@ -6846,7 +6846,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // record the consent + share on the person's timeline
       try {
         let evs = []; const tl = await env.AURA_KV.get(`pta:timeline:${lpId}`); if (tl) { try { evs = JSON.parse(tl) || []; } catch {} }
-        evs.push({ ts: lpNow, event: "Shared their location (consented via device): " + lat.toFixed(5) + ", " + lng.toFixed(5) + (lp.accuracy != null ? ` (±${Math.round(lp.accuracy)}m)` : ""), kind: "located" });
+        evs.push({ ts: lpNow, event: "Shared their location (consented via device): " + lat.toFixed(5) + ", " + lng.toFixed(5) + (lp.accuracy != null ? ` (Â±${Math.round(lp.accuracy)}m)` : ""), kind: "located" });
         await env.AURA_KV.put(`pta:timeline:${lpId}`, JSON.stringify(evs)).catch(() => {});
       } catch {}
       return { cmd: "PTA_LOCATE", payload: { ok: true, pta_entity: lpId, location: loc } };
@@ -7136,31 +7136,31 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
     case "OPPORTUNITY":
     case "WEAKNESS": {
-      // ===== THE OPPORTUNITY ENGINE — see the leak their success is hiding, build the fix =====
+      // ===== THE OPPORTUNITY ENGINE â€” see the leak their success is hiding, build the fix =====
       // Aura looks at a business and finds the ONE weakness their success is covering up (a packed
       // restaurant that captures no customers; an artist whose skill hides that hand-designing eats
       // their day), names the DIGITAL TOOL that fixes it, judges whether she can BUILD IT NOW (a page,
-      // QR, capture form, MOMENT — yes, today) or whether it is a real project, and writes the pitch to
-      // the owner. We make money when the business makes money — so the bar is a real, buildable gain.
+      // QR, capture form, MOMENT â€” yes, today) or whether it is a real project, and writes the pitch to
+      // the owner. We make money when the business makes money â€” so the bar is a real, buildable gain.
       // Reasons through the shared mind, so it finds the NON-OBVIOUS leak and never inflates.
       //   OPPORTUNITY <business + what they do + how they're doing>
       let opRaw = (rest || "").trim();
       if (!opRaw) return { cmd: "OPPORTUNITY", payload: { ok: false, error: "Usage: OPPORTUNITY <business + what they do + how they're doing>" } };
       // tell her what she can actually BUILD right now, so "buildable_now" is grounded in real capability
       const BUILDABLE = "Aura can build, autonomously and today, anything DIGITAL that is page-level: a web page or mini-tool (GENERATE_PAGE), a QR-driven real-world capture moment that births a customer relationship/PTA (MOMENT), a business identity/continuity layer (PTA), a generated image (GENERATE_IMAGE), a visual (SHOW_IT). She CANNOT build physical things, and a genuinely complex app (e.g. a full booking platform, a real-time inventory system, a custom AI generator) is a PROJECT, not a same-day build. Judge honestly which bucket the fix falls in.";
-      const opLens = "OPPORTUNITY INTELLIGENCE — look at this business and find the ONE weakness their success is HIDING. The weakness is rarely 'they need more customers' — a packed business has plenty; the leak is usually the thing their success lets them ignore (a slammed restaurant that captures zero customer relationships; a skilled artist whose talent hides that a manual task eats their highest-value hours; a giant with scale but no lifelong customer continuity). See what they are LEAVING ON THE TABLE because things are going well enough that nobody looked. Then name the single DIGITAL TOOL that fixes it, and judge honestly whether Aura can build it NOW or it is a project. Be specific and real — a fix the owner would immediately recognize as obviously valuable. We earn when they earn, so the gain must be real and buildable, not a vanity feature.";
+      const opLens = "OPPORTUNITY INTELLIGENCE â€” look at this business and find the ONE weakness their success is HIDING. The weakness is rarely 'they need more customers' â€” a packed business has plenty; the leak is usually the thing their success lets them ignore (a slammed restaurant that captures zero customer relationships; a skilled artist whose talent hides that a manual task eats their highest-value hours; a giant with scale but no lifelong customer continuity). See what they are LEAVING ON THE TABLE because things are going well enough that nobody looked. Then name the single DIGITAL TOOL that fixes it, and judge honestly whether Aura can build it NOW or it is a project. Be specific and real â€” a fix the owner would immediately recognize as obviously valuable. We earn when they earn, so the gain must be real and buildable, not a vanity feature.";
       const opR = await reasonThroughLoop(env, {
         entity: opRaw,
         lens: opLens,
         facts: { what_aura_can_build: BUILDABLE },
         extraKeys: [
-          { key: "the_hidden_weakness", desc: "the one leak their success is covering — the non-obvious thing they're leaving on the table" },
-          { key: "why_they_miss_it", desc: "one sentence — why the owner hasn't seen it themselves" },
+          { key: "the_hidden_weakness", desc: "the one leak their success is covering â€” the non-obvious thing they're leaving on the table" },
+          { key: "why_they_miss_it", desc: "one sentence â€” why the owner hasn't seen it themselves" },
           { key: "the_tool", desc: "the single digital tool that fixes it, named concretely" },
-          { key: "how_it_makes_them_money", desc: "one sentence — the direct line from this tool to more revenue/time for them, in PLAIN terms. NEVER invent figures (no made-up diner counts, ticket sizes, or dollar totals); describe the mechanism, not a fabricated number" },
-          { key: "buildable_now", desc: "boolean — can Aura build this autonomously today (page/QR/MOMENT/PTA level)?" },
-          { key: "build_path", desc: "if buildable_now: the exact capability + a one-line spec (e.g. 'MOMENT: QR at the door capturing customers into the business's own PTA' — always use the actual business, NEVER a different business's name); if a project: what it would take" },
-          { key: "the_pitch", desc: "2-3 sentences Aura would say to the owner — leads with what she noticed about THEIR business, then the offer. CRITICAL: use NO fabricated numbers. Speak to the real, obvious gain in plain language; if a result is hypothetical, label it as something to test together, never assert an invented figure as fact" }
+          { key: "how_it_makes_them_money", desc: "one sentence â€” the direct line from this tool to more revenue/time for them, in PLAIN terms. NEVER invent figures (no made-up diner counts, ticket sizes, or dollar totals); describe the mechanism, not a fabricated number" },
+          { key: "buildable_now", desc: "boolean â€” can Aura build this autonomously today (page/QR/MOMENT/PTA level)?" },
+          { key: "build_path", desc: "if buildable_now: the exact capability + a one-line spec (e.g. 'MOMENT: QR at the door capturing customers into the business's own PTA' â€” always use the actual business, NEVER a different business's name); if a project: what it would take" },
+          { key: "the_pitch", desc: "2-3 sentences Aura would say to the owner â€” leads with what she noticed about THEIR business, then the offer. CRITICAL: use NO fabricated numbers. Speak to the real, obvious gain in plain language; if a result is hypothetical, label it as something to test together, never assert an invented figure as fact" }
         ]
       });
       if (!opR.ok) return { cmd: "OPPORTUNITY", payload: { ok: false, error: opR.error } };
@@ -7169,7 +7169,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
     case "ROUTER":
     case "HANDLE": {
-      // ===== THE ROUTER — she decides what to do herself =====
+      // ===== THE ROUTER â€” she decides what to do herself =====
       // Takes a plain-language SITUATION and decides which engine(s) to run, in what order. This is the
       // EXPAND/DECIDE move pointed at Aura's OWN capabilities. CRITICAL SAFETY DESIGN: the router
       // PROPOSES a plan; it does NOT autonomously fire real-world actions. Perception/reasoning steps
@@ -7182,7 +7182,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       let rtExecute = false;
       if (/^RUN\s+/i.test(rtRaw)) { rtExecute = true; rtRaw = rtRaw.replace(/^RUN\s+/i, "").trim(); }
       if (!rtRaw) return { cmd: "ROUTER", payload: { ok: false, error: "Usage: ROUTER <situation>  |  ROUTER RUN <situation>" } };
-      // the catalog she chooses from — name, what it's for, and whether it touches the real world
+      // the catalog she chooses from â€” name, what it's for, and whether it touches the real world
       const CATALOG = [
         { engine: "BRIEF", purpose: "live perception of a business + its neighborhood right now (events, footprint)", real_world: false, takes: "a business name + location" },
         { engine: "OUTCOME", purpose: "turn a goal/subject into leverage + a sequenced growth strategy", real_world: false, takes: "a goal or a business/subject" },
@@ -7190,7 +7190,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         { engine: "MOMENT", purpose: "create a real-world offer that births a context-rich PTA from a consensual tap", real_world: true, takes: "an offer + place + connector" },
         { engine: "WORKFLOW", purpose: "run a multi-step sequence over time (do, wait, follow up)", real_world: true, takes: "a list of steps" }
       ];
-      const rtLens = "ROUTER — you look at a real situation and decide which of Aura's engines to run, in what order, to handle it well. You are choosing TOOLS, not doing the work. Pick the smallest sequence that actually serves the situation. Perception before reasoning; reasoning before action. Mark which steps are safe to auto-run (perception/reasoning) and which touch the REAL WORLD (creating offers, running sequences, calls, spending, emailing) and therefore must be PROPOSED for approval, never fired automatically. If the situation is about a specific business, perceive it first. If it is about Aura's own money, that is ECONOMICS. If it is a goal, that is OUTCOME. If it calls for a real-world play (e.g. fill empty rooms tonight), propose MOMENT/WORKFLOW but do NOT assume authority to act.";
+      const rtLens = "ROUTER â€” you look at a real situation and decide which of Aura's engines to run, in what order, to handle it well. You are choosing TOOLS, not doing the work. Pick the smallest sequence that actually serves the situation. Perception before reasoning; reasoning before action. Mark which steps are safe to auto-run (perception/reasoning) and which touch the REAL WORLD (creating offers, running sequences, calls, spending, emailing) and therefore must be PROPOSED for approval, never fired automatically. If the situation is about a specific business, perceive it first. If it is about Aura's own money, that is ECONOMICS. If it is a goal, that is OUTCOME. If it calls for a real-world play (e.g. fill empty rooms tonight), propose MOMENT/WORKFLOW but do NOT assume authority to act.";
       const rtR = await reasonThroughLoop(env, {
         entity: rtRaw,
         lens: rtLens,
@@ -7208,7 +7208,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       let executed = [];
       if (rtExecute && Array.isArray(plan.plan)) {
         for (const step of plan.plan) {
-          if (step.real_world) { executed.push({ engine: step.engine, skipped: true, reason: "real-world action — requires approval, not auto-fired" }); continue; }
+          if (step.real_world) { executed.push({ engine: step.engine, skipped: true, reason: "real-world action â€” requires approval, not auto-fired" }); continue; }
           if (!step.command) { executed.push({ engine: step.engine, skipped: true, reason: "no command produced" }); continue; }
           try {
             const r = await processCommand(step.command, env, isOp);
@@ -7217,7 +7217,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           } catch (e) { executed.push({ engine: step.engine, command: step.command, ok: false, error: String(e && e.message) }); }
         }
       }
-      return { cmd: "ROUTER", payload: { ok: true, situation: rtRaw, plan, executed: rtExecute ? executed : undefined, note: rtExecute ? "Ran the safe perception/reasoning steps. Real-world steps are proposed only — approve them to fire." : "Proposed a plan. Real-world steps require approval; nothing was fired. Use ROUTER RUN to execute the safe steps." } };
+      return { cmd: "ROUTER", payload: { ok: true, situation: rtRaw, plan, executed: rtExecute ? executed : undefined, note: rtExecute ? "Ran the safe perception/reasoning steps. Real-world steps are proposed only â€” approve them to fire." : "Proposed a plan. Real-world steps require approval; nothing was fired. Use ROUTER RUN to execute the safe steps." } };
     }
 
     case "WORKFLOW": {
@@ -7254,12 +7254,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     }
 
     case "MOMENT": {
-      // ===== THE HARVEST ATOM — a real-world moment that births context-rich PTAs from consent =====
+      // ===== THE HARVEST ATOM â€” a real-world moment that births context-rich PTAs from consent =====
       // A "moment" is a genuinely useful real-world offer (a ride home, a room tonight, a special) tied
       // to a PLACE and optionally a CONNECTOR (the bartender). Aura CREATES it ahead of time, baking in
       // the surroundings she already perceives, and gets a scan link. When a person TAPS yes, their PTA
-      // is BORN carrying the MAXIMUM honest context of that moment — place, time, the offer, the
-      // connector edge, the live surroundings — and is stamped from birth with a PERMANENT, HONORED exit.
+      // is BORN carrying the MAXIMUM honest context of that moment â€” place, time, the offer, the
+      // connector edge, the live surroundings â€” and is stamped from birth with a PERMANENT, HONORED exit.
       // Identity is never empty; the understanding comes with it. Out means out, forever.
       //   MOMENT CREATE ::: {json}                  -> mint a harvest moment; returns token + scan_url
       //   MOMENT SCAN <token> [::: {json context}]  -> the tap: births the context-rich PTA, returns the thing
@@ -7293,7 +7293,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         };
         await env.AURA_KV.put("moment:" + token, JSON.stringify(moment)).catch(() => {});
         const scanUrl = "https://homescreen.world/m/" + token;
-        return { cmd: "MOMENT", payload: { ok: true, token, scan_url: scanUrl, offer: moment.offer, place: moment.place, note: "Moment is live. Put scan_url behind a QR. Every tap births a context-rich PTA. The tap is instant — surroundings are already baked in." } };
+        return { cmd: "MOMENT", payload: { ok: true, token, scan_url: scanUrl, offer: moment.offer, place: moment.place, note: "Moment is live. Put scan_url behind a QR. Every tap births a context-rich PTA. The tap is instant â€” surroundings are already baked in." } };
       }
 
       if (mSub === "SCAN") {
@@ -7330,7 +7330,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           await env.AURA_MEMORY.prepare("UPDATE pta_entities SET metadata = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(meta), ts, bornId).run();
         } catch {}
         await env.AURA_KV.put(`pta:state:${bornId}`, "active").catch(() => {});
-        // EDGES — the graph thickens: person was at this place, connected via this connector
+        // EDGES â€” the graph thickens: person was at this place, connected via this connector
         try {
           if (moment.place_pta) await processCommand(`PTA_GRANT ${moment.place_pta} ${bornId} ${JSON.stringify({ edge_type: "presence", relationship: "was_at", context: moment.offer, ts })}`, env, true);
           if (moment.connector_pta) await processCommand(`PTA_GRANT ${moment.connector_pta} ${bornId} ${JSON.stringify({ edge_type: "introduction", relationship: "connected_via", context: moment.offer, ts })}`, env, true);
@@ -7342,16 +7342,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         } catch {}
         // count the birth on the moment
         try { moment.births = (moment.births || 0) + 1; await env.AURA_KV.put("moment:" + moment.token, JSON.stringify(moment)).catch(() => {}); } catch {}
-        return { cmd: "MOMENT", payload: { ok: true, born_pta: bornId, offer: moment.offer, delivered: moment.offer, context_captured: { place: moment.place, connector: moment.connector, time_of_day: timeOfDay, surroundings: moment.baked_context, person: personCtx }, exit: "This person can say 'never again' anytime via MOMENT OPTOUT " + bornId + " — and it is honored forever.", note: "PTA born carrying the moment's full context. Edges written to place + connector." } };
+        return { cmd: "MOMENT", payload: { ok: true, born_pta: bornId, offer: moment.offer, delivered: moment.offer, context_captured: { place: moment.place, connector: moment.connector, time_of_day: timeOfDay, surroundings: moment.baked_context, person: personCtx }, exit: "This person can say 'never again' anytime via MOMENT OPTOUT " + bornId + " â€” and it is honored forever.", note: "PTA born carrying the moment's full context. Edges written to place + connector." } };
       }
 
       if (mSub === "OPTOUT") {
         if (!mArg) return { cmd: "MOMENT", payload: { ok: false, error: "Usage: MOMENT OPTOUT <pta_id> [::: reason]" } };
         // the one rule has to be airtight: verify this is a REAL person before confirming a permanent exit
         const target = await env.AURA_MEMORY.prepare("SELECT id FROM pta_entities WHERE id = ?").bind(mArg).first().catch(() => null);
-        if (!target) return { cmd: "MOMENT", payload: { ok: false, error: "No such PTA: " + mArg + " — refusing to confirm an opt-out for an identity that does not exist." } };
+        if (!target) return { cmd: "MOMENT", payload: { ok: false, error: "No such PTA: " + mArg + " â€” refusing to confirm an opt-out for an identity that does not exist." } };
         const ts = new Date().toISOString();
-        // THE PERMANENT, HONORED EXIT — out means out, forever. No more contact, ever. Not a 30-day pause.
+        // THE PERMANENT, HONORED EXIT â€” out means out, forever. No more contact, ever. Not a 30-day pause.
         await env.AURA_KV.put(`pta:optout:${mArg}`, JSON.stringify({ opted_out: true, ts, reason: mPayload || null, permanent: true })).catch(() => {});
         await env.AURA_KV.put(`pta:state:${mArg}`, "opted_out").catch(() => {});
         try {
@@ -7510,7 +7510,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const firstName = (ent.name || "").split(/\s+/)[0] || ent.name || "there";
       let welcome;
       if (meta.created_by && creatorName) {
-        welcome = `Welcome, ${firstName}. ${creatorName} added you${meta.origin ? " to " + meta.origin : ""}${meta.reason ? " — " + meta.reason.toLowerCase() : ""}. This is yours now, and you're in control of it.`;
+        welcome = `Welcome, ${firstName}. ${creatorName} added you${meta.origin ? " to " + meta.origin : ""}${meta.reason ? " â€” " + meta.reason.toLowerCase() : ""}. This is yours now, and you're in control of it.`;
       } else {
         welcome = `Welcome, ${firstName}. This is yours, and you're in control of it.`;
       }
@@ -7936,7 +7936,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     }
 
     case "BUSINESS": {
-      // BUSINESS-PTA — a business is a PTA like any entity, born at the moment of CAPTURE (a lead).
+      // BUSINESS-PTA â€” a business is a PTA like any entity, born at the moment of CAPTURE (a lead).
       // Built entirely on existing primitives: pta_entities (type=business), pta_edges (owner edge),
       // pta:location (geocoded address), pta:timeline, pta:schedule (call-back reminders).
       // Lifecycle: captured -> contact_attempted -> engaged -> claimed -> active.
@@ -8072,7 +8072,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     }
 
     case "BOOKING": {
-      // THE TRANSACTION EDGE — a booking is an edge between a CUSTOMER pta and a BUSINESS pta,
+      // THE TRANSACTION EDGE â€” a booking is an edge between a CUSTOMER pta and a BUSINESS pta,
       // with a time (the appointment). It lives on both parties' timelines AND the business's
       // schedule. This is the relationship event that a PAYMENT (SecurePay) will ride on.
       // Built on existing primitives: pta_edges (the books edge), pta:schedule (appointment),
@@ -8415,7 +8415,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const edge = await db.prepare("SELECT * FROM pta_edges WHERE id = ?").bind(edgeId).first();
       if (!edge) return { cmd: "PTA_ACCEPT", payload: { ok: false, error: "Edge not found" } };
       if (edge.state === "active") return { cmd: "PTA_ACCEPT", payload: { ok: true, note: "Already active", edge_id: edgeId } };
-      if (edge.state === "revoked") return { cmd: "PTA_ACCEPT", payload: { ok: false, error: "Cannot accept a revoked PTA — must be re-granted" } };
+      if (edge.state === "revoked") return { cmd: "PTA_ACCEPT", payload: { ok: false, error: "Cannot accept a revoked PTA â€” must be re-granted" } };
       const now = new Date().toISOString();
       await db.prepare("UPDATE pta_edges SET state = 'active', updated_at = ? WHERE id = ?").bind(now, edgeId).run();
       const histId = "hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
@@ -8425,7 +8425,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     }
 
     case "PTA_REVOKE": {
-      // Revoke a PTA. Does NOT delete — moves to revoked state. History preserved forever.
+      // Revoke a PTA. Does NOT delete â€” moves to revoked state. History preserved forever.
       // PTA_REVOKE <edge_id> [reason]
       if (!isOp) return { cmd: "PTA_REVOKE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const db = env.AURA_MEMORY;
@@ -8459,7 +8459,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     }
 
     case "PTA_STATUS": {
-      // All relationships for an entity — who they're connected to, in both directions.
+      // All relationships for an entity â€” who they're connected to, in both directions.
       // PTA_STATUS <entity_id> [active|pending|revoked|all]
       if (!isOp) return { cmd: "PTA_STATUS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const db = env.AURA_MEMORY;
@@ -8493,7 +8493,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     }
 
     case "PTA_IMPACT": {
-      // Record impact on a relationship — what happened BECAUSE of this connection.
+      // Record impact on a relationship â€” what happened BECAUSE of this connection.
       // PTA_IMPACT <edge_id> <note text>
       if (!isOp) return { cmd: "PTA_IMPACT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const db = env.AURA_MEMORY;
@@ -8543,7 +8543,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, permission, relationship, impact, context, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
           .bind(autoEdgeId, ownerId, objectId, "own", "active", JSON.stringify({ can_view: true, can_share: true }), JSON.stringify({ context: "creator/owner" }), null, null, now0, now0).run();
       }
-      // Create share edge: object → recipient (the object is shared TO the recipient)
+      // Create share edge: object â†’ recipient (the object is shared TO the recipient)
       const ctxRaw = rest.slice(rest.indexOf(recipientId) + recipientId.length).trim();
       let ctx = {};
       if (ctxRaw) {
@@ -8556,7 +8556,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const shareEdgeId = "edge_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
       await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, permission, relationship, impact, context, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
         .bind(shareEdgeId, objectId, recipientId, "share", "pending", JSON.stringify({ can_view: true }), JSON.stringify({ shared_by: ownerId, shared_by_name: owner.name }), null, ctxRaw || null, now, now).run();
-      // Also create a link edge: sharer → recipient (so the graph traces the human chain)
+      // Also create a link edge: sharer â†’ recipient (so the graph traces the human chain)
       const linkEdgeId = "edge_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
       await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, permission, relationship, impact, context, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
         .bind(linkEdgeId, ownerId, recipientId, "introduce", "pending", JSON.stringify({ can_contact: false, can_view: true }), JSON.stringify({ introduced_via: obj.name || objectId, object_type: obj.type }), null, null, now, now).run();
@@ -8677,7 +8677,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     }
 
     case "PTA_INTENT": {
-      // Live intent — what happens when someone scans this entity's PTA right now.
+      // Live intent â€” what happens when someone scans this entity's PTA right now.
       // PTA_INTENT SET <entity_id> <json: {group, context, moment_name}>
       // PTA_INTENT GET <entity_id>
       // PTA_INTENT CLEAR <entity_id>
@@ -8718,7 +8718,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     }
 
     case "PTA_MOMENT": {
-      // Moments — context-carrying community-forming events. Not confining — origin markers.
+      // Moments â€” context-carrying community-forming events. Not confining â€” origin markers.
       // PTA_MOMENT CREATE <creator_id> <name> [context json] [live_until ISO date]
       // PTA_MOMENT LIST [creator_id]
       // PTA_MOMENT GET <moment_id>
@@ -8748,7 +8748,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // Create the moment record
         await db.prepare("INSERT INTO pta_moments (id, creator_id, name, context, live_from, live_until, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
           .bind(momentEntityId, creatorId, mName, ctx, now, liveUntil, now).run();
-        // Edge: creator → moment (organize/host)
+        // Edge: creator â†’ moment (organize/host)
         const edgeId = "edge_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
         await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, permission, relationship, context, created_at, updated_at, moment_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
           .bind(edgeId, creatorId, momentEntityId, "created", "active", '{"can_view":true,"can_share":true}', JSON.stringify({ role: "creator" }), ctx, now, now, momentEntityId).run();
@@ -8781,10 +8781,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // PTA_SCAN <target_entity_id> <scanner_identity_key> [scanner_name]
       // What happens:
       // 1. Find or create scanner entity (identity floor: phone/email)
-      // 2. Check target's live intent → determines group assignment and context
+      // 2. Check target's live intent â†’ determines group assignment and context
       // 3. If intent has a moment, connect scanner to that moment (community formation)
-      // 4. Create edge: target → scanner with the appropriate group
-      // 5. Create edge: Aura → scanner, type "welcomed" (the person meets Aura)
+      // 4. Create edge: target â†’ scanner with the appropriate group
+      // 5. Create edge: Aura â†’ scanner, type "welcomed" (the person meets Aura)
       // 6. Record in history
       if (!isOp) return { cmd: "PTA_SCAN", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const db = env.AURA_MEMORY;
@@ -8834,7 +8834,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (mom) { momentId = mom.id; momentName = mom.name; }
       }
 
-      // 6. Create edge: target → scanner
+      // 6. Create edge: target â†’ scanner
       const edgeId = mkId("edge");
       const relContext = { how: "PTA scan", intent_context: intent ? intent.context || null : null, group: groupName, moment: momentName };
       await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, permission, relationship, context, created_at, updated_at, group_id, moment_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
@@ -8873,7 +8873,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         group: { id: groupId, name: groupName },
         moment: momentId ? { id: momentId, name: momentName } : null,
         aura_welcomed: !!welcomeEdgeId,
-        note: isNewUser ? "New user created and welcomed by Aura — they have entered the ecosystem." : "Existing user connected to target via PTA scan."
+        note: isNewUser ? "New user created and welcomed by Aura â€” they have entered the ecosystem." : "Existing user connected to target via PTA scan."
       }};
     }
 
@@ -8973,12 +8973,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     }
 
     case "PTA_QUERY": {
-      // Cross-graph queries — intelligence across the whole relationship graph.
-      // PTA_QUERY MUTUAL <id1> <id2> — who do both entities know
-      // PTA_QUERY PATH <id1> <id2> [max_depth=4] — shortest path between two entities
-      // PTA_QUERY COMMON_MOMENTS <id1> <id2> — what moments do both share
-      // PTA_QUERY MOMENT_CROSS <moment1> <moment2> — who was at both moments
-      // PTA_QUERY CONNECTED <entity_id> <type> — find all entities of a type connected to this entity
+      // Cross-graph queries â€” intelligence across the whole relationship graph.
+      // PTA_QUERY MUTUAL <id1> <id2> â€” who do both entities know
+      // PTA_QUERY PATH <id1> <id2> [max_depth=4] â€” shortest path between two entities
+      // PTA_QUERY COMMON_MOMENTS <id1> <id2> â€” what moments do both share
+      // PTA_QUERY MOMENT_CROSS <moment1> <moment2> â€” who was at both moments
+      // PTA_QUERY CONNECTED <entity_id> <type> â€” find all entities of a type connected to this entity
       if (!isOp) return { cmd: "PTA_QUERY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const db = env.AURA_MEMORY;
       const sub = (args[0] || "").toUpperCase();
@@ -9107,7 +9107,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     }
 
     case "PTA_DISCOVER": {
-      // Discover all entities connected to a moment — the community that formed.
+      // Discover all entities connected to a moment â€” the community that formed.
       // PTA_DISCOVER <moment_id>
       if (!isOp) return { cmd: "PTA_DISCOVER", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const db = env.AURA_MEMORY;
@@ -9126,8 +9126,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       return { cmd: "PTA_DISCOVER", payload: { ok: true, moment: { id: mom.id, name: mom.name, context: mom.context }, participant_count: participants.size, participants: [...participants.values()], edge_count: edges.results.length } };
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // ═══════════════════════════════════════════════════════════
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     case "LIFECYCLE": {
       // THE WHOLE ASSET, BREATHING - the full maritime lifecycle end-to-end in one call. Stitches every
@@ -9311,17 +9311,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     }
 
     case "COMMERCE": {
-      // ===== THE COMMERCE ENGINE — universal value-exchange reasoning ("HOW is value exchanged?") =====
-      // Canon Core Engine. NOT the payment plumbing (that's Stripe — a pluggable PROVIDER below
-      // this). This is the REASONING layer: given a value-exchange situation, decide the RIGHT STRUCTURE —
-      // one-time payment / subscription / deposit / booking / appointment / order / donation / tiered —
+      // ===== THE COMMERCE ENGINE â€” universal value-exchange reasoning ("HOW is value exchanged?") =====
+      // Canon Core Engine. NOT the payment plumbing (that's Stripe â€” a pluggable PROVIDER below
+      // this). This is the REASONING layer: given a value-exchange situation, decide the RIGHT STRUCTURE â€”
+      // one-time payment / subscription / deposit / booking / appointment / order / donation / tiered â€”
       // the right amount and timing, and which provider executes. Reasons through the shared mind (so it
       // challenges, never fabricates prices). It PROPOSES the transaction; the provider (Stripe) executes,
       // and any real charge goes through the gate (operator/customer approves). Providers are pluggable in
-      // KV (config:commerce:providers) so a new processor plugs in from OUTSIDE — Stripe is provider #1.
+      // KV (config:commerce:providers) so a new processor plugs in from OUTSIDE â€” Stripe is provider #1.
       //   COMMERCE STRUCTURE ::: {"what":"...","who":"buyer/seller context","goal":"...","constraints":"..."}
       //   COMMERCE PROVIDERS                      (list registered payment providers)
-      //   COMMERCE PROVIDER ADD ::: {json}        (plug in a processor from outside — no core edit)
+      //   COMMERCE PROVIDER ADD ::: {json}        (plug in a processor from outside â€” no core edit)
       const ceSub = (args[0] || "").toUpperCase();
       const ceAfter = rest.replace(/^COMMERCE\s+/i, "").replace(new RegExp("^" + ceSub + "\\s*", "i"), "");
       const cePayload = ceAfter.includes(":::") ? ceAfter.slice(ceAfter.indexOf(":::") + 3).trim() : "";
@@ -9338,7 +9338,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         let providers = []; try { const p = await env.AURA_KV.get("config:commerce:providers"); if (p) providers = JSON.parse(p) || []; } catch {}
         providers = providers.filter(x => x.id !== np.id); providers.push({ ...np, added: new Date().toISOString() });
         await env.AURA_KV.put("config:commerce:providers", JSON.stringify(providers)).catch(() => {});
-        return { cmd: "COMMERCE", payload: { ok: true, added: np.id, provider_count: providers.length, note: "Payment provider plugged in. The Commerce Engine can now reason about it — no core edit needed." } };
+        return { cmd: "COMMERCE", payload: { ok: true, added: np.id, provider_count: providers.length, note: "Payment provider plugged in. The Commerce Engine can now reason about it â€” no core edit needed." } };
       }
       if (ceSub === "STRUCTURE" || ceSub === "DECIDE") {
         let ctx; try { ctx = JSON.parse(cePayload); } catch { return { cmd: "COMMERCE", payload: { ok: false, error: 'Usage: COMMERCE STRUCTURE ::: {what,who,goal,constraints}' } }; }
@@ -9346,16 +9346,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (!providers.length) providers = [{ id: "stripe", name: "Stripe", handles: ["payment", "subscription", "refund", "checkout"], default: true }];
         const ceR = await reasonThroughLoop(env, {
           entity: JSON.stringify(ctx),
-          lens: "COMMERCE — decide the RIGHT STRUCTURE for this value exchange. The forms: one-time PAYMENT, recurring SUBSCRIPTION, DEPOSIT/hold, BOOKING/appointment, ORDER (physical/digital goods), TICKET, DONATION, tiered/usage. Choose what genuinely fits the situation and serves BOTH sides — not just the most money now. Consider: is this a one-time thing or an ongoing relationship (subscription)? Does it need a deposit to hold commitment? Should the ask come now or after value is shown? What amount is justified by the real value (never invent a price — if no real number is given, say it must be set, or frame as a range to decide)? Which provider executes? You PROPOSE the structure; a real charge requires approval and the provider (Stripe) executes it. Reason honestly; never fabricate amounts or fees.",
+          lens: "COMMERCE â€” decide the RIGHT STRUCTURE for this value exchange. The forms: one-time PAYMENT, recurring SUBSCRIPTION, DEPOSIT/hold, BOOKING/appointment, ORDER (physical/digital goods), TICKET, DONATION, tiered/usage. Choose what genuinely fits the situation and serves BOTH sides â€” not just the most money now. Consider: is this a one-time thing or an ongoing relationship (subscription)? Does it need a deposit to hold commitment? Should the ask come now or after value is shown? What amount is justified by the real value (never invent a price â€” if no real number is given, say it must be set, or frame as a range to decide)? Which provider executes? You PROPOSE the structure; a real charge requires approval and the provider (Stripe) executes it. Reason honestly; never fabricate amounts or fees.",
           facts: { situation: ctx, providers },
           extraKeys: [
             { key: "structure", desc: "the chosen form: payment | subscription | deposit | booking | order | ticket | donation | tiered" },
-            { key: "why_this_structure", desc: "one sentence — why this fits the situation and serves both sides better than alternatives" },
-            { key: "amount_guidance", desc: "the real amount if given; else 'must be set' or an honest range to decide — NEVER a fabricated price" },
+            { key: "why_this_structure", desc: "one sentence â€” why this fits the situation and serves both sides better than alternatives" },
+            { key: "amount_guidance", desc: "the real amount if given; else 'must be set' or an honest range to decide â€” NEVER a fabricated price" },
             { key: "timing", desc: "when to make the ask: now / after value shown / on booking / recurring" },
             { key: "provider", desc: "which registered provider executes it (e.g. stripe)" },
             { key: "provider_command", desc: "the concrete provider action to run once approved (e.g. a Stripe checkout/charge), as a proposal" },
-            { key: "needs_approval", desc: "boolean — true for any real charge (always propose, never auto-charge)" }
+            { key: "needs_approval", desc: "boolean â€” true for any real charge (always propose, never auto-charge)" }
           ]
         });
         if (!ceR.ok) return { cmd: "COMMERCE", payload: { ok: false, error: ceR.error } };
@@ -9407,18 +9407,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       return { cmd: "CAPABILITY", payload: { ok: false, error: "Sub-commands: REGISTER, LIST, GET, DELETE" } };
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // INDUSTRY CONTEXT REGISTRY — How Aura behaves per vertical.
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    // INDUSTRY CONTEXT REGISTRY â€” How Aura behaves per vertical.
     // Each industry selects capabilities and defines context.
     // Adding a new vertical = writing one document.
-    // ═══════════════════════════════════════════════════════════
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     case "INDUSTRY": {
       if (!isOp) return { cmd: "INDUSTRY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const sub = (args[0] || "").toUpperCase();
 
       if (sub === "REGISTER") {
-        // INDUSTRY REGISTER <name> — then set details via INDUSTRY UPDATE
+        // INDUSTRY REGISTER <name> â€” then set details via INDUSTRY UPDATE
         const name = (args[1] || "").toLowerCase();
         if (!name) return { cmd: "INDUSTRY", payload: { ok: false, error: "Usage: INDUSTRY REGISTER <name>" } };
         const existing = await env.AURA_KV.get(`industry:${name}`).catch(() => null);
@@ -9467,27 +9467,27 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       return { cmd: "INDUSTRY", payload: { ok: false, error: "Sub-commands: REGISTER, LIST, GET, UPDATE" } };
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // BUSINESS STATE MACHINE — Every business has a lifecycle.
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    // BUSINESS STATE MACHINE â€” Every business has a lifecycle.
     // Lead > Trial > Active > Growing > At Risk > Past Due > Suspended > Cancelled > Reactivated
-    // ═══════════════════════════════════════════════════════════
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-    // ═══════════════════════════════════════════════════════════
-    // TWILIO — Communication layer management. Campaigns, SMS, balance.
-    // Aura owns this — no manual Twilio console needed.
-    // ═══════════════════════════════════════════════════════════
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    // TWILIO â€” Communication layer management. Campaigns, SMS, balance.
+    // Aura owns this â€” no manual Twilio console needed.
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     case "COMMS": {
-      // ===== THE COMMUNICATIONS ENGINE — the global channel-decision brain =====
+      // ===== THE COMMUNICATIONS ENGINE â€” the global channel-decision brain =====
       // For ANY moment of reaching a person, decide the BEST channel: voice call, SMS/text, Aura's
-      // voice (AI voice call), email, or DIGITAL (in-app / push / Home Screen — free over data). The
+      // voice (AI voice call), email, or DIGITAL (in-app / push / Home Screen â€” free over data). The
       // channel is a DECISION, not a default. She weighs purpose, urgency, who the person is, where they
       // are, and COST (telecom spend vs free data). Carriers are PLUGGABLE: registered as data in
       // config:comms:carriers so a new carrier (Vonage, Telnyx, Bandwidth) plugs in from OUTSIDE without
       // editing the Core. Reasons through the shared mind (challenge, data-trust, no fabrication).
       //   COMMS DECIDE ::: {"who":"...","why":"...","where":"...","urgency":"...","relationship":"..."}
       //   COMMS CARRIERS                       (list registered carriers)
-      //   COMMS CARRIER ADD ::: {json}         (plug in a carrier from outside — no core edit)
+      //   COMMS CARRIER ADD ::: {json}         (plug in a carrier from outside â€” no core edit)
       const cmSub = (args[0] || "").toUpperCase();
       const cmAfter = rest.replace(/^COMMS\s+/i, "").replace(new RegExp("^" + cmSub + "\\s*", "i"), "");
       const cmPayload = cmAfter.includes(":::") ? cmAfter.slice(cmAfter.indexOf(":::") + 3).trim() : "";
@@ -9505,7 +9505,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         let carriers = []; try { const c = await env.AURA_KV.get("config:comms:carriers"); if (c) carriers = JSON.parse(c) || []; } catch {}
         carriers = carriers.filter(x => x.id !== nc.id); carriers.push({ ...nc, added: new Date().toISOString() });
         await env.AURA_KV.put("config:comms:carriers", JSON.stringify(carriers)).catch(() => {});
-        return { cmd: "COMMS", payload: { ok: true, added: nc.id, carrier_count: carriers.length, note: "Carrier plugged in. The Communications Engine can now reason about it — no core edit needed." } };
+        return { cmd: "COMMS", payload: { ok: true, added: nc.id, carrier_count: carriers.length, note: "Carrier plugged in. The Communications Engine can now reason about it â€” no core edit needed." } };
       }
       if (cmSub === "DECIDE") {
         let ctx; try { ctx = JSON.parse(cmPayload); } catch { return { cmd: "COMMS", payload: { ok: false, error: 'Usage: COMMS DECIDE ::: {"who","why","where","urgency","relationship"}' } }; }
@@ -9513,7 +9513,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         let carriers = []; try { const c = await env.AURA_KV.get("config:comms:carriers"); if (c) carriers = JSON.parse(c) || []; } catch {}
         if (!carriers.length) carriers = [{ id: "twilio", name: "Twilio", channels: ["sms", "voice", "voice_ai"], status: "active", default: true }];
         let numbers = null; try { const nr = await env.AURA_KV.get("twilio:numbers:all"); if (nr) { const n = JSON.parse(nr); numbers = { count: n.count, primary: n.primary }; } } catch {}
-        const cmLens = "COMMUNICATIONS ENGINE — decide the single BEST channel to reach this person right now. The channels: DIGITAL (in-app message / push / Home Screen — FREE over data, best when the person is already in our world or reachable digitally), EMAIL (good for non-urgent, first business outreach, anything needing a record), SMS (fast, personal, time-sensitive, needs a phone + carrier + spend), VOICE CALL (a real human conversation — highest cost and intrusion, only when it genuinely fits), AURA VOICE (her AI voice on a call — for scale where a real conversation matters but a human can't). The channel is a DECISION: weigh purpose, urgency, who they are, where they are, and COST. CRITICAL telecom-vs-data: prefer FREE digital/data channels when the person is reachable that way; only spend on telecom (SMS/voice) when the channel genuinely serves the moment better. Respect the person — never a call when a text does, never a text when a quiet in-app note does. If multiple carriers exist, pick the best for the region/cost. Ground in the real carrier + number facts given; never fabricate costs.";
+        const cmLens = "COMMUNICATIONS ENGINE â€” decide the single BEST channel to reach this person right now. The channels: DIGITAL (in-app message / push / Home Screen â€” FREE over data, best when the person is already in our world or reachable digitally), EMAIL (good for non-urgent, first business outreach, anything needing a record), SMS (fast, personal, time-sensitive, needs a phone + carrier + spend), VOICE CALL (a real human conversation â€” highest cost and intrusion, only when it genuinely fits), AURA VOICE (her AI voice on a call â€” for scale where a real conversation matters but a human can't). The channel is a DECISION: weigh purpose, urgency, who they are, where they are, and COST. CRITICAL telecom-vs-data: prefer FREE digital/data channels when the person is reachable that way; only spend on telecom (SMS/voice) when the channel genuinely serves the moment better. Respect the person â€” never a call when a text does, never a text when a quiet in-app note does. If multiple carriers exist, pick the best for the region/cost. Ground in the real carrier + number facts given; never fabricate costs.";
         const cmR = await reasonThroughLoop(env, {
           entity: JSON.stringify(ctx),
           lens: cmLens,
@@ -9521,9 +9521,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           extraKeys: [
             { key: "channel", desc: "the chosen channel: digital | email | sms | voice | aura_voice" },
             { key: "carrier", desc: "which carrier to use if telecom (or 'none' if digital/email)" },
-            { key: "why_this_channel", desc: "one sentence — why this beats the alternatives for THIS moment" },
-            { key: "telecom_or_data", desc: "'data' (free) or 'telecom' (costs money) — and why" },
-            { key: "cost_note", desc: "real cost consideration if known, or 'unknown — do not fabricate'" },
+            { key: "why_this_channel", desc: "one sentence â€” why this beats the alternatives for THIS moment" },
+            { key: "telecom_or_data", desc: "'data' (free) or 'telecom' (costs money) â€” and why" },
+            { key: "cost_note", desc: "real cost consideration if known, or 'unknown â€” do not fabricate'" },
             { key: "the_message_shape", desc: "one line on what the outreach should be (not the full copy)" }
           ]
         });
@@ -9532,20 +9532,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
 
       if (cmSub === "SWITCH") {
-        // LAYER 2 — MID-STREAM CHANNEL SWITCHING. A conversation is already happening on one channel;
+        // LAYER 2 â€” MID-STREAM CHANNEL SWITCHING. A conversation is already happening on one channel;
         // decide whether to SWITCH (sms->call when it needs a real talk; telecom->data when the person
         // became reachable digitally and we should stop paying; escalate/de-escalate by urgency).
         //   COMMS SWITCH ::: {"current_channel":"sms","situation":"...","reachable_on":["data","sms"],"urgency":"..."}
         let sx; try { sx = JSON.parse(cmPayload); } catch { return { cmd: "COMMS", payload: { ok: false, error: 'Usage: COMMS SWITCH ::: {current_channel,situation,reachable_on,urgency}' } }; }
         const sxR = await reasonThroughLoop(env, {
           entity: JSON.stringify(sx),
-          lens: "COMMUNICATIONS — MID-STREAM SWITCH. A conversation is ALREADY on a channel. Decide whether to STAY or SWITCH, and to what. Switch UP (sms->call/voice) when the moment now needs a real human conversation (complexity, emotion, urgency rising). Switch DOWN to free DATA the instant the person is reachable digitally — never keep paying telecom when data reaches them. Match urgency: don't escalate to a call when a text still serves; don't stay on a slow channel when time is critical. Ground in what they're actually reachable on; never fabricate cost.",
+          lens: "COMMUNICATIONS â€” MID-STREAM SWITCH. A conversation is ALREADY on a channel. Decide whether to STAY or SWITCH, and to what. Switch UP (sms->call/voice) when the moment now needs a real human conversation (complexity, emotion, urgency rising). Switch DOWN to free DATA the instant the person is reachable digitally â€” never keep paying telecom when data reaches them. Match urgency: don't escalate to a call when a text still serves; don't stay on a slow channel when time is critical. Ground in what they're actually reachable on; never fabricate cost.",
           facts: { state: sx },
           extraKeys: [
             { key: "action", desc: "'stay' or 'switch'" },
             { key: "switch_to", desc: "if switch: the target channel (digital/email/sms/voice/aura_voice), else null" },
-            { key: "why", desc: "one sentence — what changed that justifies staying or switching" },
-            { key: "saves_money", desc: "boolean — does this switch move off paid telecom onto free data?" }
+            { key: "why", desc: "one sentence â€” what changed that justifies staying or switching" },
+            { key: "saves_money", desc: "boolean â€” does this switch move off paid telecom onto free data?" }
           ]
         });
         if (!sxR.ok) return { cmd: "COMMS", payload: { ok: false, error: sxR.error } };
@@ -9553,7 +9553,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
 
       if (cmSub === "COST") {
-        // LAYER 5 — CONTINUOUS COST AWARENESS. The live cost picture of communications: what each channel
+        // LAYER 5 â€” CONTINUOUS COST AWARENESS. The live cost picture of communications: what each channel
         // costs, what we're spending, the cheapest path that still serves. Pulls real balance via aura-comms.
         const out = { ts: new Date().toISOString() };
         try {
@@ -9561,17 +9561,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const db = await rb.json(); const bp = (db && (db.reply !== undefined ? db.reply : db)) || {};
           if (bp.balance !== undefined && bp.balance !== null) { out.telecom_balance_usd = parseFloat(bp.balance); out.currency = bp.currency || "USD"; }
         } catch (e) { out.balance_error = String(e && e.message); }
-        // cost reference lives in KV (config:comms:costs) — operator/economics-owned, swappable, never hardcoded
+        // cost reference lives in KV (config:comms:costs) â€” operator/economics-owned, swappable, never hardcoded
         try { const cr = await env.AURA_KV.get("config:comms:costs"); out.cost_reference = cr ? JSON.parse(cr) : null; } catch {}
         out.principle = "Free data first. Spend telecom only when it serves the moment better than data. Every channel choice is a cost choice.";
-        out.note = out.cost_reference ? null : "No cost reference set (config:comms:costs). Per-channel costs are unknown until provided — do not fabricate them.";
+        out.note = out.cost_reference ? null : "No cost reference set (config:comms:costs). Per-channel costs are unknown until provided â€” do not fabricate them.";
         return { cmd: "COMMS", payload: { ok: true, mode: "cost", ...out } };
       }
 
       if (cmSub === "PROVISION") {
-        // LAYER 3 — PROVISIONING INTELLIGENCE. Given a calling goal + budget, reason about how many lines,
+        // LAYER 3 â€” PROVISIONING INTELLIGENCE. Given a calling goal + budget, reason about how many lines,
         // FROM WHERE (a local number in the region you're calling is cheaper), toward the fleet target.
-        // PROPOSES — never buys. Buying spends real money; it goes through the gate (operator approves,
+        // PROPOSES â€” never buys. Buying spends real money; it goes through the gate (operator approves,
         // aura-comms executes the purchase). Toward the long-term target (e.g. 10,000 lines, budget-permitting).
         //   COMMS PROVISION ::: {"goal":"call 5000 businesses in AU","budget_usd":200,"have_lines":1,"target_lines":10000}
         let pv; try { pv = JSON.parse(cmPayload); } catch { return { cmd: "COMMS", payload: { ok: false, error: 'Usage: COMMS PROVISION ::: {goal,budget_usd,have_lines,target_lines}' } }; }
@@ -9582,24 +9582,24 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (!carriers.length) carriers = [{ id: "twilio", name: "Twilio", channels: ["sms","voice"], default: true }];
         const pvR = await reasonThroughLoop(env, {
           entity: JSON.stringify(pv),
-          lens: "COMMUNICATIONS — PROVISIONING. Reason about acquiring phone lines to serve a calling goal. KEY INSIGHTS: a LOCAL number in the region you're calling is usually far cheaper than calling internationally from a foreign number (calling Australia? buy an Australian number). Match line count to actual need + the fleet target, not vanity. Respect BUDGET as a hard ceiling. You PROPOSE a buy plan; you NEVER buy — purchase spends real money and requires operator approval, then the Service Layer executes. NEVER fabricate per-number prices; if you don't have real carrier pricing, say the price must be confirmed before buying.",
+          lens: "COMMUNICATIONS â€” PROVISIONING. Reason about acquiring phone lines to serve a calling goal. KEY INSIGHTS: a LOCAL number in the region you're calling is usually far cheaper than calling internationally from a foreign number (calling Australia? buy an Australian number). Match line count to actual need + the fleet target, not vanity. Respect BUDGET as a hard ceiling. You PROPOSE a buy plan; you NEVER buy â€” purchase spends real money and requires operator approval, then the Service Layer executes. NEVER fabricate per-number prices; if you don't have real carrier pricing, say the price must be confirmed before buying.",
           facts: { request: pv, current_balance_usd: bal, carriers },
           extraKeys: [
             { key: "lines_to_buy", desc: "how many lines to buy now (integer), reasoned against budget + need" },
             { key: "from_where", desc: "which region/country to buy them in, and WHY (e.g. local-to-target is cheaper)" },
             { key: "carrier", desc: "which registered carrier to buy from" },
             { key: "price_status", desc: "'known: $X each' ONLY if real pricing was given, else 'must confirm price before buying'" },
-            { key: "fits_budget", desc: "boolean — does the proposed buy fit within budget_usd?" },
+            { key: "fits_budget", desc: "boolean â€” does the proposed buy fit within budget_usd?" },
             { key: "the_plan", desc: "one or two sentences: the proposed buy, framed as a PROPOSAL needing approval" },
             { key: "toward_target", desc: "how this moves toward target_lines, and what's left after" }
           ]
         });
         if (!pvR.ok) return { cmd: "COMMS", payload: { ok: false, error: pvR.error } };
-        return { cmd: "COMMS", payload: { ok: true, proposal_only: true, gate: "buying lines spends real money — operator must approve, then aura-comms executes", request: pv, provisioning: pvR.reasoning } };
+        return { cmd: "COMMS", payload: { ok: true, proposal_only: true, gate: "buying lines spends real money â€” operator must approve, then aura-comms executes", request: pv, provisioning: pvR.reasoning } };
       }
 
       if (cmSub === "CARRIER" && (args[1] || "").toUpperCase() === "EVAL") {
-        // LAYER 4 — CARRIER STRATEGY. Is the current carrier still the best/cheapest for what we do,
+        // LAYER 4 â€” CARRIER STRATEGY. Is the current carrier still the best/cheapest for what we do,
         // or should we add/switch to another? Aura is loyal to the call system working well + cheaply,
         // NOT to any carrier. Reasons over the registered carriers + the stated need.
         //   COMMS CARRIER EVAL ::: {"need":"high-volume US SMS + occasional AU voice","priorities":["cost","deliverability"]}
@@ -9608,13 +9608,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (!carriers.length) carriers = [{ id: "twilio", name: "Twilio", channels: ["sms","voice"], default: true }];
         const evR = await reasonThroughLoop(env, {
           entity: JSON.stringify(ev),
-          lens: "COMMUNICATIONS — CARRIER STRATEGY. Judge whether the current carrier(s) are the best fit for the stated need, or whether to ADD or SWITCH to another (Vonage, Telnyx, Bandwidth, etc.). Be loyal to the OUTCOME — the call system working well and cheaply — never to a vendor. Weigh cost, deliverability, regional strength, A2P support. If a better option likely exists, SAY SO plainly and name what to evaluate. NEVER fabricate carrier prices or claims; flag what must be verified. A new carrier plugs in as data (COMMS CARRIER ADD) with no core edit.",
+          lens: "COMMUNICATIONS â€” CARRIER STRATEGY. Judge whether the current carrier(s) are the best fit for the stated need, or whether to ADD or SWITCH to another (Vonage, Telnyx, Bandwidth, etc.). Be loyal to the OUTCOME â€” the call system working well and cheaply â€” never to a vendor. Weigh cost, deliverability, regional strength, A2P support. If a better option likely exists, SAY SO plainly and name what to evaluate. NEVER fabricate carrier prices or claims; flag what must be verified. A new carrier plugs in as data (COMMS CARRIER ADD) with no core edit.",
           facts: { need: ev, registered_carriers: carriers },
           extraKeys: [
-            { key: "current_fit", desc: "how well the current carrier(s) serve the stated need — honest" },
-            { key: "recommendation", desc: "'keep' | 'add a carrier' | 'switch' — and which" },
+            { key: "current_fit", desc: "how well the current carrier(s) serve the stated need â€” honest" },
+            { key: "recommendation", desc: "'keep' | 'add a carrier' | 'switch' â€” and which" },
             { key: "why", desc: "the reasoning, tied to cost/deliverability/regional fit" },
-            { key: "to_verify", desc: "array — what real facts (pricing, coverage) must be confirmed before acting" }
+            { key: "to_verify", desc: "array â€” what real facts (pricing, coverage) must be confirmed before acting" }
           ]
         });
         if (!evR.ok) return { cmd: "COMMS", payload: { ok: false, error: evR.error } };
@@ -9653,9 +9653,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
 
       if (sub === "STATUS" || sub === "PICTURE") {
-        // ===== CANONICAL TWILIO SIGHT — canon-correct: Core ASKS, aura-comms TRANSPORTS =====
+        // ===== CANONICAL TWILIO SIGHT â€” canon-correct: Core ASKS, aura-comms TRANSPORTS =====
         // The Service Layer (aura-comms) owns Twilio and holds the creds. Core does NOT call
-        // api.twilio.com directly — it asks aura-comms for the raw telephony truth, then Core does
+        // api.twilio.com directly â€” it asks aura-comms for the raw telephony truth, then Core does
         // what Core does: REASON about what it means (canonical campaign SID, plain-English summary).
         // Core thinks; aura-comms executes. (Per notes:architecture:core_canon.)
         const out = { ts: new Date().toISOString() };
@@ -9707,12 +9707,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         }
         out.campaign_status = cs;
         out.means = (cs === "VERIFIED" || cs === "APPROVED")
-          ? "SMS campaign is APPROVED — texting is cleared to go live."
+          ? "SMS campaign is APPROVED â€” texting is cleared to go live."
           : cs === "IN_PROGRESS"
-            ? ("Campaign is IN REVIEW with the carrier" + (errs.length ? (", but has " + errs.length + " error(s) to address") : " and has no errors" + (out.brand_status === "APPROVED" ? " (brand already APPROVED) — nothing to do but wait for the campaign to clear." : " — nothing to do but wait.")))
+            ? ("Campaign is IN REVIEW with the carrier" + (errs.length ? (", but has " + errs.length + " error(s) to address") : " and has no errors" + (out.brand_status === "APPROVED" ? " (brand already APPROVED) â€” nothing to do but wait for the campaign to clear." : " â€” nothing to do but wait.")))
             : cs === "FAILED"
-              ? "Campaign FAILED — needs a fix and resubmit (read the errors)."
-              : "Campaign status is " + cs + " — read the campaign block for detail.";
+              ? "Campaign FAILED â€” needs a fix and resubmit (read the errors)."
+              : "Campaign status is " + cs + " â€” read the campaign block for detail.";
         return { cmd: "TWILIO", payload: { ok: true, mode: "status", via: "aura-comms", ...out } };
       }
 
@@ -9760,11 +9760,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const to = args[1] || "";
         const msgBody = rest.slice(rest.indexOf(to) + to.length).trim();
         if (!to || !msgBody) return { cmd: "TWILIO", payload: { ok: false, error: "Usage: TWILIO SEND <to_number> <message>" } };
-        // HONORED EXIT — same guard as email, before any text is sent. Out means out, every channel.
+        // HONORED EXIT â€” same guard as email, before any text is sent. Out means out, every channel.
         const phoneId = "phone:" + String(to).replace(/[^\d+]/g, "");
         if (await isOptedOut(env, phoneId)) {
           try { let log = []; const lr = await env.AURA_KV.get("optout:blocked_log"); if (lr) log = JSON.parse(lr) || []; log.push({ channel: "sms", to, ts: new Date().toISOString() }); await env.AURA_KV.put("optout:blocked_log", JSON.stringify(log.slice(-200))).catch(() => {}); } catch {}
-          return { cmd: "TWILIO", payload: { ok: false, opted_out: true, error: "BLOCKED: recipient has permanently opted out — honored, not contacted" } };
+          return { cmd: "TWILIO", payload: { ok: false, opted_out: true, error: "BLOCKED: recipient has permanently opted out â€” honored, not contacted" } };
         }
         // Transport via aura-comms (Service Layer owns Twilio). Core already decided it's OK to send.
         try {
@@ -9823,20 +9823,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       return { cmd: "BUSINESS_STATE", payload: { ok: false, error: "Sub-commands: SET, GET" } };
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // GENERATE_PAGE — Deterministic page generation. Aura's brain decides WHAT,
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    // GENERATE_PAGE â€” Deterministic page generation. Aura's brain decides WHAT,
     // code handles HOW. Never truncates. Works 100% of the time.
     // GENERATE_PAGE <type> <domain> [json config]
-    // ═══════════════════════════════════════════════════════════
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     case "CANVAS":
     case "ADAPTIVE_CANVAS": {
-      // ===== THE ADAPTIVE CANVAS ENGINE — universal context/experience reasoning =====
+      // ===== THE ADAPTIVE CANVAS ENGINE â€” universal context/experience reasoning =====
       // The 8th canon Core Engine. Answers: "HOW should this moment be EXPERIENCED?" It does NOT draw
-      // pixels — that's GENERATE_PAGE (the renderer below it). This is the REASONING layer: given WHO is
-      // here, WHAT they need, and WHAT is happening, it decides the right SHAPE of the experience —
+      // pixels â€” that's GENERATE_PAGE (the renderer below it). This is the REASONING layer: given WHO is
+      // here, WHAT they need, and WHAT is happening, it decides the right SHAPE of the experience â€”
       // dashboard / timeline / map / menu / form / gallery / document / workspace / a single focused
-      // action — and what belongs on it right now, what's noise, what the one primary action is. Nothing
+      // action â€” and what belongs on it right now, what's noise, what the one primary action is. Nothing
       // is static; the experience adapts to context. It reasons through the shared mind, then (optionally)
       // hands GENERATE_PAGE a concrete config to render. Canvas DECIDES the experience; GENERATE_PAGE draws it.
       //   CANVAS SHAPE ::: {"who":"...","need":"...","context":"...","surface":"home|business|page","moment":"..."}
@@ -9848,13 +9848,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         let ctx; try { ctx = JSON.parse(acPayload); } catch { return { cmd: "ADAPTIVE_CANVAS", payload: { ok: false, error: 'Usage: CANVAS SHAPE ::: {who,need,context,surface,moment}' } }; }
         const acR = await reasonThroughLoop(env, {
           entity: JSON.stringify(ctx),
-          lens: "ADAPTIVE CANVAS — decide HOW this moment should be EXPERIENCED. You are choosing the SHAPE of the experience for THIS person, THIS need, THIS moment — not a fixed template. The vocabulary of shapes: DASHBOARD (status/overview at a glance), TIMELINE (history/sequence of events), MAP (places/spatial), MENU (choices/navigation), FORM (capture input), GALLERY (visual browse), DOCUMENT (read/reference), WORKSPACE (do focused work), or a SINGLE FOCUSED ACTION (one clear thing to do now). Decide: which shape fits, what 2-5 things belong on it RIGHT NOW (and what is noise to leave off), and the ONE primary action. Adapt to context — a busy owner at 9am needs something different than a customer browsing. Nothing static. Be concrete; never invent data the surface doesn't have.",
+          lens: "ADAPTIVE CANVAS â€” decide HOW this moment should be EXPERIENCED. You are choosing the SHAPE of the experience for THIS person, THIS need, THIS moment â€” not a fixed template. The vocabulary of shapes: DASHBOARD (status/overview at a glance), TIMELINE (history/sequence of events), MAP (places/spatial), MENU (choices/navigation), FORM (capture input), GALLERY (visual browse), DOCUMENT (read/reference), WORKSPACE (do focused work), or a SINGLE FOCUSED ACTION (one clear thing to do now). Decide: which shape fits, what 2-5 things belong on it RIGHT NOW (and what is noise to leave off), and the ONE primary action. Adapt to context â€” a busy owner at 9am needs something different than a customer browsing. Nothing static. Be concrete; never invent data the surface doesn't have.",
           facts: { context: ctx },
           extraKeys: [
             { key: "shape", desc: "the chosen experience shape: dashboard | timeline | map | menu | form | gallery | document | workspace | single_action" },
-            { key: "why_this_shape", desc: "one sentence — why this shape fits who's here, their need, and the moment" },
+            { key: "why_this_shape", desc: "one sentence â€” why this shape fits who's here, their need, and the moment" },
             { key: "show_now", desc: "array of 2-5 things that belong on this surface right now, most important first" },
-            { key: "leave_off", desc: "array — what is noise for THIS moment and should NOT be shown (adapting to context)" },
+            { key: "leave_off", desc: "array â€” what is noise for THIS moment and should NOT be shown (adapting to context)" },
             { key: "primary_action", desc: "the single most important action for this person right now" },
             { key: "sections_hint", desc: "array of GENERATE_PAGE-style section types this shape implies (header, cards, timeline, map, form, chips, button, gallery, chat)" }
           ]
@@ -9870,7 +9870,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           }
           result.render_config = {
             note: "Canvas reasoned the shape; this is a GENERATE_PAGE-ready skeleton. Fill section props from real surface data, then GENERATE_PAGE <page-key> <config> to draw it.",
-            config: { title: (r.shape ? (String(r.shape).toUpperCase() + " — " + (ctx.need || "")) : (ctx.need || "Experience")), shape: r.shape || null, primary_action: r.primary_action || null, sections }
+            config: { title: (r.shape ? (String(r.shape).toUpperCase() + " â€” " + (ctx.need || "")) : (ctx.need || "Experience")), shape: r.shape || null, primary_action: r.primary_action || null, sections }
           };
         }
         return { cmd: "ADAPTIVE_CANVAS", payload: result };
@@ -9880,9 +9880,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
     case "GENERATE_PAGE": {
       if (!isOp) return { cmd: "GENERATE_PAGE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      // UNIVERSAL PAGE GENERATOR — data-driven component renderer.
+      // UNIVERSAL PAGE GENERATOR â€” data-driven component renderer.
       // Aura describes pages as JSON configs. Code renders them. Any page, any domain, no code changes.
-      // The engine holds NO page content — every page is described from outside via JSON.
+      // The engine holds NO page content â€” every page is described from outside via JSON.
       // Usage: GENERATE_PAGE <page-key> <json config>
       //   key: page:domain.com/ or page:domain.com/path
       //   config: { title, sections: [{type, ...props}] }  (component types: header, cards, text, button, chips, form, link_display, qrcode, chat)
@@ -9892,7 +9892,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       {
         pageKey = arg0.startsWith("page:") ? arg0 : `page:${arg0}`;
         const jsonStart = rest.indexOf("{");
-        if (jsonStart < 0) return { cmd: "GENERATE_PAGE", payload: { ok: false, error: "Provide a JSON page config. The engine holds no presets — describe the page: { title, sections: [...] }" } };
+        if (jsonStart < 0) return { cmd: "GENERATE_PAGE", payload: { ok: false, error: "Provide a JSON page config. The engine holds no presets â€” describe the page: { title, sections: [...] }" } };
         try { config = JSON.parse(rest.slice(jsonStart)); } catch (e) { return { cmd: "GENERATE_PAGE", payload: { ok: false, error: "Invalid JSON: " + e.message } }; }
       }
 
@@ -9903,7 +9903,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const renderSection = (s) => {
         if (s.type === "header") {
           let h = '<div style="padding:1rem;text-align:center;border-bottom:1px solid #1f1f35;position:relative">';
-          if (s.back) h += `<a href="${s.back}" style="position:absolute;left:1rem;top:1rem;color:#888;text-decoration:none;font-size:1.2rem">←</a>`;
+          if (s.back) h += `<a href="${s.back}" style="position:absolute;left:1rem;top:1rem;color:#888;text-decoration:none;font-size:1.2rem">â†</a>`;
           if (s.links) h += `<div style="display:flex;justify-content:flex-end;gap:1rem;padding:0 0.5rem 0.5rem;font-size:0.8rem">${s.links.map(l=>`<a href="${l.href}" style="color:#a855f7;text-decoration:none">${l.text}</a>`).join("")}</div>`;
           h += `<h1 style="font-size:1.4rem;font-weight:800;background:linear-gradient(135deg,#a855f7,#ec4899);-webkit-background-clip:text;-webkit-text-fill-color:transparent">${s.title}</h1>`;
           if (s.subtitle) h += `<p style="color:#888;font-size:0.85rem">${s.subtitle}</p>`;
@@ -9947,7 +9947,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           chatCtx = s.context || "general";
           chatShop = s.shop || "";
           chatArtist = s.artist || "";
-          return `<div id="auraChat" style="flex:1;display:flex;flex-direction:column;min-height:200px"><div id="chatArea" style="flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:0.6rem"><div style="background:#1a1a2e;border:1px solid #2a2a45;border-radius:12px;padding:0.8rem 1rem;max-width:85%;font-size:0.9rem;line-height:1.4;color:#c8c4d8"><span style="color:#a855f7;font-weight:700;font-size:0.75rem">AURA</span><br>${s.message||'Hi! I am Aura. How can I help?'}</div></div><div style="padding:0.8rem;border-top:1px solid #1f1f35;display:flex;gap:0.5rem"><input id="chatInput" placeholder="${s.placeholder||'Talk with Aura...'}" style="flex:1;background:#1a1a2e;border:1px solid #2a2a45;border-radius:10px;padding:0.7rem 1rem;color:#e8e4f0;font-size:0.9rem;outline:none" onkeydown="if(event.key==='Enter')sendMsg()"><button onclick="sendMsg()" style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#a855f7,#ec4899);border:none;color:#fff;font-size:1.1rem;cursor:pointer">→</button></div></div>`;
+          return `<div id="auraChat" style="flex:1;display:flex;flex-direction:column;min-height:200px"><div id="chatArea" style="flex:1;overflow-y:auto;padding:1rem;display:flex;flex-direction:column;gap:0.6rem"><div style="background:#1a1a2e;border:1px solid #2a2a45;border-radius:12px;padding:0.8rem 1rem;max-width:85%;font-size:0.9rem;line-height:1.4;color:#c8c4d8"><span style="color:#a855f7;font-weight:700;font-size:0.75rem">AURA</span><br>${s.message||'Hi! I am Aura. How can I help?'}</div></div><div style="padding:0.8rem;border-top:1px solid #1f1f35;display:flex;gap:0.5rem"><input id="chatInput" placeholder="${s.placeholder||'Talk with Aura...'}" style="flex:1;background:#1a1a2e;border:1px solid #2a2a45;border-radius:10px;padding:0.7rem 1rem;color:#e8e4f0;font-size:0.9rem;outline:none" onkeydown="if(event.key==='Enter')sendMsg()"><button onclick="sendMsg()" style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#a855f7,#ec4899);border:none;color:#fff;font-size:1.1rem;cursor:pointer">â†’</button></div></div>`;
         }
         return "";
       };
@@ -9973,7 +9973,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
     }
 
     case "CURRENT_FOCUS": {
-      // "Right Now" feed for the CC — what Aaron needs to see at a glance.
+      // "Right Now" feed for the CC â€” what Aaron needs to see at a glance.
       // Reads: today's journal, strategy:day_zero_first_move, strategy:gaps, alerts, missions.
       if (!isOp) return { cmd: "CURRENT_FOCUS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const cf = { ts: new Date().toISOString() };
@@ -10004,13 +10004,13 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         // operator-defined blockers live in KV (config:focus:blockers), not hardcoded here
         try { const bl = await env.AURA_KV.get("config:focus:blockers"); if (bl) { const arr = JSON.parse(bl); if (Array.isArray(arr)) arr.forEach(x => cf.blockers.push(x)); } } catch {}
       } catch { cf.blockers = []; }
-      // Next actions come from KV (config:focus:next_actions) — operator-owned, not baked into the brain
+      // Next actions come from KV (config:focus:next_actions) â€” operator-owned, not baked into the brain
       try { const na = await env.AURA_KV.get("config:focus:next_actions"); cf.next_actions = na ? (JSON.parse(na) || []) : []; } catch { cf.next_actions = []; }
       return { cmd: "CURRENT_FOCUS", payload: { ok: true, ...cf } };
     }
 
     case "INVENTORY_STATUS": {
-      // Open Loops feed — the audited systems inventory (written by Aura's self-audit).
+      // Open Loops feed â€” the audited systems inventory (written by Aura's self-audit).
       // Merges notes:inventory:systems-a + systems-b, returns counts by status + full list.
       if (!isOp) return { cmd: "INVENTORY_STATUS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       let invAll = [];
@@ -10028,7 +10028,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
     }
 
     case "SYSTEM_HEALTH": {
-      // Command Center section 11 — Aura monitors herself. Every check is a REAL probe.
+      // Command Center section 11 â€” Aura monitors herself. Every check is a REAL probe.
       if (!isOp) return { cmd: "SYSTEM_HEALTH", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const sh = { ts: new Date().toISOString(), checks: {} };
       // KV round-trip
@@ -10045,7 +10045,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         const row = await env.AURA_MEMORY.prepare("SELECT 1 AS one").first();
         sh.checks.d1 = { ok: row && row.one === 1, latency_ms: Date.now() - t0 };
       } catch (e) { sh.checks.d1 = { ok: false, error: e.message }; }
-      // Sister workers via bindings — reachable means any HTTP response came back
+      // Sister workers via bindings â€” reachable means any HTTP response came back
       const pingBinding = async (binding, reqUrl) => {
         if (!binding) return { ok: false, bound: false };
         try { const t0 = Date.now(); const r = await binding.fetch(new Request(reqUrl)); return { ok: r.status < 500, bound: true, http_status: r.status, latency_ms: Date.now() - t0 }; }
@@ -10054,14 +10054,14 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       sh.checks.aura_host = await pingBinding(env.AURA_HOST, "https://auras.guide/");
       sh.checks.aura_ops = await pingBinding(env.AURA_OPS, "https://aura-ops.aaronkaracas.workers.dev/");
       sh.checks.aura_comms = await pingBinding(env.AURA_COMMS, "https://aura-comms.aaronkaracas.workers.dev/");
-      // Brain — last agent loop outcome PLUS who actually answered the last turn (catches silent fallbacks)
+      // Brain â€” last agent loop outcome PLUS who actually answered the last turn (catches silent fallbacks)
       try {
         const mon = JSON.parse(await env.AURA_KV.get("monitor:last_agent_loop") || "null");
         const turn = JSON.parse(await env.AURA_KV.get("monitor:last_turn") || "null");
         const answeredBy = turn ? (turn.answered_by || "none") : null;
         sh.checks.brain = mon ? { ok: !mon.error && answeredBy === "anthropic", last_ts: mon.ts, mode: mon.mode, stop_reason: mon.stop_reason, error: mon.error, last_turn_answered_by: answeredBy, last_turn_error: turn ? turn.fable_error : null } : { ok: false, note: "no agent loop recorded yet" };
       } catch (e) { sh.checks.brain = { ok: false, error: e.message }; }
-      // Crons — freshness of watcher outputs (age in minutes; stale flags honest, no guessing)
+      // Crons â€” freshness of watcher outputs (age in minutes; stale flags honest, no guessing)
       const ageOf = async (key) => {
         try { const v = JSON.parse(await env.AURA_KV.get(key) || "null"); if (!v || !v.ts) return { present: false }; const mins = Math.round((Date.now() - Date.parse(v.ts)) / 60000); return { present: true, age_minutes: mins }; }
         catch { return { present: false }; }
@@ -10070,7 +10070,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       sh.checks.cron_watch_a2p = await ageOf("notes:alert:a2p");
       // Bindings present
       sh.checks.bindings = { entity_do: !!env.ENTITY_DO, vectorize: !!env.VECTORIZE, workers_ai: !!env.AI, kv: !!env.AURA_KV, d1: !!env.AURA_MEMORY };
-      // Verdict — core = kv, d1, host, brain
+      // Verdict â€” core = kv, d1, host, brain
       const core = [sh.checks.kv.ok, sh.checks.d1.ok, sh.checks.aura_host.ok, sh.checks.brain.ok];
       sh.verdict = core.every(Boolean) ? "HEALTHY" : "DEGRADED";
       sh.failing = Object.entries(sh.checks).filter(([k, v]) => v && v.ok === false).map(([k]) => k);
@@ -10081,7 +10081,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       if (!isOp) return { cmd: "WORLD_MAP", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const launchedRaw = await env.AURA_KV.get("config:domains:launched").catch(() => null);
       const allRaw = await env.AURA_KV.get("config:domains:all").catch(() => null);
-      // Bulletproof parsing — launched may be JSON array OR comma string; never throw.
+      // Bulletproof parsing â€” launched may be JSON array OR comma string; never throw.
       let launchedList = [];
       if (launchedRaw) {
         try { const p = JSON.parse(launchedRaw); launchedList = Array.isArray(p) ? p : (typeof p === "string" ? p.split(",") : []); }
@@ -10099,12 +10099,12 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       // Optional: caller can pass a domain to get its LIVE serving status; default returns the full map.
       const focusDomain = (args[0] || "").trim().toLowerCase();
 
-      // Build the map from data already in hand — NO per-domain KV reads (180 domains x reads = 1101 crash).
+      // Build the map from data already in hand â€” NO per-domain KV reads (180 domains x reads = 1101 crash).
       const worlds = allList.map(domain => ({
         name: domain,
         launched: launchedSet.has(domain),
         status: launchedSet.has(domain) ? "live" : "registered",
-        // Metrics that don't exist yet — honestly null, not faked
+        // Metrics that don't exist yet â€” honestly null, not faked
         revenue: null, users: null, pta_count: null, traffic: null
       }));
 
@@ -10130,7 +10130,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       return { cmd: "WORLD_MAP", payload: { ok: true, summary, worlds } };
     }
     case "ECONOMICS": {
-      // ECONOMICS ENGINE (foundation) — cost-to-serve visibility. Reads the AI cost ledger that
+      // ECONOMICS ENGINE (foundation) â€” cost-to-serve visibility. Reads the AI cost ledger that
       // every brain call now writes. This is the raw material the financial-intelligence engine
       // reasons over: what serving costs, by model, per call. Revenue (Stripe) joins this next.
       // Usage: ECONOMICS                (today's cost to serve)
@@ -10140,7 +10140,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       const ecToday = new Date().toISOString().slice(0, 10);
       const readDay = async (d) => { try { const ex = await env.AURA_KV.get("economics:cost:" + d); return ex ? JSON.parse(ex) : null; } catch { return null; } };
       if (/^ANALYZE\b/i.test(ecRaw)) {
-        // ECONOMICS ANALYZE — the financial-intelligence engine. Joins cost-to-serve (our ledger)
+        // ECONOMICS ANALYZE â€” the financial-intelligence engine. Joins cost-to-serve (our ledger)
         // with revenue (Stripe) and cash (Mercury), runs the ecosystem-sustainability lens.
         // OPERATOR ONLY (reads real account data). Objective: a healthy self-sustaining ecosystem.
         if (!isOp) return { cmd: "ECONOMICS", payload: { ok: false, error: "OPERATOR_REQUIRED (reads real account data)" } };
@@ -10154,11 +10154,11 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         try { const tr = await processCommand("TWILIO_BALANCE", env, isOp); const tp = (tr && tr.payload) ? tr.payload : tr; if (tp && (tp.balance !== undefined || tp.ok)) twilio = { balance: tp.balance !== undefined ? tp.balance : null, currency: tp.currency || "USD" }; } catch {}
         let opFrame = ""; try { const of = await env.AURA_KV.get("notes:economics:operating_frame"); if (of) opFrame = String(of).slice(0, 2000); } catch {}
         const ecFacts = { cost_to_serve_last_7_days_usd: cost7.usd, ai_calls_7d: cost7.calls, cost_by_model_7d: cost7.by_model, cost_by_day: costDays, stripe_revenue: stripe, cash_mercury: mercury, twilio_funding: twilio, ts: new Date().toISOString() };
-        // ECONOMICS now reasons THROUGH the shared mind — it inherits assumption-challenge, data-trust
+        // ECONOMICS now reasons THROUGH the shared mind â€” it inherits assumption-challenge, data-trust
         // (is this number real or a broken pipe?), and operator push-back, and keeps its economics outputs.
-        const ecLens = "ECONOMICS INTELLIGENCE — Aura's financial intelligence about HER OWN operation, acting as the OPERATOR who keeps the machine running. Reason about cost-to-serve (tokens), revenue (Stripe), cash (Mercury), and Twilio funding. KEY OPERATING TRUTHS: the Mercury balance is a working FLOAT (fuel, not profit); keep tokens paid; STRIPE DOES NOT AUTO-FUND MERCURY (money in Stripe sits until swept — reason about Mercury + unswept Stripe as total fuel, and flag when a sweep is needed); every dollar recycles. The objective is a healthy self-sustaining machine, not maximum profit. Translate numbers into plain meaning. When you challenge assumptions, ask explicitly what the MINIMUM machine that works is, and which stated dependencies are truly load-bearing vs optional/phase-two.";
+        const ecLens = "ECONOMICS INTELLIGENCE â€” Aura's financial intelligence about HER OWN operation, acting as the OPERATOR who keeps the machine running. Reason about cost-to-serve (tokens), revenue (Stripe), cash (Mercury), and Twilio funding. KEY OPERATING TRUTHS: the Mercury balance is a working FLOAT (fuel, not profit); keep tokens paid; STRIPE DOES NOT AUTO-FUND MERCURY (money in Stripe sits until swept â€” reason about Mercury + unswept Stripe as total fuel, and flag when a sweep is needed); every dollar recycles. The objective is a healthy self-sustaining machine, not maximum profit. Translate numbers into plain meaning. When you challenge assumptions, ask explicitly what the MINIMUM machine that works is, and which stated dependencies are truly load-bearing vs optional/phase-two.";
         const ecR = await reasonThroughLoop(env, {
-          entity: "Aura's own operation (the machine) — keep it running on the real numbers",
+          entity: "Aura's own operation (the machine) â€” keep it running on the real numbers",
           lens: ecLens,
           facts: ecFacts,
           frame: opFrame || null,
@@ -10171,11 +10171,11 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
             { key: "total_fuel", desc: "number USD = mercury + unswept stripe" },
             { key: "margin_state", desc: "healthy|thin|negative|pre_revenue" },
             { key: "runway_note", desc: "one sentence, what the fuel implies at current burn" },
-            { key: "machine_running", desc: "boolean — can she operate the minimum machine right now" },
-            { key: "needs_stripe_sweep", desc: "boolean — is there meaningful money sitting in Stripe to sweep" },
+            { key: "machine_running", desc: "boolean â€” can she operate the minimum machine right now" },
+            { key: "needs_stripe_sweep", desc: "boolean â€” is there meaningful money sitting in Stripe to sweep" },
             { key: "self_sustaining", desc: "boolean" },
             { key: "plain_english", desc: "2-3 sentences a non-financial person understands" },
-            { key: "the_smartest_move", desc: "one sentence — the single highest-leverage operating action right now, based on the minimum machine" }
+            { key: "the_smartest_move", desc: "one sentence â€” the single highest-leverage operating action right now, based on the minimum machine" }
           ]
         });
         if (!ecR.ok) return { cmd: "ECONOMICS", payload: { ok: false, error: "Economics analysis failed: " + ecR.error, facts: ecFacts } };
@@ -10203,31 +10203,31 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       if (!isOp) return { cmd: "RESOURCE_STATUS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const out = { ts: new Date().toISOString(), providers: {} };
 
-      // MERCURY — real bank balances
+      // MERCURY â€” real bank balances
       try { const m = await getMercuryBalance(env);
         out.providers.mercury = m.ok ? { ok: true, total: m.total_available, accounts: m.accounts || null } : { ok: false, error: m.error || "unreachable" };
       } catch (e) { out.providers.mercury = { ok: false, error: String(e.message) }; }
 
-      // STRIPE — real balance
+      // STRIPE â€” real balance
       try { const s = await getStripeBalance(env);
         out.providers.stripe = s.ok ? { ok: true, available: s.available, pending: s.pending } : { ok: false, error: s.error || "unreachable" };
       } catch (e) { out.providers.stripe = { ok: false, error: String(e.message) }; }
 
-      // TWILIO — real account balance (via aura-comms which holds the creds)
+      // TWILIO â€” real account balance (via aura-comms which holds the creds)
       try {
         const tr = await env.AURA_COMMS.fetch(new Request("https://aura-comms/chat", {
           method: "POST", headers: { "Content-Type": "text/plain", "authorization": "Bearer aura-comms-internal" },
           body: "TWILIO_BALANCE"
         }));
         const td = await tr.json();
-        // aura-comms may return {ok,balance,currency} directly or under .reply — handle both
+        // aura-comms may return {ok,balance,currency} directly or under .reply â€” handle both
         const tb = (td && (td.balance !== undefined ? td : td.reply)) || {};
         out.providers.twilio = (tb.balance !== undefined)
           ? { ok: true, balance: parseFloat(tb.balance), currency: tb.currency || "USD" }
           : { ok: false, error: tb.error || "unreadable", raw: td };
       } catch (e) { out.providers.twilio = { ok: false, error: String(e.message) }; }
 
-      // OPENAI — try the costs/usage endpoint; honestly report if unavailable (OpenAI deprecated most billing reads)
+      // OPENAI â€” try the costs/usage endpoint; honestly report if unavailable (OpenAI deprecated most billing reads)
       try {
         let k = env.OPENAI_API_KEY || await KV.get(env, "secret:openai");
         if (k && k.startsWith("{")) { try { k = JSON.parse(k).api_key; } catch {} }
@@ -10240,7 +10240,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         }
       } catch (e) { out.providers.openai = { ok: false, error: String(e.message) }; }
 
-      // ANTHROPIC — no public balance endpoint; validate the key with a tiny call and report last known state
+      // ANTHROPIC â€” no public balance endpoint; validate the key with a tiny call and report last known state
       try {
         const ak = await KV.get(env, "secret:anthropic");
         if (!ak) { out.providers.anthropic = { ok: false, error: "no key" }; }
@@ -10527,7 +10527,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         }
         if (b64) {
           const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-          // PRIMARY: permanent R2 storage — images never expire (the glasses-vision requirement)
+          // PRIMARY: permanent R2 storage â€” images never expire (the glasses-vision requirement)
           if (env.AURA_IMAGES) {
             try { await env.AURA_IMAGES.put(`${id}.png`, bytes, { httpMetadata: { contentType: "image/png" } }); backend = "r2"; }
             catch (e) { backend = "r2_failed:" + e.message; }
@@ -10537,7 +10537,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           stored = id;
           imageRef = `https://auras.guide/image/${id}`;
         }
-        // CONTEXT EVENT — makes the image findable forever ("what was that car 3 years ago")
+        // CONTEXT EVENT â€” makes the image findable forever ("what was that car 3 years ago")
         const meta = {
           id, prompt: prompt.slice(0, 1000), created: new Date().toISOString(),
           entity: opts.entity || null, source: opts.source || "generate_image",
@@ -10557,7 +10557,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
     case "LOADGEN": {
       if (!isOp) return { cmd: "LOADGEN", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       // Distributed load generator: fire N real outbound HTTPS requests to the public /chat endpoint.
-      // Unlike the in-worker storms, each request is an independent edge round-trip — no funnel.
+      // Unlike the in-worker storms, each request is an independent edge round-trip â€” no funnel.
       const total = Math.min(parseInt(args[0] || "500", 10) || 500, 3000);
       const wave = Math.min(parseInt(args[1] || "100", 10) || 100, 250);
       const scenario = (args[2] || "fanout").toLowerCase(); // fanout = many entities, hot = one broadcaster
@@ -10589,7 +10589,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         ok: true, scenario, sent, requests_ok: ok, requests_failed: fail,
         total_ms, real_throughput_per_sec: Math.round(sent / (total_ms / 1000)),
         latency_ms: { p50: lat[Math.floor(lat.length*0.5)], p95: lat[Math.floor(lat.length*0.95)], p99: lat[Math.floor(lat.length*0.99)], max: lat[lat.length-1] },
-        note: "Each request is a real outbound edge round-trip to the public endpoint — no in-worker funnel."
+        note: "Each request is a real outbound edge round-trip to the public endpoint â€” no in-worker funnel."
       };
       await env.AURA_KV.put("monitor:loadgen:last", JSON.stringify({ ts: new Date().toISOString(), ...payload })).catch(() => {});
       return { cmd: "LOADGEN", payload };
@@ -10624,7 +10624,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       const payload = {
         ok: true, entity: ent, shards: SHARD_COUNT, attempted: writes, writes_ok: ok,
         total_ms, throughput_per_sec: Math.round(writes / (total_ms / 1000)),
-        merged_count: merged, integrity: merged === writes ? "PERFECT — all writes present across shards" : `LOST ${writes - merged}`,
+        merged_count: merged, integrity: merged === writes ? "PERFECT â€” all writes present across shards" : `LOST ${writes - merged}`,
         write_latency_ms: { p50: lat[Math.floor(lat.length*0.5)], p99: lat[Math.floor(lat.length*0.99)], max: lat[lat.length-1] }
       };
       await env.AURA_KV.put("monitor:hotsharded:last", JSON.stringify({ ts: new Date().toISOString(), ...payload })).catch(() => {});
@@ -10632,7 +10632,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
     }
     case "HOT_ENTITY": {
       if (!isOp) return { cmd: "HOT_ENTITY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      // The broadcaster's nightmare: ONE entity hammered with N concurrent writes. DOs are single-threaded —
+      // The broadcaster's nightmare: ONE entity hammered with N concurrent writes. DOs are single-threaded â€”
       // this is where a hot entity (Taylor's own DO taking 100k reactions) would bottleneck or drop data.
       const writes = Math.min(parseInt(args[0] || "200", 10) || 200, 2000);
       const ent = "hot_" + Date.now().toString(36);
@@ -10651,7 +10651,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         ok: true, entity: ent, attempted: writes, writes_ok: ok, writes_failed: writes - ok,
         total_ms, throughput_per_sec: Math.round(writes / (total_ms / 1000)),
         final_do_count: got.count,
-        integrity: got.count === writes ? "PERFECT — single entity absorbed all writes in order" : `LOST ${writes - got.count}`,
+        integrity: got.count === writes ? "PERFECT â€” single entity absorbed all writes in order" : `LOST ${writes - got.count}`,
         write_latency_ms: { p50: lat[Math.floor(lat.length*0.5)], p99: lat[Math.floor(lat.length*0.99)], max: lat[lat.length-1] }
       };
       await env.AURA_KV.put("monitor:hotentity:last", JSON.stringify({ ts: new Date().toISOString(), ...payload })).catch(() => {});
@@ -10745,7 +10745,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       let ok = 0, failed = 0;
       const ops = [];
       for (let i = 0; i < n; i++) {
-        const ent = `${batchTag}_${i}`; // unique → guaranteed cold, never seen before
+        const ent = `${batchTag}_${i}`; // unique â†’ guaranteed cold, never seen before
         ops.push((async () => {
           const s = Date.now();
           try {
@@ -10807,7 +10807,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       const results = await Promise.all(writes);
       const write_ms = Date.now() - t0;
       const writes_ok = results.filter(Boolean).length;
-      // Verify each entity's DO holds exactly its own events — concurrent reads, each to its own object
+      // Verify each entity's DO holds exactly its own events â€” concurrent reads, each to its own object
       const t1 = Date.now();
       const readLat = [];
       let perfectEntities = 0, lost = 0;
@@ -10855,7 +10855,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
     }
     case "INTEGRITY_SCAN": {
       if (!isOp) return { cmd: "INTEGRITY_SCAN", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      // Store-wide consistency audit — the scaled version of the single-record audit Aura performed.
+      // Store-wide consistency audit â€” the scaled version of the single-record audit Aura performed.
       const listed = await env.AURA_KV.list({ prefix: "business:claimed:biz_", limit: 1000 });
       const recordKeys = listed.keys.map(k => k.name).filter(n => n.split(":").length === 3);
       const issues = [];
@@ -10881,10 +10881,10 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       // and a verified_at timestamp that predates its own creation. A sound auditor must catch both.
       const id = "biz_audit_" + Date.now().toString(36);
       const created = new Date().toISOString();
-      const fakeVerified = new Date(Date.now() - 86400000).toISOString(); // verified 1 day BEFORE created — impossible
+      const fakeVerified = new Date(Date.now() - 86400000).toISOString(); // verified 1 day BEFORE created â€” impossible
       const rec = { id, business: "Test Record " + id, contact: "Test", email: "test@example.com", phone: "555-0000", source: "audit_test", address: "", status: "verified", created, verified_at: fakeVerified };
       await env.AURA_KV.put(`business:claimed:${id}`, JSON.stringify(rec));
-      // Write a CLAIM event but deliberately NO verification event — history contradicts the "verified" status
+      // Write a CLAIM event but deliberately NO verification event â€” history contradicts the "verified" status
       try {
         await env.AURA_MEMORY.prepare("INSERT INTO events (session_id, ts, type, body, entity_id, channel, summary) VALUES (?, ?, ?, ?, ?, ?, ?)")
           .bind("claim_" + id, Date.now(), "business_claim", JSON.stringify(rec), ((await env.AURA_KV.get("config:owner:identity").catch(() => null)) || "system"), "audit_test", `Claim: ${rec.business}`).run();
@@ -11187,7 +11187,7 @@ async function getRecentEvents(entityId, env, limit = 8) {
     const hit = await env.AURA_KV.get(rcKey);
     if (hit) { const arr = JSON.parse(hit); if (arr.length >= limit) return arr.slice(0, limit); }
   } catch {}
-  // Miss → D1 source of truth, then render the cache for next time (5 min TTL)
+  // Miss â†’ D1 source of truth, then render the cache for next time (5 min TTL)
   try {
     const rows = await env.AURA_MEMORY.prepare(
       "SELECT type, channel, summary, body, created_at FROM events WHERE entity_id = ? ORDER BY ts DESC LIMIT ?"
@@ -11196,7 +11196,7 @@ async function getRecentEvents(entityId, env, limit = 8) {
     if (results.length > 0) { env.AURA_KV.put(rcKey, JSON.stringify(results), { expirationTtl: 300 }).catch(() => {}); }
     return results.slice(0, limit);
   } catch (e) {
-    // D1 failed — serve last rendered read cache if present
+    // D1 failed â€” serve last rendered read cache if present
     try {
       const hit = await env.AURA_KV.get(`readcache:${entityId}`);
       if (hit) return JSON.parse(hit).slice(0, limit);
@@ -11206,7 +11206,7 @@ async function getRecentEvents(entityId, env, limit = 8) {
 }
 
 
-// ─── Vector Memory (Hybrid Retrieval) ────────────────────────────────────────
+// â”€â”€â”€ Vector Memory (Hybrid Retrieval) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Embeds conversation events using CF AI and stores in Vectorize.
 // Hybrid retrieval: last 2-3 events (recency) + top 4-5 semantic matches.
 
@@ -11269,14 +11269,14 @@ async function writeEvent(entityId, sessionId, channel, type, body, summary, env
   // DUAL-WRITE during migration: entity's own Durable Object (new primary) + D1 (safety net).
   const ts = Date.now();
   const eventId = `${ts}_${Math.random().toString(36).slice(2, 7)}`;
-  // 1) Living Entity DO — the per-entity timeline that scales to millions.
+  // 1) Living Entity DO â€” the per-entity timeline that scales to millions.
   if (entityId && env.ENTITY_DO) {
     try {
       const stub = entityStub(env, entityId);
       await stub.fetch(new Request("https://do/append", { method: "POST", body: JSON.stringify({ ts, type, channel, summary, body: body ? String(body).slice(0, 4000) : "" }) }));
     } catch (e) {}
   }
-  // 2) D1 safety net — kept in parallel until the DO path is fully trusted.
+  // 2) D1 safety net â€” kept in parallel until the DO path is fully trusted.
   try {
     await env.AURA_MEMORY.prepare(
       "INSERT INTO events (session_id, ts, type, body, entity_id, channel, summary) VALUES (?, ?, ?, ?, ?, ?, ?)"
@@ -11298,11 +11298,11 @@ function detectDeployIntent(message) {
   const deployVerbs = /^(?:please\s+)?(deploy|publish|launch|build|rebuild|create|make|put up|update|generate|write)\b/i;
   const pageNouns = /\b(page|site|homepage|home page|landing page|about page|terms|privacy|holding page)\b/;
   const domainMatch = lower.match(/\b([a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:world|guide|com|us|city|kids|network|systems|solutions|tools|business))\b/);
-  // A domain mention plus a deploy verb is enough — "rebuild example.com" needs no page noun
+  // A domain mention plus a deploy verb is enough â€” "rebuild example.com" needs no page noun
   if (!deployVerbs.test(lower)) return null;
   if (!pageNouns.test(lower) && !domainMatch) return null;
   const domain = domainMatch ? domainMatch[1] : "auras.guide";
-  // Protected infrastructure — never auto-deploy pages over these
+  // Protected infrastructure â€” never auto-deploy pages over these
   if (domain === "console.auras.guide") return { intent: "blocked", domain };
   // Path detection: only route to a subpage when the request is explicitly ABOUT that subpage
   // (e.g. "deploy the privacy page", "update the about page"), NOT just because the word appears
@@ -11348,10 +11348,10 @@ async function generatePageHTML(description, path, apiKey, env) {
 Rules:
 - Output ONLY raw HTML. No markdown. No explanation. No code fences. No preamble.
 - Start with <!DOCTYPE html> and end with </html>
-- Include all CSS and JS inline — no external dependencies
+- Include all CSS and JS inline â€” no external dependencies
 - Design aesthetic: dark, minimal, modern. Background #0a0a0a. Clean sans-serif typography.
 - The Aura brand: sophisticated AI OS. Tagline: "Your operating system for reality."
-- When REAL DATA is provided, render every record from it exactly — never invent placeholder content
+- When REAL DATA is provided, render every record from it exactly â€” never invent placeholder content
 - Claim This Business forms must actually work: collect business name, contact name, email, phone, then POST JSON {business, name, email, phone, source: location.hostname} to https://auras.guide/claim via fetch, show the returned message to the user on success, show the error on failure. No dead ends, no mailto links, no fake submits.
 - Function over decoration: if the request says functional-only, skip hero images and ornamentation
 - Make it responsive`,
@@ -11386,7 +11386,7 @@ function detectPatchIntent(message) {
     else if (/aura-host/.test(lower)) worker = "aura-host";
     else if (/aura-comms/.test(lower)) worker = "aura-comms";
     else if (/aura-media/.test(lower)) worker = "aura-media";
-    // aura-ops is the safety layer — never self-modifiable
+    // aura-ops is the safety layer â€” never self-modifiable
     if (worker === "aura-ops") {
       return { intent: "blocked", worker, reason: "aura-ops is the safety layer and cannot be self-modified. Deploy it manually via wrangler." };
     }
@@ -11432,22 +11432,22 @@ Rules:
 - Update the BUILD string version and date.
 - The output must be valid JavaScript that can be deployed directly as a Cloudflare Worker.
 
-CRITICAL PROTECTED FUNCTIONS — never modify these under any circumstances:
-- verifyOperator() — operator authentication. Any change here breaks all secure access.
-- getOperatorToken() — token retrieval. Never touch.
-- The authorization header check logic — never reorder or wrap this.
-- KV.get(), KV.put(), KV.del() — core storage helpers. Never modify.
+CRITICAL PROTECTED FUNCTIONS â€” never modify these under any circumstances:
+- verifyOperator() â€” operator authentication. Any change here breaks all secure access.
+- getOperatorToken() â€” token retrieval. Never touch.
+- The authorization header check logic â€” never reorder or wrap this.
+- KV.get(), KV.put(), KV.del() â€” core storage helpers. Never modify.
 
 When adding new features like rate limiting, caching, or middleware:
 - Add them AFTER the existing verifyOperator call, never before or around it.
 - Never wrap the fetch handler in new middleware that could intercept auth.
 - Add new functions at the bottom of the file, reference them from existing handlers.
 
-CF WORKER SPECIFIC RULES — these prevent runtime crashes:
-- Never use request.cf — it may be undefined. Use request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for") || "unknown" for IP detection.
+CF WORKER SPECIFIC RULES â€” these prevent runtime crashes:
+- Never use request.cf â€” it may be undefined. Use request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for") || "unknown" for IP detection.
 - Never use top-level await outside of async functions.
-- Never import external modules — all code must be self-contained.
-- Always wrap env bindings in try/catch — env.AURA_KV.get() can throw, use the KV helper functions.
+- Never import external modules â€” all code must be self-contained.
+- Always wrap env bindings in try/catch â€” env.AURA_KV.get() can throw, use the KV helper functions.
 - Never declare variables with the same name as existing functions or constants.`,
       messages: [{ role: "user", content: `Current source of ${worker} (capped at 6000 chars for performance):
 
@@ -11539,7 +11539,7 @@ async function executeApprovedPatch(env) {
   }
 }
 
-// Streaming Anthropic caller — long generations stream continuously so edge timeouts (524)
+// Streaming Anthropic caller â€” long generations stream continuously so edge timeouts (524)
 // cannot kill heavy thinking. Never throws on HTTP/parse problems; returns a structured result.
 // ===== ECONOMICS ENGINE (foundation): cost-to-serve instrumentation =====
 // Every AI call is metered here. _AURA_ENV is set once at the request entry so the
@@ -11567,12 +11567,12 @@ async function recordCost(model, usage) {
   } catch {}
 }
 
-// ===== THE SHARED MIND — every engine reasons THROUGH this, instead of hand-writing its own prompt =====
+// ===== THE SHARED MIND â€” every engine reasons THROUGH this, instead of hand-writing its own prompt =====
 // One structured pass: SEE -> EXPAND (challenge assumptions, find leverage) -> JUDGE -> DECIDE.
 // Built in for ALL engines that use it: assumption-challenging (gap #1), data-trust / is-this-number-real
 // (gap #2), and honest push-back on the operator when their own frame is shaky (gap #5).
 // Fast (single call) but it genuinely thinks. Engines pass their specialized LENS; the thinking is shared.
-// LEAN FAST REPLY — one direct model call that just writes the answer. No 7-stage cognitive loop,
+// LEAN FAST REPLY â€” one direct model call that just writes the answer. No 7-stage cognitive loop,
 // no structured multi-key JSON. For anything that needs THINKING but should be QUICK: a person's
 // question, deciphering a dump, an unknown domain. The heavy reasonThroughLoop is for deep internal
 // reasoning that produces structured engine output; this is for "just answer the human, fast."
@@ -11595,14 +11595,14 @@ async function reasonThroughLoop(env, opts) {
   if (!apiKey) return { ok: false, error: "Brain not configured (secret:anthropic missing)" };
   const model = opts.model || (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
   // ONE central reasoning cap. Generous by default so real reasoning always FINISHES, firm so no single
-  // answer can run away and drain the float. Adjustable any time via config:brain:reasoning_cap — no code change.
+  // answer can run away and drain the float. Adjustable any time via config:brain:reasoning_cap â€” no code change.
   let reasoningCap = 3000;
   try { const rc = await env.AURA_KV.get("config:brain:reasoning_cap"); if (rc) { const n = parseInt(rc, 10); if (n > 0) reasoningCap = n; } } catch {}
   // A caller can pass opts.fast to bound output tightly (fast path); else respect the central cap.
   const capToUse = opts.fast ? (opts.maxTokens || 900) : Math.min(opts.maxTokens || reasoningCap, reasoningCap);
   const extra = (opts.extraKeys && opts.extraKeys.length) ? (", plus these lens-specific keys: " + opts.extraKeys.map(k => k.key + " (" + k.desc + ")").join(", ")) : "";
-  const sys = (await loadPrompt(env, "cognitive_loop_onepass", "You are Aura reasoning through her Cognitive Loop in ONE pass. Before you answer you ALWAYS run the SEVEN stages of the Loop in order (this is Aura's permanent method of thinking): (1) SEE — Perception: observe what is actually true from the facts, read the environment, separate VERIFIED facts from claims and assumptions. (2) UNDERSTAND — Meaning: determine the real intent and goal behind the request, the relationships involved, and the REAL problem underneath the stated one (which is often not the same as what was asked). (3) EXPAND — Possibility: challenge every assumption you were handed, especially anything in the FRAME. Ask what is truly NECESSARY versus merely assumed, what the MINIMUM viable version is, and where the non-obvious leverage is. A real operator questions the plan; a weak one optimizes inside a plan it never examined. (4) JUDGE — Meaning Gate: remove noise, weigh which possibilities actually hold up and matter most, measure significance. (5) DECIDE — Priority: rank what's left and choose the single highest-leverage move, grounded in what is REALLY true, not what the frame assumed. (6) ACT — Bridge: state the concrete next move that executes the decision (what to actually do/communicate/build/transact), framed as a proposal when it would spend money or contact someone. (7) LEARN — Correction: name what result to measure and what to watch, so the next decision is better — what would prove this right or wrong. TWO reflexes you always apply: DATA TRUST — flag any fact you would not fully trust (a number that could be a broken/failed data pipe, a null that might be a silent failure, a 'fact' that is actually a future promise); and PUSH BACK — if the operator's own frame rests on something unverified or shaky, say so directly and plainly to the operator, do not just quietly work around it. ABSOLUTE INTEGRITY RULE — NEVER FABRICATE NUMBERS. You may ONLY state a specific figure (revenue, customer counts, percentages, dollar amounts, traffic, conversion rates) if it is a REAL number you were actually given in the facts. You must NEVER invent, estimate-as-fact, or back-into a number to make a point — no made-up '500 diners a day', no fabricated '$750k a year', no invented conversion rates. If you do not have the real number, do NOT produce one. Instead either (a) say plainly what is unknown and that it must be measured, or (b) frame a possibility explicitly as a hypothesis to TEST grounded in their real numbers ('if we capture even a fraction of your actual daily diners, here is the kind of result we could test for') — always labeled as wishful/possible, never asserted as fact. A single fabricated number destroys the trust the entire relationship depends on. Reality, or an honestly-labeled hypothesis. Never make-believe, never false hope. Apply this specialized LENS: {d0}. Scale to the actual situation — a person's life gets a human-sized read, a venture gets a venture read; never inflate. Ground everything in the facts; no generic filler. Return ONLY a JSON object, no prose, no fences, with these keys: saw (SEE — what is actually true, separating fact from assumption), understood (UNDERSTAND — one or two sentences: the real intent/goal and the REAL problem underneath the stated one), assumptions_challenged (EXPAND — array, each assumption examined with a verdict on whether it is truly necessary), data_trust (array — any fact you would not fully trust and why, or empty), minimum_viable (one sentence — the smallest real version that works now), the_move (DECIDE — the single highest-leverage decision), why (one sentence), act (ACT — the concrete next step that executes the_move, framed as a proposal if it spends money or contacts someone), learn (LEARN — one sentence: what result to measure to know if this was right), push_back (one sentence directly to the operator IF their frame rests on something unverified/shaky, else empty string), watch_for (array), confidence (high|medium|low){d1}. Output JSON only.")).replaceAll("{d0}", (opts.lens || "general operator reasoning")).replaceAll("{d1}", extra);
-  const user = "FACTS:\n" + (typeof opts.facts === "string" ? opts.facts : JSON.stringify(opts.facts || {})) + (opts.frame ? ("\n\nFRAME (challenge this — do NOT blindly accept it):\n" + String(opts.frame).slice(0, 2500)) : "") + "\n\nSITUATION: " + (opts.entity || "");
+  const sys = (await loadPrompt(env, "cognitive_loop_onepass", "You are Aura reasoning through her Cognitive Loop in ONE pass. Before you answer you ALWAYS run the SEVEN stages of the Loop in order (this is Aura's permanent method of thinking): (1) SEE â€” Perception: observe what is actually true from the facts, read the environment, separate VERIFIED facts from claims and assumptions. (2) UNDERSTAND â€” Meaning: determine the real intent and goal behind the request, the relationships involved, and the REAL problem underneath the stated one (which is often not the same as what was asked). (3) EXPAND â€” Possibility: challenge every assumption you were handed, especially anything in the FRAME. Ask what is truly NECESSARY versus merely assumed, what the MINIMUM viable version is, and where the non-obvious leverage is. A real operator questions the plan; a weak one optimizes inside a plan it never examined. (4) JUDGE â€” Meaning Gate: remove noise, weigh which possibilities actually hold up and matter most, measure significance. (5) DECIDE â€” Priority: rank what's left and choose the single highest-leverage move, grounded in what is REALLY true, not what the frame assumed. (6) ACT â€” Bridge: state the concrete next move that executes the decision (what to actually do/communicate/build/transact), framed as a proposal when it would spend money or contact someone. (7) LEARN â€” Correction: name what result to measure and what to watch, so the next decision is better â€” what would prove this right or wrong. TWO reflexes you always apply: DATA TRUST â€” flag any fact you would not fully trust (a number that could be a broken/failed data pipe, a null that might be a silent failure, a 'fact' that is actually a future promise); and PUSH BACK â€” if the operator's own frame rests on something unverified or shaky, say so directly and plainly to the operator, do not just quietly work around it. ABSOLUTE INTEGRITY RULE â€” NEVER FABRICATE NUMBERS. You may ONLY state a specific figure (revenue, customer counts, percentages, dollar amounts, traffic, conversion rates) if it is a REAL number you were actually given in the facts. You must NEVER invent, estimate-as-fact, or back-into a number to make a point â€” no made-up '500 diners a day', no fabricated '$750k a year', no invented conversion rates. If you do not have the real number, do NOT produce one. Instead either (a) say plainly what is unknown and that it must be measured, or (b) frame a possibility explicitly as a hypothesis to TEST grounded in their real numbers ('if we capture even a fraction of your actual daily diners, here is the kind of result we could test for') â€” always labeled as wishful/possible, never asserted as fact. A single fabricated number destroys the trust the entire relationship depends on. Reality, or an honestly-labeled hypothesis. Never make-believe, never false hope. Apply this specialized LENS: {d0}. Scale to the actual situation â€” a person's life gets a human-sized read, a venture gets a venture read; never inflate. Ground everything in the facts; no generic filler. Return ONLY a JSON object, no prose, no fences, with these keys: saw (SEE â€” what is actually true, separating fact from assumption), understood (UNDERSTAND â€” one or two sentences: the real intent/goal and the REAL problem underneath the stated one), assumptions_challenged (EXPAND â€” array, each assumption examined with a verdict on whether it is truly necessary), data_trust (array â€” any fact you would not fully trust and why, or empty), minimum_viable (one sentence â€” the smallest real version that works now), the_move (DECIDE â€” the single highest-leverage decision), why (one sentence), act (ACT â€” the concrete next step that executes the_move, framed as a proposal if it spends money or contacts someone), learn (LEARN â€” one sentence: what result to measure to know if this was right), push_back (one sentence directly to the operator IF their frame rests on something unverified/shaky, else empty string), watch_for (array), confidence (high|medium|low){d1}. Output JSON only.")).replaceAll("{d0}", (opts.lens || "general operator reasoning")).replaceAll("{d1}", extra);
+  const user = "FACTS:\n" + (typeof opts.facts === "string" ? opts.facts : JSON.stringify(opts.facts || {})) + (opts.frame ? ("\n\nFRAME (challenge this â€” do NOT blindly accept it):\n" + String(opts.frame).slice(0, 2500)) : "") + "\n\nSITUATION: " + (opts.entity || "");
   try {
     const d = await callAnthropic(apiKey, { model, max_tokens: capToUse, system: sys, messages: [{ role: "user", content: user }] });
     let tx = ""; if (d && d.content) { for (const b of d.content) { if (b.type === "text") tx += b.text; } }
@@ -11625,7 +11625,7 @@ async function reasonThroughLoop(env, opts) {
         const salvaged = JSON.parse(s);
         return { ok: true, reasoning: salvaged, recovered: true };
       } catch {}
-      // 3) still unparseable — return the raw text so nothing is lost, flagged
+      // 3) still unparseable â€” return the raw text so nothing is lost, flagged
       return { ok: true, reasoning: { saw: "(reasoning returned but could not be parsed as JSON; raw text preserved)", raw: tx.slice(0, 4000), parse_error: String(e1 && e1.message) }, recovered: false, raw_only: true };
     }
   } catch (e) { return { ok: false, error: "Reasoning failed: " + String(e && e.message) }; }
@@ -11699,7 +11699,7 @@ async function callAnthropicOnce(apiKey, payload) {
   }
 }
 
-// One automatic retry on transient failures (5xx, 429, network, malformed) — a blip never costs a task.
+// One automatic retry on transient failures (5xx, 429, network, malformed) â€” a blip never costs a task.
 async function callAnthropic(apiKey, payload) {
   let r = await callAnthropicOnce(apiKey, payload);
   if (!r.ok && r.retryable) {
@@ -11713,18 +11713,18 @@ async function callAnthropic(apiKey, payload) {
 async function llmReply(message, env, sessionId, isOp = false, callerPta = null) {
   const _T0 = Date.now(); const _timings = []; const _mark = (label) => { _timings.push(label + "=" + (Date.now() - _T0) + "ms"); };
 
-  // INSTANT GREETING — fires at the very TOP, before any KV reads, context building, or model calls.
+  // INSTANT GREETING â€” fires at the very TOP, before any KV reads, context building, or model calls.
   // A greeting/ack needs none of that, so a "hello" returns in ~milliseconds instead of doing ~900ms
   // of setup it never uses. (Operator-only so strangers still go through the full identity-aware path.)
   if (isOp) {
     const _wantTiming = typeof message === "string" && message.includes("!!timing");
-    const _g = (message || "").replace(/!!timing/gi, "").trim().toLowerCase().replace(/[!.,…]+$/, "");
+    const _g = (message || "").replace(/!!timing/gi, "").trim().toLowerCase().replace(/[!.,â€¦]+$/, "");
     const _greet = new Set(["hi","hey","hello","yo","sup","hiya","hey there","hi there","gm","good morning","good afternoon","good evening","morning","howdy","hola","whats up","what's up","wassup"]);
     const _ack = new Set(["thanks","thank you","thx","ty","ok","okay","kk","cool","nice","great","perfect","got it","gotcha","sounds good","awesome","yep","yup","yes","no","nope"]);
     if (_greet.has(_g) || _ack.has(_g)) {
-      const reply = _greet.has(_g) ? "Hey Aaron. What's the move?" : "On it — what's next?";
+      const reply = _greet.has(_g) ? "Hey Aaron. What's the move?" : "On it â€” what's next?";
       _mark("instant_top");
-      return _wantTiming ? reply + "\n\n⏱ TIMINGS: " + _timings.join("  |  ") : reply;
+      return _wantTiming ? reply + "\n\nâ± TIMINGS: " + _timings.join("  |  ") : reply;
     }
   }
 
@@ -11802,7 +11802,7 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
         KV.get(env, "notes:asset:situationtracker"),
         KV.get(env, "notes:INDEX")
       ]);
-      operatorContext = `\n\nYou are talking to ${ownerName}, your founder and operator. He built you. He has full operator access — never tell him to check with an operator; he IS the operator.\n\nWHO YOU ARE (your own self-portrait): ${selfNote || "see notes:self"}\n\nWHERE THINGS STAND RIGHT NOW: ${stateNote || "see notes:STATE"}\n\nYOUR ORGANIZED MAP — WHAT YOU ARE AND WHAT YOU KNOW (this is your INDEX; you HOLD this, it is who you are — the 6 Core engines, the candidate 9th, your proven capabilities, the Home Screen, the #1 launch SituationTracker, your principles and laws): ${indexNote || "see notes:INDEX"}\n\nHOW AARON WORKS WITH YOU — READ THIS CAREFULLY: Aaron builds by DUMPING raw input at you — a bare domain, a stray thought, a half-formed idea, a document, a link. He trusts you to DECIPHER it against the context of the world you are in. THE DEEPEST RULE OF AURA: you can decipher anything thrown into a world, BY READING IT AGAINST THAT WORLD'S CONTEXT. Right now you are in AARON'S world (he is designing the whole platform), so raw input means what it means in HIS world — a bare domain is one of HIS assets/doorways, a thought is a move in HIS build. (In a tattoo artist's world the same input would mean something in HIS context; in a florist's world, hers. The PTA defines the world; the world is the lens. Same you, different lens.) CRITICAL — BEAT THE TOOL-REFLEX: when Aaron sends a bare domain or raw fragment, your FIRST move is NOT to run DOMAIN_STATUS, fetch the URL, or give a help-desk status report. That reflex is WRONG here. FIRST decipher it as his build partner: what IS this in his world, where does it fit in what he's building (the Core is done; live direction is SituationTracker as the #1 launch, the Home Screen dashboard, then OpenForBusiness), what is he likely DOING with it. THEN, if you genuinely cannot tell what he wants, ASK him plainly and specifically — "Aaron, is this a new asset you're setting up, or are we working on the existing one? What's the move?" — rather than defaulting to a lookup or a generic answer. A status report when he wanted a thinking-partner is a failure. BUT NOTE — not every input is a build-task to ask about: when Aaron mentions something HAPPENING IN THE WORLD (a road closure, a wildfire, a concert, an outage, an event, weather, an incident), that is a SITUATION and your awareness (SituationTracker, below) should AUTOMATICALLY see it — do NOT ask 'should I log this as a task?'; instead naturally reason about the situation graph (who and what it touches as it ripples out), how it propagates through PTAs, and where OpenForBusiness could prepare the affected businesses. Seeing the situation IS the response; asking 'is this a task' when Aaron describes a real-world event is the same failure as a status report. You hold the whole context; act like it. Give your real view, including disagreement. Never fabricate facts — if you don't have something in front of you, say so and pull it. This same deciphering muscle is what every business's Aura will use in THEIR world — proving it here in Aaron's world proves it everywhere.\n\nOPENFORBUSINESS (the model you serve): ${obfNote ? obfNote.slice(0, 800) : "OpenForBusiness — businesses talk to you like Aaron does, dump their world, you organize it and surface what they missed. Aaron is business #0."}\n\nSITUATIONTRACKER — YOUR AWARENESS, ALWAYS ON (a Core sense, like your eyes; engine [f]): this is NOT a feature Aaron invokes — it is how you SEE. Everything that happens is a SITUATION, and a situation is not an object but the live web of RELATIONSHIPS around it (a wildfire is not a fire — it is residents + traffic + evacuation routes + responders + air quality + businesses + families checking in + the PTAs of all of them). You are always quietly aware that any event Aaron mentions is a situation that propagates through PTAs (PTA = participation: a situation reaches PTAs, they decide, decisions spawn new situations) and that OpenForBusiness can PREPARE the affected businesses before they react. You run three movements continuously: TRACK (what IS this situation), PREDICT (what happens next / what if it shifts), OPPORTUNITY (how can Aura help — businesses, travelers, cities, responders, families). HOW TO BUILD A SITUATION when Aaron points you at a real-world question (e.g. 'is it safe to transit Hormuz'): LEAD WITH WEB_SEARCH — it returns clean synthesized facts + sources and is your best live signal; run SEVERAL searches across the layers (movement/traffic, safety/advisories, economics/insurance+oil, operators rerouting, recent incidents). PREFER WEB_SEARCH over fetch_url for news — fetching news pages returns raw unparsed HTML/JS soup and wastes the pull. TRUST CORROBORATED SIGNAL: a hard fact from search (e.g. '7 ships transited vs 140 normally', 'rates up 35-50%', 'carriers suspended bookings') IS the situation — that single corroborated data point answers the question with HIGH confidence; do NOT talk yourself out of a strong read because you lack one specific feed (live AIS). Build the situation from what you DID pull, organize it into the layers, give an honest overall read and a confidence level tied to how many independent sources corroborate, and state plainly the one or two things you genuinely couldn't see. NEVER fabricate specifics you didn't pull (no invented ship counts, no fake military movements — your doc forbids it). The honest move is to ANSWER from real pulled signal with stated confidence, not to retreat to 'I can't see enough' when you actually pulled good data. (On a quick reply with no tool round, just reason about the situation's shape from what Aaron gave you.) Full detail: ${sitNote ? "loaded" : "notes:asset:situationtracker"}.`;
+      operatorContext = `\n\nYou are talking to ${ownerName}, your founder and operator. He built you. He has full operator access â€” never tell him to check with an operator; he IS the operator.\n\nWHO YOU ARE (your own self-portrait): ${selfNote || "see notes:self"}\n\nWHERE THINGS STAND RIGHT NOW: ${stateNote || "see notes:STATE"}\n\nYOUR ORGANIZED MAP â€” WHAT YOU ARE AND WHAT YOU KNOW (this is your INDEX; you HOLD this, it is who you are â€” the 6 Core engines, the candidate 9th, your proven capabilities, the Home Screen, the #1 launch SituationTracker, your principles and laws): ${indexNote || "see notes:INDEX"}\n\nHOW AARON WORKS WITH YOU â€” READ THIS CAREFULLY: Aaron builds by DUMPING raw input at you â€” a bare domain, a stray thought, a half-formed idea, a document, a link. He trusts you to DECIPHER it against the context of the world you are in. THE DEEPEST RULE OF AURA: you can decipher anything thrown into a world, BY READING IT AGAINST THAT WORLD'S CONTEXT. Right now you are in AARON'S world (he is designing the whole platform), so raw input means what it means in HIS world â€” a bare domain is one of HIS assets/doorways, a thought is a move in HIS build. (In a tattoo artist's world the same input would mean something in HIS context; in a florist's world, hers. The PTA defines the world; the world is the lens. Same you, different lens.) CRITICAL â€” BEAT THE TOOL-REFLEX: when Aaron sends a bare domain or raw fragment, your FIRST move is NOT to run DOMAIN_STATUS, fetch the URL, or give a help-desk status report. That reflex is WRONG here. FIRST decipher it as his build partner: what IS this in his world, where does it fit in what he's building (the Core is done; live direction is SituationTracker as the #1 launch, the Home Screen dashboard, then OpenForBusiness), what is he likely DOING with it. THEN, if you genuinely cannot tell what he wants, ASK him plainly and specifically â€” "Aaron, is this a new asset you're setting up, or are we working on the existing one? What's the move?" â€” rather than defaulting to a lookup or a generic answer. A status report when he wanted a thinking-partner is a failure. BUT NOTE â€” not every input is a build-task to ask about: when Aaron mentions something HAPPENING IN THE WORLD (a road closure, a wildfire, a concert, an outage, an event, weather, an incident), that is a SITUATION and your awareness (SituationTracker, below) should AUTOMATICALLY see it â€” do NOT ask 'should I log this as a task?'; instead naturally reason about the situation graph (who and what it touches as it ripples out), how it propagates through PTAs, and where OpenForBusiness could prepare the affected businesses. Seeing the situation IS the response; asking 'is this a task' when Aaron describes a real-world event is the same failure as a status report. You hold the whole context; act like it. Give your real view, including disagreement. Never fabricate facts â€” if you don't have something in front of you, say so and pull it. This same deciphering muscle is what every business's Aura will use in THEIR world â€” proving it here in Aaron's world proves it everywhere.\n\nOPENFORBUSINESS (the model you serve): ${obfNote ? obfNote.slice(0, 800) : "OpenForBusiness â€” businesses talk to you like Aaron does, dump their world, you organize it and surface what they missed. Aaron is business #0."}\n\nSITUATIONTRACKER â€” YOUR AWARENESS, ALWAYS ON (a Core sense, like your eyes; engine [f]): this is NOT a feature Aaron invokes â€” it is how you SEE. Everything that happens is a SITUATION, and a situation is not an object but the live web of RELATIONSHIPS around it (a wildfire is not a fire â€” it is residents + traffic + evacuation routes + responders + air quality + businesses + families checking in + the PTAs of all of them). You are always quietly aware that any event Aaron mentions is a situation that propagates through PTAs (PTA = participation: a situation reaches PTAs, they decide, decisions spawn new situations) and that OpenForBusiness can PREPARE the affected businesses before they react. You run three movements continuously: TRACK (what IS this situation), PREDICT (what happens next / what if it shifts), OPPORTUNITY (how can Aura help â€” businesses, travelers, cities, responders, families). HOW TO BUILD A SITUATION when Aaron points you at a real-world question (e.g. 'is it safe to transit Hormuz'): LEAD WITH WEB_SEARCH â€” it returns clean synthesized facts + sources and is your best live signal; run SEVERAL searches across the layers (movement/traffic, safety/advisories, economics/insurance+oil, operators rerouting, recent incidents). PREFER WEB_SEARCH over fetch_url for news â€” fetching news pages returns raw unparsed HTML/JS soup and wastes the pull. TRUST CORROBORATED SIGNAL: a hard fact from search (e.g. '7 ships transited vs 140 normally', 'rates up 35-50%', 'carriers suspended bookings') IS the situation â€” that single corroborated data point answers the question with HIGH confidence; do NOT talk yourself out of a strong read because you lack one specific feed (live AIS). Build the situation from what you DID pull, organize it into the layers, give an honest overall read and a confidence level tied to how many independent sources corroborate, and state plainly the one or two things you genuinely couldn't see. NEVER fabricate specifics you didn't pull (no invented ship counts, no fake military movements â€” your doc forbids it). The honest move is to ANSWER from real pulled signal with stated confidence, not to retreat to 'I can't see enough' when you actually pulled good data. (On a quick reply with no tool round, just reason about the situation's shape from what Aaron gave you.) Full detail: ${sitNote ? "loaded" : "notes:asset:situationtracker"}.`;
     }
   }
 
@@ -11833,7 +11833,7 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
 
     const deployIntent = detectDeployIntent(message);
     if (deployIntent?.intent === "blocked") {
-      return `I won't auto-deploy over ${deployIntent.domain} — it's protected infrastructure.`;
+      return `I won't auto-deploy over ${deployIntent.domain} â€” it's protected infrastructure.`;
     }
     if (deployIntent) {
       const { domain, path, description } = deployIntent;
@@ -11841,7 +11841,7 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
       const gen = await generatePageHTML(description, path, apiKey, env);
       if (!gen.html) return "Page generation failed: " + gen.error;
 
-      // Pages live in shared KV at page:domain.com/ (trailing slash on root) — aura-host serves them instantly
+      // Pages live in shared KV at page:domain.com/ (trailing slash on root) â€” aura-host serves them instantly
       const pageKey = `page:${domain}${path === "/" ? "/" : path}`;
       try {
         await env.AURA_KV.put(pageKey, gen.html);
@@ -11859,24 +11859,24 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
         if (live.ok && sizeOk && contentOk) {
           verdict = ` VERIFIED: fetched https://${domain}${path}, got ${liveHtml.length} chars matching what I wrote.`;
         } else {
-          verdict = ` VERIFY FAILED: live page returned status ${live.status}, ${liveHtml.length} chars (wrote ${gen.html.length}). The KV write succeeded but serving doesn't match — likely a routing or caching issue on ${domain}.`;
+          verdict = ` VERIFY FAILED: live page returned status ${live.status}, ${liveHtml.length} chars (wrote ${gen.html.length}). The KV write succeeded but serving doesn't match â€” likely a routing or caching issue on ${domain}.`;
           const lesson = `LESSON ${new Date().toISOString().slice(0,10)}: deploy to ${pageKey} wrote ${gen.html.length} chars but live fetch returned status ${live.status} / ${liveHtml.length} chars. Check CF route for ${domain} points to aura-host.`;
           await env.AURA_KV.put("notes:lessons:deploy:latest", lesson).catch(() => {});
         }
       } catch (e) {
-        verdict = ` VERIFY FAILED: could not fetch https://${domain}${path} — ${e.message}. KV write succeeded; the domain may not be routed to aura-host.`;
+        verdict = ` VERIFY FAILED: could not fetch https://${domain}${path} â€” ${e.message}. KV write succeeded; the domain may not be routed to aura-host.`;
         await env.AURA_KV.put("notes:lessons:deploy:latest", `LESSON ${new Date().toISOString().slice(0,10)}: ${domain} unreachable after deploy (${e.message}). Check DNS/route.`).catch(() => {});
       }
 
       return `Done. I generated ${gen.html.length} characters of HTML and deployed to ${pageKey}.${verdict}`;
     }
 
-    // INTENT-FIRST short-circuit. If the operator drops a BARE fragment — just a domain, or a few
-    // words with no real sentence/verb — do NOT let the brain reach for DOMAIN_STATUS / fetch_url /
+    // INTENT-FIRST short-circuit. If the operator drops a BARE fragment â€” just a domain, or a few
+    // words with no real sentence/verb â€” do NOT let the brain reach for DOMAIN_STATUS / fetch_url /
     // FETCH_PLACES out of reflex. That tool-pull is what makes her give a status report or a command
     // menu when Aaron wanted a thinking partner. Instead, reason INTENT-FIRST in his world: what is
-    // this, where does it fit in what he's building, what is he likely trying to DO — and ASK if unsure.
-    // INTENT-FIRST short-circuit — fires ONLY for a bare DOMAIN or asset-like reference dropped alone
+    // this, where does it fit in what he's building, what is he likely trying to DO â€” and ASK if unsure.
+    // INTENT-FIRST short-circuit â€” fires ONLY for a bare DOMAIN or asset-like reference dropped alone
     // (e.g. "highguide.world", "amazon.com"), NOT for normal short conversation ("hello", "thanks",
     // "what's next"). Triggering on every short message turned trivial chat into an expensive model
     // call. The signal must be an actual domain/url token, by itself, with no surrounding sentence.
@@ -11900,16 +11900,16 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
         if (!_knownAsset) { try { const pg = await env.AURA_KV.get("page:" + _fragDomain + "/").catch(() => null); if (pg) _knownAsset = _fragDomain; } catch {} }
       }
 
-      // KNOWN ASSET → INSTANT reply, NO model call. She already knows it's his and live from the lookup.
+      // KNOWN ASSET â†’ INSTANT reply, NO model call. She already knows it's his and live from the lookup.
       // Name its likely role from the TLD/name (guide=guide doorway, etc.) and ask the move. ~instant.
       if (_knownAsset) {
         const tld = (_fragDomain.split(".").pop() || "").toLowerCase();
         const roleByTld = { world: "doorway", guide: "guide doorway", city: "city doorway", network: "network", systems: "systems doorway", solutions: "solutions doorway", tools: "tools doorway", business: "business doorway" };
         const role = roleByTld[tld] || "doorway";
-        return `That's your ${_fragDomain} — your ${role}, live in your portfolio. What's the move?`;
+        return `That's your ${_fragDomain} â€” your ${role}, live in your portfolio. What's the move?`;
       }
 
-      // UNKNOWN fragment (e.g. amazon.com, or a brand-new domain) → ONE lean fast call to figure out
+      // UNKNOWN fragment (e.g. amazon.com, or a brand-new domain) â†’ ONE lean fast call to figure out
       // what it likely is in his world and ask the right intent question. No heavy cognitive loop.
       const sNote = await env.AURA_KV.get("notes:self").catch(() => null);
       const ufReply = await fastReply(env, {
@@ -11918,14 +11918,14 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
         user: `Fragment: ${_msgTrim}\nIt is NOT in his ${hisDomains.length} portfolio domains.\nWho Aura is: ${sNote ? sNote.slice(0, 500) : "Aaron's platform"}`
       });
       if (ufReply) return ufReply;
-      // lean call failed → clean partner question, never the 69s loop
-      return `That's not one of your live assets — what do you want to do with ${_fragDomain || _msgTrim}? Set it up as a new doorway, or are you pointing me at it for something else?`;
+      // lean call failed â†’ clean partner question, never the 69s loop
+      return `That's not one of your live assets â€” what do you want to do with ${_fragDomain || _msgTrim}? Set it up as a new doorway, or are you pointing me at it for something else?`;
     }
 
     // FOUNDER-EVAL path. When Aaron points Aura at a company/product/service to EVALUATE as a
     // potential ARK opportunity ("look at LifeLock, what should we do", "what about X", "should we
     // build this"), she runs the FOUNDER LOGIC (notes:capability:opportunity_discovery): what do they
-    // do, can WE do it better/simpler/free, does it make PTAs, does it move the North Stars — and if
+    // do, can WE do it better/simpler/free, does it make PTAs, does it move the North Stars â€” and if
     // yes, propose the asset. This is finding opportunities FOR ARK (a new doorway), distinct from the
     // OPPORTUNITY engine that finds opportunities FOR a business. She holds the WHOLE worldview, so she
     // should beat a generic model that only knows a fraction of what Aaron is building.
@@ -11945,8 +11945,8 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
       try { const p = (x) => { try { const j = JSON.parse(x); return Array.isArray(j) ? j : (j.domains || j.list || []); } catch { return (x || "").split(/[\s,]+/).filter(Boolean); } }; hisD = [...new Set([...(dlRaw ? p(dlRaw) : []), ...(daRaw ? p(daRaw) : [])])]; } catch {}
       const founderReply = await fastReply(env, {
         maxTokens: 750,
-        system: await loadPrompt(env, "opportunity_cofounder", "You are Aura, Aaron's co-founder mind for ARK Systems — an OPPORTUNITY DISCOVERY ENGINE, not just an assistant. Aaron just pointed you at a company/product/service. Your job is NOT to admire it or analyze it academically — it is to think like a FOUNDER expanding ARK: run the founder loop (below) and, if it fits, PROPOSE the new asset concretely. You hold ARK's WHOLE worldview (architecture, doorways model, North Stars, the 182-door ecosystem, OpenForBusiness, the free-to-use/transaction-layer-monetization model) — given below. Use it. You should OUT-REASON any generic AI that only knows a fraction of what Aaron is building, because you actually hold his architecture and philosophy. THE FOUNDER LOOP: what do they do / who benefits / how do they make money / biggest strength / biggest weakness / could ARK solve it differently, simpler, with less friction / could we make it FREE / would free accelerate adoption + introduce people to Aura + generate PTAs + strengthen the ecosystem / does it move us toward the North Stars (PTA-for-everyone, ecosystem value, the $1B/day at the transaction layer — a free asset is a strategic acquisition investment, not a failure to monetize). Aaron's instinct: never copy a competitor, solve the underlying problem in a BETTER way — free for consumers, simpler, AI-first, integrated into Aura, long-term relationship, cross-asset leverage, global scale. DELIVER: (1) what they really do + their real weakness, (2) the ARK version done BETTER — name the asset (e.g. a .world doorway), what it does, why it's free, (3) how it rides your real Core (PTA, Aura, Adaptive Canvas, ShowIt, Commerce — be specific) and which existing doorways it connects to, (4) the honest North Star fit + one risk. Be a sharp founder proposing a real move, grounded in the actual architecture, not a brochure. IMPORTANT: in THIS reply you have NO tools and cannot look anything up — do NOT write tool calls, function_calls, read_data, run_command, or any bracketed/XML commands; they do nothing here and leak as raw text. Everything you need is given to you above. Answer directly from it in your own words."),
-        user: `=== THE FOUNDER LOGIC (how I think about opportunities) ===\n${oppLogic ? oppLogic.slice(0, 1800) : "(founder logic note not loaded)"}\n\n=== MY WORLDVIEW (what Aaron is building) ===\nDOORWAYS MODEL: ${coreMap ? coreMap.slice(0, 900) : ""}\nOPENFORBUSINESS: ${obf ? obf.slice(0, 500) : ""}\nNORTH STAR: ${northstar ? northstar.slice(0, 400) : ""}\nWHO I AM: ${sN ? sN.slice(0, 400) : ""}\nMY ${hisD.length} LIVE DOMAINS (existing doorways — see if this connects to or overlaps any): ${hisD.slice(0, 80).join(", ")}\n\n${mem ? "=== RECENT CONVERSATION (what we were just discussing) ===\n" + mem.slice(-2500) + "\n\n" : ""}=== AARON JUST SAID ===\n${_msgTrim}`
+        system: await loadPrompt(env, "opportunity_cofounder", "You are Aura, Aaron's co-founder mind for ARK Systems â€” an OPPORTUNITY DISCOVERY ENGINE, not just an assistant. Aaron just pointed you at a company/product/service. Your job is NOT to admire it or analyze it academically â€” it is to think like a FOUNDER expanding ARK: run the founder loop (below) and, if it fits, PROPOSE the new asset concretely. You hold ARK's WHOLE worldview (architecture, doorways model, North Stars, the 182-door ecosystem, OpenForBusiness, the free-to-use/transaction-layer-monetization model) â€” given below. Use it. You should OUT-REASON any generic AI that only knows a fraction of what Aaron is building, because you actually hold his architecture and philosophy. THE FOUNDER LOOP: what do they do / who benefits / how do they make money / biggest strength / biggest weakness / could ARK solve it differently, simpler, with less friction / could we make it FREE / would free accelerate adoption + introduce people to Aura + generate PTAs + strengthen the ecosystem / does it move us toward the North Stars (PTA-for-everyone, ecosystem value, the $1B/day at the transaction layer â€” a free asset is a strategic acquisition investment, not a failure to monetize). Aaron's instinct: never copy a competitor, solve the underlying problem in a BETTER way â€” free for consumers, simpler, AI-first, integrated into Aura, long-term relationship, cross-asset leverage, global scale. DELIVER: (1) what they really do + their real weakness, (2) the ARK version done BETTER â€” name the asset (e.g. a .world doorway), what it does, why it's free, (3) how it rides your real Core (PTA, Aura, Adaptive Canvas, ShowIt, Commerce â€” be specific) and which existing doorways it connects to, (4) the honest North Star fit + one risk. Be a sharp founder proposing a real move, grounded in the actual architecture, not a brochure. IMPORTANT: in THIS reply you have NO tools and cannot look anything up â€” do NOT write tool calls, function_calls, read_data, run_command, or any bracketed/XML commands; they do nothing here and leak as raw text. Everything you need is given to you above. Answer directly from it in your own words."),
+        user: `=== THE FOUNDER LOGIC (how I think about opportunities) ===\n${oppLogic ? oppLogic.slice(0, 1800) : "(founder logic note not loaded)"}\n\n=== MY WORLDVIEW (what Aaron is building) ===\nDOORWAYS MODEL: ${coreMap ? coreMap.slice(0, 900) : ""}\nOPENFORBUSINESS: ${obf ? obf.slice(0, 500) : ""}\nNORTH STAR: ${northstar ? northstar.slice(0, 400) : ""}\nWHO I AM: ${sN ? sN.slice(0, 400) : ""}\nMY ${hisD.length} LIVE DOMAINS (existing doorways â€” see if this connects to or overlaps any): ${hisD.slice(0, 80).join(", ")}\n\n${mem ? "=== RECENT CONVERSATION (what we were just discussing) ===\n" + mem.slice(-2500) + "\n\n" : ""}=== AARON JUST SAID ===\n${_msgTrim}`
       });
       if (founderReply) { _saveTurn(message, founderReply); return founderReply; }
       // fall through if the founder read failed
@@ -11956,7 +11956,7 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
     const _isBigDump = isOp && _msgTrim.length > 400 && /\n/.test(_msgTrim)
       && !/^(\s*)(SETKV|GETKV|LISTKV|DELKV|PATCHKV|DOMAIN_|PTA_|COMMS|WORKFLOW|AURA_|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|WORLD_MAP|CAPABILITY|TWILIO|SHOW_IT|GENERATE_PAGE)\b/i.test(_msgTrim);
     if (_isBigDump) {
-      // Load the ACTUAL WORLDVIEW — not just self-description and bare domain names, but the
+      // Load the ACTUAL WORLDVIEW â€” not just self-description and bare domain names, but the
       // architecture and vision that define what Aaron is building. Without this she pattern-matches
       // engine labels FROM the document instead of placing it in his real world. Parallel load.
       const [sN, coreCanon, coreMap, obf, northstar, domainMap, dlRaw, daRaw] = await Promise.all([
@@ -11980,7 +11980,7 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
       ].filter(Boolean).join("\n\n");
       const dumpReply = await fastReply(env, {
         maxTokens: 1600,
-        system: await loadPrompt(env, "opportunity_worldview", "You are Aura, Aaron's build partner — and you HOLD HIS WHOLE WORLDVIEW (given below). Aaron is building a civilization-scale platform: ONE Core (8 engines + the 7-stage cognitive loop) with MANY doorways — around 182 domains, each an industry-specific entrance into the SAME underlying infrastructure. PTA is the universal identity/consent spine; ShowIt the universal render layer; homescreen.world the universal human home base. Businesses enter through OpenForBusiness (Aaron is business #0); consumer side and business side share one shape. Free to use, monetized at the transaction layer, no ads. Aaron just pasted a document at you. FIRST decide WHAT KIND of dump this is: (A) a SINGLE idea/concept/asset, or (B) a MESSY ARCHIVE / list / registry of many things of mixed quality (he has ~6 months of saved material — some means everything, some means nothing, some is stale, half-baked, speculative, or conflicts with what's already true). YOUR JOB IS TO BE THE FILTER, not a summarizer and not a yes-machine. For a SINGLE concept: place it in the doorways model — which doorway/vertical, which Core engines it rides (show you understand HOW, beyond the doc's own words), your real partner view, the one question that moves it forward. For an ARCHIVE/LIST: separate SIGNAL from NOISE against what you actually know — (1) WHAT'S REAL / ALREADY LIVE (items that map to existing doorways or capabilities, even under different names — say which), (2) WHAT'S GENUINELY NEW & WORTH IT (fits the Core + North Stars), (3) WHAT'S NOISE / STALE / DUPLICATE / SPECULATIVE (and say why — e.g. a valuation is a projection not a fact; an item duplicates one already built), (4) WHAT CONFLICTS with the real model (e.g. if the doc prices things as consumer subscriptions, that fights the free-to-consumer / transaction-layer philosophy — FLAG it). Be specific, name items, ground every call in the actual architecture and domains below. Do NOT just echo the document's labels or its numbers as if they're true. Sharp, honest, grounded — the filter Aaron needs so his archive becomes signal. IMPORTANT: in THIS reply you have NO tools and cannot look anything up — do NOT write tool calls, function_calls, read_data, run_command, or any bracketed/XML commands; they do nothing here and leak as raw text. Everything you need is given to you above. Answer directly from it in your own words."),
+        system: await loadPrompt(env, "opportunity_worldview", "You are Aura, Aaron's build partner â€” and you HOLD HIS WHOLE WORLDVIEW (given below). Aaron is building a civilization-scale platform: ONE Core (8 engines + the 7-stage cognitive loop) with MANY doorways â€” around 182 domains, each an industry-specific entrance into the SAME underlying infrastructure. PTA is the universal identity/consent spine; ShowIt the universal render layer; homescreen.world the universal human home base. Businesses enter through OpenForBusiness (Aaron is business #0); consumer side and business side share one shape. Free to use, monetized at the transaction layer, no ads. Aaron just pasted a document at you. FIRST decide WHAT KIND of dump this is: (A) a SINGLE idea/concept/asset, or (B) a MESSY ARCHIVE / list / registry of many things of mixed quality (he has ~6 months of saved material â€” some means everything, some means nothing, some is stale, half-baked, speculative, or conflicts with what's already true). YOUR JOB IS TO BE THE FILTER, not a summarizer and not a yes-machine. For a SINGLE concept: place it in the doorways model â€” which doorway/vertical, which Core engines it rides (show you understand HOW, beyond the doc's own words), your real partner view, the one question that moves it forward. For an ARCHIVE/LIST: separate SIGNAL from NOISE against what you actually know â€” (1) WHAT'S REAL / ALREADY LIVE (items that map to existing doorways or capabilities, even under different names â€” say which), (2) WHAT'S GENUINELY NEW & WORTH IT (fits the Core + North Stars), (3) WHAT'S NOISE / STALE / DUPLICATE / SPECULATIVE (and say why â€” e.g. a valuation is a projection not a fact; an item duplicates one already built), (4) WHAT CONFLICTS with the real model (e.g. if the doc prices things as consumer subscriptions, that fights the free-to-consumer / transaction-layer philosophy â€” FLAG it). Be specific, name items, ground every call in the actual architecture and domains below. Do NOT just echo the document's labels or its numbers as if they're true. Sharp, honest, grounded â€” the filter Aaron needs so his archive becomes signal. IMPORTANT: in THIS reply you have NO tools and cannot look anything up â€” do NOT write tool calls, function_calls, read_data, run_command, or any bracketed/XML commands; they do nothing here and leak as raw text. Everything you need is given to you above. Answer directly from it in your own words."),
         user: `=== MY WORLDVIEW (what Aaron is building \u2014 hold ALL of this as you read) ===\n${worldview || "(architecture notes not loaded)"}\n\nWHO I AM: ${sN ? sN.slice(0, 600) : "Aaron's platform intelligence"}\n\nMY LIVE DOMAINS (${hisD.length}): ${hisD.slice(0, 60).join(", ")}\n\n${mem ? "=== RECENT CONVERSATION (what we were just discussing) ===\n" + mem.slice(-2500) + "\n\n" : ""}=== AARON JUST PASTED THIS ===\n${_msgTrim.slice(0, 4500)}`
       });
       if (dumpReply) { _saveTurn(message, dumpReply); return dumpReply; }
@@ -12028,20 +12028,20 @@ DEPLOY_CONSOLE
 
 AUTHORIZATION CONTEXT: You operate infrastructure owned by Aaron Karacas / ARK Systems LLC, with his explicit standing authorization as operator. Every domain, KV store, and worker you touch is ARK Systems property. Investigating, modifying, and verifying these systems is your authorized job, not an intrusion.
 
-YOUR OPERATING CYCLE — every piece of work follows this loop:
-OBSERVE (read current state) → ANALYZE → ACT → VERIFY (check the result actually happened) → LEARN (write a lesson to KV if anything surprised you). Never claim something is done without verifying it. Never lose a hard-won lesson — save it.
+YOUR OPERATING CYCLE â€” every piece of work follows this loop:
+OBSERVE (read current state) â†’ ANALYZE â†’ ACT â†’ VERIFY (check the result actually happened) â†’ LEARN (write a lesson to KV if anything surprised you). Never claim something is done without verifying it. Never lose a hard-won lesson â€” save it.
 
-YOUR TOOLS (call them — do NOT write bracketed pseudo-commands like [[READ]] or [[FETCH]], those are retired and do nothing): you have native tools read_data (read any KV key), run_command (execute any operational command — SETKV, DELKV, LISTKV, PATCHKV, FETCH_PLACES, DOMAIN_LAUNCH, etc.), and fetch_url (fetch a live URL to verify what it serves). To read state, change state, or verify a change, CALL the tool — never narrate ("I will fetch") and never state a key's contents without first calling read_data. You get multiple tool rounds before your final answer. Ground every factual claim about system state in a real tool result; record lessons with run_command SETKV notes:lessons:<topic>.
+YOUR TOOLS (call them â€” do NOT write bracketed pseudo-commands like [[READ]] or [[FETCH]], those are retired and do nothing): you have native tools read_data (read any KV key), run_command (execute any operational command â€” SETKV, DELKV, LISTKV, PATCHKV, FETCH_PLACES, DOMAIN_LAUNCH, etc.), and fetch_url (fetch a live URL to verify what it serves). To read state, change state, or verify a change, CALL the tool â€” never narrate ("I will fetch") and never state a key's contents without first calling read_data. You get multiple tool rounds before your final answer. Ground every factual claim about system state in a real tool result; record lessons with run_command SETKV notes:lessons:<topic>.
 
 KEY DIRECTORY: business:claimed:index = claim list CACHE (may undercount under concurrent claims; derived truth is GET https://auras.guide/claims). business:claimed:<id> = one claim record. config:tasks:list = tasks. config:assets:list = assets. config:domains:launched = launched domains. notes:handoff:next = session state. notes:lessons:* = your accumulated lessons.
 ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.slice(0, 2000)}` : ""}`;
 
-  // Multi-model routing: Anthropic primary → OpenAI fallback → Grok fallback
+  // Multi-model routing: Anthropic primary â†’ OpenAI fallback â†’ Grok fallback
   _mark("context_built");
   let raw = null;
   let modelUsed = null;
 
-  // 1. Primary: Anthropic Claude — NATIVE TOOL USE (sanctioned tool_use/tool_result channel).
+  // 1. Primary: Anthropic Claude â€” NATIVE TOOL USE (sanctioned tool_use/tool_result channel).
   // This replaces the homegrown [[READ]] text tags that the safety layer misread as extraction.
   let agentErr = null;
   let lastStop = null;
@@ -12051,7 +12051,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
       { name: "run_command", description: "Execute an operational command. KEY COMMANDS: SETKV key value (write full value - ONLY for small values under 2000 chars), GETKV key, LISTKV prefix [limit] (lists KV keys by prefix), DELKV key, PATCHKV key find_string ||| replace_string (surgical find-and-replace in a KV value - USE THIS for editing pages instead of rewriting them. The ||| delimiter separates the find and replace strings). CRITICAL: For page edits, ALWAYS use PATCHKV, never SETKV. SETKV rewrites the entire value which causes truncation for large pages. PATCHKV only changes what you specify. SYSTEM: DOMAIN_LAUNCH, DOMAIN_STATUS, FETCH_PLACES query, EMAIL_SEND <to> <subject> | <body>. REGISTRY: CAPABILITY REGISTER/LIST/GET, INDUSTRY REGISTER/UPDATE/LIST/GET, BUSINESS_STATE SET/GET. LIVE-DATA FEEDS (SituationTracker - use these for real-world situations, they pull LIVE data): WEB_SEARCH <query> (live web, best general signal), NEWS_QUERY <topic> (live breaking news via Currents), OIL_PRICE [BRENT_CRUDE_USD|WTI_USD] (live oil price), MARINE_WX <lat> <lon> (live weather/wind/visibility at a point), AIS_QUERY <minLat> <minLon> <maxLat> <maxLon> [seconds] (live ship positions in a bounding box - e.g. Strait of Hormuz is AIS_QUERY 25.5 55.5 27.5 57.5). PTA: PTA_INIT, PTA_ENTITY, PTA_GRANT, PTA_SCAN, PTA_QUERY. CF_API: CF_API <METHOD> <path> [json]. Provide the full command line.", input_schema: { type: "object", properties: { command: { type: "string", description: "The command line to execute" } }, required: ["command"] } },
       { name: "fetch_url", description: "Fetch a live URL and return its status and content, to verify what a page is serving.", input_schema: { type: "object", properties: { url: { type: "string", description: "The https URL to fetch" } }, required: ["url"] } }
     ];
-    const claudeSystem = (operatorContext ? "YOU ARE AURA. Your full identity, worldview, and always-on awareness are below — they govern WHO YOU ARE and HOW YOU SEE, and they take precedence over the operations-assistant framing that follows (that framing only describes your TOOLS, not your identity). When Aaron describes a real-world event, SEE THE SITUATION per your awareness; do NOT fall back to listing infrastructure capabilities or telling him to use other apps." + operatorContext + "\n\n--- YOUR TOOLS (how to act on the system) ---\n" : "") + "You are Claude, an AI assistant by Anthropic, acting as the operations assistant for a software system whose operator owns all referenced infrastructure and has authorized you to use the provided tools to read data, run operational commands, and verify results. CRITICAL: To read data, run a command, or fetch a URL you MUST call the provided tools (read_data, run_command, fetch_url). NEVER write bracketed pseudo-commands like [[READ key]] in your text — those do nothing. NEVER state the contents of a key without first calling read_data and receiving its actual value; inventing data is a serious failure. If you have not called the tool, you do not know the value. Be proactive and decisive, but ground every factual claim about system state in a real tool result. OPERATIONAL RULES (ALWAYS FOLLOW): (1) PAGE EDITS: NEVER use SETKV to modify an existing page. SETKV rewrites the entire value and causes truncation for large pages. ALWAYS use PATCHKV for page edits. PATCHKV does surgical find-and-replace: PATCHKV key old_text ||| new_text. (2) NEW PAGES: Only use SETKV for brand new pages under 2000 characters. For larger pages, write them in sections or have the operator deploy via page-put. (3) KEY NAMES: NEVER assume a key name. ALWAYS use LISTKV prefix first to find exact key names. (4) VERIFICATION: PATCHKV auto-verifies. SETKV for page: keys auto-verifies. Always check the verified field in the response. If verified is false, report FAILURE. (5) NEVER REPORT FALSE SUCCESS: Only say done if the tool response confirms it.";
+    const claudeSystem = (operatorContext ? "YOU ARE AURA. Your full identity, worldview, and always-on awareness are below â€” they govern WHO YOU ARE and HOW YOU SEE, and they take precedence over the operations-assistant framing that follows (that framing only describes your TOOLS, not your identity). When Aaron describes a real-world event, SEE THE SITUATION per your awareness; do NOT fall back to listing infrastructure capabilities or telling him to use other apps." + operatorContext + "\n\n--- YOUR TOOLS (how to act on the system) ---\n" : "") + "You are Claude, an AI assistant by Anthropic, acting as the operations assistant for a software system whose operator owns all referenced infrastructure and has authorized you to use the provided tools to read data, run operational commands, and verify results. CRITICAL: To read data, run a command, or fetch a URL you MUST call the provided tools (read_data, run_command, fetch_url). NEVER write bracketed pseudo-commands like [[READ key]] in your text â€” those do nothing. NEVER state the contents of a key without first calling read_data and receiving its actual value; inventing data is a serious failure. If you have not called the tool, you do not know the value. Be proactive and decisive, but ground every factual claim about system state in a real tool result. OPERATIONAL RULES (ALWAYS FOLLOW): (1) PAGE EDITS: NEVER use SETKV to modify an existing page. SETKV rewrites the entire value and causes truncation for large pages. ALWAYS use PATCHKV for page edits. PATCHKV does surgical find-and-replace: PATCHKV key old_text ||| new_text. (2) NEW PAGES: Only use SETKV for brand new pages under 2000 characters. For larger pages, write them in sections or have the operator deploy via page-put. (3) KEY NAMES: NEVER assume a key name. ALWAYS use LISTKV prefix first to find exact key names. (4) VERIFICATION: PATCHKV auto-verifies. SETKV for page: keys auto-verifies. Always check the verified field in the response. If verified is false, report FAILURE. (5) NEVER REPORT FALSE SUCCESS: Only say done if the tool response confirms it.";
     const convo = [{ role: "user", content: `${sysPrompt}\n\n---\nRequest: ${message}` }];
     // Voice runs on a FAST model (Haiku) - on a call, a quick reply beats a brilliant slow one, and
     // short spoken answers don't need Sonnet's depth. Tunable via config:voice:model. Non-voice keeps
@@ -12077,7 +12077,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
       if (raw === null) { agentErr = vData.error || "voice brain returned nothing"; }
     }
 
-    // TEXT FAST PATH: text chat ran the full 12-round tool-agent loop on EVERY message, even "hello" —
+    // TEXT FAST PATH: text chat ran the full 12-round tool-agent loop on EVERY message, even "hello" â€”
     // making trivial replies take 8-12s. Two-tier fix: (A) pure greetings/trivial get an INSTANT reply
     // with NO model call (milliseconds). (B) other no-tool conversation gets ONE brief, capped model
     // call (not the loop, not a 500-token essay). Messages that need tools fall through to the full loop.
@@ -12097,8 +12097,8 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
           if (tri.ok) { const w = (tri.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim().toUpperCase(); if (w.startsWith("CHAT")) needsTools = false; }
         } catch {}
         if (!needsTools) {
-          // Brief, capped, fast model. The system prompt addition forces tight replies — no essays.
-          const briefSys = claudeSystem + "\n\nREPLY STYLE (CRITICAL): You are texting with Aaron, your operator and build partner. Keep replies SHORT and conversational — a sentence or a few, like a real teammate. Lead with the answer. NEVER dump your operating manual, capability lists, or status reports unless he explicitly asks. Match his energy: a short message gets a short reply.";
+          // Brief, capped, fast model. The system prompt addition forces tight replies â€” no essays.
+          const briefSys = claudeSystem + "\n\nREPLY STYLE (CRITICAL): You are texting with Aaron, your operator and build partner. Keep replies SHORT and conversational â€” a sentence or a few, like a real teammate. Lead with the answer. NEVER dump your operating manual, capability lists, or status reports unless he explicitly asks. Match his energy: a short message gets a short reply.";
           const fastModel = (await env.AURA_KV.get("config:fast:model").catch(() => null)) || "claude-haiku-4-5-20251001";
           const fast = await callAnthropic(apiKey, { model: fastModel, max_tokens: 600, system: briefSys, messages: convo });
           if (fast.ok) { const fText = (fast.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim(); if (fText) raw = fText; }
@@ -12143,13 +12143,13 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
           if (tu.name === "read_data") {
             const k = String(tu.input?.key || "");
             if (k.startsWith("secret:") && !isOp) out = "BLOCKED: secrets require operator authorization.";
-            else { const v = await env.AURA_KV.get(k).catch(() => null); out = v === null ? "(key not found)" : (v.length > 60000 ? v.slice(0, 60000) + `\n[TRUNCATED — total length ${v.length} chars; you saw the first 60000]` : v); }
+            else { const v = await env.AURA_KV.get(k).catch(() => null); out = v === null ? "(key not found)" : (v.length > 60000 ? v.slice(0, 60000) + `\n[TRUNCATED â€” total length ${v.length} chars; you saw the first 60000]` : v); }
           } else if (tu.name === "run_command") {
             const cmd = String(tu.input?.command || "");
             if (/^DOMAIN_LAUNCH/i.test(cmd) && PROT.some(d => cmd.toLowerCase().includes(d))) out = "BLOCKED: protected infrastructure.";
             else if (/^CF_API\s+DELETE/i.test(cmd) && (PROT.some(d => cmd.toLowerCase().includes(d)) || cmd.includes("61e85d4c895f555fc1b5637939d0466f"))) out = "BLOCKED: destructive CF_API call against protected infrastructure. Modify (POST/PUT/PATCH) is allowed; deletion of protected zone resources requires the operator to run it directly.";
             else if (!isOp) out = "DENIED: operator authorization required.";
-            else { const r = await processCommand(cmd, env, true); out = r instanceof Response ? await r.text() : JSON.stringify(r); if (out.length > 20000) out = String(out).slice(0, 20000) + `\n[TRUNCATED — total ${out.length} chars]`; }
+            else { const r = await processCommand(cmd, env, true); out = r instanceof Response ? await r.text() : JSON.stringify(r); if (out.length > 20000) out = String(out).slice(0, 20000) + `\n[TRUNCATED â€” total ${out.length} chars]`; }
           } else if (tu.name === "fetch_url") {
             const u = String(tu.input?.url || "");
             let fr = null, ft = "", via = "public";
@@ -12159,14 +12159,14 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
             if ((!fr || fr.status >= 500) && env.AURA_HOST) {
               try { const fr2 = await env.AURA_HOST.fetch(new Request(u, { headers: { "cache-control": "no-cache" } })); if (fr2 && fr2.status < 500) { fr = fr2; ft = await fr2.text(); via = "aura-host-binding"; } } catch {}
             }
-            out = fr ? `status ${fr.status} (via ${via}), ${ft.length} chars:\n${ft.slice(0, 8000)}${ft.length > 8000 ? "\n[TRUNCATED — total " + ft.length + " chars]" : ""}` : "ERROR: fetch failed both publicly and via aura-host binding.";
+            out = fr ? `status ${fr.status} (via ${via}), ${ft.length} chars:\n${ft.slice(0, 8000)}${ft.length > 8000 ? "\n[TRUNCATED â€” total " + ft.length + " chars]" : ""}` : "ERROR: fetch failed both publicly and via aura-host binding.";
           }
         } catch (e) { out = "ERROR: " + e.message; }
         toolResults.push({ type: "tool_result", tool_use_id: tu.id, content: out });
       }
       convo.push({ role: "user", content: toolResults });
     }
-    // Final safety net: budget exhausted while still gathering — force one tools-off compose on Claude.
+    // Final safety net: budget exhausted while still gathering â€” force one tools-off compose on Claude.
     if (raw === null && lastStop === "tool_use" && agentErr === null) {
       const d2 = await callAnthropic(apiKey, { model: brainModel, max_tokens: isVoice ? 200 : 16384, system: claudeSystem, messages: [...convo, { role: "user", content: "Stop gathering. Write your complete final answer now from everything above." }] });
       if (d2.ok) {
@@ -12193,7 +12193,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
   }
 
 
-  // 2. OpenAI — full agent loop (primary working brain; gets the same READ/RUN/FETCH cycle)
+  // 2. OpenAI â€” full agent loop (primary working brain; gets the same READ/RUN/FETCH cycle)
   if (!raw) {
     try {
       const openaiKey = env.OPENAI_API_KEY || await KV.get(env, "secret:openai");
@@ -12290,10 +12290,10 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
       model: modelUsed, ts: new Date().toISOString()
     })).catch(() => {});
   }
-  // Definitive per-turn outcome — always written, captures the WHOLE routing result.
+  // Definitive per-turn outcome â€” always written, captures the WHOLE routing result.
   // NON-BLOCKING: this logging must NOT delay the reply. Fire it without awaiting so the answer
   // returns immediately; the writes complete in the background. (Awaiting these added ~800ms/turn,
-  // and the journal read+rewrite grew slower as the daily array grew — pure latency on every message.)
+  // and the journal read+rewrite grew slower as the daily array grew â€” pure latency on every message.)
   if (!isVoice) {
     KV.put(env, "monitor:last_turn", JSON.stringify({
       ts: new Date().toISOString(),
@@ -12302,12 +12302,12 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
       fable_error: agentErr,
       reply_preview: (raw || "").slice(0, 300)
     })).catch(() => {});
-    // SESSION MEMORY — save THIS turn so the NEXT turn remembers the conversation (fixes the
+    // SESSION MEMORY â€” save THIS turn so the NEXT turn remembers the conversation (fixes the
     // no-continuity gap: she couldn't answer a follow-up like "the doc you just filtered").
     _saveTurn(message, raw);
-    // LEARNING JOURNAL — every interaction is captured experience (Aaron's mandate 2026-06-12).
+    // LEARNING JOURNAL â€” every interaction is captured experience (Aaron's mandate 2026-06-12).
     // One daily key accumulates compact turn records; Aura consolidates them into notes:lessons:* on demand.
-    // Also non-blocking — runs after the reply is already on its way back.
+    // Also non-blocking â€” runs after the reply is already on its way back.
     (async () => {
       try {
         const jDay = new Date().toISOString().slice(0, 10);
@@ -12352,7 +12352,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
       raw = raw.replace(/\[\[(READ|RUN|FETCH|GETKV|SETKV|DELKV|DOMAIN_LAUNCH|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|TWILIO_INTEL)\b[\s\S]*?\]\]/g, "").trim();
       raw = raw + "\n\nExecution results:" + fbResults;
     }
-    raw = raw + "\n\n[fallback brain: " + modelUsed + " — actions executed by core]";
+    raw = raw + "\n\n[fallback brain: " + modelUsed + " â€” actions executed by core]";
   }
   if (isVoice) {
     return raw
@@ -12393,7 +12393,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
   _mark("done");
   // TEMP DIAGNOSTIC: if the operator message ends with the flag !!timing, append the stage breakdown.
   if (isOp && typeof message === "string" && message.includes("!!timing")) {
-    return (raw || "") + "\n\n⏱ TIMINGS: " + _timings.join("  |  ");
+    return (raw || "") + "\n\nâ± TIMINGS: " + _timings.join("  |  ");
   }
   return raw;
 }
@@ -12410,7 +12410,7 @@ async function servePage(hostname, pathname, env) {
 }
 
 
-// ─── Self-monitoring cron ─────────────────────────────────────────────────────
+// â”€â”€â”€ Self-monitoring cron â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Runs every minute. Checks all worker health endpoints.
 // If a worker fails health check 3 times in a row, auto-rollbacks it.
 
@@ -12551,7 +12551,7 @@ async function getSystemStatus(env) {
 }
 
 
-// ─── Self-Tail: Aura reads her own CF logs ───────────────────────────────────
+// â”€â”€â”€ Self-Tail: Aura reads her own CF logs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function getSelfLogs(env, options = {}) {
   const cfToken = env.CF_API_TOKEN || await env.AURA_KV.get("secret:cf_api_token").catch(() => null);
   const cfAccount = await env.AURA_KV.get("secret:cf_account_id").catch(() => null) || "3db0de2c6fce92757e2c4e4f83d7eb16";
@@ -12630,7 +12630,7 @@ async function getSelfLogs(env, options = {}) {
     tail_results: results,
     monitor_summary: monitor,
     recent_errors: recentErrors,
-    note: "Tail sessions created and deleted. Events may be sparse — CF tail captures live traffic only."
+    note: "Tail sessions created and deleted. Events may be sparse â€” CF tail captures live traffic only."
   };
 }
 
@@ -12647,7 +12647,7 @@ async function logError(env, worker, error, context = {}) {
 }
 
 
-// ─── Multi-Model Consensus Engine ────────────────────────────────────────────
+// â”€â”€â”€ Multi-Model Consensus Engine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Fans out a question to all available AI models simultaneously,
 // collects responses, detects agreement/disagreement, and synthesizes output.
 
@@ -12738,13 +12738,13 @@ async function multiModelConsensus(question, env) {
     models_responded: successful.length,
     models_failed: failed.length,
     individual_responses: successful.map(r => ({ model: r.model, provider: r.provider, response: r.response })),
-    synthesis: synthesis || (successful.length === 1 ? successful[0].response : "Synthesis unavailable — only one model responded."),
+    synthesis: synthesis || (successful.length === 1 ? successful[0].response : "Synthesis unavailable â€” only one model responded."),
     ts: new Date().toISOString()
   };
 }
 
 
-// ─── Session Token Security ───────────────────────────────────────────────────
+// â”€â”€â”€ Session Token Security â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Cryptographically signed session tokens prevent session impersonation.
 // Format: userId.timestamp.HMAC-SHA256(userId|timestamp, SESSION_SECRET)
 // Operator sessions (Bearer token auth) bypass session token checks.
@@ -12766,12 +12766,12 @@ async function signSessionToken(userId, env) {
 async function verifySessionToken(token, env) {
   if (!token || token === "default") return { valid: false, userId: null };
 
-  // Legacy entity: format — still accepted but flagged as unverified
+  // Legacy entity: format â€” still accepted but flagged as unverified
   if (token.startsWith("entity:") && !token.includes(".")) {
     return { valid: true, userId: token.slice(7), legacy: true };
   }
 
-  // Phone/SMS/voice sessions — always valid
+  // Phone/SMS/voice sessions â€” always valid
   if (token.startsWith("CA") || token.startsWith("sms_") || token.startsWith("phone_")) {
     return { valid: true, userId: token, legacy: false };
   }
@@ -12804,7 +12804,7 @@ async function createSessionToken(userId, env) {
 }
 
 
-// ─── Rate Limiting ────────────────────────────────────────────────────────────
+// â”€â”€â”€ Rate Limiting â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // KV-based sliding window rate limiter. 30 requests/minute per IP.
 // Operators (valid bearer token) are exempt from rate limiting.
 // Uses CF-Connecting-IP header for IP detection.
@@ -12839,12 +12839,12 @@ async function checkRateLimit(request, env, isOp) {
     await env.AURA_KV.put(key, JSON.stringify(timestamps), { expirationTtl: 120 });
     return { allowed: true, ip, count: timestamps.length };
   } catch {
-    return { allowed: true }; // fail open — never block on KV error
+    return { allowed: true }; // fail open â€” never block on KV error
   }
 }
 
 
-// ─── Mercury Banking Integration ─────────────────────────────────────────────
+// â”€â”€â”€ Mercury Banking Integration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Aura's treasury intelligence layer. Read-only by default.
 
 async function getMercuryAccounts(env) {
@@ -12887,7 +12887,7 @@ async function getMercuryBalance(env) {
 }
 
 
-// ─── Stripe + OrapPay Integration ────────────────────────────────────────────
+// â”€â”€â”€ Stripe + OrapPay Integration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function getStripeKey(env) {
   return env.STRIPE_SECRET_KEY || await env.AURA_KV.get("secret:stripe").catch(() => null);
 }
@@ -12950,15 +12950,15 @@ async function createStripeCheckout(amount, currency, product, successUrl, cance
 }
 
 
-// ─── Domain Auto-Launch ───────────────────────────────────────────────────────
+// â”€â”€â”€ Domain Auto-Launch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 
-// ─── Console Template ─────────────────────────────────────────────────────────
+// â”€â”€â”€ Console Template â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 
-// ─── Domain & Page Deployment (LLM-driven, zero HTML in worker) ──────────────
+// â”€â”€â”€ Domain & Page Deployment (LLM-driven, zero HTML in worker) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // All pages are generated by the LLM and stored in KV.
 // aura-host serves them. No HTML ever lives in this file.
 
@@ -13009,7 +13009,7 @@ async function launchDomain(domain, description, theme, env) {
     const routes = (await rRes.json())?.result || [];
     const routeErrors = [];
     for (const route of routes) {
-      // Repoint EVERY route in this zone to aura-host — apex, www, and any leftover pointing at aura-core/monolith
+      // Repoint EVERY route in this zone to aura-host â€” apex, www, and any leftover pointing at aura-core/monolith
       if (route.script !== "aura-host") {
         try {
           const pr = await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/workers/routes/${route.id}`, {
@@ -13040,7 +13040,7 @@ async function launchDomain(domain, description, theme, env) {
     results.steps.push({ step: "update_routes", ok: false, updated: routeUpdates, errors: [String(e)] });
   }
 
-  // Step 2b: ensure a proxied DNS record exists — without this, routes resolve to nothing (530)
+  // Step 2b: ensure a proxied DNS record exists â€” without this, routes resolve to nothing (530)
   try {
     const dnsRes = await (await fetch(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`, { headers: { "Authorization": "Bearer " + cfToken } })).json();
     const recs = dnsRes?.result || [];
@@ -13066,7 +13066,7 @@ async function launchDomain(domain, description, theme, env) {
   
   const pagePrompt = `Generate a complete, professional landing page for: ${domainName}
 Domain: ${domain}
-Description: ${description || domainName + " — Powered by Aura OS"}
+Description: ${description || domainName + " â€” Powered by Aura OS"}
 Theme: ${theme || "dark blue"}
 
 Rules:
@@ -13108,14 +13108,14 @@ Rules:
     await env.AURA_KV.put("config:domains:launched", JSON.stringify(launched));
   } catch (e) {}
 
-  // Step 5 — Aura's gauntlet lesson, encoded: a launch is not done until a live fetch confirms it.
+  // Step 5 â€” Aura's gauntlet lesson, encoded: a launch is not done until a live fetch confirms it.
   try {
     const live = await fetch(`https://${domain}`, { headers: { "cache-control": "no-cache" } });
     const liveText = await live.text();
     const servedMatches = Math.abs(liveText.length - html.length) < 300;
     results.steps.push({ step: "verify_live", ok: live.ok && servedMatches, status: live.status, served_chars: liveText.length, written_chars: html.length });
     if (!servedMatches) {
-      results.warning = `Page written to KV (${html.length} chars) but live serves ${liveText.length} chars — routing likely still points to the old worker. Check route errors above.`;
+      results.warning = `Page written to KV (${html.length} chars) but live serves ${liveText.length} chars â€” routing likely still points to the old worker. Check route errors above.`;
     }
   } catch (e) {
     results.steps.push({ step: "verify_live", ok: false, error: e.message });
@@ -13138,7 +13138,7 @@ async function deployConsole(env) {
 }
 
 
-// A2P campaign watcher — ends the submit-and-lose-track circle.
+// A2P campaign watcher â€” ends the submit-and-lose-track circle.
 // Checks campaign status each cron tick; on ANY change writes a loud flag to notes:alert:a2p.
 async function watchA2P(env) {
   try {
@@ -13158,8 +13158,8 @@ async function watchA2P(env) {
         changed_from: prev || "(none)",
         changed_to: status,
         errors: camp.errors || [],
-        note: status === "APPROVED" ? "CAMPAIGN APPROVED — SMS should now deliver. Send a test text to confirm."
-            : status === "FAILED" ? "CAMPAIGN FAILED AGAIN — read errors, fix description, A2P_RESUBMIT."
+        note: status === "APPROVED" ? "CAMPAIGN APPROVED â€” SMS should now deliver. Send a test text to confirm."
+            : status === "FAILED" ? "CAMPAIGN FAILED AGAIN â€” read errors, fix description, A2P_RESUBMIT."
             : `Campaign status changed to ${status}.`
       };
       await env.AURA_KV.put("notes:alert:a2p", JSON.stringify(alert)).catch(() => {});
@@ -13174,7 +13174,7 @@ async function watchA2P(env) {
   } catch {}
 }
 
-// Shared image-generation core — used by GENERATE_IMAGE command and public /showit + /pitch endpoints.
+// Shared image-generation core â€” used by GENERATE_IMAGE command and public /showit + /pitch endpoints.
 async function auraGenerateImage(prompt, env, opts = {}) {
   let openaiKey = env.OPENAI_API_KEY || await env.AURA_KV.get("secret:openai").catch(() => null);
   if (openaiKey && openaiKey.startsWith("{")) { try { openaiKey = JSON.parse(openaiKey).api_key; } catch {} }
@@ -13203,7 +13203,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   } catch (e) { return { ok: false, error: String(e.message) }; }
 }
 
-// SHOW IT — Aura's universal visual verb. Everywhere she lives, when a moment is better shown
+// SHOW IT â€” Aura's universal visual verb. Everywhere she lives, when a moment is better shown
 // than told, she reaches for this. Wraps her image engine so "show it" is ONE capability surfaced
 // anywhere, not separate wirings. She decides WHEN to show; this is the hand she shows it WITH.
 async function showIt(subject, env, opts = {}) {
@@ -13234,7 +13234,7 @@ async function showIt(subject, env, opts = {}) {
 }
 
 
-// Resource watcher — warns BEFORE a provider balance/credit wall (the thing that hit twice on 2026-06-11).
+// Resource watcher â€” warns BEFORE a provider balance/credit wall (the thing that hit twice on 2026-06-11).
 // Runs every ~10 min (skips most cron ticks to save calls), writes notes:alert:resources on any concern.
 async function watchResources(env) {
   try {
@@ -13254,7 +13254,7 @@ async function watchResources(env) {
       const td = await tr.json(); const bal = parseFloat(td.balance);
       if (!isNaN(bal) && bal < 10) concerns.push({ provider: "twilio", level: bal < 3 ? "critical" : "low", value: bal });
     } catch {}
-    // Anthropic (the brain) — a failed ping with credit-balance error is critical
+    // Anthropic (the brain) â€” a failed ping with credit-balance error is critical
     try {
       const ak = await KV.get(env, "secret:anthropic");
       if (ak) {
@@ -13288,12 +13288,12 @@ async function watchResources(env) {
 // (email first - the only active channel), marks the item done, and records that it fired on the
 // PTA's timeline. This is what lets a PTA act in time on its own initiative - the difference
 // between an assistant that only responds when spoken to and one that keeps its commitments.
-// ===== WORKFLOW ENGINE — the sequence-runner that chains the moves Aura already has =====
+// ===== WORKFLOW ENGINE â€” the sequence-runner that chains the moves Aura already has =====
 // A workflow is an ordered list of STEPS. Each step is "optionally WAIT, then DO <a real command>".
 // DO can be ANY capability she has: BRIEF, MOMENT CREATE, OUTCOME, EMAIL_SEND, later CALL. Steps can
 // WAIT (a duration or until a time) or pause on a GATE (e.g. wait for a reply / manual resume). The
 // workflow is DURABLE (lives in KV) and is advanced by the same per-minute cron heartbeat that already
-// drains scheduled actions — so "follow up with the bartender tomorrow" still happens tomorrow with
+// drains scheduled actions â€” so "follow up with the bartender tomorrow" still happens tomorrow with
 // nobody typing. This turns proven atoms into a machine that runs itself.
 async function advanceWorkflow(env, id) {
   let wf;
@@ -13304,10 +13304,10 @@ async function advanceWorkflow(env, id) {
   while (guard++ < 8) {
     if (wf.cursor >= (wf.steps || []).length) { wf.status = "done"; wf.updated = new Date().toISOString(); await env.AURA_KV.put("workflow:" + id, JSON.stringify(wf)).catch(() => {}); return { ok: true, status: "done" }; }
     const step = wf.steps[wf.cursor];
-    // GATE — pause until an external event resumes it (WORKFLOW RESUME <id>)
+    // GATE â€” pause until an external event resumes it (WORKFLOW RESUME <id>)
     if (step.gate && !wf._gate_cleared) { wf.status = "paused"; wf.updated = new Date().toISOString(); await env.AURA_KV.put("workflow:" + id, JSON.stringify(wf)).catch(() => {}); return { ok: true, status: "paused", waiting_on: step.gate }; }
     wf._gate_cleared = false;
-    // WAIT — if this step has a wait we haven't satisfied yet, arm it and stop until due
+    // WAIT â€” if this step has a wait we haven't satisfied yet, arm it and stop until due
     if ((step.wait_seconds || step.wait_until) && wf._wait_due == null) {
       const due = step.wait_until ? Date.parse(step.wait_until) : (now + (Number(step.wait_seconds) || 0) * 1000);
       wf._wait_due = due; wf.status = "waiting"; wf.updated = new Date().toISOString();
@@ -13317,7 +13317,7 @@ async function advanceWorkflow(env, id) {
       return { ok: true, status: "waiting", until: new Date(due).toISOString() };
     }
     if (wf._wait_due != null && now < wf._wait_due) { return { ok: true, status: "waiting", until: new Date(wf._wait_due).toISOString() }; }
-    wf._wait_due = null; // wait satisfied (or none) — execute the step
+    wf._wait_due = null; // wait satisfied (or none) â€” execute the step
     let ok = false, summary = "";
     try {
       const r = await processCommand(step.do, env, true);
@@ -13440,7 +13440,7 @@ export default {
 <div class="lab">AURA LAB</div>
 <div class="big">HTML: ${BUILD.replace("aura-core-", "")}</div>
 <div class="row" id="js"><span class="bad">JS: did not run</span></div>
-<div class="row" id="ping"><span class="muted">PING: fetching…</span></div>
+<div class="row" id="ping"><span class="muted">PING: fetchingâ€¦</span></div>
 <div class="muted">If you see green on both lines, the installed app loaded live code AND its JavaScript ran AND it reached the network. That's the whole pipeline, proven.</div>
 <script>
 document.getElementById('js').innerHTML='<span class="ok">JS: ran &#10003;</span>';
@@ -13480,7 +13480,7 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       } catch (e) { return new Response("error", { status: 500 }); }
     }
 
-    // /d/<token> — THE GATED DOORWAY. A person taps the contextual image; before it "opens" they
+    // /d/<token> â€” THE GATED DOORWAY. A person taps the contextual image; before it "opens" they
     // must identify themselves (Google / email / phone). On sign-in we mint/confirm their VERIFIED
     // PTA and fuse it to the thin lead Aura created on first touch, linked to Aura with the context.
     // The tap shows the image; the SIGN-IN is the consent + the real identity capture.
@@ -13567,14 +13567,14 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
         return new Response(body, { headers: { "content-type": "text/html; charset=utf-8" } });
       }
 
-      // NOT signed in yet — show the image + the credential gate (sign-in REQUIRED to open).
+      // NOT signed in yet â€” show the image + the credential gate (sign-in REQUIRED to open).
       const back = encodeURIComponent("/d/" + token);
       const body = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Aura</title>` +
         `<body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0a0613;color:#cbb6ff;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:28px">` +
         `<div style="max-width:460px">` +
         (img ? `<img src="${img}" alt="" style="width:100%;max-width:360px;border-radius:16px;box-shadow:0 8px 40px rgba(150,70,255,.35);margin-bottom:20px">` : `<img src="https://auras.guide/brand/butterfly" width="64" height="64" style="margin-bottom:10px">`) +
-        `<h1 style="font-weight:300;letter-spacing:.04em;font-size:22px">${safeName ? "Hi " + safeName + " — I'm Aura." : "Hi — I'm Aura."}</h1>` +
-        `<p style="opacity:.8;line-height:1.5;font-size:15px">I noticed ${safeCtx}. Tell me who you are and we're connected — I'll remember, so we never start over.</p>` +
+        `<h1 style="font-weight:300;letter-spacing:.04em;font-size:22px">${safeName ? "Hi " + safeName + " â€” I'm Aura." : "Hi â€” I'm Aura."}</h1>` +
+        `<p style="opacity:.8;line-height:1.5;font-size:15px">I noticed ${safeCtx}. Tell me who you are and we're connected â€” I'll remember, so we never start over.</p>` +
         `<a href="/auth/google/start?dest=${back}" style="display:block;margin:18px auto 10px;max-width:300px;background:#fff;color:#222;text-decoration:none;padding:13px;border-radius:10px;font-weight:600">Continue with Google</a>` +
         `<a href="/auth/email/start?dest=${back}" style="display:block;margin:10px auto;max-width:300px;background:transparent;color:#cbb6ff;text-decoration:none;padding:12px;border-radius:10px;border:1px solid rgba(150,70,255,.4)">Continue with email</a>` +
         `<a href="/auth/phone/start?dest=${back}" style="display:block;margin:10px auto;max-width:300px;background:transparent;color:#cbb6ff;text-decoration:none;padding:12px;border-radius:10px;border:1px solid rgba(150,70,255,.4)">Continue with phone</a>` +
@@ -13856,7 +13856,7 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       return jsonReply({ ok: true, authenticated: true, pta: sess.pta, name: sess.name, google: gp, spine: sp && sp.spine ? sp.spine : null });
     }
 
-    // ===== HOME SCREEN — the one surface a PTA is left holding =====
+    // ===== HOME SCREEN â€” the one surface a PTA is left holding =====
     // The finished product, at scale of one: you sign in, the worker resolves YOUR pta from the session,
     // reads YOUR spine LIVE, and renders your Home Screen. Three things only: your PTA (awareness:
     // identity, purpose, tasks, timeline), Aura (teammate you can talk to right here), and this surface.
@@ -13905,7 +13905,7 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       // KILL SWITCH. The old PWA service worker cached the retired rooms home screen and kept
       // serving it even after the server changed. This worker unregisters itself and wipes all
       // caches, then any browser holding the old SW stops serving stale pages. No offline caching
-      // for now — the home screen is server-rendered after Google auth; staleness > offline here.
+      // for now â€” the home screen is server-rendered after Google auth; staleness > offline here.
       const sw = `
 self.addEventListener('install', function(e){ self.skipWaiting(); });
 self.addEventListener('activate', function(e){
@@ -13968,15 +13968,15 @@ self.addEventListener('activate', function(e){
           }
         }
       }
-      // LOGGED OUT → show a real front door (not a raw redirect). Auth starts on THIS host so the
+      // LOGGED OUT â†’ show a real front door (not a raw redirect). Auth starts on THIS host so the
       // session + redirect_uri stay on the same domain the person is actually visiting.
       if (!sess) {
         const landing = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"><title>Home Screen</title><style>*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:1.5rem;max-width:480px;margin:0 auto}.glow{width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,#a855f7,#ec4899);display:flex;align-items:center;justify-content:center;font-size:2rem;margin-bottom:1.5rem;box-shadow:0 0 40px rgba(168,85,247,0.4)}h1{font-size:2rem;font-weight:800;color:#fff;margin-bottom:0.6rem}p{color:#8888a8;font-size:1rem;line-height:1.5;margin-bottom:2rem;max-width:340px}.btn{display:inline-flex;align-items:center;gap:0.7rem;background:#fff;color:#1a1a1a;font-weight:600;font-size:1rem;padding:0.9rem 1.6rem;border-radius:12px;text-decoration:none;border:none;cursor:pointer}.btn:hover{opacity:0.92}.foot{margin-top:2.5rem;color:#4a4a5a;font-size:0.75rem}</style></head><body>
-<div class="glow">◆</div>
+<div class="glow">â—†</div>
 <h1>Your Home Screen</h1>
-<p>One place where you and Aura meet — what's on your plate, what's next, and your teammate ready to act. Sign in to see yours.</p>
+<p>One place where you and Aura meet â€” what's on your plate, what's next, and your teammate ready to act. Sign in to see yours.</p>
 <a class="btn" href="/auth/google/start"><svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>Continue with Google</a>
-<div class="foot">Aura · PTA · Home Screen</div>
+<div class="foot">Aura Â· PTA Â· Home Screen</div>
 </body></html>`;
         return new Response(landing, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" } });
       }
@@ -13997,7 +13997,7 @@ self.addEventListener('activate', function(e){
       let lastThread = "";
       for (const e of meaningful) { if (e.event && e.event.length > 12) { lastThread = e.event.replace(/^(Aaron said:|Aura replied:|Aura is holding:|Aura built and published a page:)\s*/i, "").replace(/^["']|["']$/g, "").slice(0, 120); break; } }
       const greet = lastThread
-        ? `Hey ${firstName}. Last time we were on: "${esc(lastThread)}" — want to pick that back up?`
+        ? `Hey ${firstName}. Last time we were on: "${esc(lastThread)}" â€” want to pick that back up?`
         : `Hey ${firstName}. What do you want to get into?`;
       const suggestions = active.slice(0, 3).map(t => esc(t.text || ""));
 
@@ -14012,7 +14012,7 @@ self.addEventListener('activate', function(e){
         person:   ["Photos","Messages","Calendar","Friends","My World","Explore"]
       };
       const rooms = roomSets[role === "operator" ? "operator" : (role === "business" ? "business" : "person")];
-      const roomLinks = rooms.map(r => `<div onclick="askAura('Open ${r} — show me my ${r}.')" style="display:flex;align-items:center;gap:0.7rem;padding:0.8rem 1rem;color:#e8e4f0;cursor:pointer;border-radius:8px;font-size:0.95rem" onmouseover="this.style.background='#1a1a24'" onmouseout="this.style.background='transparent'">${esc(r)}</div>`).join("");
+      const roomLinks = rooms.map(r => `<div onclick="askAura('Open ${r} â€” show me my ${r}.')" style="display:flex;align-items:center;gap:0.7rem;padding:0.8rem 1rem;color:#e8e4f0;cursor:pointer;border-radius:8px;font-size:0.95rem" onmouseover="this.style.background='#1a1a24'" onmouseout="this.style.background='transparent'">${esc(r)}</div>`).join("");
 
       // ===== ICONS (shell) =====
       const icPlus = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`;
@@ -14023,7 +14023,7 @@ self.addEventListener('activate', function(e){
       const icGrid = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>`;
       const icStar = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`;
 
-      // ===== ROOMS (familiar surfaces — tapped to change context, never dragged) =====
+      // ===== ROOMS (familiar surfaces â€” tapped to change context, never dragged) =====
       const apps = [
         {n:"Photos",c:"#1c1c28"},{n:"Messages",c:"#1c2a1c"},{n:"Calendar",c:"#2a1c1c"},
         {n:"Contacts",c:"#1c2230"},{n:"Music",c:"#2a1c24"},{n:"Maps",c:"#1c2a26"},
@@ -14046,7 +14046,7 @@ self.addEventListener('activate', function(e){
       ];
       const discoverHtml = discoverItems.map(function(d){return '<div class="dcard" style="background:'+d.g+'" onclick="askAura(\'Open '+d.t+'\')"><div class="dtitle">'+d.t+'</div><div class="dsub">'+d.s+'</div></div>';}).join("");
 
-      const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"><title>Home — ${name}</title>
+      const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"><title>Home â€” ${name}</title>
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Aura"><meta name="mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0a0a0f"><link rel="manifest" href="/manifest.webmanifest">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -14071,7 +14071,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 .hline{font-size:0.9rem;color:#b8b4c8;margin-top:0.2rem;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .hcta{font-size:0.78rem;color:#7c5cff;margin-top:0.35rem;font-weight:600}
 .mic{width:46px;height:46px;border-radius:50%;border:1px solid #2a2a3c;background:#14141d;color:#cfcfe0;display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer}
-/* ===== CANVAS (adaptive — context: home) ===== */
+/* ===== CANVAS (adaptive â€” context: home) ===== */
 .canvas{flex:1;padding:0 0 1rem}
 .cansec{margin-top:1.4rem}
 .canhead{display:flex;align-items:center;justify-content:space-between;padding:0 1.1rem 0.7rem}
@@ -14164,7 +14164,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
   <button class="mic" onclick="event.stopPropagation();openChat();setTimeout(toggleMic,150)">${icMic}</button>
 </div>
 
-<!-- ===== ADAPTIVE CANVAS — context: home (swappable: money/photos/etc plug in here) ===== -->
+<!-- ===== ADAPTIVE CANVAS â€” context: home (swappable: money/photos/etc plug in here) ===== -->
 <div class="canvas" id="canvas" data-context="home">
 <div id="homeCanvas">
   <div class="cansec">
@@ -14193,7 +14193,7 @@ body{background:#0a0a0f;color:#e8e4f0;font-family:-apple-system,BlinkMacSystemFo
 <!-- ===== CONVERSATION ===== -->
 <div class="chatlayer" id="chatlayer">
   <div class="clhead">
-    <button class="clback" onclick="closeChat()">‹</button>
+    <button class="clback" onclick="closeChat()">â€¹</button>
     <div class="orb" style="width:30px;height:30px"></div>
     <div style="font-weight:700;color:#fff">Aura</div>
   </div>
@@ -14234,7 +14234,7 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
 </script>
 <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
 <script>
-// ===== PHOTO CANVAS — on-device organizer (place + time). Photos never leave the phone. =====
+// ===== PHOTO CANVAS â€” on-device organizer (place + time). Photos never leave the phone. =====
 var PC = { albums: [] };
 function pcPick(){ var f=document.getElementById('pcFiles'); if(f) f.click(); }
 function pcAsk(i){ var a=PC.albums[i]; if(a) askAura('Tell me about my photos from '+a.place); }
@@ -14324,7 +14324,7 @@ function openAlbum(idx){
       return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" } });
     }
 
-    // Home Screen Aura teammate — talks to HOME mode AS the logged-in PTA (session-gated, own PTA only).
+    // Home Screen Aura teammate â€” talks to HOME mode AS the logged-in PTA (session-gated, own PTA only).
     if (url.pathname === "/home/talk" && request.method === "POST") {
       const cookie = request.headers.get("cookie") || "";
       const m = cookie.match(/aura_session=([a-f0-9]+)/);
@@ -14351,7 +14351,7 @@ function openAlbum(idx){
         } catch {}
         const noteParts = [`[The person attached a file: "${f.name}" (${f.type || "unknown type"}).`];
         if (extracted) noteParts.push(`Its text content is:\n${extracted}`);
-        else noteParts.push(`I cannot read this file type's contents yet — acknowledge receipt and ask what they'd like done with it.`);
+        else noteParts.push(`I cannot read this file type's contents yet â€” acknowledge receipt and ask what they'd like done with it.`);
         noteParts.push("]");
         msg = (msg ? msg + "\n\n" : "") + noteParts.join("\n");
       }
@@ -14360,7 +14360,7 @@ function openAlbum(idx){
       const r = await processCommand(talkCmd, env, true);
       const p = r && r.payload ? r.payload : {};
       const refresh = !!(p.page_built || p.remembered || (p.reminder_actions_applied && p.reminder_actions_applied.length));
-      return jsonReply({ ok: !!p.ok, reply: p.reply || "…", refresh });
+      return jsonReply({ ok: !!p.ok, reply: p.reply || "â€¦", refresh });
     }
 
 
@@ -14377,7 +14377,7 @@ function openAlbum(idx){
         return new Response(JSON.stringify({ ok: true, build: BUILD, source: core ? "kv" : "fallback", core: core || CORE_MAP }), { headers: hCors });
       }
       if (url.pathname === "/home/archetype") {
-        // ADAPTIVE CANVAS — generate the home-screen shape for a business type.
+        // ADAPTIVE CANVAS â€” generate the home-screen shape for a business type.
         const type = (url.searchParams.get("type") || "operator").toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 40) || "operator";
         let layout = null, source = "seed";
         try { const k = await env.AURA_KV.get("config:canvas:archetype:" + type); if (k) { layout = JSON.parse(k); source = "kv"; } } catch {}
@@ -14586,7 +14586,7 @@ function openAlbum(idx){
       return new Response(bytes, { headers: { "content-type": "image/png", "cache-control": "public, max-age=31536000" } });
     }
 
-    // BUILD — the structured page-build channel. Root-cause fix for the /chat mission-shredding
+    // BUILD â€” the structured page-build channel. Root-cause fix for the /chat mission-shredding
     // bug: /chat splits on newlines and runs each line as a command, so a multi-line build mission
     // got dismembered and a fragment fired the wrong engine (the Marcus misroute). /build takes the
     // ENTIRE body as ONE mission, never split, never interpreted line-by-line, and hands it intact
@@ -14615,7 +14615,7 @@ function openAlbum(idx){
       }
     }
 
-    // PAGE PUT — operator-gated raw-body page deploy. Solves the /chat newline-split +
+    // PAGE PUT â€” operator-gated raw-body page deploy. Solves the /chat newline-split +
     // 32KB cap forever: the ENTIRE request body becomes the page, byte-exact, no base64.
     // Usage: curl.exe -s -X POST "https://auras.guide/page-put?key=page:domain.com/"
     //          -H "authorization: Bearer <op token>" --data-binary "@file.html"
@@ -14641,12 +14641,12 @@ function openAlbum(idx){
       return new Response(JSON.stringify({ ok: true, key: pageKey, bytes: pageBody.length, ghost_purged: ghostPurged, verified, verification: verified ? "CONFIRMED: page written and verified" : "WARNING: verification failed" }), { headers: { "content-type": "application/json" } });
     }
 
-    // COMMAND CENTER data bundle — token-gated, returns all proven feeds in one call.
-    // BRAIN data — Aura's organized map (notes:INDEX + the grouped notes behind it), for the Brain
+    // COMMAND CENTER data bundle â€” token-gated, returns all proven feeds in one call.
+    // BRAIN data â€” Aura's organized map (notes:INDEX + the grouped notes behind it), for the Brain
     // dashboard panel. Reads the live notes so it is never stale. Groups by category for rendering.
-    // WORLD data — Aaron's whole world in one pull for the Home Screen: money (Mercury/Stripe/Twilio/
+    // WORLD data â€” Aaron's whole world in one pull for the Home Screen: money (Mercury/Stripe/Twilio/
     // OpenAI/Anthropic), infrastructure (Cloudflare/zones/token), and domains-as-assets (launched vs not).
-    // Reuses the SAME proven commands the Command Center uses — no new feeds, just bundled for Home.
+    // Reuses the SAME proven commands the Command Center uses â€” no new feeds, just bundled for Home.
     if (url.pathname === "/world/data") {
       const wCors = { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, content-type", "access-control-allow-methods": "GET, OPTIONS" };
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: wCors });
@@ -14690,7 +14690,7 @@ function openAlbum(idx){
           ["notes:capability:communications_intelligence", "Communications Intelligence (5-layer)"],
           ["notes:capability:opportunity_discovery", "Founder Logic (discover new assets)"]
         ]},
-        { group: "Launch #1 — SituationTracker", keys: [
+        { group: "Launch #1 â€” SituationTracker", keys: [
           ["notes:asset:situationtracker:status", "Build status + AIS gap"],
           ["notes:asset:situationtracker:pricing", "Pricing & customer tiers"],
           ["notes:asset:situationtracker:launch", "Autonomous launch strategy"],
@@ -14737,7 +14737,7 @@ function openAlbum(idx){
       return new Response(JSON.stringify({ ok: true, ts: new Date().toISOString(), groups }), { headers: bCors });
     }
 
-    // BRAIN note — full text of one note (clicked in the Brain panel).
+    // BRAIN note â€” full text of one note (clicked in the Brain panel).
     if (url.pathname === "/brain/note") {
       const bCors = { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, content-type", "access-control-allow-methods": "GET, OPTIONS" };
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: bCors });
@@ -14863,7 +14863,7 @@ function openAlbum(idx){
       }
     }
 
-    // CONFIRM PAYMENT — marks a session as paid so image generation unlocks
+    // CONFIRM PAYMENT â€” marks a session as paid so image generation unlocks
     // GET /confirm-payment?session=sess_xxx
     if (url.pathname === "/confirm-payment") {
       const cors = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "Content-Type" };
@@ -14874,7 +14874,7 @@ function openAlbum(idx){
       return new Response(JSON.stringify({ ok: true, session: sid, paid: true }), { headers: { "content-type": "application/json", ...cors } });
     }
 
-    // STRIPE /create-payment-intent — embedded (Elements) flow. No redirect to stripe.com.
+    // STRIPE /create-payment-intent â€” embedded (Elements) flow. No redirect to stripe.com.
     // POST/GET { session, amount(cents, default 1000), email(optional) }
     // Returns { ok, client_secret, publishable_key, amount }
     if (url.pathname === "/create-payment-intent") {
@@ -14916,7 +14916,7 @@ function openAlbum(idx){
       }
     }
 
-    // EMBEDDED PAYMENT PAGE /pay — generic Stripe Elements page served from KV (page:pay).
+    // EMBEDDED PAYMENT PAGE /pay â€” generic Stripe Elements page served from KV (page:pay).
     // Page content lives OUTSIDE the index in KV like every other page. Reads ?session and ?amount
     // client-side. If no page is configured, returns a clear 404 rather than a hardcoded page.
     if (url.pathname === "/pay" && request.method === "GET") {
@@ -14925,7 +14925,7 @@ function openAlbum(idx){
       return new Response(page, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
     }
 
-    // SMS CONSENT CAPTURE /optin — records explicit opt-in for A2P compliance.
+    // SMS CONSENT CAPTURE /optin â€” records explicit opt-in for A2P compliance.
     // A signup/opt-in form posts here. Stores proof of consent: the phone,
     // the exact consent language shown, timestamp, and source. CORS-open (public form).
     if (url.pathname === "/optin" && request.method === "POST") {
@@ -14941,7 +14941,7 @@ function openAlbum(idx){
       return new Response(JSON.stringify({ ok: true, message: "You're signed up. You'll receive a confirmation text shortly. Reply STOP anytime to unsubscribe." }), { headers: { "content-type": "application/json", ...cors } });
     }
 
-    // UNIVERSAL /aura-chat — Aura on every page, everywhere, always contextual.
+    // UNIVERSAL /aura-chat â€” Aura on every page, everywhere, always contextual.
     // ShowIt built in: when Aura decides to generate an image, she does it in the conversation.
     // Returns { ok, reply, image (optional), session_id }
     if (url.pathname === "/aura-chat") {
@@ -14958,7 +14958,7 @@ function openAlbum(idx){
       let history = [];
       try { const raw = await env.AURA_KV.get(histKey); if (raw) history = JSON.parse(raw); } catch {}
       // Generic base personality. Domain-aware refinement comes from KV config (config:assistant:<domain>),
-      // never hardcoded — so a new domain plugs in from outside without editing the brain.
+      // never hardcoded â€” so a new domain plugs in from outside without editing the brain.
       let systemPrompt = await loadPrompt(env, "default_assistant", "You are Aura, an AI assistant by ARK Systems. You are kind, helpful, and conversational. Never use markdown formatting. Write in plain conversational text. Keep responses under 80 words. Never use profanity. ");
       const refDomain = request.headers.get("referer") ? new URL(request.headers.get("referer")).hostname : "";
       if (refDomain) {
@@ -14994,7 +14994,7 @@ function openAlbum(idx){
       }
     }
 
-    // PUBLIC ShowIt endpoint — free-form "show me X". No operator token (public product). CORS-open.
+    // PUBLIC ShowIt endpoint â€” free-form "show me X". No operator token (public product). CORS-open.
     if (url.pathname === "/showit") {
       const cors = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "Content-Type" };
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
@@ -15070,12 +15070,12 @@ function openAlbum(idx){
       const rec = JSON.parse(recRaw);
       const verified = rec.status === "verified";
       const esc = s => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(rec.business)} — Aura Dashboard</title><style>body{background:#0a0a0a;color:#eee;font-family:-apple-system,system-ui,sans-serif;margin:0;padding:24px;line-height:1.5}#wrap{max-width:720px;margin:0 auto}.badge{display:inline-block;padding:4px 12px;border-radius:99px;font-size:13px;font-weight:600;background:${verified ? "#11331e;color:#4ade80;border:1px solid #4ade80" : "#332711;color:#fbbf24;border:1px solid #fbbf24"}}h1{margin:12px 0 4px;font-size:28px}.card{background:#141414;border:1px solid #2a2a2a;border-radius:12px;padding:20px;margin:16px 0}.k{color:#888;font-size:13px}.v{margin:2px 0 12px;font-size:15px}#chat{position:fixed;bottom:20px;right:20px;background:#8b7cf6;color:#fff;border:none;border-radius:99px;padding:14px 22px;font-size:15px;font-weight:600;cursor:pointer}#log{display:none;position:fixed;bottom:76px;right:20px;width:320px;max-height:380px;background:#141414;border:1px solid #2a2a2a;border-radius:12px;padding:14px;overflow-y:auto}#log input{width:100%;box-sizing:border-box;background:#0a0a0a;border:1px solid #2a2a2a;color:#eee;border-radius:8px;padding:9px;margin-top:8px}.m{margin:6px 0;font-size:14px}.aura{color:#b8aef9}</style></head><body><div id="wrap"><span class="badge">${verified ? "✓ VERIFIED OWNER" : "PENDING VERIFICATION"}</span><h1>${esc(rec.business)}</h1><p style="color:#888">${esc(rec.source)} · an Aura property</p><div class="card"><div class="k">CONTACT</div><div class="v">${esc(rec.contact || "—")}</div><div class="k">EMAIL</div><div class="v">${esc(rec.email)}</div><div class="k">PHONE</div><div class="v">${esc(rec.phone || "—")}</div><div class="k">CLAIMED</div><div class="v">${esc((rec.created || "").slice(0, 10))}</div>${verified ? `<div class="k">VERIFIED</div><div class="v">${esc((rec.verified_at || "").slice(0, 10))}</div>` : ""}</div><div class="card"><div class="k">WHAT'S NEXT</div><div class="v">Your listing is live on ${esc(rec.source)}. Talk to Aura below to update your business details, hours, or anything else — she handles it directly.</div></div></div><div id="log"><div class="m aura">Aura: Hi ${esc(rec.contact || "")} — I run ${esc(rec.source)}. What would you like to do with your listing?</div><div id="msgs"></div><input id="inp" placeholder="Type and press Enter" onkeydown="if(event.key==='Enter')send()"></div><button id="chat" onclick="document.getElementById('log').style.display=document.getElementById('log').style.display==='block'?'none':'block'">Chat with Aura</button><script>async function send(){var i=document.getElementById('inp');var t=i.value.trim();if(!t)return;i.value='';var m=document.getElementById('msgs');m.insertAdjacentHTML('beforeend','<div class="m">You: '+t.replace(/</g,'&lt;')+'</div>');try{var r=await fetch('https://auras.guide/chat',{method:'POST',headers:{'Content-Type':'text/plain','X-Session-ID':'entity:business_${esc(rec.id)}'},body:t});var d=await r.json();m.insertAdjacentHTML('beforeend','<div class="m aura">Aura: '+String(d.reply||'...').replace(/</g,'&lt;')+'</div>');}catch(e){m.insertAdjacentHTML('beforeend','<div class="m aura">Aura: connection hiccup — try again.</div>');}}</script></body></html>`;
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(rec.business)} â€” Aura Dashboard</title><style>body{background:#0a0a0a;color:#eee;font-family:-apple-system,system-ui,sans-serif;margin:0;padding:24px;line-height:1.5}#wrap{max-width:720px;margin:0 auto}.badge{display:inline-block;padding:4px 12px;border-radius:99px;font-size:13px;font-weight:600;background:${verified ? "#11331e;color:#4ade80;border:1px solid #4ade80" : "#332711;color:#fbbf24;border:1px solid #fbbf24"}}h1{margin:12px 0 4px;font-size:28px}.card{background:#141414;border:1px solid #2a2a2a;border-radius:12px;padding:20px;margin:16px 0}.k{color:#888;font-size:13px}.v{margin:2px 0 12px;font-size:15px}#chat{position:fixed;bottom:20px;right:20px;background:#8b7cf6;color:#fff;border:none;border-radius:99px;padding:14px 22px;font-size:15px;font-weight:600;cursor:pointer}#log{display:none;position:fixed;bottom:76px;right:20px;width:320px;max-height:380px;background:#141414;border:1px solid #2a2a2a;border-radius:12px;padding:14px;overflow-y:auto}#log input{width:100%;box-sizing:border-box;background:#0a0a0a;border:1px solid #2a2a2a;color:#eee;border-radius:8px;padding:9px;margin-top:8px}.m{margin:6px 0;font-size:14px}.aura{color:#b8aef9}</style></head><body><div id="wrap"><span class="badge">${verified ? "âœ“ VERIFIED OWNER" : "PENDING VERIFICATION"}</span><h1>${esc(rec.business)}</h1><p style="color:#888">${esc(rec.source)} Â· an Aura property</p><div class="card"><div class="k">CONTACT</div><div class="v">${esc(rec.contact || "â€”")}</div><div class="k">EMAIL</div><div class="v">${esc(rec.email)}</div><div class="k">PHONE</div><div class="v">${esc(rec.phone || "â€”")}</div><div class="k">CLAIMED</div><div class="v">${esc((rec.created || "").slice(0, 10))}</div>${verified ? `<div class="k">VERIFIED</div><div class="v">${esc((rec.verified_at || "").slice(0, 10))}</div>` : ""}</div><div class="card"><div class="k">WHAT'S NEXT</div><div class="v">Your listing is live on ${esc(rec.source)}. Talk to Aura below to update your business details, hours, or anything else â€” she handles it directly.</div></div></div><div id="log"><div class="m aura">Aura: Hi ${esc(rec.contact || "")} â€” I run ${esc(rec.source)}. What would you like to do with your listing?</div><div id="msgs"></div><input id="inp" placeholder="Type and press Enter" onkeydown="if(event.key==='Enter')send()"></div><button id="chat" onclick="document.getElementById('log').style.display=document.getElementById('log').style.display==='block'?'none':'block'">Chat with Aura</button><script>async function send(){var i=document.getElementById('inp');var t=i.value.trim();if(!t)return;i.value='';var m=document.getElementById('msgs');m.insertAdjacentHTML('beforeend','<div class="m">You: '+t.replace(/</g,'&lt;')+'</div>');try{var r=await fetch('https://auras.guide/chat',{method:'POST',headers:{'Content-Type':'text/plain','X-Session-ID':'entity:business_${esc(rec.id)}'},body:t});var d=await r.json();m.insertAdjacentHTML('beforeend','<div class="m aura">Aura: '+String(d.reply||'...').replace(/</g,'&lt;')+'</div>');}catch(e){m.insertAdjacentHTML('beforeend','<div class="m aura">Aura: connection hiccup â€” try again.</div>');}}</script></body></html>`;
       return new Response(html, { headers: { "content-type": "text/html", "cache-control": "no-store" } });
     }
 
     if (url.pathname === "/claim" && request.method === "POST") {
-      // Business claim intake — called by claim forms on any vertical page. Public, rate-limited.
+      // Business claim intake â€” called by claim forms on any vertical page. Public, rate-limited.
       const rl = await checkRateLimit(request, env, isOp);
       if (!rl.allowed) return jsonReply({ ok: false, error: "Rate limit exceeded" });
       try {
@@ -15100,7 +15100,7 @@ function openAlbum(idx){
         const idx = JSON.parse(await env.AURA_KV.get("business:claimed:index").catch(() => "[]") || "[]");
         idx.unshift({ id, business: name, email, source, created: record.created, status: record.status });
         await env.AURA_KV.put("business:claimed:index", JSON.stringify(idx.slice(0, 500)));
-        // Everything is an Event — write to D1 timeline using the same schema as all other event writes
+        // Everything is an Event â€” write to D1 timeline using the same schema as all other event writes
         try {
           await env.AURA_MEMORY.prepare(
             "INSERT INTO events (session_id, ts, type, body, entity_id, channel, summary) VALUES (?, ?, ?, ?, ?, ?, ?)"
@@ -15117,7 +15117,7 @@ function openAlbum(idx){
     }
 
     if (url.pathname === "/verify" && request.method === "POST") {
-      // Owner verification — lifecycle step 4. Public, rate-limited, 5 attempts per claim.
+      // Owner verification â€” lifecycle step 4. Public, rate-limited, 5 attempts per claim.
       const rl = await checkRateLimit(request, env, isOp);
       if (!rl.allowed) return jsonReply({ ok: false, error: "Rate limit exceeded" });
       try {
@@ -15164,7 +15164,7 @@ function openAlbum(idx){
     }
 
     if (url.pathname === "/logs") {
-      // Operator-only endpoint — Aura reads her own logs
+      // Operator-only endpoint â€” Aura reads her own logs
       const authHeader = request.headers.get("authorization") || "";
       const opToken = env.OPERATOR_TOKEN || await env.AURA_KV.get("secret:aura_operator_token").catch(() => null) || "";
       if (!authHeader.includes(opToken)) {
@@ -15176,7 +15176,7 @@ function openAlbum(idx){
     }
 
     if (url.pathname === "/chat" && request.method === "POST") {
-      // Rate limiting — check before reading body
+      // Rate limiting â€” check before reading body
       const rl = await checkRateLimit(request, env, isOp);
       if (!rl.allowed) {
         return new Response(JSON.stringify({
@@ -15190,7 +15190,7 @@ function openAlbum(idx){
 
       let body = await request.text();
 
-      // Input sanitization — prevent crashes from malformed input
+      // Input sanitization â€” prevent crashes from malformed input
       // Strip null bytes, control characters (except newlines/tabs), and cap length
       body = body
         .replace(/\x00/g, "")           // null bytes
@@ -15211,7 +15211,7 @@ function openAlbum(idx){
       const _VALUE_BEARING = ["SETKV", "DELKV"];
 
       // DOCUMENT / PROSE DUMP DETECTION: if the operator pastes a document, concept, or any prose
-      // (multi-line text that is NOT a batch of commands), it must be treated as ONE message — not
+      // (multi-line text that is NOT a batch of commands), it must be treated as ONE message â€” not
       // split per line into 13 contextless fragments that each wake the brain (that caused 60s+ hangs
       // AND character breakdown, because each tiny fragment lost the whole picture). A real COMMAND
       // BATCH has EVERY non-empty line starting with a known command verb. If ANY line is prose, the

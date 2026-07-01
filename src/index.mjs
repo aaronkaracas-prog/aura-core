@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.387-2026-07-01";
+const BUILD = "aura-core-v4.9.388-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -2664,9 +2664,13 @@ async function processCommand(line, env, isOp) {
       if (!isOp) return { cmd: "FIRE_LESSON", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const flName = (line.replace(/^FIRE_LESSON\s+/i, "").trim() || "cottonwood");
       const step = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
-      const off = await step(`FIRE_OFFICIAL ${flName.split(/\s+/)[0]}`);
-      const inc = off && off.incidents && off.incidents.find(f => f.name && f.name.toLowerCase().includes(flName.split(/\s+/)[0].toLowerCase()));
-      if (!inc) return { cmd: "FIRE_LESSON", payload: { ok: false, error: `no incident found for ${flName}` } };
+      // find the fire by NAME across the active fleet ('west' = all fires nationwide, then state scopes)
+      let inc = null;
+      for (const scope of ["west", "utah", "california"]) {
+        const off = await step(`FIRE_OFFICIAL ${scope}`);
+        if (off && off.incidents) { const hit = off.incidents.find(f => f.name && f.name.toLowerCase().includes(flName.split(/\s+/)[0].toLowerCase())); if (hit) { inc = hit; break; } }
+      }
+      if (!inc) return { cmd: "FIRE_LESSON", payload: { ok: false, error: `no active incident found matching "${flName}". FIRE_LESSON distills a fire that's currently in the NIFC feed; for historical fires we'll feed the record directly later.` } };
       const traj = await step(`FIRE_TRAJECTORY ${inc.name} ${(inc.state || "").replace("US-", "")}`);
       // the distilled lesson: compact behavior signature + outcome (understanding, not raw data)
       const lesson = {
@@ -2688,8 +2692,8 @@ async function processCommand(line, env, isOp) {
       if (!isOp) return { cmd: "FIRE_SIMILAR", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const fsName = (line.replace(/^FIRE_SIMILAR\s+/i, "").trim() || "cottonwood");
       const step = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
-      // 1) target fire signature (from live NIFC)
-      const off = await step(`FIRE_OFFICIAL ${fsName.split(/\s+/)[0]}`);
+      // 1) target fire signature - pull nationwide fleet ('west' = all) so the corpus is the full active picture
+      const off = await step(`FIRE_OFFICIAL west`);
       if (!off || !off.incidents) return { cmd: "FIRE_SIMILAR", payload: { ok: false, error: "could not load fires to match against" } };
       const target = off.incidents.find(f => f.name && f.name.toLowerCase().includes(fsName.split(/\s+/)[0].toLowerCase()));
       if (!target) return { cmd: "FIRE_SIMILAR", payload: { ok: false, error: `target fire "${fsName}" not found` } };

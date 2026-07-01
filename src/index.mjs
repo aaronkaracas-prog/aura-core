@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.366-2026-07-01";
+const BUILD = "aura-core-v4.9.367-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1864,11 +1864,12 @@ async function processCommand(line, env, isOp) {
           model_calls[m.split("_")[0]] = (typeof cape === "number" && typeof sh === "number") ? (((cape >= 1000 && sh >= 40) || cape >= 2500)) : null;
         }
         const aura_pred = ["likely", "occurring"].includes((reasoning && reasoning.severe_risk));
+        const spc_call = wrSPC ? !!wrSPC.severe_forecast : null; // official SPC severe forecast (MRGL+) as a scored competitor
         const rec = { t: tIso, lat: wrLat, lon: wrLon, window_h: 6, window_end: new Date(Date.now() + 6 * 3600 * 1000).toISOString(),
           severe_risk: (reasoning && reasoning.severe_risk) || null, threats: (reasoning && reasoning.primary_threats) || [],
           confidence: (reasoning && reasoning.confidence) || null, headline: ((reasoning && reasoning.headline) || "").slice(0, 200),
           had_warning: hadWarning, ingredients: { cape: snapMax("cape_jkg"), shear06: snapMax("shear_sfc500_kmh"), shear01: snapMax("shear_sfc850_kmh"), lapse: snapMax("mid_lapse_c_km") },
-          aura_pred, model_calls, verdict: null, verified_at: null };
+          aura_pred, model_calls, spc_call, verdict: null, verified_at: null };
         await env.AURA_KV.put(`forecast:log:${tIso}:${wrLat}_${wrLon}`, JSON.stringify(rec), { expirationTtl: 60 * 60 * 24 * 30 }).catch(() => {});
       } catch {}
       return { cmd: "WEATHER_REASON", payload: { ok: true, lat: wrLat, lon: wrLon, models: wrModels.models, spread: wrModels.compare, official_watches: wrAlerts, storm_reports: wrReports, marine: wrMarine, ensemble: wrEns, spc_outlook: wrSPC, reasoning, provider: "anthropic", note: "Bias-aware multi-model meteorological reasoning. Model knowledge in KV (cognition:prompts.weather_meteorologist); floor in code." } };
@@ -2044,6 +2045,7 @@ async function processCommand(line, env, isOp) {
         const scoreH2H = (rec) => {
           if (typeof rec.actual_severe !== "boolean") return;
           if (typeof rec.aura_pred === "boolean") bump("aura", rec.aura_pred, rec.actual_severe);
+          if (typeof rec.spc_call === "boolean") bump("spc", rec.spc_call, rec.actual_severe);
           if (rec.model_calls) for (const [who, pred] of Object.entries(rec.model_calls)) bump(who, pred, rec.actual_severe);
         };
         for (const k of keys) {
@@ -2081,7 +2083,7 @@ async function processCommand(line, env, isOp) {
             accuracy_pct: n ? pct((t.h + t.cn) / n) : null };
         }
         const aCSI = scoreboard.aura && scoreboard.aura.CSI;
-        const headline = (aCSI != null) ? `Aura CSI ${aCSI} vs ` + ["ecmwf", "gfs", "icon", "gem"].filter(m => scoreboard[m]).map(m => `${m.toUpperCase()} ${scoreboard[m].CSI}`).join(", ") : "not enough graded forecasts yet";
+        const headline = (aCSI != null) ? `Aura CSI ${aCSI} vs ` + [["spc", "SPC(official)"], ["ecmwf", "ECMWF"], ["gfs", "GFS"], ["icon", "ICON"], ["gem", "GEM"]].filter(([k]) => scoreboard[k]).map(([k, lbl]) => `${lbl} ${scoreboard[k].CSI}`).join(", ") : "not enough graded forecasts yet";
         return { cmd: "FORECAST_SCORE", payload: { ok: true, total_logged: total, graded, pending, newly_scored: scored_now, tally,
           accuracy_pct: accuracy, head_to_head: scoreboard, scoreboard_headline: headline, recent: recent.slice(-12),
           note: "Report-based head-to-head (lower bound - LSRs sparse). head_to_head scores Aura AND each raw model on the SAME severe yes/no question vs the SAME ground truth. CSI (critical success index, 0-100) is the honest single number for rare events: higher = better; detection_pct = of severe that happened, how many caught; false_alarm_pct = of severe calls, how many were wrong. Aura's edge comes from synthesizing radar+reports the raw models don't see. NUMBER IS NOISE until dozens-hundreds of forecasts accumulate over days - run periodically." } };

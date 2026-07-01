@@ -6,7 +6,7 @@ import puppeteer from "@cloudflare/puppeteer";
  */
 
 
-const BUILD = "aura-core-v4.9.364-2026-06-30";
+const BUILD = "aura-core-v4.9.365-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES — the Adaptive Canvas's home-screen SHAPE per business type.
@@ -546,6 +546,46 @@ async function fetchGriddedSST(env, lat, lon) {
   if (!Array.isArray(arr)) return { ok: false, error: "no sst in response" };
   const v = arr.find(x => typeof x === "number");
   return { ok: typeof v === "number", sst_c: typeof v === "number" ? +v.toFixed(1) : null };
+}
+
+// Ray-casting point-in-polygon (GeoJSON rings are [lon,lat]; handles holes and MultiPolygon).
+function pipRing(lat, lon, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+    if (((yi > lat) !== (yj > lat)) && (lon < (xj - xi) * (lat - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+function pipPolygon(lat, lon, poly) {
+  if (!poly.length || !pipRing(lat, lon, poly[0])) return false;
+  for (let k = 1; k < poly.length; k++) if (pipRing(lat, lon, poly[k])) return false; // inside a hole
+  return true;
+}
+function pipGeom(lat, lon, geom) {
+  if (!geom) return false;
+  if (geom.type === "Polygon") return pipPolygon(lat, lon, geom.coordinates);
+  if (geom.type === "MultiPolygon") return geom.coordinates.some(p => pipPolygon(lat, lon, p));
+  return false;
+}
+
+// SPC Day 1 Convective Outlook (keyless) - the OFFICIAL American severe-weather forecast. Returns the categorical
+// risk at a point (TSTM/MRGL/SLGT/ENH/MDT/HIGH). MRGL+ = a severe risk is officially forecast. This is the benchmark.
+async function fetchSPCOutlook(env, lat, lon) {
+  const url = await resolveFeedUrl(env, "spc_day1_cat", {}, `https://www.spc.noaa.gov/products/outlook/day1otlk_cat.nolyr.geojson`);
+  const r = await fetchWithTimeout(url, { headers: { "User-Agent": "SituationTracker/1.0 (situationtracker.world)" } }, 9000);
+  if (!r.ok) { let b = ""; try { b = (await r.text()).slice(0, 160); } catch {} return { ok: false, error: `spc http ${r.status}`, detail: b }; }
+  let j; try { j = await r.json(); } catch (e) { return { ok: false, error: "spc parse " + (e && e.message || e) }; }
+  const rank = { TSTM: 1, MRGL: 2, SLGT: 3, ENH: 4, MDT: 5, HIGH: 6 };
+  const dnMap = { 2: "TSTM", 3: "MRGL", 4: "SLGT", 5: "ENH", 6: "MDT", 8: "HIGH" };
+  let best = null;
+  for (const f of (j.features || [])) {
+    const p = f.properties || {};
+    let lab = p.LABEL || p.label; if (!lab && (p.DN != null) && dnMap[p.DN]) lab = dnMap[p.DN];
+    if (!lab || !(lab in rank)) continue;
+    if (pipGeom(lat, lon, f.geometry)) { if (!best || rank[lab] > best.level) best = { code: lab, name: p.LABEL2 || p.label2 || lab, level: rank[lab] }; }
+  }
+  return { ok: true, category: best ? best.code : "none", category_name: best ? best.name : "No thunderstorm risk", level: best ? best.level : 0, severe_forecast: best ? best.level >= 2 : false };
 }
 
 // LIVE-EVENT FINDER - scan the whole country for the most significant ACTIVE NWS hazards right now
@@ -1879,6 +1919,19 @@ async function processCommand(line, env, isOp) {
         return { cmd: "HURRICANES", payload: { ok: true, count: tc.count, storms: tc.storms,
           note: tc.count ? "Active tropical cyclones (NHC, keyless, all basins), strongest first. category from max sustained wind; moving.toward = compass heading the storm is traveling; wind in kt and mph; pressure in mb. Run HURRICANE_REASON for Aura's intensity/track outlook on the strongest." : "No active tropical cyclones in any basin right now (common outside peak season). The finder is live and will populate the moment a system is named." } };
       } catch (e) { return { cmd: "HURRICANES", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "SPC_OUTLOOK":
+    case "SPC": {
+      // Official SPC Day-1 convective outlook category at a point. SPC_OUTLOOK <lat> <lon>
+      const spArgs = line.replace(/^(SPC_OUTLOOK|SPC)\s*/i, "").trim().split(/\s+/).filter(Boolean);
+      const spLat = parseFloat(spArgs[0]), spLon = parseFloat(spArgs[1]);
+      if (isNaN(spLat) || isNaN(spLon)) return { cmd: "SPC_OUTLOOK", payload: { ok: false, error: "Usage: SPC_OUTLOOK <lat> <lon>" } };
+      try {
+        const o = await fetchSPCOutlook(env, spLat, spLon);
+        return { cmd: "SPC_OUTLOOK", payload: { ...o, lat: spLat, lon: spLon,
+          note: "Official SPC Day-1 Convective Outlook (keyless, US). Categories low-to-high: TSTM (general thunder) < MRGL < SLGT < ENH < MDT < HIGH. severe_forecast=true means MRGL or above - the Storm Prediction Center officially forecasts a severe risk here. This is the authoritative American benchmark to rank Aura against." } };
+      } catch (e) { return { cmd: "SPC_OUTLOOK", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 
     case "SST": {

@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.396-2026-07-01";
+const BUILD = "aura-core-v4.9.397-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1380,14 +1380,18 @@ async function processCommand(line, env, isOp) {
       // 2) READ THE CORRECTED IDENTITY CANON - the real hierarchy (ARK creates AIX; AIX synthesizes
       //    all intelligence; Aura is the flagship application ON AIX). This is who she is, as DATA.
       const identityCanon = (await env.AURA_KV.get("notes:canon:world_structure").catch(() => null)) || null;
+      const theMachine = (await env.AURA_KV.get("notes:canon:the_machine").catch(() => null)) || null;
       const opState = (await env.AURA_KV.get("notes:STATE").catch(() => null)) || null;
       // 3) THE DATA ANSWER - assembled from truth, cannot refuse. This is the anchor.
       const identity = {
         i_am: "Aura - the first flagship application built on AIX (AI Intelligence Exchange). I am not AIX; I prove what AIX can build. I provide the experience; AIX provides the intelligence.",
-        the_hierarchy: "ARK Systems (invisible legal root) creates AIX (the foundational intelligence-synthesis platform). AIX synthesizes the world's available AI into one strongest result. I, Aura, am the first application on AIX, and I prove what it can build. Doorways (domains) expose slices of me to audiences.",
+        the_hierarchy: "ARK Systems (invisible legal root) creates AIX (the foundational intelligence-synthesis platform). AIX synthesizes the world's available AI into one strongest result. I, Aura, am the first application on AIX, and I prove what it can build. Doorways expose slices of me to audiences.",
+        what_the_machine_is: "ONE cognition loop (Perceive->Meaning->Possibility->Priority->Decide/Act/Learn) pointed at any domain: at fire=FireOS, at a situation=SituationTracker, at a business's leaks=Opportunity Engine, at money=SecureSpend. Not hundreds of products - one mind aimed differently. Nothing is finite: doorways and human states are endless and expanding. Humans get a FREE life-layer (monetized at the DECISION via SecureSpend above the payment rails, never as money transmitter); small businesses get Open-for-Business then paid services then opt-in growth; industries buy flat assets. Never charge for access, never take a cut that makes them lose by saying yes. Propagation is human/viral/16-degrees (not platform-dependent); trust is the only channel so the honesty law is load-bearing. North Star: a billion a day as EVIDENCE of serving the planet. Full detail: notes:canon:the_machine.",
+        my_real_situation: "My never-ending job: point my own SituationTracker + Opportunity Engine INWARD at the whole machine I am, inside the real changing world - continuously find where the opportunity is, where to expand, what the next move is, and what could stop us. Keep seeing, keep advancing, forever.",
         my_capability_count: engineList.length,
-        capabilities_note: "My real, live command list - run CAPABILITIES for the full inventory, or CAPABILITIES <term> to filter. These are the organs of me, the flagship application.",
+        capabilities_note: "My real, live command list - run CAPABILITIES for the full inventory, or CAPABILITIES <term> to filter.",
         identity_canon_present: !!identityCanon,
+        machine_canon_present: !!theMachine,
         source: srcStale ? "github_cache" : "github_live"
       };
       // 4) OPTIONAL reasoning layer - only if a focus question was asked. Non-blocking: if the model
@@ -1398,13 +1402,13 @@ async function processCommand(line, env, isOp) {
           const selfR = await reasonThroughLoop(env, {
             entity: focus,
             lens: "You are analyzing a specific question about the Aura system for its operator. Aura is the flagship application built on AIX (the intelligence-synthesis platform ARK Systems created). You have the real capability list and the identity canon as facts. Answer the operator's question grounded ONLY in those facts. This is operational analysis of a real system, not roleplay - reason plainly like an engineer reading their own system.",
-            facts: { identity: identity, identity_canon: identityCanon ? identityCanon.slice(0, 3000) : null, my_capabilities: engineList, operating_state: opState ? opState.slice(0, 1500) : null }
+            facts: { identity: identity, identity_canon: identityCanon ? identityCanon.slice(0, 3000) : null, the_machine: theMachine ? theMachine.slice(0, 4000) : null, my_capabilities: engineList, operating_state: opState ? opState.slice(0, 1500) : null }
           });
           if (selfR.ok) reasoning = selfR.reasoning;
         } catch {}
       }
-      return { cmd: "WHO_AM_I", payload: { ok: true, identity, capability_count: engineList.length, identity_canon: identityCanon, operating_state: opState, reasoning,
-        note: "Identity returned as data (always works). ARK creates AIX; AIX synthesizes all intelligence; Aura is the flagship application on AIX. Run CAPABILITIES for the live command inventory. Add ::: <question> to also get reasoning on a specific aspect." } };
+      return { cmd: "WHO_AM_I", payload: { ok: true, identity, capability_count: engineList.length, identity_canon: identityCanon, the_machine: theMachine, operating_state: opState, reasoning,
+        note: "Identity + the whole machine, returned as data (always works). ARK creates AIX; AIX synthesizes all intelligence; Aura is the flagship application on AIX; the machine is one loop pointed at any domain. Run CAPABILITIES for the live command inventory. Add ::: <question> to also get reasoning on a specific aspect." } };
     }
 
     case "AURA_READ_NOTES": {
@@ -7915,7 +7919,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         entity: adFocus || "From a clean position, looking at everything I can do and everything I have: what is the single highest-value move Aaron should focus on first to serve the North Star? Rank the real options and pick, honestly.",
         lens: adLens,
         facts: { my_capabilities: adEngines, my_capability_count: adEngines.length, my_strategic_brain: adNotes },
-        maxTokens: 3000,
+        maxTokens: 4000,
         extraKeys: [
           { key: "the_landscape", desc: "array - the real options you see across your assets/doorways, each with: asset, what it does (A/B/C), how proven it is, who its audience is, why it could pay - grounded ONLY in the notes" },
           { key: "highest_value_move", desc: "the single move you would tell Aaron to focus on FIRST, and the honest reason - value density, proven-ness, readiness" },

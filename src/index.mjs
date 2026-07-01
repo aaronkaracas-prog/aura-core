@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.375-2026-07-01";
+const BUILD = "aura-core-v4.9.376-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -2439,6 +2439,33 @@ async function processCommand(line, env, isOp) {
         return { cmd: "FIRE_OUTLOOK", payload: { ok: true, region: foRegion, label: pred.label, outlook_available: false, detection_gap: !!pred.detection_gap, note: pred.note || "No active fire position to build an outlook from." } };
       }
       const edge = pred.current.leading_edge || pred.current.centroid;
+      const centroidNow = pred.current.centroid || edge;
+      // OWN movement baseline - FIRE_PREDICT clobbers its own baseline on every call, so we keep a separate
+      // outlook track sampled at >=3h intervals to measure REAL multi-hour advance (direction the fire is going).
+      let outlookAdvance = null;
+      try {
+        const raw = await env.AURA_KV.get(`fire:outlook_track:${foRegion}`);
+        const track = raw ? JSON.parse(raw) : null;
+        const nowMs = Date.now();
+        if (track && track.centroid && track.at) {
+          const hrs = (nowMs - new Date(track.at).getTime()) / 3600000;
+          if (hrs >= 3) {
+            const dLat = centroidNow.lat - track.centroid.lat, dLon = centroidNow.lon - track.centroid.lon;
+            const dist_km = Math.sqrt((dLat * 111) ** 2 + (dLon * 88) ** 2);
+            const bearing = (Math.atan2(dLon, dLat) * 180 / Math.PI + 360) % 360;
+            const compass = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"][Math.round(bearing / 45) % 8];
+            outlookAdvance = { moved_km: +dist_km.toFixed(2), bearing_deg: +bearing.toFixed(0), compass, over_hours: +hrs.toFixed(1), km_per_hr: +(dist_km / hrs).toFixed(3) };
+            // advance the baseline only after a real measurement
+            await env.AURA_KV.put(`fire:outlook_track:${foRegion}`, JSON.stringify({ centroid: centroidNow, at: new Date().toISOString() }), { expirationTtl: 604800 }).catch(() => {});
+          } else {
+            outlookAdvance = { pending: true, hours_since_baseline: +hrs.toFixed(1), note: `baseline set ${hrs.toFixed(1)}h ago; need >=3h between samples for a reliable advance vector - run again later` };
+          }
+        } else {
+          // first ever call - set the baseline
+          await env.AURA_KV.put(`fire:outlook_track:${foRegion}`, JSON.stringify({ centroid: centroidNow, at: new Date().toISOString() }), { expirationTtl: 604800 }).catch(() => {});
+          outlookAdvance = { pending: true, note: "first cycle - movement baseline set; run again in 3+ hours to measure the fire's actual advance vector" };
+        }
+      } catch {}
       // 2) multi-day fire-weather forecast at the leading edge (wind, humidity, temp - the fire drivers), keyless open-meteo
       let fwx = null;
       try {
@@ -2463,17 +2490,27 @@ async function processCommand(line, env, isOp) {
       let outlook = null;
       if (anthKey) {
         const sys = await loadPrompt(env, "fire_outlook", "You are Aura, a fire-behavior analyst producing a 3-day OUTLOOK for incident command. You are given the fire's current leading edge, its OBSERVED recent movement, and a day-by-day fire-weather forecast (max temp, MINIMUM relative humidity, max wind speed/gust, dominant wind direction, precip) at the fire. Reason about how the weather PATTERN will drive spread each day. Key fire-weather logic: low RH (<20-25%) + wind = active spread; wind DIRECTION sets the direction of push (wind FROM the west pushes fire EAST); rising temp + falling RH = worsening; precip or RH recovery = laying down. Wind direction is 'from' - convert to the compass direction the fire will be PUSHED toward. Output STRICT JSON only: summary (one line: the 3-day trajectory in plain language - where and how fast), day1 / day2 / day3 (each one line: that day's fire-weather and what it means for spread, include the pushed direction), peak_risk_day (which day is worst and why, one line), where_in_3_days (one line: best estimate of where the fire front will be relative to now - direction and rough distance, hedged appropriately), confidence (low|medium|high), caveat (one line: this is a WEATHER-DRIVEN outlook, not a FARSITE physics model; it does not model terrain/fuel/spotting; use for situational awareness, not tactical decisions).");
-        const usr = `Fire: ${pred.label}\nCurrent leading edge: ${edge.lat.toFixed(3)}, ${edge.lon.toFixed(3)}\nObserved recent movement: ${pred.observed_advance ? JSON.stringify(pred.observed_advance) : "first cycle - no baseline"}\nCurrent hotspot count: ${pred.current.hotspots}\n\nDay-by-day fire-weather forecast at the fire:\n${fwx.map((d, i) => `${i === 0 ? "TODAY" : "Day+" + i} ${d.date}: max ${d.temp_max_c}C, min RH ${d.rh_min_pct}%, wind max ${d.wind_max_kmh} km/h gust ${d.gust_max_kmh}, wind from ${d.wind_dir_deg}deg, precip ${d.precip_mm}mm`).join("\n")}\n\nProduce the 3-day fire outlook JSON now.`;
+        const usr = `Fire: ${pred.label}\nCurrent leading edge: ${edge.lat.toFixed(3)}, ${edge.lon.toFixed(3)}\nObserved recent movement (fire's actual measured advance): ${outlookAdvance && outlookAdvance.moved_km != null ? JSON.stringify(outlookAdvance) : "no measured advance vector yet (baseline just set - reason from wind direction only, and say so)"}\nCurrent hotspot count: ${pred.current.hotspots}\n\nDay-by-day fire-weather forecast at the fire:\n${fwx.map((d, i) => `${i === 0 ? "TODAY" : "Day+" + i} ${d.date}: max ${d.temp_max_c}C, min RH ${d.rh_min_pct}%, wind max ${d.wind_max_kmh} km/h gust ${d.gust_max_kmh}, wind from ${d.wind_dir_deg}deg, precip ${d.precip_mm}mm`).join("\n")}\n\nProduce the 3-day fire outlook JSON now. Keep each field to ONE concise line so the JSON completes.`;
         try {
           const res = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-            body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 700, system: sys, messages: [{ role: "user", content: usr }] })
+            body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1100, system: sys, messages: [{ role: "user", content: usr }] })
           });
-          if (res.ok) { const j = await res.json(); let t = (j.content && j.content[0] && j.content[0].text) ? j.content[0].text : ""; t = t.replace(/```json|```/g, "").trim(); try { outlook = JSON.parse(t); } catch { outlook = { summary: t.slice(0, 300), raw: true }; } }
+          if (res.ok) {
+            const j = await res.json(); let t = (j.content && j.content[0] && j.content[0].text) ? j.content[0].text : "";
+            t = t.replace(/```json|```/g, "").trim();
+            // robust parse: grab the outermost {...} object even if the model added prose or wrapping
+            const first = t.indexOf("{"), last = t.lastIndexOf("}");
+            const jsonSlice = (first >= 0 && last > first) ? t.slice(first, last + 1) : t;
+            try { outlook = JSON.parse(jsonSlice); }
+            catch { try { outlook = JSON.parse(t); } catch { outlook = { summary: t.slice(0, 400), parse_failed: true }; } }
+            // unwrap accidental double-nesting ({summary:{summary:...}})
+            if (outlook && outlook.summary && typeof outlook.summary === "object") outlook = outlook.summary;
+          }
         } catch {}
       }
       return { cmd: "FIRE_OUTLOOK", payload: { ok: true, region: foRegion, label: pred.label, outlook_available: true,
-        leading_edge: edge, observed_advance: pred.observed_advance, hotspots: pred.current.hotspots,
+        leading_edge: edge, observed_advance: outlookAdvance, hotspots: pred.current.hotspots,
         fire_weather_forecast: fwx, outlook,
         note: "3-day WEATHER-DRIVEN fire outlook - combines the fire's real position/movement with the multi-day fire-weather pattern. Situational awareness, not a FARSITE tactical model." } };
     }

@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.381-2026-07-01";
+const BUILD = "aura-core-v4.9.382-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -2634,6 +2634,52 @@ async function processCommand(line, env, isOp) {
         outlook_3day: outlook && outlook.ok ? outlook.outlook : null,
         advice,
         note: "Full operational SITREP - live ground status + aircraft + fire science + 3-day outlook + command-level advice. Live data is real; advice is Aura's analysis, not a substitute for incident command." } };
+    }
+
+    case "FIRE_THREATENED": {
+      // WHO'S IN THE PATH. Projects the fire's advance cone (leading edge + Aura's stated bearing) and finds
+      // populated places along it, with distance + rough time-to-impact from the spread rate. GeoNames (free).
+      //   FIRE_THREATENED <region>
+      if (!isOp) return { cmd: "FIRE_THREATENED", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const ftRegion = (line.replace(/^FIRE_THREATENED\s+/i, "").trim() || "cottonwood").toLowerCase();
+      const gnUser = await env.AURA_KV.get("secret:geonames").catch(() => null);
+      if (!gnUser) return { cmd: "FIRE_THREATENED", payload: { ok: false, error: "No GeoNames username. Sign up free at geonames.org/login (2 min), enable web services, then SETKV secret:geonames <username>. The path-analysis engine is wired and runs the moment it lands." } };
+      const step = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
+      // 1) fire position + projected direction + rate (from the outlook)
+      const out = await step(`FIRE_OUTLOOK ${ftRegion}`);
+      if (!out || !out.ok || !out.leading_edge) return { cmd: "FIRE_THREATENED", payload: { ok: false, error: "no fire position/projection available", detail: out && out.note } };
+      const origin = out.leading_edge;
+      const bearing = (out.observed_advance && out.observed_advance.bearing_deg != null) ? out.observed_advance.bearing_deg : (out.outlook && out.outlook.projected_bearing_deg != null ? +out.outlook.projected_bearing_deg : null);
+      // spread rate: prefer measured, else parse from outlook (rough), else assume slow default with caveat
+      let kmPerDay = null, rateBasis = "unknown";
+      if (out.observed_advance && out.observed_advance.km_per_hr != null) { kmPerDay = out.observed_advance.km_per_hr * 24; rateBasis = "measured"; }
+      // 2) pull populated places within a search radius (GeoNames free)
+      let places = [];
+      try {
+        const url = await resolveFeedUrl(env, "geonames_nearby", { lat: origin.lat.toFixed(3), lon: origin.lon.toFixed(3), user: gnUser }, `http://api.geonames.org/findNearbyPlaceNameJSON?lat={lat}&lng={lon}&radius=40&maxRows=50&cities=cities1000&username={user}`);
+        const r = await fetchWithTimeout(url, {}, 8000);
+        if (r.ok) { const j = await r.json(); places = (j.geonames || []).map(p => ({ name: p.name, admin: p.adminName1, population: p.population ? +p.population : null, lat: +p.lat, lon: +p.lng, distance_km: p.distance ? +(+p.distance).toFixed(1) : null })); }
+        else { let b = ""; try { b = (await r.text()).slice(0, 160); } catch {}; return { cmd: "FIRE_THREATENED", payload: { ok: false, error: `geonames http ${r.status}`, detail: b } }; }
+      } catch (e) { return { cmd: "FIRE_THREATENED", payload: { ok: false, error: String(e && e.message || e) } }; }
+      // 3) which places are IN THE PATH (within +/-40deg of the projected bearing) vs merely nearby
+      const inPath = [], nearby = [];
+      for (const p of places) {
+        const dLat = p.lat - origin.lat, dLon = p.lon - origin.lon;
+        const brgTo = (Math.atan2(dLon, dLat) * 180 / Math.PI + 360) % 360;
+        const dist = p.distance_km != null ? p.distance_km : Math.sqrt((dLat * 111) ** 2 + (dLon * 88) ** 2);
+        let inCone = false, eta = null;
+        if (bearing != null) { const diff = Math.min(Math.abs(brgTo - bearing), 360 - Math.abs(brgTo - bearing)); inCone = diff <= 40; }
+        if (inCone && kmPerDay && kmPerDay > 0.01) eta = `~${(dist / kmPerDay).toFixed(1)} days at current rate`;
+        const entry = { ...p, bearing_from_fire: +brgTo.toFixed(0), in_path: inCone, eta_at_current_rate: eta };
+        if (inCone) inPath.push(entry); else nearby.push(entry);
+      }
+      inPath.sort((a, b) => (a.distance_km || 999) - (b.distance_km || 999));
+      nearby.sort((a, b) => (a.distance_km || 999) - (b.distance_km || 999));
+      const pathPop = inPath.reduce((s, p) => s + (p.population || 0), 0);
+      return { cmd: "FIRE_THREATENED", payload: { ok: true, region: ftRegion, fire: out.label,
+        fire_position: origin, projected_bearing_deg: bearing, spread_rate_basis: rateBasis, km_per_day: kmPerDay ? +kmPerDay.toFixed(2) : null,
+        in_path: inPath.slice(0, 12), population_in_path: pathPop, nearby_not_in_path: nearby.slice(0, 8),
+        note: "Communities in the fire's projected path (within 40deg of advance bearing) with rough time-to-impact. Places from GeoNames (populated places >=1000). ETA assumes current spread rate holds - real impact depends on terrain/fuel/suppression/wind shifts. " + (bearing == null ? "NO BEARING available this cycle - all places shown as nearby, path undetermined. " : "") + (rateBasis !== "measured" ? "Spread rate NOT yet measured (need a 3h+ movement baseline) - ETA unavailable until then." : "") } };
     }
 
     case "FIRE_OUTLOOK": {

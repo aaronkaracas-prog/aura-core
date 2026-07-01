@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.379-2026-07-01";
+const BUILD = "aura-core-v4.9.380-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -608,25 +608,32 @@ function euCountryForPoint(lat, lon) {
 
 // FIRE VERIFICATION ENGINE - every fire projection is preserved, then scored against where the fire ACTUALLY went.
 // This is the learning loop: log now (projected edge + push direction), grade later (did it go where we said?).
-async function logFireOutlook(env, region, label, edge, fwx, science, outlook) {
+async function logFireOutlook(env, region, label, edge, fwx, science, outlook, observedAdvance) {
   try {
-    // dominant forecast wind direction over the 3-day window (where the fire is being pushed)
+    // dominant forecast wind direction over the window (where wind would push the fire)
     const dirs = (fwx || []).map(d => d.wind_dir_deg).filter(x => x != null);
     const avgFrom = dirs.length ? dirs.reduce((s, x) => s + x, 0) / dirs.length : null;
-    const pushedTo = avgFrom == null ? null : (avgFrom + 180) % 360; // 'from' -> 'toward'
+    const windPushTo = avgFrom == null ? null : (avgFrom + 180) % 360; // 'from' -> 'toward'
+    // PRIMARY projected direction = the fire's actual MEASURED advance bearing when we have one (that's what
+    // the outlook actually reasons from); fall back to wind-push only when no movement vector exists yet.
+    const measuredBearing = (observedAdvance && observedAdvance.bearing_deg != null) ? observedAdvance.bearing_deg : null;
+    const projectedPush = measuredBearing != null ? measuredBearing : windPushTo;
     const rec = {
       region, label, at: new Date().toISOString(),
       origin: { lat: edge.lat, lon: edge.lon },
-      projected_push_deg: pushedTo == null ? null : +pushedTo.toFixed(0),
+      projected_push_deg: projectedPush == null ? null : +projectedPush.toFixed(0),
+      projected_push_basis: measuredBearing != null ? "measured_advance" : "wind_forecast",
+      wind_push_deg: windPushTo == null ? null : +windPushTo.toFixed(0),
+      measured_advance_deg: measuredBearing,
       projected_where: outlook && outlook.where_in_3_days ? String(outlook.where_in_3_days).slice(0, 200) : null,
       haines: science && science.ok ? science.haines_index : null,
       min_rh_forecast: (fwx || []).map(d => d.rh_min_pct).filter(x => x != null).length ? Math.min(...(fwx.map(d => d.rh_min_pct).filter(x => x != null))) : null,
-      target_time: new Date(Date.now() + 72 * 3600000).toISOString(), // gradeable after 72h
+      target_time: new Date(Date.now() + 72 * 3600000).toISOString(),
       scored: false, verdict: null, actual_advance: null, scored_at: null
     };
     const key = `fire:verify:${region}:${rec.at}`;
     await env.AURA_KV.put(key, JSON.stringify(rec), { expirationTtl: 60 * 60 * 24 * 30 }).catch(() => {});
-    return { key, target_time: rec.target_time, note: "projection logged for verification - gradeable in 72h against where the fire actually went" };
+    return { key, target_time: rec.target_time, projected_push_deg: rec.projected_push_deg, basis: rec.projected_push_basis, note: "projection logged for verification - gradeable in 72h against where the fire actually went" };
   } catch { return null; }
 }
 
@@ -2718,7 +2725,7 @@ async function processCommand(line, env, isOp) {
         leading_edge: edge, observed_advance: outlookAdvance, hotspots: pred.current.hotspots,
         fire_science: science && science.ok ? { haines_index: science.haines_index, haines_meaning: science.haines_meaning, vpd_kpa: science.vpd_kpa, fuel_dryness: science.fuel_dryness } : null,
         fire_weather_forecast: fwx, outlook,
-        logged: await logFireOutlook(env, foRegion, pred.label, edge, fwx, science, outlook),
+        logged: await logFireOutlook(env, foRegion, pred.label, edge, fwx, science, outlook, outlookAdvance),
         note: "3-day WEATHER-DRIVEN fire outlook - combines the fire's real position/movement with the multi-day fire-weather pattern. Situational awareness, not a FARSITE tactical model." } };
     }
 

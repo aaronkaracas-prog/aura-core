@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.399-2026-07-01";
+const BUILD = "aura-core-v4.9.400-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -220,10 +220,13 @@ export class AisCollectorDO {
     const box = AIS_REGIONS[this.region].box;
     let ws = null;
     try {
-      const resp = await fetch("https://stream.aisstream.io/v0/stream", { headers: { Upgrade: "websocket" } });
+      // Cloudflare outbound WebSocket: fetch with the Upgrade header (value MUST be lowercase "websocket").
+      // aisstream returns 101 + resp.webSocket on success. It also CLOSES the socket if the subscription
+      // message is not sent within ~3s, so we send it immediately after accept().
+      const resp = await fetch("https://stream.aisstream.io/v0/stream", { headers: { Upgrade: "websocket", Connection: "Upgrade" } });
       if (resp.status !== 101 || !resp.webSocket) {
         this.lastError = "upgrade failed: status " + resp.status + (resp.webSocket ? "" : " (no webSocket)");
-        let b = ""; try { b = (await resp.text()).slice(0, 200); } catch {}
+        let b = ""; try { b = (await resp.text()).slice(0, 300); } catch {}
         if (b) this.lastError += " body:" + b;
         return;
       }
@@ -232,7 +235,11 @@ export class AisCollectorDO {
       this.ws = ws;
       this.connectedAt = new Date().toISOString();
       this.lastError = null;
-      ws.send(JSON.stringify({ APIKey: key, BoundingBoxes: [box], FilterMessageTypes: ["PositionReport"] }));
+      // aisstream bounding box format is [[latMin,lonMin],[latMax,lonMax]] - build it from our box object.
+      // (Our box is {latBottom,latTop,lonLeft,lonRight}; aisstream wants nested [SW],[NE] pairs.)
+      const bbox = [[[box.latBottom, box.lonLeft], [box.latTop, box.lonRight]]];
+      // send subscription IMMEDIATELY (within aisstream's 3s window). Field name is "APIKey".
+      ws.send(JSON.stringify({ APIKey: key, BoundingBoxes: bbox, FilterMessageTypes: ["PositionReport"] }));
       // collect messages into this.vessels until the timer elapses or the socket closes
       await new Promise((resolve) => {
         let done = false;

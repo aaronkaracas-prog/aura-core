@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.426-2026-07-02";
+const BUILD = "aura-core-v4.9.427-2026-07-02";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -4635,6 +4635,59 @@ async function processCommand(line, env, isOp) {
           depot_result: pp ? { entry_count: pp.entry_count, growth: pp.growth, added: pp.added, distill_note: pp.distill_note } : null,
           note: `Poured FHFA property-value history for ${placeLabel} into depot:risk:property-value in ONE write. Space depot writes >60s.` } };
       } catch (e) { return { cmd: "DEPOT_POUR_PROPERTY", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "DEPOT_POUR_CROP": {
+      // AGRICULTURAL LOSS (v4.9.427) - pours USDA RMA crop-insurance cause-of-loss into depot:risk:crop.
+      // Source verified 2026-07-02: rma.usda.gov state-crop-cause-loss, keyless. This is the ag-insurance
+      // layer: what causes insured crop losses (drought, hail, flood, freeze) and the indemnity dollars
+      // paid. Format is the RMA Summary of Business cause-of-loss export (CSV/delimited). We parse
+      // defensively (detect delimiter + header) and distill by cause: indemnity paid + share.
+      //   DEPOT_POUR_CROP   (national cause-of-loss rollup from the current RMA export)
+      if (!isOp) return { cmd: "DEPOT_POUR_CROP", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const cpUA = { "user-agent": "aura-depot-pour/1.0" };
+      const cpUrl = await resolveFeedUrl(env, "usda_crop_cause_loss", {}, "https://www.rma.usda.gov/-/media/RMA/SCI/sob/state-crop-cause-loss.ashx");
+      try {
+        const r = await fetchWithTimeout(cpUrl, { headers: cpUA }, 30000);
+        if (!r.ok) return { cmd: "DEPOT_POUR_CROP", payload: { ok: false, error: `usda rma ${r.status}` } };
+        const text = await r.text();
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        if (lines.length < 2) return { cmd: "DEPOT_POUR_CROP", payload: { ok: false, error: "empty crop file" } };
+        // detect delimiter (RMA SOB files are sometimes pipe- or comma-delimited)
+        const delim = (lines[0].split("|").length > lines[0].split(",").length) ? "|" : ",";
+        const splitRow = (l) => { const out = []; let cur = "", q = false; for (let i = 0; i < l.length; i++) { const c = l[i]; if (c === '"') { q = !q; } else if (c === delim && !q) { out.push(cur); cur = ""; } else cur += c; } out.push(cur); return out; };
+        const hdr = splitRow(lines[0]).map(h => h.trim().toLowerCase());
+        const findCol = (...res) => { for (const re of res) { const i = hdr.findIndex(h => re.test(h)); if (i >= 0) return i; } return -1; };
+        const iCause = findCol(/cause.*loss.*desc|cause.*loss.*name|col.*name|cause.*description/, /cause/);
+        const iIndem = findCol(/indemnity.*amount|indemnity.*paid|total.*indemnity/, /indemnity/);
+        const iYear = findCol(/commodity.*year|crop.*year|^year$|insurance.*year/, /year/);
+        if (iCause < 0 || iIndem < 0) {
+          return { cmd: "DEPOT_POUR_CROP", payload: { ok: false, error: "could not map cause/indemnity columns - header sample: " + hdr.slice(0, 15).join(" | ") } };
+        }
+        const byCause = new Map(); let total = 0; const years = new Set();
+        for (let i = 1; i < lines.length; i++) {
+          const f = splitRow(lines[i]); if (f.length <= Math.max(iCause, iIndem)) continue;
+          const cause = (f[iCause] || "").trim(); if (!cause) continue;
+          const amt = parseFloat((f[iIndem] || "").replace(/[$,]/g, "")) || 0;
+          byCause.set(cause, (byCause.get(cause) || 0) + amt); total += amt;
+          if (iYear >= 0 && f[iYear]) years.add(f[iYear].trim());
+        }
+        if (!byCause.size || total <= 0) return { cmd: "DEPOT_POUR_CROP", payload: { ok: false, error: "no indemnity data parsed (columns mapped but values empty) - header: " + hdr.slice(0,15).join(" | ") } };
+        const ranked = [...byCause.entries()].sort((a, b) => b[1] - a[1]);
+        const $b = (n) => "$" + (n >= 1e9 ? (n / 1e9).toFixed(2) + "B" : (n / 1e6).toFixed(0) + "M");
+        const yrLabel = years.size ? [...years].sort().join("/") : "recent";
+        const srcTag = "USDA RMA Summary of Business (cause of loss)";
+        const ev = [];
+        ev.push(`USDA crop insurance (${yrLabel}): ${$b(total)} total indemnities paid across ${ranked.length} causes of loss (${srcTag})`);
+        for (const [cause, amt] of ranked.slice(0, 10)) ev.push(`Crop loss cause "${cause}": ${$b(amt)} indemnities (${(amt / total * 100).toFixed(1)}% of total) (${srcTag})`);
+        const knowledge = `Agricultural crop-insurance loss evidence from USDA RMA (${yrLabel}) - total federal crop-insurance indemnities paid, ranked by cause of loss (drought, hail, excess moisture, freeze, flood, etc). This is the ag-insurance risk layer: what actually destroys insured crops and the dollar magnitude per cause. Indemnities are federal crop-insurance payouts (not total ag loss).\n` + ev.join("\n");
+        const pour = await processCommand(`DEPOT_INGEST ::: ${JSON.stringify({ risk_type: "crop", touches: ["insurance", "agriculture", "reinsurance"], knowledge, evidence_lines: ev, source: "DEPOT_POUR_CROP (USDA RMA cause-of-loss)" })}`, env, true);
+        const pp = (pour && pour.payload) ? pour.payload : pour;
+        return { cmd: "DEPOT_POUR_CROP", payload: { ok: !!(pp && pp.ok), years: yrLabel, causes: ranked.length, total_indemnity: Math.round(total),
+          top_causes: ranked.slice(0, 5).map(([c, a]) => ({ cause: c, indemnity: Math.round(a) })),
+          depot_result: pp ? { entry_count: pp.entry_count, growth: pp.growth, added: pp.added, distill_note: pp.distill_note } : null,
+          note: "Poured USDA crop-insurance cause-of-loss into depot:risk:crop in ONE write. Space depot writes >60s." } };
+      } catch (e) { return { cmd: "DEPOT_POUR_CROP", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 
     case "DEPOT_POUR_FLOOD": {

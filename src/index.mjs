@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.400-2026-07-01";
+const BUILD = "aura-core-v4.9.402-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -2482,6 +2482,71 @@ async function processCommand(line, env, isOp) {
         const largest = quakes[0] || null;
         return { cmd: "QUAKE_QUERY", payload: { ok: true, source: "usgs_live", feed, quake_count: quakes.length, largest, quakes: quakes.slice(0, 25), updated: new Date().toISOString(), note: largest ? `Largest: M${largest.mag} ${largest.place}` : "No quakes at this threshold." } };
       } catch (e) { return { cmd: "QUAKE_QUERY", payload: { ok: false, source: "usgs_error", error: String(e && e.message || e) } }; }
+    }
+
+    case "FIRE_COMMS": {
+      // THE OPERATIONAL / COMMS LAYER (v4.9.402). FIRE_OFFICIAL gives the incident HEADLINE (name/size/
+      // containment). FIRE_COMMS gives the OPERATIONAL picture: national/GACC resource commitment
+      // (ActiveResources) + values at risk (ValuesAtRisk), from the registry-verified public NIFC org.
+      // HONEST GRANULARITY: these are REGIONAL/NATIONAL (by GACC) resource + values-at-risk summaries, NOT
+      // the per-incident per-unit roster (that is the credentialed NIFS layer - parked, see
+      // notes:barrier:fire_comms). All keyless, public, ~15min updates. Endpoints from notes:data:public_sources.
+      //   FIRE_COMMS [gacc]   optional GACC filter (e.g. GB=Great Basin, NW, SW, RM, CA...)
+      if (!isOp) return { cmd: "FIRE_COMMS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const fcGacc = (line.replace(/^FIRE_COMMS\s*/i, "").trim() || "").toUpperCase();
+      const fcBase = "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services";
+      const fcPick = (a, ...names) => { for (const n of names) { if (a[n] != null && a[n] !== "") return a[n]; } return null; };
+      const fcFetch = async (svc) => {
+        try {
+          const where = fcGacc ? encodeURIComponent(`GACC='${fcGacc}'`) : "1%3D1";
+          const url = `${fcBase}/${svc}/FeatureServer/0/query?where=${where}&outFields=*&returnGeometry=false&f=json`;
+          const r = await fetchWithTimeout(url, { headers: { "User-Agent": "FireOS/1.0" } }, 8000);
+          if (!r.ok) return { ok: false, error: `http ${r.status}` };
+          const d = await r.json();
+          if (d.error) return { ok: false, error: JSON.stringify(d.error).slice(0, 150) };
+          return { ok: true, rows: (d.features || []).map(f => f.attributes || {}) };
+        } catch (e) { return { ok: false, error: String(e && e.message || e), timed_out: /timeout/i.test(String(e)) }; }
+      };
+      const [resR, varR, incR] = await Promise.all([
+        fcFetch("ActiveResources_Irwin_Filtered_SumStatPivot"),
+        fcFetch("ValuesAtRisk_Irwin_Filtered_SumStatPivot"),
+        fcFetch("Incidents_Overview_Incidents_ALL_Incidents_Merged")
+      ]);
+      // Resource commitment: sum the wildfire-relevant resource counts across returned rows (national or GACC-filtered).
+      let resources = null;
+      if (resR.ok) {
+        const rows = resR.rows;
+        const sumField = (f) => rows.reduce((s, r) => s + (Number(r[f]) || 0), 0);
+        resources = {
+          rows_returned: rows.length,
+          by_gacc: [...new Set(rows.map(r => r.GACC).filter(Boolean))],
+          wildfire_committed: sumField("WF"),
+          prescribed: sumField("RX"),
+          incident_mgmt: sumField("IM"),
+          complex: sumField("CX"),
+          kinds: [...new Set(rows.map(r => r.Kind).filter(Boolean))].slice(0, 20),
+          note: "National/GACC resource inventory by Kind/Category/incident-type. Aggregate, not per-incident."
+        };
+      }
+      let values_at_risk = null;
+      if (varR.ok) {
+        values_at_risk = { rows_returned: varR.rows.length, by_gacc: [...new Set(varR.rows.map(r => r.GACC).filter(Boolean))],
+          sample_fields: varR.rows[0] ? Object.keys(varR.rows[0]).slice(0, 25) : [], note: "Values-at-risk summary (IRWIN-filtered)." };
+      }
+      let incidents_overview = null;
+      if (incR.ok) {
+        incidents_overview = { count: incR.rows.length, sample_fields: incR.rows[0] ? Object.keys(incR.rows[0]).slice(0, 25) : [] };
+      }
+      const sources_ok = [resR, varR, incR].filter(x => x.ok).length;
+      return { cmd: "FIRE_COMMS", payload: {
+        ok: sources_ok > 0,
+        gacc_filter: fcGacc || "ALL",
+        sources_reached: `${sources_ok}/3`,
+        source_errors: { resources: resR.ok ? null : resR.error, values_at_risk: varR.ok ? null : varR.error, incidents: incR.ok ? null : incR.error },
+        resources, values_at_risk, incidents_overview,
+        granularity_note: "PUBLIC operational layer: national/GACC resource commitment + values at risk. The per-incident per-unit roster (which crew/engine/aircraft on THIS fire) is the credentialed NIFS layer - parked, needs NIFC partnership (notes:barrier:fire_comms).",
+        source: "nifc_public_arcgis"
+      } };
     }
 
     case "FIRE_WEATHER": {
@@ -12442,6 +12507,28 @@ async function recordCost(model, usage) {
 // question, deciphering a dump, an unknown domain. The heavy reasonThroughLoop is for deep internal
 // reasoning that produces structured engine output; this is for "just answer the human, fast."
 // Returns the reply string, or null if the call failed (caller decides the fallback).
+// Strip any tool-call/agent plumbing that leaks into a user-facing reply. The model is INSTRUCTED
+// not to leak, but instructions aren't a guarantee - this is. Applied to the final reply text on
+// every path so the Home Screen (and every customer surface) never shows read_data / function_calls
+// / "Reading your operating state..." machinery. Guaranteed, not hoped-for.
+function stripAgentLeak(text) {
+  if (!text || typeof text !== "string") return text;
+  let t = text;
+  // 1. XML-style function/tool invocation blocks (function_calls, invoke, parameter, tool_use, tool_result)
+  t = t.replace(/<\/?(?:antml:)?(?:function_calls|invoke|parameter|tool_use|tool_result|function_results)[^>]*>/gi, "");
+  t = t.replace(/<function_calls>[\s\S]*?<\/function_calls>/gi, "");
+  // 2. bracket pseudo-commands [[READ ...]] [[RUN ...]] etc.
+  t = t.replace(/\[\[(?:READ|RUN|FETCH|SEARCH|GETKV|SETKV|DELKV|PATCHKV|LISTKV|DOMAIN_LAUNCH|DOMAIN_DIAGNOSE|DOMAIN_STATUS|FETCH_PLACES|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|TWILIO_INTEL)\b[\s\S]*?\]\]/gi, "");
+  // 3. leaked narration lines that precede a (now-stripped) tool call - "Reading your ...", "Let me check ...",
+  //    "Fetching ...", "Looking up ..." when they sit alone on a line as plumbing narration
+  t = t.replace(/^\s*(?:Reading|Fetching|Looking up|Checking|Let me (?:read|check|fetch|look)|I'll (?:read|check|fetch|look))\b[^\n.]*\.\.\.\s*$/gim, "");
+  // 4. raw JSON tool-call fragments that leak (e.g. {"name":"read_data","input":{...}})
+  t = t.replace(/\{\s*"(?:name|type)"\s*:\s*"(?:read_data|run_command|fetch_url|tool_use)"[\s\S]*?\}\s*\}/gi, "");
+  // collapse the blank lines left behind
+  t = t.replace(/\n{3,}/g, "\n\n").trim();
+  return t;
+}
+
 async function fastReply(env, { system, user, maxTokens = 700, model } = {}) {
   try {
     const apiKey = env.ANTHROPIC_API_KEY || await KV.get(env, "secret:anthropic");
@@ -13260,7 +13347,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
   if (isOp && typeof message === "string" && message.includes("!!timing")) {
     return (raw || "") + "\n\nâ± TIMINGS: " + _timings.join("  |  ");
   }
-  return raw;
+  return stripAgentLeak(raw);
 }
 
 async function servePage(hostname, pathname, env) {

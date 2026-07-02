@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.425-2026-07-02";
+const BUILD = "aura-core-v4.9.426-2026-07-02";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3784,6 +3784,21 @@ async function processCommand(line, env, isOp) {
         try { const j = JSON.parse(rest.slice(rest.indexOf(":::") + 3).trim()); ab = { ...ab, ...j }; } catch { return { cmd: "ANALYST_BRIEF", payload: { ok: false, error: 'Bad JSON. Usage: ANALYST_BRIEF <topic>  or  ANALYST_BRIEF ::: {"topic":"...","industry":"...","risk_types":["..."],"question":"..."}' } }; }
       } else { ab.topic = rest.trim(); }
       if (!ab.topic && !ab.question && !ab.industry && !ab.risk_types) return { cmd: "ANALYST_BRIEF", payload: { ok: false, error: "Give me a topic: ANALYST_BRIEF <topic>" } };
+      // LIVE MODE (v4.9.426): the marriage of live perception + depot memory. When ab.live is set
+      // (true = search the topic; or an explicit query string), Aura web-pulls the CURRENT event and
+      // grounds the brief in BOTH the live findings AND the depot she already knows. This is the
+      // "what happened 3 days ago" capability - a fresh event answered with 12 domains of context
+      // beneath it. Live findings are clearly labeled as such; the honesty + scale + verification
+      // laws all still apply (live numbers are still scale-checked against the depot spine).
+      let abLive = null;
+      if (ab.live) {
+        const liveQ = (typeof ab.live === "string" && ab.live.trim()) ? ab.live.trim() : (ab.question || ab.topic);
+        try {
+          const ws = await webSearch(liveQ, env);
+          if (ws && ws.ok) abLive = { query: liveQ, answer: ws.answer || null, sources: (ws.sources || []).slice(0, 6) };
+          else abLive = { query: liveQ, error: (ws && ws.error) || "live search failed", answer: null, sources: [] };
+        } catch (e) { abLive = { query: liveQ, error: String(e && e.message || e), answer: null, sources: [] }; }
+      }
       // ---- DETERMINISTIC GATHER (the inventory of what the machine actually knows) ----
       const abGathered = { depot: [], industry: null, missing: [] };
       let abIdx = []; try { const ir = await env.AURA_KV.get("depot:index"); if (ir) abIdx = JSON.parse(ir); } catch {}
@@ -3816,16 +3831,17 @@ async function processCommand(line, env, isOp) {
           try { const v = await env.AURA_KV.get(key); if (v) abGathered.notes.push({ key, content: v.slice(0, 8000) }); else abGathered.missing.push(key + " (not found)"); } catch { abGathered.missing.push(key + " (read failed)"); }
         }
       }
-      const abInventory = { depot_records: abGathered.depot.map(d => ({ risk_type: d.risk_type, entries: d.entry_count, evidence_lines: d.evidence_total, patterns: d.patterns.length, pricing_signals: d.pricing_signals.length, last_updated: d.last_updated })), industry_model: abGathered.industry ? abGathered.industry.key : null, notes_included: abGathered.notes.map(n => n.key), missing: abGathered.missing };
-      if (!abGathered.depot.length && !abGathered.industry && !abGathered.notes.length) {
+      const abInventory = { depot_records: abGathered.depot.map(d => ({ risk_type: d.risk_type, entries: d.entry_count, evidence_lines: d.evidence_total, patterns: d.patterns.length, pricing_signals: d.pricing_signals.length, last_updated: d.last_updated })), industry_model: abGathered.industry ? abGathered.industry.key : null, notes_included: abGathered.notes.map(n => n.key), live: abLive ? { query: abLive.query, sources: (abLive.sources || []).map(s => s.url || s.title || s).slice(0, 6), error: abLive.error } : null, missing: abGathered.missing };
+      if (!abGathered.depot.length && !abGathered.industry && !abGathered.notes.length && !(abLive && abLive.answer)) {
         return { cmd: "ANALYST_BRIEF", payload: { ok: false, error: "Nothing in the machine's knowledge grounds this brief yet - the depository has no matching risk records and no industry model was found. Pour knowledge first (DEPOT_INGEST / DEPOT_POUR_*) or learn the industry (INDUSTRY_LEARN).", inventory: abInventory } };
       }
       // ---- SYNTHESIS: the 8 universal questions, grounded + scored ----
       const abApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
       if (!abApiKey) return { cmd: "ANALYST_BRIEF", payload: { ok: false, error: "Brain not configured", inventory: abInventory } };
       const abModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
-      const abSystem = "You are the BRIEF ENGINE of AnalystOS - the always-on analyst who already read everything. Produce THE BRIEF: the 8 universal questions, answered ONLY from the knowledge provided. HONESTY LAW (absolute): never invent figures, names, or events not present in the knowledge; NEVER reach for outside/general knowledge even when the audience tempts it (if asked what something costs and no cost data is in the knowledge, the answer is Unknown + a gap entry - not an industry rule of thumb); where the knowledge is thin, say so plainly in gaps; where sources conflict, surface the conflict. SCALE LAW (absolute): federal disaster-assistance figures (FEMA IHP approvals, PA obligations, FEMA-inspected damage, program dollars) are narrow administrative FLOORS - NEVER present them as an event's loss, damage, or cost; always name exactly what each figure is; if total-loss or insured-loss figures exist in the knowledge they LEAD the headline; if they do not exist, the headline must say the total loss is not in the knowledge. Be CONCISE - every field 2-5 sentences, gaps/grounding as short lines; the whole brief must comfortably fit the output window. Score confidence honestly: Confirmed (directly evidenced), Probable (strongly implied), Possible (consistent but thin), Unknown (no grounding). Return ONLY JSON, no fences, exactly these keys: headline (one sharp sentence), what_is_happening, why_it_is_happening, who_it_affects, what_should_be_done, who_else_should_be_involved, what_happens_next, confidence (object: overall = Confirmed|Probable|Possible|Unknown, reasoning = one sentence), what_would_change_the_conclusion, grounding (array of short strings citing which knowledge each key conclusion rests on), gaps (array of plainly-stated holes in the knowledge). Write for a decision-maker: concrete, no filler, every sentence earns its place.";
-      const abUser = "QUESTION/TOPIC: " + (ab.question || ab.topic) + (ab.industry ? "\nINDUSTRY LENS: " + ab.industry : "") + "\n\nTHE MACHINE'S KNOWLEDGE (the ONLY permitted grounding):\n" + JSON.stringify({ depository: abGathered.depot, industry_model: abGathered.industry, knowledge_notes: abGathered.notes }) ;
+      const abSystem = "You are the BRIEF ENGINE of AnalystOS - the always-on analyst who already read everything. Produce THE BRIEF: the 8 universal questions, answered ONLY from the knowledge provided. HONESTY LAW (absolute): never invent figures, names, or events not present in the knowledge; NEVER reach for outside/general knowledge even when the audience tempts it (if asked what something costs and no cost data is in the knowledge, the answer is Unknown + a gap entry - not an industry rule of thumb); where the knowledge is thin, say so plainly in gaps; where sources conflict, surface the conflict. LIVE-VS-HISTORY: if LIVE FINDINGS are present, they are CURRENT event facts (label them as live/current, cite them) while the depot is HISTORICAL pattern context (base rates, scale references) - use both, keep them distinct, and ground the live event in the historical pattern. SCALE LAW (absolute): federal disaster-assistance figures (FEMA IHP approvals, PA obligations, FEMA-inspected damage, program dollars) are narrow administrative FLOORS - NEVER present them as an event's loss, damage, or cost; always name exactly what each figure is; if total-loss or insured-loss figures exist in the knowledge they LEAD the headline; if they do not exist, the headline must say the total loss is not in the knowledge. Be CONCISE - every field 2-5 sentences, gaps/grounding as short lines; the whole brief must comfortably fit the output window. Score confidence honestly: Confirmed (directly evidenced), Probable (strongly implied), Possible (consistent but thin), Unknown (no grounding). Return ONLY JSON, no fences, exactly these keys: headline (one sharp sentence), what_is_happening, why_it_is_happening, who_it_affects, what_should_be_done, who_else_should_be_involved, what_happens_next, confidence (object: overall = Confirmed|Probable|Possible|Unknown, reasoning = one sentence), what_would_change_the_conclusion, grounding (array of short strings citing which knowledge each key conclusion rests on), gaps (array of plainly-stated holes in the knowledge). Write for a decision-maker: concrete, no filler, every sentence earns its place.";
+      const abLiveBlock = abLive ? ("\n\nLIVE FINDINGS (fresh from the web at query time - CURRENT event facts; label these as live/current in the brief, and SCALE-CHECK any live loss/cost figure against the depot's disaster-costs spine):\n" + JSON.stringify({ query: abLive.query, answer: abLive.answer, sources: abLive.sources, error: abLive.error })) : "";
+      const abUser = "QUESTION/TOPIC: " + (ab.question || ab.topic) + (ab.industry ? "\nINDUSTRY LENS: " + ab.industry : "") + "\n\nTHE MACHINE'S KNOWLEDGE (permitted grounding = the depot history below PLUS the live findings if present):\n" + JSON.stringify({ depository: abGathered.depot, industry_model: abGathered.industry, knowledge_notes: abGathered.notes }) + abLiveBlock;
       try {
         // SELF-HEALING SYNTHESIS (v4.9.420): rich grounding kept producing briefs that overran the output
         // window and died unparseable mid-word (twice live: parents-framing at 3000, Palisades campaign at
@@ -3869,14 +3885,14 @@ async function processCommand(line, env, isOp) {
         let abVerification = null;
         try {
           const vSys = "You are the RESULT VERIFICATION layer of AnalystOS - the last gate before a brief reaches the world; wrong results are the death of this asset. Audit the BRIEF strictly against the GROUNDING KNOWLEDGE. Checks: (1) INVENTED_FIGURE - every number, percentage, or multiplier in the brief that does not appear in, or derive by simple arithmetic from, the grounding; (2) SCALE_FRAMING - every place a narrow figure (federal-assistance floor, FEMA-inspected damage, single-program dollars, a subset count) is presented as if it were an event total loss, total damage, or overall scale; (3) CONTRADICTION - internal, or versus the grounding. Return ONLY JSON, no fences: {\"verdict\":\"PASS\" or \"FLAGGED\",\"issues\":[{\"type\":\"invented_figure\"|\"scale_framing\"|\"contradiction\",\"detail\":\"short specific description with the offending value\"}]}. Empty issues with PASS only if genuinely clean. Be strict: a false PASS is worse than a false flag. Output the JSON object and NOTHING after it - no reasoning, no fences, no commentary.";
-          const vUser = "GROUNDING KNOWLEDGE:\n" + JSON.stringify({ depository: abGathered.depot, industry_model: abGathered.industry, knowledge_notes: abGathered.notes }).slice(0, 40000) + "\n\nBRIEF TO AUDIT:\n" + JSON.stringify(abBrief).slice(0, 20000);
+          const vUser = "GROUNDING KNOWLEDGE:\n" + JSON.stringify({ depository: abGathered.depot, industry_model: abGathered.industry, knowledge_notes: abGathered.notes, live_findings: abLive || null }).slice(0, 40000) + "\n\nBRIEF TO AUDIT:\n" + JSON.stringify(abBrief).slice(0, 20000);
           const vd = await callAnthropic(abApiKey, { model: abModel, max_tokens: 1500, system: vSys, messages: [{ role: "user", content: vUser }] });
           let vt = ""; if (vd && vd.content) { for (const b of vd.content) { if (b.type === "text") vt += b.text; } }
           vt = vt.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
           abVerification = abFirstJson(vt) || { verdict: "UNVERIFIED", issues: [{ type: "verifier_unparseable", detail: vt.slice(0, 300) }] };
         } catch (e) { abVerification = { verdict: "UNVERIFIED", issues: [{ type: "verifier_error", detail: String(e && e.message || e).slice(0, 200) }] }; }
         const abFlagged = abVerification && abVerification.verdict !== "PASS";
-        return { cmd: "ANALYST_BRIEF", payload: { ok: true, verified: abVerification ? abVerification.verdict : "UNVERIFIED", topic: ab.question || ab.topic, industry: ab.industry || undefined, brief: abBrief, verification: abVerification, inventory: abInventory, brevity_retry: abRetried || undefined,
+        return { cmd: "ANALYST_BRIEF", payload: { ok: true, verified: abVerification ? abVerification.verdict : "UNVERIFIED", topic: ab.question || ab.topic, industry: ab.industry || undefined, brief: abBrief, verification: abVerification, live: abLive ? { query: abLive.query, sources: abLive.sources, error: abLive.error || undefined } : undefined, inventory: abInventory, brevity_retry: abRetried || undefined,
           note: (abFlagged ? "VERIFICATION " + (abVerification.verdict || "UNVERIFIED") + " - review verification.issues BEFORE publishing or acting on this brief. " : "VERIFICATION PASS. ") + "THE BRIEF - grounded only in the machine's own knowledge, confidence-scored, gaps stated, self-audited before display (v4.9.421 result-verification law)." } };
       } catch (e) { return { cmd: "ANALYST_BRIEF", payload: { ok: false, error: String(e && e.message || e), inventory: abInventory } }; }
     }

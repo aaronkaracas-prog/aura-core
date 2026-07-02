@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.407-2026-07-01";
+const BUILD = "aura-core-v4.9.422-2026-07-02";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3681,55 +3681,298 @@ async function processCommand(line, env, isOp) {
       } catch (e) { return { cmd: "INDUSTRY_REACH", payload: { ok: false, error: "INDUSTRY_REACH draft failed: " + String(e && e.message || e) } }; }
     }
 
+    case "SOURCE_PROBE": {
+      // VERIFY-BEFORE-WIRING, FROM INSIDE THE WORKER (v4.9.410). The omnivorous_depot discipline says
+      // every source's REAL fields get verified by raw pull BEFORE wiring - but NHTSA proved (2026-07-02)
+      // that some sources edge-wall the operator's terminal (Akamai denied curl AND Invoke-RestMethod)
+      // while remaining open to other clients. This command runs the raw pull from Aura's own egress,
+      // so source verification never again depends on the operator's machine fingerprint.
+      //   SOURCE_PROBE <url>         -> GET: status, content-type/length, first ~1500 chars of body
+      //   SOURCE_PROBE HEAD <url>    -> headers only (for big files - probe a 34MB zip without pulling it)
+      //   SOURCE_PROBE CAPS          -> which decompression formats THIS runtime supports (gzip/deflate/deflate-raw)
+      //   SOURCE_PROBE ZIPLIST <url> -> range-read a remote zip's central directory: list entries WITHOUT
+      //                                 downloading the archive (needs Accept-Ranges; verified on static.nhtsa.gov)
+      if (!isOp) return { cmd: "SOURCE_PROBE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      let spRest = rest.trim();
+      // CAPS: runtime capability self-test - write extractors against reality, not assumption
+      if (/^CAPS$/i.test(spRest)) {
+        const caps = {};
+        for (const f of ["gzip", "deflate", "deflate-raw"]) { try { new DecompressionStream(f); caps[f] = true; } catch (e) { caps[f] = false; } }
+        return { cmd: "SOURCE_PROBE", payload: { ok: true, mode: "caps", decompression_stream: caps, note: "Formats this worker runtime can decompress natively. Zip entries are deflate-raw; if that is true here, remote zip extraction needs no library." } };
+      }
+      // ZIPLIST: read ONLY the zip's table of contents via range requests (tail EOCD -> central directory)
+      if (/^ZIPLIST\s+/i.test(spRest)) {
+        const zUrl = spRest.replace(/^ZIPLIST\s+/i, "").trim();
+        if (!/^https:\/\//i.test(zUrl)) return { cmd: "SOURCE_PROBE", payload: { ok: false, error: "usage: SOURCE_PROBE ZIPLIST <https-url-to-zip>" } };
+        try {
+          const hr = await fetchWithTimeout(zUrl, { method: "HEAD", headers: { "user-agent": "aura-source-probe/1.0" } }, 15000);
+          const total = parseInt(hr.headers.get("content-length") || "0", 10);
+          const acceptRanges = ((hr.headers.get("accept-ranges") || "").toLowerCase().includes("bytes"));
+          if (!hr.ok || !total) return { cmd: "SOURCE_PROBE", payload: { ok: false, error: "HEAD failed or no content-length (status " + hr.status + ")" } };
+          const tailLen = Math.min(total, 66000);
+          const tr = await fetchWithTimeout(zUrl, { headers: { "range": "bytes=" + (total - tailLen) + "-" + (total - 1), "user-agent": "aura-source-probe/1.0" } }, 20000);
+          if (tr.status !== 206 && tr.status !== 200) return { cmd: "SOURCE_PROBE", payload: { ok: false, error: "range request not honored (status " + tr.status + ") - accept-ranges header said " + (acceptRanges ? "bytes" : "none") } };
+          const tail = new Uint8Array(await tr.arrayBuffer());
+          let eocd = -1;
+          for (let i = tail.length - 22; i >= 0; i--) { if (tail[i] === 0x50 && tail[i + 1] === 0x4b && tail[i + 2] === 0x05 && tail[i + 3] === 0x06) { eocd = i; break; } }
+          if (eocd < 0) return { cmd: "SOURCE_PROBE", payload: { ok: false, error: "zip end-of-central-directory not found in tail - not a zip, or comment >64KB" } };
+          const dv = new DataView(tail.buffer, tail.byteOffset, tail.byteLength);
+          const entriesTotal = dv.getUint16(eocd + 10, true);
+          const cdSize = dv.getUint32(eocd + 12, true);
+          const cdOffset = dv.getUint32(eocd + 16, true);
+          const tailStart = total - tail.length;
+          let cdBytes;
+          if (cdOffset >= tailStart) { cdBytes = tail.subarray(cdOffset - tailStart, cdOffset - tailStart + cdSize); }
+          else {
+            const cr = await fetchWithTimeout(zUrl, { headers: { "range": "bytes=" + cdOffset + "-" + (cdOffset + cdSize - 1), "user-agent": "aura-source-probe/1.0" } }, 20000);
+            if (cr.status !== 206 && cr.status !== 200) return { cmd: "SOURCE_PROBE", payload: { ok: false, error: "central-directory range fetch failed (status " + cr.status + ")" } };
+            cdBytes = new Uint8Array(await cr.arrayBuffer());
+          }
+          const cdv = new DataView(cdBytes.buffer, cdBytes.byteOffset, cdBytes.byteLength);
+          const td = new TextDecoder();
+          const entries = []; let p = 0;
+          while (p + 46 <= cdBytes.length && entries.length < 400) {
+            if (!(cdBytes[p] === 0x50 && cdBytes[p + 1] === 0x4b && cdBytes[p + 2] === 0x01 && cdBytes[p + 3] === 0x02)) break;
+            const method = cdv.getUint16(p + 10, true), csize = cdv.getUint32(p + 20, true), usize = cdv.getUint32(p + 24, true);
+            const nlen = cdv.getUint16(p + 28, true), elen = cdv.getUint16(p + 30, true), clen = cdv.getUint16(p + 32, true);
+            const lho = cdv.getUint32(p + 42, true);
+            entries.push({ name: td.decode(cdBytes.subarray(p + 46, p + 46 + nlen)), method: method === 8 ? "deflate" : method === 0 ? "stored" : "method-" + method, compressed_bytes: csize, uncompressed_bytes: usize, local_header_offset: lho });
+            p += 46 + nlen + elen + clen;
+          }
+          return { cmd: "SOURCE_PROBE", payload: { ok: true, mode: "ziplist", url: zUrl, archive_bytes: total, accept_ranges: acceptRanges, entries_total: entriesTotal, entries_listed: entries.length, entries,
+            note: "Zip table of contents read via range requests - the archive itself was NOT downloaded. An extractor can range-fetch a single entry's bytes (local_header_offset + compressed_bytes) and inflate just that file." } };
+        } catch (e) { return { cmd: "SOURCE_PROBE", payload: { ok: false, error: String(e && e.message || e) } }; }
+      }
+      let spMethod = "GET";
+      if (/^HEAD\s+/i.test(spRest)) { spMethod = "HEAD"; spRest = spRest.replace(/^HEAD\s+/i, "").trim(); }
+      const spUrl = spRest;
+      if (!/^https:\/\//i.test(spUrl)) return { cmd: "SOURCE_PROBE", payload: { ok: false, error: "usage: SOURCE_PROBE [HEAD] <https-url>  (https only)" } };
+      try {
+        const t0 = Date.now();
+        const r = await fetchWithTimeout(spUrl, { method: spMethod, headers: { "accept": "application/json, text/plain, */*", "user-agent": "aura-source-probe/1.0" }, redirect: "follow" }, 15000);
+        const hdrs = {};
+        for (const h of ["content-type", "content-length", "last-modified", "server", "www-authenticate", "location"]) { const v = r.headers.get(h); if (v) hdrs[h] = v; }
+        let bodyPreview = null; let bodyBytes = null;
+        if (spMethod === "GET") {
+          const buf = await r.arrayBuffer();
+          bodyBytes = buf.byteLength;
+          const slice = new Uint8Array(buf.slice(0, 1500));
+          let looksBinary = false; for (let i = 0; i < Math.min(200, slice.length); i++) { if (slice[i] === 0) { looksBinary = true; break; } }
+          bodyPreview = looksBinary ? "(binary content - " + bodyBytes + " bytes; use HEAD for big files)" : new TextDecoder("utf-8", { fatal: false }).decode(slice);
+        }
+        return { cmd: "SOURCE_PROBE", payload: { ok: true, url: spUrl, method: spMethod, status: r.status, reachable_from_worker: r.status >= 200 && r.status < 400, headers: hdrs, body_bytes: bodyBytes, body_preview: bodyPreview, ms: Date.now() - t0,
+          note: "Raw probe from Aura's own egress. If status is 2xx with real data here but the same URL is walled from the operator terminal, wire the source through the worker. Verified sources go in notes:data:public_sources with real fields + date." } };
+      } catch (e) { return { cmd: "SOURCE_PROBE", payload: { ok: false, url: spUrl, error: String(e && e.message || e), note: "Fetch failed from the worker itself (timeout/DNS/TLS) - the source is unreachable from Aura, not just from the terminal." } }; }
+    }
+
+    case "ANALYST_BRIEF": {
+      // THE BRIEF ENGINE v0 (v4.9.409) - AnalystOS's core deliverable (notes:asset:analystos), the
+      // SHOW-VALUE artifact of the onboarding circle: ingestion fills the depot, INDUSTRY_LEARN
+      // understands the business, the BRIEF proves we already know their world.
+      // Answers the 8 universal questions, confidence-scored, grounded ONLY in what the machine
+      // actually knows RIGHT NOW: the depository (depot:risk:*) + the industry models
+      // (notes:industry:*). HONESTY LAW (same as ADVISE): no invented figures; contradictions
+      // surfaced; gaps stated plainly; the deterministic data inventory rides in the payload
+      // beneath the summary so the raw grounding is always visible.
+      // Distinct from LIVING BRIEF (live web perception) and SITUATION_BRIEF (live situation read):
+      // ANALYST_BRIEF is the KNOWLEDGE-grounded analysis layer. v0 reads KV only - no web calls.
+      //   ANALYST_BRIEF <topic words>
+      //   ANALYST_BRIEF ::: {"topic":"...","industry":"trucking","risk_types":["wildfire"],"question":"..."}
+      if (!isOp) return { cmd: "ANALYST_BRIEF", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      let ab = { topic: "", industry: null, risk_types: null, question: null };
+      if (rest.includes(":::")) {
+        try { const j = JSON.parse(rest.slice(rest.indexOf(":::") + 3).trim()); ab = { ...ab, ...j }; } catch { return { cmd: "ANALYST_BRIEF", payload: { ok: false, error: 'Bad JSON. Usage: ANALYST_BRIEF <topic>  or  ANALYST_BRIEF ::: {"topic":"...","industry":"...","risk_types":["..."],"question":"..."}' } }; }
+      } else { ab.topic = rest.trim(); }
+      if (!ab.topic && !ab.question && !ab.industry && !ab.risk_types) return { cmd: "ANALYST_BRIEF", payload: { ok: false, error: "Give me a topic: ANALYST_BRIEF <topic>" } };
+      // ---- DETERMINISTIC GATHER (the inventory of what the machine actually knows) ----
+      const abGathered = { depot: [], industry: null, missing: [] };
+      let abIdx = []; try { const ir = await env.AURA_KV.get("depot:index"); if (ir) abIdx = JSON.parse(ir); } catch {}
+      const abWanted = Array.isArray(ab.risk_types) && ab.risk_types.length
+        ? ab.risk_types.map(t => String(t).toLowerCase())
+        : abIdx.slice(); // v0: no risk_types given -> include the whole depository (it is small); the topic steers the synthesis
+      for (const t of abWanted) {
+        if (!abIdx.includes(t)) { abGathered.missing.push("depot:risk:" + t + " (not in depository)"); continue; }
+        try {
+          const raw = await env.AURA_KV.get("depot:risk:" + t);
+          if (!raw) { abGathered.missing.push("depot:risk:" + t + " (index lists it but record empty)"); continue; }
+          const r = JSON.parse(raw);
+          abGathered.depot.push({ risk_type: r.risk_type, entry_count: r.entry_count, touches: r.touches,
+            patterns: r.patterns || [], pricing_signals: r.pricing_signals || [],
+            evidence_recent: (r.evidence || []).slice(-15), evidence_total: (r.evidence || []).length,
+            last_updated: r.updated || r.created || null });
+        } catch (e) { abGathered.missing.push("depot:risk:" + t + " (read failed)"); }
+      }
+      if (ab.industry) {
+        const indKey = "notes:industry:" + String(ab.industry).toLowerCase().replace(/[^a-z0-9]+/g, "-");
+        try { const ind = await env.AURA_KV.get(indKey); if (ind) abGathered.industry = { key: indKey, model: ind.slice(0, 6000) }; else abGathered.missing.push(indKey + " (no learned model - run INDUSTRY_LEARN first)"); } catch {}
+      }
+      // notes[] (v4.9.418): a brief may draw on canon/asset/domain knowledge notes as grounding - e.g.
+      // the FireOS fire-behavior knowledge for a prevention brief. Operator supplies the keys; each is
+      // read from KV and handed to synthesis as permitted grounding, listed in the inventory.
+      abGathered.notes = [];
+      if (Array.isArray(ab.notes)) {
+        for (const nk of ab.notes.slice(0, 5)) {
+          const key = /^notes:/.test(String(nk)) ? String(nk) : "notes:" + String(nk);
+          try { const v = await env.AURA_KV.get(key); if (v) abGathered.notes.push({ key, content: v.slice(0, 8000) }); else abGathered.missing.push(key + " (not found)"); } catch { abGathered.missing.push(key + " (read failed)"); }
+        }
+      }
+      const abInventory = { depot_records: abGathered.depot.map(d => ({ risk_type: d.risk_type, entries: d.entry_count, evidence_lines: d.evidence_total, patterns: d.patterns.length, pricing_signals: d.pricing_signals.length, last_updated: d.last_updated })), industry_model: abGathered.industry ? abGathered.industry.key : null, notes_included: abGathered.notes.map(n => n.key), missing: abGathered.missing };
+      if (!abGathered.depot.length && !abGathered.industry && !abGathered.notes.length) {
+        return { cmd: "ANALYST_BRIEF", payload: { ok: false, error: "Nothing in the machine's knowledge grounds this brief yet - the depository has no matching risk records and no industry model was found. Pour knowledge first (DEPOT_INGEST / DEPOT_POUR_*) or learn the industry (INDUSTRY_LEARN).", inventory: abInventory } };
+      }
+      // ---- SYNTHESIS: the 8 universal questions, grounded + scored ----
+      const abApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      if (!abApiKey) return { cmd: "ANALYST_BRIEF", payload: { ok: false, error: "Brain not configured", inventory: abInventory } };
+      const abModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const abSystem = "You are the BRIEF ENGINE of AnalystOS - the always-on analyst who already read everything. Produce THE BRIEF: the 8 universal questions, answered ONLY from the knowledge provided. HONESTY LAW (absolute): never invent figures, names, or events not present in the knowledge; NEVER reach for outside/general knowledge even when the audience tempts it (if asked what something costs and no cost data is in the knowledge, the answer is Unknown + a gap entry - not an industry rule of thumb); where the knowledge is thin, say so plainly in gaps; where sources conflict, surface the conflict. SCALE LAW (absolute): federal disaster-assistance figures (FEMA IHP approvals, PA obligations, FEMA-inspected damage, program dollars) are narrow administrative FLOORS - NEVER present them as an event's loss, damage, or cost; always name exactly what each figure is; if total-loss or insured-loss figures exist in the knowledge they LEAD the headline; if they do not exist, the headline must say the total loss is not in the knowledge. Be CONCISE - every field 2-5 sentences, gaps/grounding as short lines; the whole brief must comfortably fit the output window. Score confidence honestly: Confirmed (directly evidenced), Probable (strongly implied), Possible (consistent but thin), Unknown (no grounding). Return ONLY JSON, no fences, exactly these keys: headline (one sharp sentence), what_is_happening, why_it_is_happening, who_it_affects, what_should_be_done, who_else_should_be_involved, what_happens_next, confidence (object: overall = Confirmed|Probable|Possible|Unknown, reasoning = one sentence), what_would_change_the_conclusion, grounding (array of short strings citing which knowledge each key conclusion rests on), gaps (array of plainly-stated holes in the knowledge). Write for a decision-maker: concrete, no filler, every sentence earns its place.";
+      const abUser = "QUESTION/TOPIC: " + (ab.question || ab.topic) + (ab.industry ? "\nINDUSTRY LENS: " + ab.industry : "") + "\n\nTHE MACHINE'S KNOWLEDGE (the ONLY permitted grounding):\n" + JSON.stringify({ depository: abGathered.depot, industry_model: abGathered.industry, knowledge_notes: abGathered.notes }) ;
+      try {
+        // SELF-HEALING SYNTHESIS (v4.9.420): rich grounding kept producing briefs that overran the output
+        // window and died unparseable mid-word (twice live: parents-framing at 3000, Palisades campaign at
+        // 5000). Cap now 8000, and on a parse failure the engine retries ONCE demanding half the length -
+        // structural fix, not hope. Honest failure only after both attempts.
+        // FIRST-JSON EXTRACTOR (v4.9.422): the verifier once returned a clean PASS verdict and then kept
+        // reasoning AFTER the JSON, which broke JSON.parse and mislabeled a passing artifact UNVERIFIED.
+        // Structural fix: extract the first complete top-level JSON object (string-aware brace scan);
+        // trailing commentary or fences can never break a verdict or a brief again.
+        const abFirstJson = (t) => {
+          try { return JSON.parse(t); } catch {}
+          const s = t.indexOf("{");
+          if (s < 0) return null;
+          let depth = 0, inStr = false, esc = false;
+          for (let i = s; i < t.length; i++) {
+            const c = t[i];
+            if (inStr) { if (esc) esc = false; else if (c === "\\") esc = true; else if (c === '"') inStr = false; }
+            else { if (c === '"') inStr = true; else if (c === "{") depth++; else if (c === "}") { depth--; if (depth === 0) { try { return JSON.parse(t.slice(s, i + 1)); } catch { return null; } } } }
+          }
+          return null;
+        };
+        const abCall = async (extra) => {
+          const d = await callAnthropic(abApiKey, { model: abModel, max_tokens: 8000, system: abSystem + (extra || ""), messages: [{ role: "user", content: abUser.slice(0, 60000) }] });
+          let t = ""; if (d && d.content) { for (const b of d.content) { if (b.type === "text") t += b.text; } }
+          t = t.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+          const j = abFirstJson(t);
+          return { j, t };
+        };
+        let { j: abBrief, t: abText } = await abCall("");
+        let abRetried = false;
+        if (!abBrief) {
+          abRetried = true;
+          ({ j: abBrief, t: abText } = await abCall(" CRITICAL: your previous attempt overran the output window and was truncated mid-JSON. Produce the SAME brief at HALF the length - every field 1-3 tight sentences, grounding and gaps as short single-line strings, nothing ornamental. Valid complete JSON is the only requirement that matters."));
+        }
+        if (!abBrief) return { cmd: "ANALYST_BRIEF", payload: { ok: false, error: "brief synthesis returned unparseable output twice (initial + brevity retry) - the deterministic inventory below is still the true picture of what the machine knows", inventory: abInventory, raw: abText.slice(0, 1200) } };
+        // RESULT VERIFICATION (v4.9.421) - Aaron's law: wrong results are the death of this asset, so
+        // Aura audits her own brief BEFORE it reaches anyone. An independent pass cross-examines the
+        // brief against its grounding: invented figures, scale-framing violations (a federal floor
+        // presented as "the loss" - the exact failure caught live on the Palisades brief), and
+        // contradictions. The verdict travels WITH the brief; FLAGGED is loud, never buried.
+        let abVerification = null;
+        try {
+          const vSys = "You are the RESULT VERIFICATION layer of AnalystOS - the last gate before a brief reaches the world; wrong results are the death of this asset. Audit the BRIEF strictly against the GROUNDING KNOWLEDGE. Checks: (1) INVENTED_FIGURE - every number, percentage, or multiplier in the brief that does not appear in, or derive by simple arithmetic from, the grounding; (2) SCALE_FRAMING - every place a narrow figure (federal-assistance floor, FEMA-inspected damage, single-program dollars, a subset count) is presented as if it were an event total loss, total damage, or overall scale; (3) CONTRADICTION - internal, or versus the grounding. Return ONLY JSON, no fences: {\"verdict\":\"PASS\" or \"FLAGGED\",\"issues\":[{\"type\":\"invented_figure\"|\"scale_framing\"|\"contradiction\",\"detail\":\"short specific description with the offending value\"}]}. Empty issues with PASS only if genuinely clean. Be strict: a false PASS is worse than a false flag. Output the JSON object and NOTHING after it - no reasoning, no fences, no commentary.";
+          const vUser = "GROUNDING KNOWLEDGE:\n" + JSON.stringify({ depository: abGathered.depot, industry_model: abGathered.industry, knowledge_notes: abGathered.notes }).slice(0, 40000) + "\n\nBRIEF TO AUDIT:\n" + JSON.stringify(abBrief).slice(0, 20000);
+          const vd = await callAnthropic(abApiKey, { model: abModel, max_tokens: 1500, system: vSys, messages: [{ role: "user", content: vUser }] });
+          let vt = ""; if (vd && vd.content) { for (const b of vd.content) { if (b.type === "text") vt += b.text; } }
+          vt = vt.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+          abVerification = abFirstJson(vt) || { verdict: "UNVERIFIED", issues: [{ type: "verifier_unparseable", detail: vt.slice(0, 300) }] };
+        } catch (e) { abVerification = { verdict: "UNVERIFIED", issues: [{ type: "verifier_error", detail: String(e && e.message || e).slice(0, 200) }] }; }
+        const abFlagged = abVerification && abVerification.verdict !== "PASS";
+        return { cmd: "ANALYST_BRIEF", payload: { ok: true, verified: abVerification ? abVerification.verdict : "UNVERIFIED", topic: ab.question || ab.topic, industry: ab.industry || undefined, brief: abBrief, verification: abVerification, inventory: abInventory, brevity_retry: abRetried || undefined,
+          note: (abFlagged ? "VERIFICATION " + (abVerification.verdict || "UNVERIFIED") + " - review verification.issues BEFORE publishing or acting on this brief. " : "VERIFICATION PASS. ") + "THE BRIEF - grounded only in the machine's own knowledge, confidence-scored, gaps stated, self-audited before display (v4.9.421 result-verification law)." } };
+      } catch (e) { return { cmd: "ANALYST_BRIEF", payload: { ok: false, error: String(e && e.message || e), inventory: abInventory } }; }
+    }
+
     case "DEPOT_INGEST": {
-      // THE SHARED KNOWLEDGE DEPOSITORY - write side (v4.9.405). Ingests historical or live RISK KNOWLEDGE,
-      // distilled, into depot:risk:<type>. RISK-TYPE primary (war-risk, wildfire, flood, driving, cargo...),
-      // each entry cross-linked to the industries it touches. This is the SHARED substrate: fire history feeds
-      // insurance AND FireOS; Hormuz feeds insurance AND shipping. Ingest once -> value in many industries.
-      // Insurance is the heaviest consumer (digested risk history = the moat). Modeled on FIRE_INGEST.
-      //   DEPOT_INGEST ::: {"risk_type":"war-risk","touches":["shipping","insurance"],"knowledge":"<what happened / cause / effect / magnitude / source>"}
+      // THE SHARED KNOWLEDGE DEPOSITORY - write side (v4.9.408, additive rewrite). Ingests historical or
+      // live RISK KNOWLEDGE into depot:risk:<type>. RISK-TYPE primary (war-risk, wildfire, flood, driving...),
+      // each entry cross-linked to the industries it touches. Insurance is the heaviest consumer.
+      //
+      // WHY THE REWRITE (proven necessary 2026-07-02): the v4.9.405 version asked the model to return the
+      // FULL merged record each time and REPLACED all three arrays with the output. With max_tokens capped,
+      // a growing record got truncated and the "repair" silently dropped whatever was cut - pricing_signals
+      // went 15 -> 14 -> 2 across three real pours. The moat was leaking: a pour could ERASE prior pours.
+      //
+      // THE LAW NOW: a pour can only ADD. (1) Real data lines (evidence_lines) are appended DETERMINISTICALLY,
+      // no model in the loop - real evidence can never be lost to a token limit. (2) The model is asked for
+      // ADDITIONS ONLY (new patterns/signals not already in the record); additions are appended and deduped.
+      // Existing arrays are NEVER replaced. Caps are high (patterns/pricing 40, evidence 200) with oldest-out
+      // eviction only at the cap, and every ingest is logged in a sources[] provenance trail.
+      //   DEPOT_INGEST ::: {"risk_type":"wildfire","touches":["insurance","fire"],"knowledge":"<text for pattern synthesis>","evidence_lines":["<real datapoint>",...],"source":"<where this came from>"}
+      //   (evidence_lines and source are optional; knowledge is required and also feeds the synthesis)
       if (!isOp) return { cmd: "DEPOT_INGEST", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const diPayload = rest.includes(":::") ? rest.slice(rest.indexOf(":::") + 3).trim() : rest.trim();
-      let di; try { di = JSON.parse(diPayload); } catch { return { cmd: "DEPOT_INGEST", payload: { ok: false, error: 'Usage: DEPOT_INGEST ::: {"risk_type":"war-risk","touches":["shipping","insurance"],"knowledge":"..."}' } }; }
+      let di; try { di = JSON.parse(diPayload); } catch { return { cmd: "DEPOT_INGEST", payload: { ok: false, error: 'Usage: DEPOT_INGEST ::: {"risk_type":"war-risk","touches":["shipping","insurance"],"knowledge":"...","evidence_lines":["..."],"source":"..."}' } }; }
       if (!di || !di.risk_type || !di.knowledge) return { cmd: "DEPOT_INGEST", payload: { ok: false, error: "risk_type and knowledge are required" } };
       const diType = di.risk_type.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
       const diKey = `depot:risk:${diType}`;
+      const DI_CAP_PATTERNS = 40, DI_CAP_PRICING = 40, DI_CAP_EVIDENCE = 200, DI_CAP_SOURCES = 40;
+      const diNorm = (s) => String(s || "").toLowerCase().replace(/\s+/g, " ").replace(/[.,;:!]+$/g, "").trim();
+      // append-with-dedupe: existing items are NEVER dropped except oldest-out at the hard cap
+      const diAppend = (arr, adds, cap, keyFn) => {
+        const seen = new Set(arr.map(keyFn));
+        let added = 0;
+        for (const a of adds) { const k = keyFn(a); if (!k || seen.has(k)) continue; seen.add(k); arr.push(a); added++; }
+        let evicted = 0;
+        while (arr.length > cap) { arr.shift(); evicted++; }
+        return { added, evicted };
+      };
       // read current risk-type record
       let diRec = null;
       try { const raw = await env.AURA_KV.get(diKey); if (raw) diRec = JSON.parse(raw); } catch {}
-      if (!diRec) diRec = { risk_type: di.risk_type, entry_count: 0, touches: [], patterns: [], evidence: [], pricing_signals: [], created: new Date().toISOString(), updated: null };
-      // distill the knowledge into the risk record (patterns / evidence / pricing_signals), merging
+      if (!diRec) diRec = { risk_type: di.risk_type, entry_count: 0, touches: [], patterns: [], evidence: [], pricing_signals: [], sources: [], created: new Date().toISOString(), updated: null };
+      if (!Array.isArray(diRec.sources)) diRec.sources = []; // records written before v4.9.408
+      const before = { patterns: diRec.patterns.length, evidence: diRec.evidence.length, pricing_signals: diRec.pricing_signals.length };
+      // STEP 1 - DETERMINISTIC: real data lines land first, no model involved, cannot be lost to truncation
+      let detEvidence = { added: 0, evicted: 0 };
+      if (Array.isArray(di.evidence_lines) && di.evidence_lines.length) {
+        const lines = di.evidence_lines.map(l => String(l).slice(0, 400)).filter(Boolean);
+        detEvidence = diAppend(diRec.evidence, lines, DI_CAP_EVIDENCE, diNorm);
+      }
+      // STEP 2 - SYNTHESIS, ADDITIONS ONLY: the model may only propose NEW patterns/signals/evidence.
+      // If it fails or returns garbage, step 1 already landed - the pour still counts, honestly flagged.
+      let distillNote = null; let addPatterns = { added: 0, evicted: 0 }, addPricing = { added: 0, evicted: 0 }, addEvidence = { added: 0, evicted: 0 };
       const diApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
-      if (!diApiKey) return { cmd: "DEPOT_INGEST", payload: { ok: false, error: "Brain not configured" } };
-      const diModelName = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
-      const diSystem = "You are the DEPOSITORY layer of Aura - the shared cross-industry RISK KNOWLEDGE store. You maintain a durable, compounding record of a RISK TYPE so ANY industry can draw on it (insurance to price it, operators to avoid it). You are given the CURRENT risk record and NEW KNOWLEDGE (a historical event, live situation, or cause-effect). Integrate it: add only what is NEW or sharper, merge duplicates, keep durable and tight. Return ONLY JSON, no fences, exactly these keys: patterns (array of durable cause->effect risk patterns), evidence (array of concrete events/datapoints that prove the patterns, each a short factual line), pricing_signals (array of what MOVES the price/premium/cost for this risk - the levers an insurer or operator watches). Each array = FULL merged list (old+new integrated), deduplicated, most important first, capped ~15 each. Output JSON only.";
-      const diUser = "RISK TYPE: " + di.risk_type + "\n\nCURRENT RECORD:\n" + JSON.stringify({ patterns: diRec.patterns, evidence: diRec.evidence, pricing_signals: diRec.pricing_signals }) + "\n\nNEW KNOWLEDGE:\n" + di.knowledge;
-      try {
-        const diData = await callAnthropic(diApiKey, { model: diModelName, max_tokens: 3000, system: diSystem, messages: [{ role: "user", content: diUser }] });
-        let diText = ""; if (diData && diData.content) { for (const b of diData.content) { if (b.type === "text") diText += b.text; } }
-        diText = diText.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
-        let diParsed = null; try { diParsed = JSON.parse(diText); } catch {}
-        if (!diParsed) { // truncation repair
-          try { let rp = diText; if (((rp.match(/"/g)||[]).length)%2!==0) rp+='"'; rp=rp.replace(/,\s*$/,""); const ob=(rp.match(/\[/g)||[]).length,cb=(rp.match(/\]/g)||[]).length,oc=(rp.match(/\{/g)||[]).length,cc=(rp.match(/\}/g)||[]).length; for(let i=0;i<ob-cb;i++)rp+="]"; for(let i=0;i<oc-cc;i++)rp+="}"; diParsed=JSON.parse(rp); } catch {}
-        }
-        if (!diParsed) return { cmd: "DEPOT_INGEST", payload: { ok: false, error: "distill did not return valid JSON", raw: diText.slice(0, 600) } };
-        const before = { patterns: diRec.patterns.length, evidence: diRec.evidence.length, pricing_signals: diRec.pricing_signals.length };
-        diRec.patterns = Array.isArray(diParsed.patterns) ? diParsed.patterns : diRec.patterns;
-        diRec.evidence = Array.isArray(diParsed.evidence) ? diParsed.evidence : diRec.evidence;
-        diRec.pricing_signals = Array.isArray(diParsed.pricing_signals) ? diParsed.pricing_signals : diRec.pricing_signals;
-        for (const t of (Array.isArray(di.touches) ? di.touches : [])) { const tl = String(t).toLowerCase(); if (!diRec.touches.includes(tl)) diRec.touches.push(tl); }
-        diRec.entry_count = (diRec.entry_count || 0) + 1;
-        diRec.updated = new Date().toISOString();
-        await env.AURA_KV.put(diKey, JSON.stringify(diRec)).catch(() => {});
-        // maintain an index of all risk types for DEPOT_QUERY discovery
-        try { let idx = []; const ir = await env.AURA_KV.get("depot:index"); if (ir) idx = JSON.parse(ir); if (!idx.includes(diType)) { idx.push(diType); await env.AURA_KV.put("depot:index", JSON.stringify(idx)); } } catch {}
-        const after = { patterns: diRec.patterns.length, evidence: diRec.evidence.length, pricing_signals: diRec.pricing_signals.length };
-        return { cmd: "DEPOT_INGEST", payload: { ok: true, risk_type: di.risk_type, key: diKey, entry_count: diRec.entry_count,
-          touches: diRec.touches,
-          growth: { before, after, patterns_delta: after.patterns - before.patterns, evidence_delta: after.evidence - before.evidence, pricing_delta: after.pricing_signals - before.pricing_signals },
-          record: diRec,
-          note: "Knowledge ingested into the shared depository. This risk type is now readable by EVERY industry it touches (" + diRec.touches.join(", ") + "). Ingest once, value everywhere." } };
-      } catch (e) { return { cmd: "DEPOT_INGEST", payload: { ok: false, error: "DEPOT_INGEST distill failed: " + String(e && e.message || e) } }; }
+      if (!diApiKey) {
+        distillNote = "Brain not configured - deterministic evidence landed, synthesis skipped";
+      } else {
+        const diModelName = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+        const diSystem = "You are the DEPOSITORY layer of Aura - the shared cross-industry RISK KNOWLEDGE store. You maintain a durable, compounding record of a RISK TYPE so ANY industry can draw on it (insurance to price it, operators to avoid it). You are given the CURRENT record and NEW KNOWLEDGE. Your job is ADDITIONS ONLY: propose ONLY what is genuinely NEW - do NOT restate, rewrite, or re-list anything already in the record. Ground every addition in the knowledge given; never invent figures. Return ONLY JSON, no fences, exactly these keys: patterns_add (array of {cause, effect} objects NEW to the record - durable cause->effect risk patterns), evidence_add (array of short factual lines NEW to the record), pricing_signals_add (array of NEW levers that move price/premium/cost for this risk). Empty arrays are a valid answer if nothing is new. Output JSON only.";
+        const diEvTail = diRec.evidence.slice(-40);
+        const diUser = "RISK TYPE: " + di.risk_type + "\n\nCURRENT RECORD (patterns and pricing_signals complete; evidence shows the most recent " + diEvTail.length + " of " + diRec.evidence.length + " lines):\n" + JSON.stringify({ patterns: diRec.patterns, pricing_signals: diRec.pricing_signals, evidence_recent: diEvTail }) + "\n\nNEW KNOWLEDGE:\n" + String(di.knowledge).slice(0, 8000);
+        try {
+          const diData = await callAnthropic(diApiKey, { model: diModelName, max_tokens: 2000, system: diSystem, messages: [{ role: "user", content: diUser }] });
+          let diText = ""; if (diData && diData.content) { for (const b of diData.content) { if (b.type === "text") diText += b.text; } }
+          diText = diText.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+          let diParsed = null; try { diParsed = JSON.parse(diText); } catch {}
+          if (diParsed) {
+            const pAdds = (Array.isArray(diParsed.patterns_add) ? diParsed.patterns_add : []).filter(p => p && p.cause && p.effect).map(p => ({ cause: String(p.cause).slice(0, 400), effect: String(p.effect).slice(0, 500) }));
+            const eAdds = (Array.isArray(diParsed.evidence_add) ? diParsed.evidence_add : []).map(l => String(l).slice(0, 400)).filter(Boolean);
+            const sAdds = (Array.isArray(diParsed.pricing_signals_add) ? diParsed.pricing_signals_add : []).map(l => String(l).slice(0, 400)).filter(Boolean);
+            addPatterns = diAppend(diRec.patterns, pAdds, DI_CAP_PATTERNS, p => diNorm((p && p.cause ? p.cause : "") + "|" + (p && p.effect ? p.effect : "")));
+            addEvidence = diAppend(diRec.evidence, eAdds, DI_CAP_EVIDENCE, diNorm);
+            addPricing = diAppend(diRec.pricing_signals, sAdds, DI_CAP_PRICING, diNorm);
+          } else {
+            distillNote = "synthesis returned unparseable JSON - deterministic evidence landed, additions skipped this ingest";
+          }
+        } catch (e) { distillNote = "synthesis failed (" + String(e && e.message || e).slice(0, 120) + ") - deterministic evidence landed, additions skipped"; }
+      }
+      // touches + provenance + counters
+      for (const t of (Array.isArray(di.touches) ? di.touches : [])) { const tl = String(t).toLowerCase(); if (!diRec.touches.includes(tl)) diRec.touches.push(tl); }
+      diRec.sources.push({ ts: new Date().toISOString(), source: String(di.source || "unspecified").slice(0, 200), summary: String(di.knowledge).slice(0, 160) });
+      while (diRec.sources.length > DI_CAP_SOURCES) diRec.sources.shift();
+      diRec.entry_count = (diRec.entry_count || 0) + 1;
+      diRec.updated = new Date().toISOString();
+      await env.AURA_KV.put(diKey, JSON.stringify(diRec)).catch(() => {});
+      // maintain an index of all risk types for DEPOT_QUERY discovery
+      try { let idx = []; const ir = await env.AURA_KV.get("depot:index"); if (ir) idx = JSON.parse(ir); if (!idx.includes(diType)) { idx.push(diType); await env.AURA_KV.put("depot:index", JSON.stringify(idx)); } } catch {}
+      const after = { patterns: diRec.patterns.length, evidence: diRec.evidence.length, pricing_signals: diRec.pricing_signals.length };
+      const evicted = { patterns: addPatterns.evicted, evidence: detEvidence.evicted + addEvidence.evicted, pricing_signals: addPricing.evicted };
+      return { cmd: "DEPOT_INGEST", payload: { ok: true, risk_type: di.risk_type, key: diKey, entry_count: diRec.entry_count,
+        touches: diRec.touches,
+        growth: { before, after, patterns_delta: after.patterns - before.patterns, evidence_delta: after.evidence - before.evidence, pricing_delta: after.pricing_signals - before.pricing_signals },
+        added: { evidence_deterministic: detEvidence.added, evidence_synthesized: addEvidence.added, patterns: addPatterns.added, pricing_signals: addPricing.added },
+        evicted_at_cap: (evicted.patterns || evicted.evidence || evicted.pricing_signals) ? evicted : undefined,
+        distill_note: distillNote || undefined,
+        note: "Knowledge ingested ADDITIVELY into the shared depository - existing knowledge is never replaced, only extended (v4.9.408 law). Readable by every industry it touches (" + diRec.touches.join(", ") + ")." } };
     }
 
     case "DEPOT_QUERY": {
@@ -3759,38 +4002,566 @@ async function processCommand(line, env, isOp) {
         note: `Shared risk knowledge for ${rec.risk_type}, drawn from ${rec.entry_count} ingested entr(ies). Readable by every industry it touches: ${(rec.touches||[]).join(", ")}.` } };
     }
 
+    case "DEPOT_POUR_DISASTER": {
+      // DISASTER DOLLARS (v4.9.418). Pours one FEMA-declared disaster's quantified reality into the
+      // depot: the declaration facts, the federal dollar totals (IHP approved / PA + HMGP obligated),
+      // and ZIP-level housing damage + assistance (HousingAssistanceOwners - verified fields 2026-07-02:
+      // validRegistrations, totalDamage, totalApprovedIhpAmount, damage brackets, per ZIP per disaster).
+      // Built for the prevention thesis (notes:canon:prevention_thesis): the loss side of "A+B+C
+      // prevents E" - e.g. the Jan 2025 Palisades fire, quantified to the ZIP (90272), from source.
+      //   DEPOT_POUR_DISASTER FIND <STATE> <fyYear> [term]  -> list matching declarations (no pour)
+      //   DEPOT_POUR_DISASTER <disasterNumber>              -> pour that disaster's facts + dollars
+      if (!isOp) return { cmd: "DEPOT_POUR_DISASTER", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const pdUA = { "user-agent": "aura-depot-pour/1.0", "accept": "application/json" };
+      const pdDecl = "https://www.fema.gov/api/open/v2/DisasterDeclarationsSummaries";
+      const $m2 = (n) => n == null ? "n/a" : "$" + (Math.abs(n) >= 1e9 ? (n / 1e9).toFixed(2) + "B" : Math.abs(n) >= 1e6 ? (n / 1e6).toFixed(1) + "M" : Math.round(n).toLocaleString());
+      const pdFindM = rest.trim().match(/^FIND\s+([A-Za-z]{2})\s+((?:19|20)\d{2})(?:\s+(.+))?$/i);
+      if (pdFindM) {
+        const st = pdFindM[1].toUpperCase(), fy = pdFindM[2], term = (pdFindM[3] || "").trim().toLowerCase();
+        try {
+          const f = encodeURIComponent(`state eq '${st}' and fyDeclared eq ${fy}`);
+          const r = await fetchWithTimeout(`${pdDecl}?$filter=${f}&$select=disasterNumber,declarationType,declarationTitle,incidentType,declarationDate&$top=1000`, { headers: pdUA }, 25000);
+          if (!r.ok) return { cmd: "DEPOT_POUR_DISASTER", payload: { ok: false, error: `declarations api ${r.status}` } };
+          const d = await r.json();
+          const seen = new Map();
+          for (const rec of (d.DisasterDeclarationsSummaries || [])) {
+            if (term && !String(rec.declarationTitle || "").toLowerCase().includes(term) && !String(rec.incidentType || "").toLowerCase().includes(term)) continue;
+            const k = rec.disasterNumber;
+            if (!seen.has(k)) seen.set(k, { disasterNumber: k, type: rec.declarationType, title: rec.declarationTitle, incidentType: rec.incidentType, declared: (rec.declarationDate || "").slice(0, 10), areas: 0 });
+            seen.get(k).areas++;
+          }
+          const list = [...seen.values()].sort((a, b) => b.disasterNumber - a.disasterNumber).slice(0, 40);
+          return { cmd: "DEPOT_POUR_DISASTER", payload: { ok: true, mode: "find", state: st, fy, term: term || undefined, matches: list, note: list.length ? "DR = major disaster (carries the dollars), EM = emergency, FM = fire management. Pour one with DEPOT_POUR_DISASTER <disasterNumber>." : "no matches - try without a term or another fiscal year" } };
+        } catch (e) { return { cmd: "DEPOT_POUR_DISASTER", payload: { ok: false, error: String(e && e.message || e) } }; }
+      }
+      const pdNum = (rest.trim().match(/^(\d{3,5})$/) || [])[1];
+      if (!pdNum) return { cmd: "DEPOT_POUR_DISASTER", payload: { ok: false, error: "usage: DEPOT_POUR_DISASTER FIND <STATE> <fyYear> [term]   then   DEPOT_POUR_DISASTER <disasterNumber>" } };
+      try {
+        // declaration facts (records are per designated area - dedupe to the disaster)
+        const fd = encodeURIComponent(`disasterNumber eq ${pdNum}`);
+        const dr = await fetchWithTimeout(`${pdDecl}?$filter=${fd}&$select=disasterNumber,state,declarationType,declarationTitle,incidentType,declarationDate,incidentBeginDate,incidentEndDate,designatedArea&$top=1000`, { headers: pdUA }, 25000);
+        if (!dr.ok) return { cmd: "DEPOT_POUR_DISASTER", payload: { ok: false, error: `declarations api ${dr.status}` } };
+        const dj = await dr.json();
+        const recs = dj.DisasterDeclarationsSummaries || [];
+        if (!recs.length) return { cmd: "DEPOT_POUR_DISASTER", payload: { ok: false, error: `no declaration found for disasterNumber ${pdNum}` } };
+        const d0 = recs[0];
+        const facts = { number: pdNum, state: d0.state, type: d0.declarationType, title: d0.declarationTitle, incidentType: d0.incidentType, declared: (d0.declarationDate || "").slice(0, 10), began: (d0.incidentBeginDate || "").slice(0, 10), ended: (d0.incidentEndDate || "").slice(0, 10), areas: new Set(recs.map(r => r.designatedArea)).size };
+        // federal dollar totals
+        let dollars = null;
+        try {
+          const sr = await fetchWithTimeout(`https://www.fema.gov/api/open/v1/FemaWebDisasterSummaries?$filter=${fd}`, { headers: pdUA }, 20000);
+          if (sr.ok) { const sj = await sr.json(); dollars = (sj.FemaWebDisasterSummaries || [])[0] || null; }
+        } catch {}
+        // ZIP-level housing damage + assistance (owners)
+        let hz = { regs: 0, damage: 0, ihp: 0, zips: new Map(), pages: 0, truncated: false };
+        try {
+          let skip = 0; const MAXP = 4;
+          while (hz.pages < MAXP) {
+            const hr = await fetchWithTimeout(`https://www.fema.gov/api/open/v2/HousingAssistanceOwners?$filter=${fd}&$top=10000&$skip=${skip}`, { headers: pdUA }, 30000);
+            if (!hr.ok) break;
+            const hj = await hr.json();
+            const arr = hj.HousingAssistanceOwners || [];
+            for (const z of arr) {
+              hz.regs += Number(z.validRegistrations) || 0;
+              hz.damage += Number(z.totalDamage) || 0;
+              hz.ihp += Number(z.totalApprovedIhpAmount) || 0;
+              const zk = (z.zipCode || "?") + "|" + (z.city || "?");
+              const cur = hz.zips.get(zk) || { damage: 0, ihp: 0, regs: 0 };
+              cur.damage += Number(z.totalDamage) || 0; cur.ihp += Number(z.totalApprovedIhpAmount) || 0; cur.regs += Number(z.validRegistrations) || 0;
+              hz.zips.set(zk, cur);
+            }
+            hz.pages++;
+            if (arr.length < 10000) break;
+            skip += 10000;
+          }
+          hz.truncated = hz.pages >= 4;
+        } catch {}
+        const riskMap = { "fire": "wildfire", "flood": "flood", "hurricane": "hurricane", "severe storm": "severe-storm", "earthquake": "earthquake", "tornado": "severe-storm", "coastal storm": "hurricane", "tropical storm": "hurricane", "winter storm": "severe-storm" };
+        const rt = riskMap[String(facts.incidentType || "").toLowerCase()] || String(facts.incidentType || "disaster").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+        const srcTag = "FEMA OpenFEMA";
+        const ev = [];
+        ev.push(`FEMA ${facts.type}-${facts.number} ${facts.title} (${facts.state}): incidentType ${facts.incidentType}, incident ${facts.began}${facts.ended ? " to " + facts.ended : ""}, declared ${facts.declared}, ${facts.areas} designated area(s) (${srcTag} declarations)`);
+        if (dollars && (dollars.totalAmountIhpApproved != null || dollars.totalObligatedAmountPa != null || dollars.totalObligatedAmountHmgp != null)) {
+          ev.push(`FEMA ${facts.type}-${facts.number} federal dollars: IHP approved ${$m2(dollars.totalAmountIhpApproved)} (housing ${$m2(dollars.totalAmountHaApproved)} + other needs ${$m2(dollars.totalAmountOnaApproved)}); Public Assistance obligated ${$m2(dollars.totalObligatedAmountPa)}; Hazard Mitigation ${$m2(dollars.totalObligatedAmountHmgp)}; IA approvals ${dollars.totalNumberIaApproved != null ? Number(dollars.totalNumberIaApproved).toLocaleString() : "n/a"} - FEDERAL PROGRAM DOLLARS ONLY, a floor excluding private insurance and uninsured losses; NOT the event total loss (${srcTag} disaster summaries)`);
+        } else {
+          ev.push(`FEMA ${facts.type}-${facts.number}: federal dollar totals not yet posted in FemaWebDisasterSummaries (common for recent/ongoing disasters - re-pour later; absence of the number is stated, never guessed) (${srcTag})`);
+        }
+        if (hz.regs || hz.damage || hz.ihp) {
+          ev.push(`FEMA ${facts.type}-${facts.number} housing (owners): ${hz.regs.toLocaleString()} valid registrations, FEMA-inspected damage ${$m2(hz.damage)}, IHP approved ${$m2(hz.ihp)}${hz.truncated ? " (page budget hit - floors, not totals)" : ""} - FEMA-INSPECTED REGISTRANT DAMAGE ONLY, an administrative floor; NOT the event total damage (${srcTag} HousingAssistanceOwners)`);
+          const topZ = [...hz.zips.entries()].sort((a, b) => b[1].damage - a[1].damage).slice(0, 6);
+          for (const [zk, v] of topZ) { const [zip, city] = zk.split("|"); ev.push(`FEMA ${facts.type}-${facts.number} ZIP ${zip} (${city}): inspected damage ${$m2(v.damage)}, IHP approved ${$m2(v.ihp)}, ${v.regs.toLocaleString()} registrations (${srcTag})`); }
+        }
+        const knowledge = `FEMA-quantified disaster reality for ${facts.type}-${facts.number} "${facts.title}" (${facts.state}, ${facts.incidentType}, ${facts.began}) - declaration facts, federal dollar totals where posted, and ZIP-level housing damage + assistance. This is the LOSS side of the prevention thesis: what E actually cost, from federal source, down to the ZIP. Federal dollars understate total loss (they exclude private insurance and uninsured losses) - a stated floor, not the ceiling.\n` + ev.join("\n");
+        const pour = await processCommand(`DEPOT_INGEST ::: ${JSON.stringify({ risk_type: rt, touches: ["insurance", "property", "government", "real-estate"], knowledge, evidence_lines: ev, source: `DEPOT_POUR_DISASTER ${pdNum} (OpenFEMA)` })}`, env, true);
+        const pp = (pour && pour.payload) ? pour.payload : pour;
+        return { cmd: "DEPOT_POUR_DISASTER", payload: { ok: !!(pp && pp.ok), disaster: facts, risk_type: rt,
+          dollars_posted: !!(dollars && (dollars.totalAmountIhpApproved != null || dollars.totalObligatedAmountPa != null)),
+          housing: hz.regs ? { registrations: hz.regs, inspected_damage: Math.round(hz.damage), ihp_approved: Math.round(hz.ihp), zips_seen: hz.zips.size, truncated: hz.truncated || undefined } : null,
+          depot_result: pp ? { entry_count: pp.entry_count, growth: pp.growth, added: pp.added, distill_note: pp.distill_note } : null,
+          note: `Poured ${facts.type}-${facts.number} "${facts.title}" into depot:risk:${rt} in ONE write. Space depot writes >60s.` } };
+      } catch (e) { return { cmd: "DEPOT_POUR_DISASTER", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "DEPOT_POUR_FLOOD": {
+      // HISTORICAL INGESTION - flood CLAIMS DOLLARS (v4.9.416). Pours REAL PAID flood-insurance claims
+      // from FEMA's NFIP claims dataset into depot:risk:flood. THE FIRST LOSS-COST POUR: everything
+      // before this was occurrence data (acres burned, crashes); this is actual dollars paid per claim -
+      // the "burned acreage is not insured loss" gap the brief engine named, closing.
+      // Source verified 2026-07-02 by SOURCE_PROBE from the worker: open JSON, real fields seen live
+      // (dateOfLoss, yearOfLoss, state, amountPaidOnBuildingClaim, amountPaidOnContentsClaim,
+      // ratedFloodZone). OData-style paging; the pour RUNTIME-VALIDATES that the year filter was
+      // actually honored (first row must match the requested year) - never trusts silently.
+      //   DEPOT_POUR_FLOOD <year>            -> one loss-year of paid claims, distilled
+      //   DEPOT_POUR_FLOOD <start>-<end>     -> up to 4 years, ONE depot write
+      if (!isOp) return { cmd: "DEPOT_POUR_FLOOD", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const pfArg = rest.trim();
+      let pfYears = [];
+      const pfR = pfArg.match(/^((?:19|20)\d{2})\s*-\s*((?:19|20)\d{2})$/); const pfO = pfArg.match(/^((?:19|20)\d{2})$/);
+      if (pfR) { const a = parseInt(pfR[1], 10), b = parseInt(pfR[2], 10); if (b < a || b - a + 1 > 4) return { cmd: "DEPOT_POUR_FLOOD", payload: { ok: false, error: "range max 4 years per call (paging budget); space calls >60s" } }; for (let y = a; y <= b; y++) pfYears.push(y); }
+      else if (pfO) pfYears = [parseInt(pfO[1], 10)];
+      else return { cmd: "DEPOT_POUR_FLOOD", payload: { ok: false, error: "usage: DEPOT_POUR_FLOOD <year|start-end>  (FEMA NFIP paid claims by loss year)" } };
+      const pfUA = { "user-agent": "aura-depot-pour/1.0", "accept": "application/json" };
+      const pfBase = await resolveFeedUrl(env, "fema_nfip_claims", {}, "https://www.fema.gov/api/open/v2/FimaNfipClaims");
+      const pfOneYear = async (yr) => {
+        let skip = 0, pages = 0; const MAXP = 12; // 12 x 10k rows/page budget per year
+        let count = 0, paidB = 0, paidC = 0, zeroPaid = 0;
+        const byState = new Map();
+        while (pages < MAXP) {
+          const u = `${pfBase}?$filter=yearOfLoss%20eq%20${yr}&$select=state,yearOfLoss,amountPaidOnBuildingClaim,amountPaidOnContentsClaim&$top=10000&$skip=${skip}&$format=json`;
+          const r = await fetchWithTimeout(u, { headers: pfUA }, 30000);
+          if (!r.ok) return { ok: false, year: yr, error: `NFIP api ${r.status}` };
+          const d = await r.json();
+          const arr = d.FimaNfipClaims || [];
+          if (pages === 0 && arr.length && String(arr[0].yearOfLoss).slice(0, 4) !== String(yr)) return { ok: false, year: yr, error: "year filter NOT honored by API (first row yearOfLoss=" + arr[0].yearOfLoss + ") - aborted rather than pour wrong data" };
+          for (const c of arr) {
+            count++;
+            const b = Number(c.amountPaidOnBuildingClaim) || 0, ct = Number(c.amountPaidOnContentsClaim) || 0;
+            paidB += b; paidC += ct;
+            if (b + ct <= 0) zeroPaid++;
+            const st = (c.state || "?");
+            byState.set(st, (byState.get(st) || 0) + b + ct);
+          }
+          pages++;
+          if (arr.length < 10000) break;
+          skip += 10000;
+        }
+        const truncated = pages >= MAXP;
+        if (!count) return { ok: false, year: yr, error: "no claims returned for that loss year" };
+        const total = paidB + paidC;
+        const $m = (n) => "$" + (n >= 1e9 ? (n / 1e9).toFixed(2) + "B" : (n / 1e6).toFixed(1) + "M");
+        const top = [...byState.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+        const paidClaims = count - zeroPaid;
+        const srcTag = "FEMA NFIP claims dataset";
+        const ev = [];
+        ev.push(`NFIP ${yr}: ${count.toLocaleString()} flood claims${truncated ? " (page budget hit - counts are a floor, not the total)" : ""}, ${$m(total)} paid out (${$m(paidB)} building + ${$m(paidC)} contents); ${zeroPaid.toLocaleString()} claims (${count ? Math.round(zeroPaid / count * 1000) / 10 : 0}%) closed with zero payment; average paid claim ${paidClaims ? "$" + Math.round(total / paidClaims).toLocaleString() : "n/a"} (${srcTag})`);
+        for (const [st, amt] of top) ev.push(`NFIP ${yr} ${st}: ${$m(amt)} in flood claim payouts (${srcTag})`);
+        return { ok: true, year: yr, ev, count, total, truncated, top3: top.slice(0, 3).map(([s, a]) => s + " " + $m(a)) };
+      };
+      try {
+        const perYear = []; const allEv = []; const failed = [];
+        for (const yr of pfYears) {
+          try { const r = await pfOneYear(yr); perYear.push(r); if (r.ok) allEv.push(...r.ev); else failed.push({ year: yr, error: r.error }); }
+          catch (e) { failed.push({ year: yr, error: String(e && e.message || e) }); }
+        }
+        if (!allEv.length) return { cmd: "DEPOT_POUR_FLOOD", payload: { ok: false, error: "no years poured", failed } };
+        const okYears = perYear.filter(r => r.ok).map(r => r.year);
+        const knowledge = `Flood insurance LOSS-COST evidence for loss year(s) ${okYears.join(", ")} from FEMA's NFIP claims dataset - actual paid claim dollars (building + contents), zero-payment share, and state concentration of payouts. This is the dollars layer: real insured flood losses, not just flood occurrence. Payouts are NFIP program payments (does not include private flood or uninsured losses).\n` + allEv.join("\n");
+        const pour = await processCommand(`DEPOT_INGEST ::: ${JSON.stringify({ risk_type: "flood", touches: ["insurance", "property", "real-estate"], knowledge, evidence_lines: allEv, source: `DEPOT_POUR_FLOOD ${pfYears[0]}${pfYears.length > 1 ? "-" + pfYears[pfYears.length - 1] : ""} (FEMA NFIP claims)` })}`, env, true);
+        const pp = (pour && pour.payload) ? pour.payload : pour;
+        return { cmd: "DEPOT_POUR_FLOOD", payload: { ok: !!(pp && pp.ok), years_poured: okYears, years_failed: failed.length ? failed : undefined,
+          per_year: perYear.filter(r => r.ok).map(r => ({ year: r.year, claims: r.count, total_paid: r.total, truncated: r.truncated || undefined, top3: r.top3 })),
+          depot_result: pp ? { entry_count: pp.entry_count, growth: pp.growth, added: pp.added, distill_note: pp.distill_note } : null,
+          note: `Poured real PAID flood claims for ${okYears.length} loss-year(s) into depot:risk:flood in ONE write - the first loss-cost record in the depot. Space depot writes >60s.` } };
+      } catch (e) { return { cmd: "DEPOT_POUR_FLOOD", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "DEPOT_POUR_PREMIUMS": {
+      // HISTORICAL INGESTION - THE WALL STREET LAYER (v4.9.416). Pours real insurer PREMIUMS (and losses
+      // where tagged) from SEC XBRL filings into depot:risk:insurance-market. This is what carriers
+      // actually earned and paid, from their own audited 10-K/10-Q filings - verified live 2026-07-02
+      // (Progressive: 2022 $49.24B -> 2023 $58.67B earned premiums, straight from data.sec.gov, keyless).
+      // Tickers resolve to CIKs via SEC's OWN company_tickers.json at runtime - no hand-kept CIK list
+      // to go stale. Annual values come from XBRL calendar-year frames (CYyyyy) - deterministic, no model.
+      //   DEPOT_POUR_PREMIUMS <TICKER> [TICKER...]   -> up to 8 carriers, ONE depot write
+      //   e.g. DEPOT_POUR_PREMIUMS PGR ALL TRV CB AIG HIG
+      if (!isOp) return { cmd: "DEPOT_POUR_PREMIUMS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const ppTickers = rest.trim().split(/\s+/).filter(t => /^[A-Za-z.\-]{1,8}(=\d{10})?$/.test(t)).map(t => t.toUpperCase()).slice(0, 8);
+      if (!ppTickers.length) return { cmd: "DEPOT_POUR_PREMIUMS", payload: { ok: false, error: "usage: DEPOT_POUR_PREMIUMS <TICKER> [TICKER...]  (up to 8; e.g. PGR ALL TRV CB AIG HIG; TICKER=0001234567 to pass an explicit CIK)" } };
+      // SEED CIKs (v4.9.417): www.sec.gov's ticker directory 403s from the worker (proven live), but
+      // data.sec.gov is open - so known carriers are seeded here and TRUTH-CHECKED at runtime: every
+      // evidence line carries the entityName data.sec.gov itself returns for the CIK, so a wrong or
+      // stale seed is self-exposing, never silent. Unknown tickers: pass TICKER=CIK explicitly.
+      const PP_SEED = { "PGR": "0000080661", "ALL": "0000899051", "TRV": "0000086312", "CB": "0000896159", "AIG": "0000005272", "HIG": "0000874766", "WRB": "0000011544", "CINF": "0000020286" };
+      const ppUA = { "user-agent": "aura-depot-pour/1.0 (ARK Systems LLC; contact via auras.guide)", "accept": "application/json" };
+      const $b = (n) => "$" + (Math.abs(n) >= 1e9 ? (n / 1e9).toFixed(1) + "B" : (n / 1e6).toFixed(0) + "M");
+      try {
+        const tmap = new Map();
+        let ppDirNote = null;
+        try {
+          const tjR = await fetchWithTimeout("https://www.sec.gov/files/company_tickers.json", { headers: ppUA }, 15000);
+          if (tjR.ok) { const tj = await tjR.json(); for (const k of Object.keys(tj)) { const e = tj[k]; if (e && e.ticker) tmap.set(String(e.ticker).toUpperCase(), { cik: String(e.cik_str).padStart(10, "0"), title: e.title }); } }
+          else ppDirNote = `SEC www ticker directory blocked from worker (${tjR.status}) - using runtime-truth-checked seed CIKs`;
+        } catch (e) { ppDirNote = "SEC www ticker directory unreachable - using runtime-truth-checked seed CIKs"; }
+        const annualFrames = (unitsUSD) => {
+          const out = new Map();
+          for (const e of (unitsUSD || [])) { const m = /^CY(\d{4})$/.exec(e.frame || ""); if (m) out.set(m[1], e.val); }
+          return out;
+        };
+        const fetchConcept = async (cik, names) => {
+          for (const n of names) {
+            const r = await fetchWithTimeout(`https://data.sec.gov/api/xbrl/companyconcept/CIK${cik}/us-gaap/${n}.json`, { headers: ppUA }, 20000);
+            if (r.ok) { const d = await r.json(); const fr = annualFrames(d.units && d.units.USD); if (fr.size) return { concept: n, frames: fr, entityName: d.entityName || null }; }
+          }
+          return null;
+        };
+        const perCo = []; const allEv = []; const failed = [];
+        for (const tkRaw of ppTickers) {
+          let tk = tkRaw, co = null;
+          const eq = tkRaw.indexOf("=");
+          if (eq > 0) { tk = tkRaw.slice(0, eq); co = { cik: tkRaw.slice(eq + 1), title: tk + " (explicit CIK)" }; }
+          if (!co) co = tmap.get(tk) || (PP_SEED[tk] ? { cik: PP_SEED[tk], title: tk + " (seed CIK)" } : null);
+          if (!co) { failed.push({ ticker: tk, error: "not resolvable (directory blocked, no seed) - pass explicitly as " + tk + "=<10-digit-CIK>" }); continue; }
+          const prem = await fetchConcept(co.cik, ["PremiumsEarnedNet", "PremiumsEarnedNetPropertyAndCasualty"]);
+          if (!prem) { failed.push({ ticker: tk, error: "no annual premium frames under known us-gaap tags (company may tag differently)" }); continue; }
+          const loss = await fetchConcept(co.cik, ["PolicyholderBenefitsAndClaimsIncurredNet", "IncurredClaimsPropertyCasualtyAndLiability"]);
+          const years = [...prem.frames.keys()].sort().slice(-8);
+          if (prem.entityName) co.title = prem.entityName; // authoritative name from SEC itself - truth-checks seeds
+          const srcTag = "SEC XBRL 10-K filings";
+          allEv.push(`${co.title} (${tk}) net premiums earned by year: ` + years.map(y => `${y} ${$b(prem.frames.get(y))}`).join("; ") + ` (${srcTag}, tag ${prem.concept})`);
+          const ratios = [];
+          if (loss) { for (const y of years) { if (loss.frames.has(y) && prem.frames.get(y)) ratios.push(`${y} ${(loss.frames.get(y) / prem.frames.get(y) * 100).toFixed(1)}%`); } }
+          if (ratios.length) allEv.push(`${co.title} (${tk}) incurred losses as % of earned premiums (loss ratio proxy): ` + ratios.join("; ") + ` (${srcTag}, tags ${prem.concept}/${loss.concept})`);
+          perCo.push({ ticker: tk, company: co.title, years: years.length, latest: years.length ? years[years.length - 1] + " " + $b(prem.frames.get(years[years.length - 1])) : null, loss_ratio_years: ratios.length });
+        }
+        if (!allEv.length) return { cmd: "DEPOT_POUR_PREMIUMS", payload: { ok: false, error: "no carriers poured", failed } };
+        const knowledge = `THE WALL STREET LAYER: real insurer premiums earned (and incurred losses where tagged) from audited SEC XBRL filings for ${perCo.map(c => c.ticker).join(", ")} - what carriers actually charge the market in aggregate, by calendar year. Loss-ratio proxies are incurred-losses / earned-premiums from the same filings (proxy: excludes LAE nuances and segment mix). This is market-level pricing truth - the dollars side of every occurrence record in the depot.\n` + allEv.join("\n");
+        const pour = await processCommand(`DEPOT_INGEST ::: ${JSON.stringify({ risk_type: "insurance-market", touches: ["insurance"], knowledge, evidence_lines: allEv, source: `DEPOT_POUR_PREMIUMS ${ppTickers.join(" ")} (SEC XBRL)` })}`, env, true);
+        const pp2 = (pour && pour.payload) ? pour.payload : pour;
+        return { cmd: "DEPOT_POUR_PREMIUMS", payload: { ok: !!(pp2 && pp2.ok), carriers_poured: perCo, carriers_failed: failed.length ? failed : undefined,
+          depot_result: pp2 ? { entry_count: pp2.entry_count, growth: pp2.growth, added: pp2.added, distill_note: pp2.distill_note } : null,
+          resolution_note: ppDirNote || undefined,
+          note: "Poured audited premium (and loss-ratio proxy) history into depot:risk:insurance-market in ONE write - Wall Street's view of insurance pricing, keyless, from the carriers' own filings. Company names in evidence are the entityName SEC returned for each CIK - seed resolution is truth-checked, never silent." } };
+      } catch (e) { return { cmd: "DEPOT_POUR_PREMIUMS", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "DEPOT_POUR_CRASH": {
+      // HISTORICAL INGESTION - fatal crashes (v4.9.413, range + legacy-schema rewrite). Pours REAL years
+      // of NHTSA FARS (the federal census of EVERY fatal US crash since 1975) into depot:risk:driving.
+      //
+      // WHY THE REWRITE (proven live 2026-07-02): (1) LOST UPDATES - rapid single-year pours each did a
+      // KV read-modify-write, and KV reads can serve ~60s-stale copies, so parallel-paced pours silently
+      // overwrote each other (the first decade pour lost 2021, 2023 and one of 2016/17 this way). RANGE
+      // MODE fixes it structurally: all years accumulate IN MEMORY inside one invocation and land in ONE
+      // depot write. LAW: never fire two depot read-modify-writes within 60s; use range mode for batches.
+      // (2) LEGACY SCHEMA - pre-2015 FARS files carry numeric codes only (STATE not STATENAME, numeric
+      // month/weekday, no RUR_URBNAME/LGT_CONDNAME). Decoding is HEADER-DRIVEN: FIPS map for states,
+      // numeric month/weekday decode; rural/dark shares honestly omitted for years whose files lack the
+      // columns (omission stated in the evidence, never guessed). This unlocks the 1975-2014 archive.
+      //
+      // Mechanics per year (all verified): range-read zip central directory on static.nhtsa.gov (never
+      // the full archive), range-fetch accident.csv's bytes only, native DecompressionStream deflate-raw,
+      // deterministic distillation - real counts from real rows, no model in the loop.
+      //   DEPOT_POUR_CRASH <year>              -> one year
+      //   DEPOT_POUR_CRASH <start>-<end>       -> range, max 15 years, ONE depot write (use this for batches)
+      if (!isOp) return { cmd: "DEPOT_POUR_CRASH", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const pcArg = rest.trim();
+      // ---- AGES MODE (v4.9.415): DEPOT_POUR_CRASH AGES <year|start-end> (max 6 years/call) ----
+      // Streams person.csv from the same verified FARS zips and distills DRIVER AGE involvement -
+      // the exact gap both live ANALYST_BRIEF tests named ("no age-stratified data"). person.csv is
+      // ~116MB uncompressed per modern year, so it is STREAM-parsed line by line (never held whole in
+      // memory). Only drivers (PER_TYP=1) are counted; unknown ages (998/999) counted separately, never
+      // guessed. One depot write per call (lost-update law); cap 6 years/call for CPU headroom - for
+      // 11 years run two calls spaced >60s apart.
+      if (/^AGES\s+/i.test(pcArg)) {
+        const agArg = pcArg.replace(/^AGES\s+/i, "").trim();
+        let agYears = [];
+        const agR = agArg.match(/^((?:19|20)\d{2})\s*-\s*((?:19|20)\d{2})$/); const agO = agArg.match(/^((?:19|20)\d{2})$/);
+        if (agR) { const a = parseInt(agR[1], 10), b = parseInt(agR[2], 10); if (b < a || b - a + 1 > 6) return { cmd: "DEPOT_POUR_CRASH", payload: { ok: false, error: "AGES range max 6 years per call (CPU headroom); split into calls spaced >60s" } }; for (let y = a; y <= b; y++) agYears.push(y); }
+        else if (agO) agYears = [parseInt(agO[1], 10)];
+        else return { cmd: "DEPOT_POUR_CRASH", payload: { ok: false, error: "usage: DEPOT_POUR_CRASH AGES <year|start-end>" } };
+        const agUA = { "user-agent": "aura-depot-pour/1.0" };
+        const agParseLine = (l) => { if (!l.includes('"')) return l.split(","); const out = []; let cur = "", q = false; for (let i = 0; i < l.length; i++) { const c = l[i]; if (c === '"') { q = !q; } else if (c === "," && !q) { out.push(cur); cur = ""; } else cur += c; } out.push(cur); return out; };
+        const agesOneYear = async (yr) => {
+          const url = await resolveFeedUrl(env, "fars_year_zip", { year: yr }, `https://static.nhtsa.gov/nhtsa/downloads/FARS/{year}/National/FARS{year}NationalCSV.zip`);
+          const hr = await fetchWithTimeout(url, { method: "HEAD", headers: agUA }, 15000);
+          if (!hr.ok) return { ok: false, year: yr, error: `zip HEAD ${hr.status}` };
+          const total = parseInt(hr.headers.get("content-length") || "0", 10);
+          const tailLen = Math.min(total, 66000);
+          const tr = await fetchWithTimeout(url, { headers: { ...agUA, "range": `bytes=${total - tailLen}-${total - 1}` } }, 20000);
+          const tail = new Uint8Array(await tr.arrayBuffer());
+          let eocd = -1; for (let i = tail.length - 22; i >= 0; i--) { if (tail[i] === 0x50 && tail[i + 1] === 0x4b && tail[i + 2] === 0x05 && tail[i + 3] === 0x06) { eocd = i; break; } }
+          if (eocd < 0) return { ok: false, year: yr, error: "EOCD not found" };
+          const tdv = new DataView(tail.buffer, tail.byteOffset, tail.byteLength);
+          const cdSize = tdv.getUint32(eocd + 12, true), cdOffset = tdv.getUint32(eocd + 16, true);
+          const tailStart = total - tail.length;
+          let cd;
+          if (cdOffset >= tailStart) cd = tail.subarray(cdOffset - tailStart, cdOffset - tailStart + cdSize);
+          else { const cr = await fetchWithTimeout(url, { headers: { ...agUA, "range": `bytes=${cdOffset}-${cdOffset + cdSize - 1}` } }, 20000); cd = new Uint8Array(await cr.arrayBuffer()); }
+          const cdv = new DataView(cd.buffer, cd.byteOffset, cd.byteLength); const tdText = new TextDecoder();
+          let ent = null; let p = 0;
+          while (p + 46 <= cd.length) {
+            if (!(cd[p] === 0x50 && cd[p + 1] === 0x4b && cd[p + 2] === 0x01 && cd[p + 3] === 0x02)) break;
+            const method = cdv.getUint16(p + 10, true), csize = cdv.getUint32(p + 20, true);
+            const nlen = cdv.getUint16(p + 28, true), elen = cdv.getUint16(p + 30, true), clen = cdv.getUint16(p + 32, true);
+            const lho = cdv.getUint32(p + 42, true);
+            const name = tdText.decode(cd.subarray(p + 46, p + 46 + nlen));
+            if (/(^|\/)person\.csv$/i.test(name)) { ent = { method, csize, lho }; break; }
+            p += 46 + nlen + elen + clen;
+          }
+          if (!ent) return { ok: false, year: yr, error: "person.csv not in zip" };
+          if (ent.method !== 8 && ent.method !== 0) return { ok: false, year: yr, error: "unsupported method " + ent.method };
+          const lh = new Uint8Array(await (await fetchWithTimeout(url, { headers: { ...agUA, "range": `bytes=${ent.lho}-${ent.lho + 29}` } }, 15000)).arrayBuffer());
+          const lhv = new DataView(lh.buffer, lh.byteOffset, lh.byteLength);
+          const dataStart = ent.lho + 30 + lhv.getUint16(26, true) + lhv.getUint16(28, true);
+          const dr = await fetchWithTimeout(url, { headers: { ...agUA, "range": `bytes=${dataStart}-${dataStart + ent.csize - 1}` } }, 45000);
+          if (dr.status !== 206 && dr.status !== 200) return { ok: false, year: yr, error: `entry fetch ${dr.status}` };
+          const stream = ent.method === 0 ? dr.body : dr.body.pipeThrough(new DecompressionStream("deflate-raw"));
+          const reader = stream.getReader(); const dec = new TextDecoder();
+          let buf = "", hdr = null, iAge = -1, iTyp = -1;
+          let drivers = 0, unknownAge = 0;
+          const bands = { "16": 0, "17": 0, "18": 0, "19": 0, "16-19": 0, "20-24": 0, "25-34": 0, "35-44": 0, "45-54": 0, "55-64": 0, "65-74": 0, "75+": 0, "under-16": 0 };
+          const eat = (line) => {
+            if (!line) return;
+            if (!hdr) { hdr = agParseLine(line).map(h => h.trim().toUpperCase()); iAge = hdr.indexOf("AGE"); iTyp = hdr.indexOf("PER_TYP"); return; }
+            if (iAge < 0 || iTyp < 0) return;
+            const f = agParseLine(line);
+            if ((parseInt(f[iTyp], 10) || 0) !== 1) return; // drivers only
+            drivers++;
+            const a = parseInt(f[iAge], 10);
+            if (isNaN(a) || a >= 900) { unknownAge++; return; } // FARS 998/999 = unknown - never guessed
+            if (a < 16) bands["under-16"]++;
+            else if (a <= 19) { bands[String(a)]++; bands["16-19"]++; }
+            else if (a <= 24) bands["20-24"]++;
+            else if (a <= 34) bands["25-34"]++;
+            else if (a <= 44) bands["35-44"]++;
+            else if (a <= 54) bands["45-54"]++;
+            else if (a <= 64) bands["55-64"]++;
+            else if (a <= 74) bands["65-74"]++;
+            else bands["75+"]++;
+          };
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += dec.decode(value, { stream: true });
+            let nl;
+            while ((nl = buf.indexOf("\n")) >= 0) { eat(buf.slice(0, nl).replace(/\r$/, "")); buf = buf.slice(nl + 1); }
+            if (buf.length > 2000000) return { ok: false, year: yr, error: "line buffer overflow - malformed csv" };
+          }
+          eat(buf.replace(/\r$/, ""));
+          if (iAge < 0 || iTyp < 0) return { ok: false, year: yr, error: "AGE/PER_TYP columns missing - header drift" };
+          const known = drivers - unknownAge;
+          const pc = (n) => known ? Math.round((n / known) * 1000) / 10 : 0;
+          const srcTag = "NHTSA FARS person.csv census";
+          const ev = [];
+          ev.push(`FARS ${yr} driver ages: ${drivers.toLocaleString()} drivers in fatal crashes; teen drivers 16-19 = ${bands["16-19"].toLocaleString()} (${pc(bands["16-19"])}% of known-age drivers); age 16 alone = ${bands["16"].toLocaleString()} (${pc(bands["16"])}%) (${srcTag})`);
+          ev.push(`FARS ${yr} driver age distribution (% of known-age drivers in fatal crashes): 16-19: ${pc(bands["16-19"])}%, 20-24: ${pc(bands["20-24"])}%, 25-34: ${pc(bands["25-34"])}%, 35-44: ${pc(bands["35-44"])}%, 45-54: ${pc(bands["45-54"])}%, 55-64: ${pc(bands["55-64"])}%, 65-74: ${pc(bands["65-74"])}%, 75+: ${pc(bands["75+"])}% (unknown-age drivers: ${unknownAge.toLocaleString()}, excluded) (${srcTag})`);
+          return { ok: true, year: yr, ev, drivers, teen: bands["16-19"], age16: bands["16"], bands };
+        };
+        try {
+          const perYear = []; const allEv = []; const failed = [];
+          for (const yr of agYears) {
+            try { const r = await agesOneYear(yr); perYear.push(r); if (r.ok) allEv.push(...r.ev); else failed.push({ year: yr, error: r.error }); }
+            catch (e) { failed.push({ year: yr, error: String(e && e.message || e) }); }
+          }
+          if (!allEv.length) return { cmd: "DEPOT_POUR_CRASH", payload: { ok: false, error: "no AGES years poured", failed } };
+          const okYears = perYear.filter(r => r.ok).map(r => r.year);
+          const knowledge = `Driver AGE involvement in fatal crashes for ${okYears.join(", ")} from NHTSA FARS person.csv (every person in every fatal US crash; drivers only, PER_TYP=1; unknown ages excluded and counted, never guessed). This fills the age-stratification gap the brief engine identified: teen (16-19) share of drivers in fatal crashes vs every other band, per year. Involvement percentages are shares of drivers IN fatal crashes - true per-driver or per-mile risk rates additionally require licensed-driver and mileage denominators by age (not in this data).\n` + allEv.join("\n");
+          const pour = await processCommand(`DEPOT_INGEST ::: ${JSON.stringify({ risk_type: "driving", touches: ["insurance", "trucking", "fleet", "auto"], knowledge, evidence_lines: allEv, source: `DEPOT_POUR_CRASH AGES ${agYears[0]}${agYears.length > 1 ? "-" + agYears[agYears.length - 1] : ""} (FARS person.csv)` })}`, env, true);
+          const pp = (pour && pour.payload) ? pour.payload : pour;
+          return { cmd: "DEPOT_POUR_CRASH", payload: { ok: !!(pp && pp.ok), mode: "ages", years_poured: okYears, years_failed: failed.length ? failed : undefined,
+            per_year: perYear.filter(r => r.ok).map(r => ({ year: r.year, drivers_in_fatal_crashes: r.drivers, teen_16_19: r.teen, age_16: r.age16 })),
+            depot_result: pp ? { entry_count: pp.entry_count, growth: pp.growth, added: pp.added, distill_note: pp.distill_note } : null,
+            note: `Poured driver-age census for ${okYears.length} year(s) into depot:risk:driving in ONE write. The 16-year-old question is now answerable from census truth. Remember: >60s between depot writes.` } };
+        } catch (e) { return { cmd: "DEPOT_POUR_CRASH", payload: { ok: false, error: String(e && e.message || e) } }; }
+      }
+      let pcYears = [];
+      const mRange = pcArg.match(/^((?:19|20)\d{2})\s*-\s*((?:19|20)\d{2})$/);
+      const mOne = pcArg.match(/^((?:19|20)\d{2})$/);
+      if (mRange) { const a = parseInt(mRange[1], 10), b = parseInt(mRange[2], 10); if (b < a || b - a + 1 > 15) return { cmd: "DEPOT_POUR_CRASH", payload: { ok: false, error: "range must be ascending, max 15 years per call" } }; for (let y = a; y <= b; y++) pcYears.push(y); }
+      else if (mOne) pcYears = [parseInt(mOne[1], 10)];
+      else return { cmd: "DEPOT_POUR_CRASH", payload: { ok: false, error: "usage: DEPOT_POUR_CRASH <year>  or  DEPOT_POUR_CRASH <start>-<end>  (FARS census; range mode = one depot write, use for batches)" } };
+      const FIPS = { 1: "Alabama", 2: "Alaska", 4: "Arizona", 5: "Arkansas", 6: "California", 8: "Colorado", 9: "Connecticut", 10: "Delaware", 11: "District of Columbia", 12: "Florida", 13: "Georgia", 15: "Hawaii", 16: "Idaho", 17: "Illinois", 18: "Indiana", 19: "Iowa", 20: "Kansas", 21: "Kentucky", 22: "Louisiana", 23: "Maine", 24: "Maryland", 25: "Massachusetts", 26: "Michigan", 27: "Minnesota", 28: "Mississippi", 29: "Missouri", 30: "Montana", 31: "Nebraska", 32: "Nevada", 33: "New Hampshire", 34: "New Jersey", 35: "New Mexico", 36: "New York", 37: "North Carolina", 38: "North Dakota", 39: "Ohio", 40: "Oklahoma", 41: "Oregon", 42: "Pennsylvania", 44: "Rhode Island", 45: "South Carolina", 46: "South Dakota", 47: "Tennessee", 48: "Texas", 49: "Utah", 50: "Vermont", 51: "Virginia", 53: "Washington", 54: "West Virginia", 55: "Wisconsin", 56: "Wyoming", 72: "Puerto Rico", 78: "Virgin Islands" };
+      const MONTHS = ["", "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+      const pcUA = { "user-agent": "aura-depot-pour/1.0" };
+      const parseLine = (l) => { if (!l.includes('"')) return l.split(","); const out = []; let cur = "", q = false; for (let i = 0; i < l.length; i++) { const c = l[i]; if (c === '"') { q = !q; } else if (c === "," && !q) { out.push(cur); cur = ""; } else cur += c; } out.push(cur); return out; };
+      const pourOneYear = async (yr) => {
+        const url = await resolveFeedUrl(env, "fars_year_zip", { year: yr }, `https://static.nhtsa.gov/nhtsa/downloads/FARS/{year}/National/FARS{year}NationalCSV.zip`);
+        const hr = await fetchWithTimeout(url, { method: "HEAD", headers: pcUA }, 15000);
+        if (!hr.ok) return { ok: false, year: yr, error: `zip not reachable (HEAD ${hr.status}) - year may not be published under this name` };
+        const total = parseInt(hr.headers.get("content-length") || "0", 10);
+        if (!total) return { ok: false, year: yr, error: "no content-length" };
+        const tailLen = Math.min(total, 66000);
+        const tr = await fetchWithTimeout(url, { headers: { ...pcUA, "range": `bytes=${total - tailLen}-${total - 1}` } }, 20000);
+        if (tr.status !== 206 && tr.status !== 200) return { ok: false, year: yr, error: `range not honored (${tr.status})` };
+        const tail = new Uint8Array(await tr.arrayBuffer());
+        let eocd = -1; for (let i = tail.length - 22; i >= 0; i--) { if (tail[i] === 0x50 && tail[i + 1] === 0x4b && tail[i + 2] === 0x05 && tail[i + 3] === 0x06) { eocd = i; break; } }
+        if (eocd < 0) return { ok: false, year: yr, error: "zip EOCD not found" };
+        const tdv = new DataView(tail.buffer, tail.byteOffset, tail.byteLength);
+        const cdSize = tdv.getUint32(eocd + 12, true), cdOffset = tdv.getUint32(eocd + 16, true);
+        const tailStart = total - tail.length;
+        let cd;
+        if (cdOffset >= tailStart) cd = tail.subarray(cdOffset - tailStart, cdOffset - tailStart + cdSize);
+        else { const cr = await fetchWithTimeout(url, { headers: { ...pcUA, "range": `bytes=${cdOffset}-${cdOffset + cdSize - 1}` } }, 20000); cd = new Uint8Array(await cr.arrayBuffer()); }
+        const cdv = new DataView(cd.buffer, cd.byteOffset, cd.byteLength); const tdText = new TextDecoder();
+        let acc = null; let p = 0;
+        while (p + 46 <= cd.length) {
+          if (!(cd[p] === 0x50 && cd[p + 1] === 0x4b && cd[p + 2] === 0x01 && cd[p + 3] === 0x02)) break;
+          const method = cdv.getUint16(p + 10, true), csize = cdv.getUint32(p + 20, true);
+          const nlen = cdv.getUint16(p + 28, true), elen = cdv.getUint16(p + 30, true), clen = cdv.getUint16(p + 32, true);
+          const lho = cdv.getUint32(p + 42, true);
+          const name = tdText.decode(cd.subarray(p + 46, p + 46 + nlen));
+          if (/(^|\/)accident\.csv$/i.test(name)) { acc = { method, csize, lho }; break; }
+          p += 46 + nlen + elen + clen;
+        }
+        if (!acc) return { ok: false, year: yr, error: "accident.csv not in zip directory" };
+        if (acc.method !== 8 && acc.method !== 0) return { ok: false, year: yr, error: "unsupported compression method " + acc.method };
+        const lh = new Uint8Array(await (await fetchWithTimeout(url, { headers: { ...pcUA, "range": `bytes=${acc.lho}-${acc.lho + 29}` } }, 15000)).arrayBuffer());
+        if (!(lh[0] === 0x50 && lh[1] === 0x4b && lh[2] === 0x03 && lh[3] === 0x04)) return { ok: false, year: yr, error: "bad local header" };
+        const lhv = new DataView(lh.buffer, lh.byteOffset, lh.byteLength);
+        const dataStart = acc.lho + 30 + lhv.getUint16(26, true) + lhv.getUint16(28, true);
+        const dr = await fetchWithTimeout(url, { headers: { ...pcUA, "range": `bytes=${dataStart}-${dataStart + acc.csize - 1}` } }, 30000);
+        if (dr.status !== 206 && dr.status !== 200) return { ok: false, year: yr, error: `entry fetch failed (${dr.status})` };
+        const csv = acc.method === 0 ? await dr.text() : await new Response(dr.body.pipeThrough(new DecompressionStream("deflate-raw"))).text();
+        const lines = csv.split(/\r?\n/).filter(l => l.length);
+        if (lines.length < 2) return { ok: false, year: yr, error: "accident.csv parsed empty" };
+        const hdr = parseLine(lines[0]).map(h => h.trim().toUpperCase());
+        const col = (n) => hdr.indexOf(n);
+        // HEADER-DRIVEN: modern name columns when present, legacy numeric decode when not
+        const iStateName = col("STATENAME"), iState = col("STATE"), iFat = col("FATALS");
+        const iRur = col("RUR_URBNAME"), iLgt = col("LGT_CONDNAME");
+        const iDowName = col("DAY_WEEKNAME"), iDow = col("DAY_WEEK"), iMonName = col("MONTHNAME"), iMon = col("MONTH");
+        const iPeds = col("PEDS"), iVe = col("VE_TOTAL");
+        if (iFat < 0 || (iStateName < 0 && iState < 0)) return { ok: false, year: yr, error: "schema drift beyond known variants - header: " + hdr.slice(0, 20).join(",") };
+        const legacy = iStateName < 0;
+        let crashes = 0, deaths = 0, pedCrashes = 0, multiVeh = 0;
+        const byState = new Map(), rur = new Map(), lgt = new Map(), dowW = { wknd: 0 }, mon = new Map();
+        for (let i = 1; i < lines.length; i++) {
+          const f = parseLine(lines[i]); if (f.length < hdr.length - 2) continue;
+          const fat = parseInt(f[iFat], 10) || 0; crashes++; deaths += fat;
+          const st = legacy ? (FIPS[parseInt(f[iState], 10)] || ("state-" + f[iState])) : (f[iStateName] || "").trim();
+          const stRec = byState.get(st) || { c: 0, d: 0 }; stRec.c++; stRec.d += fat; byState.set(st, stRec);
+          if (iRur >= 0) { const k = (f[iRur] || "").trim(); if (k) rur.set(k, (rur.get(k) || 0) + fat); }
+          if (iLgt >= 0) { const k = (f[iLgt] || "").trim(); if (k) lgt.set(k, (lgt.get(k) || 0) + fat); }
+          if (iDowName >= 0) { if (/friday|saturday|sunday/i.test(f[iDowName] || "")) dowW.wknd += fat; }
+          else if (iDow >= 0) { const d = parseInt(f[iDow], 10); if (d === 1 || d === 6 || d === 7) dowW.wknd += fat; } // FARS: 1=Sunday..7=Saturday
+          const mName = iMonName >= 0 ? (f[iMonName] || "").trim() : MONTHS[parseInt(f[iMon], 10)] || "";
+          if (mName) mon.set(mName, (mon.get(mName) || 0) + fat);
+          if (iPeds >= 0 && (parseInt(f[iPeds], 10) || 0) > 0) pedCrashes++;
+          if (iVe >= 0 && (parseInt(f[iVe], 10) || 0) > 1) multiVeh++;
+        }
+        const pct = (n, d) => d ? Math.round((n / d) * 1000) / 10 : 0;
+        const topStates = [...byState.entries()].sort((a, b) => b[1].d - a[1].d).slice(0, 8);
+        const ruralD = [...rur.entries()].filter(e => /rural/i.test(e[0])).reduce((s, e) => s + e[1], 0);
+        const darkD = [...lgt.entries()].filter(e => /dark/i.test(e[0])).reduce((s, e) => s + e[1], 0);
+        const topMon = [...mon.entries()].sort((a, b) => b[1] - a[1])[0];
+        const srcTag = "NHTSA FARS census";
+        const ev = [];
+        ev.push(`FARS ${yr} national: ${crashes.toLocaleString()} fatal crashes, ${deaths.toLocaleString()} deaths (avg ${(deaths / Math.max(1, crashes)).toFixed(2)} per crash) (${srcTag})`);
+        for (const [st, r] of topStates) ev.push(`${st} (${yr}): ${r.d.toLocaleString()} road deaths in ${r.c.toLocaleString()} fatal crashes (${srcTag})`);
+        if (iRur >= 0 && ruralD) ev.push(`FARS ${yr}: ${pct(ruralD, deaths)}% of road deaths occurred on rural roads (${srcTag})`);
+        if (iLgt >= 0 && darkD) ev.push(`FARS ${yr}: ${pct(darkD, deaths)}% of road deaths occurred in dark conditions (${srcTag})`);
+        if (dowW.wknd) ev.push(`FARS ${yr}: ${pct(dowW.wknd, deaths)}% of road deaths occurred Friday-Sunday (${srcTag})`);
+        if (iPeds >= 0 && pedCrashes) ev.push(`FARS ${yr}: ${pedCrashes.toLocaleString()} fatal crashes involved pedestrians (${pct(pedCrashes, crashes)}% of all fatal crashes) (${srcTag})`);
+        if (iVe >= 0 && multiVeh) ev.push(`FARS ${yr}: ${pct(multiVeh, crashes)}% of fatal crashes involved multiple vehicles (${srcTag})`);
+        if (topMon) ev.push(`FARS ${yr}: deadliest month was ${topMon[0]} with ${topMon[1].toLocaleString()} deaths (${srcTag})`);
+        if (legacy) ev.push(`FARS ${yr}: legacy file schema (numeric codes; rural/dark shares not decoded for this year - honest omission, not zero) (${srcTag})`);
+        return { ok: true, year: yr, ev, crashes, deaths, legacy, top: topStates.slice(0, 3).map(([st, r]) => st + " " + r.d.toLocaleString()) };
+      };
+      try {
+        const perYear = []; const allEv = []; const failed = [];
+        for (const yr of pcYears) {
+          try { const r = await pourOneYear(yr); perYear.push(r); if (r.ok) allEv.push(...r.ev); else failed.push({ year: yr, error: r.error }); }
+          catch (e) { failed.push({ year: yr, error: String(e && e.message || e) }); }
+        }
+        if (!allEv.length) return { cmd: "DEPOT_POUR_CRASH", payload: { ok: false, error: "no years poured", failed } };
+        const okYears = perYear.filter(r => r.ok).map(r => r.year);
+        const knowledge = `Fatal-crash census evidence for ${okYears.join(", ")} from NHTSA FARS (the federal census of every fatal US crash) - per year: national totals, top-8 states, rural/dark/weekend shares (where the year's schema carries them), pedestrian involvement, multi-vehicle share. All counts computed deterministically from the raw accident.csv files. This is crash OCCURRENCE data (no premium/claims figures).\n` + allEv.join("\n");
+        // ONE depot write for the whole batch - immune to KV read-after-write staleness by construction
+        const pour = await processCommand(`DEPOT_INGEST ::: ${JSON.stringify({ risk_type: "driving", touches: ["insurance", "trucking", "fleet", "auto"], knowledge, evidence_lines: allEv, source: `DEPOT_POUR_CRASH ${pcYears[0]}${pcYears.length > 1 ? "-" + pcYears[pcYears.length - 1] : ""} (FARS accident.csv, static.nhtsa.gov)` })}`, env, true);
+        const pp = (pour && pour.payload) ? pour.payload : pour;
+        return { cmd: "DEPOT_POUR_CRASH", payload: { ok: !!(pp && pp.ok), years_poured: okYears, years_failed: failed.length ? failed : undefined,
+          per_year: perYear.filter(r => r.ok).map(r => ({ year: r.year, crashes: r.crashes, deaths: r.deaths, legacy_schema: r.legacy || undefined, top3: r.top })),
+          evidence_lines: allEv.length,
+          depot_result: pp ? { entry_count: pp.entry_count, growth: pp.growth, added: pp.added, distill_note: pp.distill_note } : null,
+          note: `Poured ${okYears.length} year(s) of the real fatal-crash census (${allEv.length} deterministic evidence lines) into depot:risk:driving in ONE write (lost-update-proof). Never fire two depot writes within 60s - use range mode for batches.` } };
+      } catch (e) { return { cmd: "DEPOT_POUR_CRASH", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
     case "DEPOT_POUR_FIRE": {
-      // HISTORICAL INGESTION - fire (v4.9.406). Pours REAL historical fires from the WFIGS full-history layer
-      // (proven keyless, same source as FIRE_INGEST) into the depository as wildfire risk evidence. This is
-      // how we POUR HISTORY IN - real events, not hand-typed. Deepens depot:risk:wildfire (read by insurance,
-      // property, fire). More digested history = the moat.
+      // HISTORICAL INGESTION - fire (v4.9.408, dual-source rewrite). Pours REAL historical fires into the
+      // depository as wildfire risk evidence. More digested history = the moat.
+      //
+      // WHY DUAL-SOURCE (verified by raw pulls 2026-07-02): the InterAgencyFirePerimeterHistory view is
+      // MISSING the modern mega-fires - no 2020 August Complex (its largest member DOE 589k absent), no
+      // 2021 Dixie (963k absent; the view's biggest "Dixie" is 41k from 1985). Its 2020 slice tops out at
+      // ~33k acres, which made the depot conclude 2020 was a mild year - the worst CA fire year on record.
+      // The open WFIGS_Interagency_Perimeters layer (keyless, verified) DOES hold the modern era: DOE,
+      // Creek, Cameron Peak, Dixie, Smokehouse Creek all present with correct acreage.
+      //   year >= 2020 -> WFIGS_Interagency_Perimeters (discovery-date bounded, WF only - excludes RX
+      //                   prescribed burns so intentional burns never pollute risk evidence)
+      //   year <  2020 -> InterAgencyFirePerimeterHistory view (legacy archive; deep pre-2020)
+      // Both paths DEDUPE multi-agency duplicates (same fire recorded by USFS+BLM+CDF was inflating
+      // "patterns": MARTIN x2, RANCH x3 in the first real pour) - group by name, keep max acres.
+      // Real fire lines are passed as evidence_lines -> DEPOT_INGEST appends them DETERMINISTICALLY,
+      // so a pour can never be lost to a synthesis token limit (the v4.9.408 additive law).
       //   DEPOT_POUR_FIRE <year>        -> the largest fires that year, poured in as evidence
       //   DEPOT_POUR_FIRE <year> <n>    -> top n by acres (default 10, cap 25)
       if (!isOp) return { cmd: "DEPOT_POUR_FIRE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const dpArgs = line.replace(/^DEPOT_POUR_FIRE\s*/i, "").trim().split(/\s+/).filter(Boolean);
       const dpYear = (dpArgs.find(a => /^(19|20)\d{2}$/.test(a))) || null;
       const dpN = Math.min(25, Math.max(1, parseInt(dpArgs.find(a => /^\d{1,2}$/.test(a) && !/^(19|20)\d{2}$/.test(a)) || "10", 10)));
-      if (!dpYear) return { cmd: "DEPOT_POUR_FIRE", payload: { ok: false, error: "usage: DEPOT_POUR_FIRE <year> [n]  (pours the top-n largest fires that year from the real WFIGS history layer)" } };
+      if (!dpYear) return { cmd: "DEPOT_POUR_FIRE", payload: { ok: false, error: "usage: DEPOT_POUR_FIRE <year> [n]  (pours the top-n largest fires that year; >=2020 from the WFIGS perimeters layer, earlier from the interagency history archive)" } };
+      const dpYearNum = parseInt(dpYear, 10);
+      const dpModern = dpYearNum >= 2020;
+      const dpFetchN = Math.min(75, dpN * 3); // over-pull, then dedupe multi-agency records, then take top n
       try {
-        // pull the year's fires from the proven full-history layer, ordered by size
-        const where = `FIRE_YEAR_INT=${dpYear}`;
-        const url = await resolveFeedUrl(env, "fire_history_year", { where }, `https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/InterAgencyFirePerimeterHistory_All_Years_View/FeatureServer/0/query?where={where}&outFields=INCIDENT,GIS_ACRES,FIRE_YEAR_INT,AGENCY,UNIT_ID&orderByFields=GIS_ACRES%20DESC&returnGeometry=false&resultRecordCount=${dpN}&f=json`);
-        const r = await fetchWithTimeout(url, {}, 10000);
-        if (!r.ok) { let b = ""; try { b = (await r.text()).slice(0, 200); } catch {}; return { cmd: "DEPOT_POUR_FIRE", payload: { ok: false, error: `fire history http ${r.status}`, detail: b } }; }
-        const d = await r.json();
-        if (d.error) return { cmd: "DEPOT_POUR_FIRE", payload: { ok: false, error: JSON.stringify(d.error).slice(0, 200) } };
-        const feats = (d.features || []).map(f => f.attributes || {}).filter(a => a.INCIDENT && a.GIS_ACRES);
-        if (!feats.length) return { cmd: "DEPOT_POUR_FIRE", payload: { ok: false, error: `no fires found for ${dpYear} in the WFIGS history layer` } };
-        // build a real-data knowledge string from the actual fires
-        const fireLines = feats.map(a => `${a.INCIDENT} (${dpYear}, ${a.AGENCY || "?"}): ${Math.round(a.GIS_ACRES).toLocaleString()} acres`);
-        const knowledge = `Historical wildfire evidence from ${dpYear} (WFIGS full-history layer, real perimeters). Top ${feats.length} fires by final size:\n` + fireLines.join("\n") + `\nThis is real historical final-size data (public perimeter history has size/year/agency/location; no fuel/containment-timeline/casualty detail - those need ICS-209 archives). Use as wildfire risk evidence: scale of catastrophic fire years, which agencies/regions carry the largest burns, base rates for size classes.`;
-        // pour it into the depository via DEPOT_INGEST
-        const pour = await processCommand(`DEPOT_INGEST ::: ${JSON.stringify({ risk_type: "wildfire", touches: ["insurance", "property", "fire", "shipping"], knowledge })}`, env, true);
+        let feats = [];
+        let dpSource = "";
+        if (dpModern) {
+          dpSource = "wfigs_interagency_perimeters";
+          const where = `attr_FireDiscoveryDateTime >= TIMESTAMP '${dpYearNum}-01-01 00:00:00' AND attr_FireDiscoveryDateTime < TIMESTAMP '${dpYearNum + 1}-01-01 00:00:00' AND attr_IncidentTypeCategory = 'WF'`;
+          const url = await resolveFeedUrl(env, "fire_history_year_modern", { where }, `https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Interagency_Perimeters/FeatureServer/0/query?where={where}&outFields=poly_IncidentName,poly_GISAcres,attr_POOState&orderByFields=poly_GISAcres%20DESC&returnGeometry=false&resultRecordCount=${dpFetchN}&f=json`); // resolveFeedUrl encodeURIComponent's {where} - pass it raw
+          const r = await fetchWithTimeout(url, {}, 10000);
+          if (!r.ok) { let b = ""; try { b = (await r.text()).slice(0, 200); } catch {}; return { cmd: "DEPOT_POUR_FIRE", payload: { ok: false, error: `wfigs perimeters http ${r.status}`, detail: b } }; }
+          const d = await r.json();
+          if (d.error) return { cmd: "DEPOT_POUR_FIRE", payload: { ok: false, error: JSON.stringify(d.error).slice(0, 200) } };
+          feats = (d.features || []).map(f => f.attributes || {}).filter(a => a.poly_IncidentName && a.poly_GISAcres)
+            .map(a => ({ name: String(a.poly_IncidentName).trim(), acres: a.poly_GISAcres, tag: a.attr_POOState || "?" }));
+        } else {
+          dpSource = "interagency_history_view";
+          const where = `FIRE_YEAR_INT=${dpYearNum}`;
+          const url = await resolveFeedUrl(env, "fire_history_year", { where }, `https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/InterAgencyFirePerimeterHistory_All_Years_View/FeatureServer/0/query?where={where}&outFields=INCIDENT,GIS_ACRES,FIRE_YEAR_INT,AGENCY,UNIT_ID&orderByFields=GIS_ACRES%20DESC&returnGeometry=false&resultRecordCount=${dpFetchN}&f=json`);
+          const r = await fetchWithTimeout(url, {}, 10000);
+          if (!r.ok) { let b = ""; try { b = (await r.text()).slice(0, 200); } catch {}; return { cmd: "DEPOT_POUR_FIRE", payload: { ok: false, error: `fire history http ${r.status}`, detail: b } }; }
+          const d = await r.json();
+          if (d.error) return { cmd: "DEPOT_POUR_FIRE", payload: { ok: false, error: JSON.stringify(d.error).slice(0, 200) } };
+          feats = (d.features || []).map(f => f.attributes || {}).filter(a => a.INCIDENT && a.GIS_ACRES)
+            .map(a => ({ name: String(a.INCIDENT).trim(), acres: a.GIS_ACRES, tag: a.AGENCY || "?" }));
+        }
+        if (!feats.length) return { cmd: "DEPOT_POUR_FIRE", payload: { ok: false, error: `no fires found for ${dpYear} in ${dpSource}` } };
+        // DEDUPE multi-agency duplicates: same incident name -> one fire, max acres, merged tags
+        const dpByName = new Map();
+        for (const f of feats) {
+          const k = f.name.toLowerCase().replace(/\s+/g, " ");
+          const cur = dpByName.get(k);
+          if (!cur) dpByName.set(k, { name: f.name, acres: f.acres, tags: [f.tag] });
+          else { if (f.acres > cur.acres) { cur.acres = f.acres; cur.name = f.name; } if (!cur.tags.includes(f.tag)) cur.tags.push(f.tag); }
+        }
+        const deduped = [...dpByName.values()].sort((a, b) => b.acres - a.acres).slice(0, dpN);
+        const dupesMerged = feats.length - dpByName.size;
+        const tagLabel = dpModern ? "state" : "agency";
+        const fireLines = deduped.map(f => `${f.name} fire (${dpYear}, ${tagLabel}: ${f.tags.join("/")}): ${Math.round(f.acres).toLocaleString()} acres (WFIGS ${dpModern ? "interagency perimeters" : "history archive"})`);
+        const sourceCaveat = dpModern
+          ? "Source: open WFIGS interagency perimeters layer (verified holds the modern mega-fires; discovery-date bounded; prescribed burns excluded)."
+          : "Source: interagency perimeter history archive. KNOWN LIMIT (verified 2026-07-02): this archive is missing many modern mega-fires and its 2019+ coverage is sparse - it is the deep PRE-2020 record; 2020+ pours use the WFIGS perimeters layer instead. Very old entries (pre-1900 reconstructions) exist in this archive; treat pre-1900 dates as reconstructed, not observed.";
+        const knowledge = `Historical wildfire evidence from ${dpYear} - the top ${deduped.length} fires by final perimeter size, deduplicated across agencies. ${sourceCaveat} This is real final-size data (size/year/location only; no fuel, containment timeline, or casualty detail - those need ICS-209 archives). Use as wildfire risk evidence: the scale of the year, base rates for size classes, where the largest burns concentrated.\n` + fireLines.join("\n");
+        // pour: real lines go in as evidence_lines (deterministic, cannot be lost); knowledge feeds pattern synthesis
+        const pour = await processCommand(`DEPOT_INGEST ::: ${JSON.stringify({ risk_type: "wildfire", touches: ["insurance", "property", "fire", "shipping"], knowledge, evidence_lines: fireLines, source: `DEPOT_POUR_FIRE ${dpYear} (${dpSource})` })}`, env, true);
         const pp = (pour && pour.payload) ? pour.payload : pour;
-        return { cmd: "DEPOT_POUR_FIRE", payload: { ok: !!(pp && pp.ok), year: dpYear, fires_poured: feats.length,
-          largest: feats.slice(0, 5).map(a => ({ name: a.INCIDENT, acres: Math.round(a.GIS_ACRES), agency: a.AGENCY })),
-          depot_result: pp ? { entry_count: pp.entry_count, growth: pp.growth } : null,
-          note: `Poured ${feats.length} real ${dpYear} fires into depot:risk:wildfire. This is real historical data deepening the moat. Run for more years to build depth. Cross-linked to insurance/property/fire/shipping (smoke).` } };
+        return { cmd: "DEPOT_POUR_FIRE", payload: { ok: !!(pp && pp.ok), year: dpYear, source: dpSource, fires_poured: deduped.length, agency_duplicates_merged: dupesMerged,
+          largest: deduped.slice(0, 5).map(f => ({ name: f.name, acres: Math.round(f.acres), [tagLabel]: f.tags.join("/") })),
+          depot_result: pp ? { entry_count: pp.entry_count, growth: pp.growth, added: pp.added, distill_note: pp.distill_note } : null,
+          note: `Poured ${deduped.length} real ${dpYear} fires (deduplicated) into depot:risk:wildfire via ${dpSource}. Every fire line landed deterministically as evidence - a pour can only ADD (v4.9.408). Run more years to deepen the moat.` } };
       } catch (e) { return { cmd: "DEPOT_POUR_FIRE", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 
@@ -16451,7 +17222,7 @@ function openAlbum(idx){
       // AND character breakdown, because each tiny fragment lost the whole picture). A real COMMAND
       // BATCH has EVERY non-empty line starting with a known command verb. If ANY line is prose, the
       // whole body is a single human message.
-      const KNOWN_CMD_VERBS = /^(SETKV|GETKV|LISTKV|DELKV|PATCHKV|PING|HOST|DOMAIN_LAUNCH|DOMAIN_STATUS|DOMAIN_DIAGNOSE|FETCH_PLACES|WORLD_MAP|PTA_[A-Z_]+|COMMS|WORKFLOW|EMAIL_SEND|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|TWILIO_INTEL|TWILIO[A-Z_]*|A2P_[A-Z]+|SMS_[A-Z]+|CAPABILITY|INDUSTRY|BUSINESS_STATE|CF_API|AURA_[A-Z_]+|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|SHOW_IT|SHOWIT|GENERATE_PAGE|DEPLOY_[A-Z]+|ROUTE_[A-Z_]+|GETKV|WEB_SEARCH|NEWS_QUERY|OIL_PRICE|MARINE_WX|AIS_QUERY|LOOP_PROBE)\b/i;
+      const KNOWN_CMD_VERBS = /^(SETKV|GETKV|LISTKV|DELKV|PATCHKV|PING|HOST|DOMAIN_LAUNCH|DOMAIN_STATUS|DOMAIN_DIAGNOSE|FETCH_PLACES|WORLD_MAP|PTA_[A-Z_]+|COMMS|WORKFLOW|EMAIL_SEND|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|TWILIO_INTEL|TWILIO[A-Z_]*|A2P_[A-Z]+|SMS_[A-Z]+|CAPABILITY|INDUSTRY|BUSINESS_STATE|CF_API|AURA_[A-Z_]+|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|SHOW_IT|SHOWIT|GENERATE_PAGE|DEPLOY_[A-Z]+|ROUTE_[A-Z_]+|GETKV|WEB_SEARCH|NEWS_QUERY|OIL_PRICE|MARINE_WX|AIS_QUERY|LOOP_PROBE|SOURCE_PROBE|DEPOT_[A-Z_]+|ANALYST_BRIEF|SITUATION_[A-Z_]+|FLEET_[A-Z_]+)\b/i;
       const _rawLines = body.split("\n").map(l => l.trim()).filter(Boolean);
       const _looksLikeCommandBatch = _rawLines.length > 0 && _rawLines.every(l => KNOWN_CMD_VERBS.test(l));
       const _isProseDump = !_VALUE_BEARING.includes(_firstWord) && _rawLines.length > 1 && !_looksLikeCommandBatch;
@@ -16470,7 +17241,14 @@ function openAlbum(idx){
       const _isInternal = _authHeader === "Bearer aura-comms-internal";
       const INTERNAL_ALLOWED = ["PTA_PHONE"];
 
-      for (const line of lines) {
+      for (let line of lines) {
+        // !!timing STRIP (v4.9.408): the conversational path strips this diagnostic flag, but this
+        // DIRECT command path did not - so "DEPOT_QUERY wildfire !!timing" parsed the risk type as
+        // "wildfire !!timing" and failed. Strip it here BEFORE any arg parsing. Timing info is not
+        // lost: elapsed_ms is appended to every payload below regardless. (Closes the parked item
+        // "!!timing not stripped on direct-operator-command path".)
+        if (/!!timing/i.test(line)) line = line.replace(/!!timing/gi, "").trim();
+        if (!line) continue;
         if (line.toUpperCase().startsWith("HOST ")) continue;
 
         const _cmdWord = (line.split(/\s+/)[0] || "").toUpperCase();

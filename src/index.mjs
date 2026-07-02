@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.422-2026-07-02";
+const BUILD = "aura-core-v4.9.423-2026-07-02";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -4100,6 +4100,117 @@ async function processCommand(line, env, isOp) {
           depot_result: pp ? { entry_count: pp.entry_count, growth: pp.growth, added: pp.added, distill_note: pp.distill_note } : null,
           note: `Poured ${facts.type}-${facts.number} "${facts.title}" into depot:risk:${rt} in ONE write. Space depot writes >60s.` } };
       } catch (e) { return { cmd: "DEPOT_POUR_DISASTER", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "DEPOT_POUR_HEALTH": {
+      // MORTALITY CENSUS (v4.9.423) - the actuarial spine of life & health insurance. Pours CDC NCHS
+      // leading-causes-of-death into depot:risk:mortality. Source verified 2026-07-02: data.cdc.gov
+      // resource bi63-dtpu (Socrata JSON, keyless). Real fields: year, state, cause_name, deaths,
+      // aadr (age-adjusted death rate per 100k). "United States" rows = national; we pour national
+      // by default, or a state. Deterministic distillation - no model in the count path.
+      //   DEPOT_POUR_HEALTH <year|start-end> [STATE]   (default national; max 12 years/call)
+      if (!isOp) return { cmd: "DEPOT_POUR_HEALTH", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const hParts = rest.trim().split(/\s+/).filter(Boolean);
+      const hSpan = (hParts.find(p => /^(19|20)\d{2}(-(19|20)\d{2})?$/.test(p)) || "");
+      const hStateRaw = hParts.filter(p => !/^(19|20)\d{2}/.test(p)).join(" ").trim();
+      let hYears = [];
+      const hR = hSpan.match(/^((?:19|20)\d{2})-((?:19|20)\d{2})$/); const hO = hSpan.match(/^((?:19|20)\d{2})$/);
+      if (hR) { const a = +hR[1], b = +hR[2]; if (b < a || b - a + 1 > 12) return { cmd: "DEPOT_POUR_HEALTH", payload: { ok: false, error: "range max 12 years/call" } }; for (let y = a; y <= b; y++) hYears.push(y); }
+      else if (hO) hYears = [+hO[1]];
+      else return { cmd: "DEPOT_POUR_HEALTH", payload: { ok: false, error: "usage: DEPOT_POUR_HEALTH <year|start-end> [STATE]" } };
+      const hState = hStateRaw || "United States";
+      const hUA = { "user-agent": "aura-depot-pour/1.0", "accept": "application/json" };
+      const hBase = await resolveFeedUrl(env, "cdc_leading_causes", {}, "https://data.cdc.gov/resource/bi63-dtpu.json");
+      const hOneYear = async (yr) => {
+        const where = encodeURIComponent(`year=${yr} AND state='${hState.replace(/'/g, "''")}'`);
+        const r = await fetchWithTimeout(`${hBase}?$where=${where}&$limit=5000`, { headers: hUA }, 25000);
+        if (!r.ok) return { ok: false, year: yr, error: `cdc api ${r.status}` };
+        const arr = await r.json();
+        if (!Array.isArray(arr) || !arr.length) return { ok: false, year: yr, error: `no rows for ${hState} ${yr}` };
+        let allCause = 0; const causes = [];
+        for (const row of arr) {
+          const cause = (row.cause_name || "").trim();
+          const deaths = parseInt(row.deaths, 10) || 0;
+          const aadr = row.aadr != null ? Number(row.aadr) : null;
+          if (/^all causes$/i.test(cause)) { allCause = deaths; continue; }
+          causes.push({ cause, deaths, aadr });
+        }
+        causes.sort((a, b) => b.deaths - a.deaths);
+        const srcTag = "CDC NCHS";
+        const ev = [];
+        ev.push(`Mortality ${hState} ${yr}: ${allCause.toLocaleString()} total deaths; leading causes - ` + causes.slice(0, 8).map(c => `${c.cause} ${c.deaths.toLocaleString()}${c.aadr != null ? " (age-adj rate " + c.aadr + "/100k)" : ""}`).join("; ") + ` (${srcTag})`);
+        return { ok: true, year: yr, ev, allCause, top: causes.slice(0, 3).map(c => c.cause + " " + c.deaths.toLocaleString()) };
+      };
+      try {
+        const perYear = []; const allEv = []; const failed = [];
+        for (const yr of hYears) { try { const r = await hOneYear(yr); perYear.push(r); if (r.ok) allEv.push(...r.ev); else failed.push({ year: yr, error: r.error }); } catch (e) { failed.push({ year: yr, error: String(e && e.message || e) }); } }
+        if (!allEv.length) return { cmd: "DEPOT_POUR_HEALTH", payload: { ok: false, error: "no years poured", failed } };
+        const okYears = perYear.filter(r => r.ok).map(r => r.year);
+        const knowledge = `Mortality evidence for ${hState}, ${okYears.join(", ")} from CDC NCHS leading causes of death - total deaths and the leading causes with age-adjusted death rates per 100k. The actuarial base for life and health risk: what people die of, how often, and the trend. Age-adjusted rates allow year-over-year and cross-population comparison. Counts are deaths (mortality), not morbidity or cost.\n` + allEv.join("\n");
+        const pour = await processCommand(`DEPOT_INGEST ::: ${JSON.stringify({ risk_type: "mortality", touches: ["insurance", "life", "health", "reinsurance"], knowledge, evidence_lines: allEv, source: `DEPOT_POUR_HEALTH ${hState} ${hYears[0]}${hYears.length > 1 ? "-" + hYears[hYears.length - 1] : ""} (CDC NCHS bi63-dtpu)` })}`, env, true);
+        const pp = (pour && pour.payload) ? pour.payload : pour;
+        return { cmd: "DEPOT_POUR_HEALTH", payload: { ok: !!(pp && pp.ok), state: hState, years_poured: okYears, years_failed: failed.length ? failed : undefined,
+          per_year: perYear.filter(r => r.ok).map(r => ({ year: r.year, total_deaths: r.allCause, top3: r.top })),
+          depot_result: pp ? { entry_count: pp.entry_count, growth: pp.growth, added: pp.added, distill_note: pp.distill_note } : null,
+          note: `Poured mortality census for ${hState} (${okYears.length} yr) into depot:risk:mortality in ONE write. Space depot writes >60s.` } };
+      } catch (e) { return { cmd: "DEPOT_POUR_HEALTH", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "DEPOT_POUR_QUAKE": {
+      // SEISMIC CENSUS (v4.9.423) - pours USGS earthquake history into depot:risk:earthquake. Source
+      // verified 2026-07-02: earthquake.usgs.gov FDSN event query, keyless GeoJSON. Real fields:
+      // mag, place, time, coordinates. Deterministic distillation: count by magnitude class, biggest
+      // events, regional concentration. USGS caps a single query at 20000 events - we bound by year
+      // and minmagnitude (default M4.5+, the insurance-relevant threshold) to stay well under.
+      //   DEPOT_POUR_QUAKE <year|start-end> [minMag]   (default minMag 4.5; max 15 years/call)
+      if (!isOp) return { cmd: "DEPOT_POUR_QUAKE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const qParts = rest.trim().split(/\s+/).filter(Boolean);
+      const qSpan = (qParts.find(p => /^(19|20)\d{2}(-(19|20)\d{2})?$/.test(p)) || "");
+      const qMag = (qParts.find(p => /^\d(\.\d)?$/.test(p)) || "4.5");
+      let qYears = [];
+      const qR = qSpan.match(/^((?:19|20)\d{2})-((?:19|20)\d{2})$/); const qO = qSpan.match(/^((?:19|20)\d{2})$/);
+      if (qR) { const a = +qR[1], b = +qR[2]; if (b < a || b - a + 1 > 15) return { cmd: "DEPOT_POUR_QUAKE", payload: { ok: false, error: "range max 15 years/call" } }; for (let y = a; y <= b; y++) qYears.push(y); }
+      else if (qO) qYears = [+qO[1]];
+      else return { cmd: "DEPOT_POUR_QUAKE", payload: { ok: false, error: "usage: DEPOT_POUR_QUAKE <year|start-end> [minMag]" } };
+      const qUA = { "user-agent": "aura-depot-pour/1.0", "accept": "application/json" };
+      const qOneYear = async (yr) => {
+        const url = `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=${yr}-01-01&endtime=${yr + 1}-01-01&minmagnitude=${qMag}&orderby=magnitude`;
+        const r = await fetchWithTimeout(url, { headers: qUA }, 30000);
+        if (!r.ok) return { ok: false, year: yr, error: `usgs ${r.status}` };
+        const d = await r.json();
+        const feats = (d.features || []);
+        if (!feats.length) return { ok: false, year: yr, error: `no M${qMag}+ events ${yr}` };
+        let total = 0; const cls = { "4-4.9": 0, "5-5.9": 0, "6-6.9": 0, "7-7.9": 0, "8+": 0 };
+        const regions = new Map(); const big = [];
+        for (const f of feats) {
+          const m = f.properties && f.properties.mag; if (m == null) continue;
+          total++;
+          if (m >= 8) cls["8+"]++; else if (m >= 7) cls["7-7.9"]++; else if (m >= 6) cls["6-6.9"]++; else if (m >= 5) cls["5-5.9"]++; else cls["4-4.9"]++;
+          const place = (f.properties.place || "").replace(/^.*?of\s+/i, "").trim() || "unknown";
+          regions.set(place, (regions.get(place) || 0) + 1);
+          big.push({ mag: m, place: f.properties.place || "?" });
+        }
+        big.sort((a, b) => b.mag - a.mag);
+        const topReg = [...regions.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+        const srcTag = "USGS";
+        const ev = [];
+        ev.push(`Seismic ${yr} (M${qMag}+): ${total.toLocaleString()} events - M4:${cls["4-4.9"]}, M5:${cls["5-5.9"]}, M6:${cls["6-6.9"]}, M7:${cls["7-7.9"]}, M8+:${cls["8+"]}; largest ${big[0].mag} (${big[0].place}) (${srcTag})`);
+        if (topReg.length) ev.push(`Seismic ${yr}: most active regions - ` + topReg.map(([p, n]) => `${p} (${n})`).join(", ") + ` (${srcTag})`);
+        return { ok: true, year: yr, ev, total, biggest: big[0], cls };
+      };
+      try {
+        const perYear = []; const allEv = []; const failed = [];
+        for (const yr of qYears) { try { const r = await qOneYear(yr); perYear.push(r); if (r.ok) allEv.push(...r.ev); else failed.push({ year: yr, error: r.error }); } catch (e) { failed.push({ year: yr, error: String(e && e.message || e) }); } }
+        if (!allEv.length) return { cmd: "DEPOT_POUR_QUAKE", payload: { ok: false, error: "no years poured", failed } };
+        const okYears = perYear.filter(r => r.ok).map(r => r.year);
+        const knowledge = `Seismic evidence for ${okYears.join(", ")} from USGS (M${qMag}+ events) - annual counts by magnitude class, largest event, and most active regions. Earthquake risk base rates: frequency by magnitude tier and geographic concentration. Occurrence data (magnitude/location), not structural loss - insured quake loss additionally needs building exposure and shaking-intensity data.\n` + allEv.join("\n");
+        const pour = await processCommand(`DEPOT_INGEST ::: ${JSON.stringify({ risk_type: "earthquake", touches: ["insurance", "property", "government"], knowledge, evidence_lines: allEv, source: `DEPOT_POUR_QUAKE ${qYears[0]}${qYears.length > 1 ? "-" + qYears[qYears.length - 1] : ""} M${qMag}+ (USGS)` })}`, env, true);
+        const pp = (pour && pour.payload) ? pour.payload : pour;
+        return { cmd: "DEPOT_POUR_QUAKE", payload: { ok: !!(pp && pp.ok), min_magnitude: qMag, years_poured: okYears, years_failed: failed.length ? failed : undefined,
+          per_year: perYear.filter(r => r.ok).map(r => ({ year: r.year, events: r.total, largest: r.biggest ? r.biggest.mag + " " + r.biggest.place : null })),
+          depot_result: pp ? { entry_count: pp.entry_count, growth: pp.growth, added: pp.added, distill_note: pp.distill_note } : null,
+          note: `Poured seismic census (${okYears.length} yr, M${qMag}+) into depot:risk:earthquake in ONE write. Space depot writes >60s.` } };
+      } catch (e) { return { cmd: "DEPOT_POUR_QUAKE", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 
     case "DEPOT_POUR_FLOOD": {

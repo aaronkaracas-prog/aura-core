@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.406-2026-07-01";
+const BUILD = "aura-core-v4.9.407-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3757,6 +3757,41 @@ async function processCommand(line, env, isOp) {
       if (!rec) return { cmd: "DEPOT_QUERY", payload: { ok: false, error: `no depository record for risk type '${dqArg}'. DEPOT_QUERY (no arg) lists what's held.` } };
       return { cmd: "DEPOT_QUERY", payload: { ok: true, mode: "read", risk_type: rec.risk_type, entry_count: rec.entry_count, touches: rec.touches, record: rec,
         note: `Shared risk knowledge for ${rec.risk_type}, drawn from ${rec.entry_count} ingested entr(ies). Readable by every industry it touches: ${(rec.touches||[]).join(", ")}.` } };
+    }
+
+    case "DEPOT_POUR_FIRE": {
+      // HISTORICAL INGESTION - fire (v4.9.406). Pours REAL historical fires from the WFIGS full-history layer
+      // (proven keyless, same source as FIRE_INGEST) into the depository as wildfire risk evidence. This is
+      // how we POUR HISTORY IN - real events, not hand-typed. Deepens depot:risk:wildfire (read by insurance,
+      // property, fire). More digested history = the moat.
+      //   DEPOT_POUR_FIRE <year>        -> the largest fires that year, poured in as evidence
+      //   DEPOT_POUR_FIRE <year> <n>    -> top n by acres (default 10, cap 25)
+      if (!isOp) return { cmd: "DEPOT_POUR_FIRE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const dpArgs = line.replace(/^DEPOT_POUR_FIRE\s*/i, "").trim().split(/\s+/).filter(Boolean);
+      const dpYear = (dpArgs.find(a => /^(19|20)\d{2}$/.test(a))) || null;
+      const dpN = Math.min(25, Math.max(1, parseInt(dpArgs.find(a => /^\d{1,2}$/.test(a) && !/^(19|20)\d{2}$/.test(a)) || "10", 10)));
+      if (!dpYear) return { cmd: "DEPOT_POUR_FIRE", payload: { ok: false, error: "usage: DEPOT_POUR_FIRE <year> [n]  (pours the top-n largest fires that year from the real WFIGS history layer)" } };
+      try {
+        // pull the year's fires from the proven full-history layer, ordered by size
+        const where = `FIRE_YEAR_INT=${dpYear}`;
+        const url = await resolveFeedUrl(env, "fire_history_year", { where }, `https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/InterAgencyFirePerimeterHistory_All_Years_View/FeatureServer/0/query?where={where}&outFields=INCIDENT,GIS_ACRES,FIRE_YEAR_INT,AGENCY,UNIT_ID&orderByFields=GIS_ACRES%20DESC&returnGeometry=false&resultRecordCount=${dpN}&f=json`);
+        const r = await fetchWithTimeout(url, {}, 10000);
+        if (!r.ok) { let b = ""; try { b = (await r.text()).slice(0, 200); } catch {}; return { cmd: "DEPOT_POUR_FIRE", payload: { ok: false, error: `fire history http ${r.status}`, detail: b } }; }
+        const d = await r.json();
+        if (d.error) return { cmd: "DEPOT_POUR_FIRE", payload: { ok: false, error: JSON.stringify(d.error).slice(0, 200) } };
+        const feats = (d.features || []).map(f => f.attributes || {}).filter(a => a.INCIDENT && a.GIS_ACRES);
+        if (!feats.length) return { cmd: "DEPOT_POUR_FIRE", payload: { ok: false, error: `no fires found for ${dpYear} in the WFIGS history layer` } };
+        // build a real-data knowledge string from the actual fires
+        const fireLines = feats.map(a => `${a.INCIDENT} (${dpYear}, ${a.AGENCY || "?"}): ${Math.round(a.GIS_ACRES).toLocaleString()} acres`);
+        const knowledge = `Historical wildfire evidence from ${dpYear} (WFIGS full-history layer, real perimeters). Top ${feats.length} fires by final size:\n` + fireLines.join("\n") + `\nThis is real historical final-size data (public perimeter history has size/year/agency/location; no fuel/containment-timeline/casualty detail - those need ICS-209 archives). Use as wildfire risk evidence: scale of catastrophic fire years, which agencies/regions carry the largest burns, base rates for size classes.`;
+        // pour it into the depository via DEPOT_INGEST
+        const pour = await processCommand(`DEPOT_INGEST ::: ${JSON.stringify({ risk_type: "wildfire", touches: ["insurance", "property", "fire", "shipping"], knowledge })}`, env, true);
+        const pp = (pour && pour.payload) ? pour.payload : pour;
+        return { cmd: "DEPOT_POUR_FIRE", payload: { ok: !!(pp && pp.ok), year: dpYear, fires_poured: feats.length,
+          largest: feats.slice(0, 5).map(a => ({ name: a.INCIDENT, acres: Math.round(a.GIS_ACRES), agency: a.AGENCY })),
+          depot_result: pp ? { entry_count: pp.entry_count, growth: pp.growth } : null,
+          note: `Poured ${feats.length} real ${dpYear} fires into depot:risk:wildfire. This is real historical data deepening the moat. Run for more years to build depth. Cross-linked to insurance/property/fire/shipping (smoke).` } };
+      } catch (e) { return { cmd: "DEPOT_POUR_FIRE", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 
     case "FLEET_COORDINATE": {

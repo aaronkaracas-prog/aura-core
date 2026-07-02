@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.405-2026-07-01";
+const BUILD = "aura-core-v4.9.406-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3679,6 +3679,84 @@ async function processCommand(line, env, isOp) {
           email: irParsed,
           note: realData ? "Cold email grounded in the company's REAL public data + learned industry angles. Facts_used are real, pulled live." : "Company data not found live - drafted from the learned model, kept general, no invented specifics (honesty law)." } };
       } catch (e) { return { cmd: "INDUSTRY_REACH", payload: { ok: false, error: "INDUSTRY_REACH draft failed: " + String(e && e.message || e) } }; }
+    }
+
+    case "DEPOT_INGEST": {
+      // THE SHARED KNOWLEDGE DEPOSITORY - write side (v4.9.405). Ingests historical or live RISK KNOWLEDGE,
+      // distilled, into depot:risk:<type>. RISK-TYPE primary (war-risk, wildfire, flood, driving, cargo...),
+      // each entry cross-linked to the industries it touches. This is the SHARED substrate: fire history feeds
+      // insurance AND FireOS; Hormuz feeds insurance AND shipping. Ingest once -> value in many industries.
+      // Insurance is the heaviest consumer (digested risk history = the moat). Modeled on FIRE_INGEST.
+      //   DEPOT_INGEST ::: {"risk_type":"war-risk","touches":["shipping","insurance"],"knowledge":"<what happened / cause / effect / magnitude / source>"}
+      if (!isOp) return { cmd: "DEPOT_INGEST", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const diPayload = rest.includes(":::") ? rest.slice(rest.indexOf(":::") + 3).trim() : rest.trim();
+      let di; try { di = JSON.parse(diPayload); } catch { return { cmd: "DEPOT_INGEST", payload: { ok: false, error: 'Usage: DEPOT_INGEST ::: {"risk_type":"war-risk","touches":["shipping","insurance"],"knowledge":"..."}' } }; }
+      if (!di || !di.risk_type || !di.knowledge) return { cmd: "DEPOT_INGEST", payload: { ok: false, error: "risk_type and knowledge are required" } };
+      const diType = di.risk_type.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+      const diKey = `depot:risk:${diType}`;
+      // read current risk-type record
+      let diRec = null;
+      try { const raw = await env.AURA_KV.get(diKey); if (raw) diRec = JSON.parse(raw); } catch {}
+      if (!diRec) diRec = { risk_type: di.risk_type, entry_count: 0, touches: [], patterns: [], evidence: [], pricing_signals: [], created: new Date().toISOString(), updated: null };
+      // distill the knowledge into the risk record (patterns / evidence / pricing_signals), merging
+      const diApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      if (!diApiKey) return { cmd: "DEPOT_INGEST", payload: { ok: false, error: "Brain not configured" } };
+      const diModelName = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const diSystem = "You are the DEPOSITORY layer of Aura - the shared cross-industry RISK KNOWLEDGE store. You maintain a durable, compounding record of a RISK TYPE so ANY industry can draw on it (insurance to price it, operators to avoid it). You are given the CURRENT risk record and NEW KNOWLEDGE (a historical event, live situation, or cause-effect). Integrate it: add only what is NEW or sharper, merge duplicates, keep durable and tight. Return ONLY JSON, no fences, exactly these keys: patterns (array of durable cause->effect risk patterns), evidence (array of concrete events/datapoints that prove the patterns, each a short factual line), pricing_signals (array of what MOVES the price/premium/cost for this risk - the levers an insurer or operator watches). Each array = FULL merged list (old+new integrated), deduplicated, most important first, capped ~15 each. Output JSON only.";
+      const diUser = "RISK TYPE: " + di.risk_type + "\n\nCURRENT RECORD:\n" + JSON.stringify({ patterns: diRec.patterns, evidence: diRec.evidence, pricing_signals: diRec.pricing_signals }) + "\n\nNEW KNOWLEDGE:\n" + di.knowledge;
+      try {
+        const diData = await callAnthropic(diApiKey, { model: diModelName, max_tokens: 3000, system: diSystem, messages: [{ role: "user", content: diUser }] });
+        let diText = ""; if (diData && diData.content) { for (const b of diData.content) { if (b.type === "text") diText += b.text; } }
+        diText = diText.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+        let diParsed = null; try { diParsed = JSON.parse(diText); } catch {}
+        if (!diParsed) { // truncation repair
+          try { let rp = diText; if (((rp.match(/"/g)||[]).length)%2!==0) rp+='"'; rp=rp.replace(/,\s*$/,""); const ob=(rp.match(/\[/g)||[]).length,cb=(rp.match(/\]/g)||[]).length,oc=(rp.match(/\{/g)||[]).length,cc=(rp.match(/\}/g)||[]).length; for(let i=0;i<ob-cb;i++)rp+="]"; for(let i=0;i<oc-cc;i++)rp+="}"; diParsed=JSON.parse(rp); } catch {}
+        }
+        if (!diParsed) return { cmd: "DEPOT_INGEST", payload: { ok: false, error: "distill did not return valid JSON", raw: diText.slice(0, 600) } };
+        const before = { patterns: diRec.patterns.length, evidence: diRec.evidence.length, pricing_signals: diRec.pricing_signals.length };
+        diRec.patterns = Array.isArray(diParsed.patterns) ? diParsed.patterns : diRec.patterns;
+        diRec.evidence = Array.isArray(diParsed.evidence) ? diParsed.evidence : diRec.evidence;
+        diRec.pricing_signals = Array.isArray(diParsed.pricing_signals) ? diParsed.pricing_signals : diRec.pricing_signals;
+        for (const t of (Array.isArray(di.touches) ? di.touches : [])) { const tl = String(t).toLowerCase(); if (!diRec.touches.includes(tl)) diRec.touches.push(tl); }
+        diRec.entry_count = (diRec.entry_count || 0) + 1;
+        diRec.updated = new Date().toISOString();
+        await env.AURA_KV.put(diKey, JSON.stringify(diRec)).catch(() => {});
+        // maintain an index of all risk types for DEPOT_QUERY discovery
+        try { let idx = []; const ir = await env.AURA_KV.get("depot:index"); if (ir) idx = JSON.parse(ir); if (!idx.includes(diType)) { idx.push(diType); await env.AURA_KV.put("depot:index", JSON.stringify(idx)); } } catch {}
+        const after = { patterns: diRec.patterns.length, evidence: diRec.evidence.length, pricing_signals: diRec.pricing_signals.length };
+        return { cmd: "DEPOT_INGEST", payload: { ok: true, risk_type: di.risk_type, key: diKey, entry_count: diRec.entry_count,
+          touches: diRec.touches,
+          growth: { before, after, patterns_delta: after.patterns - before.patterns, evidence_delta: after.evidence - before.evidence, pricing_delta: after.pricing_signals - before.pricing_signals },
+          record: diRec,
+          note: "Knowledge ingested into the shared depository. This risk type is now readable by EVERY industry it touches (" + diRec.touches.join(", ") + "). Ingest once, value everywhere." } };
+      } catch (e) { return { cmd: "DEPOT_INGEST", payload: { ok: false, error: "DEPOT_INGEST distill failed: " + String(e && e.message || e) } }; }
+    }
+
+    case "DEPOT_QUERY": {
+      // THE SHARED KNOWLEDGE DEPOSITORY - read side (v4.9.405). Any industry reads its relevant risk slice.
+      //   DEPOT_QUERY                  -> list all risk types held
+      //   DEPOT_QUERY <risk_type>      -> read that risk record (patterns/evidence/pricing_signals/touches)
+      //   DEPOT_QUERY industry:<name>  -> all risk types that touch that industry (the slice an industry sees)
+      if (!isOp) return { cmd: "DEPOT_QUERY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const dqArg = rest.trim();
+      if (!dqArg) {
+        let idx = []; try { const ir = await env.AURA_KV.get("depot:index"); if (ir) idx = JSON.parse(ir); } catch {}
+        return { cmd: "DEPOT_QUERY", payload: { ok: true, mode: "list", risk_types: idx, count: idx.length, note: idx.length ? "Risk types in the depository. DEPOT_QUERY <type> to read one; DEPOT_QUERY industry:<name> for an industry's slice." : "Depository empty - DEPOT_INGEST to add risk knowledge." } };
+      }
+      if (/^industry:/i.test(dqArg)) {
+        const ind = dqArg.replace(/^industry:/i, "").trim().toLowerCase();
+        let idx = []; try { const ir = await env.AURA_KV.get("depot:index"); if (ir) idx = JSON.parse(ir); } catch {}
+        const slice = [];
+        for (const t of idx) {
+          try { const raw = await env.AURA_KV.get(`depot:risk:${t}`); if (raw) { const rec = JSON.parse(raw); if ((rec.touches || []).includes(ind)) slice.push({ risk_type: rec.risk_type, entry_count: rec.entry_count, patterns: rec.patterns, pricing_signals: rec.pricing_signals }); } } catch {}
+        }
+        return { cmd: "DEPOT_QUERY", payload: { ok: true, mode: "industry_slice", industry: ind, risk_types_touching: slice.length, slice, note: slice.length ? `The risk knowledge relevant to ${ind} - what this industry can draw on from the shared depository.` : `No risk types tagged as touching ${ind} yet.` } };
+      }
+      const dqType = dqArg.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+      let rec = null; try { const raw = await env.AURA_KV.get(`depot:risk:${dqType}`); if (raw) rec = JSON.parse(raw); } catch {}
+      if (!rec) return { cmd: "DEPOT_QUERY", payload: { ok: false, error: `no depository record for risk type '${dqArg}'. DEPOT_QUERY (no arg) lists what's held.` } };
+      return { cmd: "DEPOT_QUERY", payload: { ok: true, mode: "read", risk_type: rec.risk_type, entry_count: rec.entry_count, touches: rec.touches, record: rec,
+        note: `Shared risk knowledge for ${rec.risk_type}, drawn from ${rec.entry_count} ingested entr(ies). Readable by every industry it touches: ${(rec.touches||[]).join(", ")}.` } };
     }
 
     case "FLEET_COORDINATE": {

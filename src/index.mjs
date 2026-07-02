@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.403-2026-07-01";
+const BUILD = "aura-core-v4.9.405-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3587,11 +3587,25 @@ async function processCommand(line, env, isOp) {
       const ilSystem = "You are the INDUSTRY-LEARNING layer of Aura. You maintain a durable, compounding MODEL of an industry so Aura can target it better - reach out to businesses in it with specific, valuable insight before the first reply. You are given the CURRENT model and a NEW OBSERVATION (from onboarding a real company, or from historical/industry data). Integrate the observation: add only what is NEW or sharper, merge duplicates, keep it tight and durable (structural truths about the industry, not one company's trivia). Return ONLY a JSON object, no prose, no fences, with exactly these keys: structure (array of durable facts about what this industry has/does/how it works), value_leaks (array of where money/time/value leaks - the openings Aura can help with), reach_out_angles (array of specific, concrete openers that would make a cold email LAND, grounded in real industry facts), patterns (array of cross-company patterns worth remembering). Each array is the FULL merged list (old + new integrated), deduplicated, most valuable first, capped ~12 items each. Output JSON only.";
       const ilUser = "INDUSTRY: " + ilIndustry + "\n\nCURRENT MODEL:\n" + JSON.stringify({ structure: ilModel.structure, value_leaks: ilModel.value_leaks, reach_out_angles: ilModel.reach_out_angles, patterns: ilModel.patterns }) + "\n\nNEW OBSERVATION:\n" + ilObs;
       try {
-        const ilData = await callAnthropic(ilApiKey, { model: ilModelName, max_tokens: 1500, system: ilSystem, messages: [{ role: "user", content: ilUser }] });
+        const ilData = await callAnthropic(ilApiKey, { model: ilModelName, max_tokens: 3000, system: ilSystem, messages: [{ role: "user", content: ilUser }] });
         let ilText = ""; if (ilData && ilData.content) { for (const b of ilData.content) { if (b.type === "text") ilText += b.text; } }
         ilText = ilText.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
         let ilParsed = null; try { ilParsed = JSON.parse(ilText); } catch {}
-        if (!ilParsed) return { cmd: "INDUSTRY_LEARN", payload: { ok: false, error: "distill did not return valid JSON", raw: ilText.slice(0, 800) } };
+        // RECOVERY: if truncated mid-JSON, close open strings/brackets and retry (same discipline as FIRE_OUTLOOK)
+        if (!ilParsed) {
+          try {
+            let repair = ilText;
+            const quotes = (repair.match(/"/g) || []).length;
+            if (quotes % 2 !== 0) repair += '"';           // close a dangling string
+            repair = repair.replace(/,\s*$/, "");            // drop a trailing comma
+            const opensB = (repair.match(/\[/g) || []).length, closesB = (repair.match(/\]/g) || []).length;
+            const opensC = (repair.match(/\{/g) || []).length, closesC = (repair.match(/\}/g) || []).length;
+            for (let i = 0; i < opensB - closesB; i++) repair += "]";
+            for (let i = 0; i < opensC - closesC; i++) repair += "}";
+            ilParsed = JSON.parse(repair);
+          } catch {}
+        }
+        if (!ilParsed) return { cmd: "INDUSTRY_LEARN", payload: { ok: false, error: "distill did not return valid JSON (even after truncation-repair)", raw: ilText.slice(0, 800) } };
         const before = { structure: ilModel.structure.length, value_leaks: ilModel.value_leaks.length, reach_out_angles: ilModel.reach_out_angles.length, patterns: ilModel.patterns.length };
         ilModel.structure = Array.isArray(ilParsed.structure) ? ilParsed.structure : ilModel.structure;
         ilModel.value_leaks = Array.isArray(ilParsed.value_leaks) ? ilParsed.value_leaks : ilModel.value_leaks;
@@ -3607,6 +3621,64 @@ async function processCommand(line, env, isOp) {
           model: ilModel,
           note: "Observation absorbed into the industry model. 'growth' shows the delta - proof the model got richer (honesty law: learning is visible, not felt). This model is what sharpens the reach-out." } };
       } catch (e) { return { cmd: "INDUSTRY_LEARN", payload: { ok: false, error: "INDUSTRY_LEARN distill failed: " + String(e && e.message || e) } }; }
+    }
+
+    case "INDUSTRY_REACH": {
+      // THE PAYOFF (v4.9.404) - where learning becomes revenue. Pulls a REAL company's REAL public data,
+      // reads the LEARNED industry model, and drafts an actual grounded cold email using the learned
+      // reach_out_angles + the company's real facts. Distinct from consumer REACH_OUT (doorway minting).
+      // Data per industry: trucking -> FMCSA carrier census (keyless); shipping -> vesselapi fleet.
+      // Honesty law: cites ONLY data actually pulled; if the company isn't found, says so - never invents facts.
+      //   INDUSTRY_REACH ::: {"industry":"trucking","company":"Swift Transportation"}
+      //   INDUSTRY_REACH ::: {"industry":"shipping","company":"Maersk"}
+      if (!isOp) return { cmd: "INDUSTRY_REACH", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const irPayload = rest.includes(":::") ? rest.slice(rest.indexOf(":::") + 3).trim() : rest.trim();
+      let ir; try { ir = JSON.parse(irPayload); } catch { return { cmd: "INDUSTRY_REACH", payload: { ok: false, error: 'Usage: INDUSTRY_REACH ::: {"industry":"trucking","company":"NAME"}' } }; }
+      if (!ir || !ir.industry || !ir.company) return { cmd: "INDUSTRY_REACH", payload: { ok: false, error: "industry and company are required" } };
+      const irSlug = ir.industry.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+      // 1) read the LEARNED industry model
+      let irModel = null;
+      try { const raw = await env.AURA_KV.get(`notes:industry:${irSlug}`); if (raw) irModel = JSON.parse(raw); } catch {}
+      if (!irModel || !irModel.observation_count) return { cmd: "INDUSTRY_REACH", payload: { ok: false, error: `No learned model for '${ir.industry}'. Run INDUSTRY_LEARN ${irSlug} ::: <observations> first - the reach-out draws on what she learned.` } };
+      // 2) pull the company's REAL public data (per industry)
+      let realData = null, dataSource = null, dataErr = null;
+      try {
+        if (irSlug === "trucking") {
+          const nm = ir.company.toUpperCase().replace(/'/g, "");
+          const url = `https://data.transportation.gov/resource/az4n-8mr2.json?$where=${encodeURIComponent(`legal_name like '%${nm}%'`)}&$limit=3`;
+          const r = await fetchWithTimeout(url, { headers: { "User-Agent": "AuraIndustry/1.0" } }, 8000);
+          if (r.ok) { const d = await r.json(); if (Array.isArray(d) && d.length) { realData = d.map(c => ({ legal_name: c.legal_name, dot_number: c.dot_number, power_units: c.power_units, total_drivers: c.total_drivers, truck_units: c.truck_units, city: c.phy_city, state: c.phy_state, long_haul: c.interstate_beyond_100_miles, hazmat: c.hm_ind, org: c.business_org_desc, mc_docket: c.docket1 })); dataSource = "FMCSA carrier census (live, keyless)"; } else dataErr = "no FMCSA carrier matched that name"; }
+          else dataErr = `FMCSA http ${r.status}`;
+        } else if (irSlug === "shipping") {
+          const vkey = await env.AURA_KV.get("secret:vesselapi").catch(() => null);
+          if (vkey) {
+            const u = await resolveFeedUrl(env, "vessel_search", { query: ir.company }, `https://api.vesselapi.com/v1/search/vessels?filter.name={query}`);
+            const r = await fetch(u, { headers: { "Authorization": "Bearer " + vkey } });
+            if (r.ok) { const d = await r.json(); const raw = (d.data || d.vessels || []).slice(0, 8); if (raw.length) { realData = raw.map(v => ({ name: v.vesselName || v.name, imo: v.imo, type: v.vesselType || v.type, flag: v.flag || v.country })); dataSource = "vesselapi fleet search (live)"; } else dataErr = "no vessels matched that owner/name"; }
+            else dataErr = `vesselapi http ${r.status}`;
+          } else dataErr = "no secret:vesselapi";
+        } else {
+          dataErr = `no live data source wired for '${ir.industry}' yet - drafting from the learned model only (enrichment pending)`;
+        }
+      } catch (e) { dataErr = String(e && e.message || e); }
+      // 3) draft the REAL cold email - grounded in learned angles + the company's real data
+      const irApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      if (!irApiKey) return { cmd: "INDUSTRY_REACH", payload: { ok: false, error: "Brain not configured" } };
+      const irModelName = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const irSystem = "You are Aura's industry reach-out writer. Draft a SHORT, specific cold email to a business that will LAND - because it shows you already understand their operation and offers concrete value before the first reply. You are given: (1) the LEARNED INDUSTRY MODEL (value_leaks + reach_out_angles Aura learned), and (2) the company's REAL PUBLIC DATA (or a note that data wasn't found). RULES: cite ONLY facts present in the real data - NEVER invent numbers, safety scores, or specifics not given. If real data is present, weave 1-2 real facts in naturally. If no real data, draft from the industry model but stay general (no fabricated specifics). Keep it under 130 words, warm not salesy, one clear value offer, one soft call to action. Return ONLY JSON, no fences: {subject, body, facts_used (array of the real facts you cited), angle (which learned angle you used)}. Output JSON only.";
+      const irUser = "COMPANY: " + ir.company + "\nINDUSTRY: " + ir.industry + "\n\nLEARNED MODEL (value_leaks + reach_out_angles):\n" + JSON.stringify({ value_leaks: irModel.value_leaks, reach_out_angles: irModel.reach_out_angles }) + "\n\nREAL PUBLIC DATA:\n" + (realData ? JSON.stringify(realData) : "NONE FOUND - " + (dataErr || "no data") + " - draft from the model, stay general, invent nothing");
+      try {
+        const irData = await callAnthropic(irApiKey, { model: irModelName, max_tokens: 900, system: irSystem, messages: [{ role: "user", content: irUser }] });
+        let irText = ""; if (irData && irData.content) { for (const b of irData.content) { if (b.type === "text") irText += b.text; } }
+        irText = irText.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+        let irParsed = null; try { irParsed = JSON.parse(irText); } catch {}
+        if (!irParsed) return { cmd: "INDUSTRY_REACH", payload: { ok: false, error: "draft did not return valid JSON", raw: irText.slice(0, 600) } };
+        return { cmd: "INDUSTRY_REACH", payload: { ok: true, industry: ir.industry, company: ir.company,
+          real_data: realData, data_source: dataSource, data_note: dataErr,
+          model_observations: irModel.observation_count,
+          email: irParsed,
+          note: realData ? "Cold email grounded in the company's REAL public data + learned industry angles. Facts_used are real, pulled live." : "Company data not found live - drafted from the learned model, kept general, no invented specifics (honesty law)." } };
+      } catch (e) { return { cmd: "INDUSTRY_REACH", payload: { ok: false, error: "INDUSTRY_REACH draft failed: " + String(e && e.message || e) } }; }
     }
 
     case "FLEET_COORDINATE": {

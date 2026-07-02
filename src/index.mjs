@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.402-2026-07-01";
+const BUILD = "aura-core-v4.9.403-2026-07-01";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3547,6 +3547,66 @@ async function processCommand(line, env, isOp) {
       out.summary = `${ob.name} declared who they are in one line. Aura created their identity, searched live vessel data for "${query}", found ${fleet.length} vessel(s), and linked ${linked} to their world - with ZERO vessel numbers typed. This is seamless ingestion: identity in, their fleet out.`;
       out.note = fleet.length === 0 ? "No vessels matched the search term on the free tier (ownership/name coverage varies). The flow is proven; richer fleet matching may need a fuller data tier or the owner-filter." : "Live fleet discovered and linked.";
       return { cmd: "OPERATOR_ONBOARD", payload: out };
+    }
+
+    case "INDUSTRY_LEARN": {
+      // THE INDUSTRY-KNOWLEDGE STORE + WRITE-BACK (v4.9.403) - the HOME where industry learning COMPOUNDS.
+      // Until now "learn from experience" had no durable home; the experience ran and evaporated. This is
+      // the home. One store per industry at notes:industry:<industry>. TWO feeds, SAME store:
+      //   - HISTORICAL INGESTION (the depository): pour in what's known about the industry, once.
+      //   - ONBOARDING WRITE-BACK (the learning engine): each real company onboarded appends what it taught.
+      // Distinct from LEARN (which is behavioral self-correction from JUDGE verdicts). This learns the
+      // INDUSTRY's structure so the REACH-OUT gets sharper. Honesty law: growth must be VISIBLE - the model
+      // carries an observation count + last-updated so "she's learning" is provable, not felt.
+      //   INDUSTRY_LEARN <industry>                          -> read the current industry model
+      //   INDUSTRY_LEARN <industry> ::: <observation>        -> distill + append (from an onboard or history)
+      if (!isOp) return { cmd: "INDUSTRY_LEARN", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      let ilRaw = rest.trim();
+      if (!ilRaw) return { cmd: "INDUSTRY_LEARN", payload: { ok: false, error: "Usage: INDUSTRY_LEARN <industry>  or  INDUSTRY_LEARN <industry> ::: <observation to learn>" } };
+      let ilIndustry = ilRaw, ilObs = "";
+      if (ilRaw.includes(":::")) { const sp = ilRaw.split(":::"); ilIndustry = sp[0].trim(); ilObs = sp.slice(1).join(":::").trim(); }
+      const ilSlug = ilIndustry.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "industry";
+      const ilKey = `notes:industry:${ilSlug}`;
+      // read current model
+      let ilModel = null;
+      try { const raw = await env.AURA_KV.get(ilKey); if (raw) ilModel = JSON.parse(raw); } catch {}
+      if (!ilModel) ilModel = { industry: ilIndustry, observation_count: 0, structure: [], value_leaks: [], reach_out_angles: [], patterns: [], created: new Date().toISOString(), updated: null };
+
+      // READ mode: no observation -> return what she knows
+      if (!ilObs) {
+        return { cmd: "INDUSTRY_LEARN", payload: { ok: true, mode: "read", industry: ilIndustry, key: ilKey,
+          observation_count: ilModel.observation_count,
+          model: ilModel,
+          note: ilModel.observation_count === 0 ? "Empty model - nothing learned yet. Feed it via INDUSTRY_LEARN <industry> ::: <observation> (from an onboard or historical ingestion)." : `Industry model with ${ilModel.observation_count} observation(s) absorbed. This is what sharpens the reach-out.` } };
+      }
+
+      // WRITE-BACK mode: distill the observation INTO the model (structure / value_leaks / reach_out_angles)
+      const ilApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      if (!ilApiKey) return { cmd: "INDUSTRY_LEARN", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
+      const ilModelName = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const ilSystem = "You are the INDUSTRY-LEARNING layer of Aura. You maintain a durable, compounding MODEL of an industry so Aura can target it better - reach out to businesses in it with specific, valuable insight before the first reply. You are given the CURRENT model and a NEW OBSERVATION (from onboarding a real company, or from historical/industry data). Integrate the observation: add only what is NEW or sharper, merge duplicates, keep it tight and durable (structural truths about the industry, not one company's trivia). Return ONLY a JSON object, no prose, no fences, with exactly these keys: structure (array of durable facts about what this industry has/does/how it works), value_leaks (array of where money/time/value leaks - the openings Aura can help with), reach_out_angles (array of specific, concrete openers that would make a cold email LAND, grounded in real industry facts), patterns (array of cross-company patterns worth remembering). Each array is the FULL merged list (old + new integrated), deduplicated, most valuable first, capped ~12 items each. Output JSON only.";
+      const ilUser = "INDUSTRY: " + ilIndustry + "\n\nCURRENT MODEL:\n" + JSON.stringify({ structure: ilModel.structure, value_leaks: ilModel.value_leaks, reach_out_angles: ilModel.reach_out_angles, patterns: ilModel.patterns }) + "\n\nNEW OBSERVATION:\n" + ilObs;
+      try {
+        const ilData = await callAnthropic(ilApiKey, { model: ilModelName, max_tokens: 1500, system: ilSystem, messages: [{ role: "user", content: ilUser }] });
+        let ilText = ""; if (ilData && ilData.content) { for (const b of ilData.content) { if (b.type === "text") ilText += b.text; } }
+        ilText = ilText.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+        let ilParsed = null; try { ilParsed = JSON.parse(ilText); } catch {}
+        if (!ilParsed) return { cmd: "INDUSTRY_LEARN", payload: { ok: false, error: "distill did not return valid JSON", raw: ilText.slice(0, 800) } };
+        const before = { structure: ilModel.structure.length, value_leaks: ilModel.value_leaks.length, reach_out_angles: ilModel.reach_out_angles.length, patterns: ilModel.patterns.length };
+        ilModel.structure = Array.isArray(ilParsed.structure) ? ilParsed.structure : ilModel.structure;
+        ilModel.value_leaks = Array.isArray(ilParsed.value_leaks) ? ilParsed.value_leaks : ilModel.value_leaks;
+        ilModel.reach_out_angles = Array.isArray(ilParsed.reach_out_angles) ? ilParsed.reach_out_angles : ilModel.reach_out_angles;
+        ilModel.patterns = Array.isArray(ilParsed.patterns) ? ilParsed.patterns : ilModel.patterns;
+        ilModel.observation_count = (ilModel.observation_count || 0) + 1;
+        ilModel.updated = new Date().toISOString();
+        await env.AURA_KV.put(ilKey, JSON.stringify(ilModel)).catch(() => {});
+        const after = { structure: ilModel.structure.length, value_leaks: ilModel.value_leaks.length, reach_out_angles: ilModel.reach_out_angles.length, patterns: ilModel.patterns.length };
+        return { cmd: "INDUSTRY_LEARN", payload: { ok: true, mode: "write_back", industry: ilIndustry, key: ilKey,
+          observation_count: ilModel.observation_count,
+          growth: { before, after, structure_delta: after.structure - before.structure, value_leaks_delta: after.value_leaks - before.value_leaks, reach_out_delta: after.reach_out_angles - before.reach_out_angles, patterns_delta: after.patterns - before.patterns },
+          model: ilModel,
+          note: "Observation absorbed into the industry model. 'growth' shows the delta - proof the model got richer (honesty law: learning is visible, not felt). This model is what sharpens the reach-out." } };
+      } catch (e) { return { cmd: "INDUSTRY_LEARN", payload: { ok: false, error: "INDUSTRY_LEARN distill failed: " + String(e && e.message || e) } }; }
     }
 
     case "FLEET_COORDINATE": {
@@ -12680,6 +12740,12 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
     }
   }
 
+  // !!timing FLAG: strip it from the message NOW, before any command routing/arg-parsing, so it can
+  // never contaminate a command's arguments (was causing "unknown region: cottonwood !!timing").
+  // Capture the intent so the final return can still append the stage breakdown.
+  const _timingRequested = typeof message === "string" && /!!timing/i.test(message);
+  if (_timingRequested && typeof message === "string") message = message.replace(/!!timing/gi, "").trim();
+
   const apiKey = env.ANTHROPIC_API_KEY || await KV.get(env, "secret:anthropic");
   if (!apiKey) return "Anthropic API key not configured.";
 
@@ -13344,7 +13410,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
   } catch(e) {}
   _mark("done");
   // TEMP DIAGNOSTIC: if the operator message ends with the flag !!timing, append the stage breakdown.
-  if (isOp && typeof message === "string" && message.includes("!!timing")) {
+  if (isOp && _timingRequested) {
     return (raw || "") + "\n\nâ± TIMINGS: " + _timings.join("  |  ");
   }
   return stripAgentLeak(raw);

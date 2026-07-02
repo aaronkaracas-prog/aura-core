@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.424-2026-07-02";
+const BUILD = "aura-core-v4.9.425-2026-07-02";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -4499,6 +4499,126 @@ async function processCommand(line, env, isOp) {
           depot_result: pp ? { entry_count: pp.entry_count, growth: pp.growth, added: pp.added, distill_note: pp.distill_note } : null,
           note: `Poured ${okYears.length} year(s) of severe-storm damage into depot:risk:severe-storm in ONE write. Space depot writes >60s.` } };
       } catch (e) { return { cmd: "DEPOT_POUR_STORM", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "DEPOT_POUR_DISASTERS_OFFICIAL": {
+      // THE SCALE SPINE (v4.9.425) - pours NOAA NCEI Billion-Dollar Weather and Climate Disasters into
+      // depot:risk:disaster-costs. Source verified 2026-07-02: ncei.noaa.gov/access/billions/events.csv,
+      // keyless CSV, EVERY US disaster >=1B dollars since 1980 with OFFICIAL total cost (unadjusted AND
+      // CPI-adjusted) + deaths. THIS IS THE AUTHORITATIVE TOTAL-LOSS SERIES - the source that says Katrina
+      // = ~201B CPI-adjusted. Every catastrophe pour should be scale-checked against this; it is the
+      // built-in answer to "is this number the real event loss or just a federal floor".
+      //   DEPOT_POUR_DISASTERS_OFFICIAL [minCostB]   (default 5 = only >=5B disasters; keeps it high-signal)
+      if (!isOp) return { cmd: "DEPOT_POUR_DISASTERS_OFFICIAL", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const minB = parseFloat((rest.trim().match(/^\d+(\.\d+)?$/) || ["5"])[0]) || 5;
+      const doUA = { "user-agent": "aura-depot-pour/1.0" };
+      const doUrl = await resolveFeedUrl(env, "ncei_billions", {}, "https://www.ncei.noaa.gov/access/billions/events.csv");
+      const parseLine = (l) => { const out = []; let cur = "", q = false; for (let i = 0; i < l.length; i++) { const c = l[i]; if (c === '"') { q = !q; } else if (c === "," && !q) { out.push(cur); cur = ""; } else cur += c; } out.push(cur); return out; };
+      try {
+        const r = await fetchWithTimeout(doUrl, { headers: doUA }, 30000);
+        if (!r.ok) return { cmd: "DEPOT_POUR_DISASTERS_OFFICIAL", payload: { ok: false, error: `ncei ${r.status}` } };
+        let text = await r.text();
+        // NCEI prepends comment/metadata lines before the header; find the real header row
+        const rawLines = text.split(/\r?\n/);
+        let hdrIdx = rawLines.findIndex(l => /Name/i.test(l) && /Disaster/i.test(l) && /Cost/i.test(l));
+        if (hdrIdx < 0) hdrIdx = rawLines.findIndex(l => l.split(",").length > 5 && /cost/i.test(l));
+        if (hdrIdx < 0) return { cmd: "DEPOT_POUR_DISASTERS_OFFICIAL", payload: { ok: false, error: "could not locate CSV header - format drift; first line: " + (rawLines[0]||"").slice(0,120) } };
+        const hdr = parseLine(rawLines[hdrIdx]).map(h => h.trim());
+        const find = (re) => hdr.findIndex(h => re.test(h));
+        const iName = find(/^Name$/i), iDis = find(/Disaster/i), iBegin = find(/Begin.*Date/i), iEnd = find(/End.*Date/i);
+        const iCostUn = find(/Unadjust.*Cost|CPI-Unadjust/i), iCostAdj = find(/CPI-Adjust.*Cost|Adjust.*Cost/i), iDeaths = find(/Deaths/i);
+        const iCost = iCostAdj >= 0 ? iCostAdj : iCostUn;
+        if (iName < 0 || iCost < 0) return { cmd: "DEPOT_POUR_DISASTERS_OFFICIAL", payload: { ok: false, error: "expected columns missing; header: " + hdr.slice(0,12).join(",") } };
+        const rows = [];
+        for (let i = hdrIdx + 1; i < rawLines.length; i++) {
+          if (!rawLines[i]) continue;
+          const f = parseLine(rawLines[i]); if (f.length < hdr.length - 3) continue;
+          const costM = parseFloat((f[iCost] || "").replace(/[^0-9.]/g, "")) || 0; // NCEI cost is in $millions
+          if (costM / 1000 < minB) continue;
+          rows.push({ name: (f[iName] || "").trim(), type: iDis >= 0 ? (f[iDis] || "").trim() : "", begin: iBegin >= 0 ? (f[iBegin] || "").trim() : "", costB: costM / 1000, deaths: iDeaths >= 0 ? (parseInt((f[iDeaths] || "").replace(/[^0-9]/g, ""), 10) || 0) : 0 });
+        }
+        if (!rows.length) return { cmd: "DEPOT_POUR_DISASTERS_OFFICIAL", payload: { ok: false, error: `no disasters >=${minB}B found (parsed ${rawLines.length - hdrIdx - 1} rows)` } };
+        rows.sort((a, b) => b.costB - a.costB);
+        const yrOf = (d) => (String(d).match(/(\d{4})/) || [])[1] || "";
+        const $b = (n) => "$" + n.toFixed(1) + "B";
+        const srcTag = "NOAA NCEI Billion-Dollar Disasters (CPI-adjusted)";
+        const ev = [];
+        ev.push(`NCEI billion-dollar disasters: ${rows.length} US events >=${minB}B (CPI-adjusted); total ${$b(rows.reduce((s, r) => s + r.costB, 0))}, ${rows.reduce((s, r) => s + r.deaths, 0).toLocaleString()} deaths (${srcTag})`);
+        for (const r of rows.slice(0, 20)) ev.push(`${r.name} (${yrOf(r.begin)}, ${r.type}): ${$b(r.costB)} total cost, ${r.deaths.toLocaleString()} deaths (${srcTag})`);
+        // type rollup
+        const byType = new Map();
+        for (const r of rows) { const t = r.type || "Other"; const rec = byType.get(t) || { n: 0, cost: 0 }; rec.n++; rec.cost += r.costB; byType.set(t, rec); }
+        for (const [t, rec] of [...byType.entries()].sort((a, b) => b[1].cost - a[1].cost)) ev.push(`NCEI by peril - ${t}: ${rec.n} events totaling ${$b(rec.cost)} (${srcTag})`);
+        const knowledge = `THE AUTHORITATIVE US DISASTER-COST SPINE from NOAA NCEI - every US weather/climate disaster >=${minB}B dollars (CPI-adjusted total cost), ranked, with deaths and peril type. This is the TOTAL-LOSS source of truth (the number that says Katrina ~200B, not a federal-assistance floor). Use it to scale-check every catastrophe: if a pour reports a FEMA floor, this record holds the real event total. Costs are total economic (insured + uninsured), CPI-adjusted.\n` + ev.join("\n");
+        const pour = await processCommand(`DEPOT_INGEST ::: ${JSON.stringify({ risk_type: "disaster-costs", touches: ["insurance", "property", "government", "reinsurance"], knowledge, evidence_lines: ev, source: "DEPOT_POUR_DISASTERS_OFFICIAL (NCEI billions events.csv)" })}`, env, true);
+        const pp = (pour && pour.payload) ? pour.payload : pour;
+        return { cmd: "DEPOT_POUR_DISASTERS_OFFICIAL", payload: { ok: !!(pp && pp.ok), min_cost_b: minB, disasters: rows.length,
+          costliest: rows.slice(0, 5).map(r => ({ name: r.name, cost_b: Math.round(r.costB * 10) / 10, year: yrOf(r.begin) })),
+          depot_result: pp ? { entry_count: pp.entry_count, growth: pp.growth, added: pp.added, distill_note: pp.distill_note } : null,
+          note: `Poured the NCEI billion-dollar disaster spine (${rows.length} events >=${minB}B) into depot:risk:disaster-costs in ONE write. This is the scale-check source of truth. Space depot writes >60s.` } };
+      } catch (e) { return { cmd: "DEPOT_POUR_DISASTERS_OFFICIAL", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "DEPOT_POUR_PROPERTY": {
+      // PROPERTY VALUES (v4.9.425) - pours FHFA House Price Index into depot:risk:property-value. Source
+      // verified 2026-07-02: fhfa.gov hpi_master.csv, keyless. CRITICAL (caught by the probe): the file
+      // braids MULTIPLE index types (hpi_type/hpi_flavor: purchase-only vs all-transactions; level: USA
+      // vs state vs MSA) - averaging them = garbage. We FILTER to one clean series: all-transactions,
+      // state level, annual. Distills the index trend and the biggest movers per requested span.
+      //   DEPOT_POUR_PROPERTY [STATE|USA]   (default USA national; a 2-letter state for that state)
+      if (!isOp) return { cmd: "DEPOT_POUR_PROPERTY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const geo = (rest.trim().toUpperCase() || "USA");
+      const prUA = { "user-agent": "aura-depot-pour/1.0" };
+      const prUrl = await resolveFeedUrl(env, "fhfa_hpi_master", {}, "https://www.fhfa.gov/hpi/download/quarterly_datasets/hpi_master.csv");
+      const parseLine = (l) => { const out = []; let cur = "", q = false; for (let i = 0; i < l.length; i++) { const c = l[i]; if (c === '"') { q = !q; } else if (c === "," && !q) { out.push(cur); cur = ""; } else cur += c; } out.push(cur); return out; };
+      try {
+        const r = await fetchWithTimeout(prUrl, { headers: prUA }, 30000);
+        if (!r.ok) return { cmd: "DEPOT_POUR_PROPERTY", payload: { ok: false, error: `fhfa ${r.status}` } };
+        const text = await r.text();
+        const lines = text.split(/\r?\n/);
+        const hdr = parseLine(lines[0]).map(h => h.trim().toLowerCase());
+        const ci = (n) => hdr.indexOf(n);
+        const iType = ci("hpi_type"), iFlavor = ci("hpi_flavor"), iLevel = ci("level"), iPlace = ci("place_name"), iAbbr = ci("place_id"), iYr = ci("yr"), iPer = ci("period"), iHpi = ci("index_nsa") >= 0 ? ci("index_nsa") : ci("index_sa");
+        if (iType < 0 || iYr < 0 || iHpi < 0) return { cmd: "DEPOT_POUR_PROPERTY", payload: { ok: false, error: "expected FHFA columns missing; header: " + hdr.slice(0, 12).join(",") } };
+        // filter to ONE clean series: all-transactions, annual (period 4 or the max period per year), matching geo
+        const wantUSA = (geo === "USA" || geo === "US");
+        const yearly = new Map(); // year -> index value (take Q4/last period)
+        let placeLabel = wantUSA ? "United States" : geo;
+        for (let i = 1; i < lines.length; i++) {
+          if (!lines[i]) continue;
+          const f = parseLine(lines[i]); if (f.length < hdr.length - 2) continue;
+          const flavor = (f[iFlavor] || "").toLowerCase();
+          if (!/all.?transactions/.test(flavor)) continue;
+          const lvl = (f[iLevel] || "").toLowerCase();
+          if (wantUSA) { if (!/usa|national/.test(lvl)) continue; }
+          else { const abbr = (iAbbr >= 0 ? f[iAbbr] : "").toUpperCase(); const pn = (iPlace >= 0 ? f[iPlace] : ""); if (abbr !== geo && pn.toUpperCase() !== geo) continue; if (iPlace >= 0 && pn) placeLabel = pn; if (!/state/.test(lvl)) continue; }
+          const yr = parseInt(f[iYr], 10); const per = iPer >= 0 ? parseInt(f[iPer], 10) : 4; const hpi = parseFloat(f[iHpi]);
+          if (isNaN(yr) || isNaN(hpi)) continue;
+          const cur = yearly.get(yr);
+          if (!cur || per >= cur.per) yearly.set(yr, { hpi, per });
+        }
+        if (!yearly.size) return { cmd: "DEPOT_POUR_PROPERTY", payload: { ok: false, error: `no all-transactions series found for ${geo}` } };
+        const years = [...yearly.keys()].sort((a, b) => a - b);
+        const srcTag = "FHFA House Price Index (all-transactions)";
+        const ev = [];
+        const first = years[0], last = years[years.length - 1];
+        const v0 = yearly.get(first).hpi, v1 = yearly.get(last).hpi;
+        ev.push(`FHFA HPI ${placeLabel}: index ${v0.toFixed(1)} (${first}) -> ${v1.toFixed(1)} (${last}), ${(((v1 / v0) - 1) * 100).toFixed(0)}% total nominal growth over ${last - first} years (${srcTag})`);
+        // decade checkpoints + biggest single-year moves
+        const checkpts = years.filter(y => y % 5 === 0 || y === last);
+        ev.push(`FHFA HPI ${placeLabel} checkpoints: ` + checkpts.map(y => `${y}:${yearly.get(y).hpi.toFixed(0)}`).join(", ") + ` (${srcTag})`);
+        const moves = [];
+        for (let i = 1; i < years.length; i++) { const a = yearly.get(years[i - 1]).hpi, b = yearly.get(years[i]).hpi; moves.push({ yr: years[i], pct: ((b / a) - 1) * 100 }); }
+        const worst = [...moves].sort((a, b) => a.pct - b.pct)[0];
+        const best = [...moves].sort((a, b) => b.pct - a.pct)[0];
+        if (worst) ev.push(`FHFA HPI ${placeLabel}: largest annual DROP ${worst.pct.toFixed(1)}% in ${worst.yr}; largest annual GAIN ${best.pct.toFixed(1)}% in ${best.yr} (${srcTag})`);
+        const knowledge = `Property value history for ${placeLabel} from the FHFA House Price Index (all-transactions series, annual) - long-run index trend, checkpoints, and the largest annual gains and drops (the 2008-2011 housing collapse and the 2020-2022 surge are the key stress signals). Property value is the exposure base every catastrophe destroys and every mortgage/homeowners policy insures. Index values (nominal, not dollars); pair with replacement-cost data for insured-value estimates.\n` + ev.join("\n");
+        const pour = await processCommand(`DEPOT_INGEST ::: ${JSON.stringify({ risk_type: "property-value", touches: ["insurance", "property", "real-estate", "mortgage"], knowledge, evidence_lines: ev, source: `DEPOT_POUR_PROPERTY ${geo} (FHFA HPI)` })}`, env, true);
+        const pp = (pour && pour.payload) ? pour.payload : pour;
+        return { cmd: "DEPOT_POUR_PROPERTY", payload: { ok: !!(pp && pp.ok), place: placeLabel, years: `${first}-${last}`, data_points: years.length,
+          depot_result: pp ? { entry_count: pp.entry_count, growth: pp.growth, added: pp.added, distill_note: pp.distill_note } : null,
+          note: `Poured FHFA property-value history for ${placeLabel} into depot:risk:property-value in ONE write. Space depot writes >60s.` } };
+      } catch (e) { return { cmd: "DEPOT_POUR_PROPERTY", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 
     case "DEPOT_POUR_FLOOD": {

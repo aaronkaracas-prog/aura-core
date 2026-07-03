@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.434-2026-07-03";
+const BUILD = "aura-core-v4.9.435-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -5978,6 +5978,71 @@ async function processCommand(line, env, isOp) {
       const r = await stub.fetch(`https://do/${op}`, { method: op === "status" ? "GET" : "POST", body: JSON.stringify({ region }) });
       const j = await r.json().catch(() => ({ ok: false, error: "bad DO response" }));
       return { cmd: "AIS_COLLECTOR", payload: j };
+    }
+
+    case "AIS_WATCH": {
+      // Register a region for continuous minute-by-minute AIS history capture (cron builds ais:history:<region>).
+      //   AIS_WATCH ADD hormuz | AIS_WATCH REMOVE hormuz | AIS_WATCH LIST
+      if (!isOp) return { cmd: "AIS_WATCH", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const wp = line.replace(/^AIS_WATCH\s+/i, "").trim().split(/\s+/);
+      const wAction = (wp[0] || "list").toLowerCase();
+      const wRegion = (wp[1] || "").toLowerCase();
+      let wl = []; try { const ex = await env.AURA_KV.get("ais:watchlist"); if (ex) wl = JSON.parse(ex); } catch {}
+      if (wAction === "add" && wRegion) {
+        if (!wl.includes(wRegion)) wl.push(wRegion);
+        await env.AURA_KV.put("ais:watchlist", JSON.stringify(wl));
+        return { cmd: "AIS_WATCH", payload: { ok: true, watching: wl, note: `Now capturing '${wRegion}' every minute via cron. History builds from now forward at ais:history:${wRegion}; query with AIS_TRANSITS ${wRegion} <range>. Starts empty - needs a few cron cycles to accumulate.` } };
+      }
+      if (wAction === "remove" && wRegion) {
+        wl = wl.filter(r => r !== wRegion);
+        await env.AURA_KV.put("ais:watchlist", JSON.stringify(wl));
+        return { cmd: "AIS_WATCH", payload: { ok: true, watching: wl, note: `Stopped watching '${wRegion}'. Existing history kept.` } };
+      }
+      return { cmd: "AIS_WATCH", payload: { ok: true, watching: wl, note: wl.length ? "Captured every minute by cron." : "No regions watched. AIS_WATCH ADD hormuz to start building transit history." } };
+    }
+
+    case "AIS_TRANSITS": {
+      // COUNT REAL TRANSITS over a time range - measured, not the news estimate. Reads ais:history:<region>;
+      // for each MMSI detects a CENTERLINE CROSSING (longitude crossed the strait's dividing meridian
+      // between snapshots) = one confirmed transit, with direction. Any window.
+      //   AIS_TRANSITS hormuz | AIS_TRANSITS hormuz 24h | AIS_TRANSITS hormuz 2026-07-01 2026-07-03
+      if (!isOp) return { cmd: "AIS_TRANSITS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const tp = line.replace(/^AIS_TRANSITS\s+/i, "").trim().split(/\s+/);
+      const tRegion = (tp[0] || "hormuz").toLowerCase();
+      const CENTERLINES = await loadRegions(env, "ais_centerline", { hormuz: 56.4, fujairah: 56.4, jebelali: 55.1, singapore: 103.8, rotterdam: 4.05 });
+      const centerLon = CENTERLINES[tRegion] != null ? CENTERLINES[tRegion] : 56.4;
+      let fromTs = 0, toTs = Date.now();
+      const rangeArg = (tp[1] || "").toLowerCase();
+      const rel = rangeArg.match(/^(\d+)([hd])$/);
+      if (rel) { const n = +rel[1]; fromTs = Date.now() - n * (rel[2] === "h" ? 3600000 : 86400000); }
+      else if (/^\d{4}-\d{2}-\d{2}$/.test(tp[1] || "")) { fromTs = Date.parse(tp[1] + "T00:00:00Z"); if (/^\d{4}-\d{2}-\d{2}$/.test(tp[2] || "")) toTs = Date.parse(tp[2] + "T23:59:59Z"); }
+      let hist = []; try { const ex = await env.AURA_KV.get("ais:history:" + tRegion); if (ex) hist = JSON.parse(ex); } catch {}
+      if (!hist.length) return { cmd: "AIS_TRANSITS", payload: { ok: false, error: `no history for '${tRegion}' yet. AIS_WATCH ADD ${tRegion} to start capturing; builds minute by minute from then.` } };
+      const win = hist.filter(s => s.ts >= fromTs && s.ts <= toTs).sort((a, b) => a.ts - b.ts);
+      if (win.length < 2) return { cmd: "AIS_TRANSITS", payload: { ok: false, error: `only ${win.length} snapshot(s) in window - need >=2 to detect a crossing. Widen range or let history accumulate.` } };
+      const lastSide = new Map();
+      let eastToWest = 0, westToEast = 0;
+      const transiters = new Set();
+      const sideOf = (lon) => lon >= centerLon ? "E" : "W";
+      for (const snap of win) {
+        for (const v of (snap.v || [])) {
+          const side = sideOf(v.lo);
+          if (!lastSide.has(v.m)) { lastSide.set(v.m, side); continue; }
+          const prev = lastSide.get(v.m);
+          if (prev !== side) {
+            if (prev === "E" && side === "W") eastToWest++; else if (prev === "W" && side === "E") westToEast++;
+            transiters.add(v.m); lastSide.set(v.m, side);
+          }
+        }
+      }
+      const totalTransits = eastToWest + westToEast;
+      const uniqueVessels = new Set(win.flatMap(s => (s.v || []).map(v => v.m))).size;
+      const fmt = (t) => new Date(t).toISOString().replace("T", " ").slice(0, 16) + "Z";
+      return { cmd: "AIS_TRANSITS", payload: { ok: true, region: tRegion, centerline_lon: centerLon,
+        window: { from: fmt(win[0].ts), to: fmt(win[win.length - 1].ts), snapshots: win.length, span_hours: +((win[win.length-1].ts - win[0].ts)/3600000).toFixed(1) },
+        transits: { total: totalTransits, east_to_west: eastToWest, west_to_east: westToEast, unique_vessels_that_transited: transiters.size },
+        vessels_observed: uniqueVessels,
+        note: `MEASURED from real vessel movement (not a news estimate): ${totalTransits} confirmed crossings - ${eastToWest} Gulf->Oman (outbound), ${westToEast} Oman->Gulf (inbound), by ${transiters.size} distinct vessels. A transit = a hull crossing longitude ${centerLon}.${win.length < 10 ? " NOTE: few snapshots so far - accuracy grows as history accumulates." : ""}` } };
     }
 
     case "AIS_QUERY": {
@@ -16293,6 +16358,46 @@ async function drainSchedule(env) {
   } catch {}
 }
 
+async function captureAisHistory(env) {
+  // AIS HISTORY CAPTURE (v4.9.435) - cron feeds a rolling per-minute vessel snapshot into
+  // ais:history:<region> for every WATCHED region via the proven VesselAPI path (not the flaky DO).
+  // Builds the time-series AIS_TRANSITS reads to count real crossings over any window.
+  try {
+    const wl = await env.AURA_KV.get("ais:watchlist").catch(() => null);
+    const regions = wl ? JSON.parse(wl) : [];
+    if (!Array.isArray(regions) || !regions.length) return;
+    const vkey = await env.AURA_KV.get("secret:vesselapi").catch(() => null);
+    if (!vkey) return;
+    const BOXES = await loadRegions(env, "ais", {
+      hormuz: { latBottom: 24.4, latTop: 27.2, lonLeft: 55.0, lonRight: 57.8 },
+      fujairah: { latBottom: 24.8, latTop: 26.0, lonLeft: 56.0, lonRight: 57.0 },
+      jebelali: { latBottom: 24.8, latTop: 25.4, lonLeft: 54.8, lonRight: 55.4 },
+      rotterdam: { latBottom: 51.85, latTop: 52.05, lonLeft: 3.95, lonRight: 4.20 },
+      singapore: { latBottom: 1.0, latTop: 1.5, lonLeft: 103.5, lonRight: 104.2 }
+    });
+    for (const region of regions) {
+      const box = BOXES[region];
+      if (!box) continue;
+      try {
+        const u = await resolveFeedUrl(env, "vessel_bbox", { latBottom: box.latBottom, latTop: box.latTop, lonLeft: box.lonLeft, lonRight: box.lonRight }, `https://api.vesselapi.com/v1/location/vessels/bounding-box?filter.latBottom={latBottom}&filter.latTop={latTop}&filter.lonLeft={lonLeft}&filter.lonRight={lonRight}`);
+        const r = await fetchWithTimeout(u, { headers: { "Authorization": "Bearer " + vkey } }, 8000);
+        if (!r.ok) continue;
+        const d = await r.json();
+        const raw = d.data || d.vessels || [];
+        const ts = Date.now();
+        const compact = raw.map(v => ({ m: String(v.mmsi || v.MMSI || ""), lo: +(v.lon ?? v.longitude), la: +(v.lat ?? v.latitude), s: +(v.sog ?? v.speed ?? 0) })).filter(v => v.m && !isNaN(v.lo) && !isNaN(v.la));
+        const snap = { ts, n: compact.length, v: compact };
+        const key = "ais:history:" + region;
+        let hist = [];
+        try { const ex = await env.AURA_KV.get(key); if (ex) hist = JSON.parse(ex); } catch {}
+        hist.push(snap);
+        if (hist.length > 2880) hist = hist.slice(hist.length - 2880);
+        await env.AURA_KV.put(key, JSON.stringify(hist)).catch(() => {});
+      } catch {}
+    }
+  } catch {}
+}
+
 export default {
   async scheduled(event, env, ctx) {
     _AURA_ENV = env;
@@ -16302,6 +16407,7 @@ export default {
     ctx.waitUntil(drainSchedule(env));
     ctx.waitUntil(drainWorkflows(env));
     ctx.waitUntil(precomputeHotBriefs(env));
+    ctx.waitUntil(captureAisHistory(env));
   },
 
   async fetch(request, env) {
@@ -18110,7 +18216,7 @@ function openAlbum(idx){
       // AND character breakdown, because each tiny fragment lost the whole picture). A real COMMAND
       // BATCH has EVERY non-empty line starting with a known command verb. If ANY line is prose, the
       // whole body is a single human message.
-      const KNOWN_CMD_VERBS = /^(SETKV|GETKV|LISTKV|DELKV|PATCHKV|PING|HOST|DOMAIN_LAUNCH|DOMAIN_STATUS|DOMAIN_DIAGNOSE|FETCH_PLACES|WORLD_MAP|PTA_[A-Z_]+|COMMS|WORKFLOW|EMAIL_SEND|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|TWILIO_INTEL|TWILIO[A-Z_]*|A2P_[A-Z]+|SMS_[A-Z]+|CAPABILITY|INDUSTRY|BUSINESS_STATE|CF_API|AURA_[A-Z_]+|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|SHOW_IT|SHOWIT|GENERATE_PAGE|DEPLOY_[A-Z]+|ROUTE_[A-Z_]+|GETKV|WEB_SEARCH|NEWS_QUERY|OIL_PRICE|MARINE_WX|AIS_QUERY|LOOP_PROBE|SOURCE_PROBE|DEPOT_[A-Z_]+|ANALYST_BRIEF|SITUATION_[A-Z_]+|FLEET_[A-Z_]+|EVENT_[A-Z_]+|OUTCOME_[A-Z_]+|INGEST|INGEST_[A-Z_]+)\b/i;
+      const KNOWN_CMD_VERBS = /^(SETKV|GETKV|LISTKV|DELKV|PATCHKV|PING|HOST|DOMAIN_LAUNCH|DOMAIN_STATUS|DOMAIN_DIAGNOSE|FETCH_PLACES|WORLD_MAP|PTA_[A-Z_]+|COMMS|WORKFLOW|EMAIL_SEND|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|TWILIO_INTEL|TWILIO[A-Z_]*|A2P_[A-Z]+|SMS_[A-Z]+|CAPABILITY|INDUSTRY|BUSINESS_STATE|CF_API|AURA_[A-Z_]+|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|SHOW_IT|SHOWIT|GENERATE_PAGE|DEPLOY_[A-Z]+|ROUTE_[A-Z_]+|GETKV|WEB_SEARCH|NEWS_QUERY|OIL_PRICE|MARINE_WX|AIS_QUERY|LOOP_PROBE|SOURCE_PROBE|DEPOT_[A-Z_]+|ANALYST_BRIEF|SITUATION_[A-Z_]+|FLEET_[A-Z_]+|EVENT_[A-Z_]+|OUTCOME_[A-Z_]+|INGEST|INGEST_[A-Z_]+|AIS_[A-Z_]+)\b/i;
       const _rawLines = body.split("\n").map(l => l.trim()).filter(Boolean);
       const _looksLikeCommandBatch = _rawLines.length > 0 && _rawLines.every(l => KNOWN_CMD_VERBS.test(l));
       const _isProseDump = !_VALUE_BEARING.includes(_firstWord) && _rawLines.length > 1 && !_looksLikeCommandBatch;

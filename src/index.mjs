@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.452-2026-07-03";
+const BUILD = "aura-core-v4.9.453-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3941,6 +3941,7 @@ async function processCommand(line, env, isOp) {
         return { cmd: "INGEST", payload: { ok: true, topic: inRaw, source: "already_known", known_since: new Date(existing.first_learned || existing.fetched_at).toISOString().slice(0, 10),
           age_days: ageDays, times_asked: (existing.times_asked || 1),
           knowledge: existing.knowledge, key_facts: existing.key_facts, sources: existing.sources,
+          organized: existing.organized || null,
           freshness_note: ageDays > 30 ? "This is " + ageDays + " days old - INGEST FRESH " + inRaw + " to check for what's new." : "Recently ingested (" + ageDays + "d ago).",
           note: "Aura already knew this - returned instantly, no fetch. This is the growing instant-knowledge layer: she learned it once and kept it." } };
       }
@@ -4033,6 +4034,8 @@ async function processCommand(line, env, isOp) {
         source: existing ? "refreshed" : "newly_learned",
         category: record.category, freshness_sensitive: record.freshness_sensitive,
         knowledge: record.knowledge, key_facts: record.key_facts, sources: record.sources,
+        organized: record.organized ? { source: record.organized.source, entity: record.organized.entity, structured_facts: record.organized.facts, linked: record.organized.linked, people: record.organized.people } : null,
+        used_organized_source: !!record.organized,
         times_asked: record.times_asked,
         whats_new: existing ? "Re-fetched and updated (was " + Math.floor((now - existing.fetched_at) / 86400000) + " days old). Prior version kept in history." : undefined,
         note: existing ? "Refreshed Aura's knowledge - she checked for what's new since last time." : "NEW: Aura did not know this, found the source, analyzed it, and KEPT it. Next request on '" + inRaw + "' is instant - the instant-knowledge layer just grew by one topic." } };

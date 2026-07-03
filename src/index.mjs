@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.433-2026-07-02";
+const BUILD = "aura-core-v4.9.434-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3835,7 +3835,8 @@ async function processCommand(line, env, isOp) {
         theft: { cmd: "DEPOT_POUR_CRIME", trigger: /\b(crime rate|theft|burglary|larceny|motor vehicle theft|property crime)\b/i, note: "BJS NIBRS" },
         "disaster-costs": { cmd: "DEPOT_POUR_DISASTERS_OFFICIAL", trigger: /\b(billion.dollar disaster|disaster cost|costliest disaster|NCEI billions)\b/i, note: "NCEI billion-dollar spine" },
         "property-value": { cmd: "DEPOT_POUR_PROPERTY", trigger: /\b(house price|home value|property value|FHFA|HPI)\b/i, note: "FHFA HPI" },
-        "insurance-market": { cmd: "DEPOT_POUR_PREMIUMS", trigger: /\b(insurer premium|premiums earned|loss ratio|carrier financials)\b/i, note: "SEC XBRL" }
+        "insurance-market": { cmd: "DEPOT_POUR_PREMIUMS", trigger: /\b(insurer premium|premiums earned|loss ratio|carrier financials)\b/i, note: "SEC XBRL" },
+        maritime: { cmd: "DEPOT_POUR_MARITIME", trigger: /\b(hormuz|strait|maritime|navigation warning|shipping lane|vessel|navarea|persian gulf|red sea|suez|chokepoint|mariner)\b/i, note: "NGA Maritime Safety Info broadcast warnings" }
       };
       let inSpecialists = INGEST_SPECIALISTS_DEFAULT;
       try { const sr = await env.AURA_KV.get("config:ingest:specialists"); if (sr) { const parsed = JSON.parse(sr); /* stored triggers are strings -> rebuild RegExp */ for (const k of Object.keys(parsed)) { if (typeof parsed[k].trigger === "string") parsed[k].trigger = new RegExp(parsed[k].trigger, "i"); } inSpecialists = parsed; } } catch {}
@@ -5222,6 +5223,58 @@ async function processCommand(line, env, isOp) {
         return { cmd: "EVENT_ADVANCE", payload: { ok: true, event_id: eaId, stage: e.stage, stage_progress: (e.stage_index + 1) + " of 22", status: e.status,
           note: e.status === "closed" ? "Event closed - the full lifecycle is complete." : "Now at: " + e.stage + ". Next: EVENT_ADVANCE " + eaId + "." } };
       } catch (e) { return { cmd: "EVENT_ADVANCE", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "DEPOT_POUR_MARITIME": {
+      // MARITIME BROADCAST WARNINGS (v4.9.434) - the "comms" side Aaron flagged: the planet broadcasting
+      // about itself. Source verified 2026-07-03: msi.nga.mil/api/publications/broadcast-warn (NGA Maritime
+      // Safety Info REST API, keyless JSON, worldwide navigational warnings). Each warning has navArea,
+      // msgYear, msgNumber, text. NAVAREAs: 4/12=Americas, 9=Persian Gulf (HORMUZ), 1=UK/Europe, etc.
+      // This is INBOUND world-comms as a data source (not the Twilio outbound comms). A Hormuz query pulls
+      // the live "you may/may-not transit, naval ops, firing practice" broadcasts = one side of the situation
+      // (AIS vessel positions = the other side). Distills active warnings by region into depot:risk:maritime.
+      //   DEPOT_POUR_MARITIME [navArea]   (default all active; a number 1-12 filters to that NAVAREA; 9=Hormuz/Gulf)
+      if (!isOp) return { cmd: "DEPOT_POUR_MARITIME", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const mArea = (rest.trim().match(/^\d{1,2}$/) || [""])[0];
+      const mUA = { "user-agent": "aura-depot-pour/1.0", "accept": "application/json" };
+      const mUrl = await resolveFeedUrl(env, "nga_broadcast_warn", {}, "https://msi.nga.mil/api/publications/broadcast-warn?status=active&output=json");
+      try {
+        const r = await fetchWithTimeout(mUrl, { headers: mUA }, 30000);
+        if (!r.ok) return { cmd: "DEPOT_POUR_MARITIME", payload: { ok: false, error: `nga msi ${r.status}` } };
+        const data = await r.json();
+        let warns = (data && data["broadcast-warn"]) || [];
+        if (!Array.isArray(warns) || !warns.length) return { cmd: "DEPOT_POUR_MARITIME", payload: { ok: false, error: "no warnings in feed" } };
+        if (mArea) warns = warns.filter(w => String(w.navArea) === mArea);
+        if (!warns.length) return { cmd: "DEPOT_POUR_MARITIME", payload: { ok: false, error: `no active warnings for NAVAREA ${mArea}` } };
+        // classify each warning by hazard type from its text (keyword pass - deterministic)
+        const classify = (t) => { t = (t || "").toUpperCase();
+          if (/FIRING|GUNNERY|NAVAL OP|MILITARY|MISSILE|LIVE FIRE/.test(t)) return "military/naval";
+          if (/PIRAC|ATTACK|HOSTIL|SEIZ|BOARD|SECURITY THREAT/.test(t)) return "security/threat";
+          if (/ROCKET|LAUNCH|HAZARDOUS OPERATION|SPACE/.test(t)) return "hazardous-ops";
+          if (/SURVEY|BATHYMETRIC|SEISMIC SURVEY|CABLE/.test(t)) return "survey";
+          if (/LIGHT|BUOY|BEACON|AID.{0,10}NAVIGATION|UNLIT|UNRELIABLE/.test(t)) return "aids-to-nav";
+          if (/DRILLING|MODU|OFFSHORE|RIG/.test(t)) return "offshore-industry";
+          return "other"; };
+        const byArea = new Map(); const byType = new Map();
+        for (const w of warns) { const a = String(w.navArea); byArea.set(a, (byArea.get(a) || 0) + 1); const ty = classify(w.text); byType.set(ty, (byType.get(ty) || 0) + 1); }
+        const AREA_NAMES = { "1": "UK/W.Europe", "2": "France/W.Africa", "3": "Mediterranean", "4": "W.North Atlantic/Americas", "6": "S.Atlantic/Argentina", "7": "S.Africa", "8": "Indian Ocean", "9": "Persian Gulf/Arabian Sea (HORMUZ)", "10": "Australia", "11": "SE Asia/W.Pacific", "12": "E.Pacific/N.America", "13": "Russia Pacific", "14": "NZ/S.Pacific", "15": "Chile", "16": "Peru" };
+        const srcTag = "NGA Maritime Safety Info (broadcast warnings)";
+        const ev = [];
+        const scope = mArea ? ("NAVAREA " + mArea + " (" + (AREA_NAMES[mArea] || "?") + ")") : "worldwide";
+        ev.push(`Maritime broadcast warnings ${scope}: ${warns.length} active navigational warnings (${srcTag})`);
+        ev.push(`Active warnings by hazard type: ` + [...byType.entries()].sort((a,b)=>b[1]-a[1]).map(([t,n])=>`${t} (${n})`).join(", ") + ` (${srcTag})`);
+        if (!mArea) ev.push(`Active warnings by region: ` + [...byArea.entries()].sort((a,b)=>b[1]-a[1]).slice(0,8).map(([a,n])=>`${AREA_NAMES[a]||("NAVAREA "+a)}: ${n}`).join("; ") + ` (${srcTag})`);
+        // include the most recent/notable warnings verbatim-trimmed (esp. military/security ones)
+        const notable = warns.filter(w => ["military/naval","security/threat"].includes(classify(w.text))).slice(0, 8);
+        for (const w of notable) { const firstLine = (w.text || "").split("\n").map(s=>s.trim()).filter(Boolean).slice(0,2).join(" ").slice(0, 220); ev.push(`NAVAREA ${w.navArea} ${w.msgNumber}/${w.msgYear} [${classify(w.text)}]: ${firstLine} (${srcTag})`); }
+        const knowledge = `Maritime broadcast navigational warnings (${scope}) from NGA Maritime Safety Information - the planet's live ship-comms broadcast layer. Active warnings classified by hazard: military/naval operations, security threats, hazardous operations, surveys, aids-to-navigation, offshore industry. This is INBOUND world-communications (what is being broadcast to mariners right now) - one side of any maritime situation; AIS vessel positions are the other side. For a strait/chokepoint query (e.g. Hormuz = NAVAREA 9), these warnings ARE the current transit-restriction/naval-activity picture.\n` + ev.join("\n");
+        const pour = await processCommand(`DEPOT_INGEST ::: ${JSON.stringify({ risk_type: "maritime", touches: ["shipping", "insurance", "government", "energy", "logistics"], knowledge, evidence_lines: ev, source: `DEPOT_POUR_MARITIME ${mArea || "all"} (NGA MSI broadcast-warn)` })}`, env, true);
+        const pp = (pour && pour.payload) ? pour.payload : pour;
+        return { cmd: "DEPOT_POUR_MARITIME", payload: { ok: !!(pp && pp.ok), scope, active_warnings: warns.length,
+          by_type: Object.fromEntries(byType), by_region: mArea ? undefined : Object.fromEntries([...byArea.entries()].map(([a,n])=>[AREA_NAMES[a]||a, n])),
+          depot_result: pp ? { entry_count: pp.entry_count, growth: pp.growth, added: pp.added } : null,
+          note: `Poured ${warns.length} active maritime broadcast warnings (${scope}) into depot:risk:maritime in ONE write. For Hormuz live picture use DEPOT_POUR_MARITIME 9. Space depot writes >60s.` } };
+      } catch (e) { return { cmd: "DEPOT_POUR_MARITIME", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 
     case "DEPOT_POUR_FIRE": {

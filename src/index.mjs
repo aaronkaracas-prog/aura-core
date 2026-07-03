@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.455-2026-07-03";
+const BUILD = "aura-core-v4.9.456-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3788,15 +3788,21 @@ async function processCommand(line, env, isOp) {
           if (qids.length) { linkedEntities[label] = qids; if (label === "ceo" || label === "director_manager" || label === "founded_by") peopleIds.push(...qids); }
           if (plains.length) facts[label] = plains.length === 1 ? plains[0] : plains;
         }
-        // resolve the linked entity IDs to labels in ONE more call (so the record is human-readable)
-        const allQids = [...new Set(Object.values(linkedEntities).flat())].slice(0, 40);
+        // resolve the linked entity IDs to labels (so the record is human-readable). Wikidata caps
+        // wbgetentities at 50 IDs/call, so BATCH in groups of 50 - big conglomerates (Sony: 40+ subs)
+        // fully resolve instead of showing raw Q-codes. Cap total at 250 to bound cost on giant graphs.
+        const allQids = [...new Set(Object.values(linkedEntities).flat())].slice(0, 250);
         const qidLabels = {};
         if (allQids.length) {
-          try {
-            const lu = "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=" + allQids.join("%7C") + "&props=labels&languages=en&format=json";
-            const lr = await fetchWithTimeout(lu, { headers: wdUA }, 15000);
-            if (lr.ok) { const ld = await lr.json(); for (const q of allQids) { const e = ld.entities && ld.entities[q]; if (e && e.labels && e.labels.en) qidLabels[q] = e.labels.en.value; } }
-          } catch {}
+          const batches = [];
+          for (let i = 0; i < allQids.length; i += 50) batches.push(allQids.slice(i, i + 50));
+          await Promise.all(batches.map(async (batch) => {
+            try {
+              const lu = "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=" + batch.join("%7C") + "&props=labels&languages=en&format=json";
+              const lr = await fetchWithTimeout(lu, { headers: wdUA }, 15000);
+              if (lr.ok) { const ld = await lr.json(); for (const q of batch) { const e = ld.entities && ld.entities[q]; if (e && e.labels && e.labels.en) qidLabels[q] = e.labels.en.value; } }
+            } catch {}
+          }));
         }
         // build human-readable linked facts
         const linked = {};
@@ -4021,16 +4027,26 @@ async function processCommand(line, env, isOp) {
       try { const or = await env.AURA_KV.get("config:ingest:organized"); if (or) { const p = JSON.parse(or); if (Array.isArray(p) && p.length) organizedSources = p; } } catch {}
       let inOrganized = null;
       const organizedHits = [];
-      for (const os of organizedSources) {
+      // PARALLEL GATHER (v4.9.456): the organized sources AND the raw web search are INDEPENDENT - they
+      // don't need each other's output - so fire them ALL AT ONCE instead of sequentially. This cuts the
+      // biggest chunk off first-fetch latency (was ~8s sequential; the gather waits collapse to the
+      // slowest single call, ~1-2s, instead of their sum). The brain synthesis still runs after, once
+      // all inputs are in hand. webSearch(inRaw) is launched here and awaited below as inWebPromise.
+      const inWebPromise = webSearch(inRaw, env);
+      const organizedResults = await Promise.all(organizedSources.map(async (os) => {
         try {
           const rr = await processCommand(os.cmd + " " + inRaw, env, true);
           const rp = (rr && rr.payload) ? rr.payload : rr;
-          if (rp && rp.ok && rp.found) {
-            if (os.name === "wikidata") organizedHits.push({ source: "wikidata", kind: "structured", entity: rp.entity, facts: rp.facts, linked: rp.linked, people: rp.people });
-            else if (os.name === "wikipedia") organizedHits.push({ source: "wikipedia", kind: "prose", title: rp.title, description: rp.description, extract: rp.extract, image: rp.image, wikidata_id: rp.wikidata_id, url: rp.url });
-            else organizedHits.push({ source: os.name, kind: os.kind || "other", data: rp });
-          }
+          if (rp && rp.ok && rp.found) return { os, rp };
         } catch {}
+        return null;
+      }));
+      for (const res of organizedResults) {
+        if (!res) continue;
+        const { os, rp } = res;
+        if (os.name === "wikidata") organizedHits.push({ source: "wikidata", kind: "structured", entity: rp.entity, facts: rp.facts, linked: rp.linked, people: rp.people });
+        else if (os.name === "wikipedia") organizedHits.push({ source: "wikipedia", kind: "prose", title: rp.title, description: rp.description, extract: rp.extract, image: rp.image, wikidata_id: rp.wikidata_id, url: rp.url });
+        else organizedHits.push({ source: os.name, kind: os.kind || "other", data: rp });
       }
       if (organizedHits.length) {
         // primary = the structured one if present, else the first hit. Build a CLEAN object (do NOT
@@ -4048,8 +4064,9 @@ async function processCommand(line, env, isOp) {
         };
       }
 
-      // STEP 2 - FIND the source (there is always a source; search finds the door)
-      const ws = await webSearch(inRaw, env);
+      // STEP 2 - FIND the source. The web search was already LAUNCHED in parallel above (inWebPromise);
+      // just await it here so it overlapped with the organized-source calls instead of running after them.
+      const ws = await inWebPromise;
       if (!ws || !ws.ok) return { cmd: "INGEST", payload: { ok: false, error: "could not find a source (" + ((ws && ws.error) || "search failed") + ")", topic: inRaw } };
       // STEP 3 - ANALYZE it into structured knowledge (through the brain, not raw dump)
       const inApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);

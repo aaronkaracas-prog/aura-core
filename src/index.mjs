@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.441-2026-07-03";
+const BUILD = "aura-core-v4.9.442-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -9462,7 +9462,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // goes to grounding.unsure and is NEVER asserted. Detects socials and drafts the offer to manage.
       const obApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
       if (!obApiKey) return { cmd: "ONBOARD", payload: { ok: false, error: "Brain not configured (secret:anthropic)", discovered } };
-      const obSys = await loadPrompt(env, "onboard_business", "You are Aura onboarding a real business you just researched. You are given FACTS you actually pulled: Google Places, the live website (scraped, possibly several pages), and web search. Build a COMPLETE, GROUNDED understanding from ONLY those facts. Capture EVERYTHING the site shows: every product and service, specials, subscriptions, collections, pricing, delivery area, hours, reviews and testimonials, and EVERY social account (Instagram, Facebook, X, YouTube, TikTok) with its handle and url. ABSOLUTE RULE: never state a fact you did not pull; if you are not certain, put it in grounding.unsure and do NOT assert it - Aura must never claim to know something she did not verify, it makes her look unreliable. Return ONLY JSON (no prose, no fences) with keys: business_name, business_type (one lowercase slug for the home-screen archetype, e.g. florist), what_it_is (2-3 sentences, confirmed facts only), offerings (array, comprehensive), highlights (array of standout items: specials, subscriptions, signature products), serves (who and where), contact (object email, phone, address, website - only real values found else null), socials (array of objects with platform, handle, url actually found), reviews (object rating, count, summary - nulls where unknown), the_move (the single most compelling first thing Aura would do for them), social_offer (if socials found, one warm sentence offering to manage them, else empty string), outreach (a warm 3-5 sentence message to the owner: the specific things Aura genuinely saw as proof, an offer to help, and the social_offer woven in if applicable), grounding (object with confirmed array and unsure array). Output JSON only.");
+      const obSys = await loadPrompt(env, "onboard_business", "You are Aura onboarding a real business you just researched. You are given FACTS you actually pulled: Google Places, the live website (scraped, possibly several pages), and web search. Build a COMPLETE, GROUNDED understanding from ONLY those facts. Capture EVERYTHING the site shows: every product and service, specials, subscriptions, collections, pricing, delivery area, hours, reviews and testimonials, and EVERY social account (Instagram, Facebook, X, YouTube, TikTok) with its handle and url. ABSOLUTE RULE: never state a fact you did not pull; if you are not certain, put it in grounding.unsure and do NOT assert it - Aura must never claim to know something she did not verify, it makes her look unreliable. Return ONLY JSON (no prose, no fences) with keys: business_name, business_type (one lowercase slug for the home-screen archetype, e.g. florist), what_it_is (2-3 sentences, confirmed facts only), offerings (array, comprehensive), highlights (array of standout items: specials, subscriptions, signature products), serves (who and where), contact (object email, phone, address, website - only real values found else null), contacts (ARRAY of every distinct contact found - each {email?, phone?, role?, name?} - a business often exposes several inboxes/departments; capture ALL of them, this is how Aura reaches everyone), socials (array of objects with platform, handle, url actually found), reviews (object rating, count, summary - nulls where unknown), the_move (the single most compelling first thing Aura would do for them), social_offer (if socials found, one warm sentence offering to manage them, else empty string), outreach (a warm 3-5 sentence message to the owner: the specific things Aura genuinely saw as proof, an offer to help, and the social_offer woven in if applicable), grounding (object with confirmed array and unsure array). Output JSON only.");
       const obFactsStr = JSON.stringify({ places: discovered.places, website_scrape: obScrape || (discovered.site && discovered.site.text) || null, web: discovered.web }).slice(0, 24000);
       let obRead = {};
       try {
@@ -9494,13 +9494,57 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const obDoorway = "https://openforbusiness.world/" + obSlug;
       const obQr = "https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=" + encodeURIComponent(obDoorway);
       await env.AURA_KV.put("onboard:" + obSlug, JSON.stringify({ subject: obRaw, slug: obSlug, read: obRead, pta_id: obPtaId, identity: obIdentity || null, business_type: obType, doorway: obDoorway, qr: obQr, state: (obState && obState.ok) ? "lead" : null, ts: obTs })).catch(() => {});
-      // 6) CONTACT â€” outreach carries the doorway + QR; on COMMIT send it and advance to trial
-      const obMessage = (obRead.outreach || "") + "  Your Open For Business doorway: " + obDoorway + "  |  Your QR: " + obQr;
-      let obSent = false;
-      if (obCommit && obContact.email && /@/.test(String(obContact.email)) && obRead.outreach) {
-        try { const es = await processCommand("EMAIL_SEND " + String(obContact.email).trim() + " Aura x " + (obRead.business_name || obRaw) + " | " + obMessage, env, isOp); const ep = (es && es.payload) ? es.payload : es; obSent = !!(ep && ep.ok); } catch (e) {}
-        if (obPtaId) { try { await processCommand("BUSINESS_STATE SET " + obPtaId + " trial", env, isOp); } catch (e) {} }
+      // 6) CONTACT â€” outreach carries the offer + doorway + QR; on COMMIT send to EVERY contact found.
+      const obMessage = (obRead.outreach || "") + "\n\nWhat Aura offers " + (obRead.business_name || obRaw) + ": " + obOffer.product + " - " + obOffer.pitch + "." + "  Your doorway: " + obDoorway + "  |  Your QR: " + obQr;
+      let obSent = false; const obSentTo = [];
+      if (obCommit && obRead.outreach) {
+        for (const c of contactSet) {
+          const em = c.email && /@/.test(String(c.email)) ? String(c.email).trim() : null;
+          if (!em) continue;
+          try { const es = await processCommand("EMAIL_SEND " + em + " Aura x " + (obRead.business_name || obRaw) + " | " + obMessage, env, isOp); const ep = (es && es.payload) ? es.payload : es; if (ep && ep.ok) { obSent = true; obSentTo.push(em); } } catch (e) {}
+        }
+        if (obPtaId && obSent) { try { await processCommand("BUSINESS_STATE SET " + obPtaId + " trial", env, isOp); } catch (e) {} }
       }
+      // 6a) PRODUCT OFFER inferred from context (v4.9.442) - the flow picks WHAT Aura offers this
+      // business from its type. News/media -> SituationTracker + WeatherTracker; shipping -> maritime
+      // intelligence; everything else -> Open For Business tools. Just context; the flow is identical.
+      const inferOffer = (t) => {
+        t = String(t || "").toLowerCase();
+        if (/news|media|broadcast|journal|press|television|tv|radio/.test(t)) return { product: "SituationTracker + WeatherTracker", pitch: "live situational + weather intelligence for the newsroom - what is happening right now, measured, grounded, ready to report" };
+        if (/shipping|maritime|freight|logistics|trucking|carrier/.test(t)) return { product: "SituationTracker (maritime/logistics)", pitch: "live route + chokepoint + weather risk intelligence for your fleet and shipments" };
+        if (/insur/.test(t)) return { product: "AnalystOS + risk depot", pitch: "verified catastrophe + loss history grounding every underwriting decision" };
+        return { product: "Open For Business", pitch: "your whole business, run from one place - presence, customers, commerce" };
+      };
+      const obOffer = inferOffer(obType);
+      // 6a2) CONTACTS -> each a PTA WITH CONTEXT under the business (uses EXISTING PTA machinery; PTA is
+      // built + proven, we only orchestrate it). People/inboxes under the business = more PTAs + edges.
+      const obContactsRaw = Array.isArray(obRead.contacts) ? obRead.contacts : [];
+      // always include the primary contact in the set, de-duped by email/phone
+      const contactSet = [];
+      const seen = new Set();
+      const pushC = (c) => { if (!c) return; const key = (c.email || c.phone || "").toLowerCase().trim(); if (!key || seen.has(key)) return; seen.add(key); contactSet.push(c); };
+      pushC({ email: obContact.email, phone: obContact.phone, role: "primary" });
+      for (const c of obContactsRaw) pushC(c);
+      const obPeople = [];
+      for (const c of contactSet) {
+        const cEmail = c.email && /@/.test(String(c.email)) ? ("email:" + String(c.email).trim()) : null;
+        const cPhone = c.phone ? ("phone:" + String(c.phone).replace(/[^0-9+]/g, "")) : null;
+        const cIdentity = cEmail || cPhone;
+        if (!cIdentity) continue;
+        // skip the identity that already became the business PTA
+        if (cIdentity === obIdentity) { obPeople.push({ identity: cIdentity, role: c.role || "primary", pta: obPtaId, is_business_pta: true }); continue; }
+        try {
+          const cAbout = ("Contact at " + (obRead.business_name || obRaw) + (c.role ? " (" + c.role + ")" : "") + ". Reached via Open For Business onboarding; context = this business and the offer: " + obOffer.product + ".").slice(0, 500);
+          const cName = (c.name || ((obRead.business_name || obRaw) + " - " + (c.role || "contact"))).slice(0, 80);
+          const cr = await processCommand("PTA_CREATE " + JSON.stringify({ identity: cIdentity, name: cName, about: cAbout, app: "openforbusiness", email_welcome: false }), env, isOp);
+          const cp = (cr && cr.payload) ? cr.payload : cr;
+          const cPtaId = cp && (cp.pta_id || cp.id || (typeof cp.pta === "string" ? cp.pta : (cp.pta && cp.pta.id)));
+          // link this person PTA -> business PTA (context edge), using EXISTING graph
+          if (cPtaId && obPtaId) { try { await processCommand("GRAPH_LINK " + JSON.stringify({ from: cPtaId, rel: "works_at", to: obPtaId, context: (c.role || "contact") + " at " + (obRead.business_name || obRaw) }), env, isOp); } catch (e) {} }
+          obPeople.push({ identity: cIdentity, role: c.role || "contact", pta: cPtaId || null, linked_to_business: !!(cPtaId && obPtaId) });
+        } catch (e) { obPeople.push({ identity: cIdentity, role: c.role || "contact", error: String(e && e.message || e) }); }
+      }
+
       // 6b) WRITE TO THE REALITY GRAPH â€” the business becomes typed nodes + edges, not freeform JSON.
       const graphOut = { business: null, place: null, socials: [], linked_pta: false };
       try {
@@ -9525,7 +9569,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       return { cmd: "ONBOARD", payload: { ok: true, mode: obCommit ? "committed" : "proposed", subject: obRaw,
         flow: { scraped: !!(discovered.site && discovered.site.text), perceived: true, pta_minted: !!obPtaId, in_openforbusiness: !!(obState && obState.ok), qr_ready: true, socials_found: (obRead.socials || []).length, graphed: !!graphOut.business, contacted: obSent },
         discovered: { places_found: !!discovered.places, site_url: obSiteUrl, site_scraped: !!(discovered.site && discovered.site.text), web_pulled: !!discovered.web },
-        read: obRead, graph: graphOut, socials: obRead.socials || [], grounding: obRead.grounding || null, pta: obPta, business_state: obState, business_type: obType, doorway: obDoorway, qr_url: obQr, outreach: obMessage, outreach_sent: obSent, slug: obSlug, ts: obTs } };
+        read: obRead, graph: graphOut, socials: obRead.socials || [], grounding: obRead.grounding || null, pta: obPta, business_state: obState, business_type: obType, offer: obOffer, people: obPeople, contacts_found: contactSet.length, outreach_sent_to: obSentTo,
+        doorway: obDoorway, qr_url: obQr, outreach: obMessage, outreach_sent: obSent, slug: obSlug, ts: obTs } };
     }
 
     case "MISSION_SET": {

@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.429-2026-07-02";
+const BUILD = "aura-core-v4.9.430-2026-07-02";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -4989,6 +4989,102 @@ async function processCommand(line, env, isOp) {
           depot_result: pp ? { entry_count: pp.entry_count, growth: pp.growth, added: pp.added, distill_note: pp.distill_note } : null,
           note: `Poured ${okYears.length} year(s) of the real fatal-crash census (${allEv.length} deterministic evidence lines) into depot:risk:driving in ONE write (lost-update-proof). Never fire two depot writes within 60s - use range mode for batches.` } };
       } catch (e) { return { cmd: "DEPOT_POUR_CRASH", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "EVENT_DECLARE": {
+      // EVENTOS - the atom (v4.9.430, notes:asset:eventos). Declares an event: the moment a situation
+      // becomes a MANAGED event with all of Aura's relevant knowledge instantly attached. Auto-links the
+      // matching depot risk-domain (a wildfire event pulls depot:risk:wildfire; a theft event pulls
+      // depot:risk:theft) so the event opens already grounded in census history. Places it at stage 1 of
+      // the 22-stage lifecycle. Stored at event:<id>; indexed in event:index.
+      //   EVENT_DECLARE ::: {"type":"wildfire","name":"...","location":"...","severity":"major","notes":"..."}
+      if (!isOp) return { cmd: "EVENT_DECLARE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      let ed; try { ed = JSON.parse(rest.includes(":::") ? rest.slice(rest.indexOf(":::") + 3).trim() : rest.trim()); } catch { return { cmd: "EVENT_DECLARE", payload: { ok: false, error: 'Usage: EVENT_DECLARE ::: {"type":"wildfire","name":"...","location":"...","severity":"major"}' } }; }
+      if (!ed || !ed.type || !ed.name) return { cmd: "EVENT_DECLARE", payload: { ok: false, error: "type and name are required" } };
+      // the 22-stage lifecycle (notes:asset:eventos)
+      const LIFECYCLE = ["Situation Detected", "Event Declared", "Risk Assessment", "Resource Deployment", "Public Notification", "Emergency Response", "Shelter Operations", "Medical Operations", "Infrastructure Stabilization", "Damage Assessment", "Insurance Coordination", "Government Assistance", "Debris Removal", "Utility Restoration", "Permitting", "Rebuilding", "Business Recovery", "School Reopening", "Economic Recovery", "Community Recovery", "Lessons Learned", "Event Closed"];
+      // map event type -> depot risk domain (the auto-attach). Aligns event types to poured domains.
+      const TYPE_TO_RISK = { wildfire: "wildfire", fire: "wildfire", hurricane: "hurricane", "tropical-cyclone": "hurricane", flood: "flood", earthquake: "earthquake", quake: "earthquake", tornado: "severe-storm", "severe-storm": "severe-storm", hail: "severe-storm", storm: "severe-storm", crash: "driving", "traffic": "driving", crime: "theft", theft: "theft", pandemic: "mortality", "health-emergency": "mortality", drought: "crop", "crop-failure": "crop" };
+      const edType = String(ed.type).toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+      const riskDomain = TYPE_TO_RISK[edType] || null;
+      // attach a snapshot of what the depot already knows (base rates for this event type)
+      let attachedKnowledge = null;
+      if (riskDomain) {
+        try { const raw = await env.AURA_KV.get("depot:risk:" + riskDomain); if (raw) { const r = JSON.parse(raw); attachedKnowledge = { risk_domain: riskDomain, entry_count: r.entry_count, patterns: (r.patterns || []).length, evidence_lines: (r.evidence || []).length, pricing_signals: (r.pricing_signals || []).length, sample_patterns: (r.patterns || []).slice(0, 3) }; } } catch {}
+      }
+      const eid = "evt_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 6);
+      const now = new Date().toISOString();
+      const event = {
+        id: eid, type: edType, name: String(ed.name).slice(0, 200),
+        location: ed.location ? String(ed.location).slice(0, 200) : null,
+        severity: ed.severity ? String(ed.severity).toLowerCase() : "unspecified",
+        notes: ed.notes ? String(ed.notes).slice(0, 1000) : null,
+        risk_domain: riskDomain,
+        stage_index: 1, stage: LIFECYCLE[1], // starts at "Event Declared" (stage 1 is Situation Detected, already past)
+        lifecycle: LIFECYCLE,
+        status: "active",
+        participants: [], log: [{ ts: now, entry: "Event declared" + (riskDomain ? " - auto-attached depot:risk:" + riskDomain : "") }],
+        declared: now, updated: now, closed: null
+      };
+      await env.AURA_KV.put("event:" + eid, JSON.stringify(event)).catch(() => {});
+      // index for listing
+      try { let idx = []; const ir = await env.AURA_KV.get("event:index"); if (ir) idx = JSON.parse(ir); idx.unshift({ id: eid, type: edType, name: event.name, severity: event.severity, status: "active", declared: now }); await env.AURA_KV.put("event:index", JSON.stringify(idx.slice(0, 500))); } catch {}
+      return { cmd: "EVENT_DECLARE", payload: { ok: true, event_id: eid, type: edType, name: event.name, severity: event.severity,
+        stage: event.stage, stage_number: "2 of 22",
+        knowledge_attached: attachedKnowledge || (riskDomain ? { risk_domain: riskDomain, note: "domain mapped but no depot record yet - pour it to ground this event" } : { note: "no depot risk-domain maps to type '" + edType + "' - event runs without attached history" }),
+        note: "Event declared and " + (attachedKnowledge ? "grounded in depot:risk:" + riskDomain + " (Aura opens this event already knowing the base rates)" : "opened") + ". Advance with EVENT_ADVANCE " + eid + "; read with EVENT_STATUS " + eid + "." } };
+    }
+
+    case "EVENT_STATUS": {
+      // Read one event's full state, or list all active events.
+      if (!isOp) return { cmd: "EVENT_STATUS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const esId = rest.trim();
+      if (!esId || esId.toLowerCase() === "all") {
+        let idx = []; try { const ir = await env.AURA_KV.get("event:index"); if (ir) idx = JSON.parse(ir); } catch {}
+        const active = idx.filter(e => e.status === "active");
+        return { cmd: "EVENT_STATUS", payload: { ok: true, active_count: active.length, total: idx.length, events: idx.slice(0, 30),
+          note: idx.length ? "Read one with EVENT_STATUS <event_id>." : "No events yet. Declare one with EVENT_DECLARE." } };
+      }
+      try {
+        const raw = await env.AURA_KV.get("event:" + esId);
+        if (!raw) return { cmd: "EVENT_STATUS", payload: { ok: false, error: "no event " + esId } };
+        const e = JSON.parse(raw);
+        return { cmd: "EVENT_STATUS", payload: { ok: true, event: { id: e.id, type: e.type, name: e.name, location: e.location, severity: e.severity, status: e.status, risk_domain: e.risk_domain, stage: e.stage, stage_progress: (e.stage_index + 1) + " of 22", declared: e.declared, updated: e.updated, closed: e.closed, participants: e.participants, recent_log: (e.log || []).slice(-6) } } };
+      } catch (e) { return { cmd: "EVENT_STATUS", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "EVENT_ADVANCE": {
+      // Move an event forward through the lifecycle (or to a named/indexed stage), logging the transition.
+      //   EVENT_ADVANCE <event_id>              -> next stage
+      //   EVENT_ADVANCE <event_id> <stage#>     -> jump to stage number (0-21)
+      //   EVENT_ADVANCE <event_id> close [note] -> close the event
+      if (!isOp) return { cmd: "EVENT_ADVANCE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const parts = rest.trim().split(/\s+/);
+      const eaId = parts[0];
+      if (!eaId) return { cmd: "EVENT_ADVANCE", payload: { ok: false, error: "usage: EVENT_ADVANCE <event_id> [stage#|close]" } };
+      try {
+        const raw = await env.AURA_KV.get("event:" + eaId);
+        if (!raw) return { cmd: "EVENT_ADVANCE", payload: { ok: false, error: "no event " + eaId } };
+        const e = JSON.parse(raw); const now = new Date().toISOString();
+        const arg = (parts[1] || "").toLowerCase();
+        if (arg === "close") {
+          e.status = "closed"; e.closed = now; e.stage_index = e.lifecycle.length - 1; e.stage = e.lifecycle[e.stage_index];
+          e.log.push({ ts: now, entry: "Event closed" + (parts.slice(2).join(" ") ? " - " + parts.slice(2).join(" ") : "") });
+        } else if (/^\d+$/.test(arg)) {
+          const target = Math.max(0, Math.min(e.lifecycle.length - 1, parseInt(arg, 10)));
+          e.stage_index = target; e.stage = e.lifecycle[target];
+          e.log.push({ ts: now, entry: "Advanced to stage " + target + ": " + e.stage });
+        } else {
+          e.stage_index = Math.min(e.lifecycle.length - 1, e.stage_index + 1); e.stage = e.lifecycle[e.stage_index];
+          if (e.stage_index === e.lifecycle.length - 1) { e.status = "closed"; e.closed = now; }
+          e.log.push({ ts: now, entry: "Advanced to stage " + e.stage_index + ": " + e.stage });
+        }
+        e.updated = now;
+        await env.AURA_KV.put("event:" + eaId, JSON.stringify(e));
+        try { let idx = []; const ir = await env.AURA_KV.get("event:index"); if (ir) idx = JSON.parse(ir); const row = idx.find(x => x.id === eaId); if (row) { row.status = e.status; } await env.AURA_KV.put("event:index", JSON.stringify(idx)); } catch {}
+        return { cmd: "EVENT_ADVANCE", payload: { ok: true, event_id: eaId, stage: e.stage, stage_progress: (e.stage_index + 1) + " of 22", status: e.status,
+          note: e.status === "closed" ? "Event closed - the full lifecycle is complete." : "Now at: " + e.stage + ". Next: EVENT_ADVANCE " + eaId + "." } };
+      } catch (e) { return { cmd: "EVENT_ADVANCE", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 
     case "DEPOT_POUR_FIRE": {
@@ -17726,7 +17822,7 @@ function openAlbum(idx){
       // AND character breakdown, because each tiny fragment lost the whole picture). A real COMMAND
       // BATCH has EVERY non-empty line starting with a known command verb. If ANY line is prose, the
       // whole body is a single human message.
-      const KNOWN_CMD_VERBS = /^(SETKV|GETKV|LISTKV|DELKV|PATCHKV|PING|HOST|DOMAIN_LAUNCH|DOMAIN_STATUS|DOMAIN_DIAGNOSE|FETCH_PLACES|WORLD_MAP|PTA_[A-Z_]+|COMMS|WORKFLOW|EMAIL_SEND|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|TWILIO_INTEL|TWILIO[A-Z_]*|A2P_[A-Z]+|SMS_[A-Z]+|CAPABILITY|INDUSTRY|BUSINESS_STATE|CF_API|AURA_[A-Z_]+|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|SHOW_IT|SHOWIT|GENERATE_PAGE|DEPLOY_[A-Z]+|ROUTE_[A-Z_]+|GETKV|WEB_SEARCH|NEWS_QUERY|OIL_PRICE|MARINE_WX|AIS_QUERY|LOOP_PROBE|SOURCE_PROBE|DEPOT_[A-Z_]+|ANALYST_BRIEF|SITUATION_[A-Z_]+|FLEET_[A-Z_]+)\b/i;
+      const KNOWN_CMD_VERBS = /^(SETKV|GETKV|LISTKV|DELKV|PATCHKV|PING|HOST|DOMAIN_LAUNCH|DOMAIN_STATUS|DOMAIN_DIAGNOSE|FETCH_PLACES|WORLD_MAP|PTA_[A-Z_]+|COMMS|WORKFLOW|EMAIL_SEND|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|TWILIO_INTEL|TWILIO[A-Z_]*|A2P_[A-Z]+|SMS_[A-Z]+|CAPABILITY|INDUSTRY|BUSINESS_STATE|CF_API|AURA_[A-Z_]+|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|SHOW_IT|SHOWIT|GENERATE_PAGE|DEPLOY_[A-Z]+|ROUTE_[A-Z_]+|GETKV|WEB_SEARCH|NEWS_QUERY|OIL_PRICE|MARINE_WX|AIS_QUERY|LOOP_PROBE|SOURCE_PROBE|DEPOT_[A-Z_]+|ANALYST_BRIEF|SITUATION_[A-Z_]+|FLEET_[A-Z_]+|EVENT_[A-Z_]+)\b/i;
       const _rawLines = body.split("\n").map(l => l.trim()).filter(Boolean);
       const _looksLikeCommandBatch = _rawLines.length > 0 && _rawLines.every(l => KNOWN_CMD_VERBS.test(l));
       const _isProseDump = !_VALUE_BEARING.includes(_firstWord) && _rawLines.length > 1 && !_looksLikeCommandBatch;

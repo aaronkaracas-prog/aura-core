@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.451-2026-07-03";
+const BUILD = "aura-core-v4.9.452-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3982,6 +3982,21 @@ async function processCommand(line, env, isOp) {
           note: "A registered EXPERT SOURCE handles this domain (" + matchedSpecialist.note + "). Run '" + matchedSpecialist.cmd + " <args>' for the deep, source-correct pour into depot:risk:" + matchedSpecialist.domain + " - it already knows this source's quirks. (Generic search would be shallower here.) The specialist is a configured input to this engine, not separate code.",
           hint: "The INGEST engine routes hard federal sources to their specialists and everything else to universal search-and-keep." } };
       }
+      // STEP 1.7 - ORGANIZED-SOURCES-FIRST (v4.9.451, canon:organized_sources_first): before raw search,
+      // check the Tier-1 organized sources - people who already STRUCTURED the world's entities. Wikidata
+      // first: if this topic resolves to a real entity, we get pre-structured facts + a linked graph
+      // (parent/founder/HQ/employer/people) for free, no scraping. We KEEP that structured layer and
+      // still run raw search below for the live/current specifics Wikidata lacks. Universal - applies to
+      // ingesting ANY entity (company, person, place), of which onboarding is just one caller.
+      let inOrganized = null;
+      try {
+        const wd = await processCommand("WIKIDATA " + inRaw, env, true);
+        const wdp = (wd && wd.payload) ? wd.payload : wd;
+        if (wdp && wdp.ok && wdp.found) {
+          inOrganized = { source: "wikidata", entity: wdp.entity, facts: wdp.facts, linked: wdp.linked, people: wdp.people };
+        }
+      } catch {}
+
       // STEP 2 - FIND the source (there is always a source; search finds the door)
       const ws = await webSearch(inRaw, env);
       if (!ws || !ws.ok) return { cmd: "INGEST", payload: { ok: false, error: "could not find a source (" + ((ws && ws.error) || "search failed") + ")", topic: inRaw } };
@@ -3991,7 +4006,7 @@ async function processCommand(line, env, isOp) {
       if (inApiKey) {
         const inModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
         const inSys = "You are the INGESTION engine of Aura - the universal front-of-loop that takes raw world information and turns it into durable structured knowledge Aura keeps and reasons over. You are given a TOPIC and freshly-fetched SOURCE MATERIAL. Distill it into knowledge that will be reused: a tight factual summary, the key facts as short standalone lines, and (if the material reveals it) what KIND of thing this is so Aura can route it. Ground everything in the source material; never invent. Return ONLY JSON, no fences: {\"summary\":\"2-4 sentence synthesis\",\"key_facts\":[\"short factual line\",...],\"category\":\"one-word domain e.g. product|market|place|person|event|technical|regulation|other\",\"freshness_sensitive\":true|false}. freshness_sensitive = does this change often (prices, news, status) or is it stable (history, definitions)?";
-        const inUser = "TOPIC: " + inRaw + "\n\nSOURCE MATERIAL (fetched " + new Date(now).toISOString().slice(0, 10) + "):\n" + (ws.answer ? "Answer: " + ws.answer + "\n\n" : "") + "Sources:\n" + (ws.sources || []).map(s => "- " + s.title + ": " + s.snippet).join("\n");
+        const inUser = "TOPIC: " + inRaw + "\n\n" + (inOrganized ? "STRUCTURED RECORD (Wikidata, authoritative - prefer these facts): " + JSON.stringify({ entity: inOrganized.entity, facts: inOrganized.facts, linked: inOrganized.linked }).slice(0, 4000) + "\n\n" : "") + "SOURCE MATERIAL (fetched " + new Date(now).toISOString().slice(0, 10) + "):\n" + (ws.answer ? "Answer: " + ws.answer + "\n\n" : "") + "Sources:\n" + (ws.sources || []).map(s => "- " + s.title + ": " + s.snippet).join("\n");
         try {
           const d = await callAnthropic(inApiKey, { model: inModel, max_tokens: 1200, system: inSys, messages: [{ role: "user", content: inUser.slice(0, 30000) }] });
           let t = ""; if (d && d.content) for (const b of d.content) if (b.type === "text") t += b.text;
@@ -4002,6 +4017,7 @@ async function processCommand(line, env, isOp) {
       // STEP 4 - KEEP it (bring it in) so next time is instant
       const record = {
         topic: inRaw, key: inKey,
+        organized: inOrganized || null,
         knowledge: structured ? structured.summary : (ws.answer || "See sources."),
         key_facts: structured ? (structured.key_facts || []) : [],
         category: structured ? (structured.category || "other") : "other",

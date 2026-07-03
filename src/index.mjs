@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.450-2026-07-03";
+const BUILD = "aura-core-v4.9.451-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3722,6 +3722,92 @@ async function processCommand(line, env, isOp) {
           email: irParsed,
           note: realData ? "Cold email grounded in the company's REAL public data + learned industry angles. Facts_used are real, pulled live." : "Company data not found live - drafted from the learned model, kept general, no invented specifics (honesty law)." } };
       } catch (e) { return { cmd: "INDUSTRY_REACH", payload: { ok: false, error: "INDUSTRY_REACH draft failed: " + String(e && e.message || e) } }; }
+    }
+
+    case "WIKIDATA": {
+      // ORGANIZED-SOURCE: Wikidata (v4.9.451) - Tier-1 structured-knowledge source for the INGESTION
+      // engine (canon:organized_sources_first). Someone already structured the world's entities; start
+      // here before raw scraping. Two-call pattern (both verified from worker 2026-07-03): resolve a
+      // name to an entity ID (wbsearchentities), then pull its structured claims (wbgetentities) and
+      // translate the property codes into real facts + linked people. This is NOT onboarding - it's a
+      // universal source: ingest ANY entity (company, person, place, topic) structured-first.
+      //   WIKIDATA <name>              -> best entity match + structured record + linked people
+      //   WIKIDATA <name> ::: <hint>   -> disambiguate by context (e.g. "news channel" not "neural network")
+      if (!isOp) return { cmd: "WIKIDATA", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      let wdRaw = (rest || "").trim(); let wdHint = "";
+      const wdSep = wdRaw.indexOf(":::"); if (wdSep >= 0) { wdHint = wdRaw.slice(wdSep + 3).trim().toLowerCase(); wdRaw = wdRaw.slice(0, wdSep).trim(); }
+      if (!wdRaw) return { cmd: "WIKIDATA", payload: { ok: false, error: "usage: WIKIDATA <name> [::: context hint]" } };
+      const wdUA = { "User-Agent": "aura-ingest/1.0 (organized-source)", "Accept": "application/json" };
+      try {
+        // CALL 1 - resolve name -> candidate entities
+        const searchUrl = "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=" + encodeURIComponent(wdRaw) + "&language=en&format=json&limit=7";
+        const sr = await fetchWithTimeout(searchUrl, { headers: wdUA }, 12000);
+        if (!sr.ok) return { cmd: "WIKIDATA", payload: { ok: false, error: "wikidata search http " + sr.status } };
+        const sd = await sr.json();
+        const cands = (sd && sd.search) || [];
+        if (!cands.length) return { cmd: "WIKIDATA", payload: { ok: true, found: false, topic: wdRaw, note: "No Wikidata entity for this name - fall through to raw ingestion." } };
+        // pick best: if hint given, prefer a candidate whose description matches the hint; else first
+        let pick = cands[0];
+        if (wdHint) { const h = cands.find(c => ((c.description || "") + " " + (c.label || "")).toLowerCase().includes(wdHint)); if (h) pick = h; }
+        // CALL 2 - pull the structured record
+        const getUrl = "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=" + pick.id + "&props=claims%7Clabels%7Cdescriptions&format=json&languages=en";
+        const gr = await fetchWithTimeout(getUrl, { headers: wdUA }, 15000);
+        if (!gr.ok) return { cmd: "WIKIDATA", payload: { ok: false, error: "wikidata get http " + gr.status } };
+        const gd = await gr.json();
+        const ent = gd && gd.entities && gd.entities[pick.id];
+        if (!ent) return { cmd: "WIKIDATA", payload: { ok: false, error: "entity body missing for " + pick.id } };
+        const claims = ent.claims || {};
+        // translate the property codes that matter into facts. Values that are entity refs (Qxxx) are
+        // returned as linked IDs (the graph); date/string values are returned raw.
+        const PROPS = {
+          P571: "inception", P576: "dissolved", P112: "founded_by", P169: "ceo", P1037: "director_manager",
+          P159: "headquarters", P749: "parent_org", P355: "subsidiaries", P127: "owned_by", P856: "official_website",
+          P17: "country", P452: "industry", P1454: "legal_form", P1128: "employees", P2139: "revenue",
+          P154: "logo", P18: "image", P31: "instance_of", P279: "subclass_of", P1448: "official_name",
+          P569: "birth_date", P570: "death_date", P106: "occupation", P39: "position_held", P108: "employer"
+        };
+        const facts = {}; const linkedEntities = {}; const peopleIds = [];
+        const readVal = (snak) => {
+          try {
+            const dv = snak.mainsnak && snak.mainsnak.datavalue; if (!dv) return null;
+            if (dv.type === "wikibase-entityid") return { qid: dv.value.id };
+            if (dv.type === "time") return (dv.value.time || "").replace(/^\+/, "").slice(0, 10);
+            if (dv.type === "quantity") return dv.value.amount ? dv.value.amount.replace(/^\+/, "") : null;
+            if (dv.type === "monolingualtext") return dv.value.text;
+            if (dv.type === "string") return dv.value;
+            return null;
+          } catch { return null; }
+        };
+        for (const [pcode, label] of Object.entries(PROPS)) {
+          const arr = claims[pcode]; if (!arr || !arr.length) continue;
+          const vals = arr.map(readVal).filter(v => v != null);
+          if (!vals.length) continue;
+          // collect entity-ref values as linked IDs (for the graph / people roster)
+          const qids = vals.filter(v => v && v.qid).map(v => v.qid);
+          const plains = vals.filter(v => !(v && v.qid));
+          if (qids.length) { linkedEntities[label] = qids; if (label === "ceo" || label === "director_manager" || label === "founded_by") peopleIds.push(...qids); }
+          if (plains.length) facts[label] = plains.length === 1 ? plains[0] : plains;
+        }
+        // resolve the linked entity IDs to labels in ONE more call (so the record is human-readable)
+        const allQids = [...new Set(Object.values(linkedEntities).flat())].slice(0, 40);
+        const qidLabels = {};
+        if (allQids.length) {
+          try {
+            const lu = "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=" + allQids.join("%7C") + "&props=labels&languages=en&format=json";
+            const lr = await fetchWithTimeout(lu, { headers: wdUA }, 15000);
+            if (lr.ok) { const ld = await lr.json(); for (const q of allQids) { const e = ld.entities && ld.entities[q]; if (e && e.labels && e.labels.en) qidLabels[q] = e.labels.en.value; } }
+          } catch {}
+        }
+        // build human-readable linked facts
+        const linked = {};
+        for (const [label, qids] of Object.entries(linkedEntities)) linked[label] = qids.map(q => ({ qid: q, name: qidLabels[q] || q }));
+        const people = peopleIds.map(q => ({ qid: q, name: qidLabels[q] || q }));
+        return { cmd: "WIKIDATA", payload: { ok: true, found: true, topic: wdRaw,
+          entity: { id: pick.id, label: pick.label, description: pick.description, url: "https://www.wikidata.org/wiki/" + pick.id },
+          disambiguation: cands.length > 1 ? cands.slice(0, 5).map(c => ({ id: c.id, label: c.label, desc: c.description })) : null,
+          facts, linked, people,
+          note: "Structured record from Wikidata (organized source, Tier-1). Facts are pre-structured; linked entities (parent/CEO/HQ) and people come as resolved names. Use this BEFORE raw scraping; scrape only for what's missing (live contacts, current specifics)." } };
+      } catch (e) { return { cmd: "WIKIDATA", payload: { ok: false, error: String(e && e.message || e), topic: wdRaw } }; }
     }
 
     case "SOURCE_PROBE": {

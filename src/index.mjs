@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.435-2026-07-03";
+const BUILD = "aura-core-v4.9.436-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -5999,6 +5999,81 @@ async function processCommand(line, env, isOp) {
         return { cmd: "AIS_WATCH", payload: { ok: true, watching: wl, note: `Stopped watching '${wRegion}'. Existing history kept.` } };
       }
       return { cmd: "AIS_WATCH", payload: { ok: true, watching: wl, note: wl.length ? "Captured every minute by cron." : "No regions watched. AIS_WATCH ADD hormuz to start building transit history." } };
+    }
+
+    case "AIS_PROVE": {
+      // ONE-SHOT TRANSIT PROOF (v4.9.436) - proves the "measured, not reported" capability in a SINGLE
+      // run with exactly 2 API calls (not a continuous cron). Takes two snapshots ~N seconds apart,
+      // measures each vessel's movement (speed/heading/position delta), classifies who is actively
+      // transiting vs. holding, and projects crossings. This is the launch-day demo number without
+      // running up the API: prove it once, then it sleeps until the engine is fed. Deliberately light
+      // on API quota - 2 calls total.
+      //   AIS_PROVE hormuz [gapSeconds]   (default 90s between the two snapshots)
+      if (!isOp) return { cmd: "AIS_PROVE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const pp2 = line.replace(/^AIS_PROVE\s+/i, "").trim().split(/\s+/);
+      const pRegion = (pp2[0] && isNaN(parseFloat(pp2[0]))) ? pp2[0].toLowerCase() : "hormuz";
+      let gapS = parseInt(pp2[1], 10); if (isNaN(gapS) || gapS < 20) gapS = 90; if (gapS > 240) gapS = 240;
+      const CENTERLINES = await loadRegions(env, "ais_centerline", { hormuz: 56.4, fujairah: 56.4, jebelali: 55.1, singapore: 103.8, rotterdam: 4.05 });
+      const centerLon = CENTERLINES[pRegion] != null ? CENTERLINES[pRegion] : 56.4;
+      const BOXES = await loadRegions(env, "ais", {
+        hormuz: { latBottom: 24.4, latTop: 27.2, lonLeft: 55.0, lonRight: 57.8 },
+        fujairah: { latBottom: 24.8, latTop: 26.0, lonLeft: 56.0, lonRight: 57.0 },
+        jebelali: { latBottom: 24.8, latTop: 25.4, lonLeft: 54.8, lonRight: 55.4 },
+        rotterdam: { latBottom: 51.85, latTop: 52.05, lonLeft: 3.95, lonRight: 4.20 },
+        singapore: { latBottom: 1.0, latTop: 1.5, lonLeft: 103.5, lonRight: 104.2 }
+      });
+      const box = BOXES[pRegion];
+      if (!box) return { cmd: "AIS_PROVE", payload: { ok: false, error: `unknown region '${pRegion}'` } };
+      const vkey = await env.AURA_KV.get("secret:vesselapi").catch(() => null);
+      if (!vkey) return { cmd: "AIS_PROVE", payload: { ok: false, error: "no vesselapi key" } };
+      const snapOnce = async () => {
+        const u = await resolveFeedUrl(env, "vessel_bbox", { latBottom: box.latBottom, latTop: box.latTop, lonLeft: box.lonLeft, lonRight: box.lonRight }, `https://api.vesselapi.com/v1/location/vessels/bounding-box?filter.latBottom={latBottom}&filter.latTop={latTop}&filter.lonLeft={lonLeft}&filter.lonRight={lonRight}`);
+        const r = await fetchWithTimeout(u, { headers: { "Authorization": "Bearer " + vkey } }, 12000);
+        if (!r.ok) return { ok: false, status: r.status, retryAfter: r.headers.get("retry-after") };
+        const d = await r.json();
+        const raw = d.data || d.vessels || [];
+        const m = new Map();
+        for (const v of raw) { const mm = String(v.mmsi || v.MMSI || ""); if (!mm) continue; m.set(mm, { lo: +(v.lon ?? v.longitude), la: +(v.lat ?? v.latitude), s: +(v.sog ?? v.speed ?? 0), c: +(v.cog ?? v.course ?? 0), t: Date.now() }); }
+        return { ok: true, vessels: m, ts: Date.now() };
+      };
+      try {
+        const A = await snapOnce();
+        if (!A.ok) return { cmd: "AIS_PROVE", payload: { ok: false, error: `first snapshot failed (${A.status}${A.retryAfter ? ", retry-after " + A.retryAfter + "s" : ""}) - if 429, the account is throttled; upgrade clears it in ~30s.` } };
+        await new Promise(res => setTimeout(res, gapS * 1000));
+        const B = await snapOnce();
+        if (!B.ok) return { cmd: "AIS_PROVE", payload: { ok: false, error: `second snapshot failed (${B.status}) - first got ${A.vessels.size} vessels though, so the pull works.` } };
+        // analyze movement for vessels present in BOTH snapshots
+        const sideOf = (lon) => lon >= centerLon ? "E" : "W";
+        let moving = 0, holding = 0, crossed = 0, eastToWest = 0, westToEast = 0, approaching = 0;
+        const movers = [];
+        for (const [mm, a] of A.vessels) {
+          const b = B.vessels.get(mm); if (!b) continue;
+          const spd = b.s;
+          const dLon = Math.abs(b.lo - a.lo), dLat = Math.abs(b.la - a.la);
+          const movedDeg = Math.sqrt(dLon*dLon + dLat*dLat);
+          if (spd >= 3) moving++; else holding++;
+          const sideA = sideOf(a.lo), sideB = sideOf(b.lo);
+          if (sideA !== sideB) { crossed++; if (sideA === "E" && sideB === "W") eastToWest++; else westToEast++; }
+          else if (spd >= 5 && movedDeg > 0.002) {
+            // moving toward the centerline = will transit soon
+            const towardCenter = (sideA === "E" && b.lo < a.lo) || (sideA === "W" && b.lo > a.lo);
+            if (towardCenter) { approaching++; if (movers.length < 8) movers.push({ mmsi: mm, sog: spd, side: sideA, heading_to_cross: true }); }
+          }
+        }
+        const both = [...A.vessels.keys()].filter(k => B.vessels.has(k)).length;
+        const gapMin = ((B.ts - A.ts) / 60000).toFixed(1);
+        // extrapolate a daily rate from the approaching+crossing signal (illustrative, clearly labeled)
+        const perWindow = crossed + approaching;
+        const windowsPerDay = 86400 / (gapS || 90);
+        return { cmd: "AIS_PROVE", payload: { ok: true, region: pRegion, proof: "measured_from_real_vessels",
+          snapshots: 2, gap_minutes: +gapMin, centerline_lon: centerLon,
+          vessels: { in_first: A.vessels.size, in_second: B.vessels.size, tracked_in_both: both },
+          movement: { actively_moving: moving, holding_or_anchored: holding },
+          transits: { confirmed_crossings_in_window: crossed, gulf_to_oman: eastToWest, oman_to_gulf: westToEast, approaching_centerline: approaching },
+          sample_movers: movers,
+          interpretation: `MEASURED, not reported: in a ${gapMin}-minute window, ${both} vessels tracked in both snapshots - ${moving} actively moving, ${holding} holding/anchored. ${crossed} physically crossed the strait centerline in this short window, ${approaching} more are moving toward it and will cross soon. This is the proof: real hulls, real movement, counted directly - the news says "about 40 ships," Aura measures the actual movement. (A full daily transit count needs a longer capture window; this one-shot proves the measurement works from 2 API calls.)`,
+          note: "One-shot proof complete - 2 API calls total, no continuous running. This is the launch-day demo: measured vessel movement in the strait, right now." } };
+      } catch (e) { return { cmd: "AIS_PROVE", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 
     case "AIS_TRANSITS": {

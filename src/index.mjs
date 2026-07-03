@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.456-2026-07-03";
+const BUILD = "aura-core-v4.9.457-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -10228,6 +10228,70 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         await env.AURA_KV.put(`pta:timeline:${lpId}`, JSON.stringify(evs)).catch(() => {});
       } catch {}
       return { cmd: "PTA_LOCATE", payload: { ok: true, pta_entity: lpId, location: loc } };
+    }
+
+    case "ROOM": {
+      // UNIVERSAL ROOM-DATA ENGINE (v4.9.457) - the thing that makes Home Screen rooms REAL surfaces you
+      // work in, not stubs. A "room" is a context-scoped data collection under a business's PTA: FOH, BOH,
+      // Orders, Reservations, Inventory, Menu, Customers - ALL the same primitive, only the business + room
+      // kind vary (the universal pattern). Aura (and the UI) can LIST, ADD, UPDATE, REMOVE, and GET items.
+      // This is what the Nobu test needs: give a restaurant FOH/BOH, seed data, then add/look-up live.
+      // Storage: KV room:<pta>:<kind> = { kind, items:[{id, ...fields, ts}], meta }. Additive-friendly.
+      //   ROOM LIST <pta> <kind>                         -> all items in that room
+      //   ROOM ADD <pta> <kind> <json-fields>            -> append an item (auto id + ts)
+      //   ROOM UPDATE <pta> <kind> <id> <json-fields>    -> merge fields into an item
+      //   ROOM REMOVE <pta> <kind> <id>                  -> drop an item
+      //   ROOM GET <pta> <kind> <id>                     -> one item
+      //   ROOM SEED <pta> <kind> <json-array>            -> replace items wholesale (mock/demo seeding)
+      if (!isOp) return { cmd: "ROOM", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const rmParts = (rest || "").trim().split(/\s+/);
+      const rmOp = (rmParts[0] || "").toUpperCase();
+      const rmPta = rmParts[1] || "";
+      const rmKind = (rmParts[2] || "").toLowerCase();
+      if (!rmOp || !rmPta || !rmKind) return { cmd: "ROOM", payload: { ok: false, error: "usage: ROOM <LIST|ADD|UPDATE|REMOVE|GET|SEED> <pta> <kind> [...]" } };
+      const rmKey = "room:" + rmPta + ":" + rmKind;
+      let rmDoc = null; try { const raw = await env.AURA_KV.get(rmKey); if (raw) rmDoc = JSON.parse(raw); } catch {}
+      if (!rmDoc) rmDoc = { kind: rmKind, pta: rmPta, items: [], meta: {} };
+      const rmRest = (rest || "").trim().replace(new RegExp("^" + rmOp + "\\s+" + rmPta.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s+" + rmKind + "\\s*", "i"), "");
+      const rmId = () => "it_" + Math.random().toString(16).slice(2, 10);
+      const rmSave = async () => { try { await env.AURA_KV.put(rmKey, JSON.stringify(rmDoc)); } catch {} };
+
+      if (rmOp === "LIST") {
+        return { cmd: "ROOM", payload: { ok: true, pta: rmPta, kind: rmKind, count: rmDoc.items.length, items: rmDoc.items, meta: rmDoc.meta } };
+      }
+      if (rmOp === "GET") {
+        const id = rmParts[3];
+        const it = rmDoc.items.find(x => x.id === id);
+        return it ? { cmd: "ROOM", payload: { ok: true, pta: rmPta, kind: rmKind, item: it } } : { cmd: "ROOM", payload: { ok: false, error: "no item " + id } };
+      }
+      if (rmOp === "ADD") {
+        let fields = {}; try { fields = JSON.parse(rmRest); } catch { return { cmd: "ROOM", payload: { ok: false, error: "ADD needs valid JSON fields" } }; }
+        const item = Object.assign({ id: rmId(), ts: Date.now() }, fields);
+        rmDoc.items.push(item); await rmSave();
+        return { cmd: "ROOM", payload: { ok: true, pta: rmPta, kind: rmKind, added: item, count: rmDoc.items.length } };
+      }
+      if (rmOp === "UPDATE") {
+        const id = rmParts[3];
+        const after = rmRest.replace(new RegExp("^" + (id || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*"), "");
+        let fields = {}; try { fields = JSON.parse(after); } catch { return { cmd: "ROOM", payload: { ok: false, error: "UPDATE needs <id> then valid JSON" } }; }
+        const it = rmDoc.items.find(x => x.id === id);
+        if (!it) return { cmd: "ROOM", payload: { ok: false, error: "no item " + id } };
+        Object.assign(it, fields); it.ts = Date.now(); await rmSave();
+        return { cmd: "ROOM", payload: { ok: true, pta: rmPta, kind: rmKind, updated: it } };
+      }
+      if (rmOp === "REMOVE") {
+        const id = rmParts[3];
+        const before = rmDoc.items.length;
+        rmDoc.items = rmDoc.items.filter(x => x.id !== id); await rmSave();
+        return { cmd: "ROOM", payload: { ok: true, pta: rmPta, kind: rmKind, removed: id, count: rmDoc.items.length, changed: before !== rmDoc.items.length } };
+      }
+      if (rmOp === "SEED") {
+        let arr = []; try { arr = JSON.parse(rmRest); } catch { return { cmd: "ROOM", payload: { ok: false, error: "SEED needs a JSON array" } }; }
+        if (!Array.isArray(arr)) return { cmd: "ROOM", payload: { ok: false, error: "SEED needs a JSON array" } };
+        rmDoc.items = arr.map(x => Object.assign({ id: rmId(), ts: Date.now() }, x)); await rmSave();
+        return { cmd: "ROOM", payload: { ok: true, pta: rmPta, kind: rmKind, seeded: rmDoc.items.length } };
+      }
+      return { cmd: "ROOM", payload: { ok: false, error: "unknown ROOM op: " + rmOp } };
     }
 
     case "PTA_TALK": {

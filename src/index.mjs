@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.444-2026-07-03";
+const BUILD = "aura-core-v4.9.445-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -9434,6 +9434,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       let obCommit = false;
       if (/^COMMIT\s+/i.test(obRaw)) { obCommit = true; obRaw = obRaw.replace(/^COMMIT\s+/i, "").trim(); }
       if (!obRaw) return { cmd: "ONBOARD", payload: { ok: false, error: "Usage: ONBOARD <business name>, <city>  (Aura discovers, perceives, and mints the PTA herself)." } };
+      // If the operator included a domain (e.g. "CNN, cnn.com" or "cnn.com"), PREFER it as the real site
+      // to scrape - never let an aggregator (Wikipedia, a directory, a chamber listing) stand in for the
+      // business's own site. This is system-wide: every onboard scrapes the REAL domain when known.
+      let obHintDomain = null;
+      try {
+        const dm = obRaw.match(/\b((?:[a-z0-9-]+\.)+[a-z]{2,})(?:\/[^\s,]*)?/i);
+        if (dm && dm[1] && !/^(gmail|yahoo|hotmail|outlook)\./i.test(dm[1])) obHintDomain = dm[1].toLowerCase().replace(/\/$/, "");
+      } catch (e) {}
       const obStrip = (h) => String(h || "").replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&[a-z#0-9]+;/gi, " ").replace(/\s+/g, " ").trim();
       const discovered = { places: null, site: null, web: null };
       // 1) GO INTO THE WORLD â€” Google Places (best effort; key may be unset -> fall through)
@@ -9441,7 +9449,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // 2) Live web signal
       try { const ws = await processCommand("WEB_SEARCH " + obRaw + " official website", env, isOp); const wp = (ws && ws.payload) ? ws.payload : ws; if (wp && wp.ok) discovered.web = { answer: wp.answer || null, sources: wp.sources || [] }; } catch (e) {}
       // 3) SCRAPE â€” Tavily /extract across the homepage + the business's OWN sub-pages (everything).
-      let obSiteUrl = (discovered.places && discovered.places.website) || (discovered.web && discovered.web.sources && discovered.web.sources[0] && discovered.web.sources[0].url) || null;
+      // AGGREGATORS are never the business's real site - skip them when picking what to scrape.
+      const AGGREGATOR_RE = /(wikipedia\.org|wikimedia|fandom\.com|linkedin\.com|facebook\.com|instagram\.com|twitter\.com|x\.com|youtube\.com|yelp\.com|tripadvisor|bbb\.org|crunchbase|bloomberg\.com\/profile|zoominfo|dnb\.com|manta\.com|chamberofcommerce|chamber\.|\.chamber|chamber\.net|chamber\.com|chamber\.org|glassdoor|indeed\.com|mapquest|yellowpages|dun)/i;
+      const webSources = (discovered.web && Array.isArray(discovered.web.sources)) ? discovered.web.sources : [];
+      const realWebSource = webSources.find(function (s) { try { return s && s.url && !AGGREGATOR_RE.test(s.url); } catch (e) { return false; } });
+      const placesSite = (discovered.places && discovered.places.website) || null;
+      const placesIsAggregator = placesSite ? AGGREGATOR_RE.test(placesSite) : false;
+      let obSiteUrl =
+        (obHintDomain ? ("https://" + obHintDomain) : null) ||
+        (placesSite && !placesIsAggregator ? placesSite : null) ||
+        (realWebSource ? realWebSource.url : null) ||
+        placesSite ||
+        (webSources[0] && webSources[0].url) ||
+        null;
       let obScrape = "";
       if (obSiteUrl) {
         try {

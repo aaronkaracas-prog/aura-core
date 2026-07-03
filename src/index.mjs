@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.436-2026-07-03";
+const BUILD = "aura-core-v4.9.437-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3836,7 +3836,8 @@ async function processCommand(line, env, isOp) {
         "disaster-costs": { cmd: "DEPOT_POUR_DISASTERS_OFFICIAL", trigger: /\b(billion.dollar disaster|disaster cost|costliest disaster|NCEI billions)\b/i, note: "NCEI billion-dollar spine" },
         "property-value": { cmd: "DEPOT_POUR_PROPERTY", trigger: /\b(house price|home value|property value|FHFA|HPI)\b/i, note: "FHFA HPI" },
         "insurance-market": { cmd: "DEPOT_POUR_PREMIUMS", trigger: /\b(insurer premium|premiums earned|loss ratio|carrier financials)\b/i, note: "SEC XBRL" },
-        maritime: { cmd: "DEPOT_POUR_MARITIME", trigger: /\b(hormuz|strait|maritime|navigation warning|shipping lane|vessel|navarea|persian gulf|red sea|suez|chokepoint|mariner)\b/i, note: "NGA Maritime Safety Info broadcast warnings" }
+        maritime: { cmd: "DEPOT_POUR_MARITIME", trigger: /\b(hormuz|strait|maritime|navigation warning|shipping lane|vessel|navarea|persian gulf|red sea|suez|chokepoint|mariner)\b/i, note: "NGA Maritime Safety Info broadcast warnings" },
+        trucking: { cmd: "DEPOT_POUR_TRUCKING", trigger: /\b(trucking|truck carrier|freight carrier|motor carrier|FMCSA|fleet|hazmat carrier|owner operator|CDL)\b/i, note: "FMCSA Company Census (carrier risk)" }
       };
       let inSpecialists = INGEST_SPECIALISTS_DEFAULT;
       try { const sr = await env.AURA_KV.get("config:ingest:specialists"); if (sr) { const parsed = JSON.parse(sr); /* stored triggers are strings -> rebuild RegExp */ for (const k of Object.keys(parsed)) { if (typeof parsed[k].trigger === "string") parsed[k].trigger = new RegExp(parsed[k].trigger, "i"); } inSpecialists = parsed; } } catch {}
@@ -5223,6 +5224,56 @@ async function processCommand(line, env, isOp) {
         return { cmd: "EVENT_ADVANCE", payload: { ok: true, event_id: eaId, stage: e.stage, stage_progress: (e.stage_index + 1) + " of 22", status: e.status,
           note: e.status === "closed" ? "Event closed - the full lifecycle is complete." : "Now at: " + e.stage + ". Next: EVENT_ADVANCE " + eaId + "." } };
       } catch (e) { return { cmd: "EVENT_ADVANCE", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "DEPOT_POUR_TRUCKING": {
+      // TRUCKING / FREIGHT CARRIER RISK (v4.9.437) - the trucking industry backbone. Source verified
+      // 2026-07-03: data.transportation.gov FMCSA Company Census (Socrata, KEYLESS). 2M+ DOT-registered
+      // carriers with fleet size, driver counts, cargo type, safety review, insurance docket status.
+      // This is the carrier-risk layer for trucking insurance + the freight industry OS. Distills a
+      // state (or national sample) into carrier counts, fleet-size distribution, operation types.
+      //   DEPOT_POUR_TRUCKING [ST]   (2-letter state e.g. CA; default national sample)
+      if (!isOp) return { cmd: "DEPOT_POUR_TRUCKING", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const tkState = (rest.trim().toUpperCase().match(/^[A-Z]{2}$/) || [""])[0];
+      const tkUA = { "user-agent": "aura-depot-pour/1.0", "accept": "application/json" };
+      // Socrata: pull an aggregate sample. Filter by state if given; cap rows for a representative pull.
+      const where = tkState ? `&$where=phy_state='${tkState}'` : "";
+      const tkUrl = await resolveFeedUrl(env, "fmcsa_census", {}, `https://data.transportation.gov/resource/az4n-8mr2.json?$limit=5000${where}`);
+      try {
+        const r = await fetchWithTimeout(tkUrl, { headers: tkUA }, 30000);
+        if (!r.ok) return { cmd: "DEPOT_POUR_TRUCKING", payload: { ok: false, error: `fmcsa ${r.status}` } };
+        const rows = await r.json();
+        if (!Array.isArray(rows) || !rows.length) return { cmd: "DEPOT_POUR_TRUCKING", payload: { ok: false, error: "no carrier rows" + (tkState ? ` for ${tkState}` : "") } };
+        // distill: counts, fleet-size dist, operation type, active vs inactive, hazmat, cargo
+        let active = 0, inactive = 0, hazmat = 0, totalTrucks = 0, totalDrivers = 0, interstate = 0;
+        const fleetDist = {}, orgTypes = {}, byState = {};
+        for (const c of rows) {
+          if ((c.status_code || "") === "A") active++; else inactive++;
+          if ((c.hm_ind || "") === "Y") hazmat++;
+          totalTrucks += parseInt(c.truck_units || "0", 10) || 0;
+          totalDrivers += parseInt(c.total_drivers || "0", 10) || 0;
+          if ((c.carrier_operation || "") === "A") interstate++;
+          const fs = c.fleetsize || "?"; fleetDist[fs] = (fleetDist[fs] || 0) + 1;
+          const ot = c.business_org_desc || "?"; orgTypes[ot] = (orgTypes[ot] || 0) + 1;
+          const st = c.phy_state || "?"; byState[st] = (byState[st] || 0) + 1;
+        }
+        const scope = tkState || "national sample";
+        const srcTag = "FMCSA Company Census (DOT open data)";
+        const topStates = Object.entries(byState).sort((a,b)=>b[1]-a[1]).slice(0,6);
+        const ev = [];
+        ev.push(`Trucking carriers ${scope}: ${rows.length.toLocaleString()} carriers in sample - ${active.toLocaleString()} active, ${inactive.toLocaleString()} inactive (${srcTag})`);
+        ev.push(`Trucking fleet: ${totalTrucks.toLocaleString()} trucks, ${totalDrivers.toLocaleString()} drivers across sample; ${interstate.toLocaleString()} interstate operations, ${hazmat.toLocaleString()} hazmat-authorized (${srcTag})`);
+        ev.push(`Trucking org types: ` + Object.entries(orgTypes).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([o,n])=>`${o} (${n})`).join(", ") + ` (${srcTag})`);
+        if (!tkState) ev.push(`Trucking by state (sample): ` + topStates.map(([s,n])=>`${s}:${n}`).join(", ") + ` (${srcTag})`);
+        ev.push(`Trucking fleet-size distribution (FMCSA codes A-H): ` + Object.entries(fleetDist).sort().map(([f,n])=>`${f}:${n}`).join(", ") + ` (${srcTag})`);
+        const knowledge = `Trucking/freight carrier risk evidence for ${scope} from FMCSA Company Census - carrier counts (active/inactive), fleet size, truck+driver totals, interstate vs intrastate operation, hazmat authorization, and business-org types. This is the carrier-risk backbone for trucking insurance and the freight industry: who is on the road, how big their fleets are, what they haul. Registration/safety census (not real-time positions - that pairs with live traffic feeds).\n` + ev.join("\n");
+        const pour = await processCommand(`DEPOT_INGEST ::: ${JSON.stringify({ risk_type: "trucking", touches: ["insurance", "logistics", "freight", "transportation"], knowledge, evidence_lines: ev, source: `DEPOT_POUR_TRUCKING ${scope} (FMCSA)` })}`, env, true);
+        const pp = (pour && pour.payload) ? pour.payload : pour;
+        return { cmd: "DEPOT_POUR_TRUCKING", payload: { ok: !!(pp && pp.ok), scope, carriers_sampled: rows.length,
+          active, inactive, total_trucks: totalTrucks, total_drivers: totalDrivers, hazmat_authorized: hazmat,
+          depot_result: pp ? { entry_count: pp.entry_count, growth: pp.growth, added: pp.added } : null,
+          note: `Poured ${rows.length} trucking carriers (${scope}) into depot:risk:trucking in ONE write. FMCSA census caps at 5000/pull; filter by state for depth. Space depot writes >60s.` } };
+      } catch (e) { return { cmd: "DEPOT_POUR_TRUCKING", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 
     case "DEPOT_POUR_MARITIME": {

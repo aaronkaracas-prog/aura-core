@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.430-2026-07-02";
+const BUILD = "aura-core-v4.9.431-2026-07-02";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -8510,6 +8510,104 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const thR = await reasonThroughLoop(env, { entity: thSit, lens: thLens, facts: {} });
       if (!thR.ok) return { cmd: "THINK", payload: { ok: false, error: thR.error } };
       return { cmd: "THINK", payload: { ok: true, lens: thLens, situation: thSit, reasoning: thR.reasoning } };
+    }
+
+    case "OUTCOME_LOG": {
+      // THE OUTCOME LEDGER (v4.9.431) - closes the LEARN arc of the loop (step 7, Correction) and
+      // completes engine 7 (Outcome) BACKWARD. Everything else checks a result at BIRTH (verification
+      // law: is it grounded now). This checks a result against REALITY LATER (accountability: did it
+      // turn out right). Records a prediction/decision with its falsifier - what would prove it right
+      // or wrong - so it can be graded when reality is known. This is the seed of the Trust/Integrity
+      // "real 10th" on the core watch list: a system that grades its own track record and corrects.
+      //   OUTCOME_LOG ::: {"claim":"...","confidence":"Probable","falsifier":"what would prove this wrong","domain":"wildfire","horizon":"2026-Q4","source_brief":"..."}
+      if (!isOp) return { cmd: "OUTCOME_LOG", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      let ol; try { ol = JSON.parse(rest.includes(":::") ? rest.slice(rest.indexOf(":::") + 3).trim() : rest.trim()); } catch { return { cmd: "OUTCOME_LOG", payload: { ok: false, error: 'Usage: OUTCOME_LOG ::: {"claim":"...","confidence":"Confirmed|Probable|Possible|Unknown","falsifier":"what would prove it wrong","domain":"...","horizon":"when to check"}' } }; }
+      if (!ol || !ol.claim) return { cmd: "OUTCOME_LOG", payload: { ok: false, error: "claim is required" } };
+      const oid = "oc_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 6);
+      const now = new Date().toISOString();
+      const conf = /^(confirmed|probable|possible|unknown)$/i.test(ol.confidence || "") ? ol.confidence.toLowerCase() : "unspecified";
+      const rec = {
+        id: oid, claim: String(ol.claim).slice(0, 800), confidence: conf,
+        falsifier: ol.falsifier ? String(ol.falsifier).slice(0, 600) : null,
+        domain: ol.domain ? String(ol.domain).toLowerCase().slice(0, 40) : null,
+        horizon: ol.horizon ? String(ol.horizon).slice(0, 60) : null,
+        source_brief: ol.source_brief ? String(ol.source_brief).slice(0, 200) : null,
+        status: "open", logged: now, resolved: null, verdict: null, actual: null, lesson: null
+      };
+      await env.AURA_KV.put("outcome:ledger:" + oid, JSON.stringify(rec)).catch(() => {});
+      try { let idx = []; const ir = await env.AURA_KV.get("outcome:ledger:index"); if (ir) idx = JSON.parse(ir); idx.unshift({ id: oid, claim: rec.claim.slice(0, 100), confidence: conf, domain: rec.domain, horizon: rec.horizon, status: "open", logged: now }); await env.AURA_KV.put("outcome:ledger:index", JSON.stringify(idx.slice(0, 1000))); } catch {}
+      return { cmd: "OUTCOME_LOG", payload: { ok: true, ledger_id: oid, confidence: conf, falsifier_set: !!rec.falsifier,
+        note: "Prediction logged to the outcome ledger" + (rec.falsifier ? " with a falsifier" : " (no falsifier - a claim with no way to be proven wrong cannot teach; consider adding one)") + ". Grade it later with OUTCOME_RESOLVE " + oid + "." } };
+    }
+
+    case "OUTCOME_RESOLVE": {
+      // Grade a logged prediction against what ACTUALLY happened, and write the lesson back so the
+      // system LEARNS. This is the moment the loop closes: prediction -> reality -> correction.
+      //   OUTCOME_RESOLVE <ledger_id> ::: {"actual":"what happened","verdict":"correct|partial|wrong","lesson":"what to adjust"}
+      if (!isOp) return { cmd: "OUTCOME_RESOLVE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const orId = (rest.trim().split(/\s+/)[0] || "");
+      const orBody = rest.includes(":::") ? rest.slice(rest.indexOf(":::") + 3).trim() : "";
+      if (!orId || !orBody) return { cmd: "OUTCOME_RESOLVE", payload: { ok: false, error: 'Usage: OUTCOME_RESOLVE <ledger_id> ::: {"actual":"...","verdict":"correct|partial|wrong","lesson":"..."}' } };
+      let orj; try { orj = JSON.parse(orBody); } catch { return { cmd: "OUTCOME_RESOLVE", payload: { ok: false, error: "bad JSON body" } }; }
+      const verdict = /^(correct|partial|wrong)$/i.test(orj.verdict || "") ? orj.verdict.toLowerCase() : null;
+      if (!verdict || !orj.actual) return { cmd: "OUTCOME_RESOLVE", payload: { ok: false, error: "actual and verdict (correct|partial|wrong) are required" } };
+      try {
+        const raw = await env.AURA_KV.get("outcome:ledger:" + orId);
+        if (!raw) return { cmd: "OUTCOME_RESOLVE", payload: { ok: false, error: "no ledger entry " + orId } };
+        const rec = JSON.parse(raw); const now = new Date().toISOString();
+        rec.status = "resolved"; rec.resolved = now; rec.verdict = verdict;
+        rec.actual = String(orj.actual).slice(0, 800); rec.lesson = orj.lesson ? String(orj.lesson).slice(0, 600) : null;
+        await env.AURA_KV.put("outcome:ledger:" + orId, JSON.stringify(rec));
+        try { let idx = []; const ir = await env.AURA_KV.get("outcome:ledger:index"); if (ir) idx = JSON.parse(ir); const row = idx.find(x => x.id === orId); if (row) { row.status = "resolved"; row.verdict = verdict; } await env.AURA_KV.put("outcome:ledger:index", JSON.stringify(idx)); } catch {}
+        // LEARN: if the prediction was wrong/partial and tied to a depot domain, write the correction INTO that domain as durable evidence
+        let learned = null;
+        if (rec.domain && (verdict === "wrong" || verdict === "partial") && rec.lesson) {
+          const lessonLine = "OUTCOME CORRECTION (" + now.slice(0, 10) + "): a " + rec.confidence + " prediction resolved " + verdict.toUpperCase() + " - claim: \"" + rec.claim.slice(0, 200) + "\"; actual: " + rec.actual.slice(0, 200) + "; lesson: " + rec.lesson.slice(0, 200);
+          const pour = await processCommand("DEPOT_INGEST ::: " + JSON.stringify({ risk_type: rec.domain, touches: ["insurance"], knowledge: "A prior prediction in this domain was graded against reality and found " + verdict + ". Learn from it: " + rec.lesson, evidence_lines: [lessonLine], source: "OUTCOME_RESOLVE " + orId }), env, true);
+          const pp = (pour && pour.payload) ? pour.payload : pour;
+          learned = { wrote_to: "depot:risk:" + rec.domain, ok: !!(pp && pp.ok) };
+        }
+        return { cmd: "OUTCOME_RESOLVE", payload: { ok: true, ledger_id: orId, verdict, was_confidence: rec.confidence,
+          calibration_note: verdict === "wrong" && rec.confidence === "confirmed" ? "FLAG: a CONFIRMED prediction was WRONG - the confidence scoring is miscalibrated; this is the most important kind of lesson." : verdict === "correct" && rec.confidence === "possible" ? "A Possible prediction proved correct - confidence may be under-calling." : undefined,
+          learned: learned || (rec.domain ? { note: "correct verdict - nothing to correct in the depot" } : { note: "no domain tagged - lesson recorded on the ledger only" }),
+          note: "Outcome graded and the loop closed. " + (learned && learned.ok ? "The correction was written back into depot:risk:" + rec.domain + " so future briefs inherit the lesson." : "Lesson recorded on the ledger.") } };
+      } catch (e) { return { cmd: "OUTCOME_RESOLVE", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "OUTCOME_REVIEW": {
+      // THE ACCOUNTABILITY REPORT - the track record an insurer (or Aaron) would want: how calibrated
+      // are the predictions, what resolved right vs wrong, what is still open and due. This is what
+      // turns a smart analyst into a TRUSTED one. Read-only aggregate over the ledger.
+      //   OUTCOME_REVIEW            -> full track record
+      //   OUTCOME_REVIEW <domain>   -> track record for one risk domain
+      //   OUTCOME_REVIEW due        -> open predictions past/at their horizon (need grading)
+      if (!isOp) return { cmd: "OUTCOME_REVIEW", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const filter = rest.trim().toLowerCase();
+      let idx = []; try { const ir = await env.AURA_KV.get("outcome:ledger:index"); if (ir) idx = JSON.parse(ir); } catch {}
+      if (!idx.length) return { cmd: "OUTCOME_REVIEW", payload: { ok: true, total: 0, note: "The outcome ledger is empty. Log predictions with OUTCOME_LOG; the track record builds from there." } };
+      let rows = idx;
+      if (filter && filter !== "due") rows = idx.filter(r => (r.domain || "") === filter);
+      const resolved = rows.filter(r => r.status === "resolved");
+      const open = rows.filter(r => r.status === "open");
+      const byVerdict = { correct: 0, partial: 0, wrong: 0 };
+      for (const r of resolved) if (byVerdict[r.verdict] != null) byVerdict[r.verdict]++;
+      // calibration: for each confidence level, how often correct
+      const calib = {};
+      for (const r of resolved) { const c = r.confidence || "unspecified"; if (!calib[c]) calib[c] = { n: 0, correct: 0 }; calib[c].n++; if (r.verdict === "correct") calib[c].correct++; }
+      const calibReport = {};
+      for (const [c, v] of Object.entries(calib)) calibReport[c] = v.n ? Math.round(v.correct / v.n * 100) + "% correct (" + v.correct + "/" + v.n + ")" : "n/a";
+      if (filter === "due") {
+        // open items whose horizon looks due (string compare on year/quarter is coarse but useful)
+        const dueItems = open.map(r => ({ id: r.id, claim: r.claim, horizon: r.horizon, logged: r.logged }));
+        return { cmd: "OUTCOME_REVIEW", payload: { ok: true, open_count: open.length, due: dueItems.slice(0, 40), note: "Open predictions awaiting reality. Grade with OUTCOME_RESOLVE <id>." } };
+      }
+      const accuracy = resolved.length ? Math.round(byVerdict.correct / resolved.length * 100) : null;
+      return { cmd: "OUTCOME_REVIEW", payload: { ok: true, scope: filter && filter !== "due" ? filter : "all domains",
+        total_predictions: rows.length, resolved: resolved.length, open: open.length,
+        track_record: { correct: byVerdict.correct, partial: byVerdict.partial, wrong: byVerdict.wrong, accuracy_pct: accuracy },
+        calibration_by_confidence: calibReport,
+        recent_wrong: resolved.filter(r => r.verdict === "wrong").slice(0, 5).map(r => ({ id: r.id, claim: r.claim })),
+        note: (accuracy != null ? "Track record: " + accuracy + "% of resolved predictions were correct across " + resolved.length + " graded. " : "No predictions graded yet. ") + "Calibration shows whether each confidence level means what it says (a well-calibrated 'Confirmed' should be ~100% correct). This is the accountability layer - the LEARN arc closed." } };
     }
 
     case "OUTCOME": {
@@ -17822,7 +17920,7 @@ function openAlbum(idx){
       // AND character breakdown, because each tiny fragment lost the whole picture). A real COMMAND
       // BATCH has EVERY non-empty line starting with a known command verb. If ANY line is prose, the
       // whole body is a single human message.
-      const KNOWN_CMD_VERBS = /^(SETKV|GETKV|LISTKV|DELKV|PATCHKV|PING|HOST|DOMAIN_LAUNCH|DOMAIN_STATUS|DOMAIN_DIAGNOSE|FETCH_PLACES|WORLD_MAP|PTA_[A-Z_]+|COMMS|WORKFLOW|EMAIL_SEND|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|TWILIO_INTEL|TWILIO[A-Z_]*|A2P_[A-Z]+|SMS_[A-Z]+|CAPABILITY|INDUSTRY|BUSINESS_STATE|CF_API|AURA_[A-Z_]+|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|SHOW_IT|SHOWIT|GENERATE_PAGE|DEPLOY_[A-Z]+|ROUTE_[A-Z_]+|GETKV|WEB_SEARCH|NEWS_QUERY|OIL_PRICE|MARINE_WX|AIS_QUERY|LOOP_PROBE|SOURCE_PROBE|DEPOT_[A-Z_]+|ANALYST_BRIEF|SITUATION_[A-Z_]+|FLEET_[A-Z_]+|EVENT_[A-Z_]+)\b/i;
+      const KNOWN_CMD_VERBS = /^(SETKV|GETKV|LISTKV|DELKV|PATCHKV|PING|HOST|DOMAIN_LAUNCH|DOMAIN_STATUS|DOMAIN_DIAGNOSE|FETCH_PLACES|WORLD_MAP|PTA_[A-Z_]+|COMMS|WORKFLOW|EMAIL_SEND|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|TWILIO_INTEL|TWILIO[A-Z_]*|A2P_[A-Z]+|SMS_[A-Z]+|CAPABILITY|INDUSTRY|BUSINESS_STATE|CF_API|AURA_[A-Z_]+|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|SHOW_IT|SHOWIT|GENERATE_PAGE|DEPLOY_[A-Z]+|ROUTE_[A-Z_]+|GETKV|WEB_SEARCH|NEWS_QUERY|OIL_PRICE|MARINE_WX|AIS_QUERY|LOOP_PROBE|SOURCE_PROBE|DEPOT_[A-Z_]+|ANALYST_BRIEF|SITUATION_[A-Z_]+|FLEET_[A-Z_]+|EVENT_[A-Z_]+|OUTCOME_[A-Z_]+)\b/i;
       const _rawLines = body.split("\n").map(l => l.trim()).filter(Boolean);
       const _looksLikeCommandBatch = _rawLines.length > 0 && _rawLines.every(l => KNOWN_CMD_VERBS.test(l));
       const _isProseDump = !_VALUE_BEARING.includes(_firstWord) && _rawLines.length > 1 && !_looksLikeCommandBatch;

@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.446-2026-07-03";
+const BUILD = "aura-core-v4.9.447-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -9492,7 +9492,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const cQueries = [
           obRaw + " contact email address",
           obRaw + " press media contact email",
-          obRaw + " customer service phone number contact"
+          obRaw + " customer service phone number contact",
+          // hunt the PEOPLE, not just the front desk - the roster is who adoption spreads through
+          obRaw + " key people staff directors executives names",
+          obRaw + " team members anchors hosts correspondents editors names",
+          obRaw + " how to contact " + obRaw + " staff or talent (agent, publicist, show email)"
         ];
         const cParts = [];
         for (const q of cQueries) {

@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.437-2026-07-03";
+const BUILD = "aura-core-v4.9.438-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3837,7 +3837,8 @@ async function processCommand(line, env, isOp) {
         "property-value": { cmd: "DEPOT_POUR_PROPERTY", trigger: /\b(house price|home value|property value|FHFA|HPI)\b/i, note: "FHFA HPI" },
         "insurance-market": { cmd: "DEPOT_POUR_PREMIUMS", trigger: /\b(insurer premium|premiums earned|loss ratio|carrier financials)\b/i, note: "SEC XBRL" },
         maritime: { cmd: "DEPOT_POUR_MARITIME", trigger: /\b(hormuz|strait|maritime|navigation warning|shipping lane|vessel|navarea|persian gulf|red sea|suez|chokepoint|mariner)\b/i, note: "NGA Maritime Safety Info broadcast warnings" },
-        trucking: { cmd: "DEPOT_POUR_TRUCKING", trigger: /\b(trucking|truck carrier|freight carrier|motor carrier|FMCSA|fleet|hazmat carrier|owner operator|CDL)\b/i, note: "FMCSA Company Census (carrier risk)" }
+        trucking: { cmd: "DEPOT_POUR_TRUCKING", trigger: /\b(trucking|truck carrier|freight carrier|motor carrier|FMCSA|fleet|hazmat carrier|owner operator|CDL)\b/i, note: "FMCSA Company Census (carrier risk)" },
+        "fire-active": { cmd: "DEPOT_POUR_FIRE_ACTIVE", trigger: /\b(active fire|fires? burning|current wildfire|fire right now|live fire|incidents? burning|firefighter|fire response|where.{0,10}fires)\b/i, note: "NIFC WFIGS live incidents" }
       };
       let inSpecialists = INGEST_SPECIALISTS_DEFAULT;
       try { const sr = await env.AURA_KV.get("config:ingest:specialists"); if (sr) { const parsed = JSON.parse(sr); /* stored triggers are strings -> rebuild RegExp */ for (const k of Object.keys(parsed)) { if (typeof parsed[k].trigger === "string") parsed[k].trigger = new RegExp(parsed[k].trigger, "i"); } inSpecialists = parsed; } } catch {}
@@ -5274,6 +5275,55 @@ async function processCommand(line, env, isOp) {
           depot_result: pp ? { entry_count: pp.entry_count, growth: pp.growth, added: pp.added } : null,
           note: `Poured ${rows.length} trucking carriers (${scope}) into depot:risk:trucking in ONE write. FMCSA census caps at 5000/pull; filter by state for depth. Space depot writes >60s.` } };
       } catch (e) { return { cmd: "DEPOT_POUR_TRUCKING", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "DEPOT_POUR_FIRE_ACTIVE": {
+      // LIVE WILDFIRE INCIDENTS (v4.9.438) - the firefighter/dispatch situational layer: where fires
+      // are burning RIGHT NOW, names + sizes + status. Source verified 2026-07-03: NIFC WFIGS ArcGIS
+      // FeatureServer (public, keyless, IRWIN-fed, near-real-time in fire season). Distinct from the
+      // HISTORICAL wildfire-loss data in depot:risk:wildfire - this is the live operational picture
+      // (the legal, public version of "firefighter comms" - incident data, not encrypted radio).
+      //   DEPOT_POUR_FIRE_ACTIVE   (current active wildfire incidents nationwide)
+      if (!isOp) return { cmd: "DEPOT_POUR_FIRE_ACTIVE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const faUA = { "user-agent": "aura-depot-pour/1.0", "accept": "application/json" };
+      // Use the incident LOCATIONS layer (points, lighter than perimeter polygons) for current year
+      const faUrl = await resolveFeedUrl(env, "nifc_incidents_current", {}, "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0/query?where=1%3D1&outFields=IncidentName,IncidentTypeCategory,FireCause,DailyAcres,PercentContained,POOState,FireDiscoveryDateTime,IncidentComplexityLevel&f=json&resultRecordCount=1000&orderByFields=DailyAcres%20DESC");
+      try {
+        const r = await fetchWithTimeout(faUrl, { headers: faUA }, 30000);
+        if (!r.ok) return { cmd: "DEPOT_POUR_FIRE_ACTIVE", payload: { ok: false, error: `nifc ${r.status}` } };
+        const data = await r.json();
+        const feats = (data && data.features) || [];
+        if (!feats.length) return { cmd: "DEPOT_POUR_FIRE_ACTIVE", payload: { ok: false, error: "no active incidents returned (may be off-season)" } };
+        let totalAcres = 0, wildfires = 0, rx = 0, uncontained = 0;
+        const byState = {}; const causes = {};
+        const big = [];
+        for (const f of feats) {
+          const a = f.attributes || {};
+          const acres = parseFloat(a.DailyAcres) || 0;
+          totalAcres += acres;
+          const cat = (a.IncidentTypeCategory || "").toUpperCase();
+          if (cat === "WF") wildfires++; else if (cat === "RX") rx++;
+          const pc = parseFloat(a.PercentContained);
+          if (!isNaN(pc) && pc < 100) uncontained++;
+          const st = a.POOState || "?"; byState[st] = (byState[st] || 0) + 1;
+          const c = a.FireCause || "Undetermined"; causes[c] = (causes[c] || 0) + 1;
+          if (acres > 0) big.push({ name: a.IncidentName || "Unnamed", acres, contained: isNaN(pc) ? null : pc, state: (st||"").replace("US-",""), cause: a.FireCause || "?" });
+        }
+        big.sort((x,y)=>y.acres-x.acres);
+        const srcTag = "NIFC WFIGS (live incidents)";
+        const ev = [];
+        ev.push(`Live wildfire incidents (as of ${new Date().toISOString().slice(0,10)}): ${feats.length} incidents nationwide, ${Math.round(totalAcres).toLocaleString()} total acres, ${wildfires} wildfires + ${rx} prescribed, ${uncontained} not yet fully contained (${srcTag})`);
+        const topStates = Object.entries(byState).sort((a,b)=>b[1]-a[1]).slice(0,6);
+        ev.push(`Active fire by state: ` + topStates.map(([s,n])=>`${(s||"").replace("US-","")}:${n}`).join(", ") + ` (${srcTag})`);
+        for (const b of big.slice(0,10)) ev.push(`Active fire "${b.name}" (${b.state}): ${Math.round(b.acres).toLocaleString()} acres${b.contained!=null?`, ${b.contained}% contained`:""}, cause ${b.cause} (${srcTag})`);
+        const knowledge = `LIVE wildfire incident picture (as of ${new Date().toISOString().slice(0,10)}) from NIFC WFIGS - active fires burning right now: count, total acres, wildfire vs prescribed, containment status, by state, and the largest active incidents by name/acres/containment. This is the OPERATIONAL/situational layer (where fires are now, what firefighters are responding to) - the live, public, legal version of fire-response awareness, distinct from historical wildfire loss data. Refetch for current state; this is a snapshot in time.\n` + ev.join("\n");
+        const pour = await processCommand(`DEPOT_INGEST ::: ${JSON.stringify({ risk_type: "fire-active", touches: ["firefighting", "emergency-response", "insurance", "government"], knowledge, evidence_lines: ev, source: "DEPOT_POUR_FIRE_ACTIVE (NIFC WFIGS live)" })}`, env, true);
+        const pp = (pour && pour.payload) ? pour.payload : pour;
+        return { cmd: "DEPOT_POUR_FIRE_ACTIVE", payload: { ok: !!(pp && pp.ok), incidents: feats.length, total_acres: Math.round(totalAcres),
+          wildfires, prescribed: rx, uncontained, largest: big.slice(0,5).map(b=>({ name: b.name, acres: Math.round(b.acres), contained: b.contained, state: b.state })),
+          depot_result: pp ? { entry_count: pp.entry_count, growth: pp.growth, added: pp.added } : null,
+          note: `Poured ${feats.length} live wildfire incidents into depot:risk:fire-active in ONE write. This is a live snapshot - refetch for current. Space depot writes >60s.` } };
+      } catch (e) { return { cmd: "DEPOT_POUR_FIRE_ACTIVE", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 
     case "DEPOT_POUR_MARITIME": {

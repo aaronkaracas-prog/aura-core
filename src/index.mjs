@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.432-2026-07-02";
+const BUILD = "aura-core-v4.9.433-2026-07-02";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3817,6 +3817,39 @@ async function processCommand(line, env, isOp) {
       }
       // bump ask-count even when we're about to refresh
       const priorAsks = existing ? (existing.times_asked || 1) : 0;
+      // STEP 1.5 - SPECIALIST ROUTER (v4.9.433): before generic search, check if a registered EXPERT
+      // SOURCE handles this topic. The 13 DEPOT_POUR_* commands are hard-won specialists that know the
+      // quirks of specific federal sources (range-reading FARS zips, FEMA floor-labels, BJS schema).
+      // They are not deleted or duplicated - they are REGISTERED as expert inputs to this one engine.
+      // A request that matches a specialist routes to it (deep, correct); everything else falls through
+      // to universal search-and-keep. This is Aaron's "the 13 pours become configured sources of the
+      // one engine, not standalone code." Registry lives at config:ingest:specialists (editable via KV).
+      const INGEST_SPECIALISTS_DEFAULT = {
+        wildfire: { cmd: "DEPOT_POUR_FIRE", trigger: /\b(wildfire|fire season|acres burned|fire perimeter)\b/i, note: "NIFC/WFIGS fire history" },
+        driving: { cmd: "DEPOT_POUR_CRASH", trigger: /\b(crash|fatal crash|traffic death|FARS|road fatalit)\b/i, note: "NHTSA FARS" },
+        flood: { cmd: "DEPOT_POUR_FLOOD", trigger: /\b(flood claim|NFIP|flood insurance loss)\b/i, note: "FEMA NFIP claims" },
+        hurricane: { cmd: "DEPOT_POUR_HURRICANE", trigger: /\b(hurricane season|tropical cyclone|HURDAT|atlantic storm)\b/i, note: "NOAA HURDAT2" },
+        "severe-storm": { cmd: "DEPOT_POUR_STORM", trigger: /\b(tornado|hail|severe storm|storm damage|thunderstorm)\b/i, note: "NCEI Storm Events" },
+        mortality: { cmd: "DEPOT_POUR_HEALTH", trigger: /\b(mortality|leading cause of death|death rate|life insurance risk)\b/i, note: "CDC NCHS" },
+        earthquake: { cmd: "DEPOT_POUR_QUAKE", trigger: /\b(earthquake|seismic|magnitude \d|USGS quake)\b/i, note: "USGS" },
+        theft: { cmd: "DEPOT_POUR_CRIME", trigger: /\b(crime rate|theft|burglary|larceny|motor vehicle theft|property crime)\b/i, note: "BJS NIBRS" },
+        "disaster-costs": { cmd: "DEPOT_POUR_DISASTERS_OFFICIAL", trigger: /\b(billion.dollar disaster|disaster cost|costliest disaster|NCEI billions)\b/i, note: "NCEI billion-dollar spine" },
+        "property-value": { cmd: "DEPOT_POUR_PROPERTY", trigger: /\b(house price|home value|property value|FHFA|HPI)\b/i, note: "FHFA HPI" },
+        "insurance-market": { cmd: "DEPOT_POUR_PREMIUMS", trigger: /\b(insurer premium|premiums earned|loss ratio|carrier financials)\b/i, note: "SEC XBRL" }
+      };
+      let inSpecialists = INGEST_SPECIALISTS_DEFAULT;
+      try { const sr = await env.AURA_KV.get("config:ingest:specialists"); if (sr) { const parsed = JSON.parse(sr); /* stored triggers are strings -> rebuild RegExp */ for (const k of Object.keys(parsed)) { if (typeof parsed[k].trigger === "string") parsed[k].trigger = new RegExp(parsed[k].trigger, "i"); } inSpecialists = parsed; } } catch {}
+      let matchedSpecialist = null;
+      for (const [domain, spec] of Object.entries(inSpecialists)) {
+        try { if (spec.trigger && spec.trigger.test && spec.trigger.test(inRaw)) { matchedSpecialist = { domain, ...spec }; break; } } catch {}
+      }
+      if (matchedSpecialist && inMode !== "fresh_generic") {
+        // route to the expert source; it does its own deep fetch + additive depot keep
+        return { cmd: "INGEST", payload: { ok: true, topic: inRaw, source: "specialist_route",
+          specialist: matchedSpecialist.cmd, domain: matchedSpecialist.domain, provider: matchedSpecialist.note,
+          note: "A registered EXPERT SOURCE handles this domain (" + matchedSpecialist.note + "). Run '" + matchedSpecialist.cmd + " <args>' for the deep, source-correct pour into depot:risk:" + matchedSpecialist.domain + " - it already knows this source's quirks. (Generic search would be shallower here.) The specialist is a configured input to this engine, not separate code.",
+          hint: "The INGEST engine routes hard federal sources to their specialists and everything else to universal search-and-keep." } };
+      }
       // STEP 2 - FIND the source (there is always a source; search finds the door)
       const ws = await webSearch(inRaw, env);
       if (!ws || !ws.ok) return { cmd: "INGEST", payload: { ok: false, error: "could not find a source (" + ((ws && ws.error) || "search failed") + ")", topic: inRaw } };

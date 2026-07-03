@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.454-2026-07-03";
+const BUILD = "aura-core-v4.9.455-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -4033,10 +4033,19 @@ async function processCommand(line, env, isOp) {
         } catch {}
       }
       if (organizedHits.length) {
-        // primary = the structured one if present, else the first hit; keep ALL as layers
-        const structured = organizedHits.find(h => h.kind === "structured");
-        inOrganized = structured || organizedHits[0];
-        inOrganized.layers = organizedHits;
+        // primary = the structured one if present, else the first hit. Build a CLEAN object (do NOT
+        // point inOrganized at an element of organizedHits and then set .layers = organizedHits - that
+        // creates a circular reference that crashes JSON.stringify / KV.put (the 1101 bug).
+        const structuredHit = organizedHits.find(h => h.kind === "structured");
+        const primary = structuredHit || organizedHits[0];
+        inOrganized = {
+          source: primary.source,
+          entity: primary.entity || null,
+          facts: primary.facts || null,
+          linked: primary.linked || null,
+          people: primary.people || null,
+          layers: organizedHits.map(h => ({ ...h }))  // shallow copies, no shared refs
+        };
       }
 
       // STEP 2 - FIND the source (there is always a source; search finds the door)

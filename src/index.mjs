@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.431-2026-07-02";
+const BUILD = "aura-core-v4.9.432-2026-07-02";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3763,6 +3763,110 @@ async function processCommand(line, env, isOp) {
         return { cmd: "SOURCE_PROBE", payload: { ok: true, url: spUrl, method: spMethod, status: r.status, reachable_from_worker: r.status >= 200 && r.status < 400, headers: hdrs, body_bytes: bodyBytes, body_preview: bodyPreview, ms: Date.now() - t0,
           note: "Raw probe from Aura's own egress. If status is 2xx with real data here but the same URL is walled from the operator terminal, wire the source through the worker. Verified sources go in notes:data:public_sources with real fields + date." } };
       } catch (e) { return { cmd: "SOURCE_PROBE", payload: { ok: false, url: spUrl, error: String(e && e.message || e), note: "Fetch failed from the worker itself (timeout/DNS/TLS) - the source is unreachable from Aura, not just from the terminal." } }; }
+    }
+
+    case "INGEST": {
+      // ================================================================================
+      // THE INGESTION ENGINE (v4.9.432) - the universal front-of-loop. Aaron's founding idea,
+      // finally an engine, not thirteen hardcoded pours: "ingest the world, organize it, spit it
+      // back out any way we want." Demand-triggered, self-growing.
+      //
+      // THE INSIGHT (Aaron): a frozen model (Claude/GPT) knows Twilio instantly because it was
+      // TRAINED IN - but that knowledge is frozen and never grows. This engine gives Aura the thing
+      // a model cannot do: an instant-knowledge layer that GROWS. First time asked about X, she does
+      // what a model does (reach out) - but UNLIKE a model she KEEPS it, so next time is instant, and
+      // she only checks "anything new since last time." The planet gets ingested gradually, BY USE,
+      // shaped by what people actually ask. As the underlying models get smarter, Aura inherits that
+      // AND keeps her own growing knowledge on top - she compounds twice.
+      //
+      // FOUR STEPS: (1) do we already KNOW this? -> if yes, return instantly + note freshness age.
+      // (2) if no or stale: FIND the source (search finds the door - there is always a source).
+      // (3) ANALYZE it through the loop into structured knowledge. (4) KEEP it (bring it in) so the
+      // next request on this topic is instant. Not limited to insurance or any asset - limited only
+      // to the planet and the request.
+      //   INGEST <anything>          -> know-or-fetch; returns the knowledge, keeps it
+      //   INGEST FRESH <anything>    -> force re-fetch even if known (check for what's new)
+      //   INGEST FORGET <anything>   -> drop a kept topic
+      // ================================================================================
+      if (!isOp) return { cmd: "INGEST", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      let inRaw = (rest || "").trim();
+      let inMode = "auto";
+      if (/^FRESH\s+/i.test(inRaw)) { inMode = "fresh"; inRaw = inRaw.replace(/^FRESH\s+/i, "").trim(); }
+      else if (/^FORGET\s+/i.test(inRaw)) { inMode = "forget"; inRaw = inRaw.replace(/^FORGET\s+/i, "").trim(); }
+      if (!inRaw) return { cmd: "INGEST", payload: { ok: false, error: "usage: INGEST <anything>  (know-or-fetch; INGEST FRESH <x> to re-check, INGEST FORGET <x> to drop)" } };
+      // topic key - normalized so "Mongolian sweaters" and "mongolian sweaters" are the same knowing
+      const inTopic = inRaw.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+      const inKey = "knowledge:" + inTopic;
+      const now = Date.now();
+      if (inMode === "forget") {
+        await env.AURA_KV.delete(inKey).catch(() => {});
+        try { let idx = []; const ir = await env.AURA_KV.get("knowledge:index"); if (ir) idx = JSON.parse(ir); idx = idx.filter(x => x.topic !== inTopic); await env.AURA_KV.put("knowledge:index", JSON.stringify(idx)); } catch {}
+        return { cmd: "INGEST", payload: { ok: true, forgot: inRaw, note: "Dropped from Aura's known knowledge." } };
+      }
+      // STEP 1 - do we already KNOW this?
+      let existing = null;
+      try { const raw = await env.AURA_KV.get(inKey); if (raw) existing = JSON.parse(raw); } catch {}
+      if (existing && inMode === "auto") {
+        const ageMs = now - (existing.fetched_at || 0);
+        const ageDays = Math.floor(ageMs / 86400000);
+        return { cmd: "INGEST", payload: { ok: true, topic: inRaw, source: "already_known", known_since: new Date(existing.first_learned || existing.fetched_at).toISOString().slice(0, 10),
+          age_days: ageDays, times_asked: (existing.times_asked || 1),
+          knowledge: existing.knowledge, key_facts: existing.key_facts, sources: existing.sources,
+          freshness_note: ageDays > 30 ? "This is " + ageDays + " days old - INGEST FRESH " + inRaw + " to check for what's new." : "Recently ingested (" + ageDays + "d ago).",
+          note: "Aura already knew this - returned instantly, no fetch. This is the growing instant-knowledge layer: she learned it once and kept it." } };
+      }
+      // bump ask-count even when we're about to refresh
+      const priorAsks = existing ? (existing.times_asked || 1) : 0;
+      // STEP 2 - FIND the source (there is always a source; search finds the door)
+      const ws = await webSearch(inRaw, env);
+      if (!ws || !ws.ok) return { cmd: "INGEST", payload: { ok: false, error: "could not find a source (" + ((ws && ws.error) || "search failed") + ")", topic: inRaw } };
+      // STEP 3 - ANALYZE it into structured knowledge (through the brain, not raw dump)
+      const inApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      let structured = null;
+      if (inApiKey) {
+        const inModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+        const inSys = "You are the INGESTION engine of Aura - the universal front-of-loop that takes raw world information and turns it into durable structured knowledge Aura keeps and reasons over. You are given a TOPIC and freshly-fetched SOURCE MATERIAL. Distill it into knowledge that will be reused: a tight factual summary, the key facts as short standalone lines, and (if the material reveals it) what KIND of thing this is so Aura can route it. Ground everything in the source material; never invent. Return ONLY JSON, no fences: {\"summary\":\"2-4 sentence synthesis\",\"key_facts\":[\"short factual line\",...],\"category\":\"one-word domain e.g. product|market|place|person|event|technical|regulation|other\",\"freshness_sensitive\":true|false}. freshness_sensitive = does this change often (prices, news, status) or is it stable (history, definitions)?";
+        const inUser = "TOPIC: " + inRaw + "\n\nSOURCE MATERIAL (fetched " + new Date(now).toISOString().slice(0, 10) + "):\n" + (ws.answer ? "Answer: " + ws.answer + "\n\n" : "") + "Sources:\n" + (ws.sources || []).map(s => "- " + s.title + ": " + s.snippet).join("\n");
+        try {
+          const d = await callAnthropic(inApiKey, { model: inModel, max_tokens: 1200, system: inSys, messages: [{ role: "user", content: inUser.slice(0, 30000) }] });
+          let t = ""; if (d && d.content) for (const b of d.content) if (b.type === "text") t += b.text;
+          t = t.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+          try { structured = JSON.parse(t); } catch {}
+        } catch {}
+      }
+      // STEP 4 - KEEP it (bring it in) so next time is instant
+      const record = {
+        topic: inRaw, key: inKey,
+        knowledge: structured ? structured.summary : (ws.answer || "See sources."),
+        key_facts: structured ? (structured.key_facts || []) : [],
+        category: structured ? (structured.category || "other") : "other",
+        freshness_sensitive: structured ? !!structured.freshness_sensitive : true,
+        sources: (ws.sources || []).map(s => ({ title: s.title, url: s.url })),
+        first_learned: existing ? (existing.first_learned || existing.fetched_at) : now,
+        fetched_at: now, times_asked: priorAsks + 1,
+        history: existing ? [...(existing.history || []).slice(-4), { at: existing.fetched_at, summary: (existing.knowledge || "").slice(0, 200) }] : []
+      };
+      await env.AURA_KV.put(inKey, JSON.stringify(record)).catch(() => {});
+      try { let idx = []; const ir = await env.AURA_KV.get("knowledge:index"); if (ir) idx = JSON.parse(ir); idx = idx.filter(x => x.topic !== inTopic); idx.unshift({ topic: inTopic, label: inRaw, category: record.category, learned: new Date(record.first_learned).toISOString().slice(0, 10), refreshed: new Date(now).toISOString().slice(0, 10) }); await env.AURA_KV.put("knowledge:index", JSON.stringify(idx.slice(0, 2000))); } catch {}
+      return { cmd: "INGEST", payload: { ok: true, topic: inRaw,
+        source: existing ? "refreshed" : "newly_learned",
+        category: record.category, freshness_sensitive: record.freshness_sensitive,
+        knowledge: record.knowledge, key_facts: record.key_facts, sources: record.sources,
+        times_asked: record.times_asked,
+        whats_new: existing ? "Re-fetched and updated (was " + Math.floor((now - existing.fetched_at) / 86400000) + " days old). Prior version kept in history." : undefined,
+        note: existing ? "Refreshed Aura's knowledge - she checked for what's new since last time." : "NEW: Aura did not know this, found the source, analyzed it, and KEPT it. Next request on '" + inRaw + "' is instant - the instant-knowledge layer just grew by one topic." } };
+    }
+
+    case "INGEST_KNOWN": {
+      // What does Aura already know (the grown instant-layer)? Read the knowledge index.
+      if (!isOp) return { cmd: "INGEST_KNOWN", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const ikFilter = rest.trim().toLowerCase();
+      let idx = []; try { const ir = await env.AURA_KV.get("knowledge:index"); if (ir) idx = JSON.parse(ir); } catch {}
+      const rows = ikFilter ? idx.filter(r => (r.category || "") === ikFilter || (r.label || "").toLowerCase().includes(ikFilter)) : idx;
+      const byCat = {}; for (const r of idx) byCat[r.category || "other"] = (byCat[r.category || "other"] || 0) + 1;
+      return { cmd: "INGEST_KNOWN", payload: { ok: true, total_known: idx.length, by_category: byCat,
+        topics: rows.slice(0, 50).map(r => ({ topic: r.label, category: r.category, learned: r.learned, refreshed: r.refreshed })),
+        note: idx.length ? "Aura's grown instant-knowledge layer: " + idx.length + " topics learned by use, each instant on next ask. This is what a frozen model cannot do - it grows." : "Nothing ingested yet. INGEST <anything> to start growing the knowledge layer." } };
     }
 
     case "ANALYST_BRIEF": {
@@ -17920,7 +18024,7 @@ function openAlbum(idx){
       // AND character breakdown, because each tiny fragment lost the whole picture). A real COMMAND
       // BATCH has EVERY non-empty line starting with a known command verb. If ANY line is prose, the
       // whole body is a single human message.
-      const KNOWN_CMD_VERBS = /^(SETKV|GETKV|LISTKV|DELKV|PATCHKV|PING|HOST|DOMAIN_LAUNCH|DOMAIN_STATUS|DOMAIN_DIAGNOSE|FETCH_PLACES|WORLD_MAP|PTA_[A-Z_]+|COMMS|WORKFLOW|EMAIL_SEND|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|TWILIO_INTEL|TWILIO[A-Z_]*|A2P_[A-Z]+|SMS_[A-Z]+|CAPABILITY|INDUSTRY|BUSINESS_STATE|CF_API|AURA_[A-Z_]+|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|SHOW_IT|SHOWIT|GENERATE_PAGE|DEPLOY_[A-Z]+|ROUTE_[A-Z_]+|GETKV|WEB_SEARCH|NEWS_QUERY|OIL_PRICE|MARINE_WX|AIS_QUERY|LOOP_PROBE|SOURCE_PROBE|DEPOT_[A-Z_]+|ANALYST_BRIEF|SITUATION_[A-Z_]+|FLEET_[A-Z_]+|EVENT_[A-Z_]+|OUTCOME_[A-Z_]+)\b/i;
+      const KNOWN_CMD_VERBS = /^(SETKV|GETKV|LISTKV|DELKV|PATCHKV|PING|HOST|DOMAIN_LAUNCH|DOMAIN_STATUS|DOMAIN_DIAGNOSE|FETCH_PLACES|WORLD_MAP|PTA_[A-Z_]+|COMMS|WORKFLOW|EMAIL_SEND|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|TWILIO_INTEL|TWILIO[A-Z_]*|A2P_[A-Z]+|SMS_[A-Z]+|CAPABILITY|INDUSTRY|BUSINESS_STATE|CF_API|AURA_[A-Z_]+|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|SHOW_IT|SHOWIT|GENERATE_PAGE|DEPLOY_[A-Z]+|ROUTE_[A-Z_]+|GETKV|WEB_SEARCH|NEWS_QUERY|OIL_PRICE|MARINE_WX|AIS_QUERY|LOOP_PROBE|SOURCE_PROBE|DEPOT_[A-Z_]+|ANALYST_BRIEF|SITUATION_[A-Z_]+|FLEET_[A-Z_]+|EVENT_[A-Z_]+|OUTCOME_[A-Z_]+|INGEST|INGEST_[A-Z_]+)\b/i;
       const _rawLines = body.split("\n").map(l => l.trim()).filter(Boolean);
       const _looksLikeCommandBatch = _rawLines.length > 0 && _rawLines.every(l => KNOWN_CMD_VERBS.test(l));
       const _isProseDump = !_VALUE_BEARING.includes(_firstWord) && _rawLines.length > 1 && !_looksLikeCommandBatch;

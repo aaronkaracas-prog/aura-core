@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.457-2026-07-03";
+const BUILD = "aura-core-v4.9.458-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -18059,6 +18059,55 @@ function openAlbum(idx){
       const idle = all.filter((d) => !lset.has(d)).sort();
       const live = launched.slice().sort();
       return new Response(JSON.stringify({ ok: true, live, idle, live_count: live.length, total: all.length || (live.length + idle.length) }), { headers: hCors });
+    }
+
+    // /home/room (v4.9.458) - HTTP surface over the UNIVERSAL ROOM-DATA ENGINE (built v4.9.457). Lets the Home Screen UI
+    // (and Aura) LIST/GET/ADD/UPDATE/REMOVE/SEED a business's room items over the SAME primitive the ROOM
+    // command already proves at the console layer. Thin wrapper on purpose: it verifies the operator, builds
+    // the ROOM command line, and hands to processCommand so there is ONE engine, never two. This is what the
+    // Nobu test drives - FOH/BOH (and orders/reservations/menu/inventory/customers) as real working surfaces.
+    // Operator-gated exactly like the sibling /home/* data endpoints above.
+    //   GET  /home/room?pta=<pta>&kind=<kind>            -> LIST items in that room
+    //   GET  /home/room?pta=<pta>&kind=<kind>&id=<id>    -> GET one item
+    //   POST /home/room  {op, pta, kind, id?, fields?, items?}
+    //        op=add    + fields:{...}      -> append (engine assigns id + ts)
+    //        op=update + id + fields:{...} -> merge fields into an item
+    //        op=remove + id                -> drop an item
+    //        op=seed   + items:[...]       -> replace items wholesale (mock/demo seeding)
+    if (url.pathname === "/home/room") {
+      const hCors = { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, content-type", "access-control-allow-methods": "GET, POST, OPTIONS" };
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: hCors });
+      const okOp = await verifyOperator(request, env);
+      if (!okOp) return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), { status: 401, headers: hCors });
+      const runRoom = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
+      try {
+        if (request.method === "GET") {
+          const pta = (url.searchParams.get("pta") || "").trim();
+          const kind = (url.searchParams.get("kind") || "").trim().toLowerCase();
+          const id = (url.searchParams.get("id") || "").trim();
+          if (!pta || !kind) return new Response(JSON.stringify({ ok: false, error: "need pta and kind" }), { status: 400, headers: hCors });
+          const cmd = id ? ("ROOM GET " + pta + " " + kind + " " + id) : ("ROOM LIST " + pta + " " + kind);
+          return new Response(JSON.stringify(await runRoom(cmd)), { headers: hCors });
+        }
+        if (request.method === "POST") {
+          let b = {}; try { b = await request.json(); } catch { return new Response(JSON.stringify({ ok: false, error: "invalid JSON body" }), { status: 400, headers: hCors }); }
+          const op = (b.op || "").toString().trim().toUpperCase();
+          const pta = (b.pta || "").toString().trim();
+          const kind = (b.kind || "").toString().trim().toLowerCase();
+          const id = (b.id || "").toString().trim();
+          if (!op || !pta || !kind) return new Response(JSON.stringify({ ok: false, error: "need op, pta, kind" }), { status: 400, headers: hCors });
+          let cmd;
+          if (op === "ADD") cmd = "ROOM ADD " + pta + " " + kind + " " + JSON.stringify(b.fields == null ? {} : b.fields);
+          else if (op === "UPDATE") { if (!id) return new Response(JSON.stringify({ ok: false, error: "update needs id" }), { status: 400, headers: hCors }); cmd = "ROOM UPDATE " + pta + " " + kind + " " + id + " " + JSON.stringify(b.fields == null ? {} : b.fields); }
+          else if (op === "REMOVE") { if (!id) return new Response(JSON.stringify({ ok: false, error: "remove needs id" }), { status: 400, headers: hCors }); cmd = "ROOM REMOVE " + pta + " " + kind + " " + id; }
+          else if (op === "SEED") cmd = "ROOM SEED " + pta + " " + kind + " " + JSON.stringify(Array.isArray(b.items) ? b.items : []);
+          else return new Response(JSON.stringify({ ok: false, error: "op must be add|update|remove|seed" }), { status: 400, headers: hCors });
+          return new Response(JSON.stringify(await runRoom(cmd)), { headers: hCors });
+        }
+        return new Response(JSON.stringify({ ok: false, error: "method not allowed" }), { status: 405, headers: hCors });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, error: String(e && e.message || e) }), { status: 500, headers: hCors });
+      }
     }
 
     // ===== PUBLIC PLAID ENDPOINTS =====

@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.442-2026-07-03";
+const BUILD = "aura-core-v4.9.443-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -9494,17 +9494,6 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const obDoorway = "https://openforbusiness.world/" + obSlug;
       const obQr = "https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=" + encodeURIComponent(obDoorway);
       await env.AURA_KV.put("onboard:" + obSlug, JSON.stringify({ subject: obRaw, slug: obSlug, read: obRead, pta_id: obPtaId, identity: obIdentity || null, business_type: obType, doorway: obDoorway, qr: obQr, state: (obState && obState.ok) ? "lead" : null, ts: obTs })).catch(() => {});
-      // 6) CONTACT â€” outreach carries the offer + doorway + QR; on COMMIT send to EVERY contact found.
-      const obMessage = (obRead.outreach || "") + "\n\nWhat Aura offers " + (obRead.business_name || obRaw) + ": " + obOffer.product + " - " + obOffer.pitch + "." + "  Your doorway: " + obDoorway + "  |  Your QR: " + obQr;
-      let obSent = false; const obSentTo = [];
-      if (obCommit && obRead.outreach) {
-        for (const c of contactSet) {
-          const em = c.email && /@/.test(String(c.email)) ? String(c.email).trim() : null;
-          if (!em) continue;
-          try { const es = await processCommand("EMAIL_SEND " + em + " Aura x " + (obRead.business_name || obRaw) + " | " + obMessage, env, isOp); const ep = (es && es.payload) ? es.payload : es; if (ep && ep.ok) { obSent = true; obSentTo.push(em); } } catch (e) {}
-        }
-        if (obPtaId && obSent) { try { await processCommand("BUSINESS_STATE SET " + obPtaId + " trial", env, isOp); } catch (e) {} }
-      }
       // 6a) PRODUCT OFFER inferred from context (v4.9.442) - the flow picks WHAT Aura offers this
       // business from its type. News/media -> SituationTracker + WeatherTracker; shipping -> maritime
       // intelligence; everything else -> Open For Business tools. Just context; the flow is identical.
@@ -9545,6 +9534,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         } catch (e) { obPeople.push({ identity: cIdentity, role: c.role || "contact", error: String(e && e.message || e) }); }
       }
 
+
+      // 6) CONTACT â€” outreach carries the offer + doorway + QR; on COMMIT send to EVERY contact found.
+      const obMessage = (obRead.outreach || "") + "\n\nWhat Aura offers " + (obRead.business_name || obRaw) + ": " + obOffer.product + " - " + obOffer.pitch + "." + "  Your doorway: " + obDoorway + "  |  Your QR: " + obQr;
+      let obSent = false; const obSentTo = [];
+      if (obCommit && obRead.outreach) {
+        for (const c of contactSet) {
+          const em = c.email && /@/.test(String(c.email)) ? String(c.email).trim() : null;
+          if (!em) continue;
+          try { const es = await processCommand("EMAIL_SEND " + em + " Aura x " + (obRead.business_name || obRaw) + " | " + obMessage, env, isOp); const ep = (es && es.payload) ? es.payload : es; if (ep && ep.ok) { obSent = true; obSentTo.push(em); } } catch (e) {}
+        }
+        if (obPtaId && obSent) { try { await processCommand("BUSINESS_STATE SET " + obPtaId + " trial", env, isOp); } catch (e) {} }
+      }
       // 6b) WRITE TO THE REALITY GRAPH â€” the business becomes typed nodes + edges, not freeform JSON.
       const graphOut = { business: null, place: null, socials: [], linked_pta: false };
       try {

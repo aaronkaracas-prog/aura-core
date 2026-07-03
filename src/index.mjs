@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.447-2026-07-03";
+const BUILD = "aura-core-v4.9.448-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -9508,8 +9508,31 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             ((cp && cp.sources) || []).slice(0, 4).forEach(function (s) { if (s && (s.title || s.snippet)) cParts.push("[" + (s.url || "") + "] " + String(s.title || "") + " - " + String(s.snippet || "").slice(0, 300)); });
           } catch (e) {}
         }
-        obContactSignal = cParts.join("\n").slice(0, 8000);
-        discovered.contact_search = obContactSignal ? { ran: true, chars: obContactSignal.length } : { ran: true, chars: 0 };
+        // OPEN THE DOORS SHE FINDS (v4.9.448) - contact DIRECTORIES (press rooms, staff pages, contact
+        // listings) hold the per-person contacts. She kept finding the door (e.g. CNN Press Room) but
+        // never walked through it. Detect directory URLs in the search results and FETCH them - this is
+        // how per-show/per-person contacts (Anderson Cooper 360 press contact, a studio's acquisitions
+        // team) actually come through. Scales from CNN to Netflix to Hollywood: follow the directory to
+        // the people. Depth is proportional to what the search surfaced, not forced.
+        const dirUrls = new Set();
+        try {
+          const DIR_RE = /(press.?contact|press.?room|pressroom|\/press|media.?contact|contact.?us|our.?team|leadership|staff.?directory|people|newsroom|executives|commercial.*contact)/i;
+          for (const p of cParts) {
+            const m = p.match(/\[(https?:\/\/[^\]]+)\]/);
+            if (m && m[1] && DIR_RE.test(m[1]) && dirUrls.size < 4) dirUrls.add(m[1]);
+          }
+        } catch (e) {}
+        if (dirUrls.size) {
+          try {
+            const tk2 = await env.AURA_KV.get("secret:tavily").catch(() => null);
+            if (tk2) {
+              const er2 = await fetch(await resolveFeedUrl(env, "extract_tavily", {}, "https://api.tavily.com/extract"), { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + tk2 }, body: JSON.stringify({ urls: Array.from(dirUrls), extract_depth: "advanced" }) });
+              if (er2.ok) { const ed2 = await er2.json(); (ed2.results || []).forEach(function (r) { cParts.push("[DIRECTORY " + (r.url || "") + "] " + String(r.raw_content || "").replace(/\s+/g, " ").trim().slice(0, 3000)); }); discovered.directories_opened = (ed2.results || []).map(function (r) { return r.url; }); }
+            }
+          } catch (e) {}
+        }
+        obContactSignal = cParts.join("\n").slice(0, 14000);
+        discovered.contact_search = obContactSignal ? { ran: true, chars: obContactSignal.length, directories: Array.from(dirUrls) } : { ran: true, chars: 0 };
       } catch (e) { discovered.contact_search = { ran: false, error: String(e && e.message || e) }; }
 
       // 4) UNDERSTAND â€” one focused, GROUNDED pass over everything she pulled. She captures the
@@ -9518,7 +9541,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const obApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
       if (!obApiKey) return { cmd: "ONBOARD", payload: { ok: false, error: "Brain not configured (secret:anthropic)", discovered } };
       const obSys = await loadPrompt(env, "onboard_business", "You are Aura onboarding a real business you just researched. You are given FACTS you actually pulled: Google Places, the live website (scraped, possibly several pages), and web search. Build a COMPLETE, GROUNDED understanding from ONLY those facts. Capture EVERYTHING the site shows: every product and service, specials, subscriptions, collections, pricing, delivery area, hours, reviews and testimonials, and EVERY social account (Instagram, Facebook, X, YouTube, TikTok) with its handle and url. ABSOLUTE RULE: never state a fact you did not pull; if you are not certain, put it in grounding.unsure and do NOT assert it - Aura must never claim to know something she did not verify, it makes her look unreliable. Return ONLY JSON (no prose, no fences) with keys: business_name, business_type (one lowercase slug for the home-screen archetype, e.g. florist), what_it_is (2-3 sentences, confirmed facts only), offerings (array, comprehensive), highlights (array of standout items: specials, subscriptions, signature products), serves (who and where), contact (object email, phone, address, website - only real values found else null), contacts (ARRAY - CRITICAL: extract EVERY way to reach this business found anywhere in the facts: every email address, every phone number, every department/press/tips/media/PR/careers/newsroom inbox, every named person with a contact, every affiliate or bureau contact. Each item {email?, phone?, role?, name?}. A large org exposes MANY - capture ALL of them verbatim as found. This is how Aura reaches everyone; do not summarize or skip any. If a contact channel is mentioned even without a direct address, include it with role and what is known. A dedicated contact_search field is provided in FACTS - mine it hard: pull every email/phone/help-line/press-contact/form it surfaces. If the business only exposes a web form or a single general line (common for large orgs), capture THAT honestly as a general contact (role: general) rather than inventing individual inboxes - reporting the real way to reach them is correct even when it is a form.), socials (array of objects with platform, handle, url actually found), reviews (object rating, count, summary - nulls where unknown), the_move (the single most compelling first thing Aura would do for them), social_offer (if socials found, one warm sentence offering to manage them, else empty string), outreach (a warm 3-5 sentence message to the owner: the specific things Aura genuinely saw as proof, an offer to help, and the social_offer woven in if applicable), grounding (object with confirmed array and unsure array). Output JSON only.");
-      const obFactsStr = JSON.stringify({ places: discovered.places, website_scrape: obScrape || (discovered.site && discovered.site.text) || null, web: discovered.web, contact_search: obContactSignal || null }).slice(0, 28000);
+      const obFactsStr = JSON.stringify({ places: discovered.places, website_scrape: obScrape || (discovered.site && discovered.site.text) || null, web: discovered.web, contact_search: obContactSignal || null }).slice(0, 34000);
       let obRead = {};
       try {
         const d = await callAnthropic(obApiKey, { model: "claude-sonnet-4-5", max_tokens: 2600, system: obSys, messages: [{ role: "user", content: "FACTS:\n" + obFactsStr }] });

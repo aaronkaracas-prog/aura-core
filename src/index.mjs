@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.427-2026-07-02";
+const BUILD = "aura-core-v4.9.428-2026-07-02";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -4688,6 +4688,66 @@ async function processCommand(line, env, isOp) {
           depot_result: pp ? { entry_count: pp.entry_count, growth: pp.growth, added: pp.added, distill_note: pp.distill_note } : null,
           note: "Poured USDA crop-insurance cause-of-loss into depot:risk:crop in ONE write. Space depot writes >60s." } };
       } catch (e) { return { cmd: "DEPOT_POUR_CROP", payload: { ok: false, error: String(e && e.message || e) } }; }
+    }
+
+    case "DEPOT_POUR_CRIME": {
+      // CRIME / PROPERTY-THEFT (v4.9.428) - pours BJS NIBRS National Estimates into depot:risk:theft.
+      // Source verified 2026-07-02: api.ojp.gov/bjsdataset/v1/<dataset>.json (Socrata REST, keyless).
+      // The FBI CDE app hides its endpoints; THIS is the real machine door (BJS, the sister agency).
+      // Datasets: PROPERTY offenses kj7p-vx4s (burglary/larceny/MV-theft), VIOLENT x3sz-eb6y.
+      // CRITICAL (from probe): each offense has MANY permutation rows (victim-count breakdowns, SEs) -
+      // we filter to the CLEAN headline rows: estimate_type='count' AND estimate_domain_1='Offense count'
+      // AND geography National - averaging the breakdowns would be garbage (same trap FHFA had).
+      //   DEPOT_POUR_CRIME            -> property offenses (default)
+      //   DEPOT_POUR_CRIME violent    -> violent offenses
+      if (!isOp) return { cmd: "DEPOT_POUR_CRIME", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const crWhich = /violent/i.test(rest) ? "violent" : "property";
+      const crDataset = crWhich === "violent" ? "x3sz-eb6y" : "kj7p-vx4s";
+      const crUA = { "user-agent": "aura-depot-pour/1.0", "accept": "application/json" };
+      const crUrl = await resolveFeedUrl(env, "bjs_nibrs_" + crWhich, {}, `https://api.ojp.gov/bjsdataset/v1/${crDataset}.json`);
+      try {
+        const r = await fetchWithTimeout(crUrl, { headers: crUA }, 40000);
+        if (!r.ok) return { cmd: "DEPOT_POUR_CRIME", payload: { ok: false, error: `bjs api ${r.status}` } };
+        const arr = await r.json();
+        if (!Array.isArray(arr) || !arr.length) return { cmd: "DEPOT_POUR_CRIME", payload: { ok: false, error: "empty dataset" } };
+        // filter to clean national count rows, one per indicator per year
+        const byOffenseYear = new Map(); // "offense|year" -> count
+        const years = new Set();
+        for (const row of arr) {
+          if ((row.estimate_geographic_location || "") !== "National") continue;
+          if ((row.estimate_type || "") !== "count") continue;
+          if ((row.estimate_domain_1 || "") !== "Offense count") continue;
+          if (row.estimate_domain_2) continue; // skip any further breakdown
+          const offense = (row.indicator_name || "").trim();
+          const year = (row.time_series_start_year || "").trim();
+          const val = Math.round(parseFloat(row.estimate) || 0);
+          if (!offense || !year || !val) continue;
+          byOffenseYear.set(offense + "|" + year, val);
+          years.add(year);
+        }
+        if (!byOffenseYear.size) return { cmd: "DEPOT_POUR_CRIME", payload: { ok: false, error: "no clean national offense-count rows found after filter (schema may have shifted)" } };
+        const yrList = [...years].sort();
+        // group by offense, latest year value + trend if multiple years
+        const offenses = new Map(); // offense -> {year: val}
+        for (const [k, v] of byOffenseYear) { const [off, yr] = k.split("|"); if (!offenses.has(off)) offenses.set(off, {}); offenses.get(off)[yr] = v; }
+        const latestYr = yrList[yrList.length - 1];
+        const ranked = [...offenses.entries()].map(([off, ys]) => ({ off, val: ys[latestYr] || Object.values(ys).slice(-1)[0], years: ys })).filter(o => o.val).sort((a, b) => b.val - a.val);
+        const srcTag = "BJS NIBRS National Estimates";
+        const ev = [];
+        ev.push(`${crWhich === "violent" ? "Violent" : "Property"} crime (${yrList.join("/")}, national, ${srcTag}): ${ranked.length} offense categories estimated`);
+        for (const o of ranked.slice(0, 12)) {
+          const yrs = Object.keys(o.years).sort();
+          const trend = yrs.length > 1 ? ` (${yrs.map(y => y + ":" + (o.years[y]).toLocaleString()).join(" -> ")})` : "";
+          ev.push(`${o.off} (${latestYr}): ${o.val.toLocaleString()} estimated offenses nationally${trend} (${srcTag})`);
+        }
+        const knowledge = `${crWhich === "violent" ? "Violent" : "Property"}-crime national estimates from BJS NIBRS (${yrList.join(", ")}) - estimated offense counts by category (${crWhich === "property" ? "burglary, larceny-theft, motor-vehicle theft, etc" : "assault, robbery, etc"}), nationally weighted from ~13,600 agencies. This is the ${crWhich}-crime occurrence base for insurance: what an insurer prices for theft/${crWhich} exposure. Occurrence counts (not stolen-dollar value or insured loss - those need the UCR Property Stolen/Recovered supplement). ADVISOR NOTE: the value is not just the count - it is finding the lever (which offense category, where concentrated) that lowers both the crime and the premium.\n` + ev.join("\n");
+        const pour = await processCommand(`DEPOT_INGEST ::: ${JSON.stringify({ risk_type: "theft", touches: ["insurance", "property", "auto", "commercial"], knowledge, evidence_lines: ev, source: `DEPOT_POUR_CRIME ${crWhich} (BJS NIBRS ${crDataset})` })}`, env, true);
+        const pp = (pour && pour.payload) ? pour.payload : pour;
+        return { cmd: "DEPOT_POUR_CRIME", payload: { ok: !!(pp && pp.ok), category: crWhich, dataset: crDataset, years: yrList,
+          offenses: ranked.length, top: ranked.slice(0, 6).map(o => ({ offense: o.off, estimate: o.val })),
+          depot_result: pp ? { entry_count: pp.entry_count, growth: pp.growth, added: pp.added, distill_note: pp.distill_note } : null,
+          note: `Poured ${crWhich} crime national estimates into depot:risk:theft in ONE write. Space depot writes >60s. Run 'DEPOT_POUR_CRIME violent' for the violent set too.` } };
+      } catch (e) { return { cmd: "DEPOT_POUR_CRIME", payload: { ok: false, error: String(e && e.message || e) } }; }
     }
 
     case "DEPOT_POUR_FLOOD": {

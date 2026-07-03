@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.453-2026-07-03";
+const BUILD = "aura-core-v4.9.454-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3810,6 +3810,29 @@ async function processCommand(line, env, isOp) {
       } catch (e) { return { cmd: "WIKIDATA", payload: { ok: false, error: String(e && e.message || e), topic: wdRaw } }; }
     }
 
+    case "WIKIPEDIA": {
+      // ORGANIZED-SOURCE #2 (v4.9.454): Wikipedia REST summary API - the prose+image layer that
+      // complements Wikidata's structured claims. Keyless, verified from worker 2026-07-03. Returns a
+      // clean extract (summary), description, image, and the wikibase_item (cross-links to Wikidata).
+      //   WIKIPEDIA <title>
+      if (!isOp) return { cmd: "WIKIPEDIA", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const wpRaw = (rest || "").trim();
+      if (!wpRaw) return { cmd: "WIKIPEDIA", payload: { ok: false, error: "usage: WIKIPEDIA <title>" } };
+      const wpUA = { "User-Agent": "aura-ingest/1.0 (organized-source)", "Accept": "application/json" };
+      try {
+        const u = "https://en.wikipedia.org/api/rest_v1/page/summary/" + encodeURIComponent(wpRaw.replace(/\s+/g, "_"));
+        const r = await fetchWithTimeout(u, { headers: wpUA }, 12000);
+        if (!r.ok) return { cmd: "WIKIPEDIA", payload: { ok: true, found: false, topic: wpRaw, note: "No Wikipedia page (http " + r.status + ") - fall through." } };
+        const d = await r.json();
+        if (!d || d.type === "disambiguation" || !d.extract) return { cmd: "WIKIPEDIA", payload: { ok: true, found: false, topic: wpRaw, type: d && d.type, note: (d && d.type === "disambiguation") ? "Disambiguation page - needs a more specific title." : "No summary extract." } };
+        return { cmd: "WIKIPEDIA", payload: { ok: true, found: true, topic: wpRaw,
+          title: d.title, description: d.description || null, extract: d.extract,
+          wikidata_id: d.wikibase_item || null, image: (d.originalimage && d.originalimage.source) || (d.thumbnail && d.thumbnail.source) || null,
+          url: d.content_urls && d.content_urls.desktop && d.content_urls.desktop.page,
+          note: "Prose summary from Wikipedia (organized source). Complements Wikidata's structured facts; cross-links via wikidata_id." } };
+      } catch (e) { return { cmd: "WIKIPEDIA", payload: { ok: false, error: String(e && e.message || e), topic: wpRaw } }; }
+    }
+
     case "SOURCE_PROBE": {
       // VERIFY-BEFORE-WIRING, FROM INSIDE THE WORKER (v4.9.410). The omnivorous_depot discipline says
       // every source's REAL fields get verified by raw pull BEFORE wiring - but NHTSA proved (2026-07-02)
@@ -3983,20 +4006,38 @@ async function processCommand(line, env, isOp) {
           note: "A registered EXPERT SOURCE handles this domain (" + matchedSpecialist.note + "). Run '" + matchedSpecialist.cmd + " <args>' for the deep, source-correct pour into depot:risk:" + matchedSpecialist.domain + " - it already knows this source's quirks. (Generic search would be shallower here.) The specialist is a configured input to this engine, not separate code.",
           hint: "The INGEST engine routes hard federal sources to their specialists and everything else to universal search-and-keep." } };
       }
-      // STEP 1.7 - ORGANIZED-SOURCES-FIRST (v4.9.451, canon:organized_sources_first): before raw search,
-      // check the Tier-1 organized sources - people who already STRUCTURED the world's entities. Wikidata
-      // first: if this topic resolves to a real entity, we get pre-structured facts + a linked graph
-      // (parent/founder/HQ/employer/people) for free, no scraping. We KEEP that structured layer and
-      // still run raw search below for the live/current specifics Wikidata lacks. Universal - applies to
-      // ingesting ANY entity (company, person, place), of which onboarding is just one caller.
+      // STEP 1.7 - ORGANIZED-SOURCES-FIRST (v4.9.454, canon:organized_sources_first): before raw search,
+      // check the Tier-1 organized sources - people who already STRUCTURED the world's entities. This is
+      // a REGISTRY (config:ingest:organized, editable via KV) so new organized sources slot in without
+      // code. Default tier: Wikidata (structured facts + linked graph incl. people) then Wikipedia (prose
+      // summary + image + wikidata cross-link). We KEEP whatever the organized layer returns and still run
+      // raw search below for the live/current specifics they lack. Universal - applies to ingesting ANY
+      // entity (company, person, place, topic); onboarding is just one caller.
+      const ORGANIZED_DEFAULT = [
+        { name: "wikidata", cmd: "WIKIDATA", kind: "structured" },
+        { name: "wikipedia", cmd: "WIKIPEDIA", kind: "prose" }
+      ];
+      let organizedSources = ORGANIZED_DEFAULT;
+      try { const or = await env.AURA_KV.get("config:ingest:organized"); if (or) { const p = JSON.parse(or); if (Array.isArray(p) && p.length) organizedSources = p; } } catch {}
       let inOrganized = null;
-      try {
-        const wd = await processCommand("WIKIDATA " + inRaw, env, true);
-        const wdp = (wd && wd.payload) ? wd.payload : wd;
-        if (wdp && wdp.ok && wdp.found) {
-          inOrganized = { source: "wikidata", entity: wdp.entity, facts: wdp.facts, linked: wdp.linked, people: wdp.people };
-        }
-      } catch {}
+      const organizedHits = [];
+      for (const os of organizedSources) {
+        try {
+          const rr = await processCommand(os.cmd + " " + inRaw, env, true);
+          const rp = (rr && rr.payload) ? rr.payload : rr;
+          if (rp && rp.ok && rp.found) {
+            if (os.name === "wikidata") organizedHits.push({ source: "wikidata", kind: "structured", entity: rp.entity, facts: rp.facts, linked: rp.linked, people: rp.people });
+            else if (os.name === "wikipedia") organizedHits.push({ source: "wikipedia", kind: "prose", title: rp.title, description: rp.description, extract: rp.extract, image: rp.image, wikidata_id: rp.wikidata_id, url: rp.url });
+            else organizedHits.push({ source: os.name, kind: os.kind || "other", data: rp });
+          }
+        } catch {}
+      }
+      if (organizedHits.length) {
+        // primary = the structured one if present, else the first hit; keep ALL as layers
+        const structured = organizedHits.find(h => h.kind === "structured");
+        inOrganized = structured || organizedHits[0];
+        inOrganized.layers = organizedHits;
+      }
 
       // STEP 2 - FIND the source (there is always a source; search finds the door)
       const ws = await webSearch(inRaw, env);
@@ -4007,7 +4048,7 @@ async function processCommand(line, env, isOp) {
       if (inApiKey) {
         const inModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
         const inSys = "You are the INGESTION engine of Aura - the universal front-of-loop that takes raw world information and turns it into durable structured knowledge Aura keeps and reasons over. You are given a TOPIC and freshly-fetched SOURCE MATERIAL. Distill it into knowledge that will be reused: a tight factual summary, the key facts as short standalone lines, and (if the material reveals it) what KIND of thing this is so Aura can route it. Ground everything in the source material; never invent. Return ONLY JSON, no fences: {\"summary\":\"2-4 sentence synthesis\",\"key_facts\":[\"short factual line\",...],\"category\":\"one-word domain e.g. product|market|place|person|event|technical|regulation|other\",\"freshness_sensitive\":true|false}. freshness_sensitive = does this change often (prices, news, status) or is it stable (history, definitions)?";
-        const inUser = "TOPIC: " + inRaw + "\n\n" + (inOrganized ? "STRUCTURED RECORD (Wikidata, authoritative - prefer these facts): " + JSON.stringify({ entity: inOrganized.entity, facts: inOrganized.facts, linked: inOrganized.linked }).slice(0, 4000) + "\n\n" : "") + "SOURCE MATERIAL (fetched " + new Date(now).toISOString().slice(0, 10) + "):\n" + (ws.answer ? "Answer: " + ws.answer + "\n\n" : "") + "Sources:\n" + (ws.sources || []).map(s => "- " + s.title + ": " + s.snippet).join("\n");
+        const inUser = "TOPIC: " + inRaw + "\n\n" + (inOrganized && inOrganized.layers ? "ORGANIZED SOURCES (authoritative - prefer these): " + JSON.stringify(inOrganized.layers).slice(0, 6000) + "\n\n" : "") + "SOURCE MATERIAL (fetched " + new Date(now).toISOString().slice(0, 10) + "):\n" + (ws.answer ? "Answer: " + ws.answer + "\n\n" : "") + "Sources:\n" + (ws.sources || []).map(s => "- " + s.title + ": " + s.snippet).join("\n");
         try {
           const d = await callAnthropic(inApiKey, { model: inModel, max_tokens: 1200, system: inSys, messages: [{ role: "user", content: inUser.slice(0, 30000) }] });
           let t = ""; if (d && d.content) for (const b of d.content) if (b.type === "text") t += b.text;
@@ -4034,7 +4075,7 @@ async function processCommand(line, env, isOp) {
         source: existing ? "refreshed" : "newly_learned",
         category: record.category, freshness_sensitive: record.freshness_sensitive,
         knowledge: record.knowledge, key_facts: record.key_facts, sources: record.sources,
-        organized: record.organized ? { source: record.organized.source, entity: record.organized.entity, structured_facts: record.organized.facts, linked: record.organized.linked, people: record.organized.people } : null,
+        organized: record.organized ? { primary_source: record.organized.source, layers: (record.organized.layers || []).map(l => l.source), entity: record.organized.entity, structured_facts: record.organized.facts, linked: record.organized.linked, people: record.organized.people, wikipedia: (record.organized.layers || []).find(l => l.source === "wikipedia") || null } : null,
         used_organized_source: !!record.organized,
         times_asked: record.times_asked,
         whats_new: existing ? "Re-fetched and updated (was " + Math.floor((now - existing.fetched_at) / 86400000) + " days old). Prior version kept in history." : undefined,

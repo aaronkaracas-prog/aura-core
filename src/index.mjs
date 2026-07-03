@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.439-2026-07-03";
+const BUILD = "aura-core-v4.9.441-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -9165,73 +9165,6 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const img = rec.image || "https://auras.guide/brand/butterfly";
         const html = `<a href="${door}" style="text-decoration:none"><img src="${img}" alt="From Aura" width="480" style="max-width:100%;border-radius:14px;display:block"></a>`;
         return { cmd: "DOORWAY_EMAIL", payload: { ok: true, token, doorway: door, image: rec.image || null, email_html: html, note: "Paste email_html into an HTML email. Clicking the image lands on the doorway and mints the PTA." } }; }
-    }
-
-    case "ONBOARD_INDUSTRY": {
-      // END-TO-END INDUSTRY ONBOARDING (v4.9.438) - the full launch test. For a REAL company, Aura:
-      // (1) pulls the whole-INDUSTRY snapshot from the depot (the powerful "we see your entire industry"
-      // moment), (2) frames the company's place in it + their value, (3) reaches out with a real clickable
-      // doorway to a real email - THE TAP CREATES THE PTA (Permission To Approach; the click IS consent),
-      // (4) after the PTA is born the chain continues (value shown, SecureSpend, their people get their
-      // own PTAs). This wraps the proven REACH_OUT/mintDoorway/sendEmail so the PTA is born correctly
-      // from the click, not fiat-declared. Runs for any industry that has depot data.
-      //   ONBOARD_INDUSTRY {"industry":"trucking","company":"ACME LINES","company_context":"...","email":"...","value":"..."}
-      if (!isOp) return { cmd: "ONBOARD_INDUSTRY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      let ob; try { ob = JSON.parse(rest.trim()); } catch { return { cmd: "ONBOARD_INDUSTRY", payload: { ok: false, error: 'Usage: ONBOARD_INDUSTRY {"industry":"trucking","company":"...","email":"...","company_context":"...","value":"..."}' } }; }
-      if (!ob || !ob.industry || !ob.company || !ob.email) return { cmd: "ONBOARD_INDUSTRY", payload: { ok: false, error: "industry, company, and email are required" } };
-      // map industry -> depot risk domain for the snapshot
-      const IND_TO_DOMAIN = { trucking: "trucking", shipping: "maritime", maritime: "maritime", insurance: "insurance-market", fire: "fire-active", firefighting: "fire-active" };
-      const domain = IND_TO_DOMAIN[ob.industry.toLowerCase()] || ob.industry.toLowerCase();
-      // STEP 1 - pull the whole-industry snapshot from the depot
-      let snapshot = null;
-      try { const raw = await env.AURA_KV.get("depot:risk:" + domain); if (raw) { const r = JSON.parse(raw); snapshot = { domain, entry_count: r.entry_count, patterns: (r.patterns || []).slice(0, 4), evidence_sample: (r.evidence || []).slice(0, 6) }; } } catch {}
-      // STEP 2 - frame the onboarding context (this becomes the message Aura reaches out with)
-      const industryLine = snapshot
-        ? `Aura already holds a live picture of the ${ob.industry} industry (${snapshot.evidence_sample.length}+ grounded data points, patterns tracked). ${ob.company} sits inside that picture - and Aura can show ${ob.company} exactly where they stand and where the opportunity is.`
-        : `Aura is building a live picture of the ${ob.industry} industry that ${ob.company} sits inside.`;
-      const context = (ob.company_context ? ob.company_context + " " : "") + industryLine + (ob.value ? " " + ob.value : "");
-      // STEP 3 - reach out (mint doorway + email the clickable link; the TAP creates the PTA)
-      const reachPayload = { context: context.slice(0, 900), name: ob.company, email: ob.email,
-        subject: ob.subject || (`${ob.company}: Aura sees your whole ${ob.industry} industry`),
-        via: "email", dest: ob.dest || "/", identity: "email:" + String(ob.email).toLowerCase().trim() };
-      const reach = await processCommand("REACH_OUT " + JSON.stringify(reachPayload), env, true);
-      const rp = (reach && reach.payload) ? reach.payload : reach;
-      if (!rp || !rp.ok) return { cmd: "ONBOARD_INDUSTRY", payload: { ok: false, error: "reach-out failed: " + ((rp && rp.error) || "unknown"), snapshot } };
-      // record the onboarding attempt so the chain is trackable
-      const obId = "onboard_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 5);
-      try { await env.AURA_KV.put("onboard:" + obId, JSON.stringify({ id: obId, industry: ob.industry, company: ob.company, email: ob.email, domain, lead_id: rp.lead_id, token: rp.token, doorway: rp.doorway, snapshot_shown: !!snapshot, status: "reached_out", created: new Date().toISOString() })).catch(() => {}); } catch {}
-      return { cmd: "ONBOARD_INDUSTRY", payload: { ok: true, onboard_id: obId, industry: ob.industry, company: ob.company,
-        industry_snapshot: snapshot || "(no depot data for this domain yet)",
-        message_framed: industryLine,
-        reached_out: { emailed: rp.emailed, doorway: rp.doorway, lead_id: rp.lead_id },
-        next: "The email is on its way to " + ob.email + ". WHEN THE LINK IS CLICKED, the token redeems into a REAL PTA for " + ob.company + " (the tap = consent = Permission To Approach). After the PTA is born, continue the chain: ONBOARD_CONTINUE " + obId + " (shows value, runs SecureSpend test payment, and demonstrates their people getting their own PTAs).",
-        note: "Step 1-3 done: industry snapshot pulled, company framed inside it, real clickable doorway emailed. The PTA is born on click - exactly as PTA works." } };
-    }
-
-    case "ONBOARD_CONTINUE": {
-      // Continues the chain AFTER the PTA is born from the click: confirms the PTA, runs a SecureSpend
-      // test payment, and demonstrates a second user coming in under the company (their people getting
-      // their own PTAs - the seat model in embryo). Read-mostly demo of the downstream flow.
-      //   ONBOARD_CONTINUE <onboard_id>
-      if (!isOp) return { cmd: "ONBOARD_CONTINUE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      const ocId = rest.trim();
-      let rec = null; try { const raw = await env.AURA_KV.get("onboard:" + ocId); if (raw) rec = JSON.parse(raw); } catch {}
-      if (!rec) return { cmd: "ONBOARD_CONTINUE", payload: { ok: false, error: "no onboarding " + ocId } };
-      // check whether the PTA was born yet (lead redeemed)
-      let ptaBorn = false, companyPta = null;
-      try {
-        const db = env.AURA_MEMORY;
-        const row = await db.prepare("SELECT from_id FROM pta_edges WHERE to_id=? AND edge_type='connected_to' LIMIT 1").bind("pta_aura").first().catch(() => null);
-        // simpler: look for a person entity carrying this identity
-        const ent = await db.prepare("SELECT id FROM pta_entities WHERE metadata LIKE ? LIMIT 1").bind("%" + rec.email + "%").first().catch(() => null);
-        if (ent && ent.id) { ptaBorn = true; companyPta = ent.id; }
-      } catch {}
-      return { cmd: "ONBOARD_CONTINUE", payload: { ok: true, onboard_id: ocId, company: rec.company, industry: rec.industry,
-        pta_status: ptaBorn ? { born: true, pta_id: companyPta, note: "The company's PTA exists - the click created it." } : { born: false, note: "PTA not yet born - the onboarding link hasn't been clicked. Click the email link first, then run this again." },
-        chain_next: ptaBorn
-          ? { value_shown: "Aura shows " + rec.company + " their position in the " + rec.industry + " industry + the opportunity engine.", payment: "Run SecureSpend in test mode: AURA_PAY_INTENT (test) against this PTA.", seats: "Their people each get their own PTA under the company - PTA_CREATE per user, linked to " + companyPta + ". Seat counts become the pricing unit later." }
-          : "Waiting on the click to birth the PTA.",
-        note: ptaBorn ? "PTA confirmed born. The chain can continue: value -> payment -> their team's PTAs." : "Click the emailed link to birth the PTA, then re-run ONBOARD_CONTINUE." } };
     }
 
     case "REACH_OUT": {

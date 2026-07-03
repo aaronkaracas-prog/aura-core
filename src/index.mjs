@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.449-2026-07-03";
+const BUILD = "aura-core-v4.9.450-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1283,7 +1283,50 @@ async function processCommand(line, env, isOp) {
           return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "analyze", term, question, matched_blocks: ctx.filter(l => l === "---").length, answer } };
         } catch (e) { return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Analyze failed: " + e.message } }; }
       }
-      return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Usage: AURA_READ_SELF GREP <term> | SECTION <start> <end> | ANALYZE <term> ::: <question> | STAT" } };
+      if (mode === "CAPABILITIES" || mode === "CAPS") {
+        // SELF-KNOWLEDGE: Aura reads her OWN command handlers from her real source and reasons about
+        // what she can actually do RIGHT NOW - generated fresh from code, never a stale note, never
+        // parroted. This is capability-awareness in her operating system: she knows herself by reading
+        // herself. Extract every case "X" handler + the comment above it (the intent), then reason.
+        //   AURA_READ_SELF CAPABILITIES            -> full self-generated capability picture
+        //   AURA_READ_SELF CAPABILITIES <focus>    -> reason about a specific area (e.g. onboarding)
+        const focus = rsRest.slice(rsArgs[0].length).trim();
+        // pull each handler with a short comment context above it
+        const handlers = [];
+        for (let i = 0; i < srcLines.length; i++) {
+          const m = srcLines[i].match(/^\s*case "([A-Z][A-Z0-9_]+)":/);
+          if (m) {
+            // grab up to 3 comment lines immediately above as the intent
+            const intent = [];
+            for (let j = i - 1; j >= 0 && j >= i - 4; j--) {
+              const c = srcLines[j].trim();
+              if (c.startsWith("//")) intent.unshift(c.replace(/^\/\/\s?/, ""));
+              else if (c.startsWith("case ")) continue;
+              else break;
+            }
+            handlers.push({ cmd: m[1], intent: intent.join(" ").slice(0, 200) });
+          }
+        }
+        // dedupe by cmd (fallthrough cases share a body)
+        const seenC = new Set(); const uniq = [];
+        for (const h of handlers) { if (seenC.has(h.cmd)) continue; seenC.add(h.cmd); uniq.push(h); }
+        const apiKey2 = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+        if (!apiKey2) return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "capabilities", worker, handler_count: uniq.length, handlers: uniq, note: "Raw handler list (brain not configured for reasoning pass)." } };
+        const capList = uniq.map(h => h.cmd + (h.intent ? " - " + h.intent : "")).join("\n").slice(0, 22000);
+        const sysCap = "You are Aura, reading your OWN command handlers from your real source code to understand what you can actually do RIGHT NOW. You are given the list of your live command cases with a short intent comment for each. Reason about them like an engineer describing their own system honestly: group them into real capability areas, and for each area state in plain present-tense what you CAN do (e.g. \"I can onboard any business autonomously\", \"I can ingest any data on demand and keep it\"). Ground ONLY in the handlers shown - do not invent capabilities not present. If asked about a specific focus, concentrate there. This is self-knowledge, not marketing: be accurate, concrete, and honest about what exists. Return prose grouped by capability area.";
+        const usrCap = (focus ? ("FOCUS: " + focus + "\n\n") : "") + "MY LIVE COMMAND HANDLERS (" + uniq.length + " total):\n" + capList;
+        try {
+          const r = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST", headers: { "x-api-key": apiKey2, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 1800, system: sysCap, messages: [{ role: "user", content: usrCap }] })
+          });
+          const j = await r.json();
+          const answer = j && j.content && j.content[0] && j.content[0].text ? j.content[0].text : null;
+          if (!answer) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Brain returned no answer", raw: JSON.stringify(j).slice(0, 400) } };
+          return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "capabilities", worker, handler_count: uniq.length, focus: focus || null, capabilities: answer, note: "Self-generated from " + uniq.length + " live handlers in my own source - current by construction, not a stored note." } };
+        } catch (e) { return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Capabilities reasoning failed: " + e.message } }; }
+      }
+      return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Usage: AURA_READ_SELF GREP <term> | SECTION <start> <end> | ANALYZE <term> ::: <question> | CAPABILITIES [focus] | STAT" } };
     }
 
     case "INDEX_AUDIT": {

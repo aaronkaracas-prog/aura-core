@@ -1,0 +1,1 @@
+{"op":"seed","pta":"nobu","kind":"foh","items":[{"table":1,"state":"seated","party":2},{"table":3,"state":"seated","guest":"Maria","party":4},{"table":5,"state":"open"},{"table":9,"state":"reserved","guest":"Chen","time":"7:45"},{"table":12,"state":"seated","party":4},{"table":14,"state":"reserved","guest":"Ken","time":"8:30"},{"table":20,"state":"seated","party":6}]}

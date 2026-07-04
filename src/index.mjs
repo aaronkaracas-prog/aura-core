@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.458-2026-07-03";
+const BUILD = "aura-core-v4.9.459-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -10294,6 +10294,58 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       return { cmd: "ROOM", payload: { ok: false, error: "unknown ROOM op: " + rmOp } };
     }
 
+    case "ENTITLE": {
+      // PER-PTA ENTITLEMENT ENGINE (v4.9.459) - the keystone of the monetization funnel. For any asset +
+      // visitor PTA it tracks: free looks used, the free limit, whether they've PAID, and their tier.
+      // The see-once GATE reads it (ENTITLE USE); pay-to-unlock WRITES it (ENTITLE PAY, after a real
+      // SECURESPEND_CHARGE succeeds). Owner/operator bypasses the gate - this governs VISITORS.
+      // Storage: KV entitle:<asset>:<pta> = {asset,pta,free_used,free_limit,paid,tier,paid_at,updated}.
+      //   ENTITLE GET   <asset> <pta>          -> current record (defaults if none)
+      //   ENTITLE USE   <asset> <pta>          -> consume one free look; {allowed,remaining,reason}. Paid=always allowed.
+      //   ENTITLE PAY   <asset> <pta> [tier]   -> mark paid+tier (call after a real charge)
+      //   ENTITLE SET   <asset> <pta> <json>   -> merge fields (e.g. {"free_limit":5})
+      //   ENTITLE RESET <asset> <pta>          -> wipe to default (test-data reset)
+      if (!isOp) return { cmd: "ENTITLE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const enParts = (rest || "").trim().split(/\s+/);
+      const enOp = (enParts[0] || "").toUpperCase();
+      const enAsset = (enParts[1] || "").toLowerCase();
+      const enPta = enParts[2] || "";
+      if (!enOp || !enAsset || !enPta) return { cmd: "ENTITLE", payload: { ok: false, error: "usage: ENTITLE <GET|USE|PAY|SET|RESET> <asset> <pta> [...]" } };
+      const enKey = "entitle:" + enAsset + ":" + enPta;
+      const enDefault = { asset: enAsset, pta: enPta, free_used: 0, free_limit: 3, paid: false, tier: null, paid_at: null, updated: Date.now() };
+      let enDoc = null; try { const raw = await env.AURA_KV.get(enKey); if (raw) enDoc = JSON.parse(raw); } catch {}
+      if (!enDoc) enDoc = Object.assign({}, enDefault);
+      const enRest = (rest || "").trim().replace(new RegExp("^" + enOp + "\\s+" + enAsset.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s+" + enPta.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*", "i"), "");
+      const enSave = async () => { enDoc.updated = Date.now(); try { await env.AURA_KV.put(enKey, JSON.stringify(enDoc)); } catch {} };
+
+      if (enOp === "GET") {
+        return { cmd: "ENTITLE", payload: { ok: true, entitlement: enDoc, remaining: enDoc.paid ? null : Math.max(0, enDoc.free_limit - enDoc.free_used) } };
+      }
+      if (enOp === "USE") {
+        if (enDoc.paid) return { cmd: "ENTITLE", payload: { ok: true, allowed: true, paid: true, reason: "paid", entitlement: enDoc } };
+        if (enDoc.free_used < enDoc.free_limit) {
+          enDoc.free_used += 1; await enSave();
+          return { cmd: "ENTITLE", payload: { ok: true, allowed: true, paid: false, remaining: Math.max(0, enDoc.free_limit - enDoc.free_used), reason: "free_look", entitlement: enDoc } };
+        }
+        return { cmd: "ENTITLE", payload: { ok: true, allowed: false, paid: false, remaining: 0, reason: "free_exhausted", free_used: enDoc.free_used, free_limit: enDoc.free_limit, entitlement: enDoc } };
+      }
+      if (enOp === "PAY") {
+        const enTier = enParts[3] || "paid";
+        enDoc.paid = true; enDoc.tier = enTier; enDoc.paid_at = Date.now(); await enSave();
+        return { cmd: "ENTITLE", payload: { ok: true, paid: true, tier: enDoc.tier, entitlement: enDoc } };
+      }
+      if (enOp === "SET") {
+        let enFields = {}; try { enFields = JSON.parse(enRest); } catch { return { cmd: "ENTITLE", payload: { ok: false, error: "SET needs valid JSON" } }; }
+        Object.assign(enDoc, enFields); await enSave();
+        return { cmd: "ENTITLE", payload: { ok: true, entitlement: enDoc } };
+      }
+      if (enOp === "RESET") {
+        enDoc = Object.assign({}, enDefault); enDoc.updated = Date.now(); try { await env.AURA_KV.put(enKey, JSON.stringify(enDoc)); } catch {}
+        return { cmd: "ENTITLE", payload: { ok: true, reset: true, entitlement: enDoc } };
+      }
+      return { cmd: "ENTITLE", payload: { ok: false, error: "unknown ENTITLE op: " + enOp } };
+    }
+
     case "PTA_TALK": {
       // THE CONVERSATION TURN. A person talks to Aura in the console; she reads who they are and
       // the conversation so far (PTA identity + timeline = memory), responds warmly with the goal
@@ -18908,7 +18960,7 @@ function openAlbum(idx){
       // AND character breakdown, because each tiny fragment lost the whole picture). A real COMMAND
       // BATCH has EVERY non-empty line starting with a known command verb. If ANY line is prose, the
       // whole body is a single human message.
-      const KNOWN_CMD_VERBS = /^(SETKV|GETKV|LISTKV|DELKV|PATCHKV|PING|HOST|DOMAIN_LAUNCH|DOMAIN_STATUS|DOMAIN_DIAGNOSE|FETCH_PLACES|WORLD_MAP|PTA_[A-Z_]+|COMMS|WORKFLOW|EMAIL_SEND|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|TWILIO_INTEL|TWILIO[A-Z_]*|A2P_[A-Z]+|SMS_[A-Z]+|CAPABILITY|INDUSTRY|BUSINESS_STATE|CF_API|AURA_[A-Z_]+|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|SHOW_IT|SHOWIT|GENERATE_PAGE|DEPLOY_[A-Z]+|ROUTE_[A-Z_]+|GETKV|WEB_SEARCH|NEWS_QUERY|OIL_PRICE|MARINE_WX|AIS_QUERY|LOOP_PROBE|SOURCE_PROBE|DEPOT_[A-Z_]+|ANALYST_BRIEF|SITUATION_[A-Z_]+|FLEET_[A-Z_]+|EVENT_[A-Z_]+|OUTCOME_[A-Z_]+|INGEST|INGEST_[A-Z_]+|AIS_[A-Z_]+)\b/i;
+      const KNOWN_CMD_VERBS = /^(SETKV|GETKV|LISTKV|DELKV|PATCHKV|PING|HOST|DOMAIN_LAUNCH|DOMAIN_STATUS|DOMAIN_DIAGNOSE|FETCH_PLACES|WORLD_MAP|PTA_[A-Z_]+|COMMS|WORKFLOW|EMAIL_SEND|MERCURY_BALANCE|STRIPE_BALANCE|RESOURCE_STATUS|SERVICE_STATUS|RAW_COST|TWILIO_INTEL|TWILIO[A-Z_]*|A2P_[A-Z]+|SMS_[A-Z]+|CAPABILITY|INDUSTRY|BUSINESS_STATE|CF_API|AURA_[A-Z_]+|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|SHOW_IT|SHOWIT|GENERATE_PAGE|DEPLOY_[A-Z]+|ROUTE_[A-Z_]+|GETKV|WEB_SEARCH|NEWS_QUERY|OIL_PRICE|MARINE_WX|AIS_QUERY|LOOP_PROBE|SOURCE_PROBE|DEPOT_[A-Z_]+|ANALYST_BRIEF|SITUATION_[A-Z_]+|FLEET_[A-Z_]+|EVENT_[A-Z_]+|OUTCOME_[A-Z_]+|INGEST|INGEST_[A-Z_]+|AIS_[A-Z_]+|ROOM|ENTITLE)\b/i;
       const _rawLines = body.split("\n").map(l => l.trim()).filter(Boolean);
       const _looksLikeCommandBatch = _rawLines.length > 0 && _rawLines.every(l => KNOWN_CMD_VERBS.test(l));
       const _isProseDump = !_VALUE_BEARING.includes(_firstWord) && _rawLines.length > 1 && !_looksLikeCommandBatch;

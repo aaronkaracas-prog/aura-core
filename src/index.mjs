@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.471-2026-07-03";
+const BUILD = "aura-core-v4.9.472-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1942,6 +1942,72 @@ async function processCommand(line, env, isOp) {
         runway: flResults,
         note: flReal.length ? "LANDFIRE 2025 Scott & Burgan FBFM40 + canopy, sampled at the fire and along the advance bearing (the fuel the fire is heading INTO). Fire point may read NoData if already burned - the ahead-of-front samples are the actionable ones." : "All samples NoData - the fire point and near-field are already burned or non-fuel; extend the bearing/range or the front has outrun mapped fuels.",
         source: "usgs_landfire_lf2025"
+      } };
+    }
+
+    case "FIRE_EVAC": {
+      // EVACUATION / SAFETY LAYER (v4.9.472). The human-safety picture around a fire: (1) NWS active
+      // warnings/advisories by area (keyless, live - fire warnings, red flag, evacuation-language alerts);
+      // (2) road closures via state DOT (Utah 511 - wired, fires when secret:udot_511 is set). HONEST
+      // SCOPE: formal county evacuation ORDERS (sheriff/Genasys/Watch Duty) have no clean public API - that
+      // is an aggregator/partnership door, flagged not faked. NWS is queried by AREA, not just the point.
+      //   FIRE_EVAC <lat> <lon> [state]   e.g. FIRE_EVAC 38.29 -112.49 UT
+      if (!isOp) return { cmd: "FIRE_EVAC", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const evParts = line.replace(/^FIRE_EVAC\s+/i, "").trim().split(/\s+/);
+      let evLat = parseFloat(evParts[0]), evLon = parseFloat(evParts[1]);
+      let evState = (evParts[2] || "").toUpperCase();
+      if (isNaN(evLat) || isNaN(evLon)) {
+        const evReg = (evParts[0] || "").toLowerCase();
+        const evMap = { cottonwood: [38.29, -112.49, "UT"], malibu: [34.01, -118.76, "CA"] };
+        if (evMap[evReg]) { evLat = evMap[evReg][0]; evLon = evMap[evReg][1]; evState = evState || evMap[evReg][2]; }
+        else return { cmd: "FIRE_EVAC", payload: { ok: false, error: "Usage: FIRE_EVAC <lat> <lon> [state]" } };
+      }
+      // (1) NWS active alerts - query the containing AREA (point returns the zone's alerts too)
+      let warnings = { ok: false, alerts: [] };
+      try {
+        const wurl = "https://api.weather.gov/alerts/active?point=" + evLat + "," + evLon;
+        const r = await fetchWithTimeout(wurl, { headers: { "User-Agent": "FireOS/1.0 (aura)", "Accept": "application/geo+json" } }, 8000);
+        if (r.ok) {
+          const d = await r.json();
+          const feats = d.features || [];
+          warnings = { ok: true, count: feats.length, alerts: feats.map(f => {
+            const pr = f.properties || {};
+            return { event: pr.event, severity: pr.severity, urgency: pr.urgency, headline: pr.headline, area: pr.areaDesc, effective: pr.effective, expires: pr.expires,
+              evacuation_language: /evacuat|shelter|leave|flee|life.?threat/i.test((pr.description || "") + " " + (pr.headline || "")),
+              instruction: (pr.instruction || "").slice(0, 300) };
+          }) };
+        } else { warnings = { ok: false, error: "nws http " + r.status }; }
+      } catch (e) { warnings = { ok: false, error: String(e && e.message || e) }; }
+      // (2) Road closures - Utah DOT 511 (fires when a free key is present)
+      let closures = { ok: false, source: "udot_511", note: "Add a free UDOT 511 developer key: register at prod-ut.ibi511.com/developers, then SETKV secret:udot_511 <key>. Wired and waiting." };
+      const udotKey = await env.AURA_KV.get("secret:udot_511").catch(() => null);
+      if (udotKey && evState === "UT") {
+        try {
+          const curl2 = "https://prod-ut.ibi511.com/api/v2/get/event?key=" + encodeURIComponent(udotKey) + "&format=json";
+          const r = await fetchWithTimeout(curl2, { headers: { "User-Agent": "FireOS/1.0" } }, 8000);
+          if (r.ok) {
+            const d = await r.json();
+            const evs = Array.isArray(d) ? d : (d.events || []);
+            const near = evs.filter(e => {
+              const la = e.Latitude, lo = e.Longitude;
+              if (la == null || lo == null) return false;
+              const dist = Math.sqrt(Math.pow((la - evLat) * 111, 2) + Math.pow((lo - evLon) * 111 * Math.cos(evLat * Math.PI / 180), 2));
+              return dist <= 80; // within 80km of the fire
+            }).map(e => ({ road: e.RoadwayName || e.Location, description: (e.Description || "").slice(0, 240), full_closure: e.IsFullClosure, county: e.County, lat: e.Latitude, lon: e.Longitude, updated: e.LastUpdated }));
+            closures = { ok: true, source: "udot_511_live", count: near.length, closures: near.slice(0, 25) };
+          } else { closures = { ok: false, source: "udot_511", error: "udot http " + r.status }; }
+        } catch (e) { closures = { ok: false, source: "udot_511", error: String(e && e.message || e) }; }
+      } else if (udotKey) {
+        closures = { ok: false, source: "udot_511", note: "UDOT 511 key present but this state (" + (evState || "?") + ") is not wired yet - only Utah so far. Other states need their own DOT feed." };
+      }
+      return { cmd: "FIRE_EVAC", payload: {
+        ok: true,
+        fire_point: { lat: evLat, lon: evLon }, state: evState || null,
+        warnings: warnings,
+        road_closures: closures,
+        evacuation_orders: { source: "none_public", note: "Formal county/sheriff evacuation ORDERS have no clean public API (fragmented across Genasys/Zonehaven/CodeRED/Watch Duty). This is a partnership/aggregator door, not a code gap. NWS warnings above carry official evacuation LANGUAGE when issued; the formal order layer is intentionally not faked." },
+        note: "Human-safety layer: NWS warnings (live, keyless, by area) + state DOT road closures (Utah live w/ key) + honest evacuation-order gap. Empty warnings = no active NWS alert at this area right now (correct, not an error).",
+        source: "nws_plus_dot"
       } };
     }
 

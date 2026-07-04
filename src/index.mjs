@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.460-2026-07-03";
+const BUILD = "aura-core-v4.9.461-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -18174,6 +18174,33 @@ function openAlbum(idx){
       } catch (e) {
         return new Response(JSON.stringify({ ok: false, error: String(e && e.message || e) }), { status: 500, headers: hCors });
       }
+    }
+
+    if (url.pathname === "/home/situation") {
+      // /home/situation (v4.9.461) - HTTP surface over the SITUATION engine for the SituationTracker UI.
+      // GET /home/situation?topic=<topic>[&fresh=1] -> the real SITUATION_BRIEF for that topic, cached
+      // ~10min so demo situations load instantly. SITUATION_BRIEF self-pulls, so this is one call.
+      // Same operator gate + CORS as /home/room. This is the value surface the whole funnel sells.
+      const hCors = { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, content-type", "access-control-allow-methods": "GET, OPTIONS" };
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: hCors });
+      const okOp = await verifyOperator(request, env);
+      if (!okOp) return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), { status: 401, headers: hCors });
+      const topic = (url.searchParams.get("topic") || "").toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 60);
+      if (!topic) return new Response(JSON.stringify({ ok: false, error: "topic required" }), { status: 400, headers: hCors });
+      const fresh = url.searchParams.get("fresh") === "1";
+      const cacheKey = "situation:brief:" + topic;
+      const MAXAGE = 10 * 60 * 1000;
+      if (!fresh) {
+        try { const c = await env.AURA_KV.get(cacheKey); if (c) { const cj = JSON.parse(c); if (cj && cj._cached_at && (Date.now() - cj._cached_at < MAXAGE)) { cj.cached = true; return new Response(JSON.stringify(cj), { headers: hCors }); } } } catch {}
+      }
+      try {
+        const r = await processCommand("SITUATION_BRIEF " + topic, env, true);
+        const p = (r && r.payload) ? r.payload : r;
+        if (!p || !p.ok) return new Response(JSON.stringify(p || { ok: false, error: "brief failed" }), { status: 400, headers: hCors });
+        const out = { ok: true, topic: topic, label: p.label || topic, brief: p.brief || {}, sources: p.sources || {}, pulled_at: p.pulled_at || null, briefed_at: p.briefed_at || null, provider: p.provider || null, cached: false, _cached_at: Date.now() };
+        try { await env.AURA_KV.put(cacheKey, JSON.stringify(out), { expirationTtl: 3600 }); } catch {}
+        return new Response(JSON.stringify(out), { headers: hCors });
+      } catch (e) { return new Response(JSON.stringify({ ok: false, error: String(e && e.message || e) }), { status: 500, headers: hCors }); }
     }
 
     // ===== PUBLIC PLAID ENDPOINTS =====

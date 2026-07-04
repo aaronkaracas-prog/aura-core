@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.467-2026-07-03";
+const BUILD = "aura-core-v4.9.468-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -2528,67 +2528,63 @@ async function processCommand(line, env, isOp) {
     }
 
     case "FIRE_COMMS": {
-      // THE OPERATIONAL / COMMS LAYER (v4.9.402). FIRE_OFFICIAL gives the incident HEADLINE (name/size/
-      // containment). FIRE_COMMS gives the OPERATIONAL picture: national/GACC resource commitment
-      // (ActiveResources) + values at risk (ValuesAtRisk), from the registry-verified public NIFC org.
-      // HONEST GRANULARITY: these are REGIONAL/NATIONAL (by GACC) resource + values-at-risk summaries, NOT
-      // the per-incident per-unit roster (that is the credentialed NIFS layer - parked, see
-      // notes:barrier:fire_comms). All keyless, public, ~15min updates. Endpoints from notes:data:public_sources.
-      //   FIRE_COMMS [gacc]   optional GACC filter (e.g. GB=Great Basin, NW, SW, RM, CA...)
+      // OPERATIONAL / COMMS LAYER (v4.9.468 - repaired to live NIFC schema). The public coordinator's
+      // equation: what's COMMITTED (SIT-209 per-GACC rollup) vs what's AVAILABLE (Irwin available-by-type:
+      // crews / air tankers / helicopters). Keyless, public. NOT the per-incident per-unit roster (which
+      // crew/engine on THIS fire) - that is the credentialed NIFS layer, still partnership-gated.
+      //   FIRE_COMMS [gacc]   e.g. GB/GBCC (Great Basin), CA, NW, SW, RM, EA, SA, NR, AK
       if (!isOp) return { cmd: "FIRE_COMMS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      const fcGacc = (line.replace(/^FIRE_COMMS\s*/i, "").trim() || "").toUpperCase();
+      const fcIn = (line.replace(/^FIRE_COMMS\s*/i, "").trim() || "").toUpperCase();
+      const fcMap = { GB: "GBCC", GBCC: "GBCC", NR: "NRCC", NRCC: "NRCC", EA: "EACC", EACC: "EACC", RM: "RMCC", RMCC: "RMCC", NW: "NWCC", NWCC: "NWCC", SA: "SACC", SACC: "SACC", SW: "SWCC", SWCC: "SWCC", AK: "AICC", AI: "AICC", AICC: "AICC", SOCAL: "OSCC", OSCC: "OSCC", NOCAL: "ONCC", ONCC: "ONCC", CA: "OSCC", NIC: "NICC", NICC: "NICC" };
+      const fcGacc = fcMap[fcIn] || (fcIn.endsWith("CC") ? fcIn : "");
       const fcBase = "https://services3.arcgis.com/T4QMspbfLg3qTGWY/arcgis/rest/services";
-      const fcPick = (a, ...names) => { for (const n of names) { if (a[n] != null && a[n] !== "") return a[n]; } return null; };
-      const fcFetch = async (svc) => {
+      const fcQuery = async (svc, gaccField) => {
         try {
-          const where = fcGacc ? encodeURIComponent(`GACC='${fcGacc}'`) : "1%3D1";
-          const url = `${fcBase}/${svc}/FeatureServer/0/query?where=${where}&outFields=*&returnGeometry=false&f=json`;
+          const where = fcGacc ? encodeURIComponent(gaccField + "='" + fcGacc + "'") : "1%3D1";
+          const url = fcBase + "/" + svc + "/FeatureServer/0/query?where=" + where + "&outFields=*&returnGeometry=false&f=json";
           const r = await fetchWithTimeout(url, { headers: { "User-Agent": "FireOS/1.0" } }, 8000);
-          if (!r.ok) return { ok: false, error: `http ${r.status}` };
+          if (!r.ok) return { ok: false, error: "http " + r.status };
           const d = await r.json();
           if (d.error) return { ok: false, error: JSON.stringify(d.error).slice(0, 150) };
           return { ok: true, rows: (d.features || []).map(f => f.attributes || {}) };
-        } catch (e) { return { ok: false, error: String(e && e.message || e), timed_out: /timeout/i.test(String(e)) }; }
+        } catch (e) { return { ok: false, error: String(e && e.message || e) }; }
       };
-      const [resR, varR, incR] = await Promise.all([
-        fcFetch("ActiveResources_Irwin_Filtered_SumStatPivot"),
-        fcFetch("ValuesAtRisk_Irwin_Filtered_SumStatPivot"),
-        fcFetch("Incidents_Overview_Incidents_ALL_Incidents_Merged")
+      const fcSumAll = (rows) => rows.reduce((tot, r) => tot + Object.entries(r).reduce((sm, kv) => sm + ((kv[0] !== "OBJECTID" && typeof kv[1] === "number" && kv[1] > 0) ? kv[1] : 0), 0), 0);
+      const [sit, crews, tankers, helis] = await Promise.all([
+        fcQuery("API_SIT209_active_incident_report_sumstats", "GACC_ABBR"),
+        fcQuery("IrwinResources_Available_byType_FireCrews", "GACCAbbr"),
+        fcQuery("IrwinResources_Available_byType_AirTankers", "GACCAbbr"),
+        fcQuery("IrwinResources_Available_byType_Helis", "GACCAbbr")
       ]);
-      // Resource commitment: sum the wildfire-relevant resource counts across returned rows (national or GACC-filtered).
-      let resources = null;
-      if (resR.ok) {
-        const rows = resR.rows;
-        const sumField = (f) => rows.reduce((s, r) => s + (Number(r[f]) || 0), 0);
-        resources = {
-          rows_returned: rows.length,
-          by_gacc: [...new Set(rows.map(r => r.GACC).filter(Boolean))],
-          wildfire_committed: sumField("WF"),
-          prescribed: sumField("RX"),
-          incident_mgmt: sumField("IM"),
-          complex: sumField("CX"),
-          kinds: [...new Set(rows.map(r => r.Kind).filter(Boolean))].slice(0, 20),
-          note: "National/GACC resource inventory by Kind/Category/incident-type. Aggregate, not per-incident."
+      let committed = null;
+      if (sit.ok && sit.rows.length) {
+        const row = fcGacc ? (sit.rows.find(r => r.GACC_ABBR === fcGacc) || null) : null;
+        committed = (fcGacc && row) ? {
+          gacc: row.GACC_ABBR, incidents: row.Incidents, acres: row.SUM_DISP_INC_AREA,
+          crews: row.SUM_CREW, engines: row.SUM_ENGINES, helicopters: row.SUM_HELICOPTERS,
+          total_personnel: row.SUM_TOTAL_PERSONNEL, personnel_change: row.CHANGE_TOTAL_PERSONNEL
+        } : {
+          national: true, gaccs_reporting: sit.rows.length,
+          total_incidents: sit.rows.reduce((sm, r) => sm + (r.Incidents || 0), 0),
+          total_personnel: sit.rows.reduce((sm, r) => sm + (r.SUM_TOTAL_PERSONNEL || 0), 0),
+          by_gacc: sit.rows.map(r => ({ gacc: r.GACC_ABBR, incidents: r.Incidents, personnel: r.SUM_TOTAL_PERSONNEL, change: r.CHANGE_TOTAL_PERSONNEL })).sort((a, b) => (b.personnel || 0) - (a.personnel || 0)).slice(0, 12)
         };
       }
-      let values_at_risk = null;
-      if (varR.ok) {
-        values_at_risk = { rows_returned: varR.rows.length, by_gacc: [...new Set(varR.rows.map(r => r.GACC).filter(Boolean))],
-          sample_fields: varR.rows[0] ? Object.keys(varR.rows[0]).slice(0, 25) : [], note: "Values-at-risk summary (IRWIN-filtered)." };
-      }
-      let incidents_overview = null;
-      if (incR.ok) {
-        incidents_overview = { count: incR.rows.length, sample_fields: incR.rows[0] ? Object.keys(incR.rows[0]).slice(0, 25) : [] };
-      }
-      const sources_ok = [resR, varR, incR].filter(x => x.ok).length;
+      const available = {
+        crews: crews.ok ? fcSumAll(crews.rows) : null,
+        air_tankers: tankers.ok ? fcSumAll(tankers.rows) : null,
+        helicopters: helis.ok ? fcSumAll(helis.rows) : null
+      };
+      const reached = [sit, crews, tankers, helis].filter(x => x.ok).length;
       return { cmd: "FIRE_COMMS", payload: {
-        ok: sources_ok > 0,
-        gacc_filter: fcGacc || "ALL",
-        sources_reached: `${sources_ok}/3`,
-        source_errors: { resources: resR.ok ? null : resR.error, values_at_risk: varR.ok ? null : varR.error, incidents: incR.ok ? null : incR.error },
-        resources, values_at_risk, incidents_overview,
-        granularity_note: "PUBLIC operational layer: national/GACC resource commitment + values at risk. The per-incident per-unit roster (which crew/engine/aircraft on THIS fire) is the credentialed NIFS layer - parked, needs NIFC partnership (notes:barrier:fire_comms).",
-        source: "nifc_public_arcgis"
+        ok: reached > 0,
+        gacc: fcGacc || "NATIONAL",
+        sources_reached: reached + "/4",
+        committed: committed,
+        available: available,
+        source_errors: { sit209: sit.ok ? null : sit.error, crews: crews.ok ? null : crews.error, tankers: tankers.ok ? null : tankers.error, helis: helis.ok ? null : helis.error },
+        note: "Live public coordinator layer: COMMITTED (SIT-209 per-GACC: incidents/acres/crews/engines/helis/personnel + personnel change) vs AVAILABLE (Irwin available-by-type: crews, air tankers, helicopters). The per-incident per-unit roster (which crew/engine on THIS fire) is the credentialed NIFS layer - still partnership-gated (notes:barrier:fire_comms).",
+        source: "nifc_public_arcgis_live"
       } };
     }
 

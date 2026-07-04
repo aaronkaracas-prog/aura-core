@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.466-2026-07-03";
+const BUILD = "aura-core-v4.9.467-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -6358,6 +6358,31 @@ async function processCommand(line, env, isOp) {
         summary: sit.summary || ing.knowledge || "",
         provenance: { news_pulled: ing.news_pulled || 0, specialist_used: ing.specialist_used || null, depot_pulled: !!ing.depot_pulled, sources: (ing.sources || []).slice(0, 12) }
       };
+      // v4.9.467 - LIVE OPERATIONAL LAYER. From the reasoned domain + location, auto-fire the connected
+      // live feeds (AIS vessels, NIFC fire board, marine/wind) and attach the RAW real-time data as
+      // situation.live_ops. This is raw feed data, NOT summarized into fact_set - the feed IS the source, so
+      // no model can invent a citation here (it also structurally closes the fabricated-source crack).
+      // maritime -> vessels + wind; wildfire -> live fire board + wind; anything else -> no ops feeds (correct).
+      const sbDomStr = ((situation.domains || []).join(" ") + " " + (ing.specialist_used || "") + " " + sbTopic).toLowerCase();
+      const sbIsMaritime = /maritim|shipping|vessel|naval|strait|\bport\b|tanker|hormuz/.test(sbDomStr);
+      const sbIsFire = /wildfire|fire-active|\bfire\b|\bblaze\b|wildland/.test(sbDomStr);
+      const sbLat = (situation.location && typeof situation.location.lat === "number") ? situation.location.lat : null;
+      const sbLng = (situation.location && typeof situation.location.lng === "number") ? situation.location.lng : null;
+      const sbPlaceStr = (sbTopic + " " + ((situation.location && situation.location.place) || "")).toLowerCase();
+      const liveOps = {};
+      const opsCalls = [];
+      if (sbIsMaritime && sbLat != null && sbLng != null) {
+        opsCalls.push((async () => { try { const r = await processCommand("AIS_QUERY " + (sbLat - 1) + " " + (sbLng - 1) + " " + (sbLat + 1) + " " + (sbLng + 1), env, true); const pp = r && r.payload ? r.payload : r; if (pp && pp.ok && pp.vessel_count > 0) liveOps.vessels = { source: pp.source, count: pp.vessel_count, updated: pp.updated, vessels: (pp.vessels || []).slice(0, 20) }; } catch {} })());
+      }
+      if (sbIsFire) {
+        const sbFireRegion = /cottonwood/.test(sbPlaceStr) ? "cottonwood" : /utah/.test(sbPlaceStr) ? "utah" : /(malibu|socal|southern cal|los angeles)/.test(sbPlaceStr) ? "socal" : /california/.test(sbPlaceStr) ? "california" : "west";
+        opsCalls.push((async () => { try { const r = await processCommand("FIRE_OFFICIAL " + sbFireRegion, env, true); const pp = r && r.payload ? r.payload : r; if (pp && pp.ok) liveOps.fires = { source: pp.source, region: pp.region, count: pp.incident_count, largest: pp.largest, incidents: (pp.incidents || []).slice(0, 12), updated: pp.updated }; } catch {} })());
+      }
+      if ((sbIsMaritime || sbIsFire) && sbLat != null && sbLng != null) {
+        opsCalls.push((async () => { try { const r = await processCommand("MARINE_WX " + sbLat + " " + sbLng, env, true); const pp = r && r.payload ? r.payload : r; if (pp && pp.ok) liveOps.weather = { source: "openweather", place: pp.place, conditions: pp.conditions, temp_c: pp.temp_c, wind_ms: pp.wind_ms, wind_gust_ms: pp.wind_gust_ms, wind_deg: pp.wind_deg, visibility_m: pp.visibility_m, pressure: pp.pressure }; } catch {} })());
+      }
+      if (opsCalls.length) { try { await Promise.all(opsCalls); } catch {} }
+      situation.live_ops = Object.keys(liveOps).length ? liveOps : null;
       try { await env.AURA_KV.put("situation:built:" + sbTopic.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 60), JSON.stringify(situation)); } catch {}
       return { cmd: "SITUATION_BUILD", payload: { ok: true, situation: situation } };
     }

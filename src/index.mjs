@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.472-2026-07-03";
+const BUILD = "aura-core-v4.9.473-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -2008,6 +2008,63 @@ async function processCommand(line, env, isOp) {
         evacuation_orders: { source: "none_public", note: "Formal county/sheriff evacuation ORDERS have no clean public API (fragmented across Genasys/Zonehaven/CodeRED/Watch Duty). This is a partnership/aggregator door, not a code gap. NWS warnings above carry official evacuation LANGUAGE when issued; the formal order layer is intentionally not faked." },
         note: "Human-safety layer: NWS warnings (live, keyless, by area) + state DOT road closures (Utah live w/ key) + honest evacuation-order gap. Empty warnings = no active NWS alert at this area right now (correct, not an error).",
         source: "nws_plus_dot"
+      } };
+    }
+
+    case "FIRE_MISSION": {
+      // FIRE_MISSION (v4.9.473) - THE CAPSTONE. Fires the entire live fire-intelligence suite in parallel,
+      // assembles the complete operational picture, and hands it to Aura with the FireOS.world MISSION
+      // (extinguish the fire, protect + evacuate the community, direct crews - where to go, when to run) and
+      // a self-assessment: for THIS real fire with THIS real data, how much of the mission can she accomplish,
+      // how confident per sub-goal, and what is GENUINELY missing. Grounded in the actual pull, not a textbook.
+      //   FIRE_MISSION cottonwood
+      if (!isOp) return { cmd: "FIRE_MISSION", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const fmReg = (line.replace(/^FIRE_MISSION\s+/i, "").trim() || "cottonwood").toLowerCase().split(/\s+/)[0];
+      const fmMap = { cottonwood: { lat: 38.29, lon: -112.49, state: "UT", gacc: "GB", bearing: 300, statefull: "utah" } };
+      const fm = fmMap[fmReg] || { lat: null, lon: null, state: "", gacc: "GB", bearing: 300, statefull: fmReg };
+      const fmRun = async (cmd) => { try { const r = await processCommand(cmd, env, true); return r && r.payload ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
+      const ll = fm.lat != null ? (fm.lat + " " + fm.lon) : "";
+      const calls = {
+        incident_board: fmRun("FIRE_OFFICIAL " + fmReg),
+        perimeter: fmRun("FIRE_PERIMETER " + fmReg),
+        fire_weather: fmRun("FIRE_WEATHER " + fmReg),
+        red_flag_outlook: fmRun("FIRE_OUTLOOK " + fmReg),
+        smoke: fmRun("FIRE_SMOKE " + fmReg),
+        spread_prediction: fmRun("FIRE_PREDICT " + fmReg),
+        trajectory: fmRun("FIRE_TRAJECTORY " + fmReg + " " + fm.state),
+        threatened: fmRun("FIRE_THREATENED " + fmReg),
+        coordination: fmRun("FIRE_COORDINATE " + fm.statefull),
+        resources: fmRun("FIRE_COMMS " + fm.gacc),
+        terrain: ll ? fmRun("FIRE_TERRAIN " + ll) : Promise.resolve({ ok: false, error: "no coords" }),
+        fuels: ll ? fmRun("FIRE_FUELS " + ll + " " + fm.bearing) : Promise.resolve({ ok: false, error: "no coords" }),
+        evacuation: ll ? fmRun("FIRE_EVAC " + ll + " " + fm.state) : Promise.resolve({ ok: false, error: "no coords" }),
+        aircraft: fmRun("AIRCRAFT_QUERY " + fmReg)
+      };
+      const fmKeys = Object.keys(calls);
+      const settled = await Promise.all(fmKeys.map(k => calls[k]));
+      const pull = {};
+      fmKeys.forEach((k, i) => { pull[k] = settled[i]; });
+      const liveCount = fmKeys.filter((k, i) => settled[i] && settled[i].ok).length;
+      const fmTrim = (o) => { let t = ""; try { t = JSON.stringify(o); } catch { t = String(o); } return t.length > 1800 ? t.slice(0, 1800) + "...(trimmed)" : t; };
+      const dossier = fmKeys.map(k => "### " + k.toUpperCase() + "\n" + fmTrim(pull[k])).join("\n\n");
+
+      const fmKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      if (!fmKey) return { cmd: "FIRE_MISSION", payload: { ok: false, error: "no brain key", feeds_reached: liveCount + "/" + fmKeys.length } };
+      const fmModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const fmSys = "You are Aura, the intelligence behind FireOS.world. Your MISSION for this asset: help EXTINGUISH the fire, PROTECT and EVACUATE the community, and connect and DIRECT firefighters on the ground - tell them where to go and when to run. You are handed the COMPLETE live data pull for one real, currently-burning fire (every operational feed FireOS can gather). Assess yourself HONESTLY and GROUNDED IN THIS DATA ONLY - do not invent, do not give a textbook answer, cite the specific data when you make a claim. Structure: (1) MISSION READ - 2-3 sentences, what is actually happening with this fire from the data. (2) WHAT I CAN DO NOW - for each sub-goal (EXTINGUISH support / PROTECT+EVACUATE community / DIRECT crews) state concretely what you can deliver from this data + a confidence 0-1. (3) SPECIFIC DIRECTION - the single most important actionable call you can make right now from this data, with a where and a when. (4) WHAT IS GENUINELY MISSING - ranked, only REAL gaps this data cannot fill (NOT things already present above); for each say what it would unlock. (5) HONEST VERDICT - one line: how ready is FireOS to actually help fight THIS fire, 0-100%, and why. Be rigorous and self-critical; a false 'I can do everything' is worse than an honest limit.";
+      const fmUser = "FIRE: " + fmReg + " (" + (fm.statefull || "") + "). Live feeds reached: " + liveCount + "/" + fmKeys.length + ".\n\nCOMPLETE LIVE PULL:\n\n" + dossier;
+      let assessment = "";
+      try {
+        const d = await callAnthropic(fmKey, { model: fmModel, max_tokens: 2000, system: fmSys, messages: [{ role: "user", content: fmUser.slice(0, 60000) }] });
+        if (d && d.content) for (const b of d.content) if (b.type === "text") assessment += b.text;
+      } catch (e) { assessment = ""; }
+      try { await env.AURA_KV.put("fire:mission:" + fmReg, JSON.stringify({ at: Date.now(), live_count: liveCount, assessment: assessment }), { expirationTtl: 3600 }); } catch {}
+      return { cmd: "FIRE_MISSION", payload: {
+        ok: true, fire: fmReg, feeds_reached: liveCount + "/" + fmKeys.length,
+        mission: "extinguish + protect/evacuate community + direct crews",
+        assessment: assessment || "(brain returned empty)",
+        feeds_status: fmKeys.reduce((a, k, i) => { a[k] = (settled[i] && settled[i].ok) ? "live" : ("gap: " + ((settled[i] && (settled[i].error || settled[i].note)) || "no data").toString().slice(0, 80)); return a; }, {}),
+        source: "fire_mission_v1"
       } };
     }
 

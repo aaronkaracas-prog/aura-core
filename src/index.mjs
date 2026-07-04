@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.474-2026-07-03";
+const BUILD = "aura-core-v4.9.475-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -2106,6 +2106,65 @@ async function processCommand(line, env, isOp) {
         source: "synthesis_v1" };
       try { await env.AURA_KV.put("situation:synthesis:" + syReg, JSON.stringify({ at: Date.now(), synthesis: syn }), { expirationTtl: 3600 }); } catch {}
       return { cmd: "FIRE_SYNTHESIS", payload: out };
+    }
+
+    case "FIRE_LEARN": {
+      // LEARN-LOOP (v4.9.475) - the accountability gap Aura named: FireOS pushes predictions out but never
+      // learns if they were right. This takes the fire's forward-looking calls (spread, containment ETA,
+      // community-in-path) and LOGS each as a FALSIFIABLE prediction into the existing Outcome Ledger, with
+      // a concrete falsifier and a resolve-by horizon - so days later OUTCOME_RESOLVE grades it against
+      // reality and FireOS learns its own track record. Closes prediction -> reality -> correction for fire.
+      //   FIRE_LEARN cottonwood
+      if (!isOp) return { cmd: "FIRE_LEARN", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const flReg = (line.replace(/^FIRE_LEARN\s+/i, "").trim() || "cottonwood").toLowerCase().split(/\s+/)[0];
+      const flState = { cottonwood: "UT", malibu: "CA" }[flReg] || "";
+      const flRun = async (cmd) => { try { const r = await processCommand(cmd, env, true); return r && r.payload ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
+      const [board, traj, threat, pred] = await Promise.all([
+        flRun("FIRE_OFFICIAL " + flReg),
+        flRun("FIRE_TRAJECTORY " + flReg + " " + flState),
+        flRun("FIRE_THREATENED " + flReg),
+        flRun("FIRE_PREDICT " + flReg)
+      ]);
+      // horizon helpers
+      const dayISO = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
+      const preds = [];
+      // 1) containment ETA (from trajectory)
+      if (traj && traj.ok && traj.contained_by && traj.contained_by.est_date) {
+        preds.push({ claim: flReg + " fire reaches full containment on or about " + traj.contained_by.est_date + " (verdict at that point: " + (traj.verdict || "?") + ")", confidence: "Probable", falsifier: "Not fully contained by " + traj.contained_by.est_date + ", or contained materially earlier/later (>3 days off)", horizon: traj.contained_by.est_date });
+      }
+      // 2) community in path (from threatened)
+      if (threat && threat.ok && Array.isArray(threat.in_path) && threat.in_path.length) {
+        const names = threat.in_path.map(x => x.name).join(", ");
+        preds.push({ claim: flReg + " fire's advance keeps " + names + " in the projected path (bearing " + (threat.projected_bearing_deg != null ? threat.projected_bearing_deg + "deg" : "n/a") + ")", confidence: "Possible", falsifier: names + " NOT reached/threatened, or the fire advances toward different communities (bearing shifts >40deg)", horizon: dayISO(3) });
+      }
+      // 3) near-term spread posture (from predict)
+      if (pred && pred.ok) {
+        const rate = pred.rate || (pred.km_per_hr != null ? pred.km_per_hr + " km/hr" : "unknown");
+        preds.push({ claim: flReg + " fire near-term posture is '" + (pred.projection && pred.projection.heading ? String(pred.projection.heading).slice(0, 120) : rate) + "'", confidence: "Possible", falsifier: "Fire makes a major run (>500 acres/day) or fully stalls contrary to this read within 48h", horizon: dayISO(2) });
+      }
+      // 4) current containment snapshot as a checkable baseline (from board)
+      if (board && board.ok && board.largest) {
+        const lg = board.largest;
+        preds.push({ claim: flReg + " (" + (lg.name || flReg) + ") at " + (lg.acres != null ? lg.acres + " acres" : "?") + " / " + (lg.contained_pct != null ? lg.contained_pct + "% contained" : "?") + " will be MORE contained (higher %) in 3 days", confidence: "Probable", falsifier: "Containment % flat or DECREASES over next 3 days (fire gained ground)", horizon: dayISO(3) });
+      }
+      if (!preds.length) return { cmd: "FIRE_LEARN", payload: { ok: false, error: "no forward-looking predictions could be formed - upstream engines returned no gradeable data", upstream: { board: board && board.ok, traj: traj && traj.ok, threat: threat && threat.ok, pred: pred && pred.ok } } };
+      // log each into the Outcome Ledger
+      const logged = [];
+      for (const pr of preds) {
+        const payload = JSON.stringify({ claim: pr.claim, confidence: pr.confidence, falsifier: pr.falsifier, domain: "wildfire", horizon: pr.horizon, source_brief: "FIRE_LEARN " + flReg });
+        const r = await flRun("OUTCOME_LOG ::: " + payload);
+        logged.push({ ledger_id: r && r.ledger_id ? r.ledger_id : null, claim: pr.claim, horizon: pr.horizon, ok: !!(r && r.ok) });
+      }
+      const okCount = logged.filter(l => l.ok).length;
+      return { cmd: "FIRE_LEARN", payload: {
+        ok: okCount > 0,
+        fire: flReg,
+        predictions_logged: okCount,
+        predictions: logged,
+        review_hint: "Grade later with: OUTCOME_REVIEW due  (shows predictions past horizon needing grading), then OUTCOME_RESOLVE <ledger_id> ::: {\"actual\":\"...\",\"verdict\":\"correct|partial|wrong\",\"lesson\":\"...\"}",
+        note: "Forward-looking fire calls logged as FALSIFIABLE predictions into the Outcome Ledger. When their horizon arrives, resolving them grades FireOS's track record - the learn-loop closes: prediction -> reality -> correction.",
+        source: "fire_learn_v1"
+      } };
     }
 
     case "FIRE_OFFICIAL": {

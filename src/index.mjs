@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.470-2026-07-03";
+const BUILD = "aura-core-v4.9.471-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1878,6 +1878,70 @@ async function processCommand(line, env, isOp) {
         neighbors_m: { n: Math.round(eN), s: Math.round(eS), e: Math.round(eE), w: Math.round(eW) },
         note: "USGS 3DEP elevation. Fire spreads fastest UPHILL - expect acceleration toward " + uphillDir + " (bearing " + Math.round(uphill) + "deg) on this " + Math.round(slopeDeg) + "deg slope. Aspect also drives fuel dryness (S/SW faces cure hotter/drier).",
         source: "usgs_3dep_epqs"
+      } };
+    }
+
+    case "FIRE_FUELS": {
+      // FUEL RUNWAY (v4.9.471) - LANDFIRE 2025 Scott & Burgan FBFM40 fuel model + canopy at the fire AND
+      // along its ADVANCE bearing (the fuel it is heading INTO, not the burned centroid). Pairs with
+      // FIRE_TERRAIN: terrain = where it accelerates, fuel = how hot/fast it carries. Keyless USGS LANDFIRE.
+      //   FIRE_FUELS <lat> <lon> [bearingDeg]   e.g. FIRE_FUELS 38.29 -112.49 300
+      if (!isOp) return { cmd: "FIRE_FUELS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const flParts = line.replace(/^FIRE_FUELS\s+/i, "").trim().split(/\s+/);
+      let flLat = parseFloat(flParts[0]), flLon = parseFloat(flParts[1]);
+      let flBrg = parseFloat(flParts[2]);
+      if (isNaN(flLat) || isNaN(flLon)) {
+        const flReg = (flParts[0] || "").toLowerCase();
+        const flMap = { cottonwood: [38.29, -112.49], malibu: [34.01, -118.76] };
+        if (flMap[flReg]) { flLat = flMap[flReg][0]; flLon = flMap[flReg][1]; flBrg = parseFloat(flParts[1]); }
+        else return { cmd: "FIRE_FUELS", payload: { ok: false, error: "Usage: FIRE_FUELS <lat> <lon> [bearingDeg]" } };
+      }
+      if (isNaN(flBrg)) flBrg = 300; // default advance bearing (WNW) if not supplied
+      // Scott & Burgan FBFM40 code -> name (the ones fire crews actually reference)
+      const FBFM40 = { "91":"NB1 urban","92":"NB2 snow/ice","93":"NB3 agriculture","98":"NB8 open water","99":"NB9 barren",
+        "101":"GR1 short sparse dry grass","102":"GR2 low load dry grass","103":"GR3 low load very coarse grass","104":"GR4 moderate load dry grass","105":"GR5 low load humid grass","106":"GR6 moderate load humid grass","107":"GR7 high load dry grass","108":"GR8 high load very coarse grass","109":"GR9 very high load humid grass",
+        "121":"GS1 low load dry grass-shrub","122":"GS2 moderate load dry grass-shrub","123":"GS3 moderate load humid grass-shrub","124":"GS4 high load humid grass-shrub",
+        "141":"SH1 low load dry shrub","142":"SH2 moderate load dry shrub","143":"SH3 moderate load humid shrub","144":"SH4 low load humid shrub","145":"SH5 high load dry shrub","146":"SH6 low load humid shrub","147":"SH7 very high load dry shrub","148":"SH8 high load humid shrub","149":"SH9 very high load humid shrub",
+        "161":"TU1 low load timber-grass-shrub","162":"TU2 moderate load humid timber-shrub","163":"TU3 moderate load humid timber-grass-shrub","164":"TU4 dwarf conifer w/ understory","165":"TU5 very high load dry timber-shrub",
+        "181":"TL1 low load compact conifer litter","182":"TL2 low load broadleaf litter","183":"TL3 moderate load conifer litter","184":"TL4 small downed logs","185":"TL5 high load conifer litter","186":"TL6 moderate load broadleaf litter","187":"TL7 large downed logs","188":"TL8 long-needle litter","189":"TL9 very high load broadleaf litter",
+        "201":"SB1 low load activity fuel","202":"SB2 moderate load activity/blowdown","203":"SB3 high load activity/blowdown","204":"SB4 high load blowdown" };
+      const flBase = "https://lfps.usgs.gov/arcgis/rest/services/Landfire_LF2025";
+      const flIdentify = async (svc, la, lo) => {
+        try {
+          const geom = encodeURIComponent(JSON.stringify({ x: lo, y: la, spatialReference: { wkid: 4326 } }));
+          const url = flBase + "/" + svc + "/ImageServer/identify?geometry=" + geom + "&geometryType=esriGeometryPoint&returnGeometry=false&returnCatalogItems=false&f=json";
+          const r = await fetchWithTimeout(url, { headers: { "User-Agent": "FireOS/1.0" } }, 8000);
+          if (!r.ok) return null;
+          const d = await r.json();
+          const v = d && d.value;
+          return (v == null || v === "NoData") ? null : v;
+        } catch { return null; }
+      };
+      // sample the fire point + steps along the advance bearing (fuel the fire is heading INTO)
+      const flRad = flBrg * Math.PI / 180;
+      const flPts = [ { km: 0, lat: flLat, lon: flLon } ];
+      for (const km of [5, 10, 15]) {
+        const dLat = (km / 111.0) * Math.cos(flRad);
+        const dLon = (km / (111.0 * Math.cos(flLat * Math.PI / 180))) * Math.sin(flRad);
+        flPts.push({ km: km, lat: flLat + dLat, lon: flLon + dLon });
+      }
+      const flResults = await Promise.all(flPts.map(async (pt) => {
+        const [fbfm, cc, cbh] = await Promise.all([
+          flIdentify("LF2025_FBFM40_CONUS", pt.lat, pt.lon),
+          flIdentify("LF2025_CC_CONUS", pt.lat, pt.lon),
+          flIdentify("LF2025_CBH_CONUS", pt.lat, pt.lon)
+        ]);
+        return { km_ahead: pt.km, lat: +pt.lat.toFixed(4), lon: +pt.lon.toFixed(4), fbfm40: fbfm, fuel_model: fbfm ? (FBFM40[String(fbfm)] || ("code " + fbfm)) : "NoData (burned/non-fuel)", canopy_cover_pct: cc, canopy_base_height: cbh };
+      }));
+      const flReal = flResults.filter(r => r.fbfm40 != null);
+      return { cmd: "FIRE_FUELS", payload: {
+        ok: true,
+        fire_point: { lat: flLat, lon: flLon },
+        advance_bearing_deg: flBrg,
+        fuel_at_point: flResults[0].fuel_model,
+        runway: flResults,
+        note: flReal.length ? "LANDFIRE 2025 Scott & Burgan FBFM40 + canopy, sampled at the fire and along the advance bearing (the fuel the fire is heading INTO). Fire point may read NoData if already burned - the ahead-of-front samples are the actionable ones." : "All samples NoData - the fire point and near-field are already burned or non-fuel; extend the bearing/range or the front has outrun mapped fuels.",
+        source: "usgs_landfire_lf2025"
       } };
     }
 

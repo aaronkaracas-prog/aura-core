@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.473-2026-07-03";
+const BUILD = "aura-core-v4.9.474-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -2066,6 +2066,46 @@ async function processCommand(line, env, isOp) {
         feeds_status: fmKeys.reduce((a, k, i) => { a[k] = (settled[i] && settled[i].ok) ? "live" : ("gap: " + ((settled[i] && (settled[i].error || settled[i].note)) || "no data").toString().slice(0, 80)); return a; }, {}),
         source: "fire_mission_v1"
       } };
+    }
+
+    case "FIRE_SYNTHESIS": {
+      // SYNTHESIS LAYER (v4.9.474) - the reasoning gap Aura named: reconcile NOW vs FORECAST vs TREND into
+      // ONE truth instead of letting contradictory signals sit side by side. FIRE_PREDICT reads the
+      // instantaneous (calm right now), FIRE_OUTLOOK reads the forecast (dangerous Day+2), FIRE_TRAJECTORY
+      // reads the trend (being won). They ONLY look contradictory because they answer different time-
+      // questions. This distinguishes the horizons and states the honest single truth ("X now, Y by Day+2").
+      // General capability, tested on fire. Grounded only in the pulled signals; no invention.
+      //   FIRE_SYNTHESIS cottonwood
+      if (!isOp) return { cmd: "FIRE_SYNTHESIS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const syReg = (line.replace(/^FIRE_SYNTHESIS\s+/i, "").trim() || "cottonwood").toLowerCase().split(/\s+/)[0];
+      const syMap = { cottonwood: "UT", malibu: "CA" };
+      const syState = syMap[syReg] || "";
+      const syRun = async (cmd) => { try { const r = await processCommand(cmd, env, true); return r && r.payload ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
+      const [nowSig, fcSig, trendSig] = await Promise.all([
+        syRun("FIRE_PREDICT " + syReg),
+        syRun("FIRE_OUTLOOK " + syReg),
+        syRun("FIRE_TRAJECTORY " + syReg + " " + syState)
+      ]);
+      const syTrim = (o) => { let t = ""; try { t = JSON.stringify(o); } catch { t = String(o); } return t.length > 2500 ? t.slice(0, 2500) + "...(trimmed)" : t; };
+      const syKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      if (!syKey) return { cmd: "FIRE_SYNTHESIS", payload: { ok: false, error: "no brain key" } };
+      const syModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const sySys = "You are Aura's SYNTHESIS layer. You are given several signals about the same situation that each answer a DIFFERENT time-question: an INSTANTANEOUS read (what is measurably happening this minute), a FORECAST read (what is expected over the coming days), and a TREND read (which way it has been moving). Naive systems show these side by side and they look contradictory ('stalled' vs 'dangerous'). Your job: reconcile them into ONE honest truth that DISTINGUISHES the time horizons - never let one number win, never average them. If they genuinely conflict (not just different horizons), say so and say which to trust and why. Ground ONLY in the given signals; do not invent. Return ONLY JSON, no fences: {\"now\":\"what is true this minute, one sentence\",\"trajectory\":\"where it is heading over days, one sentence\",\"reconciled_truth\":\"the single honest synthesis, e.g. calm now but dangerous by Day+2 - one or two sentences\",\"why_they_seemed_to_conflict\":\"one sentence explaining the apparent contradiction (different time-questions vs real conflict)\",\"posture\":\"calm|building|active|critical\",\"confidence\":0.0,\"most_actionable\":\"the one call this synthesis implies right now, with a when\"}";
+      const syUser = "SITUATION: " + syReg + "\n\nSIGNAL A - INSTANTANEOUS (FIRE_PREDICT, 'right now'):\n" + syTrim(nowSig) + "\n\nSIGNAL B - FORECAST (FIRE_OUTLOOK, 'coming days'):\n" + syTrim(fcSig) + "\n\nSIGNAL C - TREND (FIRE_TRAJECTORY, 'direction of the fight'):\n" + syTrim(trendSig);
+      let syn = null;
+      try {
+        const d = await callAnthropic(syKey, { model: syModel, max_tokens: 900, system: sySys, messages: [{ role: "user", content: syUser.slice(0, 30000) }] });
+        let t = ""; if (d && d.content) for (const b of d.content) if (b.type === "text") t += b.text;
+        t = t.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+        try { syn = JSON.parse(t); } catch {}
+      } catch {}
+      if (!syn) return { cmd: "FIRE_SYNTHESIS", payload: { ok: false, error: "synthesis failed" } };
+      const out = { ok: true, situation: syReg, synthesis: syn,
+        signals_reconciled: { now: nowSig && nowSig.ok, forecast: fcSig && fcSig.ok, trend: trendSig && trendSig.ok },
+        note: "Reconciles instantaneous vs forecast vs trend into one horizon-aware truth - the synthesis layer Aura flagged as missing. General capability, tested on fire.",
+        source: "synthesis_v1" };
+      try { await env.AURA_KV.put("situation:synthesis:" + syReg, JSON.stringify({ at: Date.now(), synthesis: syn }), { expirationTtl: 3600 }); } catch {}
+      return { cmd: "FIRE_SYNTHESIS", payload: out };
     }
 
     case "FIRE_OFFICIAL": {

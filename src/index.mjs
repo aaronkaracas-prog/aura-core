@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.459-2026-07-03";
+const BUILD = "aura-core-v4.9.460-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -10295,53 +10295,67 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     }
 
     case "ENTITLE": {
-      // PER-PTA ENTITLEMENT ENGINE (v4.9.459) - the keystone of the monetization funnel. For any asset +
-      // visitor PTA it tracks: free looks used, the free limit, whether they've PAID, and their tier.
-      // The see-once GATE reads it (ENTITLE USE); pay-to-unlock WRITES it (ENTITLE PAY, after a real
-      // SECURESPEND_CHARGE succeeds). Owner/operator bypasses the gate - this governs VISITORS.
-      // Storage: KV entitle:<asset>:<pta> = {asset,pta,free_used,free_limit,paid,tier,paid_at,updated}.
+      // PER-PTA ENTITLEMENT ENGINE (v4.9.460) - the monetization keystone, on D1 (STRONGLY CONSISTENT).
+      // v459 used KV; the backend test caught KV eventual-consistency double-counting the gate AND
+      // locking out a PAID user on read-after-write. A money gate must never be eventually consistent, so
+      // this lives in D1 (aura-memory) with atomic SQL. Owner/operator bypasses; this governs VISITORS.
+      // Table entitlements(asset,pta,free_used,free_limit,paid,tier,paid_at,updated) PK(asset,pta).
       //   ENTITLE GET   <asset> <pta>          -> current record (defaults if none)
-      //   ENTITLE USE   <asset> <pta>          -> consume one free look; {allowed,remaining,reason}. Paid=always allowed.
+      //   ENTITLE USE   <asset> <pta>          -> atomically consume one free look; {allowed,remaining,reason}. Paid=always allowed.
       //   ENTITLE PAY   <asset> <pta> [tier]   -> mark paid+tier (call after a real charge)
-      //   ENTITLE SET   <asset> <pta> <json>   -> merge fields (e.g. {"free_limit":5})
-      //   ENTITLE RESET <asset> <pta>          -> wipe to default (test-data reset)
+      //   ENTITLE SET   <asset> <pta> <json>   -> merge {free_limit,free_used,paid,tier}
+      //   ENTITLE RESET <asset> <pta>          -> delete the row (test-data reset)
       if (!isOp) return { cmd: "ENTITLE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const db = env.AURA_MEMORY;
       const enParts = (rest || "").trim().split(/\s+/);
       const enOp = (enParts[0] || "").toUpperCase();
       const enAsset = (enParts[1] || "").toLowerCase();
       const enPta = enParts[2] || "";
       if (!enOp || !enAsset || !enPta) return { cmd: "ENTITLE", payload: { ok: false, error: "usage: ENTITLE <GET|USE|PAY|SET|RESET> <asset> <pta> [...]" } };
-      const enKey = "entitle:" + enAsset + ":" + enPta;
-      const enDefault = { asset: enAsset, pta: enPta, free_used: 0, free_limit: 3, paid: false, tier: null, paid_at: null, updated: Date.now() };
-      let enDoc = null; try { const raw = await env.AURA_KV.get(enKey); if (raw) enDoc = JSON.parse(raw); } catch {}
-      if (!enDoc) enDoc = Object.assign({}, enDefault);
       const enRest = (rest || "").trim().replace(new RegExp("^" + enOp + "\\s+" + enAsset.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s+" + enPta.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*", "i"), "");
-      const enSave = async () => { enDoc.updated = Date.now(); try { await env.AURA_KV.put(enKey, JSON.stringify(enDoc)); } catch {} };
+      try { await db.prepare("CREATE TABLE IF NOT EXISTS entitlements (asset TEXT, pta TEXT, free_used INTEGER DEFAULT 0, free_limit INTEGER DEFAULT 3, paid INTEGER DEFAULT 0, tier TEXT, paid_at INTEGER, updated INTEGER, PRIMARY KEY (asset, pta))").run(); }
+      catch (e) { return { cmd: "ENTITLE", payload: { ok: false, error: "table init failed: " + String(e && e.message || e) } }; }
+      const enNow = Date.now();
+      const enRow = async () => { const r = await db.prepare("SELECT asset,pta,free_used,free_limit,paid,tier,paid_at,updated FROM entitlements WHERE asset=? AND pta=?").bind(enAsset, enPta).first(); return r || null; };
+      const enShape = (r) => r ? { asset: r.asset, pta: r.pta, free_used: r.free_used, free_limit: r.free_limit, paid: !!r.paid, tier: r.tier, paid_at: r.paid_at, updated: r.updated } : { asset: enAsset, pta: enPta, free_used: 0, free_limit: 3, paid: false, tier: null, paid_at: null, updated: null };
+      const enEnsure = async () => { await db.prepare("INSERT OR IGNORE INTO entitlements (asset,pta,free_used,free_limit,paid,updated) VALUES (?,?,0,3,0,?)").bind(enAsset, enPta, enNow).run(); };
 
       if (enOp === "GET") {
-        return { cmd: "ENTITLE", payload: { ok: true, entitlement: enDoc, remaining: enDoc.paid ? null : Math.max(0, enDoc.free_limit - enDoc.free_used) } };
+        const shaped = enShape(await enRow());
+        return { cmd: "ENTITLE", payload: { ok: true, entitlement: shaped, remaining: shaped.paid ? null : Math.max(0, shaped.free_limit - shaped.free_used) } };
       }
       if (enOp === "USE") {
-        if (enDoc.paid) return { cmd: "ENTITLE", payload: { ok: true, allowed: true, paid: true, reason: "paid", entitlement: enDoc } };
-        if (enDoc.free_used < enDoc.free_limit) {
-          enDoc.free_used += 1; await enSave();
-          return { cmd: "ENTITLE", payload: { ok: true, allowed: true, paid: false, remaining: Math.max(0, enDoc.free_limit - enDoc.free_used), reason: "free_look", entitlement: enDoc } };
-        }
-        return { cmd: "ENTITLE", payload: { ok: true, allowed: false, paid: false, remaining: 0, reason: "free_exhausted", free_used: enDoc.free_used, free_limit: enDoc.free_limit, entitlement: enDoc } };
+        await enEnsure();
+        const cur = await enRow();
+        if (cur && cur.paid) return { cmd: "ENTITLE", payload: { ok: true, allowed: true, paid: true, reason: "paid", entitlement: enShape(cur) } };
+        const upd = await db.prepare("UPDATE entitlements SET free_used = free_used + 1, updated = ? WHERE asset=? AND pta=? AND paid=0 AND free_used < free_limit").bind(enNow, enAsset, enPta).run();
+        const changed = (upd && upd.meta && upd.meta.changes) ? upd.meta.changes : 0;
+        const shaped = enShape(await enRow());
+        if (changed > 0) return { cmd: "ENTITLE", payload: { ok: true, allowed: true, paid: false, remaining: Math.max(0, shaped.free_limit - shaped.free_used), reason: "free_look", entitlement: shaped } };
+        return { cmd: "ENTITLE", payload: { ok: true, allowed: false, paid: false, remaining: 0, reason: "free_exhausted", free_used: shaped.free_used, free_limit: shaped.free_limit, entitlement: shaped } };
       }
       if (enOp === "PAY") {
         const enTier = enParts[3] || "paid";
-        enDoc.paid = true; enDoc.tier = enTier; enDoc.paid_at = Date.now(); await enSave();
-        return { cmd: "ENTITLE", payload: { ok: true, paid: true, tier: enDoc.tier, entitlement: enDoc } };
+        await enEnsure();
+        await db.prepare("UPDATE entitlements SET paid=1, tier=?, paid_at=?, updated=? WHERE asset=? AND pta=?").bind(enTier, enNow, enNow, enAsset, enPta).run();
+        return { cmd: "ENTITLE", payload: { ok: true, paid: true, tier: enTier, entitlement: enShape(await enRow()) } };
       }
       if (enOp === "SET") {
         let enFields = {}; try { enFields = JSON.parse(enRest); } catch { return { cmd: "ENTITLE", payload: { ok: false, error: "SET needs valid JSON" } }; }
-        Object.assign(enDoc, enFields); await enSave();
-        return { cmd: "ENTITLE", payload: { ok: true, entitlement: enDoc } };
+        await enEnsure();
+        const cols = [], vals = [];
+        if (enFields.free_limit != null) { cols.push("free_limit=?"); vals.push(enFields.free_limit | 0); }
+        if (enFields.free_used != null) { cols.push("free_used=?"); vals.push(enFields.free_used | 0); }
+        if (enFields.paid != null) { cols.push("paid=?"); vals.push(enFields.paid ? 1 : 0); }
+        if (enFields.tier != null) { cols.push("tier=?"); vals.push(String(enFields.tier)); }
+        if (!cols.length) return { cmd: "ENTITLE", payload: { ok: false, error: "SET recognizes free_limit, free_used, paid, tier" } };
+        cols.push("updated=?"); vals.push(enNow); vals.push(enAsset, enPta);
+        await db.prepare("UPDATE entitlements SET " + cols.join(", ") + " WHERE asset=? AND pta=?").bind(...vals).run();
+        return { cmd: "ENTITLE", payload: { ok: true, entitlement: enShape(await enRow()) } };
       }
       if (enOp === "RESET") {
-        enDoc = Object.assign({}, enDefault); enDoc.updated = Date.now(); try { await env.AURA_KV.put(enKey, JSON.stringify(enDoc)); } catch {}
-        return { cmd: "ENTITLE", payload: { ok: true, reset: true, entitlement: enDoc } };
+        await db.prepare("DELETE FROM entitlements WHERE asset=? AND pta=?").bind(enAsset, enPta).run();
+        return { cmd: "ENTITLE", payload: { ok: true, reset: true, entitlement: enShape(null) } };
       }
       return { cmd: "ENTITLE", payload: { ok: false, error: "unknown ENTITLE op: " + enOp } };
     }

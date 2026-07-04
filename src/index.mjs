@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.461-2026-07-03";
+const BUILD = "aura-core-v4.9.462-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -6276,6 +6276,29 @@ async function processCommand(line, env, isOp) {
         return { cmd: "SITUATION_LIVE", payload: { ok: true, topic: slTopic, served: "computed_live_now", as_of: new Date().toISOString(), age_minutes: 0, freshness: "fresh", note: "First hit computed live and cached; marked hot so the cron keeps it instant from now on.", ...lp } };
       }
       return { cmd: "SITUATION_LIVE", payload: { ok: false, topic: slTopic, error: (lp && lp.error) || "could not produce a brief", served: "failed" } };
+    }
+
+    case "SITUATION_HERO": {
+      // LIVE HERO IMAGE (v4.9.462) - the core SituationTracker visual: one image that captures a
+      // situation, built FROM the real brief so the "data context" link truthfully shows what made it.
+      // HONESTY: rendered as a CLEARLY ILLUSTRATIVE editorial graphic (never a photoreal fake that could
+      // pass as real footage), and never a likeness of a real named person. Caches situation:hero:<topic>.
+      //   SITUATION_HERO hormuz
+      if (!isOp) return { cmd: "SITUATION_HERO", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const topicKey = (line.replace(/^SITUATION_HERO\s*/i, "").trim() || "hormuz").toLowerCase();
+      let brief = null, label = topicKey;
+      try { const c = await env.AURA_KV.get("situation:brief:" + topicKey); if (c) { const cj = JSON.parse(c); brief = cj.brief; label = cj.label || topicKey; } } catch {}
+      if (!brief) { try { const r = await processCommand("SITUATION_BRIEF " + topicKey, env, true); const pp = r && r.payload ? r.payload : r; if (pp && pp.ok) { brief = pp.brief; label = pp.label || topicKey; } } catch {} }
+      if (!brief) return { cmd: "SITUATION_HERO", payload: { ok: false, error: "no brief for " + topicKey + " to build a hero image from" } };
+      const heroStatus = brief.status || "";
+      const heroDrivers = Array.isArray(brief.drivers) ? brief.drivers.slice(0, 3).join("; ") : "";
+      const imgPrompt = ("Editorial conceptual illustration for a news situation dashboard, clearly a stylized digital ILLUSTRATION (not a photograph, not photorealistic), no real people's faces, no text, no logos, no watermarks, cinematic muted palette. Subject - the situation: " + label + ". Context: " + heroStatus + " Key forces: " + heroDrivers).slice(0, 3500);
+      const gi = await processCommand("GENERATE_IMAGE " + imgPrompt, env, true);
+      const gp = gi && gi.payload ? gi.payload : gi;
+      if (!gp || !gp.ok || !gp.image_url) return { cmd: "SITUATION_HERO", payload: { ok: false, error: "image generation failed: " + ((gp && gp.error) || "unknown") } };
+      const hero = { topic: topicKey, label: label, image_url: gp.image_url, kind: "ai_illustration", prompt: imgPrompt, at: Date.now() };
+      try { await env.AURA_KV.put("situation:hero:" + topicKey, JSON.stringify(hero)); } catch {}
+      return { cmd: "SITUATION_HERO", payload: { ok: true, topic: topicKey, label: label, image_url: gp.image_url, kind: "ai_illustration", at: hero.at } };
     }
 
     case "AIS_COLLECTOR": {
@@ -18200,6 +18223,26 @@ function openAlbum(idx){
         const out = { ok: true, topic: topic, label: p.label || topic, brief: p.brief || {}, sources: p.sources || {}, pulled_at: p.pulled_at || null, briefed_at: p.briefed_at || null, provider: p.provider || null, cached: false, _cached_at: Date.now() };
         try { await env.AURA_KV.put(cacheKey, JSON.stringify(out), { expirationTtl: 3600 }); } catch {}
         return new Response(JSON.stringify(out), { headers: hCors });
+      } catch (e) { return new Response(JSON.stringify({ ok: false, error: String(e && e.message || e) }), { status: 500, headers: hCors }); }
+    }
+
+    if (url.pathname === "/home/hero") {
+      // /home/hero (v4.9.462) - serves the cached hero image for a situation, generating on first request
+      // (slow, ~15-60s) then instant. Always kind:"ai_illustration" so the UI labels it, never real footage.
+      const hCors = { "content-type": "application/json", "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, content-type", "access-control-allow-methods": "GET, OPTIONS" };
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: hCors });
+      const okOp = await verifyOperator(request, env);
+      if (!okOp) return new Response(JSON.stringify({ ok: false, error: "unauthorized" }), { status: 401, headers: hCors });
+      const topic = (url.searchParams.get("topic") || "").toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 60);
+      if (!topic) return new Response(JSON.stringify({ ok: false, error: "topic required" }), { status: 400, headers: hCors });
+      const fresh = url.searchParams.get("fresh") === "1";
+      if (!fresh) { try { const c = await env.AURA_KV.get("situation:hero:" + topic); if (c) { const cj = JSON.parse(c); cj.ok = true; cj.cached = true; return new Response(JSON.stringify(cj), { headers: hCors }); } } catch {} }
+      try {
+        const r = await processCommand("SITUATION_HERO " + topic, env, true);
+        const p = r && r.payload ? r.payload : r;
+        if (!p || !p.ok) return new Response(JSON.stringify(p || { ok: false, error: "hero failed" }), { status: 400, headers: hCors });
+        p.cached = false;
+        return new Response(JSON.stringify(p), { headers: hCors });
       } catch (e) { return new Response(JSON.stringify({ ok: false, error: String(e && e.message || e) }), { status: 500, headers: hCors }); }
     }
 

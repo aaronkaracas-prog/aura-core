@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.462-2026-07-03";
+const BUILD = "aura-core-v4.9.463-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -4033,6 +4033,11 @@ async function processCommand(line, env, isOp) {
       // slowest single call, ~1-2s, instead of their sum). The brain synthesis still runs after, once
       // all inputs are in hand. webSearch(inRaw) is launched here and awaited below as inWebPromise.
       const inWebPromise = webSearch(inRaw, env);
+      // NEWS in the gather (v4.9.463): the freshness fix. A CURRENT event has no path to current sources
+      // without this - generic web search returns evergreen junk. News is pulled in PARALLEL (zero added
+      // latency) and the distiller leads with it when present; for settled/historical topics news returns
+      // little and the reference sources lead. Context self-coordinates - freshness of what returns is the threshold.
+      const inNewsPromise = (async () => { try { const nr = await processCommand("NEWS_QUERY " + inRaw, env, true); const np = nr && nr.payload ? nr.payload : nr; return (np && np.ok) ? (np.news || []).slice(0, 8) : []; } catch { return []; } })();
       const organizedResults = await Promise.all(organizedSources.map(async (os) => {
         try {
           const rr = await processCommand(os.cmd + " " + inRaw, env, true);
@@ -4067,6 +4072,7 @@ async function processCommand(line, env, isOp) {
       // STEP 2 - FIND the source. The web search was already LAUNCHED in parallel above (inWebPromise);
       // just await it here so it overlapped with the organized-source calls instead of running after them.
       const ws = await inWebPromise;
+      const inNews = await inNewsPromise;
       if (!ws || !ws.ok) return { cmd: "INGEST", payload: { ok: false, error: "could not find a source (" + ((ws && ws.error) || "search failed") + ")", topic: inRaw } };
       // STEP 3 - ANALYZE it into structured knowledge (through the brain, not raw dump)
       const inApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
@@ -4074,7 +4080,8 @@ async function processCommand(line, env, isOp) {
       if (inApiKey) {
         const inModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
         const inSys = "You are the INGESTION engine of Aura - the universal front-of-loop that takes raw world information and turns it into durable structured knowledge Aura keeps and reasons over. You are given a TOPIC and freshly-fetched SOURCE MATERIAL. Distill it into knowledge that will be reused: a tight factual summary, the key facts as short standalone lines, and (if the material reveals it) what KIND of thing this is so Aura can route it. Ground everything in the source material; never invent. Return ONLY JSON, no fences: {\"summary\":\"2-4 sentence synthesis\",\"key_facts\":[\"short factual line\",...],\"category\":\"one-word domain e.g. product|market|place|person|event|technical|regulation|other\",\"freshness_sensitive\":true|false}. freshness_sensitive = does this change often (prices, news, status) or is it stable (history, definitions)?";
-        const inUser = "TOPIC: " + inRaw + "\n\n" + (inOrganized && inOrganized.layers ? "ORGANIZED SOURCES (authoritative - prefer these): " + JSON.stringify(inOrganized.layers).slice(0, 6000) + "\n\n" : "") + "SOURCE MATERIAL (fetched " + new Date(now).toISOString().slice(0, 10) + "):\n" + (ws.answer ? "Answer: " + ws.answer + "\n\n" : "") + "Sources:\n" + (ws.sources || []).map(s => "- " + s.title + ": " + s.snippet).join("\n");
+        const inNewsBlock = inNews.length ? ("LIVE NEWS (most current - if this is a happening-now event, LEAD your summary and key_facts with what is happening NOW; a current event overrides stale background):\n" + inNews.map(n => "- " + (n.title || "") + (n.published ? " (" + n.published + ")" : "") + (n.description ? " - " + n.description : "")).join("\n") + "\n\n") : "";
+        const inUser = "TOPIC: " + inRaw + "\n\n" + inNewsBlock + (inOrganized && inOrganized.layers ? "ORGANIZED / REFERENCE SOURCES (durable context): " + JSON.stringify(inOrganized.layers).slice(0, 6000) + "\n\n" : "") + "SOURCE MATERIAL (fetched " + new Date(now).toISOString().slice(0, 10) + "):\n" + (ws.answer ? "Answer: " + ws.answer + "\n\n" : "") + "Sources:\n" + (ws.sources || []).map(s => "- " + s.title + ": " + s.snippet).join("\n");
         try {
           const d = await callAnthropic(inApiKey, { model: inModel, max_tokens: 1200, system: inSys, messages: [{ role: "user", content: inUser.slice(0, 30000) }] });
           let t = ""; if (d && d.content) for (const b of d.content) if (b.type === "text") t += b.text;
@@ -4090,7 +4097,7 @@ async function processCommand(line, env, isOp) {
         key_facts: structured ? (structured.key_facts || []) : [],
         category: structured ? (structured.category || "other") : "other",
         freshness_sensitive: structured ? !!structured.freshness_sensitive : true,
-        sources: (ws.sources || []).map(s => ({ title: s.title, url: s.url })),
+        sources: [...inNews.map(n => ({ title: n.title, url: n.url, kind: "news" })), ...(ws.sources || []).map(s => ({ title: s.title, url: s.url }))],
         first_learned: existing ? (existing.first_learned || existing.fetched_at) : now,
         fetched_at: now, times_asked: priorAsks + 1,
         history: existing ? [...(existing.history || []).slice(-4), { at: existing.fetched_at, summary: (existing.knowledge || "").slice(0, 200) }] : []
@@ -4099,7 +4106,7 @@ async function processCommand(line, env, isOp) {
       try { let idx = []; const ir = await env.AURA_KV.get("knowledge:index"); if (ir) idx = JSON.parse(ir); idx = idx.filter(x => x.topic !== inTopic); idx.unshift({ topic: inTopic, label: inRaw, category: record.category, learned: new Date(record.first_learned).toISOString().slice(0, 10), refreshed: new Date(now).toISOString().slice(0, 10) }); await env.AURA_KV.put("knowledge:index", JSON.stringify(idx.slice(0, 2000))); } catch {}
       return { cmd: "INGEST", payload: { ok: true, topic: inRaw,
         source: existing ? "refreshed" : "newly_learned",
-        category: record.category, freshness_sensitive: record.freshness_sensitive,
+        category: record.category, freshness_sensitive: record.freshness_sensitive, news_pulled: inNews.length,
         knowledge: record.knowledge, key_facts: record.key_facts, sources: record.sources,
         organized: record.organized ? { primary_source: record.organized.source, layers: (record.organized.layers || []).map(l => l.source), entity: record.organized.entity, structured_facts: record.organized.facts, linked: record.organized.linked, people: record.organized.people, wikipedia: (record.organized.layers || []).find(l => l.source === "wikipedia") || null } : null,
         used_organized_source: !!record.organized,

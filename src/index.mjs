@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.475-2026-07-03";
+const BUILD = "aura-core-v4.9.476-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -2164,6 +2164,89 @@ async function processCommand(line, env, isOp) {
         review_hint: "Grade later with: OUTCOME_REVIEW due  (shows predictions past horizon needing grading), then OUTCOME_RESOLVE <ledger_id> ::: {\"actual\":\"...\",\"verdict\":\"correct|partial|wrong\",\"lesson\":\"...\"}",
         note: "Forward-looking fire calls logged as FALSIFIABLE predictions into the Outcome Ledger. When their horizon arrives, resolving them grades FireOS's track record - the learn-loop closes: prediction -> reality -> correction.",
         source: "fire_learn_v1"
+      } };
+    }
+
+    case "FIRE_DIRECTIVE": {
+      // ACT-BACK CHANNEL (v4.9.476) - the third gap Aura named. FireOS computes actionable directives from
+      // its reasoning (synthesis + threatened + coordination) and PUBLISHES them to a DATA pull-surface
+      // (KV fire:directive:<region>) that crews read from their devices. DATA-FIRST by design (Aaron): the
+      // primary channel is a pull-surface; SMS/email is a DORMANT fallback that would carry the identical
+      // directive only when data connectivity drops - NOTHING is sent here. GUARDRAIL: operational
+      // directives publish freely; LIFE-SAFETY directives (evacuate/move people) publish as
+      // pending_confirmation and require a human confirm - Aura never originates a life-safety order alone.
+      //   FIRE_DIRECTIVE cottonwood                 -> compute + publish the directive package
+      //   FIRE_DIRECTIVE cottonwood CONFIRM <seq>   -> human confirms a pending life-safety directive
+      if (!isOp) return { cmd: "FIRE_DIRECTIVE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const fdParts = line.replace(/^FIRE_DIRECTIVE\s+/i, "").trim().split(/\s+/);
+      const fdReg = (fdParts[0] || "cottonwood").toLowerCase();
+      const fdKvKey = "fire:directive:" + fdReg;
+
+      // --- CONFIRM path: human-in-the-loop approval of a pending life-safety directive ---
+      if ((fdParts[1] || "").toUpperCase() === "CONFIRM") {
+        const seq = parseInt(fdParts[2], 10);
+        try {
+          const raw = await env.AURA_KV.get(fdKvKey);
+          if (!raw) return { cmd: "FIRE_DIRECTIVE", payload: { ok: false, error: "no published directive for " + fdReg } };
+          const pkg = JSON.parse(raw);
+          const d = (pkg.directives || []).find(x => x.seq === seq);
+          if (!d) return { cmd: "FIRE_DIRECTIVE", payload: { ok: false, error: "no directive seq " + seq } };
+          d.status = "published"; d.confirmed_at = Date.now(); d.confirmed_by = "operator";
+          pkg.updated_at = Date.now();
+          await env.AURA_KV.put(fdKvKey, JSON.stringify(pkg));
+          return { cmd: "FIRE_DIRECTIVE", payload: { ok: true, fire: fdReg, confirmed_seq: seq, directive: d, note: "Life-safety directive confirmed by human and now published to the pull-surface. (Fallback transport stays dormant - nothing sent.)" } };
+        } catch (e) { return { cmd: "FIRE_DIRECTIVE", payload: { ok: false, error: String(e && e.message || e) } }; }
+      }
+
+      // --- COMPUTE + PUBLISH path ---
+      const fdState = { cottonwood: "UT", malibu: "CA" }[fdReg] || "";
+      const fdStateFull = { cottonwood: "utah", malibu: "california" }[fdReg] || fdReg;
+      const fdRun = async (cmd) => { try { const r = await processCommand(cmd, env, true); return r && r.payload ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
+      const [synth, threat, coord] = await Promise.all([
+        fdRun("FIRE_SYNTHESIS " + fdReg),
+        fdRun("FIRE_THREATENED " + fdReg),
+        fdRun("FIRE_COORDINATE " + fdStateFull)
+      ]);
+      const fdTrim = (o) => { let t = ""; try { t = JSON.stringify(o); } catch { t = String(o); } return t.length > 2200 ? t.slice(0, 2200) + "...(trimmed)" : t; };
+      const fdKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      if (!fdKey) return { cmd: "FIRE_DIRECTIVE", payload: { ok: false, error: "no brain key" } };
+      const fdModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const fdSys = "You are Aura, the ACT layer of FireOS.world. From the reasoning provided (a reconciled situation synthesis, who/what is threatened, and the multi-fire resource coordination picture), compose a small set of CONCRETE, ACTIONABLE directives for the fire response. Each directive must be grounded in the given data - cite what drives it; NEVER invent. Classify each: type 'operational' (crew movement, resource shift, monitoring - publishes freely) or type 'life_safety' (evacuate, move people out of a path, go/no-go on human safety - requires human confirmation before it is acted on). Give each a clear WHERE and WHEN. Return ONLY JSON, no fences: {\"directives\":[{\"type\":\"operational|life_safety\",\"audience\":\"crews|command|public\",\"action\":\"the specific do-this\",\"where\":\"location/flank/grid\",\"when\":\"now|by Day+2 AM|etc\",\"rationale\":\"one sentence, cite the data\",\"confidence\":0.0}]}. Order most important first. Be specific and operational, not generic. If the data does not support a directive of a type, omit it - do not manufacture one.";
+      const fdUser = "FIRE: " + fdReg + "\n\nSYNTHESIS (the reconciled truth):\n" + fdTrim(synth) + "\n\nTHREATENED (who/what is in the path):\n" + fdTrim(threat) + "\n\nCOORDINATION (multi-fire resource picture):\n" + fdTrim(coord);
+      let comp = null;
+      try {
+        const d = await callAnthropic(fdKey, { model: fdModel, max_tokens: 1400, system: fdSys, messages: [{ role: "user", content: fdUser.slice(0, 30000) }] });
+        let t = ""; if (d && d.content) for (const b of d.content) if (b.type === "text") t += b.text;
+        t = t.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+        try { comp = JSON.parse(t); } catch {}
+      } catch {}
+      if (!comp || !Array.isArray(comp.directives)) return { cmd: "FIRE_DIRECTIVE", payload: { ok: false, error: "could not compose directives from the reasoning" } };
+      const now2 = Date.now();
+      const directives = comp.directives.slice(0, 8).map((d, i) => ({
+        seq: i + 1, type: d.type === "life_safety" ? "life_safety" : "operational",
+        audience: d.audience || "crews", action: d.action || "", where: d.where || "", when: d.when || "", rationale: d.rationale || "", confidence: d.confidence,
+        requires_confirm: d.type === "life_safety",
+        status: d.type === "life_safety" ? "pending_confirmation" : "published"
+      }));
+      const pkg = {
+        id: "dir_" + Math.random().toString(36).slice(2, 10),
+        fire: fdReg, issued_at: now2,
+        situation: (synth && synth.synthesis && synth.synthesis.reconciled_truth) || null,
+        directives: directives,
+        channel: { primary: "data_pull", surface: fdKvKey, fallback: "sms_email", fallback_status: "dormant - carries identical directive ONLY on data-connectivity loss; nothing sent in this environment" },
+        note: "Crews PULL this surface (GETKV " + fdKvKey + "). Operational directives are published; life_safety directives are pending_confirmation until a human runs FIRE_DIRECTIVE " + fdReg + " CONFIRM <seq>. Data-first by design; comms fallback dormant."
+      };
+      try { await env.AURA_KV.put(fdKvKey, JSON.stringify(pkg)); } catch {}
+      return { cmd: "FIRE_DIRECTIVE", payload: {
+        ok: true, fire: fdReg,
+        published_to_pull_surface: fdKvKey,
+        operational_published: directives.filter(d => d.status === "published").length,
+        life_safety_pending: directives.filter(d => d.status === "pending_confirmation").length,
+        directives: directives,
+        situation: pkg.situation,
+        channel: pkg.channel,
+        note: "ACT-BACK proven in the DATA WORLD: directives computed from Aura's reasoning and published to the pull-surface crews read. Operational = live; life-safety = held for human confirm (guardrail). SMS/email fallback wired but DORMANT - nothing sent.",
+        source: "fire_directive_v1"
       } };
     }
 

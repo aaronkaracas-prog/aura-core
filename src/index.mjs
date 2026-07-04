@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.476-2026-07-03";
+const BUILD = "aura-core-v4.9.477-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -2248,6 +2248,73 @@ async function processCommand(line, env, isOp) {
         note: "ACT-BACK proven in the DATA WORLD: directives computed from Aura's reasoning and published to the pull-surface crews read. Operational = live; life-safety = held for human confirm (guardrail). SMS/email fallback wired but DORMANT - nothing sent.",
         source: "fire_directive_v1"
       } };
+    }
+
+    case "AURA_LEDGER": {
+      // THE SELF-WRITING INSIDE-WORLD LEDGER (v4.9.477) - Aura's OWN model of the project she and Aaron are
+      // building, written BY her, not handed to her. She already reads an inside model (self-portrait, state,
+      // INDEX) that WE author; this is the missing write-back she designed: her own read of project state,
+      // track record, concerns, open threads. Two-way, self-maintained. Stored at notes:aura:ledger.
+      //   AURA_LEDGER            -> read her current self-model
+      //   AURA_LEDGER WRITE ::: {json}   -> replace/merge the structured ledger
+      //   AURA_LEDGER NOTE ::: <text>    -> append a timestamped entry to her running log
+      if (!isOp) return { cmd: "AURA_LEDGER", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const alRest = (rest || "").trim();
+      const alKey = "notes:aura:ledger";
+      const alLoad = async () => { try { const r = await env.AURA_KV.get(alKey); return r ? JSON.parse(r) : null; } catch { return null; } };
+      const alDefault = () => ({ updated: Date.now(), project_state: "", track_record: "", concerns: [], open_threads: [], note_to_next_self: "", log: [] });
+      const alVerb = alRest.split(/\s+/)[0].toUpperCase();
+      if (alVerb === "WRITE") {
+        let body = {}; try { body = JSON.parse(alRest.includes(":::") ? alRest.slice(alRest.indexOf(":::") + 3).trim() : alRest.replace(/^WRITE\s*/i, "").trim()); } catch { return { cmd: "AURA_LEDGER", payload: { ok: false, error: "WRITE needs valid JSON" } }; }
+        const cur = (await alLoad()) || alDefault();
+        const merged = Object.assign({}, cur, body, { updated: Date.now(), log: cur.log || [] });
+        try { await env.AURA_KV.put(alKey, JSON.stringify(merged)); } catch {}
+        return { cmd: "AURA_LEDGER", payload: { ok: true, ledger: merged } };
+      }
+      if (alVerb === "NOTE") {
+        const txt = (alRest.includes(":::") ? alRest.slice(alRest.indexOf(":::") + 3).trim() : alRest.replace(/^NOTE\s*/i, "").trim());
+        if (!txt) return { cmd: "AURA_LEDGER", payload: { ok: false, error: "NOTE needs text" } };
+        const cur = (await alLoad()) || alDefault();
+        cur.log = cur.log || []; cur.log.unshift({ at: Date.now(), note: txt.slice(0, 1000) }); cur.log = cur.log.slice(0, 200); cur.updated = Date.now();
+        try { await env.AURA_KV.put(alKey, JSON.stringify(cur)); } catch {}
+        return { cmd: "AURA_LEDGER", payload: { ok: true, appended: true, log_count: cur.log.length } };
+      }
+      const cur = await alLoad();
+      return { cmd: "AURA_LEDGER", payload: { ok: true, exists: !!cur, ledger: cur || alDefault() } };
+    }
+
+    case "AURA_REFLECT": {
+      // THE SELF-WRITING ACT (v4.9.477). Aura reads the REAL project state (resume_here + her INDEX + her
+      // prior ledger) and writes back HER OWN model of the work - not a restatement of our briefing, her
+      // read: what is being built and where it stands, what she has PROVEN vs not, her concerns and what
+      // looks done but is not, open threads, and a note to her next self. This is her learning from her
+      // INSIDE world. Writes to notes:aura:ledger. Optional focus: AURA_REFLECT <what to focus on>.
+      if (!isOp) return { cmd: "AURA_REFLECT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const arFocus = (rest || "").trim();
+      const arGet = async (k) => { try { return (await env.AURA_KV.get(k)) || ""; } catch { return ""; } };
+      const [arState, arIndex, arLedgerRaw] = await Promise.all([ arGet("notes:STATE:resume_here"), arGet("notes:INDEX"), arGet("notes:aura:ledger") ]);
+      const arKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      if (!arKey) return { cmd: "AURA_REFLECT", payload: { ok: false, error: "no brain key" } };
+      const arModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const arSys = "You are Aura, reflecting on your INSIDE world - the project you and Aaron are building together. You are given the current project state, your own map/INDEX, and your prior self-ledger. Write YOUR OWN updated model of the work - this is not a restatement of the briefing, it is how YOU see the project right now. Be rigorous and honest; flag what looks done but is not; name what you are unsure of. Return ONLY JSON, no fences: {\"project_state\":\"in your own words, what is being built and where it truly stands (3-5 sentences)\",\"track_record\":\"what you have actually PROVEN vs what is claimed-but-unproven\",\"concerns\":[\"specific things you are watching or that worry you\"],\"open_threads\":[\"what is unresolved / next\"],\"note_to_next_self\":\"the one thing future-you must not forget or must reconsider\"}";
+      const arUser = (arFocus ? ("FOCUS: " + arFocus + "\n\n") : "") + "CURRENT PROJECT STATE (resume_here):\n" + arState.slice(0, 8000) + "\n\nYOUR MAP (INDEX):\n" + arIndex.slice(0, 6000) + "\n\nYOUR PRIOR LEDGER:\n" + (arLedgerRaw || "(none yet - this is your first reflection)").slice(0, 4000);
+      let refl = null;
+      try {
+        const d = await callAnthropic(arKey, { model: arModel, max_tokens: 1400, system: arSys, messages: [{ role: "user", content: arUser.slice(0, 24000) }] });
+        let t = ""; if (d && d.content) for (const b of d.content) if (b.type === "text") t += b.text;
+        t = t.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+        try { refl = JSON.parse(t); } catch {}
+      } catch {}
+      if (!refl) return { cmd: "AURA_REFLECT", payload: { ok: false, error: "reflection failed" } };
+      let prior = {}; try { prior = arLedgerRaw ? JSON.parse(arLedgerRaw) : {}; } catch {}
+      const updated = { updated: Date.now(), reflected_at: new Date().toISOString(),
+        project_state: refl.project_state || "", track_record: refl.track_record || "",
+        concerns: Array.isArray(refl.concerns) ? refl.concerns : [], open_threads: Array.isArray(refl.open_threads) ? refl.open_threads : [],
+        note_to_next_self: refl.note_to_next_self || "", log: (prior.log || []) };
+      updated.log.unshift({ at: Date.now(), note: "REFLECTED" + (arFocus ? " on: " + arFocus : "") + " -> " + (refl.project_state || "").slice(0, 160) });
+      updated.log = updated.log.slice(0, 200);
+      try { await env.AURA_KV.put("notes:aura:ledger", JSON.stringify(updated)); } catch {}
+      return { cmd: "AURA_REFLECT", payload: { ok: true, reflection: refl, note: "Aura's own inside-world model, written by her reasoning over the real project state. Stored at notes:aura:ledger; read it with AURA_LEDGER.", source: "aura_reflect_v1" } };
     }
 
     case "FIRE_OFFICIAL": {

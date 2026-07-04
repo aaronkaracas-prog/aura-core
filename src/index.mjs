@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.468-2026-07-03";
+const BUILD = "aura-core-v4.9.470-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1828,6 +1828,59 @@ async function processCommand(line, env, isOp) {
       } catch (e) { return { cmd: "OIL_PRICE", payload: { ok: false, error: e.message } }; }
     }
 
+    case "FIRE_TERRAIN": {
+      // TERRAIN at a fire point (v4.9.469) - the physical blind spot every fire engine flagged ("no terrain
+      // model"). Fire runs UPHILL; slope + aspect drive spread as much as wind. Queries USGS 3DEP elevation
+      // (keyless, ~0.5m RMSE) at the point + 4 neighbors, computes slope and the UPHILL bearing (where the
+      // fire accelerates) and aspect (S/SW faces cure drier).
+      //   FIRE_TERRAIN <lat> <lon>     e.g. FIRE_TERRAIN 38.29 -112.49  (Cottonwood)
+      if (!isOp) return { cmd: "FIRE_TERRAIN", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const ftParts = line.replace(/^FIRE_TERRAIN\s+/i, "").trim().split(/\s+/);
+      let ftLat = parseFloat(ftParts[0]), ftLon = parseFloat(ftParts[1]);
+      if (isNaN(ftLat) || isNaN(ftLon)) {
+        const ftReg = (ftParts[0] || "").toLowerCase();
+        const ftMap = { cottonwood: [38.29, -112.49], malibu: [34.01, -118.76] };
+        if (ftMap[ftReg]) { ftLat = ftMap[ftReg][0]; ftLon = ftMap[ftReg][1]; }
+        else return { cmd: "FIRE_TERRAIN", payload: { ok: false, error: "Usage: FIRE_TERRAIN <lat> <lon>" } };
+      }
+      const ftElev = async (la, lo) => {
+        try {
+          const u = "https://epqs.nationalmap.gov/v1/json?x=" + lo + "&y=" + la + "&wkid=4326&units=Meters&includeDate=false";
+          const r = await fetchWithTimeout(u, { headers: { "User-Agent": "FireOS/1.0" } }, 8000);
+          if (!r.ok) return null;
+          const d = await r.json();
+          const v = (d.value != null) ? d.value : (d.USGS_Elevation_Point_Query_Service && d.USGS_Elevation_Point_Query_Service.Elevation_Query && d.USGS_Elevation_Point_Query_Service.Elevation_Query.Elevation);
+          const n = parseFloat(v);
+          return (isNaN(n) || n < -1000) ? null : n;
+        } catch { return null; }
+      };
+      const ftOff = 0.01;
+      const [eC, eN, eS, eE, eW] = await Promise.all([
+        ftElev(ftLat, ftLon), ftElev(ftLat + ftOff, ftLon), ftElev(ftLat - ftOff, ftLon), ftElev(ftLat, ftLon + ftOff), ftElev(ftLat, ftLon - ftOff)
+      ]);
+      if (eC == null || eN == null || eS == null || eE == null || eW == null) return { cmd: "FIRE_TERRAIN", payload: { ok: false, error: "elevation service returned no data (USGS 3DEP slow or point off-grid)", partial: { center: eC, n: eN, s: eS, e: eE, w: eW } } };
+      const ftRunNS = 2 * ftOff * 111320;
+      const ftRunEW = 2 * ftOff * 111320 * Math.cos(ftLat * Math.PI / 180);
+      const dzdy = (eN - eS) / ftRunNS;
+      const dzdx = (eE - eW) / ftRunEW;
+      const slopeDeg = Math.atan(Math.sqrt(dzdx * dzdx + dzdy * dzdy)) * 180 / Math.PI;
+      const uphill = (Math.atan2(dzdx, dzdy) * 180 / Math.PI + 360) % 360;
+      const ftDirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
+      const uphillDir = ftDirs[Math.round(uphill / 45) % 8];
+      return { cmd: "FIRE_TERRAIN", payload: {
+        ok: true, lat: ftLat, lon: ftLon,
+        elevation_m: Math.round(eC),
+        slope_deg: Math.round(slopeDeg * 10) / 10,
+        slope_grade_pct: Math.round(Math.tan(slopeDeg * Math.PI / 180) * 100),
+        uphill_bearing_deg: Math.round(uphill),
+        uphill_direction: uphillDir,
+        terrain: slopeDeg < 3 ? "flat" : slopeDeg < 10 ? "gentle" : slopeDeg < 20 ? "moderate" : slopeDeg < 30 ? "steep" : "very steep",
+        neighbors_m: { n: Math.round(eN), s: Math.round(eS), e: Math.round(eE), w: Math.round(eW) },
+        note: "USGS 3DEP elevation. Fire spreads fastest UPHILL - expect acceleration toward " + uphillDir + " (bearing " + Math.round(uphill) + "deg) on this " + Math.round(slopeDeg) + "deg slope. Aspect also drives fuel dryness (S/SW faces cure hotter/drier).",
+        source: "usgs_3dep_epqs"
+      } };
+    }
+
     case "FIRE_OFFICIAL": {
       // NIFC WFIGS - the AUTHORITATIVE fire incident feed (keyless ArcGIS REST, refreshes ~5 min).
       // Official acreage, containment %, fire name, discovery date - the structured source behind every
@@ -1924,10 +1977,10 @@ async function processCommand(line, env, isOp) {
       const FIRE_HINTS = /(^CFR|TANKER|^T\d{2,3}|^A\d{2,3}|FIRE|GUARD|^N\d+DF|COULSON|NEPTUNE|^MMF|HELITACK|^CWN|^GRAND|BRIDGER|^TNKR)/i;
       // PRIMARY: ADS-B Exchange (RapidAPI) - unfiltered, sees government firefighting aircraft
       const adsbKey = await env.AURA_KV.get("secret:adsbexchange").catch(() => null);
-      if (adsbKey && ctr) {
+      if (ctr) {
         try {
-          const url = `https://adsbexchange-com1.p.rapidapi.com/v2/lat/${ctr.lat}/lon/${ctr.lon}/dist/150/`;
-          const r = await fetch(url, { headers: { "x-rapidapi-key": adsbKey, "x-rapidapi-host": "adsbexchange-com1.p.rapidapi.com" } });
+          const url = `https://api.adsb.one/v2/point/${ctr.lat}/${ctr.lon}/150`; // v4.9.470: free keyless unfiltered source (same ADSBExchange-v2 shape), replaces paid RapidAPI
+          const r = await fetch(url, { headers: { "User-Agent": "FireOS/1.0" } });
           if (r.ok) {
             const d = await r.json();
             const ac = (d.ac || []).map(a => {
@@ -1935,12 +1988,12 @@ async function processCommand(line, env, isOp) {
               return { icao24: a.hex, callsign: cs || null, lat: a.lat, lon: a.lon, alt_ft: a.alt_baro, vel_kt: a.gs, track_deg: a.track, type: a.t || null, registration: a.r || null, likely_fire: FIRE_HINTS.test(cs) || FIRE_HINTS.test(a.r || "") };
             }).filter(a => a.lat != null && a.lon != null);
             const fireAc = ac.filter(a => a.likely_fire);
-            return { cmd: "AIRCRAFT_QUERY", payload: { ok: true, source: "adsbexchange_live", region: acRegion, label: ctr.label, total_aircraft: ac.length, likely_firefighting: fireAc.length, fire_aircraft: fireAc.slice(0, 30), all_sample: ac.slice(0, 20), updated: new Date().toISOString(), note: fireAc.length ? "Flagged by callsign/registration - confirm against incident air-ops roster." : "No firefighting-pattern aircraft this pass (may be grounded/between sorties). Total air traffic shown." } };
+            return { cmd: "AIRCRAFT_QUERY", payload: { ok: true, source: "adsb_one_live", region: acRegion, label: ctr.label, total_aircraft: ac.length, likely_firefighting: fireAc.length, fire_aircraft: fireAc.slice(0, 30), all_sample: ac.slice(0, 20), updated: new Date().toISOString(), note: fireAc.length ? "Flagged by callsign/registration - confirm against incident air-ops roster." : "No firefighting-pattern aircraft this pass (may be grounded/between sorties). Total air traffic shown." } };
           }
           // ADS-B returned non-ok - report it LOUDLY, do not silently fall through
           const errBody = await r.text().catch(() => "");
-          return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, source: "adsbexchange_error", region: acRegion, http: r.status, detail: errBody.slice(0, 160), hint: r.status === 403 ? "403 = key rejected. Re-copy the EXACT key from RapidAPI (Copy button) and SETKV secret:adsbexchange. The screenshot key was likely truncated." : "ADS-B Exchange returned an error." } };
-        } catch (e) { return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, source: "adsbexchange_exception", region: acRegion, error: String(e && e.message || e) } }; }
+          return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, source: "adsb_one_error", region: acRegion, http: r.status, detail: errBody.slice(0, 160), hint: r.status === 403 ? "403 = key rejected. Re-copy the EXACT key from RapidAPI (Copy button) and SETKV secret:adsbexchange. The screenshot key was likely truncated." : "ADS-B Exchange returned an error." } };
+        } catch (e) { return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, source: "adsb_one_exception", region: acRegion, error: String(e && e.message || e) } }; }
       }
       // FALLBACK: OpenSky (keyless/anonymous or credentialed)
       if (!acb) return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, error: "ADS-B Exchange unavailable and no OpenSky box for region " + acRegion } };

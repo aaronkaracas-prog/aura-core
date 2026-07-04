@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.465-2026-07-03";
+const BUILD = "aura-core-v4.9.466-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -6309,6 +6309,57 @@ async function processCommand(line, env, isOp) {
         return { cmd: "SITUATION_LIVE", payload: { ok: true, topic: slTopic, served: "computed_live_now", as_of: new Date().toISOString(), age_minutes: 0, freshness: "fresh", note: "First hit computed live and cached; marked hot so the cron keeps it instant from now on.", ...lp } };
       }
       return { cmd: "SITUATION_LIVE", payload: { ok: false, topic: slTopic, error: (lp && lp.error) || "could not produce a brief", served: "failed" } };
+    }
+
+    case "SITUATION_BUILD": {
+      // SITUATION_BUILD (v4.9.466) - THE GRAMMAR. Takes any topic, runs the universal INGEST engine
+      // (news + federal auto-fire + reasoned-domain + kept depot), then REASONS the extraction into Aura's
+      // universal situation schema: ONE structured, NEUTRAL, lens-free object any business lens can later
+      // project onto. Same shape holds for a wildfire, a wedding, and a crime spike. Every fact carries its
+      // source (honesty law, structural). This is what turns "answers about situations" into "situations
+      // businesses act on." No lens here on purpose - the object comes out neutral.
+      //   SITUATION_BUILD <topic>
+      if (!isOp) return { cmd: "SITUATION_BUILD", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const sbTopic = (line.replace(/^SITUATION_BUILD\s*/i, "").trim());
+      if (!sbTopic) return { cmd: "SITUATION_BUILD", payload: { ok: false, error: "usage: SITUATION_BUILD <topic>" } };
+      const sbNow = Date.now();
+      // STEP 1 - INGEST all the data (reasoned domain, news, federal, depot, universal)
+      let ing = null;
+      try { const ir = await processCommand("INGEST FRESH " + sbTopic, env, true); ing = ir && ir.payload ? ir.payload : ir; } catch {}
+      if (!ing || !ing.ok) return { cmd: "SITUATION_BUILD", payload: { ok: false, error: "ingest failed for '" + sbTopic + "'" } };
+      // STEP 2 - REASON the extraction into the universal, neutral situation object
+      const sbKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      if (!sbKey) return { cmd: "SITUATION_BUILD", payload: { ok: false, error: "no brain key" } };
+      const sbModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const sbSys = "You are Aura's SITUATION-STRUCTURING stage. You are handed already-ingested data about a topic. Shape it into ONE structured, NEUTRAL, lens-free situation object in Aura's universal schema. Reason each field from the data. GROUND every claim in a source; NEVER invent - if a field is unknown use null or an empty array. NO business interpretation, NO recommendations - just the structured reality. Return ONLY JSON, no fences: {\"type\":\"event|trend|individual|entity|threshold\",\"as_of\":\"ISO8601\",\"location\":{\"place\":\"\",\"lat\":null,\"lng\":null}|null,\"participants\":[\"named people/orgs/entities involved\"],\"confidence\":0.0,\"velocity\":0.0,\"urgency\":0.0,\"domains\":[\"category\"],\"change_vector\":\"rising|stable|falling\",\"context_depth\":\"hours|days|weeks|months|years\",\"fact_set\":[{\"claim\":\"short factual claim\",\"source\":\"url or source name\"}],\"summary\":\"2-3 neutral sentences\"}. confidence = how well-sourced and certain this is. velocity = how fast it is developing right now. urgency = how much it demands attention or action. Those are THREE DIFFERENT axes - reason each separately, do not collapse them.";
+      const sbSrc = (ing.sources || []).map(x => "- " + (x.title || "") + " [" + (x.url || "") + "]" + (x.kind ? " (" + x.kind + ")" : "")).join("\n");
+      const sbUser = "TOPIC: " + sbTopic + "\nDOMAIN (reasoned): " + (ing.specialist_used || ing.category || "none") + "\nFRESHNESS_SENSITIVE: " + ing.freshness_sensitive + "\nNEWS_PULLED: " + (ing.news_pulled || 0) + "\nAS-OF (now): " + new Date(sbNow).toISOString() + "\n\nKNOWLEDGE:\n" + (ing.knowledge || "") + "\n\nKEY FACTS:\n" + (ing.key_facts || []).map(f => "- " + f).join("\n") + "\n\nSOURCES:\n" + sbSrc;
+      let sit = null;
+      try {
+        const d = await callAnthropic(sbKey, { model: sbModel, max_tokens: 1600, system: sbSys, messages: [{ role: "user", content: sbUser.slice(0, 28000) }] });
+        let t = ""; if (d && d.content) for (const b of d.content) if (b.type === "text") t += b.text;
+        t = t.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+        try { sit = JSON.parse(t); } catch {}
+      } catch {}
+      if (!sit) return { cmd: "SITUATION_BUILD", payload: { ok: false, error: "could not structure the situation from the ingested data" } };
+      const situation = {
+        id: "sit_" + Math.random().toString(36).slice(2, 12),
+        topic: sbTopic,
+        built_at: sbNow,
+        type: sit.type || "event",
+        as_of: sit.as_of || new Date(sbNow).toISOString(),
+        location: sit.location || null,
+        participants: Array.isArray(sit.participants) ? sit.participants : [],
+        signal: { confidence: (sit.confidence ?? null), velocity: (sit.velocity ?? null), urgency: (sit.urgency ?? null) },
+        domains: Array.isArray(sit.domains) && sit.domains.length ? sit.domains : (ing.specialist_used ? [ing.specialist_used] : []),
+        change_vector: sit.change_vector || "stable",
+        context_depth: sit.context_depth || "days",
+        fact_set: Array.isArray(sit.fact_set) ? sit.fact_set : [],
+        summary: sit.summary || ing.knowledge || "",
+        provenance: { news_pulled: ing.news_pulled || 0, specialist_used: ing.specialist_used || null, depot_pulled: !!ing.depot_pulled, sources: (ing.sources || []).slice(0, 12) }
+      };
+      try { await env.AURA_KV.put("situation:built:" + sbTopic.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 60), JSON.stringify(situation)); } catch {}
+      return { cmd: "SITUATION_BUILD", payload: { ok: true, situation: situation } };
     }
 
     case "SITUATION_HERO": {

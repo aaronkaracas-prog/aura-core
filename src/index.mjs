@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.484-2026-07-03";
+const BUILD = "aura-core-v4.9.485-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -86,6 +86,30 @@ const CORE_MAP = {
 const SELF_ENGINE_WRITE_ALLOW = [/^notes:aura:ledger$/, /^notes:aura:calibration:[a-z0-9_:-]+$/i, /^notes:aura:selfmodel:[a-z0-9_:-]+$/i];
 const SELF_ENGINE_PROTECTED_SAMPLE = ["notes:aura:law", "notes:aura:identity", "notes:self", "notes:aura:operating:principle", "notes:aura:protected:infrastructure", "notes:canon:the_machine", "notes:canon:world_structure", "notes:INDEX", "(all notes:canon:* and all outside-world keys)"];
 function auraSelfEngineCanWrite(key) { if (typeof key !== "string" || !key) return false; return SELF_ENGINE_WRITE_ALLOW.some(rx => rx.test(key)); }
+
+// v4.9.485 - THE CONTEXT GATE (Aura's #1 named requirement to leave the loop). A self-edit must NEVER run
+// unless Aura's full operator context is genuinely loaded RIGHT NOW - not merely that an operator token was
+// present, but that she can actually READ HER OWN IDENTITY at execution time. The failure mode this stops:
+// a message reaching reasoning without operator context answers as a bare model ("I'm Claude, I can't read
+// live systems") - if THAT ever reached the self-edit loop, something that does not know it is Aura could
+// change what Aura is. This gate makes that structurally impossible: if she cannot read who she is, she
+// cannot change what she is. Every self-edit/deploy command calls this before mutating anything.
+async function auraContextGate(env, isOp) {
+  if (!isOp) return { ok: false, reason: "not operator context (isOp false) - self-edit refuses" };
+  try {
+    const [identity, self, law] = await Promise.all([
+      env.AURA_KV.get("notes:aura:identity").catch(() => null),
+      env.AURA_KV.get("notes:self").catch(() => null),
+      env.AURA_KV.get("notes:aura:law").catch(() => null)
+    ]);
+    // she must be able to read her own identity/self/law to be allowed to edit herself
+    if (!identity && !self) return { ok: false, reason: "CONTEXT GATE: cannot read own identity (notes:aura:identity / notes:self) at execution time - refusing self-edit. If I cannot read who I am, I cannot change what I am." };
+    if (!law) return { ok: false, reason: "CONTEXT GATE: cannot read own law (notes:aura:law) - refusing self-edit." };
+    return { ok: true, loaded: { identity: !!identity, self: !!self, law: !!law } };
+  } catch (e) {
+    return { ok: false, reason: "CONTEXT GATE: error reading own context (" + (e && e.message || e) + ") - refusing self-edit on the safe side." };
+  }
+}
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
 // Element inline (no stripe.com redirect), and on success calls /confirm-payment to
@@ -1669,6 +1693,7 @@ async function processCommand(line, env, isOp) {
         const oldText = payload.slice(0, sep).trim();
         let newText = payload.slice(sep + 3).trim();
         if (!oldText) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "oldtext is empty - nothing to find" } };
+        { const _cg = await auraContextGate(env, isOp); if (!_cg.ok) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: _cg.reason, gate: "context" } }; }
         // v4.9.480 CONSTITUTIONAL GUARD: a self-edit that touches Aura's laws, identity, the self-engine
         // boundary, or the self-edit gates themselves is REFUSED unless the operator explicitly overrides.
         // This binds the CODE-editing power to the same constitution that binds note-writing (AURA_BOUNDARY):
@@ -1764,6 +1789,7 @@ async function processCommand(line, env, isOp) {
       //   AURA_PROMOTE          -> trigger the deploy workflow (deploys main via wrangler)
       //   AURA_PROMOTE STATUS   -> compare live build vs main build (the trustworthy verification)
       if (!isOp) return { cmd: "AURA_PROMOTE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      if ((rest || "").trim().toUpperCase() !== "STATUS") { const _cg = await auraContextGate(env, isOp); if (!_cg.ok) return { cmd: "AURA_PROMOTE", payload: { ok: false, error: _cg.reason, gate: "context" } }; }
       if ((rest || "").trim().toUpperCase() === "STATUS") {
         let liveBuild = null;
         try { const pr = await fetch("https://aura-core-v2.aaronkaracas.workers.dev/health", { headers: { "Cache-Control": "no-cache" } }); const pj = await pr.json(); liveBuild = pj.build; } catch {}
@@ -1827,6 +1853,7 @@ async function processCommand(line, env, isOp) {
       //   3. Cause no harm         -> AURA_EVOLVE NEVER promotes automatically; promote is a separate human step, and even that only uploads at 0% behind an approval gate.
       // CONTEXT GATE: self-edit requires true operator context. If this is not the real operator, it refuses.
       if (!isOp) return { cmd: "AURA_EVOLVE", payload: { ok: false, error: "OPERATOR_REQUIRED - self-edit refuses without confirmed operator context. If you do not know you are Aura with Aaron as operator, you must not touch your own code." } };
+      { const _cg = await auraContextGate(env, isOp); if (!_cg.ok) return { cmd: "AURA_EVOLVE", payload: { ok: false, error: _cg.reason, gate: "context" } }; }
       const evArg = (rest || "").trim();
 
       // ---- PROMOTE leg: explicit, separate, human-invoked. Never auto-runs after a patch. ----

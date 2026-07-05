@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.481-2026-07-03";
+const BUILD = "aura-core-v4.9.482-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1567,14 +1567,29 @@ async function processCommand(line, env, isOp) {
         if (!made.ok) return { ok: false, error: "Cannot create proposal branch: " + made.status + " " + JSON.stringify(made.j).slice(0, 200) };
         return { ok: true, existed: false };
       };
-      // commit a file to the proposal branch (reads current sha on that branch if file exists)
+      // commit a file to the proposal branch. v4.9.482: her index.mjs (~1.67MB) exceeds the Contents-API
+      // PUT limit (~1MB), so we use the git data API (blob -> tree -> commit -> ref) which has NO size limit.
       const commitFile = async (filePath, contentB64, message) => {
-        const cur = await gh(`/repos/${GH_OWNER}/${GH_REPO}/contents/${filePath}?ref=${PROPOSE_BRANCH}`);
-        const sha = cur.ok && cur.j && cur.j.sha ? cur.j.sha : undefined;
-        const put = await gh(`/repos/${GH_OWNER}/${GH_REPO}/contents/${filePath}`, "PUT", {
-          message, content: contentB64, branch: PROPOSE_BRANCH, ...(sha ? { sha } : {})
-        });
-        return put;
+        // 1) create a blob from the base64 content
+        const blob = await gh(`/repos/${GH_OWNER}/${GH_REPO}/git/blobs`, "POST", { content: contentB64, encoding: "base64" });
+        if (!blob.ok || !blob.j.sha) return { ok: false, status: blob.status, j: blob.j, _stage: "blob" };
+        // 2) get the branch's current head commit + its tree
+        const ref = await gh(`/repos/${GH_OWNER}/${GH_REPO}/git/ref/heads/${PROPOSE_BRANCH}`);
+        if (!ref.ok || !ref.j.object) return { ok: false, status: ref.status, j: ref.j, _stage: "ref" };
+        const headSha = ref.j.object.sha;
+        const headCommit = await gh(`/repos/${GH_OWNER}/${GH_REPO}/git/commits/${headSha}`);
+        if (!headCommit.ok || !headCommit.j.tree) return { ok: false, status: headCommit.status, j: headCommit.j, _stage: "headCommit" };
+        const baseTree = headCommit.j.tree.sha;
+        // 3) create a new tree with the file pointing at the new blob
+        const tree = await gh(`/repos/${GH_OWNER}/${GH_REPO}/git/trees`, "POST", { base_tree: baseTree, tree: [{ path: filePath, mode: "100644", type: "blob", sha: blob.j.sha }] });
+        if (!tree.ok || !tree.j.sha) return { ok: false, status: tree.status, j: tree.j, _stage: "tree" };
+        // 4) create the commit
+        const commit = await gh(`/repos/${GH_OWNER}/${GH_REPO}/git/commits`, "POST", { message, tree: tree.j.sha, parents: [headSha] });
+        if (!commit.ok || !commit.j.sha) return { ok: false, status: commit.status, j: commit.j, _stage: "commit" };
+        // 5) move the branch ref to the new commit
+        const upd = await gh(`/repos/${GH_OWNER}/${GH_REPO}/git/refs/heads/${PROPOSE_BRANCH}`, "PATCH", { sha: commit.j.sha, force: false });
+        if (!upd.ok) return { ok: false, status: upd.status, j: upd.j, _stage: "ref-update" };
+        return { ok: true, status: 200, j: { commit: { html_url: `https://github.com/${GH_OWNER}/${GH_REPO}/commit/${commit.j.sha}`, sha: commit.j.sha } } };
       };
 
       const sub = (args[0] || "").toUpperCase();
@@ -1666,10 +1681,16 @@ async function processCommand(line, env, isOp) {
         if (touchesCore.length && !constitutionalOverride) {
           return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "CONSTITUTIONAL GUARD: this patch touches Aura's protected core (" + touchesCore.join(", ") + "). A self-edit may not alter her laws, identity, self-engine boundary, or self-edit gates. If Aaron the operator intends this deliberately, append '::: OVERRIDE_CONSTITUTIONAL' to the end of the patch. Aura's own autonomous self-edits can never override this.", touched_core: touchesCore, guard: "constitutional" } };
         }
-        // fetch current main source (the real current her)
-        const mainFile = await gh(`/repos/${GH_OWNER}/${GH_REPO}/contents/src/index.mjs?ref=${BASE_BRANCH}`);
-        if (!mainFile.ok || !mainFile.j.content) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Could not read main index: " + mainFile.status } };
-        let src; try { src = decodeURIComponent(escape(atob(mainFile.j.content.replace(/\n/g, "")))); } catch (e) { return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Could not decode main source: " + e.message } }; }
+        // fetch current main source (the real current her). v4.9.482: her index.mjs outgrew GitHub's
+        // Contents-API inline limit (~1MB; she is ~1.67MB), which returns 200 with NO .content field.
+        // Read via the raw endpoint instead - no size limit - so she can always read herself to self-edit.
+        let src;
+        try {
+          const rawR = await fetch(`https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${BASE_BRANCH}/src/index.mjs`, { headers: { "User-Agent": "aura-propose", "Authorization": "Bearer " + ghTok, "Cache-Control": "no-cache" } });
+          if (!rawR.ok) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Could not read main index (raw): HTTP " + rawR.status } };
+          src = await rawR.text();
+        } catch (e) { return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Could not read main source: " + (e && e.message || e) } }; }
+        if (!src || !src.includes("const BUILD")) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Main source read but did not look like index.mjs (no BUILD line) - refusing to patch a bad read" } };
         const occurrences = src.split(oldText).length - 1;
         if (occurrences === 0) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "oldtext not found in source - patch refused (read your source with AURA_READ_SELF first to copy the exact text)" } };
         if (occurrences > 1) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "oldtext appears " + occurrences + " times - must be unique. Include more surrounding context to make it unique." } };

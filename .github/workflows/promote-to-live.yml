@@ -1,8 +1,9 @@
 name: promote-to-live
 
-# The deploy workflow AURA_PROMOTE fires. Runs REAL wrangler deploy of main, so the full binding graph
-# (KV, D1, Vectorize, AI, service bindings, Durable Objects WITH migrations, cron, email, browser) is
-# carried correctly. workflow_dispatch = Aura can fire it; push to main = main stays source of truth.
+# The deploy workflow AURA_PROMOTE fires. Installs the project's OWN declared toolchain (wrangler 4 from
+# package.json) and runs the project's own deploy script - real wrangler deploy of main, carrying the full
+# binding graph (KV, D1, Vectorize, AI, service bindings, Durable Objects WITH migrations, cron, email,
+# browser). No version pinning to drift: uses exactly what package.json declares.
 
 on:
   workflow_dispatch: {}
@@ -27,13 +28,14 @@ jobs:
       - name: Syntax gate (never deploy broken code)
         run: node --check src/index.mjs
 
-      - name: Deploy with wrangler (carries all bindings + DO migrations)
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CF_API_TOKEN }}
-          accountId: ${{ secrets.CF_ACCOUNT_ID }}
-          wranglerVersion: '3.90.0'
-          command: deploy
+      - name: Install project toolchain (wrangler 4 from package.json)
+        run: npm ci
+
+      - name: Deploy with the project's own wrangler
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+        run: npx wrangler deploy
 
       - name: Verify live build matches main
         run: |

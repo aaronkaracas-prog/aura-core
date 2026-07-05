@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.482-2026-07-03";
+const BUILD = "aura-core-v4.9.483-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -7823,6 +7823,79 @@ async function processCommand(line, env, isOp) {
       } catch (e) {
         return { cmd: "CF_API", payload: { ok: false, error: "CF_API fetch failed: " + e.message } };
       }
+    }
+
+    case "ROLLBACK_SELF": {
+      // THE SAFETY FLOOR (v4.9.483). "Put me back to the version that worked." Lists aura-core's deployed
+      // versions straight from the Cloudflare platform (NOT GitHub, NOT aura-ops, NOT PowerShell) and can
+      // redeploy the PREVIOUS one. This is the recovery path that does NOT depend on the broken thing to
+      // run - it calls the platform UNDERNEATH aura-core. If a self-edit ever ships bad, this is the way back.
+      //   ROLLBACK_SELF              -> LIST recent versions (current + previous), no change made
+      //   ROLLBACK_SELF PREVIOUS     -> redeploy the immediately-previous version (the last-known-good)
+      //   ROLLBACK_SELF TO <version_id>  -> redeploy a specific version by id
+      if (!isOp) return { cmd: "ROLLBACK_SELF", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const rbAccount = env.CF_ACCOUNT_ID || (await env.AURA_KV.get("config:cf:account_id").catch(() => null)) || "3db0de2c6fce92757e2c4e4f83d7eb16";
+      const rbToken = env.CF_API_TOKEN || await env.AURA_KV.get("secret:cf_api_token").catch(() => null);
+      if (!rbToken) return { cmd: "ROLLBACK_SELF", payload: { ok: false, error: "No CF token (secret:cf_api_token)" } };
+      const rbScript = "aura-core-v2";
+      const cfGet = async (path) => {
+        const r = await fetch("https://api.cloudflare.com/client/v4" + path, { headers: { "Authorization": "Bearer " + rbToken } });
+        const j = await r.json().catch(() => ({}));
+        return { ok: r.ok && j.success, status: r.status, j };
+      };
+      // list recent versions of this worker
+      const verRes = await cfGet(`/accounts/${rbAccount}/workers/scripts/${rbScript}/versions?per_page=10`);
+      if (!verRes.ok) return { cmd: "ROLLBACK_SELF", payload: { ok: false, error: "Could not list versions: HTTP " + verRes.status + " " + JSON.stringify(verRes.j.errors || verRes.j).slice(0, 200), hint: "The CF token may need Workers Scripts:Read+Edit. This is your break-glass - worth confirming the token scope now, before you need it." } };
+      const versions = ((verRes.j.result && verRes.j.result.items) || verRes.j.result || []).map(v => ({
+        id: v.id, number: v.number, created_on: v.metadata && v.metadata.created_on || v.created_on,
+        message: (v.annotations && (v.annotations["workers/message"] || v.annotations.message)) || null,
+        tag: (v.annotations && v.annotations["workers/tag"]) || null
+      }));
+      // which version is currently deployed
+      const depRes = await cfGet(`/accounts/${rbAccount}/workers/scripts/${rbScript}/deployments`);
+      let currentVersionId = null;
+      if (depRes.ok) {
+        const deps = (depRes.j.result && depRes.j.result.deployments) || depRes.j.result || [];
+        const latest = deps[0];
+        if (latest && latest.versions && latest.versions[0]) currentVersionId = latest.versions[0].version_id;
+      }
+      const rbArg = (rest || "").trim();
+      const rbVerb = rbArg.split(/\s+/)[0].toUpperCase();
+
+      // LIST (default): show current + previous, make NO change
+      if (!rbVerb) {
+        const curIdx = versions.findIndex(v => v.id === currentVersionId);
+        const previous = curIdx >= 0 ? versions[curIdx + 1] : (versions[1] || null);
+        return { cmd: "ROLLBACK_SELF", payload: { ok: true, script: rbScript,
+          current_version: currentVersionId, previous_version: previous ? previous.id : null,
+          previous_message: previous ? previous.message : null,
+          versions: versions.slice(0, 8),
+          note: "No change made. To recover: ROLLBACK_SELF PREVIOUS (redeploys the last-known-good), or ROLLBACK_SELF TO <version_id>. This calls Cloudflare directly - it works even if aura-core's brain is misbehaving, because it runs on the platform underneath her." } };
+      }
+
+      // determine target version id
+      let targetId = null;
+      if (rbVerb === "PREVIOUS") {
+        const curIdx = versions.findIndex(v => v.id === currentVersionId);
+        const prev = curIdx >= 0 ? versions[curIdx + 1] : versions[1];
+        if (!prev) return { cmd: "ROLLBACK_SELF", payload: { ok: false, error: "No previous version found to roll back to (only one version exists, or the current version could not be located in the list).", current_version: currentVersionId, versions: versions.slice(0, 8) } };
+        targetId = prev.id;
+      } else if (rbVerb === "TO") {
+        targetId = rbArg.split(/\s+/)[1];
+        if (!targetId) return { cmd: "ROLLBACK_SELF", payload: { ok: false, error: "Usage: ROLLBACK_SELF TO <version_id>" } };
+      } else {
+        return { cmd: "ROLLBACK_SELF", payload: { ok: false, error: "Usage: ROLLBACK_SELF | ROLLBACK_SELF PREVIOUS | ROLLBACK_SELF TO <version_id>" } };
+      }
+      if (targetId === currentVersionId) return { cmd: "ROLLBACK_SELF", payload: { ok: false, error: "That version is already the one deployed - nothing to roll back to." } };
+      // redeploy the target version (create a new deployment pointing 100% at it)
+      const rbPut = await fetch(`https://api.cloudflare.com/client/v4/accounts/${rbAccount}/workers/scripts/${rbScript}/deployments`, {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + rbToken, "Content-Type": "application/json" },
+        body: JSON.stringify({ strategy: "percentage", versions: [{ version_id: targetId, percentage: 100 }], annotations: { "workers/message": "ROLLBACK_SELF -> " + targetId.slice(0, 8) } })
+      });
+      const rbJ = await rbPut.json().catch(() => ({}));
+      if (!(rbPut.ok && rbJ.success)) return { cmd: "ROLLBACK_SELF", payload: { ok: false, error: "Rollback deploy failed: HTTP " + rbPut.status + " " + JSON.stringify(rbJ.errors || rbJ).slice(0, 250), attempted_version: targetId } };
+      return { cmd: "ROLLBACK_SELF", payload: { ok: true, rolled_back_to: targetId, from: currentVersionId, note: "Redeployed the target version at 100%. aura-core is now running the rolled-back code. Confirm with PING (check the build) in ~15s. THIS is your floor - you can always get back.", source: "rollback_self_v1" } };
     }
 
     case "ROUTE_AUDIT": {

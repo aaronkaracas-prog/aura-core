@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.483-2026-07-03";
+const BUILD = "aura-core-v4.9.484-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1756,24 +1756,33 @@ async function processCommand(line, env, isOp) {
     }
 
     case "AURA_PROMOTE": {
-      // SELF-EDIT piece 5: fire the promote-to-live pipeline from a command (no GitHub UI).
-      // Triggers the promote-to-live.yml workflow via the GitHub dispatch API using the token in KV.
-      // The workflow uploads a new version at 0%, then PAUSES at the production approval gate.
-      // Promotion to 100% still requires explicit approval (AURA_APPROVE or the GitHub button) -
-      // this command only STARTS the pipeline, it does not make anything live by itself.
+      // SELF-EDIT piece 5 (v4.9.484). Fires the promote-to-live.yml GitHub Action, which runs REAL
+      // `wrangler deploy` on GitHub's runners - the only thing that correctly carries the full binding
+      // graph (KV, D1, Vectorize, AI, 3 service bindings, 2 Durable Objects WITH migrations, secrets, cron).
+      // Deliberately NOT a raw CF_API upload: a raw upload cannot safely do DO migrations and would risk
+      // corrupting EntityDO/AisCollectorDO state. Real wrangler is the correct deploy mechanism.
+      //   AURA_PROMOTE          -> trigger the deploy workflow (deploys main via wrangler)
+      //   AURA_PROMOTE STATUS   -> compare live build vs main build (the trustworthy verification)
       if (!isOp) return { cmd: "AURA_PROMOTE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      if ((rest || "").trim().toUpperCase() === "STATUS") {
+        let liveBuild = null;
+        try { const pr = await fetch("https://aura-core-v2.aaronkaracas.workers.dev/health", { headers: { "Cache-Control": "no-cache" } }); const pj = await pr.json(); liveBuild = pj.build; } catch {}
+        let mainBuild = null;
+        try { const mr = await fetch(`https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${BASE_BRANCH}/src/index.mjs`, { headers: { "User-Agent": "aura", "Cache-Control": "no-cache" } }); const mt = await mr.text(); const bm = (mt.split("\n").find(l => l.includes("const BUILD")) || "").match(/aura-core-v[\d.]+-[\d-]+/); mainBuild = bm ? bm[0] : null; } catch {}
+        return { cmd: "AURA_PROMOTE", payload: { ok: true, live_build: liveBuild, main_build: mainBuild, in_sync: !!(liveBuild && mainBuild && liveBuild === mainBuild), note: (liveBuild && mainBuild && liveBuild === mainBuild) ? "Live matches main - in sync." : "Live does NOT match main - the deploy has not landed (or is still running). This BUILD comparison is the only trustworthy signal a deploy worked." } };
+      }
       const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);
       if (!ghTok) return { cmd: "AURA_PROMOTE", payload: { ok: false, error: "No GitHub token" } };
       const r = await fetch("https://api.github.com/repos/aaronkaracas-prog/aura-core/actions/workflows/promote-to-live.yml/dispatches", {
         method: "POST",
         headers: { "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github+json", "User-Agent": "aura-promote", "Content-Type": "application/json" },
-        body: JSON.stringify({ ref: "main", inputs: { confirm: "PROMOTE" } })
+        body: JSON.stringify({ ref: "main" })
       });
       if (r.status === 204) {
-        return { cmd: "AURA_PROMOTE", payload: { ok: true, started: true, note: "Promote pipeline started. It uploads a new version at 0% (no users), then waits for approval. Check with AURA_PROMOTE STATUS in ~30s. Nothing is live until approved." } };
+        return { cmd: "AURA_PROMOTE", payload: { ok: true, started: true, note: "Deploy workflow started (real wrangler deploy of main, all bindings + DO migrations carried). It takes ~60-90s. VERIFY with AURA_PROMOTE STATUS - success = live build matches main build. Nothing is trusted until that matches." } };
       }
       const j = await r.json().catch(() => ({}));
-      return { cmd: "AURA_PROMOTE", payload: { ok: false, error: "Dispatch failed: HTTP " + r.status + " " + JSON.stringify(j).slice(0, 200) } };
+      return { cmd: "AURA_PROMOTE", payload: { ok: false, error: "Dispatch failed: HTTP " + r.status + " " + JSON.stringify(j).slice(0, 200), hint: r.status === 404 || r.status === 422 ? "promote-to-live.yml does not exist in the repo yet. It must be added once (it runs wrangler deploy). Until then, deploy stays manual." : "Check the token's workflow scope." } };
     }
 
     case "AURA_PROMOTE_STATUS": {

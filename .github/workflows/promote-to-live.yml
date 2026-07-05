@@ -1,0 +1,44 @@
+name: promote-to-live
+
+# The deploy workflow AURA_PROMOTE fires. Runs REAL wrangler deploy of main, so the full binding graph
+# (KV, D1, Vectorize, AI, service bindings, Durable Objects WITH migrations, cron, email, browser) is
+# carried correctly - which a raw API upload cannot safely do. Triggerable by API (workflow_dispatch)
+# so Aura can fire it, and on push to main so main is always the source of truth.
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [ main ]
+    paths: [ 'src/index.mjs', 'wrangler.toml' ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Syntax gate (never deploy broken code)
+        run: node --check src/index.mjs
+
+      - name: Deploy with wrangler (carries all bindings + DO migrations)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+
+      - name: Verify live build matches main
+        run: |
+          sleep 10
+          MAIN=$(grep -m1 'const BUILD' src/index.mjs | grep -oE 'aura-core-v[0-9.]+-[0-9-]+')
+          LIVE=$(curl -s https://aura-core-v2.aaronkaracas.workers.dev/health | grep -oE 'aura-core-v[0-9.]+-[0-9-]+' | head -1)
+          echo "main=$MAIN live=$LIVE"
+          if [ "$MAIN" != "$LIVE" ]; then echo "BUILD MISMATCH - deploy did not land"; exit 1; fi
+          echo "VERIFIED: live matches main"

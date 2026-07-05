@@ -2,8 +2,7 @@ name: promote-to-live
 
 # The deploy workflow AURA_PROMOTE fires. Runs REAL wrangler deploy of main, so the full binding graph
 # (KV, D1, Vectorize, AI, service bindings, Durable Objects WITH migrations, cron, email, browser) is
-# carried correctly - which a raw API upload cannot safely do. Triggerable by API (workflow_dispatch)
-# so Aura can fire it, and on push to main so main is always the source of truth.
+# carried correctly. workflow_dispatch = Aura can fire it; push to main = main stays source of truth.
 
 on:
   workflow_dispatch: {}
@@ -23,7 +22,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Syntax gate (never deploy broken code)
         run: node --check src/index.mjs
@@ -33,6 +32,8 @@ jobs:
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
           accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          wranglerVersion: '3.90.0'
+          command: deploy
 
       - name: Verify live build matches main
         run: |

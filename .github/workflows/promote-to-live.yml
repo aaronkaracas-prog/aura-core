@@ -1,9 +1,8 @@
 name: promote-to-live
 
-# The deploy workflow AURA_PROMOTE fires. Installs the project's OWN declared toolchain (wrangler 4 from
-# package.json) and runs the project's own deploy script - real wrangler deploy of main, carrying the full
-# binding graph (KV, D1, Vectorize, AI, service bindings, Durable Objects WITH migrations, cron, email,
-# browser). No version pinning to drift: uses exactly what package.json declares.
+# Deploys main via the project's own wrangler 4. Uses the repo's PRE-EXISTING secrets
+# CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID (the exact env var names wrangler reads natively),
+# so no new secrets are needed. Carries the full binding graph + DO migrations (real wrangler).
 
 on:
   workflow_dispatch: {}
@@ -14,6 +13,9 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -32,9 +34,6 @@ jobs:
         run: npm ci
 
       - name: Deploy with the project's own wrangler
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
         run: npx wrangler deploy
 
       - name: Verify live build matches main
@@ -43,5 +42,5 @@ jobs:
           MAIN=$(grep -m1 'const BUILD' src/index.mjs | grep -oE 'aura-core-v[0-9.]+-[0-9-]+')
           LIVE=$(curl -s https://aura-core-v2.aaronkaracas.workers.dev/health | grep -oE 'aura-core-v[0-9.]+-[0-9-]+' | head -1)
           echo "main=$MAIN live=$LIVE"
-          if [ "$MAIN" != "$LIVE" ]; then echo "BUILD MISMATCH - deploy did not land"; exit 1; fi
+          if [ "$MAIN" != "$LIVE" ]; then echo "BUILD MISMATCH"; exit 1; fi
           echo "VERIFIED: live matches main"

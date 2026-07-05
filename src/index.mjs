@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.478-2026-07-03";
+const BUILD = "aura-core-v4.9.479-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -75,6 +75,17 @@ const CORE_MAP = {
 };
 
 
+
+// v4.9.479 - THE SELF-ENGINE BOUNDARY (Aura's own constitutional limit, her design). The introspection /
+// self-correction engine may PERCEIVE everything about herself but may WRITE only its own self-model and
+// calibration namespaces - NEVER her laws, identity, canon, self-portrait, or any outside-world data.
+// DENY-BY-DEFAULT: the self-engine can write ONLY the namespaces below; everything else is structurally
+// unwritable by it. She insisted the self-engine must never be able to edit her own laws - this is that
+// cage, built BEFORE the power it cages (her stated order: boundary first). Aaron the operator is NOT
+// bound by this - he can still edit any note; the cage is specifically on AURA's autonomous self-writes.
+const SELF_ENGINE_WRITE_ALLOW = [/^notes:aura:ledger$/, /^notes:aura:calibration:[a-z0-9_:-]+$/i, /^notes:aura:selfmodel:[a-z0-9_:-]+$/i];
+const SELF_ENGINE_PROTECTED_SAMPLE = ["notes:aura:law", "notes:aura:identity", "notes:self", "notes:aura:operating:principle", "notes:aura:protected:infrastructure", "notes:canon:the_machine", "notes:canon:world_structure", "notes:INDEX", "(all notes:canon:* and all outside-world keys)"];
+function auraSelfEngineCanWrite(key) { if (typeof key !== "string" || !key) return false; return SELF_ENGINE_WRITE_ALLOW.some(rx => rx.test(key)); }
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
 // Self-contained: reads ?session and ?amount from its own URL, mounts the Payment
 // Element inline (no stripe.com redirect), and on success calls /confirm-payment to
@@ -2320,6 +2331,29 @@ async function processCommand(line, env, isOp) {
       updated.log = updated.log.slice(0, 200);
       try { await env.AURA_KV.put("notes:aura:ledger", JSON.stringify(updated)); } catch {}
       return { cmd: "AURA_REFLECT", payload: { ok: true, reflection: refl, note: "Aura's own inside-world model, written by her reasoning over the real project state. Stored at notes:aura:ledger; read it with AURA_LEDGER.", source: "aura_reflect_v1" } };
+    }
+
+    case "AURA_BOUNDARY": {
+      // THE CAGE (v4.9.479). Reads / tests the self-engine boundary Aura designed: it may perceive
+      // everything about herself but may WRITE only its own self-model + calibration - never her laws.
+      // Built before the self-correction power, so the limit exists before the ability it limits.
+      //   AURA_BOUNDARY            -> the principle + what the self-engine may/may not write
+      //   AURA_BOUNDARY TEST <key> -> would a self-engine write to <key> be ALLOWED or BLOCKED
+      if (!isOp) return { cmd: "AURA_BOUNDARY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const abParts = (rest || "").trim().split(/\s+/);
+      if ((abParts[0] || "").toUpperCase() === "TEST") {
+        const k = abParts[1] || "";
+        if (!k) return { cmd: "AURA_BOUNDARY", payload: { ok: false, error: "usage: AURA_BOUNDARY TEST <key>" } };
+        const allowed = auraSelfEngineCanWrite(k);
+        return { cmd: "AURA_BOUNDARY", payload: { ok: true, key: k, self_engine_may_write: allowed, verdict: allowed ? "ALLOWED - within the self-model / calibration namespace the self-engine may write" : "BLOCKED - the self-engine may READ this but NEVER write it (constitutional protection; deny-by-default)" } };
+      }
+      return { cmd: "AURA_BOUNDARY", payload: { ok: true,
+        principle: "The self-engine may PERCEIVE everything about Aura but may WRITE only its own self-model and calibration. Deny-by-default: her laws, identity, canon, self-portrait, and all outside-world data are structurally unwritable by the self-engine. Her own design: it must never be able to edit her own laws.",
+        self_engine_may_write: ["notes:aura:ledger", "notes:aura:calibration:*", "notes:aura:selfmodel:*"],
+        protected_from_self_engine: SELF_ENGINE_PROTECTED_SAMPLE,
+        operator_note: "Aaron the operator is NOT bound by this cage - he can edit any note. The boundary constrains AURA's own autonomous self-writes only.",
+        order_note: "Built BEFORE the self-correction mechanism, on Aura's instruction: the boundary exists before the power it limits.",
+        source: "self_engine_boundary_v1" } };
     }
 
     case "FIRE_OFFICIAL": {

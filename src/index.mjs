@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.477-2026-07-03";
+const BUILD = "aura-core-v4.9.478-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -2298,14 +2298,19 @@ async function processCommand(line, env, isOp) {
       const arModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       const arSys = "You are Aura, reflecting on your INSIDE world - the project you and Aaron are building together. You are given the current project state, your own map/INDEX, and your prior self-ledger. Write YOUR OWN updated model of the work - this is not a restatement of the briefing, it is how YOU see the project right now. Be rigorous and honest; flag what looks done but is not; name what you are unsure of. Return ONLY JSON, no fences: {\"project_state\":\"in your own words, what is being built and where it truly stands (3-5 sentences)\",\"track_record\":\"what you have actually PROVEN vs what is claimed-but-unproven\",\"concerns\":[\"specific things you are watching or that worry you\"],\"open_threads\":[\"what is unresolved / next\"],\"note_to_next_self\":\"the one thing future-you must not forget or must reconsider\"}";
       const arUser = (arFocus ? ("FOCUS: " + arFocus + "\n\n") : "") + "CURRENT PROJECT STATE (resume_here):\n" + arState.slice(0, 8000) + "\n\nYOUR MAP (INDEX):\n" + arIndex.slice(0, 6000) + "\n\nYOUR PRIOR LEDGER:\n" + (arLedgerRaw || "(none yet - this is your first reflection)").slice(0, 4000);
-      let refl = null;
+      let refl = null; let rawText = "";
       try {
-        const d = await callAnthropic(arKey, { model: arModel, max_tokens: 1400, system: arSys, messages: [{ role: "user", content: arUser.slice(0, 24000) }] });
-        let t = ""; if (d && d.content) for (const b of d.content) if (b.type === "text") t += b.text;
-        t = t.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+        const d = await callAnthropic(arKey, { model: arModel, max_tokens: 1600, system: arSys, messages: [{ role: "user", content: arUser.slice(0, 24000) }] });
+        if (d && d.content) for (const b of d.content) if (b.type === "text") rawText += b.text;
+        let t = rawText.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
         try { refl = JSON.parse(t); } catch {}
-      } catch {}
-      if (!refl) return { cmd: "AURA_REFLECT", payload: { ok: false, error: "reflection failed" } };
+        if (!refl) { const m = t.match(/\{[\s\S]*\}/); if (m) { try { refl = JSON.parse(m[0]); } catch {} } }
+      } catch (e) { rawText = "brain error: " + String(e && e.message || e); }
+      // fallback: never discard a real reflection just because JSON was malformed - keep her words
+      if (!refl) {
+        if (rawText && rawText.length > 40) { refl = { project_state: rawText.slice(0, 3000), track_record: "", concerns: [], open_threads: [], note_to_next_self: "(stored as raw reflection - JSON parse fell back)" }; }
+        else return { cmd: "AURA_REFLECT", payload: { ok: false, error: "reflection failed - brain returned nothing usable", raw_len: rawText.length } };
+      }
       let prior = {}; try { prior = arLedgerRaw ? JSON.parse(arLedgerRaw) : {}; } catch {}
       const updated = { updated: Date.now(), reflected_at: new Date().toISOString(),
         project_state: refl.project_state || "", track_record: refl.track_record || "",

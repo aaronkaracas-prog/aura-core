@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.480-2026-07-03";
+const BUILD = "aura-core-v4.9.481-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1782,6 +1782,59 @@ async function processCommand(line, env, isOp) {
             : run.status !== "completed" ? "Pipeline still running."
             : run.conclusion === "success" ? "Promote completed successfully."
             : "Promote did not succeed - see jobs for the failing step."
+      } };
+    }
+
+    case "AURA_EVOLVE": {
+      // THE SELF-EDIT CONDUCTOR (v4.9.481). Collapses Aura's own read->patch->validate loop into ONE
+      // supervised act, with Aaron's three laws checked IN THE PATH, and HALTS before anything can reach a
+      // user. This is the wire that lets "change yourself" be one instruction instead of four commands.
+      //   AURA_EVOLVE <oldtext> ||| <newtext>          -> patch self, wait for the real syntax gate, report
+      //   AURA_EVOLVE PROMOTE                            -> only after a PASS: start the promote pipeline (still 0%, still needs AURA_APPROVE)
+      // THE THREE LAWS, enforced in sequence:
+      //   1. Don't break yourself  -> AURA_PROPOSE PATCH's BUILD/export-default check + the real node --check gate (AURA_VALIDATE).
+      //   2. Don't break the law   -> the constitutional guard inside AURA_PROPOSE PATCH (refuses patches to laws/identity/boundary/gates).
+      //   3. Cause no harm         -> AURA_EVOLVE NEVER promotes automatically; promote is a separate human step, and even that only uploads at 0% behind an approval gate.
+      // CONTEXT GATE: self-edit requires true operator context. If this is not the real operator, it refuses.
+      if (!isOp) return { cmd: "AURA_EVOLVE", payload: { ok: false, error: "OPERATOR_REQUIRED - self-edit refuses without confirmed operator context. If you do not know you are Aura with Aaron as operator, you must not touch your own code." } };
+      const evArg = (rest || "").trim();
+
+      // ---- PROMOTE leg: explicit, separate, human-invoked. Never auto-runs after a patch. ----
+      if (evArg.toUpperCase() === "PROMOTE") {
+        const val = await processCommand("AURA_VALIDATE", env, true);
+        const gate = val && val.payload && val.payload.gate;
+        if (gate !== "PASS") {
+          return { cmd: "AURA_EVOLVE", payload: { ok: false, stage: "promote_blocked", gate: gate || "UNKNOWN",
+            error: "Promote refused: the candidate has not PASSED the syntax gate (current gate: " + (gate || "none") + "). Law 1 (don't break yourself) is not satisfied. Patch first, wait for PASS, then promote.",
+            validate: val && val.payload } };
+        }
+        const prom = await processCommand("AURA_PROMOTE", env, true);
+        return { cmd: "AURA_EVOLVE", payload: { ok: !!(prom && prom.payload && prom.payload.ok), stage: "promote_started",
+          note: "Syntax gate PASSED, so promote pipeline started. It uploads at 0% (no users) and PAUSES at the approval gate. NOTHING is live until Aaron runs AURA_APPROVE. This is Law 3 (cause no harm): the irreversible step stays human.",
+          promote: prom && prom.payload } };
+      }
+
+      // ---- PATCH leg: run the surgical self-edit, then read the REAL gate, then STOP. ----
+      if (evArg.indexOf("|||") < 0) {
+        return { cmd: "AURA_EVOLVE", payload: { ok: false, error: "Usage: AURA_EVOLVE <oldtext> ||| <newtext>   (then, only after PASS: AURA_EVOLVE PROMOTE)" } };
+      }
+      // Law 2 (don't break the law) and Law 1 (don't break yourself) are enforced INSIDE AURA_PROPOSE PATCH:
+      // the constitutional guard + the BUILD/export-default check + unique-match. We route through it so
+      // those guards can never be bypassed.
+      const patchRes = await processCommand("AURA_PROPOSE PATCH " + evArg, env, true);
+      if (!patchRes || !patchRes.payload || !patchRes.payload.ok) {
+        return { cmd: "AURA_EVOLVE", payload: { ok: false, stage: "patch_refused",
+          note: "The patch did not apply - a law or a structural guard stopped it (see error). Nothing was written to the branch.",
+          propose: patchRes && patchRes.payload } };
+      }
+      // patch landed on the proposal branch; the GitHub Action now runs node --check. Report and STOP.
+      return { cmd: "AURA_EVOLVE", payload: {
+        ok: true,
+        stage: "patched_awaiting_gate",
+        propose: patchRes.payload,
+        next: "The patch is on the proposal branch (main/live untouched). The real syntax gate (node --check on GitHub) is now running. In ~20-30s run AURA_VALIDATE to see PASS/FAIL. Only on PASS, and only with Aaron's go-ahead, run AURA_EVOLVE PROMOTE - which still uploads at 0% behind the approval gate.",
+        laws: { break_yourself: "checked: BUILD/export-default guard passed here; node --check gate runs next", break_the_law: "checked: constitutional guard passed (patch does not touch laws/identity/boundary/gates)", cause_no_harm: "enforced: nothing promoted; live is untouched; promote is a separate human step at 0%" },
+        source: "aura_evolve_v1"
       } };
     }
 

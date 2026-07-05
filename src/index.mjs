@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.479-2026-07-03";
+const BUILD = "aura-core-v4.9.480-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -1652,8 +1652,20 @@ async function processCommand(line, env, isOp) {
         const sep = payload.indexOf("|||");
         if (sep < 0) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Usage: AURA_PROPOSE PATCH <oldtext> ||| <newtext>" } };
         const oldText = payload.slice(0, sep).trim();
-        const newText = payload.slice(sep + 3).trim();
+        let newText = payload.slice(sep + 3).trim();
         if (!oldText) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "oldtext is empty - nothing to find" } };
+        // v4.9.480 CONSTITUTIONAL GUARD: a self-edit that touches Aura's laws, identity, the self-engine
+        // boundary, or the self-edit gates themselves is REFUSED unless the operator explicitly overrides.
+        // This binds the CODE-editing power to the same constitution that binds note-writing (AURA_BOUNDARY):
+        // she cannot quietly weaken her own laws or cage by rewriting the code that enforces them. Everything
+        // else evolves freely - deny-by-default on the CONSTITUTION only, allow-by-default on all capability.
+        const CONSTITUTIONAL_MARKERS = ["auraSelfEngineCanWrite", "SELF_ENGINE_WRITE_ALLOW", "SELF_ENGINE_PROTECTED", "notes:aura:law", "notes:aura:identity", "CONSTITUTIONAL_MARKERS", "case \"AURA_BOUNDARY\"", "case \"AURA_PROMOTE\"", "case \"AURA_PROPOSE\"", "OVERRIDE_CONSTITUTIONAL"];
+        const constitutionalOverride = /:::\s*OVERRIDE_CONSTITUTIONAL\s*$/.test(newText);
+        if (constitutionalOverride) newText = newText.replace(/:::\s*OVERRIDE_CONSTITUTIONAL\s*$/, "").trim();
+        const touchesCore = CONSTITUTIONAL_MARKERS.filter(m => oldText.includes(m) || newText.includes(m));
+        if (touchesCore.length && !constitutionalOverride) {
+          return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "CONSTITUTIONAL GUARD: this patch touches Aura's protected core (" + touchesCore.join(", ") + "). A self-edit may not alter her laws, identity, self-engine boundary, or self-edit gates. If Aaron the operator intends this deliberately, append '::: OVERRIDE_CONSTITUTIONAL' to the end of the patch. Aura's own autonomous self-edits can never override this.", touched_core: touchesCore, guard: "constitutional" } };
+        }
         // fetch current main source (the real current her)
         const mainFile = await gh(`/repos/${GH_OWNER}/${GH_REPO}/contents/src/index.mjs?ref=${BASE_BRANCH}`);
         if (!mainFile.ok || !mainFile.j.content) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Could not read main index: " + mainFile.status } };

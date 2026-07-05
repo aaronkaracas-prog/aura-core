@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.487-2026-07-03";
+const BUILD = "aura-core-v4.9.488-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -15831,6 +15831,51 @@ Rules:
 }
 
 
+async function prepareSurgicalSelfEdit(description, apiKey, env) {
+  // v4.9.488: turn a FUZZY conversational self-edit request into a PRECISE, small <old> ||| <new> surgical
+  // patch, grounded in Aura's REAL current source (read from GitHub main). Returns an AURA_EVOLVE command.
+  // This is the safe replacement for the old full-file Haiku rewrite. It NEVER rewrites the whole file -
+  // it finds one small exact span and proposes a minimal change.
+  const GH_OWNER = "aaronkaracas-prog", GH_REPO = "aura-core", BASE_BRANCH = "main";
+  let src;
+  try {
+    const r = await fetch(`https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${BASE_BRANCH}/src/index.mjs`, { headers: { "User-Agent": "aura-selfedit", "Cache-Control": "no-cache" } });
+    if (!r.ok) return { ok: false, error: "could not read my own source (HTTP " + r.status + ")" };
+    src = await r.text();
+  } catch (e) { return { ok: false, error: "source read failed: " + (e && e.message || e) }; }
+  // Give the model the request + a way to ask for the exact span. Keep it SMALL and EXACT.
+  const sys = `You convert a fuzzy self-edit request into ONE precise, minimal find/replace on a large JS file (index.mjs).
+Output STRICT JSON only: {"summary":"one line of what changes","old":"<exact unique substring currently in the file>","new":"<the replacement>"}.
+HARD RULES:
+- "old" MUST be an EXACT substring that appears in the file EXACTLY ONCE. Copy it verbatim, including whitespace. Keep it short (one line or a few) but long enough to be unique.
+- The change must be MINIMAL and TARGETED. Never rewrite large blocks. Never remove functionality.
+- If the request is a comment addition, add the comment adjacent to a real, unique existing line.
+- If you cannot find a safe, unique, minimal edit, output {"error":"why"}.
+- Never touch: verifyOperator, getOperatorToken, auth header checks, KV.get/put/del, notes:aura:law, notes:aura:identity, auraSelfEngineCanWrite, the AURA_EVOLVE/AURA_PROPOSE/AURA_PROMOTE cases, or the BUILD line.`;
+  let body;
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1500,
+        system: sys,
+        messages: [{ role: "user", content: "REQUEST: " + description + "\n\nHere is the current file (find your exact unique 'old' span in it):\n\n" + src.slice(0, 180000) }] })
+    });
+    const d = await res.json();
+    let t = ""; if (d && d.content) for (const b of d.content) if (b.type === "text") t += b.text;
+    t = t.trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+    body = JSON.parse(t);
+  } catch (e) { return { ok: false, error: "could not prepare the patch: " + (e && e.message || e) }; }
+  if (body.error) return { ok: false, error: body.error };
+  if (!body.old || !body.new) return { ok: false, error: "no valid old/new produced" };
+  // verify uniqueness + presence in the REAL source before proposing
+  const count = src.split(body.old).length - 1;
+  if (count === 0) return { ok: false, error: "the 'old' text was not found in my source", hint: "Ask again more specifically." };
+  if (count > 1) return { ok: false, error: "the 'old' text appears " + count + " times (not unique)", hint: "Ask for a more specific location." };
+  const evolveCmd = "AURA_EVOLVE " + body.old + " ||| " + body.new;
+  return { ok: true, summary: body.summary || "(minimal edit)", oldText: body.old, newText: body.new, evolveCmd };
+}
+
 function detectPatchIntent(message) {
   const lower = message.toLowerCase();
   // Verb and code-noun must be adjacent (within 30 chars): "fix aura-core's chat handler" triggers,
@@ -16315,6 +16360,21 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
     }
     if (patchIntent?.intent === "patch") {
       if (!isOp) return "Self-modification requires operator authorization.";
+      // v4.9.488: for aura-core, route to the SAFE surgical pipeline (AURA_EVOLVE via a precise
+      // <old> ||| <new> patch), NOT the old full-file rewrite (which once tried to shrink her to 11 lines).
+      // The context gate + constitutional guard + syntax gate all sit inside AURA_EVOLVE. Propose only;
+      // Aaron confirms with "go"/"approve" which routes to the approve branch above.
+      if (patchIntent.worker === "aura-core-v2" || patchIntent.worker === "aura-core") {
+        const surgical = await prepareSurgicalSelfEdit(patchIntent.description, apiKey, env);
+        if (!surgical.ok) return "I couldn't prepare a safe surgical patch for that: " + surgical.error + (surgical.hint ? "\n\n" + surgical.hint : "");
+        // stage the exact AURA_EVOLVE command for Aaron to run/confirm
+        await env.AURA_KV.put("pending_selfedit:cmd", surgical.evolveCmd, { expirationTtl: 900 }).catch(() => {});
+        return "I've prepared a surgical self-edit (nothing deployed yet):\n\n" +
+          "WHAT I'LL CHANGE: " + surgical.summary + "\n\n" +
+          "OLD:\n" + surgical.oldText + "\n\nNEW:\n" + surgical.newText + "\n\n" +
+          "This runs through AURA_EVOLVE (surgical patch to a branch, syntax gate, constitutional guard, context gate) - live is untouched until you confirm. To apply it, run:\n" +
+          surgical.evolveCmd + "\n\n(then AURA_EVOLVE PROMOTE after it validates). I proposed; you dispose.";
+      }
       const result = await executePatchProposal(patchIntent.description, patchIntent.worker, apiKey, env);
       if (result.proposal) return result.summary;
       return "Could not prepare patch: " + result.error;

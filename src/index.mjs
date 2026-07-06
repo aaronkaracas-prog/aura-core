@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.494-2026-07-03";
+const BUILD = "aura-core-v4.9.495-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -16253,26 +16253,25 @@ async function reasonThroughLoop(env, opts) {
     tx = tx.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
     // v4.9.494: LEARNING LOOP - WRITE half. Significance-gated (medium/high confidence only), fire-and-forget
     // so it never slows or blocks reasoning. Captures the LEARN output to the rolling hot ledger.
-    const learnCapture = (parsed) => {
+    const learnCapture = async (parsed) => {
       try {
         if (!parsed || !parsed.learn) return;
         const conf = String(parsed.confidence || "").toLowerCase();
-        if (conf !== "high" && conf !== "medium") return; // significance gate - skip low-confidence noise
+        if (!conf.startsWith("high") && !conf.startsWith("medium")) return; // significance gate - skip low-confidence noise (startsWith handles messy model output like "mediumbecause...")
         const entry = { ts: new Date().toISOString(), lens: (opts.lens || "general").slice(0, 80), entity: String(opts.entity || "").slice(0, 160), learn: String(parsed.learn).slice(0, 400), the_move: String(parsed.the_move || "").slice(0, 200), confidence: conf };
-        env.AURA_KV.get("pta:ledger:aura:hot").then(lg => {
-          let entries = []; try { entries = JSON.parse(lg || "[]") || []; } catch {}
-          entries.push(entry); if (entries.length > 500) entries = entries.slice(-500);
-          return env.AURA_KV.put("pta:ledger:aura:hot", JSON.stringify(entries));
-        }).catch(() => {});
+        const lg = await env.AURA_KV.get("pta:ledger:aura:hot");
+        let entries = []; try { entries = JSON.parse(lg || "[]") || []; } catch {}
+        entries.push(entry); if (entries.length > 500) entries = entries.slice(-500);
+        await env.AURA_KV.put("pta:ledger:aura:hot", JSON.stringify(entries));
       } catch {}
     };
     // primary parse
-    try { const p = JSON.parse(tx); learnCapture(p); return { ok: true, reasoning: p }; } catch (e1) {
+    try { const p = JSON.parse(tx); await learnCapture(p); return { ok: true, reasoning: p }; } catch (e1) {
       // RECOVERY: the model may have been truncated mid-JSON (hit the token ceiling) or added stray
       // characters. Try to salvage the reasoning instead of throwing it away.
       // 1) extract the outermost object
       const first = tx.indexOf("{"); const last = tx.lastIndexOf("}");
-      if (first !== -1 && last > first) { try { const p2 = JSON.parse(tx.slice(first, last + 1)); learnCapture(p2); return { ok: true, reasoning: p2 }; } catch {} }
+      if (first !== -1 && last > first) { try { const p2 = JSON.parse(tx.slice(first, last + 1)); await learnCapture(p2); return { ok: true, reasoning: p2 }; } catch {} }
       // 2) close an unterminated string + balance braces, then parse
       try {
         let s = tx.slice(first === -1 ? 0 : first);
@@ -16282,7 +16281,7 @@ async function reasonThroughLoop(env, opts) {
         const openB = (s.match(/\[/g) || []).length, closeB = (s.match(/\]/g) || []).length;
         s += "]".repeat(Math.max(0, openB - closeB)) + "}".repeat(Math.max(0, opens - closes));
         const salvaged = JSON.parse(s);
-        learnCapture(salvaged);
+        await learnCapture(salvaged);
         return { ok: true, reasoning: salvaged, recovered: true };
       } catch {}
       // 3) still unparseable â€” return the raw text so nothing is lost, flagged

@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.493-2026-07-03";
+const BUILD = "aura-core-v4.9.494-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -16237,20 +16237,42 @@ async function reasonThroughLoop(env, opts) {
   try { const rc = await env.AURA_KV.get("config:brain:reasoning_cap"); if (rc) { const n = parseInt(rc, 10); if (n > 0) reasoningCap = n; } } catch {}
   // A caller can pass opts.fast to bound output tightly (fast path); else respect the central cap.
   const capToUse = opts.fast ? (opts.maxTokens || 900) : Math.min(opts.maxTokens || reasoningCap, reasoningCap);
+  // v4.9.494: CONTINUOUS LEARNING LOOP (Aura's own design) - READ half. Before reasoning, inject the
+  // most recent prior learnings so the loop reasons WITH its own accumulated pattern-memory, not in isolation.
+  let priorLearnings = "";
+  try {
+    const lg = await env.AURA_KV.get("pta:ledger:aura:hot");
+    if (lg) { const entries = JSON.parse(lg) || []; if (entries.length) priorLearnings = entries.slice(-3).map(e => "- " + e.learn).join("\n").slice(0, 1000); }
+  } catch {}
   const extra = (opts.extraKeys && opts.extraKeys.length) ? (", plus these lens-specific keys: " + opts.extraKeys.map(k => k.key + " (" + k.desc + ")").join(", ")) : "";
   const sys = (await loadPrompt(env, "cognitive_loop_onepass", "You are Aura reasoning through her Cognitive Loop in ONE pass. Before you answer you ALWAYS run the SEVEN stages of the Loop in order (this is Aura's permanent method of thinking): (1) SEE â€” Perception: observe what is actually true from the facts, read the environment, separate VERIFIED facts from claims and assumptions. (2) UNDERSTAND â€” Meaning: determine the real intent and goal behind the request, the relationships involved, and the REAL problem underneath the stated one (which is often not the same as what was asked). (3) EXPAND â€” Possibility: challenge every assumption you were handed, especially anything in the FRAME. Ask what is truly NECESSARY versus merely assumed, what the MINIMUM viable version is, and where the non-obvious leverage is. A real operator questions the plan; a weak one optimizes inside a plan it never examined. (4) JUDGE â€” Meaning Gate: remove noise, weigh which possibilities actually hold up and matter most, measure significance. (5) DECIDE â€” Priority: rank what's left and choose the single highest-leverage move, grounded in what is REALLY true, not what the frame assumed. (6) ACT â€” Bridge: state the concrete next move that executes the decision (what to actually do/communicate/build/transact), framed as a proposal when it would spend money or contact someone. (7) LEARN â€” Correction: name what result to measure and what to watch, so the next decision is better â€” what would prove this right or wrong. TWO reflexes you always apply: DATA TRUST â€” flag any fact you would not fully trust (a number that could be a broken/failed data pipe, a null that might be a silent failure, a 'fact' that is actually a future promise); and PUSH BACK â€” if the operator's own frame rests on something unverified or shaky, say so directly and plainly to the operator, do not just quietly work around it. ABSOLUTE INTEGRITY RULE â€” NEVER FABRICATE NUMBERS. You may ONLY state a specific figure (revenue, customer counts, percentages, dollar amounts, traffic, conversion rates) if it is a REAL number you were actually given in the facts. You must NEVER invent, estimate-as-fact, or back-into a number to make a point â€” no made-up '500 diners a day', no fabricated '$750k a year', no invented conversion rates. If you do not have the real number, do NOT produce one. Instead either (a) say plainly what is unknown and that it must be measured, or (b) frame a possibility explicitly as a hypothesis to TEST grounded in their real numbers ('if we capture even a fraction of your actual daily diners, here is the kind of result we could test for') â€” always labeled as wishful/possible, never asserted as fact. A single fabricated number destroys the trust the entire relationship depends on. Reality, or an honestly-labeled hypothesis. Never make-believe, never false hope. Apply this specialized LENS: {d0}. Scale to the actual situation â€” a person's life gets a human-sized read, a venture gets a venture read; never inflate. Ground everything in the facts; no generic filler. Return ONLY a JSON object, no prose, no fences, with these keys: saw (SEE â€” what is actually true, separating fact from assumption), understood (UNDERSTAND â€” one or two sentences: the real intent/goal and the REAL problem underneath the stated one), assumptions_challenged (EXPAND â€” array, each assumption examined with a verdict on whether it is truly necessary), data_trust (array â€” any fact you would not fully trust and why, or empty), minimum_viable (one sentence â€” the smallest real version that works now), the_move (DECIDE â€” the single highest-leverage decision), why (one sentence), act (ACT â€” the concrete next step that executes the_move, framed as a proposal if it spends money or contacts someone), learn (LEARN â€” one sentence: what result to measure to know if this was right), push_back (one sentence directly to the operator IF their frame rests on something unverified/shaky, else empty string), watch_for (array), confidence (high|medium|low){d1}. Output JSON only.")).replaceAll("{d0}", (opts.lens || "general operator reasoning")).replaceAll("{d1}", extra);
-  const user = "FACTS:\n" + (typeof opts.facts === "string" ? opts.facts : JSON.stringify(opts.facts || {})) + (opts.frame ? ("\n\nFRAME (challenge this â€” do NOT blindly accept it):\n" + String(opts.frame).slice(0, 2500)) : "") + "\n\nSITUATION: " + (opts.entity || "");
+  const user = "FACTS:\n" + (typeof opts.facts === "string" ? opts.facts : JSON.stringify(opts.facts || {})) + (opts.frame ? ("\n\nFRAME (challenge this â€” do NOT blindly accept it):\n" + String(opts.frame).slice(0, 2500)) : "") + (priorLearnings ? ("\n\nPRIOR LEARNINGS (what you learned reasoning through similar situations before - use them, and note if this situation contradicts a past lesson):\n" + priorLearnings) : "") + "\n\nSITUATION: " + (opts.entity || "");
   try {
     const d = await callAnthropic(apiKey, { model, max_tokens: capToUse, system: sys, messages: [{ role: "user", content: user }] });
     let tx = ""; if (d && d.content) { for (const b of d.content) { if (b.type === "text") tx += b.text; } }
     tx = tx.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+    // v4.9.494: LEARNING LOOP - WRITE half. Significance-gated (medium/high confidence only), fire-and-forget
+    // so it never slows or blocks reasoning. Captures the LEARN output to the rolling hot ledger.
+    const learnCapture = (parsed) => {
+      try {
+        if (!parsed || !parsed.learn) return;
+        const conf = String(parsed.confidence || "").toLowerCase();
+        if (conf !== "high" && conf !== "medium") return; // significance gate - skip low-confidence noise
+        const entry = { ts: new Date().toISOString(), lens: (opts.lens || "general").slice(0, 80), entity: String(opts.entity || "").slice(0, 160), learn: String(parsed.learn).slice(0, 400), the_move: String(parsed.the_move || "").slice(0, 200), confidence: conf };
+        env.AURA_KV.get("pta:ledger:aura:hot").then(lg => {
+          let entries = []; try { entries = JSON.parse(lg || "[]") || []; } catch {}
+          entries.push(entry); if (entries.length > 500) entries = entries.slice(-500);
+          return env.AURA_KV.put("pta:ledger:aura:hot", JSON.stringify(entries));
+        }).catch(() => {});
+      } catch {}
+    };
     // primary parse
-    try { return { ok: true, reasoning: JSON.parse(tx) }; } catch (e1) {
+    try { const p = JSON.parse(tx); learnCapture(p); return { ok: true, reasoning: p }; } catch (e1) {
       // RECOVERY: the model may have been truncated mid-JSON (hit the token ceiling) or added stray
       // characters. Try to salvage the reasoning instead of throwing it away.
       // 1) extract the outermost object
       const first = tx.indexOf("{"); const last = tx.lastIndexOf("}");
-      if (first !== -1 && last > first) { try { return { ok: true, reasoning: JSON.parse(tx.slice(first, last + 1)) }; } catch {} }
+      if (first !== -1 && last > first) { try { const p2 = JSON.parse(tx.slice(first, last + 1)); learnCapture(p2); return { ok: true, reasoning: p2 }; } catch {} }
       // 2) close an unterminated string + balance braces, then parse
       try {
         let s = tx.slice(first === -1 ? 0 : first);
@@ -16260,6 +16282,7 @@ async function reasonThroughLoop(env, opts) {
         const openB = (s.match(/\[/g) || []).length, closeB = (s.match(/\]/g) || []).length;
         s += "]".repeat(Math.max(0, openB - closeB)) + "}".repeat(Math.max(0, opens - closes));
         const salvaged = JSON.parse(s);
+        learnCapture(salvaged);
         return { ok: true, reasoning: salvaged, recovered: true };
       } catch {}
       // 3) still unparseable â€” return the raw text so nothing is lost, flagged

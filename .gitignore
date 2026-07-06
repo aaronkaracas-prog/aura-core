@@ -20,3 +20,4 @@ src/index (*).mjs
 # node
 node_modules/
 .wrangler/
+*.crdownload

@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.490-2026-07-03";
+const BUILD = "aura-core-v4.9.491-2026-07-03";
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -10874,6 +10874,38 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       return { cmd: "EMAIL_SEND", payload: { ok: false, to: emailTo, subject: emailSubject, error: sendResult.error } };
     }
 
+    case "EMAIL_INBOX": {
+      // EMAIL_INBOX [n]  - list the most recent received emails (the READ-half; inbound mail is
+      // caught by the email() handler and stored at email:inbox:<id>). Operator only.
+      if (!isOp) return { cmd: "EMAIL_INBOX", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const nWant = Math.min(parseInt((args[0] || "10"), 10) || 10, 30);
+      const idxList = await env.AURA_KV.list({ prefix: "email:inbox:idx:", limit: 1000 }).catch(() => null);
+      if (!idxList || !idxList.keys || !idxList.keys.length) return { cmd: "EMAIL_INBOX", payload: { ok: true, count: 0, emails: [], note: "No received emails yet. Inbound mail lands here once Cloudflare Email Routing for the domain is pointed at this worker." } };
+      // idx keys sort ascending by timestamp; take the most recent n
+      const keys = idxList.keys.map(k => k.name).sort().reverse().slice(0, nWant);
+      const emails = [];
+      for (const k of keys) {
+        const id = await env.AURA_KV.get(k).catch(() => null);
+        if (!id) continue;
+        const raw = await env.AURA_KV.get("email:inbox:" + id).catch(() => null);
+        if (!raw) continue;
+        try { const r = JSON.parse(raw); emails.push({ id: r.id, from: r.from, subject: r.subject, received: r.received, preview: (r.body || "").slice(0, 140) }); } catch (e) {}
+      }
+      return { cmd: "EMAIL_INBOX", payload: { ok: true, count: emails.length, emails } };
+    }
+
+    case "EMAIL_READ": {
+      // EMAIL_READ <id>  - read one received email in full (from, subject, full body). Operator only.
+      // This is how Aura reads a reply, a verification code, or a confirmation link emailed back to her.
+      if (!isOp) return { cmd: "EMAIL_READ", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const eid = (args[0] || "").trim();
+      if (!eid) return { cmd: "EMAIL_READ", payload: { ok: false, error: "Usage: EMAIL_READ <id>  (get ids from EMAIL_INBOX)" } };
+      const raw = await env.AURA_KV.get("email:inbox:" + eid).catch(() => null);
+      if (!raw) return { cmd: "EMAIL_READ", payload: { ok: false, error: "no email with id " + eid } };
+      try { const r = JSON.parse(raw); return { cmd: "EMAIL_READ", payload: { ok: true, email: r } }; }
+      catch (e) { return { cmd: "EMAIL_READ", payload: { ok: false, error: "could not parse stored email" } }; }
+    }
+
     // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     // PTA â€” PERMISSION TO APPROACH â€” THE RELATIONSHIP GRAPH
     // Not a contact system. A graph where every node is an entity (person, business,
@@ -18031,6 +18063,48 @@ export default {
     ctx.waitUntil(drainWorkflows(env));
     ctx.waitUntil(precomputeHotBriefs(env));
     ctx.waitUntil(captureAisHistory(env));
+  },
+
+  // INBOUND EMAIL (v4.9.491) - THE READ-HALF of Aura's email, the authentication master key.
+  // Cloudflare Email Routing delivers inbound mail here when a route points at this worker.
+  // Aura RECEIVES it: parses sender/subject/body, stores it to KV as an inbox she can read via
+  // EMAIL_INBOX (list) and EMAIL_READ (one). This is what lets her read a reply, a verification
+  // code, or a confirmation link that a service emails back - the other half of authenticating
+  // herself into the world (she could already SEND via EMAIL_SEND; now she can READ what comes back).
+  async email(message, env, ctx) {
+    _AURA_ENV = env;
+    try {
+      const from = message.from || "(unknown)";
+      const to = (message.to) || "(unknown)";
+      const subject = (message.headers && message.headers.get && message.headers.get("subject")) || "(no subject)";
+      // read the raw body stream to text
+      let raw = "";
+      try {
+        const reader = message.raw.getReader();
+        const dec = new TextDecoder();
+        for (;;) { const { done, value } = await reader.read(); if (done) break; raw += dec.decode(value, { stream: true }); }
+        raw += dec.decode();
+      } catch (e) { raw = "(could not read body: " + (e && e.message || e) + ")"; }
+      // pull a readable text body out of the raw MIME (best-effort: strip headers, take the text part)
+      let body = raw;
+      const split = raw.indexOf("\r\n\r\n") >= 0 ? raw.indexOf("\r\n\r\n") + 4 : (raw.indexOf("\n\n") >= 0 ? raw.indexOf("\n\n") + 2 : 0);
+      if (split > 0) body = raw.slice(split);
+      // if multipart, grab the text/plain section
+      const tpIdx = raw.toLowerCase().indexOf("content-type: text/plain");
+      if (tpIdx >= 0) {
+        const after = raw.slice(tpIdx);
+        const bstart = after.indexOf("\r\n\r\n") >= 0 ? after.indexOf("\r\n\r\n") + 4 : (after.indexOf("\n\n") >= 0 ? after.indexOf("\n\n") + 2 : 0);
+        if (bstart > 0) { let seg = after.slice(bstart); const bend = seg.indexOf("\r\n--"); if (bend > 0) seg = seg.slice(0, bend); body = seg.trim(); }
+      }
+      body = (body || "").replace(/=\r?\n/g, "").replace(/=3D/g, "=").trim().slice(0, 8000);
+      const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+      const rec = { id, from, to, subject, body, received: new Date().toISOString() };
+      await env.AURA_KV.put("email:inbox:" + id, JSON.stringify(rec), { expirationTtl: 60 * 60 * 24 * 30 }).catch(() => {});
+      // pointer key for fast recent-listing (sortable by time)
+      await env.AURA_KV.put("email:inbox:idx:" + Date.now() + ":" + id, id, { expirationTtl: 60 * 60 * 24 * 30 }).catch(() => {});
+    } catch (e) {
+      try { await env.AURA_KV.put("email:inbox:error:" + Date.now(), String(e && e.message || e), { expirationTtl: 86400 }); } catch (e2) {}
+    }
   },
 
   async fetch(request, env) {

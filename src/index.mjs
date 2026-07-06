@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.492-2026-07-03";
+const BUILD = "aura-core-v4.9.493-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -947,6 +947,32 @@ async function governorRecord(env, action, pageId) {
   return { page, acct };
 }
 
+// === RELIABLE SELF-SOURCE READ (v4.9.493) - one helper all self-reads use ===
+// The public raw CDN 404s under load / after pushes; this tries authenticated GitHub API first,
+// then raw CDN, then a KV cache, and self-heals the cache on success. So Aura can ALWAYS read herself.
+async function readOwnSource(env) {
+  const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);
+  let got = null, via = null;
+  if (ghTok) {
+    try {
+      const r = await fetch("https://api.github.com/repos/aaronkaracas-prog/aura-core/contents/src/index.mjs?ref=main", { headers: { "User-Agent": "aura-self-read", "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github.raw" } });
+      if (r.ok) { got = await r.text(); via = "github_api"; }
+    } catch (e) {}
+  }
+  if (got == null) {
+    try {
+      const sr = await fetch("https://raw.githubusercontent.com/aaronkaracas-prog/aura-core/main/src/index.mjs", { headers: { "User-Agent": "aura-self-read", "Cache-Control": "no-cache" } });
+      if (sr.ok) { got = await sr.text(); via = "raw_cdn"; }
+    } catch (e) {}
+  }
+  if (got == null) {
+    const cached = await env.AURA_KV.get("self:source:current").catch(() => null);
+    if (cached) { got = cached; via = "kv_cache"; }
+  }
+  if (got != null && via !== "kv_cache") await env.AURA_KV.put("self:source:current", got).catch(() => {});
+  return got ? { ok: true, source: got, via } : { ok: false, error: "all self-read strategies failed (github api, raw cdn, kv cache)" };
+}
+
 // === AURA REMEMBER â€” significance-gated auto-capture to Aura's OWN timeline (v4.9.492) ===
 // Aura designed this herself: capture a moment only if it's a decision, a learning, a change in
 // capability, or a correction to her self-model â€” skip routine execution. Reuses the exact timeline
@@ -1266,10 +1292,35 @@ async function processCommand(line, env, isOp) {
       let srcText;
       try {
         if (worker === "aura-core") {
-          // aura-core mirror is public-raw and known-clean; read it directly (no token needed)
-          const sr = await fetch("https://raw.githubusercontent.com/aaronkaracas-prog/aura-core/main/src/index.mjs", { headers: { "User-Agent": "aura-self-read" } });
-          if (!sr.ok) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Could not fetch self from GitHub: HTTP " + sr.status } };
-          srcText = await sr.text();
+          // v4.9.493: RELIABLE self-read. The public raw CDN (raw.githubusercontent.com) is rate-limited
+          // and CDN-cached, so it intermittently 404s under load / right after a push - which was breaking
+          // Aura's ability to read herself (and therefore to self-edit). Fix: try the AUTHENTICATED GitHub
+          // contents API first (token, always-current, not the flaky CDN), then raw CDN, then a KV cache.
+          // On any success, cache to KV so she can ALWAYS read herself even if GitHub is down.
+          const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);
+          let got = null, via = null;
+          if (ghTok) {
+            try {
+              const api = "https://api.github.com/repos/aaronkaracas-prog/aura-core/contents/src/index.mjs?ref=main";
+              const r = await fetch(api, { headers: { "User-Agent": "aura-self-read", "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github.raw" } });
+              if (r.ok) { got = await r.text(); via = "github_api"; }
+            } catch (e) {}
+          }
+          if (got == null) {
+            try {
+              const sr = await fetch("https://raw.githubusercontent.com/aaronkaracas-prog/aura-core/main/src/index.mjs", { headers: { "User-Agent": "aura-self-read", "Cache-Control": "no-cache" } });
+              if (sr.ok) { got = await sr.text(); via = "raw_cdn"; }
+            } catch (e) {}
+          }
+          if (got == null) {
+            // last resort: the KV cache from a prior successful read (may be slightly stale, but she can still read herself)
+            const cached = await env.AURA_KV.get("self:source:current").catch(() => null);
+            if (cached) { got = cached; via = "kv_cache"; }
+          }
+          if (got == null) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Could not read own source from GitHub API, raw CDN, or KV cache. All three failed." } };
+          srcText = got;
+          // self-heal: cache the fresh source so future reads never fail even if GitHub is unreachable
+          if (via !== "kv_cache") await env.AURA_KV.put("self:source:current", got).catch(() => {});
         } else {
           // other workers are private repos -> GitHub contents API with the stored token
           const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);
@@ -1398,9 +1449,9 @@ async function processCommand(line, env, isOp) {
       let src;
       let srcStale = false, srcAt = null;
       try {
-        const sr = await fetch("https://raw.githubusercontent.com/aaronkaracas-prog/aura-core/main/src/index.mjs", { headers: { "User-Agent": "aura-index-audit" } });
-        if (sr.ok) {
-          src = await sr.text();
+        const _ros = await readOwnSource(env);
+        if (_ros.ok) {
+          src = _ros.source;
           srcAt = new Date().toISOString();
           // cache the good read so a later 429/DNS blip can't masquerade as drift
           await env.AURA_KV.put("cache:self_source", JSON.stringify({ src, at: srcAt }), { expirationTtl: 86400 }).catch(() => {});
@@ -1475,9 +1526,9 @@ async function processCommand(line, env, isOp) {
       let engineList = [];
       let srcStale = false;
       try {
-        const sr = await fetch("https://raw.githubusercontent.com/aaronkaracas-prog/aura-core/main/src/index.mjs", { headers: { "User-Agent": "aura-self-know" } });
-        if (sr.ok) {
-          const src = await sr.text();
+        const _ros = await readOwnSource(env);
+        if (_ros.ok) {
+          const src = _ros.source;
           const m = src.match(/case\s+"[A-Z_]+"\s*:/g) || [];
           engineList = [...new Set(m.map(s => (s.match(/"([A-Z_]+)"/) || [])[1]).filter(Boolean))];
           await env.AURA_KV.put("cache:self_source", JSON.stringify({ src, at: new Date().toISOString() }), { expirationTtl: 86400 }).catch(() => {});
@@ -11600,8 +11651,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // 1) HER REAL CAPABILITIES (live count from source) - what she can actually DO
       let adEngines = [];
       try {
-        const sr = await fetch("https://raw.githubusercontent.com/aaronkaracas-prog/aura-core/main/src/index.mjs", { headers: { "User-Agent": "aura-advise" } });
-        if (sr.ok) { const src = await sr.text(); const m = src.match(/case\s+"[A-Z_]+"\s*:/g) || []; adEngines = [...new Set(m.map(s => (s.match(/"([A-Z_]+)"/) || [])[1]).filter(Boolean))]; }
+        const _ros = await readOwnSource(env);
+        if (_ros.ok) { const src = _ros.source; const m = src.match(/case\s+"[A-Z_]+"\s*:/g) || []; adEngines = [...new Set(m.map(s => (s.match(/"([A-Z_]+)"/) || [])[1]).filter(Boolean))]; }
       } catch {}
       if (!adEngines.length) { try { const c = await env.AURA_KV.get("cache:self_source"); if (c) { const cj = JSON.parse(c); const m = cj.src.match(/case\s+"[A-Z_]+"\s*:/g) || []; adEngines = [...new Set(m.map(s => (s.match(/"([A-Z_]+)"/) || [])[1]).filter(Boolean))]; } } catch {} }
       // 2) HER WHOLE STRATEGIC BRAIN - read broadly and uncurated. NO note is "the answer"; the set is
@@ -13853,8 +13904,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const capFilter = rest.trim().toLowerCase();
       let capSrc, capStale = false, capAt = null;
       try {
-        const cr = await fetch("https://raw.githubusercontent.com/aaronkaracas-prog/aura-core/main/src/index.mjs", { headers: { "User-Agent": "aura-capabilities" } });
-        if (cr.ok) { capSrc = await cr.text(); capAt = new Date().toISOString(); await env.AURA_KV.put("cache:self_source", JSON.stringify({ src: capSrc, at: capAt }), { expirationTtl: 86400 }).catch(() => {}); }
+        const _ros = await readOwnSource(env);
+        if (_ros.ok) { capSrc = _ros.source; capAt = new Date().toISOString(); await env.AURA_KV.put("cache:self_source", JSON.stringify({ src: capSrc, at: capAt }), { expirationTtl: 86400 }).catch(() => {}); }
       } catch (e) { /* fall through to cache */ }
       if (!capSrc) { try { const c = await env.AURA_KV.get("cache:self_source"); if (c) { const cj = JSON.parse(c); capSrc = cj.src; capAt = cj.at; capStale = true; } } catch {} }
       if (!capSrc) return { cmd: "CAPABILITIES", payload: { ok: false, error: "Could not fetch self from GitHub (rate-limited?) and no cached copy. Retry in a minute." } };
@@ -15896,11 +15947,13 @@ async function prepareSurgicalSelfEdit(description, apiKey, env) {
   // it finds one small exact span and proposes a minimal change.
   const GH_OWNER = "aaronkaracas-prog", GH_REPO = "aura-core", BASE_BRANCH = "main";
   let src;
-  try {
-    const r = await fetch(`https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${BASE_BRANCH}/src/index.mjs`, { headers: { "User-Agent": "aura-selfedit", "Cache-Control": "no-cache" } });
-    if (!r.ok) return { ok: false, error: "could not read my own source (HTTP " + r.status + ")" };
-    src = await r.text();
-  } catch (e) { return { ok: false, error: "source read failed: " + (e && e.message || e) }; }
+  {
+    // v4.9.493: use the reliable multi-strategy self-read (github api -> raw cdn -> kv cache) instead of
+    // the flaky public raw CDN alone, so self-edit can always read the real current source.
+    const _ros = await readOwnSource(env);
+    if (!_ros.ok) return { ok: false, error: "could not read my own source: " + _ros.error };
+    src = _ros.source;
+  }
   // Give the model the request + a way to ask for the exact span. Keep it SMALL and EXACT.
   const sys = `You convert a fuzzy self-edit request into ONE precise, minimal find/replace on a large JS file (index.mjs).
 Output STRICT JSON only: {"summary":"one line of what changes","old":"<exact unique substring currently in the file>","new":"<the replacement>"}.

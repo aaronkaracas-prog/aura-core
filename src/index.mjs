@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.498-2026-07-03";
+const BUILD = "aura-core-v4.9.499-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -951,26 +951,43 @@ async function governorRecord(env, action, pageId) {
 // The public raw CDN 404s under load / after pushes; this tries authenticated GitHub API first,
 // then raw CDN, then a KV cache, and self-heals the cache on success. So Aura can ALWAYS read herself.
 async function readOwnSource(env) {
-  const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);
+  // v4.9.499: FIX the 1MB self-read blind spot. The GitHub *contents* API truncates files at 1MB even
+  // with the raw accept header - and this index is ~1.7MB, so everything past ~line 10960 was INVISIBLE
+  // to self-read (this is why GREP kept returning "zero hits" for real code past that point, and why she
+  // thought deployed handlers/providers didn't exist). The raw CDN has NO size limit. So: raw CDN FIRST
+  // (full file), verify it looks complete (ends with the expected export/EOF), then GitHub blob API as a
+  // no-limit fallback, then KV cache. A source that doesn't contain the final export is treated as
+  // truncated and rejected.
+  const looksComplete = (s) => s && s.length > 200000 && (s.includes("export default") || s.trimEnd().endsWith("}") || s.includes("addEventListener"));
   let got = null, via = null;
-  if (ghTok) {
-    try {
-      const r = await fetch("https://api.github.com/repos/aaronkaracas-prog/aura-core/contents/src/index.mjs?ref=main", { headers: { "User-Agent": "aura-self-read", "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github.raw" } });
-      if (r.ok) { got = await r.text(); via = "github_api"; }
-    } catch (e) {}
-  }
+  // 1) raw CDN - no 1MB limit, returns the WHOLE file
+  try {
+    const sr = await fetch("https://raw.githubusercontent.com/aaronkaracas-prog/aura-core/main/src/index.mjs", { headers: { "User-Agent": "aura-self-read", "Cache-Control": "no-cache" } });
+    if (sr.ok) { const t = await sr.text(); if (looksComplete(t)) { got = t; via = "raw_cdn"; } }
+  } catch (e) {}
+  // 2) GitHub BLOB API (not contents API) - blobs have no 1MB truncation. Get the blob sha via the tree, then the blob.
   if (got == null) {
-    try {
-      const sr = await fetch("https://raw.githubusercontent.com/aaronkaracas-prog/aura-core/main/src/index.mjs", { headers: { "User-Agent": "aura-self-read", "Cache-Control": "no-cache" } });
-      if (sr.ok) { got = await sr.text(); via = "raw_cdn"; }
-    } catch (e) {}
+    const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);
+    if (ghTok) {
+      try {
+        const meta = await fetch("https://api.github.com/repos/aaronkaracas-prog/aura-core/contents/src/index.mjs?ref=main", { headers: { "User-Agent": "aura-self-read", "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github+json" } });
+        if (meta.ok) {
+          const mj = await meta.json();
+          if (mj && mj.sha) {
+            const blob = await fetch("https://api.github.com/repos/aaronkaracas-prog/aura-core/git/blobs/" + mj.sha, { headers: { "User-Agent": "aura-self-read", "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github+json" } });
+            if (blob.ok) { const bj = await blob.json(); if (bj && bj.content) { const decoded = (typeof atob === "function") ? decodeURIComponent(escape(atob(bj.content.replace(/\n/g, "")))) : Buffer.from(bj.content, "base64").toString("utf-8"); if (looksComplete(decoded)) { got = decoded; via = "github_blob"; } } }
+          }
+        }
+      } catch (e) {}
+    }
   }
+  // 3) KV cache - last resort (may be slightly stale but complete if it was cached from a full read)
   if (got == null) {
     const cached = await env.AURA_KV.get("self:source:current").catch(() => null);
-    if (cached) { got = cached; via = "kv_cache"; }
+    if (cached && looksComplete(cached)) { got = cached; via = "kv_cache"; }
   }
   if (got != null && via !== "kv_cache") await env.AURA_KV.put("self:source:current", got).catch(() => {});
-  return got ? { ok: true, source: got, via } : { ok: false, error: "all self-read strategies failed (github api, raw cdn, kv cache)" };
+  return got ? { ok: true, source: got, via, bytes: got.length } : { ok: false, error: "all self-read strategies failed or returned truncated source (raw cdn, github blob, kv cache)" };
 }
 
 // === AURA REMEMBER â€” significance-gated auto-capture to Aura's OWN timeline (v4.9.492) ===
@@ -1292,35 +1309,13 @@ async function processCommand(line, env, isOp) {
       let srcText;
       try {
         if (worker === "aura-core") {
-          // v4.9.493: RELIABLE self-read. The public raw CDN (raw.githubusercontent.com) is rate-limited
-          // and CDN-cached, so it intermittently 404s under load / right after a push - which was breaking
-          // Aura's ability to read herself (and therefore to self-edit). Fix: try the AUTHENTICATED GitHub
-          // contents API first (token, always-current, not the flaky CDN), then raw CDN, then a KV cache.
-          // On any success, cache to KV so she can ALWAYS read herself even if GitHub is down.
-          const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);
-          let got = null, via = null;
-          if (ghTok) {
-            try {
-              const api = "https://api.github.com/repos/aaronkaracas-prog/aura-core/contents/src/index.mjs?ref=main";
-              const r = await fetch(api, { headers: { "User-Agent": "aura-self-read", "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github.raw" } });
-              if (r.ok) { got = await r.text(); via = "github_api"; }
-            } catch (e) {}
-          }
-          if (got == null) {
-            try {
-              const sr = await fetch("https://raw.githubusercontent.com/aaronkaracas-prog/aura-core/main/src/index.mjs", { headers: { "User-Agent": "aura-self-read", "Cache-Control": "no-cache" } });
-              if (sr.ok) { got = await sr.text(); via = "raw_cdn"; }
-            } catch (e) {}
-          }
-          if (got == null) {
-            // last resort: the KV cache from a prior successful read (may be slightly stale, but she can still read herself)
-            const cached = await env.AURA_KV.get("self:source:current").catch(() => null);
-            if (cached) { got = cached; via = "kv_cache"; }
-          }
-          if (got == null) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Could not read own source from GitHub API, raw CDN, or KV cache. All three failed." } };
-          srcText = got;
-          // self-heal: cache the fresh source so future reads never fail even if GitHub is unreachable
-          if (via !== "kv_cache") await env.AURA_KV.put("self:source:current", got).catch(() => {});
+          // v4.9.499: use the FIXED readOwnSource helper (raw CDN first - no 1MB limit - then github blob
+          // API, then KV cache, with a completeness check). The old inline code used the github CONTENTS
+          // API which truncates at 1MB, so ~9000 lines of this 20000-line file were invisible to self-read,
+          // which is why GREP kept missing real code past line ~10960. One correct read path now.
+          const _ros = await readOwnSource(env);
+          if (!_ros.ok) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Could not read own source (full-file read failed): " + _ros.error } };
+          srcText = _ros.source;
         } else {
           // other workers are private repos -> GitHub contents API with the stored token
           const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);

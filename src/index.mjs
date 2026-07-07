@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.495-2026-07-03";
+const BUILD = "aura-core-v4.9.496-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -11383,8 +11383,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // Aura's shared context: the team's notes (north star, home screen, how we work) so she reasons from the real vision
         let homeCtx = "";
         try {
-          const wantNotes = ["notes:vision:northstar", "notes:vision:homescreen", "notes:operating:how_we_work_now", "notes:operating:how_aura_relates", "notes:company:identity"];
-          for (const k of wantNotes) { const v = await env.AURA_KV.get(k).catch(() => null); if (v) homeCtx += "\n[" + k + "]: " + String(v).slice(0, k === "notes:company:identity" ? 2000 : 1200); }
+          const wantNotes = ["notes:canon:the_vision", "notes:STATE:resume_here", "notes:vision:northstar", "notes:vision:homescreen", "notes:operating:how_we_work_now", "notes:operating:how_aura_relates", "notes:company:identity"];
+          for (const k of wantNotes) { const v = await env.AURA_KV.get(k).catch(() => null); if (v) homeCtx += "\n[" + k + "]: " + String(v).slice(0, k === "notes:canon:the_vision" ? 14000 : (k === "notes:company:identity" ? 2000 : 1200)); }
+          // also load Aura's own timeline so HomeScreen reasons from her real lived memory, same as the console
+          try { const atl = await env.AURA_KV.get("pta:timeline:" + AURA_PTA_ID); if (atl) { const ae = JSON.parse(atl) || []; if (ae.length) homeCtx += "\n[aura's own timeline - her lived memory, most recent last]: " + ae.slice(-25).map(e => (e.ts || "") + " " + (e.event || "")).join(" | ").slice(0, 3000); } } catch {}
         } catch {}
         // OPERATOR SESSION: when this is Aaron (the operator), give Aura the truth about who she's
         // talking to and what she can actually reach. Without this she defaults to the limited teammate

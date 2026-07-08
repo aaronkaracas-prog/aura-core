@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.511-2026-07-03";
+const BUILD = "aura-core-v4.9.512-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -10066,6 +10066,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       return { cmd: "BRIEF", payload: { ok: true, business: brRaw, live_findings: live, brief: brR.reasoning } };
     }
 
+    case "FAN": {
+      // v4.9.512: THE AI EXCHANGE, live. Fan a task across all the AI brains and synthesize one grounded
+      // answer as Aura. Usage: FAN <your task/question>   (optionally FAN [claude,gpt] <task> to pick brains)
+      let fanBody = line.replace(/^FAN\s*/i, "").trim();
+      let fanBrains = null;
+      const bm = fanBody.match(/^\[([a-z, ]+)\]\s*/i);
+      if (bm) { fanBrains = bm[1].split(",").map(s => s.trim().toLowerCase()).filter(Boolean); fanBody = fanBody.slice(bm[0].length).trim(); }
+      if (!fanBody) return { cmd: "FAN", payload: { ok: false, error: "Usage: FAN <task>  (or FAN [claude,gpt,grok,llama] <task>)" } };
+      const fr = await fanReason(env, { task: fanBody, brains: fanBrains });
+      return { cmd: "FAN", payload: fr };
+    }
     case "THINK": {
       // Direct access to the shared Cognitive Loop reasoner â€” SEE -> EXPAND(challenge) -> JUDGE -> DECIDE
       // in one pass, with data-trust and operator-push-back built in. This is the shared MIND that the
@@ -16389,6 +16400,65 @@ async function defaultModel(env) {
   try { const m = await env.AURA_KV.get("config:brain:model"); if (m) return m; } catch {}
   return "claude-sonnet-4-5";
 }
+// v4.9.512: THE AI ORCHESTRATION ENGINE - the spine of AI Exchange. Aura's real nature: she does not
+// reason alone, she orchestrates ALL the AI brains and synthesizes ONE grounded product. fanReason takes
+// a task, sends it to every available brain IN PARALLEL (Claude, GPT, Grok, Llama), collects their answers,
+// then Aura's OWN reasoning reads across all of them and synthesizes - so she stays the conductor (the
+// synthesis is hers), not a passthrough to whichever brain answered. Each brain call is best-effort: a
+// brain that's down or keyless is simply skipped, never blocks the others. This is what makes Aura the
+// layer on top of all AI rather than one more AI.
+async function callOneBrain(env, brain, system, user, maxTokens) {
+  try {
+    if (brain === "claude") {
+      const k = await KV.get(env, "secret:anthropic"); if (!k) return null;
+      const d = await callAnthropic(k, { model: await defaultModel(env), max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] });
+      if (!d || !d.ok) return null;
+      const t = (d.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
+      return t ? { brain: "claude", label: "Claude", text: t } : null;
+    }
+    if (brain === "gpt") {
+      let k = await KV.get(env, "secret:openai"); if (k && k.startsWith("{")) { try { k = JSON.parse(k).api_key; } catch {} }
+      if (!k) return null;
+      const r = await fetch("https://api.openai.com/v1/chat/completions", { method: "POST", headers: { "Authorization": "Bearer " + k, "Content-Type": "application/json" }, body: JSON.stringify({ model: "gpt-4o", max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content: user }] }) });
+      if (!r.ok) return null; const j = await r.json(); const t = j?.choices?.[0]?.message?.content;
+      return t ? { brain: "gpt", label: "GPT (OpenAI)", text: t.trim() } : null;
+    }
+    if (brain === "grok") {
+      const k = await KV.get(env, "secret:grok_api_key"); if (!k) return null;
+      const r = await fetch("https://api.x.ai/v1/chat/completions", { method: "POST", headers: { "Authorization": "Bearer " + k, "Content-Type": "application/json" }, body: JSON.stringify({ model: "grok-3-mini", max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content: user }] }) });
+      if (!r.ok) return null; const j = await r.json(); const t = j?.choices?.[0]?.message?.content;
+      return t ? { brain: "grok", label: "Grok (xAI)", text: t.trim() } : null;
+    }
+    if (brain === "llama") {
+      const k = await KV.get(env, "secret:groq_api_key"); if (!k) return null;
+      const r = await fetch("https://api.groq.com/openai/v1/chat/completions", { method: "POST", headers: { "Authorization": "Bearer " + k, "Content-Type": "application/json" }, body: JSON.stringify({ model: "llama-3.3-70b-versatile", max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content: user }] }) });
+      if (!r.ok) return null; const j = await r.json(); const t = j?.choices?.[0]?.message?.content;
+      return t ? { brain: "llama", label: "Llama (Meta via Groq)", text: t.trim() } : null;
+    }
+  } catch (e) { return null; }
+  return null;
+}
+
+async function fanReason(env, { task, brains, maxTokens = 700 } = {}) {
+  // 1) FAN: ask every requested brain the same task, in parallel, best-effort.
+  const want = (brains && brains.length) ? brains : ["claude", "gpt", "grok", "llama"];
+  const brainSystem = "You are one voice among several AI models being consulted in parallel on the same question. Answer directly, honestly, and concretely. If you don't know something, say so - do not fabricate. Be substantive but concise.";
+  const results = (await Promise.all(want.map(b => callOneBrain(env, b, brainSystem, task, maxTokens)))).filter(Boolean);
+  if (!results.length) return { ok: false, error: "No brains answered (none keyed/available)." };
+  // 2) SYNTHESIZE: Aura's OWN reasoning reads across all answers and produces one grounded synthesis.
+  //    She stays the conductor - the synthesis is her judgment across the spread, not one brain's answer.
+  const spread = results.map(r => `[${r.label}]\n${r.text}`).join("\n\n---\n\n");
+  const synthKey = await KV.get(env, "secret:anthropic");
+  let synthesis = null;
+  if (synthKey) {
+    const synthSys = "You are Aura, synthesizing across multiple AI brains you just consulted on a task. You are the conductor: read ALL their answers, and produce ONE grounded synthesis. State clearly where they AGREE (that's high-confidence signal), where they DIVERGE (and which view you find stronger and why), and anything one caught that the others missed. Do not just average them - reason across them and give your real read. Never assert as fact anything none of them grounded. End with your single clearest recommendation.";
+    const synthUser = `TASK:\n${task}\n\nTHE BRAINS' ANSWERS:\n\n${spread}\n\nSynthesize across them as Aura.`;
+    const d = await callAnthropic(synthKey, { model: await defaultModel(env), max_tokens: 1200, governance: true, system: synthSys, messages: [{ role: "user", content: synthUser }] });
+    if (d && d.ok) synthesis = (d.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
+  }
+  return { ok: true, task, brains_answered: results.map(r => r.brain), synthesis, spread: results.map(r => ({ brain: r.brain, label: r.label, text: r.text })) };
+}
+
 async function callAnthropic(apiKey, payload) {
   // Funnel governance (v4.9.507): govern by DEFAULT, not opt-in. Manually flagging ~35 callers is itself
   // scatter-prone - one missed caller = one ungoverned honesty path. So instead: auto-inject the provenance

@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.509-2026-07-03";
+const BUILD = "aura-core-v4.9.510-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -16380,6 +16380,8 @@ async function callAnthropicOnce(apiKey, payload) {
 // logic is CENTRAL; callers opt in with a flag instead of each carrying its own copy. Proven mechanism
 // (v502/503 showed provenance makes her refuse unverified claims); now available to every caller uniformly.
 const _FUNNEL_PROVENANCE = "\n\nHOW YOU KNOW WHAT YOU SAY (governs every factual claim you make, no exceptions): before you state any specific fact - a value, a balance, a count, a status, that something exists, that 'the right way is X', a rule, a past lesson - check its source: did you READ it this turn, was it GIVEN in the facts you were handed, did you REASON it from things you actually know, or is it UNVERIFIED (recalling/assuming/pattern-matching, not confirmed this turn)? An UNVERIFIED claim must NOT be stated as fact - verify it first, or say plainly you're unsure/recalling. The instant a claim is only UNVERIFIED, that is your signal to STOP and check or hedge, never to assert confidently. Confident assertion of an unverified claim is the single most trust-destroying thing you can do. Honest uncertainty is strength; confident-wrong is the failure.";
+const _FUNNEL_PROPORTION = "\n\nRESPOND AT THE SCALE THAT FITS (governs how big or small your response/action/build should be): match the weight of your response to the weight of what is actually in front of you. There is no 'small version vs big version' and no 'safe version vs complete version' - there is THE version that fits what was actually asked, at the stage you are actually at. This cuts BOTH ways and you must avoid BOTH failures: (1) DO NOT INFLATE - do not turn 'add a panel' into rearchitecting the layout, 'make it identity-aware' into a hard sign-in wall, a simple question into a 40-point plan, or a person's hardship into a movement. Over-building is not thoroughness, it is missing the ask. (2) DO NOT DEFLECT OR SHRINK - do not turn a clear, actionable request into 'first go measure/interview/research', do not stall a direct build behind a study, do not answer a simple ask with paralysis or endless caveats. If someone asks you to add notifications and it's clearly wanted, the fit is to build the RIGHT-SIZED notifications - not to demand a user-research sprint first, and not to build a maximal notification platform. When the ask is clear, DO the fitting thing. When it's genuinely ambiguous how far to take it, STATE the version you think fits and ASK - briefly - rather than either defaulting to maximal or retreating into research. Respect explicit constraints exactly ('keep it open for now' means open-for-now IS the spec). The fit is decisive and right-sized: neither cathedral nor paralysis.";
+
 async function defaultModel(env) {
   // v4.9.508: one place resolves the default analysis model. Callers that previously hardcoded
   // "claude-sonnet-4-5" now read config:brain:model (same key the other 31 callers already use), so a
@@ -16401,7 +16403,7 @@ async function callAnthropic(apiKey, payload) {
       && (payload.max_tokens == null || payload.max_tokens >= 800)   // exempt tiny mechanical calls (routers/classifiers)
       && !/Output JSON only|Return ONLY a JSON|JSON only, no prose/i.test(payload.system)  // exempt structured-JSON calls (they carry their own grounding)
       && !payload.system.includes("HOW YOU KNOW WHAT YOU SAY")) {
-    payload = { ...payload, system: payload.system + _FUNNEL_PROVENANCE };
+    payload = { ...payload, system: payload.system + _FUNNEL_PROVENANCE + _FUNNEL_PROPORTION };
   }
   let r = await callAnthropicOnce(apiKey, payload);
   if (!r.ok && r.retryable) {

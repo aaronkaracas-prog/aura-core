@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.513-2026-07-03";
+const BUILD = "aura-core-v4.9.514-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -16425,7 +16425,7 @@ async function callOneBrain(env, brain, system, user, maxTokens) {
     }
     if (brain === "grok") {
       const k = await KV.get(env, "secret:grok_api_key"); if (!k) return null;
-      const r = await fetch("https://api.x.ai/v1/chat/completions", { method: "POST", headers: { "Authorization": "Bearer " + k, "Content-Type": "application/json" }, body: JSON.stringify({ model: "grok-3-mini", max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content: user }] }) });
+      const r = await fetch("https://api.x.ai/v1/chat/completions", { method: "POST", headers: { "Authorization": "Bearer " + k, "Content-Type": "application/json" }, body: JSON.stringify({ model: "grok-4.3", max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content: user }] }) });
       if (!r.ok) return null; const j = await r.json(); const t = j?.choices?.[0]?.message?.content;
       return t ? { brain: "grok", label: "Grok (xAI)", text: t.trim() } : null;
     }

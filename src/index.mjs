@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.502-2026-07-03";
+const BUILD = "aura-core-v4.9.503-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -10078,7 +10078,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (thRaw.includes(":::")) { const parts = thRaw.split(":::"); thLens = parts[0].trim(); thSit = parts.slice(1).join(":::").trim(); }
       const thR = await reasonThroughLoop(env, { entity: thSit, lens: thLens, facts: {} });
       if (!thR.ok) return { cmd: "THINK", payload: { ok: false, error: thR.error } };
-      return { cmd: "THINK", payload: { ok: true, lens: thLens, situation: thSit, reasoning: thR.reasoning } };
+      // v4.9.503: SURFACE the grounding/provenance so it's auditable. v502 makes reasonThroughLoop
+      // generate a grounding array (each claim tagged READ_THIS_TURN/GIVEN_IN_FACTS/REASONED/UNVERIFIED)
+      // and caps confidence by it - but THINK wasn't exposing it, so we couldn't SEE whether she tags her
+      // own recall honestly. Expose grounding + confidence explicitly at the top level so the operator can
+      // audit: did she catch an UNVERIFIED claim, or mislabel recall as REASONED? This is diagnosis before
+      // we build the full funnel - we need to see the provenance actually firing.
+      const _gr = (thR.reasoning && thR.reasoning.grounding) || null;
+      return { cmd: "THINK", payload: { ok: true, lens: thLens, situation: thSit, reasoning: thR.reasoning, grounding: _gr, confidence: (thR.reasoning && thR.reasoning.confidence) || null } };
     }
 
     case "OUTCOME_LOG": {
@@ -16222,7 +16229,6 @@ async function fastReply(env, { system, user, maxTokens = 700, model } = {}) {
     return t || null;
   } catch { return null; }
 }
-
 async function reasonThroughLoop(env, opts) {
   opts = opts || {};
   const apiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);

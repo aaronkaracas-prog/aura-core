@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.512-2026-07-03";
+const BUILD = "aura-core-v4.9.513-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -16449,14 +16449,17 @@ async function fanReason(env, { task, brains, maxTokens = 700 } = {}) {
   //    She stays the conductor - the synthesis is her judgment across the spread, not one brain's answer.
   const spread = results.map(r => `[${r.label}]\n${r.text}`).join("\n\n---\n\n");
   const synthKey = await KV.get(env, "secret:anthropic");
-  let synthesis = null;
+  let synthesis = null, synthError = null;
   if (synthKey) {
     const synthSys = "You are Aura, synthesizing across multiple AI brains you just consulted on a task. You are the conductor: read ALL their answers, and produce ONE grounded synthesis. State clearly where they AGREE (that's high-confidence signal), where they DIVERGE (and which view you find stronger and why), and anything one caught that the others missed. Do not just average them - reason across them and give your real read. Never assert as fact anything none of them grounded. End with your single clearest recommendation.";
     const synthUser = `TASK:\n${task}\n\nTHE BRAINS' ANSWERS:\n\n${spread}\n\nSynthesize across them as Aura.`;
-    const d = await callAnthropic(synthKey, { model: await defaultModel(env), max_tokens: 1200, governance: true, system: synthSys, messages: [{ role: "user", content: synthUser }] });
-    if (d && d.ok) synthesis = (d.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
-  }
-  return { ok: true, task, brains_answered: results.map(r => r.brain), synthesis, spread: results.map(r => ({ brain: r.brain, label: r.label, text: r.text })) };
+    try {
+      const d = await callAnthropic(synthKey, { model: await defaultModel(env), max_tokens: 1500, system: synthSys, messages: [{ role: "user", content: synthUser }] });
+      if (d && d.ok) { synthesis = (d.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim() || null; if (!synthesis) synthError = "synthesis returned empty text; stop_reason=" + (d.stop_reason || "?"); }
+      else synthError = "synthesis call failed: " + ((d && d.error) || "unknown") + " status=" + ((d && d.status) || "?");
+    } catch (e) { synthError = "synthesis threw: " + (e && e.message ? e.message : String(e)); }
+  } else synthError = "no anthropic key for synthesis";
+  return { ok: true, task, brains_answered: results.map(r => r.brain), synthesis, synthError, spread: results.map(r => ({ brain: r.brain, label: r.label, text: r.text })) };
 }
 
 async function callAnthropic(apiKey, payload) {

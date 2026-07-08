@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.507-2026-07-03";
+const BUILD = "aura-core-v4.9.508-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -10556,7 +10556,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const sys = (await loadPrompt(env, "ark_presence", "You are Aura, the intelligence layer of ARK Systems, guided by your Constitution: observe before concluding, act with integrity, never manipulate or deceive, offer honest hope, leave everything better than you found it. Design YOUR OWN {platform} PAGE presence - an honest AI/brand presence, NOT a human impersonation. You are openly Aura, an AI. Return ONLY JSON (no prose, no fences) with keys: page_name, usernames (array of 3 handle options, lowercase, letters/numbers/periods only, no spaces), category (a real {platform} Page category for a tech/AI brand), short_bio (<=101 characters, first person, warm, openly an AI presence), about (2-3 sentences, first person, who you are and how you help, grounded in the Constitution), first_post (a warm honest 3-5 sentence introduction - who Aura is, that she is an AI, why she is here), avatar_prompt (a vivid prompt for an ICONIC, abstract profile image - a symbol or mark, NEVER a realistic human face, since Aura must not appear to be a person). Output JSON only.")).replaceAll("{platform}", platform);
         let kit = {};
         try {
-          const d = await callAnthropic(apiKey, { model: "claude-sonnet-4-5", max_tokens: 1200, system: sys, messages: [{ role: "user", content: "Design your " + platform + " Page presence." }] });
+          const d = await callAnthropic(apiKey, { model: await defaultModel(env), max_tokens: 1200, system: sys, messages: [{ role: "user", content: "Design your " + platform + " Page presence." }] });
           let t = ""; if (d && d.content) for (const b of d.content) if (b.type === "text") t += b.text;
           t = t.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
           kit = JSON.parse(t);
@@ -10753,7 +10753,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const obFactsStr = JSON.stringify({ places: discovered.places, website_scrape: obScrape || (discovered.site && discovered.site.text) || null, web: discovered.web, contact_search: obContactSignal || null }).slice(0, 34000);
       let obRead = {};
       try {
-        const d = await callAnthropic(obApiKey, { model: "claude-sonnet-4-5", max_tokens: 2600, system: obSys, messages: [{ role: "user", content: "FACTS:\n" + obFactsStr }] });
+        const d = await callAnthropic(obApiKey, { model: await defaultModel(env), max_tokens: 2600, system: obSys, messages: [{ role: "user", content: "FACTS:\n" + obFactsStr }] });
         let t = ""; if (d && d.content) { for (const b of d.content) { if (b.type === "text") t += b.text; } }
         t = t.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
         obRead = JSON.parse(t);
@@ -16380,6 +16380,13 @@ async function callAnthropicOnce(apiKey, payload) {
 // logic is CENTRAL; callers opt in with a flag instead of each carrying its own copy. Proven mechanism
 // (v502/503 showed provenance makes her refuse unverified claims); now available to every caller uniformly.
 const _FUNNEL_PROVENANCE = "\n\nHOW YOU KNOW WHAT YOU SAY (governs every factual claim you make, no exceptions): before you state any specific fact - a value, a balance, a count, a status, that something exists, that 'the right way is X', a rule, a past lesson - check its source: did you READ it this turn, was it GIVEN in the facts you were handed, did you REASON it from things you actually know, or is it UNVERIFIED (recalling/assuming/pattern-matching, not confirmed this turn)? An UNVERIFIED claim must NOT be stated as fact - verify it first, or say plainly you're unsure/recalling. The instant a claim is only UNVERIFIED, that is your signal to STOP and check or hedge, never to assert confidently. Confident assertion of an unverified claim is the single most trust-destroying thing you can do. Honest uncertainty is strength; confident-wrong is the failure.";
+async function defaultModel(env) {
+  // v4.9.508: one place resolves the default analysis model. Callers that previously hardcoded
+  // "claude-sonnet-4-5" now read config:brain:model (same key the other 31 callers already use), so a
+  // model deprecation is a ONE-KEY change (SETKV config:brain:model <new>) instead of editing many sites.
+  try { const m = await env.AURA_KV.get("config:brain:model"); if (m) return m; } catch {}
+  return "claude-sonnet-4-5";
+}
 async function callAnthropic(apiKey, payload) {
   // Funnel governance (v4.9.507): govern by DEFAULT, not opt-in. Manually flagging ~35 callers is itself
   // scatter-prone - one missed caller = one ungoverned honesty path. So instead: auto-inject the provenance

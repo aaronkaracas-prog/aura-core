@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.518-2026-07-03";
+const BUILD = "aura-core-v4.9.519-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -10066,6 +10066,40 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       return { cmd: "BRIEF", payload: { ok: true, business: brRaw, live_findings: live, brief: brR.reasoning } };
     }
 
+    case "VITALS": {
+      // v4.9.519: INFRASTRUCTURE HEALTH - the critical organs that make Aura's world operate. These are
+      // NOT ingestion feeds (those are FEEDS/data, in KV registry, tolerant of failure). These are the
+      // load-bearing services: if one dies, Aura is impaired. Born from the real day Twilio + Grok + OpenAI
+      // all died at once with no visibility. VITALS checks each live, best-effort, and reports status so a
+      // dying organ is SEEN before it takes the system down. Each check is isolated - one failure never
+      // blocks the others.
+      const checkBrain = async (name, kvKey, url, model, bodyFn) => {
+        try {
+          const k = await KV.get(env, kvKey); if (!k) return { service: name, kind: "brain", status: "no_key", ok: false };
+          const r = await fetch(url, { method: "POST", headers: { "Authorization": "Bearer " + k, "Content-Type": "application/json" }, body: JSON.stringify(bodyFn(model)) });
+          if (r.ok) return { service: name, kind: "brain", status: "live", ok: true };
+          let detail = "http " + r.status; try { const j = await r.json(); if (j && j.error) detail = (typeof j.error === "string" ? j.error : (j.error.message || detail)); } catch {}
+          return { service: name, kind: "brain", status: "DOWN", ok: false, detail };
+        } catch (e) { return { service: name, kind: "brain", status: "DOWN", ok: false, detail: e && e.message ? e.message : String(e) }; }
+      };
+      const oaiBody = (m) => ({ model: m, max_tokens: 1, messages: [{ role: "user", content: "hi" }] });
+      const checks = await Promise.all([
+        checkBrain("Claude (Anthropic)", "secret:anthropic", "https://api.anthropic.com/v1/messages", "claude-haiku-4-5-20251001", (m) => ({ model: m, max_tokens: 1, messages: [{ role: "user", content: "hi" }] })),
+        (async () => { try { const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": (await KV.get(env, "secret:anthropic")) || "", "anthropic-version": "2023-06-01", "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1, messages: [{ role: "user", content: "hi" }] }) }); return { service: "Claude (Anthropic)", kind: "brain", status: r.ok ? "live" : "DOWN", ok: r.ok, detail: r.ok ? undefined : ("http " + r.status) }; } catch (e) { return { service: "Claude (Anthropic)", kind: "brain", status: "DOWN", ok: false, detail: e.message }; } })(),
+        checkBrain("GPT (OpenAI)", "secret:openai", "https://api.openai.com/v1/chat/completions", "gpt-4o", oaiBody),
+        checkBrain("Grok (xAI)", "secret:grok_api_key", "https://api.x.ai/v1/chat/completions", "grok-4.3", oaiBody),
+        checkBrain("Llama (Groq)", "secret:groq_api_key", "https://api.groq.com/openai/v1/chat/completions", "llama-3.3-70b-versatile", oaiBody),
+        (async () => { try { const t = await KV.get(env, "secret:cf_api_token"); if (!t) return { service: "Cloudflare", kind: "infra", status: "no_key", ok: false }; const r = await fetch("https://api.cloudflare.com/client/v4/user/tokens/verify", { headers: { "Authorization": "Bearer " + t } }); return { service: "Cloudflare", kind: "infra", status: r.ok ? "live" : "DOWN", ok: r.ok, detail: r.ok ? undefined : ("http " + r.status) }; } catch (e) { return { service: "Cloudflare", kind: "infra", status: "DOWN", ok: false, detail: e.message }; } })(),
+        (async () => { try { const sid = await KV.get(env, "secret:twilio_account_sid"); const tok = await KV.get(env, "secret:twilio_auth_token"); if (!sid || !tok) return { service: "Twilio", kind: "infra", status: "no_key", ok: false }; const r = await fetch("https://api.twilio.com/2010-04-01/Accounts/" + sid + ".json", { headers: { "Authorization": "Basic " + btoa(sid + ":" + tok) } }); let bal = null; if (r.ok) { try { const j = await r.json(); bal = j.status; } catch {} } return { service: "Twilio", kind: "infra", status: r.ok ? "live" : "DOWN", ok: r.ok, detail: r.ok ? ("account " + (bal || "active")) : ("http " + r.status) }; } catch (e) { return { service: "Twilio", kind: "infra", status: "DOWN", ok: false, detail: e.message }; } })(),
+        (async () => { try { const b = await getMercuryBalance(env); return { service: "Mercury (bank)", kind: "money", status: b && b.ok !== false ? "live" : "DOWN", ok: !!(b && b.ok !== false), detail: b && (b.total != null ? ("$" + b.total) : undefined) }; } catch (e) { return { service: "Mercury (bank)", kind: "money", status: "DOWN", ok: false, detail: e.message }; } })(),
+        (async () => { try { const b = await getStripeBalance(env); return { service: "Stripe", kind: "money", status: b && b.ok !== false ? "live" : "DOWN", ok: !!(b && b.ok !== false), detail: b && (b.available != null ? ("$" + b.available) : undefined) }; } catch (e) { return { service: "Stripe", kind: "money", status: "DOWN", ok: false, detail: e.message }; } })()
+      ]);
+      // dedupe the double Claude check (keep the one that succeeded, or either)
+      const seen = {}; const organs = [];
+      for (const c of checks) { if (c.service === "Claude (Anthropic)") { if (seen.claude) { if (c.ok && !seen.claude.ok) { const i = organs.indexOf(seen.claude); organs[i] = c; seen.claude = c; } continue; } seen.claude = c; } organs.push(c); }
+      const down = organs.filter(o => !o.ok);
+      return { cmd: "VITALS", payload: { ok: true, all_healthy: down.length === 0, down_count: down.length, organs, alarm: down.length ? ("CRITICAL: " + down.map(d => d.service + " (" + d.status + (d.detail ? ": " + d.detail : "") + ")").join(", ")) : "all critical organs live" } };
+    }
     case "FAN": {
       // v4.9.512: THE AI EXCHANGE, live. Fan a task across all the AI brains and synthesize one grounded
       // answer as Aura. Usage: FAN <your task/question>   (optionally FAN [claude,gpt] <task> to pick brains)

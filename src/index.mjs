@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.516-2026-07-03";
+const BUILD = "aura-core-v4.9.517-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -16176,12 +16176,15 @@ async function executeApprovedPatch(env) {
 // API wrapper (which has no env) can write the cost ledger. Prices are USD per 1M tokens;
 // a code default, overridable later via config:economics:prices. Sibling of the loop's timing.
 let _AURA_ENV = null;
-const _AI_PRICES = { sonnet: { in: 3, out: 15 }, haiku: { in: 1, out: 5 }, opus: { in: 15, out: 75 }, default: { in: 3, out: 15 } };
+const _AI_PRICES = { sonnet: { in: 3, out: 15 }, haiku: { in: 1, out: 5 }, opus: { in: 15, out: 75 }, gpt: { in: 2.5, out: 10 }, grok: { in: 1.25, out: 2.5 }, llama: { in: 0.59, out: 0.79 }, default: { in: 3, out: 15 } };
 async function recordCost(model, usage) {
   try {
     if (!_AURA_ENV || !usage) return;
     const m = String(model || "");
-    const tier = m.includes("haiku") ? "haiku" : m.includes("opus") ? "opus" : m.includes("sonnet") ? "sonnet" : "default";
+    const tier = m.includes("haiku") ? "haiku" : m.includes("opus") ? "opus" : m.includes("sonnet") ? "sonnet"
+      : (m.includes("gpt") || m.includes("openai")) ? "gpt"
+      : m.includes("grok") ? "grok"
+      : m.includes("llama") ? "llama" : "default";
     const p = _AI_PRICES[tier] || _AI_PRICES.default;
     const inTok = usage.input_tokens || 0, outTok = usage.output_tokens || 0;
     if (!inTok && !outTok) return;
@@ -16421,18 +16424,21 @@ async function callOneBrain(env, brain, system, user, maxTokens) {
       if (!k) return null;
       const r = await fetch("https://api.openai.com/v1/chat/completions", { method: "POST", headers: { "Authorization": "Bearer " + k, "Content-Type": "application/json" }, body: JSON.stringify({ model: "gpt-4o", max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content: user }] }) });
       if (!r.ok) return null; const j = await r.json(); const t = j?.choices?.[0]?.message?.content;
+      if (j?.usage) await recordCost("gpt-4o", { input_tokens: j.usage.prompt_tokens || 0, output_tokens: j.usage.completion_tokens || 0 });
       return t ? { brain: "gpt", label: "GPT (OpenAI)", text: t.trim() } : null;
     }
     if (brain === "grok") {
       const k = await KV.get(env, "secret:grok_api_key"); if (!k) return null;
       const r = await fetch("https://api.x.ai/v1/chat/completions", { method: "POST", headers: { "Authorization": "Bearer " + k, "Content-Type": "application/json" }, body: JSON.stringify({ model: "grok-4.3", max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content: user }] }) });
       if (!r.ok) return null; const j = await r.json(); const t = j?.choices?.[0]?.message?.content;
+      if (j?.usage) await recordCost("grok-4.3", { input_tokens: j.usage.prompt_tokens || 0, output_tokens: j.usage.completion_tokens || 0 });
       return t ? { brain: "grok", label: "Grok (xAI)", text: t.trim() } : null;
     }
     if (brain === "llama") {
       const k = await KV.get(env, "secret:groq_api_key"); if (!k) return null;
       const r = await fetch("https://api.groq.com/openai/v1/chat/completions", { method: "POST", headers: { "Authorization": "Bearer " + k, "Content-Type": "application/json" }, body: JSON.stringify({ model: "llama-3.3-70b-versatile", max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content: user }] }) });
       if (!r.ok) return null; const j = await r.json(); const t = j?.choices?.[0]?.message?.content;
+      if (j?.usage) await recordCost("llama-3.3-70b", { input_tokens: j.usage.prompt_tokens || 0, output_tokens: j.usage.completion_tokens || 0 });
       return t ? { brain: "llama", label: "Llama (Meta via Groq)", text: t.trim() } : null;
     }
   } catch (e) { return null; }

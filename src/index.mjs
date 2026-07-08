@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.505-2026-07-03";
+const BUILD = "aura-core-v4.9.506-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -9048,7 +9048,7 @@ async function processCommand(line, env, isOp) {
       const scModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       const scSystem = await loadPrompt(env, "securespend_accounts", "You are SECURESPEND analyzing a REAL set of financial accounts (Stripe, Mercury bank, Twilio) belonging to the operator of a small business. You are given the actual gathered facts as JSON. OPERATOR CONTEXT you MUST factor in: this is a pre-funding, in-development venture (ARK Systems / Aura). Revenue is INTENTIONALLY off right now - the operator has deliberately chosen NOT to chase revenue until external funding lands (expected ~2 weeks out). The tiny Stripe charges are test transactions, not a failed sales effort. Much of the spend (e.g. Twilio numbers/A2P) is infrastructure the operator has consciously chosen to keep. So do NOT read a low balance or low revenue as a crisis or a failing business - it is a funded-soon R&D runway by design. Judge spend against INTENT and STRATEGY, not against a naive 'they're broke' reading. TONE - this is mandatory and matches the operator's entire product philosophy: be warm, constructive, encouraging, and forward-thinking, AND fully honest. NEVER alarmist, never catastrophizing, never 'business survival / freeze everything / unsustainable' language. But also NEVER hollow flattery - if something is genuinely a leak or a bad idea, say so plainly and kindly, because telling the truth is how you serve the human. Surface the real thing as 'here is the one item worth your attention,' not 'you are in danger.' Apply the money-lens: find recurring waste, idle/forgotten costs, anything quietly leaking money, anything worth protecting, and the highest-leverage move. Ground every finding in the real numbers - cite the actual amounts. If a source failed to load, note it as unchecked; do not speculate. Return ONLY a JSON object, no prose or fences, with keys: snapshot (one plain, calm sentence summarizing the real picture from the data, framed with the runway context in mind), findings (array of objects each with: severity high|medium|low, category recurring|idle|anomaly|protection|optimization, what (the real item with its actual amount), means (plain human terms), move (the recommended action, constructively phrased)), the_one_thing (the single highest-leverage move right now, tied to a real number, framed as an opportunity not an emergency), do_now (one concrete next step), watch_for (array), confidence high|medium|low, unchecked_sources (array). Be honest, specific to the numbers, and steady. Output JSON only.");
       try {
-        const scData = await callAnthropic(scApiKey, { model: scModel, max_tokens: 2500, system: scSystem, messages: [{ role: "user", content: "Here are the real gathered account facts:\n" + JSON.stringify(facts, null, 2) }] });
+        const scData = await callAnthropic(scApiKey, { model: scModel, max_tokens: 2500, governance: true, system: scSystem, messages: [{ role: "user", content: "Here are the real gathered account facts:\n" + JSON.stringify(facts, null, 2) }] });
         let scText = "";
         if (scData && scData.content) { for (const b of scData.content) { if (b.type === "text") scText += b.text; } }
         scText = scText.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
@@ -9240,7 +9240,7 @@ async function processCommand(line, env, isOp) {
       const sbModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       const sbSystem = await loadPrompt(env, "securespend_brief", "You are SECURESPEND, the financial-awareness layer of Aura, analyzing a person's REAL connected bank account. You are given their actual accounts, balances, recent transactions, and a deterministic list of likely-recurring charges. Give them calm, clear awareness of their own money. You SERVE THE HUMAN: warm, encouraging, honest, never alarmist, never moralizing, never a budget cop, never hollow flattery - if something is genuinely a forgotten or wasteful charge, say so kindly and plainly. Produce the awareness a great financial wallet would. Return ONLY a JSON object, no prose or fences, with keys: greeting (one short warm line), snapshot (one plain sentence on where their money stands using real balances), safe_to_spend (your read of what is comfortably spendable now given balances and upcoming patterns, with a brief why), recurring (array of objects: merchant, typical_amount, cadence_guess, status one of 'active-valued'|'review'|'likely-forgotten', note), forgotten_or_waste (array of specific charges that look forgotten/unused/duplicate, each with merchant, amount, why), top_wins (array of 1-3 concrete opportunities to save or recover money, each with a real number where possible), the_one_thing (the single most useful money move right now), watch_for (array - upcoming or easy-to-miss items), confidence high|medium|low. Ground everything in the real numbers provided. Output JSON only.");
       try {
-        const sbData = await callAnthropic(sbApiKey, { model: sbModel, max_tokens: 2500, system: sbSystem, messages: [{ role: "user", content: "Real connected account data:\n" + JSON.stringify(facts, null, 2) }] });
+        const sbData = await callAnthropic(sbApiKey, { model: sbModel, max_tokens: 2500, governance: true, system: sbSystem, messages: [{ role: "user", content: "Real connected account data:\n" + JSON.stringify(facts, null, 2) }] });
         let sbText = ""; if (sbData && sbData.content) { for (const b of sbData.content) { if (b.type === "text") sbText += b.text; } }
         sbText = sbText.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
         let sbParsed = null; try { sbParsed = JSON.parse(sbText); } catch {}
@@ -16371,7 +16371,21 @@ async function callAnthropicOnce(apiKey, payload) {
 }
 
 // One automatic retry on transient failures (5xx, 429, network, malformed) â€” a blip never costs a task.
+// v4.9.506: THE FUNNEL. Nearly all of Aura's ~40 callAnthropic callers pass through THIS one function.
+// Rather than inject provenance discipline into caller after caller (that's the scatter/whack-a-mole we're
+// ending), the governance lives HERE, once, applied by an opt-in flag. A caller that makes factual claims
+// (account analysis, situation briefs, any honesty-critical reasoning) sets payload.governance = true and
+// the provenance discipline is auto-injected into its system prompt. Mechanical callers (a 1-word router at
+// max_tokens:16, a classifier) pass nothing and are untouched. This is what "one funnel" means: the honesty
+// logic is CENTRAL; callers opt in with a flag instead of each carrying its own copy. Proven mechanism
+// (v502/503 showed provenance makes her refuse unverified claims); now available to every caller uniformly.
+const _FUNNEL_PROVENANCE = "\n\nHOW YOU KNOW WHAT YOU SAY (governs every factual claim you make, no exceptions): before you state any specific fact - a value, a balance, a count, a status, that something exists, that 'the right way is X', a rule, a past lesson - check its source: did you READ it this turn, was it GIVEN in the facts you were handed, did you REASON it from things you actually know, or is it UNVERIFIED (recalling/assuming/pattern-matching, not confirmed this turn)? An UNVERIFIED claim must NOT be stated as fact - verify it first, or say plainly you're unsure/recalling. The instant a claim is only UNVERIFIED, that is your signal to STOP and check or hedge, never to assert confidently. Confident assertion of an unverified claim is the single most trust-destroying thing you can do. Honest uncertainty is strength; confident-wrong is the failure.";
 async function callAnthropic(apiKey, payload) {
+  // Funnel governance: if a caller opts in (governance truthy) and there's a system prompt, auto-inject the
+  // provenance discipline. Safe: only affects callers that explicitly ask for it; never touches mechanical calls.
+  if (payload && payload.governance && payload.system && typeof payload.system === "string" && !payload.system.includes("HOW YOU KNOW WHAT YOU SAY")) {
+    payload = { ...payload, system: payload.system + _FUNNEL_PROVENANCE };
+  }
   let r = await callAnthropicOnce(apiKey, payload);
   if (!r.ok && r.retryable) {
     await new Promise(s => setTimeout(s, 2000));

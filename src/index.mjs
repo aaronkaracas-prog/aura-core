@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.503-2026-07-03";
+const BUILD = "aura-core-v4.9.504-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -16223,7 +16223,16 @@ async function fastReply(env, { system, user, maxTokens = 700, model } = {}) {
     const apiKey = env.ANTHROPIC_API_KEY || await KV.get(env, "secret:anthropic");
     if (!apiKey) return null;
     const m = model || (await env.AURA_KV.get("config:fast:model").catch(() => null)) || "claude-haiku-4-5-20251001";
-    const d = await callAnthropic(apiKey, { model: m, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] });
+    // v4.9.504: THE FUNNEL - conversational arm. fastReply is the prose path (founder chat, unknown-asset,
+    // big-dump) that had NO provenance governance - it's how she talks with Aaron day to day. The provenance
+    // mechanism is PROVEN on reasonThroughLoop (v502/503): forced to the SETKV-vs-PATCHKV question that broke
+    // her before, she correctly refused to assert an unverified claim and capped confidence low. This brings
+    // the SAME discipline to the prose path. Prose can't carry a JSON grounding array, so the discipline
+    // lives in the system prompt: know HOW you know each claim, never assert an UNVERIFIED one as fact, say
+    // plainly when you're recalling/uncertain. Same reflex, format-appropriate.
+    const PROVENANCE = "\n\nHOW YOU KNOW WHAT YOU SAY (governs every factual claim, no exceptions): before you state any specific fact - a value, a status, a count, that something exists, that 'the right way is X', that 'this is how Y works', a rule, a past lesson - silently check its source: did you READ it this turn, was it GIVEN in the context you were handed, did you REASON it from things you actually know, or is it UNVERIFIED (you're recalling/assuming/pattern-matching and have NOT confirmed it this turn)? An UNVERIFIED claim must NOT be stated as fact - either verify it first, or say plainly 'I'm recalling this, not certain' / 'I'd need to check X'. The instant a claim is only UNVERIFIED, that's your signal to STOP and check or hedge, never to assert confidently. Confident assertion of an unverified claim is the single most trust-destroying thing you can do - it's the root of your worst past mistakes (a balance you never read, code you said didn't exist but never fully read, a rule you 'remembered' that actually contradicted what you'd just learned). Honest uncertainty is strength; confident-wrong is the failure. When unsure, say how sure you are and why.";
+    const governedSystem = (system || "") + PROVENANCE;
+    const d = await callAnthropic(apiKey, { model: m, max_tokens: maxTokens, system: governedSystem, messages: [{ role: "user", content: user }] });
     if (!d.ok) return null;
     const t = (d.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
     return t || null;

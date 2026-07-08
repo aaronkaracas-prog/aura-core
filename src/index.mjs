@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.506-2026-07-03";
+const BUILD = "aura-core-v4.9.507-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -16381,9 +16381,19 @@ async function callAnthropicOnce(apiKey, payload) {
 // (v502/503 showed provenance makes her refuse unverified claims); now available to every caller uniformly.
 const _FUNNEL_PROVENANCE = "\n\nHOW YOU KNOW WHAT YOU SAY (governs every factual claim you make, no exceptions): before you state any specific fact - a value, a balance, a count, a status, that something exists, that 'the right way is X', a rule, a past lesson - check its source: did you READ it this turn, was it GIVEN in the facts you were handed, did you REASON it from things you actually know, or is it UNVERIFIED (recalling/assuming/pattern-matching, not confirmed this turn)? An UNVERIFIED claim must NOT be stated as fact - verify it first, or say plainly you're unsure/recalling. The instant a claim is only UNVERIFIED, that is your signal to STOP and check or hedge, never to assert confidently. Confident assertion of an unverified claim is the single most trust-destroying thing you can do. Honest uncertainty is strength; confident-wrong is the failure.";
 async function callAnthropic(apiKey, payload) {
-  // Funnel governance: if a caller opts in (governance truthy) and there's a system prompt, auto-inject the
-  // provenance discipline. Safe: only affects callers that explicitly ask for it; never touches mechanical calls.
-  if (payload && payload.governance && payload.system && typeof payload.system === "string" && !payload.system.includes("HOW YOU KNOW WHAT YOU SAY")) {
+  // Funnel governance (v4.9.507): govern by DEFAULT, not opt-in. Manually flagging ~35 callers is itself
+  // scatter-prone - one missed caller = one ungoverned honesty path. So instead: auto-inject the provenance
+  // discipline into ANY substantive call (has a real system prompt AND enough output room to make factual
+  // claims), and EXEMPT only the mechanical calls that need a bare output - routers/classifiers (small
+  // max_tokens), calls that ask for JSON-only (their own schema, e.g. reasonThroughLoop already has its own
+  // provenance field), and anything a caller explicitly opts out of with governance:false. This makes
+  // coverage automatic and COMPLETE - a new honesty-critical caller is governed the moment it's added,
+  // with zero action required. The mechanism is proven (v502/503/506). This is the funnel finished.
+  if (payload && payload.system && typeof payload.system === "string"
+      && payload.governance !== false
+      && (payload.max_tokens == null || payload.max_tokens >= 800)   // exempt tiny mechanical calls (routers/classifiers)
+      && !/Output JSON only|Return ONLY a JSON|JSON only, no prose/i.test(payload.system)  // exempt structured-JSON calls (they carry their own grounding)
+      && !payload.system.includes("HOW YOU KNOW WHAT YOU SAY")) {
     payload = { ...payload, system: payload.system + _FUNNEL_PROVENANCE };
   }
   let r = await callAnthropicOnce(apiKey, payload);

@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.519-2026-07-03";
+const BUILD = "aura-core-v4.9.520-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -10066,6 +10066,49 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       return { cmd: "BRIEF", payload: { ok: true, business: brRaw, live_findings: live, brief: brR.reasoning } };
     }
 
+    case "FEEDS": {
+      // v4.9.520: INGESTION DATA-FEED MONITOR. These are the feeds Aura brings IN to consume (oil, weather,
+      // maps, marine, fire, aircraft, search) - NOT infrastructure (that's VITALS). A feed failing means Aura
+      // lacks some data for a moment, not that she's impaired - so this is informational, not a critical alarm.
+      // Each feed has a COST MODEL: paid (someone charges per call/subscription), free (open, no cost), or gov
+      // (government, free public data). Aaron needs to know which is which - the paid ones burn money, the gov
+      // ones must be recognized as free. The catalog floor lives in-code; KV key feeds:catalog EXTENDS/overrides
+      // it, so a NEW feed (stocks, FBI database, anything) is a KV write, not a code change - the monitor just
+      // iterates whatever is in the catalog. This is the extensible ingestion economy.
+      const FEED_CATALOG_FLOOR = {
+        oilprice:     { name: "Oil / Commodity Prices", provider: "OilPriceAPI", cost: "paid", secret: "secret:oilprice", layer: "economics" },
+        openweather:  { name: "Weather", provider: "OpenWeather", cost: "paid", secret: "secret:openweather", layer: "weather" },
+        currents:     { name: "Ocean Currents", provider: "Currents", cost: "paid", secret: "secret:currents", layer: "maritime" },
+        aisstream:    { name: "Marine AIS (vessel positions)", provider: "AISStream", cost: "paid", secret: "secret:aisstream", layer: "maritime" },
+        vesselapi:    { name: "Vessel Data", provider: "VesselAPI", cost: "paid", secret: "secret:vesselapi", layer: "maritime" },
+        firms:        { name: "Active Fire (FIRMS)", provider: "NASA FIRMS", cost: "gov", secret: "secret:firms", layer: "fire" },
+        adsbexchange: { name: "Aircraft (ADS-B)", provider: "ADSBExchange", cost: "paid", secret: "secret:adsbexchange", layer: "aircraft" },
+        opensky:      { name: "Aircraft (OpenSky)", provider: "OpenSky Network", cost: "free", secret: "secret:opensky_user", layer: "aircraft" },
+        google_maps:  { name: "Maps / Geocoding", provider: "Google Maps", cost: "paid", secret: "secret:google_maps", layer: "mapping" },
+        geonames:     { name: "Geographic Names", provider: "GeoNames", cost: "free", secret: "secret:geonames", layer: "mapping" },
+        tavily:       { name: "Web Search (Tavily)", provider: "Tavily", cost: "paid", secret: "secret:tavily", layer: "retrieval" },
+        brave_search: { name: "Web Search (Brave)", provider: "Brave", cost: "paid", secret: "secret:brave_search", layer: "retrieval" },
+        udot:         { name: "Utah DOT Traffic", provider: "UDOT", cost: "gov", secret: "secret:udot_", layer: "traffic" }
+      };
+      let catalog = FEED_CATALOG_FLOOR;
+      try { const kv = await KV.get(env, "feeds:catalog"); if (kv) { const parsed = JSON.parse(kv); if (parsed && typeof parsed === "object") catalog = { ...FEED_CATALOG_FLOOR, ...parsed }; } } catch {}
+      // For each feed: is its key present (configured)? We report configured/missing + cost model. A live
+      // ping per feed would need each provider's health endpoint; presence-of-key is the honest first signal
+      // (a feed with no key cannot flow). Deeper live-ping can be added per feed via feeds:catalog health URLs.
+      const feeds = await Promise.all(Object.entries(catalog).map(async ([id, f]) => {
+        let configured = false;
+        try { const k = await KV.get(env, f.secret); configured = !!k; } catch {}
+        return { id, name: f.name, provider: f.provider, cost: f.cost, layer: f.layer, configured, status: configured ? "configured" : "no_key" };
+      }));
+      const paid = feeds.filter(f => f.cost === "paid");
+      const free = feeds.filter(f => f.cost === "free");
+      const gov = feeds.filter(f => f.cost === "gov");
+      const notConfigured = feeds.filter(f => !f.configured);
+      return { cmd: "FEEDS", payload: { ok: true, total: feeds.length,
+        summary: { paid: paid.length, free: free.length, government: gov.length, not_configured: notConfigured.length },
+        note: "Cost model: paid = burns money per use; free = open no cost; gov = government public data (free). Add a new feed by writing feeds:catalog in KV - no code change.",
+        feeds } };
+    }
     case "VITALS": {
       // v4.9.519: INFRASTRUCTURE HEALTH - the critical organs that make Aura's world operate. These are
       // NOT ingestion feeds (those are FEEDS/data, in KV registry, tolerant of failure). These are the
@@ -10092,7 +10135,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         (async () => { try { const t = await KV.get(env, "secret:cf_api_token"); if (!t) return { service: "Cloudflare", kind: "infra", status: "no_key", ok: false }; const r = await fetch("https://api.cloudflare.com/client/v4/user/tokens/verify", { headers: { "Authorization": "Bearer " + t } }); return { service: "Cloudflare", kind: "infra", status: r.ok ? "live" : "DOWN", ok: r.ok, detail: r.ok ? undefined : ("http " + r.status) }; } catch (e) { return { service: "Cloudflare", kind: "infra", status: "DOWN", ok: false, detail: e.message }; } })(),
         (async () => { try { const sid = await KV.get(env, "secret:twilio_account_sid"); const tok = await KV.get(env, "secret:twilio_auth_token"); if (!sid || !tok) return { service: "Twilio", kind: "infra", status: "no_key", ok: false }; const r = await fetch("https://api.twilio.com/2010-04-01/Accounts/" + sid + ".json", { headers: { "Authorization": "Basic " + btoa(sid + ":" + tok) } }); let bal = null; if (r.ok) { try { const j = await r.json(); bal = j.status; } catch {} } return { service: "Twilio", kind: "infra", status: r.ok ? "live" : "DOWN", ok: r.ok, detail: r.ok ? ("account " + (bal || "active")) : ("http " + r.status) }; } catch (e) { return { service: "Twilio", kind: "infra", status: "DOWN", ok: false, detail: e.message }; } })(),
         (async () => { try { const b = await getMercuryBalance(env); return { service: "Mercury (bank)", kind: "money", status: b && b.ok !== false ? "live" : "DOWN", ok: !!(b && b.ok !== false), detail: b && (b.total != null ? ("$" + b.total) : undefined) }; } catch (e) { return { service: "Mercury (bank)", kind: "money", status: "DOWN", ok: false, detail: e.message }; } })(),
-        (async () => { try { const b = await getStripeBalance(env); return { service: "Stripe", kind: "money", status: b && b.ok !== false ? "live" : "DOWN", ok: !!(b && b.ok !== false), detail: b && (b.available != null ? ("$" + b.available) : undefined) }; } catch (e) { return { service: "Stripe", kind: "money", status: "DOWN", ok: false, detail: e.message }; } })()
+        (async () => { try { const b = await getStripeBalance(env); const amt = b && (typeof b.available === "number" ? b.available : (b.available && b.available.amount != null ? b.available.amount / 100 : (Array.isArray(b.available) && b.available[0] ? b.available[0].amount / 100 : null))); return { service: "Stripe", kind: "money", status: b && b.ok !== false ? "live" : "DOWN", ok: !!(b && b.ok !== false), detail: amt != null ? ("$" + amt) : "connected" }; } catch (e) { return { service: "Stripe", kind: "money", status: "DOWN", ok: false, detail: e.message }; } })()
       ]);
       // dedupe the double Claude check (keep the one that succeeded, or either)
       const seen = {}; const organs = [];

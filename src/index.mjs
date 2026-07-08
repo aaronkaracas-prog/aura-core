@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.517-2026-07-03";
+const BUILD = "aura-core-v4.9.518-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -16177,7 +16177,7 @@ async function executeApprovedPatch(env) {
 // a code default, overridable later via config:economics:prices. Sibling of the loop's timing.
 let _AURA_ENV = null;
 const _AI_PRICES = { sonnet: { in: 3, out: 15 }, haiku: { in: 1, out: 5 }, opus: { in: 15, out: 75 }, gpt: { in: 2.5, out: 10 }, grok: { in: 1.25, out: 2.5 }, llama: { in: 0.59, out: 0.79 }, default: { in: 3, out: 15 } };
-async function recordCost(model, usage) {
+async function recordCost(model, usage, source) {
   try {
     if (!_AURA_ENV || !usage) return;
     const m = String(model || "");
@@ -16189,12 +16189,18 @@ async function recordCost(model, usage) {
     const inTok = usage.input_tokens || 0, outTok = usage.output_tokens || 0;
     if (!inTok && !outTok) return;
     const usd = (inTok / 1e6) * p.in + (outTok / 1e6) * p.out;
+    const src = String(source || "other");
     const day = new Date().toISOString().slice(0, 10);
     const key = "economics:cost:" + day;
-    let agg = { date: day, calls: 0, input_tokens: 0, output_tokens: 0, usd: 0, by_model: {} };
+    // v4.9.518: economic attribution. Roll up not just by MODEL (which brain) but by SOURCE (which activity:
+    // fan/fastReply/onboarding/analysis/etc). This is what turns raw burn into economic JUDGMENT - Aura can
+    // see WHAT is costing money, not just the daily total, which she needs to decide what's worth doing.
+    let agg = { date: day, calls: 0, input_tokens: 0, output_tokens: 0, usd: 0, by_model: {}, by_source: {} };
     try { const ex = await _AURA_ENV.AURA_KV.get(key); if (ex) agg = JSON.parse(ex); } catch {}
+    if (!agg.by_source) agg.by_source = {};
     agg.calls += 1; agg.input_tokens += inTok; agg.output_tokens += outTok; agg.usd += usd;
     agg.by_model[tier] = Number(((agg.by_model[tier] || 0) + usd).toFixed(6));
+    agg.by_source[src] = Number(((agg.by_source[src] || 0) + usd).toFixed(6));
     agg.usd = Number(agg.usd.toFixed(6));
     await _AURA_ENV.AURA_KV.put(key, JSON.stringify(agg));
   } catch {}
@@ -16424,21 +16430,21 @@ async function callOneBrain(env, brain, system, user, maxTokens) {
       if (!k) return null;
       const r = await fetch("https://api.openai.com/v1/chat/completions", { method: "POST", headers: { "Authorization": "Bearer " + k, "Content-Type": "application/json" }, body: JSON.stringify({ model: "gpt-4o", max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content: user }] }) });
       if (!r.ok) return null; const j = await r.json(); const t = j?.choices?.[0]?.message?.content;
-      if (j?.usage) await recordCost("gpt-4o", { input_tokens: j.usage.prompt_tokens || 0, output_tokens: j.usage.completion_tokens || 0 });
+      if (j?.usage) await recordCost("gpt-4o", { input_tokens: j.usage.prompt_tokens || 0, output_tokens: j.usage.completion_tokens || 0 }, "fan");
       return t ? { brain: "gpt", label: "GPT (OpenAI)", text: t.trim() } : null;
     }
     if (brain === "grok") {
       const k = await KV.get(env, "secret:grok_api_key"); if (!k) return null;
       const r = await fetch("https://api.x.ai/v1/chat/completions", { method: "POST", headers: { "Authorization": "Bearer " + k, "Content-Type": "application/json" }, body: JSON.stringify({ model: "grok-4.3", max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content: user }] }) });
       if (!r.ok) return null; const j = await r.json(); const t = j?.choices?.[0]?.message?.content;
-      if (j?.usage) await recordCost("grok-4.3", { input_tokens: j.usage.prompt_tokens || 0, output_tokens: j.usage.completion_tokens || 0 });
+      if (j?.usage) await recordCost("grok-4.3", { input_tokens: j.usage.prompt_tokens || 0, output_tokens: j.usage.completion_tokens || 0 }, "fan");
       return t ? { brain: "grok", label: "Grok (xAI)", text: t.trim() } : null;
     }
     if (brain === "llama") {
       const k = await KV.get(env, "secret:groq_api_key"); if (!k) return null;
       const r = await fetch("https://api.groq.com/openai/v1/chat/completions", { method: "POST", headers: { "Authorization": "Bearer " + k, "Content-Type": "application/json" }, body: JSON.stringify({ model: "llama-3.3-70b-versatile", max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content: user }] }) });
       if (!r.ok) return null; const j = await r.json(); const t = j?.choices?.[0]?.message?.content;
-      if (j?.usage) await recordCost("llama-3.3-70b", { input_tokens: j.usage.prompt_tokens || 0, output_tokens: j.usage.completion_tokens || 0 });
+      if (j?.usage) await recordCost("llama-3.3-70b", { input_tokens: j.usage.prompt_tokens || 0, output_tokens: j.usage.completion_tokens || 0 }, "fan");
       return t ? { brain: "llama", label: "Llama (Meta via Groq)", text: t.trim() } : null;
     }
   } catch (e) { return null; }
@@ -16489,7 +16495,7 @@ async function callAnthropic(apiKey, payload) {
     await new Promise(s => setTimeout(s, 2000));
     r = await callAnthropicOnce(apiKey, payload);
   }
-  if (r.ok && r.usage) { await recordCost(payload && payload.model, r.usage); }
+  if (r.ok && r.usage) { await recordCost(payload && payload.model, r.usage, (payload && payload.source) || "chat"); }
   return r;
 }
 

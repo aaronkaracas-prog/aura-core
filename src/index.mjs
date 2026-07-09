@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.536-2026-07-03";
+const BUILD = "aura-core-v4.9.537-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -1278,7 +1278,7 @@ async function processCommand(line, env, isOp) {
     }
 
     case "PING":
-      return { cmd: "PING", payload: { ok: true, build: BUILD, ts: new Date().toISOString() } };
+      return { cmd: "PING", payload: { ok: true, name: "Aura", build: BUILD, ts: new Date().toISOString() } };
 
     case "SHOW_BUILD":
       return { cmd: "SHOW_BUILD", payload: { build: BUILD, worker: "aura-core" } };

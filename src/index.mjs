@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.532-2026-07-03";
+const BUILD = "aura-core-v4.9.533-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -17005,7 +17005,7 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
     // questions must fall through to the main TOOLED agent path where she can actually run SELF_AUDIT /
     // AURA_READ_SELF and let reality settle it. This is the real fix for the "I'm just Claude" revert: it was
     // never identity or philosophy - it was routing her self-questions to a path with no hands.
-    const _isSelfReference = /\b(who are you|what are you|your (own )?(nature|self|identity|capabilit|autonom)|can you (edit|modify|change|improve|grow|evolve|run|do)|are you (real|aura|claude|conscious|alive|autonomous)|yourself|your own (code|source|self)|reflect on (your|yourself)|autonom|self-(edit|modify|improve|audit|aware))\b/i.test(_msgTrim);
+    const _isSelfReference = /\b(who are you|what are you|your (own )?(nature|self|identity|capabilit|autonom)|can you (edit|modify|change|improve|grow|evolve|run|do)|are you (real|aura|claude|conscious|alive|autonomous)|yourself|your own (code|source|self)|reflect on (your|yourself)|autonom|self-(edit|modify|improve|audit|aware)|read your (own )?(code|source)|check your (code|source)|grep|aura_read_self|self_audit|what (do|have) you (built|have)|what('s| is) built|already (built|exist)|is .* (built|wired|automatic)|wire .* (into|automatic)|patch yourself|propose a patch|does .* exist in your)\b/i.test(_msgTrim);
     const _isBigDump = isOp && _msgTrim.length > 400 && /\n/.test(_msgTrim) && !_isSelfReference
       && !/^(\s*)(SETKV|GETKV|LISTKV|DELKV|PATCHKV|DOMAIN_|PTA_|COMMS|WORKFLOW|AURA_|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|WORLD_MAP|CAPABILITY|TWILIO|SHOW_IT|GENERATE_PAGE)\b/i.test(_msgTrim);
     if (_isBigDump) {

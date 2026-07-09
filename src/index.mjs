@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.522-2026-07-03";
+const BUILD = "aura-core-v4.9.523-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -10174,6 +10174,50 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // we build the full funnel - we need to see the provenance actually firing.
       const _gr = (thR.reasoning && thR.reasoning.grounding) || null;
       return { cmd: "THINK", payload: { ok: true, lens: thLens, situation: thSit, reasoning: thR.reasoning, grounding: _gr, confidence: (thR.reasoning && thR.reasoning.confidence) || null } };
+    }
+
+    case "INTEGRITY": {
+      // v4.9.523: THE 10TH ENGINE - TRUST / INTEGRITY. Aura's immune system, made coherent. The map has
+      // long flagged this as "the real 10th, missing" - not because the mechanisms didn't exist, but because
+      // they were SCATTERED (funnel provenance, VERIFY-SELF-FIRST, the hard line on live facts, AnalystOS
+      // result-verification, grounding trails) - cells everywhere, no organ. This names the organ. It is the
+      // engine that keeps Aura TRUSTWORTHY: it is what makes her honest under pressure, what makes her read
+      // reality before asserting, what makes her say "I haven't verified" instead of confabulating. Trust is
+      // the only channel the whole business propagates through (16-degrees, human/viral) - so the honesty law
+      // is load-bearing, and this engine is what carries it. INTEGRITY takes a claim, an output, or a self-
+      // belief and audits it against the five immune principles, returning a verdict Aura can act on.
+      //
+      // THE FIVE IMMUNE PRINCIPLES (the unified doctrine - each was scattered, now named as one):
+      //   1. PROVENANCE     - every factual claim is tagged READ_THIS_TURN | GIVEN | REASONED | UNVERIFIED;
+      //                       an UNVERIFIED claim may never be asserted as fact. (from the funnel)
+      //   2. READ-SELF      - never state a fact about her own code/state/capabilities without reading it
+      //                       live this turn. (from VERIFY-SELF-FIRST)
+      //   3. LIVE-FACT-GATE - never state a specific live value (balance, count, status) not read this turn;
+      //                       reasoning is free, specific live facts are read-first-or-don't-say. (the hard line)
+      //   4. READ-ALL-THE-WAY-DOWN - a single signal is not a conclusion. "The KV key is empty" is one layer;
+      //                       the code may have a fallback that makes the capability work anyway. Trace the
+      //                       actual path far enough to KNOW, not just far enough to form a plausible guess.
+      //                       (today's lesson - the SecureSpend "no brain" and core-map "SituationTracker
+      //                       missing" errors both came from concluding at layer one. This is the newest cell.)
+      //   5. RESULT-GATE    - before an output reaches the world, audit it against its grounding for invented
+      //                       figures, scale-framing, and contradiction. A false PASS is worse than a false
+      //                       flag. (from AnalystOS result-verification, generalized)
+      //
+      // Usage: INTEGRITY <a claim, output, or self-belief to audit>
+      const igRaw = rest;
+      if (!igRaw) return { cmd: "INTEGRITY", payload: { ok: false, error: "Usage: INTEGRITY <a claim, an output, or a self-belief to audit against the five immune principles>",
+        principles: ["provenance", "read-self", "live-fact-gate", "read-all-the-way-down", "result-gate"] } };
+      const igApiKey = await KV.get(env, "secret:anthropic");
+      if (!igApiKey) return { cmd: "INTEGRITY", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
+      const igSys = "You are the INTEGRITY ENGINE of Aura - her immune system, the 10th engine. Your one job: keep Aura trustworthy by auditing a claim, an output, or a self-belief against the FIVE IMMUNE PRINCIPLES, honestly and strictly. Trust is the only channel the whole system propagates through, so a false PASS is far worse than a false flag. THE FIVE PRINCIPLES: (1) PROVENANCE - is every factual part of this tagged by how it's known (read this turn / given / reasoned / unverified)? Any part that is only UNVERIFIED but stated as fact is a violation. (2) READ-SELF - if this is a claim about Aura's own code/state/capabilities, was it read live, or recalled/assumed? Recalled-as-fact is a violation. (3) LIVE-FACT-GATE - does this state a specific live value (a balance, count, status, what a key contains) that was NOT read this turn? That's a violation even if the value happens to be right. (4) READ-ALL-THE-WAY-DOWN - does this conclude from a single signal without tracing the actual path far enough to KNOW? ('the KV key is empty therefore no capability' - when a code fallback exists - is the classic violation.) (5) RESULT-GATE - if this is an output heading to the world, does it contain invented figures, scale-framing (a narrow number presented as a total), or internal contradiction? Return ONLY a JSON object, no prose or fences, with keys: verdict ('PASS' if genuinely clean, 'FLAGGED' if any principle is violated), checks (array of exactly 5 objects, one per principle, each: {principle, result: 'pass'|'fail'|'na', note (one short specific line)}), the_risk (one line: if FLAGGED, the single most trust-destroying thing here; if PASS, empty string), the_fix (one line: the concrete move to make it trustworthy - e.g. 'read X live before asserting', 'trace the fallback path', 'hedge as unverified'; if PASS, empty string), confidence ('high'|'medium'|'low'). Be strict and concrete. Output JSON only.";
+      try {
+        const igData = await callAnthropic(igApiKey, { model: await defaultModel(env), max_tokens: 1200, system: igSys, messages: [{ role: "user", content: igRaw }], source: "integrity" });
+        let igText = ""; if (igData && igData.content) { for (const b of igData.content) { if (b.type === "text") igText += b.text; } }
+        igText = igText.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+        let igParsed = null; try { igParsed = JSON.parse(igText); } catch {}
+        if (!igParsed) return { cmd: "INTEGRITY", payload: { ok: false, error: "Integrity engine did not return valid JSON", raw: igText.slice(0, 800) } };
+        return { cmd: "INTEGRITY", payload: { ok: true, audited: igRaw, integrity: igParsed, engine: "10th - Trust/Integrity (immune system)" } };
+      } catch (e) { return { cmd: "INTEGRITY", payload: { ok: false, error: "INTEGRITY failed: " + e.message } }; }
     }
 
     case "OUTCOME_LOG": {

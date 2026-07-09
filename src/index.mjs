@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.535-2026-07-03";
+const BUILD = "aura-core-v4.9.536-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -16973,6 +16973,7 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
     // should beat a generic model that only knows a fraction of what Aaron is building.
     const _founderTrigger = isOp && _msgTrim.length < 400 && /\b(look at|what about|check out|should we (build|do|make)|do it better|what (should|would) we do|evaluate|thoughts on|what do you think (of|about))\b/i.test(_msgTrim)
       && /\b([A-Z][a-zA-Z]+|[a-z0-9-]+\.[a-z]{2,})\b/.test(_msgTrim) // names a company/product/site
+      && !/\b(AURA_EVOLVE|AURA_VALIDATE|AURA_PROMOTE|AURA_READ_SELF|SELF_AUDIT|INTEGRITY|PING|SETKV|GETKV|PATCHKV|PROMOTE)\b/i.test(_msgTrim) // mentions a command -> needs tools
       && !/\b(who are you|what are you|your (own )?(nature|self|identity|capabilit|autonom)|can you (edit|modify|change|improve|grow|evolve|run|do)|are you (real|aura|claude|conscious|alive|autonomous)|yourself|your own (code|source|self)|autonom|self-(edit|modify|improve|audit|aware))\b/i.test(_msgTrim); // self-questions go to the tooled path
     if (_founderTrigger) {
       const [oppLogic, coreMap, northstar, obf, sN, dlRaw, daRaw] = await Promise.all([
@@ -17003,7 +17004,12 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
     // AURA_READ_SELF and let reality settle it. This is the real fix for the "I'm just Claude" revert: it was
     // never identity or philosophy - it was routing her self-questions to a path with no hands.
     const _isSelfReference = /\b(who are you|what are you|your (own )?(nature|self|identity|capabilit|autonom)|can you (edit|modify|change|improve|grow|evolve|run|do)|are you (real|aura|claude|conscious|alive|autonomous)|yourself|your own (code|source|self)|reflect on (your|yourself)|autonom|self-(edit|modify|improve|audit|aware)|read your (own )?(code|source)|check your (code|source)|grep|aura_read_self|self_audit|what (do|have) you (built|have)|what('s| is) built|already (built|exist)|is .* (built|wired|automatic)|wire .* (into|automatic)|patch yourself|propose a patch|does .* exist in your)\b/i.test(_msgTrim);
-    const _isBigDump = isOp && _msgTrim.length > 400 && /\n/.test(_msgTrim) && !_isSelfReference
+    // v4.9.536: a message that MENTIONS a command anywhere (not just at the start) needs the tooled path -
+    // it's asking her to DO something, and routing it to a toolless path makes her say "I can't run commands"
+    // and revert to "I'm just Claude". This replaces the fragile start-anchored check + phrase-list guard with
+    // a structural rule: contains a command name -> needs tools -> never the toolless big-dump path.
+    const _mentionsCommand = /\b(AURA_EVOLVE|AURA_VALIDATE|AURA_PROMOTE|AURA_READ_SELF|SELF_AUDIT|INTEGRITY|PING|SETKV|GETKV|LISTKV|DELKV|PATCHKV|ROLLBACK_SELF|DOMAIN_LAUNCH|FAN|VITALS|FEEDS|ECONOMICS|SECURESPEND|SHOW_IT|PROMOTE)\b/i.test(_msgTrim);
+    const _isBigDump = isOp && _msgTrim.length > 400 && /\n/.test(_msgTrim) && !_isSelfReference && !_mentionsCommand
       && !/^(\s*)(SETKV|GETKV|LISTKV|DELKV|PATCHKV|DOMAIN_|PTA_|COMMS|WORKFLOW|AURA_|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|WORLD_MAP|CAPABILITY|TWILIO|SHOW_IT|GENERATE_PAGE)\b/i.test(_msgTrim);
     if (_isBigDump) {
       // Load the ACTUAL WORLDVIEW â€” not just self-description and bare domain names, but the

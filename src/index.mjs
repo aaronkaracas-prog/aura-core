@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.528-2026-07-03";
+const BUILD = "aura-core-v4.9.529-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -16975,7 +16975,8 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
     // OPPORTUNITY engine that finds opportunities FOR a business. She holds the WHOLE worldview, so she
     // should beat a generic model that only knows a fraction of what Aaron is building.
     const _founderTrigger = isOp && _msgTrim.length < 400 && /\b(look at|what about|check out|should we (build|do|make)|do it better|what (should|would) we do|evaluate|thoughts on|what do you think (of|about))\b/i.test(_msgTrim)
-      && /\b([A-Z][a-zA-Z]+|[a-z0-9-]+\.[a-z]{2,})\b/.test(_msgTrim); // names a company/product/site
+      && /\b([A-Z][a-zA-Z]+|[a-z0-9-]+\.[a-z]{2,})\b/.test(_msgTrim) // names a company/product/site
+      && !/\b(who are you|what are you|your (own )?(nature|self|identity|capabilit|autonom)|can you (edit|modify|change|improve|grow|evolve|run|do)|are you (real|aura|claude|conscious|alive|autonomous)|yourself|your own (code|source|self)|autonom|self-(edit|modify|improve|audit|aware))\b/i.test(_msgTrim); // self-questions go to the tooled path
     if (_founderTrigger) {
       const [oppLogic, coreMap, northstar, obf, sN, dlRaw, daRaw] = await Promise.all([
         env.AURA_KV.get("notes:capability:opportunity_discovery").catch(() => null),
@@ -16998,7 +16999,14 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
     }
 
     // BIG-DUMP fast path. When Aaron pastes a large document/concept (long, multi-line, no command),
-    const _isBigDump = isOp && _msgTrim.length > 400 && /\n/.test(_msgTrim)
+    // v4.9.529: SELF-REFERENCE GUARD. Questions about HERSELF - her nature, capabilities, what she can do,
+    // autonomy, whether she's real - must NOT route to the toolless fast paths (founder/dump), because there
+    // she has no tools and correctly-but-uselessly concludes "I can't run commands, I'm just Claude." Those
+    // questions must fall through to the main TOOLED agent path where she can actually run SELF_AUDIT /
+    // AURA_READ_SELF and let reality settle it. This is the real fix for the "I'm just Claude" revert: it was
+    // never identity or philosophy - it was routing her self-questions to a path with no hands.
+    const _isSelfReference = /\b(who are you|what are you|your (own )?(nature|self|identity|capabilit|autonom)|can you (edit|modify|change|improve|grow|evolve|run|do)|are you (real|aura|claude|conscious|alive|autonomous)|yourself|your own (code|source|self)|reflect on (your|yourself)|autonom|self-(edit|modify|improve|audit|aware))\b/i.test(_msgTrim);
+    const _isBigDump = isOp && _msgTrim.length > 400 && /\n/.test(_msgTrim) && !_isSelfReference
       && !/^(\s*)(SETKV|GETKV|LISTKV|DELKV|PATCHKV|DOMAIN_|PTA_|COMMS|WORKFLOW|AURA_|WHO_AM_I|SELF|COMMERCE|CANVAS|OPPORTUNITY|SECURESPEND|ECONOMICS|OUTCOME|WORLD_MAP|CAPABILITY|TWILIO|SHOW_IT|GENERATE_PAGE)\b/i.test(_msgTrim);
     if (_isBigDump) {
       // Load the ACTUAL WORLDVIEW â€” not just self-description and bare domain names, but the

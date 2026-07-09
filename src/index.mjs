@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.539-2026-07-03";
+const BUILD = "aura-core-v4.9.540-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -1751,15 +1751,24 @@ async function processCommand(line, env, isOp) {
 
       if (sub === "PATCH") {
         // SURGICAL SELF-EDIT: Aura changes her OWN source with an exact find/replace instead of
-        // regenerating the whole file. Format: AURA_PROPOSE PATCH <oldtext> ||| <newtext>
-        // She fetches current main, replaces the FIRST exact occurrence of <oldtext> with <newtext>,
-        // and commits the result to the proposal branch (NEVER main - same safe-by-construction rule).
-        // The syntax gate then validates it like any other candidate. This is how she edits herself.
+        // regenerating the whole file. Two formats:
+        //   AURA_PROPOSE PATCH <oldtext> ||| <newtext>              (replace oldtext with newtext)
+        //   AURA_PROPOSE PATCH FROM <anchorA> TO <anchorB> ||| <newtext>   (replace the whole span from
+        //       the start of the unique anchorA through the end of the unique anchorB, inclusive, with newtext)
+        // The FROM..TO form is how she edits a REGION like a human: she gives two SHORT unique anchor
+        // strings (a line at the top, a line at the bottom) instead of reproducing the whole block with
+        // exact whitespace. The command reads her real bytes and computes the exact span - she never has
+        // to reproduce whitespace. This gives her the same "see-the-region-and-replace-it" power a human
+        // editor has. She fetches current main, applies the edit, commits to the proposal branch (NEVER main).
         const payload = rest.slice(args[0].length).trim();
         const sep = payload.indexOf("|||");
-        if (sep < 0) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Usage: AURA_PROPOSE PATCH <oldtext> ||| <newtext>" } };
-        const oldText = payload.slice(0, sep).trim();
+        if (sep < 0) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Usage: AURA_PROPOSE PATCH <oldtext> ||| <newtext>   OR   AURA_PROPOSE PATCH FROM <anchorA> TO <anchorB> ||| <newtext>" } };
+        let oldText = payload.slice(0, sep).trim();
         let newText = payload.slice(sep + 3).trim();
+        let _fromTo = null;
+        // FROM <anchorA> TO <anchorB> form -> resolve to an exact span after we read the source (below)
+        const ftMatch = /^FROM\s+([\s\S]+?)\s+TO\s+([\s\S]+)$/i.exec(oldText);
+        if (ftMatch) { _fromTo = { a: ftMatch[1].trim(), b: ftMatch[2].trim() }; oldText = "__FROMTO__"; }
         if (!oldText) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "oldtext is empty - nothing to find" } };
         { const _cg = await auraContextGate(env, isOp); if (!_cg.ok) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: _cg.reason, gate: "context" } }; }
         // v4.9.480 CONSTITUTIONAL GUARD: a self-edit that touches Aura's laws, identity, the self-engine
@@ -1784,6 +1793,35 @@ async function processCommand(line, env, isOp) {
           src = await rawR.text();
         } catch (e) { return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Could not read main source: " + (e && e.message || e) } }; }
         if (!src || !src.includes("const BUILD")) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Main source read but did not look like index.mjs (no BUILD line) - refusing to patch a bad read" } };
+        // FROM..TO: resolve two unique anchors to the exact span between them (inclusive). Whitespace-tolerant
+        // on each anchor. This lets her replace a whole region by naming its first and last line, no exact block.
+        if (_fromTo) {
+          const findUnique = (anchor) => {
+            let idx = src.indexOf(anchor);
+            let occ = src.split(anchor).length - 1;
+            if (occ === 1) return { start: idx, end: idx + anchor.length, matched: anchor };
+            if (occ === 0) {
+              // whitespace-tolerant fallback for this anchor
+              const norm = t => t.replace(/\s+/g, " ").trim();
+              const an = norm(anchor);
+              if (an.length >= 8) {
+                let normSrc = ""; const map = []; let i = 0; let inWs = false;
+                while (i < src.length) { const ch = src[i]; if (/\s/.test(ch)) { if (!inWs) { normSrc += " "; map.push(i); inWs = true; } i++; } else { normSrc += ch; map.push(i); inWs = false; i++; } }
+                const fo = normSrc.split(an).length - 1;
+                if (fo === 1) { const sN = normSrc.indexOf(an); const eN = sN + an.length - 1; return { start: map[sN], end: map[eN] + 1, matched: src.slice(map[sN], map[eN] + 1) }; }
+                if (fo > 1) return { error: "anchor '" + anchor.slice(0,40) + "' (normalized) appears " + fo + " times - make it unique" };
+              }
+              return { error: "anchor '" + anchor.slice(0,40) + "' not found" };
+            }
+            return { error: "anchor '" + anchor.slice(0,40) + "' appears " + occ + " times - make it unique" };
+          };
+          const ra = findUnique(_fromTo.a); if (ra.error) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "FROM anchor: " + ra.error } };
+          const rb = findUnique(_fromTo.b); if (rb.error) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "TO anchor: " + rb.error } };
+          if (rb.end <= ra.start) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "TO anchor must come after FROM anchor in the source" } };
+          const span = src.slice(ra.start, rb.end);
+          if (span.length > 20000) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "span is " + span.length + " bytes (>20000) - refusing such a large single self-edit; narrow the anchors" } };
+          oldText = span; // now treat it as a normal exact replace of the real bytes
+        }
         let occurrences = src.split(oldText).length - 1;
         let matchedOld = oldText; // the actual bytes in source we will replace (may differ from oldText if we fall back to fuzzy)
         // v4.9.539 ROBUST MATCH: exact match is brittle - Aura reconstructs oldText from partial reads and a

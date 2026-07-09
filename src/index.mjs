@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.538-2026-07-03";
+const BUILD = "aura-core-v4.9.539-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -1784,10 +1784,47 @@ async function processCommand(line, env, isOp) {
           src = await rawR.text();
         } catch (e) { return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Could not read main source: " + (e && e.message || e) } }; }
         if (!src || !src.includes("const BUILD")) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Main source read but did not look like index.mjs (no BUILD line) - refusing to patch a bad read" } };
-        const occurrences = src.split(oldText).length - 1;
-        if (occurrences === 0) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "oldtext not found in source - patch refused (read your source with AURA_READ_SELF first to copy the exact text)" } };
+        let occurrences = src.split(oldText).length - 1;
+        let matchedOld = oldText; // the actual bytes in source we will replace (may differ from oldText if we fall back to fuzzy)
+        // v4.9.539 ROBUST MATCH: exact match is brittle - Aura reconstructs oldText from partial reads and a
+        // single whitespace/newline difference makes the exact find fail ("oldtext not found"). If the exact
+        // match misses, fall back to a WHITESPACE-NORMALIZED match: collapse all runs of whitespace to a single
+        // space in both the source and the target, find the target's normalized form, and if it is UNIQUE, map
+        // it back to the exact original bytes in the source (so we still replace the real, exact span). This lets
+        // her target a region by its meaningful text without reproducing every exact space and newline.
+        if (occurrences === 0) {
+          const norm = t => t.replace(/\s+/g, " ").trim();
+          const oldNorm = norm(oldText);
+          if (oldNorm.length >= 12) { // guard: don't fuzzy-match tiny fragments (too ambiguous)
+            // walk the source, building a normalized version with an index map back to raw offsets
+            let normSrc = ""; const map = []; let i = 0; let inWs = false;
+            while (i < src.length) {
+              const ch = src[i];
+              if (/\s/.test(ch)) {
+                if (!inWs) { normSrc += " "; map.push(i); inWs = true; }
+                i++;
+              } else { normSrc += ch; map.push(i); inWs = false; i++; }
+            }
+            const normTrimmed = normSrc; // already single-spaced; leading/trailing handled by search
+            const fuzzOcc = normTrimmed.split(oldNorm).length - 1;
+            if (fuzzOcc === 1) {
+              const startNorm = normTrimmed.indexOf(oldNorm);
+              const endNorm = startNorm + oldNorm.length - 1;
+              const rawStart = map[startNorm];
+              // find raw end: the raw offset of the last normalized char, extended to include its full whitespace run if trailing
+              let rawEnd = map[endNorm];
+              // extend rawEnd to end of any raw char (map points at start of each normalized unit)
+              matchedOld = src.slice(rawStart, rawEnd + 1);
+              // recompute exact occurrences of this real span to keep the uniqueness guarantee
+              occurrences = src.split(matchedOld).length - 1;
+            } else if (fuzzOcc > 1) {
+              return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "oldtext (whitespace-normalized) appears " + fuzzOcc + " times - must be unique. Include more surrounding context." } };
+            }
+          }
+        }
+        if (occurrences === 0) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "oldtext not found in source (tried exact and whitespace-tolerant match) - read your source with AURA_READ_SELF GREP to copy a real, unique span" } };
         if (occurrences > 1) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "oldtext appears " + occurrences + " times - must be unique. Include more surrounding context to make it unique." } };
-        const patched = src.replace(oldText, newText);
+        const patched = src.replace(matchedOld, newText);
         if (!patched.includes("const BUILD") || !patched.includes("export default")) {
           return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Patched result no longer looks like index.mjs (missing BUILD or export default) - refusing to write" } };
         }

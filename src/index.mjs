@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.523-2026-07-03";
+const BUILD = "aura-core-v4.9.524-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -16611,12 +16611,17 @@ async function callAnthropic(apiKey, payload) {
       && !payload.system.includes("HOW YOU KNOW WHAT YOU SAY")) {
     payload = { ...payload, system: payload.system + _FUNNEL_PROVENANCE + _FUNNEL_PROPORTION };
   }
+  // v4.9.524: capture the caller's source tag for metering, then STRIP it (and governance flag) from the
+  // payload before the API call - Anthropic rejects unknown top-level params with an instant 400, which
+  // silently broke any caller that passed source (found via the INTEGRITY engine returning empty in 135ms).
+  const _callSource = (payload && payload.source) || "chat";
+  if (payload && ("source" in payload)) { const { source, ...clean } = payload; payload = clean; }
   let r = await callAnthropicOnce(apiKey, payload);
   if (!r.ok && r.retryable) {
     await new Promise(s => setTimeout(s, 2000));
     r = await callAnthropicOnce(apiKey, payload);
   }
-  if (r.ok && r.usage) { await recordCost(payload && payload.model, r.usage, (payload && payload.source) || "chat"); }
+  if (r.ok && r.usage) { await recordCost(payload && payload.model, r.usage, _callSource); }
   return r;
 }
 

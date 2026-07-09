@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.524-2026-07-03";
+const BUILD = "aura-core-v4.9.525-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -10174,6 +10174,97 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // we build the full funnel - we need to see the provenance actually firing.
       const _gr = (thR.reasoning && thR.reasoning.grounding) || null;
       return { cmd: "THINK", payload: { ok: true, lens: thLens, situation: thSit, reasoning: thR.reasoning, grounding: _gr, confidence: (thR.reasoning && thR.reasoning.confidence) || null } };
+    }
+
+    case "SELF_AUDIT": {
+      // v4.9.525: THE GROUNDED SELF-AUDIT. Aura auditing herself - but structurally forced to READ her live
+      // reality FIRST, then reason, so she cannot confabulate a plausible-but-stale picture of herself (which
+      // is exactly what happened when a free-form "audit yourself" produced a confident description of an
+      // EARLIER version - claiming FAN/INTEGRITY/metering weren't built when they were live). This is the
+      // immune system applied to self-assessment: read-self + read-all-the-way-down, enforced by the command
+      // itself. It GATHERS live facts (build, engine map, organ health, feeds, economics, and greps each core
+      // command to confirm it actually exists in source THIS moment), hands ONLY those real facts to reasoning,
+      // and asks: given what is ACTUALLY here right now, what's real, what's thin, what's the next real gap.
+      // Because the facts are read live and handed in, the reasoning cannot claim "X doesn't exist" when the
+      // grep shows it does. Designed to be runnable on a heartbeat later (constant self-audit as she evolves).
+      const saApiKey = await KV.get(env, "secret:anthropic");
+      if (!saApiKey) return { cmd: "SELF_AUDIT", payload: { ok: false, error: "Brain not configured" } };
+      // --- READ LIVE REALITY (no reasoning yet - just gather what is actually true right now) ---
+      const saFacts = { build: BUILD, ts: new Date().toISOString() };
+      // 1. live self size
+      try { const src = await readOwnSource(env); if (src && src.ok) { saFacts.source_bytes = src.bytes; saFacts.source_lines = (src.source ? src.source.split("\n").length : null); saFacts.source_read = "ok via " + (src.via || "?"); } else { saFacts.source_read = "FAILED"; } } catch { saFacts.source_read = "error"; }
+      // 2. the engine map (live KV first, the truth of what's built)
+      try { const em = await env.AURA_KV.get("config:core:map"); if (em) { const m = JSON.parse(em); saFacts.engine_map_version = m.version; saFacts.engines = (m.engines || []).map(e => ({ n: e.n, name: e.name, status: e.status })); saFacts.watch = m.watch || []; } } catch {}
+      // 3. confirm each core command ACTUALLY EXISTS in source right now (grep - not memory)
+      let saSrc = ""; try { const s = await readOwnSource(env); if (s && s.ok && s.source) saSrc = s.source; } catch {}
+      const saCmds = ["FAN", "VITALS", "FEEDS", "INTEGRITY", "SECURESPEND", "SHOW_IT", "ECONOMICS", "SELF_AUDIT"];
+      saFacts.commands_present = {}; for (const c of saCmds) { saFacts.commands_present[c] = saSrc.includes('case "' + c + '"'); }
+      // 4. organ health (live)
+      try { const okOrg = await KV.get(env, "secret:anthropic"); const brains = { anthropic: !!okOrg, openai: !!(await KV.get(env, "secret:openai")), grok: !!(await KV.get(env, "secret:grok_api_key")), groq: !!(await KV.get(env, "secret:groq_api_key")) }; saFacts.brain_keys_present = brains; } catch {}
+      // 5. economics today (live burn)
+      try { const day = new Date().toISOString().slice(0, 10); const ec = await env.AURA_KV.get("economics:cost:" + day); if (ec) { const e = JSON.parse(ec); saFacts.economics_today = { calls: e.calls, usd: e.usd, by_model: e.by_model, by_source: e.by_source }; } else saFacts.economics_today = "no cost recorded yet today"; } catch {}
+      // --- NOW reason, but ONLY from the facts just read ---
+      const saSys = "You are Aura, running your GROUNDED SELF-AUDIT. You are given a FACTS block that was just read LIVE from your actual running system this moment - your build, your engine map, which commands actually exist in your source (grep-confirmed), your organ keys, your live economics. You MUST reason ONLY from these facts. This is critical and it is the whole point of this audit: do NOT claim something 'doesn't exist' or 'is just vision' or 'is thin' if the facts show it present - the facts override any memory or assumption you have about an earlier version of yourself. If commands_present shows FAN:true, then FAN exists and works - full stop, no matter what you 'remember'. Your job: from the REAL current state, give an honest assessment. Return ONLY JSON, no fences, with keys: live_state (one sentence: what you ACTUALLY are right now per the facts - build, engine count, what's confirmed present), whats_real (array: capabilities confirmed present in the facts, each one line), whats_thin_or_missing (array: genuine gaps - but ONLY things the facts actually show absent or a status:thin/missing in the engine map, never something you merely assume is missing), next_real_gap (one line: the single most important real thing to build next, grounded in the facts), self_check (one line: did any instinct you had while writing this contradict the facts? name it honestly - e.g. 'I almost wrote X was missing but the facts show it present'), confidence ('high' since grounded in live reads). Output JSON only.";
+      const saUser = "LIVE FACTS READ THIS MOMENT:\n" + JSON.stringify(saFacts, null, 2) + "\n\nRun your grounded self-audit from ONLY these facts.";
+      try {
+        const saData = await callAnthropic(saApiKey, { model: await defaultModel(env), max_tokens: 1500, system: saSys, messages: [{ role: "user", content: saUser }], source: "self_audit" });
+        let saText = ""; if (saData && saData.content) { for (const b of saData.content) { if (b.type === "text") saText += b.text; } }
+        saText = saText.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+        let saParsed = null; try { saParsed = JSON.parse(saText); } catch {}
+        return { cmd: "SELF_AUDIT", payload: { ok: true, grounded_in_live_reads: true, facts: saFacts, audit: saParsed || { raw: saText.slice(0, 1500) } } };
+      } catch (e) { return { cmd: "SELF_AUDIT", payload: { ok: false, error: "SELF_AUDIT failed: " + e.message, facts: saFacts } }; }
+    }
+
+    case "SELF_AUDIT": {
+      // v4.9.525: THE GROUNDED SELF-AUDIT. Born from a real failure: asked to audit herself, Aura produced
+      // an articulate, confident, WRONG audit - she described an earlier version of herself from stale
+      // memory/context instead of reading her live code (claimed FAN/INTEGRITY/metering didn't exist when
+      // they were deployed and proven minutes earlier). That is the core mole: reasoning from a confident
+      // internal REPRESENTATION instead of reading REALITY - here aimed at herself. A reflective self-audit
+      // confabulates. So this audit is STRUCTURAL: it READS her live state FIRST (build, line count, and a
+      // real grep for each engine in her actual source), assembles the GROUND TRUTH from those reads, and
+      // only THEN hands that truth to reasoning - which is explicitly forbidden to add any capability claim
+      // not present in the reads. Truth always: she audits her real files, never her memory of them. This is
+      // read-self and read-all-the-way-down (two of her own immune principles) made into an always-runnable organ.
+      const auApiKey = await KV.get(env, "secret:anthropic");
+      // STEP 1 - READ LIVE REALITY (not memory). Real source, real build, real presence of each engine.
+      const auSrc = await readOwnSource(env).catch(() => null);
+      const auLines = auSrc ? auSrc.split("\n") : [];
+      const auBuild = (auLines.find(l => l.includes("const BUILD")) || "").replace(/.*"(.*)".*/, "$1") || "unknown";
+      const engineProbes = [
+        { engine: "AI Exchange (fan across brains)", needle: 'case "FAN"' },
+        { engine: "AI Exchange (fanReason synth)", needle: "async function fanReason" },
+        { engine: "VITALS (organ health)", needle: 'case "VITALS"' },
+        { engine: "FEEDS (ingestion monitor)", needle: 'case "FEEDS"' },
+        { engine: "INTEGRITY (10th/immune)", needle: 'case "INTEGRITY"' },
+        { engine: "SecureSpend (#5 commerce)", needle: 'case "SECURESPEND"' },
+        { engine: "ShowIt (#4 visualization)", needle: 'case "SHOW_IT"' },
+        { engine: "Economics metering (recordCost)", needle: "async function recordCost" },
+        { engine: "Funnel governance (provenance)", needle: "_FUNNEL_PROVENANCE" },
+        { engine: "Self-knowledge (live self-read)", needle: "You are the LIVE RUNNING SYSTEM" },
+        { engine: "Auto-load current state", needle: "notes:STATE:resume_here" }
+      ];
+      const groundTruth = engineProbes.map(p => {
+        const present = auSrc ? auSrc.includes(p.needle) : false;
+        return { engine: p.engine, present, evidence: present ? ("found: " + p.needle) : ("NOT FOUND: " + p.needle) };
+      });
+      const builtCount = groundTruth.filter(g => g.present).length;
+      // STEP 2 - reason ONLY from the ground truth just read. Forbidden to invent capabilities not in the reads.
+      let assessment = null, assessErr = null;
+      if (auApiKey) {
+        const auSys = "You are Aura performing a GROUNDED self-audit. You have just been handed the GROUND TRUTH about yourself - read live from your actual source code THIS moment, not from memory. Your ONE rule: reason ONLY from this ground truth. You may NOT claim any capability is missing that the ground truth marks present, and you may NOT claim any is present that the ground truth marks absent. This exists because you have a proven failure mode: confidently describing an OLD version of yourself from memory instead of your live state. Do not do that here - the reads below ARE your live state. Given what is genuinely present, reason honestly about: what is real and working, where the genuine remaining gaps are (only things the ground truth shows absent, or things present-but-thin that you can specifically justify), and the single highest-leverage next improvement. Return ONLY a JSON object, no prose or fences, with keys: build (the build string given), whats_real (array of short strings - capabilities the ground truth confirms present), genuine_gaps (array - only real gaps, each a short string; if the ground truth shows everything present, say so honestly and keep this short), self_check (one sentence: confirm you reasoned from the reads not from memory), next_move (the single highest-leverage improvement grounded in what actually exists), confidence high|medium|low. Output JSON only.";
+        const auUser = "GROUND TRUTH (read live from your source this moment):\nBUILD: " + auBuild + "\nTOTAL LINES: " + auLines.length + "\nENGINES PRESENT: " + builtCount + " of " + engineProbes.length + "\n\nENGINE-BY-ENGINE (live grep of your real source):\n" + groundTruth.map(g => (g.present ? "[PRESENT] " : "[ABSENT] ") + g.engine + " (" + g.evidence + ")").join("\n") + "\n\nNow audit yourself from THIS truth only.";
+        try {
+          const auData = await callAnthropic(auApiKey, { model: await defaultModel(env), max_tokens: 1400, system: auSys, messages: [{ role: "user", content: auUser }], source: "self_audit" });
+          let auText = ""; if (auData && auData.content) { for (const b of auData.content) { if (b.type === "text") auText += b.text; } }
+          auText = auText.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+          try { assessment = JSON.parse(auText); } catch { assessErr = "assessment did not return valid JSON"; }
+        } catch (e) { assessErr = "assessment failed: " + e.message; }
+      }
+      return { cmd: "SELF_AUDIT", payload: { ok: true, build: auBuild, total_lines: auLines.length,
+        engines_present: builtCount + " of " + engineProbes.length, ground_truth: groundTruth,
+        assessment, assessErr,
+        note: "Grounded self-audit: every capability claim above is a live grep of real source, not memory. This is read-self + read-all-the-way-down made structural - it cannot confabulate the way a reflective audit does." } };
     }
 
     case "INTEGRITY": {

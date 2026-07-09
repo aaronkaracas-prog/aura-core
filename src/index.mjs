@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.521-2026-07-03";
+const BUILD = "aura-core-v4.9.522-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -16995,7 +16995,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
           const triageModel = (await env.AURA_KV.get("config:fast:model").catch(() => null)) || "claude-haiku-4-5-20251001";
           const tri = await callAnthropic(apiKey, {
             model: triageModel, max_tokens: 5,
-            system: "Fast router for Aura. If answering REQUIRES live tools (read/write KV, run a command, deploy/edit a page, check live balances/status/domains, fetch a URL, look up stored data) reply TOOLS. If it's conversation, planning, a question answerable from loaded context or general knowledge, reply CHAT. ONE word: TOOLS or CHAT.",
+            system: "Fast router for Aura. Reply TOOLS if answering requires reading or acting on something specific and live: read/write KV, run a command, deploy/edit a page, check live balances/status/domains, fetch a URL, or answer a question ABOUT A SPECIFIC STORED THING (a named note or KV key, an asset document, her own code/state/capabilities, 'what does X say/contain', 'read Y and tell me', 'what's in Z'). If the question names or points at a specific stored thing, that is TOOLS - she must READ it, never answer about it from loaded context or memory (answering a 'what does this specific thing say' question from context instead of reading it causes her to drift to whatever is dominant in context and get it wrong). Reply CHAT only for genuine open conversation, planning, opinion, or general-knowledge questions that reference NO specific stored artifact. When in doubt between the two, choose TOOLS. ONE word: TOOLS or CHAT.",
             messages: [{ role: "user", content: message.slice(0, 1500) }]
           });
           if (tri.ok) { const w = (tri.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim().toUpperCase(); if (w.startsWith("CHAT")) needsTools = false; }

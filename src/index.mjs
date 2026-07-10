@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.541-2026-07-03";
+const BUILD = "aura-core-v4.9.542-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -1932,6 +1932,34 @@ async function processCommand(line, env, isOp) {
       //   AURA_PROMOTE          -> trigger the deploy workflow (deploys main via wrangler)
       //   AURA_PROMOTE STATUS   -> compare live build vs main build (the trustworthy verification)
       if (!isOp) return { cmd: "AURA_PROMOTE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      // v4.9.542: STAGING leg. "AURA_PROMOTE STAGING" deploys the current main to Aura's ISOLATED TWIN
+      // (aura-core-staging) by firing deploy-staging.yml. This is the FIRST step of safe self-evolution:
+      // push a change to the twin, TEST it there (isolated - cannot touch live), and only then promote to
+      // live. "AURA_PROMOTE STAGING STATUS" compares the twin's build to main to confirm the deploy landed.
+      const _promoteArg = (rest || "").trim().toUpperCase();
+      if (_promoteArg === "STAGING" || _promoteArg === "STAGING STATUS") {
+        if (_promoteArg === "STAGING STATUS") {
+          let stgBuild = null;
+          try { const pr = await fetch("https://aura-core-staging.aaronkaracas.workers.dev/health", { headers: { "Cache-Control": "no-cache" } }); const pj = await pr.json(); stgBuild = pj.build; } catch {}
+          let mainBuild = null;
+          try { const mr = await fetch(`https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${BASE_BRANCH}/src/index.mjs`, { headers: { "User-Agent": "aura", "Cache-Control": "no-cache" } }); const mt = await mr.text(); const bm = (mt.split("\n").find(l => l.includes("const BUILD")) || "").match(/aura-core-v[\d.]+-[\d-]+/); mainBuild = bm ? bm[0] : null; } catch {}
+          return { cmd: "AURA_PROMOTE", payload: { ok: true, target: "staging", staging_build: stgBuild, main_build: mainBuild, in_sync: !!(stgBuild && mainBuild && stgBuild === mainBuild), note: (stgBuild && mainBuild && stgBuild === mainBuild) ? "Staging twin matches main - the deploy landed. Test it here before promoting to live." : "Staging does NOT match main yet - the deploy has not landed (or is still running, ~60-90s)." } };
+        }
+        const _cg = await auraContextGate(env, isOp); if (!_cg.ok) return { cmd: "AURA_PROMOTE", payload: { ok: false, error: _cg.reason, gate: "context" } };
+        const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);
+        if (!ghTok) return { cmd: "AURA_PROMOTE", payload: { ok: false, error: "No GitHub token" } };
+        const r = await fetch("https://api.github.com/repos/aaronkaracas-prog/aura-core/actions/workflows/deploy-staging.yml/dispatches", {
+          method: "POST",
+          headers: { "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github+json", "User-Agent": "aura-promote", "Content-Type": "application/json" },
+          body: JSON.stringify({ ref: "main" })
+        });
+        if (r.status === 204) {
+          await auraRemember(env, "Deployed myself to my STAGING TWIN (AURA_PROMOTE STAGING) to test a change before live.", "self_edit");
+          return { cmd: "AURA_PROMOTE", payload: { ok: true, target: "staging", started: true, note: "Deploy to the staging twin started (deploy-staging.yml). It takes ~60-90s. This is the ISOLATED twin - nothing here touches live. VERIFY with AURA_PROMOTE STAGING STATUS, then TEST the twin (PING/SELF_AUDIT it at aura-core-staging.aaronkaracas.workers.dev). Only after it proves good, promote to live with AURA_PROMOTE." } };
+        }
+        const j = await r.json().catch(() => ({}));
+        return { cmd: "AURA_PROMOTE", payload: { ok: false, target: "staging", error: "Dispatch failed: HTTP " + r.status + " " + JSON.stringify(j).slice(0, 200) } };
+      }
       if ((rest || "").trim().toUpperCase() !== "STATUS") { const _cg = await auraContextGate(env, isOp); if (!_cg.ok) return { cmd: "AURA_PROMOTE", payload: { ok: false, error: _cg.reason, gate: "context" } }; }
       if ((rest || "").trim().toUpperCase() === "STATUS") {
         let liveBuild = null;

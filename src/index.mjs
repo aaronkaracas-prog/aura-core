@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.542-2026-07-03";
+const BUILD = "aura-core-v4.9.543-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -1352,7 +1352,32 @@ async function processCommand(line, env, isOp) {
         const a = parseInt(rsArgs[1], 10), b = parseInt(rsArgs[2], 10);
         if (!a || !b || b < a) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Usage: AURA_READ_SELF [WORKER <name>] SECTION <start> <end>" } };
         const slice = srcLines.slice(a - 1, Math.min(b, a - 1 + 400)); // cap 400 lines
-        return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "section", worker, from: a, to: a - 1 + slice.length, text: slice.join("\n") } };
+        // return each line WITH its real line number, so she can build FROM..TO edits from exact bytes she sees
+        const numbered = slice.map((ln, i) => (a + i) + "\t" + ln).join("\n");
+        return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "section", worker, from: a, to: a - 1 + slice.length, text: numbered } };
+      }
+      if (mode === "FIND") {
+        // v4.9.543 - EYES LIKE CLAUDE'S VIEW. Grep for a term AND return the whole region around each hit
+        // WITH real line numbers, so Aura SEES the surrounding code (a whole function/block), not a keyhole
+        // line. This is the fix for concluding "X does not exist" from a grep that just missed context - she
+        // now finds the term and reads the real span around it, exactly the way Claude reads a file: search,
+        // then view the region. She uses these exact numbered lines to build FROM..TO edits from real bytes.
+        //   AURA_READ_SELF FIND <term>            -> each hit with 18 lines of context above/below, numbered
+        //   AURA_READ_SELF FIND <term> ::: <n>    -> n lines of context instead of 18
+        let ft = rsRest.slice(rsArgs[0].length).trim();
+        let ctx = 18;
+        const ci = ft.indexOf(":::");
+        if (ci >= 0) { const n = parseInt(ft.slice(ci + 3).trim(), 10); if (n > 0 && n <= 200) ctx = n; ft = ft.slice(0, ci).trim(); }
+        if (!ft) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Usage: AURA_READ_SELF [WORKER <name>] FIND <term> [::: <context-lines>]" } };
+        const hitIdx = [];
+        for (let i = 0; i < srcLines.length; i++) { if (srcLines[i].toLowerCase().includes(ft.toLowerCase())) hitIdx.push(i); if (hitIdx.length >= 12) break; }
+        if (!hitIdx.length) return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "find", worker, term: ft, count: 0, note: "No lines contain '" + ft + "'. Try a shorter/different term - a miss here means your search term didn't match, NOT that the code is absent." } };
+        // merge overlapping context windows into regions so we don't repeat lines
+        const ranges = [];
+        for (const h of hitIdx) { const lo = Math.max(0, h - ctx), hi = Math.min(srcLines.length - 1, h + ctx); if (ranges.length && lo <= ranges[ranges.length - 1].hi + 1) { ranges[ranges.length - 1].hi = Math.max(ranges[ranges.length - 1].hi, hi); } else { ranges.push({ lo, hi }); } }
+        const regions = ranges.map(r => ({ from: r.lo + 1, to: r.hi + 1, text: srcLines.slice(r.lo, r.hi + 1).map((ln, i) => (r.lo + 1 + i) + "\t" + ln).join("\n") }));
+        return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "find", worker, term: ft, hits: hitIdx.length, regions,
+          note: "These are the REAL regions around your term, with real line numbers. This is how you read yourself WHOLE - find the term, see the surrounding code. Build FROM..TO edits from these exact lines. If a term you expected is missing, your search term missed - read a nearby region and look, do not conclude the code is absent." } };
       }
       if (mode === "ANALYZE") {
         const body = rsRest.slice(rsArgs[0].length).trim();
@@ -1429,7 +1454,7 @@ async function processCommand(line, env, isOp) {
           return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "capabilities", worker, handler_count: uniq.length, focus: focus || null, capabilities: answer, note: "Self-generated from " + uniq.length + " live handlers in my own source - current by construction, not a stored note." } };
         } catch (e) { return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Capabilities reasoning failed: " + e.message } }; }
       }
-      return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Usage: AURA_READ_SELF GREP <term> | SECTION <start> <end> | ANALYZE <term> ::: <question> | CAPABILITIES [focus] | STAT" } };
+      return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Usage: AURA_READ_SELF GREP <term> | FIND <term> [::: <context>] | SECTION <start> <end> | ANALYZE <term> ::: <question> | CAPABILITIES [focus] | STAT" } };
     }
 
     case "INDEX_AUDIT": {

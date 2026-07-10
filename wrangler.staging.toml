@@ -3,22 +3,30 @@ main = "src/index.mjs"
 compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
 
+# ISOLATED STAGING TWIN - every data store is its OWN, separate from live.
+# Nothing Aura does on staging can ever touch the live her. This is her sandbox to evolve in.
+
 [[kv_namespaces]]
 binding = "AURA_KV"
-id = "9c2ba111589e48c6ba5ad1b924ae8809"
+id = "3f137b80965f45a48df36d90a6e89d2b"   # ISOLATED staging KV (not live's 9c2ba111...)
 
 [[d1_databases]]
 binding = "AURA_MEMORY"
-database_name = "aura-memory"
-database_id = "5c0a0120-1a34-486a-99df-e73e4d564f7d"
+database_name = "aura-memory-staging"
+database_id = "dcffa0f0-5aa2-4dab-992b-96ce2b16984b"   # ISOLATED staging D1
 
 [[vectorize]]
 binding = "VECTORIZE"
-index_name = "aura-vectors"
+index_name = "aura-vectors-staging"   # ISOLATED staging Vectorize
 
 [ai]
 binding = "AI"
 
+# NOTE: no [triggers]/crons on staging - the twin does not run scheduled jobs (it is a test copy, not a
+# second live system). This prevents staging from doing real-world scheduled actions.
+
+# Service bindings point at the live helper workers (comms/host/ops). These are separate concerns from
+# Aura's core memory/state; staging sharing them is fine to start. Stage them too later for total isolation.
 [[services]]
 binding = "AURA_OPS"
 service = "aura-ops"
@@ -35,6 +43,21 @@ service = "aura-comms"
 name = "ENTITY_DO"
 class_name = "EntityDO"
 
+[[durable_objects.bindings]]
+name = "AIS_COLLECTOR"
+class_name = "AisCollectorDO"
+
 [[migrations]]
 tag = "v1-entitydo"
 new_sqlite_classes = ["EntityDO"]
+
+[[migrations]]
+tag = "v2-ais-collector"
+new_classes = ["AisCollectorDO"]
+
+[browser]
+binding = "BROWSER"
+
+# ENVIRONMENT AWARENESS - so the twin KNOWS it is the twin, not live.
+[vars]
+WORKER_ENV = "staging"

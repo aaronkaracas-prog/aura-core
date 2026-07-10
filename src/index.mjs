@@ -15190,6 +15190,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       return { cmd: "ECONOMICS", payload: { ok: true, date: agg.date, calls: agg.calls, input_tokens: agg.input_tokens, output_tokens: agg.output_tokens, usd: Number(agg.usd.toFixed(4)), by_model: agg.by_model, cost_per_call: agg.calls ? Number((agg.usd / agg.calls).toFixed(5)) : 0 } };
     }
 
+    case "MONEY":
     case "RESOURCE_STATUS": {
       if (!isOp) return { cmd: "RESOURCE_STATUS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const out = { ts: new Date().toISOString(), providers: {} };

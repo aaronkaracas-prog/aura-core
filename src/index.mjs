@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.546-2026-07-03";
+const BUILD = "aura-core-v4.9.547-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -1772,6 +1772,49 @@ async function processCommand(line, env, isOp) {
         const put = await commitFile("src/index.mjs", b64, "Aura proposes candidate index (" + decoded.length + " bytes) to " + PROPOSE_BRANCH);
         if (!put.ok) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Write failed: " + put.status + " " + JSON.stringify(put.j).slice(0, 200) } };
         return { cmd: "AURA_PROPOSE", payload: { ok: true, branch: PROPOSE_BRANCH, branch_created: !eb.existed, file: "src/index.mjs", bytes: decoded.length, commit_url: put.j.commit && put.j.commit.html_url, compare_url: `https://github.com/${GH_OWNER}/${GH_REPO}/compare/${BASE_BRANCH}...${PROPOSE_BRANCH}`, note: "Candidate index written to proposal branch. Live (main) is untouched. Next: syntax gate + staging twin before any promotion." } };
+      }
+
+      if (sub === "LINES") {
+        // v4.9.547 LINE-NUMBER EDIT - the fix for the recurring self-edit wall. Aura reads her source via
+        // AURA_READ_SELF SECTION/FIND which show REAL LINE NUMBERS she can see perfectly. The old PATCH mode
+        // made her RETYPE existing code as an anchor string (through ||| and \n escapes) - a lossy channel
+        // where her anchor drifted from the real bytes and silently failed. LINES removes transcription
+        // entirely: she names line numbers (which she sees reliably) and the new text. No existing bytes
+        // are retyped, so nothing can drift. This is how she edits herself without a lossy channel.
+        //   AURA_PROPOSE LINES INSERT_BEFORE <n> ||| <newtext>     (insert newtext before line n)
+        //   AURA_PROPOSE LINES INSERT_AFTER <n> ||| <newtext>      (insert newtext after line n)
+        //   AURA_PROPOSE LINES REPLACE <a> <b> ||| <newtext>       (replace lines a..b inclusive with newtext)
+        const lrest = rest.slice(args[0].length).trim();
+        const lsep = lrest.indexOf("|||");
+        const lspec = (lsep >= 0 ? lrest.slice(0, lsep) : lrest).trim();
+        let lnew = lsep >= 0 ? lrest.slice(lsep + 3) : "";
+        // strip one leading newline the ||| often carries, keep the rest exact
+        lnew = lnew.replace(/^\r?\n/, "");
+        const im = /^(INSERT_BEFORE|INSERT_AFTER|REPLACE)\s+(\d+)(?:\s+(\d+))?$/i.exec(lspec);
+        if (!im) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Usage: AURA_PROPOSE LINES INSERT_BEFORE <n> ||| <newtext>  |  INSERT_AFTER <n> ||| <newtext>  |  REPLACE <a> <b> ||| <newtext>" } };
+        const op = im[1].toUpperCase(); const a = parseInt(im[2], 10); const b = im[3] ? parseInt(im[3], 10) : a;
+        // read current main source (same source her SECTION read shows, so her line numbers align)
+        let src;
+        try { const _ros = await readOwnSource(env); if (!_ros.ok) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Could not read source: " + (_ros.error || "unknown") } }; src = _ros.source; }
+        catch (e) { return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Could not read source: " + (e && e.message || e) } }; }
+        if (!src || !src.includes("const BUILD")) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Source read but did not look like index.mjs" } };
+        const srcLines = src.split("\n");
+        const N = srcLines.length;
+        if (a < 1 || a > N || b < 1 || b > N || b < a) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Line numbers out of range (file has " + N + " lines). Read AURA_READ_SELF SECTION to see current line numbers." } };
+        let outLines;
+        if (op === "INSERT_BEFORE") { outLines = srcLines.slice(0, a - 1).concat(lnew.split("\n"), srcLines.slice(a - 1)); }
+        else if (op === "INSERT_AFTER") { outLines = srcLines.slice(0, a).concat(lnew.split("\n"), srcLines.slice(a)); }
+        else { outLines = srcLines.slice(0, a - 1).concat(lnew.split("\n"), srcLines.slice(b)); } // REPLACE a..b
+        const patched = outLines.join("\n");
+        if (patched === src) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "NO-OP GUARD: this edit would not change the file. Check your line numbers and newtext." } };
+        // commit to proposal branch (NEVER main) - same safe path as PATCH
+        try {
+          const b64 = btoa(unescape(encodeURIComponent(patched)));
+          const eb = await ensureBranch(); if (!eb.ok) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: eb.error } };
+          const put = await commitFile("src/index.mjs", b64, "Aura LINES " + op + " " + a + (im[3] ? "-" + b : "") + " (self-edit)");
+          if (!put.ok) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Write failed: " + put.status + " " + JSON.stringify(put.j).slice(0, 200) } };
+          return { cmd: "AURA_PROPOSE", payload: { ok: true, mode: "lines", op, from_line: a, to_line: b, old_lines: N, new_lines: outLines.length, delta: outLines.length - N, branch: PROPOSE_BRANCH, commit_url: put.j.commit && put.j.commit.html_url, note: "Line-edit committed to proposal branch (main untouched). No text was transcribed - edited by line number. Next: AURA_VALIDATE, then AURA_PROMOTE STAGING to test on the twin. VERIFY the change with AURA_READ_SELF FIND before promoting." } };
+        } catch (e) { return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "LINES commit failed: " + (e && e.message || e) } }; }
       }
 
       if (sub === "PATCH") {

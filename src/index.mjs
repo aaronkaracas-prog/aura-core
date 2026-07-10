@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.548-2026-07-03";
+const BUILD = "aura-core-v4.9.549-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -1725,17 +1725,23 @@ async function processCommand(line, env, isOp) {
       }
 
       if (sub === "SYNC") {
-        // Copy the current main src/index.mjs onto the proposal branch via GitHub API only
-        // (no large payload through /chat). Used to seed a known-good candidate to prove the
-        // pipeline, and as the base a brain-generated edit would start from.
-        const mainFile = await gh(`/repos/${GH_OWNER}/${GH_REPO}/contents/src/index.mjs?ref=${BASE_BRANCH}`);
-        if (!mainFile.ok || !mainFile.j.content) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Could not read main index: " + mainFile.status } };
+        // Copy the current main src/index.mjs onto the proposal branch. v4.9.549 FIX: the old code used the
+        // GitHub Contents API, which truncates files over ~1MB and returns HTTP 200 with NO .content field -
+        // and this index is ~1.78MB, so SYNC broke with "Could not read main index: 200". Now it reads main
+        // via the raw CDN (no size limit, same as readOwnSource) and writes to the branch via the blob API
+        // (commitFile, which also has no size limit). This is the same 1MB-blind-spot fix readOwnSource got.
+        let mainSrc = null;
+        try {
+          const mr = await fetch("https://raw.githubusercontent.com/" + GH_OWNER + "/" + GH_REPO + "/" + BASE_BRANCH + "/src/index.mjs", { headers: { "User-Agent": "aura-sync", "Cache-Control": "no-cache" } });
+          if (mr.ok) mainSrc = await mr.text();
+        } catch (e) { return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Could not read main (raw): " + (e && e.message || e) } }; }
+        if (!mainSrc || !mainSrc.includes("const BUILD")) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Read main but it did not look like index.mjs (no BUILD line) - refusing to sync a bad read" } };
         const eb = await ensureBranch();
         if (!eb.ok) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: eb.error } };
-        // main content is already base64 from the contents API - write it straight to the branch
-        const put = await commitFile("src/index.mjs", mainFile.j.content.replace(/\n/g, ""), "Aura SYNC: copy current main index to proposal branch");
+        const b64 = btoa(unescape(encodeURIComponent(mainSrc)));
+        const put = await commitFile("src/index.mjs", b64, "Aura SYNC: re-base proposal branch onto current main");
         if (!put.ok) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Write failed: " + put.status + " " + JSON.stringify(put.j).slice(0, 200) } };
-        return { cmd: "AURA_PROPOSE", payload: { ok: true, mode: "sync", branch: PROPOSE_BRANCH, branch_created: !eb.existed, file: "src/index.mjs", commit_url: put.j.commit && put.j.commit.html_url, compare_url: `https://github.com/${GH_OWNER}/${GH_REPO}/compare/${BASE_BRANCH}...${PROPOSE_BRANCH}`, note: "Current main index copied to proposal branch. Triggers the validate Action. Live untouched." } };
+        return { cmd: "AURA_PROPOSE", payload: { ok: true, mode: "sync", branch: PROPOSE_BRANCH, branch_created: !eb.existed, file: "src/index.mjs", bytes: mainSrc.length, commit_url: put.j.commit && put.j.commit.html_url, compare_url: `https://github.com/${GH_OWNER}/${GH_REPO}/compare/${BASE_BRANCH}...${PROPOSE_BRANCH}`, note: "Proposal branch re-based onto current main (" + mainSrc.length + " bytes). Your next edit starts from latest known-good. Live untouched." } };
       }
 
       if (sub === "STATUS") {

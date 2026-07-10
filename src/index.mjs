@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.547-2026-07-03";
+const BUILD = "aura-core-v4.9.548-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -2005,9 +2005,9 @@ async function processCommand(line, env, isOp) {
         if (_promoteArg === "STAGING STATUS") {
           let stgBuild = null;
           try { const pr = await fetch("https://aura-core-staging.aaronkaracas.workers.dev/health", { headers: { "Cache-Control": "no-cache" } }); const pj = await pr.json(); stgBuild = pj.build; } catch {}
-          let mainBuild = null;
-          try { const mr = await fetch(`https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${BASE_BRANCH}/src/index.mjs`, { headers: { "User-Agent": "aura", "Cache-Control": "no-cache" } }); const mt = await mr.text(); const bm = (mt.split("\n").find(l => l.includes("const BUILD")) || "").match(/aura-core-v[\d.]+-[\d-]+/); mainBuild = bm ? bm[0] : null; } catch {}
-          return { cmd: "AURA_PROMOTE", payload: { ok: true, target: "staging", staging_build: stgBuild, main_build: mainBuild, in_sync: !!(stgBuild && mainBuild && stgBuild === mainBuild), note: (stgBuild && mainBuild && stgBuild === mainBuild) ? "Staging twin matches main - the deploy landed. Test it here before promoting to live." : "Staging does NOT match main yet - the deploy has not landed (or is still running, ~60-90s)." } };
+          let candBuild = null;
+          try { const mr = await fetch("https://raw.githubusercontent.com/" + GH_OWNER + "/" + GH_REPO + "/aura-proposes/src/index.mjs", { headers: { "User-Agent": "aura", "Cache-Control": "no-cache" } }); const mt = await mr.text(); const bm = (mt.split("\n").find(l => l.includes("const BUILD")) || "").match(/aura-core-v[\d.]+-[\d-]+/); candBuild = bm ? bm[0] : null; } catch {}
+          return { cmd: "AURA_PROMOTE", payload: { ok: true, target: "staging", staging_build: stgBuild, candidate_build: candBuild, in_sync: !!(stgBuild && candBuild && stgBuild === candBuild), note: (stgBuild && candBuild && stgBuild === candBuild) ? "Staging twin matches the CANDIDATE (aura-proposes branch) - your edit is live on the twin. Test it here before promoting to live." : "Staging does NOT match the candidate branch yet - the deploy has not landed (or is still running, ~60-90s)." } };
         }
         const _cg = await auraContextGate(env, isOp); if (!_cg.ok) return { cmd: "AURA_PROMOTE", payload: { ok: false, error: _cg.reason, gate: "context" } };
         const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);
@@ -2034,14 +2034,29 @@ async function processCommand(line, env, isOp) {
       }
       const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);
       if (!ghTok) return { cmd: "AURA_PROMOTE", payload: { ok: false, error: "No GitHub token" } };
+      // v4.9.548 CORRECT FLOW: a proven candidate lives on aura-proposes. Promoting to live means GRADUATING
+      // that proven change into main first (merge aura-proposes -> main), THEN deploying main to live. Main is
+      // always last-known-good until this merge; this is what keeps unproven edits off the live path.
+      const _mergeRes = await fetch("https://api.github.com/repos/aaronkaracas-prog/aura-core/merges", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github+json", "User-Agent": "aura-promote", "Content-Type": "application/json" },
+        body: JSON.stringify({ base: "main", head: "aura-proposes", commit_message: "AURA_PROMOTE: merge proven candidate (aura-proposes) into main before live deploy" })
+      });
+      // 201 = merged, 204 = nothing to merge (main already has it), 409 = conflict
+      if (_mergeRes.status === 409) return { cmd: "AURA_PROMOTE", payload: { ok: false, error: "MERGE CONFLICT: aura-proposes and main have diverged. Re-sync the branch (AURA_PROPOSE SYNC) onto current main, re-apply your edit, re-test on the twin, then promote again." } };
+      if (_mergeRes.status !== 201 && _mergeRes.status !== 204) {
+        const mj = await _mergeRes.json().catch(() => ({}));
+        return { cmd: "AURA_PROMOTE", payload: { ok: false, error: "Could not merge candidate into main: HTTP " + _mergeRes.status + " " + JSON.stringify(mj).slice(0, 200) } };
+      }
+      const _merged = _mergeRes.status === 201;
       const r = await fetch("https://api.github.com/repos/aaronkaracas-prog/aura-core/actions/workflows/promote-to-live.yml/dispatches", {
         method: "POST",
         headers: { "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github+json", "User-Agent": "aura-promote", "Content-Type": "application/json" },
         body: JSON.stringify({ ref: "main" })
       });
       if (r.status === 204) {
-        await auraRemember(env, "Deployed a new version of myself (AURA_PROMOTE - real wrangler deploy of main).", "self_edit");
-        return { cmd: "AURA_PROMOTE", payload: { ok: true, started: true, note: "Deploy workflow started (real wrangler deploy of main, all bindings + DO migrations carried). It takes ~60-90s. VERIFY with AURA_PROMOTE STATUS - success = live build matches main build. Nothing is trusted until that matches." } };
+        await auraRemember(env, "Promoted a proven self-edit to LIVE: merged aura-proposes into main" + (_merged ? "" : " (already current)") + ", then deployed main via wrangler.", "self_edit");
+        return { cmd: "AURA_PROMOTE", payload: { ok: true, started: true, merged_candidate: _merged, note: "CORRECT FLOW executed: " + (_merged ? "merged your proven candidate (aura-proposes) into main, then " : "main already had the candidate; ") + "started the real wrangler deploy of main to live (all bindings + DO migrations). ~60-90s. VERIFY with AURA_PROMOTE STATUS - success = live build matches main build." } };
       }
       const j = await r.json().catch(() => ({}));
       return { cmd: "AURA_PROMOTE", payload: { ok: false, error: "Dispatch failed: HTTP " + r.status + " " + JSON.stringify(j).slice(0, 200), hint: r.status === 404 || r.status === 422 ? "promote-to-live.yml does not exist in the repo yet. It must be added once (it runs wrangler deploy). Until then, deploy stays manual." : "Check the token's workflow scope." } };

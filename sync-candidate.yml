@@ -1,0 +1,21 @@
+name: sync-candidate
+# Standard git: reset the candidate branch to main's exact state (whole tree, all files). This REPLACES the
+# hand-rolled SYNC that copied one file through the API (and hit 1MB limits / missing lockfile). Real git branch.
+on:
+  workflow_dispatch: {}
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reset candidate branch to main
+        run: |
+          git config user.name "aura-bot"
+          git config user.email "aura@aaronkaracas.dev"
+          git checkout main
+          git branch -f aura-proposes main
+          git push -f origin aura-proposes

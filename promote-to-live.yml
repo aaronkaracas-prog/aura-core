@@ -1,0 +1,36 @@
+name: promote-to-live
+# Standard CI: merges the proven candidate branch into main (real git merge), then deploys main to production.
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "candidate branch to merge and promote"
+        required: false
+        default: "aura-proposes"
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Merge candidate into main (real git)
+        run: |
+          git config user.name "aura-bot"
+          git config user.email "aura@aaronkaracas.dev"
+          git fetch origin ${{ github.event.inputs.branch || 'aura-proposes' }}
+          git checkout main
+          git merge --no-ff "origin/${{ github.event.inputs.branch || 'aura-proposes' }}" -m "AURA_PROMOTE: merge proven candidate into main"
+          node --check src/index.mjs
+          git push origin main
+      - run: npm ci
+      - name: Deploy main to production
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

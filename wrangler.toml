@@ -2,42 +2,105 @@ name = "aura-core-v2"
 main = "src/index.mjs"
 compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
+
+# ── PRODUCTION (top level = the live worker, deployed with `wrangler deploy`) ──
 [[kv_namespaces]]
 binding = "AURA_KV"
 id = "9c2ba111589e48c6ba5ad1b924ae8809"
+
 [[d1_databases]]
 binding = "AURA_MEMORY"
 database_name = "aura-memory"
 database_id = "5c0a0120-1a34-486a-99df-e73e4d564f7d"
+
 [[vectorize]]
 binding = "VECTORIZE"
 index_name = "aura-vectors"
+
 [ai]
 binding = "AI"
+
 [triggers]
 crons = ["*/1 * * * *"]
+
 [[services]]
 binding = "AURA_OPS"
 service = "aura-ops"
+
 [[services]]
 binding = "AURA_HOST"
 service = "aura-host"
+
 [[services]]
 binding = "AURA_COMMS"
 service = "aura-comms"
+
 [[durable_objects.bindings]]
 name = "ENTITY_DO"
 class_name = "EntityDO"
+
 [[durable_objects.bindings]]
 name = "AIS_COLLECTOR"
 class_name = "AisCollectorDO"
+
 [[migrations]]
 tag = "v1-entitydo"
 new_sqlite_classes = ["EntityDO"]
+
 [[migrations]]
 tag = "v2-ais-collector"
 new_classes = ["AisCollectorDO"]
+
 [[send_email]]
 name = "SEND_EMAIL"
+
 [browser]
+binding = "BROWSER"
+
+# ── STAGING TWIN (deployed with `wrangler deploy --env staging`) ──
+# The standard Cloudflare way: one config, an [env.staging] section that overrides ONLY what differs.
+# Isolated data (its own KV/D1/Vectorize), no cron, no email. Everything else inherits.
+[env.staging]
+name = "aura-core-staging"
+
+[env.staging.vars]
+WORKER_ENV = "staging"
+
+[[env.staging.kv_namespaces]]
+binding = "AURA_KV"
+id = "3f137b80965f45a48df36d90a6e89d2b"
+
+[[env.staging.d1_databases]]
+binding = "AURA_MEMORY"
+database_name = "aura-memory-staging"
+database_id = "dcffa0f0-5aa2-4dab-992b-96ce2b16984b"
+
+[[env.staging.vectorize]]
+binding = "VECTORIZE"
+index_name = "aura-vectors-staging"
+
+[env.staging.ai]
+binding = "AI"
+
+[[env.staging.services]]
+binding = "AURA_OPS"
+service = "aura-ops"
+
+[[env.staging.services]]
+binding = "AURA_HOST"
+service = "aura-host"
+
+[[env.staging.services]]
+binding = "AURA_COMMS"
+service = "aura-comms"
+
+[[env.staging.durable_objects.bindings]]
+name = "ENTITY_DO"
+class_name = "EntityDO"
+
+[[env.staging.durable_objects.bindings]]
+name = "AIS_COLLECTOR"
+class_name = "AisCollectorDO"
+
+[env.staging.browser]
 binding = "BROWSER"

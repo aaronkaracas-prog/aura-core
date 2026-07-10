@@ -1,0 +1,27 @@
+name: deploy-staging
+# Standard CI: checks out the candidate branch and deploys it to the staging twin with real wrangler.
+# No hand-copying files - git carries the whole tree; wrangler --env staging is Cloudflare's own staging deploy.
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "branch to deploy to staging"
+        required: false
+        default: "aura-proposes"
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || 'aura-proposes' }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check src/index.mjs
+      - run: npm ci
+      - name: Deploy to staging (Cloudflare env)
+        run: npx wrangler deploy --env staging
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.545-2026-07-03";
+const BUILD = "aura-core-v4.9.546-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -1856,38 +1856,34 @@ async function processCommand(line, env, isOp) {
         // it back to the exact original bytes in the source (so we still replace the real, exact span). This lets
         // her target a region by its meaningful text without reproducing every exact space and newline.
         if (occurrences === 0) {
-          const norm = t => t.replace(/\s+/g, " ").trim();
-          const oldNorm = norm(oldText);
-          if (oldNorm.length >= 12) { // guard: don't fuzzy-match tiny fragments (too ambiguous)
-            // walk the source, building a normalized version with an index map back to raw offsets
-            let normSrc = ""; const map = []; let i = 0; let inWs = false;
-            while (i < src.length) {
-              const ch = src[i];
-              if (/\s/.test(ch)) {
-                if (!inWs) { normSrc += " "; map.push(i); inWs = true; }
-                i++;
-              } else { normSrc += ch; map.push(i); inWs = false; i++; }
-            }
-            const normTrimmed = normSrc; // already single-spaced; leading/trailing handled by search
-            const fuzzOcc = normTrimmed.split(oldNorm).length - 1;
-            if (fuzzOcc === 1) {
-              const startNorm = normTrimmed.indexOf(oldNorm);
-              const endNorm = startNorm + oldNorm.length - 1;
-              const rawStart = map[startNorm];
-              // find raw end: the raw offset of the last normalized char, extended to include its full whitespace run if trailing
-              let rawEnd = map[endNorm];
-              // extend rawEnd to end of any raw char (map points at start of each normalized unit)
-              matchedOld = src.slice(rawStart, rawEnd + 1);
-              // recompute exact occurrences of this real span to keep the uniqueness guarantee
-              occurrences = src.split(matchedOld).length - 1;
-            } else if (fuzzOcc > 1) {
-              return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "oldtext (whitespace-normalized) appears " + fuzzOcc + " times - must be unique. Include more surrounding context." } };
+          // v4.9.546 ROBUST MULTI-LINE MATCH: the old index-map approach drifted on multi-line anchors and
+          // silently no-op'd (matched nothing, committed an unchanged file, reported success). Replace it with
+          // a whitespace-FLEXIBLE REGEX: take the anchor's meaningful tokens and let ANY whitespace run (spaces,
+          // newlines, indentation) match between them. Find that pattern in the RAW source; if it matches exactly
+          // once, use the REAL matched bytes as the span to replace. This handles her real case - an anchor
+          // spanning a closing brace and the next line - without her reproducing exact indentation/newlines.
+          const oldNorm = oldText.replace(/\s+/g, " ").trim();
+          if (oldNorm.length >= 12) { // guard: don't fuzzy-match tiny fragments
+            // escape regex specials in the anchor, then replace every whitespace run with \s+ so any spacing matches
+            const escaped = oldText.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+            let rx;
+            try { rx = new RegExp(escaped); } catch (e) { rx = null; }
+            if (rx) {
+              const matches = src.match(new RegExp(escaped, "g"));
+              const nMatches = matches ? matches.length : 0;
+              if (nMatches === 1) {
+                const m = rx.exec(src);
+                if (m && m[0]) { matchedOld = m[0]; occurrences = src.split(matchedOld).length - 1; }
+              } else if (nMatches > 1) {
+                return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "oldtext (whitespace-flexible) matches " + nMatches + " places - must be unique. Include more surrounding context." } };
+              }
             }
           }
         }
         if (occurrences === 0) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "oldtext not found in source (tried exact and whitespace-tolerant match) - read your source with AURA_READ_SELF GREP to copy a real, unique span" } };
         if (occurrences > 1) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "oldtext appears " + occurrences + " times - must be unique. Include more surrounding context to make it unique." } };
         const patched = src.replace(matchedOld, newText);
+        if (patched === src) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "NO-OP GUARD: the patch would not change the file (the matched text equals the replacement, or the match failed). Nothing was committed. Read your source with AURA_READ_SELF FIND to copy a real, unique anchor, and make sure newtext actually differs from oldtext." } };
         if (!patched.includes("const BUILD") || !patched.includes("export default")) {
           return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Patched result no longer looks like index.mjs (missing BUILD or export default) - refusing to write" } };
         }

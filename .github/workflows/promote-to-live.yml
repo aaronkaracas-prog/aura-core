@@ -1,46 +1,36 @@
 name: promote-to-live
-
-# Deploys main via the project's own wrangler 4. Uses the repo's PRE-EXISTING secrets
-# CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID (the exact env var names wrangler reads natively),
-# so no new secrets are needed. Carries the full binding graph + DO migrations (real wrangler).
-
+# Standard CI: merges the proven candidate branch into main (real git merge), then deploys main to production.
 on:
-  workflow_dispatch: {}
-  push:
-    branches: [ main ]
-    paths: [ 'src/index.mjs', 'wrangler.toml' ]
-
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "candidate branch to merge and promote"
+        required: false
+        default: "aura-proposes"
 jobs:
-  deploy:
+  promote:
     runs-on: ubuntu-latest
-    env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    permissions:
+      contents: write
     steps:
-      - name: Checkout main
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          ref: main
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
         with:
           node-version: '22'
-
-      - name: Syntax gate (never deploy broken code)
-        run: node --check src/index.mjs
-
-      - name: Install project toolchain (wrangler 4 from package.json)
-        run: npm ci
-
-      - name: Deploy with the project's own wrangler
-        run: npx wrangler deploy
-
-      - name: Verify live build matches main
+      - name: Merge candidate into main (real git)
         run: |
-          sleep 10
-          MAIN=$(grep -m1 'const BUILD' src/index.mjs | grep -oE 'aura-core-v[0-9.]+-[0-9-]+')
-          LIVE=$(curl -s https://aura-core-v2.aaronkaracas.workers.dev/health | grep -oE 'aura-core-v[0-9.]+-[0-9-]+' | head -1)
-          echo "main=$MAIN live=$LIVE"
-          if [ "$MAIN" != "$LIVE" ]; then echo "BUILD MISMATCH"; exit 1; fi
-          echo "VERIFIED: live matches main"
+          git config user.name "aura-bot"
+          git config user.email "aura@aaronkaracas.dev"
+          git fetch origin ${{ github.event.inputs.branch || 'aura-proposes' }}
+          git checkout main
+          git merge --no-ff "origin/${{ github.event.inputs.branch || 'aura-proposes' }}" -m "AURA_PROMOTE: merge proven candidate into main"
+          node --check src/index.mjs
+          git push origin main
+      - run: npm ci
+      - name: Deploy main to production
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

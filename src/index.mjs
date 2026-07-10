@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.549-2026-07-03";
+const BUILD = "aura-core-v4.9.550-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -950,7 +950,8 @@ async function governorRecord(env, action, pageId) {
 // === RELIABLE SELF-SOURCE READ (v4.9.493) - one helper all self-reads use ===
 // The public raw CDN 404s under load / after pushes; this tries authenticated GitHub API first,
 // then raw CDN, then a KV cache, and self-heals the cache on success. So Aura can ALWAYS read herself.
-async function readOwnSource(env) {
+async function readOwnSource(env, branch) {
+  const _branch = branch || "main";
   // v4.9.499: FIX the 1MB self-read blind spot. The GitHub *contents* API truncates files at 1MB even
   // with the raw accept header - and this index is ~1.7MB, so everything past ~line 10960 was INVISIBLE
   // to self-read (this is why GREP kept returning "zero hits" for real code past that point, and why she
@@ -962,7 +963,7 @@ async function readOwnSource(env) {
   let got = null, via = null;
   // 1) raw CDN - no 1MB limit, returns the WHOLE file
   try {
-    const sr = await fetch("https://raw.githubusercontent.com/aaronkaracas-prog/aura-core/main/src/index.mjs", { headers: { "User-Agent": "aura-self-read", "Cache-Control": "no-cache" } });
+    const sr = await fetch("https://raw.githubusercontent.com/aaronkaracas-prog/aura-core/" + _branch + "/src/index.mjs", { headers: { "User-Agent": "aura-self-read", "Cache-Control": "no-cache" } });
     if (sr.ok) { const t = await sr.text(); if (looksComplete(t)) { got = t; via = "raw_cdn"; } }
   } catch (e) {}
   // 2) GitHub BLOB API (not contents API) - blobs have no 1MB truncation. Get the blob sha via the tree, then the blob.
@@ -970,7 +971,7 @@ async function readOwnSource(env) {
     const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);
     if (ghTok) {
       try {
-        const meta = await fetch("https://api.github.com/repos/aaronkaracas-prog/aura-core/contents/src/index.mjs?ref=main", { headers: { "User-Agent": "aura-self-read", "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github+json" } });
+        const meta = await fetch("https://api.github.com/repos/aaronkaracas-prog/aura-core/contents/src/index.mjs?ref=" + _branch, { headers: { "User-Agent": "aura-self-read", "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github+json" } });
         if (meta.ok) {
           const mj = await meta.json();
           if (mj && mj.sha) {
@@ -1298,8 +1299,14 @@ async function processCommand(line, env, isOp) {
       // GitHub contents API with the stored token. No WORKER prefix = aura-core (her default self).
       const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-comms": "src/index.mjs", "aura-host": "src/index.mjs", "aura-media": "src/index.mjs", "aura-ops": "src/index.mjs", "aura-stream": "src/index.mjs" };
       let worker = "aura-core";
+      let readBranch = "main"; // v4.9.550: CANDIDATE reads the proposal branch (aura-proposes) so she can VERIFY her own edit before it deploys
       let rsArgs = args, rsRest = rest;
-      if ((args[0] || "").toUpperCase() === "WORKER") {
+      if ((args[0] || "").toUpperCase() === "CANDIDATE") {
+        readBranch = "aura-proposes";
+        rsArgs = args.slice(1);
+        rsRest = rest.replace(/^\s*CANDIDATE\s*/i, "");
+      }
+      if ((rsArgs[0] || "").toUpperCase() === "WORKER") {
         worker = (args[1] || "").toLowerCase();
         if (!KNOWN_WORKERS[worker]) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Unknown worker '" + worker + "'. Known: " + Object.keys(KNOWN_WORKERS).join(", ") } };
         rsArgs = args.slice(2);
@@ -1313,7 +1320,7 @@ async function processCommand(line, env, isOp) {
           // API, then KV cache, with a completeness check). The old inline code used the github CONTENTS
           // API which truncates at 1MB, so ~9000 lines of this 20000-line file were invisible to self-read,
           // which is why GREP kept missing real code past line ~10960. One correct read path now.
-          const _ros = await readOwnSource(env);
+          const _ros = await readOwnSource(env, readBranch);
           if (!_ros.ok) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Could not read own source (full-file read failed): " + _ros.error } };
           srcText = _ros.source;
         } else {

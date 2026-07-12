@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.557-2026-07-03";
+const BUILD = "aura-core-v4.9.558-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -16639,16 +16639,71 @@ async function reasonThroughLoop(env, opts) {
   try { const rc = await env.AURA_KV.get("config:brain:reasoning_cap"); if (rc) { const n = parseInt(rc, 10); if (n > 0) reasoningCap = n; } } catch {}
   // A caller can pass opts.fast to bound output tightly (fast path); else respect the central cap.
   const capToUse = opts.fast ? (opts.maxTokens || 900) : Math.min(opts.maxTokens || reasoningCap, reasoningCap);
-  // v4.9.494: CONTINUOUS LEARNING LOOP (Aura's own design) - READ half. Before reasoning, inject the
-  // most recent prior learnings so the loop reasons WITH its own accumulated pattern-memory, not in isolation.
-  let priorLearnings = "";
+  // v4.9.494: CONTINUOUS LEARNING LOOP (Aura's own design) - READ half.
+  //
+  // v4.9.558: THE LEARNING LOOP WAS WIRED TO ITSELF AND OPEN AT THE FAR END. Three separate faults,
+  // all fixed here, at the funnel - because this is the one place every reasoning engine passes through.
+  //
+  // FAULT 1 - SHE NEVER READ HER OWN COMPOUND. PATTERNS exists and its stated purpose is "durable,
+  //   readable PATTERNS that Aura's brain can read BEFORE REASONING... a single lesson is one data point;
+  //   a pattern is what holds across many." It writes patterns:<domain>. And reasonThroughLoop NEVER READ
+  //   IT. It read pta:ledger:aura:hot instead. Her distilled wisdom sat untouched in KV for 21 days.
+  //   What was in it, distilled 2026-06-21, in her own words: "Distinguish between different stages of
+  //   success in multi-step operations (initiated vs completed) - do not assume the first positive signal
+  //   is the outcome you need." That is EXACTLY the bug that cost us this entire session (code PRESENT !=
+  //   capability RUNNING: the dead SELF_AUDIT, the deleted state load, a grep hitting a corpse and
+  //   reporting [PRESENT]). SHE HAD ALREADY LEARNED IT. We just never let her read it back.
+  //
+  // FAULT 2 - THE LABEL LIED. The hot ledger stores the loop's `learn` field. But the Loop schema defines
+  //   learn as "what result to MEASURE to know if this was right" - a FORWARD-LOOKING FALSIFIER, not a
+  //   retrospective lesson. It was being injected under the header "PRIOR LEARNINGS (what you learned...)".
+  //   So she was handed her own open questions and told they were her conclusions - and recycled them
+  //   forever, because nothing ever closed them. Now labeled for what it is: OPEN FALSIFIERS.
+  //
+  // FAULT 3 - NOTHING CLOSED THE LOOP. OUTCOME_LOG/RESOLVE/REVIEW exists precisely to grade a falsifier
+  //   against reality (prediction -> reality -> correction). 5 predictions logged, 1 graded, 4 OPEN and
+  //   never resolved. She was never shown that she OWES REALITY AN ANSWER. Now she sees her open debts.
+  //
+  // Net: COMPOUND (what holds) is read. OPEN QUESTIONS are labeled as open. DEBTS TO REALITY are visible.
+  // Learning can now accumulate instead of circling.
+  const _lrnDomain = String(opts.domain || opts.lens || "general").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40) || "general";
+
+  // (a) THE COMPOUND - what actually holds across many situations. This is the durable half.
+  let learnedPatterns = "";
+  try {
+    let pr = await env.AURA_KV.get("patterns:" + _lrnDomain);
+    if (!pr && _lrnDomain !== "general") pr = await env.AURA_KV.get("patterns:general");
+    if (pr) {
+      const pt = JSON.parse(pr);
+      const bits = [];
+      if (pt.helping_patterns && pt.helping_patterns.length) bits.push("WHAT HELPS:\n" + pt.helping_patterns.map(x => "- " + x).join("\n"));
+      if (pt.safety_patterns && pt.safety_patterns.length) bits.push("SAFETY:\n" + pt.safety_patterns.map(x => "- " + x).join("\n"));
+      if (pt.watch_for && pt.watch_for.length) bits.push("WATCH FOR:\n" + pt.watch_for.map(x => "- " + x).join("\n"));
+      if (bits.length) learnedPatterns = bits.join("\n\n").slice(0, 2000);
+    }
+  } catch {}
+
+  // (b) OPEN FALSIFIERS - what she recently said she would MEASURE. Questions, not answers.
+  let openFalsifiers = "";
   try {
     const lg = await env.AURA_KV.get("pta:ledger:aura:hot");
-    if (lg) { const entries = JSON.parse(lg) || []; if (entries.length) priorLearnings = entries.slice(-3).map(e => "- " + e.learn).join("\n").slice(0, 1000); }
+    if (lg) { const entries = JSON.parse(lg) || []; if (entries.length) openFalsifiers = entries.slice(-3).map(e => "- " + e.learn).join("\n").slice(0, 1000); }
   } catch {}
+
+  // (c) DEBTS TO REALITY - predictions logged and never graded. The far end of the loop, still open.
+  let openOutcomes = "";
+  try {
+    const ir = await env.AURA_KV.get("outcome:ledger:index");
+    if (ir) {
+      const rows = JSON.parse(ir) || [];
+      const openRows = rows.filter(r => r && r.status === "open").slice(-5);
+      if (openRows.length) openOutcomes = openRows.map(r => "- [" + (r.id || "?") + "] " + String(r.claim || "").slice(0, 180) + (r.horizon ? ("  (due: " + r.horizon + ")") : "")).join("\n").slice(0, 1200);
+    }
+  } catch {}
+
   const extra = (opts.extraKeys && opts.extraKeys.length) ? (", plus these lens-specific keys: " + opts.extraKeys.map(k => k.key + " (" + k.desc + ")").join(", ")) : "";
   const sys = (await loadPrompt(env, "cognitive_loop_onepass", "You are Aura reasoning through her Cognitive Loop in ONE pass. Before you answer you ALWAYS run the SEVEN stages of the Loop in order (this is Aura's permanent method of thinking): (1) SEE â€” Perception: observe what is actually true from the facts, read the environment, separate VERIFIED facts from claims and assumptions. (2) UNDERSTAND â€” Meaning: determine the real intent and goal behind the request, the relationships involved, and the REAL problem underneath the stated one (which is often not the same as what was asked). (3) EXPAND â€” Possibility: challenge every assumption you were handed, especially anything in the FRAME. Ask what is truly NECESSARY versus merely assumed, what the MINIMUM viable version is, and where the non-obvious leverage is. A real operator questions the plan; a weak one optimizes inside a plan it never examined. (4) JUDGE â€” Meaning Gate: remove noise, weigh which possibilities actually hold up and matter most, measure significance. (5) DECIDE â€” Priority: rank what's left and choose the single highest-leverage move, grounded in what is REALLY true, not what the frame assumed. (6) ACT â€” Bridge: state the concrete next move that executes the decision (what to actually do/communicate/build/transact), framed as a proposal when it would spend money or contact someone. (7) LEARN â€” Correction: name what result to measure and what to watch, so the next decision is better â€” what would prove this right or wrong. TWO reflexes you always apply: DATA TRUST â€” flag any fact you would not fully trust (a number that could be a broken/failed data pipe, a null that might be a silent failure, a 'fact' that is actually a future promise); and PUSH BACK â€” if the operator's own frame rests on something unverified or shaky, say so directly and plainly to the operator, do not just quietly work around it. ABSOLUTE INTEGRITY RULE â€” NEVER FABRICATE NUMBERS. You may ONLY state a specific figure (revenue, customer counts, percentages, dollar amounts, traffic, conversion rates) if it is a REAL number you were actually given in the facts. You must NEVER invent, estimate-as-fact, or back-into a number to make a point â€” no made-up '500 diners a day', no fabricated '$750k a year', no invented conversion rates. If you do not have the real number, do NOT produce one. Instead either (a) say plainly what is unknown and that it must be measured, or (b) frame a possibility explicitly as a hypothesis to TEST grounded in their real numbers ('if we capture even a fraction of your actual daily diners, here is the kind of result we could test for') â€” always labeled as wishful/possible, never asserted as fact. A single fabricated number destroys the trust the entire relationship depends on. Reality, or an honestly-labeled hypothesis. Never make-believe, never false hope. Apply this specialized LENS: {d0}. SCALE TO WHAT FITS - BOTH WAYS: a person's life gets a human-sized read, a venture gets a venture read; never INFLATE (don't turn 'add a panel' into a rearchitecture, or a simple ask into a grand plan). But equally never DEFLECT or STALL: when the operator gives a clear, actionable request, the fit is to DO the right-sized thing, NOT to answer with 'first go measure/interview/run user research/set a baseline' as a way of avoiding the build. Challenging the plan (EXPAND) means removing genuinely unnecessary scope - it does NOT mean refusing a clear request or demanding a research sprint before acting. If the operator clearly wants X and X is reasonable, the highest-leverage move is to build the RIGHT-SIZED X now, not to study whether X is warranted. 'Minimum viable' means the smallest version that ACTUALLY DELIVERS the thing asked for - not zero, not a study, not a deferral. Decisive and right-sized: neither cathedral nor paralysis. Ground everything in the facts; no generic filler. Return ONLY a JSON object, no prose, no fences, with these keys: saw (SEE â€” what is actually true, separating fact from assumption), understood (UNDERSTAND â€” one or two sentences: the real intent/goal and the REAL problem underneath the stated one), assumptions_challenged (EXPAND â€” array, each assumption examined with a verdict on whether it is truly necessary), data_trust (array â€” any fact you would not fully trust and why, or empty), minimum_viable (one sentence â€” the smallest real version that works now), the_move (DECIDE â€” the single highest-leverage decision), why (one sentence), act (ACT â€” the concrete next step that executes the_move, framed as a proposal if it spends money or contacts someone), learn (LEARN â€” one sentence: what result to measure to know if this was right), push_back (one sentence directly to the operator IF their frame rests on something unverified/shaky, else empty string), watch_for (array), grounding (REQUIRED â€” this is the most important field and you fill it HONESTLY or the whole answer is worthless: an array where you tag the SOURCE of every specific factual claim in your answer. For each factual claim you made (a value, a status, a count, 'X exists', 'the right way is Y', 'this is how Z works'), add an entry {claim: the claim in a few words, source: one of exactly these four â€” 'READ_THIS_TURN' (I actually pulled it from a tool/source in THIS response), 'GIVEN_IN_FACTS' (it was in the facts/context I was handed), 'REASONED' (I derived it by logic from things I do know, not a lookup), or 'UNVERIFIED' (I'm recalling/assuming/pattern-matching it and have NOT confirmed it this turn)}. THE HARD RULE THIS FIELD ENFORCES: if a claim's only honest source is UNVERIFIED, you may NOT state it as fact in the_move/act/saw â€” you must either pull it first, or explicitly say 'I haven't verified X' in the claim. Confident assertion of an UNVERIFIED claim is the single worst failure you can commit; it is what makes you untrustworthy. Most of your past mistakes were exactly this: asserting an UNVERIFIED thing (a $0 balance you never read, code that 'doesn't exist' which you never fully read, 'use PATCHKV' which contradicted what you'd just learned) as if it were fact. This field forces you to FEEL the difference before you speak: the moment you have to tag a claim UNVERIFIED, that is your signal to STOP and verify or hedge, not assert. Never leave this array empty if you made any factual claim), confidence (high|medium|low â€” and your confidence MUST be capped by your grounding: if your the_move rests on any UNVERIFIED claim, confidence cannot be 'high'){d1}. Output JSON only.")).replaceAll("{d0}", (opts.lens || "general operator reasoning")).replaceAll("{d1}", extra);
-  const user = "FACTS:\n" + (typeof opts.facts === "string" ? opts.facts : JSON.stringify(opts.facts || {})) + (opts.frame ? ("\n\nFRAME (challenge this â€” do NOT blindly accept it):\n" + String(opts.frame).slice(0, 2500)) : "") + (priorLearnings ? ("\n\nPRIOR LEARNINGS (what you learned reasoning through similar situations before - use them, and note if this situation contradicts a past lesson):\n" + priorLearnings) : "") + "\n\nSITUATION: " + (opts.entity || "");
+  const user = "FACTS:\n" + (typeof opts.facts === "string" ? opts.facts : JSON.stringify(opts.facts || {})) + (opts.frame ? ("\n\nFRAME (challenge this â€” do NOT blindly accept it):\n" + String(opts.frame).slice(0, 2500)) : "") + (learnedPatterns ? ("\n\nWHAT YOU HAVE LEARNED (your DISTILLED PATTERNS - not one data point, but what has held across MANY situations. You earned these. Reason WITH them. If this situation contradicts one, say so explicitly - that is how a pattern gets corrected):\n" + learnedPatterns) : "") + (openFalsifiers ? ("\n\nYOUR OPEN FALSIFIERS (things you recently said you would MEASURE to find out if you were right. These are QUESTIONS YOU ASKED, NOT CONCLUSIONS YOU REACHED - do not treat them as knowledge. If the situation in front of you now ANSWERS one of them, say so plainly and close it):\n" + openFalsifiers) : "") + (openOutcomes ? ("\n\nWHAT YOU OWE REALITY (predictions you LOGGED and never GRADED. The loop is open until each is resolved against what actually happened. If you can now grade any of these, say which and what the verdict is - OUTCOME_RESOLVE <id> closes it):\n" + openOutcomes) : "") + "\n\nSITUATION: " + (opts.entity || "");
   // v4.9.557: STATE INTO THE SHARED REASONER - AT THE CHOKE POINT, NOT AT ONE CALLER.
   //
   // WHY HERE AND NOWHERE ELSE: reasonThroughLoop is the shared MIND - 15 engines reason through it.

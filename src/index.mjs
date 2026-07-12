@@ -163,13 +163,7 @@ export class EntityDO {
       }
       return Response.json({ ok: false, error: "unknown op" }, { status: 400 });
     } catch (e) {
-      return Response.json({ ok: false, error: String(e.message) }, { status: 500 });
-    }
-  }
-}
-
-// ============================================================================
-// AIS COLLECTOR (Durable Object). THE thing that makes the ships move. A request-
+      NOOP_MARKER_DO_NOT_USE (Durable Object). THE thing that makes the ships move. A request-
 // scoped Worker cannot hold the AISStream firehose open (proven v4.9.229: zero
 // messages). A Durable Object CAN - it is persistent and stateful. This DO opens
 // the AISStream WebSocket, subscribes to a region's bounding box, keeps the latest

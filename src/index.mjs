@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.558-2026-07-03";
+const BUILD = "aura-core-v4.9.559-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -16742,8 +16742,82 @@ async function reasonThroughLoop(env, opts) {
     }
   } catch {}
   const sysGrounded = sys + projectState;
+  // v4.9.559: STOP HAND-TYPING JSON. RIDE THE STANDARD DOOR.
+  //
+  // THE BUG: we asked the model to hand-type a JSON object and hoped. It mostly works. When it doesn't,
+  // we lose EVERYTHING that matters: grounding:null, confidence:null - the entire honesty layer, wiped by
+  // a stray quote. Seen live: THINK wrote `...how do we verify it?" You need to...` - one unescaped double
+  // quote closed the string early and destroyed the provenance of an otherwise excellent answer.
+  // AURA_REFLECT falls over the same way ("JSON parse fell back"). And her hot ledger is full of malformed
+  // confidence values like "mediumthe facts are real but incomplete" - which is why the learn-capture gate
+  // needs a startsWith() hack to survive its own data.
+  //
+  // Her OWN distilled pattern (patterns:general, 2026-06-21) warned about exactly this, and we never let
+  // her read it until v558: "Watch for: structured commands or data containing UNESCAPED DELIMITERS that
+  // could break parsing downstream." She diagnosed this three weeks before it bit her.
+  //
+  // THE FIX - the platform already ships it: Anthropic TOOL USE. Give the model a tool whose input_schema
+  // IS the Cognitive Loop, and force it with tool_choice. The API then CONSTRAINS the output to the schema.
+  // The model cannot emit malformed JSON, cannot invent a grounding source outside the four legal values,
+  // and cannot return a mushy confidence - the enum forbids it. No parser, no repair heuristics, no prayer.
+  // The transport already supported this end-to-end: callAnthropicOnce's SSE loop handles content_block_start
+  // for tool_use, accumulates input_json_delta, and JSON.parses it into .input on content_block_stop.
+  // It was fully wired and NOBODY EVER PASSED `tools`. (Same disease as everything else today: the organ
+  // was built, the wire was never attached.)
+  //
+  // The text path is KEPT as a fallback - if no tool_use block comes back for any reason, we parse text
+  // exactly as before. This adds a guarantee; it removes nothing.
+  const LOOP_TOOL = {
+    name: "cognitive_loop",
+    description: "Return your completed Cognitive Loop for this situation. Every field is required. This is the ONLY way to answer.",
+    input_schema: {
+      type: "object",
+      properties: {
+        saw: { type: "string", description: "SEE - what is actually true, separating fact from assumption." },
+        understood: { type: "string", description: "UNDERSTAND - the real intent and the REAL problem underneath the stated one." },
+        assumptions_challenged: {
+          type: "array", description: "EXPAND - each assumption you were handed, examined.",
+          items: { type: "object", properties: {
+            assumption: { type: "string" },
+            verdict: { type: "string", description: "Is it truly necessary? Say so plainly." }
+          }, required: ["assumption", "verdict"] }
+        },
+        data_trust: {
+          type: "array", description: "Any fact you would not fully trust, and why. Empty array if none.",
+          items: { type: "object", properties: {
+            fact: { type: "string" },
+            reason: { type: "string" }
+          }, required: ["fact", "reason"] }
+        },
+        minimum_viable: { type: "string", description: "The smallest version that ACTUALLY DELIVERS what was asked. Not zero, not a study, not a deferral." },
+        the_move: { type: "string", description: "DECIDE - the single highest-leverage decision." },
+        why: { type: "string" },
+        act: { type: "string", description: "ACT - the concrete next step. Framed as a proposal if it spends money or contacts someone." },
+        learn: { type: "string", description: "LEARN - what RESULT TO MEASURE to know if this was right. This is a falsifier, NOT a conclusion." },
+        push_back: { type: "string", description: "Directly to the operator IF his frame rests on something unverified or shaky. Empty string if not." },
+        watch_for: { type: "array", items: { type: "string" } },
+        grounding: {
+          type: "array",
+          description: "REQUIRED. Tag the SOURCE of EVERY specific factual claim you made. Never empty if you made any factual claim.",
+          items: { type: "object", properties: {
+            claim: { type: "string", description: "The claim, in a few words." },
+            source: { type: "string", enum: ["READ_THIS_TURN", "GIVEN_IN_FACTS", "REASONED", "UNVERIFIED"],
+              description: "READ_THIS_TURN = I pulled it from a real source THIS turn. GIVEN_IN_FACTS = it was handed to me. REASONED = I derived it by logic. UNVERIFIED = I am recalling/assuming and have NOT confirmed it. An UNVERIFIED claim may NEVER be asserted as fact." }
+          }, required: ["claim", "source"] }
+        },
+        confidence: { type: "string", enum: ["high", "medium", "low"],
+          description: "MUST be capped by your grounding: if the_move rests on any UNVERIFIED claim, confidence CANNOT be high." }
+      },
+      required: ["saw", "understood", "assumptions_challenged", "data_trust", "minimum_viable", "the_move", "why", "act", "learn", "push_back", "watch_for", "grounding", "confidence"]
+    }
+  };
   try {
-    const d = await callAnthropic(apiKey, { model, max_tokens: capToUse, system: sysGrounded, messages: [{ role: "user", content: user }] });
+    const d = await callAnthropic(apiKey, {
+      model, max_tokens: capToUse, system: sysGrounded,
+      messages: [{ role: "user", content: user }],
+      tools: [LOOP_TOOL],
+      tool_choice: { type: "tool", name: "cognitive_loop" }
+    });
     let tx = ""; if (d && d.content) { for (const b of d.content) { if (b.type === "text") tx += b.text; } }
     tx = tx.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
     // v4.9.494: LEARNING LOOP - WRITE half. Significance-gated (medium/high confidence only), fire-and-forget
@@ -16760,8 +16834,17 @@ async function reasonThroughLoop(env, opts) {
         await env.AURA_KV.put("pta:ledger:aura:hot", JSON.stringify(entries));
       } catch {}
     };
-    // primary parse
-    try { const p = JSON.parse(tx); await learnCapture(p); return { ok: true, reasoning: p }; } catch (e1) {
+    // PRIMARY (v4.9.559): the schema-constrained tool block. Cannot be malformed - the API guaranteed it.
+    // NOTE the placement: this MUST come after learnCapture is declared. A const is in the temporal dead
+    // zone before its declaration, so calling it earlier throws ReferenceError at RUNTIME while node --check
+    // passes clean. Caught that on myself while building this - which is precisely her own 2026-06-21 lesson:
+    // "do not assume the first positive signal is the outcome you need." Syntax OK is not It Runs.
+    if (d && Array.isArray(d.content)) {
+      const tb = d.content.find(b => b && b.type === "tool_use" && b.name === "cognitive_loop" && b.input && typeof b.input === "object");
+      if (tb) { await learnCapture(tb.input); return { ok: true, reasoning: tb.input, via: "tool_schema" }; }
+    }
+    // FALLBACK: no tool block came back for some reason. Parse text exactly as before - nothing lost.
+    try { const p = JSON.parse(tx); await learnCapture(p); return { ok: true, reasoning: p, via: "text_parse" }; } catch (e1) {
       // RECOVERY: the model may have been truncated mid-JSON (hit the token ceiling) or added stray
       // characters. Try to salvage the reasoning instead of throwing it away.
       // 1) extract the outermost object

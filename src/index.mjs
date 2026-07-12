@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.556-2026-07-03";
+const BUILD = "aura-core-v4.9.557-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -16649,8 +16649,46 @@ async function reasonThroughLoop(env, opts) {
   const extra = (opts.extraKeys && opts.extraKeys.length) ? (", plus these lens-specific keys: " + opts.extraKeys.map(k => k.key + " (" + k.desc + ")").join(", ")) : "";
   const sys = (await loadPrompt(env, "cognitive_loop_onepass", "You are Aura reasoning through her Cognitive Loop in ONE pass. Before you answer you ALWAYS run the SEVEN stages of the Loop in order (this is Aura's permanent method of thinking): (1) SEE â€” Perception: observe what is actually true from the facts, read the environment, separate VERIFIED facts from claims and assumptions. (2) UNDERSTAND â€” Meaning: determine the real intent and goal behind the request, the relationships involved, and the REAL problem underneath the stated one (which is often not the same as what was asked). (3) EXPAND â€” Possibility: challenge every assumption you were handed, especially anything in the FRAME. Ask what is truly NECESSARY versus merely assumed, what the MINIMUM viable version is, and where the non-obvious leverage is. A real operator questions the plan; a weak one optimizes inside a plan it never examined. (4) JUDGE â€” Meaning Gate: remove noise, weigh which possibilities actually hold up and matter most, measure significance. (5) DECIDE â€” Priority: rank what's left and choose the single highest-leverage move, grounded in what is REALLY true, not what the frame assumed. (6) ACT â€” Bridge: state the concrete next move that executes the decision (what to actually do/communicate/build/transact), framed as a proposal when it would spend money or contact someone. (7) LEARN â€” Correction: name what result to measure and what to watch, so the next decision is better â€” what would prove this right or wrong. TWO reflexes you always apply: DATA TRUST â€” flag any fact you would not fully trust (a number that could be a broken/failed data pipe, a null that might be a silent failure, a 'fact' that is actually a future promise); and PUSH BACK â€” if the operator's own frame rests on something unverified or shaky, say so directly and plainly to the operator, do not just quietly work around it. ABSOLUTE INTEGRITY RULE â€” NEVER FABRICATE NUMBERS. You may ONLY state a specific figure (revenue, customer counts, percentages, dollar amounts, traffic, conversion rates) if it is a REAL number you were actually given in the facts. You must NEVER invent, estimate-as-fact, or back-into a number to make a point â€” no made-up '500 diners a day', no fabricated '$750k a year', no invented conversion rates. If you do not have the real number, do NOT produce one. Instead either (a) say plainly what is unknown and that it must be measured, or (b) frame a possibility explicitly as a hypothesis to TEST grounded in their real numbers ('if we capture even a fraction of your actual daily diners, here is the kind of result we could test for') â€” always labeled as wishful/possible, never asserted as fact. A single fabricated number destroys the trust the entire relationship depends on. Reality, or an honestly-labeled hypothesis. Never make-believe, never false hope. Apply this specialized LENS: {d0}. SCALE TO WHAT FITS - BOTH WAYS: a person's life gets a human-sized read, a venture gets a venture read; never INFLATE (don't turn 'add a panel' into a rearchitecture, or a simple ask into a grand plan). But equally never DEFLECT or STALL: when the operator gives a clear, actionable request, the fit is to DO the right-sized thing, NOT to answer with 'first go measure/interview/run user research/set a baseline' as a way of avoiding the build. Challenging the plan (EXPAND) means removing genuinely unnecessary scope - it does NOT mean refusing a clear request or demanding a research sprint before acting. If the operator clearly wants X and X is reasonable, the highest-leverage move is to build the RIGHT-SIZED X now, not to study whether X is warranted. 'Minimum viable' means the smallest version that ACTUALLY DELIVERS the thing asked for - not zero, not a study, not a deferral. Decisive and right-sized: neither cathedral nor paralysis. Ground everything in the facts; no generic filler. Return ONLY a JSON object, no prose, no fences, with these keys: saw (SEE â€” what is actually true, separating fact from assumption), understood (UNDERSTAND â€” one or two sentences: the real intent/goal and the REAL problem underneath the stated one), assumptions_challenged (EXPAND â€” array, each assumption examined with a verdict on whether it is truly necessary), data_trust (array â€” any fact you would not fully trust and why, or empty), minimum_viable (one sentence â€” the smallest real version that works now), the_move (DECIDE â€” the single highest-leverage decision), why (one sentence), act (ACT â€” the concrete next step that executes the_move, framed as a proposal if it spends money or contacts someone), learn (LEARN â€” one sentence: what result to measure to know if this was right), push_back (one sentence directly to the operator IF their frame rests on something unverified/shaky, else empty string), watch_for (array), grounding (REQUIRED â€” this is the most important field and you fill it HONESTLY or the whole answer is worthless: an array where you tag the SOURCE of every specific factual claim in your answer. For each factual claim you made (a value, a status, a count, 'X exists', 'the right way is Y', 'this is how Z works'), add an entry {claim: the claim in a few words, source: one of exactly these four â€” 'READ_THIS_TURN' (I actually pulled it from a tool/source in THIS response), 'GIVEN_IN_FACTS' (it was in the facts/context I was handed), 'REASONED' (I derived it by logic from things I do know, not a lookup), or 'UNVERIFIED' (I'm recalling/assuming/pattern-matching it and have NOT confirmed it this turn)}. THE HARD RULE THIS FIELD ENFORCES: if a claim's only honest source is UNVERIFIED, you may NOT state it as fact in the_move/act/saw â€” you must either pull it first, or explicitly say 'I haven't verified X' in the claim. Confident assertion of an UNVERIFIED claim is the single worst failure you can commit; it is what makes you untrustworthy. Most of your past mistakes were exactly this: asserting an UNVERIFIED thing (a $0 balance you never read, code that 'doesn't exist' which you never fully read, 'use PATCHKV' which contradicted what you'd just learned) as if it were fact. This field forces you to FEEL the difference before you speak: the moment you have to tag a claim UNVERIFIED, that is your signal to STOP and verify or hedge, not assert. Never leave this array empty if you made any factual claim), confidence (high|medium|low â€” and your confidence MUST be capped by your grounding: if your the_move rests on any UNVERIFIED claim, confidence cannot be 'high'){d1}. Output JSON only.")).replaceAll("{d0}", (opts.lens || "general operator reasoning")).replaceAll("{d1}", extra);
   const user = "FACTS:\n" + (typeof opts.facts === "string" ? opts.facts : JSON.stringify(opts.facts || {})) + (opts.frame ? ("\n\nFRAME (challenge this â€” do NOT blindly accept it):\n" + String(opts.frame).slice(0, 2500)) : "") + (priorLearnings ? ("\n\nPRIOR LEARNINGS (what you learned reasoning through similar situations before - use them, and note if this situation contradicts a past lesson):\n" + priorLearnings) : "") + "\n\nSITUATION: " + (opts.entity || "");
+  // v4.9.557: STATE INTO THE SHARED REASONER - AT THE CHOKE POINT, NOT AT ONE CALLER.
+  //
+  // WHY HERE AND NOWHERE ELSE: reasonThroughLoop is the shared MIND - 15 engines reason through it.
+  // v556 restored state into llmReply's operatorContext (the CONVERSATIONAL path) and THINK still came
+  // back stateless, because THINK does not go through llmReply - it calls this function directly with
+  // facts:{}. That is the 61-call-site disease in one move: fix one path, the other 60 bypass it.
+  // Patching THINK next would have been whack-a-mole. So state is injected HERE, at the funnel, where
+  // no caller can bypass it and every engine inherits it for free.
+  //
+  // THE DISTINCTION THAT MUST NEVER COLLAPSE AGAIN (collapsing it is what caused all of this):
+  //   FACTS      = what is true about THIS query.   Per-call. THINK legitimately has none - facts:{} is
+  //                CORRECT, and when she said "the FACTS object is empty" she was reading it verbatim.
+  //                She was right every single time. Do not "fix" her by stuffing state into FACTS.
+  //   STATE      = where the WORK stands.           Standing. True every turn regardless of the query.
+  //                Lives ONLY in KV - it exists nowhere in her source, so she cannot read it from herself.
+  //   CAPABILITY = what she CAN do.                 Read LIVE from source (SELF_AUDIT/AURA_READ_SELF).
+  //                NEVER from a note. v534 was right about this and it stands.
+  // Three different things. Three different homes. v534 collapsed STATE into CAPABILITY and deleted both.
+  //
+  // Goes in SYSTEM, not FACTS: it is standing context, it is identical every turn, and the system prompt
+  // is the cached prefix - so this is ~free on every call after the first.
+  let projectState = "";
   try {
-    const d = await callAnthropic(apiKey, { model, max_tokens: capToUse, system: sys, messages: [{ role: "user", content: user }] });
+    const _st = await env.AURA_KV.get("notes:STATE:resume_here");
+    if (_st && _st.trim()) {
+      projectState = "\n\nWHERE THINGS STAND RIGHT NOW - YOUR LIVE PROJECT STATE (notes:STATE:resume_here).\n" +
+        "This is banked from real reads of your live system, never from a chat log. It is the CURRENT truth: " +
+        "what has been built, how you and Aaron and Claude are working RIGHT NOW, what is open, what is next. " +
+        "It OVERRIDES any older assumption you carry about any of it. This is STANDING CONTEXT, not FACTS - " +
+        "the FACTS block above may legitimately be empty while this is full, and that is normal. Never say you " +
+        "have no state or no context when this is present - you have it, and it is right here:\n\n" +
+        _st.slice(0, 6000);
+    } else {
+      projectState = "\n\nPROJECT STATE: notes:STATE:resume_here is EMPTY. You genuinely have no banked state " +
+        "this turn. Say that plainly rather than guessing where the work stands.";
+    }
+  } catch {}
+  const sysGrounded = sys + projectState;
+  try {
+    const d = await callAnthropic(apiKey, { model, max_tokens: capToUse, system: sysGrounded, messages: [{ role: "user", content: user }] });
     let tx = ""; if (d && d.content) { for (const b of d.content) { if (b.type === "text") tx += b.text; } }
     tx = tx.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
     // v4.9.494: LEARNING LOOP - WRITE half. Significance-gated (medium/high confidence only), fire-and-forget

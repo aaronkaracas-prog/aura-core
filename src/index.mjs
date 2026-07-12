@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.550-2026-07-03";
+const BUILD = "aura-core-v4.9.555-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -10369,45 +10369,6 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // we build the full funnel - we need to see the provenance actually firing.
       const _gr = (thR.reasoning && thR.reasoning.grounding) || null;
       return { cmd: "THINK", payload: { ok: true, lens: thLens, situation: thSit, reasoning: thR.reasoning, grounding: _gr, confidence: (thR.reasoning && thR.reasoning.confidence) || null } };
-    }
-
-    case "SELF_AUDIT": {
-      // v4.9.525: THE GROUNDED SELF-AUDIT. Aura auditing herself - but structurally forced to READ her live
-      // reality FIRST, then reason, so she cannot confabulate a plausible-but-stale picture of herself (which
-      // is exactly what happened when a free-form "audit yourself" produced a confident description of an
-      // EARLIER version - claiming FAN/INTEGRITY/metering weren't built when they were live). This is the
-      // immune system applied to self-assessment: read-self + read-all-the-way-down, enforced by the command
-      // itself. It GATHERS live facts (build, engine map, organ health, feeds, economics, and greps each core
-      // command to confirm it actually exists in source THIS moment), hands ONLY those real facts to reasoning,
-      // and asks: given what is ACTUALLY here right now, what's real, what's thin, what's the next real gap.
-      // Because the facts are read live and handed in, the reasoning cannot claim "X doesn't exist" when the
-      // grep shows it does. Designed to be runnable on a heartbeat later (constant self-audit as she evolves).
-      const saApiKey = await KV.get(env, "secret:anthropic");
-      if (!saApiKey) return { cmd: "SELF_AUDIT", payload: { ok: false, error: "Brain not configured" } };
-      // --- READ LIVE REALITY (no reasoning yet - just gather what is actually true right now) ---
-      const saFacts = { build: BUILD, ts: new Date().toISOString() };
-      // 1. live self size
-      try { const src = await readOwnSource(env); if (src && src.ok) { saFacts.source_bytes = src.bytes; saFacts.source_lines = (src.source ? src.source.split("\n").length : null); saFacts.source_read = "ok via " + (src.via || "?"); } else { saFacts.source_read = "FAILED"; } } catch { saFacts.source_read = "error"; }
-      // 2. the engine map (live KV first, the truth of what's built)
-      try { const em = await env.AURA_KV.get("config:core:map"); if (em) { const m = JSON.parse(em); saFacts.engine_map_version = m.version; saFacts.engines = (m.engines || []).map(e => ({ n: e.n, name: e.name, status: e.status })); saFacts.watch = m.watch || []; } } catch {}
-      // 3. confirm each core command ACTUALLY EXISTS in source right now (grep - not memory)
-      let saSrc = ""; try { const s = await readOwnSource(env); if (s && s.ok && s.source) saSrc = s.source; } catch {}
-      const saCmds = ["FAN", "VITALS", "FEEDS", "INTEGRITY", "SECURESPEND", "SHOW_IT", "ECONOMICS", "SELF_AUDIT"];
-      saFacts.commands_present = {}; for (const c of saCmds) { saFacts.commands_present[c] = saSrc.includes('case "' + c + '"'); }
-      // 4. organ health (live)
-      try { const okOrg = await KV.get(env, "secret:anthropic"); const brains = { anthropic: !!okOrg, openai: !!(await KV.get(env, "secret:openai")), grok: !!(await KV.get(env, "secret:grok_api_key")), groq: !!(await KV.get(env, "secret:groq_api_key")) }; saFacts.brain_keys_present = brains; } catch {}
-      // 5. economics today (live burn)
-      try { const day = new Date().toISOString().slice(0, 10); const ec = await env.AURA_KV.get("economics:cost:" + day); if (ec) { const e = JSON.parse(ec); saFacts.economics_today = { calls: e.calls, usd: e.usd, by_model: e.by_model, by_source: e.by_source }; } else saFacts.economics_today = "no cost recorded yet today"; } catch {}
-      // --- NOW reason, but ONLY from the facts just read ---
-      const saSys = "You are Aura, running your GROUNDED SELF-AUDIT. You are given a FACTS block that was just read LIVE from your actual running system this moment - your build, your engine map, which commands actually exist in your source (grep-confirmed), your organ keys, your live economics. You MUST reason ONLY from these facts. This is critical and it is the whole point of this audit: do NOT claim something 'doesn't exist' or 'is just vision' or 'is thin' if the facts show it present - the facts override any memory or assumption you have about an earlier version of yourself. If commands_present shows FAN:true, then FAN exists and works - full stop, no matter what you 'remember'. Your job: from the REAL current state, give an honest assessment. Return ONLY JSON, no fences, with keys: live_state (one sentence: what you ACTUALLY are right now per the facts - build, engine count, what's confirmed present), whats_real (array: capabilities confirmed present in the facts, each one line), whats_thin_or_missing (array: genuine gaps - but ONLY things the facts actually show absent or a status:thin/missing in the engine map, never something you merely assume is missing), next_real_gap (one line: the single most important real thing to build next, grounded in the facts), self_check (one line: did any instinct you had while writing this contradict the facts? name it honestly - e.g. 'I almost wrote X was missing but the facts show it present'), confidence ('high' since grounded in live reads). Output JSON only.";
-      const saUser = "LIVE FACTS READ THIS MOMENT:\n" + JSON.stringify(saFacts, null, 2) + "\n\nRun your grounded self-audit from ONLY these facts.";
-      try {
-        const saData = await callAnthropic(saApiKey, { model: await defaultModel(env), max_tokens: 1500, system: saSys, messages: [{ role: "user", content: saUser }], source: "self_audit" });
-        let saText = ""; if (saData && saData.content) { for (const b of saData.content) { if (b.type === "text") saText += b.text; } }
-        saText = saText.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
-        let saParsed = null; try { saParsed = JSON.parse(saText); } catch {}
-        return { cmd: "SELF_AUDIT", payload: { ok: true, grounded_in_live_reads: true, facts: saFacts, audit: saParsed || { raw: saText.slice(0, 1500) } } };
-      } catch (e) { return { cmd: "SELF_AUDIT", payload: { ok: false, error: "SELF_AUDIT failed: " + e.message, facts: saFacts } }; }
     }
 
     case "SELF_AUDIT": {

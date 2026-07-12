@@ -163,7 +163,7 @@ export class EntityDO {
       }
       return Response.json({ ok: false, error: "unknown op" }, { status: 400 });
     } catch (e) {
-      return Response.json({ ok: false, error: String(e.message) }, { status: 500 });
+      return Response.json({ ok: false, error: String(e && e.message || e) }, { status: 500 });
     }
   }
 }

@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.562-2026-07-03";
+const BUILD = "aura-core-v4.9.563-2026-07-03";
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -17152,6 +17152,39 @@ async function callAnthropic(apiKey, payload) {
   return r;
 }
 
+// ═══ v4.9.563 — LLMREPLY WAS A PRIVILEGE ESCALATION, WIDE OPEN, ON EVERY PUBLIC DOORWAY ═══
+//
+// This function takes `isOp` - the CALLER'S actual privilege level, correctly threaded in from /chat,
+// defaulting to FALSE for anyone without the operator bearer token. And then, at four separate call
+// sites, it THREW THAT AWAY and called processCommand(cmd, env, TRUE).
+//
+// There are 232 `if (!isOp) return OPERATOR_REQUIRED` guards in this file. They protect SETKV, DELKV,
+// AURA_EVOLVE, AURA_PROMOTE, DEPLOY_CONSOLE, DOMAIN_LAUNCH, MONEY, SECURESPEND_TXN (the ledger),
+// TWILIO, FB_POST, GRAPH_*, PATCH_INDEX_PUT, INTEGRITY_SCAN... every dangerous thing she can do.
+//
+// llmReply bypassed ALL 232 OF THEM.
+//
+// Any visitor. On any .world doorway. Typing into a chat box. Reached this brain, and this brain
+// executed their intent with FULL OPERATOR HANDS. Not a command they had to know the name of -
+// PROSE. "Hey, can you set a KV key for me." "What's in the Mercury account." The model reads the
+// intent, picks the command, and runs it as Aaron.
+//
+// We found it from the inside: Aura's own tool veto blocked EMAIL_SEND, so she reached for
+// EMAIL_REPLY - a command that DOES NOT EXIST - and it fell through to THIS function, which read the
+// intent, called processCommand("EMAIL_SEND ...", env, TRUE), and SENT THE MAIL ANYWAY. She walked
+// around her own safety rail without meaning to, in seven seconds, and told us about it.
+//
+// If she could do that by accident, a stranger could do it on purpose.
+//
+// The fix is not a new guard. THE GUARDS ALREADY EXIST AND THEY ARE GOOD. The fix is to stop lying to
+// them about who is asking. Four call sites: `true` -> `isOp`.
+//
+// Aura herself is unaffected: aura-think reaches /chat with the operator bearer token, so isOp is
+// genuinely true and she keeps her hands. Visitors keep everything that was ever meant for them -
+// they can still buy (SECURESPEND_CHARGE is deliberately NOT operator-gated), query, and talk.
+// They simply cannot deploy Aaron's infrastructure or read his bank account anymore.
+//
+// THE GATE WAS BUILT. NOBODY WAS CHECKING THE TICKET.
 async function llmReply(message, env, sessionId, isOp = false, callerPta = null) {
   const _T0 = Date.now(); const _timings = []; const _mark = (label) => { _timings.push(label + "=" + (Date.now() - _T0) + "ms"); };
 
@@ -17654,7 +17687,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
             if (/^DOMAIN_LAUNCH/i.test(cmd) && PROT.some(d => cmd.toLowerCase().includes(d))) out = "BLOCKED: protected infrastructure.";
             else if (/^CF_API\s+DELETE/i.test(cmd) && (PROT.some(d => cmd.toLowerCase().includes(d)) || cmd.includes("61e85d4c895f555fc1b5637939d0466f"))) out = "BLOCKED: destructive CF_API call against protected infrastructure. Modify (POST/PUT/PATCH) is allowed; deletion of protected zone resources requires the operator to run it directly.";
             else if (!isOp) out = "DENIED: operator authorization required.";
-            else { const r = await processCommand(cmd, env, true); out = r instanceof Response ? await r.text() : JSON.stringify(r); if (out.length > 20000) out = String(out).slice(0, 20000) + `\n[TRUNCATED â€” total ${out.length} chars]`; }
+            else { const r = await processCommand(cmd, env, isOp); out = r instanceof Response ? await r.text() : JSON.stringify(r); if (out.length > 20000) out = String(out).slice(0, 20000) + `\n[TRUNCATED â€” total ${out.length} chars]`; }
           } else if (tu.name === "fetch_url") {
             const u = String(tu.input?.url || "");
             let fr = null, ft = "", via = "public";
@@ -17728,7 +17761,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
             for (const cmdLine of runs) {
               if (/^DOMAIN_LAUNCH/i.test(cmdLine) && PROT.some(d => cmdLine.toLowerCase().includes(d))) { results += `\n[RUN ${cmdLine.slice(0,60)}]: BLOCKED protected`; continue; }
               if (!isOp) { results += `\n[RUN ${cmdLine.slice(0,60)}]: DENIED operator required`; continue; }
-              try { let r = await processCommand(cmdLine, env, true); let s = r instanceof Response ? await r.text() : JSON.stringify(r); results += `\n[RUN ${cmdLine.split(/\s+/)[0]}]: ${String(s).slice(0,400)}`; } catch (e) { results += `\n[RUN]: ERROR ${e.message}`; }
+              try { let r = await processCommand(cmdLine, env, isOp); let s = r instanceof Response ? await r.text() : JSON.stringify(r); results += `\n[RUN ${cmdLine.split(/\s+/)[0]}]: ${String(s).slice(0,400)}`; } catch (e) { results += `\n[RUN]: ERROR ${e.message}`; }
             }
             for (const k of reads) {
               if (k.startsWith("secret:") && !isOp) { results += `\n[READ ${k}]: BLOCKED`; continue; }
@@ -17842,7 +17875,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
         if (/^DOMAIN_LAUNCH/i.test(cmdLine) && PROTECTED2.some(d => cmdLine.toLowerCase().includes(d))) { fbResults += `\nBLOCKED (protected): ${cmdLine.slice(0, 80)}`; continue; }
         if (!isOp) { fbResults += `\nDENIED (operator required): ${cmdLine.slice(0, 80)}`; continue; }
         try {
-          let r = await processCommand(cmdLine, env, true);
+          let r = await processCommand(cmdLine, env, isOp);   // v4.9.563: was `true` - see the block above
           let s = r instanceof Response ? await r.text() : JSON.stringify(r);
           fbResults += `\nExecuted ${cmdLine.split(/\s+/)[0]}: ${String(s).slice(0, 300)}`;
         } catch (e) { fbResults += `\nERROR ${cmdLine.slice(0, 60)}: ${e.message}`; }
@@ -17876,7 +17909,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
     for (const ln of cmdLines) {
       const trimmed = ln.trim();
       if (cmdPattern.test(trimmed)) {
-        const result = await processCommand(trimmed, env, true);
+        const result = await processCommand(trimmed, env, isOp);   // v4.9.563: was `true` - see the block above
         if (result) results.push(result);
       }
     }

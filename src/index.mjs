@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.565-2026-07-13";
+const BUILD = "aura-core-v4.9.566-2026-07-14";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -100,6 +100,31 @@ async function brainFetch(url, opts, env) {
       model: body.model, in: inTok, cached: cachedIn, out: outTok,
       hit_rate: hitRate + "%", cost: "$" + cost.toFixed(4),
     }));
+
+    // ══ THE SAME LEDGER aura-think writes. ONE NUMBER, ONE TRUTH. ══════════════════════
+    // Aura proved her own meter was lying: it said cents, MERCURY SAID $20 LEFT THE BANK. She trusted
+    // the bank over herself - "the party being measured does not own the meter." She was right.
+    // Part of the hole was HERE: 28 backend model calls in aura-core, metered to a console line that
+    // evaporated, never written anywhere she could read. So the world_ledger only ever saw aura-think's
+    // spending. Now BOTH workers write the same burn:<day> key, and the total is the real total.
+    try {
+      if (env && env.AURA_KV) {
+        const day = new Date().toISOString().slice(0, 10);
+        const raw = await env.AURA_KV.get("burn:" + day);
+        const led = raw ? JSON.parse(raw)
+                        : { day, turns: 0, cost: 0, in: 0, out: 0, cached: 0, worst_prompt: 0, by_path: {} };
+        led.turns += 1;
+        led.cost += cost;
+        led.in += inTok;
+        led.out += outTok;
+        led.cached += cachedIn;
+        led.worst_prompt = Math.max(led.worst_prompt || 0, inTok);
+        led.by_path = led.by_path || {};
+        led.by_path["aura-core"] = (led.by_path["aura-core"] || 0) + cost;
+        led.last = new Date().toISOString();
+        await env.AURA_KV.put("burn:" + day, JSON.stringify(led), { expirationTtl: 90 * 24 * 3600 });
+      }
+    } catch {}
   } catch {}
 
   // ── store for the next caller. 1h TTL: backend briefs go stale faster than facts. ──

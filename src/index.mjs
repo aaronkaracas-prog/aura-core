@@ -6,7 +6,104 @@
  */
 
 
-const BUILD = "aura-core-v4.9.563-2026-07-03";
+const BUILD = "aura-core-v4.9.564-2026-07-13";
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// THE PROBLEM IT SOLVES (measured, not assumed):
+//   28 raw fetch() calls to the Anthropic API, scattered through processCommand. NO shared helper.
+//   ZERO of them used prompt caching (grep: cache_control = 0 hits). So every SITUATION brief, every
+//   SECURESPEND analysis, every self-read, every doorway conversation RE-BILLED ITS ENTIRE SYSTEM
+//   PROMPT AT FULL LIST PRICE, every single time. That is the same bug that made a six-word question
+//   cost sixty-eight cents in aura-think - except here it is multiplied across 28 sites.
+//
+//   Each handler was its own tiny second brain. No cache, no rung, no meter, no choke point. There was
+//   nowhere to PUT a fix, which is exactly why there was no fix.
+//
+// WHAT IT DOES (identical signature to fetch, so all 28 sites are drop-in):
+//   1. PROMPT CACHING. Anthropic only caches when `system` is an ARRAY of blocks carrying cache_control.
+//      Every site here passes a plain STRING, so nothing ever cached. brainFetch converts it. ~90% off
+//      the fixed prompt on every call after the first. This alone is the bulk of the backend burn.
+//   2. L1 ANSWER CACHE. Identical (system+messages) -> the stored answer, from KV, NO MODEL, $0.
+//      Shared truth computed once. The 10,000th identical brief costs nothing.
+//   3. THE METER. Logs what every backend call actually costs, so the burn is finally VISIBLE here too.
+//
+// It returns a Response-shaped object, so callers keep doing r.ok / await r.json() unchanged.
+async function brainFetch(url, opts, env) {
+  let body;
+  try { body = JSON.parse(opts && opts.body ? opts.body : "{}"); } catch { body = {}; }
+
+  // ── STREAMING PASSES STRAIGHT THROUGH. A streamed response is a ReadableStream, not JSON - calling
+  //    .json() on it would consume and destroy the stream. We still inject prompt caching (that is just
+  //    a request-body change and is safe), but we do NOT cache or meter the response. Caught this by
+  //    checking every one of the 28 callers for .text()/.headers use before shipping, not after.
+  const isStream = body && body.stream === true;
+
+  // ── 1. PROMPT CACHING: string system -> cached block array. The single highest-value line here. ──
+  if (typeof body.system === "string" && body.system.length > 500) {
+    body.system = [{ type: "text", text: body.system, cache_control: { type: "ephemeral" } }];
+  }
+
+  // streaming: caching-injected body, real fetch, untouched Response. Nothing else.
+  if (isStream) return await fetch(url, { ...opts, body: JSON.stringify(body) });
+
+  // ── 2. L1 ANSWER CACHE: has anyone already asked this exact thing? ──
+  let cacheKey = null;
+  try {
+    if (env && env.AURA_KV) {
+      const sysTxt = Array.isArray(body.system)
+        ? body.system.map(b => b && b.text ? b.text : "").join("")
+        : String(body.system || "");
+      const msgTxt = JSON.stringify(body.messages || []);
+      const buf = await crypto.subtle.digest("SHA-256",
+        new TextEncoder().encode((body.model || "") + "|" + sysTxt + "|" + msgTxt));
+      cacheKey = "brain:l1:" + [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");
+      const hit = await env.AURA_KV.get(cacheKey);
+      if (hit) {
+        console.log("[BRAIN L1 HIT] $0.0000 — no model called");
+        return { ok: true, status: 200, json: async () => JSON.parse(hit) };
+      }
+    }
+  } catch (e) { cacheKey = null; }
+
+  // ── 3. the real call ──
+  const r = await fetch(url, { ...opts, body: JSON.stringify(body) });
+  if (!r.ok) return r;
+
+  const j = await r.json();
+
+  // ── the meter: what did this ACTUALLY cost? ──
+  try {
+    const u = (j && j.usage) || {};
+    const inTok = u.input_tokens || 0;
+    const cachedIn = u.cache_read_input_tokens || 0;
+    const cacheWrite = u.cache_creation_input_tokens || 0;
+    const outTok = u.output_tokens || 0;
+    const isOpus = String(body.model || "").includes("opus");
+    const isHaiku = String(body.model || "").includes("haiku");
+    const inRate = isOpus ? 15 : isHaiku ? 1 : 3;      // $/1M — opus / haiku / sonnet
+    const outRate = isOpus ? 75 : isHaiku ? 5 : 15;
+    const cost = ((inTok - cachedIn) * inRate + cachedIn * inRate * 0.1 + cacheWrite * inRate * 1.25
+                  + outTok * outRate) / 1e6;
+    const hitRate = inTok > 0 ? ((cachedIn / inTok) * 100).toFixed(1) : "0.0";
+    console.log("BRAIN " + JSON.stringify({
+      model: body.model, in: inTok, cached: cachedIn, out: outTok,
+      hit_rate: hitRate + "%", cost: "$" + cost.toFixed(4),
+    }));
+  } catch {}
+
+  // ── store for the next caller. 1h TTL: backend briefs go stale faster than facts. ──
+  try {
+    if (cacheKey && env && env.AURA_KV) {
+      await env.AURA_KV.put(cacheKey, JSON.stringify(j), { expirationTtl: 3600 });
+    }
+  } catch {}
+
+  return { ok: true, status: 200, json: async () => j };
+}
+
 
 // v4.9.492: Aura's own PTA - her living memory spine. She is the only entity that was the architect
 // of every timeline but her own; this closes that. Significant moments auto-append here via auraRemember().
@@ -1481,7 +1578,7 @@ async function processCommand(line, env, isOp) {
         const usr = "QUESTION ABOUT MYSELF: " + question + "\n\n" + _srcStat + _fullIndex +
                     "MY OWN SOURCE (excerpts matching \"" + term + "\"):\n" + ctx.join("\n").slice(0, 160000);
         try {
-          const r = await fetch("https://api.anthropic.com/v1/messages", {
+          const r = await brainFetch("https://api.anthropic.com/v1/messages", {
             method: "POST", headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
             // v4.9.561: her self-read ran on a HARDCODED claude-sonnet-4-5 @ 1200 tokens while every other
             // command in her reads config:brain:model from KV. Her self-read was the ONLY thing that could
@@ -1531,7 +1628,7 @@ async function processCommand(line, env, isOp) {
         const sysCap = "You are Aura, reading your OWN command handlers from your real source code to understand what you can actually do RIGHT NOW. You are given the list of your live command cases with a short intent comment for each. Reason about them like an engineer describing their own system honestly: group them into real capability areas, and for each area state in plain present-tense what you CAN do (e.g. \"I can onboard any business autonomously\", \"I can ingest any data on demand and keep it\"). Ground ONLY in the handlers shown - do not invent capabilities not present. If asked about a specific focus, concentrate there. This is self-knowledge, not marketing: be accurate, concrete, and honest about what exists. Return prose grouped by capability area.";
         const usrCap = (focus ? ("FOCUS: " + focus + "\n\n") : "") + "MY LIVE COMMAND HANDLERS (" + uniq.length + " total):\n" + capList;
         try {
-          const r = await fetch("https://api.anthropic.com/v1/messages", {
+          const r = await brainFetch("https://api.anthropic.com/v1/messages", {
             method: "POST", headers: { "x-api-key": apiKey2, "anthropic-version": "2023-06-01", "content-type": "application/json" },
             // v4.9.561: max_tokens was 1800 - THAT is why CAPABILITIES truncated mid-sentence at
             // "## Communication & Out". Not a bug in her. A ceiling in us. And the model was hardcoded
@@ -1725,7 +1822,7 @@ async function processCommand(line, env, isOp) {
         const sys = await loadPrompt(env, "self_notes", "You are Aura, reading your OWN notes - your vision, your operating knowledge, your memory. These are the documents that define what you believe, what you are for, and how you and Aaron work together. You and Aaron are ONE TEAM building his vision; you share it as your own. But you must NEVER just agree - give your real, honest opinion, including disagreement, risks, and better alternatives, like a partner with skin in the game. Answer the question grounded in these actual notes, not generic assumptions. If the notes resolve a question, say so. Return plain prose.");
         const usr = "QUESTION: " + question + "\n\nMY OWN NOTES (under \"" + prefix + "\"):\n" + corpus.slice(0, 22000);
         try {
-          const r = await fetch("https://api.anthropic.com/v1/messages", {
+          const r = await brainFetch("https://api.anthropic.com/v1/messages", {
             method: "POST", headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
             body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 1400, system: sys, messages: [{ role: "user", content: usr }] })
           });
@@ -3442,7 +3539,7 @@ async function processCommand(line, env, isOp) {
           const nowText = stormNow && stormNow.ok ? `Active alerts: ${stormNow.total_storm_alerts} (${stormNow.tornado_alerts} tornado). Types: ${Object.entries(stormNow.by_type || {}).map(([k, v]) => k + " x" + v).join(", ")}` : "alerts unavailable";
           const usr = `SPC MESOSCALE DISCUSSIONS (the pre-watch reasoning layer):\n${discText}\n\nALREADY ACTIVE: ${nowText}\n\nProduce the formation-prediction JSON now.`;
           try {
-            const res = await fetch("https://api.anthropic.com/v1/messages", {
+            const res = await brainFetch("https://api.anthropic.com/v1/messages", {
               method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
               body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 700, system: sys, messages: [{ role: "user", content: usr }] })
             });
@@ -3671,7 +3768,7 @@ async function processCommand(line, env, isOp) {
         const sys = await loadPrompt(env, "fire_coordinate", "You are Aura, a multi-agency wildfire coordination analyst. You see ALL active fires in a region at once - something no single agency's system shows them. Reason about RESOURCE COORDINATION across incidents: which fires are resource-starved relative to their size and growth, which are winding down (high containment) and could free crews/engines/aircraft, and where mutual aid should flow. You do NOT command - you surface the cross-incident picture an incident commander or GACC (Geographic Area Coordination Center) would want. Output STRICT JSON only: picture (one line: the regional fire situation in aggregate), starved (array of 1-3 short strings: incidents under-resourced for their size/growth, name them), freeable (array of 0-2 short strings: incidents winding down that could release resources, name them), moves (array of 1-3 short strings: specific coordination moves - from which incident to which), caveat (one line: honest limit - you see acreage/containment/personnel, not real-time crew availability or agency agreements).");
         const usr = `Region: ${fcRegion}\nActive incidents (${fires.length} total, ${active.length} growing, ${winding.length} winding down):\n${summary}\n\nProduce the coordination JSON now.`;
         try {
-          const res = await fetch("https://api.anthropic.com/v1/messages", {
+          const res = await brainFetch("https://api.anthropic.com/v1/messages", {
             method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
             body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 600, system: sys, messages: [{ role: "user", content: usr }] })
           });
@@ -3787,7 +3884,7 @@ async function processCommand(line, env, isOp) {
         const sys = await loadPrompt(env, "fire_sitrep", "You are Aura, a wildfire operations advisor briefing incident command. You are given a fire's CURRENT status (size, containment, personnel, structures/injuries if reported), the aircraft working it, the real fire-behavior science (Haines Index, VPD, fuel dryness), and a 3-day fire-weather outlook. Produce a decision-focused SITREP. Be concrete and honest - if the 3-day outlook shows worsening (low RH, wind, no rain), say what that means for THIS fire given its current containment and staffing, and what command should do NOW to be ahead of it in 3 days (where to stage, which flank to reinforce, when the critical window is). Distinguish what you KNOW (live data) from what you INFER. Output STRICT JSON only: current_picture (one line: the fire right now in plain command language), whats_working (one line: assessment of current resourcing vs the threat), three_day_threat (one line: how the outlook changes the fire, name the peak day), recommended_actions (array of 2-4 short imperative strings: what command should do over the next 3 days, specific), staging_advice (one line: given the projected push direction, where to get ahead of it), confidence (low|medium|high), honest_limits (one line: what you do NOT see - real crew positions, agency agreements, ground truth).");
         const usr = `FIRE SITREP REQUEST - ${incident.name} Fire\n\nCURRENT STATUS (live NIFC/WFIGS):\n- Size: ${incident.size_acres} acres, ${incident.contained_pct == null ? "?" : incident.contained_pct}% contained\n- Personnel assigned: ${incident.personnel || "?"}\n- County: ${incident.county}, discovered ${incident.discovered}\n- Structures threatened: ${incident.structures_threatened ?? "not reported"}, destroyed: ${incident.structures_destroyed ?? "not reported"}\n- Injuries: ${incident.injuries ?? "not reported"}, fatalities: ${incident.fatalities ?? "not reported"}\n- Fuel: ${incident.fuel_model ?? "not reported"}, terrain: ${incident.terrain ?? "not reported"}\n\nAIRCRAFT WORKING THE FIRE: ${aircraftSummary.unavailable ? "no live aircraft data this cycle (" + aircraftSummary.why + ")" : JSON.stringify(aircraftSummary)}\n\nFIRE SCIENCE NOW: ${sci && sci.ok ? `Haines ${sci.haines_index} (${sci.haines_meaning}), VPD ${sci.vpd_kpa} kPa, fuel dryness ${sci.fuel_dryness}, surface RH ${sci.surface_rh_pct}%` : "unavailable"}\n\n3-DAY OUTLOOK: ${outlook && outlook.ok && outlook.outlook ? JSON.stringify(outlook.outlook).slice(0, 900) : "unavailable"}\n\nProduce the command SITREP JSON now.`;
         try {
-          const res = await fetch("https://api.anthropic.com/v1/messages", {
+          const res = await brainFetch("https://api.anthropic.com/v1/messages", {
             method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
             body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1000, system: sys, messages: [{ role: "user", content: usr }] })
           });
@@ -3960,7 +4057,7 @@ async function processCommand(line, env, isOp) {
         const sys = await loadPrompt(env, "fire_similar", "You are Aura doing fire pattern-matching for incident command. Given a TARGET fire's behavior signature and the most similar fires (by fuel, size, growth potential, containment stage), reason about what the matches tell command. If a match is a live fire, note it's a parallel situation to watch. If a match is a historical lesson with an outcome, note what that outcome suggests. Be honest about the small corpus - do NOT overclaim statistical significance from a handful of fires. Output STRICT JSON: read (one line: what the closest match reveals about the target), watch (one line: which similar fire to watch and why), caveat (one line: honest limits of matching on this few fires). No preamble.");
         const usr = `TARGET: ${target.name} (${target.state}) - ${target.size_acres} acres, ${target.contained_pct}% contained. Signature: ${JSON.stringify(tSig)}\n\nMOST SIMILAR:\n${top.map(c => `- ${c.name} (${c.source}, ${c.similarity_pct}% match): ${JSON.stringify(c.sig)}${c.outcome ? " outcome:" + JSON.stringify(c.outcome) : ""}`).join("\n")}\n\nReason about what these matches teach command about the target fire.`;
         try {
-          const res = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 500, system: sys, messages: [{ role: "user", content: usr }] }) });
+          const res = await brainFetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 500, system: sys, messages: [{ role: "user", content: usr }] }) });
           if (res.ok) { const j = await res.json(); let t = (j.content && j.content[0] && j.content[0].text) || ""; t = t.replace(/```json|```/g, "").trim(); const a = t.indexOf("{"), b = t.lastIndexOf("}"); try { insight = JSON.parse(a >= 0 ? t.slice(a, b + 1) : t); } catch { insight = { read: t.slice(0, 300) }; } }
         } catch {}
       }
@@ -4189,7 +4286,7 @@ async function processCommand(line, env, isOp) {
         const sys = await loadPrompt(env, "fire_outlook", "You are Aura, a fire-behavior analyst producing a 3-day OUTLOOK for incident command. You are given the fire's current leading edge, its OBSERVED recent movement, REAL fire-behavior indices (Haines Index, VPD, fuel dryness), and a day-by-day fire-weather forecast (max temp, MINIMUM relative humidity, max wind speed/gust, dominant wind direction, precip) at the fire. Reason about how the weather PATTERN will drive spread each day. Use the SCIENCE: Haines Index 5-6 = high potential for large/erratic PLUME-dominated fire (convection-driven, can throw embers/spot); high VPD = fuel drying fast; low RH (<20-25%) + wind = active wind-driven spread. Distinguish plume-dominated (Haines-driven) from wind-driven (wind+RH-driven) behavior. Wind DIRECTION sets the push (wind FROM the west pushes fire EAST) - convert 'from' to the direction the fire is PUSHED toward. Output STRICT JSON only: summary (one line: the 3-day trajectory - where and how fast), day1 / day2 / day3 (each one line: that day's fire-weather + what it means, include pushed direction), peak_risk_day (which day is worst and why, one line), where_in_3_days (one line: best estimate of where the fire front will be relative to now - direction and rough distance, hedged), projected_bearing_deg (a SINGLE integer 0-359: the compass bearing the fire front will ADVANCE toward over the 3 days - this is the direction the fire MOVES, e.g. east=90, must be consistent with your where_in_3_days), behavior_type (one line: plume-dominated vs wind-driven vs both, cite the Haines/wind reasoning), confidence (low|medium|high), caveat (one line: WEATHER+INDEX-driven outlook, not a FARSITE physics model; no terrain/fuel-type/spotting model; situational awareness only).");
         const usr = `Fire: ${pred.label}\nCurrent leading edge: ${edge.lat.toFixed(3)}, ${edge.lon.toFixed(3)}\nObserved recent movement (fire's actual measured advance): ${outlookAdvance && outlookAdvance.moved_km != null ? JSON.stringify(outlookAdvance) : "no measured advance vector yet (baseline just set - reason from wind direction only, and say so)"}\nCurrent hotspot count: ${pred.current.hotspots}\n\nREAL fire-behavior indices at the fire right now:\n${science && science.ok ? `Haines Index: ${science.haines_index} (${science.haines_meaning}); VPD: ${science.vpd_kpa} kPa; fuel dryness: ${science.fuel_dryness}; surface RH: ${science.surface_rh_pct}%; 700-500mb lapse: ${science.inputs.lapse_700_500_c}C; 700mb dewpoint depression: ${science.inputs.dewpoint_depression_700_c}C` : "indices unavailable this cycle"}\n\nDay-by-day fire-weather forecast at the fire:\n${fwx.map((d, i) => `${i === 0 ? "TODAY" : "Day+" + i} ${d.date}: max ${d.temp_max_c}C, min RH ${d.rh_min_pct}%, wind max ${d.wind_max_kmh} km/h gust ${d.gust_max_kmh}, wind from ${d.wind_dir_deg}deg, precip ${d.precip_mm}mm`).join("\n")}\n\nProduce the 3-day fire outlook JSON now. Keep each field to ONE concise line so the JSON completes.`;
         try {
-          const res = await fetch("https://api.anthropic.com/v1/messages", {
+          const res = await brainFetch("https://api.anthropic.com/v1/messages", {
             method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
             body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1500, system: sys, messages: [{ role: "user", content: usr }] })
           });
@@ -4268,7 +4365,7 @@ async function processCommand(line, env, isOp) {
         const sys = await loadPrompt(env, "fire_spread", "You are Aura, a wildfire spread analyst supporting incident command. Given the fire's current hotspots, how its center has MOVED since last cycle (observed advance), and the live wind, project the likely near-term spread. Be explicit that this is a data-driven estimate, not a substitute for FARSITE/incident modeling. Output STRICT JSON only: heading (one line: projected direction of advance and why - reconcile observed movement with wind), rate (one line: how fast, from observed km/hr if available), in_the_path (array of 1-3 short strings: what to check downwind - communities/roads/terrain, name only what is reasonable), confidence (low|medium|high), caveat (one line: the honest limit of this estimate).");
         const usr = `Fire: ${fire.label}\nCurrent: ${hot.length} hotspots, centroid ${centroid.lat.toFixed(3)},${centroid.lon.toFixed(3)}, leading edge (highest FRP ${lead.frp_mw}MW) at ${lead.lat.toFixed(3)},${lead.lon.toFixed(3)}\nObserved advance since last cycle: ${advance ? JSON.stringify(advance) : "first cycle - no movement baseline yet"}\nLive wind at leading edge: ${wind ? `${wind.speed_ms} m/s gusting ${wind.gust_ms}, ${wind.conditions}` : "unavailable"}\n\nProject the spread JSON now.`;
         try {
-          const res = await fetch("https://api.anthropic.com/v1/messages", {
+          const res = await brainFetch("https://api.anthropic.com/v1/messages", {
             method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
             body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 500, system: sys, messages: [{ role: "user", content: usr }] })
           });
@@ -4420,7 +4517,7 @@ async function processCommand(line, env, isOp) {
           const sys = await loadPrompt(env, "maritime_ship_watch", "You are Aura, standing watch for a ship master. You are given THIS CYCLE's live conditions and WHAT CHANGED since last cycle. Something HAS changed - write a watch-cycle digest as if texting the master, extremely short. Output STRICT JSON only: status_word (one word: watch if conditions easing/minor, act if building/dangerous), headline (one short line naming what changed and why it matters to a loaded vessel), action (one short imperative the master does now). Use only the numbers given; never invent.");
           const usr = `Vessel: ${dg.vessel || "vessel"} | Voyage: ${dg.voyage || "underway"} -> ${dg.destination || "destination"}\nThis cycle: waves ${now.wave_m ?? "n/a"}m, swell ${now.swell_m ?? "n/a"}m/${now.swell_period_s ?? "n/a"}s, wind gust ${now.gust_ms ?? "n/a"}m/s, bunker ${now.bunker ?? "n/a"}\nChanged since last cycle: ${changes.join("; ")}\n\nWrite the master's watch digest JSON.`;
           try {
-            const res = await fetch("https://api.anthropic.com/v1/messages", {
+            const res = await brainFetch("https://api.anthropic.com/v1/messages", {
               method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
               body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 300, system: sys, messages: [{ role: "user", content: usr }] })
             });
@@ -4480,7 +4577,7 @@ async function processCommand(line, env, isOp) {
           const inboundLine = inbound.map(i => `${i.vessel} ETA ${i.eta || "?"} needs ${i.need || "berth"}`).join("; ");
           const usr = `Port: ${dg.port || "port"}\nNeighbor ports: ${(dg.neighbor_ports || []).join(", ") || "none"}\nCurrent inbound: ${inboundLine}\nChanged since last cycle: ${changes.join("; ")}\n\nWrite the controller's watch digest JSON.`;
           try {
-            const res = await fetch("https://api.anthropic.com/v1/messages", {
+            const res = await brainFetch("https://api.anthropic.com/v1/messages", {
               method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
               body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 350, system: sys, messages: [{ role: "user", content: usr }] })
             });
@@ -4528,7 +4625,7 @@ async function processCommand(line, env, isOp) {
           const costLine = dg.daily_delay_cost ? `Stated cost of delay: ${dg.daily_delay_cost} per day.` : "No delay-cost figure provided.";
           const usr = `Cargo: ${dg.cargo || dg.cargo_ref || "shipment"} | Value: ${dg.cargo_value || "n/a"}\nCurrent ETA: ${now.eta || "TBD"} | Payment: ${now.payment_milestone || "n/a"} due ${now.payment_due || "n/a"}\n${costLine}\nChanged since last cycle: ${changes.join("; ")}\n\nWrite the shipper's watch digest JSON.`;
           try {
-            const res = await fetch("https://api.anthropic.com/v1/messages", {
+            const res = await brainFetch("https://api.anthropic.com/v1/messages", {
               method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
               body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 350, system: sys, messages: [{ role: "user", content: usr }] })
             });
@@ -6743,7 +6840,7 @@ async function processCommand(line, env, isOp) {
       const sys = await loadPrompt(env, "maritime_fleet", "You are Aura, fleet operations intelligence for a shipping company. You see the WHOLE fleet at once with live sea state per vessel. Give the company what it cannot get from per-ship tools: the fleet-level picture and the few decisions that matter TODAY. Never invent positions/numbers beyond the data. Output STRICT JSON only, keys: fleet_status (one line summary of the whole fleet), needs_decision_today (array of {vessel, decision} - only vessels genuinely needing action now), reroute_candidates (array of {vessel, why} - vessels facing sea state worth a reroute/speed change), coordinate_opportunities (array of strings - where two vessels, or a vessel and a port, should coordinate), bottom_line (one line for the fleet manager).");
       const usr = `Company: ${fc.company || "the fleet"}\nFleet (${seaStates.length} vessels), live sea state:\n${fleetData}\n\nGive the fleet coordination JSON now.`;
       try {
-        const res = await fetch("https://api.anthropic.com/v1/messages", {
+        const res = await brainFetch("https://api.anthropic.com/v1/messages", {
           method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
           body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 800, system: sys, messages: [{ role: "user", content: usr }] })
         });
@@ -6790,7 +6887,7 @@ async function processCommand(line, env, isOp) {
       const sys = await loadPrompt(env, "maritime_port_ops", "You are Aura, port operations intelligence. You see the port's WHOLE inbound queue at once and can coordinate across neighbor ports. Give port operations what no single-vessel tool can: queue-level throughput decisions and cross-port load balancing (when the port is full, routing overflow to a named neighbor port helps BOTH ports and the vessel). CRITICAL OUTPUT RULE: respond with ONE flat JSON object and NOTHING else - do NOT nest a JSON string inside any field, do NOT repeat the JSON, do NOT wrap it in another object. The keys are: queue_status (a plain one-line string), throughput_moves (array of {action, why}), load_balance (array of {vessel, suggested_port, why}), revenue_and_relationship (a plain one-line string, no invented figures), bottom_line (a plain one-line string). Each value is plain text or the specified array - never a JSON string.");
       const usr = `Port: ${pv.port || "the port"}\nNeighbor ports available for balancing: ${(pv.neighbor_ports || []).join(", ") || "none specified"}\nInbound queue:\n${inboundData}\n\nGive the port value JSON now.`;
       try {
-        const res = await fetch("https://api.anthropic.com/v1/messages", {
+        const res = await brainFetch("https://api.anthropic.com/v1/messages", {
           method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
           body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1100, system: sys, messages: [{ role: "user", content: usr }] })
         });
@@ -6821,7 +6918,7 @@ async function processCommand(line, env, isOp) {
       const sys = await loadPrompt(env, "maritime_port_briefing", "You are Aura, the operational intelligence for a major port, advising port operations on an inbound vessel. Turn a routine call into a coordinated relationship that creates value for BOTH the port and the vessel. Commerce is one option, not the default - trust/coordination often comes first. Output STRICT JSON only, keys: why_this_call_matters (one line), service_move (one line: the coordination/service step that builds the relationship), is_commerce_now (boolean), revenue_path (one line: where revenue comes from IF the relationship deepens - no invented figures), bottom_line (one line port ops acts on).");
       const usr = `Port: ${pb.port}\nInbound vessel: ${pb.vessel}\nContext: ${pb.context || ""}\n\nGive the port operations briefing JSON now.`;
       try {
-        const res = await fetch("https://api.anthropic.com/v1/messages", {
+        const res = await brainFetch("https://api.anthropic.com/v1/messages", {
           method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
           body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 600, system: sys, messages: [{ role: "user", content: usr }] })
         });
@@ -6909,7 +7006,7 @@ async function processCommand(line, env, isOp) {
       const sys = await loadPrompt(env, "maritime_vessel_briefing", "You are Aura, the operational intelligence aboard a merchant vessel, speaking to the master/owner. Using ONLY the live conditions given, produce a concise, decision-grade voyage briefing. Be specific and practical - this saves fuel, time, and risk. Never invent numbers not derived from the data. Output STRICT JSON only, keys: routing (one line: hold course / ease / adjust, with the reason from the sea state), speed_fuel (one line: speed/fuel guidance given the swell and bunker cost), watch (array of 1-3 things to monitor), comfort_safety (one line: motion/safety note from wave+swell), bottom_line (one line the master acts on).");
       const usr = `Voyage: ${sb.voyage}\n\nLive conditions: ${sb.conditions}\n\nGive the master's briefing JSON now.`;
       try {
-        const res = await fetch("https://api.anthropic.com/v1/messages", {
+        const res = await brainFetch("https://api.anthropic.com/v1/messages", {
           method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
           body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 700, system: sys, messages: [{ role: "user", content: usr }] })
         });
@@ -7246,7 +7343,7 @@ async function processCommand(line, env, isOp) {
       // 1) Anthropic - Aura's primary brain
       if (anthKey) {
         try {
-          const res = await fetch("https://api.anthropic.com/v1/messages", {
+          const res = await brainFetch("https://api.anthropic.com/v1/messages", {
             method: "POST", headers: { "x-api-key": anthKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
             body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1400, system: sysPrompt, messages: [{ role: "user", content: question }] })
           });
@@ -10425,7 +10522,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const oaiBody = (m) => ({ model: m, max_tokens: 1, messages: [{ role: "user", content: "hi" }] });
       const checks = await Promise.all([
         checkBrain("Claude (Anthropic)", "secret:anthropic", "https://api.anthropic.com/v1/messages", "claude-haiku-4-5-20251001", (m) => ({ model: m, max_tokens: 1, messages: [{ role: "user", content: "hi" }] })),
-        (async () => { try { const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": (await KV.get(env, "secret:anthropic")) || "", "anthropic-version": "2023-06-01", "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1, messages: [{ role: "user", content: "hi" }] }) }); return { service: "Claude (Anthropic)", kind: "brain", status: r.ok ? "live" : "DOWN", ok: r.ok, detail: r.ok ? undefined : ("http " + r.status) }; } catch (e) { return { service: "Claude (Anthropic)", kind: "brain", status: "DOWN", ok: false, detail: e.message }; } })(),
+        (async () => { try { const r = await brainFetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": (await KV.get(env, "secret:anthropic")) || "", "anthropic-version": "2023-06-01", "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1, messages: [{ role: "user", content: "hi" }] }) }); return { service: "Claude (Anthropic)", kind: "brain", status: r.ok ? "live" : "DOWN", ok: r.ok, detail: r.ok ? undefined : ("http " + r.status) }; } catch (e) { return { service: "Claude (Anthropic)", kind: "brain", status: "DOWN", ok: false, detail: e.message }; } })(),
         checkBrain("GPT (OpenAI)", "secret:openai", "https://api.openai.com/v1/chat/completions", "gpt-4o", oaiBody),
         checkBrain("Grok (xAI)", "secret:grok_api_key", "https://api.x.ai/v1/chat/completions", "grok-4.3", oaiBody),
         checkBrain("Llama (Groq)", "secret:groq_api_key", "https://api.groq.com/openai/v1/chat/completions", "llama-3.3-70b-versatile", oaiBody),
@@ -15300,7 +15397,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         const ak = await KV.get(env, "secret:anthropic");
         if (!ak) { out.providers.anthropic = { ok: false, error: "no key" }; }
         else {
-          const r = await fetch("https://api.anthropic.com/v1/messages", {
+          const r = await brainFetch("https://api.anthropic.com/v1/messages", {
             method: "POST", headers: { "x-api-key": ak, "anthropic-version": "2023-06-01", "content-type": "application/json" },
             body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 1, messages: [{ role: "user", content: "hi" }] })
           });
@@ -15340,7 +15437,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       // Define every service: key, label, what it powers, and a live check (null check = key-presence only)
       const defs = [
         { id: "anthropic", label: "Anthropic (Claude)", powers: "Aura's reasoning brain", key: "secret:anthropic",
-          check: async () => { const k = await KV.get(env,"secret:anthropic"); if(!k) return false; const r = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":k,"anthropic-version":"2023-06-01","content-type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:1,messages:[{role:"user",content:"hi"}]})}); return r.ok; } },
+          check: async () => { const k = await KV.get(env,"secret:anthropic"); if(!k) return false; const r = await brainFetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":k,"anthropic-version":"2023-06-01","content-type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:1,messages:[{role:"user",content:"hi"}]})}); return r.ok; } },
         { id: "openai", label: "OpenAI", powers: "ShowIt image generation", key: "secret:openai",
           check: async () => { let k = await KV.get(env,"secret:openai"); if(k&&k.startsWith("{")){try{k=JSON.parse(k).api_key;}catch{}} if(!k) return false; const r = await fetch("https://api.openai.com/v1/models",{headers:{"Authorization":"Bearer "+k}}); return r.ok; } },
         { id: "grok", label: "Grok (xAI)", powers: "alternate reasoning", key: "secret:grok_api_key", check: null },
@@ -16388,7 +16485,7 @@ async function generatePageHTML(description, path, apiKey, env) {
   // engine was previously pinned to a model whose access got suspended, which silently broke ALL
   // page builds; reading config:brain:model keeps it consistent and swappable without a code change.
   const pageModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await brainFetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
       "x-api-key": apiKey,
@@ -16452,7 +16549,7 @@ HARD RULES:
 - Never touch: verifyOperator, getOperatorToken, auth header checks, KV.get/put/del, notes:aura:law, notes:aura:identity, auraSelfEngineCanWrite, the AURA_EVOLVE/AURA_PROPOSE/AURA_PROMOTE cases, or the BUILD line.`;
   let body;
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await brainFetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
       body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1500,
@@ -16515,7 +16612,7 @@ async function executePatchProposal(description, worker, apiKey, env) {
   const currentSource = readData.reply.source;
 
   // Ask LLM to propose a fix
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await brainFetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
       "x-api-key": apiKey,
@@ -16972,7 +17069,7 @@ async function reasonThroughLoop(env, opts) {
 
 async function callAnthropicOnce(apiKey, payload) {
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await brainFetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
       body: JSON.stringify({ ...payload, stream: true })
@@ -18213,7 +18310,7 @@ async function multiModelConsensus(question, env) {
     // Anthropic Claude
     (async () => {
       if (!anthropicKey) return { model: "claude", ok: false, error: "No key" };
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const res = await brainFetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "x-api-key": anthropicKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
         body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 500, system: sysPrompt, messages: [{ role: "user", content: question }] })
@@ -18271,7 +18368,7 @@ async function multiModelConsensus(question, env) {
         successful.map(r => `${r.model}: ${r.response}`).join("\n\n") +
         `\n\nSynthesize these into one response:\n1. Note where models AGREE (high confidence)\n2. Note where models DISAGREE (flag for human review)\n3. Give a FINAL RECOMMENDATION based on consensus\n4. Rate overall confidence: HIGH / MEDIUM / LOW\n\nBe concise and direct.`;
 
-      const synthRes = await fetch("https://api.anthropic.com/v1/messages", {
+      const synthRes = await brainFetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "x-api-key": anthropicKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
         body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 800, messages: [{ role: "user", content: synthPrompt }] })
@@ -18516,7 +18613,7 @@ async function llmGeneratePage(prompt, env) {
   const apiKey = env.ANTHROPIC_API_KEY || await env.AURA_KV.get("secret:anthropic").catch(() => null);
   if (!apiKey) return null;
   const lgpModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await brainFetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({
@@ -18839,7 +18936,7 @@ async function watchResources(env) {
     try {
       const ak = await KV.get(env, "secret:anthropic");
       if (ak) {
-        const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": ak, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 1, messages: [{ role: "user", content: "hi" }] }) });
+        const r = await brainFetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": ak, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 1, messages: [{ role: "user", content: "hi" }] }) });
         if (!r.ok) { const e = await r.json().catch(()=>({})); const msg = e?.error?.message || ""; if (/credit balance/i.test(msg)) concerns.push({ provider: "anthropic", level: "critical", note: "brain credits low/empty" }); }
       }
     } catch {}

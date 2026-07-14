@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.564-2026-07-13";
+const BUILD = "aura-core-v4.9.565-2026-07-13";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -31,7 +31,15 @@ const BUILD = "aura-core-v4.9.564-2026-07-13";
 //   3. THE METER. Logs what every backend call actually costs, so the burn is finally VISIBLE here too.
 //
 // It returns a Response-shaped object, so callers keep doing r.ok / await r.json() unchanged.
+// The 28 call sites were renamed mechanically (fetch -> brainFetch) and therefore pass only TWO args.
+// brainFetch needs `env` to reach KV for the L1 cache. Rather than edit 28 multi-line call sites (risk),
+// we capture env ONCE at the top of processCommand - which every one of those 28 calls lives inside -
+// and brainFetch falls back to it. Verified by the failing test: the meter fired but L1 never hit,
+// because env was undefined and `if (env && env.AURA_KV)` silently skipped. Arity bug, caught by testing.
+let _BRAIN_ENV = null;
+
 async function brainFetch(url, opts, env) {
+  env = env || _BRAIN_ENV;
   let body;
   try { body = JSON.parse(opts && opts.body ? opts.body : "{}"); } catch { body = {}; }
 
@@ -1388,6 +1396,7 @@ async function webSearch(query, env) {
 }
 
 async function processCommand(line, env, isOp) {
+  _BRAIN_ENV = env;   // so brainFetch can reach KV for the L1 answer cache (see note above)
   const parts = line.trim().split(/\s+/);
   const cmd = (parts[0] || "").toUpperCase();
   const args = parts.slice(1);

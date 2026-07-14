@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.566-2026-07-14";
+const BUILD = "aura-core-v4.9.567-2026-07-14";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -1422,6 +1422,29 @@ async function webSearch(query, env) {
 
 async function processCommand(line, env, isOp) {
   _BRAIN_ENV = env;   // so brainFetch can reach KV for the L1 answer cache (see note above)
+
+  // ══ THE RESPONSE-TIME METER ── ON EVERY COMMAND, NO EXCEPTIONS ═════════════════════
+  // Aaron has asked for this repeatedly: "keep the response-time meter on ALL these commands."
+  // He was right that it was missing - only 2 of 305 handlers reported elapsed_ms. So we time them
+  // ALL, in the ONE place every command passes through, and a new handler cannot forget to be timed.
+  // Slow is a bug even when it is free: a 62-second answer is a broken answer.
+  const _cmdT0 = Date.now();
+  const _cmdName = String(line || "").trim().split(/\s+/)[0] || "?";
+  const _stamp = (out) => {
+    const ms = Date.now() - _cmdT0;
+    try {
+      if (out && typeof out === "object") {
+        if (out.payload && typeof out.payload === "object" && out.payload.elapsed_ms === undefined) {
+          out.payload.elapsed_ms = ms;
+        } else if (out.elapsed_ms === undefined && !out.payload) {
+          out.elapsed_ms = ms;
+        }
+      }
+    } catch {}
+    if (ms > 5000) console.warn("[CMD] " + _cmdName + " " + ms + "ms  ⚠ SLOW");
+    else console.log("[CMD] " + _cmdName + " " + ms + "ms");
+    return out;
+  };
   const parts = line.trim().split(/\s+/);
   const cmd = (parts[0] || "").toUpperCase();
   const args = parts.slice(1);

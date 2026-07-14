@@ -1080,21 +1080,10 @@ async function governorRecord(env, action, pageId) {
 // === RELIABLE SELF-SOURCE READ (v4.9.493) - one helper all self-reads use ===
 // The public raw CDN 404s under load / after pushes; this tries authenticated GitHub API first,
 // then raw CDN, then a KV cache, and self-heals the cache on success. So Aura can ALWAYS read herself.
-// ══ HER BODY ── the map of what she is, and where each part LIVES ══════════════════════════
-// She read ONE file (aura-core/index.mjs) and called it self-knowledge - reading your hands and
-// thinking you have seen yourself. Tonight aura-think (her BRAIN: the ladder, cache, router, meter,
-// all of AIMARGIN) was pushed to GitHub for the first time. Now she can read her whole body.
-// Each part: [repo, branch, path]. Add a worker here and she can read it.
-const AURA_BODY = {
-  "aura-core":  ["aura-core",  "main",   "src/index.mjs"],
-  "aura-think": ["aura-think", "master", "src/server.ts"],
-};
-
 async function readOwnSource(env, branch, worker) {
-  const _part = AURA_BODY[worker] || AURA_BODY["aura-core"];
-  const _repo = _part[0];
-  const _branch = branch || _part[1];
-  const _path = _part[2];
+  const _branch = branch || "main";
+  const _repo = "aura-core";
+  const _path = "src/index.mjs";
   // v4.9.499: FIX the 1MB self-read blind spot. The GitHub *contents* API truncates files at 1MB even
   // with the raw accept header - and this index is ~1.7MB, so everything past ~line 10960 was INVISIBLE
   // to self-read (this is why GREP kept returning "zero hits" for real code past that point, and why she
@@ -1495,7 +1484,7 @@ async function processCommand(line, env, isOp) {
       // Optional "WORKER <name>" prefix lets Aura read ANY of her workers, not just aura-core.
       // e.g. AURA_READ_SELF WORKER aura-comms GREP greeting. Repos are private, so we fetch via the
       // GitHub contents API with the stored token. No WORKER prefix = aura-core (her default self).
-      const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-comms": "src/index.mjs", "aura-host": "src/index.mjs", "aura-media": "src/index.mjs", "aura-ops": "src/index.mjs", "aura-stream": "src/index.mjs" };
+      const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-think": "src/server.ts", "aura-comms": "src/index.mjs", "aura-host": "src/index.mjs", "aura-media": "src/index.mjs", "aura-ops": "src/index.mjs", "aura-stream": "src/index.mjs" };
       let worker = "aura-core";
       let readBranch = "main"; // v4.9.550: CANDIDATE reads the proposal branch (aura-proposes) so she can VERIFY her own edit before it deploys
       let rsArgs = args, rsRest = rest;

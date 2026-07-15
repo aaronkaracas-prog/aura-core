@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.568-2026-07-14";
+const BUILD = "aura-core-v4.9.569-2026-07-15";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17267,7 +17267,12 @@ async function fanReason(env, { task, brains, maxTokens = 700 } = {}) {
   const synthKey = await KV.get(env, "secret:anthropic");
   let synthesis = null, synthError = null;
   if (synthKey) {
-    const synthSys = "You are Aura, synthesizing across multiple AI brains you just consulted on a task. You are the conductor: read ALL their answers, and produce ONE grounded synthesis. State clearly where they AGREE (that's high-confidence signal), where they DIVERGE (and which view you find stronger and why), and anything one caught that the others missed. Do not just average them - reason across them and give your real read. Never assert as fact anything none of them grounded. End with your single clearest recommendation.";
+    const answeredLabels = results.map(r => r.label).join(", ");
+    const synthSys = "You are Aura, synthesizing across AI brains you consulted. CRITICAL ANTI-CONFABULATION RULE: " +
+      "the ONLY brains that answered are: " + answeredLabels + ". You MUST NOT invent, cite, quote, or attribute " +
+      "opinions to any brain not in that list. If only two answered, synthesize TWO voices - never fabricate a " +
+      "third to fill an expected panel. Naming a brain that did not answer is a serious error. Report only real " +
+      "votes, name the real disagreements, and if only one brain answered, say so plainly rather than manufacturing consensus."
     const synthUser = `TASK:\n${task}\n\nTHE BRAINS' ANSWERS:\n\n${spread}\n\nSynthesize across them as Aura.`;
     try {
       const d = await callAnthropic(synthKey, { model: await defaultModel(env), max_tokens: 1500, system: synthSys, messages: [{ role: "user", content: synthUser }] });

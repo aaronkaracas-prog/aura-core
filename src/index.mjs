@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.571-2026-07-17";
+const BUILD = "aura-core-v4.9.572-2026-07-17";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -18888,7 +18888,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   const quality = ((await env.AURA_KV.get("config:image:quality").catch(() => null)) || "low").trim();
   const p = String(prompt).slice(0, 4000);
   const id = "img_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  let b64 = null, err = null;
+  let b64 = null, err = null, imgUsage = null;
   try {
     if (model.startsWith("@cf/")) {
       // Cloudflare Workers AI - near-free, no external key, already bound as env.AI. flux-1-schnell returns
@@ -18910,6 +18910,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       const d = await r.json();
       if (!r.ok) throw new Error(d?.error?.message || JSON.stringify(d).slice(0, 300));
       const item = d?.data?.[0] || {};
+      imgUsage = d?.usage || null;   // provider's OWN token report for this image - ground truth, no guess
       b64 = item.b64_json || null;
       if (!b64 && item.url) { const ir = await fetch(item.url); const ab = await ir.arrayBuffer(); b64 = btoa(String.fromCharCode(...new Uint8Array(ab))); }
     } else {
@@ -18917,13 +18918,44 @@ async function auraGenerateImage(prompt, env, opts = {}) {
     }
   } catch (e) { err = String(e && e.message ? e.message : e); }
   if (!b64) return { ok: false, error: "image generation failed (" + model + "): " + (err || "no image returned") };
+
+  // MEASURE THE SPEND - AIMARGIN's core law: every token that flows is accounted, and an image is tokens.
+  // Image models bill by OUTPUT TOKENS (a fixed count per quality/size), reported by the provider in usage.
+  // We keep the REAL token count (ground truth, universal across providers) AND convert to dollars via the
+  // model's published per-quality figure, so the floor is MEASURED - not eyeballed off a lagging dashboard.
+  const tokens = imgUsage ? (imgUsage.total_tokens ?? imgUsage.output_tokens ?? null) : null;
+  let costUsd = null;
+  try {
+    const RATE = {   // approx $/image at 1024x1024, model -> quality (OpenAI published; update on price change)
+      "gpt-image-1-mini": { low: 0.005, medium: 0.030, high: 0.052 },
+      "gpt-image-1":      { low: 0.011, medium: 0.040, high: 0.170 },
+      "gpt-image-1.5":    { low: 0.009, medium: 0.034, high: 0.133 },
+      "gpt-image-2":      { low: 0.006, medium: 0.053, high: 0.211 },
+    };
+    const mkey = Object.keys(RATE).find((k) => model.toLowerCase().startsWith(k));
+    if (mkey) costUsd = RATE[mkey][quality] ?? RATE[mkey].medium ?? null;
+    // @cf/ Cloudflare models are effectively free-tier compute - no per-image token bill to meter.
+  } catch {}
+  // Rolling per-day image meter (the TREASURY for images), same shape as the text meter.
+  try {
+    const day = new Date().toISOString().slice(0, 10);
+    const mk = "meter:images:" + day;
+    const raw = await env.AURA_KV.get(mk);
+    const rec = raw ? JSON.parse(raw) : { day, count: 0, tokens: 0, cost_usd: 0 };
+    rec.count += 1;
+    rec.tokens += (tokens || 0);
+    rec.cost_usd = Math.round(((rec.cost_usd || 0) + (costUsd || 0)) * 1e6) / 1e6;
+    rec.last = { id, model, quality, tokens, cost_usd: costUsd, at: new Date().toISOString() };
+    await env.AURA_KV.put(mk, JSON.stringify(rec), { expirationTtl: 30 * 24 * 3600 }).catch(() => {});
+  } catch {}
+
   const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
   if (env.AURA_IMAGES) { try { await env.AURA_IMAGES.put(`${id}.png`, bytes, { httpMetadata: { contentType: "image/png" } }); } catch {} }
   await env.AURA_KV.put(`image:${id}`, b64).catch(() => {});
-  const meta = { id, prompt: p.slice(0, 1000), created: new Date().toISOString(), entity: opts.entity || null, source: opts.source || "showit", model, url: `https://auras.guide/image/${id}` };
+  const meta = { id, prompt: p.slice(0, 1000), created: new Date().toISOString(), entity: opts.entity || null, source: opts.source || "showit", model, quality, tokens, cost_usd: costUsd, url: `https://auras.guide/image/${id}` };
   await env.AURA_KV.put(`imagemeta:${id}`, JSON.stringify(meta)).catch(() => {});
   try { await env.AURA_MEMORY.prepare("INSERT INTO events (session_id, ts, type, body, entity_id, channel, summary) VALUES (?, ?, ?, ?, ?, ?, ?)").bind("image_gen", Date.now(), "image_created", JSON.stringify(meta), meta.entity || "system", "image", p.slice(0, 120)).run(); } catch {}
-  return { ok: true, id, image_url: meta.url, prompt: meta.prompt };
+  return { ok: true, id, image_url: meta.url, prompt: meta.prompt, model, quality, tokens, cost_usd: costUsd };
 }
 
 // SHOW IT â€” Aura's universal visual verb. Everywhere she lives, when a moment is better shown

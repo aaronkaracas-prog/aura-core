@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.573-2026-07-17";
+const BUILD = "aura-core-v4.9.574-2026-07-17";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -18944,6 +18944,22 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       imgUsage = d?.usage || null;   // provider's OWN token report for this image - ground truth, no guess
       b64 = item.b64_json || null;
       if (!b64 && item.url) { const ir = await fetch(item.url); const ab = await ir.arrayBuffer(); b64 = btoa(String.fromCharCode(...new Uint8Array(ab))); }
+    } else if (/^grok-imagine/i.test(model)) {
+      // xAI Grok image (Aurora). OpenAI-compatible /images/generations at api.x.ai, key XAI_API_KEY.
+      // xAI does NOT support quality/size/style on images - sending them errors - so we omit them here.
+      let key = env.XAI_API_KEY || await env.AURA_KV.get("secret:xai").catch(() => null);
+      if (!key) throw new Error("no xAI key");
+      const r = await fetch("https://api.x.ai/v1/images/generations", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
+        body: JSON.stringify({ model, prompt: p, n: 1, response_format: "b64_json" })
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error?.message || JSON.stringify(d).slice(0, 300));
+      const item = d?.data?.[0] || {};
+      imgUsage = d?.usage || null;
+      b64 = item.b64_json || null;
+      if (!b64 && item.url) { const ir = await fetch(item.url); const ab = await ir.arrayBuffer(); b64 = btoa(String.fromCharCode(...new Uint8Array(ab))); }
     } else {
       throw new Error("unknown image model in config:image:model: " + model);
     }
@@ -18957,7 +18973,9 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   const tokens = imgUsage ? (imgUsage.total_tokens ?? imgUsage.output_tokens ?? null) : null;
   let costUsd = null;
   try {
-    const RATE = {   // approx $/image at 1024x1024, model -> quality (OpenAI published; update on price change)
+    const RATE = {   // approx $/image, model -> quality (published rates; update on price change). More-specific keys first.
+      "grok-imagine-image-quality": { low: 0.005, medium: 0.005, high: 0.005 },   // xAI flat per-image (no tiers)
+      "grok-imagine-image":         { low: 0.002, medium: 0.002, high: 0.002 },   // xAI flat per-image (no tiers)
       "gpt-image-1-mini": { low: 0.005, medium: 0.030, high: 0.052 },
       "gpt-image-1":      { low: 0.011, medium: 0.040, high: 0.170 },
       "gpt-image-1.5":    { low: 0.009, medium: 0.034, high: 0.133 },

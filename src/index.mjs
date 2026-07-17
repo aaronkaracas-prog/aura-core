@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.570-2026-07-17";
+const BUILD = "aura-core-v4.9.571-2026-07-17";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -18882,6 +18882,10 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // a margin engine never defaults to the priciest option. To switch providers: set config:image:model in
   // KV, no redeploy.
   const model = ((await env.AURA_KV.get("config:image:model").catch(() => null)) || "@cf/black-forest-labs/flux-1-schnell").trim();
+  // IMAGE FLOOR LEVER, margin-governed like the model. Quality is the 9x token lever on OpenAI image models
+  // (low ~85 tok vs high ~765). Default LOW - the floor - and the margin layer flips it up only when a
+  // specific job (a customer-facing hero) actually needs it. Same doctrine as text: cheapest that does the job.
+  const quality = ((await env.AURA_KV.get("config:image:quality").catch(() => null)) || "low").trim();
   const p = String(prompt).slice(0, 4000);
   const id = "img_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   let b64 = null, err = null;
@@ -18901,7 +18905,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       const r = await fetch("https://api.openai.com/v1/images/generations", {
         method: "POST",
         headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
-        body: JSON.stringify({ model, prompt: p, n: 1, size: "1024x1024" })
+        body: JSON.stringify({ model, prompt: p, n: 1, size: "1024x1024", quality })
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d?.error?.message || JSON.stringify(d).slice(0, 300));

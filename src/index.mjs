@@ -15712,58 +15712,14 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
     }
     case "GENERATE_IMAGE": {
       if (!isOp) return { cmd: "GENERATE_IMAGE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      // Generate an image via OpenAI (gpt-image-1), the engine ShowIt is built around. Returns a viewable URL/data.
+      // Routes through the AGNOSTIC image core (auraGenerateImage): the margin layer picks the model via
+      // config:image:model. No provider named here either - ShowIt and GENERATE_IMAGE share ONE agnostic door.
       const prompt = args.join(" ").trim();
-      const opts = {};
       if (!prompt) return { cmd: "GENERATE_IMAGE", payload: { ok: false, error: "Usage: GENERATE_IMAGE <prompt>" } };
-      let openaiKey = env.OPENAI_API_KEY || await KV.get(env, "secret:openai");
-      if (openaiKey && openaiKey.startsWith("{")) { try { openaiKey = JSON.parse(openaiKey).api_key; } catch {} }
-      if (!openaiKey) return { cmd: "GENERATE_IMAGE", payload: { ok: false, error: "No OpenAI key" } };
-      try {
-        const r = await fetch("https://api.openai.com/v1/images/generations", {
-          method: "POST",
-          headers: { "Authorization": "Bearer " + openaiKey, "Content-Type": "application/json" },
-          body: JSON.stringify({ model: "gpt-image-1", prompt: prompt.slice(0, 4000), n: 1, size: "1024x1024" })
-        });
-        const d = await r.json();
-        if (!r.ok) return { cmd: "GENERATE_IMAGE", payload: { ok: false, http: r.status, error: d?.error?.message || JSON.stringify(d).slice(0,300) } };
-        const item = d?.data?.[0] || {};
-        const id = "img_" + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
-        let imageRef = null, stored = null, backend = null;
-        let b64 = item.b64_json || null;
-        // If the engine returned a URL instead of b64, fetch the bytes so we can persist them.
-        if (!b64 && item.url) {
-          try { const ir = await fetch(item.url); const ab = await ir.arrayBuffer();
-            b64 = btoa(String.fromCharCode(...new Uint8Array(ab))); } catch {}
-        }
-        if (b64) {
-          const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-          // PRIMARY: permanent R2 storage â€” images never expire (the glasses-vision requirement)
-          if (env.AURA_IMAGES) {
-            try { await env.AURA_IMAGES.put(`${id}.png`, bytes, { httpMetadata: { contentType: "image/png" } }); backend = "r2"; }
-            catch (e) { backend = "r2_failed:" + e.message; }
-          }
-          // SAFETY NET: also keep in KV (no expiry now) until R2 confirmed reliable
-          await env.AURA_KV.put(`image:${id}`, b64).catch(() => {});
-          stored = id;
-          imageRef = `https://auras.guide/image/${id}`;
-        }
-        // CONTEXT EVENT â€” makes the image findable forever ("what was that car 3 years ago")
-        const meta = {
-          id, prompt: prompt.slice(0, 1000), created: new Date().toISOString(),
-          entity: opts.entity || null, source: opts.source || "generate_image",
-          url: imageRef, backend
-        };
-        await env.AURA_KV.put(`imagemeta:${id}`, JSON.stringify(meta)).catch(() => {});
-        try {
-          await env.AURA_MEMORY.prepare("INSERT INTO events (session_id, ts, type, body, entity_id, channel, summary) VALUES (?, ?, ?, ?, ?, ?, ?)")
-            .bind("image_gen", Date.now(), "image_created", JSON.stringify(meta), meta.entity || "system", "image", prompt.slice(0, 120)).run();
-        } catch {}
-        await env.AURA_KV.put("monitor:last_image", JSON.stringify(meta)).catch(() => {});
-        return { cmd: "GENERATE_IMAGE", payload: { ok: true, prompt: prompt.slice(0,200), image_url: imageRef, stored_id: stored, backend, context_event: true } };
-      } catch (e) {
-        return { cmd: "GENERATE_IMAGE", payload: { ok: false, error: String(e.message) } };
-      }
+      const gi = await auraGenerateImage(prompt, env, { source: "generate_image" });
+      if (!gi || !gi.ok) return { cmd: "GENERATE_IMAGE", payload: { ok: false, error: (gi && gi.error) || "image generation failed" } };
+      try { await env.AURA_KV.put("monitor:last_image", JSON.stringify({ id: gi.id, prompt: prompt.slice(0, 1000), url: gi.image_url, created: new Date().toISOString() })).catch(() => {}); } catch {}
+      return { cmd: "GENERATE_IMAGE", payload: { ok: true, prompt: prompt.slice(0, 200), image_url: gi.image_url, stored_id: gi.id, context_event: true } };
     }
     case "LOADGEN": {
       if (!isOp) return { cmd: "LOADGEN", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
@@ -18918,31 +18874,52 @@ async function watchA2P(env) {
 
 // Shared image-generation core â€” used by GENERATE_IMAGE command and public /showit + /pitch endpoints.
 async function auraGenerateImage(prompt, env, opts = {}) {
-  let openaiKey = env.OPENAI_API_KEY || await env.AURA_KV.get("secret:openai").catch(() => null);
-  if (openaiKey && openaiKey.startsWith("{")) { try { openaiKey = JSON.parse(openaiKey).api_key; } catch {} }
-  if (!openaiKey) return { ok: false, error: "No OpenAI key" };
+  // AGNOSTIC. showIt states the intent ("make an image"); the MARGIN LAYER decides WHO fulfills it by
+  // writing config:image:model to the shared AURA_KV - the same KV aura-think writes its ledger to, and
+  // the same pattern config:brain:model already uses for the text brain. This function names no provider:
+  // it reads the margin's choice and dispatches to whoever holds the keys HERE (decision lives outside in
+  // config; the calling lives here because the keys do). Default is near-free Cloudflare Flux, NOT OpenAI -
+  // a margin engine never defaults to the priciest option. To switch providers: set config:image:model in
+  // KV, no redeploy.
+  const model = ((await env.AURA_KV.get("config:image:model").catch(() => null)) || "@cf/black-forest-labs/flux-1-schnell").trim();
+  const p = String(prompt).slice(0, 4000);
+  const id = "img_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  let b64 = null, err = null;
   try {
-    const r = await fetch("https://api.openai.com/v1/images/generations", {
-      method: "POST",
-      headers: { "Authorization": "Bearer " + openaiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "gpt-image-1", prompt: String(prompt).slice(0, 4000), n: 1, size: "1024x1024" })
-    });
-    const d = await r.json();
-    if (!r.ok) return { ok: false, http: r.status, error: d?.error?.message || JSON.stringify(d).slice(0,300) };
-    const item = d?.data?.[0] || {};
-    const id = "img_" + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
-    let b64 = item.b64_json || null;
-    if (!b64 && item.url) { try { const ir = await fetch(item.url); const ab = await ir.arrayBuffer(); b64 = btoa(String.fromCharCode(...new Uint8Array(ab))); } catch {} }
-    if (b64) {
-      const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-      if (env.AURA_IMAGES) { try { await env.AURA_IMAGES.put(`${id}.png`, bytes, { httpMetadata: { contentType: "image/png" } }); } catch {} }
-      await env.AURA_KV.put(`image:${id}`, b64).catch(() => {});
+    if (model.startsWith("@cf/")) {
+      // Cloudflare Workers AI - near-free, no external key, already bound as env.AI. flux-1-schnell returns
+      // { image: <base64> }; stream/byte variants return raw bytes - handle both.
+      const out = await env.AI.run(model, { prompt: p });
+      if (out && out.image) b64 = out.image;
+      else if (out instanceof ReadableStream) { const ab = await new Response(out).arrayBuffer(); b64 = btoa(String.fromCharCode(...new Uint8Array(ab))); }
+      else if (out instanceof ArrayBuffer) { b64 = btoa(String.fromCharCode(...new Uint8Array(out))); }
+    } else if (/^(gpt-image|dall-e)/i.test(model)) {
+      // OpenAI - a SELECTABLE option the margin layer can name, never the hardwired default.
+      let key = env.OPENAI_API_KEY || await env.AURA_KV.get("secret:openai").catch(() => null);
+      if (key && key.startsWith("{")) { try { key = JSON.parse(key).api_key; } catch {} }
+      if (!key) throw new Error("no OpenAI key");
+      const r = await fetch("https://api.openai.com/v1/images/generations", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
+        body: JSON.stringify({ model, prompt: p, n: 1, size: "1024x1024" })
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error?.message || JSON.stringify(d).slice(0, 300));
+      const item = d?.data?.[0] || {};
+      b64 = item.b64_json || null;
+      if (!b64 && item.url) { const ir = await fetch(item.url); const ab = await ir.arrayBuffer(); b64 = btoa(String.fromCharCode(...new Uint8Array(ab))); }
+    } else {
+      throw new Error("unknown image model in config:image:model: " + model);
     }
-    const meta = { id, prompt: String(prompt).slice(0,1000), created: new Date().toISOString(), entity: opts.entity || null, source: opts.source || "showit", url: `https://auras.guide/image/${id}` };
-    await env.AURA_KV.put(`imagemeta:${id}`, JSON.stringify(meta)).catch(() => {});
-    try { await env.AURA_MEMORY.prepare("INSERT INTO events (session_id, ts, type, body, entity_id, channel, summary) VALUES (?, ?, ?, ?, ?, ?, ?)").bind("image_gen", Date.now(), "image_created", JSON.stringify(meta), meta.entity || "system", "image", String(prompt).slice(0,120)).run(); } catch {}
-    return { ok: true, id, image_url: meta.url, prompt: meta.prompt };
-  } catch (e) { return { ok: false, error: String(e.message) }; }
+  } catch (e) { err = String(e && e.message ? e.message : e); }
+  if (!b64) return { ok: false, error: "image generation failed (" + model + "): " + (err || "no image returned") };
+  const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  if (env.AURA_IMAGES) { try { await env.AURA_IMAGES.put(`${id}.png`, bytes, { httpMetadata: { contentType: "image/png" } }); } catch {} }
+  await env.AURA_KV.put(`image:${id}`, b64).catch(() => {});
+  const meta = { id, prompt: p.slice(0, 1000), created: new Date().toISOString(), entity: opts.entity || null, source: opts.source || "showit", model, url: `https://auras.guide/image/${id}` };
+  await env.AURA_KV.put(`imagemeta:${id}`, JSON.stringify(meta)).catch(() => {});
+  try { await env.AURA_MEMORY.prepare("INSERT INTO events (session_id, ts, type, body, entity_id, channel, summary) VALUES (?, ?, ?, ?, ?, ?, ?)").bind("image_gen", Date.now(), "image_created", JSON.stringify(meta), meta.entity || "system", "image", p.slice(0, 120)).run(); } catch {}
+  return { ok: true, id, image_url: meta.url, prompt: meta.prompt };
 }
 
 // SHOW IT â€” Aura's universal visual verb. Everywhere she lives, when a moment is better shown

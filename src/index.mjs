@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.572-2026-07-17";
+const BUILD = "aura-core-v4.9.573-2026-07-17";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -18887,6 +18887,37 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // specific job (a customer-facing hero) actually needs it. Same doctrine as text: cheapest that does the job.
   const quality = ((await env.AURA_KV.get("config:image:quality").catch(() => null)) || "low").trim();
   const p = String(prompt).slice(0, 4000);
+
+  // IMAGE FLYWHEEL (AIMARGIN): the first request for an image pays; every identical repeat is FREE. Same
+  // L1 cache as text. OpenAI never caches your OUTPUTS - each regen is their revenue - so the savings must
+  // be OURS, in OUR KV. Key = model + quality + size + prompt (everything that changes the pixels). On a
+  // hit we serve the stored image for $0.00 and never call a provider. THIS is how ShowIt lets everyone
+  // make images while the cost is absorbed ONCE, not per user.
+  let cacheKey = null;
+  try {
+    const sig = model + "|" + quality + "|1024x1024|" + p;
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(sig));
+    cacheKey = "imgcache:" + Array.from(new Uint8Array(buf)).slice(0, 12).map((x) => x.toString(16).padStart(2, "0")).join("");
+    const hitRaw = await env.AURA_KV.get(cacheKey);
+    if (hitRaw) {
+      const hit = JSON.parse(hitRaw);
+      const still = await env.AURA_KV.get("imagemeta:" + hit.id).catch(() => null);
+      if (still) {
+        try {
+          const day = new Date().toISOString().slice(0, 10);
+          const mk = "meter:images:" + day;
+          const raw = await env.AURA_KV.get(mk);
+          const rec = raw ? JSON.parse(raw) : { day, count: 0, tokens: 0, cost_usd: 0 };
+          rec.cache_hits = (rec.cache_hits || 0) + 1;
+          rec.saved_usd = Math.round(((rec.saved_usd || 0) + (hit.cost_usd || 0)) * 1e6) / 1e6;
+          await env.AURA_KV.put(mk, JSON.stringify(rec), { expirationTtl: 30 * 24 * 3600 }).catch(() => {});
+        } catch {}
+        console.log("[IMG-CACHE] HIT " + hit.id + " - served free (saved $" + (hit.cost_usd ?? 0) + ")");
+        return { ok: true, id: hit.id, image_url: "https://auras.guide/image/" + hit.id, prompt: p.slice(0, 200), model, quality, tokens: 0, cost_usd: 0, cached: true };
+      }
+    }
+  } catch {}
+
   const id = "img_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   let b64 = null, err = null, imgUsage = null;
   try {
@@ -18954,6 +18985,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   await env.AURA_KV.put(`image:${id}`, b64).catch(() => {});
   const meta = { id, prompt: p.slice(0, 1000), created: new Date().toISOString(), entity: opts.entity || null, source: opts.source || "showit", model, quality, tokens, cost_usd: costUsd, url: `https://auras.guide/image/${id}` };
   await env.AURA_KV.put(`imagemeta:${id}`, JSON.stringify(meta)).catch(() => {});
+  if (cacheKey) { try { await env.AURA_KV.put(cacheKey, JSON.stringify({ id, cost_usd: costUsd, at: new Date().toISOString() }), { expirationTtl: 30 * 24 * 3600 }).catch(() => {}); } catch {} }
   try { await env.AURA_MEMORY.prepare("INSERT INTO events (session_id, ts, type, body, entity_id, channel, summary) VALUES (?, ?, ?, ?, ?, ?, ?)").bind("image_gen", Date.now(), "image_created", JSON.stringify(meta), meta.entity || "system", "image", p.slice(0, 120)).run(); } catch {}
   return { ok: true, id, image_url: meta.url, prompt: meta.prompt, model, quality, tokens, cost_usd: costUsd };
 }

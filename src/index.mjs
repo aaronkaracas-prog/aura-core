@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.569-2026-07-15";
+const BUILD = "aura-core-v4.9.570-2026-07-17";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.

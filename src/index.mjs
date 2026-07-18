@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.576-2026-07-17";
+const BUILD = "aura-core-v4.9.577-2026-07-18";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -18873,6 +18873,102 @@ async function watchA2P(env) {
 }
 
 // Shared image-generation core â€” used by GENERATE_IMAGE command and public /showit + /pitch endpoints.
+// ══ VIDEO: THE ASYNC MEDIA TYPE ══════════════════════════════════════════════════════════════════
+// Text and images are request/response - ask, get it back. Video is NOT: you submit, get a request_id,
+// and the provider works for 30-120s. A Worker cannot sit and wait, so this is three parts: submit
+// (returns a job id immediately), a KV job store, and the cron poller below that finishes the job.
+//
+// COST DISCIPLINE: video bills PER SECOND (~$0.05-0.08/s on Grok), so one 10s clip is ~$0.50-0.80 -
+// roughly 300x an image and more than a normal day of inference. So the duration cap is enforced HERE
+// at submit time, not bolted on later: config:video:max_seconds (default 6). A media type this
+// expensive gets its ceiling before its first call, not after the first surprise bill.
+async function auraSubmitVideo(prompt, env, opts = {}) {
+  const VIDEO_POLICY = {
+    cheapest: { model: "grok-imagine-video",     resolution: "480p" },
+    balanced: { model: "grok-imagine-video",     resolution: "720p" },
+    quality:  { model: "grok-imagine-video-1.5", resolution: "720p" },
+  };
+  const policyName = ((await env.AURA_KV.get("config:policy:video").catch(() => null)) || "cheapest").trim();
+  const resolved = VIDEO_POLICY[policyName] || VIDEO_POLICY.cheapest;
+  const rawModel = await env.AURA_KV.get("config:video:model").catch(() => null);
+  const model = ((rawModel && rawModel.trim()) || resolved.model).trim();
+
+  const capRaw = await env.AURA_KV.get("config:video:max_seconds").catch(() => null);
+  const cap = Math.max(1, Math.min(30, parseInt(capRaw || "6", 10) || 6));
+  const duration = Math.max(1, Math.min(cap, parseInt(opts.duration || 5, 10) || 5));
+
+  const key = env.XAI_API_KEY || await env.AURA_KV.get("secret:xai").catch(() => null);
+  if (!key) throw new Error("no xAI key");
+  const body = { model, prompt: String(prompt).slice(0, 2000), duration,
+                 aspect_ratio: opts.aspect_ratio || "16:9", resolution: opts.resolution || resolved.resolution };
+  const r = await fetch("https://api.x.ai/v1/videos/generations", {
+    method: "POST", headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d?.error?.message || JSON.stringify(d).slice(0, 300));
+  const requestId = d?.request_id || d?.id;
+  if (!requestId) throw new Error("no request_id returned: " + JSON.stringify(d).slice(0, 200));
+
+  // RATE map is per SECOND here, not per item - that difference is the whole reason video needs a cap.
+  const VRATE = { "grok-imagine-video": 0.05, "grok-imagine-video-1.5": 0.08 };
+  const perSec = VRATE[model] ?? 0.08;
+  const job = { id: "vid_" + requestId, request_id: requestId, model, prompt: body.prompt, duration,
+                resolution: body.resolution, status: "pending", est_cost_usd: +(perSec * duration).toFixed(4),
+                submitted_at: new Date().toISOString(), video_url: null, error: null };
+  await env.AURA_KV.put("vidjob:" + requestId, JSON.stringify(job), { expirationTtl: 7 * 24 * 3600 });
+  return job;
+}
+
+// THE POLLER. Runs on the existing 1-minute cron - the only place in a Worker that can finish a job
+// nobody is waiting on. Checks every pending job once per tick; done jobs get their URL and final cost
+// written back, failed/expired ones are recorded as failures (never left "pending" forever, which is how
+// async systems quietly rot).
+async function pollVideoJobs(env) {
+  try {
+    const key = env.XAI_API_KEY || await env.AURA_KV.get("secret:xai").catch(() => null);
+    if (!key) return;
+    const list = await env.AURA_KV.list({ prefix: "vidjob:" });
+    for (const k of (list?.keys || []).slice(0, 10)) {
+      const raw = await env.AURA_KV.get(k.name);
+      if (!raw) continue;
+      const job = JSON.parse(raw);
+      if (job.status !== "pending") continue;
+      const r = await fetch("https://api.x.ai/v1/videos/" + job.request_id, {
+        headers: { "Authorization": "Bearer " + key },
+      });
+      const d = await r.json().catch(() => ({}));
+      const st = String(d?.status || "").toLowerCase();
+      if (st === "done" && d?.video?.url) {
+        job.status = "done";
+        job.video_url = d.video.url;
+        job.actual_duration = d.video.duration ?? job.duration;
+        const VRATE = { "grok-imagine-video": 0.05, "grok-imagine-video-1.5": 0.08 };
+        job.cost_usd = +(((VRATE[job.model] ?? 0.08) * (job.actual_duration || job.duration))).toFixed(4);
+        job.completed_at = new Date().toISOString();
+        // Roll the day's video ledger, same pattern as images.
+        try {
+          const day = new Date().toISOString().slice(0, 10);
+          const lraw = await env.AURA_KV.get("meter:videos:" + day);
+          const led = lraw ? JSON.parse(lraw) : { day, count: 0, seconds: 0, cost_usd: 0 };
+          led.count += 1; led.seconds += (job.actual_duration || job.duration);
+          led.cost_usd = +(led.cost_usd + job.cost_usd).toFixed(4);
+          led.last = { id: job.id, model: job.model, seconds: job.actual_duration, cost_usd: job.cost_usd };
+          await env.AURA_KV.put("meter:videos:" + day, JSON.stringify(led), { expirationTtl: 40 * 24 * 3600 });
+        } catch {}
+        await env.AURA_KV.put(k.name, JSON.stringify(job), { expirationTtl: 7 * 24 * 3600 });
+        console.log("[VIDEO] done " + job.id + " " + job.cost_usd + " " + job.video_url);
+      } else if (st === "failed" || st === "expired") {
+        job.status = st;
+        job.error = d?.error?.message || st;
+        await env.AURA_KV.put(k.name, JSON.stringify(job), { expirationTtl: 7 * 24 * 3600 });
+        console.warn("[VIDEO] " + st + " " + job.id + " " + job.error);
+      }
+    }
+  } catch (e) { console.warn("[VIDEO] poll error " + (e?.message || e)); }
+}
+
+
 async function auraGenerateImage(prompt, env, opts = {}) {
   // AGNOSTIC + POLICY-DRIVEN. showIt states intent ("make an image"); AIMARGIN's POLICY decides who fulfills
   // it and at what quality. The operator declares INTENT once - config:policy:image = cheapest | balanced |
@@ -19285,6 +19381,7 @@ export default {
     ctx.waitUntil(drainWorkflows(env));
     ctx.waitUntil(precomputeHotBriefs(env));
     ctx.waitUntil(captureAisHistory(env));
+    ctx.waitUntil(pollVideoJobs(env));   // finish async video jobs nobody is waiting on
   },
 
   // INBOUND EMAIL (v4.9.491) - THE READ-HALF of Aura's email, the authentication master key.
@@ -19370,7 +19467,7 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" } });
     }
 
-    if (request.method === "GET" && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/now" && url.pathname !== "/dashboard" && !url.pathname.startsWith("/brain") && !url.pathname.startsWith("/world") && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/") && !url.pathname.startsWith("/call-intel") && url.pathname !== "/home/domains" && !url.pathname.startsWith("/home/") && !url.pathname.startsWith("/hands/") && !url.pathname.startsWith("/brand/") && !url.pathname.startsWith("/f/") && !url.pathname.startsWith("/d/")) {
+    if (request.method === "GET" && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/showvid" && url.pathname !== "/vidjob" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/now" && url.pathname !== "/dashboard" && !url.pathname.startsWith("/brain") && !url.pathname.startsWith("/world") && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/") && !url.pathname.startsWith("/call-intel") && url.pathname !== "/home/domains" && !url.pathname.startsWith("/home/") && !url.pathname.startsWith("/hands/") && !url.pathname.startsWith("/brand/") && !url.pathname.startsWith("/f/") && !url.pathname.startsWith("/d/")) {
       const page = await servePage(url.hostname, url.pathname === "/" ? "/" : url.pathname, env);
       if (page) return page;
     }
@@ -21010,6 +21107,32 @@ function openAlbum(idx){
     }
 
     // PUBLIC ShowIt endpoint â€” free-form "show me X". No operator token (public product). CORS-open.
+    // ── VIDEO ────────────────────────────────────────────────────────────────────────────────
+    // /showvid submits and returns a job id IMMEDIATELY - it never waits, because the provider takes
+    // 30-120s and a Worker cannot hold that. The cron poller finishes it. /vidjob?id= checks status.
+    // This is the honest shape for an async media type: a receipt now, the artifact later.
+    if (url.pathname === "/showvid") {
+      const p = url.searchParams.get("prompt") || url.searchParams.get("q") || "";
+      if (!p) return json({ ok: false, error: "prompt required" }, 400);
+      try {
+        const job = await auraSubmitVideo(p, env, {
+          duration: url.searchParams.get("seconds") || undefined,
+          resolution: url.searchParams.get("resolution") || undefined,
+        });
+        return json({ ok: true, ...job,
+          note: "Submitted. Poll /vidjob?id=" + job.request_id + " - the cron finishes it in ~1-2 min." });
+      } catch (e) {
+        return json({ ok: false, error: "video submit failed: " + (e?.message || e) }, 500);
+      }
+    }
+    if (url.pathname === "/vidjob") {
+      const id = url.searchParams.get("id") || "";
+      if (!id) return json({ ok: false, error: "id required" }, 400);
+      const raw = await env.AURA_KV.get("vidjob:" + id.replace(/^vid_/, ""));
+      if (!raw) return json({ ok: false, error: "no such job" }, 404);
+      return json({ ok: true, ...JSON.parse(raw) });
+    }
+
     if (url.pathname === "/showit") {
       const cors = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "Content-Type" };
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });

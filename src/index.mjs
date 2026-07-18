@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.575-2026-07-17";
+const BUILD = "aura-core-v4.9.576-2026-07-17";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -18874,18 +18874,26 @@ async function watchA2P(env) {
 
 // Shared image-generation core â€” used by GENERATE_IMAGE command and public /showit + /pitch endpoints.
 async function auraGenerateImage(prompt, env, opts = {}) {
-  // AGNOSTIC. showIt states the intent ("make an image"); the MARGIN LAYER decides WHO fulfills it by
-  // writing config:image:model to the shared AURA_KV - the same KV aura-think writes its ledger to, and
-  // the same pattern config:brain:model already uses for the text brain. This function names no provider:
-  // it reads the margin's choice and dispatches to whoever holds the keys HERE (decision lives outside in
-  // config; the calling lives here because the keys do). Default is near-free Cloudflare Flux, NOT OpenAI -
-  // a margin engine never defaults to the priciest option. To switch providers: set config:image:model in
-  // KV, no redeploy.
-  const model = ((await env.AURA_KV.get("config:image:model").catch(() => null)) || "@cf/black-forest-labs/flux-1-schnell").trim();
-  // IMAGE FLOOR LEVER, margin-governed like the model. Quality is the 9x token lever on OpenAI image models
-  // (low ~85 tok vs high ~765). Default LOW - the floor - and the margin layer flips it up only when a
-  // specific job (a customer-facing hero) actually needs it. Same doctrine as text: cheapest that does the job.
-  const quality = ((await env.AURA_KV.get("config:image:quality").catch(() => null)) || "low").trim();
+  // AGNOSTIC + POLICY-DRIVEN. showIt states intent ("make an image"); AIMARGIN's POLICY decides who fulfills
+  // it and at what quality. The operator declares INTENT once - config:policy:image = cheapest | balanced |
+  // quality - and this resolver maps that to a concrete model + quality. That is the product mechanism: the
+  // operator picks a policy, not a model. A raw config:image:model still wins if set (power-user override),
+  // so nothing that already worked breaks. Aura's own world just runs the "cheapest" policy like any operator.
+  const IMAGE_POLICY = {
+    // policy -> { model, quality }. Cheapest is the floor we proved (Grok $0.002); quality is Gemini's
+    // best (Nano Banana); balanced sits at OpenAI mini. Update these as the proven floors move.
+    cheapest: { model: "grok-imagine-image",            quality: "low"  },
+    balanced: { model: "gpt-image-1-mini",              quality: "low"  },
+    quality:  { model: "gemini-3.1-flash-lite-image",   quality: "high" },
+  };
+  const policyName = ((await env.AURA_KV.get("config:policy:image").catch(() => null)) || "cheapest").trim();
+  const resolved = IMAGE_POLICY[policyName] || IMAGE_POLICY.cheapest;
+  // raw overrides win over policy (explicit pin beats declared intent); else fall back to the policy's pick,
+  // then to near-free Cloudflare Flux as the ultimate floor. A margin engine never defaults to the priciest.
+  const rawModel = (await env.AURA_KV.get("config:image:model").catch(() => null));
+  const rawQuality = (await env.AURA_KV.get("config:image:quality").catch(() => null));
+  const model = ((rawModel && rawModel.trim()) || resolved.model || "@cf/black-forest-labs/flux-1-schnell").trim();
+  const quality = ((rawQuality && rawQuality.trim()) || resolved.quality || "low").trim();
   const p = String(prompt).slice(0, 4000);
 
   // IMAGE FLYWHEEL (AIMARGIN): the first request for an image pays; every identical repeat is FREE. Same

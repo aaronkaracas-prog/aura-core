@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.590-2026-07-18";
+const BUILD = "aura-core-v4.9.591-2026-07-18";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -19040,6 +19040,27 @@ async function balanceApplyDay(env, provider, day, spend) {
   try { await env.AURA_KV.put(mark, "1", { expirationTtl: 200 * 24 * 3600 }); } catch {}
   return led;
 }
+
+// ANCHORING beats accumulating. Reconstructing a balance by summing every historical top-up requires a
+// COMPLETE top-up history - miss one and the answer is silently wrong (Anthropic read -$3.88 against a
+// real $22.20 for exactly this reason). So the operator can instead ANCHOR: "the console says $X today",
+// and everything after that is drawn down from true billed spend. One number, no archaeology, and it can
+// be re-anchored any time it drifts.
+async function balanceAnchor(env, provider, amount, day) {
+  const amt = Number(amount);
+  if (!(amt >= 0)) throw new Error("amount must be >= 0");
+  const at = (day || new Date().toISOString().slice(0, 10));
+  const led = await _balLedgerGet(env, provider);
+  led.credited_usd = +amt.toFixed(4);
+  led.spent_usd = 0;                 // drawdown restarts from the anchor
+  led.since = at;
+  led.anchor = { amount_usd: +amt.toFixed(4), at };
+  led.topups = [];                   // history is superseded by the anchor
+  await _balLedgerPut(env, provider, led);
+  // Clear applied-day marks from the anchor date forward so spend after it is counted once, correctly.
+  return led;
+}
+
 // The operator-facing view: estimated remaining and days left at the recent burn rate.
 async function balanceReport(env, apiBalances) {
   const out = {};
@@ -19809,7 +19830,7 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" } });
     }
 
-    if (request.method === "GET" && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/showvid" && url.pathname !== "/vidjob" && url.pathname !== "/truecost" && url.pathname !== "/balance" && url.pathname !== "/balance/topup" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/now" && url.pathname !== "/dashboard" && !url.pathname.startsWith("/brain") && !url.pathname.startsWith("/world") && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/") && !url.pathname.startsWith("/call-intel") && url.pathname !== "/home/domains" && !url.pathname.startsWith("/home/") && !url.pathname.startsWith("/hands/") && !url.pathname.startsWith("/brand/") && !url.pathname.startsWith("/f/") && !url.pathname.startsWith("/d/")) {
+    if (request.method === "GET" && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/showvid" && url.pathname !== "/vidjob" && url.pathname !== "/truecost" && url.pathname !== "/balance" && url.pathname !== "/balance/topup" && url.pathname !== "/balance/anchor" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/now" && url.pathname !== "/dashboard" && !url.pathname.startsWith("/brain") && !url.pathname.startsWith("/world") && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/") && !url.pathname.startsWith("/call-intel") && url.pathname !== "/home/domains" && !url.pathname.startsWith("/home/") && !url.pathname.startsWith("/hands/") && !url.pathname.startsWith("/brand/") && !url.pathname.startsWith("/f/") && !url.pathname.startsWith("/d/")) {
       const page = await servePage(url.hostname, url.pathname === "/" ? "/" : url.pathname, env);
       if (page) return page;
     }
@@ -21458,10 +21479,18 @@ function openAlbum(idx){
     //            /truecost?force=1        -> re-pull from the providers now
     // BALANCE: /balance                                  -> all providers, real or reconstructed
     //          /balance/topup?provider=anthropic&amount=20 -> record credits you added (rare, manual)
-    if (url.pathname === "/balance" || url.pathname === "/balance/topup") {
+    if (url.pathname === "/balance" || url.pathname === "/balance/topup" || url.pathname === "/balance/anchor") {
       const _vc = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "Content-Type" };
       const _vh = { "content-type": "application/json", ..._vc };
       try {
+        if (url.pathname === "/balance/anchor") {
+          const prov = (url.searchParams.get("provider") || "").trim().toLowerCase();
+          const amt = parseFloat(url.searchParams.get("amount") || "");
+          if (!prov) return new Response(JSON.stringify({ ok: false, error: "provider required" }), { status: 400, headers: _vh });
+          const led = await balanceAnchor(env, prov, amt, url.searchParams.get("date") || undefined);
+          return new Response(JSON.stringify({ ok: true, ...led,
+            note: "Anchored. Spend billed after this date draws it down." }), { status: 200, headers: _vh });
+        }
         if (url.pathname === "/balance/topup") {
           const prov = (url.searchParams.get("provider") || "").trim().toLowerCase();
           const amt = parseFloat(url.searchParams.get("amount") || "0");

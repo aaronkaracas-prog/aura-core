@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.598-2026-07-18";
+const BUILD = "aura-core-v4.9.599-2026-07-18";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -20137,7 +20137,7 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" } });
     }
 
-    if (request.method === "GET" && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/showvid" && url.pathname !== "/vidjob" && url.pathname !== "/truecost" && url.pathname !== "/balance" && url.pathname !== "/balance/topup" && url.pathname !== "/balance/anchor" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/now" && url.pathname !== "/dashboard" && !url.pathname.startsWith("/brain") && !url.pathname.startsWith("/world") && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/") && !url.pathname.startsWith("/call-intel") && url.pathname !== "/home/domains" && !url.pathname.startsWith("/home/") && !url.pathname.startsWith("/hands/") && !url.pathname.startsWith("/brand/") && !url.pathname.startsWith("/f/") && !url.pathname.startsWith("/d/")) {
+    if (request.method === "GET" && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/showvid" && url.pathname !== "/vidjob" && url.pathname !== "/truecost" && url.pathname !== "/cmd" && url.pathname !== "/balance" && url.pathname !== "/balance/topup" && url.pathname !== "/balance/anchor" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/now" && url.pathname !== "/dashboard" && !url.pathname.startsWith("/brain") && !url.pathname.startsWith("/world") && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/") && !url.pathname.startsWith("/call-intel") && url.pathname !== "/home/domains" && !url.pathname.startsWith("/home/") && !url.pathname.startsWith("/hands/") && !url.pathname.startsWith("/brand/") && !url.pathname.startsWith("/f/") && !url.pathname.startsWith("/d/")) {
       const page = await servePage(url.hostname, url.pathname === "/" ? "/" : url.pathname, env);
       if (page) return page;
     }
@@ -21824,6 +21824,36 @@ function openAlbum(idx){
                 "from recorded top-ups minus true billed spend - record top-ups to keep it accurate." }), { status: 200, headers: _vh });
       } catch (e) {
         return new Response(JSON.stringify({ ok: false, error: String(e?.message ?? e) }), { status: 500, headers: _vh });
+      }
+    }
+
+    // ══ /cmd — THE ZERO-BURN COMMAND PATH ═══════════════════════════════════════════════════════
+    // /chat routes through the brain: she reads the request, decides, calls a tool, then writes prose
+    // about what she did. For a MECHANICAL command that is a reasoning tax on work that needs no
+    // reasoning - a 2 cent LLM turn to run something that costs nothing. Sixteen rounds of
+    // SPACESHIP_SYNC_ALL paid that tax sixteen times.
+    // This runs processCommand directly. No model, no tokens, no deliberation, no "should I?".
+    //   GET  /cmd?q=WHERE spaceship
+    //   POST /cmd  {"cmd":"SPACESHIP_SYNC_ALL 0 15"}
+    // Operator token still required - it is the same privilege, just without the middleman.
+    if (url.pathname === "/cmd") {
+      const _vc = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "Content-Type, Authorization" };
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: _vc });
+      const _vh = { "content-type": "application/json", ..._vc };
+      const _auth = request.headers.get("authorization") || "";
+      const _tok = env.AURA_OPERATOR_TOKEN || await env.AURA_KV.get("secret:aura_operator_token").catch(() => null);
+      const _isOp = !!_tok && _auth === "Bearer " + _tok;
+      if (!_isOp) return new Response(JSON.stringify({ ok: false, error: "OPERATOR_REQUIRED" }), { status: 401, headers: _vh });
+      let q = url.searchParams.get("q") || "";
+      if (request.method === "POST") { try { const b = await request.json(); q = b.cmd || b.q || b.message || q; } catch {} }
+      q = String(q || "").trim();
+      if (!q) return new Response(JSON.stringify({ ok: false, error: "Usage: /cmd?q=<COMMAND ...>" }), { status: 400, headers: _vh });
+      const _t0 = Date.now();
+      try {
+        const r = await processCommand(q, env, true);
+        return new Response(JSON.stringify({ ok: true, ms: Date.now() - _t0, brain_used: false, ...r }), { status: 200, headers: _vh });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, ms: Date.now() - _t0, error: String(e?.message ?? e) }), { status: 500, headers: _vh });
       }
     }
 

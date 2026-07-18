@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.574-2026-07-17";
+const BUILD = "aura-core-v4.9.575-2026-07-17";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -18960,6 +18960,23 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       imgUsage = d?.usage || null;
       b64 = item.b64_json || null;
       if (!b64 && item.url) { const ir = await fetch(item.url); const ab = await ir.arrayBuffer(); b64 = btoa(String.fromCharCode(...new Uint8Array(ab))); }
+    } else if (/gemini.*image|nano-banana/i.test(model)) {
+      // Google Gemini image (Nano Banana). NOT /images/generations - it uses generateContent with
+      // responseModalities:["IMAGE"], and the image returns as inline base64 in the response PARTS, not a
+      // URL. Endpoint carries the model in the path + ?key=. Completely different shape from OpenAI/Grok.
+      let key = env.GOOGLE_API_KEY || await env.AURA_KV.get("secret:google").catch(() => null);
+      if (!key) throw new Error("no Google key");
+      const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + key, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: p }] }], generationConfig: { responseModalities: ["IMAGE"] } })
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error?.message || JSON.stringify(d).slice(0, 300));
+      const parts = d?.candidates?.[0]?.content?.parts || [];
+      const imgPart = parts.find((pt) => pt?.inlineData?.data || pt?.inline_data?.data);
+      b64 = imgPart?.inlineData?.data || imgPart?.inline_data?.data || null;
+      imgUsage = d?.usageMetadata || null;
     } else {
       throw new Error("unknown image model in config:image:model: " + model);
     }
@@ -18974,6 +18991,10 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   let costUsd = null;
   try {
     const RATE = {   // approx $/image, model -> quality (published rates; update on price change). More-specific keys first.
+      "gemini-3.1-flash-lite-image": { low: 0.045, medium: 0.045, high: 0.045 },   // Google Nano Banana 2 Lite (flat-ish)
+      "gemini-3.1-flash-image":      { low: 0.067, medium: 0.067, high: 0.067 },   // Google Nano Banana 2
+      "gemini-3-pro-image":          { low: 0.134, medium: 0.134, high: 0.134 },   // Google Nano Banana Pro
+      "gemini-2.5-flash-image":      { low: 0.039, medium: 0.039, high: 0.039 },   // Google Nano Banana (older)
       "grok-imagine-image-quality": { low: 0.005, medium: 0.005, high: 0.005 },   // xAI flat per-image (no tiers)
       "grok-imagine-image":         { low: 0.002, medium: 0.002, high: 0.002 },   // xAI flat per-image (no tiers)
       "gpt-image-1-mini": { low: 0.005, medium: 0.030, high: 0.052 },

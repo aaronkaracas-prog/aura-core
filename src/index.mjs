@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.592-2026-07-18";
+const BUILD = "aura-core-v4.9.593-2026-07-18";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16256,6 +16256,34 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         : (report.custom_domains?.length ? "CUSTOM_DOMAIN_LIKELY_OVERRIDING_ROUTES" : "MISMATCH_CAUSE_IN_ROUTES_OR_DNS"));
       return { cmd: "DOMAIN_DIAGNOSE", payload: { ok: true, ...report } };
     }
+    case "SPACESHIP_SYNC": {
+      if (!isOp) return { cmd: "SPACESHIP_SYNC", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const d = (line.trim().split(/\s+/)[1] || "").toLowerCase();
+      if (!d) return { cmd: "SPACESHIP_SYNC", payload: { ok: false, error: "Usage: SPACESHIP_SYNC <domain>" } };
+      return { cmd: "SPACESHIP_SYNC", payload: await spaceshipSyncOne(d, env) };
+    }
+    case "SPACESHIP_SYNC_ALL": {
+      if (!isOp) return { cmd: "SPACESHIP_SYNC_ALL", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const p = line.trim().split(/\s+/);
+      return { cmd: "SPACESHIP_SYNC_ALL", payload: await spaceshipSyncAll(env, p[1], p[2]) };
+    }
+    case "SPACESHIP_STATUS": {
+      if (!isOp) return { cmd: "SPACESHIP_STATUS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      try {
+        const h = await _ssHeaders(env);
+        const all = []; let skip = 0, total = 1;
+        while (all.length < total && skip < 2000) {
+          const r = await fetch("https://spaceship.dev/api/v1/domains?take=100&skip=" + skip, { headers: h });
+          const dd = await r.json();
+          if (!r.ok) return { cmd: "SPACESHIP_STATUS", payload: { ok: false, error: JSON.stringify(dd).slice(0, 200) } };
+          total = dd?.total || 0; all.push(...(dd?.items || [])); skip += 100;
+        }
+        const synced = all.filter((x) => (x?.nameservers?.hosts || []).join(",").match(/cloudflare/i));
+        return { cmd: "SPACESHIP_STATUS", payload: { ok: true, total: all.length, synced: synced.length,
+                 unsynced: all.length - synced.length,
+                 next_unsynced: all.filter((x) => !((x?.nameservers?.hosts || []).join(",").match(/cloudflare/i))).slice(0, 10).map((x) => x.name) } };
+      } catch (e) { return { cmd: "SPACESHIP_STATUS", payload: { ok: false, error: String(e?.message ?? e) } }; }
+    }
     case "DOMAIN_LAUNCH": {
       if (!isOp) return { cmd: "DOMAIN_LAUNCH", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const parts = line.trim().split(/\s+/);
@@ -18650,6 +18678,100 @@ async function deployPageToKV(domain, path, html, env) {
   const key = `page:${domain}${path || "/"}`;
   await env.AURA_KV.put(key, html);
   return { ok: true, url: `https://${domain}${path || "/"}`, size: html.length };
+}
+
+
+// ══ SPACESHIP → CLOUDFLARE DNS SYNC ══════════════════════════════════════════════════════════════
+// Aaron holds 346 domains at Spaceship. A domain is "synced" when its registrar nameservers point at
+// Cloudflare, which is what lets Aura serve it. Doing this by hand meant a CF token in a terminal and a
+// per-domain click; this makes it hers - she already holds the CF token, she just needed Spaceship creds.
+//
+// Two calls per domain: create the CF zone (or read the existing one), then PUT those nameservers back to
+// Spaceship. Cloudflare assigns the SAME nameserver pair for every zone on an account, so no per-domain
+// lookup is needed - but we still read them from the zone response rather than hardcoding, because a
+// hardcoded nameserver that silently goes stale takes domains offline.
+async function _ssHeaders(env) {
+  const key = env.SPACESHIP_API_KEY || await env.AURA_KV.get("secret:spaceship_api_key").catch(() => null);
+  const sec = env.SPACESHIP_API_SECRET || await env.AURA_KV.get("secret:spaceship_api_secret").catch(() => null);
+  if (!key || !sec) throw new Error("no Spaceship credentials (SPACESHIP_API_KEY / SPACESHIP_API_SECRET)");
+  return { "X-Api-Key": key, "X-Api-Secret": sec, "Content-Type": "application/json" };
+}
+
+async function spaceshipSyncOne(domain, env) {
+  const out = { domain, steps: [] };
+  const cfToken = env.CF_API_TOKEN || await env.AURA_KV.get("secret:cf_api_token").catch(() => null);
+  if (!cfToken) return { ok: false, ...out, error: "no CF token" };
+  const acct = (await env.AURA_KV.get("secret:cf_account_id").catch(() => null)) || "3db0de2c6fce92757e2c4e4f83d7eb16";
+  const cfh = { "Authorization": "Bearer " + cfToken, "Content-Type": "application/json" };
+
+  // 1. Zone: create, or reuse if it already exists. "Already exists" is a SUCCESS path here - re-running
+  //    the sweep must never fail on domains that are half-done.
+  let ns = null;
+  try {
+    const r = await fetch("https://api.cloudflare.com/client/v4/zones", {
+      method: "POST", headers: cfh,
+      body: JSON.stringify({ name: domain, account: { id: acct }, type: "full" }),
+    });
+    const d = await r.json();
+    if (d?.success) { ns = d?.result?.name_servers || null; out.steps.push({ step: "zone_create", ok: true }); }
+    else {
+      const already = JSON.stringify(d?.errors || "").match(/already exists/i);
+      out.steps.push({ step: "zone_create", ok: false, reused: !!already,
+                       error: already ? "zone already exists" : JSON.stringify(d?.errors || d).slice(0, 200) });
+      if (!already) return { ok: false, ...out };
+      const g = await fetch("https://api.cloudflare.com/client/v4/zones?name=" + encodeURIComponent(domain), { headers: cfh });
+      ns = (await g.json())?.result?.[0]?.name_servers || null;
+    }
+  } catch (e) { return { ok: false, ...out, error: "cf: " + String(e?.message ?? e).slice(0, 160) }; }
+  if (!ns || ns.length < 2) return { ok: false, ...out, error: "no nameservers returned by Cloudflare" };
+  out.nameservers = ns;
+
+  // 2. Registrar: point Spaceship at those nameservers. This is the step that actually moves the domain.
+  try {
+    const h = await _ssHeaders(env);
+    const r = await fetch("https://spaceship.dev/api/v1/domains/" + domain + "/nameservers", {
+      method: "PUT", headers: h,
+      body: JSON.stringify({ provider: "custom", hosts: [ns[0], ns[1]] }),
+    });
+    if (!r.ok) {
+      const t = await r.text();
+      out.steps.push({ step: "registrar_ns", ok: false, error: t.slice(0, 200) });
+      return { ok: false, ...out };
+    }
+    out.steps.push({ step: "registrar_ns", ok: true });
+  } catch (e) { return { ok: false, ...out, error: "spaceship: " + String(e?.message ?? e).slice(0, 160) }; }
+  return { ok: true, ...out };
+}
+
+// Sweep with a CURSOR. A Worker cannot hold 177 domains x 2 API calls in one request without hitting the
+// CPU limit, and Cloudflare rate-limits bulk zone creation - so this does a slice per call and hands back
+// next_cursor. Progress survives a failure because each domain is committed at the registrar as it goes.
+async function spaceshipSyncAll(env, start, limit) {
+  const h = await _ssHeaders(env);
+  // Pull the portfolio and keep only the ones NOT already on Cloudflare - re-running is always safe.
+  const all = [];
+  let skip = 0, total = 1;
+  while (all.length < total && skip < 2000) {
+    const r = await fetch("https://spaceship.dev/api/v1/domains?take=100&skip=" + skip, { headers: h });
+    const d = await r.json();
+    if (!r.ok) return { ok: false, error: JSON.stringify(d).slice(0, 200) };
+    total = d?.total || 0;
+    all.push(...(d?.items || []));
+    skip += 100;
+  }
+  const pending = all.filter((x) => !((x?.nameservers?.hosts || []).join(",").match(/cloudflare/i))).map((x) => x.name);
+  const s = Math.max(0, parseInt(start || 0, 10) || 0);
+  const n = Math.min(15, Math.max(1, parseInt(limit || 10, 10) || 10));
+  const batch = pending.slice(s, s + n);
+  const done = [], failed = [];
+  for (const d of batch) {
+    const r = await spaceshipSyncOne(d, env);
+    if (r.ok) done.push(d); else failed.push({ domain: d, error: r.error || r.steps?.slice(-1)?.[0]?.error });
+    await new Promise((res) => setTimeout(res, 350));   // pace: both APIs rate-limit bulk writes
+  }
+  return { ok: true, total_domains: all.length, still_unsynced: pending.length,
+           range: s + "-" + (s + batch.length), synced: done, failed,
+           next_cursor: (s + batch.length < pending.length) ? (s + batch.length) : null };
 }
 
 async function launchDomain(domain, description, theme, env) {

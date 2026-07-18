@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.597-2026-07-18";
+const BUILD = "aura-core-v4.9.598-2026-07-18";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -1212,13 +1212,18 @@ async function readOwnSource(env, branch, worker) {
       } catch (e) {}
     }
   }
-  // 3) KV cache - last resort (may be slightly stale but complete if it was cached from a full read)
+  // 3) KV cache - last resort, PER WORKER. v4.9.598: this was a single shared key, so a failed read of
+  //    aura-think silently returned aura-core's cached source. WHERE then reported aura-core three times
+  //    under three different worker names - a map that fabricates is worse than no map at all.
+  const _ck = "self:source:" + _w;
   if (got == null) {
-    const cached = await env.AURA_KV.get("self:source:current").catch(() => null);
+    const cached = await env.AURA_KV.get(_ck).catch(() => null);
     if (cached && looksComplete(cached)) { got = cached; via = "kv_cache"; }
   }
-  if (got != null && via !== "kv_cache") await env.AURA_KV.put("self:source:current", got).catch(() => {});
-  return got ? { ok: true, source: got, via, bytes: got.length } : { ok: false, error: "all self-read strategies failed or returned truncated source (raw cdn, github blob, kv cache)" };
+  if (got != null && via !== "kv_cache") await env.AURA_KV.put(_ck, got).catch(() => {});
+  return got ? { ok: true, source: got, via, worker: _w, repo: _repo, path: _path, bytes: got.length }
+             : { ok: false, worker: _w, repo: _repo, path: _path,
+                 error: "cannot read " + _w + " (" + _repo + "/" + _path + "): raw cdn, github blob and per-worker cache all failed. If the repo or path is named differently, set config:repo:" + _w + ' to {"repo":"...","path":"..."}.' };
 }
 
 // === AURA REMEMBER â€” significance-gated auto-capture to Aura's OWN timeline (v4.9.492) ===
@@ -16399,7 +16404,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           const hit = wTerm
             ? items.filter((x) => x.name.toLowerCase().includes(wTerm) || (x.desc || "").toLowerCase().includes(wTerm))
             : items;
-          found[w] = { build, total: items.length,
+          found[w] = { build, read_from: r.repo + "/" + r.path, via: r.via, total: items.length,
                        counts: items.reduce((a, x) => (a[x.kind] = (a[x.kind] || 0) + 1, a), {}),
                        matches: wTerm ? hit.slice(0, 60) : undefined,
                        match_count: wTerm ? hit.length : undefined };

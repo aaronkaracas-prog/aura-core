@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.588-2026-07-18";
+const BUILD = "aura-core-v4.9.589-2026-07-18";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -18993,6 +18993,67 @@ async function _balances(env) {
   return out;
 }
 
+
+// ══ BALANCE LEDGER: RECONSTRUCTING WHAT PROVIDERS WON'T TELL YOU ═════════════════════════════════
+// Only xAI exposes remaining credit. Anthropic and OpenAI publish spend but NOT balance - so an operator
+// cannot answer "how many days of runway does this provider have?" without logging into a console. That
+// is a real gap and it is AIMARGIN's job to close it.
+// Method: balance = credits added - spend since. Top-ups are recorded once (they are rare); daily spend
+// comes from the reconciler's TRUE provider billing. The result is an ESTIMATE and is labelled as one -
+// it drifts if a top-up goes unrecorded, so the report always shows what it was computed from.
+async function _balLedgerGet(env, provider) {
+  try { const raw = await env.AURA_KV.get("balance:" + provider); if (raw) return JSON.parse(raw); } catch {}
+  return { provider, credited_usd: 0, spent_usd: 0, since: null, topups: [], updated: null };
+}
+async function _balLedgerPut(env, provider, led) {
+  led.updated = new Date().toISOString();
+  try { await env.AURA_KV.put("balance:" + provider, JSON.stringify(led)); } catch {}
+  return led;
+}
+// Record money added. Rare and manual by necessity - no provider exposes "credits purchased" as an API.
+async function balanceTopUp(env, provider, amount, when) {
+  const led = await _balLedgerGet(env, provider);
+  const amt = Number(amount) || 0;
+  if (!(amt > 0)) throw new Error("amount must be > 0");
+  const at = (when || new Date().toISOString().slice(0, 10));
+  led.credited_usd = +(led.credited_usd + amt).toFixed(4);
+  led.topups = [...(led.topups || []), { amount_usd: amt, at }].slice(-40);
+  if (!led.since) led.since = at;
+  return _balLedgerPut(env, provider, led);
+}
+// Apply one day's TRUE spend. Guarded per provider+day so a forced re-reconcile can't double-count.
+async function balanceApplyDay(env, provider, day, spend) {
+  const amt = Number(spend) || 0;
+  if (!(amt > 0)) return null;
+  const mark = "balance:applied:" + provider + ":" + day;
+  try { if (await env.AURA_KV.get(mark)) return null; } catch {}
+  const led = await _balLedgerGet(env, provider);
+  led.spent_usd = +(led.spent_usd + amt).toFixed(4);
+  await _balLedgerPut(env, provider, led);
+  try { await env.AURA_KV.put(mark, "1", { expirationTtl: 200 * 24 * 3600 }); } catch {}
+  return led;
+}
+// The operator-facing view: estimated remaining and days left at the recent burn rate.
+async function balanceReport(env, apiBalances) {
+  const out = {};
+  for (const p of ["anthropic", "openai", "xai", "google", "meta"]) {
+    const led = await _balLedgerGet(env, p);
+    const api = apiBalances?.[p]?.remaining_usd;
+    const est = +(led.credited_usd - led.spent_usd).toFixed(4);
+    const days = led.since ? Math.max(1, Math.round((Date.now() - new Date(led.since + "T00:00:00Z").getTime()) / 86400000)) : 0;
+    const burn = days ? +(led.spent_usd / days).toFixed(4) : 0;
+    out[p] = {
+      remaining_usd: (api ?? null),
+      estimated_remaining_usd: led.credited_usd > 0 ? est : null,
+      source: api != null ? "provider api (authoritative)" : (led.credited_usd > 0 ? "reconstructed: top-ups minus tracked spend" : "no data - record a top-up with /balance/topup"),
+      credited_usd: led.credited_usd, spent_usd: led.spent_usd, tracking_since: led.since,
+      avg_daily_burn_usd: burn,
+      days_left: burn > 0 ? Math.floor(((api ?? est) || 0) / burn) : null,
+    };
+  }
+  return out;
+}
+
 // The reconciler. Pulls every proven provider, sums the truth, compares it to what WE metered that day,
 // and stores both plus the gap. The gap is the product: a number nobody else in this stack can show you.
 async function reconcileTrueCost(env, day) {
@@ -19007,6 +19068,11 @@ async function reconcileTrueCost(env, day) {
 
   const trueTotal = Object.values(providers).reduce((a, p) => a + (p.ok ? p.total : 0), 0);
   const balances = await _balances(env).catch(() => ({}));
+  // Draw down the reconstructed balances with what each provider ACTUALLY billed that day.
+  for (const [name, p] of Object.entries(providers)) {
+    if (p?.ok && p.total > 0) { try { await balanceApplyDay(env, name, d, p.total); } catch {} }
+  }
+  const balance_report = await balanceReport(env, balances).catch(() => ({}));
 
   // What WE thought it cost that day, from our own ledgers.
   let metered = 0;
@@ -19033,6 +19099,7 @@ async function reconcileTrueCost(env, day) {
       : "Nothing metered for this day - any true cost here happened entirely outside Aura.",
     providers,
     balances,
+    balance_report,
     covered: Object.entries(providers).filter(([, p]) => p.ok).map(([k]) => k),
     uncovered: Object.entries(providers).filter(([, p]) => !p.ok).map(([k]) => k),
     generated_at: new Date().toISOString(),
@@ -19722,7 +19789,7 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" } });
     }
 
-    if (request.method === "GET" && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/showvid" && url.pathname !== "/vidjob" && url.pathname !== "/truecost" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/now" && url.pathname !== "/dashboard" && !url.pathname.startsWith("/brain") && !url.pathname.startsWith("/world") && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/") && !url.pathname.startsWith("/call-intel") && url.pathname !== "/home/domains" && !url.pathname.startsWith("/home/") && !url.pathname.startsWith("/hands/") && !url.pathname.startsWith("/brand/") && !url.pathname.startsWith("/f/") && !url.pathname.startsWith("/d/")) {
+    if (request.method === "GET" && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/showvid" && url.pathname !== "/vidjob" && url.pathname !== "/truecost" && url.pathname !== "/balance" && url.pathname !== "/balance/topup" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/now" && url.pathname !== "/dashboard" && !url.pathname.startsWith("/brain") && !url.pathname.startsWith("/world") && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/") && !url.pathname.startsWith("/call-intel") && url.pathname !== "/home/domains" && !url.pathname.startsWith("/home/") && !url.pathname.startsWith("/hands/") && !url.pathname.startsWith("/brand/") && !url.pathname.startsWith("/f/") && !url.pathname.startsWith("/d/")) {
       const page = await servePage(url.hostname, url.pathname === "/" ? "/" : url.pathname, env);
       if (page) return page;
     }
@@ -21369,6 +21436,29 @@ function openAlbum(idx){
     // TRUE COST: /truecost           -> yesterday's reconciliation (cached if the cron already ran)
     //            /truecost?date=YYYY-MM-DD -> a specific completed day
     //            /truecost?force=1        -> re-pull from the providers now
+    // BALANCE: /balance                                  -> all providers, real or reconstructed
+    //          /balance/topup?provider=anthropic&amount=20 -> record credits you added (rare, manual)
+    if (url.pathname === "/balance" || url.pathname === "/balance/topup") {
+      const _vc = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "Content-Type" };
+      const _vh = { "content-type": "application/json", ..._vc };
+      try {
+        if (url.pathname === "/balance/topup") {
+          const prov = (url.searchParams.get("provider") || "").trim().toLowerCase();
+          const amt = parseFloat(url.searchParams.get("amount") || "0");
+          if (!prov) return new Response(JSON.stringify({ ok: false, error: "provider required" }), { status: 400, headers: _vh });
+          const led = await balanceTopUp(env, prov, amt, url.searchParams.get("date") || undefined);
+          return new Response(JSON.stringify({ ok: true, ...led }), { status: 200, headers: _vh });
+        }
+        const api = await _balances(env).catch(() => ({}));
+        const rep = await balanceReport(env, api);
+        return new Response(JSON.stringify({ ok: true, balances: rep,
+          note: "remaining_usd is authoritative (provider API). estimated_remaining_usd is reconstructed " +
+                "from recorded top-ups minus true billed spend - record top-ups to keep it accurate." }), { status: 200, headers: _vh });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, error: String(e?.message ?? e) }), { status: 500, headers: _vh });
+      }
+    }
+
     if (url.pathname === "/truecost") {
       const _vc = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "Content-Type" };
       const _vh = { "content-type": "application/json", ..._vc };

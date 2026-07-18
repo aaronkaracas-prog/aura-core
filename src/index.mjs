@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.589-2026-07-18";
+const BUILD = "aura-core-v4.9.590-2026-07-18";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -18982,9 +18982,16 @@ async function _balances(env) {
         { headers: { "Authorization": "Bearer " + key } });
       const d = await r.json().catch(() => ({}));
       if (r.ok) {
-        // total.val is USD cents, negative = credit on hand.
+        // CORRECTION (2026-07-18): this endpoint returns PURCHASES, not remaining credit. "changes" is the
+        // top-up history and "total" is their sum - reported $10 while the console showed $7.69 remaining.
+        // So NO provider exposes remaining balance; all three need reconstruction. What xAI DOES give us
+        // for free is the credited side, so we auto-seed the ledger from it instead of typing top-ups.
         const cents = Math.abs(Number(d?.total?.val) || 0);
-        out.xai = { remaining_usd: +(cents / 100).toFixed(2), source: "api" };
+        out.xai = { credits_purchased_usd: +(cents / 100).toFixed(2), remaining_usd: null,
+                    note: "xAI exposes purchases, not remaining - credited side auto-seeded from the API",
+                    topups: (d?.changes || []).map((c) => ({
+                      amount_usd: +(Math.abs(Number(c?.amount?.val) || 0) / 100).toFixed(2),
+                      at: String(c?.createTime || "").slice(0, 10), origin: c?.changeOrigin })) };
       } else out.xai = { error: (d?.message || "balance fetch failed").slice(0, 120) };
     } else out.xai = { error: "no XAI_MANAGEMENT_KEY" };
   } catch (e) { out.xai = { error: String(e?.message ?? e).slice(0, 120) }; }
@@ -19072,6 +19079,19 @@ async function reconcileTrueCost(env, day) {
   for (const [name, p] of Object.entries(providers)) {
     if (p?.ok && p.total > 0) { try { await balanceApplyDay(env, name, d, p.total); } catch {} }
   }
+  // xAI publishes its own top-up history, so keep the credited side in sync automatically.
+  try {
+    const purchased = Number(balances?.xai?.credits_purchased_usd) || 0;
+    if (purchased > 0) {
+      const led = await _balLedgerGet(env, "xai");
+      if (led.credited_usd !== purchased) {
+        led.credited_usd = purchased;
+        led.topups = balances.xai.topups || led.topups;
+        if (!led.since && led.topups?.length) led.since = led.topups[0].at;
+        await _balLedgerPut(env, "xai", led);
+      }
+    }
+  } catch {}
   const balance_report = await balanceReport(env, balances).catch(() => ({}));
 
   // What WE thought it cost that day, from our own ledgers.
@@ -21450,6 +21470,18 @@ function openAlbum(idx){
           return new Response(JSON.stringify({ ok: true, ...led }), { status: 200, headers: _vh });
         }
         const api = await _balances(env).catch(() => ({}));
+        try {
+          const purchased = Number(api?.xai?.credits_purchased_usd) || 0;
+          if (purchased > 0) {
+            const led = await _balLedgerGet(env, "xai");
+            if (led.credited_usd !== purchased) {
+              led.credited_usd = purchased;
+              led.topups = api.xai.topups || led.topups;
+              if (!led.since && led.topups?.length) led.since = led.topups[0].at;
+              await _balLedgerPut(env, "xai", led);
+            }
+          }
+        } catch {}
         const rep = await balanceReport(env, api);
         return new Response(JSON.stringify({ ok: true, balances: rep,
           note: "remaining_usd is authoritative (provider API). estimated_remaining_usd is reconstructed " +

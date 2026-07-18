@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.585-2026-07-18";
+const BUILD = "aura-core-v4.9.586-2026-07-18";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -18873,6 +18873,130 @@ async function watchA2P(env) {
 }
 
 // Shared image-generation core â€” used by GENERATE_IMAGE command and public /showit + /pitch endpoints.
+
+// ══ TRUE-COST RECONCILER ═════════════════════════════════════════════════════════════════════════
+// Every meter in this system COMPUTES cost from a rate table. That is an estimate, and estimates drift:
+// a provider reprices, a lane runs a model we did not expect, work happens outside Aura entirely. On
+// 2026-07-17 the internal meter said ~$9.94/day while Anthropic's own books said $83.88 - an 8x gap the
+// dashboards never surfaced. So the meter must be RECONCILED against what providers actually charged.
+//
+// Each provider is an adapter (same doctrine as the model providers): verified shape, parked once proven.
+// Verified live: xAI Management API, Anthropic Admin API. OpenAI/Google/Meta slot in as they are proven.
+// Both verified endpoints only serve COMPLETED days, so this always reconciles YESTERDAY, never today.
+
+function _ymd(d) { return d.toISOString().slice(0, 10); }
+function _yesterday() { const d = new Date(); d.setUTCDate(d.getUTCDate() - 1); return _ymd(d); }
+
+// xAI: POST /v1/billing/teams/{team}/usage -> timeSeries grouped by description, values in USD.
+async function _trueCostXai(env, day) {
+  const key = env.XAI_MANAGEMENT_KEY;
+  if (!key) return { ok: false, error: "no XAI_MANAGEMENT_KEY" };
+  const team = (await env.AURA_KV.get("config:xai:team_id").catch(() => null)) || "859f5690-e3bb-464e-b829-9b8ff5b56180";
+  const body = { analyticsRequest: {
+    timeRange: { startTime: day + " 00:00:00", endTime: day + " 23:59:59", timezone: "Etc/GMT" },
+    timeUnit: "TIME_UNIT_DAY",
+    values: [{ name: "usd", aggregation: "AGGREGATION_SUM" }],
+    groupBy: ["description"], filters: [],
+  } };
+  const r = await fetch("https://management-api.x.ai/v1/billing/teams/" + team + "/usage", {
+    method: "POST", headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) return { ok: false, error: (d?.message || JSON.stringify(d)).slice(0, 200) };
+  const lines = {};
+  let total = 0;
+  for (const ts of (d?.timeSeries || [])) {
+    const label = (ts?.groupLabels || ts?.group || ["?"])[0];
+    const v = (ts?.dataPoints || []).reduce((a, p) => a + (Number(p?.values?.[0]) || 0), 0);
+    if (v > 0) { lines[label] = +(v.toFixed(6)); total += v; }
+  }
+  return { ok: true, total: +(total.toFixed(6)), lines };
+}
+
+// Anthropic: GET /v1/organizations/cost_report -> results[] with amount in USD, per token type.
+async function _trueCostAnthropic(env, day) {
+  const key = env.ANTHROPIC_ADMIN_KEY;
+  if (!key) return { ok: false, error: "no ANTHROPIC_ADMIN_KEY" };
+  const next = new Date(day + "T00:00:00Z"); next.setUTCDate(next.getUTCDate() + 1);
+  const url = "https://api.anthropic.com/v1/organizations/cost_report?starting_at=" + day +
+              "T00:00:00Z&ending_at=" + _ymd(next) + "T00:00:00Z&group_by[]=description";
+  const r = await fetch(url, { headers: { "x-api-key": key, "anthropic-version": "2023-06-01" } });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) return { ok: false, error: (d?.error?.message || JSON.stringify(d)).slice(0, 200) };
+  const lines = {};
+  let total = 0;
+  for (const bucket of (d?.data || [])) {
+    for (const res of (bucket?.results || [])) {
+      const amt = Number(res?.amount) || 0;
+      if (!amt) continue;
+      const label = res?.description || res?.model || "unknown";
+      lines[label] = +(((lines[label] || 0) + amt).toFixed(6));
+      total += amt;
+    }
+  }
+  return { ok: true, total: +(total.toFixed(6)), lines };
+}
+
+// The reconciler. Pulls every proven provider, sums the truth, compares it to what WE metered that day,
+// and stores both plus the gap. The gap is the product: a number nobody else in this stack can show you.
+async function reconcileTrueCost(env, day) {
+  const d = day || _yesterday();
+  const providers = {};
+  providers.xai = await _trueCostXai(env, d).catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
+  providers.anthropic = await _trueCostAnthropic(env, d).catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
+  // NOT YET PROVEN - left explicit so the report never implies coverage it does not have.
+  providers.openai = { ok: false, error: "adapter not built - admin key available, endpoint unverified" };
+  providers.google = { ok: false, error: "adapter not built" };
+  providers.meta   = { ok: false, error: "adapter not built" };
+
+  const trueTotal = Object.values(providers).reduce((a, p) => a + (p.ok ? p.total : 0), 0);
+
+  // What WE thought it cost that day, from our own ledgers.
+  let metered = 0;
+  const meteredParts = {};
+  try {
+    const sp = await env.AURA_KV.get("meter:spend:" + d);
+    if (sp) { meteredParts.text = +parseFloat(sp).toFixed(6); metered += parseFloat(sp) || 0; }
+  } catch {}
+  for (const [k, label] of [["meter:images:", "images"], ["meter:videos:", "videos"]]) {
+    try {
+      const raw = await env.AURA_KV.get(k + d);
+      if (raw) { const j = JSON.parse(raw); const c = Number(j?.cost_usd) || 0; meteredParts[label] = c; metered += c; }
+    } catch {}
+  }
+
+  const report = {
+    day: d,
+    true_cost_usd: +trueTotal.toFixed(4),
+    metered_usd: +metered.toFixed(4),
+    gap_usd: +(trueTotal - metered).toFixed(4),
+    gap_note: metered > 0
+      ? "Providers billed " + (trueTotal / metered).toFixed(1) + "x what Aura metered. A large gap means real spend " +
+        "is happening outside Aura's meter (other tools on the same key), or a rate table has drifted."
+      : "Nothing metered for this day - any true cost here happened entirely outside Aura.",
+    providers,
+    covered: Object.entries(providers).filter(([, p]) => p.ok).map(([k]) => k),
+    uncovered: Object.entries(providers).filter(([, p]) => !p.ok).map(([k]) => k),
+    generated_at: new Date().toISOString(),
+  };
+  try { await env.AURA_KV.put("truth:spend:" + d, JSON.stringify(report), { expirationTtl: 120 * 24 * 3600 }); } catch {}
+  console.log("[TRUECOST] " + d + " true=$" + report.true_cost_usd + " metered=$" + report.metered_usd +
+              " gap=$" + report.gap_usd + " covered=" + report.covered.join(","));
+  return report;
+}
+
+// Once per day on the existing cron. Guarded by a marker so the 1-minute schedule does not hammer it.
+async function maybeReconcileDaily(env) {
+  try {
+    const d = _yesterday();
+    const done = await env.AURA_KV.get("truth:done:" + d);
+    if (done) return;
+    await env.AURA_KV.put("truth:done:" + d, "1", { expirationTtl: 7 * 24 * 3600 });
+    await reconcileTrueCost(env, d);
+  } catch (e) { console.warn("[TRUECOST] daily error " + (e?.message || e)); }
+}
+
 // ══ VIDEO: THE ASYNC MEDIA TYPE ══════════════════════════════════════════════════════════════════
 // Text and images are request/response - ask, get it back. Video is NOT: you submit, get a request_id,
 // and the provider works for 30-120s. A Worker cannot sit and wait, so this is three parts: submit
@@ -19455,6 +19579,7 @@ export default {
     ctx.waitUntil(precomputeHotBriefs(env));
     ctx.waitUntil(captureAisHistory(env));
     ctx.waitUntil(pollVideoJobs(env));   // finish async video jobs nobody is waiting on
+    ctx.waitUntil(maybeReconcileDaily(env));   // reconcile yesterday against provider billing, once/day
   },
 
   // INBOUND EMAIL (v4.9.491) - THE READ-HALF of Aura's email, the authentication master key.
@@ -19540,7 +19665,7 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache, no-store, must-revalidate" } });
     }
 
-    if (request.method === "GET" && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/showvid" && url.pathname !== "/vidjob" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/now" && url.pathname !== "/dashboard" && !url.pathname.startsWith("/brain") && !url.pathname.startsWith("/world") && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/") && !url.pathname.startsWith("/call-intel") && url.pathname !== "/home/domains" && !url.pathname.startsWith("/home/") && !url.pathname.startsWith("/hands/") && !url.pathname.startsWith("/brand/") && !url.pathname.startsWith("/f/") && !url.pathname.startsWith("/d/")) {
+    if (request.method === "GET" && url.pathname !== "/chat" && url.pathname !== "/health" && url.pathname !== "/homelog" && url.pathname !== "/status" && url.pathname !== "/logs" && url.pathname !== "/claims" && url.pathname !== "/dashboard" && url.pathname !== "/showit" && url.pathname !== "/showvid" && url.pathname !== "/vidjob" && url.pathname !== "/truecost" && url.pathname !== "/aura-chat" && url.pathname !== "/confirm-payment" && url.pathname !== "/create-payment-intent" && url.pathname !== "/pay" && url.pathname !== "/pitch" && url.pathname !== "/engine" && url.pathname !== "/home" && url.pathname !== "/manifest.webmanifest" && url.pathname !== "/sw.js" && url.pathname !== "/talk" && url.pathname !== "/now" && url.pathname !== "/dashboard" && !url.pathname.startsWith("/brain") && !url.pathname.startsWith("/world") && url.pathname !== "/home/greet" && url.pathname !== "/home/layout" && !url.pathname.startsWith("/command-center") && !url.pathname.startsWith("/plaid/") && !url.pathname.startsWith("/image/") && !url.pathname.startsWith("/auth/") && !url.pathname.startsWith("/call-intel") && url.pathname !== "/home/domains" && !url.pathname.startsWith("/home/") && !url.pathname.startsWith("/hands/") && !url.pathname.startsWith("/brand/") && !url.pathname.startsWith("/f/") && !url.pathname.startsWith("/d/")) {
       const page = await servePage(url.hostname, url.pathname === "/" ? "/" : url.pathname, env);
       if (page) return page;
     }
@@ -21184,6 +21309,26 @@ function openAlbum(idx){
     // /showvid submits and returns a job id IMMEDIATELY - it never waits, because the provider takes
     // 30-120s and a Worker cannot hold that. The cron poller finishes it. /vidjob?id= checks status.
     // This is the honest shape for an async media type: a receipt now, the artifact later.
+    // TRUE COST: /truecost           -> yesterday's reconciliation (cached if the cron already ran)
+    //            /truecost?date=YYYY-MM-DD -> a specific completed day
+    //            /truecost?force=1        -> re-pull from the providers now
+    if (url.pathname === "/truecost") {
+      const _vc = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "Content-Type" };
+      const _vh = { "content-type": "application/json", ..._vc };
+      const day = (url.searchParams.get("date") || "").trim() || _yesterday();
+      const force = /^(1|true|yes)$/i.test(String(url.searchParams.get("force") || ""));
+      try {
+        if (!force) {
+          const cached = await env.AURA_KV.get("truth:spend:" + day);
+          if (cached) return new Response(cached, { status: 200, headers: _vh });
+        }
+        const rep = await reconcileTrueCost(env, day);
+        return new Response(JSON.stringify(rep), { status: 200, headers: _vh });
+      } catch (e) {
+        return new Response(JSON.stringify({ ok: false, error: String(e?.message ?? e) }), { status: 500, headers: _vh });
+      }
+    }
+
     if (url.pathname === "/showvid") {
       // cors is declared per-route in this file, so declare our own - referencing showit's (further down)
       // threw a ReferenceError and surfaced as a bare Cloudflare 1101 with no message.

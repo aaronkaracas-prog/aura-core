@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.593-2026-07-18";
+const BUILD = "aura-core-v4.9.594-2026-07-18";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -37,6 +37,89 @@ const BUILD = "aura-core-v4.9.593-2026-07-18";
 // and brainFetch falls back to it. Verified by the failing test: the meter fired but L1 never hit,
 // because env was undefined and `if (env && env.AURA_KV)` silently skipped. Arity bug, caught by testing.
 let _BRAIN_ENV = null;
+
+
+// ══ THE BRAIN CALL — PROVIDER-NEUTRAL ════════════════════════════════════════════════════════════
+// aura-core grew Anthropic-native: 75 call sites hardcoded to api.anthropic.com. That is why the core
+// kept billing Claude while AIMARGIN's policy engine (which governs aura-think) said "cheapest". The
+// policy has to reach BOTH workers or it is not a policy, it is a preference.
+//
+// One entry point. Callers state intent - system, user, how many tokens - and never name a provider.
+// config:policy:text decides who answers (cheapest -> Grok, balanced -> OpenAI, quality -> Claude), and
+// config:brain:model still pins an exact model when someone wants one.
+//
+// Returns a NORMALIZED result: { ok, text, structured, usage, provider, model }. Not Anthropic blocks -
+// a block array pretending to be provider-neutral is the kind of dirt that costs a future session.
+const BRAIN_POLICY = {
+  cheapest: { provider: "grok",      model: "grok-build-0.1" },
+  balanced: { provider: "openai",    model: "gpt-4.1-nano" },
+  quality:  { provider: "anthropic", model: "claude-haiku-4-5-20251001" },
+  best:     { provider: "anthropic", model: "claude-opus-4-8" },
+};
+
+async function _brainRoute(env, override) {
+  const pol = ((await env.AURA_KV.get("config:policy:text").catch(() => null)) || "cheapest").trim();
+  const r = { ...(BRAIN_POLICY[pol] || BRAIN_POLICY.cheapest) };
+  // An explicit model pin wins over policy, and tells us its provider by name shape.
+  const pin = override || (await env.AURA_KV.get("config:brain:model").catch(() => null));
+  if (pin && pin.trim()) {
+    const m = pin.trim();
+    r.model = m;
+    r.provider = /^claude/i.test(m) ? "anthropic"
+               : /^grok/i.test(m) ? "grok"
+               : /^gemini/i.test(m) ? "gemini"
+               : /^muse/i.test(m) ? "meta" : "openai";
+  }
+  return r;
+}
+
+// Each provider gets its REAL request/response shape - no translation layer pretending they are the same.
+async function callBrain({ system, user, max_tokens = 2000, model = null, temperature }, env) {
+  env = env || _BRAIN_ENV;
+  const route = await _brainRoute(env, model);
+  const cap = Math.max(16, Math.min(16000, parseInt(max_tokens, 10) || 2000));
+
+  if (route.provider === "anthropic") {
+    const key = env.ANTHROPIC_API_KEY || await KV.get(env, "secret:anthropic");
+    if (!key) return { ok: false, error: "no Anthropic key", provider: route.provider, model: route.model };
+    const r = await brainFetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: route.model, max_tokens: cap, ...(system ? { system } : {}),
+                             messages: [{ role: "user", content: String(user || "") }] }),
+    }, env);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return { ok: false, error: (d?.error?.message || ("http " + r.status)), provider: route.provider, model: route.model };
+    const text = (d?.content || []).filter((b) => b?.type === "text").map((b) => b.text).join("");
+    return { ok: true, text, structured: null, provider: route.provider, model: route.model,
+             usage: { in: d?.usage?.input_tokens || 0, out: d?.usage?.output_tokens || 0 } };
+  }
+
+  // Everyone else speaks chat/completions. Grok and Gemini both 404 the /responses path - proven live.
+  const EP = {
+    grok:   { url: "https://api.x.ai/v1/chat/completions", key: "secret:grok_api_key", envk: "XAI_API_KEY" },
+    openai: { url: "https://api.openai.com/v1/chat/completions", key: "secret:openai", envk: "OPENAI_API_KEY" },
+    gemini: { url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", key: "secret:google_api_key", envk: "GOOGLE_API_KEY" },
+    meta:   { url: "https://api.meta.ai/v1/chat/completions", key: "secret:llama", envk: "LLAMA_API_KEY" },
+  }[route.provider];
+  if (!EP) return { ok: false, error: "unknown provider " + route.provider };
+  const key = env[EP.envk] || await KV.get(env, EP.key);
+  if (!key) return { ok: false, error: "no key for " + route.provider, provider: route.provider, model: route.model };
+  const msgs = [];
+  if (system) msgs.push({ role: "system", content: String(system) });
+  msgs.push({ role: "user", content: String(user || "") });
+  const r = await fetch(EP.url, {
+    method: "POST",
+    headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: route.model, max_tokens: cap, messages: msgs,
+                           ...(temperature != null ? { temperature } : {}) }),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) return { ok: false, error: (d?.error?.message || JSON.stringify(d).slice(0, 200)), provider: route.provider, model: route.model };
+  return { ok: true, text: d?.choices?.[0]?.message?.content || "", structured: null,
+           provider: route.provider, model: route.model,
+           usage: { in: d?.usage?.prompt_tokens || 0, out: d?.usage?.completion_tokens || 0 } };
+}
 
 async function brainFetch(url, opts, env) {
   env = env || _BRAIN_ENV;

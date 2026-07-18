@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.586-2026-07-18";
+const BUILD = "aura-core-v4.9.587-2026-07-18";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -18938,6 +18938,36 @@ async function _trueCostAnthropic(env, day) {
   return { ok: true, total: +(total.toFixed(6)), lines };
 }
 
+
+// OpenAI: GET /v1/organization/costs?start_time=<epoch>&end_time=<epoch> -> data[].results[].amount.value
+// Epoch SECONDS, not ISO. group_by[]=line_item gives the per-model breakdown; without it you get one
+// lump per project. Needs an ADMIN key (sk-admin-...), not a project key.
+async function _trueCostOpenai(env, day) {
+  const key = env.OPENAI_ADMIN_KEY;
+  if (!key) return { ok: false, error: "no OPENAI_ADMIN_KEY" };
+  const start = Math.floor(new Date(day + "T00:00:00Z").getTime() / 1000);
+  const end = start + 86400;
+  const url = "https://api.openai.com/v1/organization/costs?start_time=" + start + "&end_time=" + end +
+              "&limit=2&group_by[]=line_item";
+  const r = await fetch(url, { headers: { "Authorization": "Bearer " + key } });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) return { ok: false, error: (d?.error?.message || JSON.stringify(d)).slice(0, 200) };
+  const lines = {};
+  let total = 0;
+  for (const bucket of (d?.data || [])) {
+    // Buckets can run past the day we asked for; keep only the one that starts on our day.
+    if (bucket?.start_time && bucket.start_time >= end) continue;
+    for (const res of (bucket?.results || [])) {
+      const amt = Number(res?.amount?.value) || 0;
+      if (!amt) continue;
+      const label = res?.line_item || res?.project_name || "OpenAI usage";
+      lines[label] = +(((lines[label] || 0) + amt).toFixed(6));
+      total += amt;
+    }
+  }
+  return { ok: true, total: +(total.toFixed(6)), lines };
+}
+
 // The reconciler. Pulls every proven provider, sums the truth, compares it to what WE metered that day,
 // and stores both plus the gap. The gap is the product: a number nobody else in this stack can show you.
 async function reconcileTrueCost(env, day) {
@@ -18946,7 +18976,7 @@ async function reconcileTrueCost(env, day) {
   providers.xai = await _trueCostXai(env, d).catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
   providers.anthropic = await _trueCostAnthropic(env, d).catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
   // NOT YET PROVEN - left explicit so the report never implies coverage it does not have.
-  providers.openai = { ok: false, error: "adapter not built - admin key available, endpoint unverified" };
+  providers.openai = await _trueCostOpenai(env, d).catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
   providers.google = { ok: false, error: "adapter not built" };
   providers.meta   = { ok: false, error: "adapter not built" };
 

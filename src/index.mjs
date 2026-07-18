@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.594-2026-07-18";
+const BUILD = "aura-core-v4.9.595-2026-07-18";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16338,6 +16338,15 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         : (report.live?.status === 530 && apexDns.length === 0 ? "NO_DNS_RECORD_530"
         : (report.custom_domains?.length ? "CUSTOM_DOMAIN_LIKELY_OVERRIDING_ROUTES" : "MISMATCH_CAUSE_IN_ROUTES_OR_DNS"));
       return { cmd: "DOMAIN_DIAGNOSE", payload: { ok: true, ...report } };
+    }
+    case "BRAIN_TEST": {
+      // Proves callBrain routes by policy BEFORE 75 call sites depend on it. Reports which provider and
+      // model actually answered, so "cheapest" can be verified rather than assumed.
+      if (!isOp) return { cmd: "BRAIN_TEST", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const q = line.trim().split(/\s+/).slice(1).join(" ") || "Reply with exactly one word: ok";
+      const t0 = Date.now();
+      const r = await callBrain({ system: "Answer in one short sentence.", user: q, max_tokens: 100 }, env);
+      return { cmd: "BRAIN_TEST", payload: { ...r, ms: Date.now() - t0 } };
     }
     case "SPACESHIP_SYNC": {
       if (!isOp) return { cmd: "SPACESHIP_SYNC", payload: { ok: false, error: "OPERATOR_REQUIRED" } };

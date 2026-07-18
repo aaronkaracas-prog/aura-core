@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.578-2026-07-18";
+const BUILD = "aura-core-v4.9.579-2026-07-18";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -21112,8 +21112,11 @@ function openAlbum(idx){
     // 30-120s and a Worker cannot hold that. The cron poller finishes it. /vidjob?id= checks status.
     // This is the honest shape for an async media type: a receipt now, the artifact later.
     if (url.pathname === "/showvid") {
-      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
-      const _vh = { "content-type": "application/json", ...cors };
+      // cors is declared per-route in this file, so declare our own - referencing showit's (further down)
+      // threw a ReferenceError and surfaced as a bare Cloudflare 1101 with no message.
+      const _vc = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "Content-Type" };
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: _vc });
+      const _vh = { "content-type": "application/json", ..._vc };
       let p = url.searchParams.get("prompt") || url.searchParams.get("q") || "";
       if (request.method === "POST") { try { const b = await request.json(); p = b.prompt || b.q || p; } catch {} }
       if (!p) return new Response(JSON.stringify({ ok: false, error: "prompt required" }), { status: 400, headers: _vh });
@@ -21129,7 +21132,8 @@ function openAlbum(idx){
       }
     }
     if (url.pathname === "/vidjob") {
-      const _vh = { "content-type": "application/json", ...cors };
+      const _vc = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "Content-Type" };
+      const _vh = { "content-type": "application/json", ..._vc };
       const id = url.searchParams.get("id") || "";
       if (!id) return new Response(JSON.stringify({ ok: false, error: "id required" }), { status: 400, headers: _vh });
       const raw = await env.AURA_KV.get("vidjob:" + id.replace(/^vid_/, ""));

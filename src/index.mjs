@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.580-2026-07-18";
+const BUILD = "aura-core-v4.9.581-2026-07-18";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -18882,6 +18882,28 @@ async function watchA2P(env) {
 // roughly 300x an image and more than a normal day of inference. So the duration cap is enforced HERE
 // at submit time, not bolted on later: config:video:max_seconds (default 6). A media type this
 // expensive gets its ceiling before its first call, not after the first surprise bill.
+// ══ STYLE AS A POLICY (AIMARGIN) ═════════════════════════════════════════════════════════════════
+// Style is NOT a billing dimension - providers charge on model/resolution/duration, never on whether the
+// prompt says "cartoon" or "photoreal". So style is a FREE lever, and at the cheap floor it is the most
+// valuable one: at 480p a photoreal clip looks broken (compression, artifacts, uncanny motion) while a
+// stylised one looks intentional. Same cost, better product. It also cuts likeness/deepfake exposure,
+// which is the real reason the big consumer apps ship "toys" rather than realism.
+// config:policy:style = toy | illustrated | photoreal | none. Default toy - the floor's best-looking
+// option and the safest for a mass audience. Flip the key to go photoreal; nothing else changes.
+const STYLE_PRESETS = {
+  toy:         "Bright playful stylised 3D-toy look, clean simple shapes, bold saturated colours, soft lighting, friendly and charming. Not photorealistic.",
+  illustrated: "Hand-illustrated look, painterly brushwork, expressive lines, rich colour, storybook feel. Not photorealistic.",
+  photoreal:   "High quality, photorealistic where appropriate, visually striking, detailed.",
+  none:        "",
+};
+async function styleSuffix(env) {
+  try {
+    const p = (await env.AURA_KV.get("config:policy:style").catch(() => null) || "toy").trim();
+    const s = STYLE_PRESETS[p] ?? STYLE_PRESETS.toy;
+    return s ? ". " + s : "";
+  } catch { return ". " + STYLE_PRESETS.toy; }
+}
+
 async function auraSubmitVideo(prompt, env, opts = {}) {
   const VIDEO_POLICY = {
     cheapest: { model: "grok-imagine-video",     resolution: "480p" },
@@ -18899,7 +18921,9 @@ async function auraSubmitVideo(prompt, env, opts = {}) {
 
   const key = env.XAI_API_KEY || await env.AURA_KV.get("secret:xai").catch(() => null);
   if (!key) throw new Error("no xAI key");
-  const body = { model, prompt: String(prompt).slice(0, 2000), duration,
+  // Same style policy as images - one key governs the look across every media type.
+  const _styled = String(prompt) + (await styleSuffix(env));
+  const body = { model, prompt: _styled.slice(0, 2000), duration,
                  aspect_ratio: opts.aspect_ratio || "16:9", resolution: opts.resolution || resolved.resolution };
   const r = await fetch("https://api.x.ai/v1/videos/generations", {
     method: "POST", headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
@@ -21151,7 +21175,10 @@ function openAlbum(idx){
       if (request.method === "POST") { try { const b = await request.json(); prompt = b.prompt || b.q || prompt; } catch {} }
       prompt = (prompt || "").trim();
       if (!prompt) return new Response(JSON.stringify({ ok: false, error: "Provide a prompt" }), { status: 400, headers: { "content-type": "application/json", ...cors } });
-      const enhanced = `${prompt}. High quality, photorealistic where appropriate, visually striking, detailed.`;
+      // STYLE BY POLICY, not hardcoded. This line used to force photorealism on every image - the worst
+      // look at the cheap floor and the highest liability on a mass free tier. Now config:policy:style
+      // decides, and it costs nothing either way.
+      const enhanced = `${prompt}${await styleSuffix(env)}`;
       const result = await auraGenerateImage(enhanced, env, { source: "showit" });
       return new Response(JSON.stringify(result), { status: result.ok ? 200 : 500, headers: { "content-type": "application/json", ...cors } });
     }

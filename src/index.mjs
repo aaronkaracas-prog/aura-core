@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.581-2026-07-18";
+const BUILD = "aura-core-v4.9.582-2026-07-18";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -18919,6 +18919,34 @@ async function auraSubmitVideo(prompt, env, opts = {}) {
   const cap = Math.max(1, Math.min(30, parseInt(capRaw || "6", 10) || 6));
   const duration = Math.max(1, Math.min(cap, parseInt(opts.duration || 5, 10) || 5));
 
+  // ── VIDEO FLYWHEEL ──────────────────────────────────────────────────────────────────────────
+  // Same flywheel as images, worth ~300x more per hit: an image repeat saves $0.002, a video repeat
+  // saves ~$0.60. Three identical canoe prompts billed three times today because this did not exist.
+  // Key on everything that changes the output: model + resolution + duration + the STYLED prompt (so a
+  // style-policy flip correctly misses rather than serving the wrong look).
+  let vcacheKey = null;
+  try {
+    const sig = model + "|" + (opts.resolution || resolved.resolution) + "|" + duration + "|" + _styled;
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(sig));
+    vcacheKey = "vidcache:" + Array.from(new Uint8Array(buf)).slice(0, 12).map((x) => x.toString(16).padStart(2, "0")).join("");
+    const hitRaw = await env.AURA_KV.get(vcacheKey);
+    if (hitRaw) {
+      const hit = JSON.parse(hitRaw);
+      // Only serve a hit that actually completed - a cached "pending" would be a dead end.
+      if (hit?.status === "done" && hit?.video_url) {
+        try {
+          const day = new Date().toISOString().slice(0, 10);
+          const lraw = await env.AURA_KV.get("meter:videos:" + day);
+          const led = lraw ? JSON.parse(lraw) : { day, count: 0, seconds: 0, cost_usd: 0 };
+          led.cache_hits = (led.cache_hits || 0) + 1;
+          led.saved_usd = +((led.saved_usd || 0) + (hit.cost_usd || 0)).toFixed(4);
+          await env.AURA_KV.put("meter:videos:" + day, JSON.stringify(led), { expirationTtl: 40 * 24 * 3600 });
+        } catch {}
+        return { ...hit, cached: true, cost_usd: 0, est_cost_usd: 0 };
+      }
+    }
+  } catch {}
+
   const key = env.XAI_API_KEY || await env.AURA_KV.get("secret:xai").catch(() => null);
   if (!key) throw new Error("no xAI key");
   // Same style policy as images - one key governs the look across every media type.
@@ -18942,7 +18970,7 @@ async function auraSubmitVideo(prompt, env, opts = {}) {
   const perSec = VRATE[model] ?? 0.40;
   const job = { id: "vid_" + requestId, request_id: requestId, model, prompt: body.prompt, duration,
                 resolution: body.resolution, status: "pending", est_cost_usd: +(perSec * duration).toFixed(4),
-                submitted_at: new Date().toISOString(), video_url: null, error: null };
+                submitted_at: new Date().toISOString(), video_url: null, error: null, cache_key: vcacheKey };
   await env.AURA_KV.put("vidjob:" + requestId, JSON.stringify(job), { expirationTtl: 7 * 24 * 3600 });
   return job;
 }
@@ -18984,6 +19012,8 @@ async function pollVideoJobs(env) {
           await env.AURA_KV.put("meter:videos:" + day, JSON.stringify(led), { expirationTtl: 40 * 24 * 3600 });
         } catch {}
         await env.AURA_KV.put(k.name, JSON.stringify(job), { expirationTtl: 7 * 24 * 3600 });
+        // Publish to the flywheel only on success - now every identical request is free.
+        if (job.cache_key) { try { await env.AURA_KV.put(job.cache_key, JSON.stringify(job)); } catch {} }
         console.log("[VIDEO] done " + job.id + " " + job.cost_usd + " " + job.video_url);
       } else if (st === "failed" || st === "expired") {
         job.status = st;

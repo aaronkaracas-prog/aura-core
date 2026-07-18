@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.583-2026-07-18";
+const BUILD = "aura-core-v4.9.584-2026-07-18";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -18965,11 +18965,13 @@ async function auraSubmitVideo(prompt, env, opts = {}) {
   if (!requestId) throw new Error("no request_id returned: " + JSON.stringify(d).slice(0, 200));
 
   // RATE map is per SECOND here, not per item - that difference is the whole reason video needs a cap.
-  // OBSERVED rate, not published. Published guides said $0.05-0.08/sec; the account actually billed ~$1.20
-  // for a 4-second clip = ~$0.30/sec, 6x higher. Same lesson as every other price this session: the
-  // account is the truth, the docs are marketing. Re-measure after any pricing change.
-  const VRATE = { "grok-imagine-video": 0.30, "grok-imagine-video-1.5": 0.40 };
-  const perSec = VRATE[model] ?? 0.40;
+  // CALIBRATED against the account, not guessed. Measured 2026-07-18: credits $8.53 -> $7.69 = $0.84
+  // across 8 two-second clips = 16s => $0.0525/sec, which matches the published $0.05. An earlier
+  // "$0.30/sec" reading was billing LAG, not price - xAI's usage page trails by ~15-30 min, so never
+  // calibrate off a single fresh delta. Recalibrate the same way after any pricing change: take a
+  // credits delta across several clips, divide by total seconds.
+  const VRATE = { "grok-imagine-video": 0.053, "grok-imagine-video-1.5": 0.08 };
+  const perSec = VRATE[model] ?? 0.08;
   const job = { id: "vid_" + requestId, request_id: requestId, model, prompt: body.prompt, duration,
                 resolution: body.resolution, status: "pending", est_cost_usd: +(perSec * duration).toFixed(4),
                 submitted_at: new Date().toISOString(), video_url: null, error: null, cache_key: vcacheKey };
@@ -19000,7 +19002,7 @@ async function pollVideoJobs(env) {
         job.status = "done";
         job.video_url = d.video.url;
         job.actual_duration = d.video.duration ?? job.duration;
-        const VRATE = { "grok-imagine-video": 0.30, "grok-imagine-video-1.5": 0.40 };   // observed, see submit
+        const VRATE = { "grok-imagine-video": 0.053, "grok-imagine-video-1.5": 0.08 };   // calibrated, see submit
         job.cost_usd = +(((VRATE[job.model] ?? 0.08) * (job.actual_duration || job.duration))).toFixed(4);
         job.completed_at = new Date().toISOString();
         // Roll the day's video ledger, same pattern as images.

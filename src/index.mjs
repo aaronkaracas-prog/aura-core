@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.577-2026-07-18";
+const BUILD = "aura-core-v4.9.578-2026-07-18";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -21112,25 +21112,29 @@ function openAlbum(idx){
     // 30-120s and a Worker cannot hold that. The cron poller finishes it. /vidjob?id= checks status.
     // This is the honest shape for an async media type: a receipt now, the artifact later.
     if (url.pathname === "/showvid") {
-      const p = url.searchParams.get("prompt") || url.searchParams.get("q") || "";
-      if (!p) return json({ ok: false, error: "prompt required" }, 400);
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+      const _vh = { "content-type": "application/json", ...cors };
+      let p = url.searchParams.get("prompt") || url.searchParams.get("q") || "";
+      if (request.method === "POST") { try { const b = await request.json(); p = b.prompt || b.q || p; } catch {} }
+      if (!p) return new Response(JSON.stringify({ ok: false, error: "prompt required" }), { status: 400, headers: _vh });
       try {
         const job = await auraSubmitVideo(p, env, {
           duration: url.searchParams.get("seconds") || undefined,
           resolution: url.searchParams.get("resolution") || undefined,
         });
-        return json({ ok: true, ...job,
-          note: "Submitted. Poll /vidjob?id=" + job.request_id + " - the cron finishes it in ~1-2 min." });
+        return new Response(JSON.stringify({ ok: true, ...job,
+          note: "Submitted. Poll /vidjob?id=" + job.request_id + " - the cron finishes it in ~1-2 min." }), { status: 200, headers: _vh });
       } catch (e) {
-        return json({ ok: false, error: "video submit failed: " + (e?.message || e) }, 500);
+        return new Response(JSON.stringify({ ok: false, error: "video submit failed: " + (e?.message || e) }), { status: 500, headers: _vh });
       }
     }
     if (url.pathname === "/vidjob") {
+      const _vh = { "content-type": "application/json", ...cors };
       const id = url.searchParams.get("id") || "";
-      if (!id) return json({ ok: false, error: "id required" }, 400);
+      if (!id) return new Response(JSON.stringify({ ok: false, error: "id required" }), { status: 400, headers: _vh });
       const raw = await env.AURA_KV.get("vidjob:" + id.replace(/^vid_/, ""));
-      if (!raw) return json({ ok: false, error: "no such job" }, 404);
-      return json({ ok: true, ...JSON.parse(raw) });
+      if (!raw) return new Response(JSON.stringify({ ok: false, error: "no such job" }), { status: 404, headers: _vh });
+      return new Response(raw, { status: 200, headers: _vh });
     }
 
     if (url.pathname === "/showit") {

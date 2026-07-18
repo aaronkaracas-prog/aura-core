@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.595-2026-07-18";
+const BUILD = "aura-core-v4.9.597-2026-07-18";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -1165,8 +1165,23 @@ async function governorRecord(env, action, pageId) {
 // then raw CDN, then a KV cache, and self-heals the cache on success. So Aura can ALWAYS read herself.
 async function readOwnSource(env, branch, worker) {
   const _branch = branch || "main";
-  const _repo = "aura-core";
-  const _path = "src/index.mjs";
+  // v4.9.596: the `worker` argument was ACCEPTED AND IGNORED - _repo was hardcoded to "aura-core", so
+  // every call asking for "aura-think" silently got the hands instead of the brain. She has never once
+  // been able to read her own brain. That is a large part of why she cannot answer "what do I have?" -
+  // half of herself was invisible to her. Repos are KV-overridable so a rename never blinds her again.
+  const _w = (worker || "aura-core").trim();
+  const _map = { "aura-core": { repo: "aura-core", path: "src/index.mjs" },
+                 "aura-think": { repo: "aura-think", path: "src/server.ts" },
+                 "aura-ops": { repo: "aura-ops", path: "src/index.mjs" },
+                 "aura-comms": { repo: "aura-comms", path: "src/index.mjs" },
+                 "aura-host": { repo: "aura-host", path: "src/index.mjs" } };
+  let _cfg = _map[_w] || _map["aura-core"];
+  try {
+    const ov = await env.AURA_KV.get("config:repo:" + _w);
+    if (ov) { const j = JSON.parse(ov); if (j?.repo) _cfg = { repo: j.repo, path: j.path || _cfg.path }; }
+  } catch {}
+  const _repo = _cfg.repo;
+  const _path = _cfg.path;
   // v4.9.499: FIX the 1MB self-read blind spot. The GitHub *contents* API truncates files at 1MB even
   // with the raw accept header - and this index is ~1.7MB, so everything past ~line 10960 was INVISIBLE
   // to self-read (this is why GREP kept returning "zero hits" for real code past that point, and why she
@@ -1174,7 +1189,7 @@ async function readOwnSource(env, branch, worker) {
   // (full file), verify it looks complete (ends with the expected export/EOF), then GitHub blob API as a
   // no-limit fallback, then KV cache. A source that doesn't contain the final export is treated as
   // truncated and rejected.
-  const looksComplete = (s) => s && s.length > 5000 && !s.startsWith("404") && (s.includes("export default") || s.includes("export class") || s.trimEnd().endsWith("}") || s.includes("addEventListener"));
+  const looksComplete = (s) => s && s.length > 5000 && !s.startsWith("404") && (s.includes("export default") || s.includes("export class") || s.trimEnd().endsWith("}") || s.includes("addEventListener"));   // TS brains end in a class/export too
   let got = null, via = null;
   // 1) raw CDN - no 1MB limit, returns the WHOLE file
   try {
@@ -16338,6 +16353,79 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         : (report.live?.status === 530 && apexDns.length === 0 ? "NO_DNS_RECORD_530"
         : (report.custom_domains?.length ? "CUSTOM_DOMAIN_LIKELY_OVERRIDING_ROUTES" : "MISMATCH_CAUSE_IN_ROUTES_OR_DNS"));
       return { cmd: "DOMAIN_DIAGNOSE", payload: { ok: true, ...report } };
+    }
+    case "WHERE": {
+      // ══ "WHERE IS EVERYTHING IN MY WORLD" ═══════════════════════════════════════════════════════
+      // Aaron has said this 20-40 times over months: he is still the smartest person in the room. He
+      // knows what exists because he built it; Aura does not, so he has to carry the index himself.
+      // Every previous fix stored a map - and a stored map ROTS (notes:STATE:resume_here still claims
+      // v4.9.555 while she runs v596). So this one stores NOTHING. It DERIVES, at the moment asked:
+      //   - every command in every worker, read from live source on GitHub
+      //   - every tool, action and skill in the brain (aura-think is TypeScript, different shapes)
+      //   - where the DATA lives: KV namespaces with live key counts
+      // WHERE            -> the whole map
+      // WHERE <term>     -> everything matching, across all five workers and KV
+      // No LLM. Regex over real source. It cannot drift because it is never written down.
+      if (!isOp) return { cmd: "WHERE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const wTerm = rest.trim().toLowerCase();
+      const workers = ["aura-core", "aura-think", "aura-ops", "aura-comms", "aura-host"];
+      const found = {};
+      const errs = {};
+      await Promise.all(workers.map(async (w) => {
+        try {
+          const r = await readOwnSource(env, "main", w);
+          if (!r.ok || !r.source) { errs[w] = r.error || "unreadable"; return; }
+          const src = r.source, lines = src.split("\n");
+          const items = [];
+          for (let i = 0; i < lines.length; i++) {
+            const L = lines[i];
+            let name = null, kind = null;
+            let m;
+            if ((m = L.match(/^\s*case\s+"([A-Z][A-Z0-9_]+)":/))) { name = m[1]; kind = "command"; }
+            else if ((m = L.match(/^\s+([a-z_][a-zA-Z0-9_]*): tool\(/))) { name = m[1]; kind = "tool"; }
+            else if ((m = L.match(/^\s+([a-z_][a-zA-Z0-9_]*): agentTool\(/))) { name = m[1]; kind = "tool"; }
+            else if ((m = L.match(/^\s+([a-z_][a-zA-Z0-9_]*): action\(/))) { name = m[1]; kind = "action"; }
+            else if ((m = L.match(/^\s*name:\s*"([a-z0-9-]+)",\s*$/)) && /skill/i.test(lines.slice(Math.max(0,i-6), i).join(" "))) { name = m[1]; kind = "skill"; }
+            else if ((m = L.match(/^(?:async )?function ([a-zA-Z_][\w]*)\(/))) { name = m[1]; kind = "function"; }
+            if (!name) continue;
+            let desc = "";
+            for (let j = i + 1; j < Math.min(i + 8, lines.length); j++) {
+              const c = lines[j].match(/^\s*(?:\/\/|\*)\s*(.+)/) || lines[j].match(/description:\s*$/) ? lines[j].match(/^\s*(?:\/\/|\*)\s*(.+)/) : null;
+              if (c) { desc = c[1].trim().replace(/[^\x20-\x7E]/g, "").replace(/\s+/g, " ").slice(0, 100); break; }
+            }
+            items.push({ name, kind, desc, line: i + 1 });
+          }
+          const build = (src.match(/const BUILD = "([^"]+)"/) || [])[1] || null;
+          const hit = wTerm
+            ? items.filter((x) => x.name.toLowerCase().includes(wTerm) || (x.desc || "").toLowerCase().includes(wTerm))
+            : items;
+          found[w] = { build, total: items.length,
+                       counts: items.reduce((a, x) => (a[x.kind] = (a[x.kind] || 0) + 1, a), {}),
+                       matches: wTerm ? hit.slice(0, 60) : undefined,
+                       match_count: wTerm ? hit.length : undefined };
+        } catch (e) { errs[w] = String(e?.message ?? e).slice(0, 120); }
+      }));
+
+      // WHERE THE DATA LIVES. Commands are only half the map - he also has to remember which KV prefix
+      // holds notes vs secrets vs assets vs timelines. Counted live, never cached.
+      const prefixes = ["notes:", "secret:", "config:", "pta:", "meter:", "asset:", "cache:", "monitor:",
+                        "truth:", "balance:", "vidjob:", "imgcache:", "vidcache:", "hindcast:", "brain:"];
+      const kv = {};
+      await Promise.all(prefixes.map(async (p) => {
+        try { const l = await env.AURA_KV.list({ prefix: p, limit: 1000 });
+              const n = (l?.keys || []).length;
+              if (n) kv[p] = { keys: n + (l?.list_complete === false ? "+" : ""),
+                               sample: (l.keys || []).slice(0, 3).map((k) => k.name) }; } catch {}
+      }));
+      const kvHit = wTerm ? Object.fromEntries(Object.entries(kv).filter(([p, v]) =>
+        p.includes(wTerm) || (v.sample || []).some((k) => k.toLowerCase().includes(wTerm)))) : kv;
+
+      return { cmd: "WHERE", payload: { ok: true, asked: wTerm || "(everything)",
+        derived_at: new Date().toISOString(),
+        workers: found, unreadable: Object.keys(errs).length ? errs : undefined,
+        data_locations: kvHit,
+        note: "Derived from LIVE source on GitHub plus live KV counts at the moment you asked. Nothing here " +
+              "is stored, so nothing here can go stale. WHERE <term> searches every worker and every KV prefix." } };
     }
     case "BRAIN_TEST": {
       // Proves callBrain routes by policy BEFORE 75 call sites depend on it. Reports which provider and

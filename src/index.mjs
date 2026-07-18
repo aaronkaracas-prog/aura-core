@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.591-2026-07-18";
+const BUILD = "aura-core-v4.9.592-2026-07-18";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -19105,7 +19105,7 @@ async function reconcileTrueCost(env, day) {
     const purchased = Number(balances?.xai?.credits_purchased_usd) || 0;
     if (purchased > 0) {
       const led = await _balLedgerGet(env, "xai");
-      if (led.credited_usd !== purchased) {
+      if (!led.anchor && led.credited_usd !== purchased) {   // an explicit anchor outranks the auto-seed
         led.credited_usd = purchased;
         led.topups = balances.xai.topups || led.topups;
         if (!led.since && led.topups?.length) led.since = led.topups[0].at;
@@ -21503,7 +21503,7 @@ function openAlbum(idx){
           const purchased = Number(api?.xai?.credits_purchased_usd) || 0;
           if (purchased > 0) {
             const led = await _balLedgerGet(env, "xai");
-            if (led.credited_usd !== purchased) {
+            if (!led.anchor && led.credited_usd !== purchased) {   // an explicit anchor outranks the auto-seed
               led.credited_usd = purchased;
               led.topups = api.xai.topups || led.topups;
               if (!led.since && led.topups?.length) led.since = led.topups[0].at;

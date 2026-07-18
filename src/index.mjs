@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.587-2026-07-18";
+const BUILD = "aura-core-v4.9.588-2026-07-18";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -18968,6 +18968,31 @@ async function _trueCostOpenai(env, day) {
   return { ok: true, total: +(total.toFixed(6)), lines };
 }
 
+
+// BALANCES. Only xAI exposes remaining credit via API (/prepaid/balance, amounts in USD CENTS, stored
+// negative). Anthropic and OpenAI publish spend but NOT remaining balance - no endpoint exists - so the
+// report says so explicitly rather than leaving a blank the operator might read as zero.
+async function _balances(env) {
+  const out = {};
+  try {
+    const key = env.XAI_MANAGEMENT_KEY;
+    if (key) {
+      const team = (await env.AURA_KV.get("config:xai:team_id").catch(() => null)) || "859f5690-e3bb-464e-b829-9b8ff5b56180";
+      const r = await fetch("https://management-api.x.ai/v1/billing/teams/" + team + "/prepaid/balance",
+        { headers: { "Authorization": "Bearer " + key } });
+      const d = await r.json().catch(() => ({}));
+      if (r.ok) {
+        // total.val is USD cents, negative = credit on hand.
+        const cents = Math.abs(Number(d?.total?.val) || 0);
+        out.xai = { remaining_usd: +(cents / 100).toFixed(2), source: "api" };
+      } else out.xai = { error: (d?.message || "balance fetch failed").slice(0, 120) };
+    } else out.xai = { error: "no XAI_MANAGEMENT_KEY" };
+  } catch (e) { out.xai = { error: String(e?.message ?? e).slice(0, 120) }; }
+  out.anthropic = { remaining_usd: null, note: "Anthropic exposes spend but not remaining credit - no API. Track via spend + top-up dates." };
+  out.openai    = { remaining_usd: null, note: "OpenAI exposes costs but not remaining credit - no API." };
+  return out;
+}
+
 // The reconciler. Pulls every proven provider, sums the truth, compares it to what WE metered that day,
 // and stores both plus the gap. The gap is the product: a number nobody else in this stack can show you.
 async function reconcileTrueCost(env, day) {
@@ -18981,6 +19006,7 @@ async function reconcileTrueCost(env, day) {
   providers.meta   = { ok: false, error: "adapter not built" };
 
   const trueTotal = Object.values(providers).reduce((a, p) => a + (p.ok ? p.total : 0), 0);
+  const balances = await _balances(env).catch(() => ({}));
 
   // What WE thought it cost that day, from our own ledgers.
   let metered = 0;
@@ -19006,6 +19032,7 @@ async function reconcileTrueCost(env, day) {
         "is happening outside Aura's meter (other tools on the same key), or a rate table has drifted."
       : "Nothing metered for this day - any true cost here happened entirely outside Aura.",
     providers,
+    balances,
     covered: Object.entries(providers).filter(([, p]) => p.ok).map(([k]) => k),
     uncovered: Object.entries(providers).filter(([, p]) => !p.ok).map(([k]) => k),
     generated_at: new Date().toISOString(),

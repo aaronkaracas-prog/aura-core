@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.584-2026-07-18";
+const BUILD = "aura-core-v4.9.585-2026-07-18";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -18970,9 +18970,20 @@ async function auraSubmitVideo(prompt, env, opts = {}) {
   // "$0.30/sec" reading was billing LAG, not price - xAI's usage page trails by ~15-30 min, so never
   // calibrate off a single fresh delta. Recalibrate the same way after any pricing change: take a
   // credits delta across several clips, divide by total seconds.
+  // RATE AS A KNOB, not a constant. xAI returns NO cost field for video (checked the API response and
+  // the console's video logs - duration/resolution/status only). So the only true number is an aggregate:
+  // credits delta / seconds generated. That means the rate WILL drift when a provider repricing happens,
+  // and a hardcoded table would silently lie. config:video:rate:<model> lets the operator recalibrate by
+  // command: generate N seconds, read the credits delta, divide, write the key. No deploy.
+  // Baseline measured 2026-07-18: $0.84 across 16s = $0.0525/sec.
   const VRATE = { "grok-imagine-video": 0.053, "grok-imagine-video-1.5": 0.08 };
-  const perSec = VRATE[model] ?? 0.08;
-  const job = { id: "vid_" + requestId, request_id: requestId, model, prompt: body.prompt, duration,
+  let perSec = VRATE[model] ?? 0.08;
+  try {
+    const rk = await env.AURA_KV.get("config:video:rate:" + model);
+    const rv = rk ? parseFloat(rk) : NaN;
+    if (!isNaN(rv) && rv > 0) perSec = rv;
+  } catch {}
+  const job = { id: "vid_" + requestId, request_id: requestId, model, prompt: body.prompt, duration, rate_per_sec: perSec,
                 resolution: body.resolution, status: "pending", est_cost_usd: +(perSec * duration).toFixed(4),
                 submitted_at: new Date().toISOString(), video_url: null, error: null, cache_key: vcacheKey };
   await env.AURA_KV.put("vidjob:" + requestId, JSON.stringify(job), { expirationTtl: 7 * 24 * 3600 });
@@ -19002,8 +19013,9 @@ async function pollVideoJobs(env) {
         job.status = "done";
         job.video_url = d.video.url;
         job.actual_duration = d.video.duration ?? job.duration;
-        const VRATE = { "grok-imagine-video": 0.053, "grok-imagine-video-1.5": 0.08 };   // calibrated, see submit
-        job.cost_usd = +(((VRATE[job.model] ?? 0.08) * (job.actual_duration || job.duration))).toFixed(4);
+        // Price at the rate captured AT SUBMIT time, so a later recalibration never rewrites history.
+        const _ps = job.rate_per_sec ?? 0.053;
+        job.cost_usd = +((_ps * (job.actual_duration || job.duration))).toFixed(4);
         job.completed_at = new Date().toISOString();
         // Roll the day's video ledger, same pattern as images.
         try {

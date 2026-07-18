@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.582-2026-07-18";
+const BUILD = "aura-core-v4.9.583-2026-07-18";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -18919,6 +18919,10 @@ async function auraSubmitVideo(prompt, env, opts = {}) {
   const cap = Math.max(1, Math.min(30, parseInt(capRaw || "6", 10) || 6));
   const duration = Math.max(1, Math.min(cap, parseInt(opts.duration || 5, 10) || 5));
 
+  // Same style policy as images - one key governs the look across every media type. MUST be defined
+  // before the cache key below, which hashes it - it was declared after, so the key always threw.
+  const _styled = String(prompt) + (await styleSuffix(env));
+
   // ── VIDEO FLYWHEEL ──────────────────────────────────────────────────────────────────────────
   // Same flywheel as images, worth ~300x more per hit: an image repeat saves $0.002, a video repeat
   // saves ~$0.60. Three identical canoe prompts billed three times today because this did not exist.
@@ -18949,8 +18953,6 @@ async function auraSubmitVideo(prompt, env, opts = {}) {
 
   const key = env.XAI_API_KEY || await env.AURA_KV.get("secret:xai").catch(() => null);
   if (!key) throw new Error("no xAI key");
-  // Same style policy as images - one key governs the look across every media type.
-  const _styled = String(prompt) + (await styleSuffix(env));
   const body = { model, prompt: _styled.slice(0, 2000), duration,
                  aspect_ratio: opts.aspect_ratio || "16:9", resolution: opts.resolution || resolved.resolution };
   const r = await fetch("https://api.x.ai/v1/videos/generations", {

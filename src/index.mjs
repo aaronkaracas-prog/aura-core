@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.607-2026-07-19";
+const BUILD = "aura-core-v4.9.608-2026-07-19";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -19378,11 +19378,29 @@ async function auditBurn(env) {
     if (t) {
       const rep = JSON.parse(t);
       const trueCost = num(rep.true_cost_usd), metered = num(rep.metered_usd);
-      if (trueCost > 1 && metered > 0 && trueCost > metered * 3) {
+      // ORG-WIDE, NOT AURA. Anthropic's cost_report covers the whole organization - Claude Code,
+      // Workbench, every key - so comparing it to Aura's meter is not a leak signal at all. The first
+      // run of this auditor screamed "129x gap, $767 unaccounted" when that was Claude Code usage on the
+      // same org. A detector that cries wolf is worse than none: it trains the operator to ignore it.
+      // Only providers whose billing is genuinely Aura-only can be compared to Aura's meter. To scope
+      // Anthropic properly, Aura needs its own Anthropic WORKSPACE and a workspace-scoped key - then
+      // cost_report can group_by workspace_id and the comparison becomes real.
+      const ORG_WIDE = ["anthropic", "openai"];
+      const auraOnly = Object.entries(rep.providers || {})
+        .filter(([n, p]) => p && p.ok && !ORG_WIDE.includes(n))
+        .reduce((a, [, p]) => a + num(p.total), 0);
+      if (auraOnly > 1 && metered > 0 && auraOnly > metered * 3) {
         findings.push({ level: "alert", kind: "meter_gap",
-          detail: "Yesterday providers billed $" + trueCost.toFixed(2) + " while Aura metered $" +
-                  metered.toFixed(4) + " (" + (trueCost / metered).toFixed(1) + "x). Either real spend is " +
-                  "happening outside Aura's meter, or a rate table has drifted." });
+          detail: "Yesterday Aura-scoped providers billed $" + auraOnly.toFixed(2) + " while Aura metered $" +
+                  metered.toFixed(4) + " (" + (auraOnly / metered).toFixed(1) + "x). A rate table has drifted " +
+                  "or something is running outside the meter." });
+      }
+      if (trueCost > 0) {
+        findings.push({ level: "info", kind: "org_spend",
+          detail: "Provider billing yesterday totalled $" + trueCost.toFixed(2) + ", of which $" +
+                  auraOnly.toFixed(2) + " is Aura-scoped. Anthropic and OpenAI figures are ORGANIZATION-WIDE " +
+                  "(they include Claude Code, Workbench and any other key on the account) and cannot be " +
+                  "attributed to Aura." });
       }
       // Which provider dominates - the answer to "what is actually eating the money"
       const per = Object.entries(rep.providers || {})
@@ -19411,9 +19429,10 @@ async function auditBurn(env) {
           detail: prov + " has about " + days + " days left ($" + remaining.toFixed(2) + " at $" +
                   rate.toFixed(2) + "/day)." });
       }
-      if (remaining <= 0) findings.push({ level: "alert", kind: "runway",
-        detail: prov + " balance is exhausted or unrecorded (est $" + remaining.toFixed(2) +
-                "). Re-anchor it or top up." });
+      if (remaining <= 0) findings.push({ level: "warn", kind: "runway",
+        detail: prov + " reconstructed balance is negative (est $" + remaining.toFixed(2) + "), which for " +
+                "anthropic/openai usually means ORG-WIDE billing drew down an Aura-scoped anchor rather " +
+                "than a real overspend. Re-anchor from the console." });
     } catch {}
   }
 

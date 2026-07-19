@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.604-2026-07-19";
+const BUILD = "aura-core-v4.9.605-2026-07-19";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -1194,7 +1194,14 @@ async function readOwnSource(env, branch, worker) {
   // (full file), verify it looks complete (ends with the expected export/EOF), then GitHub blob API as a
   // no-limit fallback, then KV cache. A source that doesn't contain the final export is treated as
   // truncated and rejected.
-  const looksComplete = (s) => s && s.length > 5000 && !s.startsWith("404") && (s.includes("export default") || s.includes("export class") || s.trimEnd().endsWith("}") || s.includes("addEventListener"));   // TS brains end in a class/export too
+  // COMPLETENESS, not SIZE. The 5000-byte floor was written to catch a truncated read of aura-core's
+  // 1.8MB source - but it also rejected aura-host, whose ENTIRE worker is 2,770 bytes. Her smallest limb
+  // was invisible to her because it was small, and the error said "truncated" while the file was whole.
+  // Structure is the real signal: a complete module exports something or closes its last brace. Size only
+  // guards the big files, so scale the floor to the worker instead of applying one number to all five.
+  const _minBytes = (_path.endsWith("server.ts") || _repo === "aura-core") ? 5000 : 200;
+  const looksComplete = (s) => s && s.length > _minBytes && !s.startsWith("404") &&
+    (s.includes("export default") || s.includes("export class") || s.trimEnd().endsWith("}") || s.includes("addEventListener"));
   let got = null, via = null;
   // 1) raw CDN - no 1MB limit, returns the WHOLE file
   try {

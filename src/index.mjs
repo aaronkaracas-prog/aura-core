@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.608-2026-07-19";
+const BUILD = "aura-core-v4.9.609-2026-07-19";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16511,6 +16511,11 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         note: "Derived from LIVE source on GitHub plus live KV counts at the moment you asked. Nothing here " +
               "is stored, so nothing here can go stale. WHERE <term> searches every worker and every KV prefix." } };
     }
+    case "CALIBRATE": {
+      if (!isOp) return { cmd: "CALIBRATE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const d = (line.match(/\b(\d{4}-\d{2}-\d{2})\b/) || [])[1];
+      return { cmd: "CALIBRATE", payload: { ok: true, ...(await calibrateRates(env, d)) } };
+    }
     case "AUDIT": {
       // On demand, same arithmetic the cron runs. force=1 recomputes instead of reading today's stored run.
       if (!isOp) return { cmd: "AUDIT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
@@ -19316,6 +19321,67 @@ async function watchA2P(env) {
 // Shared image-generation core â€” used by GENERATE_IMAGE command and public /showit + /pitch endpoints.
 
 
+
+// ══ RATE CALIBRATION ── DERIVE PRICES FROM WHAT THE PROVIDER ACTUALLY BILLED ═════════════════════
+// The meter used a hardcoded table. On 2026-07-19 that table priced a day at $0.2857 while xAI's own
+// books said $3.84 - 13.4x wrong - and every "proven floor" and cost comparison inherited the error.
+// A hardcoded number cannot disagree with itself, so nothing caught it until the auditor compared the
+// two sides. This closes that: after each true-cost pull, compute what the provider ACTUALLY charged
+// per token and write it where the meter reads it.
+//
+// Method: correction factor per model. We know what we metered for that model today and what the
+// provider billed for it. factor = billed / metered, applied to the existing rate shape (in/out/cache
+// keep their ratios, the level moves). Crude but self-correcting, and it converges as days accumulate.
+// Only providers that publish SAME-DAY per-model billing can calibrate this way - which today is xAI
+// alone. Anthropic and OpenAI are org-wide and lag a day, so they stay on the table until Aura has her
+// own workspace-scoped key.
+async function calibrateRates(env, day) {
+  const d = day || new Date().toISOString().slice(0, 10);
+  const out = { day: d, calibrated: {}, skipped: [], note: "" };
+  try {
+    const xai = await _trueCostXai(env, d);
+    if (!xai.ok) { out.note = "xai truecost unavailable: " + (xai.error || "?"); return out; }
+
+    // What we metered per model today. The meter records totals, not per-model, so use the day total
+    // against the provider total - correct whenever one model dominates the day, which it does here.
+    const metered = Number(await env.AURA_KV.get("meter:spend:" + d)) || 0;
+    if (metered <= 0) { out.note = "nothing metered yet for " + d; return out; }
+
+    const billed = Number(xai.total) || 0;
+    if (billed <= 0) { out.note = "provider reports no spend for " + d; return out; }
+
+    const factor = billed / metered;
+    // Sanity: refuse absurd corrections rather than poison the meter with a bad read.
+    if (!(factor > 0.05 && factor < 200)) { out.note = "implausible factor " + factor.toFixed(2) + " - ignored"; return out; }
+
+    // Which model did the billing? xAI labels lines "API grok-build-0.1".
+    const existingRaw = await env.AURA_KV.get("config:rate:calibrated");
+    const table = existingRaw ? JSON.parse(existingRaw) : {};
+    const BASE = { "grok-build-0.1": { P_IN: 0.10, P_OUT: 0.20, P_CACHE: 0.02 },
+                   "grok-4.5": { P_IN: 3.00, P_OUT: 15.00, P_CACHE: 0.75 },
+                   "grok-4.3": { P_IN: 3.00, P_OUT: 15.00, P_CACHE: 0.75 } };
+    for (const label of Object.keys(xai.lines || {})) {
+      const model = label.replace(/^API\s+/i, "").trim();
+      const base = table[model] || BASE[model];
+      if (!base) { out.skipped.push(model); continue; }
+      const scaled = { P_IN: +(base.P_IN * factor).toFixed(6),
+                       P_OUT: +(base.P_OUT * factor).toFixed(6),
+                       P_CACHE: +(base.P_CACHE * factor).toFixed(6),
+                       calibrated_at: new Date().toISOString(), from_factor: +factor.toFixed(3) };
+      table[model] = scaled;
+      out.calibrated[model] = scaled;
+    }
+    await env.AURA_KV.put("config:rate:calibrated", JSON.stringify(table));
+    out.metered_usd = +metered.toFixed(4);
+    out.billed_usd = +billed.toFixed(4);
+    out.factor = +factor.toFixed(3);
+    out.note = "Rates scaled by " + factor.toFixed(2) + "x from xAI's own billing. The meter reads these " +
+               "before its hardcoded table.";
+    console.log("[CALIBRATE] factor " + factor.toFixed(2) + "x -> " + Object.keys(out.calibrated).join(","));
+  } catch (e) { out.note = "error: " + String(e?.message ?? e).slice(0, 200); }
+  return out;
+}
+
 // ══ TOKEN AUDITOR ── THE SMOKE DETECTOR, NOT THE FUSE ════════════════════════════════════════════
 // Every leak found on 2026-07-18/19 was caught by AARON noticing a balance move, never by the system
 // saying anything. $84/day of uncached Haiku ran for weeks. A 289-second turn burned money and returned
@@ -20355,6 +20421,7 @@ export default {
     ctx.waitUntil(pollVideoJobs(env));   // finish async video jobs nobody is waiting on
     ctx.waitUntil(maybeReconcileDaily(env));   // reconcile yesterday against provider billing, once/day
     ctx.waitUntil(auditBurn(env).catch(() => {}));   // smoke detector: flag anomalies before the cap trips
+    ctx.waitUntil(calibrateRates(env).catch(() => {}));   // derive real prices from provider billing
   },
 
   // INBOUND EMAIL (v4.9.491) - THE READ-HALF of Aura's email, the authentication master key.

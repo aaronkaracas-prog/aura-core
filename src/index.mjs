@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.602-2026-07-19";
+const BUILD = "aura-core-v4.9.603-2026-07-19";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -1212,7 +1212,10 @@ async function readOwnSource(env, branch, worker) {
     const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);
     if (ghTok) {
       try {
-        const meta = await fetch("https://api.github.com/repos/aaronkaracas-prog/" + _repo + "/contents/" + _path + "?ref=" + _branch, { headers: { "User-Agent": "aura-self-read", "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github+json" } });
+        // Private repos never resolve on the raw CDN, so for aura-comms/aura-ops this authenticated path
+        // is the ONLY one that works - which means it needs the same branch fallback the CDN path has.
+        let meta = await fetch("https://api.github.com/repos/aaronkaracas-prog/" + _repo + "/contents/" + _path + "?ref=" + _branch, { headers: { "User-Agent": "aura-self-read", "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github+json" } });
+        if (!meta.ok) meta = await fetch("https://api.github.com/repos/aaronkaracas-prog/" + _repo + "/contents/" + _path + "?ref=" + _altBranch, { headers: { "User-Agent": "aura-self-read", "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github+json" } });
         if (meta.ok) {
           const mj = await meta.json();
           if (mj && mj.sha) {
@@ -16389,7 +16392,10 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       const errs = {};
       await Promise.all(workers.map(async (w) => {
         try {
-          const r = await readOwnSource(env, "main", w);
+          // Pass null, NOT "main". Passing a branch explicitly overrode the per-worker branch in the
+          // map - which is exactly why aura-think stayed unreadable after its branch was corrected to
+          // master. The map knows each worker's branch; let it decide.
+          const r = await readOwnSource(env, null, w);
           if (!r.ok || !r.source) { errs[w] = r.error || "unreadable"; return; }
           const src = r.source, lines = src.split("\n");
           const items = [];

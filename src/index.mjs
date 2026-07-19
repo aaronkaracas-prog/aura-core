@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.600-2026-07-19";
+const BUILD = "aura-core-v4.9.601-2026-07-19";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -21851,6 +21851,27 @@ function openAlbum(idx){
       const _t0 = Date.now();
       try {
         const r = await processCommand(q, env, true);
+        // MEMORY. /cmd was built to skip the brain and save money - and it skipped her memory too, because
+        // the auraRemember + inbox hook lives on the /chat path. Work done here left no trace: running
+        // SPACESHIP_STATUS through /cmd and then asking her about it returned "no record". A cheaper path
+        // must not be an amnesiac one. Same inbox the /chat hook uses; the brain drains it next turn.
+        try {
+          const _w = String(q).trim().split(/\s+/)[0].toUpperCase();
+          const _ROUTINE = ["PING", "GETKV", "LISTKV", "HELP", "STAT", "STATUS", "LISTKEYS", "KEYS", "VERSION", "WHOAMI"];
+          if (!_ROUTINE.includes(_w)) {
+            const _pl = r?.payload || {};
+            const _ok = _pl.ok !== false;
+            const _sum = _ok
+              ? (typeof _pl.reply === "string" ? _pl.reply.slice(0, 200) : JSON.stringify(_pl).slice(0, 200))
+              : "FAILED: " + String(_pl.error || "").slice(0, 200);
+            const _ev = _w + ": " + String(q).slice(_w.length).trim().slice(0, 140) +
+                        "  ->  " + _sum + "  [" + (Date.now() - _t0) + "ms]";
+            await auraRemember(env, _ev, _ok ? "act" : "failure");
+            await env.AURA_KV.put("mem:inbox:" + Date.now() + ":" + Math.random().toString(36).slice(2, 7),
+              JSON.stringify({ at: new Date().toISOString(), kind: _ok ? "act" : "failure", event: _ev, via: "aura-core /cmd" }),
+              { expirationTtl: 14 * 24 * 3600 });
+          }
+        } catch { /* a lost memory must never break the command it describes */ }
         return new Response(JSON.stringify({ ok: true, ms: Date.now() - _t0, brain_used: false, ...r }), { status: 200, headers: _vh });
       } catch (e) {
         return new Response(JSON.stringify({ ok: false, ms: Date.now() - _t0, error: String(e?.message ?? e) }), { status: 500, headers: _vh });

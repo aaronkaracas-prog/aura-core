@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.603-2026-07-19";
+const BUILD = "aura-core-v4.9.604-2026-07-19";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -1229,6 +1229,57 @@ async function readOwnSource(env, branch, worker) {
   // 3) KV cache - last resort, PER WORKER. v4.9.598: this was a single shared key, so a failed read of
   //    aura-think silently returned aura-core's cached source. WHERE then reported aura-core three times
   //    under three different worker names - a map that fabricates is worse than no map at all.
+  // ══ 2b) DISCOVERY ── SHE FINDS THE REPO HERSELF ═════════════════════════════════════════════
+  // A hardcoded repo map is a guess that rots. aura-think was invisible because of a branch; aura-host is
+  // invisible because nobody knows what its repo is called. If a part of her cannot be read, she cannot
+  // know what she is - so before giving up, ASK GITHUB. List the account's repos, find the one whose name
+  // matches this worker, and try the usual source paths on both branches. Then cache the answer in
+  // config:repo:<worker> so the discovery happens once, not every turn.
+  if (got == null) {
+    try {
+      const ghTok2 = await env.AURA_KV.get("secret:github_token").catch(() => null);
+      if (ghTok2) {
+        const rl = await fetch("https://api.github.com/user/repos?per_page=100&sort=updated",
+          { headers: { "User-Agent": "aura-self-read", "Authorization": "Bearer " + ghTok2, "Accept": "application/vnd.github+json" } });
+        if (rl.ok) {
+          const repos = await rl.json();
+          const want = _w.toLowerCase().replace(/[^a-z0-9]/g, "");
+          const cand = (repos || []).filter((r) => {
+            const n = String(r?.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+            return n === want || n.includes(want) || want.includes(n);
+          });
+          const PATHS = ["src/index.mjs", "src/index.js", "src/server.ts", "src/index.ts", "index.mjs", "worker/index.mjs"];
+          outer:
+          for (const r of cand) {
+            for (const br of [r?.default_branch || "main", "main", "master"]) {
+              for (const p of PATHS) {
+                const u = "https://api.github.com/repos/" + r.full_name + "/contents/" + p + "?ref=" + br;
+                const mr = await fetch(u, { headers: { "User-Agent": "aura-self-read", "Authorization": "Bearer " + ghTok2, "Accept": "application/vnd.github+json" } });
+                if (!mr.ok) continue;
+                const mj = await mr.json();
+                if (!mj?.sha) continue;
+                const bl = await fetch("https://api.github.com/repos/" + r.full_name + "/git/blobs/" + mj.sha,
+                  { headers: { "User-Agent": "aura-self-read", "Authorization": "Bearer " + ghTok2, "Accept": "application/vnd.github+json" } });
+                if (!bl.ok) continue;
+                const bj = await bl.json();
+                if (!bj?.content) continue;
+                const dec = (typeof atob === "function")
+                  ? decodeURIComponent(escape(atob(bj.content.replace(/\n/g, ""))))
+                  : Buffer.from(bj.content, "base64").toString("utf-8");
+                if (!looksComplete(dec)) continue;
+                got = dec; via = "discovered:" + r.full_name + "@" + br + "/" + p;
+                // Remember it so she never has to search again.
+                try { await env.AURA_KV.put("config:repo:" + _w,
+                  JSON.stringify({ repo: r.name, path: p, branch: br, discovered: new Date().toISOString() })); } catch {}
+                break outer;
+              }
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
   const _ck = "self:source:" + _w;
   if (got == null) {
     const cached = await env.AURA_KV.get(_ck).catch(() => null);
@@ -16407,7 +16458,11 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
             else if ((m = L.match(/^\s+([a-z_][a-zA-Z0-9_]*): tool\(/))) { name = m[1]; kind = "tool"; }
             else if ((m = L.match(/^\s+([a-z_][a-zA-Z0-9_]*): agentTool\(/))) { name = m[1]; kind = "tool"; }
             else if ((m = L.match(/^\s+([a-z_][a-zA-Z0-9_]*): action\(/))) { name = m[1]; kind = "action"; }
-            else if ((m = L.match(/^\s*name:\s*"([a-z0-9-]+)",\s*$/)) && /skill/i.test(lines.slice(Math.max(0,i-6), i).join(" "))) { name = m[1]; kind = "skill"; }
+            // SKILLS. This used to require the word "skill" within 6 lines above, which found only 3 of
+            // her 11 - so she could not see most of what she knows how to do. A skill entry is simply a
+            // kebab-case name on its own line inside getSkills(); tools and actions never look like this
+            // (they are `name: tool(` / `name: action(`). Match the shape, not the neighbourhood.
+            else if ((m = L.match(/^\s*name:\s*"([a-z][a-z0-9-]*[a-z0-9])",\s*$/))) { name = m[1]; kind = "skill"; }
             else if ((m = L.match(/^(?:async )?function ([a-zA-Z_][\w]*)\(/))) { name = m[1]; kind = "function"; }
             if (!name) continue;
             let desc = "";

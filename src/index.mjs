@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.612-2026-07-19";
+const BUILD = "aura-core-v4.9.613-2026-07-19";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -8773,6 +8773,42 @@ async function processCommand(line, env, isOp) {
       }
       if (dry) return { cmd: "ROUTE_SET_ALL", payload: { ok: true, dry: true, target, total_zones: zones.length, would_update: plan.would_update.length, would_create: plan.would_create.length, already_ok: plan.already_ok.length, skipped: plan.skipped, update_sample: plan.would_update.slice(0, 40), create_sample: plan.would_create.slice(0, 40) } };
       return { cmd: "ROUTE_SET_ALL", payload: { ok: true, target, updated, created, failed, skipped: plan.skipped, already_ok: plan.already_ok.length } };
+    }
+
+    case "XAI_API": {
+      // Third instance of a pattern that already existed twice (CF_API, TWILIO_API): a provider
+      // passthrough that uses HER stored key. Added 2026-07-19 because its absence meant every xAI
+      // lookup - /v1/models for pricing, usage, anything - required Aaron to read the key out of KV and
+      // paste it into his own shell. He has now done that repeatedly in a single session for keys that
+      // were never missing. If Aura holds the credential, Aura makes the call.
+      //   XAI_API GET /v1/models
+      //   XAI_API POST /v1/chat/completions {"model":"...","messages":[...]}
+      // Management-API paths (billing, usage) are routed to management-api.x.ai with the mgmt key.
+      if (!isOp) return { cmd: "XAI_API", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const xp = rest.trim().split(/\s+/);
+      const method = (xp[0] || "GET").toUpperCase();
+      let path = xp[1] || "";
+      const bodyStr = rest.trim().slice(method.length).trim().slice(path.length).trim();
+      if (!path.startsWith("/")) return { cmd: "XAI_API", payload: { ok: false, error: "Usage: XAI_API <GET|POST> </v1/path> [json body]" } };
+      const isMgmt = /^\/v1\/billing|^\/auth/.test(path);
+      const key = isMgmt
+        ? (env.XAI_MANAGEMENT_KEY || await KV.get(env, "secret:xai_management_key"))
+        : (env.XAI_API_KEY || await KV.get(env, "secret:grok_api_key"));
+      if (!key) return { cmd: "XAI_API", payload: { ok: false, error: isMgmt ? "no XAI management key" : "no xAI key" } };
+      const base = isMgmt ? "https://management-api.x.ai" : "https://api.x.ai";
+      try {
+        const r = await fetch(base + path, {
+          method,
+          headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
+          ...(bodyStr && method !== "GET" ? { body: bodyStr } : {}),
+        });
+        const txt = await r.text();
+        let parsed = null; try { parsed = JSON.parse(txt); } catch {}
+        return { cmd: "XAI_API", payload: { ok: r.ok, http_status: r.status, base, path,
+                 ...(parsed ? { result: parsed } : { raw: txt.slice(0, 4000) }) } };
+      } catch (e) {
+        return { cmd: "XAI_API", payload: { ok: false, error: String(e?.message ?? e).slice(0, 200) } };
+      }
     }
 
     case "TWILIO_API": {

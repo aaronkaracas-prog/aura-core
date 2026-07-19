@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.613-2026-07-19";
+const BUILD = "aura-core-v4.9.614-2026-07-19";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -15707,25 +15707,27 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       // Define every service: key, label, what it powers, and a live check (null check = key-presence only)
       const defs = [
         { id: "anthropic", label: "Anthropic (Claude)", powers: "Aura's reasoning brain", key: "secret:anthropic",
-          check: async () => { const k = await KV.get(env,"secret:anthropic"); if(!k) return false; const r = await brainFetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":k,"anthropic-version":"2023-06-01","content-type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-5",max_tokens:1,messages:[{role:"user",content:"hi"}]})}); return r.ok; } },
+          // Was sending a REAL message (max_tokens 1) to test the key - a health check that costs money
+          // every time it runs. /v1/models authenticates the same key for free.
+          check: async () => { const k = await KV.get(env,"secret:anthropic"); if(!k) return false; const r = await fetch("https://api.anthropic.com/v1/models",{headers:{"x-api-key":k,"anthropic-version":"2023-06-01"}}); return r.ok; } },
         { id: "openai", label: "OpenAI", powers: "ShowIt image generation", key: "secret:openai",
           check: async () => { let k = await KV.get(env,"secret:openai"); if(k&&k.startsWith("{")){try{k=JSON.parse(k).api_key;}catch{}} if(!k) return false; const r = await fetch("https://api.openai.com/v1/models",{headers:{"Authorization":"Bearer "+k}}); return r.ok; } },
-        { id: "grok", label: "Grok (xAI)", powers: "alternate reasoning", key: "secret:grok_api_key", check: null },
-        { id: "tavily", label: "Tavily", powers: "web search (situations)", key: "secret:tavily", check: null },
-        { id: "brave_search", label: "Brave Search", powers: "web search fallback", key: "secret:brave_search", check: null },
-        { id: "currents", label: "Currents", powers: "live news (NEWS_QUERY)", key: "secret:currents", check: null },
+        { id: "grok", label: "Grok (xAI)", powers: "alternate reasoning", key: "secret:grok_api_key", check: async () => { const k = await KV.get(env,"secret:grok_api_key"); if(!k) return false; const r = await fetch("https://api.x.ai/v1/models",{headers:{"Authorization":"Bearer "+k}}); return r.ok; } },
+        { id: "tavily", label: "Tavily", powers: "web search (situations)", key: "secret:tavily", check: async () => { const k = await KV.get(env,"secret:tavily"); if(!k) return false; const r = await fetch("https://api.tavily.com/search",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({api_key:k,query:"ping",max_results:1})}); return r.ok; } },
+        { id: "brave_search", label: "Brave Search", powers: "web search fallback", key: "secret:brave_search", check: async () => { const k = await KV.get(env,"secret:brave_search"); if(!k) return false; const r = await fetch("https://api.search.brave.com/res/v1/web/search?q=ping&count=1",{headers:{"X-Subscription-Token":k,"Accept":"application/json"}}); return r.ok; } },
+        { id: "currents", label: "Currents", powers: "live news (NEWS_QUERY)", key: "secret:currents", check: async () => { const k = await KV.get(env,"secret:currents"); if(!k) return false; const r = await fetch("https://api.currentsapi.services/v1/latest-news?apiKey="+k+"&page_size=1"); return r.ok; } },
         { id: "oilprice", label: "OilPriceAPI", powers: "oil/Brent (OIL_PRICE)", key: "secret:oilprice", check: null },
-        { id: "openweather", label: "OpenWeather", powers: "marine weather (MARINE_WX)", key: "secret:openweather", check: null },
+        { id: "openweather", label: "OpenWeather", powers: "marine weather (MARINE_WX)", key: "secret:openweather", check: async () => { const k = await KV.get(env,"secret:openweather"); if(!k) return false; const r = await fetch("https://api.openweathermap.org/data/2.5/weather?q=London&appid="+k); return r.ok; } },
         { id: "aisstream", label: "AISStream", powers: "live ship positions (AIS)", key: "secret:aisstream", check: null },
-        { id: "google_maps", label: "Google Maps", powers: "places (FETCH_PLACES)", key: "secret:google_maps", check: null },
+        { id: "google_maps", label: "Google Maps", powers: "places (FETCH_PLACES)", key: "secret:google_maps", check: async () => { const k = await KV.get(env,"secret:google_maps"); if(!k) return false; const r = await fetch("https://maps.googleapis.com/maps/api/geocode/json?address=London&key="+k); const j = await r.json().catch(()=>({})); return r.ok && j.status !== "REQUEST_DENIED"; } },
         { id: "google_oauth", label: "Google OAuth", powers: "sign-in / identity", key: "secret:google_client_id", check: null },
         { id: "mercury", label: "Mercury", powers: "operating bank", key: "secret:mercury_api_key",
           check: async () => { const m = await getMercuryBalance(env); return !!(m && m.ok); } },
         { id: "stripe", label: "Stripe", powers: "incoming revenue", key: "secret:stripe",
           check: async () => { const s = await getStripeBalance(env); return !!(s && s.ok); } },
         { id: "plaid", label: "Plaid", powers: "bank connections", key: "secret:plaid_client_id", check: null },
-        { id: "twilio", label: "Twilio", powers: "SMS + voice + lines", key: "secret:twilio_sid", check: null },
-        { id: "cloudflare", label: "Cloudflare", powers: "the whole stack (Workers/KV/D1)", key: "secret:cf_api_token", check: null },
+        { id: "twilio", label: "Twilio", powers: "SMS + voice + lines", key: "secret:twilio_sid", check: async () => { const sid = await KV.get(env,"secret:twilio_account_sid") || await KV.get(env,"secret:twilio_sid"); const tok = await KV.get(env,"secret:twilio_auth_token"); if(!sid||!tok) return false; const r = await fetch("https://api.twilio.com/2010-04-01/Accounts/"+sid+".json",{headers:{"Authorization":"Basic "+btoa(sid+":"+tok)}}); return r.ok; } },
+        { id: "cloudflare", label: "Cloudflare", powers: "the whole stack (Workers/KV/D1)", key: "secret:cf_api_token", check: async () => { const k = env.CF_API_TOKEN || await KV.get(env,"secret:cf_api_token"); if(!k) return false; const r = await fetch("https://api.cloudflare.com/client/v4/user/tokens/verify",{headers:{"Authorization":"Bearer "+k}}); return r.ok; } },
         { id: "github", label: "GitHub", powers: "code + auto-deploy", key: "secret:github_token", check: null }
       ];
 

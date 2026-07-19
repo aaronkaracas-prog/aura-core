@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.601-2026-07-19";
+const BUILD = "aura-core-v4.9.602-2026-07-19";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -1164,24 +1164,29 @@ async function governorRecord(env, action, pageId) {
 // The public raw CDN 404s under load / after pushes; this tries authenticated GitHub API first,
 // then raw CDN, then a KV cache, and self-heals the cache on success. So Aura can ALWAYS read herself.
 async function readOwnSource(env, branch, worker) {
-  const _branch = branch || "main";
+  let _branch = branch || null;   // resolved against the worker map below
   // v4.9.596: the `worker` argument was ACCEPTED AND IGNORED - _repo was hardcoded to "aura-core", so
   // every call asking for "aura-think" silently got the hands instead of the brain. She has never once
   // been able to read her own brain. That is a large part of why she cannot answer "what do I have?" -
   // half of herself was invisible to her. Repos are KV-overridable so a rename never blinds her again.
   const _w = (worker || "aura-core").trim();
-  const _map = { "aura-core": { repo: "aura-core", path: "src/index.mjs" },
-                 "aura-think": { repo: "aura-think", path: "src/server.ts" },
-                 "aura-ops": { repo: "aura-ops", path: "src/index.mjs" },
-                 "aura-comms": { repo: "aura-comms", path: "src/index.mjs" },
-                 "aura-host": { repo: "aura-host", path: "src/index.mjs" } };
+  // Branch matters as much as repo name. aura-think lives on **master**, not main - which is the whole
+  // reason WHERE reported her brain "unreadable" while the repo and path were correct all along. Repos
+  // drift, so each entry carries its branch and we fall back to the other if the first 404s.
+  const _map = { "aura-core": { repo: "aura-core", path: "src/index.mjs", branch: "main" },
+                 "aura-think": { repo: "aura-think", path: "src/server.ts", branch: "master" },
+                 "aura-ops": { repo: "aura-ops", path: "src/index.mjs", branch: "main" },
+                 "aura-comms": { repo: "aura-comms", path: "src/index.mjs", branch: "main" },
+                 "aura-host": { repo: "aura-host", path: "src/index.mjs", branch: "main" } };
   let _cfg = _map[_w] || _map["aura-core"];
   try {
     const ov = await env.AURA_KV.get("config:repo:" + _w);
-    if (ov) { const j = JSON.parse(ov); if (j?.repo) _cfg = { repo: j.repo, path: j.path || _cfg.path }; }
+    if (ov) { const j = JSON.parse(ov); if (j?.repo) _cfg = { repo: j.repo, path: j.path || _cfg.path, branch: j.branch || _cfg.branch }; }
   } catch {}
   const _repo = _cfg.repo;
   const _path = _cfg.path;
+  if (!_branch) _branch = _cfg.branch || "main";
+  const _altBranch = _branch === "main" ? "master" : "main";
   // v4.9.499: FIX the 1MB self-read blind spot. The GitHub *contents* API truncates files at 1MB even
   // with the raw accept header - and this index is ~1.7MB, so everything past ~line 10960 was INVISIBLE
   // to self-read (this is why GREP kept returning "zero hits" for real code past that point, and why she
@@ -1195,6 +1200,12 @@ async function readOwnSource(env, branch, worker) {
   try {
     const sr = await fetch("https://raw.githubusercontent.com/aaronkaracas-prog/" + _repo + "/" + _branch + "/" + _path, { headers: { "User-Agent": "aura-self-read", "Cache-Control": "no-cache" } });
     if (sr.ok) { const t = await sr.text(); if (looksComplete(t)) { got = t; via = "raw_cdn"; } }
+    // Branch fallback: main/master. A repo renaming its default branch should not make her blind to
+    // a whole worker - that is exactly how her brain stayed unreadable while repo and path were right.
+    if (got == null) {
+      const sr2 = await fetch("https://raw.githubusercontent.com/aaronkaracas-prog/" + _repo + "/" + _altBranch + "/" + _path, { headers: { "User-Agent": "aura-self-read", "Cache-Control": "no-cache" } });
+      if (sr2.ok) { const t2 = await sr2.text(); if (looksComplete(t2)) { got = t2; via = "raw_cdn:" + _altBranch; } }
+    }
   } catch (e) {}
   // 2) GitHub BLOB API (not contents API) - blobs have no 1MB truncation. Get the blob sha via the tree, then the blob.
   if (got == null) {

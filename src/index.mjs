@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.625-2026-07-19";
+const BUILD = "aura-core-v4.9.627-2026-07-19";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -19625,13 +19625,47 @@ async function auditAll(env, scope, win) {
     }
     const total = daily.reduce((a, x) => a + x.usd, 0);
     const margin = await call("AIMARGIN status");
+
+    // ACTUAL TOKEN SPEND, FROM THE PROVIDERS' OWN BOOKS. The internal meter is an estimate and has been
+    // wrong in every direction today (deleted twice, priced 13x low, blind to aura-core's brain). The
+    // bank feed only shows CREDIT PURCHASES - a $20 top-up is not $20 of tokens burned. What Aaron asked
+    // for is the third thing: what the providers actually billed for usage, same day. /truecost already
+    // does exactly this - xAI reports per-model USD for today, OpenAI for today, Anthropic for past days.
+    // Capped at 7 days: each day is a live call to every provider's billing API.
+    const byProvider = {}; let actualTotal = 0; const daysCovered = [];
+    const maxDays = Math.min(win.days, 7);
+    for (let i = 0; i < maxDays; i++) {
+      const d = new Date(win.end ? win.end + "T00:00:00Z" : Date.now());
+      d.setUTCDate(d.getUTCDate() - i);
+      const dk = d.toISOString().slice(0, 10);
+      try {
+        const tc = await reconcileTrueCost(env, dk);
+        let dayTotal = 0;
+        for (const [name, p] of Object.entries(tc?.providers || {})) {
+          if (!p || !p.ok) continue;
+          const v = Number(p.total) || 0;
+          if (v <= 0) continue;
+          byProvider[name] = +((byProvider[name] || 0) + v).toFixed(4);
+          dayTotal += v;
+        }
+        if (dayTotal > 0) { daysCovered.push({ day: dk, usd: +dayTotal.toFixed(4) }); actualTotal += dayTotal; }
+      } catch {}
+    }
+
     out.sections.tokens = {
-      window_total_usd: +total.toFixed(4),
-      daily,
-      avg_per_day_usd: daily.length ? +(total / daily.length).toFixed(4) : 0,
+      actual_billed_usd: +actualTotal.toFixed(4),
+      actual_by_provider: byProvider,
+      actual_daily: daysCovered,
+      days_covered: maxDays + (win.days > 7 ? " of " + win.days + " (capped - each day is a live billing call)" : ""),
+      internal_meter_usd: +total.toFixed(4),
+      internal_meter_daily: daily,
       policy: margin?.policy ?? null,
       meter_health: margin?.meter_health ?? null,
       cap_usd: margin?.spend_today?.cap_usd ?? null,
+      note: "actual_billed is what the providers charged for USAGE, from their own billing APIs - the real " +
+            "token burn. internal_meter is Aura's own per-turn estimate and does not match: it covers " +
+            "aura-think only and its ledger has been reset. Bank charges to AI vendors are CREDIT " +
+            "PURCHASES, a third number again - a $20 top-up is not $20 of tokens burned.",
     };
     const burn = await call("AUDIT_BURN_INTERNAL");
     if (burn && Array.isArray(burn.findings)) out.findings.push(...burn.findings.map((x) => ({ ...x, scope: "tokens" })));
@@ -19657,15 +19691,35 @@ async function auditAll(env, scope, win) {
     // THE ANSWER. "What did I spend?" should not require reading four fields and adding them up.
     const bankSpend = Math.abs(num(mtx?.total_spent));
     const pending = Math.abs(num(mtx?.pending_not_yet_posted));
-    const tokenSpend = num(out.sections.tokens?.window_total_usd);
+    const meterEstimate = num(out.sections.tokens?.window_total_usd);
+
+    // AI SPEND COMES FROM THE BANK, NOT THE METER. The first version reported the internal meter as
+    // "tokens_usd" and showed $0.52 for a month in which Anthropic alone charged $265.86. Three reasons
+    // it was fiction: the meter only ever covered aura-think (aura-core's Claude brain was never in it),
+    // its ledger was deleted twice during a corruption cleanup, and everything before this evening was
+    // priced 13x low. Meanwhile the real number was already in the bank feed and was being ignored.
+    // The meter is a USAGE ESTIMATE for routing decisions. The bank is the accounting record. Adding the
+    // two together also double-counted, since AI vendor charges are already inside bank_posted.
+    const AI_VENDORS = /anthropic|xai|grok|openai|google cloud|gcp|meta|mistral|cohere/i;
+    const vendors = Array.isArray(mtx?.by_vendor) ? mtx.by_vendor : [];
+    const aiRows = vendors.filter((v) => AI_VENDORS.test(String(v.vendor || "")));
+    const aiSpend = Math.abs(aiRows.reduce((a, v) => a + num(v.total), 0));
+
     out.answer = {
       question: "What did I spend " + (win.explicit ? win.label : "in the last " + win.label) + "?",
-      total_usd: +(bankSpend + tokenSpend).toFixed(2),
-      bank_posted_usd: +bankSpend.toFixed(2),
-      tokens_usd: +tokenSpend.toFixed(4),
+      total_usd: +bankSpend.toFixed(2),
+      ai_spend_usd: +aiSpend.toFixed(2),
+      ai_by_vendor: aiRows,
+      everything_else_usd: +(bankSpend - aiSpend).toFixed(2),
       pending_not_yet_posted_usd: +pending.toFixed(2),
-      note: "bank_posted is what settled in this window (what a statement shows). tokens is AI spend " +
-            "metered by Aura. pending is committed but not yet settled - it lands on a later date.",
+      tokens_actually_billed_usd: num(out.sections.tokens?.actual_billed_usd),
+      tokens_by_provider: out.sections.tokens?.actual_by_provider ?? null,
+      internal_meter_estimate_usd: +meterEstimate.toFixed(4),
+      note: "total_usd is what SETTLED in this window - the bank statement, the real number. ai_spend is " +
+            "the part of it paid to AI vendors (credit purchases and usage charges), and is INSIDE " +
+            "total_usd, not additional. internal_meter_estimate is Aura's own per-turn accounting and is " +
+            "NOT the accounting record: it covers aura-think only, its ledger has been reset, and older " +
+            "entries were priced before the rate correction. Trust the bank.",
     };
     const b = out.sections.business;
     if (b.biggest_vendor) out.findings.push({ level: "info", scope: "business", kind: "spend_shape",

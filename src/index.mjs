@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.609-2026-07-19";
+const BUILD = "aura-core-v4.9.610-2026-07-19";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -20421,7 +20421,10 @@ export default {
     ctx.waitUntil(pollVideoJobs(env));   // finish async video jobs nobody is waiting on
     ctx.waitUntil(maybeReconcileDaily(env));   // reconcile yesterday against provider billing, once/day
     ctx.waitUntil(auditBurn(env).catch(() => {}));   // smoke detector: flag anomalies before the cap trips
-    ctx.waitUntil(calibrateRates(env).catch(() => {}));   // derive real prices from provider billing
+    // NOT on a daily timer. Aaron's point, and he is right: nobody reprices tokens day to day. A price
+    // moves when a vendor ships a new model and discounts the old one - months apart, not hours. Running
+    // this daily would re-scale an already-scaled rate and chase noise. Run CALIBRATE by hand after a
+    // model change, or when the auditor's meter_gap says the two sides have drifted apart.
   },
 
   // INBOUND EMAIL (v4.9.491) - THE READ-HALF of Aura's email, the authentication master key.

@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.617-2026-07-19";
+const BUILD = "aura-core-v4.9.618-2026-07-19";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -19531,16 +19531,56 @@ async function auditBusiness(env) {
   const kv = env.AURA_KV;
   const snap = { day: today, generated_at: new Date().toISOString() };
 
-  // ── the money in ────────────────────────────────────────────────────────────────────────────
+  // ── EVERY SPEND, EVERY EARN, FROM THE COMMANDS THAT ALREADY WORK ────────────────────────────
+  // First version re-derived all of this from raw KV and guessed field names - it reported a bank balance
+  // of $0.00 while MERCURY_BALANCE was returning $344.81 from the same data. Aaron stopped it: all of
+  // this was already built. So this calls the existing commands and aggregates. Nothing new computes a
+  // dollar here.
+  //   MERCURY_TRANSACTIONS -> every vendor charge that hit the bank (Spaceship, weather, oil, Google,
+  //                           anything, whether or not we integrated it)
+  //   STRIPE_BALANCE       -> money in
+  //   SERVICE_STATUS       -> which services are free / trial / funded = what is COMING
+  //   AIMARGIN + AUDIT     -> the token side, which is part of the business, not a separate world
+  const call = async (cmd) => { try { const r = await processCommand(cmd, env, true); return r?.payload ?? null; } catch { return null; } };
+
+  const [mtx, stripe, svc, margin, tokenAudit] = await Promise.all([
+    call("MERCURY_TRANSACTIONS 100"), call("STRIPE_BALANCE"), call("SERVICE_STATUS"),
+    call("AIMARGIN status"), call("AUDIT force"),
+  ]);
+
+  // Money OUT, by vendor, straight from the bank feed - the complete picture by definition.
+  const byVendor = (mtx && mtx.ok && Array.isArray(mtx.by_vendor)) ? mtx.by_vendor : [];
+  snap.spend_by_vendor = byVendor;
+  snap.spend_total = mtx && mtx.ok ? num(mtx.total_spent) : null;
+  snap.biggest_vendor = mtx && mtx.ok ? mtx.biggest_vendor : null;
+
+  // The token side, folded in rather than siloed.
+  snap.tokens = margin && margin.ok
+    ? { spend_today_usd: margin.spend_today?.text_usd ?? null, cap_usd: margin.spend_today?.cap_usd ?? null,
+        meter_health: margin.meter_health ?? null, policy: margin.policy ?? null }
+    : null;
+  snap.token_audit_findings = (tokenAudit && Array.isArray(tokenAudit.findings))
+    ? tokenAudit.findings.filter((x) => x.level !== "info").length : null;
+
+  // What is coming: anything on a trial or unfunded becomes a bill later.
+  const services = (svc && svc.ok && svc.services) ? svc.services : {};
+  const onTrial = Object.entries(services).filter(([, v]) => v && v.cost_model === "trial").map(([k]) => k);
+  const dead = Object.entries(services).filter(([, v]) => v && v.live === false).map(([k]) => k);
+  snap.services_on_trial = onTrial;
+  snap.services_dead = dead;
+
+  // Money IN.
   let revenue = 0, realTxns = 0, testTxns = 0;
   try {
+    if (stripe && stripe.ok && Array.isArray(stripe.available))
+      revenue = stripe.available.reduce((a, x) => a + num(x.amount), 0) / 100;
+  } catch {}
+  try {
     const raw = await kv.get("pta:ledger:aura:hot");
-    if (raw) {
-      const led = JSON.parse(raw);
-      revenue = num(led.revenue_all_time ?? led.revenue);
+    if (raw) { const led = JSON.parse(raw);
+      revenue = revenue || num(led.revenue_all_time ?? led.revenue);
       realTxns = num(led.real_transactions ?? led.transactions);
-      testTxns = num(led.test_transactions);
-    }
+      testTxns = num(led.test_transactions); }
   } catch {}
   snap.revenue_all_time = revenue;
   snap.real_transactions = realTxns;
@@ -19636,6 +19676,22 @@ async function auditBusiness(env) {
       }
     }
   } catch {}
+
+  // 3b. Where the money actually goes - name it, every run, so it is never a mystery again.
+  if (snap.biggest_vendor && snap.spend_total != null) {
+    findings.push({ level: "info", kind: "spend_shape",
+      detail: "Spend so far: $" + Math.abs(num(snap.spend_total)).toFixed(2) + " total, biggest vendor " +
+              snap.biggest_vendor.vendor + " at $" + Math.abs(num(snap.biggest_vendor.total)).toFixed(2) +
+              " over " + snap.biggest_vendor.charges + " charges. Tokens today: $" +
+              (snap.tokens?.spend_today_usd ?? 0) + "." });
+  }
+  // 3c. Trials are future bills. Dead services are money paid for nothing.
+  if (onTrial.length >= 3) findings.push({ level: "warn", kind: "trials_pending",
+    detail: onTrial.length + " services are on free trials and will become bills: " + onTrial.join(", ") + "." });
+  if (dead.length) findings.push({ level: "warn", kind: "dead_services",
+    detail: "Not working despite being configured: " + dead.join(", ") + "." });
+  if (snap.token_audit_findings) findings.push({ level: "warn", kind: "token_audit",
+    detail: snap.token_audit_findings + " open finding(s) from the token audit - run AUDIT force for detail." });
 
   // 4. Doorways without a numerator - the scale-without-revenue tell
   if (doorways >= 50 && revenue === 0) {

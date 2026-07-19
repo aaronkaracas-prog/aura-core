@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.621-2026-07-19";
+const BUILD = "aura-core-v4.9.622-2026-07-19";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16636,7 +16636,21 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
                     keys: "SERVICE_STATUS", council: "GET /council?q=&web=1", hindcast: "GET /hindcast?model=" },
       } };
     }
+    case "AUDIT_BURN_INTERNAL": {
+      // the original token auditor, kept intact and reachable so nothing that depended on it breaks
+      return { cmd: "AUDIT_BURN_INTERNAL", payload: await auditBurn(env) };
+    }
     case "AUDIT": {
+      if (!isOp) return { cmd: "AUDIT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const aTxt = rest.trim().toLowerCase();
+      const aScope = /\btokens?\b|\bburn\b/.test(aTxt) ? "tokens"
+                   : /\bbusiness\b|\bmoney\b/.test(aTxt) ? "business"
+                   : /\bself\b/.test(aTxt) ? "self"
+                   : "all";
+      const aWin = parseAuditWindow(aTxt);
+      return { cmd: "AUDIT", payload: { ok: true, ...(await auditAll(env, aScope, aWin)) } };
+    }
+    case "AUDIT_LEGACY": {
       // On demand, same arithmetic the cron runs. force=1 recomputes instead of reading today's stored run.
       if (!isOp) return { cmd: "AUDIT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const day = (line.match(/\b(\d{4}-\d{2}-\d{2})\b/) || [])[1];
@@ -19515,6 +19529,117 @@ async function calibrateRates(env, day) {
 }
 
 
+
+
+// ══ AUDIT ── ONE ENTRY, ANY SCOPE, ANY WINDOW ════════════════════════════════════════════════════
+// Restructure 2026-07-19. What existed: nine overlapping commands (RESOURCE_STATUS, SERVICE_STATUS,
+// AIMARGIN, AUDIT, BUSINESS_AUDIT, MERCURY_BALANCE, STRIPE_BALANCE, RAW_COST, WHERE) that each
+// rediscovered how to read a balance, with BUSINESS_AUDIT wrapping five of them. Wrappers on wrappers -
+// which is why a failure three layers down vanished into a try/catch and the operator saw a blank field.
+//
+// And the missing idea, which Aaron named: an audit is meaningless without a WINDOW. Nobody reads a bank
+// statement from account opening to today. "Audit my business" means "for the period I care about".
+//
+// So: one command, a scope, a window. The old commands still work and are untouched - this calls them,
+// it does not replace them, and nothing that was relied on can break because of this.
+//   AUDIT                  everything, today
+//   AUDIT tokens 24h       burn only, last 24 hours
+//   AUDIT business 7d      money in / out / coming, last 7 days
+//   AUDIT self             is she intact
+//   AUDIT all 30d          everything, 30 days
+function parseAuditWindow(text) {
+  const t = String(text || "").toLowerCase();
+  const now = new Date();
+  const iso = (d) => d.toISOString().slice(0, 10);
+  let days = 1, label = "today";
+  const m = t.match(/\b(\d+)\s*(h|hr|hour|hours|d|day|days|w|week|weeks|m|mo|month|months)\b/);
+  if (m) {
+    const n = parseInt(m[1], 10) || 1;
+    const unit = m[2][0];
+    days = unit === "h" ? Math.max(1, Math.ceil(n / 24)) : unit === "w" ? n * 7 : unit === "m" ? n * 30 : n;
+    label = m[0].replace(/\s+/g, "");
+  } else if (/\byesterday\b/.test(t)) { days = 1; label = "yesterday"; }
+  else if (/\bweek\b/.test(t)) { days = 7; label = "week"; }
+  else if (/\bmonth\b/.test(t)) { days = 30; label = "month"; }
+  const start = new Date(now); start.setUTCDate(start.getUTCDate() - (days - 1));
+  return { days, label, start: iso(start), end: iso(now) };
+}
+
+async function auditAll(env, scope, win) {
+  const call = async (cmd) => { try { const r = await processCommand(cmd, env, true); return r?.payload ?? null; } catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 160) }; } };
+  const num = (v) => Number(v) || 0;
+  const out = { scope, window: win, generated_at: new Date().toISOString(), sections: {}, findings: [] };
+  const want = (s) => scope === "all" || scope === s;
+
+  // ── TOKENS ──────────────────────────────────────────────────────────────────────────────────
+  if (want("tokens")) {
+    const daily = [];
+    for (let i = 0; i < win.days; i++) {
+      const d = new Date(); d.setUTCDate(d.getUTCDate() - i);
+      const k = d.toISOString().slice(0, 10);
+      const v = await env.AURA_KV.get("meter:spend:" + k).catch(() => null);
+      if (v != null) daily.push({ day: k, usd: +num(v).toFixed(4) });
+    }
+    const total = daily.reduce((a, x) => a + x.usd, 0);
+    const margin = await call("AIMARGIN status");
+    out.sections.tokens = {
+      window_total_usd: +total.toFixed(4),
+      daily,
+      avg_per_day_usd: daily.length ? +(total / daily.length).toFixed(4) : 0,
+      policy: margin?.policy ?? null,
+      meter_health: margin?.meter_health ?? null,
+      cap_usd: margin?.spend_today?.cap_usd ?? null,
+    };
+    const burn = await call("AUDIT_BURN_INTERNAL");
+    if (burn && Array.isArray(burn.findings)) out.findings.push(...burn.findings.map((x) => ({ ...x, scope: "tokens" })));
+  }
+
+  // ── BUSINESS ────────────────────────────────────────────────────────────────────────────────
+  if (want("business")) {
+    const mtx = await call("MERCURY_TRANSACTIONS since=" + win.start + " limit=200");
+    const bal = await call("MERCURY_BALANCE");
+    const stripe = await call("STRIPE_BALANCE");
+    const svc = await call("SERVICE_STATUS");
+    const services = svc?.services || {};
+    out.sections.business = {
+      spend_total_usd: mtx?.ok ? num(mtx.total_spent) : null,
+      spend_by_vendor: mtx?.ok ? mtx.by_vendor : null,
+      biggest_vendor: mtx?.ok ? mtx.biggest_vendor : null,
+      bank_available: bal?.ok ? num(bal.total_available ?? bal.total) : null,
+      stripe_available: stripe?.ok && Array.isArray(stripe.available)
+        ? +(stripe.available.reduce((a, x) => a + num(x.amount), 0) / 100).toFixed(2) : null,
+      services_on_trial: Object.entries(services).filter(([, v]) => v?.cost_model === "trial").map(([k]) => k),
+      services_dead: Object.entries(services).filter(([, v]) => v?.live === false).map(([k]) => k),
+    };
+    const b = out.sections.business;
+    if (b.biggest_vendor) out.findings.push({ level: "info", scope: "business", kind: "spend_shape",
+      detail: "Over " + win.label + ": $" + Math.abs(num(b.spend_total_usd)).toFixed(2) + " spent, biggest " +
+              b.biggest_vendor.vendor + " at $" + Math.abs(num(b.biggest_vendor.total)).toFixed(2) +
+              " over " + b.biggest_vendor.charges + " charges." });
+    if ((b.stripe_available ?? 0) === 0) out.findings.push({ level: "warn", scope: "business", kind: "zero_revenue",
+      detail: "No revenue in " + win.label + ". The machine runs; nothing has been sold." });
+    if (b.services_dead?.length) out.findings.push({ level: "warn", scope: "business", kind: "dead_services",
+      detail: "Configured but not working: " + b.services_dead.join(", ") + "." });
+    if (b.services_on_trial?.length >= 3) out.findings.push({ level: "warn", scope: "business", kind: "trials",
+      detail: b.services_on_trial.length + " services on free trials that become bills: " + b.services_on_trial.join(", ") + "." });
+  }
+
+  // ── SELF ────────────────────────────────────────────────────────────────────────────────────
+  if (want("self")) {
+    const sa = await call("SELF_AUDIT");
+    const broken = [];
+    if (sa && typeof sa === "object") {
+      for (const [k, v] of Object.entries(sa)) if (v && typeof v === "object" && (v.wired === false || v.ok === false)) broken.push(k);
+      if (Array.isArray(sa.engines)) for (const e of sa.engines) if (e?.wired === false) broken.push(e.engine || "?");
+    }
+    out.sections.self = { build: sa?.build ?? null, broken };
+    if (broken.length) out.findings.push({ level: "alert", scope: "self", kind: "not_wired",
+      detail: "Not wired: " + broken.join(", ") + ". Something that used to work does not." });
+  }
+
+  out.clean = out.findings.filter((f) => f.level !== "info").length === 0;
+  return out;
+}
 
 // ══ SELF AUDIT ON A SCHEDULE ── IS SHE STILL INTACT? ═════════════════════════════════════════════
 // SELF_AUDIT already existed and works - it reads her LIVE source and probes each engine. It was only

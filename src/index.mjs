@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.611-2026-07-19";
+const BUILD = "aura-core-v4.9.612-2026-07-19";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -19513,6 +19513,17 @@ async function auditBurn(env) {
                 "than a real overspend. Re-anchor from the console." });
     } catch {}
   }
+
+  // ── 5b. THE METER ITSELF ── did it report something impossible? ────────────────────────────
+  // Added after the calibration bug: the auditor watched daily totals while a single turn reported
+  // $4,507. Downstream checks are useless if the number feeding them is fiction, so check the source.
+  try {
+    const l = await kv.list({ prefix: "alert:meter_insane:", limit: 20 });
+    const n = (l?.keys || []).length;
+    if (n) findings.push({ level: "alert", kind: "meter_corrupt",
+      detail: n + " impossible per-step cost(s) were refused by the meter's sanity ceiling. A rate table " +
+              "is corrupt - check config:rate:calibrated and MODEL_RATES. Costs since then are understated." });
+  } catch {}
 
   // ── 6. MODEL DRIFT - policy says one thing, a different model ran ───────────────────────────
   try {

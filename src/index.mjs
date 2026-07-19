@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.599-2026-07-18";
+const BUILD = "aura-core-v4.9.600-2026-07-19";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -22219,6 +22219,20 @@ function openAlbum(idx){
             const _ev = _cmdWord + ": " + String(line).slice(_cmdWord.length).trim().slice(0, 140) +
                         (_what ? "  ->  " + _what : "") + "  [" + _elapsed + "ms]";
             await auraRemember(env, _ev, _kind);   // NOT ctx.waitUntil - `ctx` does not exist in fetch(request, env). auraRemember never throws.
+
+            // ══ MEMORY INBOX ── HANDING THE MOMENT TO THE BRAIN ═══════════════════════════════
+            // auraRemember writes to pta:timeline, which lives in KV and which aura-think has never
+            // read. So the hands remembered and the brain forgot: a day spent syncing 346 domains was
+            // invisible to the part of her that gets asked "what did you do?".
+            // aura-core has no binding to aura-think, so this drops the moment in a shared KV inbox and
+            // the brain drains it into its searchable archive on the next turn. No new binding, no new
+            // product - the same KV both workers already share.
+            // Short TTL on purpose: this is a transit queue, not a second memory to keep in sync.
+            try {
+              await env.AURA_KV.put("mem:inbox:" + Date.now() + ":" + Math.random().toString(36).slice(2, 7),
+                JSON.stringify({ at: new Date().toISOString(), kind: _kind, event: _ev, via: "aura-core" }),
+                { expirationTtl: 14 * 24 * 3600 });
+            } catch { /* a dropped moment must never break the act it describes */ }
           }
         } catch { /* her memory must never break her hands */ }
 

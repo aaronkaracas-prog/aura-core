@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.615-2026-07-19";
+const BUILD = "aura-core-v4.9.616-2026-07-19";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16554,6 +16554,15 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       const d = (line.match(/\b(\d{4}-\d{2}-\d{2})\b/) || [])[1];
       return { cmd: "CALIBRATE", payload: { ok: true, ...(await calibrateRates(env, d)) } };
     }
+    case "BUSINESS_AUDIT": {
+      if (!isOp) return { cmd: "BUSINESS_AUDIT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const bday = (line.match(/\b(\d{4}-\d{2}-\d{2})\b/) || [])[1];
+      if (bday && !/force/i.test(line)) {
+        const raw = await env.AURA_KV.get("audit:business:" + bday);
+        return { cmd: "BUSINESS_AUDIT", payload: raw ? JSON.parse(raw) : { ok: false, error: "no audit stored for " + bday } };
+      }
+      return { cmd: "BUSINESS_AUDIT", payload: { ok: true, ...(await auditBusiness(env)) } };
+    }
     case "AIMARGIN": {
       // ══ ONE COMMAND, THE WHOLE ENGINE ═══════════════════════════════════════════════════════════
       // Aaron's ask, and it is the right one: stop re-deriving the state of AIMARGIN by hand every
@@ -19505,6 +19514,151 @@ async function calibrateRates(env, day) {
   return out;
 }
 
+
+// ══ BUSINESS AUDIT ── THE NUMBER THAT ENDS THE COMPANY ═══════════════════════════════════════════
+// The token auditor watches spend. This watches whether the machine PRODUCES. They are deliberately
+// separate: burn is $0.27/day of AI and ~$325/week of domains - known, survivable, and not what kills
+// this. Revenue is $0 across ~350 doorways, and nothing in the entire system would ever say so out loud.
+//
+// Every Council convened during this build reached the same conclusion independently: the infrastructure
+// works and the numerator is zero. That is the finding this audit exists to keep in front of him without
+// him having to ask. Same doctrine as the token auditor - arithmetic over live data, no model call,
+// findings to mem:inbox so SHE raises them in her next pulse.
+async function auditBusiness(env) {
+  const today = new Date().toISOString().slice(0, 10);
+  const findings = [];
+  const num = (v) => Number(v) || 0;
+  const kv = env.AURA_KV;
+  const snap = { day: today, generated_at: new Date().toISOString() };
+
+  // ── the money in ────────────────────────────────────────────────────────────────────────────
+  let revenue = 0, realTxns = 0, testTxns = 0;
+  try {
+    const raw = await kv.get("pta:ledger:aura:hot");
+    if (raw) {
+      const led = JSON.parse(raw);
+      revenue = num(led.revenue_all_time ?? led.revenue);
+      realTxns = num(led.real_transactions ?? led.transactions);
+      testTxns = num(led.test_transactions);
+    }
+  } catch {}
+  snap.revenue_all_time = revenue;
+  snap.real_transactions = realTxns;
+  snap.test_transactions = testTxns;
+
+  // ── the money left ──────────────────────────────────────────────────────────────────────────
+  let bank = null;
+  try {
+    const mb = await getMercuryBalance(env);
+    if (mb && mb.ok) bank = num(mb.total ?? mb.available);
+  } catch {}
+  snap.bank_available = bank;
+
+  // ── the burn (bank side, not tokens - that is the other auditor) ────────────────────────────
+  // Track the balance daily so a real burn rate emerges from observation rather than assumption.
+  let burnPerDay = null;
+  try {
+    if (bank != null) {
+      await kv.put("biz:bank:" + today, String(bank), { expirationTtl: 120 * 24 * 3600 });
+      const prior = [];
+      for (let i = 1; i <= 14; i++) {
+        const d = new Date(); d.setUTCDate(d.getUTCDate() - i);
+        const v = await kv.get("biz:bank:" + d.toISOString().slice(0, 10));
+        if (v != null) prior.push({ days: i, bal: num(v) });
+      }
+      if (prior.length) {
+        const oldest = prior[prior.length - 1];
+        const drop = oldest.bal - bank;
+        if (drop > 0) burnPerDay = +(drop / oldest.days).toFixed(2);
+      }
+    }
+  } catch {}
+  snap.burn_per_day = burnPerDay;
+  snap.runway_days = (burnPerDay && bank != null && burnPerDay > 0) ? Math.floor(bank / burnPerDay) : null;
+
+  // ── the doorways ────────────────────────────────────────────────────────────────────────────
+  let doorways = 0;
+  try {
+    const dl = await kv.get("config:domains:launched");
+    if (dl) { const j = JSON.parse(dl); doorways = Array.isArray(j) ? j.length : num(j.count); }
+  } catch {}
+  snap.doorways = doorways;
+
+  // ── FINDINGS ────────────────────────────────────────────────────────────────────────────────
+  // 1. The one that matters. How long has the numerator been zero?
+  try {
+    let since = await kv.get("biz:zero_revenue_since");
+    if (revenue > 0) { await kv.delete("biz:zero_revenue_since"); }
+    else {
+      if (!since) { since = today; await kv.put("biz:zero_revenue_since", since); }
+      const days = Math.max(0, Math.round((Date.parse(today) - Date.parse(since)) / 86400000));
+      findings.push({ level: days >= 7 ? "alert" : "warn", kind: "zero_revenue",
+        detail: "Revenue is $0.00 all-time" + (days ? " and has been for " + days + " day(s) of tracking" : "") +
+                ". " + realTxns + " real transactions, " + testTxns + " test. " + doorways + " doorways live. " +
+                "The machine works; nothing has been sold." });
+    }
+  } catch {}
+
+  // 2. Runway - the clock, only meaningful once a real burn rate is observed
+  if (snap.runway_days != null) {
+    findings.push({ level: snap.runway_days <= 14 ? "alert" : snap.runway_days <= 30 ? "warn" : "info",
+      kind: "runway",
+      detail: "About " + snap.runway_days + " days of runway ($" + (bank ?? 0).toFixed(2) + " at $" +
+              burnPerDay + "/day observed). Revenue $" + revenue.toFixed(2) + " offsets none of it." });
+  } else if (bank != null) {
+    findings.push({ level: "info", kind: "runway",
+      detail: "Bank $" + bank.toFixed(2) + ". Burn rate not yet observable - needs a few days of daily " +
+              "balance snapshots before runway is a real number rather than a guess." });
+  }
+
+  // 3. The first merchant. A pipeline stalled at the same stage is the tell.
+  try {
+    const db = env.AURA_MEMORY;
+    if (db) {
+      const r = await db.prepare("SELECT state, COUNT(*) as n FROM entities GROUP BY state").all().catch(() => null);
+      const rows = r?.results || [];
+      if (rows.length) {
+        snap.pipeline = Object.fromEntries(rows.map((x) => [x.state, x.n]));
+        const active = rows.find((x) => x.state === "active");
+        if (!active || !active.n) findings.push({ level: "alert", kind: "no_active_merchant",
+          detail: "No merchant has reached 'active'. Pipeline: " +
+                  rows.map((x) => x.state + "=" + x.n).join(", ") + ". Until one is active there is no " +
+                  "path to a transaction." });
+      } else {
+        findings.push({ level: "alert", kind: "no_merchant",
+          detail: "No merchants in the pipeline at all. The first doorway needs a real merchant behind it." });
+      }
+    }
+  } catch {}
+
+  // 4. Doorways without a numerator - the scale-without-revenue tell
+  if (doorways >= 50 && revenue === 0) {
+    findings.push({ level: "warn", kind: "wide_not_deep",
+      detail: doorways + " doorways are live and none has produced a dollar. Every Council convened on " +
+              "this said the same thing: go deep on one, not wide on many." });
+  }
+
+  const report = { ...snap, findings, clean: findings.filter((f) => f.level !== "info").length === 0 };
+  try { await kv.put("audit:business:" + today, JSON.stringify(report), { expirationTtl: 120 * 24 * 3600 }); } catch {}
+
+  const loud = findings.filter((f) => f.level === "alert" || f.level === "warn");
+  if (loud.length) {
+    try {
+      const sig = loud.map((f) => f.kind).sort().join(",");
+      if (!(await kv.get("audit:biz_notified:" + today + ":" + sig))) {
+        await kv.put("audit:biz_notified:" + today + ":" + sig, "1", { expirationTtl: 2 * 24 * 3600 });
+        await kv.put("mem:inbox:" + Date.now() + ":bizaudit",
+          JSON.stringify({ at: new Date().toISOString(), kind: "audit",
+            event: "BUSINESS AUDIT flagged " + loud.length + " issue(s): " +
+                   loud.map((f) => "[" + f.level.toUpperCase() + "] " + f.detail).join("  |  "),
+            via: "business auditor" }), { expirationTtl: 14 * 24 * 3600 });
+        console.warn("[BIZ AUDIT] " + loud.map((f) => f.level + ":" + f.kind).join(" "));
+      }
+    } catch {}
+  }
+  return report;
+}
+
 // ══ TOKEN AUDITOR ── THE SMOKE DETECTOR, NOT THE FUSE ════════════════════════════════════════════
 // Every leak found on 2026-07-18/19 was caught by AARON noticing a balance move, never by the system
 // saying anything. $84/day of uncached Haiku ran for weeks. A 289-second turn burned money and returned
@@ -20555,6 +20709,7 @@ export default {
     ctx.waitUntil(pollVideoJobs(env));   // finish async video jobs nobody is waiting on
     ctx.waitUntil(maybeReconcileDaily(env));   // reconcile yesterday against provider billing, once/day
     ctx.waitUntil(auditBurn(env).catch(() => {}));   // smoke detector: flag anomalies before the cap trips
+    ctx.waitUntil(auditBusiness(env).catch(() => {}));   // is the machine producing? the number that ends the company
     // NOT on a daily timer. Aaron's point, and he is right: nobody reprices tokens day to day. A price
     // moves when a vendor ships a new model and discounts the old one - months apart, not hours. Running
     // this daily would re-scale an already-scaled rate and chase noise. Run CALIBRATE by hand after a

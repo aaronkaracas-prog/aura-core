@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.606-2026-07-19";
+const BUILD = "aura-core-v4.9.607-2026-07-19";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16511,6 +16511,16 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         note: "Derived from LIVE source on GitHub plus live KV counts at the moment you asked. Nothing here " +
               "is stored, so nothing here can go stale. WHERE <term> searches every worker and every KV prefix." } };
     }
+    case "AUDIT": {
+      // On demand, same arithmetic the cron runs. force=1 recomputes instead of reading today's stored run.
+      if (!isOp) return { cmd: "AUDIT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const day = (line.match(/\b(\d{4}-\d{2}-\d{2})\b/) || [])[1];
+      if (day && !/force/i.test(line)) {
+        const raw = await env.AURA_KV.get("audit:burn:" + day);
+        return { cmd: "AUDIT", payload: raw ? JSON.parse(raw) : { ok: false, error: "no audit stored for " + day } };
+      }
+      return { cmd: "AUDIT", payload: await auditBurn(env) };
+    }
     case "BRAIN_TEST": {
       // Proves callBrain routes by policy BEFORE 75 call sites depend on it. Reports which provider and
       // model actually answered, so "cheapest" can be verified rather than assumed.
@@ -19305,6 +19315,155 @@ async function watchA2P(env) {
 
 // Shared image-generation core â€” used by GENERATE_IMAGE command and public /showit + /pitch endpoints.
 
+
+// ══ TOKEN AUDITOR ── THE SMOKE DETECTOR, NOT THE FUSE ════════════════════════════════════════════
+// Every leak found on 2026-07-18/19 was caught by AARON noticing a balance move, never by the system
+// saying anything. $84/day of uncached Haiku ran for weeks. A 289-second turn burned money and returned
+// NOTHING. Sonnet crept back onto the hot path the moment a KV pin was deleted. The budget guardrail did
+// not fire on any of it, because a cap is a FUSE - it only trips at the ceiling, long after the anomaly.
+//
+// This is the smoke detector: it compares today against a rolling baseline and says "this is wrong"
+// without anyone looking. Pure arithmetic over KV - no model call, no cost, safe to run every minute.
+// Findings go to mem:inbox, which means they reach HER, and she raises them in her next pulse unprompted.
+function _ymdOffset(days) { const d = new Date(); d.setUTCDate(d.getUTCDate() - days); return d.toISOString().slice(0, 10); }
+
+async function auditBurn(env) {
+  const today = _ymdOffset(0);
+  const findings = [];
+  const num = (v) => Number(v) || 0;
+  const kv = env.AURA_KV;
+
+  // ── the numbers ─────────────────────────────────────────────────────────────────────────────
+  const spendToday = num(await kv.get("meter:spend:" + today));
+  const hist = [];
+  for (let i = 1; i <= 7; i++) {
+    const v = await kv.get("meter:spend:" + _ymdOffset(i));
+    if (v != null) hist.push(num(v));
+  }
+  // MEDIAN, not mean. One runaway day drags an average and then hides the next one behind it.
+  const sorted = [...hist].sort((a, b) => a - b);
+  const baseline = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0;
+
+  let imgToday = { count: 0, cost_usd: 0 }, vidToday = { count: 0, cost_usd: 0 };
+  try { const r = await kv.get("meter:images:" + today); if (r) imgToday = JSON.parse(r); } catch {}
+  try { const r = await kv.get("meter:videos:" + today); if (r) vidToday = JSON.parse(r); } catch {}
+
+  // ── 1. SPEND SPIKE vs the rolling median ────────────────────────────────────────────────────
+  if (baseline > 0.01 && spendToday > baseline * 3) {
+    findings.push({ level: "alert", kind: "spend_spike",
+      detail: "Text spend today is $" + spendToday.toFixed(4) + " against a 7-day median of $" +
+              baseline.toFixed(4) + " (" + (spendToday / baseline).toFixed(1) + "x). Something is running " +
+              "that was not running before." });
+  }
+
+  // ── 2. BUDGET PRESSURE - warn BEFORE the cap, not at it ─────────────────────────────────────
+  const cap = num(await kv.get("config:budget:daily")) || 5;
+  const used = cap > 0 ? spendToday / cap : 0;
+  if (used >= 0.8) {
+    findings.push({ level: used >= 1 ? "alert" : "warn", kind: "budget",
+      detail: "Daily budget " + (used >= 1 ? "BREACHED" : "at " + (used * 100).toFixed(0) + "%") +
+              ": $" + spendToday.toFixed(4) + " of $" + cap.toFixed(2) + "." });
+  }
+
+  // ── 3. VIDEO - 100x an image, so any volume at all is worth naming ───────────────────────────
+  if (num(vidToday.cost_usd) > 0.5) {
+    findings.push({ level: "warn", kind: "video_spend",
+      detail: "Video today: " + (vidToday.count || 0) + " clips, $" + num(vidToday.cost_usd).toFixed(2) +
+              ". Video is ~100x an image - confirm this was intended." });
+  }
+
+  // ── 4. TRUE vs METERED - the gap that hid $84/day ────────────────────────────────────────────
+  try {
+    const t = await kv.get("truth:spend:" + _ymdOffset(1));
+    if (t) {
+      const rep = JSON.parse(t);
+      const trueCost = num(rep.true_cost_usd), metered = num(rep.metered_usd);
+      if (trueCost > 1 && metered > 0 && trueCost > metered * 3) {
+        findings.push({ level: "alert", kind: "meter_gap",
+          detail: "Yesterday providers billed $" + trueCost.toFixed(2) + " while Aura metered $" +
+                  metered.toFixed(4) + " (" + (trueCost / metered).toFixed(1) + "x). Either real spend is " +
+                  "happening outside Aura's meter, or a rate table has drifted." });
+      }
+      // Which provider dominates - the answer to "what is actually eating the money"
+      const per = Object.entries(rep.providers || {})
+        .filter(([, p]) => p && p.ok && p.total > 0)
+        .sort((a, b) => b[1].total - a[1].total);
+      if (per.length && per[0][1].total > trueCost * 0.7 && trueCost > 1) {
+        findings.push({ level: "info", kind: "concentration",
+          detail: per[0][0] + " was " + ((per[0][1].total / trueCost) * 100).toFixed(0) +
+                  "% of yesterday's provider spend ($" + per[0][1].total.toFixed(2) + ")." });
+      }
+    }
+  } catch {}
+
+  // ── 5. RUNWAY - days left at the current rate, per provider ─────────────────────────────────
+  for (const prov of ["anthropic", "openai", "xai", "google", "meta"]) {
+    try {
+      const raw = await kv.get("balance:" + prov);
+      if (!raw) continue;
+      const led = JSON.parse(raw);
+      const remaining = num(led.credited_usd) - num(led.spent_usd);
+      const since = led.since ? Math.max(1, Math.round((Date.now() - Date.parse(led.since + "T00:00:00Z")) / 86400000)) : 0;
+      const rate = since ? num(led.spent_usd) / since : 0;
+      if (rate > 0 && remaining > 0) {
+        const days = Math.floor(remaining / rate);
+        if (days <= 7) findings.push({ level: days <= 3 ? "alert" : "warn", kind: "runway",
+          detail: prov + " has about " + days + " days left ($" + remaining.toFixed(2) + " at $" +
+                  rate.toFixed(2) + "/day)." });
+      }
+      if (remaining <= 0) findings.push({ level: "alert", kind: "runway",
+        detail: prov + " balance is exhausted or unrecorded (est $" + remaining.toFixed(2) +
+                "). Re-anchor it or top up." });
+    } catch {}
+  }
+
+  // ── 6. MODEL DRIFT - policy says one thing, a different model ran ───────────────────────────
+  try {
+    const pol = (await kv.get("config:policy:text") || "cheapest").trim();
+    const pin = await kv.get("config:brain:model");
+    const expectCheap = pol === "cheapest";
+    if (expectCheap && pin && /claude-(opus|sonnet)/i.test(pin)) {
+      findings.push({ level: "alert", kind: "model_drift",
+        detail: "Policy is 'cheapest' but config:brain:model pins " + pin + ". That is the exact shape of " +
+                "the leak that ran for weeks - a pin outranking the policy." });
+    }
+    if (expectCheap && !pin) {
+      findings.push({ level: "warn", kind: "model_drift",
+        detail: "config:brain:model is unset, so aura-core's brain falls back to its built-in default " +
+                "rather than the cheapest policy. Deleting this key is what put Sonnet back on the hot path." });
+    }
+  } catch {}
+
+  const report = { day: today, generated_at: new Date().toISOString(),
+    spend_today: +spendToday.toFixed(4), baseline_median_7d: +baseline.toFixed(4),
+    budget_cap: cap, budget_used_pct: +(used * 100).toFixed(1),
+    images: imgToday, videos: vidToday,
+    findings, clean: findings.filter((f) => f.level !== "info").length === 0 };
+
+  try { await kv.put("audit:burn:" + today, JSON.stringify(report), { expirationTtl: 40 * 24 * 3600 }); } catch {}
+
+  // Tell HER, not a dashboard nobody opens. She raises these in her next pulse without being asked -
+  // which is the whole point: the operator should not have to be the anomaly detector.
+  const loud = findings.filter((f) => f.level === "alert" || f.level === "warn");
+  if (loud.length) {
+    try {
+      const sig = loud.map((f) => f.kind).sort().join(",");
+      const seen = await kv.get("audit:notified:" + today + ":" + sig);
+      if (!seen) {   // one notice per distinct problem set per day, not one per minute
+        await kv.put("audit:notified:" + today + ":" + sig, "1", { expirationTtl: 2 * 24 * 3600 });
+        await kv.put("mem:inbox:" + Date.now() + ":audit",
+          JSON.stringify({ at: new Date().toISOString(), kind: "audit",
+            event: "BURN AUDIT flagged " + loud.length + " issue(s): " +
+                   loud.map((f) => "[" + f.level.toUpperCase() + "] " + f.detail).join("  |  "),
+            via: "token auditor" }),
+          { expirationTtl: 14 * 24 * 3600 });
+        console.warn("[AUDIT] " + loud.map((f) => f.level + ":" + f.kind).join(" "));
+      }
+    } catch {}
+  }
+  return report;
+}
+
 // ══ TRUE-COST RECONCILER ═════════════════════════════════════════════════════════════════════════
 // Every meter in this system COMPUTES cost from a rate table. That is an estimate, and estimates drift:
 // a provider reprices, a lane runs a model we did not expect, work happens outside Aura entirely. On
@@ -20176,6 +20335,7 @@ export default {
     ctx.waitUntil(captureAisHistory(env));
     ctx.waitUntil(pollVideoJobs(env));   // finish async video jobs nobody is waiting on
     ctx.waitUntil(maybeReconcileDaily(env));   // reconcile yesterday against provider billing, once/day
+    ctx.waitUntil(auditBurn(env).catch(() => {}));   // smoke detector: flag anomalies before the cap trips
   },
 
   // INBOUND EMAIL (v4.9.491) - THE READ-HALF of Aura's email, the authentication master key.

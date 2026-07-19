@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.623-2026-07-19";
+const BUILD = "aura-core-v4.9.625-2026-07-19";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16733,23 +16733,35 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       // So this returns the fields a person actually asks about, plus the by-vendor totals that were the
       // real question. Raw rows stay available behind `raw` for anything that genuinely needs them.
       const parts = line.trim().split(/\s+/);
-      let limit = 10, since = null;
+      let limit = 10, since = null, until = null;
       for (const p of parts.slice(1)) {
         if (/^since=/i.test(p)) since = p.split("=")[1];
+        else if (/^until=/i.test(p)) until = p.split("=")[1];
         else if (/^limit=/i.test(p)) limit = parseInt(p.split("=")[1]) || 10;
         else if (/^\d+$/.test(p)) limit = parseInt(p) || 10;
       }
       const wantRaw = /\braw\b/i.test(line);
       const txns = await getMercuryTransactions(env, null, Math.min(200, Math.max(1, limit)));
       if (!txns || txns.ok === false) return { cmd: "MERCURY_TRANSACTIONS", payload: txns };
-      let rows = (txns.transactions || []).map((t) => ({
-        date: String(t.createdAt || "").slice(0, 10),
+      // POSTED DATE, not created date. Aaron checked his phone and saw ~$38 of Spaceship today while this
+      // reported $9.08 - both were right, answering different questions. We filtered on createdAt (when
+      // the charge was made); every bank app, statement and accountant uses postedAt (when it settled).
+      // Eight Spaceship charges created 07-17/07-18 POSTED on 07-19. So: posted is the default basis,
+      // and pending charges are reported separately rather than silently dropped or double-counted.
+      const all = (txns.transactions || []).map((t) => ({
+        date: String(t.postedAt || t.createdAt || "").slice(0, 10),   // settled date = the statement date
+        created: String(t.createdAt || "").slice(0, 10),
+        posted: t.postedAt ? String(t.postedAt).slice(0, 10) : null,
         vendor: t.counterpartyName || t.bankDescription || "unknown",
         amount: Number(t.amount) || 0,
         category: t.mercuryCategory || null,
         status: t.status || null,
       }));
-      if (since) rows = rows.filter((r) => r.date >= since);
+      const inRange = (d) => d && d >= (since || "0000-00-00") && (!until || d <= until);
+      let rows = since || until ? all.filter((r) => inRange(r.posted)) : all;
+      // Charges made in the window that have not settled yet - real money committed, not yet on the statement.
+      const pendingRows = (since || until) ? all.filter((r) => !r.posted && inRange(r.created)) : all.filter((r) => !r.posted);
+      const pendingTotal = +pendingRows.filter((r) => r.amount < 0).reduce((a, r) => a + r.amount, 0).toFixed(2);
       // The by-vendor rollup IS the question people ask. Compute it here, once, instead of asking a
       // model to aggregate a hundred rows in its head.
       const byVendor = {};
@@ -16761,8 +16773,12 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       const vendors = Object.values(byVendor).sort((a, b) => a.total - b.total);
       const spent = +rows.filter((r) => r.amount < 0).reduce((a, r) => a + r.amount, 0).toFixed(2);
       return { cmd: "MERCURY_TRANSACTIONS", payload: {
-        ok: true, count: rows.length, since: since || null,
+        ok: true, count: rows.length, since: since || null, until: until || null,
+        basis: "posted (settled) date - what a bank statement shows",
         total_spent: spent,
+        pending_not_yet_posted: pendingTotal,
+        pending_count: pendingRows.length,
+        pending: pendingRows.map((r) => ({ created: r.created, vendor: r.vendor, amount: r.amount })),
         biggest_vendor: vendors[0] || null,
         by_vendor: vendors,
         transactions: rows,
@@ -19623,7 +19639,7 @@ async function auditAll(env, scope, win) {
 
   // ── BUSINESS ────────────────────────────────────────────────────────────────────────────────
   if (want("business")) {
-    const mtx = await call("MERCURY_TRANSACTIONS since=" + win.start + " limit=200");
+    const mtx = await call("MERCURY_TRANSACTIONS since=" + win.start + " until=" + win.end + " limit=200");
     const bal = await call("MERCURY_BALANCE");
     const stripe = await call("STRIPE_BALANCE");
     const svc = await call("SERVICE_STATUS");
@@ -19637,6 +19653,19 @@ async function auditAll(env, scope, win) {
         ? +(stripe.available.reduce((a, x) => a + num(x.amount), 0) / 100).toFixed(2) : null,
       services_on_trial: Object.entries(services).filter(([, v]) => v?.cost_model === "trial").map(([k]) => k),
       services_dead: Object.entries(services).filter(([, v]) => v?.live === false).map(([k]) => k),
+    };
+    // THE ANSWER. "What did I spend?" should not require reading four fields and adding them up.
+    const bankSpend = Math.abs(num(mtx?.total_spent));
+    const pending = Math.abs(num(mtx?.pending_not_yet_posted));
+    const tokenSpend = num(out.sections.tokens?.window_total_usd);
+    out.answer = {
+      question: "What did I spend " + (win.explicit ? win.label : "in the last " + win.label) + "?",
+      total_usd: +(bankSpend + tokenSpend).toFixed(2),
+      bank_posted_usd: +bankSpend.toFixed(2),
+      tokens_usd: +tokenSpend.toFixed(4),
+      pending_not_yet_posted_usd: +pending.toFixed(2),
+      note: "bank_posted is what settled in this window (what a statement shows). tokens is AI spend " +
+            "metered by Aura. pending is committed but not yet settled - it lands on a later date.",
     };
     const b = out.sections.business;
     if (b.biggest_vendor) out.findings.push({ level: "info", scope: "business", kind: "spend_shape",

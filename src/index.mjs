@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.610-2026-07-19";
+const BUILD = "aura-core-v4.9.611-2026-07-19";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -19350,7 +19350,15 @@ async function calibrateRates(env, day) {
     const billed = Number(xai.total) || 0;
     if (billed <= 0) { out.note = "provider reports no spend for " + d; return out; }
 
-    const factor = billed / metered;
+    // Guard: if calibrated rates are already live, the metered figure is in calibrated dollars and the
+    // ratio would compound. Divide it back out so the factor is always relative to the base table.
+    let priorFactor = 1;
+    try {
+      const t0 = await env.AURA_KV.get("config:rate:calibrated");
+      if (t0) { const j = JSON.parse(t0); const anyModel = Object.values(j)[0];
+                if (anyModel && anyModel.from_factor > 0) priorFactor = anyModel.from_factor; }
+    } catch {}
+    const factor = (billed / metered) * priorFactor;
     // Sanity: refuse absurd corrections rather than poison the meter with a bad read.
     if (!(factor > 0.05 && factor < 200)) { out.note = "implausible factor " + factor.toFixed(2) + " - ignored"; return out; }
 
@@ -19362,7 +19370,11 @@ async function calibrateRates(env, day) {
                    "grok-4.3": { P_IN: 3.00, P_OUT: 15.00, P_CACHE: 0.75 } };
     for (const label of Object.keys(xai.lines || {})) {
       const model = label.replace(/^API\s+/i, "").trim();
-      const base = table[model] || BASE[model];
+      // ALWAYS the ORIGINAL base, NEVER the already-calibrated value. The first version read
+      // `table[model] || BASE[model]`, so every run multiplied the PREVIOUS result again - and it was on
+      // the 1-minute cron. 0.10 x 13.43^7 later, the meter charged $4,507.55 to answer "100C".
+      // A correction factor must always be applied to the same fixed baseline, never to its own output.
+      const base = BASE[model];
       if (!base) { out.skipped.push(model); continue; }
       const scaled = { P_IN: +(base.P_IN * factor).toFixed(6),
                        P_OUT: +(base.P_OUT * factor).toFixed(6),

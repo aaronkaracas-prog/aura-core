@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.622-2026-07-19";
+const BUILD = "aura-core-v4.9.623-2026-07-19";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -19551,6 +19551,32 @@ function parseAuditWindow(text) {
   const t = String(text || "").toLowerCase();
   const now = new Date();
   const iso = (d) => d.toISOString().slice(0, 10);
+
+  // ARBITRARY RANGES FIRST. Aaron's point: an audit has to be whatever period he chooses - if he is ever
+  // audited he needs 2022, not "last 30 days". Relative shorthands are a convenience on top, not the API.
+  //   AUDIT business 2024-01-01 to 2024-12-31
+  //   AUDIT business 2024-03          (a whole month)
+  //   AUDIT business 2023             (a whole year)
+  const range = t.match(/(\d{4}-\d{2}-\d{2})\s*(?:to|\.\.|through|-)\s*(\d{4}-\d{2}-\d{2})/);
+  if (range) {
+    const a = range[1], b = range[2];
+    const days = Math.max(1, Math.round((Date.parse(b) - Date.parse(a)) / 86400000) + 1);
+    return { days, label: a + " to " + b, start: a, end: b, explicit: true };
+  }
+  const oneMonth = t.match(/\b(\d{4})-(\d{2})\b(?!-)/);
+  if (oneMonth) {
+    const y = +oneMonth[1], m = +oneMonth[2];
+    const start = new Date(Date.UTC(y, m - 1, 1)), end = new Date(Date.UTC(y, m, 0));
+    return { days: Math.round((end - start) / 86400000) + 1, label: oneMonth[0], start: iso(start), end: iso(end), explicit: true };
+  }
+  const oneDay = t.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+  if (oneDay) return { days: 1, label: oneDay[1], start: oneDay[1], end: oneDay[1], explicit: true };
+  const oneYear = t.match(/\b(20\d{2})\b/);
+  if (oneYear) {
+    const y = oneYear[1];
+    return { days: 366, label: y, start: y + "-01-01", end: y + "-12-31", explicit: true };
+  }
+
   let days = 1, label = "today";
   const m = t.match(/\b(\d+)\s*(h|hr|hour|hours|d|day|days|w|week|weeks|m|mo|month|months)\b/);
   if (m) {
@@ -19574,8 +19600,9 @@ async function auditAll(env, scope, win) {
   // ── TOKENS ──────────────────────────────────────────────────────────────────────────────────
   if (want("tokens")) {
     const daily = [];
-    for (let i = 0; i < win.days; i++) {
-      const d = new Date(); d.setUTCDate(d.getUTCDate() - i);
+    const anchor = win.end ? new Date(win.end + "T00:00:00Z") : new Date();
+    for (let i = 0; i < Math.min(win.days, 400); i++) {
+      const d = new Date(anchor); d.setUTCDate(d.getUTCDate() - i);
       const k = d.toISOString().slice(0, 10);
       const v = await env.AURA_KV.get("meter:spend:" + k).catch(() => null);
       if (v != null) daily.push({ day: k, usd: +num(v).toFixed(4) });

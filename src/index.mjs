@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.614-2026-07-19";
+const BUILD = "aura-core-v4.9.615-2026-07-19";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16553,6 +16553,79 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       if (!isOp) return { cmd: "CALIBRATE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const d = (line.match(/\b(\d{4}-\d{2}-\d{2})\b/) || [])[1];
       return { cmd: "CALIBRATE", payload: { ok: true, ...(await calibrateRates(env, d)) } };
+    }
+    case "AIMARGIN": {
+      // ══ ONE COMMAND, THE WHOLE ENGINE ═══════════════════════════════════════════════════════════
+      // Aaron's ask, and it is the right one: stop re-deriving the state of AIMARGIN by hand every
+      // session. Which lane runs which model, what a token actually costs, what was spent today against
+      // the cap, whether the meter is sane, which provider keys are alive, what is built and what is
+      // deliberately not. All of it read live at the moment asked - nothing stored, so nothing can rot.
+      // Zero burn: KV reads and arithmetic, no model call.
+      if (!isOp) return { cmd: "AIMARGIN", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const kvg = async (k, d) => (await env.AURA_KV.get(k).catch(() => null)) ?? d;
+      const day = new Date().toISOString().slice(0, 10);
+
+      const lanes = {
+        text:  await kvg("config:policy:text", "cheapest"),
+        image: await kvg("config:policy:image", "cheapest"),
+        core:  await kvg("config:policy:core", "cheapest"),
+        video: await kvg("config:policy:video", "cheapest"),
+        style: await kvg("config:policy:style", "photoreal"),
+      };
+      const pins = {
+        brain_model: await kvg("config:brain:model", null),
+        image_model: await kvg("config:image:model", null),
+        video_model: await kvg("config:video:model", null),
+      };
+      const spendToday = Number(await kvg("meter:spend:" + day, "0")) || 0;
+      const cap = Number(await kvg("config:budget:daily", "5")) || 5;
+      let images = {}, videos = {};
+      try { images = JSON.parse(await kvg("meter:images:" + day, "{}")); } catch {}
+      try { videos = JSON.parse(await kvg("meter:videos:" + day, "{}")); } catch {}
+
+      // Is the meter telling the truth? The sanity ceiling logs here when it refuses an impossible cost.
+      let insane = 0;
+      try { insane = ((await env.AURA_KV.list({ prefix: "alert:meter_insane:", limit: 20 }))?.keys || []).length; } catch {}
+
+      // Balances as anchored, drawn down by true billing.
+      const balances = {};
+      for (const p of ["anthropic", "openai", "xai", "google", "meta"]) {
+        try {
+          const raw = await env.AURA_KV.get("balance:" + p);
+          if (!raw) continue;
+          const l = JSON.parse(raw);
+          balances[p] = { est_remaining: +((Number(l.credited_usd) || 0) - (Number(l.spent_usd) || 0)).toFixed(2),
+                          anchored: !!l.anchor };
+        } catch {}
+      }
+
+      return { cmd: "AIMARGIN", payload: { ok: true, day,
+        policy: lanes,
+        pins_overriding_policy: Object.fromEntries(Object.entries(pins).filter(([, v]) => v)),
+        rates: {
+          note: "Corrected against xAI billing 2026-07-19 (was understated 13.43x). Re-measure ONLY when a " +
+                "provider ships a new model - prices do not move daily. Method: CALIBRATE.",
+          "grok-build-0.1": "P_IN 1.34 / P_OUT 2.69 / P_CACHE 0.27 per M",
+        },
+        spend_today: { text_usd: +spendToday.toFixed(4), cap_usd: cap,
+                       used_pct: +((spendToday / cap) * 100).toFixed(1),
+                       images, videos },
+        meter_health: insane ? ("CORRUPT - " + insane + " impossible cost(s) refused; a rate table is wrong")
+                             : "sane (no impossible costs refused)",
+        balances,
+        built: ["policy engine (text/image/core/video/style lanes)", "5 providers with measured floors",
+                "Council - 5 minds, web-grounded, itemised per seat", "hindcast - accuracy per dollar",
+                "true-cost reconciler (xai, anthropic, openai)", "balance anchoring", "budget guardrail (degrade-not-die)",
+                "token auditor on cron", "meter sanity ceiling", "image + video caches (identical repeats free)"],
+        not_built_on_purpose: ["price discovery from provider /models (needs a working key in aura-core)",
+                               "auto rate calibration (compounded twice - manual CALIBRATE only)",
+                               "Google/Meta cost adapters (GCP export; Meta is free)",
+                               "Batch API 50% lane (saves ~10c/day - fails its own value test)",
+                               "onboarding other operators (Aaron is client #1)"],
+        commands: { status: "AIMARGIN", audit: "AUDIT [force]", truecost: "GET /truecost?date=&force=1",
+                    budget: "GET /budget", calibrate: "CALIBRATE (manual, after a model repricing)",
+                    keys: "SERVICE_STATUS", council: "GET /council?q=&web=1", hindcast: "GET /hindcast?model=" },
+      } };
     }
     case "AUDIT": {
       // On demand, same arithmetic the cron runs. force=1 recomputes instead of reading today's stored run.

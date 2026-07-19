@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.616-2026-07-19";
+const BUILD = "aura-core-v4.9.617-2026-07-19";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -19550,7 +19550,10 @@ async function auditBusiness(env) {
   let bank = null;
   try {
     const mb = await getMercuryBalance(env);
-    if (mb && mb.ok) bank = num(mb.total ?? mb.available);
+    // getMercuryBalance returns total_available - NOT total, NOT available. The first version guessed the
+    // field name, got undefined, and recorded a bank balance of $0.00 while RESOURCE_STATUS was reporting
+    // $344.81 from the same function. An audit that invents a zero is worse than no audit.
+    if (mb && mb.ok) bank = num(mb.total_available ?? mb.total ?? mb.available);
   } catch {}
   snap.bank_available = bank;
 
@@ -19582,7 +19585,10 @@ async function auditBusiness(env) {
     const dl = await kv.get("config:domains:launched");
     if (dl) { const j = JSON.parse(dl); doorways = Array.isArray(j) ? j.length : num(j.count); }
   } catch {}
-  snap.doorways = doorways;
+  // LAUNCHED doorways (a worker is serving them), which is NOT the same as domains registered at the
+  // registrar. 350 domains are owned; far fewer are actually standing up a doorway. Naming it precisely
+  // so the number is never read as "all my domains earn nothing" when it means something narrower.
+  snap.doorways_launched = doorways;
 
   // ── FINDINGS ────────────────────────────────────────────────────────────────────────────────
   // 1. The one that matters. How long has the numerator been zero?
@@ -19594,7 +19600,7 @@ async function auditBusiness(env) {
       const days = Math.max(0, Math.round((Date.parse(today) - Date.parse(since)) / 86400000));
       findings.push({ level: days >= 7 ? "alert" : "warn", kind: "zero_revenue",
         detail: "Revenue is $0.00 all-time" + (days ? " and has been for " + days + " day(s) of tracking" : "") +
-                ". " + realTxns + " real transactions, " + testTxns + " test. " + doorways + " doorways live. " +
+                ". " + realTxns + " real transactions, " + testTxns + " test. " + doorways + " launched doorways. " +
                 "The machine works; nothing has been sold." });
     }
   } catch {}

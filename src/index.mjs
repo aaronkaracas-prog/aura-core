@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.605-2026-07-19";
+const BUILD = "aura-core-v4.9.606-2026-07-19";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16571,10 +16571,55 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
     }
 
     case "MERCURY_TRANSACTIONS": {
+      // ANSWER, DON'T DUMP. This used to pass Mercury's raw API response straight through: ~700 characters
+      // per transaction of which about 60 mattered. The rest was UUIDs and nulls - id, feeId,
+      // counterpartyId, debitCardInfo.id, dashboardLink, accountId, merchant.id, glAllocations,
+      // attachments, relatedTransactions, categoryData, checkNumber, trackingNumber, requestId...
+      // Ten transactions came to 7,096 characters; fifty came to 55,846.
+      //
+      // The cost was not just tokens. Handed that, Aura could not tell whether her answer was in there,
+      // so she went and READ HER OWN SOURCE to work out how this command behaves, then called it again
+      // with a bigger limit, and again - a five-minute turn that returned nothing. Everything she needed
+      // (vendor, amount, date) was in the FIRST call, buried.
+      // So this returns the fields a person actually asks about, plus the by-vendor totals that were the
+      // real question. Raw rows stay available behind `raw` for anything that genuinely needs them.
       const parts = line.trim().split(/\s+/);
-      const limit = parseInt(parts[1]) || 10;
-      const txns = await getMercuryTransactions(env, null, limit);
-      return { cmd: "MERCURY_TRANSACTIONS", payload: txns };
+      let limit = 10, since = null;
+      for (const p of parts.slice(1)) {
+        if (/^since=/i.test(p)) since = p.split("=")[1];
+        else if (/^limit=/i.test(p)) limit = parseInt(p.split("=")[1]) || 10;
+        else if (/^\d+$/.test(p)) limit = parseInt(p) || 10;
+      }
+      const wantRaw = /\braw\b/i.test(line);
+      const txns = await getMercuryTransactions(env, null, Math.min(200, Math.max(1, limit)));
+      if (!txns || txns.ok === false) return { cmd: "MERCURY_TRANSACTIONS", payload: txns };
+      let rows = (txns.transactions || []).map((t) => ({
+        date: String(t.createdAt || "").slice(0, 10),
+        vendor: t.counterpartyName || t.bankDescription || "unknown",
+        amount: Number(t.amount) || 0,
+        category: t.mercuryCategory || null,
+        status: t.status || null,
+      }));
+      if (since) rows = rows.filter((r) => r.date >= since);
+      // The by-vendor rollup IS the question people ask. Compute it here, once, instead of asking a
+      // model to aggregate a hundred rows in its head.
+      const byVendor = {};
+      for (const r of rows) {
+        byVendor[r.vendor] ??= { vendor: r.vendor, total: 0, charges: 0 };
+        byVendor[r.vendor].total = +(byVendor[r.vendor].total + r.amount).toFixed(2);
+        byVendor[r.vendor].charges += 1;
+      }
+      const vendors = Object.values(byVendor).sort((a, b) => a.total - b.total);
+      const spent = +rows.filter((r) => r.amount < 0).reduce((a, r) => a + r.amount, 0).toFixed(2);
+      return { cmd: "MERCURY_TRANSACTIONS", payload: {
+        ok: true, count: rows.length, since: since || null,
+        total_spent: spent,
+        biggest_vendor: vendors[0] || null,
+        by_vendor: vendors,
+        transactions: rows,
+        ...(wantRaw ? { raw: txns.transactions } : {}),
+        note: "Summarised. Add the word raw for the full Mercury objects.",
+      } };
     }
 
     case "MERCURY_ACCOUNTS": {

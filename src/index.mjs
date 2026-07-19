@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.618-2026-07-19";
+const BUILD = "aura-core-v4.9.621-2026-07-19";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -19515,6 +19515,66 @@ async function calibrateRates(env, day) {
 }
 
 
+
+// ══ SELF AUDIT ON A SCHEDULE ── IS SHE STILL INTACT? ═════════════════════════════════════════════
+// SELF_AUDIT already existed and works - it reads her LIVE source and probes each engine. It was only
+// ever run on demand, which means breakage waited for someone to ask. On 2026-07-19 a field name I added
+// shadowed this.core() and broke every run_capability; nothing reported it, and she only surfaced it by
+// accident in an unprompted pulse. A self-check that runs itself would have caught it in minutes.
+// Throttled to every 6 hours (config:self_audit:hours) - this is the "am I whole" question, not a
+// heartbeat, and it should never become a cost of its own.
+async function maybeSelfAudit(env) {
+  try {
+    const kv = env.AURA_KV;
+    const lastRaw = await kv.get("audit:self:at");
+    const hours = lastRaw ? (Date.now() - Date.parse(lastRaw)) / 3600000 : 999;
+    const everyRaw = await kv.get("config:self_audit:hours").catch(() => null);
+    const every = Math.max(0.05, parseFloat(everyRaw || "6") || 6);
+    if (hours < every) return null;
+    await kv.put("audit:self:at", new Date().toISOString());   // claim first so a slow run cannot double-fire
+
+    const r = await processCommand("SELF_AUDIT", env, true).catch(() => null);
+    const p = r?.payload || {};
+    const day = new Date().toISOString().slice(0, 10);
+    try { await kv.put("audit:self:" + day, JSON.stringify(p), { expirationTtl: 40 * 24 * 3600 }); } catch {}
+
+    // Anything the probe reports as not wired is a limb she has lost since the last check.
+    const broken = [];
+    for (const [k, v] of Object.entries(p)) {
+      if (v && typeof v === "object" && (v.wired === false || v.ok === false)) broken.push(k);
+    }
+    if (Array.isArray(p.engines)) for (const e of p.engines) if (e && e.wired === false) broken.push(e.engine || "?");
+
+    if (broken.length) {
+      const sig = broken.sort().join(",");
+      if (!(await kv.get("audit:self_notified:" + day + ":" + sig))) {
+        await kv.put("audit:self_notified:" + day + ":" + sig, "1", { expirationTtl: 2 * 24 * 3600 });
+        await kv.put("mem:inbox:" + Date.now() + ":selfaudit",
+          JSON.stringify({ at: new Date().toISOString(), kind: "audit",
+            event: "SELF AUDIT: not wired -> " + broken.join(", ") +
+                   ". Something that used to work does not. Check before assuming it is expected.",
+            via: "self auditor" }), { expirationTtl: 14 * 24 * 3600 });
+        console.warn("[SELF AUDIT] broken: " + broken.join(","));
+      }
+    }
+    return p;
+  } catch (e) { console.warn("[SELF AUDIT] " + String(e?.message ?? e).slice(0, 160)); return null; }
+}
+
+
+// Hourly wrapper so the smoke detector does not re-run 1,440 times a day. config:audit:burn_hours.
+async function maybeAuditBurn(env) {
+  try {
+    const kv = env.AURA_KV;
+    const last = await kv.get("audit:burn:at");
+    const hrs = last ? (Date.now() - Date.parse(last)) / 3600000 : 999;
+    const every = Math.max(0.02, parseFloat(await kv.get("config:audit:burn_hours").catch(() => null) || "1") || 1);
+    if (hrs < every) return null;
+    await kv.put("audit:burn:at", new Date().toISOString());
+    return await auditBurn(env);
+  } catch { return null; }
+}
+
 // ══ BUSINESS AUDIT ── THE NUMBER THAT ENDS THE COMPANY ═══════════════════════════════════════════
 // The token auditor watches spend. This watches whether the machine PRODUCES. They are deliberately
 // separate: burn is $0.27/day of AI and ~$325/week of domains - known, survivable, and not what kills
@@ -19553,6 +19613,25 @@ async function auditBusiness(env) {
   snap.spend_by_vendor = byVendor;
   snap.spend_total = mtx && mtx.ok ? num(mtx.total_spent) : null;
   snap.biggest_vendor = mtx && mtx.ok ? mtx.biggest_vendor : null;
+
+  // PER-PROVIDER AI SPEND, from each provider's OWN billing - not the bank feed. These are different
+  // numbers and conflating them misleads: the bank shows credit TOP-UPS (Anthropic -$265.86 = card
+  // charges), while truecost shows what each provider actually billed for tokens. A month with no top-up
+  // looks like zero AI spend on the bank feed while the provider is billing daily.
+  let aiByProvider = null;
+  try {
+    const tc = await reconcileTrueCost(env, new Date().toISOString().slice(0, 10));
+    if (tc && tc.providers) {
+      aiByProvider = {};
+      for (const [name, p] of Object.entries(tc.providers)) {
+        aiByProvider[name] = p && p.ok
+          ? { billed_today_usd: +num(p.total).toFixed(4), models: p.lines || {} }
+          : { unavailable: p?.error || "no adapter" };
+      }
+      snap.ai_spend_today_total = +num(tc.true_cost_usd).toFixed(4);
+    }
+  } catch {}
+  snap.ai_spend_by_provider = aiByProvider;
 
   // The token side, folded in rather than siloed.
   snap.tokens = margin && margin.ok
@@ -19685,6 +19764,19 @@ async function auditBusiness(env) {
               " over " + snap.biggest_vendor.charges + " charges. Tokens today: $" +
               (snap.tokens?.spend_today_usd ?? 0) + "." });
   }
+  // 3b-ii. Which AI provider is actually costing money, from their own books.
+  if (aiByProvider) {
+    const live = Object.entries(aiByProvider).filter(([, v]) => v && v.billed_today_usd > 0)
+      .sort((a, b) => b[1].billed_today_usd - a[1].billed_today_usd);
+    if (live.length) findings.push({ level: "info", kind: "ai_spend",
+      detail: "AI billed today by provider: " +
+              live.map(([n, v]) => n + " $" + v.billed_today_usd.toFixed(4)).join(", ") +
+              ". (Provider billing, not card charges - a top-up on the bank feed is not the same as tokens burned.)" });
+    const missing = Object.entries(aiByProvider).filter(([, v]) => v && v.unavailable).map(([n]) => n);
+    if (missing.length) findings.push({ level: "info", kind: "ai_spend_gaps",
+      detail: "No same-day billing available for: " + missing.join(", ") + "." });
+  }
+
   // 3c. Trials are future bills. Dead services are money paid for nothing.
   if (onTrial.length >= 3) findings.push({ level: "warn", kind: "trials_pending",
     detail: onTrial.length + " services are on free trials and will become bills: " + onTrial.join(", ") + "." });
@@ -20770,8 +20862,15 @@ export default {
     ctx.waitUntil(captureAisHistory(env));
     ctx.waitUntil(pollVideoJobs(env));   // finish async video jobs nobody is waiting on
     ctx.waitUntil(maybeReconcileDaily(env));   // reconcile yesterday against provider billing, once/day
-    ctx.waitUntil(auditBurn(env).catch(() => {}));   // smoke detector: flag anomalies before the cap trips
-    ctx.waitUntil(auditBusiness(env).catch(() => {}));   // is the machine producing? the number that ends the company
+    // AUDIT CADENCE. None of these burn tokens - they are Worker code, KV reads and arithmetic, no model
+    // call. But BUSINESS_AUDIT makes real outbound calls (Mercury, Stripe, ten provider key checks,
+    // provider billing), and on a 1-minute cron that is ~14,000 API calls a day to a bank and five
+    // vendors. Free in tokens, expensive in rate limits and goodwill. So:
+    //   burn audit   - hourly. Pure KV, but hourly is enough to catch a runaway.
+    //   business     - ON DEMAND ONLY (BUSINESS_AUDIT command). It hits real financial APIs.
+    //   self audit   - every 6h, already throttled internally.
+    ctx.waitUntil(maybeAuditBurn(env).catch(() => {}));
+    ctx.waitUntil(maybeSelfAudit(env).catch(() => {}));
     // NOT on a daily timer. Aaron's point, and he is right: nobody reprices tokens day to day. A price
     // moves when a vendor ships a new model and discounts the old one - months apart, not hours. Running
     // this daily would re-scale an already-scaled rate and chase noise. Run CALIBRATE by hand after a

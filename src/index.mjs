@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.632-2026-07-20";
+const BUILD = "aura-core-v4.9.633-2026-07-20";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16549,6 +16549,15 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         note: "Derived from LIVE source on GitHub plus live KV counts at the moment you asked. Nothing here " +
               "is stored, so nothing here can go stale. WHERE <term> searches every worker and every KV prefix." } };
     }
+    case "PRICES": {
+      // The door for "what does a token cost". Ask the provider; never infer.
+      if (!isOp) return { cmd: "PRICES", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      if (/^\s*show/i.test(rest)) {
+        const raw = await env.AURA_KV.get("config:rate:published").catch(() => null);
+        return { cmd: "PRICES", payload: { ok: true, published: raw ? JSON.parse(raw) : null } };
+      }
+      return { cmd: "PRICES", payload: await discoverPrices(env) };
+    }
     case "CALIBRATE_VIDEO": {
       if (!isOp) return { cmd: "CALIBRATE_VIDEO", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const vd = (line.match(/\b(\d{4}-\d{2}-\d{2})\b/) || [])[1];
@@ -19481,6 +19490,60 @@ async function watchA2P(env) {
 
 
 
+
+
+// ══ PRICE DISCOVERY ── READ THE PUBLISHED PRICE, DO NOT INFER IT ═════════════════════════════════
+// The whole calibration saga was solving a problem that did not exist. xAI's GET /v1/models returns the
+// price of every model, and it was sitting there the entire time - the endpoint was already being called
+// as a HEALTH CHECK and the response body thrown away. That is the incomplete-pattern failure again:
+// the call existed, nobody read what came back.
+//
+//   "prompt_text_token_price": 10000, "cached_...": 2000, "completion_...": 20000
+//   unit is 1e-11 USD, anchored against grok-imagine-image (image_price 200000000 = a measured $0.002)
+//   so price-per-million = value / 100000  ->  grok-build-0.1 is $0.10 / $0.20 / $0.02
+//
+// That is EXACTLY the original hardcoded table. The 13.43x "correction" was an artifact of dividing
+// all-provider billing by text-only metering, and every number after it inherited the error.
+// This is the doctrine Aaron held all day, finally implemented literally: never inject our own version
+// of a cost. Ask the provider what it charges. No factors, no ratios, no drift, nothing to reset.
+async function discoverPrices(env) {
+  const out = { at: new Date().toISOString(), source: "xai GET /v1/models", models: {}, changed: [] };
+  try {
+    const key = env.XAI_API_KEY || await KV.get(env, "secret:grok_api_key") || await KV.get(env, "secret:xai");
+    if (!key) return { ok: false, error: "no xAI key" };
+    const r = await fetch("https://api.x.ai/v1/models", { headers: { Authorization: "Bearer " + key } });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return { ok: false, error: (d?.error || "http " + r.status) };
+
+    const PER_M = 1e5;   // published value / 100000 = USD per million tokens
+    const priorRaw = await env.AURA_KV.get("config:rate:published").catch(() => null);
+    const prior = priorRaw ? JSON.parse(priorRaw) : {};
+
+    for (const m of (d?.data || [])) {
+      const id = m?.id; if (!id) continue;
+      if (m.prompt_text_token_price != null) {
+        const rate = { P_IN: +(Number(m.prompt_text_token_price) / PER_M).toFixed(6),
+                       P_OUT: +(Number(m.completion_text_token_price || 0) / PER_M).toFixed(6),
+                       P_CACHE: +(Number(m.cached_prompt_text_token_price || 0) / PER_M).toFixed(6),
+                       context: m.context_length || null };
+        out.models[id] = rate;
+        const was = prior[id];
+        if (was && (was.P_IN !== rate.P_IN || was.P_OUT !== rate.P_OUT))
+          out.changed.push({ model: id, was: was.P_IN + "/" + was.P_OUT, now: rate.P_IN + "/" + rate.P_OUT });
+      } else if (m.image_price != null) {
+        // Images bill per image, not per token. 1e-11 USD, verified against a measured $0.002.
+        out.models[id] = { per_image: +(Number(m.image_price) * 1e-11).toFixed(6) };
+      }
+    }
+    await env.AURA_KV.put("config:rate:published", JSON.stringify(out.models));
+    out.ok = true;
+    out.note = "Published prices straight from xAI. price-per-million = their value / 100000; images are " +
+               "image_price * 1e-11. Nothing derived, nothing to calibrate, nothing to reset. Re-run after " +
+               "a vendor announcement - `changed` will name anything that moved.";
+    if (out.changed.length) console.warn("[PRICES] CHANGED: " + out.changed.map((c) => c.model).join(","));
+    return out;
+  } catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 200) }; }
+}
 
 // ══ VIDEO RATE ── DERIVED FROM BILLING, NOT GUESSED ══════════════════════════════════════════════
 // The video rate has been an estimate all along ($0.053/sec, itself corrected once from a wrong $0.30).

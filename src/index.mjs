@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.631-2026-07-20";
+const BUILD = "aura-core-v4.9.632-2026-07-20";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -19570,9 +19570,56 @@ async function calibrateRates(env, day) {
     }
     if (textBilled <= 0) { out.note = "no text billing from xAI on " + d; return out; }
 
-    const metered = Number(await env.AURA_KV.get("meter:spend:" + d)) || 0;
-    if (metered <= 0) { out.note = "meter recorded no text spend for " + d + " - nothing to compare"; return out; }
+    // ── DIVIDE BY TOKENS, NOT DOLLARS ────────────────────────────────────────────────────────
+    // Dollars-over-dollars is self-referential: the metered figure is produced by the rate being
+    // calibrated, so the ratio never settles - measured live, it walked 1.34 -> 0.93 -> 0.64 -> 0.48
+    // across three runs and needed a manual reset each time. Aaron asked the right question: if it needs
+    // resetting, the design is wrong. Tokens are a fact about what was SENT and do not move when the
+    // price moves, so this produces an ABSOLUTE rate with nothing circular in it - the same reason
+    // CALIBRATE_VIDEO (their charge / our seconds) has never needed a reset.
+    let tok = null;
+    try { const r = await env.AURA_KV.get("meter:tokens:" + d); if (r) tok = JSON.parse(r); } catch {}
+    if (tok && (Number(tok.in) || Number(tok.cache_read))) {
+      const tIn = Number(tok.in) || 0, tOut = Number(tok.out) || 0;
+      const tRead = Number(tok.cache_read) || 0, tWrite = Number(tok.cache_write) || 0;
+      // Solve for the input price, holding the SHAPE of the rate card (out and cache priced relative to
+      // input, as every provider does). One unknown, one equation, no circularity:
+      //   billed = (in*P + write*P + read*P*cacheRatio + out*P*outRatio) / 1e6
+      const LIVE0 = { P_IN: 1.34, P_OUT: 2.69, P_CACHE: 0.27 };
+      const outRatio = LIVE0.P_OUT / LIVE0.P_IN, cacheRatio = LIVE0.P_CACHE / LIVE0.P_IN;
+      const weighted = tIn + tWrite + tRead * cacheRatio + tOut * outRatio;
+      if (weighted > 0) {
+        const pIn = (textBilled * 1e6) / weighted;
+        if (pIn > 0.001 && pIn <= 50) {
+          const next = { P_IN: +pIn.toFixed(6), P_OUT: +(pIn * outRatio).toFixed(6),
+                         P_CACHE: +(pIn * cacheRatio).toFixed(6),
+                         calibrated_at: new Date().toISOString(), method: "billed / tokens (absolute)",
+                         tokens: { in: tIn, out: tOut, cache_read: tRead, cache_write: tWrite },
+                         billed_usd: +textBilled.toFixed(4) };
+          const existingRaw0 = await env.AURA_KV.get("config:rate:calibrated");
+          const table0 = existingRaw0 ? JSON.parse(existingRaw0) : {};
+          for (const m of textModels) { table0[m] = next; out.calibrated[m] = next; }
+          await env.AURA_KV.put("config:rate:calibrated", JSON.stringify(table0));
+          out.method = "tokens";
+          out.text_billed_usd = +textBilled.toFixed(4);
+          out.tokens = next.tokens;
+          out.derived_P_IN = next.P_IN;
+          out.note = "ABSOLUTE rate derived from xAI's $" + textBilled.toFixed(4) + " over " +
+                     (tIn + tRead + tWrite + tOut).toLocaleString() + " tokens. Nothing circular: token " +
+                     "counts do not change when the price changes, so this never drifts and never needs " +
+                     "a reset. Re-run any time - it will land on the same number until xAI reprices.";
+          console.log("[CALIBRATE] absolute P_IN $" + next.P_IN.toFixed(4) + "/M from " + textBilled.toFixed(4) + " / tokens");
+          return out;
+        }
+        out.note = "derived P_IN $" + pIn.toFixed(4) + "/M is implausible - refused";
+        return out;
+      }
+    }
 
+    // Fallback only until a day of token data exists. Flagged as the inferior method on purpose.
+    const metered = Number(await env.AURA_KV.get("meter:spend:" + d)) || 0;
+    if (metered <= 0) { out.note = "no token ledger for " + d + " yet and the meter recorded no text spend - nothing to compare. Token counts start accruing from the next deploy."; return out; }
+    out.method = "dollars (fallback - drifts, prefer tokens)";
     const ratio = textBilled / metered;
     if (!(ratio > 0.05 && ratio < 50)) { out.note = "implausible ratio " + ratio.toFixed(2) + " - refused"; return out; }
 

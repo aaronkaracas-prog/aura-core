@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.628-2026-07-19";
+const BUILD = "aura-core-v4.9.629-2026-07-20";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -19552,6 +19552,26 @@ async function calibrateRates(env, day) {
 
 
 
+
+// ══ ONE SPEND LEDGER ── EVERY MEDIA TYPE, NOT JUST TEXT ══════════════════════════════════════════
+// meter:spend was built for aura-think's text turns and never extended. So images and video - which run
+// through aura-core - wrote to meter:images / meter:videos and were invisible to the unified ledger.
+// Measured 2026-07-20: xAI billed $0.2335 for a burn of 5 text turns, 4 images and one 3s video, while
+// meter:spend read $0.0013 - it had counted the text and nothing else. That is not a rate error, it is a
+// COVERAGE error, and it is the same incomplete pattern as everything else found today: built once for
+// one caller, never extended to its siblings.
+// Any priced thing aura-core does now adds to the same daily number.
+async function addSpend(env, usd) {
+  const amt = Number(usd) || 0;
+  if (!(amt > 0)) return;
+  try {
+    const day = new Date().toISOString().slice(0, 10);
+    const k = "meter:spend:" + day;
+    const prior = Number(await env.AURA_KV.get(k)) || 0;
+    await env.AURA_KV.put(k, (prior + amt).toFixed(6), { expirationTtl: 40 * 24 * 3600 });
+  } catch { /* a missed ledger write must never break the thing it records */ }
+}
+
 // ══ THE DOORS ── ONE WAY IN FOR EVERY CAPABILITY ═════════════════════════════════════════════════
 // Aaron named the deepest failure of the whole build, 2026-07-19: "I have all the pieces, but when we
 // test something we don't use the piece that already exists." Asked to burn tokens on an image, the work
@@ -19694,13 +19714,23 @@ async function auditAll(env, scope, win) {
 
   // ── TOKENS ──────────────────────────────────────────────────────────────────────────────────
   if (want("tokens")) {
+    // THE INTERNAL METER IS THREE LEDGERS, NOT ONE. meter:spend is aura-think's TEXT turns only; images
+    // and video run through aura-core and write meter:images / meter:videos. Reading only the first is
+    // why the meter showed $0.0013 against $0.2335 actually billed - four images and a video were simply
+    // not in the number. The data was always there; nothing summed it. Same incomplete pattern as the
+    // rest of today: a ledger built, siblings added later, the reader never extended.
     const daily = [];
     const anchor = win.end ? new Date(win.end + "T00:00:00Z") : new Date();
     for (let i = 0; i < Math.min(win.days, 400); i++) {
       const d = new Date(anchor); d.setUTCDate(d.getUTCDate() - i);
       const k = d.toISOString().slice(0, 10);
-      const v = await env.AURA_KV.get("meter:spend:" + k).catch(() => null);
-      if (v != null) daily.push({ day: k, usd: +num(v).toFixed(4) });
+      const text = num(await env.AURA_KV.get("meter:spend:" + k).catch(() => null));
+      let img = 0, vid = 0;
+      try { const r = await env.AURA_KV.get("meter:images:" + k); if (r) img = num(JSON.parse(r).cost_usd); } catch {}
+      try { const r = await env.AURA_KV.get("meter:videos:" + k); if (r) vid = num(JSON.parse(r).cost_usd); } catch {}
+      const dayTotal = text + img + vid;
+      if (dayTotal > 0) daily.push({ day: k, usd: +dayTotal.toFixed(4),
+                                     text: +text.toFixed(4), images: +img.toFixed(4), video: +vid.toFixed(4) });
     }
     const total = daily.reduce((a, x) => a + x.usd, 0);
     const margin = await call("AIMARGIN status");
@@ -19738,6 +19768,8 @@ async function auditAll(env, scope, win) {
       days_covered: maxDays + (win.days > 7 ? " of " + win.days + " (capped - each day is a live billing call)" : ""),
       internal_meter_usd: +total.toFixed(4),
       internal_meter_daily: daily,
+      internal_meter_covers: "text (aura-think) + images + video (aura-core). Compare to actual_billed - " +
+                             "they should be close; a large gap means a rate is wrong or a path is unmetered.",
       policy: margin?.policy ?? null,
       meter_health: margin?.meter_health ?? null,
       cap_usd: margin?.spend_today?.cap_usd ?? null,
@@ -20747,6 +20779,7 @@ async function pollVideoJobs(env) {
           led.last = { id: job.id, model: job.model, seconds: job.actual_duration, cost_usd: job.cost_usd };
           await env.AURA_KV.put("meter:videos:" + day, JSON.stringify(led), { expirationTtl: 40 * 24 * 3600 });
         } catch {}
+        await addSpend(env, job.cost_usd);   // same ledger as text - one number for the day
         await env.AURA_KV.put(k.name, JSON.stringify(job), { expirationTtl: 7 * 24 * 3600 });
         // Publish to the flywheel only on success - now every identical request is free.
         if (job.cache_key) { try { await env.AURA_KV.put(job.cache_key, JSON.stringify(job)); } catch {} }
@@ -20923,6 +20956,9 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   await env.AURA_KV.put(`imagemeta:${id}`, JSON.stringify(meta)).catch(() => {});
   if (cacheKey) { try { await env.AURA_KV.put(cacheKey, JSON.stringify({ id, cost_usd: costUsd, at: new Date().toISOString() }), { expirationTtl: 30 * 24 * 3600 }).catch(() => {}); } catch {} }
   try { await env.AURA_MEMORY.prepare("INSERT INTO events (session_id, ts, type, body, entity_id, channel, summary) VALUES (?, ?, ?, ?, ?, ?, ?)").bind("image_gen", Date.now(), "image_created", JSON.stringify(meta), meta.entity || "system", "image", p.slice(0, 120)).run(); } catch {}
+  // The paid path recorded a per-image ledger but never touched meter:spend, so four images at $0.002
+  // each were invisible to every spend number in the system. Text was counted; images were not.
+  await addSpend(env, costUsd);
   return { ok: true, id, image_url: meta.url, prompt: meta.prompt, model, quality, tokens, cost_usd: costUsd };
 }
 

@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.629-2026-07-20";
+const BUILD = "aura-core-v4.9.630-2026-07-20";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16549,6 +16549,11 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         note: "Derived from LIVE source on GitHub plus live KV counts at the moment you asked. Nothing here " +
               "is stored, so nothing here can go stale. WHERE <term> searches every worker and every KV prefix." } };
     }
+    case "CALIBRATE_VIDEO": {
+      if (!isOp) return { cmd: "CALIBRATE_VIDEO", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const vd = (line.match(/\b(\d{4}-\d{2}-\d{2})\b/) || [])[1];
+      return { cmd: "CALIBRATE_VIDEO", payload: await calibrateVideoRate(env, vd) };
+    }
     case "CALIBRATE": {
       if (!isOp) return { cmd: "CALIBRATE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const d = (line.match(/\b(\d{4}-\d{2}-\d{2})\b/) || [])[1];
@@ -19475,6 +19480,49 @@ async function watchA2P(env) {
 // Shared image-generation core â€” used by GENERATE_IMAGE command and public /showit + /pitch endpoints.
 
 
+
+
+// ══ VIDEO RATE ── DERIVED FROM BILLING, NOT GUESSED ══════════════════════════════════════════════
+// The video rate has been an estimate all along ($0.053/sec, itself corrected once from a wrong $0.30).
+// On 2026-07-20 the meter said $0.0964 for a day xAI billed $0.3106 - and almost all of that gap was one
+// three-second clip. Two facts are available and neither is a guess: what xAI CHARGED for
+// grok-imagine-video that day, and how many SECONDS we generated (meter:videos counts them). Divide.
+//
+// Deliberately an ABSOLUTE rate, never a correction factor. The factor version of this compounded on
+// itself and made the meter report $4,507 to answer "100C". A number derived fresh from two independent
+// facts each time cannot compound, no matter how often it runs.
+async function calibrateVideoRate(env, day) {
+  const d = day || new Date().toISOString().slice(0, 10);
+  const out = { day: d };
+  try {
+    const xai = await _trueCostXai(env, d);
+    if (!xai.ok) return { ok: false, ...out, note: "xai billing unavailable: " + (xai.error || "?") };
+    const lines = xai.lines || {};
+    const key = Object.keys(lines).find((k) => /imagine-video/i.test(k));
+    const billed = key ? Number(lines[key]) || 0 : 0;
+    if (billed <= 0) return { ok: false, ...out, note: "xAI billed nothing for video on " + d };
+
+    const raw = await env.AURA_KV.get("meter:videos:" + d);
+    const led = raw ? JSON.parse(raw) : null;
+    const seconds = Number(led?.seconds) || 0;
+    if (seconds <= 0) return { ok: false, ...out, billed_usd: billed,
+      note: "xAI billed $" + billed.toFixed(4) + " for video but our meter counted 0 seconds - the seconds " +
+            "counter is not being written, so no rate can be derived." };
+
+    const rate = billed / seconds;
+    // A three-second clip should not cost a dollar and should not cost a thousandth of a cent.
+    if (!(rate > 0.001 && rate < 2)) return { ok: false, ...out, billed_usd: billed, seconds,
+      derived: rate, note: "implausible rate $" + rate.toFixed(4) + "/sec - refused rather than stored" };
+
+    const prior = Number(await env.AURA_KV.get("config:video:rate").catch(() => null)) || null;
+    await env.AURA_KV.put("config:video:rate", rate.toFixed(4));
+    return { ok: true, ...out, billed_usd: +billed.toFixed(4), seconds,
+      rate_per_sec: +rate.toFixed(4), previous_rate: prior,
+      change: prior ? "+" + (((rate / prior) - 1) * 100).toFixed(0) + "%" : "first measurement",
+      note: "Derived from what xAI actually charged divided by seconds actually generated. Absolute, not " +
+            "a factor - it cannot compound. Re-run after a day with real video volume." };
+  } catch (e) { return { ok: false, ...out, error: String(e?.message ?? e).slice(0, 200) }; }
+}
 
 // ══ RATE CALIBRATION ── DERIVE PRICES FROM WHAT THE PROVIDER ACTUALLY BILLED ═════════════════════
 // The meter used a hardcoded table. On 2026-07-19 that table priced a day at $0.2857 while xAI's own

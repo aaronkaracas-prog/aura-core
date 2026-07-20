@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.630-2026-07-20";
+const BUILD = "aura-core-v4.9.631-2026-07-20";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -19538,60 +19538,76 @@ async function calibrateVideoRate(env, day) {
 // alone. Anthropic and OpenAI are org-wide and lag a day, so they stay on the table until Aura has her
 // own workspace-scoped key.
 async function calibrateRates(env, day) {
+  // ══ TEXT RATE ── FIXED 2026-07-20 ════════════════════════════════════════════════════════════
+  // This failed three times in one day and the honest diagnosis of each:
+  //   1. It ran on the 1-minute cron. Nobody reprices tokens hourly - manual only now.
+  //   2. It read `table[model] || BASE[model]`, so each run scaled its OWN output. On a per-minute cron
+  //      that compounded until the meter charged $4,507.55 to answer "100C".
+  //   3. It divided ALL xAI billing by TEXT-ONLY metering - video and images were in the numerator and
+  //      not the denominator - reporting a 2.67x correction when the honest text ratio was ~1.3x.
+  //
+  // The fix follows CALIBRATE_VIDEO, which works because it divides two things that CORRESPOND:
+  //   - numerator: what xAI charged for THE TEXT MODEL ONLY (their lines are already per-model)
+  //   - denominator: what our meter recorded for TEXT ONLY (meter:spend is the text ledger)
+  //   - scaled from the CURRENT EFFECTIVE rate, not a stale constant
+  // And it produces an ABSOLUTE rate. Once the meter reads it, the next run's ratio approaches 1.0 and
+  // it settles - a feedback loop that converges instead of a factor that compounds. That only works if
+  // the meter actually USES the result, which is why the lookup in server.ts is re-enabled with a ceiling.
   const d = day || new Date().toISOString().slice(0, 10);
-  const out = { day: d, calibrated: {}, skipped: [], note: "" };
+  const out = { day: d, calibrated: {}, note: "" };
   try {
     const xai = await _trueCostXai(env, d);
-    if (!xai.ok) { out.note = "xai truecost unavailable: " + (xai.error || "?"); return out; }
+    if (!xai.ok) { out.note = "xai billing unavailable: " + (xai.error || "?"); return out; }
 
-    // What we metered per model today. The meter records totals, not per-model, so use the day total
-    // against the provider total - correct whenever one model dominates the day, which it does here.
+    // TEXT ONLY. Media models are billed per image/second, not per token - they have their own
+    // calibration (CALIBRATE_VIDEO) and must never contaminate a per-token rate.
+    const lines = xai.lines || {};
+    let textBilled = 0; const textModels = [];
+    for (const [label, v] of Object.entries(lines)) {
+      if (/imagine|image|video/i.test(label)) continue;
+      const m = label.replace(/^API\s+/i, "").trim();
+      textBilled += Number(v) || 0; textModels.push(m);
+    }
+    if (textBilled <= 0) { out.note = "no text billing from xAI on " + d; return out; }
+
     const metered = Number(await env.AURA_KV.get("meter:spend:" + d)) || 0;
-    if (metered <= 0) { out.note = "nothing metered yet for " + d; return out; }
+    if (metered <= 0) { out.note = "meter recorded no text spend for " + d + " - nothing to compare"; return out; }
 
-    const billed = Number(xai.total) || 0;
-    if (billed <= 0) { out.note = "provider reports no spend for " + d; return out; }
+    const ratio = textBilled / metered;
+    if (!(ratio > 0.05 && ratio < 50)) { out.note = "implausible ratio " + ratio.toFixed(2) + " - refused"; return out; }
 
-    // Guard: if calibrated rates are already live, the metered figure is in calibrated dollars and the
-    // ratio would compound. Divide it back out so the factor is always relative to the base table.
-    let priorFactor = 1;
-    try {
-      const t0 = await env.AURA_KV.get("config:rate:calibrated");
-      if (t0) { const j = JSON.parse(t0); const anyModel = Object.values(j)[0];
-                if (anyModel && anyModel.from_factor > 0) priorFactor = anyModel.from_factor; }
-    } catch {}
-    const factor = (billed / metered) * priorFactor;
-    // Sanity: refuse absurd corrections rather than poison the meter with a bad read.
-    if (!(factor > 0.05 && factor < 200)) { out.note = "implausible factor " + factor.toFixed(2) + " - ignored"; return out; }
-
-    // Which model did the billing? xAI labels lines "API grok-build-0.1".
-    const existingRaw = await env.AURA_KV.get("config:rate:calibrated");
-    const table = existingRaw ? JSON.parse(existingRaw) : {};
-    const BASE = { "grok-build-0.1": { P_IN: 0.10, P_OUT: 0.20, P_CACHE: 0.02 },
+    // Scale the CURRENT EFFECTIVE rate. Calibrated if one exists, otherwise the live hardcoded value -
+    // NOT the old 0.10 constant, which is what made the last run point 5x in the wrong direction.
+    const LIVE = { "grok-build-0.1": { P_IN: 1.34, P_OUT: 2.69, P_CACHE: 0.27 },
                    "grok-4.5": { P_IN: 3.00, P_OUT: 15.00, P_CACHE: 0.75 },
                    "grok-4.3": { P_IN: 3.00, P_OUT: 15.00, P_CACHE: 0.75 } };
-    for (const label of Object.keys(xai.lines || {})) {
-      const model = label.replace(/^API\s+/i, "").trim();
-      // ALWAYS the ORIGINAL base, NEVER the already-calibrated value. The first version read
-      // `table[model] || BASE[model]`, so every run multiplied the PREVIOUS result again - and it was on
-      // the 1-minute cron. 0.10 x 13.43^7 later, the meter charged $4,507.55 to answer "100C".
-      // A correction factor must always be applied to the same fixed baseline, never to its own output.
-      const base = BASE[model];
-      if (!base) { out.skipped.push(model); continue; }
-      const scaled = { P_IN: +(base.P_IN * factor).toFixed(6),
-                       P_OUT: +(base.P_OUT * factor).toFixed(6),
-                       P_CACHE: +(base.P_CACHE * factor).toFixed(6),
-                       calibrated_at: new Date().toISOString(), from_factor: +factor.toFixed(3) };
-      table[model] = scaled;
-      out.calibrated[model] = scaled;
+    const existingRaw = await env.AURA_KV.get("config:rate:calibrated");
+    const table = existingRaw ? JSON.parse(existingRaw) : {};
+
+    for (const model of textModels) {
+      const cur = table[model] || LIVE[model];
+      if (!cur) continue;
+      const next = { P_IN: +(cur.P_IN * ratio).toFixed(6),
+                     P_OUT: +(cur.P_OUT * ratio).toFixed(6),
+                     P_CACHE: +(cur.P_CACHE * ratio).toFixed(6),
+                     calibrated_at: new Date().toISOString(), ratio: +ratio.toFixed(3),
+                     from: cur.P_IN };
+      // A per-token input price above $50/M is not a price, it is a bug. Refuse rather than store.
+      if (next.P_IN > 50) { out.note = "refused: derived P_IN $" + next.P_IN + "/M is implausible"; continue; }
+      table[model] = next;
+      out.calibrated[model] = next;
     }
+    if (!Object.keys(out.calibrated).length) { out.note = out.note || "nothing calibrated"; return out; }
+
     await env.AURA_KV.put("config:rate:calibrated", JSON.stringify(table));
-    out.metered_usd = +metered.toFixed(4);
-    out.billed_usd = +billed.toFixed(4);
-    out.factor = +factor.toFixed(3);
-    out.note = "Rates scaled by " + factor.toFixed(2) + "x from xAI's own billing. The meter reads these " +
-               "before its hardcoded table.";
-    console.log("[CALIBRATE] factor " + factor.toFixed(2) + "x -> " + Object.keys(out.calibrated).join(","));
+    out.text_billed_usd = +textBilled.toFixed(4);
+    out.text_metered_usd = +metered.toFixed(4);
+    out.ratio = +ratio.toFixed(3);
+    out.note = "Text-only: xAI billed $" + textBilled.toFixed(4) + " against $" + metered.toFixed(4) +
+               " metered (" + ratio.toFixed(2) + "x). Rates scaled from the CURRENT effective rate, media " +
+               "excluded. The meter now reads these, so the next run should report a ratio near 1.0 - if it " +
+               "does not, something else is wrong and the number is telling you so.";
+    console.log("[CALIBRATE] text ratio " + ratio.toFixed(2) + "x -> " + Object.keys(out.calibrated).join(","));
   } catch (e) { out.note = "error: " + String(e?.message ?? e).slice(0, 200); }
   return out;
 }

@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.634-2026-07-20";
+const BUILD = "aura-core-v4.9.635-2026-07-20";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -10759,18 +10759,55 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // For each feed: is its key present (configured)? We report configured/missing + cost model. A live
       // ping per feed would need each provider's health endpoint; presence-of-key is the honest first signal
       // (a feed with no key cannot flow). Deeper live-ping can be added per feed via feeds:catalog health URLs.
+      // FEEDS <probe> runs a real authenticated call per feed. Without it this command reports "configured"
+      // for a feed that has been dead for weeks - which is an inventory, not an audit.
+      const doProbe = /\bprobe|live|check\b/i.test(rest || "");
+      const PROBES = {
+        openweather: async (k) => (await fetch("https://api.openweathermap.org/data/2.5/weather?q=London&appid=" + k)).ok,
+        google_maps: async (k) => { const r = await fetch("https://maps.googleapis.com/maps/api/geocode/json?address=London&key=" + k); const j = await r.json().catch(() => ({})); return r.ok && j.status !== "REQUEST_DENIED"; },
+        currents:    async (k) => (await fetch("https://api.currentsapi.services/v1/latest-news?apiKey=" + k + "&page_size=1")).ok,
+        tavily:      async (k) => (await fetch("https://api.tavily.com/search", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ api_key: k, query: "ping", max_results: 1 }) })).ok,
+        brave_search:async (k) => (await fetch("https://api.search.brave.com/res/v1/web/search?q=ping&count=1", { headers: { "X-Subscription-Token": k, Accept: "application/json" } })).ok,
+        geonames:    async (k) => { const r = await fetch("http://api.geonames.org/searchJSON?q=London&maxRows=1&username=" + k); const j = await r.json().catch(() => ({})); return r.ok && !j.status; },
+        oilprice:    async (k) => (await fetch("https://api.oilpriceapi.com/v1/prices/latest", { headers: { Authorization: "Token " + k } })).ok,
+      };
       const feeds = await Promise.all(Object.entries(catalog).map(async ([id, f]) => {
-        let configured = false;
-        try { const k = await KV.get(env, f.secret); configured = !!k; } catch {}
-        return { id, name: f.name, provider: f.provider, cost: f.cost, layer: f.layer, configured, status: configured ? "configured" : "no_key" };
+        let configured = false, key = null;
+        try { key = await KV.get(env, f.secret); configured = !!key; } catch {}
+        // Freshness: when did this feed last actually deliver? Written by feedOk/feedFail at ingest sites.
+        let last_ok = null, last_error = null, age_hours = null;
+        try {
+          const raw = await env.AURA_KV.get("monitor:feed:" + id);
+          if (raw) { const m = JSON.parse(raw); last_ok = m.last_ok || null; last_error = m.last_error || null;
+            if (last_ok) age_hours = +((Date.now() - Date.parse(last_ok)) / 3600000).toFixed(1); }
+        } catch {}
+        let live = null;
+        if (doProbe && configured && PROBES[id]) {
+          try { live = await PROBES[id](key); } catch { live = false; }
+        }
+        const status = !configured ? "no_key" : live === false ? "DEAD" : live === true ? "live" : "configured";
+        return { id, name: f.name, provider: f.provider, cost: f.cost, layer: f.layer,
+                 configured, live, status, last_ok, age_hours, last_error };
       }));
       const paid = feeds.filter(f => f.cost === "paid");
       const free = feeds.filter(f => f.cost === "free");
       const gov = feeds.filter(f => f.cost === "gov");
       const notConfigured = feeds.filter(f => !f.configured);
-      return { cmd: "FEEDS", payload: { ok: true, total: feeds.length,
-        summary: { paid: paid.length, free: free.length, government: gov.length, not_configured: notConfigured.length },
-        note: "Cost model: paid = burns money per use; free = open no cost; gov = government public data (free). Add a new feed by writing feeds:catalog in KV - no code change.",
+      const dead = feeds.filter(f => f.live === false);
+      const stale = feeds.filter(f => f.age_hours != null && f.age_hours > 48);
+      const neverSeen = feeds.filter(f => f.configured && !f.last_ok);
+      return { cmd: "FEEDS", payload: { ok: true, total: feeds.length, probed: doProbe,
+        summary: { paid: paid.length, free: free.length, government: gov.length,
+                   not_configured: notConfigured.length, dead: dead.length,
+                   stale_over_48h: stale.length, never_delivered: neverSeen.length },
+        findings: [
+          ...(dead.length ? [{ level: "alert", detail: "DEAD (key present, provider rejects): " + dead.map(f => f.id).join(", ") }] : []),
+          ...(stale.length ? [{ level: "warn", detail: "No data in over 48h: " + stale.map(f => f.id + " (" + f.age_hours + "h)").join(", ") }] : []),
+          ...(neverSeen.length ? [{ level: "info", detail: "Configured but never recorded a delivery: " + neverSeen.map(f => f.id).join(", ") + ". Freshness only counts from when feedOk() was wired into that ingest path." }] : []),
+        ],
+        note: "Cost model: paid = burns money per use; free = open no cost; gov = government public data. " +
+              "Add a feed by writing feeds:catalog in KV - no code change. Run FEEDS probe for a real " +
+              "authenticated call per feed - 'configured' only means a key exists, not that the feed works.",
         feeds } };
     }
     case "VITALS": {
@@ -19177,6 +19214,7 @@ async function deployPageToKV(domain, path, html, env) {
 }
 
 
+
 // ══ SPACESHIP → CLOUDFLARE DNS SYNC ══════════════════════════════════════════════════════════════
 // Aaron holds 346 domains at Spaceship. A domain is "synced" when its registrar nameservers point at
 // Cloudflare, which is what lets Aura serve it. Doing this by hand meant a CF token in a terminal and a
@@ -19795,6 +19833,32 @@ async function auraTodo(env, rest) {
       { expirationTtl: 14 * 24 * 3600 });
   } catch {}
   return { ok: true, added: t, count: list.length };
+}
+
+
+// ══ FEED FRESHNESS ── "ARE THE FEEDS STILL TRUE?" ════════════════════════════════════════════════
+// FEEDS catalogued 13 ingest sources and reported every one as "configured" - which means a key exists,
+// NOT that the feed works or when it last returned data. Same gap SERVICE_STATUS had before its eight
+// empty check: fields were filled in: present is not alive. Proven live - google_maps reports
+// configured:true here while actually returning REQUEST_DENIED.
+// The monitor:*:last pattern already existed for workers and storms; this extends it to feeds, which is
+// the incomplete-pattern fix again. Any ingest site calls feedOk/feedFail and FEEDS can then answer the
+// question it is named for: is this data still arriving, and when did it last arrive.
+async function feedOk(env, id, detail) {
+  try {
+    await env.AURA_KV.put("monitor:feed:" + id,
+      JSON.stringify({ id, last_ok: new Date().toISOString(), detail: String(detail || "").slice(0, 200) }),
+      { expirationTtl: 120 * 24 * 3600 });
+  } catch {}
+}
+async function feedFail(env, id, error) {
+  try {
+    const raw = await env.AURA_KV.get("monitor:feed:" + id);
+    const prev = raw ? JSON.parse(raw) : { id };
+    await env.AURA_KV.put("monitor:feed:" + id,
+      JSON.stringify({ ...prev, id, last_error: new Date().toISOString(), error: String(error || "").slice(0, 200) }),
+      { expirationTtl: 120 * 24 * 3600 });
+  } catch {}
 }
 
 // ══ THE DOORS ── ONE WAY IN FOR EVERY CAPABILITY ═════════════════════════════════════════════════
@@ -23249,6 +23313,23 @@ function openAlbum(idx){
       const _t0 = Date.now();
       try {
         const r = await processCommand(q, env, true);
+        // FEED FRESHNESS, recorded in ONE place. Every ingest command passes through here with its
+        // result, so "did this feed deliver just now" is answerable without touching five call sites -
+        // the same reason the memory hook lives here rather than inside each command. FEEDS reads
+        // monitor:feed:* to answer "are the feeds still true"; without a write somewhere, that question
+        // has no data behind it, which is exactly why FEEDS was an inventory and not an audit.
+        try {
+          const _cw = String(q).trim().split(/\s+/)[0].toUpperCase();
+          const _FEED_OF = { NEWS_QUERY: "currents", OIL_PRICE: "oilprice", MARINE_WX: "openweather",
+                             FETCH_PLACES: "google_maps", WEB_SEARCH: "tavily", AIS_QUERY: "aisstream",
+                             AIS_TRANSITS: "aisstream", STORM_REPORTS: "firms", STORM_QUERY: "firms" };
+          const _fid = _FEED_OF[_cw];
+          if (_fid) {
+            const _pl = r?.payload || {};
+            if (_pl.ok === false) await feedFail(env, _fid, _pl.error || "command reported not ok");
+            else await feedOk(env, _fid, _cw);
+          }
+        } catch { /* freshness must never break the command it records */ }
         // MEMORY. /cmd was built to skip the brain and save money - and it skipped her memory too, because
         // the auraRemember + inbox hook lives on the /chat path. Work done here left no trace: running
         // SPACESHIP_STATUS through /cmd and then asking her about it returned "no record". A cheaper path

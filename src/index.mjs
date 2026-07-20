@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.627-2026-07-19";
+const BUILD = "aura-core-v4.9.628-2026-07-19";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16640,6 +16640,10 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       // the original token auditor, kept intact and reachable so nothing that depended on it breaks
       return { cmd: "AUDIT_BURN_INTERNAL", payload: await auditBurn(env) };
     }
+    case "HOW": {
+      // The first thing to ask before building or testing anything: is there already a door for this?
+      return { cmd: "HOW", payload: auraDoors(rest) };
+    }
     case "AUDIT": {
       if (!isOp) return { cmd: "AUDIT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const aTxt = rest.trim().toLowerCase();
@@ -19546,6 +19550,81 @@ async function calibrateRates(env, day) {
 
 
 
+
+
+// ══ THE DOORS ── ONE WAY IN FOR EVERY CAPABILITY ═════════════════════════════════════════════════
+// Aaron named the deepest failure of the whole build, 2026-07-19: "I have all the pieces, but when we
+// test something we don't use the piece that already exists." Asked to burn tokens on an image, the work
+// went to a raw provider call instead of ShowIt - and an hour disappeared into API keys that were never
+// the problem, because ShowIt already holds the keys and already routes through AIMARGIN. The same thing
+// happened with the audit (rebuilt instead of calling what existed), with WHERE (rebuilt over
+// CAPABILITIES), with the memory journal (rebuilt over auraRemember), with fetch_spaceship (hunted for
+// two hours while it sat registered).
+//
+// WHERE answers "what exists" - 473 items, derived live, cannot rot. That is not the same question.
+// This answers "what am I SUPPOSED to use", and that is a DECISION, so it is declared, not derived.
+// Every capability has ONE door. Going around the door is how keys get re-entered, costs land on the
+// wrong provider, and a feature gets built twice.
+//
+//   HOW image      -> the door, what it routes through, and what NOT to do instead
+//   HOW            -> every door
+// Matched on intent words, so "picture", "photo", "generate an image" all land in the same place.
+const AURA_DOORS = [
+  { id: "image", words: ["image", "picture", "photo", "showit", "generate image", "render", "art"],
+    door: "POST /showit?prompt=...",
+    routes_through: "AIMARGIN image policy (config:policy:image) -> resolves provider + model + quality",
+    holds: "the provider key, the cost meter, the image cache (identical prompts are free), the style policy",
+    never: "Never call a provider's image API directly. ShowIt is the only door - it is where the keys, the pricing and the cache live." },
+  { id: "video", words: ["video", "clip", "showvid", "motion", "animate"],
+    door: "GET /showvid?seconds=N&prompt=...  then  GET /vidjob?id=...",
+    routes_through: "AIMARGIN video policy (config:policy:video), duration capped by config:video:max_seconds",
+    holds: "async submit/poll, the video cache, the per-second rate calibrated against real billing",
+    never: "Never call a video API directly. Video is async - the door returns a job id, the cron finishes it." },
+  { id: "audit", words: ["audit", "spend", "spent", "burn", "cost", "money", "runway", "how much"],
+    door: "AUDIT [tokens|business|self] [window]   e.g. AUDIT business 2026-07-13 to 2026-07-19",
+    routes_through: "MERCURY_TRANSACTIONS, STRIPE_BALANCE, SERVICE_STATUS, AIMARGIN, /truecost",
+    holds: "posted-date accounting, real provider billing, pending vs settled, any date range",
+    never: "Never re-derive spend from raw KV. Every number already has a command that returns it correctly." },
+  { id: "cost_engine", words: ["aimargin", "ai margin", "policy", "routing", "which model", "rate", "price"],
+    door: "AIMARGIN status",
+    routes_through: "reads live policy, rates, meter health, balances",
+    holds: "the whole engine state - what is built, what is deliberately not, and every AIMARGIN command",
+    never: "Never guess what AIMARGIN does or what a token costs. Ask the engine." },
+  { id: "domains", words: ["domain", "spaceship", "dns", "nameserver", "doorway", "registrar"],
+    door: "SPACESHIP_STATUS  then  SPACESHIP_SYNC_ALL 0 15",
+    routes_through: "Spaceship registrar API + Cloudflare zone creation",
+    holds: "the full portfolio, sync state, cursor-safe batching",
+    never: "Never step the cursor - the pending list is recomputed each call, so always start at 0." },
+  { id: "keys", words: ["key", "keys", "credential", "token", "api key", "secret", "auth"],
+    door: "SERVICE_STATUS   (which credentials are ALIVE, not just present)",
+    routes_through: "a real authenticated call per provider",
+    holds: "17 providers with live/dead, cost model, funded state",
+    never: "Never re-enter a key before checking whether it is actually dead. A per-worker wrangler secret OVERRIDES the KV copy - a stale secret silently beats a good KV value. Keys belong in KV secret:* where all five workers read." },
+  { id: "self", words: ["what can you do", "capabilities", "where is", "what exists", "source", "yourself"],
+    door: "WHERE [term]",
+    routes_through: "live source of all five workers + live KV counts",
+    holds: "every command, tool, skill, action, and where data lives - derived at the moment asked",
+    never: "Never write a static index of capabilities. Stored maps rot; this one cannot." },
+  { id: "memory", words: ["remember", "memory", "recall", "what did i", "archive", "past"],
+    door: "her core memory block (always in her prompt) then search_context for the archive",
+    routes_through: "aura-core writes every command to mem:inbox -> aura-think drains into a searchable archive",
+    holds: "everything she has done, distilled facts always in front of her",
+    never: "Never add a notes: key. Notes are legacy - all 207 were backfilled into the archive." },
+  { id: "council", words: ["council", "advisors", "second opinion", "what do the models think"],
+    door: "GET /council?q=...&web=1",
+    routes_through: "five frontier models in parallel, synthesis on the cheap rung",
+    holds: "per-seat cost, web grounding, honest reporting of failed seats",
+    never: "Never convene the Council for something the cheap rung can answer - it is the top tier by design." },
+];
+
+function auraDoors(query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return { ok: true, doors: AURA_DOORS, note: "One door per capability. Going around a door is how a feature gets built twice." };
+  const hit = AURA_DOORS.filter((d) => d.id === q || d.words.some((w) => q.includes(w) || w.includes(q)));
+  if (!hit.length) return { ok: true, matched: null, doors: AURA_DOORS.map((d) => ({ id: d.id, door: d.door })),
+    note: "No door matched '" + q + "'. Every door is listed - if the capability is real it has one, and if it does not, that is the thing to build." };
+  return { ok: true, matched: hit.length === 1 ? hit[0] : hit, note: "Use this door. Do not go around it." };
+}
 
 // ══ AUDIT ── ONE ENTRY, ANY SCOPE, ANY WINDOW ════════════════════════════════════════════════════
 // Restructure 2026-07-19. What existed: nine overlapping commands (RESOURCE_STATUS, SERVICE_STATUS,

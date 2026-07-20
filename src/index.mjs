@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.635-2026-07-20";
+const BUILD = "aura-core-v4.9.636-2026-07-20";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -183,6 +183,28 @@ async function brainFetch(url, opts, env) {
       model: body.model, in: inTok, cached: cachedIn, out: outTok,
       hit_rate: hitRate + "%", cost: "$" + cost.toFixed(4),
     }));
+
+    // ══ METER aura-core's OWN BRAIN ══════════════════════════════════════════════════════════
+    // This cost was already being CALCULATED here and only ever printed to the log, then discarded.
+    // aura-core runs its own Claude brain - every /chat turn, llmReply, and ~29 Anthropic call sites all
+    // funnel through brainFetch - and NONE of it landed in any ledger. meter:spend is written by
+    // aura-think alone, so AUDIT tokens, the budget guardrail and the sanity ceiling were all blind to an
+    // entire worker's spend. It never showed in the xAI reconciliation either, because it is Anthropic
+    // money, and Anthropic's cost API is org-wide so it sits buried inside Claude Code's totals.
+    // The number was right here the whole time. One write closes the last hole in the circle.
+    try {
+      if (env && env.AURA_KV && cost > 0) {
+        const _d = new Date().toISOString().slice(0, 10);
+        const _k = "meter:core:" + _d;
+        const _raw = await env.AURA_KV.get(_k);
+        const _m = _raw ? JSON.parse(_raw) : { day: _d, cost_usd: 0, calls: 0, in: 0, cached: 0, out: 0, by_model: {} };
+        _m.cost_usd = +(_m.cost_usd + cost).toFixed(6);
+        _m.calls += 1; _m.in += inTok; _m.cached += cachedIn; _m.out += outTok;
+        const _mn = String(body.model || "unknown");
+        _m.by_model[_mn] = +(((_m.by_model[_mn] || 0) + cost)).toFixed(6);
+        await env.AURA_KV.put(_k, JSON.stringify(_m), { expirationTtl: 120 * 24 * 3600 });
+      }
+    } catch { /* the ledger must never break the call it records */ }
 
     // ══ THE SAME LEDGER aura-think writes. ONE NUMBER, ONE TRUTH. ══════════════════════
     // Aura proved her own meter was lying: it said cents, MERCURY SAID $20 LEFT THE BANK. She trusted
@@ -20014,12 +20036,17 @@ async function auditAll(env, scope, win) {
       const d = new Date(anchor); d.setUTCDate(d.getUTCDate() - i);
       const k = d.toISOString().slice(0, 10);
       const text = num(await env.AURA_KV.get("meter:spend:" + k).catch(() => null));
-      let img = 0, vid = 0;
+      let img = 0, vid = 0, core = 0, coreModels = null;
       try { const r = await env.AURA_KV.get("meter:images:" + k); if (r) img = num(JSON.parse(r).cost_usd); } catch {}
       try { const r = await env.AURA_KV.get("meter:videos:" + k); if (r) vid = num(JSON.parse(r).cost_usd); } catch {}
-      const dayTotal = text + img + vid;
+      // FOUR ledgers, not three. meter:core is aura-core's OWN Claude brain - every /chat turn and the
+      // ~29 Anthropic call sites behind brainFetch. It was computed and discarded until v4.9.636, so
+      // every "internal meter" figure before that understated by an entire worker.
+      try { const r = await env.AURA_KV.get("meter:core:" + k); if (r) { const j = JSON.parse(r); core = num(j.cost_usd); coreModels = j.by_model || null; } } catch {}
+      const dayTotal = text + img + vid + core;
       if (dayTotal > 0) daily.push({ day: k, usd: +dayTotal.toFixed(4),
-                                     text: +text.toFixed(4), images: +img.toFixed(4), video: +vid.toFixed(4) });
+                                     text: +text.toFixed(4), images: +img.toFixed(4), video: +vid.toFixed(4),
+                                     core_brain: +core.toFixed(4), core_by_model: coreModels });
     }
     const total = daily.reduce((a, x) => a + x.usd, 0);
     const margin = await call("AIMARGIN status");
@@ -20057,8 +20084,10 @@ async function auditAll(env, scope, win) {
       days_covered: maxDays + (win.days > 7 ? " of " + win.days + " (capped - each day is a live billing call)" : ""),
       internal_meter_usd: +total.toFixed(4),
       internal_meter_daily: daily,
-      internal_meter_covers: "text (aura-think) + images + video (aura-core). Compare to actual_billed - " +
-                             "they should be close; a large gap means a rate is wrong or a path is unmetered.",
+      internal_meter_covers: "text (aura-think L2/L3) + images + video + core_brain (aura-core's own Claude). " +
+                             "Compare to actual_billed - they should be close; a large gap means a rate is wrong " +
+                             "or a path is unmetered. NOTE core_brain is ANTHROPIC spend and will NOT appear in " +
+                             "xAI's actual_billed - Anthropic's cost API is org-wide and lags a day.",
       policy: margin?.policy ?? null,
       meter_health: margin?.meter_health ?? null,
       cap_usd: margin?.spend_today?.cap_usd ?? null,

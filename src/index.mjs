@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.633-2026-07-20";
+const BUILD = "aura-core-v4.9.634-2026-07-20";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16654,6 +16654,10 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       // the original token auditor, kept intact and reachable so nothing that depended on it breaks
       return { cmd: "AUDIT_BURN_INTERNAL", payload: await auditBurn(env) };
     }
+    case "TODO": {
+      if (!isOp) return { cmd: "TODO", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      return { cmd: "TODO", payload: await auraTodo(env, rest) };
+    }
     case "HOW": {
       // The first thing to ask before building or testing anything: is there already a door for this?
       return { cmd: "HOW", payload: auraDoors(rest) };
@@ -19744,6 +19748,53 @@ async function addSpend(env, usd) {
     const prior = Number(await env.AURA_KV.get(k)) || 0;
     await env.AURA_KV.put(k, (prior + amt).toFixed(6), { expirationTtl: 40 * 24 * 3600 });
   } catch { /* a missed ledger write must never break the thing it records */ }
+}
+
+
+// ══ OPEN ITEMS ── THINGS TO COME BACK TO ═════════════════════════════════════════════════════════
+// Aaron: "I want to be able to give her items that we come back to, and she should just know them when
+// I ask - like anything else." Not a list he has to remember to check: a fact she already holds.
+// Stored in KV, and folded into her CORE MEMORY block by the distillation pass, which means open items
+// ride in her prompt on every turn. She does not look them up; they are simply in front of her.
+//   TODO fix the google maps API restriction     -> add
+//   TODO                                          -> list
+//   TODO done 2                                   -> close one
+async function auraTodo(env, rest) {
+  const kv = env.AURA_KV;
+  const load = async () => { try { const r = await kv.get("todo:open"); return r ? JSON.parse(r) : []; } catch { return []; } };
+  const save = async (l) => { await kv.put("todo:open", JSON.stringify(l.slice(0, 100))); };
+  const t = String(rest || "").trim();
+
+  if (!t || /^(list|show|open)$/i.test(t)) {
+    const list = await load();
+    return { ok: true, count: list.length,
+      open: list.map((x, i) => ({ n: i + 1, item: x.item, added: x.at, note: x.note || null })),
+      note: list.length ? "Say TODO done <n> to close one." : "Nothing open. TODO <thing> adds one." };
+  }
+  const done = t.match(/^done\s+(\d+)$/i);
+  if (done) {
+    const list = await load();
+    const i = parseInt(done[1], 10) - 1;
+    if (i < 0 || i >= list.length) return { ok: false, error: "no item " + done[1] };
+    const [gone] = list.splice(i, 1);
+    await save(list);
+    try { await kv.put("todo:done:" + Date.now(), JSON.stringify({ ...gone, closed: new Date().toISOString() }),
+      { expirationTtl: 180 * 24 * 3600 }); } catch {}
+    return { ok: true, closed: gone.item, remaining: list.length };
+  }
+  const list = await load();
+  if (list.some((x) => x.item.toLowerCase() === t.toLowerCase()))
+    return { ok: true, already: true, item: t, count: list.length, note: "Already on the list." };
+  list.push({ item: t, at: new Date().toISOString() });
+  await save(list);
+  // Into her memory too, so it is part of what she knows rather than a drawer she must open.
+  try {
+    await kv.put("mem:inbox:" + Date.now() + ":todo",
+      JSON.stringify({ at: new Date().toISOString(), kind: "todo", via: "operator",
+        event: "OPEN ITEM added: " + t + " (now " + list.length + " open)" }),
+      { expirationTtl: 14 * 24 * 3600 });
+  } catch {}
+  return { ok: true, added: t, count: list.length };
 }
 
 // ══ THE DOORS ── ONE WAY IN FOR EVERY CAPABILITY ═════════════════════════════════════════════════

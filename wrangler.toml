@@ -4,6 +4,7 @@ compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
 
 # ── PRODUCTION (top level = the live worker, deployed with `wrangler deploy`) ──
+
 [[kv_namespaces]]
 binding = "AURA_KV"
 id = "9c2ba111589e48c6ba5ad1b924ae8809"
@@ -35,6 +36,16 @@ service = "aura-host"
 binding = "AURA_COMMS"
 service = "aura-comms"
 
+# ADDED 2026-07-21. aura-core's /chat proxies conversational turns to the Think agent so there is ONE
+# brain and one conversation memory instead of two Auras. Without this binding the proxy had to reach
+# aura-think by its public workers.dev URL, and Cloudflare refused it with error 1042 - a Worker calling
+# another Worker on the same account over the public internet. A service binding keeps the call inside
+# Cloudflare: internal, faster, and free. aura-think already had the reverse binding (env.AURA_CORE);
+# this completes the pair.
+[[services]]
+binding = "AURA_THINK"
+service = "aura-think"
+
 [[durable_objects.bindings]]
 name = "ENTITY_DO"
 class_name = "EntityDO"
@@ -60,6 +71,7 @@ binding = "BROWSER"
 # ── STAGING TWIN (deployed with `wrangler deploy --env staging`) ──
 # The standard Cloudflare way: one config, an [env.staging] section that overrides ONLY what differs.
 # Isolated data (its own KV/D1/Vectorize), no cron, no email. Everything else inherits.
+
 [env.staging]
 name = "aura-core-staging"
 
@@ -93,6 +105,13 @@ service = "aura-host"
 [[env.staging.services]]
 binding = "AURA_COMMS"
 service = "aura-comms"
+
+# Staging gets the same binding so a self-edit tested on the twin exercises the real proxy path rather
+# than silently falling back to the local brain - otherwise the twin would prove something the live
+# worker does not do.
+[[env.staging.services]]
+binding = "AURA_THINK"
+service = "aura-think"
 
 [[env.staging.durable_objects.bindings]]
 name = "ENTITY_DO"

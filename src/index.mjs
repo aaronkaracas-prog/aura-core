@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.658-2026-07-21";
+const BUILD = "aura-core-v4.9.659-2026-07-21";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -181,10 +181,28 @@ async function brainFetch(url, opts, env) {
       const buf = await crypto.subtle.digest("SHA-256",
         new TextEncoder().encode((body.model || "") + "|" + sysTxt + "|" + msgTxt));
       cacheKey = "brain:l1:" + [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");
+      // ══ NEVER SERVE A CACHED FAILURE ═══════════════════════════════════════════════════════
+      // Same trap already closed on aura-think, still open here - different worker, identical failure.
+      // 2026-07-21: PLAN failed on a shape bug, the failure got cached, and the next two attempts
+      // replayed it at $0.0000 in under a second. It looked exactly like the fix had not worked. This
+      // cache hid three separate fixes yesterday for the same reason: verifying a change with a request
+      // already made returns the pre-fix answer, and a cached wrong answer is indistinguishable from a
+      // live wrong answer.
+      // A response that carried no usable text was not an answer worth keeping. Refuse to serve it, and
+      // delete it so the next attempt is real.
       const hit = await env.AURA_KV.get(cacheKey);
       if (hit) {
-        console.log("[BRAIN L1 HIT] $0.0000 — no model called");
-        return { ok: true, status: 200, json: async () => JSON.parse(hit) };
+        let usable = false;
+        try {
+          const j = JSON.parse(hit);
+          usable = (j?.content || []).some(b => b?.type === "text" && String(b.text || "").trim().length > 0);
+        } catch {}
+        if (usable) {
+          console.log("[BRAIN L1 HIT] $0.0000 — no model called");
+          return { ok: true, status: 200, json: async () => JSON.parse(hit) };
+        }
+        console.warn("[BRAIN L1] cached response had no usable text - discarding and calling the model");
+        try { await env.AURA_KV.delete(cacheKey); } catch {}
       }
     }
   } catch (e) { cacheKey = null; }
@@ -252,8 +270,14 @@ async function brainFetch(url, opts, env) {
 
   // ── store for the next caller. 1h TTL: backend briefs go stale faster than facts. ──
   try {
+    // The other half of the same fix. Guarding only the READ leaves empty responses being written and
+    // then discarded on every subsequent read - correct, but wasteful and confusing. A response with no
+    // usable text is not an answer; do not store it in the first place. Fixing one side and not its
+    // sibling is the exact pattern this whole session has been about.
     if (cacheKey && env && env.AURA_KV) {
-      await env.AURA_KV.put(cacheKey, JSON.stringify(j), { expirationTtl: 3600 });
+      const usable = (j?.content || []).some(b => b?.type === "text" && String(b.text || "").trim().length > 0);
+      if (usable) await env.AURA_KV.put(cacheKey, JSON.stringify(j), { expirationTtl: 3600 });
+      else console.warn("[BRAIN L1] response had no usable text - not cached");
     }
   } catch {}
 

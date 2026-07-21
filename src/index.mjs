@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.654-2026-07-21";
+const BUILD = "aura-core-v4.9.655-2026-07-21";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -20257,24 +20257,38 @@ async function verifyAgainstReality(env) {
   // the runtime, the network and the providers. So at CONSTANT correctness, a faster run is genuinely a
   // better run, measured externally. This is the honest half of "did the edit improve me": it proves
   // performance improvement, never capability improvement. Capability still needs an outcome signal.
-  const timings = {};
+  // ══ SAMPLE, DO NOT SPOT-CHECK ═════════════════════════════════════════════════════════════
+  // First version timed each probe ONCE. Measured across three consecutive runs on identical code, the
+  // same check took 83ms, 115ms, then 2047ms - a 25x spread from cold starts and KV latency, nothing to
+  // do with the code. A verdict firing at +/-10% on that would confidently report "FASTER" or "SLOWER"
+  // from pure noise, which is the Council's warning wearing a different costume: a signal that looks
+  // external but is too noisy to mean anything, dressed as a conclusion.
+  // So: three samples, keep the MEDIAN (immune to one cold outlier), record the spread so the noise is
+  // visible rather than hidden, and raise the verdict threshold above the observed floor.
+  const SAMPLES = 3;
+  const timings = {}, spread = {};
   for (const t of semantic) {
-    const t0 = Date.now();
-    try {
-      const r = await processCommand(t.cmd, env, true);
-      const good = t.ok(r?.payload);
-      timings[t.name] = Date.now() - t0;
-      add("semantic:" + t.name, "`" + t.cmd + "` returns the expected shape",
-          (good ? "correct shape" : "WRONG SHAPE or missing fields") + " (" + timings[t.name] + "ms)",
-          good, good ? null : t.why);
-    } catch (e) {
-      timings[t.name] = Date.now() - t0;
-      add("semantic:" + t.name, "`" + t.cmd + "` returns the expected shape",
-          "threw: " + String(e?.message ?? e).slice(0, 90), false, t.why);
+    const runs = [];
+    let good = false, err = null;
+    for (let i = 0; i < SAMPLES; i++) {
+      const t0 = Date.now();
+      try {
+        const r = await processCommand(t.cmd, env, true);
+        if (i === 0) good = t.ok(r?.payload);
+      } catch (e) { err = String(e?.message ?? e).slice(0, 90); }
+      runs.push(Date.now() - t0);
     }
+    runs.sort((a, b) => a - b);
+    timings[t.name] = runs[Math.floor(runs.length / 2)];
+    spread[t.name] = { min: runs[0], max: runs[runs.length - 1], samples: runs };
+    add("semantic:" + t.name, "`" + t.cmd + "` returns the expected shape",
+        (err ? "threw: " + err : good ? "correct shape" : "WRONG SHAPE or missing fields") +
+        " (median " + timings[t.name] + "ms of " + SAMPLES + ", range " + runs[0] + "-" + runs[runs.length - 1] + ")",
+        !err && good, (!err && good) ? null : (err || t.why));
   }
   out.timings_ms = timings;
   out.timings_total_ms = Object.values(timings).reduce((a, b) => a + b, 0);
+  out.timings_spread = spread;
 
   // ── 5. DOMAINS: REGISTRAR vs CLOUDFLARE ─────────────────────────────────────────────────────
   try {
@@ -20329,10 +20343,16 @@ async function verifyAgainstReality(env) {
           if (!b || !n) return { comparable: false, why: "no timing baseline yet - set one with VERIFY baseline" };
           if (broke.length) return { comparable: false, why: "correctness changed; speed is not a tradeable dimension against a regression" };
           const pct = ((n - b) / b) * 100;
+          // 30% not 10%. The observed noise floor on identical code was far wider than 10% - firing a
+          // verdict inside it would manufacture conclusions from cold starts. Better to miss a small
+          // real improvement than to report a fake one; a metric that cries wolf gets ignored, and an
+          // ignored metric is worse than none.
+          const FLOOR = 30;
           return { comparable: true, baseline_ms: b, now_ms: n, change_pct: +pct.toFixed(1),
-            verdict: pct <= -10 ? "FASTER at constant correctness - a real, externally measured improvement"
-                   : pct >= 10 ? "SLOWER at constant correctness - the edit cost performance"
-                   : "no meaningful change",
+            noise_floor_pct: FLOOR,
+            verdict: pct <= -FLOOR ? "FASTER at constant correctness - a real, externally measured improvement"
+                   : pct >= FLOOR ? "SLOWER at constant correctness - the edit cost performance"
+                   : "no meaningful change (inside the noise floor - cold starts and KV latency move these numbers more than most edits do)",
             caveat: "This proves the same checks ran faster. It does NOT prove she got better at anything - " +
                     "capability improvement still needs an outcome signal from outside, which is revenue." };
         })(),

@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.653-2026-07-21";
+const BUILD = "aura-core-v4.9.654-2026-07-21";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16903,7 +16903,12 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
             error: "REFUSED: accepting known failures requires a stated reason. " +
                    "VERIFY baseline accept reason: <why>" } };
         }
+        // Timings belong in the baseline too. They were added to the snapshot inside
+        // verifyAgainstReality and NOT to this one - the same incomplete-pattern failure this whole
+        // session has been about: extend a thing, miss its sibling. Without them `performance` can never
+        // become comparable, because there is nothing to compare against.
         const snap = { at: v.at, failing, build: BUILD,
+                       timings_ms: v.timings_ms, timings_total_ms: v.timings_total_ms,
                        accepted_failures: failing.length ? failing : undefined,
                        accepted_reason: failing.length ? reason : undefined,
                        accepted_at: failing.length ? new Date().toISOString() : undefined };

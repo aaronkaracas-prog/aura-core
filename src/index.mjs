@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.636-2026-07-20";
+const BUILD = "aura-core-v4.9.637-2026-07-20";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -121,6 +121,36 @@ async function callBrain({ system, user, max_tokens = 2000, model = null, temper
            usage: { in: d?.usage?.prompt_tokens || 0, out: d?.usage?.completion_tokens || 0 } };
 }
 
+
+// ══ ONE METER, BOTH FUNNELS ══════════════════════════════════════════════════════════════════════
+// aura-core reaches Anthropic through TWO paths, not one: brainFetch (29 non-streaming sites) and
+// callAnthropic -> callAnthropicOnce (the /chat brain, streaming, its own raw fetch). Metering only
+// brainFetch left core_brain reading $0.00 while the /chat path - the busiest one - spent freely.
+// That is the incomplete pattern one layer down: hook a funnel, miss its sibling. So the accounting
+// lives in ONE function both call, and any third path added later calls this too.
+async function meterCoreBrain(env, model, inTok, cachedIn, cacheWrite, outTok) {
+  try {
+    if (!env || !env.AURA_KV) return 0;
+    const m = String(model || "");
+    const isOpus = m.includes("opus"), isHaiku = m.includes("haiku");
+    const inRate = isOpus ? 15 : isHaiku ? 1 : 3;
+    const outRate = isOpus ? 75 : isHaiku ? 5 : 15;
+    const fresh = Math.max(0, (inTok || 0) - (cachedIn || 0));
+    const cost = (fresh * inRate + (cachedIn || 0) * inRate * 0.1
+                  + (cacheWrite || 0) * inRate * 1.25 + (outTok || 0) * outRate) / 1e6;
+    if (!(cost > 0)) return 0;
+    const d = new Date().toISOString().slice(0, 10);
+    const k = "meter:core:" + d;
+    const raw = await env.AURA_KV.get(k);
+    const led = raw ? JSON.parse(raw) : { day: d, cost_usd: 0, calls: 0, in: 0, cached: 0, out: 0, by_model: {} };
+    led.cost_usd = +(led.cost_usd + cost).toFixed(6);
+    led.calls += 1; led.in += inTok || 0; led.cached += cachedIn || 0; led.out += outTok || 0;
+    led.by_model[m || "unknown"] = +(((led.by_model[m || "unknown"] || 0) + cost)).toFixed(6);
+    await env.AURA_KV.put(k, JSON.stringify(led), { expirationTtl: 120 * 24 * 3600 });
+    return cost;
+  } catch { return 0; }
+}
+
 async function brainFetch(url, opts, env) {
   env = env || _BRAIN_ENV;
   let body;
@@ -192,19 +222,7 @@ async function brainFetch(url, opts, env) {
     // entire worker's spend. It never showed in the xAI reconciliation either, because it is Anthropic
     // money, and Anthropic's cost API is org-wide so it sits buried inside Claude Code's totals.
     // The number was right here the whole time. One write closes the last hole in the circle.
-    try {
-      if (env && env.AURA_KV && cost > 0) {
-        const _d = new Date().toISOString().slice(0, 10);
-        const _k = "meter:core:" + _d;
-        const _raw = await env.AURA_KV.get(_k);
-        const _m = _raw ? JSON.parse(_raw) : { day: _d, cost_usd: 0, calls: 0, in: 0, cached: 0, out: 0, by_model: {} };
-        _m.cost_usd = +(_m.cost_usd + cost).toFixed(6);
-        _m.calls += 1; _m.in += inTok; _m.cached += cachedIn; _m.out += outTok;
-        const _mn = String(body.model || "unknown");
-        _m.by_model[_mn] = +(((_m.by_model[_mn] || 0) + cost)).toFixed(6);
-        await env.AURA_KV.put(_k, JSON.stringify(_m), { expirationTtl: 120 * 24 * 3600 });
-      }
-    } catch { /* the ledger must never break the call it records */ }
+    await meterCoreBrain(env, body.model, inTok, cachedIn, cacheWrite, outTok);
 
     // ══ THE SAME LEDGER aura-think writes. ONE NUMBER, ONE TRUTH. ══════════════════════
     // Aura proved her own meter was lying: it said cents, MERCURY SAID $20 LEFT THE BANK. She trusted
@@ -17682,6 +17700,7 @@ async function callAnthropicOnce(apiKey, payload) {
       try {
         const d = JSON.parse(t);
         if (d?.type === "error") return { ok: false, status: res.status, error: JSON.stringify(d.error).slice(0, 200), retryable: true };
+        try { await meterCoreBrain(_BRAIN_ENV, payload && payload.model, d.usage && d.usage.input_tokens, d.usage && d.usage.cache_read_input_tokens, d.usage && d.usage.cache_creation_input_tokens, d.usage && d.usage.output_tokens); } catch {}
         return { ok: true, status: res.status, content: d.content || [], stop_reason: d.stop_reason || null, usage: d.usage ? { input_tokens: d.usage.input_tokens || 0, output_tokens: d.usage.output_tokens || 0 } : null };
       } catch { return { ok: false, status: res.status, error: "non-JSON response: " + t.slice(0, 120), retryable: true }; }
     }
@@ -17727,6 +17746,8 @@ async function callAnthropicOnce(apiKey, payload) {
       }
     }
     if (streamErr) return { ok: false, status: 200, error: "stream error: " + streamErr, retryable: true };
+    // The /chat brain path - the busiest one in aura-core. Same meter as brainFetch, one function.
+    try { await meterCoreBrain(_BRAIN_ENV, payload && payload.model, usageIn, 0, 0, usageOut); } catch {}
     return { ok: true, status: 200, content, stop_reason: stopReason, usage: { input_tokens: usageIn, output_tokens: usageOut } };
   } catch (e) {
     return { ok: false, status: 0, error: "fetch failed: " + (e && e.message ? e.message : String(e)), retryable: true };

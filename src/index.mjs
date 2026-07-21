@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.638-2026-07-21";
+const BUILD = "aura-core-v4.9.639-2026-07-21";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17711,7 +17711,11 @@ async function callAnthropicOnce(apiKey, payload) {
     let stopReason = null;
     let current = null;
     let streamErr = null;
-    let usageIn = 0, usageOut = 0;
+    // CACHE TOKENS TOO. The stream parser only pulled input_tokens/output_tokens, so meterCoreBrain was
+    // handed zeros for cache_read and cache_write - meaning it priced every call as if NOTHING was cached
+    // and the number could not move whether caching worked or not. A meter blind to the thing being
+    // measured cannot verify the fix; that is how "it did not help" and "I cannot see it" look identical.
+    let usageIn = 0, usageOut = 0, usageCacheRead = 0, usageCacheWrite = 0;
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -17726,7 +17730,12 @@ async function callAnthropicOnce(apiKey, payload) {
         let ev; try { ev = JSON.parse(dataStr); } catch { continue; }
         if (ev.type === "error") { streamErr = JSON.stringify(ev.error || ev).slice(0, 200); }
         else if (ev.type === "message_start") {
-          if (ev.message && ev.message.usage) { usageIn = ev.message.usage.input_tokens || 0; usageOut = ev.message.usage.output_tokens || usageOut; }
+          if (ev.message && ev.message.usage) {
+            usageIn = ev.message.usage.input_tokens || 0;
+            usageOut = ev.message.usage.output_tokens || usageOut;
+            usageCacheRead = ev.message.usage.cache_read_input_tokens || 0;
+            usageCacheWrite = ev.message.usage.cache_creation_input_tokens || 0;
+          }
         }
         else if (ev.type === "content_block_start") {
           current = ev.content_block && ev.content_block.type === "tool_use"
@@ -17747,7 +17756,8 @@ async function callAnthropicOnce(apiKey, payload) {
     }
     if (streamErr) return { ok: false, status: 200, error: "stream error: " + streamErr, retryable: true };
     // The /chat brain path - the busiest one in aura-core. Same meter as brainFetch, one function.
-    try { await meterCoreBrain(_BRAIN_ENV, payload && payload.model, usageIn, 0, 0, usageOut); } catch {}
+    try { await meterCoreBrain(_BRAIN_ENV, payload && payload.model, usageIn, usageCacheRead, usageCacheWrite, usageOut); } catch {}
+    try { console.log("[BRAIN CACHE] in=" + usageIn + " cache_read=" + usageCacheRead + " cache_write=" + usageCacheWrite + " out=" + usageOut); } catch {}
     return { ok: true, status: 200, content, stop_reason: stopReason, usage: { input_tokens: usageIn, output_tokens: usageOut } };
   } catch (e) {
     return { ok: false, status: 0, error: "fetch failed: " + (e && e.message ? e.message : String(e)), retryable: true };

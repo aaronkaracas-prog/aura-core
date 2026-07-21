@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.646-2026-07-21";
+const BUILD = "aura-core-v4.9.647-2026-07-21";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16821,6 +16821,11 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       // the original token auditor, kept intact and reachable so nothing that depended on it breaks
       return { cmd: "AUDIT_BURN_INTERNAL", payload: await auditBurn(env) };
     }
+    case "VERIFY": {
+      // The door for "is what I believe about myself actually true".
+      if (!isOp) return { cmd: "VERIFY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      return { cmd: "VERIFY", payload: { ok: true, ...(await verifyAgainstReality(env)) } };
+    }
     case "NORTHSTAR": {
       if (!isOp) return { cmd: "NORTHSTAR", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       return { cmd: "NORTHSTAR", payload: await northStar(env, rest) };
@@ -20033,6 +20038,116 @@ async function feedFail(env, id, error) {
   } catch {}
 }
 
+
+
+// ══ VERIFY ── THE EXTERNAL ORACLE ════════════════════════════════════════════════════════════════
+// The Council's unanimous finding, 2026-07-21, five seats zero failures: every claim she "verifies" is
+// verified against HER OWN SOURCE. Asked whether aura-media is a deployed worker, she read a
+// KNOWN_WORKERS map in her own code and called that verification. Claude's phrasing: "that's not
+// verification, it's introspection." Gemini's: "self-referential delusion." Four of five cited the same
+// incident independently, unprompted.
+//
+// They also unanimously rejected the obvious next move - wiring OUTCOME_LOG to AURA_EVOLVE - as
+// dangerous rather than merely premature: a loop optimising a metric she generates AND grades. The
+// prerequisite is an external, non-circular signal. Gemini named the concrete first one: query the
+// actual Cloudflare API for worker state rather than reading her own codebase.
+//
+// So this command collides her self-description with the outside world and reports DISAGREEMENTS.
+// It never argues; it just puts the two columns side by side. Where they differ, her source is wrong -
+// the world does not read her comments.
+//
+// Sources of truth used here, in order of how external they are:
+//   1. Cloudflare's API          - what is actually deployed (needs Workers:Read on the token)
+//   2. Live service bindings     - does the worker answer when called (no token, genuinely external)
+//   3. Provider APIs             - xAI/Anthropic/OpenAI billing and key validity
+//   4. Her own source            - the CLAIM being tested, never the evidence
+async function verifyAgainstReality(env) {
+  const out = { at: new Date().toISOString(), checks: [], disagreements: [], note: "" };
+  const add = (name, claim, reality, agree, detail) =>
+    out.checks.push({ check: name, claim, reality, agree, detail: detail || null });
+
+  // ── 1. WHICH WORKERS ACTUALLY ANSWER ────────────────────────────────────────────────────────
+  // A service binding that responds is proof of deployment. This is external: the worker either
+  // answers or it does not, and no comment in her source can change that.
+  const bound = { AURA_OPS: "aura-ops", AURA_HOST: "aura-host", AURA_COMMS: "aura-comms", AURA_THINK: "aura-think" };
+  const answering = [];
+  for (const [binding, name] of Object.entries(bound)) {
+    if (!env[binding] || typeof env[binding].fetch !== "function") { add("worker:" + name, "bound in config", "NO BINDING", false); continue; }
+    try {
+      const r = await env[binding].fetch(new Request("https://" + name + "/"));
+      answering.push(name);
+      add("worker:" + name, "deployed", "answers (http " + r.status + ")", true);
+    } catch (e) {
+      add("worker:" + name, "deployed", "binding threw: " + String(e?.message ?? e).slice(0, 80), false);
+    }
+  }
+
+  // ── 2. WHAT HER SOURCE CLAIMS vs WHAT ANSWERS ───────────────────────────────────────────────
+  // KNOWN_WORKERS in her own file is the CLAIM. The list above is the evidence.
+  try {
+    const src = await readOwnSource(env, null, "aura-core");
+    if (src.ok && src.source) {
+      const m = src.source.match(/KNOWN_WORKERS\s*=\s*\{([\s\S]{0,600}?)\}/);
+      const claimed = m ? [...m[1].matchAll(/"([a-z-]+)"\s*:/g)].map(x => x[1]) : [];
+      const unproven = claimed.filter(w => w !== "aura-core" && !answering.includes(w));
+      add("worker list", claimed.join(",") || "(none found)",
+          ["aura-core"].concat(answering).join(","), unproven.length === 0,
+          unproven.length ? "claimed in source but never answered: " + unproven.join(", ") +
+                            " - a map is not a fact; these are unproven, not disproven (no binding exists to test them)"
+                          : null);
+    }
+  } catch {}
+
+  // ── 3. CLOUDFLARE'S OWN DEPLOY LIST ─────────────────────────────────────────────────────────
+  // The most external check available. Needs Workers:Read - if the token lacks it, say so plainly
+  // rather than falling back to her source and calling that an answer.
+  try {
+    const tok = env.CF_API_TOKEN || await KV.get(env, "secret:cf_api_token");
+    const acct = await KV.get(env, "config:cf:account_id") || "3db0de2c6fce92757e2c4e4f83d7eb16";
+    if (tok) {
+      const r = await fetch("https://api.cloudflare.com/client/v4/accounts/" + acct + "/workers/scripts",
+        { headers: { Authorization: "Bearer " + tok } });
+      const d = await r.json().catch(() => ({}));
+      if (d?.success && Array.isArray(d.result)) {
+        const deployed = d.result.map(x => x.id).sort();
+        add("cloudflare deploy list", "(her source has no authority here)", deployed.join(","), true,
+            "This is the only fully external answer to 'what am I'. " + deployed.length + " scripts deployed.");
+      } else {
+        add("cloudflare deploy list", "-", "UNAVAILABLE: " + JSON.stringify(d?.errors || d).slice(0, 140), false,
+            "The CF token lacks Workers:Read (Account > Workers Scripts > Read). Until it is granted, the " +
+            "deploy list cannot be verified externally and any answer about it comes from her own source.");
+      }
+    } else add("cloudflare deploy list", "-", "no CF token", false);
+  } catch (e) { add("cloudflare deploy list", "-", "threw: " + String(e?.message ?? e).slice(0, 90), false); }
+
+  // ── 4. HER OWN BUILD, PROVEN BY EXECUTION ───────────────────────────────────────────────────
+  // BUILD is a constant in source, but a RUNNING worker returning it is evidence the deployed code is
+  // the code she read. If these ever disagree, the deploy did not land.
+  try {
+    const live = await readOwnSource(env, null, "aura-core");
+    const inSrc = live.ok && live.source ? (live.source.match(/const BUILD = "([^"]+)"/) || [])[1] : null;
+    add("build", inSrc || "(unreadable)", BUILD, inSrc === BUILD,
+        inSrc === BUILD ? "source on GitHub matches the running worker"
+                        : "GitHub source and the RUNNING worker disagree - a deploy or a push did not land");
+  } catch {}
+
+  // ── 5. DOMAINS: REGISTRAR vs CLOUDFLARE ─────────────────────────────────────────────────────
+  try {
+    const sp = await processCommand("SPACESHIP_STATUS", env, true);
+    const p = sp?.payload;
+    if (p?.ok) add("domains", "portfolio state", p.total + " total / " + p.synced + " synced at Cloudflare",
+                   p.unsynced === 0, p.unsynced ? p.unsynced + " registered but not pointing at Cloudflare" : null);
+  } catch {}
+
+  out.disagreements = out.checks.filter(c => !c.agree);
+  out.clean = out.disagreements.length === 0;
+  out.note = "Every row here compares a CLAIM (from her own source or config) against REALITY (something " +
+             "outside her that answers on its own). Where they disagree, reality wins - the world does not " +
+             "read her comments. This is the external oracle the Council said must exist BEFORE any " +
+             "outcome-measurement loop is wired to self-edits, because a loop she both feeds and grades " +
+             "optimises itself into confident nonsense.";
+  return out;
+}
 
 // ══ THE NORTH STAR ── THE ONE SIGNAL THAT CANNOT BE FAKED ════════════════════════════════════════
 // The self-improvement machinery is built: AURA_EVOLVE -> VALIDATE -> PROMOTE -> APPROVE, with a real

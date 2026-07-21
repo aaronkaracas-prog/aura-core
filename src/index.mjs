@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.647-2026-07-21";
+const BUILD = "aura-core-v4.9.649-2026-07-21";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2528,6 +2528,22 @@ async function processCommand(line, env, isOp) {
     }
 
     case "AURA_PROMOTE": {
+      // ══ THE GATE FIRES BEFORE A CHANGE LANDS ═══════════════════════════════════════════════
+      // A self-edit that passes node --check has been proven to PARSE, nothing more. Before promoting,
+      // freeze the current relationship to reality so the edit can be judged against it afterwards.
+      // This is the only non-circular signal available: workers answering, the deployed build matching
+      // source, domains resolving - all things outside her that answer on their own. She cannot author
+      // it, which is exactly why the Council said such a signal had to exist before any self-improvement
+      // loop. It never blocks the promote; it records the "before" so that "after" means something.
+      try {
+        const _pre = await verifyAgainstReality(env);
+        await env.AURA_KV.put("verify:pre_promote", JSON.stringify({
+          at: _pre.at, build: BUILD, failing: (_pre.disagreements || []).map(d => d.check).sort(),
+        }), { expirationTtl: 30 * 24 * 3600 });
+        console.log("[GATE] pre-promote reality snapshot: " +
+          ((_pre.disagreements || []).length) + " disagreement(s) at " + BUILD);
+      } catch { /* the gate must never block the act it measures */ }
+
       // SELF-EDIT piece 5 (v4.9.484). Fires the promote-to-live.yml GitHub Action, which runs REAL
       // `wrangler deploy` on GitHub's runners - the only thing that correctly carries the full binding
       // graph (KV, D1, Vectorize, AI, 3 service bindings, 2 Durable Objects WITH migrations, secrets, cron).
@@ -16822,9 +16838,19 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       return { cmd: "AUDIT_BURN_INTERNAL", payload: await auditBurn(env) };
     }
     case "VERIFY": {
-      // The door for "is what I believe about myself actually true".
+      // The door for "is what I believe about myself actually true", and - against a baseline - "did a
+      // change break something real". VERIFY baseline freezes the current state as known-good.
       if (!isOp) return { cmd: "VERIFY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      return { cmd: "VERIFY", payload: { ok: true, ...(await verifyAgainstReality(env)) } };
+      const v = await verifyAgainstReality(env);
+      if (/^\s*baseline\b/i.test(rest)) {
+        const snap = { at: v.at, failing: (v.disagreements || []).map(d => d.check).sort(), build: BUILD };
+        await env.AURA_KV.put("verify:baseline", JSON.stringify(snap));
+        return { cmd: "VERIFY", payload: { ok: true, baseline_set: snap,
+          note: "Frozen as known-good. Every later VERIFY reports what broke or was fixed against this. " +
+                "Re-baseline only when the current state is deliberately correct - baselining a broken " +
+                "state teaches the gate that broken is normal." } };
+      }
+      return { cmd: "VERIFY", payload: { ok: true, ...v } };
     }
     case "NORTHSTAR": {
       if (!isOp) return { cmd: "NORTHSTAR", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
@@ -20141,6 +20167,44 @@ async function verifyAgainstReality(env) {
 
   out.disagreements = out.checks.filter(c => !c.agree);
   out.clean = out.disagreements.length === 0;
+
+  // ══ THE REGRESSION GATE ── DID A CHANGE MAKE REALITY WORSE? ═══════════════════════════════════
+  // The Council said VERIFY answers "is what I believe about myself true", but not "did that edit make
+  // me better" - and that wiring an internal outcome metric to self-edits would be a loop she both feeds
+  // and grades. This is the bridge that satisfies their constraint: the signal comes entirely from
+  // things OUTSIDE her that answer on their own (workers responding, Cloudflare's API, GitHub, the
+  // registrar), so she cannot author it, and it judges a CHANGE rather than a fact.
+  //
+  // It cannot prove an edit IMPROVED her - only revenue can do that, and revenue is still zero. What it
+  // CAN prove is that an edit BROKE something real: a worker stopped answering, the deployed build
+  // stopped matching source, domains stopped resolving. That is a regression gate, not an evaluator,
+  // and the distinction is stated rather than blurred because blurring it is how a system starts
+  // grading its own homework.
+  try {
+    const snap = { at: out.at, failing: out.disagreements.map(d => d.check).sort(), build: BUILD };
+    const baseRaw = await env.AURA_KV.get("verify:baseline");
+    const base = baseRaw ? JSON.parse(baseRaw) : null;
+    if (base) {
+      const wasFailing = new Set(base.failing || []);
+      const nowFailing = new Set(snap.failing);
+      const broke = [...nowFailing].filter(c => !wasFailing.has(c));
+      const fixed = [...wasFailing].filter(c => !nowFailing.has(c));
+      out.since_baseline = {
+        baseline_at: base.at, baseline_build: base.build, now_build: BUILD,
+        build_changed: base.build !== BUILD,
+        newly_broken: broke, newly_fixed: fixed,
+        verdict: broke.length ? "REGRESSION - something that agreed with reality no longer does"
+               : fixed.length ? "IMPROVED - fewer disagreements with reality than the baseline"
+               : "UNCHANGED - same relationship to reality as the baseline",
+        note: broke.length && base.build !== BUILD
+          ? "The build changed AND checks broke. Treat the edit as the cause until proven otherwise - roll back before debugging forward."
+          : "Set a new baseline with VERIFY baseline once the current state is known-good.",
+      };
+    } else {
+      out.since_baseline = { verdict: "NO BASELINE", note: "Run VERIFY baseline to freeze the current state as known-good. Every later VERIFY then reports what an edit broke or fixed against it." };
+    }
+    await env.AURA_KV.put("verify:last", JSON.stringify(snap), { expirationTtl: 90 * 24 * 3600 });
+  } catch {}
   out.note = "Every row here compares a CLAIM (from her own source or config) against REALITY (something " +
              "outside her that answers on its own). Where they disagree, reality wins - the world does not " +
              "read her comments. This is the external oracle the Council said must exist BEFORE any " +

@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.637-2026-07-20";
+const BUILD = "aura-core-v4.9.638-2026-07-21";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17862,6 +17862,23 @@ async function callAnthropic(apiKey, payload) {
   // v4.9.524: capture the caller's source tag for metering, then STRIP it (and governance flag) from the
   // payload before the API call - Anthropic rejects unknown top-level params with an instant 400, which
   // silently broke any caller that passed source (found via the INTEGRITY engine returning empty in 135ms).
+  // ══ PROMPT CACHING BY DEFAULT ════════════════════════════════════════════════════════════════
+  // Every /chat turn ships a ~12,000-token system prompt: her identity, her law, her whole PTA timeline,
+  // the SituationTracker doctrine, OpenForBusiness, staging-vs-live, how Aaron works, plus 6,000 chars of
+  // state note. At Haiku's $1/M that is $0.012 - which is exactly the 1.2 cents a bare "PING" was costing.
+  // And NONE of it was cached: cache_control appeared in exactly one place in this file, inside
+  // brainFetch, and the /chat path does not go through brainFetch. So the same enormous, unchanging
+  // context was re-billed at full price on every single call.
+  // Anthropic caches a system block that carries cache_control: writes cost 1.25x, reads cost 0.1x - it
+  // pays for itself after two calls and cuts the input portion roughly tenfold thereafter.
+  // Done HERE, by default, for the same reason the governance injection above is: forty-six callers means
+  // flagging them individually guarantees one gets missed.
+  try {
+    if (payload && typeof payload.system === "string" && payload.system.length > 2000) {
+      payload = { ...payload, system: [{ type: "text", text: payload.system, cache_control: { type: "ephemeral" } }] };
+    }
+  } catch { /* caching is an optimisation - never let it break the call */ }
+
   const _callSource = (payload && payload.source) || "chat";
   if (payload && ("source" in payload)) { const { source, ...clean } = payload; payload = clean; }
   let r = await callAnthropicOnce(apiKey, payload);

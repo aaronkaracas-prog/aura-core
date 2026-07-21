@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.655-2026-07-21";
+const BUILD = "aura-core-v4.9.656-2026-07-21";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16864,7 +16864,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
                                "onboarding other operators (Aaron is client #1)"],
         commands: { status: "AIMARGIN", audit: "AUDIT [force]", truecost: "GET /truecost?date=&force=1",
                     budget: "GET /budget", calibrate: "CALIBRATE (manual, after a model repricing)",
-                    keys: "SERVICE_STATUS", council: "GET /council?q=&web=1", hindcast: "GET /hindcast?model=" },
+                    keys: "SERVICE_STATUS", council: "GET /council?q=&web=1 ON AURA-THINK (not aura-core)", hindcast: "GET /hindcast?model=" },
       } };
     }
     case "AUDIT_BURN_INTERNAL": {
@@ -16890,6 +16890,24 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         const failing = (v.disagreements || []).map(d => d.check).sort();
         const accepting = /\baccept\b/i.test(rest);
         const reason = (rest.match(/\breason\s*[:=]\s*(.+)$/i) || [])[1];
+        // ══ SOME FAILURES CAN NEVER BE ACCEPTED ═════════════════════════════════════════════════
+        // `build` disagreeing means GitHub source and the running worker are different code. That is
+        // either CDN lag (transient - GitHub's raw CDN serves the old version for a couple of minutes
+        // after a deploy) or a genuine split-brain (a deploy or a push did not land). Neither is a state
+        // to normalise: the first fixes itself by waiting, the second must actually be fixed.
+        // It was accepted into the baseline twice today, purely because the baseline ran seconds after a
+        // deploy. Accepting it permanently would mean a real source/worker mismatch never registers as a
+        // regression again - which would quietly disable the single most important check here.
+        const NEVER_ACCEPTABLE = ["build"];
+        const blocked = failing.filter(c => NEVER_ACCEPTABLE.includes(c));
+        if (blocked.length) {
+          return { cmd: "VERIFY", payload: { ok: false, refused: true, currently_failing: failing,
+            error: "REFUSED: '" + blocked.join(", ") + "' can never be an accepted baseline failure. " +
+                   "A build mismatch means GitHub source and the running worker are different code - " +
+                   "either the CDN has not caught up (wait ~2 minutes and re-run) or a deploy/push did " +
+                   "not land (fix it). Accepting it would disable the check permanently. Confirm with " +
+                   "PING, wait for `build` to agree, then baseline." } };
+        }
         if (failing.length && !accepting) {
           return { cmd: "VERIFY", payload: { ok: false, refused: true, currently_failing: failing,
             error: "REFUSED: cannot baseline a state that already disagrees with reality in " +
@@ -20519,7 +20537,10 @@ const AURA_DOORS = [
     holds: "everything she has done, distilled facts always in front of her",
     never: "Never add a notes: key. Notes are legacy - all 207 were backfilled into the archive." },
   { id: "council", words: ["council", "advisors", "second opinion", "what do the models think"],
-    door: "GET /council?q=...&web=1",
+    // CORRECTED 2026-07-21: this said "GET /council" without naming the worker, and the Council lives on
+    // aura-think, not aura-core. A door registry with a wrong door is worse than no registry - it sends
+    // you confidently to the wrong place, which is exactly what it exists to prevent. Found by trying it.
+    door: "GET {aura-think}/agents/aura-agent/aura-solid/council?q=...&web=1   (aura-think, NOT aura-core)",
     routes_through: "five frontier models in parallel, synthesis on the cheap rung",
     holds: "per-seat cost, web grounding, honest reporting of failed seats",
     never: "Never convene the Council for something the cheap rung can answer - it is the top tier by design." },

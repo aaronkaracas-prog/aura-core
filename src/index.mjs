@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.639-2026-07-21";
+const BUILD = "aura-core-v4.9.640-2026-07-21";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16702,11 +16702,26 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       return { cmd: "AIMARGIN", payload: { ok: true, day,
         policy: lanes,
         pins_overriding_policy: Object.fromEntries(Object.entries(pins).filter(([, v]) => v)),
-        rates: {
-          note: "Corrected against xAI billing 2026-07-19 (was understated 13.43x). Re-measure ONLY when a " +
-                "provider ships a new model - prices do not move daily. Method: CALIBRATE.",
-          "grok-build-0.1": "P_IN 1.34 / P_OUT 2.69 / P_CACHE 0.27 per M",
-        },
+        rates: await (async () => {
+          // DERIVED, NOT RECITED. This block used to hardcode "P_IN 1.34 / P_OUT 2.69 / P_CACHE 0.27" and a
+          // note about a 13.43x correction - both wrong by 2026-07-21. The rate was reverted to xAI's
+          // PUBLISHED $0.10/$0.20/$0.02 hours earlier, and the 13.43x "correction" was itself the error.
+          // So the one command whose whole purpose is "stop making me re-derive the engine's state" was
+          // reciting a number the engine no longer used. Exactly the fossil problem it exists to prevent.
+          // Now it reads what PRICES wrote from the provider's own /models endpoint.
+          try {
+            const raw = await kvg("config:rate:published", null);
+            if (raw) {
+              const t = JSON.parse(raw);
+              return { source: "xAI published prices via GET /v1/models (PRICES command)",
+                       note: "Read live from config:rate:published - the provider's own numbers, not ours. " +
+                             "Re-run PRICES after a vendor repricing; `changed` names anything that moved.",
+                       published: t };
+            }
+          } catch {}
+          return { source: "hardcoded table in server.ts (MODEL_RATES)",
+                   note: "No published prices cached yet - run PRICES to pull them from the provider." };
+        })(),
         spend_today: { text_usd: +spendToday.toFixed(4), cap_usd: cap,
                        used_pct: +((spendToday / cap) * 100).toFixed(1),
                        images, videos },
@@ -16714,11 +16729,13 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
                              : "sane (no impossible costs refused)",
         balances,
         built: ["policy engine (text/image/core/video/style lanes)", "5 providers with measured floors",
+                "PRICE DISCOVERY - reads xAI's published per-model prices (PRICES)",
+                "aura-core brain metered (meter:core) - both Anthropic funnels",
+                "prompt caching on the /chat path (~9x cut on conversational turns)",
                 "Council - 5 minds, web-grounded, itemised per seat", "hindcast - accuracy per dollar",
                 "true-cost reconciler (xai, anthropic, openai)", "balance anchoring", "budget guardrail (degrade-not-die)",
                 "token auditor on cron", "meter sanity ceiling", "image + video caches (identical repeats free)"],
-        not_built_on_purpose: ["price discovery from provider /models (needs a working key in aura-core)",
-                               "auto rate calibration (compounded twice - manual CALIBRATE only)",
+        not_built_on_purpose: ["auto rate calibration (compounded twice - manual CALIBRATE only; published price is the source of truth)",
                                "Google/Meta cost adapters (GCP export; Meta is free)",
                                "Batch API 50% lane (saves ~10c/day - fails its own value test)",
                                "onboarding other operators (Aaron is client #1)"],

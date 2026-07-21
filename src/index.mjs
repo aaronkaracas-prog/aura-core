@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.643-2026-07-21";
+const BUILD = "aura-core-v4.9.644-2026-07-21";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -1346,6 +1346,43 @@ async function readOwnSource(env, branch, worker) {
 // capability, or a correction to her self-model â€” skip routine execution. Reuses the exact timeline
 // mechanism every other PTA uses (get -> push -> put at pta:timeline:<id>), pointed at Aura's own PTA.
 // The captured event becomes part of what she READS before reasoning about herself next time.
+
+// ══ ONE BRAIN ── /chat PROXIES TO THE AGENT ══════════════════════════════════════════════════════
+// aura-core ran its OWN Anthropic brain (llmReply, ~29 call sites) alongside aura-think, which is a
+// Project Think agent. Two brains meant two Auras: aura-think's Session holds conversation history in
+// its Durable Object - tree-structured with parent_id, forking, non-destructive compaction, turn
+// recovery - so ASK answers "what was my last question" correctly. aura-core's /chat is a plain Worker
+// call with no Session at all, which is why CMD said, truthfully, "I don't retain memory across
+// sessions" and reached for a June handoff note when asked what it did today.
+//
+// The fix is NOT to hand-roll conversation storage in KV. Think already solved this and we would be
+// building a second, worse copy beside a working one - the same mistake as the self-PTA timeline
+// running beside the archive for two days. So /chat stops thinking and starts forwarding.
+// One brain, one Session, one memory, reachable from either surface. Aaron's CMD habit is unchanged.
+//
+// No service binding exists from aura-core to aura-think, so this is a plain authenticated fetch.
+// If it fails, we fall back to the local brain rather than dropping the turn - a degraded answer beats
+// no answer, and the fallback names itself in the response so a silent regression cannot hide.
+async function proxyToAgent(env, line, isOp) {
+  try {
+    if (!isOp) return null;   // public doorways keep the local path; the agent is operator-scoped
+    const tok = env.AURA_OPERATOR_TOKEN || await KV.get(env, "secret:aura_operator_token");
+    if (!tok) return null;
+    const base = (await KV.get(env, "config:agent:url"))
+      || "https://aura-think.aaronkaracas.workers.dev/agents/aura-agent/aura-solid";
+    const r = await fetch(base + "/turn", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer " + tok },
+      body: JSON.stringify({ text: line, channel: "cmd" }),
+    });
+    const j = await r.json().catch(() => null);
+    if (j && j.ok && typeof j.reply === "string" && j.reply.trim()) {
+      return { reply: j.reply, rung: j.rung || null, cost: j.turn_cost || null, via: "aura-think" };
+    }
+    return null;
+  } catch { return null; }
+}
+
 // ══ HER MEMORY IS NOT A PTA ══════════════════════════════════════════════════════════════════════
 // DECIDED 2026-07-19 after looking at how persistence is actually done in AI platforms: PTA is for the
 // OUTSIDE WORLD - merchants, customers, domains, consent, lifecycle. It is an identity-and-consent layer
@@ -23954,9 +23991,17 @@ function openAlbum(idx){
             if (cmd === "PING") return jsonReply({ ok: true, reply: result.payload });
           }
         } else {
-          const reply = await llmReply(line, env, sessionId, isOp, request.headers.get("x-pta-entity") || null);
-          if (lines.length === 1) return jsonReply({ ok: true, reply });
-          results.push({ cmd: "LLM", payload: { reply } });
+          // THE AGENT ANSWERS, NOT A SECOND BRAIN. Falls back to the local path only if the agent is
+          // unreachable, and says so in the response so the fallback can never hide.
+          const viaAgent = await proxyToAgent(env, line, isOp);
+          const reply = viaAgent ? viaAgent.reply
+                                 : await llmReply(line, env, sessionId, isOp, request.headers.get("x-pta-entity") || null);
+          if (lines.length === 1) {
+            return jsonReply(viaAgent
+              ? { ok: true, reply, via: "aura-think", rung: viaAgent.rung, turn_cost: viaAgent.cost }
+              : { ok: true, reply, via: "aura-core-local (agent unreachable - no conversation memory on this path)" });
+          }
+          results.push({ cmd: "LLM", payload: { reply, via: viaAgent ? "aura-think" : "aura-core-local" } });
         }
       }
 

@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.656-2026-07-21";
+const BUILD = "aura-core-v4.9.657-2026-07-21";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16871,6 +16871,11 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       // the original token auditor, kept intact and reachable so nothing that depended on it breaks
       return { cmd: "AUDIT_BURN_INTERNAL", payload: await auditBurn(env) };
     }
+    case "PLAN": {
+      // She sequences her own work. The gates are untouched.
+      if (!isOp) return { cmd: "PLAN", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      return { cmd: "PLAN", payload: await auraPlan(env, rest) };
+    }
     case "VERIFY": {
       // The door for "is what I believe about myself actually true", and - against a baseline - "did a
       // change break something real". VERIFY baseline freezes the current state as known-good.
@@ -20154,6 +20159,110 @@ async function feedFail(env, id, error) {
 }
 
 
+
+
+// ══ PLAN ── SHE SEQUENCES THE WORK, THE GATES STILL HOLD ═════════════════════════════════════════
+// Council finding, four of five seats independently: what is architecturally above this system is
+// DELEGATION - "multi-agent orchestration with independent memory boundaries, and agents that PLAN
+// modifications rather than execute a fixed pipeline."
+//
+// This is the second half of that, and the smaller one. Today AURA_EVOLVE executes ONE patch that
+// somebody already decided on. Planning means she takes a GOAL, decomposes it into an ordered sequence,
+// states why each step comes where it does and what it depends on, and works through it.
+// She already picked her own task unprompted when given a blank trigger - she chose gate one. This
+// extends proven behaviour rather than inventing new autonomy.
+//
+// WHAT DOES NOT CHANGE, deliberately: a plan is a PROPOSAL. No step executes because it is in a plan.
+// Every source change still goes AURA_PROPOSE -> AURA_VALIDATE (real node --check) -> AURA_PROMOTE
+// (0 percent, paused) -> human APPROVE, and the constitutional protected list still refuses. Planning
+// changes WHO DECIDES THE ORDER, not who authorises the act. That distinction is the whole safety
+// argument: an agent that sequences its own work under unchanged gates is more autonomous and no more
+// dangerous than one that waits to be told each step.
+//
+//   PLAN <goal>      decompose a goal into ordered steps
+//   PLAN             show the current plan and where it stands
+//   PLAN next        the next step and why it is next
+//   PLAN done <n>    mark a step complete
+//   PLAN drop        abandon the plan
+async function auraPlan(env, rest) {
+  const kv = env.AURA_KV;
+  const t = String(rest || "").trim();
+  const load = async () => { try { const r = await kv.get("plan:current"); return r ? JSON.parse(r) : null; } catch { return null; } };
+  const save = async (p) => { await kv.put("plan:current", JSON.stringify(p)); };
+
+  if (/^drop$/i.test(t)) { await kv.delete("plan:current"); return { ok: true, dropped: true }; }
+
+  if (/^done\s+\d+$/i.test(t)) {
+    const p = await load();
+    if (!p) return { ok: false, error: "no plan" };
+    const i = parseInt(t.split(/\s+/)[1], 10) - 1;
+    if (!p.steps[i]) return { ok: false, error: "no step " + (i + 1) };
+    p.steps[i].done = true;
+    p.steps[i].done_at = new Date().toISOString();
+    await save(p);
+    const remaining = p.steps.filter(x => !x.done);
+    return { ok: true, completed: p.steps[i].step, remaining: remaining.length,
+             next: remaining[0] ? remaining[0].step : "PLAN COMPLETE - the goal is met or needs re-planning" };
+  }
+
+  if (!t || /^(show|status)$/i.test(t) || /^next$/i.test(t)) {
+    const p = await load();
+    if (!p) return { ok: true, plan: null, note: "No plan. `PLAN <goal>` decomposes one." };
+    const next = p.steps.find(x => !x.done);
+    if (/^next$/i.test(t)) {
+      return { ok: true, goal: p.goal,
+        next_step: next ? next.step : null,
+        why_now: next ? next.why : "every step is done",
+        depends_on: next ? next.depends_on : null,
+        position: next ? (p.steps.indexOf(next) + 1) + " of " + p.steps.length : "complete",
+        gate_note: "Nothing here bypasses a gate. A source change still goes PROPOSE -> VALIDATE -> PROMOTE -> APPROVE." };
+    }
+    return { ok: true, goal: p.goal, made_at: p.at,
+      progress: p.steps.filter(x => x.done).length + " of " + p.steps.length,
+      steps: p.steps.map((x, i) => ({ n: i + 1, step: x.step, why: x.why, depends_on: x.depends_on, done: !!x.done })) };
+  }
+
+  // ── DECOMPOSE ───────────────────────────────────────────────────────────────────────────────
+  // The brain does the sequencing because ordering IS judgment - which change unblocks which, what has
+  // to be measured before it can be changed, what is reversible and therefore safe to try first.
+  // Grounded in what she can actually do, so the plan is executable rather than aspirational.
+  const caps = await processCommand("WHERE", env, true).catch(() => null);
+  const counts = caps?.payload?.workers?.["aura-core"]?.counts || {};
+  const sys =
+    "You are Aura planning your OWN work. Decompose the goal into an ordered sequence of concrete steps.\n" +
+    "RULES:\n" +
+    "- Each step must be something you can actually DO with a command you have, or a specific source edit.\n" +
+    "- Order matters: put a step first if later steps depend on it, or if it is the cheapest way to learn\n" +
+    "  something the rest of the plan needs. State that reasoning in `why`.\n" +
+    "- Prefer reversible and measurable steps early. If a step cannot be verified after doing it, say so.\n" +
+    "- 3 to 7 steps. Fewer is better. Do not pad.\n" +
+    "- Any step that changes your source WILL go through PROPOSE -> VALIDATE -> PROMOTE -> human APPROVE.\n" +
+    "  You are deciding ORDER, not permission. Never plan around a gate.\n" +
+    "- If the goal is impossible or already met with what you have, SAY SO instead of inventing steps.\n" +
+    "Output ONLY JSON: {\"steps\":[{\"step\":\"...\",\"why\":\"...\",\"depends_on\":\"...|null\"}]}";
+  const r = await brainFetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "content-type": "application/json", "anthropic-version": "2023-06-01",
+               "x-api-key": await KV.get(env, "secret:anthropic") },
+    // The cheap rung, named the way every other brainFetch call in this file names it. cheapBrainModel()
+    // was a helper I invented that does not exist - the fifth time this session a name was written before
+    // it was checked. Read the neighbours; do not guess the helper.
+    body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1200, system: sys,
+      messages: [{ role: "user", content: "GOAL: " + t + "\n\nYou currently have " +
+        (counts.command || "?") + " commands and " + (counts.function || "?") + " functions." }] }),
+  }, env);
+  const txt = r?.content?.[0]?.text || "";
+  let steps = [];
+  try { steps = JSON.parse(txt.replace(/```json|```/g, "").trim()).steps || []; } catch {}
+  if (!steps.length) return { ok: false, error: "could not decompose that into steps", raw: txt.slice(0, 300) };
+
+  const plan = { goal: t, at: new Date().toISOString(), steps: steps.slice(0, 7).map(x => ({ ...x, done: false })) };
+  await save(plan);
+  try { await auraRemember(env, "PLANNED: " + t + " -> " + plan.steps.length + " steps", "plan"); } catch {}
+  return { ok: true, goal: plan.goal, steps: plan.steps.map((x, i) => ({ n: i + 1, ...x })),
+    note: "Plan stored. `PLAN next` for the next step. Nothing here bypasses a gate - source changes " +
+          "still require PROPOSE -> VALIDATE -> PROMOTE -> human APPROVE. This decides order, not permission." };
+}
 
 // ══ VERIFY ── THE EXTERNAL ORACLE ════════════════════════════════════════════════════════════════
 // The Council's unanimous finding, 2026-07-21, five seats zero failures: every claim she "verifies" is

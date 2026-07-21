@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.645-2026-07-21";
+const BUILD = "aura-core-v4.9.646-2026-07-21";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -1370,17 +1370,29 @@ async function proxyToAgent(env, line, isOp) {
     if (!isOp) return { failed: "not operator - public doorways keep the local path by design" };
     const tok = env.AURA_OPERATOR_TOKEN || await KV.get(env, "secret:aura_operator_token");
     if (!tok) return { failed: "no operator token in env.AURA_OPERATOR_TOKEN or secret:aura_operator_token" };
-    const base = (await KV.get(env, "config:agent:url"))
-      || "https://aura-think.aaronkaracas.workers.dev/agents/aura-agent/aura-solid";
+    // SERVICE BINDING, NOT THE PUBLIC INTERNET. The first version fetched aura-think's workers.dev URL
+    // and Cloudflare refused it with error 1042 - a Worker calling another Worker on the same account by
+    // public URL. Aaron's call and he is right: traffic should never leave Cloudflare only to come back.
+    // A service binding is internal, faster, and free. The public fetch stays ONLY as a last resort for
+    // the case where the binding is missing, and it names itself when it happens.
+    const path = "/agents/aura-agent/aura-solid/turn";
+    const body = JSON.stringify({ text: line, channel: "cmd" });
+    const headers = { "content-type": "application/json", authorization: "Bearer " + tok };
     let r;
-    try {
-      r = await fetch(base + "/turn", {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: "Bearer " + tok },
-        body: JSON.stringify({ text: line, channel: "cmd" }),
-      });
-    } catch (e) {
-      return { failed: "fetch threw: " + String(e?.message ?? e).slice(0, 160) + " (base=" + base + ")" };
+    if (env.AURA_THINK && typeof env.AURA_THINK.fetch === "function") {
+      try {
+        r = await env.AURA_THINK.fetch(new Request("https://aura-think" + path, { method: "POST", headers, body }));
+      } catch (e) {
+        return { failed: "service binding threw: " + String(e?.message ?? e).slice(0, 160) };
+      }
+    } else {
+      const base = (await KV.get(env, "config:agent:url"))
+        || "https://aura-think.aaronkaracas.workers.dev/agents/aura-agent/aura-solid";
+      try {
+        r = await fetch(base + "/turn", { method: "POST", headers, body });
+      } catch (e) {
+        return { failed: "no AURA_THINK service binding, and the public fallback threw: " + String(e?.message ?? e).slice(0, 160) };
+      }
     }
     const txt = await r.text().catch(() => "");
     if (!r.ok) return { failed: "agent http " + r.status + ": " + txt.slice(0, 200) };

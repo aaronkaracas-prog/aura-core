@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.649-2026-07-21";
+const BUILD = "aura-core-v4.9.652-2026-07-21";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16649,6 +16649,32 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       // No LLM. Regex over real source. It cannot drift because it is never written down.
       if (!isOp) return { cmd: "WHERE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const wTerm = rest.trim().toLowerCase();
+      // ══ DERIVE-THEN-CACHE, INVALIDATED BY THE BUILD ITSELF ═══════════════════════════════════
+      // Council's synthesis recommendation, and the one point four of five seats raised: "derive
+      // everything" is the right invariant but it is not free. Reading live source from five workers on
+      // every query is fine at 322 handlers; Claude put the break at ~3,000, Gemini called the per-query
+      // fan-out an architectural problem outright. The stated fix is a derived-then-cached tier with
+      // EXPLICIT INVALIDATION - and the objection to caching is staleness, which is exactly what this
+      // invariant exists to prevent.
+      // So the cache key IS the build string. A deploy changes BUILD, which changes the key, which
+      // discards the cache. There is no manual invalidation to forget and no TTL to guess wrong: the
+      // only thing that can make this stale is a deploy, and a deploy invalidates it by construction.
+      // `WHERE fresh` bypasses it when someone needs to prove the derivation itself still works.
+      const _whereCacheKey = "cache:where:" + BUILD;
+      const _bypass = /\bfresh|nocache\b/i.test(rest || "");
+      if (!_bypass) {
+        try {
+          const hit = await env.AURA_KV.get(_whereCacheKey);
+          if (hit) {
+            const j = JSON.parse(hit);
+            if (!wTerm) return { cmd: "WHERE", payload: { ...j, from_cache: true,
+              cache_note: "Derived at " + j.derived_at + " for build " + BUILD + ". A deploy changes the " +
+                          "build string, which changes the cache key, which discards this - staleness is " +
+                          "impossible without a deploy. Use `WHERE fresh` to re-derive anyway." } };
+          }
+        } catch {}
+      }
+
       const workers = ["aura-core", "aura-think", "aura-ops", "aura-comms", "aura-host"];
       const found = {};
       const errs = {};
@@ -16708,6 +16734,14 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       const kvHit = wTerm ? Object.fromEntries(Object.entries(kv).filter(([p, v]) =>
         p.includes(wTerm) || (v.sample || []).some((k) => k.toLowerCase().includes(wTerm)))) : kv;
 
+      if (!wTerm) {
+        try {
+          await env.AURA_KV.put(_whereCacheKey, JSON.stringify({ ok: true, asked: "(everything)",
+            derived_at: new Date().toISOString(), workers: found,
+            unreadable: Object.keys(errs).length ? errs : undefined, data_locations: kvHit }),
+            { expirationTtl: 30 * 24 * 3600 });
+        } catch {}
+      }
       return { cmd: "WHERE", payload: { ok: true, asked: wTerm || "(everything)",
         derived_at: new Date().toISOString(),
         workers: found, unreadable: Object.keys(errs).length ? errs : undefined,
@@ -16843,12 +16877,44 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       if (!isOp) return { cmd: "VERIFY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const v = await verifyAgainstReality(env);
       if (/^\s*baseline\b/i.test(rest)) {
-        const snap = { at: v.at, failing: (v.disagreements || []).map(d => d.check).sort(), build: BUILD };
+        // ══ THE BASELINE IS A TRUSTED ROOT ═════════════════════════════════════════════════════
+        // Council finding, raised independently by Claude and Meta: "if a bad state is snapshotted as
+        // baseline, later regressions measure against corruption." Meta caught the live instance - our
+        // first baseline froze TWO disagreements (the 7-vs-5 worker claim and the missing CF scope), and
+        // from that moment the gate treated both as normal. A trusted root that trusts anything is not a
+        // root, it is a rubber stamp.
+        // So: baselining a state that already disagrees with reality requires each failure to be
+        // explicitly ACCEPTED with a stated reason. Unaccepted failures block the baseline. The gate can
+        // still be told "yes, that one is known and expected" - but somebody has to say it, in words,
+        // and it is recorded next to the snapshot forever.
+        const failing = (v.disagreements || []).map(d => d.check).sort();
+        const accepting = /\baccept\b/i.test(rest);
+        const reason = (rest.match(/\breason\s*[:=]\s*(.+)$/i) || [])[1];
+        if (failing.length && !accepting) {
+          return { cmd: "VERIFY", payload: { ok: false, refused: true, currently_failing: failing,
+            error: "REFUSED: cannot baseline a state that already disagrees with reality in " +
+                   failing.length + " place(s): " + failing.join(", ") + ". Baselining these would teach " +
+                   "the gate that they are normal, and every later regression would be measured against a " +
+                   "corrupt root. Either FIX them first, or accept them deliberately: " +
+                   "VERIFY baseline accept reason: <why each of these is known and expected>" } };
+        }
+        if (failing.length && accepting && !reason) {
+          return { cmd: "VERIFY", payload: { ok: false, refused: true, currently_failing: failing,
+            error: "REFUSED: accepting known failures requires a stated reason. " +
+                   "VERIFY baseline accept reason: <why>" } };
+        }
+        const snap = { at: v.at, failing, build: BUILD,
+                       accepted_failures: failing.length ? failing : undefined,
+                       accepted_reason: failing.length ? reason : undefined,
+                       accepted_at: failing.length ? new Date().toISOString() : undefined };
         await env.AURA_KV.put("verify:baseline", JSON.stringify(snap));
         return { cmd: "VERIFY", payload: { ok: true, baseline_set: snap,
-          note: "Frozen as known-good. Every later VERIFY reports what broke or was fixed against this. " +
-                "Re-baseline only when the current state is deliberately correct - baselining a broken " +
-                "state teaches the gate that broken is normal." } };
+          note: failing.length
+            ? "Frozen WITH " + failing.length + " accepted failure(s), reason recorded. Those will no " +
+              "longer register as regressions - which is the point, and also the risk. Re-baseline " +
+              "without them once they are genuinely fixed."
+            : "Frozen clean - zero disagreements with reality. This is the strongest possible root: any " +
+              "later failure is unambiguously new." } };
       }
       return { cmd: "VERIFY", payload: { ok: true, ...v } };
     }
@@ -20156,6 +20222,42 @@ async function verifyAgainstReality(env) {
         inSrc === BUILD ? "source on GitHub matches the running worker"
                         : "GitHub source and the RUNNING worker disagree - a deploy or a push did not land");
   } catch {}
+
+  // ── 4b. SEMANTIC CHECKS ── DOES IT ANSWER CORRECTLY, NOT JUST ANSWER ────────────────────────
+  // Unanimous Council finding: the verifier tests OBSERVABLES, not MEANING. Grok: "a tool returns 200
+  // but the wrong ontology." OpenAI: "a build can answer, bindings can resolve, CI can pass, and the
+  // agent can still become worse." A worker replying 404 counts as "deployed" above - which is true and
+  // useless if the thing it is supposed to DO no longer works.
+  // These probes run real commands whose CORRECT SHAPE is known in advance, and check the shape. Still
+  // external in the sense that matters: the command either produces the right structure or it does not,
+  // and no comment in her source can make a malformed answer well-formed. This closes the gap between
+  // "responds" and "responds correctly" - it does not close the gap to "responds WELL", which needs an
+  // outcome signal and is honestly out of reach here.
+  const semantic = [
+    { name: "command dispatch", cmd: "PING",
+      ok: (p) => p && p.ok === true && typeof p.build === "string" && p.build.startsWith("aura-core-v"),
+      why: "PING must return a build string from the running worker - if the shape is wrong, the command layer is answering but not working" },
+    { name: "self-read", cmd: "WHERE PING",
+      ok: (p) => p && p.ok === true && p.workers && p.workers["aura-core"] && p.workers["aura-core"].total > 0,
+      why: "WHERE must read live source and find handlers - zero means self-knowledge is broken even if the command replies" },
+    { name: "cost engine", cmd: "AIMARGIN status",
+      ok: (p) => p && p.ok === true && p.policy && typeof p.policy.text === "string",
+      why: "AIMARGIN must resolve a live policy - a reply without a policy lane means routing is not readable" },
+    { name: "memory", cmd: "GETKV mem:core:current",
+      ok: (p) => p && p.ok === true && typeof p.reply === "string" && p.reply.length > 50,
+      why: "the shared memory block must be present and non-trivial - an empty one means both surfaces are running blind" },
+  ];
+  for (const t of semantic) {
+    try {
+      const r = await processCommand(t.cmd, env, true);
+      const good = t.ok(r?.payload);
+      add("semantic:" + t.name, "`" + t.cmd + "` returns the expected shape",
+          good ? "correct shape" : "WRONG SHAPE or missing fields", good, good ? null : t.why);
+    } catch (e) {
+      add("semantic:" + t.name, "`" + t.cmd + "` returns the expected shape",
+          "threw: " + String(e?.message ?? e).slice(0, 90), false, t.why);
+    }
+  }
 
   // ── 5. DOMAINS: REGISTRAR vs CLOUDFLARE ─────────────────────────────────────────────────────
   try {

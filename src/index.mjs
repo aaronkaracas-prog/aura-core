@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.640-2026-07-21";
+const BUILD = "aura-core-v4.9.641-2026-07-21";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16748,6 +16748,10 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       // the original token auditor, kept intact and reachable so nothing that depended on it breaks
       return { cmd: "AUDIT_BURN_INTERNAL", payload: await auditBurn(env) };
     }
+    case "NORTHSTAR": {
+      if (!isOp) return { cmd: "NORTHSTAR", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      return { cmd: "NORTHSTAR", payload: await northStar(env, rest) };
+    }
     case "TODO": {
       if (!isOp) return { cmd: "TODO", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       return { cmd: "TODO", payload: await auraTodo(env, rest) };
@@ -19946,6 +19950,94 @@ async function feedFail(env, id, error) {
       JSON.stringify({ ...prev, id, last_error: new Date().toISOString(), error: String(error || "").slice(0, 200) }),
       { expirationTtl: 120 * 24 * 3600 });
   } catch {}
+}
+
+
+// ══ THE NORTH STAR ── THE ONE SIGNAL THAT CANNOT BE FAKED ════════════════════════════════════════
+// The self-improvement machinery is built: AURA_EVOLVE -> VALIDATE -> PROMOTE -> APPROVE, with a real
+// node --check gate and a constitutional protected list. That half is rare and it works.
+// What is missing is a VALIDATOR. Nothing tells her whether a change made her BETTER - only that it
+// parses. And her only verifier today is herself: she reads her own source and confirms what it says.
+// A self-referential verifier can only ever agree with itself. Proven live 2026-07-21 - asked to check
+// whether aura-media is a worker, she read a KNOWN_WORKERS map in her own code and called that
+// verification. It is a map, not a fact. The deploy list lives at Cloudflare, and CF_API returned 403.
+//
+// The field arrived at the same wall. The Darwin Godel Machine (ICLR 2026) replaced formal proofs of
+// improvement with EMPIRICAL validation against a benchmark - modify, run it for real, keep or discard.
+// Its own authors name the binding constraint: "we can only optimize what we can measure, and we can
+// only reliably measure outcomes in domains with clear right/wrong signals."
+//
+// So the North Star is not a slogan, it is the VERIFIER. For this system the unfakeable signal is
+// REVENUE: a real person paying real money for a real outcome. Self-description cannot produce it,
+// a benchmark cannot simulate it, and no amount of reading her own source can fake it.
+// She said it herself before being asked: "The only thing that moves the needle is closing one honest
+// transaction. Everything else is theater until that happens."
+//
+//   NORTHSTAR              -> the goal, live distance to it, and the next real step
+//   NORTHSTAR set <text>   -> change it (rare; this is the thing everything else serves)
+// AARON'S THREE, stated by him - not invented here. The first transaction is GATE ONE toward them,
+// not the destination. Writing a smaller goal over a founder's actual ambition would be the same
+// mistake as every other fossil in this file: a note replacing the truth it was meant to point at.
+const NORTH_STAR_DEFAULT =
+  "1. $1 billion a day in revenue. " +
+  "2. The planet integrated on PTA. " +
+  "3. Home Screen is the one thing between a human's eyes and any screen. " +
+  "Under all three: help humans live a better life - everything else is background noise. " +
+  "GATE ONE, and nothing counts until it passes: one real arms-length customer pays real money for " +
+  "something I delivered, with honest margin. Not a test, not family, not a rehearsal. Until that " +
+  "happens every capability I have is unverified - I can describe myself perfectly and reality has " +
+  "never once confirmed any of it.";
+
+async function northStar(env, rest) {
+  const kv = env.AURA_KV;
+  const t = String(rest || "").trim();
+  if (/^set\s+/i.test(t)) {
+    const v = t.replace(/^set\s+/i, "").trim();
+    if (v.length < 20) return { ok: false, error: "a north star needs to be a real sentence" };
+    await kv.put("config:northstar", v);
+    return { ok: true, set: v, note: "Written. It rides in core memory verbatim from the next distillation." };
+  }
+  const goal = (await kv.get("config:northstar").catch(() => null)) || NORTH_STAR_DEFAULT;
+
+  // DISTANCE, measured from real signals only - never from a note, never from an estimate.
+  const call = async (c) => { try { const r = await processCommand(c, env, true); return r?.payload ?? null; } catch { return null; } };
+  const num = (v) => Number(v) || 0;
+  const stripe = await call("STRIPE_BALANCE");
+  let revenue = 0;
+  try { if (stripe?.ok && Array.isArray(stripe.available)) revenue = stripe.available.reduce((a, x) => a + num(x.amount), 0) / 100; } catch {}
+  let realTxns = 0, testTxns = 0;
+  try { const raw = await kv.get("pta:ledger:aura:hot"); if (raw) { const l = JSON.parse(raw);
+        revenue = revenue || num(l.revenue_all_time); realTxns = num(l.real_transactions); testTxns = num(l.test_transactions); } } catch {}
+  let activeMerchants = 0, pipeline = {};
+  try {
+    const db = env.AURA_MEMORY;
+    if (db) { const r = await db.prepare("SELECT state, COUNT(*) as n FROM entities GROUP BY state").all().catch(() => null);
+      for (const row of (r?.results || [])) { pipeline[row.state] = row.n; if (row.state === "active") activeMerchants = row.n; } }
+  } catch {}
+
+  // The gates between here and there, in order. Each is a fact, not an opinion.
+  const gates = [
+    { step: "a merchant exists as a real entity (PTA_ENTITY + grant edge)", done: Object.keys(pipeline).length > 0 },
+    { step: "a merchant reaches 'active'", done: activeMerchants > 0 },
+    { step: "a checkout exists that a stranger can reach", done: false, note: "no launched doorway has a live checkout on record" },
+    { step: "one real (non-test) transaction settles", done: realTxns > 0 },
+    { step: "the margin on it is positive and measured", done: revenue > 0 },
+  ];
+  const nextStep = gates.find((g) => !g.done);
+
+  return { ok: true, north_star: goal,
+    why_this_one: "It is the only signal that cannot be produced by self-description. Everything else in " +
+                  "this system - the audits, the meters, the self-reads - is instrumentation. Instrumentation " +
+                  "without an outcome signal is a very well-lit room with nothing in it.",
+    distance: { revenue_all_time: +revenue.toFixed(2), real_transactions: realTxns,
+                test_transactions: testTxns, active_merchants: activeMerchants, pipeline },
+    gates,
+    next_real_step: nextStep ? nextStep.step : "GATE ONE PASSED - the loop now has a real signal. The north star itself does not move; the gates after it do.",
+    honest_note: realTxns > 0
+      ? "A real transaction exists. The loop is closed and self-improvement now has a signal to optimise against."
+      : "No real transaction has ever closed. Every capability here is unverified by the outside world - " +
+        "the system can describe itself perfectly and reality has never confirmed any of it.",
+  };
 }
 
 // ══ THE DOORS ── ONE WAY IN FOR EVERY CAPABILITY ═════════════════════════════════════════════════

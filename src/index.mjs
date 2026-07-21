@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.659-2026-07-21";
+const BUILD = "aura-core-v4.9.660-2026-07-21";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -20250,8 +20250,19 @@ async function auraPlan(env, rest) {
   // The brain does the sequencing because ordering IS judgment - which change unblocks which, what has
   // to be measured before it can be changed, what is reversible and therefore safe to try first.
   // Grounded in what she can actually do, so the plan is executable rather than aspirational.
-  const caps = await processCommand("WHERE", env, true).catch(() => null);
-  const counts = caps?.payload?.workers?.["aura-core"]?.counts || {};
+  // GROUND THE PLAN IN REAL COMMAND NAMES, not a count. First version passed only "you have 324
+  // commands" and the planner invented `list_workers` and `get_worker_status` - neither exists. A plan
+  // built on imaginary commands is worse than no plan: it looks executable and is not. Counts are not
+  // capability; names are.
+  const caps = await processCommand("AURA_READ_SELF CAPABILITIES", env, true).catch(() => null);
+  let cmdNames = [];
+  try {
+    const src = await readOwnSource(env, null, "aura-core");
+    if (src.ok && src.source) {
+      cmdNames = [...src.source.matchAll(/case "([A-Z][A-Z0-9_]{2,})":/g)].map(m => m[1]);
+      cmdNames = [...new Set(cmdNames)].sort();
+    }
+  } catch {}
   const sys =
     "You are Aura planning your OWN work. Decompose the goal into an ordered sequence of concrete steps.\n" +
     "RULES:\n" +
@@ -20272,8 +20283,10 @@ async function auraPlan(env, rest) {
     // was a helper I invented that does not exist - the fifth time this session a name was written before
     // it was checked. Read the neighbours; do not guess the helper.
     body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1200, system: sys,
-      messages: [{ role: "user", content: "GOAL: " + t + "\n\nYou currently have " +
-        (counts.command || "?") + " commands and " + (counts.function || "?") + " functions." }] }),
+      messages: [{ role: "user", content: "GOAL: " + t +
+        "\n\nTHESE ARE YOUR ACTUAL COMMANDS - every step must use one of these EXACT names or be a " +
+        "specific source edit. Do not invent a command that is not on this list:\n" +
+        cmdNames.join(", ") }] }),
   }, env);
   // brainFetch returns a RESPONSE, not parsed JSON - every other caller in this file does r.json() and
   // then reads d.content. Reading r.content directly gave "" and the decomposition looked like a model
@@ -20285,7 +20298,18 @@ async function auraPlan(env, rest) {
   try { steps = JSON.parse(txt.replace(/```json|```/g, "").trim()).steps || []; } catch {}
   if (!steps.length) return { ok: false, error: "could not decompose that into steps", raw: txt.slice(0, 300) };
 
-  const plan = { goal: t, at: new Date().toISOString(), steps: steps.slice(0, 7).map(x => ({ ...x, done: false })) };
+  // Check the plan against reality before storing it. The planner was TOLD the real names; if it still
+  // cites something that does not exist, that step is flagged rather than silently trusted - the same
+  // claim-vs-reality principle VERIFY applies to her self-description, applied to her plans.
+  const known = new Set(cmdNames);
+  const checked = steps.slice(0, 7).map(x => {
+    const cited = [...String(x.step || "").matchAll(/`([A-Z][A-Z0-9_]{2,})`|\b([A-Z][A-Z0-9_]{3,})\b/g)]
+      .map(m => m[1] || m[2]).filter(Boolean);
+    const bogus = [...new Set(cited)].filter(c => !known.has(c) && !["PROPOSE","VALIDATE","PROMOTE","APPROVE","VERIFY","JSON","API","KV"].includes(c));
+    return { ...x, done: false, ...(bogus.length ? { unverified_commands: bogus,
+      warning: "cites command(s) that do not exist in live source: " + bogus.join(", ") + " - this step needs rewriting before it can be executed" } : {}) };
+  });
+  const plan = { goal: t, at: new Date().toISOString(), steps: checked };
   await save(plan);
   try { await auraRemember(env, "PLANNED: " + t + " -> " + plan.steps.length + " steps", "plan"); } catch {}
   return { ok: true, goal: plan.goal, steps: plan.steps.map((x, i) => ({ n: i + 1, ...x })),

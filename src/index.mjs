@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.657-2026-07-21";
+const BUILD = "aura-core-v4.9.658-2026-07-21";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -20251,7 +20251,12 @@ async function auraPlan(env, rest) {
       messages: [{ role: "user", content: "GOAL: " + t + "\n\nYou currently have " +
         (counts.command || "?") + " commands and " + (counts.function || "?") + " functions." }] }),
   }, env);
-  const txt = r?.content?.[0]?.text || "";
+  // brainFetch returns a RESPONSE, not parsed JSON - every other caller in this file does r.json() and
+  // then reads d.content. Reading r.content directly gave "" and the decomposition looked like a model
+  // failure when it was a shape guess. Sixth time this session a shape or name was assumed rather than
+  // read from a neighbour; the neighbours are three lines away.
+  const d = await r.json().catch(() => ({}));
+  const txt = (d?.content || []).filter((b) => b?.type === "text").map((b) => b.text).join("");
   let steps = [];
   try { steps = JSON.parse(txt.replace(/```json|```/g, "").trim()).steps || []; } catch {}
   if (!steps.length) return { ok: false, error: "could not decompose that into steps", raw: txt.slice(0, 300) };

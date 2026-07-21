@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.644-2026-07-21";
+const BUILD = "aura-core-v4.9.645-2026-07-21";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -1363,24 +1363,34 @@ async function readOwnSource(env, branch, worker) {
 // No service binding exists from aura-core to aura-think, so this is a plain authenticated fetch.
 // If it fails, we fall back to the local brain rather than dropping the turn - a degraded answer beats
 // no answer, and the fallback names itself in the response so a silent regression cannot hide.
+// Returns { reply, ... } on success, or { failed: "<reason>" } so the caller can SAY why it fell back.
+// Guessing at a silent failure has cost this build more time than any bug in it - so it reports.
 async function proxyToAgent(env, line, isOp) {
   try {
-    if (!isOp) return null;   // public doorways keep the local path; the agent is operator-scoped
+    if (!isOp) return { failed: "not operator - public doorways keep the local path by design" };
     const tok = env.AURA_OPERATOR_TOKEN || await KV.get(env, "secret:aura_operator_token");
-    if (!tok) return null;
+    if (!tok) return { failed: "no operator token in env.AURA_OPERATOR_TOKEN or secret:aura_operator_token" };
     const base = (await KV.get(env, "config:agent:url"))
       || "https://aura-think.aaronkaracas.workers.dev/agents/aura-agent/aura-solid";
-    const r = await fetch(base + "/turn", {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: "Bearer " + tok },
-      body: JSON.stringify({ text: line, channel: "cmd" }),
-    });
-    const j = await r.json().catch(() => null);
-    if (j && j.ok && typeof j.reply === "string" && j.reply.trim()) {
+    let r;
+    try {
+      r = await fetch(base + "/turn", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer " + tok },
+        body: JSON.stringify({ text: line, channel: "cmd" }),
+      });
+    } catch (e) {
+      return { failed: "fetch threw: " + String(e?.message ?? e).slice(0, 160) + " (base=" + base + ")" };
+    }
+    const txt = await r.text().catch(() => "");
+    if (!r.ok) return { failed: "agent http " + r.status + ": " + txt.slice(0, 200) };
+    let j = null; try { j = JSON.parse(txt); } catch { return { failed: "agent returned non-JSON: " + txt.slice(0, 160) }; }
+    if (j && j.ok === false) return { failed: "agent said not ok: " + String(j.error || "").slice(0, 200) };
+    if (j && typeof j.reply === "string" && j.reply.trim()) {
       return { reply: j.reply, rung: j.rung || null, cost: j.turn_cost || null, via: "aura-think" };
     }
-    return null;
-  } catch { return null; }
+    return { failed: "agent replied with no usable text: " + txt.slice(0, 160) };
+  } catch (e) { return { failed: "proxy threw: " + String(e?.message ?? e).slice(0, 160) }; }
 }
 
 // ══ HER MEMORY IS NOT A PTA ══════════════════════════════════════════════════════════════════════
@@ -23993,15 +24003,16 @@ function openAlbum(idx){
         } else {
           // THE AGENT ANSWERS, NOT A SECOND BRAIN. Falls back to the local path only if the agent is
           // unreachable, and says so in the response so the fallback can never hide.
-          const viaAgent = await proxyToAgent(env, line, isOp);
-          const reply = viaAgent ? viaAgent.reply
-                                 : await llmReply(line, env, sessionId, isOp, request.headers.get("x-pta-entity") || null);
+          const agentTry = await proxyToAgent(env, line, isOp);
+          const ok = agentTry && agentTry.reply;
+          const reply = ok ? agentTry.reply
+                           : await llmReply(line, env, sessionId, isOp, request.headers.get("x-pta-entity") || null);
           if (lines.length === 1) {
-            return jsonReply(viaAgent
-              ? { ok: true, reply, via: "aura-think", rung: viaAgent.rung, turn_cost: viaAgent.cost }
-              : { ok: true, reply, via: "aura-core-local (agent unreachable - no conversation memory on this path)" });
+            return jsonReply(ok
+              ? { ok: true, reply, via: "aura-think", rung: agentTry.rung, turn_cost: agentTry.cost }
+              : { ok: true, reply, via: "aura-core-local", proxy_failed: agentTry && agentTry.failed });
           }
-          results.push({ cmd: "LLM", payload: { reply, via: viaAgent ? "aura-think" : "aura-core-local" } });
+          results.push({ cmd: "LLM", payload: { reply, via: ok ? "aura-think" : "aura-core-local", proxy_failed: ok ? undefined : (agentTry && agentTry.failed) } });
         }
       }
 

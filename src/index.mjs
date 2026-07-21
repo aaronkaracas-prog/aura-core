@@ -6,7 +6,7 @@
  */
 
 
-const BUILD = "aura-core-v4.9.652-2026-07-21";
+const BUILD = "aura-core-v4.9.653-2026-07-21";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -20247,17 +20247,29 @@ async function verifyAgainstReality(env) {
       ok: (p) => p && p.ok === true && typeof p.reply === "string" && p.reply.length > 50,
       why: "the shared memory block must be present and non-trivial - an empty one means both surfaces are running blind" },
   ];
+  // Timings are recorded because they are the ONE dimension of "better" that she cannot author.
+  // Correctness she defines (the expected shapes above are hers). Wall-clock is not - it is imposed by
+  // the runtime, the network and the providers. So at CONSTANT correctness, a faster run is genuinely a
+  // better run, measured externally. This is the honest half of "did the edit improve me": it proves
+  // performance improvement, never capability improvement. Capability still needs an outcome signal.
+  const timings = {};
   for (const t of semantic) {
+    const t0 = Date.now();
     try {
       const r = await processCommand(t.cmd, env, true);
       const good = t.ok(r?.payload);
+      timings[t.name] = Date.now() - t0;
       add("semantic:" + t.name, "`" + t.cmd + "` returns the expected shape",
-          good ? "correct shape" : "WRONG SHAPE or missing fields", good, good ? null : t.why);
+          (good ? "correct shape" : "WRONG SHAPE or missing fields") + " (" + timings[t.name] + "ms)",
+          good, good ? null : t.why);
     } catch (e) {
+      timings[t.name] = Date.now() - t0;
       add("semantic:" + t.name, "`" + t.cmd + "` returns the expected shape",
           "threw: " + String(e?.message ?? e).slice(0, 90), false, t.why);
     }
   }
+  out.timings_ms = timings;
+  out.timings_total_ms = Object.values(timings).reduce((a, b) => a + b, 0);
 
   // ── 5. DOMAINS: REGISTRAR vs CLOUDFLARE ─────────────────────────────────────────────────────
   try {
@@ -20283,7 +20295,8 @@ async function verifyAgainstReality(env) {
   // and the distinction is stated rather than blurred because blurring it is how a system starts
   // grading its own homework.
   try {
-    const snap = { at: out.at, failing: out.disagreements.map(d => d.check).sort(), build: BUILD };
+    const snap = { at: out.at, failing: out.disagreements.map(d => d.check).sort(), build: BUILD,
+                   timings_ms: out.timings_ms, timings_total_ms: out.timings_total_ms };
     const baseRaw = await env.AURA_KV.get("verify:baseline");
     const base = baseRaw ? JSON.parse(baseRaw) : null;
     if (base) {
@@ -20298,6 +20311,26 @@ async function verifyAgainstReality(env) {
         verdict: broke.length ? "REGRESSION - something that agreed with reality no longer does"
                : fixed.length ? "IMPROVED - fewer disagreements with reality than the baseline"
                : "UNCHANGED - same relationship to reality as the baseline",
+        // ══ THE HONEST HALF OF "DID THIS EDIT IMPROVE ME" ═══════════════════════════════════
+        // The Council was unanimous that proving an edit made her BETTER needs a signal she cannot
+        // author, and that revenue is the only non-spoofable one. That is true of CAPABILITY. It is not
+        // true of PERFORMANCE: she writes the expected shapes, but she does not write the clock. At
+        // constant correctness - every semantic check still passing - a faster run is a better run, and
+        // the measurement comes from the runtime, not from her.
+        // So this reports performance movement ONLY when correctness is unchanged. If anything broke,
+        // speed is irrelevant and is not offered as consolation.
+        performance: (() => {
+          const b = Number(base.timings_total_ms) || 0, n = Number(out.timings_total_ms) || 0;
+          if (!b || !n) return { comparable: false, why: "no timing baseline yet - set one with VERIFY baseline" };
+          if (broke.length) return { comparable: false, why: "correctness changed; speed is not a tradeable dimension against a regression" };
+          const pct = ((n - b) / b) * 100;
+          return { comparable: true, baseline_ms: b, now_ms: n, change_pct: +pct.toFixed(1),
+            verdict: pct <= -10 ? "FASTER at constant correctness - a real, externally measured improvement"
+                   : pct >= 10 ? "SLOWER at constant correctness - the edit cost performance"
+                   : "no meaningful change",
+            caveat: "This proves the same checks ran faster. It does NOT prove she got better at anything - " +
+                    "capability improvement still needs an outcome signal from outside, which is revenue." };
+        })(),
         note: broke.length && base.build !== BUILD
           ? "The build changed AND checks broke. Treat the edit as the cause until proven otherwise - roll back before debugging forward."
           : "Set a new baseline with VERIFY baseline once the current state is known-good.",

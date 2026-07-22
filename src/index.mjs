@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.677-2026-07-22";
+const BUILD = "aura-core-v4.9.678-2026-07-22";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -285,6 +285,27 @@ async function brainFetch(url, opts, env) {
         led.by_path["aura-core"] = (led.by_path["aura-core"] || 0) + cost;
         led.last = new Date().toISOString();
         await env.AURA_KV.put("burn:" + day, JSON.stringify(led), { expirationTtl: 90 * 24 * 3600 });
+
+        // ══ THE THIRD WRITER (found 2026-07-22 BY THE INVARIANT, on its first read) ═════════
+        // aura-think's counters were unified behind one chokepoint - and turns kept climbing while
+        // calls stayed frozen at 111. The integrity check said MISMATCH immediately, which is the
+        // entire reason it exists: it took minutes to find a writer that had been silently skewing
+        // the token ledger for as long as it existed, instead of the tenth argument about why the
+        // numbers never line up.
+        // THIS is that writer. aura-core's own brain increments the SHARED burn ledger - correctly,
+        // it is real spend - but never touched meter:tokens, so every aura-core turn added a `turn`
+        // with no matching `call`. The token ledger is the denominator for calibrating a rate against
+        // what a provider actually billed, so a short denominator makes every derived price wrong.
+        // Both workers now write both counters. calls === turns because nothing increments one alone.
+        const _tk = "meter:tokens:" + day;
+        const _traw = await env.AURA_KV.get(_tk);
+        const _t = _traw ? JSON.parse(_traw) : { day, in: 0, out: 0, cache_read: 0, cache_write: 0, calls: 0 };
+        _t.in += Number(inTok) || 0;
+        _t.out += Number(outTok) || 0;
+        _t.cache_read += Number(cachedIn) || 0;
+        _t.cache_write += Number(cacheWrite) || 0;
+        _t.calls += 1;
+        await env.AURA_KV.put(_tk, JSON.stringify(_t), { expirationTtl: 120 * 24 * 3600 });
       }
     } catch {}
   } catch {}

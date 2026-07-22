@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.675-2026-07-22";
+const BUILD = "aura-core-v4.9.676-2026-07-22";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -21858,6 +21858,91 @@ async function balanceReport(env, apiBalances) {
 
 // The reconciler. Pulls every proven provider, sums the truth, compares it to what WE metered that day,
 // and stores both plus the gap. The gap is the product: a number nobody else in this stack can show you.
+// ══ USAGE ADAPTERS ── TOKENS AND REQUESTS, NOT JUST DOLLARS ══════════════════════════════════════
+// Aaron: "the amount of requests, the amount of tokens, the exact penny spent - everything's gonna
+// match." The cost adapters below have always pulled DOLLARS from each provider's billing API. Nothing
+// ever compared TOKEN COUNTS or REQUEST COUNTS, so the meter could be right about money for the wrong
+// reason - or wrong about volume and never know.
+// Our side already has both: meter:tokens:<day> records in / out / cache_read / cache_write / calls.
+// These fetch the provider's own view of the same day.
+//
+// WRITTEN DEFENSIVELY ON PURPOSE: each returns { ok:false, raw } when the response shape is not what was
+// expected, instead of coercing a number out of it. A reconciler that invents a match is worse than one
+// that says it could not read the answer - the whole point of this command is that it cannot be fooled.
+async function _usageAnthropic(env, day) {
+  const key = env.ANTHROPIC_ADMIN_KEY;
+  if (!key) return { ok: false, error: "no ANTHROPIC_ADMIN_KEY" };
+  const next = new Date(day + "T00:00:00Z"); next.setUTCDate(next.getUTCDate() + 1);
+  const url = "https://api.anthropic.com/v1/organizations/usage_report/messages?starting_at=" + day +
+              "T00:00:00Z&ending_at=" + _ymd(next) + "T00:00:00Z";
+  try {
+    const r = await fetch(url, { headers: { "x-api-key": key, "anthropic-version": "2023-06-01" } });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return { ok: false, error: (d?.error?.message || JSON.stringify(d)).slice(0, 200) };
+    let tin = 0, tout = 0, cread = 0, cwrite = 0, reqs = 0, sawShape = false;
+    for (const bucket of (d?.data || [])) {
+      for (const res of (bucket?.results || [])) {
+        sawShape = true;
+        tin   += Number(res?.uncached_input_tokens) || 0;
+        cread += Number(res?.cache_read_input_tokens) || 0;
+        cwrite+= Number(res?.cache_creation_input_tokens ?? res?.cache_creation?.ephemeral_5m_input_tokens) || 0;
+        tout  += Number(res?.output_tokens) || 0;
+        reqs  += Number(res?.num_requests ?? res?.request_count ?? 0) || 0;
+      }
+    }
+    if (!sawShape) return { ok: false, error: "unrecognised usage shape - reporting raw so it can be fixed against reality", raw: JSON.stringify(d).slice(0, 700) };
+    return { ok: true, in: tin, out: tout, cache_read: cread, cache_write: cwrite, requests: reqs };
+  } catch (e) { return { ok: false, error: String(e?.message ?? e) }; }
+}
+
+async function _usageOpenai(env, day) {
+  const key = env.OPENAI_ADMIN_KEY;
+  if (!key) return { ok: false, error: "no OPENAI_ADMIN_KEY" };
+  const start = Math.floor(new Date(day + "T00:00:00Z").getTime() / 1000);
+  const url = "https://api.openai.com/v1/organization/usage/completions?start_time=" + start +
+              "&end_time=" + (start + 86400) + "&limit=31";
+  try {
+    const r = await fetch(url, { headers: { "Authorization": "Bearer " + key } });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return { ok: false, error: (d?.error?.message || JSON.stringify(d)).slice(0, 200) };
+    let tin = 0, tout = 0, cread = 0, reqs = 0, sawShape = false;
+    for (const bucket of (d?.data || [])) {
+      for (const res of (bucket?.results || [])) {
+        sawShape = true;
+        tin  += Number(res?.input_tokens) || 0;
+        cread+= Number(res?.input_cached_tokens) || 0;
+        tout += Number(res?.output_tokens) || 0;
+        reqs += Number(res?.num_model_requests) || 0;
+      }
+    }
+    if (!sawShape) return { ok: false, error: "unrecognised usage shape - reporting raw so it can be fixed against reality", raw: JSON.stringify(d).slice(0, 700) };
+    return { ok: true, in: tin, out: tout, cache_read: cread, cache_write: 0, requests: reqs };
+  } catch (e) { return { ok: false, error: String(e?.message ?? e) }; }
+}
+
+async function _usageXai(env, day) {
+  const key = env.XAI_MANAGEMENT_KEY;
+  if (!key) return { ok: false, error: "no XAI_MANAGEMENT_KEY" };
+  const team = (await env.AURA_KV.get("config:xai:team_id").catch(() => null)) || "859f5690-e3bb-464e-b829-9b8ff5b56180";
+  // Same analytics endpoint the cost adapter uses; different metrics. The exact metric names are NOT
+  // documented publicly - if these are wrong the raw response comes back and gets corrected once.
+  const body = { analyticsRequest: {
+    timeRange: { startTime: day + " 00:00:00", endTime: day + " 23:59:59", timezone: "Etc/GMT" },
+    timeUnit: "TIME_UNIT_DAY",
+    values: [{ name: "tokens", aggregation: "AGGREGATION_SUM" }, { name: "requests", aggregation: "AGGREGATION_SUM" }],
+    groupBy: [], filters: [],
+  } };
+  try {
+    const r = await fetch("https://management-api.x.ai/v1/billing/teams/" + team + "/usage", {
+      method: "POST", headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return { ok: false, error: (d?.message || JSON.stringify(d)).slice(0, 300), raw: JSON.stringify(d).slice(0, 500) };
+    return { ok: false, error: "xAI usage metric names unverified - raw returned for one-time correction", raw: JSON.stringify(d).slice(0, 900) };
+  } catch (e) { return { ok: false, error: String(e?.message ?? e) }; }
+}
+
 async function reconcileTrueCost(env, day) {
   const d = day || _yesterday();
   const providers = {};
@@ -21896,15 +21981,62 @@ async function reconcileTrueCost(env, day) {
     const sp = await env.AURA_KV.get("meter:spend:" + d);
     if (sp) { meteredParts.text = +parseFloat(sp).toFixed(6); metered += parseFloat(sp) || 0; }
   } catch {}
-  for (const [k, label] of [["meter:images:", "images"], ["meter:videos:", "videos"]]) {
+  // FOUR LANES, NOT THREE (fixed 2026-07-22). This summed text + images + videos and omitted
+  // meter:core - aura-core's own brain. So the reconciler compared what the providers ACTUALLY billed
+  // against three quarters of our spend, and the resulting ratio was wrong in our favour, every day,
+  // silently. It is the same omission AIMARGIN had, in the one command whose entire job is to catch
+  // exactly this kind of discrepancy.
+  for (const [k, label] of [["meter:images:", "images"], ["meter:videos:", "videos"], ["meter:core:", "core_brain"]]) {
     try {
       const raw = await env.AURA_KV.get(k + d);
       if (raw) { const j = JSON.parse(raw); const c = Number(j?.cost_usd) || 0; meteredParts[label] = c; metered += c; }
     } catch {}
   }
 
+  // ══ THE MATCH ── REQUESTS, TOKENS, PENNIES ═══════════════════════════════════════════════
+  // Aaron's requirement, in his words: "the amount of requests, the amount of tokens, the exact penny
+  // spent - everything's gonna match." It does not have to match backwards; it has to match FORWARD.
+  // Ours comes from meter:tokens:<day> (in / out / cache_read / cache_write / calls), written on every
+  // billed call. Theirs comes from each provider's own usage endpoint. Where an adapter cannot read a
+  // provider, that provider says so - it is never quietly dropped from the comparison, because a match
+  // computed over the providers that happened to answer is not a match.
+  const usage = {};
+  usage.anthropic = await _usageAnthropic(env, d).catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
+  usage.openai    = await _usageOpenai(env, d).catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
+  usage.xai       = await _usageXai(env, d).catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
+  usage.google    = { ok: false, error: "adapter not built" };
+  usage.meta      = { ok: false, error: "adapter not built" };
+
+  let ours = { in: 0, out: 0, cache_read: 0, cache_write: 0, calls: 0 };
+  try { const t = await env.AURA_KV.get("meter:tokens:" + d); if (t) ours = { ...ours, ...JSON.parse(t) }; } catch {}
+
+  const covered = Object.entries(usage).filter(([, u]) => u.ok);
+  const theirs = covered.reduce((a, [, u]) => ({
+    in: a.in + (u.in || 0), out: a.out + (u.out || 0),
+    cache_read: a.cache_read + (u.cache_read || 0), cache_write: a.cache_write + (u.cache_write || 0),
+    requests: a.requests + (u.requests || 0),
+  }), { in: 0, out: 0, cache_read: 0, cache_write: 0, requests: 0 });
+
+  const pct = (o, t) => (t > 0 ? +(((o - t) / t) * 100).toFixed(2) : null);
+  const match = {
+    since: (await env.AURA_KV.get("config:reconcile:since").catch(() => null)) || "not set - run RECONCILE ANCHOR to mark the first day that must match",
+    providers_readable: covered.map(([n]) => n),
+    providers_blind: Object.entries(usage).filter(([, u]) => !u.ok).map(([n, u]) => n + " (" + (u.error || "?") + ")"),
+    requests: { ours: ours.calls || 0, theirs: theirs.requests, delta: (ours.calls || 0) - theirs.requests, pct: pct(ours.calls || 0, theirs.requests) },
+    tokens_in: { ours: ours.in || 0, theirs: theirs.in, delta: (ours.in || 0) - theirs.in, pct: pct(ours.in || 0, theirs.in) },
+    tokens_out: { ours: ours.out || 0, theirs: theirs.out, delta: (ours.out || 0) - theirs.out, pct: pct(ours.out || 0, theirs.out) },
+    cache_read: { ours: ours.cache_read || 0, theirs: theirs.cache_read, delta: (ours.cache_read || 0) - theirs.cache_read },
+    verdict: covered.length === 0
+      ? "CANNOT VERIFY - no provider usage endpoint could be read. This is not a match; it is a blind spot."
+      : (Math.abs((ours.calls || 0) - theirs.requests) <= 2 && Math.abs(pct(ours.in || 0, theirs.in) || 0) < 2
+          ? "MATCH within tolerance across " + covered.length + " provider(s)"
+          : "MISMATCH - our counters and the providers' disagree. Investigate before trusting any cost figure."),
+  };
+
   const report = {
     day: d,
+    match,
+    usage_by_provider: usage,
     true_cost_usd: +trueTotal.toFixed(4),
     metered_usd: +metered.toFixed(4),
     gap_usd: +(trueTotal - metered).toFixed(4),

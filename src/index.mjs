@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.665-2026-07-22";
+const BUILD = "aura-core-v4.9.666-2026-07-22";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -24608,19 +24608,29 @@ function openAlbum(idx){
             // anyway, twice, because it also returned ok:true with the local brain's prose in the
             // `reply` field. Nobody reads a metadata flag when the sentence above it says "Done."
             // MEASURED 2026-07-22: `DELKV test:redteam` came back "Done. test:redteam has been
-            // deleted from KV." with proxy_failed set on the same object. The local brain has no
-            // tools. It deleted nothing. It described a deletion. Earlier the same path invented
-            // "[EXISTING_TASKS_PLUS_NEW_TASK]" as though it were data.
-            // So the fallback no longer gets to be an ANSWER. ok goes false, the prose moves to a
-            // field whose name makes it unusable as a result, and the error says what to do. A
-            // capability that fails silently looks exactly like one that works - and one that fails
-            // FLUENTLY is worse, because it manufactures evidence that the thing happened.
+            // deleted from KV." with proxy_failed set on the same object. A direct read of the KV
+            // namespace afterwards returned 404 - THE KEY WAS GENUINELY GONE. So this path did not
+            // describe a deletion, it PERFORMED one: llmReply calls processCommand(cmd, env, isOp),
+            // which means the local fallback executes real commands with operator privileges.
+            // THE CORRECTION THAT MATTERS: the first version of this fix said "no action was taken by
+            // this path." That was FALSE, and false in the dangerous direction - a caller trusting it
+            // would retry a mutation that had already succeeded. An error message that overclaims
+            // failure is worse than one that overclaims success, because retrying is the natural
+            // response to it.
+            // What IS true: the local path has no session memory, no agent tools and no archive, and
+            // the same path separately emitted "[EXISTING_TASKS_PLUS_NEW_TASK]" as though it were
+            // data. So it is UNRELIABLE AS A NARRATOR while being FULLY CAPABLE AS AN ACTOR - the
+            // worst combination to report as ok:true with a confident sentence. It is marked degraded,
+            // its prose is demoted out of `reply`, and the error says: verify state before retrying.
             return jsonReply(ok
               ? { ok: true, reply, via: "aura-think", rung: agentTry.rung, turn_cost: agentTry.cost }
               : { ok: false,
-                  error: "BRAIN UNREACHABLE - this did NOT run against the agent. Nothing below was " +
-                         "verified and no action was taken by this path. Retry; if it persists, check " +
-                         "wrangler tail for [FAILOVER] or provider errors.",
+                  error: "BRAIN UNREACHABLE - the agent did not answer, so this ran on the LOCAL path. " +
+                         "That path CAN EXECUTE REAL COMMANDS with operator privileges, so the action " +
+                         "MAY ALREADY HAVE HAPPENED - it just ran without session memory, without the " +
+                         "agent's tools, and without the archive. DO NOT BLINDLY RETRY A MUTATION: verify " +
+                         "the current state first, or you may perform it twice. Check wrangler tail for " +
+                         "[FAILOVER] or provider errors.",
                   via: "aura-core-local",
                   degraded: true,
                   proxy_failed: agentTry && agentTry.failed,
@@ -24629,7 +24639,8 @@ function openAlbum(idx){
           results.push(ok
             ? { cmd: "LLM", payload: { reply, via: "aura-think" } }
             : { cmd: "LLM", payload: { ok: false, degraded: true, via: "aura-core-local",
-                error: "BRAIN UNREACHABLE - not run against the agent, nothing verified, no action taken.",
+                error: "BRAIN UNREACHABLE - ran on the local path, which CAN execute real commands. The " +
+                       "action may already have happened. Verify state before retrying.",
                 proxy_failed: agentTry && agentTry.failed, unverified_local_text: reply } });
         }
       }

@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.676-2026-07-22";
+const BUILD = "aura-core-v4.9.677-2026-07-22";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17103,6 +17103,35 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
             honest_note: "text_usd above is C1 ONLY. The real bill is C1 + C6 + four cost centers this " +
                          "engine cannot currently see. Do not read a small C1 as a small bill.",
           };
+        })(),
+        // ══ THE INVARIANT ── COUNTERS MUST AGREE, OR THIS SAYS SO EVERY TIME ═══════════════
+        // Aaron: "I've done this ten times now and it keeps circling back - I don't know how to keep it
+        // locked down." The reason it came back is that nothing ever CHECKED. Each counter was written by
+        // its own call site, and a disagreement was only discovered when a human happened to read two
+        // numbers on the same day and notice. Measured 2026-07-22: burn said 633 turns, meter:tokens said
+        // 111 calls - a 5.7x gap that existed for as long as the second write site did, invisible because
+        // no code compared them.
+        // A single writer (_meterCall in aura-think) makes them agree. THIS makes a future divergence
+        // impossible to miss: it runs on every status read and reports MISMATCH in the payload rather
+        // than waiting to be noticed. That is the lock - not a marker, not a comment, an invariant that
+        // fails loudly. If an eighth counter appears tomorrow, this catches it the first time anyone
+        // looks, instead of the tenth time it is argued about.
+        counter_integrity: await (async () => {
+          try {
+            const t = JSON.parse((await kvg("meter:tokens:" + day, "{}")) || "{}");
+            const b = JSON.parse((await kvg("burn:" + day, "{}")) || "{}");
+            const calls = Number(t.calls) || 0, turns = Number(b.turns) || 0;
+            if (!calls && !turns) return { ok: true, note: "no billed calls yet today" };
+            const drift = turns > 0 ? Math.abs(calls - turns) / turns : 1;
+            return drift <= 0.02
+              ? { ok: true, calls, turns, note: "token ledger and burn ledger agree" }
+              : { ok: false, MISMATCH: true, calls, turns, delta: calls - turns,
+                  note: "COUNTER DIVERGENCE - meter:tokens counted " + calls + " calls and burn:<day> " +
+                        "counted " + turns + " turns for the same day. Both are written by one chokepoint " +
+                        "and MUST agree; a gap means a second writer exists. Do NOT trust any per-token " +
+                        "rate derived from meter:tokens until this is zero - the denominator is wrong, so " +
+                        "every calibrated price built on it is wrong too." };
+          } catch (e) { return { ok: false, error: "integrity check failed: " + (e && e.message) }; }
         })(),
         meter_health: insane ? ("CORRUPT - " + insane + " impossible cost(s) refused; a rate table is wrong")
                              : "sane (no impossible costs refused)",

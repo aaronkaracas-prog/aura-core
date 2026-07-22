@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.680-2026-07-22";
+const BUILD = "aura-core-v4.9.681-2026-07-22";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -149,16 +149,51 @@ async function callBrain({ system, user, max_tokens = 2000, model = null, temper
 // brainFetch left core_brain reading $0.00 while the /chat path - the busiest one - spent freely.
 // That is the incomplete pattern one layer down: hook a funnel, miss its sibling. So the accounting
 // lives in ONE function both call, and any third path added later calls this too.
+// ══ ONE RATE LOOKUP FOR THIS WORKER ═════════════════════════════════════════════════════════════
+// meterCoreBrain carried its own hardcoded Anthropic prices - which made FOUR rate tables in this
+// system (server.ts MODEL_RATES, config:rate:published, config:rate:calibrated, and this one). The
+// egress meter needed prices too and adding a fifth would be the fossil pattern with a new name.
+// So the numbers live here once and both callers use them. STILL NOT THE FINAL ANSWER: aura-think has
+// its own table, so there are two workers with one table each instead of one shared source. The right
+// end state is a rate card in KV that both read and that PRICES/CALIBRATE writes - that is the next
+// consolidation, and it is named here so it is not rediscovered a fifth time.
+function _rateFor(model) {
+  const m = String(model || "").toLowerCase();
+  if (m.includes("opus"))   return { in: 15,   out: 75,  cacheRead: 1.5,  cacheWrite: 18.75 };
+  if (m.includes("haiku"))  return { in: 1,    out: 5,   cacheRead: 0.1,  cacheWrite: 1.25 };
+  if (m.includes("sonnet") || m.includes("claude")) return { in: 3, out: 15, cacheRead: 0.3, cacheWrite: 3.75 };
+  if (m.includes("grok-4.5")) return { in: 0.20, out: 0.60, cacheRead: 0.03, cacheWrite: 0.20 };
+  if (m.includes("grok"))     return { in: 0.10, out: 0.20, cacheRead: 0.02, cacheWrite: 0.10 };
+  if (m.includes("gpt-5"))    return { in: 5.00, out: 30.0, cacheRead: 0.50, cacheWrite: 5.00 };
+  if (m.includes("gpt"))      return { in: 2.50, out: 10.0, cacheRead: 0.25, cacheWrite: 2.50 };
+  if (m.includes("gemini"))   return { in: 0.10, out: 0.40, cacheRead: 0.01, cacheWrite: 0.10 };
+  if (m.includes("muse") || m.includes("llama")) return { in: 0, out: 0, cacheRead: 0, cacheWrite: 0 };
+  return { in: 0, out: 0, cacheRead: 0, cacheWrite: 0 };   // unknown model prices at zero and SAYS so
+}
+
 async function meterCoreBrain(env, model, inTok, cachedIn, cacheWrite, outTok) {
+  // ══ RETIRED AS A WRITER (demolition step 1, 2026-07-22) ══════════════════════════════════════
+  // brainFetch already records every Anthropic call in the egress ledger (egress:<day>) via pfetch.
+  // This function ALSO wrote meter:core:<day> for the same calls - so the same tokens were counted
+  // twice the instant the egress meter went live. Before meter:core can become a VIEW over egress
+  // (which is the whole demolition), this writer has to stop, or the view double-counts against the
+  // raw writes still landing here. It returns the priced cost for any caller that used the return
+  // value, but it no longer writes a second ledger. The egress meter is the one writer now.
+  try {
+    if (!env) return 0;
+    const m = String(model || "");
+    const R = _rateFor(m);
+    const _fresh = Math.max(0, (inTok || 0) - (cachedIn || 0));
+    return (_fresh * R.in + (cachedIn || 0) * R.cacheRead + (cacheWrite || 0) * R.cacheWrite + (outTok || 0) * R.out) / 1e6;
+  } catch { return 0; }
+  // eslint-disable-next-line no-unreachable
   try {
     if (!env || !env.AURA_KV) return 0;
     const m = String(model || "");
-    const isOpus = m.includes("opus"), isHaiku = m.includes("haiku");
-    const inRate = isOpus ? 15 : isHaiku ? 1 : 3;
-    const outRate = isOpus ? 75 : isHaiku ? 5 : 15;
+    const R = _rateFor(m);
     const fresh = Math.max(0, (inTok || 0) - (cachedIn || 0));
-    const cost = (fresh * inRate + (cachedIn || 0) * inRate * 0.1
-                  + (cacheWrite || 0) * inRate * 1.25 + (outTok || 0) * outRate) / 1e6;
+    const cost = (fresh * R.in + (cachedIn || 0) * R.cacheRead
+                  + (cacheWrite || 0) * R.cacheWrite + (outTok || 0) * R.out) / 1e6;
     if (!(cost > 0)) return 0;
     const d = new Date().toISOString().slice(0, 10);
     const k = "meter:core:" + d;
@@ -208,9 +243,17 @@ async function _egressCore(env, rec) {
     led.calls += 1;
     if (!rec.status || rec.status >= 400) led.errors += 1;
     led.tokens_in += tin; led.tokens_out += tout; led.cached_in += tcache;
+    // PRICE IT. The first version recorded aura-core's tokens and left cost at zero, so brainFetch's
+    // Anthropic traffic showed up as 3 calls and 6,356 tokens for $0.00 - visible at last, and still
+    // wrong in the direction that matters for a margin engine.
+    const R = _rateFor(rec.model);
+    const fresh = Math.max(0, tin - tcache);
+    const cost = (fresh * R.in + tcache * R.cacheRead + cwrite * R.cacheWrite + tout * R.out) / 1e6;
+    led.cost_usd = +((led.cost_usd || 0) + cost).toFixed(6);
     const bump = (bag, key) => {
       bag[key] = bag[key] || { calls: 0, in: 0, out: 0, cached: 0, cost: 0 };
       bag[key].calls += 1; bag[key].in += tin; bag[key].out += tout; bag[key].cached += tcache;
+      bag[key].cost = +(((bag[key].cost || 0) + cost)).toFixed(6);
     };
     bump(led.by_provider, rec.provider);
     bump(led.by_caller, rec.caller || "unlabelled");

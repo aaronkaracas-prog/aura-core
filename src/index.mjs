@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.669-2026-07-22";
+const BUILD = "aura-core-v4.9.671-2026-07-22";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16915,7 +16915,20 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           if (v && v.trim()) pins[k] = v.trim();
         }
       } catch {}
-      const spendToday = Number(await kvg("meter:spend:" + day, "0")) || 0;
+      // ══ ONE TOTAL, FROM THE SAME FOUR LEDGERS THE BURN PATH SUMS (v4.9.670) ═══════════════
+      // AIMARGIN reported meter:spend alone and called it the day's cost. The burn ledger sums FOUR -
+      // text, images, video, and meter:core, which is aura-core's OWN brain (every /chat turn and the
+      // ~29 Anthropic call sites behind brainFetch). So the two doors that both answer "what did today
+      // cost" disagreed by exactly the core lane, every single day - Aaron chased the same 8 cents in
+      // two separate sessions because it was never noise, it was a whole worker missing from one view.
+      // Both doors now read the same keys, so they cannot drift apart again by construction. This is
+      // the engine whose thesis is one honest number; it does not get to have two.
+      const spendText = Number(await kvg("meter:spend:" + day, "0")) || 0;
+      let spendCore = 0, spendImg = 0, spendVid = 0;
+      try { spendCore = Number(JSON.parse(await kvg("meter:core:" + day, "{}")).cost_usd) || 0; } catch {}
+      try { spendImg = Number(JSON.parse(await kvg("meter:images:" + day, "{}")).cost_usd) || 0; } catch {}
+      try { spendVid = Number(JSON.parse(await kvg("meter:videos:" + day, "{}")).cost_usd) || 0; } catch {}
+      const spendToday = +(spendText + spendCore + spendImg + spendVid).toFixed(6);
       const cap = Number(await kvg("config:budget:daily", "5")) || 5;
       let images = {}, videos = {};
       try { images = JSON.parse(await kvg("meter:images:" + day, "{}")); } catch {}
@@ -17002,8 +17015,11 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           }
           return out;
         })() }),
-        spend_today: { text_usd: +spendToday.toFixed(4), cap_usd: cap,
+        spend_today: { total_usd: +spendToday.toFixed(4), cap_usd: cap,
                        used_pct: +((spendToday / cap) * 100).toFixed(1),
+                       lanes: { text: +spendText.toFixed(4), core_brain: +spendCore.toFixed(4),
+                                images: +spendImg.toFixed(4), video: +spendVid.toFixed(4) },
+                       reconciles_with: "my_burn / AUDIT - same four ledgers, same total",
                        images, videos },
         // ══ THE SIX COST CENTERS - AND WHICH ONES THIS ENGINE CAN ACTUALLY SEE ═══════════════
         // AIMARGIN's own thesis: "a token dashboard is a fuel gauge on a car with no odometer",
@@ -17017,6 +17033,50 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         // C2-C5 are NOT METERED and this block says so out loud rather than letting a small C1
         // number imply a small bill. A gauge that omits a cost center silently is worse than one
         // that names what it cannot see.
+        // ══ COST PER OUTCOME - THE PRODUCT, AND AN HONEST ZERO UNTIL IT IS GRADED ═══════════
+        // Every turn now writes ledger:claim:<id> with its cost and verdict. This aggregates today's
+        // rows. It reports cost_per_correct ONLY when claims have actually been graded - an ungraded
+        // corpus produces "not computable", never a number. The spec's whole complaint about every
+        // other tool is that they report a figure they cannot support; a margin engine that invented
+        // cost-per-correct from ungraded rows would be the same sin with better branding.
+        outcomes_today: await (async () => {
+          try {
+            // READS THE LEDGER THAT ALREADY EXISTS. PART TEN was fully built - aura-think writes a row
+            // per call to aimargin:row:<claim_id> with door, intent, level, model, token split, latency,
+            // cost and an outcome grade (ok | degraded | failed) from turn-end signals, plus a
+            // failure_tax_usd field and an outcome_source so SecureSpend or hindcast can overwrite the
+            // grade with a stronger truth later. NOTHING READ IT. The product was one aggregation away
+            // from existing and the ledger had been filling the whole time.
+            const ks = ((await env.AURA_KV.list({ prefix: "aimargin:row:clm_" + day.replace(/-/g, ""), limit: 1000 }))?.keys || []);
+            let n = 0, usd = 0, ok = 0, degraded = 0, failed = 0, ungraded = 0, ftax = 0;
+            const byDoor = {};
+            for (const k of ks) {
+              try {
+                const r = JSON.parse(await env.AURA_KV.get(k.name));
+                n++;
+                const c = Number(r.cost_usd) || 0; usd += c;
+                ftax += Number(r.failure_tax_usd) || 0;
+                const d = r.door || "unknown";
+                byDoor[d] = +(((byDoor[d] || 0) + c)).toFixed(4);
+                if (r.outcome === "ok") ok++;
+                else if (r.outcome === "degraded") degraded++;
+                else if (r.outcome === "failed") failed++;
+                else ungraded++;
+              } catch {}
+            }
+            const graded = ok + degraded + failed;
+            return { claims: n, cost_usd: +usd.toFixed(4), ok, degraded, failed, ungraded,
+              failure_tax_usd: +ftax.toFixed(4),
+              cost_per_ok_outcome: ok > 0 ? +(usd / ok).toFixed(4) : null,
+              cost_by_door: byDoor,
+              grade_source: "turn_signal (empty=failed, escalated=degraded, else ok). SecureSpend " +
+                            "settlement and hindcast are the stronger truths and overwrite it when they exist.",
+              note: ok === 0
+                ? "cost per outcome NOT COMPUTABLE - " + n + " rows, none graded ok yet"
+                : "THIS IS THE PRODUCT: $" + (usd / ok).toFixed(4) + " per working outcome across " +
+                  n + " calls today, not cost per token" };
+          } catch { return { claims: 0, note: "ledger unreadable" }; }
+        })(),
         cost_centers: await (async () => {
           const fRaw = await kvg("meter:failure:" + day, null);
           let fail = { usd: 0, events: 0 };

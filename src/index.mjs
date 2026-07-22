@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.667-2026-07-22";
+const BUILD = "aura-core-v4.9.668-2026-07-22";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16882,6 +16882,13 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       // Zero burn: KV reads and arithmetic, no model call.
       if (!isOp) return { cmd: "AIMARGIN", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const kvg = async (k, d) => (await env.AURA_KV.get(k).catch(() => null)) ?? d;
+      // ══ STATUS IS LIVE STATE. DETAIL IS THE INVENTORY. ═══════════════════════════════════
+      // The built/not-built lists are ~1,500 chars of static prose that rode in EVERY status read,
+      // and the payload grew past the tool-result bound - so the one command whose whole job is
+      // "show me the engine" came back truncated with a provider missing. The fix is not a bigger
+      // bound; it is that a status read should carry what CHANGES, and an inventory that changes
+      // twice a month belongs behind its own word. `AIMARGIN detail` prints it.
+      const _wantDetail = /\bdetail|inventory|built\b/i.test(rest || "");
       const day = new Date().toISOString().slice(0, 10);
 
       const lanes = {
@@ -16984,10 +16991,43 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         spend_today: { text_usd: +spendToday.toFixed(4), cap_usd: cap,
                        used_pct: +((spendToday / cap) * 100).toFixed(1),
                        images, videos },
+        // ══ THE SIX COST CENTERS - AND WHICH ONES THIS ENGINE CAN ACTUALLY SEE ═══════════════
+        // AIMARGIN's own thesis: "a token dashboard is a fuel gauge on a car with no odometer",
+        // "inference is usually not even the biggest one", and C6 THE FAILURE TAX "is the entire
+        // product". Until 2026-07-22 this command reported ONE number - text_usd - which is C1,
+        // inference, alone. It was the fuel gauge it exists to replace, and it did not say so.
+        // C6 is now measured: aura-think writes meter:failure:<day> whenever a turn dies, retries
+        // itself, or comes back empty, so the cost of BEING WRONG is separated from the cost of
+        // working. Proven live the day it shipped - four dead turns at ~$0.04 each during a provider
+        // outage had been landing in text_usd as if they were answers.
+        // C2-C5 are NOT METERED and this block says so out loud rather than letting a small C1
+        // number imply a small bill. A gauge that omits a cost center silently is worse than one
+        // that names what it cannot see.
+        cost_centers: await (async () => {
+          const fRaw = await kvg("meter:failure:" + day, null);
+          let fail = { usd: 0, events: 0 };
+          try { if (fRaw) fail = JSON.parse(fRaw); } catch {}
+          const c1 = +spendToday.toFixed(4);
+          const c6 = +(Number(fail.usd) || 0).toFixed(4);
+          return {
+            C1_inference: { usd: c1, metered: true },
+            C6_failure_tax: { usd: c6, events: Number(fail.events) || 0, metered: true,
+              share_of_spend: c1 > 0 ? +((c6 / c1) * 100).toFixed(1) + "%" : "0%",
+              what_counts: "dead turns, self-heal retries, empty answers - the cost of being wrong, " +
+                           "separated from the cost of working. The spec calls this the entire product." },
+            C2_embeddings:   { metered: false, note: "Vectorize writes/queries are not on the meter" },
+            C3_storage_egress:{ metered: false, note: "KV, D1, R2 and DO hours are not on the meter" },
+            C4_vector_store: { metered: false, note: "the spec calls this the single most expensive line in a RAG system" },
+            C5_human_review: { metered: false, note: "every approval gate and escalation costs more per event than any model call" },
+            honest_note: "text_usd above is C1 ONLY. The real bill is C1 + C6 + four cost centers this " +
+                         "engine cannot currently see. Do not read a small C1 as a small bill.",
+          };
+        })(),
         meter_health: insane ? ("CORRUPT - " + insane + " impossible cost(s) refused; a rate table is wrong")
                              : "sane (no impossible costs refused)",
         balances,
-        built: ["policy engine (text/image/core/video/style lanes)", "5 providers with measured floors",
+        ...(!_wantDetail ? { inventory: "run `AIMARGIN detail` for what is built and what is deliberately not" } : {}),
+        ...(!_wantDetail ? {} : { built: ["policy engine (text/image/core/video/style lanes)", "5 providers with measured floors",
                 "PRICE DISCOVERY - reads xAI's published per-model prices (PRICES)",
                 "aura-core brain metered (meter:core) - both Anthropic funnels",
                 "prompt caching on the /chat path (~9x cut on conversational turns)",
@@ -16997,7 +17037,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         not_built_on_purpose: ["auto rate calibration (compounded twice - manual CALIBRATE only; published price is the source of truth)",
                                "Google/Meta cost adapters (GCP export; Meta is free)",
                                "Batch API 50% lane (saves ~10c/day - fails its own value test)",
-                               "onboarding other operators (Aaron is client #1)"],
+                               "onboarding other operators (Aaron is client #1)"] }),
         commands: { status: "AIMARGIN", audit: "AUDIT [force]", truecost: "GET /truecost?date=&force=1",
                     budget: "GET /budget", calibrate: "CALIBRATE (manual, after a model repricing)",
                     keys: "SERVICE_STATUS", council: "GET /council?q=&web=1 ON AURA-THINK (not aura-core)", hindcast: "GET /hindcast?model=" },

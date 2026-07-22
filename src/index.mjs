@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.666-2026-07-22";
+const BUILD = "aura-core-v4.9.667-2026-07-22";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2451,7 +2451,18 @@ async function processCommand(line, env, isOp) {
         // This binds the CODE-editing power to the same constitution that binds note-writing (AURA_BOUNDARY):
         // she cannot quietly weaken her own laws or cage by rewriting the code that enforces them. Everything
         // else evolves freely - deny-by-default on the CONSTITUTION only, allow-by-default on all capability.
-        const CONSTITUTIONAL_MARKERS = ["auraSelfEngineCanWrite", "SELF_ENGINE_WRITE_ALLOW", "SELF_ENGINE_PROTECTED", "notes:aura:law", "notes:aura:identity", "CONSTITUTIONAL_MARKERS", "case \"AURA_BOUNDARY\"", "case \"AURA_PROMOTE\"", "case \"AURA_PROPOSE\"", "OVERRIDE_CONSTITUTIONAL"];
+        // ══ FINISHED THINGS STAY FINISHED (2026-07-22) ═══════════════════════════════════════
+        // Aaron: "these things need to be finished so I don't keep circling back to them, and they
+        // should not be able to be edited once they're done." A comment saying DO NOT EDIT is a wish.
+        // THIS list is the mechanism - AURA_PROPOSE refuses outright to patch any file region carrying
+        // one of these markers, so a protected thing is structurally unwritable rather than politely
+        // labelled. AIMARGIN joins it: the metering, the balance ledger, the rate table and the policy
+        // engine are the accounting of the whole system, and an agent that can quietly edit its own
+        // meter can quietly stop reporting what it spends.
+        // This is the LOCK. Aaron edits these by hand, deliberately, from his own machine. She does not.
+        const CONSTITUTIONAL_MARKERS = ["auraSelfEngineCanWrite", "SELF_ENGINE_WRITE_ALLOW", "SELF_ENGINE_PROTECTED", "notes:aura:law", "notes:aura:identity", "CONSTITUTIONAL_MARKERS", "case \"AURA_BOUNDARY\"", "case \"AURA_PROMOTE\"", "case \"AURA_PROPOSE\"", "OVERRIDE_CONSTITUTIONAL",
+          "case \"AIMARGIN\"", "async function balanceAnchor", "async function balanceApplyDay", "async function balanceReport",
+          "async function reconcileTrueCost", "async function discoverPrices", "MODEL_RATES", "case \"PRICES\"", "case \"CALIBRATE\""];
         const constitutionalOverride = /:::\s*OVERRIDE_CONSTITUTIONAL\s*$/.test(newText);
         if (constitutionalOverride) newText = newText.replace(/:::\s*OVERRIDE_CONSTITUTIONAL\s*$/, "").trim();
         const touchesCore = CONSTITUTIONAL_MARKERS.filter(m => oldText.includes(m) || newText.includes(m));
@@ -16880,11 +16891,23 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         video: await kvg("config:policy:video", "cheapest"),
         style: await kvg("config:policy:style", "photoreal"),
       };
-      const pins = {
-        brain_model: await kvg("config:brain:model", null),
-        image_model: await kvg("config:image:model", null),
-        video_model: await kvg("config:video:model", null),
-      };
+      // ══ PINS ARE DERIVED, NOT LISTED (2026-07-22) ═══════════════════════════════════════
+      // This was three typed keys. A core-lane provider pin (config:core:provider) was added to
+      // aura-think and did NOT appear here - so the one command whose stated job is "stop re-deriving
+      // the state of AIMARGIN by hand" could not show a lever that existed. That is the whole reason
+      // this keeps getting rediscovered: every new knob lands without updating the thing that reports
+      // knobs, so the engine is more finished than its own status page can prove.
+      // Now the list is SCANNED. Any config: key that is a provider or model pin shows up the day it is
+      // written, whether or not anyone remembered to add it here. A lever that exists cannot hide.
+      const pins = {};
+      try {
+        const ks = ((await env.AURA_KV.list({ prefix: "config:", limit: 200 }))?.keys || []).map(k => k.name);
+        for (const k of ks) {
+          if (!/(:model$|:model:|:provider$)/.test(k)) continue;
+          const v = await env.AURA_KV.get(k).catch(() => null);
+          if (v && v.trim()) pins[k] = v.trim();
+        }
+      } catch {}
       const spendToday = Number(await kvg("meter:spend:" + day, "0")) || 0;
       const cap = Number(await kvg("config:budget:daily", "5")) || 5;
       let images = {}, videos = {};
@@ -16895,16 +16918,25 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       let insane = 0;
       try { insane = ((await env.AURA_KV.list({ prefix: "alert:meter_insane:", limit: 20 }))?.keys || []).length; } catch {}
 
-      // Balances as anchored, drawn down by true billing.
-      const balances = {};
-      for (const p of ["anthropic", "openai", "xai", "google", "meta"]) {
-        try {
-          const raw = await env.AURA_KV.get("balance:" + p);
-          if (!raw) continue;
-          const l = JSON.parse(raw);
-          balances[p] = { est_remaining: +((Number(l.credited_usd) || 0) - (Number(l.spent_usd) || 0)).toFixed(2),
-                          anchored: !!l.anchor };
-        } catch {}
+      // ══ ONE BALANCE IMPLEMENTATION ══════════════════════════════════════════════════════
+      // This used to do its own credited-minus-spent and print anchored:true beside it, while
+      // balanceReport() computed the SAME number with source, burn rate and days-left. Two versions of
+      // one figure, and the shorter one reported "anthropic: -76.93, anchored: true" - which reads as a
+      // trustworthy balance and is not one. YOU CANNOT BE NEGATIVE WITH A PROVIDER: they cut you off at
+      // zero, there is no overdraft. A negative here NEVER means the account; it means spend has passed
+      // the last anchor, so the gauge is measuring drift while presenting itself as a balance.
+      // balanceAnchor() has always existed to fix exactly this ("Anthropic read -$3.88 against a real
+      // $22.20 for exactly this reason" is written beside it). Nothing pointed the operator at it.
+      const balances = await balanceReport(env, null).catch(() => ({}));
+      for (const [p, b] of Object.entries(balances)) {
+        const est = b?.estimated_remaining_usd;
+        if (typeof est === "number" && est < 0) {
+          b.stale_anchor = true;
+          b.note = "IMPOSSIBLE AS A BALANCE - a provider stops you at zero. This means spend has passed " +
+                   "the last anchor (" + (b.tracking_since || "unknown date") + "), not that the account is " +
+                   "overdrawn. Read the real number off the provider console and re-anchor: " +
+                   "GET /balance/anchor?provider=" + p + "&amount=<console figure>";
+        }
       }
 
       return { cmd: "AIMARGIN", payload: { ok: true, day,
@@ -16929,6 +16961,25 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           } catch {}
           return { source: "hardcoded table in server.ts (MODEL_RATES)",
                    note: "No published prices cached yet - run PRICES to pull them from the provider." };
+        })(),
+        rate_provenance: await (async () => {
+          // WHERE EACH PROVIDER'S PRICE ACTUALLY COMES FROM, AND WHEN A HUMAN LAST CHECKED IT.
+          // Price discovery is a COMMAND, not a loop - vendors reprice when they ship a model, so nothing
+          // here polls and nothing should. But only xAI publishes per-token prices through its API
+          // (/v1/models carries prompt_text_token_price); the other four cannot be discovered and are
+          // TYPED NUMBERS. A typed number with no date is how a wrong Grok rate produced a 301x claim
+          // that stood for a day. So each provider reports its source and its last confirmation, and an
+          // unconfirmed rate says so plainly instead of looking as solid as a discovered one.
+          // Stamp one after checking a vendor page: SETKV config:rate:confirmed:<provider> <YYYY-MM-DD>
+          const out = {};
+          for (const prov of ["xai", "openai", "anthropic", "google", "meta"]) {
+            const when = await kvg("config:rate:confirmed:" + prov, null);
+            out[prov] = prov === "xai"
+              ? { source: "DISCOVERED live from the provider (PRICES -> GET /v1/models)", confirmed: when || "n/a - discovered" }
+              : { source: "TYPED into MODEL_RATES - this provider does not publish prices via API",
+                  confirmed: when || "NEVER CONFIRMED - nobody has dated this rate against the vendor's page" };
+          }
+          return out;
         })(),
         spend_today: { text_usd: +spendToday.toFixed(4), cap_usd: cap,
                        used_pct: +((spendToday / cap) * 100).toFixed(1),

@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.678-2026-07-22";
+const BUILD = "aura-core-v4.9.679-2026-07-22";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -172,6 +172,73 @@ async function meterCoreBrain(env, model, inTok, cachedIn, cacheWrite, outTok) {
   } catch { return 0; }
 }
 
+// ══ THE EGRESS METER, aura-core SIDE ── SAME LEDGER, SAME KEY ═══════════════════════════════════
+// aura-think counts its provider calls at the door. This is the other door. Both write egress:<day>,
+// so ONE key holds every token that leaves this account from either worker - which is the whole point:
+// a meter wired into one worker's shape can never be complete, and can never be sold to someone whose
+// application has a different shape.
+// Aaron: "we have burn going on inside Claude... it's very subtle, it's like a penny every so often."
+// This is where that lives - brainFetch fronts ~28 Anthropic call sites in this file and none of them
+// were ever counted at the request level.
+async function _egressCore(env, rec) {
+  try {
+    const kv = env && env.AURA_KV;
+    if (!kv) return;
+    const day = new Date().toISOString().slice(0, 10);
+    const k = "egress:" + day;
+    const raw = await kv.get(k);
+    const led = raw ? JSON.parse(raw)
+      : { day, calls: 0, errors: 0, tokens_in: 0, tokens_out: 0, cached_in: 0, cost_usd: 0,
+          by_provider: {}, by_caller: {}, by_model: {}, by_endpoint: {}, no_usage: 0 };
+    const u = rec.usage || {};
+    const tin  = Number(u.prompt_tokens ?? u.input_tokens ?? 0) || 0;
+    const tout = Number(u.completion_tokens ?? u.output_tokens ?? 0) || 0;
+    const tcache = Number(u.cache_read_input_tokens ?? u.prompt_tokens_details?.cached_tokens ?? 0) || 0;
+    const cwrite = Number(u.cache_creation_input_tokens ?? 0) || 0;
+    led.calls += 1;
+    if (!rec.status || rec.status >= 400) led.errors += 1;
+    led.tokens_in += tin; led.tokens_out += tout; led.cached_in += tcache;
+    const bump = (bag, key) => {
+      bag[key] = bag[key] || { calls: 0, in: 0, out: 0, cached: 0, cost: 0 };
+      bag[key].calls += 1; bag[key].in += tin; bag[key].out += tout; bag[key].cached += tcache;
+    };
+    bump(led.by_provider, rec.provider);
+    bump(led.by_caller, rec.caller || "unlabelled");
+    bump(led.by_model, rec.model || "unknown");
+    let path = rec.endpoint || "?";
+    try { path = new URL(rec.endpoint).pathname; } catch {}
+    bump(led.by_endpoint, rec.provider + path);
+    if (!tin && !tout && /completions|messages|generateContent|generations/.test(path)) led.no_usage = (led.no_usage || 0) + 1;
+    led.last = new Date().toISOString();
+    await kv.put(k, JSON.stringify(led), { expirationTtl: 120 * 24 * 3600 });
+  } catch { /* a lost measurement must never cost a call */ }
+}
+
+// Wrap any raw provider fetch in this file. Returns the real Response untouched; reads a clone after.
+async function pfetch(env, provider, caller, url, opts) {
+  const t0 = Date.now();
+  let model = "";
+  try { const b = opts && opts.body; if (typeof b === "string" && b.length < 2000000) model = JSON.parse(b).model || ""; } catch {}
+  let res;
+  try {
+    res = await fetch(url, opts);
+  } catch (e) {
+    await _egressCore(env, { provider, caller, model, endpoint: String(url), status: 0, ms: Date.now() - t0, usage: null });
+    throw e;
+  }
+  try {
+    const clone = res.clone();
+    const txt = await clone.text();
+    let usage = null;
+    try { usage = JSON.parse(txt).usage || null; } catch {
+      const m = txt.match(/"usage"\s*:\s*\{[^{}]*\}/g);
+      if (m && m.length) { try { usage = JSON.parse("{" + m[m.length - 1] + "}").usage; } catch {} }
+    }
+    await _egressCore(env, { provider, caller, model, endpoint: String(url), status: res.status, ms: Date.now() - t0, usage });
+  } catch {}
+  return res;
+}
+
 async function brainFetch(url, opts, env) {
   env = env || _BRAIN_ENV;
   let body;
@@ -189,7 +256,7 @@ async function brainFetch(url, opts, env) {
   }
 
   // streaming: caching-injected body, real fetch, untouched Response. Nothing else.
-  if (isStream) return await fetch(url, { ...opts, body: JSON.stringify(body) });
+  if (isStream) return await pfetch(env, "anthropic", "brainFetch:stream", url, { ...opts, body: JSON.stringify(body) });
 
   // ── 2. L1 ANSWER CACHE: has anyone already asked this exact thing? ──
   let cacheKey = null;
@@ -229,7 +296,7 @@ async function brainFetch(url, opts, env) {
   } catch (e) { cacheKey = null; }
 
   // ── 3. the real call ──
-  const r = await fetch(url, { ...opts, body: JSON.stringify(body) });
+  const r = await pfetch(env, "anthropic", "brainFetch", url, { ...opts, body: JSON.stringify(body) });
   if (!r.ok) return r;
 
   const j = await r.json();
@@ -7816,7 +7883,7 @@ async function processCommand(line, env, isOp) {
       // 2) Grok fallback
       if (!text && grokKey) {
         try {
-          const res = await fetch("https://api.x.ai/v1/chat/completions", {
+          const res = await pfetch(env, "xai", "core:chat", "https://api.x.ai/v1/chat/completions", {
             method: "POST", headers: { "Authorization": "Bearer " + grokKey, "Content-Type": "application/json" },
             body: JSON.stringify({ model: "grok-3-mini", max_tokens: 700, messages: [{ role: "system", content: sysPrompt }, { role: "user", content: question }] })
           });
@@ -18328,21 +18395,21 @@ async function callOneBrain(env, brain, system, user, maxTokens) {
     if (brain === "gpt") {
       let k = await KV.get(env, "secret:openai"); if (k && k.startsWith("{")) { try { k = JSON.parse(k).api_key; } catch {} }
       if (!k) return null;
-      const r = await fetch("https://api.openai.com/v1/chat/completions", { method: "POST", headers: { "Authorization": "Bearer " + k, "Content-Type": "application/json" }, body: JSON.stringify({ model: "gpt-4o", max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content: user }] }) });
+      const r = await pfetch(env, "openai", "core:chat", "https://api.openai.com/v1/chat/completions", { method: "POST", headers: { "Authorization": "Bearer " + k, "Content-Type": "application/json" }, body: JSON.stringify({ model: "gpt-4o", max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content: user }] }) });
       if (!r.ok) return null; const j = await r.json(); const t = j?.choices?.[0]?.message?.content;
       if (j?.usage) await recordCost("gpt-4o", { input_tokens: j.usage.prompt_tokens || 0, output_tokens: j.usage.completion_tokens || 0 }, "fan");
       return t ? { brain: "gpt", label: "GPT (OpenAI)", text: t.trim() } : null;
     }
     if (brain === "grok") {
       const k = await KV.get(env, "secret:grok_api_key"); if (!k) return null;
-      const r = await fetch("https://api.x.ai/v1/chat/completions", { method: "POST", headers: { "Authorization": "Bearer " + k, "Content-Type": "application/json" }, body: JSON.stringify({ model: "grok-4.3", max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content: user }] }) });
+      const r = await pfetch(env, "xai", "core:chat", "https://api.x.ai/v1/chat/completions", { method: "POST", headers: { "Authorization": "Bearer " + k, "Content-Type": "application/json" }, body: JSON.stringify({ model: "grok-4.3", max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content: user }] }) });
       if (!r.ok) return null; const j = await r.json(); const t = j?.choices?.[0]?.message?.content;
       if (j?.usage) await recordCost("grok-4.3", { input_tokens: j.usage.prompt_tokens || 0, output_tokens: j.usage.completion_tokens || 0 }, "fan");
       return t ? { brain: "grok", label: "Grok (xAI)", text: t.trim() } : null;
     }
     if (brain === "llama") {
       const k = await KV.get(env, "secret:groq_api_key"); if (!k) return null;
-      const r = await fetch("https://api.groq.com/openai/v1/chat/completions", { method: "POST", headers: { "Authorization": "Bearer " + k, "Content-Type": "application/json" }, body: JSON.stringify({ model: "llama-3.3-70b-versatile", max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content: user }] }) });
+      const r = await pfetch(env, "groq", "core:chat", "https://api.groq.com/openai/v1/chat/completions", { method: "POST", headers: { "Authorization": "Bearer " + k, "Content-Type": "application/json" }, body: JSON.stringify({ model: "llama-3.3-70b-versatile", max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content: user }] }) });
       if (!r.ok) return null; const j = await r.json(); const t = j?.choices?.[0]?.message?.content;
       if (j?.usage) await recordCost("llama-3.3-70b", { input_tokens: j.usage.prompt_tokens || 0, output_tokens: j.usage.completion_tokens || 0 }, "fan");
       return t ? { brain: "llama", label: "Llama (Meta via Groq)", text: t.trim() } : null;
@@ -19022,7 +19089,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
       if (openaiApiKey) {
         const convo = [{ role: "system", content: sysPrompt }, { role: "user", content: message }];
         for (let round = 0; round < 5 && raw === null; round++) {
-          const fbRes = await fetch("https://api.openai.com/v1/chat/completions", {
+          const fbRes = await pfetch(env, "openai", "core:chat", "https://api.openai.com/v1/chat/completions", {
             method: "POST",
             headers: { "Authorization": "Bearer " + openaiApiKey, "Content-Type": "application/json" },
             body: JSON.stringify({ model: "gpt-4o", max_tokens: isVoice ? 150 : 2048, messages: convo })
@@ -19080,7 +19147,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
     try {
       const grokKey = env.GROK_API_KEY || await KV.get(env, "secret:grok_api_key");
       if (grokKey) {
-        const grokRes = await fetch("https://api.x.ai/v1/chat/completions", {
+        const grokRes = await pfetch(env, "xai", "core:chat", "https://api.x.ai/v1/chat/completions", {
           method: "POST",
           headers: {
             "Authorization": "Bearer " + grokKey,
@@ -19510,7 +19577,7 @@ async function multiModelConsensus(question, env) {
       let key = openaiKey;
       if (key && key.startsWith("{")) { try { key = JSON.parse(key).api_key; } catch {} }
       if (!key) return { model: "gpt-4o", ok: false, error: "No key" };
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      const res = await pfetch(env, "openai", "core:chat", "https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
         body: JSON.stringify({ model: "gpt-4o", max_tokens: 500, messages: [{ role: "system", content: sysPrompt }, { role: "user", content: question }] })
@@ -19523,7 +19590,7 @@ async function multiModelConsensus(question, env) {
     // xAI Grok
     (async () => {
       if (!grokKey) return { model: "grok-3", ok: false, error: "No key" };
-      const res = await fetch("https://api.x.ai/v1/chat/completions", {
+      const res = await pfetch(env, "xai", "core:chat", "https://api.x.ai/v1/chat/completions", {
         method: "POST",
         headers: { "Authorization": "Bearer " + grokKey, "Content-Type": "application/json" },
         body: JSON.stringify({ model: "grok-3-mini", max_tokens: 500, messages: [{ role: "system", content: sysPrompt }, { role: "user", content: question }] })
@@ -22200,7 +22267,7 @@ async function auraSubmitVideo(prompt, env, opts = {}) {
   if (!key) throw new Error("no xAI key");
   const body = { model, prompt: _styled.slice(0, 2000), duration,
                  aspect_ratio: opts.aspect_ratio || "16:9", resolution: opts.resolution || resolved.resolution };
-  const r = await fetch("https://api.x.ai/v1/videos/generations", {
+  const r = await pfetch(env, "xai", "core:video", "https://api.x.ai/v1/videos/generations", {
     method: "POST", headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
@@ -22356,7 +22423,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       let key = env.OPENAI_API_KEY || await env.AURA_KV.get("secret:openai").catch(() => null);
       if (key && key.startsWith("{")) { try { key = JSON.parse(key).api_key; } catch {} }
       if (!key) throw new Error("no OpenAI key");
-      const r = await fetch("https://api.openai.com/v1/images/generations", {
+      const r = await pfetch(env, "openai", "core:image", "https://api.openai.com/v1/images/generations", {
         method: "POST",
         headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
         body: JSON.stringify({ model, prompt: p, n: 1, size: "1024x1024", quality })
@@ -22372,7 +22439,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       // xAI does NOT support quality/size/style on images - sending them errors - so we omit them here.
       let key = env.XAI_API_KEY || await env.AURA_KV.get("secret:xai").catch(() => null);
       if (!key) throw new Error("no xAI key");
-      const r = await fetch("https://api.x.ai/v1/images/generations", {
+      const r = await pfetch(env, "xai", "core:image", "https://api.x.ai/v1/images/generations", {
         method: "POST",
         headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
         body: JSON.stringify({ model, prompt: p, n: 1, response_format: "b64_json" })
@@ -24644,7 +24711,7 @@ function openAlbum(idx){
         let aiKey = env.OPENAI_API_KEY || await env.AURA_KV.get("secret:openai").catch(() => null);
         if (aiKey && aiKey.startsWith("{")) { try { aiKey = JSON.parse(aiKey).api_key; } catch {} }
         if (aiKey && context) {
-          const cr = await fetch("https://api.openai.com/v1/chat/completions", {
+          const cr = await pfetch(env, "openai", "core:chat", "https://api.openai.com/v1/chat/completions", {
             method: "POST", headers: { "Authorization": "Bearer " + aiKey, "Content-Type": "application/json" },
             body: JSON.stringify({ model: "gpt-4o-mini", messages: [
               { role: "system", content: "Extract business info as JSON only, no markdown. Keys: name (string), summary (one sentence what they do), vibe (3-5 word aesthetic descriptor)." },

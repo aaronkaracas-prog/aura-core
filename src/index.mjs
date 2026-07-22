@@ -17,7 +17,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.662-2026-07-22";
+const BUILD = "aura-core-v4.9.663-2026-07-22";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -396,13 +396,35 @@ async function auraContextGate(env, isOp) {
   // I can't read live systems" fallback must never reach a self-edit). So: if this IS the confirmed
   // operator, ALWAYS allow. If it is NOT the operator, require that Aura can read her own core self
   // (notes:self) before allowing an autonomous self-edit. Missing law/identity is FLAGGED, never a block.
+  //
+  // ══ v4.9.663 - THE PROOF MOVED FROM A NOTE TO HER SOURCE ═══════════════════════════════
+  // This used to prove "she can read who she is" by reading a KV note (notes:self). That was the
+  // weakest possible evidence: a note is prose ANYONE can write, it can be archived out from under
+  // the gate, and it says nothing about whether the thing running is really Aura. It was archived on
+  // 2026-07-22 and the autonomous self-edit path went dark instantly - fail-closed, correct direction,
+  // but proof of how thin the proof was.
+  // The gate's own stated intent is that she "can actually READ HER OWN IDENTITY at execution time."
+  // The unfakeable version of that: SHE READS HER OWN LIVE SOURCE AND IT IS THE SOURCE SHE IS RUNNING.
+  // Something that cannot reach its own code, or is looking at a different build than it executes,
+  // has failed exactly the test this gate was written for - and no note can fake it.
+  const _cgSelfProof = async () => {
+    try {
+      const r = await readOwnSource(env);
+      if (!r || !r.ok || !r.source) return { ok: false, why: "cannot read my own source" };
+      const b = (r.source.split("\n").find(l => l.includes("const BUILD")) || "").replace(/.*"(.*)".*/, "$1");
+      if (!b) return { ok: false, why: "read source but found no BUILD line - that is not my file" };
+      if (b !== BUILD) return { ok: false, why: "source is " + b + " but I am running " + BUILD + " - I would be editing a file I am not" };
+      return { ok: true, build: b };
+    } catch (e) { return { ok: false, why: "source read threw: " + (e && e.message) }; }
+  };
   if (isOp) {
-    const self = await env.AURA_KV.get("notes:self").catch(() => null);
-    return { ok: true, operator: true, self_readable: !!self };
+    // Aaron is never blocked. Still reported, so a stale-source deploy is visible rather than silent.
+    const proof = await _cgSelfProof();
+    return { ok: true, operator: true, self_readable: proof.ok, self_proof: proof.ok ? proof.build : proof.why };
   }
-  // non-operator (autonomous) path: must prove it can read its own core self
-  const self = await env.AURA_KV.get("notes:self").catch(() => null);
-  if (!self) return { ok: false, reason: "CONTEXT GATE: an autonomous (non-operator) self-edit cannot read Aura's own self (notes:self) - refusing. If it does not know who it is, it cannot change what Aura is." };
+  // non-operator (autonomous) path: must PROVE it is the thing it is about to edit
+  const self = (await _cgSelfProof()).ok ? true : null;
+  if (!self) return { ok: false, reason: "CONTEXT GATE: an autonomous (non-operator) self-edit cannot verify it is reading the source it is running - refusing. If it does not know who it is, it cannot change what Aura is." };
   return { ok: true, operator: false, self_readable: true };
 }
 // Embedded Stripe Elements payment page served at /pay on auras.guide.

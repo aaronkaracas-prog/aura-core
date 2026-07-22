@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.673-2026-07-22";
+const BUILD = "aura-core-v4.9.674-2026-07-22";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17054,11 +17054,25 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
               failure_tax_usd: +(Number(a.failure_tax_usd) || 0).toFixed(4),
               cost_per_ok_outcome: ok > 0 ? +(usd / ok).toFixed(4) : null,
               cost_by_door: a.by_door || {},
-              grade_source: "turn_signal (empty=failed, escalated=degraded, else ok). SecureSpend " +
-                            "settlement and hindcast are the stronger truths and overwrite it when they exist.",
+              // ══ THE ENGINE MUST NOT OVERSELL ITSELF (corrected 2026-07-22) ═══════════════════
+              // This field used to read "SecureSpend settlement and hindcast are the stronger truths and
+              // overwrite it when they exist." A five-seat council checked it against source and found
+              // NO SUCH WRITE PATH - the line was intent, written into a live status payload, in the one
+              // engine whose thesis is that the party being measured must not own the meter. It is the
+              // exact failure this system spends its time deleting, authored here.
+              // What is TRUE: every grade is PROVISIONAL and comes from turn shape. Nothing finalises it.
+              grade_provisional: true,
+              grade_source: "turn_signal ONLY - empty=failed, escalated=degraded, else ok. This is TURN " +
+                            "SHAPE, not truth: it says a turn completed, never that the answer was right.",
+              grade_not_finalised: "No settlement or calibration path writes to these grades today. Until " +
+                            "one does, cost_per_ok_outcome is COST PER COMPLETED TURN, not cost per correct " +
+                            "answer - do not quote it as the product.",
+              known_blind_spot: "A turn killed before it reached the scorer is never counted, so 'failed' " +
+                            "undercounts by construction on exactly the days something is killing turns.",
               note: ok === 0
                 ? "cost per outcome NOT COMPUTABLE - no rows graded ok yet"
-                : "THIS IS THE PRODUCT: $" + (usd / ok).toFixed(4) + " per working outcome, not cost per token" };
+                : "$" + (usd / ok).toFixed(4) + " per COMPLETED turn. Not yet cost per CORRECT answer - " +
+                  "that needs settlement or calibration to finalise a grade, which is not wired." };
           } catch { return { claims: 0, note: "rollup unreadable" }; }
         })(),
         cost_centers: await (async () => {

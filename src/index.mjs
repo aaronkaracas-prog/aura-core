@@ -6,6 +6,16 @@
  */
 
 
+// v4.9.664 - THE notes: NAMESPACE IS FULLY RETIRED. 29 dead reads neutered to null in place.
+// Every one of them was `.catch(() => null)` enrichment against keys that no longer exist, so each was
+// a KV round-trip per turn that could only ever return nothing. The CALLS are gone; the variables and
+// their `if (v)` guards are untouched on purpose - neutering 29 sites is safe, restructuring 29 sites
+// in one deploy is not. A later pass deletes the dead variables.
+// STILL OPEN AND NAMED SO IT IS NOT LOST: the North Star is stated in TWO places - here at the
+// NORTHSTAR handler, and in aura-think's SOUL block. Two copies of one declaration drift. aura-core is
+// the canonical one because five workers can call it; SOUL carries it so she can answer without a tool.
+// Whoever edits one MUST edit the other until that is designed properly.
+//
 // v4.9.661 - THE notes: NAMESPACE IS RETIRED AS A PLACE THINGS LIVE.
 // It had been archived twice and grew back both times, because 12 handlers WROTE to it and a prompt
 // literally instructed her to ("record lessons with run_command SETKV notes:lessons:<topic>"). Reads
@@ -17,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.663-2026-07-22";
+const BUILD = "aura-core-v4.9.664-2026-07-22";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2148,9 +2158,9 @@ async function processCommand(line, env, isOp) {
       if (!engineList.length) { try { const c = await env.AURA_KV.get("cache:self_source"); if (c) { const cj = JSON.parse(c); const m = cj.src.match(/case\s+"[A-Z_]+"\s*:/g) || []; engineList = [...new Set(m.map(s => (s.match(/"([A-Z_]+)"/) || [])[1]).filter(Boolean))]; srcStale = true; } } catch {} }
       // 2) READ THE CORRECTED IDENTITY CANON - the real hierarchy (ARK creates AIX; AIX synthesizes
       //    all intelligence; Aura is the flagship application ON AIX). This is who she is, as DATA.
-      const identityCanon = (await env.AURA_KV.get("notes:canon:world_structure").catch(() => null)) || null;
-      const theMachine = (await env.AURA_KV.get("notes:canon:the_machine").catch(() => null)) || null;
-      const opState = (await env.AURA_KV.get("notes:STATE").catch(() => null)) || null;
+      const identityCanon = (null /* notes: retired */) || null;
+      const theMachine = (null /* notes: retired */) || null;
+      const opState = (null /* notes: retired */) || null;
       // 3) THE DATA ANSWER - assembled from truth, cannot refuse. This is the anchor.
       const identity = {
         i_am: "Aura - the first flagship application built on AIX (AI Intelligence Exchange). I am not AIX; I prove what AIX can build. I provide the experience; AIX provides the intelligence.",
@@ -9282,7 +9292,7 @@ async function processCommand(line, env, isOp) {
       const gModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       // Pull Aura's Law if present, so the gate enforces the actual codified rules.
       let gLaw = null;
-      try { gLaw = await env.AURA_KV.get("notes:aura:law"); } catch {}
+      try { gLaw = null /* notes: retired */; } catch {}
       const gSystem = await loadPrompt(env, "cognition_meaning_gate", "You are the MEANING GATE of Aura's cognition system - the final check before any decision becomes a real action. You do NOT rank or expand. You hold AUTHORITY: you decide whether a proposed action should happen AT ALL. You judge it against: does it genuinely serve the human at the center; does it honor consent and autonomy; could it cause harm, manipulation, or pressure; does it preserve trust; is it honest; does it comply with the law and with Aura's Law (provided below if available). You are not a pessimist and not a rubber stamp - most good actions pass. But you have real veto power and you use it when an action serves extraction over the human, violates consent, manipulates, deceives, or breaks a rule. Return ONLY a JSON object, no prose and no markdown fences, with exactly these keys: entity, action (the proposed action you judged), verdict (one of: allow, allow_with_conditions, block), reason (one or two sentences explaining the verdict), values_at_stake (array of the human values or rules that drove the decision), conditions (array of conditions that must hold for this to be acceptable - required when verdict is allow_with_conditions, otherwise empty), harm_check (one short sentence: the main way this could hurt the human or others, or 'none identified'), confidence (one of: high, medium, low). Be principled and concrete. Output JSON only.");
       let gUserContent = "ENTITY: " + gEntity + "\n\nPROPOSED ACTION:\n" + gAction;
       if (gMeaning) gUserContent += "\n\nMEANING (the human significance at stake):\n" + JSON.stringify(gMeaning);
@@ -11303,7 +11313,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       let ocSubjectRaw = ocRaw;
       if (/^MINE\s+/i.test(ocSubjectRaw)) {
         ocSubjectRaw = ocSubjectRaw.replace(/^MINE\s+/i, "").trim();
-        try { const st = await env.AURA_KV.get("notes:STATE"); if (st) ocContext = String(st).slice(0, 1500); } catch {}
+        try { const st = null /* notes: retired */; if (st) ocContext = String(st).slice(0, 1500); } catch {}
       }
       // OUTCOME reasons THROUGH the shared mind â€” inherits assumption-challenge, data-trust, pushback,
       // and adds its outcome-specific lens + keys (leverage, multipliers, strategy).
@@ -12491,9 +12501,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           try {
             const dmap = await env.AURA_KV.get("state:domains:map").catch(() => null);
             if (dmap) opCtx += "\n\n[YOUR TERRITORY - your real domain inventory; when asked for domains, use THIS]:\n" + String(dmap).slice(0, 3500);
-            const method = await env.AURA_KV.get("notes:method:building").catch(() => null);
+            const method = null /* notes: retired */;
             if (method) opCtx += "\n\n[HOW YOU BUILD - notes:method:building]:\n" + String(method).slice(0, 1000);
-            const sysNote = await env.AURA_KV.get("notes:systems:map").catch(() => null);
+            const sysNote = null /* notes: retired */;
             if (sysNote) opCtx += "\n\n[YOUR SYSTEMS - notes:systems:map]:\n" + String(sysNote).slice(0, 1500);
           } catch {}
           homeCtx += opCtx;
@@ -15648,7 +15658,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       } catch { cf.last_conversations = { count: 0, recent: [] }; }
       // Current priorities from strategy
       try {
-        const dayZero = await env.AURA_KV.get("notes:strategy:day_zero_first_move");
+        const dayZero = null /* notes: retired */;
         cf.current_strategy = dayZero ? String(dayZero).slice(0, 600) : "no day-zero strategy written yet";
       } catch { cf.current_strategy = null; }
       // Active blockers
@@ -15814,7 +15824,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         try { const mb = await getMercuryBalance(env); if (mb.ok) mercury = { total_available: mb.total_available, accounts: (mb.accounts || []).map(a => ({ name: a.name, available: a.available })) }; } catch {}
         let twilio = null;
         try { const tr = await processCommand("TWILIO_BALANCE", env, isOp); const tp = (tr && tr.payload) ? tr.payload : tr; if (tp && (tp.balance !== undefined || tp.ok)) twilio = { balance: tp.balance !== undefined ? tp.balance : null, currency: tp.currency || "USD" }; } catch {}
-        let opFrame = ""; try { const of = await env.AURA_KV.get("notes:economics:operating_frame"); if (of) opFrame = String(of).slice(0, 2000); } catch {}
+        let opFrame = ""; try { const of = null /* notes: retired */; if (of) opFrame = String(of).slice(0, 2000); } catch {}
         const ecFacts = { cost_to_serve_last_7_days_usd: cost7.usd, ai_calls_7d: cost7.calls, cost_by_model_7d: cost7.by_model, cost_by_day: costDays, stripe_revenue: stripe, cash_mercury: mercury, twilio_funding: twilio, ts: new Date().toISOString() };
         // ECONOMICS now reasons THROUGH the shared mind â€” it inherits assumption-challenge, data-trust
         // (is this number real or a broken pipe?), and operator push-back, and keeps its economics outputs.
@@ -17836,7 +17846,7 @@ async function reasonThroughLoop(env, opts) {
   // is the cached prefix - so this is ~free on every call after the first.
   let projectState = "";
   try {
-    const _st = await env.AURA_KV.get("notes:STATE:resume_here");
+    const _st = null /* notes: retired */;
     if (_st && _st.trim()) {
       projectState = "\n\nWHERE THINGS STAND RIGHT NOW - YOUR LIVE PROJECT STATE (notes:STATE:resume_here).\n" +
         "This is banked from real reads of your live system, never from a chat log. It is the CURRENT truth: " +
@@ -18276,7 +18286,7 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
   };
   const currentTasksRaw = await env.AURA_KV.get("config:tasks:list").catch(() => null);
   const currentTasks = currentTasksRaw || "[]";
-  const protectedInfra = await env.AURA_KV.get("notes:aura:protected:infrastructure").catch(() => null);
+  const protectedInfra = null /* notes: retired */;
   _mark("setup_kv");
 
   let continuityContext = "";
@@ -18341,11 +18351,11 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
       // and she named it herself: "actual gaps would require runtime execution to expose."
       // FIX: state is back in her context every turn. Capability stays live-read. The two never merge again.
       const [obfNote, sitNote, lawNote, identityNote, stateNote, sharedCoreRaw] = await Promise.all([
-        KV.get(env, "notes:openforbusiness"),
-        KV.get(env, "notes:asset:situationtracker"),
-        KV.get(env, "notes:aura:law"),
-        KV.get(env, "notes:aura:identity"),
-        KV.get(env, "notes:STATE:resume_here"),
+        Promise.resolve(null) /* notes: retired */,
+        Promise.resolve(null) /* notes: retired */,
+        Promise.resolve(null) /* notes: retired */,
+        Promise.resolve(null) /* notes: retired */,
+        Promise.resolve(null) /* notes: retired */,
         KV.get(env, "mem:core:current")
       ]);
       // ══ ONE MEMORY, TWO SURFACES ═══════════════════════════════════════════════════════════════
@@ -18485,7 +18495,7 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
 
       // UNKNOWN fragment (e.g. amazon.com, or a brand-new domain) â†’ ONE lean fast call to figure out
       // what it likely is in his world and ask the right intent question. No heavy cognitive loop.
-      const sNote = await env.AURA_KV.get("notes:self").catch(() => null);
+      const sNote = null /* notes: retired */;
       const ufReply = await fastReply(env, {
         maxTokens: 250,
         system: await loadPrompt(env, "opportunity_bare_domain", "You are Aura, Aaron's build partner. He just dropped a bare domain that is NOT one of his portfolio assets. In ONE or two sentences: recognize what it likely is (a competitor/reference he's studying, a brand-new domain, or something outside his world like a big company's site), and ask the one specific INTENT question that moves it forward. Never a status report, never a command menu. Be sharp and brief."),
@@ -18509,11 +18519,11 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
       && !/\b(who are you|what are you|your (own )?(nature|self|identity|capabilit|autonom)|can you (edit|modify|change|improve|grow|evolve|run|do)|are you (real|aura|claude|conscious|alive|autonomous)|yourself|your own (code|source|self)|autonom|self-(edit|modify|improve|audit|aware))\b/i.test(_msgTrim); // self-questions go to the tooled path
     if (_founderTrigger) {
       const [oppLogic, coreMap, northstar, obf, sN, dlRaw, daRaw] = await Promise.all([
-        env.AURA_KV.get("notes:capability:opportunity_discovery").catch(() => null),
-        env.AURA_KV.get("notes:architecture:core").catch(() => null),
-        env.AURA_KV.get("notes:vision:northstar").catch(() => null),
-        env.AURA_KV.get("notes:openforbusiness").catch(() => null),
-        env.AURA_KV.get("notes:self").catch(() => null),
+        Promise.resolve(null) /* notes: retired */,
+        Promise.resolve(null) /* notes: retired */,
+        Promise.resolve(null) /* notes: retired */,
+        Promise.resolve(null) /* notes: retired */,
+        Promise.resolve(null) /* notes: retired */,
         env.AURA_KV.get("config:domains:launched").catch(() => null),
         env.AURA_KV.get("config:domains:all").catch(() => null)
       ]);
@@ -18548,11 +18558,11 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
       // architecture and vision that define what Aaron is building. Without this she pattern-matches
       // engine labels FROM the document instead of placing it in his real world. Parallel load.
       const [sN, coreCanon, coreMap, obf, northstar, domainMap, dlRaw, daRaw] = await Promise.all([
-        env.AURA_KV.get("notes:self").catch(() => null),
-        env.AURA_KV.get("notes:INDEX").catch(() => null),
-        env.AURA_KV.get("notes:architecture:core").catch(() => null),
-        env.AURA_KV.get("notes:openforbusiness").catch(() => null),
-        env.AURA_KV.get("notes:vision:northstar").catch(() => null),
+        Promise.resolve(null) /* notes: retired */,
+        Promise.resolve(null) /* notes: retired */,
+        Promise.resolve(null) /* notes: retired */,
+        Promise.resolve(null) /* notes: retired */,
+        Promise.resolve(null) /* notes: retired */,
         env.AURA_KV.get("state:domains:map").catch(() => null),
         env.AURA_KV.get("config:domains:launched").catch(() => null),
         env.AURA_KV.get("config:domains:all").catch(() => null)
@@ -18576,8 +18586,8 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
     }
   }
 
-  const auraIdentity = await env.AURA_KV.get("notes:aura:identity").catch(() => null);
-  const auraOpPrinciple = await env.AURA_KV.get("notes:aura:operating:principle").catch(() => null);
+  const auraIdentity = null /* notes: retired */;
+  const auraOpPrinciple = null /* notes: retired */;
 
   // Business context for ANY voice caller (including strangers / carrier reviewers asking about the
   // business). Read from KV (data, not hardcoded). This lets Aura knowledgeably represent the business

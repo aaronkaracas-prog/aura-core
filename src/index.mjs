@@ -17,7 +17,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.661-2026-07-22";
+const BUILD = "aura-core-v4.9.662-2026-07-22";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -11069,13 +11069,29 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         { engine: "Economics metering (recordCost)", needle: "async function recordCost" },
         { engine: "Funnel governance (provenance)", needle: "_FUNNEL_PROVENANCE" },
         { engine: "Self-knowledge (live self-read)", needle: "You are the LIVE RUNNING SYSTEM" },
-        { engine: "Auto-load current state", needle: "notes:STATE:resume_here" }
+        { engine: "Auto-load current state", needle: "mem:core:current" }
       ];
       const groundTruth = engineProbes.map(p => {
         const present = auSrc ? auSrc.includes(p.needle) : false;
         return { engine: p.engine, present, evidence: present ? ("found: " + p.needle) : ("NOT FOUND: " + p.needle) };
       });
       const builtCount = groundTruth.filter(g => g.present).length;
+      // ══ CAN THIS AUDIT SEE ITSELF? ═══════════════════════════════════════════════════════
+      // v4.9.662. SELF_AUDIT read source, reported build 660, and signed it "confidence: high" with a
+      // footer saying it "cannot confabulate" - while the worker executing that very code was 661. It
+      // was auditing a file it is not running and had no way to notice, because it printed the build it
+      // READ and never compared it to the build it IS. Both numbers were in scope, one line apart.
+      // readOwnSource fetches from raw.githubusercontent, which caches for minutes after a push, so this
+      // window opens after EVERY deploy - and inside it, a grep for code that shipped comes back NOT
+      // FOUND and gets reported as a missing engine. An audit that cannot detect its own staleness is
+      // not grounded; it is confident. That is the exact failure this handler was written to end,
+      // reappearing one level up, inside the cure.
+      const auStale = auBuild !== "unknown" && auBuild !== BUILD;
+      const auStaleNote = auStale
+        ? "STALE READ - I audited SOURCE build " + auBuild + " but I am RUNNING " + BUILD + ". " +
+          "raw.githubusercontent lags a push by minutes. Every finding below describes the OLDER file. " +
+          "Do not act on it and do not record it. Re-run in a few minutes."
+        : null;
       // STEP 2 - reason ONLY from the ground truth just read. Forbidden to invent capabilities not in the reads.
       let assessment = null, assessErr = null;
       if (auApiKey) {
@@ -11088,10 +11104,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           try { assessment = JSON.parse(auText); } catch { assessErr = "assessment did not return valid JSON"; }
         } catch (e) { assessErr = "assessment failed: " + e.message; }
       }
-      return { cmd: "SELF_AUDIT", payload: { ok: true, build: auBuild, total_lines: auLines.length,
+      return { cmd: "SELF_AUDIT", payload: { ok: !auStale, stale: auStale, running_build: BUILD, source_build: auBuild,
+        stale_warning: auStaleNote, build: auBuild, total_lines: auLines.length,
         engines_present: builtCount + " of " + engineProbes.length, ground_truth: groundTruth,
         assessment, assessErr,
-        note: "Grounded self-audit: every capability claim above is a live grep of real source, not memory. This is read-self + read-all-the-way-down made structural - it cannot confabulate the way a reflective audit does." } };
+        note: (auStale ? "*** " + auStaleNote + " *** " : "") +
+          "Grounded self-audit: every capability claim above is a live grep of real source, not memory. This is read-self + read-all-the-way-down made structural - it cannot confabulate the way a reflective audit does." } };
     }
 
     case "INTEGRITY": {

@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.664-2026-07-22";
+const BUILD = "aura-core-v4.9.665-2026-07-22";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -24603,11 +24603,34 @@ function openAlbum(idx){
           const reply = ok ? agentTry.reply
                            : await llmReply(line, env, sessionId, isOp, request.headers.get("x-pta-entity") || null);
           if (lines.length === 1) {
+            // ══ A DEGRADED PATH MUST NOT SPEAK IN THE VOICE OF A WORKING ONE (v4.9.665) ═══════
+            // This branch already set proxy_failed "so the fallback can never hide" - and it hid
+            // anyway, twice, because it also returned ok:true with the local brain's prose in the
+            // `reply` field. Nobody reads a metadata flag when the sentence above it says "Done."
+            // MEASURED 2026-07-22: `DELKV test:redteam` came back "Done. test:redteam has been
+            // deleted from KV." with proxy_failed set on the same object. The local brain has no
+            // tools. It deleted nothing. It described a deletion. Earlier the same path invented
+            // "[EXISTING_TASKS_PLUS_NEW_TASK]" as though it were data.
+            // So the fallback no longer gets to be an ANSWER. ok goes false, the prose moves to a
+            // field whose name makes it unusable as a result, and the error says what to do. A
+            // capability that fails silently looks exactly like one that works - and one that fails
+            // FLUENTLY is worse, because it manufactures evidence that the thing happened.
             return jsonReply(ok
               ? { ok: true, reply, via: "aura-think", rung: agentTry.rung, turn_cost: agentTry.cost }
-              : { ok: true, reply, via: "aura-core-local", proxy_failed: agentTry && agentTry.failed });
+              : { ok: false,
+                  error: "BRAIN UNREACHABLE - this did NOT run against the agent. Nothing below was " +
+                         "verified and no action was taken by this path. Retry; if it persists, check " +
+                         "wrangler tail for [FAILOVER] or provider errors.",
+                  via: "aura-core-local",
+                  degraded: true,
+                  proxy_failed: agentTry && agentTry.failed,
+                  unverified_local_text: reply });
           }
-          results.push({ cmd: "LLM", payload: { reply, via: ok ? "aura-think" : "aura-core-local", proxy_failed: ok ? undefined : (agentTry && agentTry.failed) } });
+          results.push(ok
+            ? { cmd: "LLM", payload: { reply, via: "aura-think" } }
+            : { cmd: "LLM", payload: { ok: false, degraded: true, via: "aura-core-local",
+                error: "BRAIN UNREACHABLE - not run against the agent, nothing verified, no action taken.",
+                proxy_failed: agentTry && agentTry.failed, unverified_local_text: reply } });
         }
       }
 

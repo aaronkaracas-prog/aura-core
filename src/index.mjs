@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.668-2026-07-22";
+const BUILD = "aura-core-v4.9.669-2026-07-22";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16934,8 +16934,16 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       // the last anchor, so the gauge is measuring drift while presenting itself as a balance.
       // balanceAnchor() has always existed to fix exactly this ("Anthropic read -$3.88 against a real
       // $22.20 for exactly this reason" is written beside it). Nothing pointed the operator at it.
-      const balances = await balanceReport(env, null).catch(() => ({}));
-      for (const [p, b] of Object.entries(balances)) {
+      // ══ FIT THE BOUND, DO NOT WIDEN IT ══════════════════════════════════════════════════
+      // Splitting the inventory out took the payload 5113 -> 4555 chars, still over the 4000-char
+      // tool-result bound, so the status STILL arrived truncated with providers missing - including
+      // the balances that had just been corrected. Raising the bound for this one command would be
+      // the enumeration trap again: every payload eventually argues it is the exception.
+      // So status collapses each provider to ONE LINE. `AIMARGIN detail` keeps the full objects with
+      // burn rate and days-left. A status read is a glance; a glance that does not fit is not a glance.
+      const balancesFull = await balanceReport(env, null).catch(() => ({}));
+      const balances = {};
+      for (const [p, b] of Object.entries(balancesFull)) {
         const est = b?.estimated_remaining_usd;
         if (typeof est === "number" && est < 0) {
           b.stale_anchor = true;
@@ -16944,12 +16952,18 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
                    "overdrawn. Read the real number off the provider console and re-anchor: " +
                    "GET /balance/anchor?provider=" + p + "&amount=<console figure>";
         }
+        // one line per provider in status; the whole object only when detail is asked for
+        balances[p] = _wantDetail ? b
+          : (typeof est === "number"
+              ? "$" + est.toFixed(2) + (b.stale_anchor ? " STALE ANCHOR - re-anchor from console" : "") +
+                " (since " + (b.tracking_since || "?") + ")"
+              : "no anchor recorded - GET /balance/anchor?provider=" + p + "&amount=<console figure>");
       }
 
       return { cmd: "AIMARGIN", payload: { ok: true, day,
         policy: lanes,
         pins_overriding_policy: Object.fromEntries(Object.entries(pins).filter(([, v]) => v)),
-        rates: await (async () => {
+        ...(!_wantDetail ? {} : { rates: await (async () => {
           // DERIVED, NOT RECITED. This block used to hardcode "P_IN 1.34 / P_OUT 2.69 / P_CACHE 0.27" and a
           // note about a 13.43x correction - both wrong by 2026-07-21. The rate was reverted to xAI's
           // PUBLISHED $0.10/$0.20/$0.02 hours earlier, and the 13.43x "correction" was itself the error.
@@ -16968,8 +16982,8 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           } catch {}
           return { source: "hardcoded table in server.ts (MODEL_RATES)",
                    note: "No published prices cached yet - run PRICES to pull them from the provider." };
-        })(),
-        rate_provenance: await (async () => {
+        })() }),
+        ...(!_wantDetail ? {} : { rate_provenance: await (async () => {
           // WHERE EACH PROVIDER'S PRICE ACTUALLY COMES FROM, AND WHEN A HUMAN LAST CHECKED IT.
           // Price discovery is a COMMAND, not a loop - vendors reprice when they ship a model, so nothing
           // here polls and nothing should. But only xAI publishes per-token prices through its API
@@ -16987,7 +17001,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
                   confirmed: when || "NEVER CONFIRMED - nobody has dated this rate against the vendor's page" };
           }
           return out;
-        })(),
+        })() }),
         spend_today: { text_usd: +spendToday.toFixed(4), cap_usd: cap,
                        used_pct: +((spendToday / cap) * 100).toFixed(1),
                        images, videos },

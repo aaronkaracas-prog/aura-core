@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.679-2026-07-22";
+const BUILD = "aura-core-v4.9.680-2026-07-22";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -190,6 +190,16 @@ async function _egressCore(env, rec) {
     const led = raw ? JSON.parse(raw)
       : { day, calls: 0, errors: 0, tokens_in: 0, tokens_out: 0, cached_in: 0, cost_usd: 0,
           by_provider: {}, by_caller: {}, by_model: {}, by_endpoint: {}, no_usage: 0 };
+    // ══ BACKFILL THE BUCKETS, AND NEVER SWALLOW THE REASON (fixed 2026-07-22) ═══════════════
+    // A ledger written before `by_endpoint` existed has no such key. bump() then dereferenced
+    // undefined, threw, and the outer catch ate it - so every call after that deploy succeeded and
+    // was silently never recorded. Measured: 6 calls at 21:50:26 and nothing for the next 25 minutes
+    // while xAI's console counted +16 requests. The meter built to end silent drops had one inside it.
+    // Two fixes: default every bucket on read so an older shape can never throw, and make the catch
+    // SAY something. A measurement that fails quietly is indistinguishable from one that never ran.
+    led.by_provider ??= {}; led.by_caller ??= {}; led.by_model ??= {}; led.by_endpoint ??= {};
+    led.no_usage ??= 0; led.errors ??= 0; led.cost_usd ??= 0;
+    led.tokens_in ??= 0; led.tokens_out ??= 0; led.cached_in ??= 0; led.calls ??= 0;
     const u = rec.usage || {};
     const tin  = Number(u.prompt_tokens ?? u.input_tokens ?? 0) || 0;
     const tout = Number(u.completion_tokens ?? u.output_tokens ?? 0) || 0;
@@ -211,7 +221,7 @@ async function _egressCore(env, rec) {
     if (!tin && !tout && /completions|messages|generateContent|generations/.test(path)) led.no_usage = (led.no_usage || 0) + 1;
     led.last = new Date().toISOString();
     await kv.put(k, JSON.stringify(led), { expirationTtl: 120 * 24 * 3600 });
-  } catch { /* a lost measurement must never cost a call */ }
+  } catch (e) { try { console.warn("[EGRESS] record failed (call still succeeded): " + (e && e.message)); } catch {} }
 }
 
 // Wrap any raw provider fetch in this file. Returns the real Response untouched; reads a clone after.

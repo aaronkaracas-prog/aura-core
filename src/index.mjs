@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.671-2026-07-22";
+const BUILD = "aura-core-v4.9.672-2026-07-22";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -24765,6 +24765,31 @@ function openAlbum(idx){
           // unreachable, and says so in the response so the fallback can never hide.
           const agentTry = await proxyToAgent(env, line, isOp);
           const ok = agentTry && agentTry.reply;
+          // ══ A COMMAND IS NEVER ANSWERED BY A PROSE BRAIN (v4.9.672) ═══════════════════════
+          // THREE FABRICATIONS, ALL FROM THIS EXACT PATH, ALL WHILE THE AGENT WAS DOWN:
+          //   "421 claims indexed, 16 near-miss detections, AIMARGIN is the margin sentinel"
+          //   "[EXISTING_TASKS_PLUS_NEW_TASK]" returned as though it were data
+          //   "AIMARGIN is not in the claimed business index - Thrive Cannabis Marketplace..."
+          // None of that is malfunction. llmReply loads entity: (PTA/business records), config:tasks:list
+          // and owner identity into context - correct for a .world VISITOR asking about a business, and
+          // catastrophic when the same brain is handed "AIMARGIN status" because the agent is unreachable.
+          // It answered the only way it could with the context it had. The bug is that a COMMAND reached
+          // a prose brain at all.
+          // So: if the line looks like a command, RUN IT. Deterministic, no model, no context, no story.
+          // A command either executes or fails - it must never be narrated.
+          let _cmdFallback = null;
+          if (!ok && /^[A-Z][A-Z0-9_]{2,}(\s|$)/.test(line.trim())) {
+            try {
+              const r = await processCommand(line, env, isOp);
+              if (r) _cmdFallback = r.payload ?? r;
+            } catch (e) { _cmdFallback = { ok: false, error: "command failed on the local path: " + (e && e.message) }; }
+          }
+          if (_cmdFallback && lines.length === 1) {
+            return jsonReply({ ok: true, reply: _cmdFallback, via: "aura-core-local-command",
+              degraded: true, proxy_failed: agentTry && agentTry.failed,
+              note: "The agent was unreachable, so this ran as a COMMAND on the local path - real execution, " +
+                    "no model, no narration. The result above is the command's own output." });
+          }
           const reply = ok ? agentTry.reply
                            : await llmReply(line, env, sessionId, isOp, request.headers.get("x-pta-entity") || null);
           if (lines.length === 1) {

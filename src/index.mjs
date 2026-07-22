@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.674-2026-07-22";
+const BUILD = "aura-core-v4.9.675-2026-07-22";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17052,7 +17052,16 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
             return { claims: a.claims || 0, cost_usd: +usd.toFixed(4),
               ok, degraded: a.degraded || 0, failed: a.failed || 0, ungraded: a.ungraded || 0,
               failure_tax_usd: +(Number(a.failure_tax_usd) || 0).toFixed(4),
-              cost_per_ok_outcome: ok > 0 ? +(usd / ok).toFixed(4) : null,
+              cost_per_completed_turn: ok > 0 ? +(usd / ok).toFixed(4) : null,
+              // FINALS ARE COUNTED APART FROM PROVISIONALS. Until a settlement or calibration event
+              // writes final_grade, this stays zero and cost-per-CORRECT-answer does not exist. Showing
+              // it as zero rather than omitting it is the point: the gap is the product's open edge, and
+              // a council source-check caught this engine claiming a finaliser it did not have.
+              finalized: Number(a.finalized) || 0,
+              cost_per_finalized_success: null,
+              open_exposure: "all " + (a.claims || 0) + " claims today are PROVISIONAL - graded by turn " +
+                             "shape, finalised by nothing. That is the gap, stated rather than papered over.",
+              by_reason: a.by_reason || {},
               cost_by_door: a.by_door || {},
               // ══ THE ENGINE MUST NOT OVERSELL ITSELF (corrected 2026-07-22) ═══════════════════
               // This field used to read "SecureSpend settlement and hindcast are the stronger truths and

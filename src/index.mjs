@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.672-2026-07-22";
+const BUILD = "aura-core-v4.9.673-2026-07-22";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17039,43 +17039,27 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         // corpus produces "not computable", never a number. The spec's whole complaint about every
         // other tool is that they report a figure they cannot support; a margin engine that invented
         // cost-per-correct from ungraded rows would be the same sin with better branding.
+        // ONE KEY, NOT 424. aura-think rolls the day up as each claim row is written (see
+        // _writeLedgerRow). This used to LIST and GET every row - measured at 58,898ms for a command
+        // documented as "zero burn: KV reads and arithmetic". Reading a per-row corpus to answer a
+        // question about totals is O(rows) and gets slower every single day it works correctly.
         outcomes_today: await (async () => {
           try {
-            // READS THE LEDGER THAT ALREADY EXISTS. PART TEN was fully built - aura-think writes a row
-            // per call to aimargin:row:<claim_id> with door, intent, level, model, token split, latency,
-            // cost and an outcome grade (ok | degraded | failed) from turn-end signals, plus a
-            // failure_tax_usd field and an outcome_source so SecureSpend or hindcast can overwrite the
-            // grade with a stronger truth later. NOTHING READ IT. The product was one aggregation away
-            // from existing and the ledger had been filling the whole time.
-            const ks = ((await env.AURA_KV.list({ prefix: "aimargin:row:clm_" + day.replace(/-/g, ""), limit: 1000 }))?.keys || []);
-            let n = 0, usd = 0, ok = 0, degraded = 0, failed = 0, ungraded = 0, ftax = 0;
-            const byDoor = {};
-            for (const k of ks) {
-              try {
-                const r = JSON.parse(await env.AURA_KV.get(k.name));
-                n++;
-                const c = Number(r.cost_usd) || 0; usd += c;
-                ftax += Number(r.failure_tax_usd) || 0;
-                const d = r.door || "unknown";
-                byDoor[d] = +(((byDoor[d] || 0) + c)).toFixed(4);
-                if (r.outcome === "ok") ok++;
-                else if (r.outcome === "degraded") degraded++;
-                else if (r.outcome === "failed") failed++;
-                else ungraded++;
-              } catch {}
-            }
-            const graded = ok + degraded + failed;
-            return { claims: n, cost_usd: +usd.toFixed(4), ok, degraded, failed, ungraded,
-              failure_tax_usd: +ftax.toFixed(4),
+            const raw = await kvg("aimargin:day:" + day, null);
+            if (!raw) return { claims: 0, note: "no claim rows rolled up for " + day + " yet" };
+            const a = JSON.parse(raw);
+            const usd = Number(a.cost_usd) || 0, ok = Number(a.ok) || 0;
+            return { claims: a.claims || 0, cost_usd: +usd.toFixed(4),
+              ok, degraded: a.degraded || 0, failed: a.failed || 0, ungraded: a.ungraded || 0,
+              failure_tax_usd: +(Number(a.failure_tax_usd) || 0).toFixed(4),
               cost_per_ok_outcome: ok > 0 ? +(usd / ok).toFixed(4) : null,
-              cost_by_door: byDoor,
+              cost_by_door: a.by_door || {},
               grade_source: "turn_signal (empty=failed, escalated=degraded, else ok). SecureSpend " +
                             "settlement and hindcast are the stronger truths and overwrite it when they exist.",
               note: ok === 0
-                ? "cost per outcome NOT COMPUTABLE - " + n + " rows, none graded ok yet"
-                : "THIS IS THE PRODUCT: $" + (usd / ok).toFixed(4) + " per working outcome across " +
-                  n + " calls today, not cost per token" };
-          } catch { return { claims: 0, note: "ledger unreadable" }; }
+                ? "cost per outcome NOT COMPUTABLE - no rows graded ok yet"
+                : "THIS IS THE PRODUCT: $" + (usd / ok).toFixed(4) + " per working outcome, not cost per token" };
+          } catch { return { claims: 0, note: "rollup unreadable" }; }
         })(),
         cost_centers: await (async () => {
           const fRaw = await kvg("meter:failure:" + day, null);

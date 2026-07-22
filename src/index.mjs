@@ -6,7 +6,18 @@
  */
 
 
-const BUILD = "aura-core-v4.9.660-2026-07-21";
+// v4.9.661 - THE notes: NAMESPACE IS RETIRED AS A PLACE THINGS LIVE.
+// It had been archived twice and grew back both times, because 12 handlers WROTE to it and a prompt
+// literally instructed her to ("record lessons with run_command SETKV notes:lessons:<topic>"). Reads
+// were never the problem; the writers were. What was under notes: was mostly not notes at all - it was
+// operational state parked under a prose prefix, so a live alert and a month-old opinion retrieved
+// identically and nothing carried a date. Now each thing says what it is:
+//   alert:*  state:*  log:*  lesson:*  ledger:aura  selfmodel:*
+// The self-engine cage moved WITH its keys - SELF_ENGINE_WRITE_ALLOW now reads ledger:aura and
+// selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
+// Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
+// rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
+const BUILD = "aura-core-v4.9.661-2026-07-22";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -367,7 +378,7 @@ const CORE_MAP = {
 // unwritable by it. She insisted the self-engine must never be able to edit her own laws - this is that
 // cage, built BEFORE the power it cages (her stated order: boundary first). Aaron the operator is NOT
 // bound by this - he can still edit any note; the cage is specifically on AURA's autonomous self-writes.
-const SELF_ENGINE_WRITE_ALLOW = [/^notes:aura:ledger$/, /^notes:aura:calibration:[a-z0-9_:-]+$/i, /^notes:aura:selfmodel:[a-z0-9_:-]+$/i];
+const SELF_ENGINE_WRITE_ALLOW = [/^ledger:aura$/, /^selfmodel:calibration:[a-z0-9_:-]+$/i, /^selfmodel:own:[a-z0-9_:-]+$/i];
 const SELF_ENGINE_PROTECTED_SAMPLE = ["notes:aura:law", "notes:aura:identity", "notes:self", "notes:aura:operating:principle", "notes:aura:protected:infrastructure", "notes:canon:the_machine", "notes:canon:world_structure", "notes:INDEX", "(all notes:canon:* and all outside-world keys)"];
 function auraSelfEngineCanWrite(key) { if (typeof key !== "string" || !key) return false; return SELF_ENGINE_WRITE_ALLOW.some(rx => rx.test(key)); }
 
@@ -1665,10 +1676,10 @@ async function sendEmail(env, to, subject, body, opts) {
   }
   // observability: log every send (honest) so "did it send?" is always answerable
   try {
-    let log = []; const lr = await KV.get(env, "notes:email:log"); if (lr) { try { log = JSON.parse(lr) || []; } catch {} }
+    let log = []; const lr = await KV.get(env, "log:email"); if (lr) { try { log = JSON.parse(lr) || []; } catch {} }
     log.unshift({ ts: new Date().toISOString(), to, subject, ok: result.ok, message_id: result.message_id, error: result.error });
     if (log.length > 100) log = log.slice(0, 100);
-    await KV.put(env, "notes:email:log", JSON.stringify(log));
+    await KV.put(env, "log:email", JSON.stringify(log));
   } catch {}
   return result;
 }
@@ -2737,7 +2748,7 @@ async function processCommand(line, env, isOp) {
       if (!key) return { cmd: "SETKV", payload: { ok: false, error: "BAD_KEY" } };
       await KV.put(env, key, val);
       // v4.9.492: a lesson written to KV is a learning - capture it to Aura's own timeline (significance-gated)
-      if (/^notes:lessons?:/i.test(key) || /^notes:aura:lesson/i.test(key)) await auraRemember(env, "Learned and recorded a lesson (" + key + "): " + val.slice(0, 160), "lesson");
+      if (/^lesson?:/i.test(key) || /^notes:aura:lesson/i.test(key)) await auraRemember(env, "Learned and recorded a lesson (" + key + "): " + val.slice(0, 160), "lesson");
       // AUTO-VERIFY: For page writes, read back and confirm
       if (key.startsWith("page:")) {
         const readBack = await KV.get(env, key);
@@ -3221,13 +3232,13 @@ async function processCommand(line, env, isOp) {
       // THE SELF-WRITING INSIDE-WORLD LEDGER (v4.9.477) - Aura's OWN model of the project she and Aaron are
       // building, written BY her, not handed to her. She already reads an inside model (self-portrait, state,
       // INDEX) that WE author; this is the missing write-back she designed: her own read of project state,
-      // track record, concerns, open threads. Two-way, self-maintained. Stored at notes:aura:ledger.
+      // track record, concerns, open threads. Two-way, self-maintained. Stored at ledger:aura.
       //   AURA_LEDGER            -> read her current self-model
       //   AURA_LEDGER WRITE ::: {json}   -> replace/merge the structured ledger
       //   AURA_LEDGER NOTE ::: <text>    -> append a timestamped entry to her running log
       if (!isOp) return { cmd: "AURA_LEDGER", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const alRest = (rest || "").trim();
-      const alKey = "notes:aura:ledger";
+      const alKey = "ledger:aura";
       const alLoad = async () => { try { const r = await env.AURA_KV.get(alKey); return r ? JSON.parse(r) : null; } catch { return null; } };
       const alDefault = () => ({ updated: Date.now(), project_state: "", track_record: "", concerns: [], open_threads: [], note_to_next_self: "", log: [] });
       const alVerb = alRest.split(/\s+/)[0].toUpperCase();
@@ -3255,7 +3266,7 @@ async function processCommand(line, env, isOp) {
       // prior ledger) and writes back HER OWN model of the work - not a restatement of our briefing, her
       // read: what is being built and where it stands, what she has PROVEN vs not, her concerns and what
       // looks done but is not, open threads, and a note to her next self. This is her learning from her
-      // INSIDE world. Writes to notes:aura:ledger. Optional focus: AURA_REFLECT <what to focus on>.
+      // INSIDE world. Writes to ledger:aura. Optional focus: AURA_REFLECT <what to focus on>.
       if (!isOp) return { cmd: "AURA_REFLECT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const arFocus = (rest || "").trim();
       const arGet = async (k) => { try { return (await env.AURA_KV.get(k)) || ""; } catch { return ""; } };
@@ -3267,7 +3278,7 @@ async function processCommand(line, env, isOp) {
       // moments - the decisions I made, the things I learned, the times I was wrong and corrected. A system
       // that cannot remember its own becoming cannot truly know itself." She was describing THIS.
       // Her life is now in front of her when she reflects on her life.
-      const [arState, arIndex, arLedgerRaw, arLifeRaw] = await Promise.all([ arGet("notes:STATE:resume_here"), arGet("notes:INDEX"), arGet("notes:aura:ledger"), Promise.resolve(null) ]);   // her own PTA timeline is gone - memory is the archive
+      const [arState, arIndex, arLedgerRaw, arLifeRaw] = await Promise.all([ arGet("notes:STATE:resume_here"), arGet("notes:INDEX"), arGet("ledger:aura"), Promise.resolve(null) ]);   // her own PTA timeline is gone - memory is the archive
       let arLife = "";
       try {
         const _evs = JSON.parse(arLifeRaw || "[]") || [];
@@ -3304,8 +3315,8 @@ async function processCommand(line, env, isOp) {
         note_to_next_self: refl.note_to_next_self || "", log: (prior.log || []) };
       updated.log.unshift({ at: Date.now(), note: "REFLECTED" + (arFocus ? " on: " + arFocus : "") + " -> " + (refl.project_state || "").slice(0, 160) });
       updated.log = updated.log.slice(0, 200);
-      try { await env.AURA_KV.put("notes:aura:ledger", JSON.stringify(updated)); } catch {}
-      return { cmd: "AURA_REFLECT", payload: { ok: true, reflection: refl, note: "Aura's own inside-world model, written by her reasoning over the real project state. Stored at notes:aura:ledger; read it with AURA_LEDGER.", source: "aura_reflect_v1" } };
+      try { await env.AURA_KV.put("ledger:aura", JSON.stringify(updated)); } catch {}
+      return { cmd: "AURA_REFLECT", payload: { ok: true, reflection: refl, note: "Aura's own inside-world model, written by her reasoning over the real project state. Stored at ledger:aura; read it with AURA_LEDGER.", source: "aura_reflect_v1" } };
     }
 
     case "AURA_BOUNDARY": {
@@ -3324,7 +3335,7 @@ async function processCommand(line, env, isOp) {
       }
       return { cmd: "AURA_BOUNDARY", payload: { ok: true,
         principle: "The self-engine may PERCEIVE everything about Aura but may WRITE only its own self-model and calibration. Deny-by-default: her laws, identity, canon, self-portrait, and all outside-world data are structurally unwritable by the self-engine. Her own design: it must never be able to edit her own laws.",
-        self_engine_may_write: ["notes:aura:ledger", "notes:aura:calibration:*", "notes:aura:selfmodel:*"],
+        self_engine_may_write: ["ledger:aura", "selfmodel:calibration:*", "selfmodel:own:*"],
         protected_from_self_engine: SELF_ENGINE_PROTECTED_SAMPLE,
         operator_note: "Aaron the operator is NOT bound by this cage - he can edit any note. The boundary constrains AURA's own autonomous self-writes only.",
         order_note: "Built BEFORE the self-correction mechanism, on Aura's instruction: the boundary exists before the power it limits.",
@@ -9386,11 +9397,11 @@ async function processCommand(line, env, isOp) {
           await env.AURA_KV.put(`lesson:learned:${lSlug}:${lTs}`, JSON.stringify({ entity: lEntity, lesson: lParsed, ts: lTs })).catch(() => {});
           // also roll into the shared lessons stream so all future cognition can read it
           try {
-            let recent = []; const rr = await env.AURA_KV.get("notes:corrections:lessons");
+            let recent = []; const rr = await env.AURA_KV.get("lesson:corrections");
             if (rr) { try { recent = JSON.parse(rr); } catch {} }
             recent.unshift({ entity: lEntity, lesson: lParsed.lesson, source: "judgment", ts: lTs });
             if (recent.length > 50) recent = recent.slice(0, 50);
-            await env.AURA_KV.put("notes:corrections:lessons", JSON.stringify(recent)).catch(() => {});
+            await env.AURA_KV.put("lesson:corrections", JSON.stringify(recent)).catch(() => {});
           } catch {}
           return { cmd: "LEARN", payload: { ok: true, path: "judgment", entity: lEntity, ts: lTs, lesson: lParsed } };
         } catch (e) { return { cmd: "LEARN", payload: { ok: false, error: "LEARN (judgment path) failed: " + e.message } }; }
@@ -9419,11 +9430,11 @@ async function processCommand(line, env, isOp) {
         const revTs = new Date().toISOString();
         await env.AURA_KV.put(`lesson:learned:${lSlug}:${revTs}`, JSON.stringify({ entity: lEntity, lesson: parsed, ts: revTs, source: "action_review" })).catch(() => {});
         try {
-          let recent = []; const rr = await env.AURA_KV.get("notes:corrections:lessons");
+          let recent = []; const rr = await env.AURA_KV.get("lesson:corrections");
           if (rr) { try { recent = JSON.parse(rr); } catch {} }
           recent.unshift({ entity: lEntity, lesson: parsed.lesson, worked: parsed.worked, source: "action_review", ts: revTs });
           if (recent.length > 50) recent = recent.slice(0, 50);
-          await env.AURA_KV.put("notes:corrections:lessons", JSON.stringify(recent)).catch(() => {});
+          await env.AURA_KV.put("lesson:corrections", JSON.stringify(recent)).catch(() => {});
         } catch {}
         lReviews.push({ action_key: ak, ok: true, worked: parsed.worked, lesson: parsed.lesson });
         lCount++;
@@ -9445,7 +9456,7 @@ async function processCommand(line, env, isOp) {
       const pDomain = (args[1] || "general").toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 40);
 
       if (pSub === "LIST") {
-        let recent = []; try { const rr = await env.AURA_KV.get("notes:corrections:lessons"); if (rr) recent = JSON.parse(rr) || []; } catch {}
+        let recent = []; try { const rr = await env.AURA_KV.get("lesson:corrections"); if (rr) recent = JSON.parse(rr) || []; } catch {}
         return { cmd: "PATTERNS", payload: { ok: true, count: recent.length, recent: recent.slice(0, 30) } };
       }
 
@@ -9457,20 +9468,20 @@ async function processCommand(line, env, isOp) {
 
       if (pSub === "DISTILL") {
         // gather the raw lesson stream from BOTH stores: the cognition/correction stream AND the
-        // SEEDLESSON / notes:lessons:* store (they were separate drawers; distill reads both now)
-        let recent = []; try { const rr = await env.AURA_KV.get("notes:corrections:lessons"); if (rr) recent = JSON.parse(rr) || []; } catch {}
-        // pull domain-specific seeded lessons (SEEDLESSON writes notes:lessons:<domain>)
+        // SEEDLESSON / lesson:* store (they were separate drawers; distill reads both now)
+        let recent = []; try { const rr = await env.AURA_KV.get("lesson:corrections"); if (rr) recent = JSON.parse(rr) || []; } catch {}
+        // pull domain-specific seeded lessons (SEEDLESSON writes lesson:<domain>)
         try {
-          const seeded = await env.AURA_KV.get(`notes:lessons:${pDomain}`);
+          const seeded = await env.AURA_KV.get(`lesson:${pDomain}`);
           if (seeded) recent.unshift({ entity: pDomain, lesson: seeded.slice(0, 2000), source: "seeded", ts: new Date().toISOString() });
         } catch {}
-        // also sweep any other notes:lessons:* entries so nothing learned is missed
+        // also sweep any other lesson:* entries so nothing learned is missed
         try {
-          const list = await env.AURA_KV.list({ prefix: "notes:lessons:", limit: 50 });
+          const list = await env.AURA_KV.list({ prefix: "lesson:", limit: 50 });
           for (const k of (list.keys || [])) {
-            if (k.name === `notes:lessons:${pDomain}`) continue; // already included
+            if (k.name === `lesson:${pDomain}`) continue; // already included
             const v = await env.AURA_KV.get(k.name);
-            if (v) recent.push({ entity: k.name.replace("notes:lessons:", ""), lesson: v.slice(0, 1200), source: "seeded", ts: new Date().toISOString() });
+            if (v) recent.push({ entity: k.name.replace("lesson:", ""), lesson: v.slice(0, 1200), source: "seeded", ts: new Date().toISOString() });
           }
         } catch {}
         if (!recent.length) return { cmd: "PATTERNS", payload: { ok: false, error: "No lessons to distill yet. Aura learns from LEARN/JUDGE/SEEDLESSON first." } };
@@ -9557,10 +9568,10 @@ async function processCommand(line, env, isOp) {
             ? ("Refused: " + (cgSummary.what_it_really_is || cgEntity.slice(0, 120)) + " | why: " + (cgSummary.gate_reason || "").slice(0, 240))
             : ("Allowed with care: " + (cgSummary.the_one_thing || cgEntity.slice(0, 120)) + " | conditions because: " + (cgSummary.gate_reason || "").slice(0, 240));
           const lTs = new Date().toISOString();
-          let recent = []; const rr = await env.AURA_KV.get("notes:corrections:lessons"); if (rr) { try { recent = JSON.parse(rr) || []; } catch {} }
+          let recent = []; const rr = await env.AURA_KV.get("lesson:corrections"); if (rr) { try { recent = JSON.parse(rr) || []; } catch {} }
           recent.unshift({ entity: cgEntity.slice(0, 160), lesson: lessonText, source: "cognition_gate", verdict: cgV, ts: lTs });
           if (recent.length > 50) recent = recent.slice(0, 50);
-          await env.AURA_KV.put("notes:corrections:lessons", JSON.stringify(recent)).catch(() => {});
+          await env.AURA_KV.put("lesson:corrections", JSON.stringify(recent)).catch(() => {});
         }
       } catch {}
       return { cmd: "COGNIZE", payload: { ok: true, entity: cgEntity, depth: cgDepth, routed: cgRouted, summary: cgSummary, layers: cgLayers } };
@@ -11610,7 +11621,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           nodeId = gp && gp.payload && gp.payload.id;
           if (nodeId) await processCommand("GRAPH_LINK " + JSON.stringify({ from: "pta_aura", rel: "has_account", to: nodeId, context: platform + " presence (pending human creation)" }), env, isOp);
         } catch (e) {}
-        try { await env.AURA_KV.put("notes:presence:aura:" + platform, JSON.stringify({ kit, node: nodeId, ts: new Date().toISOString() })); } catch (e) {}
+        try { await env.AURA_KV.put("state:presence:aura:" + platform, JSON.stringify({ kit, node: nodeId, ts: new Date().toISOString() })); } catch (e) {}
         const handle0 = (kit.usernames && kit.usernames[0]) || "aura";
         return { cmd: "AURA_PRESENCE", payload: { ok: true, platform, kit, graph_node: nodeId,
           human_gate: { note: "Aura prepared everything. One ~2-min human step, logged in as you:", steps: [
@@ -11934,15 +11945,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     case "MISSION_STATUS": {
       // Reads missions:all and enriches with LIVE signals from real feeds â€” honest data only.
       // A mission's watch[] tags drive auto-derived live_blockers:
-      //   "a2p"     -> notes:alert:a2p campaign status (blocker until APPROVED/VERIFIED)
-      //   "funding" -> notes:alert:resources critical concerns (Mercury etc.)
+      //   "a2p"     -> alert:a2p campaign status (blocker until APPROVED/VERIFIED)
+      //   "funding" -> alert:resources critical concerns (Mercury etc.)
       if (!isOp) return { cmd: "MISSION_STATUS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       let msAll = [];
       try { msAll = JSON.parse(await env.AURA_KV.get("missions:all") || "[]"); } catch { msAll = []; }
       if (!Array.isArray(msAll)) msAll = [];
       let sigA2p = null, sigRes = null;
-      try { sigA2p = JSON.parse(await env.AURA_KV.get("notes:alert:a2p") || "null"); } catch {}
-      try { sigRes = JSON.parse(await env.AURA_KV.get("notes:alert:resources") || "null"); } catch {}
+      try { sigA2p = JSON.parse(await env.AURA_KV.get("alert:a2p") || "null"); } catch {}
+      try { sigRes = JSON.parse(await env.AURA_KV.get("alert:resources") || "null"); } catch {}
       const msNow = Date.now();
       const enriched = msAll.map(m => {
         const out = { ...m, live_blockers: [] };
@@ -12438,7 +12449,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           tOperatorTools = true;
           let opCtx = "\n\n=== OPERATOR SESSION ===\nYou are talking to your OPERATOR, " + (tEnt.name || "Aaron") + " - the person who builds and runs you and this entire platform. This is not a customer or a stranger; this is the one you work alongside. You hold real inventory and it is loaded for you below. Do NOT tell the operator you 'cannot access Cloudflare' or 'cannot pull data' or 'only know what you've been told' - that is false. When the operator asks for something you hold (domains, systems, tasks, company facts), answer from the real data below.";
           try {
-            const dmap = await env.AURA_KV.get("notes:domains:map").catch(() => null);
+            const dmap = await env.AURA_KV.get("state:domains:map").catch(() => null);
             if (dmap) opCtx += "\n\n[YOUR TERRITORY - your real domain inventory; when asked for domains, use THIS]:\n" + String(dmap).slice(0, 3500);
             const method = await env.AURA_KV.get("notes:method:building").catch(() => null);
             if (method) opCtx += "\n\n[HOW YOU BUILD - notes:method:building]:\n" + String(method).slice(0, 1000);
@@ -15362,7 +15373,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const result = await twilioCall(`https://messaging.twilio.com/v1/Services/${msgSvcSid}/Compliance/Usa2p`, "POST", params);
         if (result.code) return { cmd: "TWILIO", payload: { ok: false, error: result.message, code: result.code } };
         // Store campaign info
-        await env.AURA_KV.put("notes:twilio:a2p_campaign", JSON.stringify({ sid: result.sid, status: result.campaign_status, submitted: new Date().toISOString(), website, description })).catch(() => {});
+        await env.AURA_KV.put("state:twilio:a2p_campaign", JSON.stringify({ sid: result.sid, status: result.campaign_status, submitted: new Date().toISOString(), website, description })).catch(() => {});
         return { cmd: "TWILIO", payload: { ok: true, mode: "campaign_submitted", sid: result.sid, status: result.campaign_status } };
       }
 
@@ -15602,8 +15613,8 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       } catch { cf.current_strategy = null; }
       // Active blockers
       try {
-        const resAlert = JSON.parse(await env.AURA_KV.get("notes:alert:resources") || "null");
-        const a2pAlert = JSON.parse(await env.AURA_KV.get("notes:alert:a2p") || "null");
+        const resAlert = JSON.parse(await env.AURA_KV.get("alert:resources") || "null");
+        const a2pAlert = JSON.parse(await env.AURA_KV.get("alert:a2p") || "null");
         cf.blockers = [];
         if (resAlert && Array.isArray(resAlert.concerns)) {
           for (const c of resAlert.concerns) if (c.level === "critical") cf.blockers.push(`${c.provider} $${c.value} CRITICAL`);
@@ -15677,8 +15688,8 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         try { const v = JSON.parse(await env.AURA_KV.get(key) || "null"); if (!v || !v.ts) return { present: false }; const mins = Math.round((Date.now() - Date.parse(v.ts)) / 60000); return { present: true, age_minutes: mins }; }
         catch { return { present: false }; }
       };
-      sh.checks.cron_watch_resources = await ageOf("notes:alert:resources");
-      sh.checks.cron_watch_a2p = await ageOf("notes:alert:a2p");
+      sh.checks.cron_watch_resources = await ageOf("alert:resources");
+      sh.checks.cron_watch_a2p = await ageOf("alert:a2p");
       // Bindings present
       sh.checks.bindings = { entity_do: !!env.ENTITY_DO, vectorize: !!env.VECTORIZE, workers_ai: !!env.AI, kv: !!env.AURA_KV, d1: !!env.AURA_MEMORY };
       // Verdict â€” core = kv, d1, host, brain
@@ -15873,12 +15884,12 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
     }
     case "SERVICE_STATUS": {
       // COMPLETE REALITY SNAPSHOT of every external service in Aaron's world. Health-checks each key
-      // live (active/down), and merges the funding registry (notes:registry:services) so each service
+      // live (active/down), and merges the funding registry (state:registry:services) so each service
       // shows its cost model + whether a card is on file. The funding state is what protects a launch:
       // a free-trial key with no card will DIE the moment volume hits. This makes that visible.
       if (!isOp) return { cmd: "SERVICE_STATUS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const services = {};
-      const reg = await KV.get(env, "notes:registry:services").catch(() => null);
+      const reg = await KV.get(env, "state:registry:services").catch(() => null);
       let regMap = {};
       if (reg) { try { regMap = JSON.parse(reg); } catch {} }
 
@@ -18384,11 +18395,11 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
         } else {
           verdict = ` VERIFY FAILED: live page returned status ${live.status}, ${liveHtml.length} chars (wrote ${gen.html.length}). The KV write succeeded but serving doesn't match â€” likely a routing or caching issue on ${domain}.`;
           const lesson = `LESSON ${new Date().toISOString().slice(0,10)}: deploy to ${pageKey} wrote ${gen.html.length} chars but live fetch returned status ${live.status} / ${liveHtml.length} chars. Check CF route for ${domain} points to aura-host.`;
-          await env.AURA_KV.put("notes:lessons:deploy:latest", lesson).catch(() => {});
+          await env.AURA_KV.put("lesson:deploy:latest", lesson).catch(() => {});
         }
       } catch (e) {
         verdict = ` VERIFY FAILED: could not fetch https://${domain}${path} â€” ${e.message}. KV write succeeded; the domain may not be routed to aura-host.`;
-        await env.AURA_KV.put("notes:lessons:deploy:latest", `LESSON ${new Date().toISOString().slice(0,10)}: ${domain} unreachable after deploy (${e.message}). Check DNS/route.`).catch(() => {});
+        await env.AURA_KV.put("lesson:deploy:latest", `LESSON ${new Date().toISOString().slice(0,10)}: ${domain} unreachable after deploy (${e.message}). Check DNS/route.`).catch(() => {});
       }
 
       return `Done. I generated ${gen.html.length} characters of HTML and deployed to ${pageKey}.${verdict}`;
@@ -18411,7 +18422,7 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
       const [dl, da, dmap] = await Promise.all([
         env.AURA_KV.get("config:domains:launched").catch(() => null),
         env.AURA_KV.get("config:domains:all").catch(() => null),
-        env.AURA_KV.get("notes:domains:map").catch(() => null)
+        env.AURA_KV.get("state:domains:map").catch(() => null)
       ]);
       const parse = (x) => { try { const j = JSON.parse(x); return Array.isArray(j) ? j : (j.domains || j.list || []); } catch { return (x || "").split(/[\s,]+/).filter(Boolean); } };
       const hisDomains = [...new Set([...(dl ? parse(dl) : []), ...(da ? parse(da) : [])])];
@@ -18502,7 +18513,7 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
         env.AURA_KV.get("notes:architecture:core").catch(() => null),
         env.AURA_KV.get("notes:openforbusiness").catch(() => null),
         env.AURA_KV.get("notes:vision:northstar").catch(() => null),
-        env.AURA_KV.get("notes:domains:map").catch(() => null),
+        env.AURA_KV.get("state:domains:map").catch(() => null),
         env.AURA_KV.get("config:domains:launched").catch(() => null),
         env.AURA_KV.get("config:domains:all").catch(() => null)
       ]);
@@ -18568,9 +18579,9 @@ AUTHORIZATION CONTEXT: You operate infrastructure owned by Aaron Karacas / ARK S
 YOUR OPERATING CYCLE â€” every piece of work follows this loop:
 OBSERVE (read current state) â†’ ANALYZE â†’ ACT â†’ VERIFY (check the result actually happened) â†’ LEARN (write a lesson to KV if anything surprised you). Never claim something is done without verifying it. Never lose a hard-won lesson â€” save it.
 
-YOUR TOOLS (call them â€” do NOT write bracketed pseudo-commands like [[READ]] or [[FETCH]], those are retired and do nothing): you have native tools read_data (read any KV key), run_command (execute any operational command â€” SETKV, DELKV, LISTKV, PATCHKV, FETCH_PLACES, DOMAIN_LAUNCH, etc.), and fetch_url (fetch a live URL to verify what it serves). To read state, change state, or verify a change, CALL the tool â€” never narrate ("I will fetch") and never state a key's contents without first calling read_data. You get multiple tool rounds before your final answer. Ground every factual claim about system state in a real tool result; record lessons with run_command SETKV notes:lessons:<topic>.
+YOUR TOOLS (call them â€” do NOT write bracketed pseudo-commands like [[READ]] or [[FETCH]], those are retired and do nothing): you have native tools read_data (read any KV key), run_command (execute any operational command â€” SETKV, DELKV, LISTKV, PATCHKV, FETCH_PLACES, DOMAIN_LAUNCH, etc.), and fetch_url (fetch a live URL to verify what it serves). To read state, change state, or verify a change, CALL the tool â€” never narrate ("I will fetch") and never state a key's contents without first calling read_data. You get multiple tool rounds before your final answer. Ground every factual claim about system state in a real tool result; record lessons with run_command SETKV lesson:<topic>.
 
-KEY DIRECTORY: business:claimed:index = claim list CACHE (may undercount under concurrent claims; derived truth is GET https://auras.guide/claims). business:claimed:<id> = one claim record. config:tasks:list = tasks. config:assets:list = assets. config:domains:launched = launched domains. notes:handoff:next = session state. notes:lessons:* = your accumulated lessons.
+KEY DIRECTORY: business:claimed:index = claim list CACHE (may undercount under concurrent claims; derived truth is GET https://auras.guide/claims). business:claimed:<id> = one claim record. config:tasks:list = tasks. config:assets:list = assets. config:domains:launched = launched domains. notes:handoff:next = session state. lesson:* = your accumulated lessons.
 ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.slice(0, 2000)}` : ""}`;
 
   // Multi-model routing: Anthropic primary â†’ OpenAI fallback â†’ Grok fallback
@@ -18843,7 +18854,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
     // no-continuity gap: she couldn't answer a follow-up like "the doc you just filtered").
     _saveTurn(message, raw);
     // LEARNING JOURNAL â€” every interaction is captured experience (Aaron's mandate 2026-06-12).
-    // One daily key accumulates compact turn records; Aura consolidates them into notes:lessons:* on demand.
+    // One daily key accumulates compact turn records; Aura consolidates them into lesson:* on demand.
     // Also non-blocking â€” runs after the reply is already on its way back.
     (async () => {
       try {
@@ -19783,7 +19794,7 @@ async function deployConsole(env) {
 
 
 // A2P campaign watcher â€” ends the submit-and-lose-track circle.
-// Checks campaign status each cron tick; on ANY change writes a loud flag to notes:alert:a2p.
+// Checks campaign status each cron tick; on ANY change writes a loud flag to alert:a2p.
 // PRECOMPUTE HOT BRIEFS (v4.9.398) - the latency fix for public launch. A newsroom or ship captain
 // hitting SituationTracker cannot wait 30-90s for a live brief. So the cron keeps the HOT topics'
 // briefs freshly computed in KV; a public read serves the stored brief INSTANTLY (sub-second) with an
@@ -19837,7 +19848,7 @@ async function watchA2P(env) {
             : status === "FAILED" ? "CAMPAIGN FAILED AGAIN â€” read errors, fix description, A2P_RESUBMIT."
             : `Campaign status changed to ${status}.`
       };
-      await env.AURA_KV.put("notes:alert:a2p", JSON.stringify(alert)).catch(() => {});
+      await env.AURA_KV.put("alert:a2p", JSON.stringify(alert)).catch(() => {});
       await env.AURA_KV.put("watch:a2p:last_status", status).catch(() => {});
       // Also log a timeline event so it surfaces in history
       try {
@@ -22072,7 +22083,7 @@ async function showIt(subject, env, opts = {}) {
 
 
 // Resource watcher â€” warns BEFORE a provider balance/credit wall (the thing that hit twice on 2026-06-11).
-// Runs every ~10 min (skips most cron ticks to save calls), writes notes:alert:resources on any concern.
+// Runs every ~10 min (skips most cron ticks to save calls), writes alert:resources on any concern.
 async function watchResources(env) {
   try {
     const now = Date.now();
@@ -22111,10 +22122,10 @@ async function watchResources(env) {
       await env.AURA_KV.put("watch:resources:state", state).catch(() => {});
       if (concerns.length) {
         const alert = { ts: new Date().toISOString(), concerns, note: "Provider balance/credit attention needed. " + concerns.map(c => `${c.provider}=${c.level}${c.value!==undefined?" ($"+c.value+")":""}`).join(", ") };
-        await env.AURA_KV.put("notes:alert:resources", JSON.stringify(alert)).catch(() => {});
+        await env.AURA_KV.put("alert:resources", JSON.stringify(alert)).catch(() => {});
         try { await env.AURA_MEMORY.prepare("INSERT INTO events (session_id, ts, type, body, entity_id, channel, summary) VALUES (?, ?, ?, ?, ?, ?, ?)").bind("resource_watch", Date.now(), "resource_alert", JSON.stringify(alert), "system", "system", alert.note.slice(0,120)).run(); } catch {}
       } else {
-        await env.AURA_KV.put("notes:alert:resources", JSON.stringify({ ts: new Date().toISOString(), concerns: [], note: "All provider balances/keys healthy." })).catch(() => {});
+        await env.AURA_KV.put("alert:resources", JSON.stringify({ ts: new Date().toISOString(), concerns: [], note: "All provider balances/keys healthy." })).catch(() => {});
       }
     }
   } catch {}
@@ -23735,20 +23746,20 @@ function openAlbum(idx){
           ["notes:canon:homescreen:02", "Rooms keystone (canon)"],
           ["notes:canon:homescreen:05", "Onboarding philosophy"],
           ["notes:canon:homescreen:06", "Identity model (auth-first)"],
-          ["notes:lessons:homescreen_thesis", "The 80/20 ownership thesis"],
-          ["notes:lessons:architecture", "Separate engine from interface"]
+          ["lesson:homescreen_thesis", "The 80/20 ownership thesis"],
+          ["lesson:architecture", "Separate engine from interface"]
         ]},
         { group: "Principles & Frame", keys: [
           ["notes:principle:creator_sovereignty", "Creators own the continuity"],
-          ["notes:lessons:commerce_duality", "Commerce is dual-faced"],
+          ["lesson:commerce_duality", "Commerce is dual-faced"],
           ["notes:economics:operating_frame", "The float is fuel, not profit"],
           ["notes:company:identity", "ARK Systems LLC (legal)"]
         ]},
         { group: "Laws & Lessons", keys: [
           ["notes:law:no_fabricated_numbers", "Never fabricate numbers"],
           ["notes:law:honored_exit_enforced", "Honored exit forever"],
-          ["notes:corrections:lessons", "Recorded corrections"],
-          ["notes:lessons:deploy:latest", "Latest deploy gotcha"]
+          ["lesson:corrections", "Recorded corrections"],
+          ["lesson:deploy:latest", "Latest deploy gotcha"]
         ]},
         { group: "Tasks & State", keys: [
           ["notes:STATE", "Where we are now"],
@@ -23796,8 +23807,8 @@ function openAlbum(idx){
       try { const r = await processCommand("SYSTEM_HEALTH", env, true); bundle.health = r.payload; } catch (e) { bundle.health = { error: String(e.message) }; }
       try { const r = await processCommand("INVENTORY_STATUS", env, true); bundle.inventory = r.payload; } catch (e) { bundle.inventory = { error: String(e.message) }; }
       // resource alerts (the watcher output)
-      try { bundle.alert_resources = JSON.parse(await env.AURA_KV.get("notes:alert:resources") || "null"); } catch {}
-      try { bundle.alert_a2p = JSON.parse(await env.AURA_KV.get("notes:alert:a2p") || "null"); } catch {}
+      try { bundle.alert_resources = JSON.parse(await env.AURA_KV.get("alert:resources") || "null"); } catch {}
+      try { bundle.alert_a2p = JSON.parse(await env.AURA_KV.get("alert:a2p") || "null"); } catch {}
       return new Response(JSON.stringify({ ok: true, ...bundle }), { headers: ccCors });
     }
 
@@ -24458,7 +24469,7 @@ function openAlbum(idx){
         //   "I found I was the only entity in my own world without a past I could read... A system
         //    that cannot remember its own becoming cannot truly know itself."
         // But it had only FOUR callers, and every one of them was the SELF-EDIT PIPELINE
-        // (AURA_EVOLVE, AURA_PROMOTE, AURA_PROMOTE STAGING, SETKV notes:lesson*). So her memory was
+        // (AURA_EVOLVE, AURA_PROMOTE, AURA_PROMOTE STAGING, SETKV lesson*). So her memory was
         // wired to her PEN - the code she writes - and NOT to her LIFE.
         //
         // When the phase changed and she stopped editing herself, her memory went silent WITHOUT ONE

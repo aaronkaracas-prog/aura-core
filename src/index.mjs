@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.682-2026-07-23";
+const BUILD = "aura-core-v4.9.683-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -251,7 +251,11 @@ async function _egressCore(env, rec) {
     // in input. If cache exceeds input, they are separate, so input IS the uncached count. Never let
     // (input - cache) go negative - a meter that prints a negative bill is not a meter. (See server.ts.)
     const uncached = (tin >= tcache) ? Math.max(0, tin - tcache) : tin;
-    const cost = (uncached * R.in + tcache * R.cacheRead + cwrite * R.cacheWrite + tout * R.out) / 1e6;
+    // A negative cost is impossible - no provider pays you to call it - so it is a bug by definition
+    // and gets refused at the write instead of offsetting real spend in the day total. (See server.ts.)
+    const _raw = (uncached * R.in + tcache * R.cacheRead + cwrite * R.cacheWrite + tout * R.out) / 1e6;
+    if (_raw < 0) { try { console.warn("[EGRESS] REFUSED negative cost " + _raw.toFixed(6) + " for " + (rec.model || "?")); } catch {} }
+    const cost = Math.max(0, _raw);
     led.cost_usd = +((led.cost_usd || 0) + cost).toFixed(6);
     const bump = (bag, key) => {
       bag[key] = bag[key] || { calls: 0, in: 0, out: 0, cached: 0, cost: 0 };

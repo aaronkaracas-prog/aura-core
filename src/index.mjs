@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.693-2026-07-23";
+const BUILD = "aura-core-v4.9.694-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17040,12 +17040,32 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       //   CALIBRATE USAGE <provider> <cumulative usage from the console>
       const _ua = line.match(/\bUSAGE\s+([a-z]+)\s+\$?([\d.]+)\s+ANCHOR\b/i);
       if (_ua) {
-        await env.AURA_KV.put("usage:anchor:" + _ua[1].toLowerCase(),
-          JSON.stringify({ amount_usd: parseFloat(_ua[2]), at: new Date().toISOString().slice(0, 10) }));
-        return { cmd: "CALIBRATE", payload: { ok: true, mode: "usage-anchor-set", provider: _ua[1].toLowerCase(),
-                 anchored_at_usage: parseFloat(_ua[2]),
-                 note: "cumulative usage anchored. Burn, read the console again, then run CALIBRATE USAGE " +
-                       _ua[1].toLowerCase() + " <new figure> without ANCHOR to derive the rate." } };
+        // ══ SNAPSHOT THE METER, NOT JUST THE DATE ══════════════════════════════════════════
+        // The anchor stored a DATE, so "our metered since the anchor" meant the whole day - including
+        // everything burned before the anchor was set. The provider side measures from the moment you
+        // read the console; our side measured from midnight. Two different windows, and the ratio
+        // between them is meaningless no matter how carefully either half is counted.
+        // Now it records what the door had counted for that provider at the instant of anchoring, so
+        // the comparison is anchor-moment to now on BOTH sides.
+        const _p = _ua[1].toLowerCase();
+        let _snap = { calls: 0, cost: 0, in: 0, out: 0, cached: 0 };
+        try {
+          const raw = await env.AURA_KV.get("egress:" + new Date().toISOString().slice(0, 10));
+          if (raw) {
+            const b = JSON.parse(raw)?.by_provider?.[_p];
+            if (b) _snap = { calls: Number(b.calls) || 0, cost: Number(b.cost) || 0,
+                             in: Number(b.in) || 0, out: Number(b.out) || 0, cached: Number(b.cached) || 0 };
+          }
+        } catch {}
+        await env.AURA_KV.put("usage:anchor:" + _p,
+          JSON.stringify({ amount_usd: parseFloat(_ua[2]), at: new Date().toISOString().slice(0, 10),
+                           at_ts: new Date().toISOString(), egress_snapshot: _snap }));
+        return { cmd: "CALIBRATE", payload: { ok: true, mode: "usage-anchor-set", provider: _p,
+                 anchored_at_usage: parseFloat(_ua[2]), meter_snapshot: _snap,
+                 note: "anchored at this exact moment. The door had counted " + _snap.calls + " calls / $" +
+                       _snap.cost.toFixed(6) + " for " + _p + " so far today; everything after this point " +
+                       "is the test window. Burn, read the console again, then run CALIBRATE USAGE " +
+                       _p + " <new figure>." } };
       }
       const _um = line.match(/\bUSAGE\s+([a-z]+)\s+\$?([\d.]+)/i);
       if (_um)
@@ -20697,7 +20717,7 @@ async function calibrateFromBalance(env, provider, currentBalance, isUsageCounte
   }
 
   // OUR side: sum the metered cost for this provider across every day since the anchor.
-  let oursUsd = 0, days = 0, tokIn = 0, tokOut = 0;
+  let oursUsd = 0, days = 0, tokIn = 0, tokOut = 0, oursCalls = 0;
   const start = new Date(anchor.at + "T00:00:00Z");
   const today = new Date();
   for (let t = new Date(start); t <= today; t.setUTCDate(t.getUTCDate() + 1)) {
@@ -20710,11 +20730,24 @@ async function calibrateFromBalance(env, provider, currentBalance, isUsageCounte
       if (!b) continue;
       oursUsd += Number(b.cost) || 0;
       tokIn += Number(b.in) || 0; tokOut += Number(b.out) || 0;
+      oursCalls += Number(b.calls) || 0;
       days++;
     } catch {}
   }
-  out.window = { from: anchor.at, days_with_data: days, our_metered_usd: +oursUsd.toFixed(6),
-                 tokens_in: tokIn, tokens_out: tokOut, they_consumed_usd: consumed };
+  // subtract what the door had already counted when the anchor was set - otherwise our side starts at
+  // midnight while theirs starts at the moment you read the console.
+  const snap = anchor.egress_snapshot || null;
+  if (snap) {
+    oursUsd = Math.max(0, oursUsd - (Number(snap.cost) || 0));
+    tokIn = Math.max(0, tokIn - (Number(snap.in) || 0));
+    tokOut = Math.max(0, tokOut - (Number(snap.out) || 0));
+    oursCalls = Math.max(0, oursCalls - (Number(snap.calls) || 0));
+  }
+  out.window = { from: anchor.at_ts || anchor.at, days_with_data: days,
+                 our_metered_usd: +oursUsd.toFixed(6), our_calls: oursCalls,
+                 tokens_in: tokIn, tokens_out: tokOut, they_consumed_usd: consumed,
+                 window_note: snap ? "measured from the anchor moment on both sides"
+                                   : "anchor predates meter snapshots - window starts at midnight on our side, so treat the ratio as indicative only" };
 
   if (oursUsd <= 0) {
     out.note = "we metered $0 for " + prov + " since " + anchor.at + " - no denominator, nothing to divide.";

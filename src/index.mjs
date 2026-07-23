@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.685-2026-07-23";
+const BUILD = "aura-core-v4.9.686-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -20472,6 +20472,44 @@ async function calibrateAll(env, day) {
     const oursUsd = Number(ours.cost) || 0;
     if (theirs <= 0) { out.skipped[prov] = "no text billing on " + d; continue; }
     if (oursUsd <= 0) { out.skipped[prov] = "we metered $0 - denominator unusable"; continue; }
+
+    // ══ DO THE TWO SIDES MEASURE THE SAME TRAFFIC? (added 2026-07-23, first live run) ═══════
+    // The first CALIBRATE ALL returned openai 3.56x and xai 11.99x. Neither is a rate error. The
+    // numerator is the provider's BILLING API - the whole ACCOUNT for that day. The denominator is
+    // our egress ledger - only what these two workers sent. Anything else on that key (Claude Code, a
+    // browser session, another tool) is in the numerator and can never be in the denominator. We saw
+    // this stated outright yesterday: Anthropic billed $75.94 and it was ORG-WIDE, not Aura-only.
+    // So a big ratio is not "their price is higher", it is "someone else is using this key".
+    // Dividing two populations that do not correspond is the SAME bug the comment above warns about -
+    // all-billing over text-only-metering - moved to a different axis. I generalised the code and
+    // reproduced the flaw in a new dimension.
+    // THE TEST: the usage adapters return TOKEN counts, not just dollars. If their tokens match ours,
+    // the account is isolated and a dollar gap really is the rate. If their tokens far exceed ours,
+    // other traffic exists and no rate can be derived from this account until the key is isolated.
+    let usageCheck = null;
+    try {
+      const fn = prov === "anthropic" ? _usageAnthropic : prov === "openai" ? _usageOpenai : prov === "xai" ? _usageXai : null;
+      if (fn) usageCheck = await fn(env, d);
+    } catch {}
+    const oursTok = (Number(ours.in) || 0) + (Number(ours.out) || 0);
+    if (usageCheck && usageCheck.ok) {
+      const theirTok = (Number(usageCheck.in) || 0) + (Number(usageCheck.out) || 0);
+      const share = theirTok > 0 ? oursTok / theirTok : 0;
+      if (share < 0.8) {
+        out.refused[prov] = { why: "TOKEN POPULATIONS DO NOT MATCH - the provider counted " + theirTok +
+          " tokens on this account today and our egress ledger counted " + oursTok + " (" +
+          (share * 100).toFixed(0) + "%). The billing number covers the WHOLE ACCOUNT; our ledger covers " +
+          "only these two workers. No per-token rate can be derived until this key serves nothing else. " +
+          "Isolate the key, or use a usage-API rate instead of a billing-API rate.",
+          their_tokens: theirTok, our_tokens: oursTok };
+        continue;
+      }
+    } else if (usageCheck) {
+      out.skipped[prov] = "usage adapter could not confirm token correspondence: " + (usageCheck.error || "?") +
+        " - refusing to calibrate on a dollar ratio alone, because a dollar ratio cannot tell a price " +
+        "change from someone else using the key.";
+      continue;
+    }
 
     const ratio = theirs / oursUsd;
     if (!(ratio > 0.1 && ratio < 10)) {

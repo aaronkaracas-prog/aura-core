@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.698-2026-07-23";
+const BUILD = "aura-core-v4.9.699-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -258,7 +258,7 @@ async function _egressCore(env, rec) {
     const raw = await kv.get(k);
     const led = raw ? JSON.parse(raw)
       : { day, calls: 0, errors: 0, tokens_in: 0, tokens_out: 0, cached_in: 0, cost_usd: 0,
-          by_provider: {}, by_caller: {}, by_model: {}, by_endpoint: {}, no_usage: 0 };
+          by_provider: {}, by_caller: {}, by_model: {}, by_endpoint: {}, by_tenant: {}, no_usage: 0 };
     // ══ BACKFILL THE BUCKETS, AND NEVER SWALLOW THE REASON (fixed 2026-07-22) ═══════════════
     // A ledger written before `by_endpoint` existed has no such key. bump() then dereferenced
     // undefined, threw, and the outer catch ate it - so every call after that deploy succeeded and
@@ -267,6 +267,7 @@ async function _egressCore(env, rec) {
     // Two fixes: default every bucket on read so an older shape can never throw, and make the catch
     // SAY something. A measurement that fails quietly is indistinguishable from one that never ran.
     led.by_provider ??= {}; led.by_caller ??= {}; led.by_model ??= {}; led.by_endpoint ??= {};
+    led.by_tenant ??= {};
     led.no_usage ??= 0; led.errors ??= 0; led.cost_usd ??= 0;
     led.tokens_in ??= 0; led.tokens_out ??= 0; led.cached_in ??= 0; led.calls ??= 0;
     const u = rec.usage || {};
@@ -316,6 +317,17 @@ async function _egressCore(env, rec) {
     let path = rec.endpoint || "?";
     try { path = new URL(rec.endpoint).pathname; } catch {}
     bump(led.by_endpoint, rec.provider + path);
+    // ══ WHOSE TOKENS ARE THESE? ═══════════════════════════════════════════════════════════════
+    // A flat daily key cannot bill a customer, prove a margin, or enforce a quota - it can only say
+    // what the whole system burned. Every call now carries a TENANT, defaulting to "aura" because
+    // Aaron is client #1 and runs the same code path a stranger would.
+    // Two modes, and they are different businesses:
+    //   own_key - the customer supplies their own provider key. The vendor bills THEM at list; we
+    //             never touch the money and charge a service fee for the measurement.
+    //   resold  - the customer routes through OUR key. We hold the vendor contract, buy at volume,
+    //             and the margin is the difference. Their spend lands on our invoice, so isolation
+    //             and quota stop being reporting niceties and become the product.
+    bump(led.by_tenant, rec.tenant || "aura");
     if (!tin && !tout && /completions|messages|generateContent|generations/.test(path)) led.no_usage = (led.no_usage || 0) + 1;
     led.last = new Date().toISOString();
     await kv.put(k, JSON.stringify(led), { expirationTtl: 120 * 24 * 3600 });
@@ -323,7 +335,7 @@ async function _egressCore(env, rec) {
 }
 
 // Wrap any raw provider fetch in this file. Returns the real Response untouched; reads a clone after.
-async function pfetch(env, provider, caller, url, opts) {
+async function pfetch(env, provider, caller, url, opts, tenant) {
   const t0 = Date.now();
   let model = "";
   try { const b = opts && opts.body; if (typeof b === "string" && b.length < 2000000) model = JSON.parse(b).model || ""; } catch {}
@@ -331,7 +343,7 @@ async function pfetch(env, provider, caller, url, opts) {
   try {
     res = await fetch(url, opts);
   } catch (e) {
-    await _egressCore(env, { provider, caller, model, endpoint: String(url), status: 0, ms: Date.now() - t0, usage: null });
+    await _egressCore(env, { provider, caller, model, endpoint: String(url), status: 0, ms: Date.now() - t0, usage: null, tenant });
     throw e;
   }
   try {
@@ -342,7 +354,7 @@ async function pfetch(env, provider, caller, url, opts) {
       const m = txt.match(/"usage"\s*:\s*\{[^{}]*\}/g);
       if (m && m.length) { try { usage = JSON.parse("{" + m[m.length - 1] + "}").usage; } catch {} }
     }
-    await _egressCore(env, { provider, caller, model, endpoint: String(url), status: res.status, ms: Date.now() - t0, usage });
+    await _egressCore(env, { provider, caller, model, endpoint: String(url), status: res.status, ms: Date.now() - t0, usage, tenant });
   } catch {}
   return res;
 }
@@ -17126,6 +17138,68 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       }
       return { cmd: "BUSINESS_AUDIT", payload: { ok: true, ...(await auditBusiness(env)) } };
     }
+    case "TENANT": {
+      // ══ TENANTS ── WHO THE TOKENS BELONG TO ══════════════════════════════════════════════════
+      //   TENANT LIST
+      //   TENANT ADD <id> own_key|resold [markup_pct]
+      //   TENANT <id>                      - one tenant's usage today
+      // own_key: they bring their provider key. The vendor bills them at list; we never touch the
+      //          money. We charge for the measurement, so markup is not the model - a fee is.
+      // resold:  they route through our key. Their spend lands on OUR invoice, we bought at volume,
+      //          and markup_pct is the margin. Isolation and quota become load-bearing here, not
+      //          reporting conveniences - an unmetered resold tenant is an unpaid bill.
+      // Aaron is tenant "aura" by default and runs the same path a stranger would. That is the whole
+      // reason this engine can be sold: it never needed to know anything about the application.
+      if (!isOp) return { cmd: "TENANT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const day = new Date().toISOString().slice(0, 10);
+      const add = rest.match(/^ADD\s+([a-z0-9_-]+)\s+(own_key|resold)\s*([\d.]+)?/i);
+      if (add) {
+        const rec = { id: add[1].toLowerCase(), mode: add[2].toLowerCase(),
+                      markup_pct: add[3] ? parseFloat(add[3]) : (add[2].toLowerCase() === "resold" ? 20 : 0),
+                      added: new Date().toISOString() };
+        await env.AURA_KV.put("tenant:" + rec.id, JSON.stringify(rec));
+        return { cmd: "TENANT", payload: { ok: true, added: rec,
+          note: rec.mode === "resold"
+            ? "resold: calls tagged '" + rec.id + "' run on OUR provider key. Their cost lands on our " +
+              "invoice; we bill them cost x " + (1 + rec.markup_pct / 100).toFixed(2) + "."
+            : "own_key: '" + rec.id + "' brings their own provider key. The vendor bills them directly; " +
+              "we meter and charge a service fee. markup_pct does not apply." } };
+      }
+      const list = await env.AURA_KV.list({ prefix: "tenant:", limit: 200 }).catch(() => ({ keys: [] }));
+      const tenants = {};
+      for (const k of (list.keys || [])) {
+        try { const t = JSON.parse(await env.AURA_KV.get(k.name)); tenants[t.id] = t; } catch {}
+      }
+      if (!tenants.aura) tenants.aura = { id: "aura", mode: "own_key", markup_pct: 0, note: "client #1 - the operator, implicit" };
+
+      let usage = {};
+      try {
+        const raw = await env.AURA_KV.get("egress:" + day);
+        if (raw) usage = JSON.parse(raw).by_tenant || {};
+      } catch {}
+
+      const one = rest.trim().toLowerCase();
+      const rows = {};
+      for (const [id, t] of Object.entries(tenants)) {
+        if (one && one !== "list" && id !== one) continue;
+        const u = usage[id] || { calls: 0, in: 0, out: 0, cached: 0, cost: 0 };
+        const cost = +(Number(u.cost) || 0).toFixed(6);
+        rows[id] = {
+          mode: t.mode, calls: u.calls || 0, tokens_in: u.in || 0, tokens_out: u.out || 0,
+          our_cost_usd: cost,
+          billable_usd: t.mode === "resold" ? +(cost * (1 + (Number(t.markup_pct) || 0) / 100)).toFixed(6) : null,
+          margin_usd: t.mode === "resold" ? +(cost * ((Number(t.markup_pct) || 0) / 100)).toFixed(6) : null,
+          billing_note: t.mode === "resold"
+            ? "runs on our key at " + (t.markup_pct || 0) + "% markup - this is our invoice to pay and theirs to settle"
+            : "runs on their own key - the vendor bills them at list; our_cost_usd is what we measured, not what we owe",
+        };
+      }
+      return { cmd: "TENANT", payload: { ok: true, day, tenants: rows,
+        untagged: usage.aura ? undefined : "no tenant-tagged traffic yet today",
+        note: "Every egress row carries a tenant. Aura is client #1 on the same path a customer uses - " +
+              "which is the point: the meter needs to know nothing about the application it measures." } };
+    }
+
     case "AIMARGIN": {
       // ══ ONE COMMAND, THE WHOLE ENGINE ═══════════════════════════════════════════════════════════
       // Aaron's ask, and it is the right one: stop re-deriving the state of AIMARGIN by hand every

@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.694-2026-07-23";
+const BUILD = "aura-core-v4.9.695-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -20422,7 +20422,13 @@ async function discoverPrices(env) {
   try {
     const key = env.XAI_API_KEY || await KV.get(env, "secret:grok_api_key") || await KV.get(env, "secret:xai");
     if (!key) return { ok: false, error: "no xAI key" };
-    const r = await fetch("https://api.x.ai/v1/models", { headers: { Authorization: "Bearer " + key } });
+    // ══ FREE CALLS ARE STILL REQUESTS (2026-07-23) ═══════════════════════════════════════════
+  // /v1/models consumes no tokens, so it never looked like something a COST meter should count. But
+  // the provider's console counts REQUESTS, and every one of these appears there. Measured: xAI logged
+  // +60 requests across a window where the door counted +26 - and the missing 34 were health checks
+  // and price probes, not lost inference. Tokens matched; requests did not. A meter that only counts
+  // the calls that cost money cannot reconcile against a counter that counts them all.
+  const r = await pfetch(env, "xai", "prices:discover", "https://api.x.ai/v1/models", { headers: { Authorization: "Bearer " + key } });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) return { ok: false, error: (d?.error || "http " + r.status) };
 
@@ -22830,7 +22836,7 @@ async function pollVideoJobs(env) {
       if (!raw) continue;
       const job = JSON.parse(raw);
       if (job.status !== "pending") continue;
-      const r = await fetch("https://api.x.ai/v1/videos/" + job.request_id, {
+      const r = await pfetch(env, "xai", "video:poll", "https://api.x.ai/v1/videos/" + job.request_id, {
         headers: { "Authorization": "Bearer " + key },
       });
       const d = await r.json().catch(() => ({}));
@@ -22970,7 +22976,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       // URL. Endpoint carries the model in the path + ?key=. Completely different shape from OpenAI/Grok.
       let key = env.GOOGLE_API_KEY || await env.AURA_KV.get("secret:google").catch(() => null);
       if (!key) throw new Error("no Google key");
-      const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + key, {
+      const r = await pfetch(env, "google", "core:gemini", "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + key, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ contents: [{ parts: [{ text: p }] }], generationConfig: { responseModalities: ["IMAGE"] } })

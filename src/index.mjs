@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.683-2026-07-23";
+const BUILD = "aura-core-v4.9.684-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17071,12 +17071,26 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       // two separate sessions because it was never noise, it was a whole worker missing from one view.
       // Both doors now read the same keys, so they cannot drift apart again by construction. This is
       // the engine whose thesis is one honest number; it does not get to have two.
+      // ══ DEMOLITION 2026-07-23 ── SPEND COMES FROM THE DOOR, NOT FROM SEVEN COUNTERS ════════
+      // These four keys were four of the seven counters. Each was written at its own call site and
+      // covered its own subset, which is why AIMARGIN and my_burn disagreed by exactly one worker for
+      // weeks and why, after they were unified, both still ran 6x under the provider's own count.
+      // egress:<day> counts every provider HTTP request from both workers with the provider's own
+      // token numbers. It is the truth. The four keys are kept below ONLY as a legacy cross-check for
+      // a day, so the change of basis is visible rather than silent; they stop being the answer.
+      let egressToday = null;
+      try {
+        const eraw = await kvg("egress:" + day, null);
+        if (eraw) egressToday = JSON.parse(eraw);
+      } catch {}
       const spendText = Number(await kvg("meter:spend:" + day, "0")) || 0;
       let spendCore = 0, spendImg = 0, spendVid = 0;
       try { spendCore = Number(JSON.parse(await kvg("meter:core:" + day, "{}")).cost_usd) || 0; } catch {}
       try { spendImg = Number(JSON.parse(await kvg("meter:images:" + day, "{}")).cost_usd) || 0; } catch {}
       try { spendVid = Number(JSON.parse(await kvg("meter:videos:" + day, "{}")).cost_usd) || 0; } catch {}
-      const spendToday = +(spendText + spendCore + spendImg + spendVid).toFixed(6);
+      const legacySum = +(spendText + spendCore + spendImg + spendVid).toFixed(6);
+      // egress is authoritative when it has rows; the legacy sum is the fallback until it does
+      const spendToday = egressToday ? +(Number(egressToday.cost_usd) || 0).toFixed(6) : legacySum;
       const cap = Number(await kvg("config:budget:daily", "5")) || 5;
       let images = {}, videos = {};
       try { images = JSON.parse(await kvg("meter:images:" + day, "{}")); } catch {}
@@ -17165,9 +17179,16 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         })() }),
         spend_today: { total_usd: +spendToday.toFixed(4), cap_usd: cap,
                        used_pct: +((spendToday / cap) * 100).toFixed(1),
-                       lanes: { text: +spendText.toFixed(4), core_brain: +spendCore.toFixed(4),
-                                images: +spendImg.toFixed(4), video: +spendVid.toFixed(4) },
-                       reconciles_with: "my_burn / AUDIT - same four ledgers, same total",
+                       source: egressToday ? "egress:<day> - every provider request, both workers, "
+                                           + "priced from the provider's own usage object"
+                                           : "legacy meter keys (no egress rows yet today)",
+                       provider_requests: egressToday ? egressToday.calls : null,
+                       by_provider: egressToday ? egressToday.by_provider : null,
+                       by_caller: egressToday ? egressToday.by_caller : null,
+                       legacy_counter_sum: legacySum,
+                       legacy_note: "the four old meter keys, kept one more day as a cross-check. They "
+                                  + "count turns and lanes; egress counts provider requests. A gap here "
+                                  + "is the old counters being incomplete, which is why they were retired.",
                        images, videos },
         // ══ THE SIX COST CENTERS - AND WHICH ONES THIS ENGINE CAN ACTUALLY SEE ═══════════════
         // AIMARGIN's own thesis: "a token dashboard is a fuel gauge on a car with no odometer",
@@ -17266,13 +17287,26 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         // looks, instead of the tenth time it is argued about.
         counter_integrity: await (async () => {
           try {
+            // POST-DEMOLITION: the old check compared two internal counters to each other. They now
+            // have one writer so they cannot disagree - which also means agreeing proves nothing.
+            // The only comparison worth making is ours vs THE PROVIDER, and /truecost does that.
+            // What this checks now: is the door actually recording, and is it recording sanely.
+            const e = egressToday;
+            if (!e) return { ok: true, note: "no provider requests recorded yet today" };
+            const bad = Number(e.cost_usd) < 0;
+            const stale = e.calls > 0 && !e.last;
+            if (bad || stale) return { ok: false, MISMATCH: true, calls: e.calls, cost_usd: e.cost_usd,
+              note: (bad ? "NEGATIVE DAY TOTAL - impossible; a pricing bug is banked in this ledger. "
+                         : "") + (stale ? "ledger has calls but no timestamp. " : "") +
+                    "Run /truecost to compare against what the providers actually billed." };
             const t = JSON.parse((await kvg("meter:tokens:" + day, "{}")) || "{}");
             const b = JSON.parse((await kvg("burn:" + day, "{}")) || "{}");
             const calls = Number(t.calls) || 0, turns = Number(b.turns) || 0;
-            if (!calls && !turns) return { ok: true, note: "no billed calls yet today" };
+            if (!calls && !turns) return { ok: true, egress_calls: e.calls,
+              note: "egress recording; legacy counters retired (they no longer write)" };
             const drift = turns > 0 ? Math.abs(calls - turns) / turns : 1;
             return drift <= 0.02
-              ? { ok: true, calls, turns, note: "token ledger and burn ledger agree" }
+              ? { ok: true, egress_calls: e.calls, calls, turns, note: "egress recording; legacy counters agree" }
               : { ok: false, MISMATCH: true, calls, turns, delta: calls - turns,
                   note: "COUNTER DIVERGENCE - meter:tokens counted " + calls + " calls and burn:<day> " +
                         "counted " + turns + " turns for the same day. Both are written by one chokepoint " +

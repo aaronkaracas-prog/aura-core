@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.696-2026-07-23";
+const BUILD = "aura-core-v4.9.697-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -11194,7 +11194,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const checkBrain = async (name, kvKey, url, model, bodyFn) => {
         try {
           const k = await KV.get(env, kvKey); if (!k) return { service: name, kind: "brain", status: "no_key", ok: false };
-          const r = await fetch(url, { method: "POST", headers: { "Authorization": "Bearer " + k, "Content-Type": "application/json" }, body: JSON.stringify(bodyFn(model)) });
+          // ══ THIS IS NOT A FREE HEALTH CHECK (found 2026-07-23) ═══════════════════════════════
+          // It reads like a ping and it is a real POST to /chat/completions with a prompt ("hi",
+          // max_tokens 1). Four brains, so every VITALS run is FOUR BILLABLE INFERENCE CALLS - and
+          // none of them passed the door. VITALS is invoked by hand, by health sweeps, and by anything
+          // that wants to know if a provider is up, so this quietly spends on every one.
+          // Found by looking for what was MISSING: VITALS pinged five providers and by_caller showed
+          // no healthcheck rows at all. The absence was the evidence.
+          const _prov = /anthropic/i.test(url) ? "anthropic" : /x\.ai/i.test(url) ? "xai"
+                      : /groq/i.test(url) ? "groq" : /openai/i.test(url) ? "openai" : "unknown";
+          const r = await pfetch(env, _prov, "vitals:probe", url, { method: "POST", headers: { "Authorization": "Bearer " + k, "Content-Type": "application/json" }, body: JSON.stringify(bodyFn(model)) });
           if (r.ok) return { service: name, kind: "brain", status: "live", ok: true };
           let detail = "http " + r.status; try { const j = await r.json(); if (j && j.error) detail = (typeof j.error === "string" ? j.error : (j.error.message || detail)); } catch {}
           return { service: name, kind: "brain", status: "DOWN", ok: false, detail };

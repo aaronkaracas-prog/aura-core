@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.688-2026-07-23";
+const BUILD = "aura-core-v4.9.689-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -20530,9 +20530,13 @@ async function calibrateAll(env, day) {
       const R = _rateFor(model);
       if (!R || !(R.in > 0)) continue;
       if (_providerOfModel(model) !== prov) continue;
-      const next = { P_IN: +(R.in * 1e6 * ratio).toFixed(6),
-                     P_OUT: +(R.out * 1e6 * ratio).toFixed(6),
-                     P_CACHE: +(R.cacheRead * 1e6 * ratio).toFixed(6) };
+      // _rateFor ALREADY returns per-million ({in: 0.20} is $0.20/M, not per token). Multiplying by
+      // 1e6 again turned Meta's corrected 0.20 into 430,000/M, which tripped the $50 ceiling and was
+      // refused - so calibration could never write ANY rate, for any provider, and the ceiling guard
+      // looked like it was catching a measurement bug when it was catching my arithmetic.
+      const next = { P_IN: +(R.in * ratio).toFixed(6),
+                     P_OUT: +(R.out * ratio).toFixed(6),
+                     P_CACHE: +(R.cacheRead * ratio).toFixed(6) };
       if (next.P_IN > 50) { out.refused[model] = { why: "would exceed the $50/M ceiling", next }; continue; }
       table[model] = next; touched.push(model);
     }
@@ -20642,9 +20646,10 @@ async function calibrateFromBalance(env, provider, currentBalance) {
     if (_providerOfModel(model) !== prov) continue;
     const R = _rateFor(model);
     if (!R || !(R.in > 0)) continue;
-    const next = { P_IN: +(R.in * 1e6 * ratio).toFixed(6),
-                   P_OUT: +(R.out * 1e6 * ratio).toFixed(6),
-                   P_CACHE: +(R.cacheRead * 1e6 * ratio).toFixed(6) };
+      // same per-million unit as above - see the note in calibrateFromBalance
+    const next = { P_IN: +(R.in * ratio).toFixed(6),
+                   P_OUT: +(R.out * ratio).toFixed(6),
+                   P_CACHE: +(R.cacheRead * ratio).toFixed(6) };
     if (next.P_IN > 50) { out.note += " refused " + model + ": would exceed the $50/M ceiling."; continue; }
     table[model] = next; touched.push(model);
   }
@@ -20660,8 +20665,11 @@ async function calibrateFromBalance(env, provider, currentBalance) {
                "same convergence the invoice path uses, measured by drawdown because " + prov +
                " does not publish a bill.";
   } else {
-    out.note = "ratio " + ratio.toFixed(4) + "x computed but no " + prov + " model ran today, so there " +
-               "was nothing to scale. Run a turn on that provider and try again.";
+    // APPEND, never overwrite - this branch used to erase the ceiling-refusal messages collected above
+    // and report "no model ran today", which was false and sent the diagnosis in the wrong direction.
+    out.note = "ratio " + ratio.toFixed(4) + "x computed but nothing was written." +
+               (out.note ? " Reasons: " + out.note : " No " + prov + " model ran today, so there was " +
+                "nothing to scale. Run a turn on that provider and try again.");
   }
   return out;
 }

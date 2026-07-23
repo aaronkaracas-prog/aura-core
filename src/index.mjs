@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.695-2026-07-23";
+const BUILD = "aura-core-v4.9.696-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16085,7 +16085,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         if (!k) { out.providers.openai = { ok: false, error: "no key" }; }
         else {
           // A cheap auth check: list models. Confirms key validity even if spend isn't exposed.
-          const r = await fetch("https://api.openai.com/v1/models", { headers: { "Authorization": "Bearer " + k } });
+          const r = await pfetch(env, "openai", "healthcheck", "https://api.openai.com/v1/models", { headers: { "Authorization": "Bearer " + k } });
           if (r.ok) out.providers.openai = { ok: true, key_valid: true, note: "Spend/limit not exposed via API; check dashboard. Key is valid." };
           else { const e = await r.json().catch(()=>({})); out.providers.openai = { ok: false, key_valid: false, http: r.status, error: e?.error?.message || "auth failed" }; }
         }
@@ -16138,10 +16138,10 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         { id: "anthropic", label: "Anthropic (Claude)", powers: "Aura's reasoning brain", key: "secret:anthropic",
           // Was sending a REAL message (max_tokens 1) to test the key - a health check that costs money
           // every time it runs. /v1/models authenticates the same key for free.
-          check: async () => { const k = await KV.get(env,"secret:anthropic"); if(!k) return false; const r = await fetch("https://api.anthropic.com/v1/models",{headers:{"x-api-key":k,"anthropic-version":"2023-06-01"}}); return r.ok; } },
+          check: async () => { const k = await KV.get(env,"secret:anthropic"); if(!k) return false; const r = await pfetch(env, "anthropic", "healthcheck", "https://api.anthropic.com/v1/models",{headers:{"x-api-key":k,"anthropic-version":"2023-06-01"}}); return r.ok; } },
         { id: "openai", label: "OpenAI", powers: "ShowIt image generation", key: "secret:openai",
-          check: async () => { let k = await KV.get(env,"secret:openai"); if(k&&k.startsWith("{")){try{k=JSON.parse(k).api_key;}catch{}} if(!k) return false; const r = await fetch("https://api.openai.com/v1/models",{headers:{"Authorization":"Bearer "+k}}); return r.ok; } },
-        { id: "grok", label: "Grok (xAI)", powers: "alternate reasoning", key: "secret:grok_api_key", check: async () => { const k = await KV.get(env,"secret:grok_api_key"); if(!k) return false; const r = await fetch("https://api.x.ai/v1/models",{headers:{"Authorization":"Bearer "+k}}); return r.ok; } },
+          check: async () => { let k = await KV.get(env,"secret:openai"); if(k&&k.startsWith("{")){try{k=JSON.parse(k).api_key;}catch{}} if(!k) return false; const r = await pfetch(env, "openai", "healthcheck", "https://api.openai.com/v1/models", { headers: { "Authorization": "Bearer " + k } }); return r.ok; } },
+        { id: "grok", label: "Grok (xAI)", powers: "alternate reasoning", key: "secret:grok_api_key", check: async () => { const k = await KV.get(env,"secret:grok_api_key"); if(!k) return false; const r = await pfetch(env, "xai", "healthcheck", "https://api.x.ai/v1/models",{headers:{"Authorization":"Bearer "+k}}); return r.ok; } },
         { id: "tavily", label: "Tavily", powers: "web search (situations)", key: "secret:tavily", check: async () => { const k = await KV.get(env,"secret:tavily"); if(!k) return false; const r = await fetch("https://api.tavily.com/search",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({api_key:k,query:"ping",max_results:1})}); return r.ok; } },
         { id: "brave_search", label: "Brave Search", powers: "web search fallback", key: "secret:brave_search", check: async () => { const k = await KV.get(env,"secret:brave_search"); if(!k) return false; const r = await fetch("https://api.search.brave.com/res/v1/web/search?q=ping&count=1",{headers:{"X-Subscription-Token":k,"Accept":"application/json"}}); return r.ok; } },
         { id: "currents", label: "Currents", powers: "live news (NEWS_QUERY)", key: "secret:currents", check: async () => { const k = await KV.get(env,"secret:currents"); if(!k) return false; const r = await fetch("https://api.currentsapi.services/v1/latest-news?apiKey="+k+"&page_size=1"); return r.ok; } },
@@ -23104,7 +23104,7 @@ async function watchResources(env) {
     // OpenAI key validity
     try {
       let k = env.OPENAI_API_KEY || await KV.get(env, "secret:openai"); if (k && k.startsWith("{")) { try { k = JSON.parse(k).api_key; } catch {} }
-      if (k) { const r = await fetch("https://api.openai.com/v1/models", { headers: { "Authorization": "Bearer " + k } }); if (!r.ok && r.status === 429) concerns.push({ provider: "openai", level: "critical", note: "rate/billing limit" }); }
+      if (k) { const r = await pfetch(env, "openai", "healthcheck", "https://api.openai.com/v1/models", { headers: { "Authorization": "Bearer " + k } }); if (!r.ok && r.status === 429) concerns.push({ provider: "openai", level: "critical", note: "rate/billing limit" }); }
     } catch {}
 
     const prev = await env.AURA_KV.get("watch:resources:state").catch(() => null);

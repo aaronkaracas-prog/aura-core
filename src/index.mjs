@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.686-2026-07-23";
+const BUILD = "aura-core-v4.9.687-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -22056,12 +22056,22 @@ async function _trueCostXai(env, day) {
 async function _trueCostAnthropic(env, day) {
   const key = env.ANTHROPIC_ADMIN_KEY;
   if (!key) return { ok: false, error: "no ANTHROPIC_ADMIN_KEY" };
-  const next = new Date(day + "T00:00:00Z"); next.setUTCDate(next.getUTCDate() + 1);
+  // ══ FIXED 2026-07-23 AGAINST THE PUBLISHED SPEC, NOT BY GUESSING ═══════════════════════════
+  // This returned "Invalid date range: ending date must be after starting date" on every call, which
+  // blocked calibration for the largest spender on the account. The range LOOKED valid - one day to
+  // the next - so I checked Anthropic's own API reference instead of adjusting it by feel:
+  //   1. bucket_width is REQUIRED for cost_report and only "1d" is supported. We never sent it.
+  //   2. The documented example does not send ending_at at all - it sends starting_at with limit,
+  //      which is how you ask for one day's bucket and avoids the range validation entirely.
+  // So the call now matches the reference exactly. On failure it returns the URL it actually called,
+  // because an adapter that fails without saying what it asked for costs another round trip to
+  // diagnose - and this one cost several.
   const url = "https://api.anthropic.com/v1/organizations/cost_report?starting_at=" + day +
-              "T00:00:00Z&ending_at=" + _ymd(next) + "T00:00:00Z&group_by[]=description";
+              "T00:00:00Z&bucket_width=1d&limit=1&group_by[]=description";
   const r = await fetch(url, { headers: { "x-api-key": key, "anthropic-version": "2023-06-01" } });
   const d = await r.json().catch(() => ({}));
-  if (!r.ok) return { ok: false, error: (d?.error?.message || JSON.stringify(d)).slice(0, 200) };
+  if (!r.ok) return { ok: false, error: (d?.error?.message || JSON.stringify(d)).slice(0, 200),
+                      called: url.replace(/x-api-key[^&]*/, ""), status: r.status };
   const lines = {};
   let total = 0;
   for (const bucket of (d?.data || [])) {
@@ -22236,9 +22246,10 @@ async function balanceReport(env, apiBalances) {
 async function _usageAnthropic(env, day) {
   const key = env.ANTHROPIC_ADMIN_KEY;
   if (!key) return { ok: false, error: "no ANTHROPIC_ADMIN_KEY" };
-  const next = new Date(day + "T00:00:00Z"); next.setUTCDate(next.getUTCDate() + 1);
+  // bucket_width is required here too (1m | 1h | 1d). Without it this returned {"data":[]} - an
+  // empty result that looks like "no usage today" rather than "you asked the wrong question".
   const url = "https://api.anthropic.com/v1/organizations/usage_report/messages?starting_at=" + day +
-              "T00:00:00Z&ending_at=" + _ymd(next) + "T00:00:00Z";
+              "T00:00:00Z&bucket_width=1d&limit=1";
   try {
     const r = await fetch(url, { headers: { "x-api-key": key, "anthropic-version": "2023-06-01" } });
     const d = await r.json().catch(() => ({}));

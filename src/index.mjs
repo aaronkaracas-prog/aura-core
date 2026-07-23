@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.704-2026-07-23";
+const BUILD = "aura-core-v4.9.705-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17406,7 +17406,27 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         add(blocked > 5 ? "ALERT" : "REVIEW", "capability refusals",
             blocked + " undeclared-effect refusals on record. One is a new tool shipping inert - which " +
             "is the guard working. Several in a row is something repeatedly trying to reach the world.");
-      // 8. THE METER ITSELF - a detector that can be silently switched off is not a detector.
+      // 8. THE SANDBOX AND THE BROWSER - untrusted input meeting execution.
+      //    Her own prompt says it plainly: "The MACHINE has real network. That means I CAN curl
+      //    anything - straight around my fetch_url allowlist." So the container is not just code
+      //    execution, it is an unrestricted egress path that the three-origin allowlist never covered
+      //    and the egress meter never saw. This is the closest thing here to the Hugging Face entry
+      //    vector, and until today nothing recorded that it had ever run.
+      let surf = null;
+      try { const raw = await env.AURA_KV.get("surface:" + day); if (raw) surf = JSON.parse(raw); } catch {}
+      if (surf && surf.events > 0) {
+        const execs = (surf.by_kind || {})["sandbox:exec"] || 0;
+        if (execs > 0)
+          add(execs > 20 ? "ALERT" : "REVIEW", "sandbox execution",
+              execs + " shell command(s) ran in the container today. The container has unrestricted " +
+              "network, so this is the one path that can reach anywhere regardless of any allowlist. " +
+              "Recent targets: " + Object.keys(surf.by_target || {}).slice(0, 5).join(", "));
+        const writes = (surf.by_kind || {})["sandbox:write"] || 0;
+        if (writes > 0)
+          add("REVIEW", "sandbox writes", writes + " file(s) written into the container filesystem.");
+      }
+
+      // 9. THE METER ITSELF - a detector that can be silently switched off is not a detector.
       if ((Number(today.calls) || 0) > 0 && !today.last)
         add("ALERT", "ledger integrity", "the ledger has calls but no timestamp - it may not be writing.");
 
@@ -17418,10 +17438,12 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
                     median_cost_usd: baseCost, known_callers: seenCallers.size,
                     known_endpoints: seenEndpoints.size, known_providers: [...seenProviders] },
         today: { calls: today.calls, errors: today.errors, cost_usd: today.cost_usd,
-                 callers: Object.keys(today.by_caller || {}).length },
-        honest_limits: "This reads the egress ledger and the block log. It does NOT see prompt content, " +
-          "browser activity, sandbox execution, or anything a call did after it returned. QUIET means " +
-          "nothing tripped these rules - it does not mean nothing happened.",
+                 callers: Object.keys(today.by_caller || {}).length,
+                 surface_events: surf ? surf.events : 0 },
+        honest_limits: "This reads the egress ledger, the block log, and the surface ledger (sandbox " +
+          "execution and writes). It does NOT see prompt content, what a shell command actually did, " +
+          "or what a provider call returned. QUIET means nothing tripped these rules - it does not " +
+          "mean nothing happened.",
         note: "Deterministic. No model decides what is suspicious here; the rules do, and the baseline " +
               "is learned from what this system actually does rather than what a config claims." } };
     }

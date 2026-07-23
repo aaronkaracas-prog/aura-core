@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.687-2026-07-23";
+const BUILD = "aura-core-v4.9.688-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17011,6 +17011,11 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       if (!isOp) return { cmd: "CALIBRATE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const d = (line.match(/\b(\d{4}-\d{2}-\d{2})\b/) || [])[1];
       // ALL means every provider off the egress ledger; bare CALIBRATE keeps the xAI-only path.
+      // CALIBRATE BALANCE <provider> <amount> - for providers with credits instead of invoices
+      const _bm = line.match(/\bBALANCE\s+([a-z]+)\s+\$?([\d.]+)/i);
+      if (_bm)
+        return { cmd: "CALIBRATE", payload: { ok: true, mode: "balance-drawdown",
+                 ...(await calibrateFromBalance(env, _bm[1], parseFloat(_bm[2]))) } };
       if (/\ball\b/i.test(line))
         return { cmd: "CALIBRATE", payload: { ok: true, mode: "all-providers", ...(await calibrateAll(env, d)) } };
       return { cmd: "CALIBRATE", payload: { ok: true, mode: "xai-only (use `CALIBRATE ALL` for every provider)", ...(await calibrateRates(env, d)) } };
@@ -20545,6 +20550,118 @@ async function calibrateAll(env, day) {
   } else {
     out.note = "nothing applied - see skipped/refused. No adapter, no calibration; that is correct " +
                "behaviour, not a failure.";
+  }
+  return out;
+}
+
+// ══ CALIBRATE BALANCE ── FOR PROVIDERS THAT SEND NO INVOICE ═════════════════════════════════════
+//
+// Meta wound down its first-party Llama API on 2026-07-06 and there is no billing endpoint to query.
+// The console shows CREDITS REMAINING, not a bill. Google is the same shape. So two of five providers
+// can never be calibrated by the invoice method - and Meta is currently the largest single line in the
+// ledger ($0.72 in one day), entirely on our own unverified rate estimate with nothing to check it.
+//
+// Aaron's doctrine does not need an invoice, only a truth: "we don't care what their pricing is - we
+// know, because we can decipher it." A credit balance IS a truth. Credits consumed over a window,
+// divided by what we metered over the same window, is the same ratio calibrateAll computes from an
+// invoice - just measured by drawdown instead of billing.
+//
+//   CALIBRATE BALANCE <provider> <current_console_balance>
+//
+// It reads the last anchor (amount + date), sums OUR metered cost for that provider across every
+// egress ledger from the anchor date to today, and divides. Same guards as the invoice path: a ratio
+// outside 0.1x-10x is refused as a measurement bug, the $50/M ceiling still applies, and it re-anchors
+// so the next window starts clean. Manual by design - it needs a human to read a number off a screen,
+// which is exactly the kind of ground truth that cannot be faked by the thing being measured.
+async function calibrateFromBalance(env, provider, currentBalance) {
+  const out = { provider, current_balance: currentBalance, applied: {}, note: "" };
+  const prov = String(provider || "").toLowerCase().trim();
+  if (!prov) { out.note = "usage: CALIBRATE BALANCE <provider> <current balance from the console>"; return out; }
+  const bal = Number(currentBalance);
+  if (!(bal >= 0)) { out.note = "a current balance is required - read it off the provider console"; return out; }
+
+  let anchor = null;
+  try {
+    const raw = await env.AURA_KV.get("balance:" + prov);
+    if (raw) { const l = JSON.parse(raw); anchor = l.anchor || null; }
+  } catch {}
+  if (!anchor || !(Number(anchor.amount_usd) >= 0) || !anchor.at) {
+    out.note = "no anchor on record for " + prov + ". Anchor it first: GET /balance/anchor?provider=" +
+               prov + "&amount=<console figure>, burn some tokens, then run this again.";
+    return out;
+  }
+
+  const consumed = +(Number(anchor.amount_usd) - bal).toFixed(6);
+  if (consumed <= 0) {
+    out.note = "the balance has not gone DOWN since " + anchor.at + " (anchored $" + anchor.amount_usd +
+               ", now $" + bal + "). Nothing was consumed, so there is no rate to derive. If credits " +
+               "were topped up, re-anchor instead of calibrating.";
+    return out;
+  }
+
+  // OUR side: sum the metered cost for this provider across every day since the anchor.
+  let oursUsd = 0, days = 0, tokIn = 0, tokOut = 0;
+  const start = new Date(anchor.at + "T00:00:00Z");
+  const today = new Date();
+  for (let t = new Date(start); t <= today; t.setUTCDate(t.getUTCDate() + 1)) {
+    const key = "egress:" + t.toISOString().slice(0, 10);
+    try {
+      const raw = await env.AURA_KV.get(key);
+      if (!raw) continue;
+      const e = JSON.parse(raw);
+      const b = e?.by_provider?.[prov];
+      if (!b) continue;
+      oursUsd += Number(b.cost) || 0;
+      tokIn += Number(b.in) || 0; tokOut += Number(b.out) || 0;
+      days++;
+    } catch {}
+  }
+  out.window = { from: anchor.at, days_with_data: days, our_metered_usd: +oursUsd.toFixed(6),
+                 tokens_in: tokIn, tokens_out: tokOut, they_consumed_usd: consumed };
+
+  if (oursUsd <= 0) {
+    out.note = "we metered $0 for " + prov + " since " + anchor.at + " - no denominator, nothing to divide.";
+    return out;
+  }
+  const ratio = consumed / oursUsd;
+  if (!(ratio > 0.1 && ratio < 10)) {
+    out.note = "REFUSED - ratio " + ratio.toFixed(3) + "x is outside 0.1x-10x. That is a measurement " +
+               "problem (a top-up counted as consumption, a stale anchor, or tokens we never saw), not " +
+               "a price. Re-anchor and run a clean window before trusting it.";
+    return out;
+  }
+
+  const table = {};
+  try { const raw = await env.AURA_KV.get("config:rate:calibrated"); if (raw) Object.assign(table, JSON.parse(raw)); } catch {}
+  const touched = [];
+  const day = new Date().toISOString().slice(0, 10);
+  let models = {};
+  try { const raw = await env.AURA_KV.get("egress:" + day); if (raw) models = JSON.parse(raw).by_model || {}; } catch {}
+  for (const [model, m] of Object.entries(models)) {
+    if (!m || !m.calls) continue;
+    if (_providerOfModel(model) !== prov) continue;
+    const R = _rateFor(model);
+    if (!R || !(R.in > 0)) continue;
+    const next = { P_IN: +(R.in * 1e6 * ratio).toFixed(6),
+                   P_OUT: +(R.out * 1e6 * ratio).toFixed(6),
+                   P_CACHE: +(R.cacheRead * 1e6 * ratio).toFixed(6) };
+    if (next.P_IN > 50) { out.note += " refused " + model + ": would exceed the $50/M ceiling."; continue; }
+    table[model] = next; touched.push(model);
+  }
+  if (touched.length) {
+    table._calibrated_at = new Date().toISOString();
+    table._from_balance = prov + " drawdown " + anchor.at + " -> " + day;
+    await env.AURA_KV.put("config:rate:calibrated", JSON.stringify(table));
+    // re-anchor so the next window measures fresh drawdown rather than compounding on the same one
+    await balanceAnchor(env, prov, bal);
+    out.applied = { ratio: +ratio.toFixed(4), models: touched };
+    out.note = "rates written and " + prov + " re-anchored at $" + bal + ". Burn a while, read the " +
+               "console again, and run this once more - the ratio should move toward 1.0. This is the " +
+               "same convergence the invoice path uses, measured by drawdown because " + prov +
+               " does not publish a bill.";
+  } else {
+    out.note = "ratio " + ratio.toFixed(4) + "x computed but no " + prov + " model ran today, so there " +
+               "was nothing to scale. Run a turn on that provider and try again.";
   }
   return out;
 }

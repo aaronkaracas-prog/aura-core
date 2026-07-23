@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.705-2026-07-23";
+const BUILD = "aura-core-v4.9.706-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17616,7 +17616,10 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       // the DERIVED price is the answer; the stored one is history
       const spendToday = repriced ? repriced.cost_usd
                        : egressToday ? +(Number(egressToday.cost_usd) || 0).toFixed(6) : legacySum;
-      const cap = Number(await kvg("config:budget:daily", "5")) || 5;
+      // NO CAP by default (2026-07-23). AIMARGIN reports spend; it does not ration it. A cap is only
+      // in force if the operator sets one deliberately - see the note in aura-think's _budgetState.
+      const _capRaw = await kvg("config:budget:daily", null);
+      const cap = (_capRaw && parseFloat(_capRaw) > 0) ? parseFloat(_capRaw) : null;
       let images = {}, videos = {};
       try { images = JSON.parse(await kvg("meter:images:" + day, "{}")); } catch {}
       try { videos = JSON.parse(await kvg("meter:videos:" + day, "{}")); } catch {}
@@ -17702,8 +17705,10 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           }
           return out;
         })() }),
-        spend_today: { total_usd: +spendToday.toFixed(4), cap_usd: cap,
-                       used_pct: +((spendToday / cap) * 100).toFixed(1),
+        spend_today: { total_usd: +spendToday.toFixed(4),
+                       cap_usd: cap,
+                       cap_note: cap ? null : "no cap set - AIMARGIN reports spend, it does not ration it",
+                       used_pct: cap ? +((spendToday / cap) * 100).toFixed(1) : null,
                        source: egressToday ? "egress:<day> - every provider request, both workers, "
                                            + "priced from the provider's own usage object"
                                            : "legacy meter keys (no egress rows yet today)",
@@ -22600,7 +22605,8 @@ async function auditBurn(env) {
   }
 
   // ── 2. BUDGET PRESSURE - warn BEFORE the cap, not at it ─────────────────────────────────────
-  const cap = num(await kv.get("config:budget:daily")) || 5;
+  const _c = num(await kv.get("config:budget:daily"));
+  const cap = _c > 0 ? _c : Infinity;   // no cap unless one is deliberately set
   const used = cap > 0 ? spendToday / cap : 0;
   if (used >= 0.8) {
     findings.push({ level: used >= 1 ? "alert" : "warn", kind: "budget",

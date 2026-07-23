@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.681-2026-07-22";
+const BUILD = "aura-core-v4.9.682-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -247,8 +247,11 @@ async function _egressCore(env, rec) {
     // Anthropic traffic showed up as 3 calls and 6,356 tokens for $0.00 - visible at last, and still
     // wrong in the direction that matters for a margin engine.
     const R = _rateFor(rec.model);
-    const fresh = Math.max(0, tin - tcache);
-    const cost = (fresh * R.in + tcache * R.cacheRead + cwrite * R.cacheWrite + tout * R.out) / 1e6;
+    // Anthropic reports input_tokens as UNCACHED-ONLY with cache_read separate; OpenAI includes cache
+    // in input. If cache exceeds input, they are separate, so input IS the uncached count. Never let
+    // (input - cache) go negative - a meter that prints a negative bill is not a meter. (See server.ts.)
+    const uncached = (tin >= tcache) ? Math.max(0, tin - tcache) : tin;
+    const cost = (uncached * R.in + tcache * R.cacheRead + cwrite * R.cacheWrite + tout * R.out) / 1e6;
     led.cost_usd = +((led.cost_usd || 0) + cost).toFixed(6);
     const bump = (bag, key) => {
       bag[key] = bag[key] || { calls: 0, in: 0, out: 0, cached: 0, cost: 0 };

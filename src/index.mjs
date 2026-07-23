@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.689-2026-07-23";
+const BUILD = "aura-core-v4.9.690-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17012,6 +17012,17 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       const d = (line.match(/\b(\d{4}-\d{2}-\d{2})\b/) || [])[1];
       // ALL means every provider off the egress ledger; bare CALIBRATE keeps the xAI-only path.
       // CALIBRATE BALANCE <provider> <amount> - for providers with credits instead of invoices
+      // ══ USAGE, NOT BALANCE ── A TOP-UP BREAKS A BALANCE ANCHOR ═══════════════════════════
+      // Measured 2026-07-23: xAI remaining went 5.04 -> 29.91 because Aaron added credits, while the
+      // CUMULATIVE USAGE counter went 25.05 -> 25.20. Remaining is not a spend signal - it moves in
+      // both directions and a top-up reads as negative consumption. Cumulative usage only ever rises,
+      // and only from consumption, so it is the honest numerator. Both consoles show it; xAI calls it
+      // "Credits usage", OpenAI calls it "July spend", Anthropic shows it under invoice history.
+      //   CALIBRATE USAGE <provider> <cumulative usage from the console>
+      const _um = line.match(/\bUSAGE\s+([a-z]+)\s+\$?([\d.]+)/i);
+      if (_um)
+        return { cmd: "CALIBRATE", payload: { ok: true, mode: "usage-counter",
+                 ...(await calibrateFromBalance(env, _um[1], parseFloat(_um[2]), true)) } };
       const _bm = line.match(/\bBALANCE\s+([a-z]+)\s+\$?([\d.]+)/i);
       if (_bm)
         return { cmd: "CALIBRATE", payload: { ok: true, mode: "balance-drawdown",
@@ -20577,8 +20588,9 @@ async function calibrateAll(env, day) {
 // outside 0.1x-10x is refused as a measurement bug, the $50/M ceiling still applies, and it re-anchors
 // so the next window starts clean. Manual by design - it needs a human to read a number off a screen,
 // which is exactly the kind of ground truth that cannot be faked by the thing being measured.
-async function calibrateFromBalance(env, provider, currentBalance) {
-  const out = { provider, current_balance: currentBalance, applied: {}, note: "" };
+async function calibrateFromBalance(env, provider, currentBalance, isUsageCounter = false) {
+  const out = { provider, current_balance: currentBalance, applied: {}, note: "",
+                mode: isUsageCounter ? "cumulative usage counter (rises with spend)" : "remaining balance (falls with spend)" };
   const prov = String(provider || "").toLowerCase().trim();
   if (!prov) { out.note = "usage: CALIBRATE BALANCE <provider> <current balance from the console>"; return out; }
   const bal = Number(currentBalance);
@@ -20595,11 +20607,18 @@ async function calibrateFromBalance(env, provider, currentBalance) {
     return out;
   }
 
-  const consumed = +(Number(anchor.amount_usd) - bal).toFixed(6);
+  // A usage counter RISES with spend; a remaining balance FALLS. Same subtraction, opposite direction.
+  const consumed = isUsageCounter
+    ? +(bal - Number(anchor.amount_usd)).toFixed(6)
+    : +(Number(anchor.amount_usd) - bal).toFixed(6);
   if (consumed <= 0) {
-    out.note = "the balance has not gone DOWN since " + anchor.at + " (anchored $" + anchor.amount_usd +
-               ", now $" + bal + "). Nothing was consumed, so there is no rate to derive. If credits " +
-               "were topped up, re-anchor instead of calibrating.";
+    out.note = isUsageCounter
+      ? "the usage counter has not RISEN since " + anchor.at + " (anchored $" + anchor.amount_usd +
+        ", now $" + bal + "). Nothing was consumed, so there is no rate to derive."
+      : "the balance has not gone DOWN since " + anchor.at + " (anchored $" + anchor.amount_usd +
+        ", now $" + bal + "). Nothing was consumed. If credits were TOPPED UP the balance rose, which " +
+        "is why a remaining-balance anchor cannot be trusted across a top-up - use CALIBRATE USAGE " +
+        "with the cumulative usage figure instead.";
     return out;
   }
 

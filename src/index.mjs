@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.691-2026-07-23";
+const BUILD = "aura-core-v4.9.692-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -241,7 +241,14 @@ async function _egressCore(env, rec) {
     const tcache = Number(u.cache_read_input_tokens ?? u.prompt_tokens_details?.cached_tokens ?? 0) || 0;
     const cwrite = Number(u.cache_creation_input_tokens ?? 0) || 0;
     led.calls += 1;
-    if (!rec.status || rec.status >= 400) led.errors += 1;
+    if (!rec.status || rec.status >= 400) {
+      led.errors += 1;
+      // WHICH provider and WHICH endpoint failed. `errors: 4` with no attribution is a number nobody
+      // can act on - it says something broke and refuses to say what.
+      led.errors_by ??= {};
+      const ek = rec.provider + " " + (rec.status || "network") ;
+      led.errors_by[ek] = (led.errors_by[ek] || 0) + 1;
+    }
     led.tokens_in += tin; led.tokens_out += tout; led.cached_in += tcache;
     // PRICE IT. The first version recorded aura-core's tokens and left cost at zero, so brainFetch's
     // Anthropic traffic showed up as 3 calls and 6,356 tokens for $0.00 - visible at last, and still
@@ -17111,6 +17118,39 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         const eraw = await kvg("egress:" + day, null);
         if (eraw) egressToday = JSON.parse(eraw);
       } catch {}
+      // ══ RATE AT READ ── PRICE IS DERIVED, TOKENS ARE THE FACT ═══════════════════════════════
+      // Council round 7, and it is right: computing cost at WRITE bakes a rate into history forever.
+      // The proof is sitting in this ledger - a claude-opus row priced at -$0.382898 by a formula that
+      // was fixed twenty minutes later. The tokens were always correct; only the multiplication was
+      // wrong, and it is frozen because the answer was stored instead of the inputs.
+      // TOKENS ARE THE FACT. A price is a DERIVED VIEW over that fact. by_model already carries in /
+      // out / cached per model, so the whole day can be re-priced from the current rate table at the
+      // moment of reading - which means calibrating a rate now corrects HISTORY, not just tomorrow.
+      // The stored figure is kept beside it as cost_at_write so drift between the two is visible
+      // rather than silent: if they disagree, a rate changed since those calls were made, and that is
+      // information, not an error.
+      let repriced = null;
+      if (egressToday && egressToday.by_model) {
+        let total = 0; const byModel = {};
+        for (const [model, m] of Object.entries(egressToday.by_model)) {
+          if (!m) continue;
+          const R = _rateFor(model);
+          const tin = Number(m.in) || 0, tout = Number(m.out) || 0, tc = Number(m.cached) || 0;
+          const uncached = (tin >= tc) ? Math.max(0, tin - tc) : tin;
+          const c = (uncached * R.in + tc * R.cacheRead + tout * R.out) / 1e6;
+          byModel[model] = +c.toFixed(6); total += c;
+        }
+        const atWrite = Number(egressToday.cost_usd) || 0;
+        repriced = {
+          cost_usd: +total.toFixed(6),
+          cost_at_write: +atWrite.toFixed(6),
+          drift_usd: +(total - atWrite).toFixed(6),
+          by_model: byModel,
+          note: total === atWrite ? "no rate has changed since these calls were made"
+              : "PRICED NOW from live rates. cost_at_write is what the rate table said at the time. " +
+                "A gap means a rate was corrected since - the tokens did not change, the price did.",
+        };
+      }
       const spendText = Number(await kvg("meter:spend:" + day, "0")) || 0;
       let spendCore = 0, spendImg = 0, spendVid = 0;
       try { spendCore = Number(JSON.parse(await kvg("meter:core:" + day, "{}")).cost_usd) || 0; } catch {}
@@ -17118,7 +17158,9 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       try { spendVid = Number(JSON.parse(await kvg("meter:videos:" + day, "{}")).cost_usd) || 0; } catch {}
       const legacySum = +(spendText + spendCore + spendImg + spendVid).toFixed(6);
       // egress is authoritative when it has rows; the legacy sum is the fallback until it does
-      const spendToday = egressToday ? +(Number(egressToday.cost_usd) || 0).toFixed(6) : legacySum;
+      // the DERIVED price is the answer; the stored one is history
+      const spendToday = repriced ? repriced.cost_usd
+                       : egressToday ? +(Number(egressToday.cost_usd) || 0).toFixed(6) : legacySum;
       const cap = Number(await kvg("config:budget:daily", "5")) || 5;
       let images = {}, videos = {};
       try { images = JSON.parse(await kvg("meter:images:" + day, "{}")); } catch {}
@@ -17210,6 +17252,8 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
                        source: egressToday ? "egress:<day> - every provider request, both workers, "
                                            + "priced from the provider's own usage object"
                                            : "legacy meter keys (no egress rows yet today)",
+                       priced: repriced ? "at read, from live rates - correcting a rate re-prices today" : "at write",
+                       repriced: repriced || null,
                        provider_requests: egressToday ? egressToday.calls : null,
                        by_provider: egressToday ? egressToday.by_provider : null,
                        by_caller: egressToday ? egressToday.by_caller : null,

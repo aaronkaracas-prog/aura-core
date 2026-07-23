@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.699-2026-07-23";
+const BUILD = "aura-core-v4.9.700-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2670,7 +2670,18 @@ async function processCommand(line, env, isOp) {
         // This is the LOCK. Aaron edits these by hand, deliberately, from his own machine. She does not.
         const CONSTITUTIONAL_MARKERS = ["auraSelfEngineCanWrite", "SELF_ENGINE_WRITE_ALLOW", "SELF_ENGINE_PROTECTED", "notes:aura:law", "notes:aura:identity", "CONSTITUTIONAL_MARKERS", "case \"AURA_BOUNDARY\"", "case \"AURA_PROMOTE\"", "case \"AURA_PROPOSE\"", "OVERRIDE_CONSTITUTIONAL",
           "case \"AIMARGIN\"", "async function balanceAnchor", "async function balanceApplyDay", "async function balanceReport",
-          "async function reconcileTrueCost", "async function discoverPrices", "MODEL_RATES", "case \"PRICES\"", "case \"CALIBRATE\""];
+          "async function reconcileTrueCost", "async function discoverPrices", "MODEL_RATES", "case \"PRICES\"", "case \"CALIBRATE\"",
+          // ── THE METER ITSELF, added 2026-07-23 ──────────────────────────────────────────────
+          // The list above protected AIMARGIN as it existed before the egress rebuild. Everything the
+          // meter is actually made of now - the door, the pricing, the calibration, the tenant
+          // attribution - was outside it and freely patchable. An agent that can edit its own meter
+          // can stop reporting what it spends, and nothing downstream would ever notice.
+          // Aaron's words on why this matters: he does not want to relive this. A day of work that is
+          // correct and unprotected is a day of work waiting to be silently undone.
+          "async function pfetch", "async function _egressCore", "function _rateFor",
+          "async function calibrateAll", "async function calibrateFromBalance", "async function refreshRateTable",
+          "case \"TENANT\"", "async function _usageAnthropic", "async function _usageOpenai", "async function _usageXai",
+          "async function meterCoreBrain", "async function brainFetch"];
         const constitutionalOverride = /:::\s*OVERRIDE_CONSTITUTIONAL\s*$/.test(newText);
         if (constitutionalOverride) newText = newText.replace(/:::\s*OVERRIDE_CONSTITUTIONAL\s*$/, "").trim();
         const touchesCore = CONSTITUTIONAL_MARKERS.filter(m => oldText.includes(m) || newText.includes(m));
@@ -2997,6 +3008,26 @@ async function processCommand(line, env, isOp) {
       const key = args[0] || "";
       const val = line.trim().slice(cmd.length + 1 + key.length).trim();
       if (!key) return { cmd: "SETKV", payload: { ok: false, error: "BAD_KEY" } };
+      // ══ SOME KV KEYS ARE SOURCE (2026-07-23) ═════════════════════════════════════════════════
+      // config:rates:table decides what every token in the system costs. It was moved to KV so both
+      // workers could share one table and so rates could be corrected without a deploy - both right,
+      // but it also means a single SETKV can rewrite every price in the engine. The constitutional
+      // markers protect MODEL_RATES in source and would have been trivially bypassed by editing the
+      // KV table that overrides it. A lock with a door beside it is not a lock.
+      // These require the override phrase in the same command, so changing them is deliberate and
+      // leaves a trace, rather than being one keystroke away from a silently wrong meter.
+      const _GUARDED_KEYS = [/^config:rates:table$/i, /^config:rate:calibrated$/i,
+                             /^balance:/i, /^usage:anchor:/i, /^config:budget:/i];
+      if (_GUARDED_KEYS.some((r) => r.test(key)) && !/OVERRIDE_CONSTITUTIONAL/.test(line)) {
+        return { cmd: "SETKV", payload: { ok: false, error: "GUARDED_KEY",
+          key,
+          why: "This key is part of the meter: it sets what tokens cost, what a balance is anchored " +
+               "at, or what the budget ceiling is. Changing it changes every number AIMARGIN reports, " +
+               "which is exactly the surface the constitutional lock exists to protect - and editing " +
+               "KV would have walked around the source lock entirely.",
+          how: "Repeat the command with OVERRIDE_CONSTITUTIONAL appended if this is deliberate: " +
+               "SETKV " + key + " <value> OVERRIDE_CONSTITUTIONAL" } };
+      }
       await KV.put(env, key, val);
       // v4.9.492: a lesson written to KV is a learning - capture it to Aura's own timeline (significance-gated)
       if (/^lesson?:/i.test(key) || /^notes:aura:lesson/i.test(key)) await auraRemember(env, "Learned and recorded a lesson (" + key + "): " + val.slice(0, 160), "lesson");

@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.692-2026-07-23";
+const BUILD = "aura-core-v4.9.693-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -167,7 +167,12 @@ function _rateFor(model) {
   if (m.includes("gpt-5"))    return { in: 5.00, out: 30.0, cacheRead: 0.50, cacheWrite: 5.00 };
   if (m.includes("gpt"))      return { in: 2.50, out: 10.0, cacheRead: 0.25, cacheWrite: 2.50 };
   if (m.includes("gemini"))   return { in: 0.10, out: 0.40, cacheRead: 0.01, cacheWrite: 0.10 };
-  if (m.includes("muse") || m.includes("llama")) return { in: 0, out: 0, cacheRead: 0, cacheWrite: 0 };
+  // Meta was priced at ZERO here on the assumption that free credits mean free. They do not - the
+  // console drawdown is real ($13.96 -> $12.78 in one session), so zero understates a live cost AND
+  // makes the whole provider vanish at reprice. aura-think prices it non-zero, so the two workers
+  // disagreed about the same call. This is the placeholder until CALIBRATE USAGE derives the real
+  // number from drawdown; it is deliberately close to the published floor rather than invented high.
+  if (m.includes("muse") || m.includes("llama")) return { in: 0.20, out: 0.60, cacheRead: 0.02, cacheWrite: 0.20 };
   return { in: 0, out: 0, cacheRead: 0, cacheWrite: 0 };   // unknown model prices at zero and SAYS so
 }
 
@@ -237,7 +242,14 @@ async function _egressCore(env, rec) {
     led.tokens_in ??= 0; led.tokens_out ??= 0; led.cached_in ??= 0; led.calls ??= 0;
     const u = rec.usage || {};
     const tin  = Number(u.prompt_tokens ?? u.input_tokens ?? 0) || 0;
-    const tout = Number(u.completion_tokens ?? u.output_tokens ?? 0) || 0;
+    // ══ REASONING TOKENS ARE BILLED AND WERE NEVER COUNTED (2026-07-23) ═══════════════════
+    // xAI's own console, 7-day breakdown: "Reasoning text tokens 1.3M - $2.92". A whole billed
+    // category that never appeared in this meter, because the OpenAI-compatible usage object reports
+    // them under completion_tokens_details.reasoning_tokens rather than in completion_tokens. Every
+    // reasoning model (grok-4.5 by default) generates them on every turn. This is a large part of why
+    // the door total ran under the console: not a wrong price, a missing quantity.
+    const treason = Number(u.completion_tokens_details?.reasoning_tokens ?? u.output_tokens_details?.reasoning_tokens ?? 0) || 0;
+    const tout = (Number(u.completion_tokens ?? u.output_tokens ?? 0) || 0) + treason;
     const tcache = Number(u.cache_read_input_tokens ?? u.prompt_tokens_details?.cached_tokens ?? 0) || 0;
     const cwrite = Number(u.cache_creation_input_tokens ?? 0) || 0;
     led.calls += 1;

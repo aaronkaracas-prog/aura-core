@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.684-2026-07-23";
+const BUILD = "aura-core-v4.9.685-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17010,7 +17010,10 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
     case "CALIBRATE": {
       if (!isOp) return { cmd: "CALIBRATE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const d = (line.match(/\b(\d{4}-\d{2}-\d{2})\b/) || [])[1];
-      return { cmd: "CALIBRATE", payload: { ok: true, ...(await calibrateRates(env, d)) } };
+      // ALL means every provider off the egress ledger; bare CALIBRATE keeps the xAI-only path.
+      if (/\ball\b/i.test(line))
+        return { cmd: "CALIBRATE", payload: { ok: true, mode: "all-providers", ...(await calibrateAll(env, d)) } };
+      return { cmd: "CALIBRATE", payload: { ok: true, mode: "xai-only (use `CALIBRATE ALL` for every provider)", ...(await calibrateRates(env, d)) } };
     }
     case "BUSINESS_AUDIT": {
       if (!isOp) return { cmd: "BUSINESS_AUDIT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
@@ -20407,6 +20410,118 @@ async function calibrateVideoRate(env, day) {
 // Only providers that publish SAME-DAY per-model billing can calibrate this way - which today is xAI
 // alone. Anthropic and OpenAI are org-wide and lag a day, so they stay on the table until Aura has her
 // own workspace-scoped key.
+// ══ CALIBRATE_ALL ── THE ACCOUNT IS THE TRUTH, ACROSS EVERY PROVIDER ════════════════════════════
+//
+// Aaron, and he is right: "we don't care what their pricing is - we know, and that's how AIMARGIN
+// always knows. We don't need to look out in the real world at the price because we can decipher it."
+// That is the doctrine this whole engine is built on, and it has only ever been implemented for xAI.
+// Every time a provider looked mispriced my instinct was to go find its published price and type it
+// in - which is the marketing number, the exact thing the doctrine says not to trust.
+//
+// WHY IT COULD NOT BE DONE UNTIL NOW: calibration is billed-dollars / our-tokens. Our token count was
+// SIX TIMES UNDER the provider's own request count until the egress meter went in - so any rate
+// derived from it would have come out ~6x too high. That is not hypothetical: an earlier calibration
+// run on a bad denominator compounded until the meter charged $4,507.55 to answer "100C". The egress
+// ledger is the first trustworthy denominator this system has ever had, which is what makes today the
+// first day this can be closed.
+//
+// THE MATH, and why it converges instead of compounding:
+//   ratio = what the provider BILLED / what we METERED, for the same day, same provider
+//   new_rate = current EFFECTIVE rate x ratio   (all three components scaled together)
+// It rescales from the rate actually in force, so once the meter uses the result the next ratio
+// approaches 1.0 and it settles. Reading `table[model] || BASE[model]` instead is what compounded.
+//
+// GUARDS, each one paid for by a real incident:
+//   - media models excluded: images/video are billed per image or per second, never per token, and
+//     putting them in the numerator with token counts in the denominator is what produced a bogus
+//     2.67x correction once already.
+//   - a ratio outside 0.1x - 10x is REFUSED, not applied. That is not a price change, that is a bug
+//     in one of the two inputs, and applying it is how the $4,507 turn happened.
+//   - the $50/M ceiling in ratesForModel still stands as the last line of defence.
+//   - MANUAL ONLY. Nothing calls this on a schedule. Nobody reprices tokens hourly.
+async function calibrateAll(env, day) {
+  const d = day || new Date().toISOString().slice(0, 10);
+  const out = { day: d, applied: {}, refused: {}, skipped: {}, note: "" };
+
+  // OUR side: the egress ledger, per provider, for that day. The only denominator we trust.
+  let eg = null;
+  try { const raw = await env.AURA_KV.get("egress:" + d); if (raw) eg = JSON.parse(raw); } catch {}
+  if (!eg || !eg.by_provider) { out.note = "no egress ledger for " + d + " - nothing to calibrate against"; return out; }
+
+  // THEIR side: what each provider actually billed. Adapters that do not exist say so by name.
+  const billed = {};
+  try { const r = await _trueCostXai(env, d);       billed.xai = r; } catch (e) { billed.xai = { ok: false, error: String(e && e.message) }; }
+  try { const r = await _trueCostAnthropic(env, d); billed.anthropic = r; } catch (e) { billed.anthropic = { ok: false, error: String(e && e.message) }; }
+  try { const r = await _trueCostOpenai(env, d);    billed.openai = r; } catch (e) { billed.openai = { ok: false, error: String(e && e.message) }; }
+  billed.google = { ok: false, error: "cost adapter not built" };
+  billed.meta   = { ok: false, error: "cost adapter not built" };
+
+  const table = {};
+  try { const raw = await env.AURA_KV.get("config:rate:calibrated"); if (raw) Object.assign(table, JSON.parse(raw)); } catch {}
+
+  for (const [prov, ours] of Object.entries(eg.by_provider)) {
+    const b = billed[prov];
+    if (!b || !b.ok) { out.skipped[prov] = (b && b.error) || "no billing adapter"; continue; }
+
+    // TEXT ONLY on both sides of the division, or the ratio is meaningless.
+    let theirs = 0;
+    for (const [label, v] of Object.entries(b.lines || {})) {
+      if (/imagine|image|video|dall|sora/i.test(label)) continue;
+      theirs += Number(v) || 0;
+    }
+    const oursUsd = Number(ours.cost) || 0;
+    if (theirs <= 0) { out.skipped[prov] = "no text billing on " + d; continue; }
+    if (oursUsd <= 0) { out.skipped[prov] = "we metered $0 - denominator unusable"; continue; }
+
+    const ratio = theirs / oursUsd;
+    if (!(ratio > 0.1 && ratio < 10)) {
+      out.refused[prov] = { ratio: +ratio.toFixed(3), theirs: +theirs.toFixed(4), ours: +oursUsd.toFixed(4),
+        why: "a ratio outside 0.1x-10x is a bug in one of the two inputs, not a price change. Refused rather than applied - applying one of these once compounded to a $4,507 turn." };
+      continue;
+    }
+
+    // Scale every model of that provider that actually ran today.
+    const touched = [];
+    for (const [model, m] of Object.entries(eg.by_model || {})) {
+      if (!m || !m.calls) continue;
+      const R = _rateFor(model);
+      if (!R || !(R.in > 0)) continue;
+      if (_providerOfModel(model) !== prov) continue;
+      const next = { P_IN: +(R.in * 1e6 * ratio).toFixed(6),
+                     P_OUT: +(R.out * 1e6 * ratio).toFixed(6),
+                     P_CACHE: +(R.cacheRead * 1e6 * ratio).toFixed(6) };
+      if (next.P_IN > 50) { out.refused[model] = { why: "would exceed the $50/M ceiling", next }; continue; }
+      table[model] = next; touched.push(model);
+    }
+    out.applied[prov] = { ratio: +ratio.toFixed(4), they_billed: +theirs.toFixed(4),
+                          we_metered: +oursUsd.toFixed(4), models: touched };
+  }
+
+  if (Object.keys(out.applied).length) {
+    table._calibrated_at = new Date().toISOString();
+    table._from_day = d;
+    await env.AURA_KV.put("config:rate:calibrated", JSON.stringify(table));
+    out.note = "written to config:rate:calibrated - the meter picks it up within 5 minutes. Run again " +
+               "tomorrow; each ratio should move toward 1.0. A ratio that stays far from 1.0 means the " +
+               "token counts and the invoice disagree, which is a measurement bug, not a price.";
+  } else {
+    out.note = "nothing applied - see skipped/refused. No adapter, no calibration; that is correct " +
+               "behaviour, not a failure.";
+  }
+  return out;
+}
+
+// Which provider serves a model id. Used only to keep a ratio from one provider off another's models.
+function _providerOfModel(m) {
+  const id = String(m || "").toLowerCase();
+  if (/^grok|^muse-spark.*x/.test(id)) return "xai";
+  if (/^claude/.test(id)) return "anthropic";
+  if (/^gpt|^o[0-9]|^chatgpt/.test(id)) return "openai";
+  if (/^gemini/.test(id)) return "google";
+  if (/^muse|^llama/.test(id)) return "meta";
+  return "unknown";
+}
+
 async function calibrateRates(env, day) {
   // ══ TEXT RATE ── FIXED 2026-07-20 ════════════════════════════════════════════════════════════
   // This failed three times in one day and the honest diagnosis of each:

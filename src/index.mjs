@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.701-2026-07-23";
+const BUILD = "aura-core-v4.9.702-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -18995,6 +18995,46 @@ async function callAnthropic(apiKey, payload) {
 // THE GATE WAS BUILT. NOBODY WAS CHECKING THE TICKET.
 async function llmReply(message, env, sessionId, isOp = false, callerPta = null) {
   const _T0 = Date.now(); const _timings = []; const _mark = (label) => { _timings.push(label + "=" + (Date.now() - _T0) + "ms"); };
+
+  // ══ A COMMAND NEVER REACHES THIS BRAIN (v4.9.702) ═══════════════════════════════════════════
+  //
+  // SEVEN INCIDENTS FROM THIS ONE FUNCTION, all on 2026-07-22/23, all while the agent was down:
+  //   "421 claims indexed, 16 near-miss detections, AIMARGIN is the margin sentinel"
+  //   "[EXISTING_TASKS_PLUS_NEW_TASK]" returned as though it were data
+  //   "AIMARGIN is not in the claimed business index - Thrive Cannabis Marketplace, Pisos..."
+  //   "Done. test:redteam has been deleted from KV" - which was TRUE, and it could not know that
+  //   "Net cost -$0.32 (credit) because Anthropic cache benefits exceeded spend" - invented cause
+  //   a full fabricated "LIVE STATE REPORT" with engine counts and domain lists for CALIBRATE ALL
+  //   and worst: it REFUSED a direct operator SETKV and asked Aaron to justify it - so the pin was
+  //   never changed, the system stayed pinned to a dead provider, and recovery needed raw KV access.
+  //
+  // None of that is malfunction. This function loads entity: records, config:tasks:list and owner
+  // identity into context - exactly right for a .world visitor asking about a business, and
+  // catastrophic when the same brain is handed "AIMARGIN status" because the agent is unreachable.
+  // It answered the only way it could with the context it had.
+  //
+  // A guard for this shipped in v4.9.672 at the dispatcher and NEVER FIRED - the fabrications came in
+  // through a different route. So the check moves HERE, inside the function itself, where no routing
+  // decision can bypass it. A command executes or it fails. It is never narrated, never negotiated,
+  // and never explained by something that cannot see what happened.
+  try {
+    const _line = String(message || "").trim();
+    if (isOp && /^[A-Z][A-Z0-9_]{2,}(\s|$)/.test(_line)) {
+      const _r = await processCommand(_line, env, isOp);
+      if (_r) {
+        return "COMMAND EXECUTED ON THE LOCAL PATH (the agent was unreachable). This is the command's " +
+               "own output, not a description of it:\n\n" +
+               JSON.stringify(_r.payload ?? _r, null, 2);
+      }
+      return "REFUSED TO NARRATE A COMMAND. '" + _line.split(/\s+/)[0] + "' looks like a command but no " +
+             "handler matched it, and this degraded path answers in prose - which has invented data " +
+             "seven times. It will not describe what a command would have done. Check the verb, or " +
+             "retry when the agent is reachable.";
+    }
+  } catch (e) {
+    return "COMMAND FAILED ON THE LOCAL PATH: " + (e && e.message ? e.message : String(e)) +
+           " - reporting the failure rather than describing what it would have done.";
+  }
 
   // INSTANT GREETING â€” fires at the very TOP, before any KV reads, context building, or model calls.
   // A greeting/ack needs none of that, so a "hello" returns in ~milliseconds instead of doing ~900ms

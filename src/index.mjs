@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.690-2026-07-23";
+const BUILD = "aura-core-v4.9.691-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17019,6 +17019,15 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       // and only from consumption, so it is the honest numerator. Both consoles show it; xAI calls it
       // "Credits usage", OpenAI calls it "July spend", Anthropic shows it under invoice history.
       //   CALIBRATE USAGE <provider> <cumulative usage from the console>
+      const _ua = line.match(/\bUSAGE\s+([a-z]+)\s+\$?([\d.]+)\s+ANCHOR\b/i);
+      if (_ua) {
+        await env.AURA_KV.put("usage:anchor:" + _ua[1].toLowerCase(),
+          JSON.stringify({ amount_usd: parseFloat(_ua[2]), at: new Date().toISOString().slice(0, 10) }));
+        return { cmd: "CALIBRATE", payload: { ok: true, mode: "usage-anchor-set", provider: _ua[1].toLowerCase(),
+                 anchored_at_usage: parseFloat(_ua[2]),
+                 note: "cumulative usage anchored. Burn, read the console again, then run CALIBRATE USAGE " +
+                       _ua[1].toLowerCase() + " <new figure> without ANCHOR to derive the rate." } };
+      }
       const _um = line.match(/\bUSAGE\s+([a-z]+)\s+\$?([\d.]+)/i);
       if (_um)
         return { cmd: "CALIBRATE", payload: { ok: true, mode: "usage-counter",
@@ -20596,14 +20605,23 @@ async function calibrateFromBalance(env, provider, currentBalance, isUsageCounte
   const bal = Number(currentBalance);
   if (!(bal >= 0)) { out.note = "a current balance is required - read it off the provider console"; return out; }
 
+  // ══ A USAGE ANCHOR IS NOT A BALANCE ANCHOR ═══════════════════════════════════════════════
+  // These were the same key for one deploy, and it immediately corrupted the balance display: the
+  // xAI usage counter ($25.20 cumulative spend) was written into balance:xai, so AIMARGIN would have
+  // reported "$25.20 remaining" when the real remaining credit was $29.91. One key, two meanings, and
+  // the meaning that loses is the one a human reads. The usage counter gets its own key.
+  const _key = isUsageCounter ? "usage:anchor:" + prov : "balance:" + prov;
   let anchor = null;
   try {
-    const raw = await env.AURA_KV.get("balance:" + prov);
-    if (raw) { const l = JSON.parse(raw); anchor = l.anchor || null; }
+    const raw = await env.AURA_KV.get(_key);
+    if (raw) { const l = JSON.parse(raw); anchor = isUsageCounter ? l : (l.anchor || null); }
   } catch {}
   if (!anchor || !(Number(anchor.amount_usd) >= 0) || !anchor.at) {
-    out.note = "no anchor on record for " + prov + ". Anchor it first: GET /balance/anchor?provider=" +
-               prov + "&amount=<console figure>, burn some tokens, then run this again.";
+    out.note = isUsageCounter
+      ? "no usage anchor for " + prov + ". Set one first with: CALIBRATE USAGE " + prov +
+        " <current cumulative usage> ANCHOR   - then burn, then run it again with the new figure."
+      : "no balance anchor on record for " + prov + ". Anchor it first: GET /balance/anchor?provider=" +
+        prov + "&amount=<console figure>, burn some tokens, then run this again.";
     return out;
   }
 
@@ -20677,7 +20695,12 @@ async function calibrateFromBalance(env, provider, currentBalance, isUsageCounte
     table._from_balance = prov + " drawdown " + anchor.at + " -> " + day;
     await env.AURA_KV.put("config:rate:calibrated", JSON.stringify(table));
     // re-anchor so the next window measures fresh drawdown rather than compounding on the same one
-    await balanceAnchor(env, prov, bal);
+    if (isUsageCounter) {
+      await env.AURA_KV.put("usage:anchor:" + prov,
+        JSON.stringify({ amount_usd: bal, at: new Date().toISOString().slice(0, 10) }));
+    } else {
+      await balanceAnchor(env, prov, bal);
+    }
     out.applied = { ratio: +ratio.toFixed(4), models: touched };
     out.note = "rates written and " + prov + " re-anchored at $" + bal + ". Burn a while, read the " +
                "console again, and run this once more - the ratio should move toward 1.0. This is the " +

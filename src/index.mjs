@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.697-2026-07-23";
+const BUILD = "aura-core-v4.9.698-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -157,8 +157,37 @@ async function callBrain({ system, user, max_tokens = 2000, model = null, temper
 // its own table, so there are two workers with one table each instead of one shared source. The right
 // end state is a rate card in KV that both read and that PRICES/CALIBRATE writes - that is the next
 // consolidation, and it is named here so it is not rediscovered a fifth time.
+// ══ ONE RATE TABLE, READ BY BOTH WORKERS ═══════════════════════════════════════════════════════
+// aura-core kept _rateFor and aura-think kept MODEL_RATES, independently. They disagreed about the
+// SAME CALL on 2026-07-23: this file priced muse-spark at $0 (assuming free credits are free) while
+// aura-think priced it at $0.724. Whichever number you saw depended on which worker you asked, and
+// the at-write vs at-read totals diverged for no reason a human could see.
+// config:rates:table is now the canonical source. Both workers read it; the hardcoded table below is
+// the fallback for a cold start or an empty key, so a missing KV read degrades to the old behaviour
+// rather than to zero. Rates are operator-editable without a deploy, which matters because rates
+// change - and only the operator instance can SETKV, since internal children are read-only.
+let _RATE_TABLE = null;
+async function refreshRateTable(env) {
+  try {
+    const raw = await env.AURA_KV.get("config:rates:table");
+    if (raw) { const t = JSON.parse(raw); if (t && typeof t === "object") _RATE_TABLE = t; }
+  } catch {}
+}
 function _rateFor(model) {
   const m = String(model || "").toLowerCase();
+  // canonical table first - longest matching key wins so "grok-4.5" beats "grok"
+  if (_RATE_TABLE) {
+    let best = null, bestLen = -1;
+    for (const [k, v] of Object.entries(_RATE_TABLE)) {
+      if (k.startsWith("_")) continue;
+      if (m.includes(k.toLowerCase()) && k.length > bestLen) { best = v; bestLen = k.length; }
+    }
+    if (best && Number(best.in) >= 0) {
+      return { in: Number(best.in) || 0, out: Number(best.out) || 0,
+               cacheRead: Number(best.cacheRead ?? best.cache_read) || 0,
+               cacheWrite: Number(best.cacheWrite ?? best.cache_write) || 0 };
+    }
+  }
   if (m.includes("opus"))   return { in: 15,   out: 75,  cacheRead: 1.5,  cacheWrite: 18.75 };
   if (m.includes("haiku"))  return { in: 1,    out: 5,   cacheRead: 0.1,  cacheWrite: 1.25 };
   if (m.includes("sonnet") || m.includes("claude")) return { in: 3, out: 15, cacheRead: 0.3, cacheWrite: 3.75 };
@@ -17106,6 +17135,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       // Zero burn: KV reads and arithmetic, no model call.
       if (!isOp) return { cmd: "AIMARGIN", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const kvg = async (k, d) => (await env.AURA_KV.get(k).catch(() => null)) ?? d;
+      await refreshRateTable(env);   // canonical rates before anything is priced
       // ══ STATUS IS LIVE STATE. DETAIL IS THE INVENTORY. ═══════════════════════════════════
       // The built/not-built lists are ~1,500 chars of static prose that rode in EVERY status read,
       // and the payload grew past the tool-result bound - so the one command whose whole job is

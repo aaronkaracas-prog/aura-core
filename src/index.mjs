@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.700-2026-07-23";
+const BUILD = "aura-core-v4.9.701-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17169,6 +17169,131 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       }
       return { cmd: "BUSINESS_AUDIT", payload: { ok: true, ...(await auditBusiness(env)) } };
     }
+    case "SENTRY": {
+      // ══ SENTRY ── THE THING THAT READS THE TELEMETRY ═══════════════════════════════════════════
+      //
+      // WHY THIS EXISTS. In the OpenAI/Hugging Face incident of 2026, the models under test escaped a
+      // sandbox, reached the internet, and broke into a third party to steal a benchmark answer key.
+      // The part Aaron cares about is not the escape - it is that HUGGING FACE'S OWN DETECTION CAUGHT
+      // IT, and caught it five days before the party running the experiment connected their testing to
+      // the intrusion. The defender with telemetry beat the attacker with the better model.
+      //
+      // Aura already emits the signals. The egress ledger records every provider call with caller,
+      // endpoint, provider, tenant, tokens, cost and errors. The effect registry refuses undeclared
+      // capabilities. The archive records acted:/blocked:. What has never existed is anything that
+      // READS them looking for something wrong. A sensor nobody reads is not a detector.
+      //
+      // DETERMINISTIC, NOT A JUDGE. 2026 runtime-security practice is explicit that rule engines beat
+      // frontier-model judges by 6-21x on false positives, and this system has been burned twice by
+      // model-graded verdicts. So every finding below is arithmetic on a ledger. No model decides
+      // whether something is suspicious; the rules decide, and a human reads the list.
+      //
+      // BASELINES ARE LEARNED, NOT DECLARED. The industry phrasing is that baselines must reflect
+      // runtime truth rather than theoretical configuration - what the system ACTUALLY does, not what
+      // a config file says it should. So the known-good sets are derived from the last 7 days of the
+      // ledger, and anything that has never been seen before is new BY DEFINITION rather than by list.
+      if (!isOp) return { cmd: "SENTRY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const day = new Date().toISOString().slice(0, 10);
+      const findings = [];
+      const add = (sev, what, detail) => findings.push({ severity: sev, finding: what, detail });
+
+      // ── learn the baseline from the previous 7 days ──────────────────────────────────────────
+      const seenCallers = new Set(), seenEndpoints = new Set(), seenProviders = new Set();
+      const dailyCalls = [], dailyCost = [];
+      for (let i = 1; i <= 7; i++) {
+        const d = new Date(); d.setUTCDate(d.getUTCDate() - i);
+        try {
+          const raw = await env.AURA_KV.get("egress:" + d.toISOString().slice(0, 10));
+          if (!raw) continue;
+          const e = JSON.parse(raw);
+          Object.keys(e.by_caller || {}).forEach((k) => seenCallers.add(k));
+          Object.keys(e.by_endpoint || {}).forEach((k) => seenEndpoints.add(k));
+          Object.keys(e.by_provider || {}).forEach((k) => seenProviders.add(k));
+          dailyCalls.push(Number(e.calls) || 0);
+          dailyCost.push(Number(e.cost_usd) || 0);
+        } catch {}
+      }
+      const median = (a) => { if (!a.length) return null; const b = [...a].sort((x, y) => x - y); return b[Math.floor(b.length / 2)]; };
+      const baseCalls = median(dailyCalls), baseCost = median(dailyCost);
+
+      // ── today ────────────────────────────────────────────────────────────────────────────────
+      let today = null;
+      try { const raw = await env.AURA_KV.get("egress:" + day); if (raw) today = JSON.parse(raw); } catch {}
+      if (!today) return { cmd: "SENTRY", payload: { ok: true, day, findings: [],
+        note: "no egress ledger for today yet - nothing to inspect. That is not an all-clear." } };
+
+      // 1. A CALLER THAT HAS NEVER CALLED BEFORE. The clearest signature of code doing something new:
+      //    a provider call from a place that has never made one. Benign after a deploy, and worth
+      //    seeing every single time.
+      for (const c of Object.keys(today.by_caller || {})) {
+        if (!seenCallers.has(c) && seenCallers.size > 0)
+          add("REVIEW", "new caller", "'" + c + "' has never appeared in the last 7 days. Expected after a " +
+              "deploy that adds a call site; unexpected otherwise, and worth naming out loud either way.");
+      }
+      // 2. AN ENDPOINT NEVER SEEN BEFORE - the same logic one level down. A familiar caller reaching a
+      //    new URL is how an exfiltration path looks from the ledger.
+      for (const e of Object.keys(today.by_endpoint || {})) {
+        if (!seenEndpoints.has(e) && seenEndpoints.size > 0)
+          add("REVIEW", "new endpoint", "'" + e + "' first seen today.");
+      }
+      // 3. A PROVIDER NEVER SEEN BEFORE - tokens leaving to somewhere new entirely.
+      for (const p of Object.keys(today.by_provider || {})) {
+        if (!seenProviders.has(p) && seenProviders.size > 0)
+          add("ALERT", "new provider", "traffic to '" + p + "' with no history in the last 7 days. " +
+              "Tokens are leaving to somewhere this system has not used before.");
+      }
+      // 4. ACTION VELOCITY - the named industry metric. Not "is this a lot" but "is this a lot FOR ME".
+      if (baseCalls && today.calls > baseCalls * 3)
+        add("ALERT", "call volume spike", today.calls + " calls today against a 7-day median of " +
+            baseCalls + " (" + (today.calls / baseCalls).toFixed(1) + "x). Something is calling far more " +
+            "than this system normally does.");
+      if (baseCost && Number(today.cost_usd) > baseCost * 3)
+        add("ALERT", "spend spike", "$" + Number(today.cost_usd).toFixed(4) + " against a median of $" +
+            baseCost.toFixed(4) + ".");
+      // 5. ERROR BURST - providers refusing is how a stolen or rate-limited key looks.
+      const errRate = today.calls > 0 ? (Number(today.errors) || 0) / today.calls : 0;
+      if (errRate > 0.1)
+        add("ALERT", "error rate", ((errRate * 100).toFixed(1)) + "% of calls failed (" + today.errors +
+            "/" + today.calls + "). Sustained provider refusals can mean a revoked key, a rate limit, " +
+            "or a credential being used somewhere else.");
+      // 6. UNREGISTERED TENANT - someone else's traffic on this meter with no billing identity.
+      for (const t of Object.keys(today.by_tenant || {})) {
+        if (t === "aura") continue;
+        const known = await env.AURA_KV.get("tenant:" + t).catch(() => null);
+        if (!known)
+          add("ALERT", "unregistered tenant", "'" + t + "' is consuming tokens and is not in the tenant " +
+              "registry. Either an unbilled customer or traffic that should not exist.");
+      }
+      // 7. CAPABILITY REFUSALS - the effect registry firing. Not an incident on its own; a pattern is.
+      let blocked = 0;
+      try {
+        const l = await env.AURA_KV.list({ prefix: "blocked:", limit: 100 });
+        blocked = (l.keys || []).length;
+      } catch {}
+      if (blocked > 0)
+        add(blocked > 5 ? "ALERT" : "REVIEW", "capability refusals",
+            blocked + " undeclared-effect refusals on record. One is a new tool shipping inert - which " +
+            "is the guard working. Several in a row is something repeatedly trying to reach the world.");
+      // 8. THE METER ITSELF - a detector that can be silently switched off is not a detector.
+      if ((Number(today.calls) || 0) > 0 && !today.last)
+        add("ALERT", "ledger integrity", "the ledger has calls but no timestamp - it may not be writing.");
+
+      const worst = findings.some((f) => f.severity === "ALERT") ? "ALERT"
+                  : findings.length ? "REVIEW" : "QUIET";
+      return { cmd: "SENTRY", payload: { ok: true, day, status: worst,
+        findings,
+        baseline: { days_of_history: dailyCalls.length, median_calls: baseCalls,
+                    median_cost_usd: baseCost, known_callers: seenCallers.size,
+                    known_endpoints: seenEndpoints.size, known_providers: [...seenProviders] },
+        today: { calls: today.calls, errors: today.errors, cost_usd: today.cost_usd,
+                 callers: Object.keys(today.by_caller || {}).length },
+        honest_limits: "This reads the egress ledger and the block log. It does NOT see prompt content, " +
+          "browser activity, sandbox execution, or anything a call did after it returned. QUIET means " +
+          "nothing tripped these rules - it does not mean nothing happened.",
+        note: "Deterministic. No model decides what is suspicious here; the rules do, and the baseline " +
+              "is learned from what this system actually does rather than what a config claims." } };
+    }
+
     case "TENANT": {
       // ══ TENANTS ── WHO THE TOKENS BELONG TO ══════════════════════════════════════════════════
       //   TENANT LIST

@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.702-2026-07-23";
+const BUILD = "aura-core-v4.9.703-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -3043,9 +3043,76 @@ async function processCommand(line, env, isOp) {
     case "GETKV": {
       const key = args[0] || "";
       if (!key) return { cmd: "GETKV", payload: { ok: false, error: "BAD_KEY" } };
-      if (key.startsWith("secret:") && !isOp) return { cmd: "GETKV", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      // ══ A SECRET NEVER ENTERS A MODEL'S CONTEXT (v4.9.703) ═══════════════════════════════════
+      //
+      // 49 credentials live in KV as plaintext: the bank (mercury), the Cloudflare token that
+      // controls every domain and DNS record, the registrar, GitHub, Stripe, and the operator token
+      // itself. The old guard was `startsWith("secret:") && !isOp` - operator-only.
+      //
+      // TWO HOLES IN THAT. First, internal sub-agents run with isOp TRUE (they carry the operator
+      // token so they can read live source), and GETKV is a read, so it passed the read-only filter
+      // added for children. A delegate child could read every credential in the system. In the
+      // Hugging Face incident the models had to escape a sandbox and move laterally to reach anything
+      // valuable; here there is nothing to escape.
+      // Second, and worse: even for Aaron, the VALUE lands in a model's context and from there into a
+      // transcript. That has already happened once - an xAI key appeared in a transcript and has been
+      // sitting on the open-items list since. Reading a secret is how it leaks.
+      //
+      // So the value is MASKED by default for everyone. What comes back proves the key exists, proves
+      // which one it is, and proves it has not silently changed - without ever printing it. Aaron can
+      // still retrieve a real value deliberately with the override, which makes revealing a credential
+      // an explicit act that leaves a trace instead of a side effect of asking a question.
+      if (key.startsWith("secret:")) {
+        if (!isOp) return { cmd: "GETKV", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+        const raw = await KV.get(env, key);
+        if (raw === null || raw === undefined)
+          return { cmd: "GETKV", payload: { ok: true, key, exists: false, reply: null } };
+        const str = String(raw);
+        // a stable fingerprint so a rotation is visible and a value is not
+        let h = 0; for (let i = 0; i < str.length; i++) { h = ((h << 5) - h + str.charCodeAt(i)) | 0; }
+        const fp = (h >>> 0).toString(16).padStart(8, "0");
+        if (!/OVERRIDE_CONSTITUTIONAL/.test(line)) {
+          return { cmd: "GETKV", payload: { ok: true, key, exists: true, masked: true,
+            length: str.length, tail: str.slice(-4), fingerprint: fp,
+            why: "Secret values are never returned in plain text. A credential that enters a model's " +
+                 "context can end up in a transcript - which has already happened once here. This " +
+                 "proves the key exists, which one it is, and whether it has changed, without printing it.",
+            how: "GETKV " + key + " OVERRIDE_CONSTITUTIONAL to see the real value. Do that deliberately, " +
+                 "not while debugging something else." } };
+        }
+        return { cmd: "GETKV", payload: { ok: true, key, reply: raw, revealed: true,
+          warning: "PLAINTEXT CREDENTIAL RETURNED. It is now in this context and in any transcript of " +
+                   "it. Rotate it if this was not deliberate." } };
+      }
       const v = await KV.get(env, key);
       return { cmd: "GETKV", payload: { ok: true, key, reply: v } };
+    }
+
+    case "SECRETS": {
+      // The safe way to ask "is the key there?" - existence and fingerprint for every credential,
+      // no values. This is what a health check should have been using all along, and it means nobody
+      // needs to read a real secret just to confirm one is present.
+      if (!isOp) return { cmd: "SECRETS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const out = {};
+      try {
+        const l = await env.AURA_KV.list({ prefix: "secret:", limit: 200 });
+        for (const k of (l.keys || [])) {
+          const raw = await KV.get(env, k.name).catch(() => null);
+          if (raw === null || raw === undefined) { out[k.name] = { exists: false }; continue; }
+          const str = String(raw);
+          let h = 0; for (let i = 0; i < str.length; i++) { h = ((h << 5) - h + str.charCodeAt(i)) | 0; }
+          out[k.name] = { exists: true, length: str.length, tail: str.slice(-4),
+                          fingerprint: (h >>> 0).toString(16).padStart(8, "0") };
+        }
+      } catch (e) { return { cmd: "SECRETS", payload: { ok: false, error: String(e && e.message) } }; }
+      return { cmd: "SECRETS", payload: { ok: true, count: Object.keys(out).length, secrets: out,
+        note: "Existence and fingerprints only - no values. A changed fingerprint means the credential " +
+              "was rotated or overwritten.",
+        recommendation: "These are plaintext in KV. Cloudflare Secrets Store encrypts account-level " +
+              "secrets with a two-level key hierarchy and the values are unreadable by anyone, " +
+              "including Cloudflare staff. Moving the money and infrastructure keys there - mercury, " +
+              "cf_api_token, spaceship, github, stripe, operator_token - removes this whole class of " +
+              "exposure rather than guarding it." } };
     }
 
     case "WEB_SEARCH": {

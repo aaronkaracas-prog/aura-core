@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.703-2026-07-23";
+const BUILD = "aura-core-v4.9.704-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -249,6 +249,8 @@ async function meterCoreBrain(env, model, inTok, cachedIn, cacheWrite, outTok) {
 // Aaron: "we have burn going on inside Claude... it's very subtle, it's like a penny every so often."
 // This is where that lives - brainFetch fronts ~28 Anthropic call sites in this file and none of them
 // were ever counted at the request level.
+async function kvgSafe(env, k) { try { return await env.AURA_KV.get(k); } catch { return null; } }
+
 async function _egressCore(env, rec) {
   try {
     const kv = env && env.AURA_KV;
@@ -17236,6 +17238,69 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       }
       return { cmd: "BUSINESS_AUDIT", payload: { ok: true, ...(await auditBusiness(env)) } };
     }
+    case "AUDIT_CHAIN": {
+      // ══ AN AUDIT TRAIL THE SUBJECT CANNOT REWRITE ═════════════════════════════════════════════
+      //
+      // 2026 practice is explicit: every action an agent takes must be logged "in a format that
+      // cannot be modified after the fact", sufficient to reconstruct the chain behind any
+      // consequential action. Aura's acted:/blocked:/SCORED records are ordinary KV entries - and
+      // anything with write access can rewrite them, including the agent they describe. An audit
+      // trail the subject can edit is a diary, and a compromised or merely confused instance would
+      // leave no evidence of having done so.
+      //
+      // Prevention is not available here - KV has no append-only mode. DETECTION is: each entry
+      // carries the hash of the one before it, so altering any record breaks every hash after it.
+      // Tampering becomes visible even though it stays possible, which is the honest version of this
+      // guarantee on this platform.
+      //
+      //   AUDIT_CHAIN WRITE <actor> <action text>   - append a link
+      //   AUDIT_CHAIN VERIFY                        - walk the chain, report the first break
+      if (!isOp) return { cmd: "AUDIT_CHAIN", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const _hash = (str) => {
+        // FNV-1a, 32-bit. Not cryptographic - it detects accidental and casual tampering, not a
+        // determined forger who recomputes the chain. Said plainly rather than implied, because a
+        // security control that oversells itself is worse than none.
+        let h = 0x811c9dc5;
+        for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+        return (h >>> 0).toString(16).padStart(8, "0");
+      };
+      const head = JSON.parse((await kvgSafe(env, "audit:head")) || '{"seq":0,"hash":"genesis"}');
+
+      const w = rest.match(/^WRITE\s+([a-z0-9_:-]+)\s+(.+)$/is);
+      if (w) {
+        const seq = (Number(head.seq) || 0) + 1;
+        const at = new Date().toISOString();
+        const actor = w[1], action = w[2].slice(0, 900);
+        const body = seq + "|" + at + "|" + actor + "|" + action + "|" + head.hash;
+        const hash = _hash(body);
+        await env.AURA_KV.put("audit:" + String(seq).padStart(9, "0"),
+          JSON.stringify({ seq, at, actor, action, prev: head.hash, hash }));
+        await env.AURA_KV.put("audit:head", JSON.stringify({ seq, hash }));
+        return { cmd: "AUDIT_CHAIN", payload: { ok: true, seq, hash, prev: head.hash,
+          note: "linked. Altering this entry or any before it changes every hash after it." } };
+      }
+
+      // VERIFY - walk from the start and find the first link that does not match
+      const l = await env.AURA_KV.list({ prefix: "audit:0", limit: 1000 }).catch(() => ({ keys: [] }));
+      const names = (l.keys || []).map((k) => k.name).sort();
+      let prev = "genesis", checked = 0, broken = null;
+      for (const n of names) {
+        try {
+          const e = JSON.parse(await env.AURA_KV.get(n));
+          const expect = _hash(e.seq + "|" + e.at + "|" + e.actor + "|" + e.action + "|" + prev);
+          if (e.prev !== prev) { broken = { at: n, why: "prev hash does not match the previous entry", expected_prev: prev, found_prev: e.prev }; break; }
+          if (e.hash !== expect) { broken = { at: n, why: "entry hash does not match its own contents - this record was altered after it was written", expected: expect, found: e.hash }; break; }
+          prev = e.hash; checked++;
+        } catch (err) { broken = { at: n, why: "entry unreadable: " + String(err && err.message) }; break; }
+      }
+      return { cmd: "AUDIT_CHAIN", payload: { ok: !broken, entries: names.length, verified: checked,
+        head_seq: head.seq, head_hash: head.hash, broken,
+        status: broken ? "CHAIN BROKEN" : (names.length ? "INTACT" : "EMPTY"),
+        honest_limit: "FNV-1a, not cryptographic. This detects accidental corruption and casual " +
+          "tampering. It does not stop someone who can write KV from recomputing the whole chain - " +
+          "for that the hashes would need to live somewhere the agent cannot write." } };
+    }
+
     case "SENTRY": {
       // ══ SENTRY ── THE THING THAT READS THE TELEMETRY ═══════════════════════════════════════════
       //

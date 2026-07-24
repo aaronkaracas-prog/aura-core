@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.706-2026-07-23";
+const BUILD = "aura-core-v4.9.707-2026-07-23";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17324,6 +17324,22 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       // runtime truth rather than theoretical configuration - what the system ACTUALLY does, not what
       // a config file says it should. So the known-good sets are derived from the last 7 days of the
       // ledger, and anything that has never been seen before is new BY DEFINITION rather than by list.
+      // ══ WHAT THIS WORKER DOES *NOT* HAVE (council correction, 2026-07-23) ═══════════════════
+      // Five seats checked the brief against source and found a claim I had made too broadly. The
+      // EFFECT REGISTRY - every capability declaring what it does to the world, undeclared
+      // world-touching tools refused by default - is real, and it is in AURA-THINK, covering that
+      // worker's 25 tools. THIS worker's ~324 commands have NO effect classification whatsoever.
+      // The same is true of INTERNAL_NO_OVERRIDE and the child read-only filter: both are enforced at
+      // the Think layer, and neither exists here.
+      // WHY THAT MATTERS: aura-core is reachable directly over HTTP with the operator token. Anything
+      // holding that token talks to this worker without passing a single Think-layer guard. The
+      // controls are real; the boundary is one worker wide, not two.
+      // The same correction applies to "one egress door": every provider call from either worker is
+      // metered, but the Firecracker container has unrestricted network and can curl straight past
+      // the ledger. The surface log RECORDS container execution - it does not BLOCK it. One door on
+      // the worker provider path; a second, unenforced surface in the container.
+      // Recording this here rather than only in a chat, because treating a comment as evidence of a
+      // control is the exact failure the council caught, and this file is where the next reader looks.
       if (!isOp) return { cmd: "SENTRY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const day = new Date().toISOString().slice(0, 10);
       const findings = [];
@@ -17440,6 +17456,9 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         today: { calls: today.calls, errors: today.errors, cost_usd: today.cost_usd,
                  callers: Object.keys(today.by_caller || {}).length,
                  surface_events: surf ? surf.events : 0 },
+        not_enforced_here: "aura-core has NO effect registry and NO child override lockout - both are " +
+          "aura-think only, and this worker is reachable directly with the operator token. The container " +
+          "has unrestricted network: its execution is LOGGED, not blocked.",
         honest_limits: "This reads the egress ledger, the block log, and the surface ledger (sandbox " +
           "execution and writes). It does NOT see prompt content, what a shell command actually did, " +
           "or what a provider call returned. QUIET means nothing tripped these rules - it does not " +

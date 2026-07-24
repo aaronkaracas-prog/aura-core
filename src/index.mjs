@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.707-2026-07-23";
+const BUILD = "aura-core-v4.9.708-2026-07-24";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17442,7 +17442,50 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           add("REVIEW", "sandbox writes", writes + " file(s) written into the container filesystem.");
       }
 
-      // 9. THE METER ITSELF - a detector that can be silently switched off is not a detector.
+      // ══ INBOUND ── SOMEBODY ATTACKING ME, not me misbehaving ═════════════════════════════════
+      // Everything above watches Aura's own outbound behaviour. This is the other direction, and it
+      // is the half that answers "would I notice if I were being attacked". Cloudflare has already
+      // blocked what it recognises; these rules read what got through and look for the shapes that
+      // precede a compromise rather than the ones that are already one.
+      let inb = null, inbBase = { requests: [], automated: [] };
+      try { const raw = await env.AURA_KV.get("inbound:" + day); if (raw) inb = JSON.parse(raw); } catch {}
+      for (let i = 1; i <= 7; i++) {
+        const d = new Date(); d.setUTCDate(d.getUTCDate() - i);
+        try {
+          const raw = await env.AURA_KV.get("inbound:" + d.toISOString().slice(0, 10));
+          if (!raw) continue;
+          const e = JSON.parse(raw);
+          inbBase.requests.push(Number(e.requests) || 0);
+          inbBase.automated.push(Number(e.automated) || 0);
+        } catch {}
+      }
+      if (inb) {
+        // 9. AUTOMATED TRAFFIC ON THE COMMAND SURFACE. The single sharpest signal available here.
+        //    An operator is a human with a token. A bot on /cmd is a stolen token being replayed or
+        //    somebody hunting for one, and it is the shape that precedes an agent compromise.
+        if (inb.automated_on_operator_surface > 0)
+          add("ALERT", "automated traffic on the operator surface",
+              inb.automated_on_operator_surface + " request(s) scored as automated by Cloudflare reached " +
+              "/cmd, /chat or another operator path today. A human operator is not a bot. Treat as a " +
+              "credential probe until shown otherwise - rotate the operator token if this is unexplained.");
+        // 10. ENUMERATION. One network touching many distinct paths is mapping, not browsing.
+        for (const [asn, paths] of Object.entries(inb.paths_seen || {})) {
+          const n = Object.keys(paths || {}).length;
+          if (n >= 15)
+            add("ALERT", "path enumeration", "network AS" + asn + " touched " + n + " distinct paths " +
+                "today. A visitor reads a page; a scanner walks the tree.");
+        }
+        // 11. A SURGE OF AUTOMATION. Relative to what this system normally sees, not an absolute.
+        const bm = median(inbBase.automated);
+        if (bm !== null && bm > 0 && inb.automated > bm * 4)
+          add("REVIEW", "automated traffic surge", inb.automated + " automated requests against a 7-day " +
+              "median of " + bm + ".");
+        const rm = median(inbBase.requests);
+        if (rm !== null && rm > 0 && inb.requests > rm * 5)
+          add("REVIEW", "inbound volume surge", inb.requests + " requests against a median of " + rm + ".");
+      }
+
+      // 12. THE METER ITSELF - a detector that can be silently switched off is not a detector.
       if ((Number(today.calls) || 0) > 0 && !today.last)
         add("ALERT", "ledger integrity", "the ledger has calls but no timestamp - it may not be writing.");
 
@@ -17455,7 +17498,17 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
                     known_endpoints: seenEndpoints.size, known_providers: [...seenProviders] },
         today: { calls: today.calls, errors: today.errors, cost_usd: today.cost_usd,
                  callers: Object.keys(today.by_caller || {}).length,
-                 surface_events: surf ? surf.events : 0 },
+                 surface_events: surf ? surf.events : 0,
+                 inbound: inb ? { requests: inb.requests, automated: inb.automated,
+                                  operator_surface: inb.operator_surface,
+                                  automated_on_operator_surface: inb.automated_on_operator_surface,
+                                  countries: Object.keys(inb.by_country || {}).length,
+                                  networks: Object.keys(inb.by_asn || {}).length }
+                            : "no inbound telemetry yet today" },
+        both_directions: "OUTBOUND: what Aura does with providers, the sandbox and tenants. INBOUND: " +
+          "what reaches these workers, read from Cloudflare's own per-request classification. The " +
+          "inbound half never blocks - Cloudflare's WAF already did that before this code ran, and a " +
+          "detector that also enforces can take the site down when it is wrong.",
         not_enforced_here: "aura-core has NO effect registry and NO child override lockout - both are " +
           "aura-think only, and this worker is reachable directly with the operator token. The container " +
           "has unrestricted network: its execution is LOGGED, not blocked.",
@@ -23840,6 +23893,56 @@ export default {
   async fetch(request, env) {
     _AURA_ENV = env;
     const url = new URL(request.url);
+    // ══ INBOUND SENTRY ── THE HALF THAT WATCHES SOMEONE ATTACKING *ME* ═══════════════════════════
+    //
+    // This is the piece Aaron actually asked for after the OpenAI/Hugging Face incident, and the half
+    // that was missing. SENTRY watches AURA'S OWN OUTBOUND behaviour - token spend, unfamiliar
+    // callers, sandbox execution. It is an insider-and-malfunction detector and it looks OUT from the
+    // inside. Somebody attacking a .world doorway would not appear in it at all.
+    // Hugging Face's detection was the opposite direction: their own INBOUND telemetry, triaged, and
+    // it caught an intrusion five days before the party running the experiment worked out what they
+    // had done. "Their own AI recognised it was being attacked" is an INBOUND capability.
+    //
+    // The raw material is already here and it is better than most people start with: Cloudflare
+    // classifies every request before this line runs and exposes its verdict on request.cf - the bot
+    // score, the country, the network, the TLS fingerprint. That is the same class of telemetry HF was
+    // triaging. What was missing was anything reading it.
+    //
+    // DETERMINISTIC AND CHEAP. One counter bump per request into a daily rollup, nothing per-request
+    // stored, no model involved. It never blocks - Cloudflare's WAF already does the blocking, and a
+    // detector that also enforces is a detector that can take the site down when it is wrong.
+    try {
+      const cf = request.cf || {};
+      const bot = Number(cf.botManagement?.score ?? cf.clientTrustScore ?? 100);
+      const path = url.pathname.slice(0, 60);
+      const day = new Date().toISOString().slice(0, 10);
+      const isOperatorSurface = /^\/(cmd|chat|ask|admin|balance|truecost|propose|evolve)/i.test(url.pathname);
+      env.AURA_KV.get("inbound:" + day).then(async (raw) => {
+        const led = raw ? JSON.parse(raw) : { day, requests: 0, automated: 0, operator_surface: 0,
+          automated_on_operator_surface: 0, unauthorized: 0, by_country: {}, by_asn: {},
+          by_path: {}, by_host: {}, paths_seen: {} };
+        led.requests += 1;
+        // Cloudflare scores 1-99, lower means more likely automated. Under 30 is their own bar.
+        if (bot > 0 && bot < 30) led.automated += 1;
+        if (isOperatorSurface) {
+          led.operator_surface += 1;
+          // THE SIGNAL THAT MATTERS MOST. A human operator is not a bot. Automated traffic reaching
+          // the surface that runs commands is either a stolen token being replayed or somebody
+          // probing for one - and it is the shape that precedes every agent-platform compromise.
+          if (bot > 0 && bot < 30) led.automated_on_operator_surface += 1;
+        }
+        const c = String(cf.country || "??"); led.by_country[c] = (led.by_country[c] || 0) + 1;
+        const a = String(cf.asn || "?"); led.by_asn[a] = (led.by_asn[a] || 0) + 1;
+        led.by_host[url.hostname] = (led.by_host[url.hostname] || 0) + 1;
+        // path DIVERSITY per network, not per path - one source touching many distinct paths is
+        // enumeration, which is what probing looks like before it turns into anything else.
+        led.paths_seen[a] = led.paths_seen[a] || {};
+        led.paths_seen[a][path] = 1;
+        if (Object.keys(led.paths_seen).length > 200) led.paths_seen = {};   // bounded
+        led.last = new Date().toISOString();
+        await env.AURA_KV.put("inbound:" + day, JSON.stringify(led), { expirationTtl: 90 * 24 * 3600 });
+      }).catch(() => {});
+    } catch {}
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "Content-Type, Authorization, X-Session-ID", "access-control-max-age": "86400" } });
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "Content-Type, Authorization, X-Session-ID", "access-control-max-age": "86400" } });
     const isOp = await verifyOperator(request, env);

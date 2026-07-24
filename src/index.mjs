@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.708-2026-07-24";
+const BUILD = "aura-core-v4.9.710-2026-07-24";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -249,6 +249,60 @@ async function meterCoreBrain(env, model, inTok, cachedIn, cacheWrite, outTok) {
 // Aaron: "we have burn going on inside Claude... it's very subtle, it's like a penny every so often."
 // This is where that lives - brainFetch fronts ~28 Anthropic call sites in this file and none of them
 // were ever counted at the request level.
+// ══ THE EGRESS LEDGER IN A DURABLE OBJECT ── THE ARCHITECTURALLY CORRECT HOME ═════════════════
+//
+// WHY IT MOVED OFF KV. Cloudflare's docs: "KV is not ideal for applications where you need support
+// for atomic operations." And the hard limit that was actively breaking this: EACH UNIQUE KEY CAN BE
+// WRITTEN AT MOST ONCE PER SECOND, and exceeding it makes the write ERROR OUT. egress:<day> was
+// written on every provider call - a council round makes 16 in one turn. Those writes were failing
+// into a silent catch, so the meter has been dropping rows under exactly the load where the numbers
+// matter, and every reconciliation was against a ledger with holes.
+//
+// WHY A DURABLE OBJECT AND NOT D1. I reached for D1 first because this worker already uses it hard,
+// and that was picking the convenient answer over the correct one. D1 is a CENTRALISED RELATIONAL
+// DATABASE - the right shape for the PTA graph, where entities and edges are queried across the whole
+// set. A per-call meter is a different shape: high-frequency appends from Workers running worldwide,
+// needing a single authoritative writer to be atomic. Cloudflare names this case exactly: "Use
+// Durable Objects when you need a single authoritative point of consistency per key, for example a
+// chat room, a stock counter or an exact rate limiter." A meter is a stock counter.
+//
+// ONE DO PER DAY, not one for everything. Their rule: "Do not put all your data in a single Durable
+// Object... create separate child Durable Objects for each entity." A day is the natural entity here -
+// every write for a day serialises in one place (which is what makes it atomic), and days do not
+// contend with each other. When tenants are real, this becomes one per tenant-day for the same reason.
+//
+// APPEND-ONLY. The KV shape read the rollup, incremented, wrote it back - two concurrent calls read
+// the same value and one increment is lost, silently and permanently. An INSERT cannot lose anything;
+// there is nothing to overwrite. Aggregation happens at READ time in SQL, which also kills the
+// O(rows) problem that made AIMARGIN take 59 seconds listing keys.
+async function _egressDO(env, rec) {
+  try {
+    if (!env.LEDGER_DO) return;   // binding not deployed yet - KV path still carries it
+    const day = new Date().toISOString().slice(0, 10);
+    const id = env.LEDGER_DO.idFromName("egress:" + day);
+    const stub = env.LEDGER_DO.get(id);
+    const u = rec.usage || {};
+    const tin = Number(u.prompt_tokens ?? u.input_tokens ?? 0) || 0;
+    const treason = Number(u.completion_tokens_details?.reasoning_tokens ?? 0) || 0;
+    const tout = (Number(u.completion_tokens ?? u.output_tokens ?? 0) || 0) + treason;
+    const tcache = Number(u.cache_read_input_tokens ?? u.prompt_tokens_details?.cached_tokens ?? 0) || 0;
+    const cwrite = Number(u.cache_creation_input_tokens ?? u.cache_creation?.ephemeral_5m_input_tokens ?? 0) || 0;
+    const R = _rateFor(rec.model);
+    const uncached = (tin >= tcache) ? Math.max(0, tin - tcache) : tin;
+    const cost = Math.max(0, (uncached * R.in + tcache * R.cacheRead + cwrite * R.cacheWrite + tout * R.out) / 1e6);
+    let path = rec.endpoint || "?";
+    try { path = new URL(rec.endpoint).pathname; } catch {}
+    await stub.fetch("https://ledger/record", { method: "POST", body: JSON.stringify({
+      day, at: new Date().toISOString(), provider: rec.provider || "unknown",
+      model: rec.model || "unknown", endpoint: path, caller: rec.caller || "unlabelled",
+      tenant: rec.tenant || "aura", status: Number(rec.status) || 0, ms: Number(rec.ms) || 0,
+      tokens_in: tin, tokens_out: tout, cached_in: tcache, cache_write: cwrite, cost_usd: cost,
+    }) });
+  } catch (e) {
+    try { console.warn("[LEDGER-DO] record failed: " + (e && e.message ? e.message : String(e))); } catch {}
+  }
+}
+
 async function kvgSafe(env, k) { try { return await env.AURA_KV.get(k); } catch { return null; } }
 
 async function _egressCore(env, rec) {
@@ -333,6 +387,8 @@ async function _egressCore(env, rec) {
     if (!tin && !tout && /completions|messages|generateContent|generations/.test(path)) led.no_usage = (led.no_usage || 0) + 1;
     led.last = new Date().toISOString();
     await kv.put(k, JSON.stringify(led), { expirationTtl: 120 * 24 * 3600 });
+    // and the append-only row in the Durable Object - atomic, no per-key write ceiling
+    await _egressDO(env, rec);
   } catch (e) { try { console.warn("[EGRESS] record failed (call still succeeded): " + (e && e.message)); } catch {} }
 }
 
@@ -654,6 +710,80 @@ async function auraContextGate(env, isOp) {
 // â”€â”€â”€ EntityDO: per-entity Durable Object (Living Entity) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Each business/city/person gets its own dedicated object with its own SQLite storage.
 // No shared contention â€” this is the civilization-scale isolation layer.
+// ─── LedgerDO: the meter's single authoritative writer ─────────────────────────────────────────
+// One instance per day, addressed by name ("egress:2026-07-24"). Every provider call from either
+// worker lands here, so writes for a day are serialised in one place - which is what makes the count
+// atomic rather than best-effort. SQLite-backed, so aggregation is a SUM() in the database instead of
+// listing and parsing hundreds of KV keys in a Worker.
+// blockConcurrencyWhile in the constructor creates the schema before any request is served, per
+// Cloudflare's rule - otherwise two concurrent first-requests race to create the same table.
+export class LedgerDO {
+  constructor(state, env) {
+    this.state = state;
+    this.sql = state.storage.sql;
+    this.env = env;
+    this.state.blockConcurrencyWhile(async () => {
+      this.sql.exec(
+        "CREATE TABLE IF NOT EXISTS egress (" +
+        "seq INTEGER PRIMARY KEY AUTOINCREMENT, day TEXT, at TEXT, provider TEXT, model TEXT, " +
+        "endpoint TEXT, caller TEXT, tenant TEXT, status INTEGER, ms INTEGER, " +
+        "tokens_in INTEGER, tokens_out INTEGER, cached_in INTEGER, cache_write INTEGER, cost_usd REAL)"
+      );
+      this.sql.exec("CREATE INDEX IF NOT EXISTS idx_eg_prov ON egress (provider)");
+      this.sql.exec("CREATE INDEX IF NOT EXISTS idx_eg_caller ON egress (caller)");
+    });
+  }
+  async fetch(request) {
+    const url = new URL(request.url);
+    const op = url.pathname.slice(1);
+    try {
+      if (op === "record") {
+        const r = await request.json();
+        this.sql.exec(
+          "INSERT INTO egress (day, at, provider, model, endpoint, caller, tenant, status, ms, " +
+          "tokens_in, tokens_out, cached_in, cache_write, cost_usd) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+          r.day, r.at, r.provider, r.model, r.endpoint, r.caller, r.tenant,
+          r.status | 0, r.ms | 0, r.tokens_in | 0, r.tokens_out | 0, r.cached_in | 0,
+          r.cache_write | 0, Number(r.cost_usd) || 0
+        );
+        return Response.json({ ok: true });
+      }
+      if (op === "summary") {
+        // the whole day in four aggregate queries instead of N key reads
+        const tot = [...this.sql.exec(
+          "SELECT COUNT(*) calls, SUM(tokens_in) tin, SUM(tokens_out) tout, SUM(cached_in) cached, " +
+          "SUM(cost_usd) cost, SUM(CASE WHEN status=0 OR status>=400 THEN 1 ELSE 0 END) errors FROM egress"
+        )][0] || {};
+        const by = (col) => {
+          const out = {};
+          for (const row of this.sql.exec(
+            "SELECT " + col + " k, COUNT(*) calls, SUM(tokens_in) tin, SUM(tokens_out) tout, " +
+            "SUM(cached_in) cached, SUM(cost_usd) cost FROM egress GROUP BY " + col
+          )) out[row.k || "?"] = { calls: row.calls, in: row.tin || 0, out: row.tout || 0,
+                                   cached: row.cached || 0, cost: +(row.cost || 0).toFixed(6) };
+          return out;
+        };
+        return Response.json({ ok: true,
+          calls: tot.calls || 0, errors: tot.errors || 0,
+          tokens_in: tot.tin || 0, tokens_out: tot.tout || 0, cached_in: tot.cached || 0,
+          cost_usd: +(tot.cost || 0).toFixed(6),
+          by_provider: by("provider"), by_caller: by("caller"),
+          by_model: by("model"), by_tenant: by("tenant"), by_endpoint: by("endpoint") });
+      }
+      if (op === "recent") {
+        const n = Math.min(parseInt(url.searchParams.get("n") || "20", 10), 200);
+        const rows = [...this.sql.exec(
+          "SELECT at, provider, model, caller, tenant, tokens_in, tokens_out, cost_usd " +
+          "FROM egress ORDER BY seq DESC LIMIT ?", n)];
+        return Response.json({ ok: true, rows });
+      }
+      return Response.json({ ok: false, error: "unknown op" }, { status: 404 });
+    } catch (e) {
+      return Response.json({ ok: false, error: String(e && e.message || e) }, { status: 500 });
+    }
+  }
+}
+
 export class EntityDO {
   constructor(state, env) {
     this.state = state;

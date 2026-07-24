@@ -54,6 +54,19 @@ class_name = "EntityDO"
 name = "AIS_COLLECTOR"
 class_name = "AisCollectorDO"
 
+# ADDED 2026-07-24. The meter's single authoritative writer, one instance per day.
+# The egress ledger lived in a KV key written on every provider call - and Cloudflare's own docs are
+# explicit that a KV key can be written at most once per second, with anything beyond that erroring
+# out. A council round makes 16 provider calls in one turn, so the meter was silently dropping rows
+# under exactly the load where the numbers matter.
+# Their guidance names this case: "Use Durable Objects when you need a single authoritative point of
+# consistency per key, for example a chat room, a stock counter or an exact rate limiter." A meter is
+# a stock counter. One DO per DAY rather than one for everything, per their rule against putting all
+# data in a single object - a day's writes serialise in one place, and days never contend.
+[[durable_objects.bindings]]
+name = "LEDGER_DO"
+class_name = "LedgerDO"
+
 [[migrations]]
 tag = "v1-entitydo"
 new_sqlite_classes = ["EntityDO"]
@@ -61,6 +74,12 @@ new_sqlite_classes = ["EntityDO"]
 [[migrations]]
 tag = "v2-ais-collector"
 new_classes = ["AisCollectorDO"]
+
+# SQLite-backed, not the legacy KV backend - the ledger aggregates with SUM() and GROUP BY, which is
+# the whole reason it stops being O(rows) to read a day.
+[[migrations]]
+tag = "v3-ledger-do"
+new_sqlite_classes = ["LedgerDO"]
 
 [[send_email]]
 name = "SEND_EMAIL"
@@ -120,6 +139,12 @@ class_name = "EntityDO"
 [[env.staging.durable_objects.bindings]]
 name = "AIS_COLLECTOR"
 class_name = "AisCollectorDO"
+
+# The twin gets the ledger too, so a meter change can be proven on staging before it touches the
+# live count. Same class, its own isolated instances.
+[[env.staging.durable_objects.bindings]]
+name = "LEDGER_DO"
+class_name = "LedgerDO"
 
 [env.staging.browser]
 binding = "BROWSER"

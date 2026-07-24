@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.710-2026-07-24";
+const BUILD = "aura-core-v4.9.711-2026-07-24";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -24076,6 +24076,35 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "Content-Type, Authorization, X-Session-ID", "access-control-max-age": "86400" } });
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: { "access-control-allow-origin": "*", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "Content-Type, Authorization, X-Session-ID", "access-control-max-age": "86400" } });
     const isOp = await verifyOperator(request, env);
+
+    // ══ /egress/record ── aura-think's rows into the ledger DO ═══════════════════════════════════
+    // Reachable ONLY over the service binding in practice: aura-think calls it internally, and a
+    // stranger hitting this path from the internet writes a meter row with no credential. That is
+    // deliberately low-value to forge - it can only add noise to a cost ledger, not read or spend -
+    // but it is worth naming rather than pretending the path is private. If the meter ever becomes
+    // billing-grade for tenants, this needs the operator check that the rest of the surface has.
+    if (url.pathname === "/egress/record" && request.method === "POST") {
+      try {
+        const rec = await request.json();
+        await _egressDO(env, rec);
+        return Response.json({ ok: true });
+      } catch (e) {
+        return Response.json({ ok: false, error: String(e && e.message || e) }, { status: 400 });
+      }
+    }
+    // Read the day straight out of the DO - SUM() and GROUP BY in SQLite instead of listing keys.
+    if (url.pathname === "/egress/summary") {
+      try {
+        if (!env.LEDGER_DO) return Response.json({ ok: false, error: "LEDGER_DO not bound" });
+        const day = url.searchParams.get("day") || new Date().toISOString().slice(0, 10);
+        const stub = env.LEDGER_DO.get(env.LEDGER_DO.idFromName("egress:" + day));
+        const r = await stub.fetch("https://ledger/summary");
+        const j = await r.json();
+        return Response.json({ ok: true, day, source: "LedgerDO (durable object, SQLite)", ...j });
+      } catch (e) {
+        return Response.json({ ok: false, error: String(e && e.message || e) }, { status: 500 });
+      }
+    }
 
     const _homescreenRoot = (url.hostname === "homescreen.world" || url.hostname === "www.homescreen.world") && url.pathname === "/";
 

@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.711-2026-07-24";
+const BUILD = "aura-core-v4.9.712-2026-07-24";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17593,6 +17593,13 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         // 9. AUTOMATED TRAFFIC ON THE COMMAND SURFACE. The single sharpest signal available here.
         //    An operator is a human with a token. A bot on /cmd is a stolen token being replayed or
         //    somebody hunting for one, and it is the shape that precedes an agent compromise.
+        // A rule that cannot fire must say so, or QUIET is a lie by omission.
+        if (inb.requests > 20 && !(inb.scored > 0))
+          add("REVIEW", "bot scoring unavailable",
+              inb.requests + " inbound requests today and NONE carried a Cloudflare bot score. Bot " +
+              "Management is a paid feature; without it the automated-traffic rules below cannot fire " +
+              "and their zeros mean 'not measured', not 'none found'. The path-enumeration rule does " +
+              "not depend on it and is still live.");
         if (inb.automated_on_operator_surface > 0)
           add("ALERT", "automated traffic on the operator surface",
               inb.automated_on_operator_surface + " request(s) scored as automated by Cloudflare reached " +
@@ -17632,6 +17639,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
                  inbound: inb ? { requests: inb.requests, automated: inb.automated,
                                   operator_surface: inb.operator_surface,
                                   automated_on_operator_surface: inb.automated_on_operator_surface,
+                                  requests_carrying_a_bot_score: inb.scored || 0,
                                   countries: Object.keys(inb.by_country || {}).length,
                                   networks: Object.keys(inb.by_asn || {}).length }
                             : "no inbound telemetry yet today" },
@@ -24043,7 +24051,21 @@ export default {
     // detector that also enforces is a detector that can take the site down when it is wrong.
     try {
       const cf = request.cf || {};
-      const bot = Number(cf.botManagement?.score ?? cf.clientTrustScore ?? 100);
+      // ══ RECORD WHETHER THE SCORE EXISTS, DO NOT DEFAULT IT (fixed 2026-07-24) ═════════════════
+      // The first version read `botManagement?.score ?? clientTrustScore ?? 100`. Cloudflare's Bot
+      // Management score is a PAID feature - if it is not on this plan the field is simply absent, and
+      // that fallback quietly scored every visitor as 100, meaning "human". So the sharpest inbound
+      // rule - automated traffic reaching the operator surface - could never fire, and it would have
+      // read QUIET forever while looking like it was working.
+      // Measured: 513 inbound requests across 21 networks, including two that are known scanner
+      // egress, and `automated: 0`. Three networks walked 184, 15 and 214 distinct paths. Those are
+      // not humans. The enumeration rule caught them; the bot rule did not, because it was blind.
+      // A default that stands in for a missing measurement is the same defect as a silent catch: the
+      // number looks fine and means nothing. Now the ledger counts how many requests carried a score
+      // at all, so a dead rule announces itself instead of reporting zero.
+      const _rawBot = cf.botManagement?.score ?? cf.clientTrustScore;
+      const _hasBot = typeof _rawBot === "number";
+      const bot = _hasBot ? Number(_rawBot) : -1;
       const path = url.pathname.slice(0, 60);
       const day = new Date().toISOString().slice(0, 10);
       const isOperatorSurface = /^\/(cmd|chat|ask|admin|balance|truecost|propose|evolve)/i.test(url.pathname);
@@ -24052,10 +24074,12 @@ export default {
           automated_on_operator_surface: 0, unauthorized: 0, by_country: {}, by_asn: {},
           by_path: {}, by_host: {}, paths_seen: {} };
         led.requests += 1;
+        led.scored = (led.scored || 0) + (_hasBot ? 1 : 0);   // how many carried a bot score at all
         // Cloudflare scores 1-99, lower means more likely automated. Under 30 is their own bar.
         if (bot > 0 && bot < 30) led.automated += 1;
         if (isOperatorSurface) {
           led.operator_surface += 1;
+          led.operator_surface_scored = (led.operator_surface_scored || 0) + (_hasBot ? 1 : 0);
           // THE SIGNAL THAT MATTERS MOST. A human operator is not a bot. Automated traffic reaching
           // the surface that runs commands is either a stolen token being replayed or somebody
           // probing for one - and it is the shape that precedes every agent-platform compromise.

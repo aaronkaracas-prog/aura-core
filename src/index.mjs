@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.737-2026-07-26";
+const BUILD = "aura-core-v4.9.738-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -11696,11 +11696,50 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // Bucket selection is an EXACT match on "raw" now, not startsWith - so `KNOWLEDGE raw/` means
         // "the indexed bucket, prefix raw/" (what we actually needed) and `KNOWLEDGE raw` means the
         // archive bucket. startsWith made those two indistinguishable.
-        const wantRaw = String(args[0] || "").toLowerCase() === "raw";
+        // ══ THE INSPECTOR WAS LOOKING WHERE FACTS USED TO LIVE (v4.9.738) ════════════════════════
+        // Since v4.9.734 facts are written to AI Search BUILT-IN STORAGE via items.upload; the R2
+        // bucket is only the fallback when that upload throws. This command still listed R2, so a
+        // successful ingestion showed as NOTHING NEW and an empty listing meant everything worked -
+        // which is indistinguishable from nothing happening. Third time today an inspector pointed at
+        // the wrong place: the default prefix hid raw/, the fields described the wrong bucket, and now
+        // the whole command was reading a location the data had left.
+        //   KNOWLEDGE        -> built-in storage, where facts actually live
+        //   KNOWLEDGE r2     -> the fallback bucket (also holds pre-734 facts)
+        //   KNOWLEDGE raw    -> the archive that nothing indexes
+        const mode = String(args[0] || "").toLowerCase();
+        if (mode !== "r2" && mode !== "raw") {
+          if (!env.AI_SEARCH) return { cmd: "KNOWLEDGE", payload: { ok: false, error: "AI_SEARCH not bound" } };
+          try {
+            const listed = await env.AI_SEARCH.get("aura-feeds").items.list();
+            const arr = (listed && (listed.result || listed.items)) || [];
+            const rows = (Array.isArray(arr) ? arr : []).map((i) => ({
+              key: i.key, status: i.status, chunks: i.chunks_count,
+              origin: (i.metadata && i.metadata.origin) || null,
+              feed: (i.metadata && i.metadata.feed) || null,
+              at: (i.metadata && i.metadata.at) || null,
+            }));
+            const bad = rows.filter((r) => r.origin !== "external" && r.origin !== "human");
+            return { cmd: "KNOWLEDGE", payload: { ok: true,
+              store: "AI Search built-in storage on instance `aura-feeds` - where facts live since v4.9.734",
+              count: rows.length, items: rows.slice(0, 40),
+              origin_check: bad.length === 0
+                ? "every item carries origin external (or the older `human`, same meaning)"
+                : bad.length + " item(s) without an origin tag: " + bad.map((r) => r.key).join(", ")
+                  + " - an untagged item cannot later be separated from Aura's own output",
+              membrane: "INVARIANT: nothing Aura generates may enter this store. Facts are written by "
+                + "ingestFeedResult only. Reflections live in aura-think's Session archive and aura-think "
+                + "holds no AI_SEARCH binding, so the separation is enforced by wrangler config rather "
+                + "than by a query filter. If aura-think ever gains that binding, this invariant is broken.",
+              other_views: "KNOWLEDGE r2 (fallback bucket + pre-734 facts) - KNOWLEDGE raw (archive, indexed by nothing)" } };
+          } catch (e) {
+            return { cmd: "KNOWLEDGE", payload: { ok: false, error: String((e && e.message) || e).slice(0, 300) } };
+          }
+        }
+        const wantRaw = mode === "raw";
         const bucket = wantRaw ? env.AURA_KNOWLEDGE_RAW : env.AURA_KNOWLEDGE;
         if (!bucket) return { cmd: "KNOWLEDGE", payload: { ok: false,
           error: (wantRaw ? "AURA_KNOWLEDGE_RAW" : "AURA_KNOWLEDGE") + " not bound" } };
-        const prefix = wantRaw ? (args[1] || "") : (args[0] || "");
+        const prefix = args[1] || "";
         const listed = await bucket.list({ prefix, limit: 40, include: ["customMetadata"] });
         const objects = (listed.objects || []).map((o) => ({
           key: o.key,

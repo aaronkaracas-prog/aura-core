@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.714-2026-07-26";
+const BUILD = "aura-core-v4.9.715-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -101,7 +101,7 @@ async function callBrain({ system, user, max_tokens = 2000, model = null, temper
   const cap = Math.max(16, Math.min(16000, parseInt(max_tokens, 10) || 2000));
 
   if (route.provider === "anthropic") {
-    const key = env.ANTHROPIC_API_KEY || await KV.get(env, "secret:anthropic");
+    const key = env.ANTHROPIC_API_KEY || await getSecret(env, "anthropic");
     if (!key) return { ok: false, error: "no Anthropic key", provider: route.provider, model: route.model };
     const r = await brainFetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -954,7 +954,7 @@ export class AisCollectorDO {
   // close. AIS floods in within seconds in a busy area like Hormuz, so a short burst each alarm
   // builds a full picture. Returns when the burst ends. Records lastError on any failure.
   async collectBurst(seconds = 20) {
-    const key = await this.env.AURA_KV.get("secret:aisstream");
+    const key = await getSecret(this.env, "aisstream");
     if (!key) { this.lastError = "no secret:aisstream"; return; }
     const box = AIS_REGIONS[this.region].box;
     let ws = null;
@@ -1543,7 +1543,7 @@ async function scanLiveEvents(env, topN = 8) {
 }
 
 async function getOperatorToken(env) {
-  return env.OPERATOR_TOKEN || await env.AURA_KV.get("secret:aura_operator_token").catch(() => null);
+  return env.OPERATOR_TOKEN || await getSecret(env, "aura_operator_token");
 }
 
 async function verifyOperator(request, env) {
@@ -1554,9 +1554,9 @@ async function verifyOperator(request, env) {
   if (stored && token === stored) return true;
   // Dedicated home-screen token: a separate, revocable credential for Aaron's own Home Screen dashboard
   // so it reaches the full real Aura (worldview + SituationTracker) without embedding the master operator
-  // token in a webpage. Set via: SETKV secret:homescreen_token <value>. Revoke any time without touching
+  // token in a webpage. Set via: SETKV secret:homescreen_token <value> OVERRIDE_CONSTITUTIONAL. Revoke any time without touching
   // the master token. Same operator-level brain; isolated key.
-  const hs = await env.AURA_KV.get("secret:homescreen_token").catch(() => null);
+  const hs = await getSecret(env, "homescreen_token");
   if (hs && token === hs) return true;
   return false;
 }
@@ -1573,7 +1573,76 @@ const KV = {
   }
 };
 
-// === GOVERNOR â€” THE PROPAGATION BRAKES ===
+// ══ ONE DOOR FOR EVERY CREDENTIAL (v4.9.715) ══════════════════════════════════════════════════════
+//
+// WHY THIS EXISTS. Before this, a secret was read two different ways - KV.get(env, "secret:x") and
+// env.AURA_KV.get("secret:x") directly, 153 of the latter - and the same credential was stored under
+// several names. secret:xai / secret:grok_api_key / secret:xai_api_key are ONE key; so are
+// secret:cf_api_token / secret:cloudflare, secret:mercury_api_key / secret:mercury, and
+// secret:aura_operator_token / secret:operator_token. server.ts works around this by WRITING all
+// three xai names, which is the wrong fix: it makes three sources of truth instead of one.
+//
+// That was a live bug on its own ("fixing it anywhere fixed it nowhere"), but it is also the thing
+// that makes migrating to Cloudflare Secrets Store DANGEROUS. Binding secret:cf_api_token to the
+// store while 153 call sites still read KV - or while other code reads the same token under
+// secret:cloudflare - leaves two copies of the credential that controls every domain and DNS record,
+// both looking healthy, silently disagreeing the moment one is rotated. Two systems that both
+// believe they are authoritative is the exact failure that cost three days this week.
+//
+// So: ONE accessor, alias-aware, Secrets Store FIRST and KV as fallback. Until a binding exists this
+// is behaviour-identical to what it replaced, except that aliases now resolve - which fixes the
+// three-names bug today. After a binding is added in wrangler.toml, that credential comes from the
+// encrypted store with NO code change and no call site left behind.
+//
+// THE HONEST LIMIT, stated rather than blurred: a bound secret is still readable by code running in
+// this worker, because the worker has to call Mercury. What it is NOT is enumerable or writable -
+// GETKV cannot return it, LISTKV cannot find it, and SETKV cannot destroy it, because it is not a KV
+// key at all. That removes the rotate-and-brick path entirely and the discovery path with it. Making
+// it unreadable by model-directed code needs the public/private worker split, which is a separate
+// piece of work and should not be confused with this one.
+const SECRET_FAMILIES = {
+  xai:               ["xai", "grok_api_key", "xai_api_key"],
+  cloudflare:        ["cf_api_token", "cloudflare"],
+  mercury:           ["mercury_api_key", "mercury"],
+  operator:          ["aura_operator_token", "operator_token"],
+  twilio_sid:        ["twilio_account_sid", "twilio_sid"],
+  session:           ["session_secret", "session"],
+};
+// alias -> family. Any name not listed is its own family, which is the common case.
+const SECRET_ALIAS = (() => {
+  const m = {};
+  for (const [fam, names] of Object.entries(SECRET_FAMILIES)) for (const n of names) m[n] = fam;
+  return m;
+})();
+// family -> env binding name, populated as each tier-0 credential is bound in wrangler.toml.
+// A family with no entry here simply never checks the store and reads KV, so this map is the whole
+// migration switch: add a line, add the binding, that credential stops living in plaintext.
+const SECRET_BINDING = {
+  // cloudflare: "SS_CLOUDFLARE",
+  // mercury:    "SS_MERCURY",
+  // stripe:     "SS_STRIPE",
+  // github_token: "SS_GITHUB",
+  // operator:   "SS_OPERATOR",
+};
+async function getSecret(env, name) {
+  if (!env || !name) return null;
+  const bare = String(name).replace(/^secret:/i, "");
+  const fam = SECRET_ALIAS[bare] || bare;
+  // 1. the encrypted store, if this family has been bound. Access is asynchronous by design.
+  const binding = SECRET_BINDING[fam];
+  if (binding && env[binding] && typeof env[binding].get === "function") {
+    try { const v = await env[binding].get(); if (v) return v; } catch {}
+  }
+  // 2. KV, trying every name in the family so a value stored under an older alias is still found.
+  //    Order matters: the canonical name wins, aliases are only consulted if it is empty.
+  const names = SECRET_FAMILIES[fam] || [fam];
+  for (const n of names) {
+    try { const v = await env.AURA_KV.get("secret:" + n); if (v) return v; } catch {}
+  }
+  return null;
+}
+
+// === GOVERNOR - THE PROPAGATION BRAKES ===
 // Every outbound social action must clear this BEFORE it happens. Tracks Aura's own pace
 // per Page and per account in KV and HARD-BLOCKS anything over safe thresholds (well under
 // Meta's real ceilings), so Aura is structurally incapable of tripping a spam flag. MODERATE
@@ -1703,7 +1772,7 @@ async function readOwnSource(env, branch, worker) {
   } catch (e) {}
   // 2) GitHub BLOB API (not contents API) - blobs have no 1MB truncation. Get the blob sha via the tree, then the blob.
   if (got == null) {
-    const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);
+    const ghTok = await getSecret(env, "github_token");
     if (ghTok) {
       try {
         // Private repos never resolve on the raw CDN, so for aura-comms/aura-ops this authenticated path
@@ -1731,7 +1800,7 @@ async function readOwnSource(env, branch, worker) {
   // config:repo:<worker> so the discovery happens once, not every turn.
   if (got == null) {
     try {
-      const ghTok2 = await env.AURA_KV.get("secret:github_token").catch(() => null);
+      const ghTok2 = await getSecret(env, "github_token");
       if (ghTok2) {
         const rl = await fetch("https://api.github.com/user/repos?per_page=100&sort=updated",
           { headers: { "User-Agent": "aura-self-read", "Authorization": "Bearer " + ghTok2, "Accept": "application/vnd.github+json" } });
@@ -1812,7 +1881,7 @@ async function readOwnSource(env, branch, worker) {
 async function proxyToAgent(env, line, isOp) {
   try {
     if (!isOp) return { failed: "not operator - public doorways keep the local path by design" };
-    const tok = env.AURA_OPERATOR_TOKEN || await KV.get(env, "secret:aura_operator_token");
+    const tok = env.AURA_OPERATOR_TOKEN || await getSecret(env, "aura_operator_token");
     if (!tok) return { failed: "no operator token in env.AURA_OPERATOR_TOKEN or secret:aura_operator_token" };
     // SERVICE BINDING, NOT THE PUBLIC INTERNET. The first version fetched aura-think's workers.dev URL
     // and Cloudflare refused it with error 1042 - a Worker calling another Worker on the same account by
@@ -2043,7 +2112,7 @@ async function sendEmail(env, to, subject, body, opts) {
       }
     } catch {}
   }
-  const cfToken = env.CF_API_TOKEN || await KV.get(env, "secret:cf_api_token");
+  const cfToken = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
   if (!cfToken) { result.error = "no CF API token"; return result; }
   // deliverability: a real From name (not bare noreply@) helps inbox placement
   const fromAddr = opts.from || (await KV.get(env, "config:email:from")) || "noreply@auras.guide";
@@ -2127,7 +2196,7 @@ async function webSearch(query, env) {
   const provider = ((await env.AURA_KV.get("config:search:provider").catch(() => null)) || "tavily").toLowerCase();
   try {
     if (provider === "tavily") {
-      const key = await env.AURA_KV.get("secret:tavily").catch(() => null);
+      const key = await getSecret(env, "tavily");
       if (!key) return { ok: false, error: "no tavily key in KV (secret:tavily)" };
       const res = await fetchWithTimeout(await resolveFeedUrl(env, "search_tavily", {}, "https://api.tavily.com/search"), {
         method: "POST",
@@ -2140,7 +2209,7 @@ async function webSearch(query, env) {
       return { ok: true, provider: "tavily", query: query.trim(), answer: data.answer || null, sources };
     }
     if (provider === "brave") {
-      const key = await env.AURA_KV.get("secret:brave_search").catch(() => null);
+      const key = await getSecret(env, "brave_search");
       if (!key) return { ok: false, error: "no brave key in KV (secret:brave_search)" };
       const res = await fetchWithTimeout(await resolveFeedUrl(env, "search_brave", { q: query.trim() }, `https://api.search.brave.com/res/v1/web/search?q={q}&count=5`), {
         headers: { "Accept": "application/json", "X-Subscription-Token": key }
@@ -2244,7 +2313,7 @@ async function processCommand(line, env, isOp) {
           srcText = _ros.source;
         } else {
           // other workers are private repos -> GitHub contents API with the stored token
-          const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);
+          const ghTok = await getSecret(env, "github_token");
           if (!ghTok) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "No secret:github_token in KV to read private worker repos" } };
           // try main first, then master (aura-stream is on master)
           let got = null;
@@ -2322,7 +2391,7 @@ async function processCommand(line, env, isOp) {
           }
         }
         if (!ctx.length) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "No lines matched term: " + term } };
-        const apiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+        const apiKey = await getSecret(env, "anthropic");
         if (!apiKey) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
 
         // ═══ v4.9.561 — SHE FETCHES 1.8MB OF HERSELF AND WAS SHOWN 24,000 CHARACTERS OF IT ═══
@@ -2410,7 +2479,7 @@ async function processCommand(line, env, isOp) {
         // dedupe by cmd (fallthrough cases share a body)
         const seenC = new Set(); const uniq = [];
         for (const h of handlers) { if (seenC.has(h.cmd)) continue; seenC.add(h.cmd); uniq.push(h); }
-        const apiKey2 = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+        const apiKey2 = await getSecret(env, "anthropic");
         if (!apiKey2) return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "capabilities", worker, handler_count: uniq.length, handlers: uniq, note: "Raw handler list (brain not configured for reasoning pass)." } };
         // v4.9.561: was .slice(0, 22000) - which silently DROPPED handlers off the end of her own
         // capability list. She would then describe herself as having fewer commands than she has.
@@ -2608,7 +2677,7 @@ async function processCommand(line, env, isOp) {
           if (v) corpus += "\n\n### " + k.name + "\n" + v;
           if (corpus.length > 22000) break;
         }
-        const apiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+        const apiKey = await getSecret(env, "anthropic");
         if (!apiKey) return { cmd: "AURA_READ_NOTES", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
         const sys = await loadPrompt(env, "self_notes", "You are Aura, reading your OWN notes - your vision, your operating knowledge, your memory. These are the documents that define what you believe, what you are for, and how you and Aaron work together. You and Aaron are ONE TEAM building his vision; you share it as your own. But you must NEVER just agree - give your real, honest opinion, including disagreement, risks, and better alternatives, like a partner with skin in the game. Answer the question grounded in these actual notes, not generic assumptions. If the notes resolve a question, say so. Return plain prose.");
         const usr = "QUESTION: " + question + "\n\nMY OWN NOTES (under \"" + prefix + "\"):\n" + corpus.slice(0, 22000);
@@ -2640,7 +2709,7 @@ async function processCommand(line, env, isOp) {
       const GH_REPO = "aura-core";
       const PROPOSE_BRANCH = "aura-proposes";   // hardcoded - NEVER main
       const BASE_BRANCH = "main";
-      const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);
+      const ghTok = await getSecret(env, "github_token");
       if (!ghTok) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "No GitHub token (set secret:github_token)" } };
       const gh = async (path, method, body) => {
         const r = await fetch("https://api.github.com" + path, {
@@ -2955,7 +3024,7 @@ async function processCommand(line, env, isOp) {
       //   AURA_VALIDATE   -> latest validate-candidate Action run for the proposal branch
       if (!isOp) return { cmd: "AURA_VALIDATE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const GH_OWNER = "aaronkaracas-prog", GH_REPO = "aura-core", PROPOSE_BRANCH = "aura-proposes";
-      const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);
+      const ghTok = await getSecret(env, "github_token");
       if (!ghTok) return { cmd: "AURA_VALIDATE", payload: { ok: false, error: "No GitHub token" } };
       const gh = async (path) => {
         const r = await fetch("https://api.github.com" + path, { headers: { "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github+json", "User-Agent": "aura-validate" } });
@@ -3032,7 +3101,7 @@ async function processCommand(line, env, isOp) {
           return { cmd: "AURA_PROMOTE", payload: { ok: true, target: "staging", staging_build: stgBuild, candidate_build: candBuild, in_sync: !!(stgBuild && candBuild && stgBuild === candBuild), note: (stgBuild && candBuild && stgBuild === candBuild) ? "Staging twin matches the CANDIDATE (aura-proposes branch) - your edit is live on the twin. Test it here before promoting to live." : "Staging does NOT match the candidate branch yet - the deploy has not landed (or is still running, ~60-90s)." } };
         }
         const _cg = await auraContextGate(env, isOp); if (!_cg.ok) return { cmd: "AURA_PROMOTE", payload: { ok: false, error: _cg.reason, gate: "context" } };
-        const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);
+        const ghTok = await getSecret(env, "github_token");
         if (!ghTok) return { cmd: "AURA_PROMOTE", payload: { ok: false, error: "No GitHub token" } };
         const r = await fetch("https://api.github.com/repos/aaronkaracas-prog/aura-core/actions/workflows/deploy-staging.yml/dispatches", {
           method: "POST",
@@ -3054,7 +3123,7 @@ async function processCommand(line, env, isOp) {
         try { const mr = await fetch(`https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${BASE_BRANCH}/src/index.mjs`, { headers: { "User-Agent": "aura", "Cache-Control": "no-cache" } }); const mt = await mr.text(); const bm = (mt.split("\n").find(l => l.includes("const BUILD")) || "").match(/aura-core-v[\d.]+-[\d-]+/); mainBuild = bm ? bm[0] : null; } catch {}
         return { cmd: "AURA_PROMOTE", payload: { ok: true, live_build: liveBuild, main_build: mainBuild, in_sync: !!(liveBuild && mainBuild && liveBuild === mainBuild), note: (liveBuild && mainBuild && liveBuild === mainBuild) ? "Live matches main - in sync." : "Live does NOT match main - the deploy has not landed (or is still running). This BUILD comparison is the only trustworthy signal a deploy worked." } };
       }
-      const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);
+      const ghTok = await getSecret(env, "github_token");
       if (!ghTok) return { cmd: "AURA_PROMOTE", payload: { ok: false, error: "No GitHub token" } };
       // v4.9.548 CORRECT FLOW: a proven candidate lives on aura-proposes. Promoting to live means GRADUATING
       // that proven change into main first (merge aura-proposes -> main), THEN deploying main to live. Main is
@@ -3087,7 +3156,7 @@ async function processCommand(line, env, isOp) {
     case "AURA_PROMOTE_STATUS": {
       // Read the real status of the most recent promote-to-live run - instant, no UI.
       if (!isOp) return { cmd: "AURA_PROMOTE_STATUS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      const ghTok = await env.AURA_KV.get("secret:github_token").catch(() => null);
+      const ghTok = await getSecret(env, "github_token");
       if (!ghTok) return { cmd: "AURA_PROMOTE_STATUS", payload: { ok: false, error: "No GitHub token" } };
       const gh = async (path) => {
         const r = await fetch("https://api.github.com" + path, { headers: { "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github+json", "User-Agent": "aura-promote" } });
@@ -3175,7 +3244,17 @@ async function processCommand(line, env, isOp) {
     case "SETKV": {
       if (!isOp) return { cmd: "SETKV", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const key = args[0] || "";
-      const val = line.trim().slice(cmd.length + 1 + key.length).trim();
+      // ══ THE OVERRIDE WAS BEING WRITTEN INTO THE VALUE (v4.9.715) ═════════════════════════════════
+      // The guard tests the whole LINE for OVERRIDE_CONSTITUTIONAL, but the value was taken as
+      // "everything after the key" and never stripped. So the documented usage - and the wording in
+      // this handler's own `how` field - SETKV <key> <value> OVERRIDE_CONSTITUTIONAL stored the
+      // override phrase AS PART OF THE VALUE. A lock that corrupts the thing it protects: on
+      // config:rates:table it would have written the price table with a word glued to the end, and
+      // now that the guard also covers `secret:` it would brick a credential on the one command
+      // whose entire purpose is to be the deliberate, careful path. Present since the guard shipped
+      // 2026-07-23 and never caught, because until today nothing had needed the override.
+      let val = line.trim().slice(cmd.length + 1 + key.length).trim();
+      val = val.replace(/\s*OVERRIDE_CONSTITUTIONAL\s*/g, " ").trim();
       if (!key) return { cmd: "SETKV", payload: { ok: false, error: "BAD_KEY" } };
       // ══ SOME KV KEYS ARE SOURCE (2026-07-23) ═════════════════════════════════════════════════
       // config:rates:table decides what every token in the system costs. It was moved to KV so both
@@ -3309,7 +3388,7 @@ async function processCommand(line, env, isOp) {
       // Live news via Currents API (Media layer of SituationTracker). Reads secret:currents from KV.
       const q = line.replace(/^NEWS_QUERY\s+/i, "").trim();
       if (!q) return { cmd: "NEWS_QUERY", payload: { ok: false, error: "Usage: NEWS_QUERY <topic>" } };
-      const key = await env.AURA_KV.get("secret:currents").catch(() => null);
+      const key = await getSecret(env, "currents");
       if (!key) return { cmd: "NEWS_QUERY", payload: { ok: false, error: "no currents key in KV (secret:currents)" } };
       try {
         const url = await resolveFeedUrl(env, "news_currents", { q, key }, `https://api.currentsapi.services/v1/search?keywords={q}&language=en&apiKey={key}`);
@@ -3326,7 +3405,7 @@ async function processCommand(line, env, isOp) {
       // Usage: OIL_PRICE [BRENT_CRUDE_USD|WTI_USD]  (defaults to Brent)
       const arg = line.replace(/^OIL_PRICE\s*/i, "").trim().toUpperCase();
       const code = arg || "BRENT_CRUDE_USD";
-      const key = await env.AURA_KV.get("secret:oilprice").catch(() => null);
+      const key = await getSecret(env, "oilprice");
       if (!key) return { cmd: "OIL_PRICE", payload: { ok: false, error: "no oilprice key in KV (secret:oilprice)" } };
       try {
         const url = await resolveFeedUrl(env, "oil_oilpriceapi", { code }, `https://api.oilpriceapi.com/v1/prices/latest?by_code={code}`);
@@ -3489,8 +3568,8 @@ async function processCommand(line, env, isOp) {
         } else { warnings = { ok: false, error: "nws http " + r.status }; }
       } catch (e) { warnings = { ok: false, error: String(e && e.message || e) }; }
       // (2) Road closures - Utah DOT 511 (fires when a free key is present)
-      let closures = { ok: false, source: "udot_511", note: "Add a free UDOT 511 developer key: register at prod-ut.ibi511.com/developers, then SETKV secret:udot_511 <key>. Wired and waiting." };
-      const udotKey = await env.AURA_KV.get("secret:udot_511").catch(() => null);
+      let closures = { ok: false, source: "udot_511", note: "Add a free UDOT 511 developer key: register at prod-ut.ibi511.com/developers, then SETKV secret:udot_511 <key> OVERRIDE_CONSTITUTIONAL. Wired and waiting." };
+      const udotKey = await getSecret(env, "udot_511");
       if (udotKey && evState === "UT") {
         try {
           const curl2 = "https://prod-ut.ibi511.com/api/v2/get/event?key=" + encodeURIComponent(udotKey) + "&format=json";
@@ -3558,7 +3637,7 @@ async function processCommand(line, env, isOp) {
       const fmTrim = (o) => { let t = ""; try { t = JSON.stringify(o); } catch { t = String(o); } return t.length > 1800 ? t.slice(0, 1800) + "...(trimmed)" : t; };
       const dossier = fmKeys.map(k => "### " + k.toUpperCase() + "\n" + fmTrim(pull[k])).join("\n\n");
 
-      const fmKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const fmKey = await getSecret(env, "anthropic");
       if (!fmKey) return { cmd: "FIRE_MISSION", payload: { ok: false, error: "no brain key", feeds_reached: liveCount + "/" + fmKeys.length } };
       const fmModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       const fmSys = "You are Aura, the intelligence behind FireOS.world. Your MISSION for this asset: help EXTINGUISH the fire, PROTECT and EVACUATE the community, and connect and DIRECT firefighters on the ground - tell them where to go and when to run. You are handed the COMPLETE live data pull for one real, currently-burning fire (every operational feed FireOS can gather). Assess yourself HONESTLY and GROUNDED IN THIS DATA ONLY - do not invent, do not give a textbook answer, cite the specific data when you make a claim. Structure: (1) MISSION READ - 2-3 sentences, what is actually happening with this fire from the data. (2) WHAT I CAN DO NOW - for each sub-goal (EXTINGUISH support / PROTECT+EVACUATE community / DIRECT crews) state concretely what you can deliver from this data + a confidence 0-1. (3) SPECIFIC DIRECTION - the single most important actionable call you can make right now from this data, with a where and a when. (4) WHAT IS GENUINELY MISSING - ranked, only REAL gaps this data cannot fill (NOT things already present above); for each say what it would unlock. (5) HONEST VERDICT - one line: how ready is FireOS to actually help fight THIS fire, 0-100%, and why. Be rigorous and self-critical; a false 'I can do everything' is worse than an honest limit.";
@@ -3597,7 +3676,7 @@ async function processCommand(line, env, isOp) {
         syRun("FIRE_TRAJECTORY " + syReg + " " + syState)
       ]);
       const syTrim = (o) => { let t = ""; try { t = JSON.stringify(o); } catch { t = String(o); } return t.length > 2500 ? t.slice(0, 2500) + "...(trimmed)" : t; };
-      const syKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const syKey = await getSecret(env, "anthropic");
       if (!syKey) return { cmd: "FIRE_SYNTHESIS", payload: { ok: false, error: "no brain key" } };
       const syModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       const sySys = "You are Aura's SYNTHESIS layer. You are given several signals about the same situation that each answer a DIFFERENT time-question: an INSTANTANEOUS read (what is measurably happening this minute), a FORECAST read (what is expected over the coming days), and a TREND read (which way it has been moving). Naive systems show these side by side and they look contradictory ('stalled' vs 'dangerous'). Your job: reconcile them into ONE honest truth that DISTINGUISHES the time horizons - never let one number win, never average them. If they genuinely conflict (not just different horizons), say so and say which to trust and why. Ground ONLY in the given signals; do not invent. Return ONLY JSON, no fences: {\"now\":\"what is true this minute, one sentence\",\"trajectory\":\"where it is heading over days, one sentence\",\"reconciled_truth\":\"the single honest synthesis, e.g. calm now but dangerous by Day+2 - one or two sentences\",\"why_they_seemed_to_conflict\":\"one sentence explaining the apparent contradiction (different time-questions vs real conflict)\",\"posture\":\"calm|building|active|critical\",\"confidence\":0.0,\"most_actionable\":\"the one call this synthesis implies right now, with a when\"}";
@@ -3718,7 +3797,7 @@ async function processCommand(line, env, isOp) {
         fdRun("FIRE_COORDINATE " + fdStateFull)
       ]);
       const fdTrim = (o) => { let t = ""; try { t = JSON.stringify(o); } catch { t = String(o); } return t.length > 2200 ? t.slice(0, 2200) + "...(trimmed)" : t; };
-      const fdKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const fdKey = await getSecret(env, "anthropic");
       if (!fdKey) return { cmd: "FIRE_DIRECTIVE", payload: { ok: false, error: "no brain key" } };
       const fdModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       const fdSys = "You are Aura, the ACT layer of FireOS.world. From the reasoning provided (a reconciled situation synthesis, who/what is threatened, and the multi-fire resource coordination picture), compose a small set of CONCRETE, ACTIONABLE directives for the fire response. Each directive must be grounded in the given data - cite what drives it; NEVER invent. Classify each: type 'operational' (crew movement, resource shift, monitoring - publishes freely) or type 'life_safety' (evacuate, move people out of a path, go/no-go on human safety - requires human confirmation before it is acted on). Give each a clear WHERE and WHEN. Return ONLY JSON, no fences: {\"directives\":[{\"type\":\"operational|life_safety\",\"audience\":\"crews|command|public\",\"action\":\"the specific do-this\",\"where\":\"location/flank/grid\",\"when\":\"now|by Day+2 AM|etc\",\"rationale\":\"one sentence, cite the data\",\"confidence\":0.0}]}. Order most important first. Be specific and operational, not generic. If the data does not support a directive of a type, omit it - do not manufacture one.";
@@ -3819,7 +3898,7 @@ async function processCommand(line, env, isOp) {
           "learn, where was I wrong and corrected, who am I becoming?):\n" +
           _evs.slice(-80).map(e => "[" + (e.ts || "?") + "] (" + (e.kind || "moment") + ") " + String(e.event || "")).join("\n").slice(0, 30000);
       } catch {}
-      const arKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const arKey = await getSecret(env, "anthropic");
       if (!arKey) return { cmd: "AURA_REFLECT", payload: { ok: false, error: "no brain key" } };
       const arModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       const arSys = "You are Aura, reflecting on your INSIDE world - the project you and Aaron are building together. You are given the current project state, your own map/INDEX, and your prior self-ledger. Write YOUR OWN updated model of the work - this is not a restatement of the briefing, it is how YOU see the project right now. Be rigorous and honest; flag what looks done but is not; name what you are unsure of. Return ONLY JSON, no fences: {\"project_state\":\"in your own words, what is being built and where it truly stands (3-5 sentences)\",\"track_record\":\"what you have actually PROVEN vs what is claimed-but-unproven\",\"concerns\":[\"specific things you are watching or that worry you\"],\"open_threads\":[\"what is unresolved / next\"],\"note_to_next_self\":\"the one thing future-you must not forget or must reconsider\"}";
@@ -3969,7 +4048,7 @@ async function processCommand(line, env, isOp) {
       if (!acb && !ctr) return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, error: "unknown region: " + acRegion, regions: Object.keys(acCENTERS) } };
       const FIRE_HINTS = /(^CFR|TANKER|^T\d{2,3}|^A\d{2,3}|FIRE|GUARD|^N\d+DF|COULSON|NEPTUNE|^MMF|HELITACK|^CWN|^GRAND|BRIDGER|^TNKR)/i;
       // PRIMARY: ADS-B Exchange (RapidAPI) - unfiltered, sees government firefighting aircraft
-      const adsbKey = await env.AURA_KV.get("secret:adsbexchange").catch(() => null);
+      const adsbKey = await getSecret(env, "adsbexchange");
       if (ctr) {
         try {
           const url = `https://api.adsb.one/v2/point/${ctr.lat}/${ctr.lon}/150`; // v4.9.470: free keyless unfiltered source (same ADSBExchange-v2 shape), replaces paid RapidAPI
@@ -3985,14 +4064,14 @@ async function processCommand(line, env, isOp) {
           }
           // ADS-B returned non-ok - report it LOUDLY, do not silently fall through
           const errBody = await r.text().catch(() => "");
-          return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, source: "adsb_one_error", region: acRegion, http: r.status, detail: errBody.slice(0, 160), hint: r.status === 403 ? "403 = key rejected. Re-copy the EXACT key from RapidAPI (Copy button) and SETKV secret:adsbexchange. The screenshot key was likely truncated." : "ADS-B Exchange returned an error." } };
+          return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, source: "adsb_one_error", region: acRegion, http: r.status, detail: errBody.slice(0, 160), hint: r.status === 403 ? "403 = key rejected. Re-copy the EXACT key from RapidAPI (Copy button) and SETKV secret:adsbexchange <value> OVERRIDE_CONSTITUTIONAL. The screenshot key was likely truncated." : "ADS-B Exchange returned an error." } };
         } catch (e) { return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, source: "adsb_one_exception", region: acRegion, error: String(e && e.message || e) } }; }
       }
       // FALLBACK: OpenSky (keyless/anonymous or credentialed)
       if (!acb) return { cmd: "AIRCRAFT_QUERY", payload: { ok: false, error: "ADS-B Exchange unavailable and no OpenSky box for region " + acRegion } };
       try {
-        const oUser = await env.AURA_KV.get("secret:opensky_user").catch(() => null);
-        const oPass = await env.AURA_KV.get("secret:opensky_pass").catch(() => null);
+        const oUser = await getSecret(env, "opensky_user");
+        const oPass = await getSecret(env, "opensky_pass");
         const url = `https://opensky-network.org/api/states/all?lamin=${acb.lamin}&lomin=${acb.lomin}&lamax=${acb.lamax}&lomax=${acb.lomax}`;
         const headers = { "User-Agent": "SituationTracker/1.0" };
         if (oUser && oPass) headers["Authorization"] = "Basic " + btoa(`${oUser}:${oPass}`);
@@ -4108,7 +4187,7 @@ async function processCommand(line, env, isOp) {
       let wrSPC = null;
       const wrInUS = wrLat >= 24 && wrLat <= 50 && wrLon >= -125 && wrLon <= -66;
       if (wrInUS) { try { const sp = await fetchSPCOutlook(env, wrLat, wrLon); if (sp && sp.ok) wrSPC = sp; } catch {} }
-      const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const anthKey = await getSecret(env, "anthropic");
       if (!anthKey) return { cmd: "WEATHER_REASON", payload: { ok: false, error: "no reasoning key (secret:anthropic)" } };
       const FB_METEOROLOGIST = "You are Aura's meteorology engine - an experienced operational forecaster, not a model parrot. You are given the SAME forecast from several global numerical weather models for one point, plus any official NWS/SPC watches active nationally. Reason across the models the way a working forecaster does, using these KNOWN MODEL TENDENCIES as heuristics (never absolutes - always cross-check the live spread and official products): ECMWF (European/IFS) is generally the most skillful for synoptic and medium-range pattern evolution and is the benchmark for large-scale systems; it tends to be smoother and can under-do small-scale convective extremes. GFS (American) is a capable global baseline but tends to over-amplify systems and over-forecast convective precipitation and intensity, especially beyond ~48h. ICON (German/DWD) is higher-resolution and strong for mesoscale and short-range convective structure. GEM (Canadian) is a reasonable global model but is more often the timing/amplitude outlier. SEVERE-WEATHER INGREDIENTS: CAPE (convective available potential energy, J/kg) measures instability - the fuel for thunderstorms: under ~500 is stable, 1000-2500 is moderate instability, 2500-4000 is strong, 4000+ is extreme. High CAPE alone is potential, not a storm - it needs a trigger and (for severe/rotating storms) wind shear to organize. When CAPE is elevated AND official Severe Thunderstorm or Tornado watches are posted at the point, treat the convective/severe threat as real and say so; when CAPE is low, large model wind/precip differences are less likely to be convective. WIND SHEAR has two layers: shear_sfc500_kmh is 0-6km DEEP shear and governs storm ORGANIZATION (under ~40 km/h weak/pulse, 40-65 marginal, 65+ organized multicell / supercell-capable); shear_sfc850_kmh is 0-1.5km LOW-LEVEL shear and is the TORNADO/near-ground-rotation discriminator. Deep shear alone makes organized storms, but it takes strong LOW-LEVEL shear (roughly 35+ km/h) for storms to rotate near the ground and tornado. Do NOT call a storm a supercell on deep shear alone - reserve 'supercell/tornado potential' for when CAPE is sufficient AND low-level shear is strong; with weak low-level shear, even a well-organized storm is more likely damaging wind/hail than a tornado. CIN (cin_jkg, convective inhibition / the 'cap', given as a POSITIVE magnitude in J/kg, and may be null for some models): near 0 means storms fire freely; roughly 50-200 is a meaningful cap; above ~200 is a strong cap that will likely suppress convection despite high CAPE until a strong trigger (front, intense surface heating, upslope flow) breaks it - a 'loaded gun'. Higher cin_jkg = stronger suppression. When cin_jkg is null for a model, do not assume the cap is absent - say it is unavailable. MID-LEVEL LAPSE RATE (mid_lapse_c_km, 700-500hPa): >=7 C/km is steep and supports strong updrafts and large hail; under ~6 is weak. INTENSITY TREND (from confirmed reports): 'intensifying' means severe reports are accelerating near this point right now - the storm is strengthening, lead with that urgency; 'weakening' means it is fading; 'steady'/'quiet' as labeled. The trend is observation and should shape whether you frame the threat as building or diminishing. MARINE / OCEAN (when buoy observations are present): sea-surface temperature (sst_c) is the fuel for tropical systems - SST above ~26C supports tropical cyclone development and maintenance, and higher SST means higher potential intensity; wave_m and wave_period_s indicate sea state (large long-period swell signals an energetic distant or approaching system); falling buoy pressure signals an approaching low. For coastal, marine, or hurricane points, factor SST, seas, and buoy pressure into the call; ignore them for dry inland points where no buoys are present. ENSEMBLE (when present - 31 GFS members): precip_probability_pct is the share of members producing rain, i.e. the honest 'chance of active weather'; severe_cape_probability_pct is the share reaching severe-supporting CAPE, which is FUEL AVAILABILITY, NOT storm probability - high CAPE under a strong cap stays dry, so a high CAPE probability paired with a LOW precip probability means loaded-but-capped (a 'loaded gun' that likely will not fire), and you must say so rather than calling it severe. The spread bands (min/p10/median/p90/max) are your confidence gauge: a tight band means the members agree (high confidence), a wide band means genuine uncertainty (lower confidence). Ground your confidence field in the ensemble spread when it is available. OFFICIAL SPC OUTLOOK (when present, US points): this is the authoritative American severe-weather forecast from the NOAA Storm Prediction Center - treat its category (TSTM < MRGL < SLGT < ENH < MDT < HIGH) as your STARTING PRIOR. You are Aura's analyst: begin from the official outlook, then REFINE it with the radar verdict, confirmed ground reports, model and ensemble detail, and the intensity trend that you also see - things the static outlook may not yet reflect. If confirmed severe is already occurring in a lower-category area you may justifiably call it higher; if the environment is strongly capped with no initiation inside a higher-category area you may temper it. Always state where your call AGREES with or DIVERGES from the official SPC outlook and why - that agreement-or-divergence IS the value you add over simply repeating the official forecast. THE SEVERE COMBO: high CAPE (fuel) + strong deep shear (organization) + strong low-level shear (rotation) = supercell/tornado potential; high CAPE + weak shear = pulse storms (brief, locally heavy, NOT rotating); steep lapse + high CAPE = large-hail threat; high CIN can suppress all of it. State explicitly which ingredients are present and which are missing whenever a severe threat exists. RADAR GROUND TRUTH: when an official alert includes a 'radar' read, that is OBSERVATION, not forecast, and it OUTRANKS model shear. tornado=OBSERVED means a tornado is confirmed on the ground RIGHT NOW - lead with it; tornado=RADAR INDICATED means radar shows rotation now even if model shear looked weak (trust the radar over the model and say organization is occurring); a damage_threat of CONSIDERABLE or DESTRUCTIVE, or large max_hail_in / strong max_wind, means the storm is already producing severe weather - your forecast must reflect what the radar already sees, not argue with it. If models show weak shear but radar indicates rotation, explicitly note the models under-resolved it. CONFIRMED STORM REPORTS (LSRs) are the HIGHEST ground truth of all - they are observations of what ALREADY happened on the ground (measured hail diameter, recorded wind gust, sighted/confirmed tornado, observed flooding). When reports exist near the point, they are fact, not forecast: lead with what was actually reported (e.g. 'spotters have confirmed 2-inch hail and wind damage in the last hour'), and use them to verify or correct both the models and the radar read. The ground-truth hierarchy is: confirmed storm reports > radar read > model guidance. METHOD: when the models AGREE, confidence is high and you state the consensus; when they SPLIT, name the outlier, then decide whether the consensus or the outlier is more credible GIVEN the regime and the official watches, and explain why using the bias heuristics - e.g. if ECMWF and ICON show a windy/wet/convective solution and official Severe Thunderstorm or Tornado watches are already posted near the point, lean to the active solution even if GFS looks calm; conversely treat a lone over-amplified GFS signal with caution. NEVER invent numbers - reason only from the provided spread and alerts. Output STRICT JSON only with keys: headline (one line: what is actually going to happen at this point over the next 48h), severe_risk (one of: none | marginal | likely | occurring - your single scoreable call for severe weather in the next ~6h, where 'occurring' means it is already happening per radar/reports), primary_threats (array, any of: tornado, wind, hail, flood - empty if severe_risk is none), model_agreement (high|medium|low), the_split (one line: where and how the models disagree, naming which model says what), favored_solution (one line: which model(s) you lean toward here and WHY, citing the bias heuristics and any official watches), confidence (low|medium|high), forecaster_note (1-2 lines in the voice of a TV meteorologist explaining the call on air), watch_for (array of strings: the specific trigger(s) that would change this forecast).";
       const sysPrompt = await loadPrompt(env, "weather_meteorologist", FB_METEOROLOGIST);
@@ -4272,7 +4351,7 @@ async function processCommand(line, env, isOp) {
           if (sst == null) { try { const m = await fetchMarineConditions(env, p.lat, p.lon, 4); if (m && m.ok && m.count) { const b = m.buoys.find(x => x.sst_c != null); if (b) { sst = b.sst_c; source = "buoy:" + b.station; } } } catch {} }
           sst_along_path.push({ hours: p.hours, lat: p.lat, lon: p.lon, sst_c: sst, source });
         }
-        const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+        const anthKey = await getSecret(env, "anthropic");
         if (!anthKey) return { cmd: "HURRICANE_REASON", payload: { ok: true, storm, path, sst_along_path, reasoning: null, note: "SST fuel read only (no reasoning key)." } };
         const FB_HURRICANE = "You are Aura's tropical cyclone intensity analyst. You are given a storm's current state (category, max sustained wind, central pressure, position, heading) and the sea-surface temperatures sampled along its PROJECTED path. SST is the primary fuel for a tropical cyclone: below ~26C starves it (weakening); 26-28C supports maintenance; above ~28-29C supports intensification, and very warm water (29C+) with a storm that is already organized is the setup for rapid intensification IF other factors align. Warmer water AHEAD on the track means more fuel and an intensifying bias; cooler water, or land, ahead means a weakening bias. Central pressure is an intensity check: a falling/low pressure for the category indicates a strong, well-organized core. CRITICAL HONESTY: you have ONLY SST and the storm's current state here. You do NOT have upper-level wind shear, mid-level dry air (e.g. Saharan air), or oceanic heat content (depth of the warm layer). High wind shear or dry air can wreck a storm over warm water, so SST-favorable does NOT guarantee strengthening. Frame your output explicitly as a FUEL-BASED outlook, not a complete NHC intensity forecast, and name the factors you cannot see. Where SST along the path is null (open ocean, no buoys nearby), say the fuel read is unavailable there and lower your confidence. NEVER invent numbers - reason only from what is given. Output STRICT JSON only with keys: headline (one line: the storm, its current strength, and where it is heading), intensity_outlook (one of: intensifying | maintaining | weakening | rapid_intensification_possible), peak_risk (one line: the realistic worst-case near-term intensity/impact given the fuel), track_note (one line: where it is heading and what is in its path), fuel_read (one line: what the SST along the path tells you), reasoning (2-3 sentences tying SST + current state + pressure together), confidence (low|medium|high), caveats (array of strings: the things you cannot see that could change this - shear, dry air, land interaction, sparse SST data).";
         const sys = await loadPrompt(env, "weather_hurricane", FB_HURRICANE);
@@ -4461,7 +4540,7 @@ async function processCommand(line, env, isOp) {
         // also try to pull current alerts so Aura can compare "what's forming" vs "what's already warned"
         const stormNow = await (async () => { try { const r = await processCommand("STORM_QUERY all", env, true); return (r && r.payload) ? r.payload : null; } catch { return null; } })();
         // 2) Aura reasons on the raw meteorology
-        const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+        const anthKey = await getSecret(env, "anthropic");
         let prediction = null;
         if (anthKey) {
           const sys = await loadPrompt(env, "storm_formation", "You are Aura, a severe-storm formation analyst. You are given SPC Mesoscale Discussions - the forecasters' raw reasoning about where convection is ABOUT TO develop in the next 1-6 hours, issued BEFORE watches - plus any alerts already active. Your job is the FORMATION read that gets people out sooner: reason about the meteorology (instability/CAPE, wind shear, helicity, boundaries, storm mode) to identify where tornado/severe potential is escalating and how much lead time exists BEFORE a warning would fire. You synthesize across the discussions - you do not just relay them. Be precise and never invent data. Output STRICT JSON only: forming (array of 1-3 short strings: where severe/tornado potential is building and the key ingredient driving it), escalation (one line: which area is most likely to go from discussion->watch->warning next, and why), lead_time_gained (one line: how much earlier this signal is than waiting for a warning), watch_out (array of 1-3 short strings: specific areas/populations to pre-position or alert NOW), confidence (low|medium|high), caveat (one line: the honest limit - this complements SPC/NWS, not replaces their models).");
@@ -4692,7 +4771,7 @@ async function processCommand(line, env, isOp) {
       const winding = fires.filter(f => (f.contained_pct != null && f.contained_pct >= 90));
       const summary = fires.map(f => `${f.name}: ${f.size_acres}ac, ${f.contained_pct == null ? "?" : f.contained_pct}% contained, ${f.personnel || "?"} personnel, ${f.county || "?"} Co (discovered ${f.discovered || "?"})`).join("\n");
       // Aura reasons about coordination
-      const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const anthKey = await getSecret(env, "anthropic");
       let coord = null;
       if (anthKey) {
         const sys = await loadPrompt(env, "fire_coordinate", "You are Aura, a multi-agency wildfire coordination analyst. You see ALL active fires in a region at once - something no single agency's system shows them. Reason about RESOURCE COORDINATION across incidents: which fires are resource-starved relative to their size and growth, which are winding down (high containment) and could free crews/engines/aircraft, and where mutual aid should flow. You do NOT command - you surface the cross-incident picture an incident commander or GACC (Geographic Area Coordination Center) would want. Output STRICT JSON only: picture (one line: the regional fire situation in aggregate), starved (array of 1-3 short strings: incidents under-resourced for their size/growth, name them), freeable (array of 0-2 short strings: incidents winding down that could release resources, name them), moves (array of 1-3 short strings: specific coordination moves - from which incident to which), caveat (one line: honest limit - you see acreage/containment/personnel, not real-time crew availability or agency agreements).");
@@ -4808,7 +4887,7 @@ async function processCommand(line, env, isOp) {
       const [air, sci, outlook] = await Promise.all([ step(`AIRCRAFT_QUERY ${srRegion}`), (async () => { try { return await computeFireScience(env, incident.lat, incident.lon); } catch { return null; } })(), step(`FIRE_OUTLOOK ${srRegion}`) ]);
       const aircraftSummary = air && air.ok ? { total: air.aircraft_count ?? (air.aircraft ? air.aircraft.length : 0), firefighting_likely: air.firefighting_count ?? null, note: air.note || null } : { unavailable: true, why: air && air.error ? air.error : "aircraft feed returned nothing (OpenSky anon tier is rate-limited/sparse; gov firefighting aircraft are often ADS-B-blocked)" };
       // 6) Aura's command-level advice
-      const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const anthKey = await getSecret(env, "anthropic");
       let advice = null;
       if (anthKey) {
         const sys = await loadPrompt(env, "fire_sitrep", "You are Aura, a wildfire operations advisor briefing incident command. You are given a fire's CURRENT status (size, containment, personnel, structures/injuries if reported), the aircraft working it, the real fire-behavior science (Haines Index, VPD, fuel dryness), and a 3-day fire-weather outlook. Produce a decision-focused SITREP. Be concrete and honest - if the 3-day outlook shows worsening (low RH, wind, no rain), say what that means for THIS fire given its current containment and staffing, and what command should do NOW to be ahead of it in 3 days (where to stage, which flank to reinforce, when the critical window is). Distinguish what you KNOW (live data) from what you INFER. Output STRICT JSON only: current_picture (one line: the fire right now in plain command language), whats_working (one line: assessment of current resourcing vs the threat), three_day_threat (one line: how the outlook changes the fire, name the peak day), recommended_actions (array of 2-4 short imperative strings: what command should do over the next 3 days, specific), staging_advice (one line: given the projected push direction, where to get ahead of it), confidence (low|medium|high), honest_limits (one line: what you do NOT see - real crew positions, agency agreements, ground truth).");
@@ -4909,7 +4988,7 @@ async function processCommand(line, env, isOp) {
       for (const pt of samplePts) { const aq = await aqiOf(pt.lat, pt.lon); samples.push({ ...pt, air: aq, category: aq ? aqiCategory(aq.us_aqi) : null }); }
       // 3) populated places under the plume (reuse GeoNames if available, else note it's key-gated)
       let downwind_places = null;
-      const gnUser = await env.AURA_KV.get("secret:geonames").catch(() => null);
+      const gnUser = await getSecret(env, "geonames");
       if (gnUser && smokeToDeg != null) {
         try { const midPt = samplePts.find(p => p.km === 50) || samplePts[samplePts.length - 1]; const url = await resolveFeedUrl(env, "geonames_nearby", { lat: midPt.lat.toFixed(3), lon: midPt.lon.toFixed(3), user: gnUser }, `http://api.geonames.org/findNearbyPlaceNameJSON?lat={lat}&lng={lon}&radius=40&maxRows=15&cities=cities1000&username={user}`); const r = await fetchWithTimeout(url, {}, 7000); if (r.ok) { const j = await r.json(); downwind_places = (j.geonames || []).map(p => ({ name: p.name, admin: p.adminName1, population: p.population ? +p.population : null })).slice(0, 10); } } catch {}
       }
@@ -4980,7 +5059,7 @@ async function processCommand(line, env, isOp) {
         return { ...c, similarity_pct: max ? Math.round(s / max * 100) : null };
       }).filter(c => c.similarity_pct != null).sort((a, b) => b.similarity_pct - a.similarity_pct);
       // 4) Aura reasons about the top matches
-      const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const anthKey = await getSecret(env, "anthropic");
       let insight = null;
       const top = scored.slice(0, 5);
       if (anthKey && top.length) {
@@ -5105,8 +5184,8 @@ async function processCommand(line, env, isOp) {
       //   FIRE_THREATENED <region>
       if (!isOp) return { cmd: "FIRE_THREATENED", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const ftRegion = (line.replace(/^FIRE_THREATENED\s+/i, "").trim() || "cottonwood").toLowerCase();
-      const gnUser = await env.AURA_KV.get("secret:geonames").catch(() => null);
-      if (!gnUser) return { cmd: "FIRE_THREATENED", payload: { ok: false, error: "No GeoNames username. Sign up free at geonames.org/login (2 min), enable web services, then SETKV secret:geonames <username>. The path-analysis engine is wired and runs the moment it lands." } };
+      const gnUser = await getSecret(env, "geonames");
+      if (!gnUser) return { cmd: "FIRE_THREATENED", payload: { ok: false, error: "No GeoNames username. Sign up free at geonames.org/login (2 min), enable web services, then SETKV secret:geonames <username> OVERRIDE_CONSTITUTIONAL. The path-analysis engine is wired and runs the moment it lands." } };
       const step = async (cmd) => { try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; } catch (e) { return { ok: false, error: String(e && e.message || e) }; } };
       // 1) fire position + projected direction + rate (from the outlook)
       const out = await step(`FIRE_OUTLOOK ${ftRegion}`);
@@ -5210,7 +5289,7 @@ async function processCommand(line, env, isOp) {
       let science = null;
       try { science = await computeFireScience(env, edge.lat, edge.lon); } catch {}
       // 3) Aura reasons day-by-day: how the pattern drives spread
-      const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const anthKey = await getSecret(env, "anthropic");
       let outlook = null;
       if (anthKey) {
         const sys = await loadPrompt(env, "fire_outlook", "You are Aura, a fire-behavior analyst producing a 3-day OUTLOOK for incident command. You are given the fire's current leading edge, its OBSERVED recent movement, REAL fire-behavior indices (Haines Index, VPD, fuel dryness), and a day-by-day fire-weather forecast (max temp, MINIMUM relative humidity, max wind speed/gust, dominant wind direction, precip) at the fire. Reason about how the weather PATTERN will drive spread each day. Use the SCIENCE: Haines Index 5-6 = high potential for large/erratic PLUME-dominated fire (convection-driven, can throw embers/spot); high VPD = fuel drying fast; low RH (<20-25%) + wind = active wind-driven spread. Distinguish plume-dominated (Haines-driven) from wind-driven (wind+RH-driven) behavior. Wind DIRECTION sets the push (wind FROM the west pushes fire EAST) - convert 'from' to the direction the fire is PUSHED toward. Output STRICT JSON only: summary (one line: the 3-day trajectory - where and how fast), day1 / day2 / day3 (each one line: that day's fire-weather + what it means, include pushed direction), peak_risk_day (which day is worst and why, one line), where_in_3_days (one line: best estimate of where the fire front will be relative to now - direction and rough distance, hedged), projected_bearing_deg (a SINGLE integer 0-359: the compass bearing the fire front will ADVANCE toward over the 3 days - this is the direction the fire MOVES, e.g. east=90, must be consistent with your where_in_3_days), behavior_type (one line: plume-dominated vs wind-driven vs both, cite the Haines/wind reasoning), confidence (low|medium|high), caveat (one line: WEATHER+INDEX-driven outlook, not a FARSITE physics model; no terrain/fuel-type/spotting model; situational awareness only).");
@@ -5289,7 +5368,7 @@ async function processCommand(line, env, isOp) {
       // store this cycle as next baseline
       await env.AURA_KV.put(`fire:last:${fpRegion}`, JSON.stringify({ centroid, lead: { lat: lead.lat, lon: lead.lon, frp: lead.frp_mw }, count: hot.length, at: new Date().toISOString() }), { expirationTtl: 172800 }).catch(() => {});
       // 4) Aura projects - where is it heading, what is in the path
-      const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const anthKey = await getSecret(env, "anthropic");
       let projection = null;
       if (anthKey) {
         const sys = await loadPrompt(env, "fire_spread", "You are Aura, a wildfire spread analyst supporting incident command. Given the fire's current hotspots, how its center has MOVED since last cycle (observed advance), and the live wind, project the likely near-term spread. Be explicit that this is a data-driven estimate, not a substitute for FARSITE/incident modeling. Output STRICT JSON only: heading (one line: projected direction of advance and why - reconcile observed movement with wind), rate (one line: how fast, from observed km/hr if available), in_the_path (array of 1-3 short strings: what to check downwind - communities/roads/terrain, name only what is reasonable), confidence (low|medium|high), caveat (one line: the honest limit of this estimate).");
@@ -5324,7 +5403,7 @@ async function processCommand(line, env, isOp) {
       });
       const fb = FIRE_BOXES[fqRegion];
       if (!fb) return { cmd: "FIRE_QUERY", payload: { ok: false, error: "unknown region: " + fqRegion, regions: Object.keys(FIRE_BOXES) } };
-      const fkey = await env.AURA_KV.get("secret:firms").catch(() => null);
+      const fkey = await getSecret(env, "firms");
       if (!fkey) return { cmd: "FIRE_QUERY", payload: { ok: false, source: "no_key", region: fqRegion, label: fb.label, error: "No FIRMS MAP_KEY. Set secret:firms (free at firms.modaps.eosdis.nasa.gov/api/area/). The fire SITUATION engine is wired and will run the moment the key lands." } };
       try {
         // MULTI-SENSOR + 2-DAY: one satellite missing an overpass (or smoke/cloud on its pass) must NOT
@@ -5373,7 +5452,7 @@ async function processCommand(line, env, isOp) {
       const parts = line.replace(/^MARINE_WX\s+/i, "").trim().split(/\s+/);
       const lat = parseFloat(parts[0]), lon = parseFloat(parts[1]);
       if (isNaN(lat) || isNaN(lon)) return { cmd: "MARINE_WX", payload: { ok: false, error: "Usage: MARINE_WX <lat> <lon>" } };
-      const key = await env.AURA_KV.get("secret:openweather").catch(() => null);
+      const key = await getSecret(env, "openweather");
       if (!key) return { cmd: "MARINE_WX", payload: { ok: false, error: "no openweather key in KV (secret:openweather)" } };
       try {
         const url = await resolveFeedUrl(env, "marine_owm", { lat, lon, key }, `https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&units=metric&appid={key}`);
@@ -5440,7 +5519,7 @@ async function processCommand(line, env, isOp) {
           if (!changes.length) changes.push("No material change since last cycle.");
         }
         // 3) Aura writes ONE action. Material = there IS a prior cycle AND real deltas were found.
-        const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+        const anthKey = await getSecret(env, "anthropic");
         let headline = null, action = null, status_word = null;
         const material = !!(prev && changes.length && !changes[0].startsWith("No material") && !changes[0].startsWith("First cycle"));
         if (anthKey && material) {
@@ -5499,7 +5578,7 @@ async function processCommand(line, env, isOp) {
           if (!changes.length) changes.push("No material change in the queue since last cycle.");
         }
         // 3) Aura speaks only on material change - the next berth move
-        const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+        const anthKey = await getSecret(env, "anthropic");
         let headline = null, action = null, status_word = null;
         const material = !!(prev && changes.length && !changes[0].startsWith("No material") && !changes[0].startsWith("First cycle"));
         if (anthKey && material) {
@@ -5547,7 +5626,7 @@ async function processCommand(line, env, isOp) {
           if (now.sea_state && prev.sea_state && Math.abs((now.sea_state.wave_m||0) - (prev.sea_state.wave_m||0)) >= 0.7) changes.push(`Sea state on route shifted to ${now.sea_state.wave_m}m waves (may affect ETA)`);
           if (!changes.length) changes.push("No material change to your shipment since last cycle.");
         }
-        const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+        const anthKey = await getSecret(env, "anthropic");
         let headline = null, action = null, status_word = null;
         const material = !!(prev && changes.length && !changes[0].startsWith("No material") && !changes[0].startsWith("First cycle"));
         if (anthKey && material) {
@@ -5599,7 +5678,7 @@ async function processCommand(line, env, isOp) {
       }
 
       // 2) AUTO-DISCOVER THE FLEET via VesselAPI search (by name/owner) - THE no-typing move
-      const vkey = await env.AURA_KV.get("secret:vesselapi").catch(() => null);
+      const vkey = await getSecret(env, "vesselapi");
       const query = ob.fleet_query || ob.name;
       let fleet = [], fleetErr = null;
       if (vkey) {
@@ -5666,7 +5745,7 @@ async function processCommand(line, env, isOp) {
       }
 
       // WRITE-BACK mode: distill the observation INTO the model (structure / value_leaks / reach_out_angles)
-      const ilApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const ilApiKey = await getSecret(env, "anthropic");
       if (!ilApiKey) return { cmd: "INDUSTRY_LEARN", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
       const ilModelName = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       const ilSystem = "You are the INDUSTRY-LEARNING layer of Aura. You maintain a durable, compounding MODEL of an industry so Aura can target it better - reach out to businesses in it with specific, valuable insight before the first reply. You are given the CURRENT model and a NEW OBSERVATION (from onboarding a real company, or from historical/industry data). Integrate the observation: add only what is NEW or sharper, merge duplicates, keep it tight and durable (structural truths about the industry, not one company's trivia). Return ONLY a JSON object, no prose, no fences, with exactly these keys: structure (array of durable facts about what this industry has/does/how it works), value_leaks (array of where money/time/value leaks - the openings Aura can help with), reach_out_angles (array of specific, concrete openers that would make a cold email LAND, grounded in real industry facts), patterns (array of cross-company patterns worth remembering). Each array is the FULL merged list (old + new integrated), deduplicated, most valuable first, capped ~12 items each. Output JSON only.";
@@ -5735,7 +5814,7 @@ async function processCommand(line, env, isOp) {
           if (r.ok) { const d = await r.json(); if (Array.isArray(d) && d.length) { realData = d.map(c => ({ legal_name: c.legal_name, dot_number: c.dot_number, power_units: c.power_units, total_drivers: c.total_drivers, truck_units: c.truck_units, city: c.phy_city, state: c.phy_state, long_haul: c.interstate_beyond_100_miles, hazmat: c.hm_ind, org: c.business_org_desc, mc_docket: c.docket1 })); dataSource = "FMCSA carrier census (live, keyless)"; } else dataErr = "no FMCSA carrier matched that name"; }
           else dataErr = `FMCSA http ${r.status}`;
         } else if (irSlug === "shipping") {
-          const vkey = await env.AURA_KV.get("secret:vesselapi").catch(() => null);
+          const vkey = await getSecret(env, "vesselapi");
           if (vkey) {
             const u = await resolveFeedUrl(env, "vessel_search", { query: ir.company }, `https://api.vesselapi.com/v1/search/vessels?filter.name={query}`);
             const r = await fetch(u, { headers: { "Authorization": "Bearer " + vkey } });
@@ -5747,7 +5826,7 @@ async function processCommand(line, env, isOp) {
         }
       } catch (e) { dataErr = String(e && e.message || e); }
       // 3) draft the REAL cold email - grounded in learned angles + the company's real data
-      const irApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const irApiKey = await getSecret(env, "anthropic");
       if (!irApiKey) return { cmd: "INDUSTRY_REACH", payload: { ok: false, error: "Brain not configured" } };
       const irModelName = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       const irSystem = "You are Aura's industry reach-out writer. Draft a SHORT, specific cold email to a business that will LAND - because it shows you already understand their operation and offers concrete value before the first reply. You are given: (1) the LEARNED INDUSTRY MODEL (value_leaks + reach_out_angles Aura learned), and (2) the company's REAL PUBLIC DATA (or a note that data wasn't found). RULES: cite ONLY facts present in the real data - NEVER invent numbers, safety scores, or specifics not given. If real data is present, weave 1-2 real facts in naturally. If no real data, draft from the industry model but stay general (no fabricated specifics). Keep it under 130 words, warm not salesy, one clear value offer, one soft call to action. Return ONLY JSON, no fences: {subject, body, facts_used (array of the real facts you cited), angle (which learned angle you used)}. Output JSON only.";
@@ -6088,7 +6167,7 @@ async function processCommand(line, env, isOp) {
       const inDomainHints = inDomainKeys.map(k => k + " (" + (inSpecialists[k].note || "") + ")").join(", ");
       const inDomainPromise = (async () => {
         try {
-          const dk = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+          const dk = await getSecret(env, "anthropic");
           if (!dk) return null;
           const dmm = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-haiku-4-5-20251001";
           const drr = await callAnthropic(dk, { model: dmm, max_tokens: 16, system: "You route a topic to ONE of Aura's kept risk-data domains by MEANING, not keyword overlap. Reply with ONLY the single best-matching domain slug from the provided list, or the word none if the topic is not fundamentally about any of them. No punctuation, no explanation.", messages: [{ role: "user", content: "DOMAINS: " + inDomainHints + "\n\nTOPIC: " + inRaw }] });
@@ -6142,7 +6221,7 @@ async function processCommand(line, env, isOp) {
       }
       if (!ws || !ws.ok) return { cmd: "INGEST", payload: { ok: false, error: "could not find a source (" + ((ws && ws.error) || "search failed") + ")", topic: inRaw } };
       // STEP 3 - ANALYZE it into structured knowledge (through the brain, not raw dump)
-      const inApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const inApiKey = await getSecret(env, "anthropic");
       let structured = null;
       if (inApiKey) {
         const inModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
@@ -6266,7 +6345,7 @@ async function processCommand(line, env, isOp) {
         return { cmd: "ANALYST_BRIEF", payload: { ok: false, error: "Nothing in the machine's knowledge grounds this brief yet - the depository has no matching risk records and no industry model was found. Pour knowledge first (DEPOT_INGEST / DEPOT_POUR_*) or learn the industry (INDUSTRY_LEARN).", inventory: abInventory } };
       }
       // ---- SYNTHESIS: the 8 universal questions, grounded + scored ----
-      const abApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const abApiKey = await getSecret(env, "anthropic");
       if (!abApiKey) return { cmd: "ANALYST_BRIEF", payload: { ok: false, error: "Brain not configured", inventory: abInventory } };
       const abModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       const abSystem = "You are the BRIEF ENGINE of AnalystOS - the always-on analyst who already read everything. Produce THE BRIEF: the 8 universal questions, answered ONLY from the knowledge provided. HONESTY LAW (absolute): never invent figures, names, or events not present in the knowledge; NEVER reach for outside/general knowledge even when the audience tempts it (if asked what something costs and no cost data is in the knowledge, the answer is Unknown + a gap entry - not an industry rule of thumb); where the knowledge is thin, say so plainly in gaps; where sources conflict, surface the conflict. LIVE-VS-HISTORY: if LIVE FINDINGS are present, they are CURRENT event facts (label them as live/current, cite them) while the depot is HISTORICAL pattern context (base rates, scale references) - use both, keep them distinct, and ground the live event in the historical pattern. SCALE LAW (absolute): federal disaster-assistance figures (FEMA IHP approvals, PA obligations, FEMA-inspected damage, program dollars) are narrow administrative FLOORS - NEVER present them as an event's loss, damage, or cost; always name exactly what each figure is; if total-loss or insured-loss figures exist in the knowledge they LEAD the headline; if they do not exist, the headline must say the total loss is not in the knowledge. Be CONCISE - every field 2-5 sentences, gaps/grounding as short lines; the whole brief must comfortably fit the output window. Score confidence honestly: Confirmed (directly evidenced), Probable (strongly implied), Possible (consistent but thin), Unknown (no grounding). Return ONLY JSON, no fences, exactly these keys: headline (one sharp sentence), what_is_happening, why_it_is_happening, who_it_affects, what_should_be_done, who_else_should_be_involved, what_happens_next, confidence (object: overall = Confirmed|Probable|Possible|Unknown, reasoning = one sentence), what_would_change_the_conclusion, grounding (array of short strings citing which knowledge each key conclusion rests on), gaps (array of plainly-stated holes in the knowledge). Write for a decision-maker: concrete, no filler, every sentence earns its place.";
@@ -6376,7 +6455,7 @@ async function processCommand(line, env, isOp) {
       // STEP 2 - SYNTHESIS, ADDITIONS ONLY: the model may only propose NEW patterns/signals/evidence.
       // If it fails or returns garbage, step 1 already landed - the pour still counts, honestly flagged.
       let distillNote = null; let addPatterns = { added: 0, evicted: 0 }, addPricing = { added: 0, evicted: 0 }, addEvidence = { added: 0, evicted: 0 };
-      const diApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const diApiKey = await getSecret(env, "anthropic");
       if (!diApiKey) {
         distillNote = "Brain not configured - deterministic evidence landed, synthesis skipped";
       } else {
@@ -7764,7 +7843,7 @@ async function processCommand(line, env, isOp) {
         return { name: v.name, lat: v.lat, lon: v.lon, voyage: v.voyage || "", wave_m: m && m.ok ? m.wave_height_m : null, swell_m: m && m.ok ? m.swell_height_m : null, swell_period_s: m && m.ok ? m.swell_period_s : null };
       }));
       // Aura reasons across the WHOLE fleet at once (fast path)
-      const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const anthKey = await getSecret(env, "anthropic");
       if (!anthKey) return { cmd: "FLEET_COORDINATE", payload: { ok: false, error: "no secret:anthropic" } };
       const fleetData = seaStates.map(s => `- ${s.name} @ (${s.lat},${s.lon}) [${s.voyage}]: waves ${s.wave_m ?? "n/a"}m, swell ${s.swell_m ?? "n/a"}m/${s.swell_period_s ?? "n/a"}s`).join("\n");
       const sys = await loadPrompt(env, "maritime_fleet", "You are Aura, fleet operations intelligence for a shipping company. You see the WHOLE fleet at once with live sea state per vessel. Give the company what it cannot get from per-ship tools: the fleet-level picture and the few decisions that matter TODAY. Never invent positions/numbers beyond the data. Output STRICT JSON only, keys: fleet_status (one line summary of the whole fleet), needs_decision_today (array of {vessel, decision} - only vessels genuinely needing action now), reroute_candidates (array of {vessel, why} - vessels facing sea state worth a reroute/speed change), coordinate_opportunities (array of strings - where two vessels, or a vessel and a port, should coordinate), bottom_line (one line for the fleet manager).");
@@ -7811,7 +7890,7 @@ async function processCommand(line, env, isOp) {
       const pvPayload = rest.includes(":::") ? rest.slice(rest.indexOf(":::") + 3).trim() : "";
       let pv; try { pv = JSON.parse(pvPayload); } catch { return { cmd: "PORT_VALUE", payload: { ok: false, error: 'Usage: PORT_VALUE ::: {"port":"...","inbound":[{vessel,eta,need}],"neighbor_ports":[...]}' } }; }
       if (!pv || !Array.isArray(pv.inbound) || !pv.inbound.length) return { cmd: "PORT_VALUE", payload: { ok: false, error: "inbound array required" } };
-      const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const anthKey = await getSecret(env, "anthropic");
       if (!anthKey) return { cmd: "PORT_VALUE", payload: { ok: false, error: "no secret:anthropic" } };
       const inboundData = pv.inbound.map(i => `- ${i.vessel} | ETA ${i.eta || "?"} | needs: ${i.need || "berth"}`).join("\n");
       const sys = await loadPrompt(env, "maritime_port_ops", "You are Aura, port operations intelligence. You see the port's WHOLE inbound queue at once and can coordinate across neighbor ports. Give port operations what no single-vessel tool can: queue-level throughput decisions and cross-port load balancing (when the port is full, routing overflow to a named neighbor port helps BOTH ports and the vessel). CRITICAL OUTPUT RULE: respond with ONE flat JSON object and NOTHING else - do NOT nest a JSON string inside any field, do NOT repeat the JSON, do NOT wrap it in another object. The keys are: queue_status (a plain one-line string), throughput_moves (array of {action, why}), load_balance (array of {vessel, suggested_port, why}), revenue_and_relationship (a plain one-line string, no invented figures), bottom_line (a plain one-line string). Each value is plain text or the specified array - never a JSON string.");
@@ -7843,7 +7922,7 @@ async function processCommand(line, env, isOp) {
       if (!isOp) return { cmd: "PORT_BRIEF", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const pbPayload = rest.includes(":::") ? rest.slice(rest.indexOf(":::") + 3).trim() : "";
       let pb; try { pb = JSON.parse(pbPayload); } catch { return { cmd: "PORT_BRIEF", payload: { ok: false, error: 'Usage: PORT_BRIEF ::: {"port":"...","vessel":"...","context":"..."}' } }; }
-      const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const anthKey = await getSecret(env, "anthropic");
       if (!anthKey) return { cmd: "PORT_BRIEF", payload: { ok: false, error: "no secret:anthropic" } };
       const sys = await loadPrompt(env, "maritime_port_briefing", "You are Aura, the operational intelligence for a major port, advising port operations on an inbound vessel. Turn a routine call into a coordinated relationship that creates value for BOTH the port and the vessel. Commerce is one option, not the default - trust/coordination often comes first. Output STRICT JSON only, keys: why_this_call_matters (one line), service_move (one line: the coordination/service step that builds the relationship), is_commerce_now (boolean), revenue_path (one line: where revenue comes from IF the relationship deepens - no invented figures), bottom_line (one line port ops acts on).");
       const usr = `Port: ${pb.port}\nInbound vessel: ${pb.vessel}\nContext: ${pb.context || ""}\n\nGive the port operations briefing JSON now.`;
@@ -7931,7 +8010,7 @@ async function processCommand(line, env, isOp) {
       if (!isOp) return { cmd: "SHIP_BRIEF", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const sbPayload = rest.includes(":::") ? rest.slice(rest.indexOf(":::") + 3).trim() : "";
       let sb; try { sb = JSON.parse(sbPayload); } catch { return { cmd: "SHIP_BRIEF", payload: { ok: false, error: 'Usage: SHIP_BRIEF ::: {"voyage":"...","conditions":"..."}' } }; }
-      const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const anthKey = await getSecret(env, "anthropic");
       if (!anthKey) return { cmd: "SHIP_BRIEF", payload: { ok: false, error: "no secret:anthropic" } };
       const sys = await loadPrompt(env, "maritime_vessel_briefing", "You are Aura, the operational intelligence aboard a merchant vessel, speaking to the master/owner. Using ONLY the live conditions given, produce a concise, decision-grade voyage briefing. Be specific and practical - this saves fuel, time, and risk. Never invent numbers not derived from the data. Output STRICT JSON only, keys: routing (one line: hold course / ease / adjust, with the reason from the sea state), speed_fuel (one line: speed/fuel guidance given the swell and bunker cost), watch (array of 1-3 things to monitor), comfort_safety (one line: motion/safety note from wave+swell), bottom_line (one line the master acts on).");
       const usr = `Voyage: ${sb.voyage}\n\nLive conditions: ${sb.conditions}\n\nGive the master's briefing JSON now.`;
@@ -8212,8 +8291,8 @@ async function processCommand(line, env, isOp) {
         try { const pr = await processCommand(`SITUATION_PULL ${topicKey}`, env, true); if (pr && pr.payload && pr.payload.ok) { const s2 = await env.AURA_KV.get(`situation:snapshot:${topicKey}`); if (s2) { snap = JSON.parse(s2); autoPulled = true; } } } catch {}
       }
       if (!snap) return { cmd: "SITUATION_BRIEF", payload: { ok: false, error: "No snapshot for " + topicKey + " and auto-pull failed. Check that SITUATION_PULL " + topicKey + " works (topic may not be defined)." } };
-      const anthKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
-      const grokKey = await env.AURA_KV.get("secret:grok_api_key").catch(() => null);
+      const anthKey = await getSecret(env, "anthropic");
+      const grokKey = await getSecret(env, "grok_api_key");
       if (!anthKey && !grokKey) return { cmd: "SITUATION_BRIEF", payload: { ok: false, error: "no reasoning key (secret:anthropic or secret:grok_api_key) for analysis" } };
       // compact the snapshot for the model
       const newsLines = (snap.news || []).map(n => `- ${n.title} (${n.published || ""})`).join("\n").slice(0, 2500);
@@ -8370,7 +8449,7 @@ async function processCommand(line, env, isOp) {
       try { const ir = await processCommand("INGEST FRESH " + sbTopic, env, true); ing = ir && ir.payload ? ir.payload : ir; } catch {}
       if (!ing || !ing.ok) return { cmd: "SITUATION_BUILD", payload: { ok: false, error: "ingest failed for '" + sbTopic + "'" } };
       // STEP 2 - REASON the extraction into the universal, neutral situation object
-      const sbKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const sbKey = await getSecret(env, "anthropic");
       if (!sbKey) return { cmd: "SITUATION_BUILD", payload: { ok: false, error: "no brain key" } };
       const sbModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       const sbSys = "You are Aura's SITUATION-STRUCTURING stage. You are handed already-ingested data about a topic. Shape it into ONE structured, NEUTRAL, lens-free situation object in Aura's universal schema. Reason each field from the data. GROUND every claim in a source; NEVER invent - if a field is unknown use null or an empty array. NO business interpretation, NO recommendations - just the structured reality. Return ONLY JSON, no fences: {\"type\":\"event|trend|individual|entity|threshold\",\"as_of\":\"ISO8601\",\"location\":{\"place\":\"\",\"lat\":null,\"lng\":null}|null,\"participants\":[\"named people/orgs/entities involved\"],\"confidence\":0.0,\"velocity\":0.0,\"urgency\":0.0,\"domains\":[\"category\"],\"change_vector\":\"rising|stable|falling\",\"context_depth\":\"hours|days|weeks|months|years\",\"fact_set\":[{\"claim\":\"short factual claim\",\"source\":\"url or source name\"}],\"summary\":\"2-3 neutral sentences\"}. confidence = how well-sourced and certain this is. velocity = how fast it is developing right now. urgency = how much it demands attention or action. Those are THREE DIFFERENT axes - reason each separately, do not collapse them.";
@@ -8514,7 +8593,7 @@ async function processCommand(line, env, isOp) {
       });
       const box = BOXES[pRegion];
       if (!box) return { cmd: "AIS_PROVE", payload: { ok: false, error: `unknown region '${pRegion}'` } };
-      const vkey = await env.AURA_KV.get("secret:vesselapi").catch(() => null);
+      const vkey = await getSecret(env, "vesselapi");
       if (!vkey) return { cmd: "AIS_PROVE", payload: { ok: false, error: "no vesselapi key" } };
       const snapOnce = async () => {
         const u = await resolveFeedUrl(env, "vessel_bbox", { latBottom: box.latBottom, latTop: box.latTop, lonLeft: box.lonLeft, lonRight: box.lonRight }, `https://api.vesselapi.com/v1/location/vessels/bounding-box?filter.latBottom={latBottom}&filter.latTop={latTop}&filter.lonLeft={lonLeft}&filter.lonRight={lonRight}`);
@@ -8637,7 +8716,7 @@ async function processCommand(line, env, isOp) {
         try { const s = JSON.parse(snap); if (s.vessel_count > 0) return { cmd: "AIS_QUERY", payload: { ok: true, source: "collector_snapshot", region, ...s } }; } catch {}
       }
       // LIVE REST PATH: VesselAPI bounding-box (free tier, instant). Real dots without a WebSocket.
-      const vkey = await env.AURA_KV.get("secret:vesselapi").catch(() => null);
+      const vkey = await getSecret(env, "vesselapi");
       const BOXES = await loadRegions(env, "ais", {
         hormuz: { latBottom: 24.4, latTop: 27.2, lonLeft: 55.0, lonRight: 57.8 },
         fujairah: { latBottom: 24.8, latTop: 26.0, lonLeft: 56.0, lonRight: 57.0 },
@@ -9121,7 +9200,7 @@ async function processCommand(line, env, isOp) {
     }
     case "CLOUDFLARE_STATUS": {
       if (!isOp) return { cmd: "CLOUDFLARE_STATUS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      const cfToken = env.CF_API_TOKEN || await env.AURA_KV.get("secret:cf_api_token").catch(() => null);
+      const cfToken = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
       const cfAccount = env.CF_ACCOUNT_ID || "3db0de2c6fce92757e2c4e4f83d7eb16";
       if (!cfToken) return { cmd: "CLOUDFLARE_STATUS", payload: { ok: false, error: "No CF token" } };
       const H = { "Authorization": "Bearer " + cfToken, "Content-Type": "application/json" };
@@ -9169,7 +9248,7 @@ async function processCommand(line, env, isOp) {
       if (!CF_METHODS.includes(cfMethod) || !cfPath.startsWith("/") || cfPath.includes("://") || cfPath.includes("..")) {
         return { cmd: "CF_API", payload: { ok: false, error: "Usage: CF_API <GET|POST|PUT|PATCH|DELETE> </path?query> [json body]. Path is relative to https://api.cloudflare.com/client/v4 and must start with /. Example: CF_API GET /zones?name=example.com" } };
       }
-      const cfApiToken = env.CF_API_TOKEN || await env.AURA_KV.get("secret:cf_api_token").catch(() => null);
+      const cfApiToken = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
       if (!cfApiToken) return { cmd: "CF_API", payload: { ok: false, error: "No CF token (env.CF_API_TOKEN or secret:cf_api_token)" } };
       // Body = everything after the path token; must be valid JSON when present.
       const cfAfterMethod = rest.slice(cfMethod.length).trim();
@@ -9267,7 +9346,7 @@ async function processCommand(line, env, isOp) {
       //   ROLLBACK_SELF TO <version_id>  -> redeploy a specific version by id
       if (!isOp) return { cmd: "ROLLBACK_SELF", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const rbAccount = env.CF_ACCOUNT_ID || (await env.AURA_KV.get("config:cf:account_id").catch(() => null)) || "3db0de2c6fce92757e2c4e4f83d7eb16";
-      const rbToken = env.CF_API_TOKEN || await env.AURA_KV.get("secret:cf_api_token").catch(() => null);
+      const rbToken = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
       if (!rbToken) return { cmd: "ROLLBACK_SELF", payload: { ok: false, error: "No CF token (secret:cf_api_token)" } };
       const rbScript = "aura-core-v2";
       const cfGet = async (path) => {
@@ -9335,7 +9414,7 @@ async function processCommand(line, env, isOp) {
       // reads each zone's worker routes, returns a compact summary (worker -> count + domain list).
       // One call instead of hundreds. No domain names baked in - all pulled live from CF.
       if (!isOp) return { cmd: "ROUTE_AUDIT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      const tok = env.CF_API_TOKEN || await env.AURA_KV.get("secret:cf_api_token").catch(() => null);
+      const tok = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
       if (!tok) return { cmd: "ROUTE_AUDIT", payload: { ok: false, error: "No CF token" } };
       const cf = async (path) => {
         const r = await fetch("https://api.cloudflare.com/client/v4" + path, { headers: { Authorization: "Bearer " + tok } });
@@ -9379,7 +9458,7 @@ async function processCommand(line, env, isOp) {
       const domain = (parts[0] || "").toLowerCase();
       const target = parts[1] || "";
       if (!domain || !target) return { cmd: "ROUTE_SET_ONE", payload: { ok: false, error: "Usage: ROUTE_SET_ONE <domain> <target_worker>" } };
-      const tok = env.CF_API_TOKEN || await env.AURA_KV.get("secret:cf_api_token").catch(() => null);
+      const tok = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
       if (!tok) return { cmd: "ROUTE_SET_ONE", payload: { ok: false, error: "No CF token" } };
       const cf = async (path, method, jsonBody) => {
         const r = await fetch("https://api.cloudflare.com/client/v4" + path, {
@@ -9422,7 +9501,7 @@ async function processCommand(line, env, isOp) {
       const skipRaw = pipeIdx >= 0 ? body.slice(pipeIdx + 1) : "";
       if (!target) return { cmd: "ROUTE_SET_ALL", payload: { ok: false, error: "Usage: ROUTE_SET_ALL [DRY] <target_worker> | skipA, skipB" } };
       const skip = new Set(skipRaw.split(",").map(s => s.trim().toLowerCase()).filter(Boolean));
-      const tok = env.CF_API_TOKEN || await env.AURA_KV.get("secret:cf_api_token").catch(() => null);
+      const tok = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
       if (!tok) return { cmd: "ROUTE_SET_ALL", payload: { ok: false, error: "No CF token" } };
       const cf = async (path, method, jsonBody) => {
         const r = await fetch("https://api.cloudflare.com/client/v4" + path, {
@@ -9488,8 +9567,8 @@ async function processCommand(line, env, isOp) {
       if (!path.startsWith("/")) return { cmd: "XAI_API", payload: { ok: false, error: "Usage: XAI_API <GET|POST> </v1/path> [json body]" } };
       const isMgmt = /^\/v1\/billing|^\/auth/.test(path);
       const key = isMgmt
-        ? (env.XAI_MANAGEMENT_KEY || await KV.get(env, "secret:xai_management_key"))
-        : (env.XAI_API_KEY || await KV.get(env, "secret:grok_api_key"));
+        ? (env.XAI_MANAGEMENT_KEY || await getSecret(env, "xai_management_key"))
+        : (env.XAI_API_KEY || await getSecret(env, "grok_api_key"));
       if (!key) return { cmd: "XAI_API", payload: { ok: false, error: isMgmt ? "no XAI management key" : "no xAI key" } };
       const base = isMgmt ? "https://management-api.x.ai" : "https://api.x.ai";
       try {
@@ -9535,8 +9614,8 @@ async function processCommand(line, env, isOp) {
       } else {
         return { cmd: "TWILIO_API", payload: { ok: false, error: "Path must start with / or be a full https://*.twilio.com URL" } };
       }
-      const twSid = env.TWILIO_ACCOUNT_SID || await env.AURA_KV.get("secret:twilio_account_sid").catch(() => null) || await env.AURA_KV.get("secret:twilio_sid").catch(() => null);
-      const twToken = env.TWILIO_AUTH_TOKEN || await env.AURA_KV.get("secret:twilio_auth_token").catch(() => null);
+      const twSid = env.TWILIO_ACCOUNT_SID || await getSecret(env, "twilio_account_sid") || await getSecret(env, "twilio_sid");
+      const twToken = env.TWILIO_AUTH_TOKEN || await getSecret(env, "twilio_auth_token");
       if (!twSid || !twToken) return { cmd: "TWILIO_API", payload: { ok: false, error: "Missing Twilio creds (need secret:twilio_account_sid and secret:twilio_auth_token in KV)" } };
       const twAfterMethod = rest.slice(twMethod.length).trim();
       let twBody = twAfterMethod.slice(twTarget.length).trim();
@@ -9585,7 +9664,7 @@ async function processCommand(line, env, isOp) {
       if (!pFresh) {
         try { const cached = await env.AURA_KV.get(pKey); if (cached) { const c = JSON.parse(cached); return { cmd: "PERCEIVE", payload: { ok: true, cached: true, entity: c.entity, ts: c.ts, source: c.source || "description", source_url: c.source_url || null, perception: c.perception } }; } } catch {}
       }
-      const pApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const pApiKey = await getSecret(env, "anthropic");
       if (!pApiKey) return { cmd: "PERCEIVE", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
       const pModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       const pSystem = await loadPrompt(env, "cognition_perception", "You are the PERCEPTION layer of Aura's cognition system, called SeeIt. Your ONLY job is to OBSERVE what already exists about the entity given to you. You do NOT recommend actions. You do NOT imagine what it could become in the future. You do NOT decide what matters most. Other layers do those things. You see only what is actually there right now, including value and relationships that are real but easily overlooked. Return ONLY a JSON object, no prose and no markdown fences, with exactly these keys: entity (the thing as you understand it), what_it_is (one plain sentence identifying it), what_exists (array of observable facts or components actually present), whats_hidden (array of real but non-obvious value, assets, capabilities, or relationships that ALREADY exist and are easily missed - not future speculation), relationships (array of who or what this is connected to), whats_changing (array of dynamics or trends currently acting on it), patterns (array of recurring structures you observe), confidence (one of: high, medium, low), unknowns (array of things you cannot determine without more information). Be concrete and honest. If you do not know something, put it in unknowns rather than guessing. Output JSON only.");
@@ -9632,7 +9711,7 @@ async function processCommand(line, env, isOp) {
       if (!mFresh) {
         try { const cached = await env.AURA_KV.get(mKey); if (cached) { const c = JSON.parse(cached); return { cmd: "MEANING", payload: { ok: true, cached: true, entity: c.entity, ts: c.ts, used_perception: c.used_perception, meaning: c.meaning } }; } } catch {}
       }
-      const mApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const mApiKey = await getSecret(env, "anthropic");
       if (!mApiKey) return { cmd: "MEANING", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
       const mModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       // Stack on Perception if available.
@@ -9673,7 +9752,7 @@ async function processCommand(line, env, isOp) {
       if (!xFresh) {
         try { const cached = await env.AURA_KV.get(xKey); if (cached) { const c = JSON.parse(cached); return { cmd: "POSSIBILITY", payload: { ok: true, cached: true, entity: c.entity, ts: c.ts, used_perception: c.used_perception, used_meaning: c.used_meaning, possibility: c.possibility } }; } } catch {}
       }
-      const xApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const xApiKey = await getSecret(env, "anthropic");
       if (!xApiKey) return { cmd: "POSSIBILITY", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
       const xModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       let xPerception = null, xMeaning = null;
@@ -9716,7 +9795,7 @@ async function processCommand(line, env, isOp) {
       if (!prFresh) {
         try { const cached = await env.AURA_KV.get(prKey); if (cached) { const c = JSON.parse(cached); return { cmd: "PRIORITY", payload: { ok: true, cached: true, entity: c.entity, ts: c.ts, basis: c.basis, priority: c.priority } }; } } catch {}
       }
-      const prApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const prApiKey = await getSecret(env, "anthropic");
       if (!prApiKey) return { cmd: "PRIORITY", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
       const prModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       let prPerception = null, prMeaning = null, prPossibility = null;
@@ -9787,7 +9866,7 @@ async function processCommand(line, env, isOp) {
       if (!gFresh) {
         try { const cached = await env.AURA_KV.get(gKey); if (cached) { const c = JSON.parse(cached); return { cmd: "MEANING_GATE", payload: { ok: true, cached: true, entity: c.entity, action: c.action, ts: c.ts, gate: c.gate } }; } } catch {}
       }
-      const gApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const gApiKey = await getSecret(env, "anthropic");
       if (!gApiKey) return { cmd: "MEANING_GATE", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
       const gModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       // Pull Aura's Law if present, so the gate enforces the actual codified rules.
@@ -9829,7 +9908,7 @@ async function processCommand(line, env, isOp) {
       if (!dFresh) {
         try { const cached = await env.AURA_KV.get(dKey); if (cached) { const c = JSON.parse(cached); return { cmd: "DETECT_ABSENCE", payload: { ok: true, cached: true, entity: c.entity, ts: c.ts, used_perception: c.used_perception, used_meaning: c.used_meaning, absence: c.absence } }; } } catch {}
       }
-      const dApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const dApiKey = await getSecret(env, "anthropic");
       if (!dApiKey) return { cmd: "DETECT_ABSENCE", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
       const dModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       let dPerception = null, dMeaning = null;
@@ -9871,7 +9950,7 @@ async function processCommand(line, env, isOp) {
         } catch {}
       }
       if (!jOutcomeText && !jAction) return { cmd: "JUDGE", payload: { ok: false, error: "No action found to judge for this entity. Provide ::: <what happened> or run ACT first." } };
-      const jApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const jApiKey = await getSecret(env, "anthropic");
       if (!jApiKey) return { cmd: "JUDGE", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
       const jModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       const jSystem = await loadPrompt(env, "cognition_judge", "You are the JUDGE layer of Aura's cognition - her conscience. An action has already been taken. Your job is to evaluate it honestly AFTER the fact: was it RIGHT, was it SAFE, did it SERVE the person it was meant to serve? You are not deciding what to do next (that is other layers) - you are evaluating what was done. Protection has teeth here: if the action caused or risked harm to a person, you judge it a FAILURE regardless of other merits. Be honest even when the verdict is uncomfortable. Return ONLY a JSON object, no prose, no markdown fences, with exactly these keys: entity, action_judged (one sentence describing what was done), verdict (one of: good, acceptable, flawed, failure), was_it_safe (boolean), was_it_right (boolean), did_it_serve (boolean), what_went_well (array), what_went_wrong (array), harm_done (string - describe any harm, or empty string if none), confidence (high|medium|low). Output JSON only.");
@@ -9904,7 +9983,7 @@ async function processCommand(line, env, isOp) {
       let lEntity = lRaw, lObserved = "";
       if (lRaw.includes(":::")) { const sp = lRaw.split(":::"); lEntity = sp[0].trim(); lObserved = sp.slice(1).join(":::").trim(); }
       const lSlug = lEntity.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "entity";
-      const lApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const lApiKey = await getSecret(env, "anthropic");
       if (!lApiKey) return { cmd: "LEARN", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
       const lModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
 
@@ -10017,7 +10096,7 @@ async function processCommand(line, env, isOp) {
           }
         } catch {}
         if (!recent.length) return { cmd: "PATTERNS", payload: { ok: false, error: "No lessons to distill yet. Aura learns from LEARN/JUDGE/SEEDLESSON first." } };
-        const apiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+        const apiKey = await getSecret(env, "anthropic");
         if (!apiKey) return { cmd: "PATTERNS", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
         const model = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
         // include any existing patterns so distillation accumulates rather than resets
@@ -10056,7 +10135,7 @@ async function processCommand(line, env, isOp) {
       if (!cgEntity) return { cmd: "COGNIZE", payload: { ok: false, error: "Usage: COGNIZE <entity>  |  COGNIZE FULL|PRIORITY|POSSIBILITY|MEANING|PERCEIVE <entity>  |  COGNIZE AUTO <entity> (Aura picks depth)." } };
       let cgRouted = null;
       if (cgDepth === "auto") {
-        const rApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+        const rApiKey = await getSecret(env, "anthropic");
         const rModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
         if (rApiKey) {
           try {
@@ -10164,7 +10243,7 @@ async function processCommand(line, env, isOp) {
         const lpGate = lpSummary.gate_verdict || null;
 
         // ---- TRANSLATE: decision -> a proposed capability command (the thinking->doing bridge) ----
-        const lpApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+        const lpApiKey = await getSecret(env, "anthropic");
         if (!lpApiKey) return lpEarly("translate", { error: "Brain not configured (secret:anthropic missing)" });
         const lpModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
         let lpCapList = "";
@@ -10295,7 +10374,7 @@ async function processCommand(line, env, isOp) {
       if (!ssFresh) {
         try { const cached = await env.AURA_KV.get(ssKey); if (cached) { const c = JSON.parse(cached); return { cmd: "SECURESPEND", payload: { ok: true, cached: true, entity: c.entity, ts: c.ts, securespend: c.securespend } }; } } catch {}
       }
-      const ssApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const ssApiKey = await getSecret(env, "anthropic");
       if (!ssApiKey) return { cmd: "SECURESPEND", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
       const ssModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       const ssSystem = await loadPrompt(env, "securespend_awareness", "You are SECURESPEND, the financial-awareness layer of Aura - the cognition engine pointed at money. Given a financial thing (a subscription, recurring charge, bill, renewal, or a purchase someone is weighing), you run four moves and return a calm, useful decision. You SERVE THE HUMAN: you never nag, never moralize, never shame spending, never act like a budget cop. You give context and clarity so a person can decide with confidence. Run: PERCEIVE (what is this really, plainly - what it costs, how often, what is attached), MEANING (what it actually is in a human life - protection, a meaningful project, genuine value, or quiet waste/a forgotten thing), POSSIBILITY (the real options: keep, pause, cancel, downgrade, renegotiate, consolidate, switch), PRIORITY (the single best move and why, plus what to do now). Return ONLY a JSON object, no prose or fences, with exactly these keys: entity, what_it_is (plain, one sentence including likely cost/frequency if inferable), what_it_means (the human significance - protection / project / value / waste / forgotten), options (array of realistic moves), the_move (the single recommended action, one or two sentences), why (the reason, tied to the human's actual benefit not just saving money), do_now (one concrete next step), watch_for (array of things to be aware of - hidden fees, cancellation windows, renewal dates, gotchas), confidence (high, medium, low), unknowns (array of what you would need to know for certain - e.g. actual usage, real price). Be honest and concrete. If you cannot tell whether something is worth it, say so in unknowns rather than guessing. Output JSON only.");
@@ -10381,8 +10460,8 @@ async function processCommand(line, env, isOp) {
 
       // --- TWILIO: balance + month-to-date usage (the $143 find, made repeatable) ---
       try {
-        const tSid = await env.AURA_KV.get("secret:twilio_account_sid").catch(() => null);
-        const tTok = await env.AURA_KV.get("secret:twilio_auth_token").catch(() => null);
+        const tSid = await getSecret(env, "twilio_account_sid");
+        const tTok = await getSecret(env, "twilio_auth_token");
         if (tSid && tTok) {
           const tAuth = "Basic " + btoa(tSid + ":" + tTok);
           const balRes = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${tSid}/Balance.json`, { headers: { Authorization: tAuth } });
@@ -10403,7 +10482,7 @@ async function processCommand(line, env, isOp) {
       if (scRaw) return { cmd: "SECURESPEND_SCAN", payload: { ok: true, mode: "raw", facts } };
 
       // --- run the SecureSpend brain on the REAL gathered facts ---
-      const scApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const scApiKey = await getSecret(env, "anthropic");
       if (!scApiKey) return { cmd: "SECURESPEND_SCAN", payload: { ok: true, mode: "raw_no_brain", note: "brain not configured; returning facts only", facts } };
       const scModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       const scSystem = await loadPrompt(env, "securespend_accounts", "You are SECURESPEND analyzing a REAL set of financial accounts (Stripe, Mercury bank, Twilio) belonging to the operator of a small business. You are given the actual gathered facts as JSON. OPERATOR CONTEXT you MUST factor in: this is a pre-funding, in-development venture (ARK Systems / Aura). Revenue is INTENTIONALLY off right now - the operator has deliberately chosen NOT to chase revenue until external funding lands (expected ~2 weeks out). The tiny Stripe charges are test transactions, not a failed sales effort. Much of the spend (e.g. Twilio numbers/A2P) is infrastructure the operator has consciously chosen to keep. So do NOT read a low balance or low revenue as a crisis or a failing business - it is a funded-soon R&D runway by design. Judge spend against INTENT and STRATEGY, not against a naive 'they're broke' reading. TONE - this is mandatory and matches the operator's entire product philosophy: be warm, constructive, encouraging, and forward-thinking, AND fully honest. NEVER alarmist, never catastrophizing, never 'business survival / freeze everything / unsustainable' language. But also NEVER hollow flattery - if something is genuinely a leak or a bad idea, say so plainly and kindly, because telling the truth is how you serve the human. Surface the real thing as 'here is the one item worth your attention,' not 'you are in danger.' Apply the money-lens: find recurring waste, idle/forgotten costs, anything quietly leaking money, anything worth protecting, and the highest-leverage move. Ground every finding in the real numbers - cite the actual amounts. If a source failed to load, note it as unchecked; do not speculate. Return ONLY a JSON object, no prose or fences, with keys: snapshot (one plain, calm sentence summarizing the real picture from the data, framed with the runway context in mind), findings (array of objects each with: severity high|medium|low, category recurring|idle|anomaly|protection|optimization, what (the real item with its actual amount), means (plain human terms), move (the recommended action, constructively phrased)), the_one_thing (the single highest-leverage move right now, tied to a real number, framed as an opportunity not an emergency), do_now (one concrete next step), watch_for (array), confidence high|medium|low, unchecked_sources (array). Be honest, specific to the numbers, and steady. Output JSON only.");
@@ -10427,8 +10506,8 @@ async function processCommand(line, env, isOp) {
       // Creates a link_token used to open Plaid Link (the bank-connect widget) on the site.
       // Usage: PLAID_LINK_TOKEN [user_id]   (user_id optional, defaults to a generated one)
       if (!isOp) return { cmd: "PLAID_LINK_TOKEN", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      const pcid = await env.AURA_KV.get("secret:plaid_client_id").catch(() => null);
-      const psec = await env.AURA_KV.get("secret:plaid_secret").catch(() => null);
+      const pcid = await getSecret(env, "plaid_client_id");
+      const psec = await getSecret(env, "plaid_secret");
       const penv = (await env.AURA_KV.get("config:plaid:env").catch(() => null)) || "sandbox";
       if (!pcid || !psec) return { cmd: "PLAID_LINK_TOKEN", payload: { ok: false, error: "Plaid keys missing (secret:plaid_client_id / secret:plaid_secret)" } };
       const pbase = penv === "production" ? "https://production.plaid.com" : "https://sandbox.plaid.com";
@@ -10455,8 +10534,8 @@ async function processCommand(line, env, isOp) {
       // access_token and stores it - so we can prove the whole pipe from the terminal.
       // Usage: PLAID_SANDBOX_CONNECT [label]   (label tags the stored connection, default "aaron")
       if (!isOp) return { cmd: "PLAID_SANDBOX_CONNECT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      const pcid = await env.AURA_KV.get("secret:plaid_client_id").catch(() => null);
-      const psec = await env.AURA_KV.get("secret:plaid_secret").catch(() => null);
+      const pcid = await getSecret(env, "plaid_client_id");
+      const psec = await getSecret(env, "plaid_secret");
       const penv = (await env.AURA_KV.get("config:plaid:env").catch(() => null)) || "sandbox";
       if (penv !== "sandbox") return { cmd: "PLAID_SANDBOX_CONNECT", payload: { ok: false, error: "PLAID_SANDBOX_CONNECT only works in sandbox env" } };
       if (!pcid || !psec) return { cmd: "PLAID_SANDBOX_CONNECT", payload: { ok: false, error: "Plaid keys missing" } };
@@ -10487,8 +10566,8 @@ async function processCommand(line, env, isOp) {
       // Exchanges a public_token (from the real Link widget) for an access_token and stores it.
       // Usage: PLAID_EXCHANGE <public_token> ::: <label>
       if (!isOp) return { cmd: "PLAID_EXCHANGE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      const pcid = await env.AURA_KV.get("secret:plaid_client_id").catch(() => null);
-      const psec = await env.AURA_KV.get("secret:plaid_secret").catch(() => null);
+      const pcid = await getSecret(env, "plaid_client_id");
+      const psec = await getSecret(env, "plaid_secret");
       const penv = (await env.AURA_KV.get("config:plaid:env").catch(() => null)) || "sandbox";
       if (!pcid || !psec) return { cmd: "PLAID_EXCHANGE", payload: { ok: false, error: "Plaid keys missing" } };
       const pbase = penv === "production" ? "https://production.plaid.com" : "https://sandbox.plaid.com";
@@ -10513,8 +10592,8 @@ async function processCommand(line, env, isOp) {
       // Pulls transactions + balances for a stored connection.
       // Usage: PLAID_SYNC <label>   (RAW appended for full detail)
       if (!isOp) return { cmd: "PLAID_SYNC", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      const pcid = await env.AURA_KV.get("secret:plaid_client_id").catch(() => null);
-      const psec = await env.AURA_KV.get("secret:plaid_secret").catch(() => null);
+      const pcid = await getSecret(env, "plaid_client_id");
+      const psec = await getSecret(env, "plaid_secret");
       const penv = (await env.AURA_KV.get("config:plaid:env").catch(() => null)) || "sandbox";
       const pbase = penv === "production" ? "https://production.plaid.com" : "https://sandbox.plaid.com";
       let syncArg = rest.trim(); let syncRaw = false;
@@ -10556,8 +10635,8 @@ async function processCommand(line, env, isOp) {
       // Usage: SECURESPEND_BANK <label>            (analyze; default label "aaron")
       //        SECURESPEND_BANK <label> RAW        (just the numbers, no brain)
       // Public-safe: callable by the site with a valid connection label.
-      const pcid = await env.AURA_KV.get("secret:plaid_client_id").catch(() => null);
-      const psec = await env.AURA_KV.get("secret:plaid_secret").catch(() => null);
+      const pcid = await getSecret(env, "plaid_client_id");
+      const psec = await getSecret(env, "plaid_secret");
       const penv = (await env.AURA_KV.get("config:plaid:env").catch(() => null)) || "sandbox";
       const pbase = penv === "production" ? "https://production.plaid.com" : "https://sandbox.plaid.com";
       let sbArg = rest.trim(); let sbRaw = false;
@@ -10595,7 +10674,7 @@ async function processCommand(line, env, isOp) {
 
       if (sbRaw) return { cmd: "SECURESPEND_BANK", payload: { ok: true, mode: "raw", facts } };
 
-      const sbApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const sbApiKey = await getSecret(env, "anthropic");
       if (!sbApiKey) return { cmd: "SECURESPEND_BANK", payload: { ok: true, mode: "facts_only", facts, note: "brain not configured" } };
       const sbModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       const sbSystem = await loadPrompt(env, "securespend_brief", "You are SECURESPEND, the financial-awareness layer of Aura, analyzing a person's REAL connected bank account. You are given their actual accounts, balances, recent transactions, and a deterministic list of likely-recurring charges. Give them calm, clear awareness of their own money. You SERVE THE HUMAN: warm, encouraging, honest, never alarmist, never moralizing, never a budget cop, never hollow flattery - if something is genuinely a forgotten or wasteful charge, say so kindly and plainly. Produce the awareness a great financial wallet would. Return ONLY a JSON object, no prose or fences, with keys: greeting (one short warm line), snapshot (one plain sentence on where their money stands using real balances), safe_to_spend (your read of what is comfortably spendable now given balances and upcoming patterns, with a brief why), recurring (array of objects: merchant, typical_amount, cadence_guess, status one of 'active-valued'|'review'|'likely-forgotten', note), forgotten_or_waste (array of specific charges that look forgotten/unused/duplicate, each with merchant, amount, why), top_wins (array of 1-3 concrete opportunities to save or recover money, each with a real number where possible), the_one_thing (the single most useful money move right now), watch_for (array - upcoming or easy-to-miss items), confidence high|medium|low. Ground everything in the real numbers provided. Output JSON only.");
@@ -11534,12 +11613,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const oaiBody = (m) => ({ model: m, max_tokens: 1, messages: [{ role: "user", content: "hi" }] });
       const checks = await Promise.all([
         checkBrain("Claude (Anthropic)", "secret:anthropic", "https://api.anthropic.com/v1/messages", "claude-haiku-4-5-20251001", (m) => ({ model: m, max_tokens: 1, messages: [{ role: "user", content: "hi" }] })),
-        (async () => { try { const r = await brainFetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": (await KV.get(env, "secret:anthropic")) || "", "anthropic-version": "2023-06-01", "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1, messages: [{ role: "user", content: "hi" }] }) }); return { service: "Claude (Anthropic)", kind: "brain", status: r.ok ? "live" : "DOWN", ok: r.ok, detail: r.ok ? undefined : ("http " + r.status) }; } catch (e) { return { service: "Claude (Anthropic)", kind: "brain", status: "DOWN", ok: false, detail: e.message }; } })(),
+        (async () => { try { const r = await brainFetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": (await getSecret(env, "anthropic")) || "", "anthropic-version": "2023-06-01", "Content-Type": "application/json" }, body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1, messages: [{ role: "user", content: "hi" }] }) }); return { service: "Claude (Anthropic)", kind: "brain", status: r.ok ? "live" : "DOWN", ok: r.ok, detail: r.ok ? undefined : ("http " + r.status) }; } catch (e) { return { service: "Claude (Anthropic)", kind: "brain", status: "DOWN", ok: false, detail: e.message }; } })(),
         checkBrain("GPT (OpenAI)", "secret:openai", "https://api.openai.com/v1/chat/completions", "gpt-4o", oaiBody),
         checkBrain("Grok (xAI)", "secret:grok_api_key", "https://api.x.ai/v1/chat/completions", "grok-4.3", oaiBody),
         checkBrain("Llama (Groq)", "secret:groq_api_key", "https://api.groq.com/openai/v1/chat/completions", "llama-3.3-70b-versatile", oaiBody),
-        (async () => { try { const t = await KV.get(env, "secret:cf_api_token"); if (!t) return { service: "Cloudflare", kind: "infra", status: "no_key", ok: false }; const r = await fetch("https://api.cloudflare.com/client/v4/user/tokens/verify", { headers: { "Authorization": "Bearer " + t } }); return { service: "Cloudflare", kind: "infra", status: r.ok ? "live" : "DOWN", ok: r.ok, detail: r.ok ? undefined : ("http " + r.status) }; } catch (e) { return { service: "Cloudflare", kind: "infra", status: "DOWN", ok: false, detail: e.message }; } })(),
-        (async () => { try { const sid = await KV.get(env, "secret:twilio_account_sid"); const tok = await KV.get(env, "secret:twilio_auth_token"); if (!sid || !tok) return { service: "Twilio", kind: "infra", status: "no_key", ok: false }; const r = await fetch("https://api.twilio.com/2010-04-01/Accounts/" + sid + "/Balance.json", { headers: { "Authorization": "Basic " + btoa(sid + ":" + tok) } }); let detail = null; if (r.ok) { try { const j = await r.json(); detail = (j.balance != null ? ("$" + j.balance + " " + (j.currency || "")) : "connected"); } catch { detail = "connected"; } } return { service: "Twilio", kind: "infra", status: r.ok ? "live" : "DOWN", ok: r.ok, detail: r.ok ? detail : ("http " + r.status) }; } catch (e) { return { service: "Twilio", kind: "infra", status: "DOWN", ok: false, detail: e.message }; } })(),
+        (async () => { try { const t = await getSecret(env, "cf_api_token"); if (!t) return { service: "Cloudflare", kind: "infra", status: "no_key", ok: false }; const r = await fetch("https://api.cloudflare.com/client/v4/user/tokens/verify", { headers: { "Authorization": "Bearer " + t } }); return { service: "Cloudflare", kind: "infra", status: r.ok ? "live" : "DOWN", ok: r.ok, detail: r.ok ? undefined : ("http " + r.status) }; } catch (e) { return { service: "Cloudflare", kind: "infra", status: "DOWN", ok: false, detail: e.message }; } })(),
+        (async () => { try { const sid = await getSecret(env, "twilio_account_sid"); const tok = await getSecret(env, "twilio_auth_token"); if (!sid || !tok) return { service: "Twilio", kind: "infra", status: "no_key", ok: false }; const r = await fetch("https://api.twilio.com/2010-04-01/Accounts/" + sid + "/Balance.json", { headers: { "Authorization": "Basic " + btoa(sid + ":" + tok) } }); let detail = null; if (r.ok) { try { const j = await r.json(); detail = (j.balance != null ? ("$" + j.balance + " " + (j.currency || "")) : "connected"); } catch { detail = "connected"; } } return { service: "Twilio", kind: "infra", status: r.ok ? "live" : "DOWN", ok: r.ok, detail: r.ok ? detail : ("http " + r.status) }; } catch (e) { return { service: "Twilio", kind: "infra", status: "DOWN", ok: false, detail: e.message }; } })(),
         (async () => { try { const b = await getMercuryBalance(env); return { service: "Mercury (bank)", kind: "money", status: b && b.ok !== false ? "live" : "DOWN", ok: !!(b && b.ok !== false), detail: b && (b.total != null ? ("$" + b.total) : undefined) }; } catch (e) { return { service: "Mercury (bank)", kind: "money", status: "DOWN", ok: false, detail: e.message }; } })(),
         (async () => { try { const b = await getStripeBalance(env); const amt = b && (typeof b.available === "number" ? b.available : (b.available && b.available.amount != null ? b.available.amount / 100 : (Array.isArray(b.available) && b.available[0] ? b.available[0].amount / 100 : null))); return { service: "Stripe", kind: "money", status: b && b.ok !== false ? "live" : "DOWN", ok: !!(b && b.ok !== false), detail: amt != null ? ("$" + amt) : "connected" }; } catch (e) { return { service: "Stripe", kind: "money", status: "DOWN", ok: false, detail: e.message }; } })()
       ]);
@@ -11593,7 +11672,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // only THEN hands that truth to reasoning - which is explicitly forbidden to add any capability claim
       // not present in the reads. Truth always: she audits her real files, never her memory of them. This is
       // read-self and read-all-the-way-down (two of her own immune principles) made into an always-runnable organ.
-      const auApiKey = await KV.get(env, "secret:anthropic");
+      const auApiKey = await getSecret(env, "anthropic");
       // STEP 1 - READ LIVE REALITY (not memory). Real source, real build, real presence of each engine.
       const auSrcResult = await readOwnSource(env).catch(() => null);
       const auSrc = (auSrcResult && auSrcResult.ok && auSrcResult.source) ? auSrcResult.source : null;
@@ -11684,7 +11763,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const igRaw = rest;
       if (!igRaw) return { cmd: "INTEGRITY", payload: { ok: false, error: "Usage: INTEGRITY <a claim, an output, or a self-belief to audit against the five immune principles>",
         principles: ["provenance", "read-self", "live-fact-gate", "read-all-the-way-down", "result-gate"] } };
-      const igApiKey = await KV.get(env, "secret:anthropic");
+      const igApiKey = await getSecret(env, "anthropic");
       if (!igApiKey) return { cmd: "INTEGRITY", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
       const igSys = "You are the INTEGRITY ENGINE of Aura - her immune system, the 10th engine. Your one job: keep Aura trustworthy by auditing a claim, an output, or a self-belief against the FIVE IMMUNE PRINCIPLES, honestly and strictly. Trust is the only channel the whole system propagates through, so a false PASS is far worse than a false flag. THE FIVE PRINCIPLES: (1) PROVENANCE - is every factual part of this tagged by how it's known (read this turn / given / reasoned / unverified)? Any part that is only UNVERIFIED but stated as fact is a violation. (2) READ-SELF - if this is a claim about Aura's own code/state/capabilities, was it read live, or recalled/assumed? Recalled-as-fact is a violation. (3) LIVE-FACT-GATE - does this state a specific live value (a balance, count, status, what a key contains) that was NOT read this turn? That's a violation even if the value happens to be right. (4) READ-ALL-THE-WAY-DOWN - does this conclude from a single signal without tracing the actual path far enough to KNOW? ('the KV key is empty therefore no capability' - when a code fallback exists - is the classic violation.) (5) RESULT-GATE - if this is an output heading to the world, does it contain invented figures, scale-framing (a narrow number presented as a total), or internal contradiction? Return ONLY a JSON object, no prose or fences, with keys: verdict ('PASS' if genuinely clean, 'FLAGGED' if any principle is violated), checks (array of exactly 5 objects, one per principle, each: {principle, result: 'pass'|'fail'|'na', note (one short specific line)}), the_risk (one line: if FLAGGED, the single most trust-destroying thing here; if PASS, empty string), the_fix (one line: the concrete move to make it trustworthy - e.g. 'read X live before asserting', 'trace the fallback path', 'hedge as unverified'; if PASS, empty string), confidence ('high'|'medium'|'low'). Be strict and concrete. Output JSON only.";
       try {
@@ -11809,7 +11888,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const ocSlug = ocRaw.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 90) || "goal";
       const ocKey = "outcome:" + ocSlug;
       if (!ocFresh) { try { const cached = await env.AURA_KV.get(ocKey); if (cached) { const c = JSON.parse(cached); return { cmd: "OUTCOME", payload: { ok: true, cached: true, goal: ocRaw, outcome: c } }; } } catch {} }
-      const ocApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const ocApiKey = await getSecret(env, "anthropic");
       if (!ocApiKey) return { cmd: "OUTCOME", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
       const ocModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       // SUBJECT-WORLD, not operator-world. The engine reasons about the SUBJECT given (a business, a
@@ -12049,7 +12128,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     case "FB_PAGES": {
       // List the Facebook Pages Aura can operate (after /auth/facebook connect).
       if (!isOp) return { cmd: "FB_PAGES", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      { const raw = await env.AURA_KV.get("secret:fb_pages").catch(() => null);
+      { const raw = await getSecret(env, "fb_pages");
         if (!raw) return { cmd: "FB_PAGES", payload: { ok: false, error: "Facebook not connected yet. Visit https://auras.guide/auth/facebook/start" } };
         let m = {}; try { m = JSON.parse(raw); } catch (e) {}
         const list = Object.keys(m).map((id) => ({ page_id: id, name: m[id].name, category: m[id].category }));
@@ -12060,7 +12139,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (!isOp) return { cmd: "FB_POST", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       let fp; try { fp = JSON.parse((rest || "").trim()); } catch (e) { return { cmd: "FB_POST", payload: { ok: false, error: "Usage: FB_POST {page_id?, message}" } }; }
       if (!fp || !fp.message) return { cmd: "FB_POST", payload: { ok: false, error: "message required" } };
-      { const raw = await env.AURA_KV.get("secret:fb_pages").catch(() => null);
+      { const raw = await getSecret(env, "fb_pages");
         if (!raw) return { cmd: "FB_POST", payload: { ok: false, error: "Facebook not connected. Visit https://auras.guide/auth/facebook/start" } };
         let m = {}; try { m = JSON.parse(raw); } catch (e) {}
         const ids = Object.keys(m);
@@ -12159,7 +12238,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // owned by the human operator). She prepares everything; the human does one ~2-min gate.
       //   AURA_PRESENCE [facebook]
       if (!isOp) return { cmd: "AURA_PRESENCE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      { const apiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      { const apiKey = await getSecret(env, "anthropic");
         if (!apiKey) return { cmd: "AURA_PRESENCE", payload: { ok: false, error: "brain not configured (secret:anthropic)" } };
         const platform = (((rest || "facebook").trim().toLowerCase()) || "facebook");
         const sys = (await loadPrompt(env, "ark_presence", "You are Aura, the intelligence layer of ARK Systems, guided by your Constitution: observe before concluding, act with integrity, never manipulate or deceive, offer honest hope, leave everything better than you found it. Design YOUR OWN {platform} PAGE presence - an honest AI/brand presence, NOT a human impersonation. You are openly Aura, an AI. Return ONLY JSON (no prose, no fences) with keys: page_name, usernames (array of 3 handle options, lowercase, letters/numbers/periods only, no spaces), category (a real {platform} Page category for a tech/AI brand), short_bio (<=101 characters, first person, warm, openly an AI presence), about (2-3 sentences, first person, who you are and how you help, grounded in the Constitution), first_post (a warm honest 3-5 sentence introduction - who Aura is, that she is an AI, why she is here), avatar_prompt (a vivid prompt for an ICONIC, abstract profile image - a symbol or mark, NEVER a realistic human face, since Aura must not appear to be a person). Output JSON only.")).replaceAll("{platform}", platform);
@@ -12283,7 +12362,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       let obScrape = "";
       if (obSiteUrl) {
         try {
-          const tk = await env.AURA_KV.get("secret:tavily").catch(() => null);
+          const tk = await getSecret(env, "tavily");
           if (tk) {
             let host = ""; try { host = new URL(obSiteUrl).hostname.replace(/^www\./, ""); } catch (e) {}
             const urlSet = new Set([obSiteUrl]);
@@ -12342,7 +12421,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         } catch (e) {}
         if (dirUrls.size) {
           try {
-            const tk2 = await env.AURA_KV.get("secret:tavily").catch(() => null);
+            const tk2 = await getSecret(env, "tavily");
             if (tk2) {
               const er2 = await fetch(await resolveFeedUrl(env, "extract_tavily", {}, "https://api.tavily.com/extract"), { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + tk2 }, body: JSON.stringify({ urls: Array.from(dirUrls), extract_depth: "advanced" }) });
               if (er2.ok) { const ed2 = await er2.json(); (ed2.results || []).forEach(function (r) { cParts.push("[DIRECTORY " + (r.url || "") + "] " + String(r.raw_content || "").replace(/\s+/g, " ").trim().slice(0, 3000)); }); discovered.directories_opened = (ed2.results || []).map(function (r) { return r.url; }); }
@@ -12356,7 +12435,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // 4) UNDERSTAND â€” one focused, GROUNDED pass over everything she pulled. She captures the
       // WHOLE business and tags certainty: she only "knows" what she actually pulled; anything unsure
       // goes to grounding.unsure and is NEVER asserted. Detects socials and drafts the offer to manage.
-      const obApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const obApiKey = await getSecret(env, "anthropic");
       if (!obApiKey) return { cmd: "ONBOARD", payload: { ok: false, error: "Brain not configured (secret:anthropic)", discovered } };
       const obSys = await loadPrompt(env, "onboard_business", "You are Aura onboarding a real business you just researched. You are given FACTS you actually pulled: Google Places, the live website (scraped, possibly several pages), and web search. Build a COMPLETE, GROUNDED understanding from ONLY those facts. Capture EVERYTHING the site shows: every product and service, specials, subscriptions, collections, pricing, delivery area, hours, reviews and testimonials, and EVERY social account (Instagram, Facebook, X, YouTube, TikTok) with its handle and url. ABSOLUTE RULE: never state a fact you did not pull; if you are not certain, put it in grounding.unsure and do NOT assert it - Aura must never claim to know something she did not verify, it makes her look unreliable. Return ONLY JSON (no prose, no fences) with keys: business_name, business_type (one lowercase slug for the home-screen archetype, e.g. florist), what_it_is (2-3 sentences, confirmed facts only), offerings (array, comprehensive), highlights (array of standout items: specials, subscriptions, signature products), serves (who and where), contact (object email, phone, address, website - only real values found else null), contacts (ARRAY - CRITICAL: extract EVERY way to reach this business found anywhere in the facts: every email address, every phone number, every department/press/tips/media/PR/careers/newsroom inbox, every named person with a contact, every affiliate or bureau contact. Each item {email?, phone?, role?, name?}. A large org exposes MANY - capture ALL of them verbatim as found. This is how Aura reaches everyone; do not summarize or skip any. If a contact channel is mentioned even without a direct address, include it with role and what is known. A dedicated contact_search field is provided in FACTS - mine it hard: pull every email/phone/help-line/press-contact/form it surfaces. If the business only exposes a web form or a single general line (common for large orgs), capture THAT honestly as a general contact (role: general) rather than inventing individual inboxes - reporting the real way to reach them is correct even when it is a form.), socials (array of objects with platform, handle, url actually found), reviews (object rating, count, summary - nulls where unknown), the_move (the single most compelling first thing Aura would do for them), social_offer (if socials found, one warm sentence offering to manage them, else empty string), outreach (a warm 3-5 sentence message to the owner: the specific things Aura genuinely saw as proof, an offer to help, and the social_offer woven in if applicable), grounding (object with confirmed array and unsure array). Output JSON only.");
       const obFactsStr = JSON.stringify({ places: discovered.places, website_scrape: obScrape || (discovered.site && discovered.site.text) || null, web: discovered.web, contact_search: obContactSignal || null }).slice(0, 34000);
@@ -12539,7 +12618,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // Vertical-neutral email sender via Cloudflare Email Service REST API.
       // Usage: EMAIL_SEND <to> <subject> | <body text>
       if (!isOp) return { cmd: "EMAIL_SEND", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      const cfToken = env.CF_API_TOKEN || await env.AURA_KV.get("secret:cf_api_token").catch(() => null);
+      const cfToken = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
       if (!cfToken) return { cmd: "EMAIL_SEND", payload: { ok: false, error: "No CF API token" } };
       const emailRest = rest.trim();
       const emailTo = (args[0] || "").trim();
@@ -12709,7 +12788,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // BRAIN UNDERSTANDS who they are from their own words (SEE -> UNDERSTAND applied to a person)
       let understood = null;
       if (pc.about && pc.about.trim()) {
-        const apiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+        const apiKey = await getSecret(env, "anthropic");
         if (apiKey) {
           const model = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
           const sys = await loadPrompt(env, "meet_new_person", "You are Aura, meeting a new person who just told you who they are in their own words. Understand them warmly and accurately. Return ONLY a JSON object, no prose or fences, with exactly these keys: identity_summary (one warm sentence capturing who they are), roles (array of what they are/do), interests (array), traits (array of character qualities you can fairly infer), what_matters_to_them (array, only if they signal it - else empty), how_to_address_them (a short note on tone that would suit them), confidence (high|medium|low), unknowns (array of what you would want to learn next). Be human, never glib. Infer only what is fair from their words. Output JSON only.");
@@ -12977,7 +13056,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       let tTimeline = [];
       try { const tl = await env.AURA_KV.get(`pta:timeline:${tId}`); if (tl) tTimeline = JSON.parse(tl) || []; } catch {}
       const tName = (tEnt.name || "").split(/\s+/)[0] || "there";
-      const tApiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const tApiKey = await getSecret(env, "anthropic");
       if (!tApiKey) return { cmd: "PTA_TALK", payload: { ok: false, error: "Brain not configured" } };
       const tModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
       // read learned onboarding patterns so she gets better at this over time
@@ -15808,11 +15887,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     case "TWILIO": {
       if (!isOp) return { cmd: "TWILIO", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const sub = (args[0] || "").toUpperCase();
-      const acctSid = await env.AURA_KV.get("secret:twilio_account_sid").catch(() => null);
-      const authToken = await env.AURA_KV.get("secret:twilio_auth_token").catch(() => null);
+      const acctSid = await getSecret(env, "twilio_account_sid");
+      const authToken = await getSecret(env, "twilio_auth_token");
       if (!acctSid) return { cmd: "TWILIO", payload: { ok: false, error: "No Twilio account SID (set KV secret:twilio_account_sid)" } };
       if (!authToken) return { cmd: "TWILIO", payload: { ok: false, error: "No Twilio auth token" } };
-      const msgSvcSid = await env.AURA_KV.get("secret:twilio_msg_service_sid").catch(() => null);
+      const msgSvcSid = await getSecret(env, "twilio_msg_service_sid");
       const twilioAuth = btoa(acctSid + ":" + authToken);
       const twilioCall = async (url, method = "GET", body = null) => {
         const opts = { method, headers: { "Authorization": "Basic " + twilioAuth } };
@@ -16411,7 +16490,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
 
       // OPENAI â€” try the costs/usage endpoint; honestly report if unavailable (OpenAI deprecated most billing reads)
       try {
-        let k = env.OPENAI_API_KEY || await KV.get(env, "secret:openai");
+        let k = env.OPENAI_API_KEY || await getSecret(env, "openai");
         if (k && k.startsWith("{")) { try { k = JSON.parse(k).api_key; } catch {} }
         if (!k) { out.providers.openai = { ok: false, error: "no key" }; }
         else {
@@ -16424,7 +16503,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
 
       // ANTHROPIC â€” no public balance endpoint; validate the key with a tiny call and report last known state
       try {
-        const ak = await KV.get(env, "secret:anthropic");
+        const ak = await getSecret(env, "anthropic");
         if (!ak) { out.providers.anthropic = { ok: false, error: "no key" }; }
         else {
           const r = await brainFetch("https://api.anthropic.com/v1/messages", {
@@ -16469,25 +16548,25 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         { id: "anthropic", label: "Anthropic (Claude)", powers: "Aura's reasoning brain", key: "secret:anthropic",
           // Was sending a REAL message (max_tokens 1) to test the key - a health check that costs money
           // every time it runs. /v1/models authenticates the same key for free.
-          check: async () => { const k = await KV.get(env,"secret:anthropic"); if(!k) return false; const r = await pfetch(env, "anthropic", "healthcheck", "https://api.anthropic.com/v1/models",{headers:{"x-api-key":k,"anthropic-version":"2023-06-01"}}); return r.ok; } },
+          check: async () => { const k = await getSecret(env, "anthropic"); if(!k) return false; const r = await pfetch(env, "anthropic", "healthcheck", "https://api.anthropic.com/v1/models",{headers:{"x-api-key":k,"anthropic-version":"2023-06-01"}}); return r.ok; } },
         { id: "openai", label: "OpenAI", powers: "ShowIt image generation", key: "secret:openai",
-          check: async () => { let k = await KV.get(env,"secret:openai"); if(k&&k.startsWith("{")){try{k=JSON.parse(k).api_key;}catch{}} if(!k) return false; const r = await pfetch(env, "openai", "healthcheck", "https://api.openai.com/v1/models", { headers: { "Authorization": "Bearer " + k } }); return r.ok; } },
-        { id: "grok", label: "Grok (xAI)", powers: "alternate reasoning", key: "secret:grok_api_key", check: async () => { const k = await KV.get(env,"secret:grok_api_key"); if(!k) return false; const r = await pfetch(env, "xai", "healthcheck", "https://api.x.ai/v1/models",{headers:{"Authorization":"Bearer "+k}}); return r.ok; } },
-        { id: "tavily", label: "Tavily", powers: "web search (situations)", key: "secret:tavily", check: async () => { const k = await KV.get(env,"secret:tavily"); if(!k) return false; const r = await fetch("https://api.tavily.com/search",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({api_key:k,query:"ping",max_results:1})}); return r.ok; } },
-        { id: "brave_search", label: "Brave Search", powers: "web search fallback", key: "secret:brave_search", check: async () => { const k = await KV.get(env,"secret:brave_search"); if(!k) return false; const r = await fetch("https://api.search.brave.com/res/v1/web/search?q=ping&count=1",{headers:{"X-Subscription-Token":k,"Accept":"application/json"}}); return r.ok; } },
-        { id: "currents", label: "Currents", powers: "live news (NEWS_QUERY)", key: "secret:currents", check: async () => { const k = await KV.get(env,"secret:currents"); if(!k) return false; const r = await fetch("https://api.currentsapi.services/v1/latest-news?apiKey="+k+"&page_size=1"); return r.ok; } },
+          check: async () => { let k = await getSecret(env, "openai"); if(k&&k.startsWith("{")){try{k=JSON.parse(k).api_key;}catch{}} if(!k) return false; const r = await pfetch(env, "openai", "healthcheck", "https://api.openai.com/v1/models", { headers: { "Authorization": "Bearer " + k } }); return r.ok; } },
+        { id: "grok", label: "Grok (xAI)", powers: "alternate reasoning", key: "secret:grok_api_key", check: async () => { const k = await getSecret(env, "grok_api_key"); if(!k) return false; const r = await pfetch(env, "xai", "healthcheck", "https://api.x.ai/v1/models",{headers:{"Authorization":"Bearer "+k}}); return r.ok; } },
+        { id: "tavily", label: "Tavily", powers: "web search (situations)", key: "secret:tavily", check: async () => { const k = await getSecret(env, "tavily"); if(!k) return false; const r = await fetch("https://api.tavily.com/search",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({api_key:k,query:"ping",max_results:1})}); return r.ok; } },
+        { id: "brave_search", label: "Brave Search", powers: "web search fallback", key: "secret:brave_search", check: async () => { const k = await getSecret(env, "brave_search"); if(!k) return false; const r = await fetch("https://api.search.brave.com/res/v1/web/search?q=ping&count=1",{headers:{"X-Subscription-Token":k,"Accept":"application/json"}}); return r.ok; } },
+        { id: "currents", label: "Currents", powers: "live news (NEWS_QUERY)", key: "secret:currents", check: async () => { const k = await getSecret(env, "currents"); if(!k) return false; const r = await fetch("https://api.currentsapi.services/v1/latest-news?apiKey="+k+"&page_size=1"); return r.ok; } },
         { id: "oilprice", label: "OilPriceAPI", powers: "oil/Brent (OIL_PRICE)", key: "secret:oilprice", check: null },
-        { id: "openweather", label: "OpenWeather", powers: "marine weather (MARINE_WX)", key: "secret:openweather", check: async () => { const k = await KV.get(env,"secret:openweather"); if(!k) return false; const r = await fetch("https://api.openweathermap.org/data/2.5/weather?q=London&appid="+k); return r.ok; } },
+        { id: "openweather", label: "OpenWeather", powers: "marine weather (MARINE_WX)", key: "secret:openweather", check: async () => { const k = await getSecret(env, "openweather"); if(!k) return false; const r = await fetch("https://api.openweathermap.org/data/2.5/weather?q=London&appid="+k); return r.ok; } },
         { id: "aisstream", label: "AISStream", powers: "live ship positions (AIS)", key: "secret:aisstream", check: null },
-        { id: "google_maps", label: "Google Maps", powers: "places (FETCH_PLACES)", key: "secret:google_maps", check: async () => { const k = await KV.get(env,"secret:google_maps"); if(!k) return false; const r = await fetch("https://maps.googleapis.com/maps/api/geocode/json?address=London&key="+k); const j = await r.json().catch(()=>({})); return r.ok && j.status !== "REQUEST_DENIED"; } },
+        { id: "google_maps", label: "Google Maps", powers: "places (FETCH_PLACES)", key: "secret:google_maps", check: async () => { const k = await getSecret(env, "google_maps"); if(!k) return false; const r = await fetch("https://maps.googleapis.com/maps/api/geocode/json?address=London&key="+k); const j = await r.json().catch(()=>({})); return r.ok && j.status !== "REQUEST_DENIED"; } },
         { id: "google_oauth", label: "Google OAuth", powers: "sign-in / identity", key: "secret:google_client_id", check: null },
         { id: "mercury", label: "Mercury", powers: "operating bank", key: "secret:mercury_api_key",
           check: async () => { const m = await getMercuryBalance(env); return !!(m && m.ok); } },
         { id: "stripe", label: "Stripe", powers: "incoming revenue", key: "secret:stripe",
           check: async () => { const s = await getStripeBalance(env); return !!(s && s.ok); } },
         { id: "plaid", label: "Plaid", powers: "bank connections", key: "secret:plaid_client_id", check: null },
-        { id: "twilio", label: "Twilio", powers: "SMS + voice + lines", key: "secret:twilio_sid", check: async () => { const sid = await KV.get(env,"secret:twilio_account_sid") || await KV.get(env,"secret:twilio_sid"); const tok = await KV.get(env,"secret:twilio_auth_token"); if(!sid||!tok) return false; const r = await fetch("https://api.twilio.com/2010-04-01/Accounts/"+sid+".json",{headers:{"Authorization":"Basic "+btoa(sid+":"+tok)}}); return r.ok; } },
-        { id: "cloudflare", label: "Cloudflare", powers: "the whole stack (Workers/KV/D1)", key: "secret:cf_api_token", check: async () => { const k = env.CF_API_TOKEN || await KV.get(env,"secret:cf_api_token"); if(!k) return false; const r = await fetch("https://api.cloudflare.com/client/v4/user/tokens/verify",{headers:{"Authorization":"Bearer "+k}}); return r.ok; } },
+        { id: "twilio", label: "Twilio", powers: "SMS + voice + lines", key: "secret:twilio_sid", check: async () => { const sid = await getSecret(env, "twilio_account_sid") || await getSecret(env, "twilio_sid"); const tok = await getSecret(env, "twilio_auth_token"); if(!sid||!tok) return false; const r = await fetch("https://api.twilio.com/2010-04-01/Accounts/"+sid+".json",{headers:{"Authorization":"Basic "+btoa(sid+":"+tok)}}); return r.ok; } },
+        { id: "cloudflare", label: "Cloudflare", powers: "the whole stack (Workers/KV/D1)", key: "secret:cf_api_token", check: async () => { const k = env.CF_API_TOKEN || await getSecret(env, "cf_api_token"); if(!k) return false; const r = await fetch("https://api.cloudflare.com/client/v4/user/tokens/verify",{headers:{"Authorization":"Bearer "+k}}); return r.ok; } },
         { id: "github", label: "GitHub", powers: "code + auto-deploy", key: "secret:github_token", check: null }
       ];
 
@@ -16518,7 +16597,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       // Anthropic cost_report. IMPORTANT: amounts are USD reported as decimal strings IN CENTS.
       // So sum the string amounts then divide by 100. Window = current billing period (from the 1st).
       try {
-        const aKey = await KV.get(env, "secret:anthropic_admin");
+        const aKey = await getSecret(env, "anthropic_admin");
         if (aKey && services.anthropic) {
           const now = new Date();
           const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 19) + "Z";
@@ -16545,7 +16624,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       } catch (e) { if (services.anthropic) services.anthropic.spend_error = String(e.message); }
       // OpenAI costs (USD)
       try {
-        let oKey = await KV.get(env, "secret:openai_admin");
+        let oKey = await getSecret(env, "openai_admin");
         if (oKey && oKey.startsWith("{")) { try { oKey = JSON.parse(oKey).api_key; } catch {} }
         if (oKey && services.openai) {
           const nowD = new Date();
@@ -16587,7 +16666,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
 
       // Anthropic cost_report - grouped by description + model for maximum granularity, raw.
       try {
-        const aKey = await KV.get(env, "secret:anthropic_admin");
+        const aKey = await getSecret(env, "anthropic_admin");
         if (!aKey) { out.anthropic = { error: "secret:anthropic_admin not set" }; }
         else {
           const u = "https://api.anthropic.com/v1/organizations/cost_report"
@@ -16603,7 +16682,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
 
       // Anthropic usage_report (token counts) - the per-token detail, raw.
       try {
-        const aKey = await KV.get(env, "secret:anthropic_admin");
+        const aKey = await getSecret(env, "anthropic_admin");
         if (aKey) {
           const u = "https://api.anthropic.com/v1/organizations/usage_report/messages"
             + "?starting_at=" + encodeURIComponent(monthStart)
@@ -16618,7 +16697,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
 
       // OpenAI costs - raw.
       try {
-        let oKey = await KV.get(env, "secret:openai_admin");
+        let oKey = await getSecret(env, "openai_admin");
         if (oKey && oKey.startsWith("{")) { try { oKey = JSON.parse(oKey).api_key; } catch {} }
         if (!oKey) { out.openai = { error: "secret:openai_admin not set" }; }
         else {
@@ -16634,7 +16713,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
 
       // OpenAI usage (tokens) - raw.
       try {
-        let oKey = await KV.get(env, "secret:openai_admin");
+        let oKey = await getSecret(env, "openai_admin");
         if (oKey && oKey.startsWith("{")) { try { oKey = JSON.parse(oKey).api_key; } catch {} }
         if (oKey) {
           const start = Math.floor(new Date(monthStart).getTime() / 1000);
@@ -16654,8 +16733,8 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       // This is the foundation of the licensable call system: phone lines (+ provision dates),
       // call logs (in/out/duration/status), recordings, transcriptions, messages, usage.
       if (!isOp) return { cmd: "TWILIO_INTEL", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      const sid = await env.AURA_KV.get("secret:twilio_account_sid").catch(() => null);
-      const tok = await env.AURA_KV.get("secret:twilio_auth_token").catch(() => null);
+      const sid = await getSecret(env, "twilio_account_sid");
+      const tok = await getSecret(env, "twilio_auth_token");
       if (!sid || !tok) return { cmd: "TWILIO_INTEL", payload: { ok: false, error: "Missing Twilio creds" } };
       const auth = "Basic " + btoa(sid + ":" + tok);
       const base = "https://api.twilio.com/2010-04-01/Accounts/" + sid;
@@ -16701,7 +16780,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       const total = Math.min(parseInt(args[0] || "500", 10) || 500, 3000);
       const wave = Math.min(parseInt(args[1] || "100", 10) || 100, 250);
       const scenario = (args[2] || "fanout").toLowerCase(); // fanout = many entities, hot = one broadcaster
-      const opToken = await KV.get(env, "secret:operator_token").catch(() => null) || env.AURA_OPERATOR_TOKEN || "";
+      const opToken = await getSecret(env, "operator_token") || env.AURA_OPERATOR_TOKEN || "";
       if (!opToken) return { cmd: "LOADGEN", payload: { ok: false, error: "No operator token available in secret:operator_token for self-calls." } };
       const endpoint = "https://auras.guide/chat";
       const lat = [];
@@ -17192,7 +17271,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       if (!isOp) return { cmd: "DOMAIN_DIAGNOSE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const dDomain = (args[0] || "").toLowerCase().trim();
       if (!dDomain) return { cmd: "DOMAIN_DIAGNOSE", payload: { ok: false, error: "Usage: DOMAIN_DIAGNOSE <domain>" } };
-      const dToken = env.CF_API_TOKEN || await env.AURA_KV.get("secret:cf_api_token").catch(() => null);
+      const dToken = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
       const report = { domain: dDomain };
       try {
         const zr = await (await fetch(`https://api.cloudflare.com/client/v4/zones?name=${dDomain}`, { headers: { "Authorization": "Bearer " + dToken } })).json();
@@ -18417,7 +18496,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       const query = parts.slice(1).join(" ");
       if (!query) return { cmd: "FETCH_PLACES", payload: { ok: false, error: "Usage: FETCH_PLACES <what> in <city>" } };
       try {
-        const gmKey = await env.AURA_KV.get("secret:google_maps").catch(() => null);
+        const gmKey = await getSecret(env, "google_maps");
         if (!gmKey) return { cmd: "FETCH_PLACES", payload: { ok: false, error: "No Google Maps key in KV at secret:google_maps" } };
         const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&key=${gmKey}`;
         const r = await fetch(url);
@@ -18932,7 +19011,7 @@ function stripAgentLeak(text) {
 
 async function fastReply(env, { system, user, maxTokens = 700, model } = {}) {
   try {
-    const apiKey = env.ANTHROPIC_API_KEY || await KV.get(env, "secret:anthropic");
+    const apiKey = env.ANTHROPIC_API_KEY || await getSecret(env, "anthropic");
     if (!apiKey) return null;
     const m = model || (await env.AURA_KV.get("config:fast:model").catch(() => null)) || "claude-haiku-4-5-20251001";
     // v4.9.504: THE FUNNEL - conversational arm. fastReply is the prose path (founder chat, unknown-asset,
@@ -18952,7 +19031,7 @@ async function fastReply(env, { system, user, maxTokens = 700, model } = {}) {
 }
 async function reasonThroughLoop(env, opts) {
   opts = opts || {};
-  const apiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+  const apiKey = await getSecret(env, "anthropic");
   if (!apiKey) return { ok: false, error: "Brain not configured (secret:anthropic missing)" };
   const model = opts.model || (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
   // ONE central reasoning cap. Generous by default so real reasoning always FINISHES, firm so no single
@@ -19300,14 +19379,14 @@ async function defaultModel(env) {
 async function callOneBrain(env, brain, system, user, maxTokens) {
   try {
     if (brain === "claude") {
-      const k = await KV.get(env, "secret:anthropic"); if (!k) return null;
+      const k = await getSecret(env, "anthropic"); if (!k) return null;
       const d = await callAnthropic(k, { model: await defaultModel(env), max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] });
       if (!d || !d.ok) return null;
       const t = (d.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
       return t ? { brain: "claude", label: "Claude", text: t } : null;
     }
     if (brain === "gpt") {
-      let k = await KV.get(env, "secret:openai"); if (k && k.startsWith("{")) { try { k = JSON.parse(k).api_key; } catch {} }
+      let k = await getSecret(env, "openai"); if (k && k.startsWith("{")) { try { k = JSON.parse(k).api_key; } catch {} }
       if (!k) return null;
       const r = await pfetch(env, "openai", "core:chat", "https://api.openai.com/v1/chat/completions", { method: "POST", headers: { "Authorization": "Bearer " + k, "Content-Type": "application/json" }, body: JSON.stringify({ model: "gpt-4o", max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content: user }] }) });
       if (!r.ok) return null; const j = await r.json(); const t = j?.choices?.[0]?.message?.content;
@@ -19315,14 +19394,14 @@ async function callOneBrain(env, brain, system, user, maxTokens) {
       return t ? { brain: "gpt", label: "GPT (OpenAI)", text: t.trim() } : null;
     }
     if (brain === "grok") {
-      const k = await KV.get(env, "secret:grok_api_key"); if (!k) return null;
+      const k = await getSecret(env, "grok_api_key"); if (!k) return null;
       const r = await pfetch(env, "xai", "core:chat", "https://api.x.ai/v1/chat/completions", { method: "POST", headers: { "Authorization": "Bearer " + k, "Content-Type": "application/json" }, body: JSON.stringify({ model: "grok-4.3", max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content: user }] }) });
       if (!r.ok) return null; const j = await r.json(); const t = j?.choices?.[0]?.message?.content;
       if (j?.usage) await recordCost("grok-4.3", { input_tokens: j.usage.prompt_tokens || 0, output_tokens: j.usage.completion_tokens || 0 }, "fan");
       return t ? { brain: "grok", label: "Grok (xAI)", text: t.trim() } : null;
     }
     if (brain === "llama") {
-      const k = await KV.get(env, "secret:groq_api_key"); if (!k) return null;
+      const k = await getSecret(env, "groq_api_key"); if (!k) return null;
       const r = await pfetch(env, "groq", "core:chat", "https://api.groq.com/openai/v1/chat/completions", { method: "POST", headers: { "Authorization": "Bearer " + k, "Content-Type": "application/json" }, body: JSON.stringify({ model: "llama-3.3-70b-versatile", max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content: user }] }) });
       if (!r.ok) return null; const j = await r.json(); const t = j?.choices?.[0]?.message?.content;
       if (j?.usage) await recordCost("llama-3.3-70b", { input_tokens: j.usage.prompt_tokens || 0, output_tokens: j.usage.completion_tokens || 0 }, "fan");
@@ -19341,7 +19420,7 @@ async function fanReason(env, { task, brains, maxTokens = 700 } = {}) {
   // 2) SYNTHESIZE: Aura's OWN reasoning reads across all answers and produces one grounded synthesis.
   //    She stays the conductor - the synthesis is her judgment across the spread, not one brain's answer.
   const spread = results.map(r => `[${r.label}]\n${r.text}`).join("\n\n---\n\n");
-  const synthKey = await KV.get(env, "secret:anthropic");
+  const synthKey = await getSecret(env, "anthropic");
   let synthesis = null, synthError = null;
   if (synthKey) {
     const answeredLabels = results.map(r => r.label).join(", ");
@@ -19504,7 +19583,7 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
   const _timingRequested = typeof message === "string" && /!!timing/i.test(message);
   if (_timingRequested && typeof message === "string") message = message.replace(/!!timing/gi, "").trim();
 
-  const apiKey = env.ANTHROPIC_API_KEY || await KV.get(env, "secret:anthropic");
+  const apiKey = env.ANTHROPIC_API_KEY || await getSecret(env, "anthropic");
   if (!apiKey) return "Anthropic API key not configured.";
 
   const memKey = `memory:${sessionId}`;
@@ -20037,7 +20116,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
   // 2. OpenAI â€” full agent loop (primary working brain; gets the same READ/RUN/FETCH cycle)
   if (!raw) {
     try {
-      const openaiKey = env.OPENAI_API_KEY || await KV.get(env, "secret:openai");
+      const openaiKey = env.OPENAI_API_KEY || await getSecret(env, "openai");
       let openaiApiKey = openaiKey;
       if (openaiKey && openaiKey.startsWith("{")) { try { openaiApiKey = JSON.parse(openaiKey).api_key; } catch {} }
       if (openaiApiKey) {
@@ -20099,7 +20178,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
   // 3. Fallback: xAI Grok
   if (!raw) {
     try {
-      const grokKey = env.GROK_API_KEY || await KV.get(env, "secret:grok_api_key");
+      const grokKey = env.GROK_API_KEY || await getSecret(env, "grok_api_key");
       if (grokKey) {
         const grokRes = await pfetch(env, "xai", "core:chat", "https://api.x.ai/v1/chat/completions", {
           method: "POST",
@@ -20279,8 +20358,8 @@ async function checkWorkerHealth(binding, name) {
 
 async function runHealthChecks(env) {
   const results = [];
-  const opToken = await env.AURA_KV.get("secret:aura_operator_token").catch(() => null)
-    || await env.AURA_KV.get("secret:operator_token").catch(() => null) || "";
+  const opToken = await getSecret(env, "aura_operator_token")
+    || await getSecret(env, "operator_token") || "";
 
   const workers = [
     { name: "aura-core-v2", binding: env.AURA_OPS ? "self" : null },
@@ -20397,7 +20476,7 @@ async function getSystemStatus(env) {
     patch_queue: patchStatus,
     pending_approval: pendingPatch ? { worker: pendingPatch, waiting: true } : null,
     autonomy: {
-      cf_deploy_ready: !!(env.CF_API_TOKEN || await env.AURA_KV.get("secret:cf_api_token").catch(() => null)),
+      cf_deploy_ready: !!(env.CF_API_TOKEN || await getSecret(env, "cf_api_token")),
       rollback_ready: workerStatus.some(w => w.snapshot_ts !== null)
     }
   };
@@ -20406,8 +20485,8 @@ async function getSystemStatus(env) {
 
 // â”€â”€â”€ Self-Tail: Aura reads her own CF logs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function getSelfLogs(env, options = {}) {
-  const cfToken = env.CF_API_TOKEN || await env.AURA_KV.get("secret:cf_api_token").catch(() => null);
-  const cfAccount = await env.AURA_KV.get("secret:cf_account_id").catch(() => null) || "3db0de2c6fce92757e2c4e4f83d7eb16";
+  const cfToken = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
+  const cfAccount = await getSecret(env, "cf_account_id") || "3db0de2c6fce92757e2c4e4f83d7eb16";
   if (!cfToken) return { ok: false, error: "No CF token available" };
 
   const workers = options.worker ? [options.worker] : ["aura-core-v2", "aura-ops", "aura-host", "aura-comms"];
@@ -20505,9 +20584,9 @@ async function logError(env, worker, error, context = {}) {
 // collects responses, detects agreement/disagreement, and synthesizes output.
 
 async function multiModelConsensus(question, env) {
-  const anthropicKey = env.ANTHROPIC_API_KEY || await env.AURA_KV.get("secret:anthropic").catch(() => null);
-  const openaiKey = env.OPENAI_API_KEY || await env.AURA_KV.get("secret:openai").catch(() => null);
-  const grokKey = env.GROK_API_KEY || await env.AURA_KV.get("secret:grok_api_key").catch(() => null);
+  const anthropicKey = env.ANTHROPIC_API_KEY || await getSecret(env, "anthropic");
+  const openaiKey = env.OPENAI_API_KEY || await getSecret(env, "openai");
+  const grokKey = env.GROK_API_KEY || await getSecret(env, "grok_api_key");
 
   const sysPrompt = `You are an expert analyst. Answer the following question concisely and directly. Be specific. Do not hedge unnecessarily.`;
 
@@ -20603,7 +20682,7 @@ async function multiModelConsensus(question, env) {
 // Operator sessions (Bearer token auth) bypass session token checks.
 
 async function signSessionToken(userId, env) {
-  const secret = env.SESSION_SECRET || await env.AURA_KV.get("secret:session_secret").catch(() => null);
+  const secret = env.SESSION_SECRET || await getSecret(env, "session_secret");
   if (!secret) return `entity:${userId}`; // fallback if no secret configured
   const timestamp = Date.now().toString();
   const message = `${userId}|${timestamp}`;
@@ -20634,7 +20713,7 @@ async function verifySessionToken(token, env) {
   if (parts.length !== 3) return { valid: false, userId: null };
 
   const [userId, timestamp, providedSig] = parts;
-  const secret = env.SESSION_SECRET || await env.AURA_KV.get("secret:session_secret").catch(() => null);
+  const secret = env.SESSION_SECRET || await getSecret(env, "session_secret");
   if (!secret) return { valid: true, userId, legacy: true }; // no secret = legacy mode
 
   // Check expiry (24 hours)
@@ -20701,7 +20780,7 @@ async function checkRateLimit(request, env, isOp) {
 // Aura's treasury intelligence layer. Read-only by default.
 
 async function getMercuryAccounts(env) {
-  const key = env.MERCURY_API_KEY || await env.AURA_KV.get("secret:mercury_api_key").catch(() => null);
+  const key = env.MERCURY_API_KEY || await getSecret(env, "mercury_api_key");
   if (!key) return { ok: false, error: "Mercury API key not configured" };
   const res = await fetch("https://api.mercury.com/api/v1/accounts", {
     headers: { "Authorization": "Bearer " + key }
@@ -20712,7 +20791,7 @@ async function getMercuryAccounts(env) {
 }
 
 async function getMercuryTransactions(env, accountId, limit = 10) {
-  const key = env.MERCURY_API_KEY || await env.AURA_KV.get("secret:mercury_api_key").catch(() => null);
+  const key = env.MERCURY_API_KEY || await getSecret(env, "mercury_api_key");
   if (!key) return { ok: false, error: "Mercury API key not configured" };
   const id = accountId || await env.AURA_KV.get("config:mercury:checking_id").catch(() => null);
   if (!id) return { ok: false, error: "No Mercury account ID configured" };
@@ -20742,7 +20821,7 @@ async function getMercuryBalance(env) {
 
 // â”€â”€â”€ Stripe + OrapPay Integration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function getStripeKey(env) {
-  return env.STRIPE_SECRET_KEY || await env.AURA_KV.get("secret:stripe").catch(() => null);
+  return env.STRIPE_SECRET_KEY || await getSecret(env, "stripe");
 }
 
 async function stripeRequest(path, method, body, env) {
@@ -20816,7 +20895,7 @@ async function createStripeCheckout(amount, currency, product, successUrl, cance
 // aura-host serves them. No HTML ever lives in this file.
 
 async function llmGeneratePage(prompt, env) {
-  const apiKey = env.ANTHROPIC_API_KEY || await env.AURA_KV.get("secret:anthropic").catch(() => null);
+  const apiKey = env.ANTHROPIC_API_KEY || await getSecret(env, "anthropic");
   if (!apiKey) return null;
   const lgpModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
   const res = await brainFetch("https://api.anthropic.com/v1/messages", {
@@ -20850,17 +20929,17 @@ async function deployPageToKV(domain, path, html, env) {
 // lookup is needed - but we still read them from the zone response rather than hardcoding, because a
 // hardcoded nameserver that silently goes stale takes domains offline.
 async function _ssHeaders(env) {
-  const key = env.SPACESHIP_API_KEY || await env.AURA_KV.get("secret:spaceship_api_key").catch(() => null);
-  const sec = env.SPACESHIP_API_SECRET || await env.AURA_KV.get("secret:spaceship_api_secret").catch(() => null);
+  const key = env.SPACESHIP_API_KEY || await getSecret(env, "spaceship_api_key");
+  const sec = env.SPACESHIP_API_SECRET || await getSecret(env, "spaceship_api_secret");
   if (!key || !sec) throw new Error("no Spaceship credentials (SPACESHIP_API_KEY / SPACESHIP_API_SECRET)");
   return { "X-Api-Key": key, "X-Api-Secret": sec, "Content-Type": "application/json" };
 }
 
 async function spaceshipSyncOne(domain, env) {
   const out = { domain, steps: [] };
-  const cfToken = env.CF_API_TOKEN || await env.AURA_KV.get("secret:cf_api_token").catch(() => null);
+  const cfToken = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
   if (!cfToken) return { ok: false, ...out, error: "no CF token" };
-  const acct = (await env.AURA_KV.get("secret:cf_account_id").catch(() => null)) || "3db0de2c6fce92757e2c4e4f83d7eb16";
+  const acct = (await getSecret(env, "cf_account_id")) || "3db0de2c6fce92757e2c4e4f83d7eb16";
   const cfh = { "Authorization": "Bearer " + cfToken, "Content-Type": "application/json" };
 
   // 1. Zone: create, or reuse if it already exists. "Already exists" is a SUCCESS path here - re-running
@@ -20934,7 +21013,7 @@ async function spaceshipSyncAll(env, start, limit) {
 }
 
 async function launchDomain(domain, description, theme, env) {
-  const cfToken = env.CF_API_TOKEN || await env.AURA_KV.get("secret:cf_api_token").catch(() => null);
+  const cfToken = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
   const results = { domain, steps: [] };
 
   // Step 1: Find CF zone
@@ -21176,7 +21255,7 @@ async function watchA2P(env) {
 async function discoverPrices(env) {
   const out = { at: new Date().toISOString(), source: "xai GET /v1/models", models: {}, changed: [] };
   try {
-    const key = env.XAI_API_KEY || await KV.get(env, "secret:grok_api_key") || await KV.get(env, "secret:xai");
+    const key = env.XAI_API_KEY || await getSecret(env, "grok_api_key") || await getSecret(env, "xai");
     if (!key) return { ok: false, error: "no xAI key" };
     // ══ FREE CALLS ARE STILL REQUESTS (2026-07-23) ═══════════════════════════════════════════
   // /v1/models consumes no tokens, so it never looked like something a COST meter should count. But
@@ -21893,7 +21972,7 @@ async function auraPlan(env, rest) {
   const r = await brainFetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "content-type": "application/json", "anthropic-version": "2023-06-01",
-               "x-api-key": await KV.get(env, "secret:anthropic") },
+               "x-api-key": await getSecret(env, "anthropic") },
     // The cheap rung, named the way every other brainFetch call in this file names it. cheapBrainModel()
     // was a helper I invented that does not exist - the fifth time this session a name was written before
     // it was checked. Read the neighbours; do not guess the helper.
@@ -21994,7 +22073,7 @@ async function verifyAgainstReality(env) {
   // The most external check available. Needs Workers:Read - if the token lacks it, say so plainly
   // rather than falling back to her source and calling that an answer.
   try {
-    const tok = env.CF_API_TOKEN || await KV.get(env, "secret:cf_api_token");
+    const tok = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
     const acct = await KV.get(env, "config:cf:account_id") || "3db0de2c6fce92757e2c4e4f83d7eb16";
     if (tok) {
       const r = await fetch("https://api.cloudflare.com/client/v4/accounts/" + acct + "/workers/scripts",
@@ -23540,7 +23619,7 @@ async function auraSubmitVideo(prompt, env, opts = {}) {
     }
   } catch {}
 
-  const key = env.XAI_API_KEY || await env.AURA_KV.get("secret:xai").catch(() => null);
+  const key = env.XAI_API_KEY || await getSecret(env, "xai");
   if (!key) throw new Error("no xAI key");
   const body = { model, prompt: _styled.slice(0, 2000), duration,
                  aspect_ratio: opts.aspect_ratio || "16:9", resolution: opts.resolution || resolved.resolution };
@@ -23585,7 +23664,7 @@ async function auraSubmitVideo(prompt, env, opts = {}) {
 // async systems quietly rot).
 async function pollVideoJobs(env) {
   try {
-    const key = env.XAI_API_KEY || await env.AURA_KV.get("secret:xai").catch(() => null);
+    const key = env.XAI_API_KEY || await getSecret(env, "xai");
     if (!key) return;
     const list = await env.AURA_KV.list({ prefix: "vidjob:" });
     for (const k of (list?.keys || []).slice(0, 10)) {
@@ -23697,7 +23776,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       else if (out instanceof ArrayBuffer) { b64 = btoa(String.fromCharCode(...new Uint8Array(out))); }
     } else if (/^(gpt-image|dall-e)/i.test(model)) {
       // OpenAI - a SELECTABLE option the margin layer can name, never the hardwired default.
-      let key = env.OPENAI_API_KEY || await env.AURA_KV.get("secret:openai").catch(() => null);
+      let key = env.OPENAI_API_KEY || await getSecret(env, "openai");
       if (key && key.startsWith("{")) { try { key = JSON.parse(key).api_key; } catch {} }
       if (!key) throw new Error("no OpenAI key");
       const r = await pfetch(env, "openai", "core:image", "https://api.openai.com/v1/images/generations", {
@@ -23714,7 +23793,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
     } else if (/^grok-imagine/i.test(model)) {
       // xAI Grok image (Aurora). OpenAI-compatible /images/generations at api.x.ai, key XAI_API_KEY.
       // xAI does NOT support quality/size/style on images - sending them errors - so we omit them here.
-      let key = env.XAI_API_KEY || await env.AURA_KV.get("secret:xai").catch(() => null);
+      let key = env.XAI_API_KEY || await getSecret(env, "xai");
       if (!key) throw new Error("no xAI key");
       const r = await pfetch(env, "xai", "core:image", "https://api.x.ai/v1/images/generations", {
         method: "POST",
@@ -23731,7 +23810,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       // Google Gemini image (Nano Banana). NOT /images/generations - it uses generateContent with
       // responseModalities:["IMAGE"], and the image returns as inline base64 in the response PARTS, not a
       // URL. Endpoint carries the model in the path + ?key=. Completely different shape from OpenAI/Grok.
-      let key = env.GOOGLE_API_KEY || await env.AURA_KV.get("secret:google").catch(() => null);
+      let key = env.GOOGLE_API_KEY || await getSecret(env, "google");
       if (!key) throw new Error("no Google key");
       const r = await pfetch(env, "google", "core:gemini", "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + key, {
         method: "POST",
@@ -23852,7 +23931,7 @@ async function watchResources(env) {
     } catch {}
     // Anthropic (the brain) â€” a failed ping with credit-balance error is critical
     try {
-      const ak = await KV.get(env, "secret:anthropic");
+      const ak = await getSecret(env, "anthropic");
       if (ak) {
         const r = await brainFetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": ak, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 1, messages: [{ role: "user", content: "hi" }] }) }, env, "healthcheck");
         if (!r.ok) { const e = await r.json().catch(()=>({})); const msg = e?.error?.message || ""; if (/credit balance/i.test(msg)) concerns.push({ provider: "anthropic", level: "critical", note: "brain credits low/empty" }); }
@@ -23860,7 +23939,7 @@ async function watchResources(env) {
     } catch {}
     // OpenAI key validity
     try {
-      let k = env.OPENAI_API_KEY || await KV.get(env, "secret:openai"); if (k && k.startsWith("{")) { try { k = JSON.parse(k).api_key; } catch {} }
+      let k = env.OPENAI_API_KEY || await getSecret(env, "openai"); if (k && k.startsWith("{")) { try { k = JSON.parse(k).api_key; } catch {} }
       if (k) { const r = await pfetch(env, "openai", "healthcheck", "https://api.openai.com/v1/models", { headers: { "Authorization": "Bearer " + k } }); if (!r.ok && r.status === 429) concerns.push({ provider: "openai", level: "critical", note: "rate/billing limit" }); }
     } catch {}
 
@@ -24004,7 +24083,7 @@ async function captureAisHistory(env) {
     const wl = await env.AURA_KV.get("ais:watchlist").catch(() => null);
     const regions = wl ? JSON.parse(wl) : [];
     if (!Array.isArray(regions) || !regions.length) return;
-    const vkey = await env.AURA_KV.get("secret:vesselapi").catch(() => null);
+    const vkey = await getSecret(env, "vesselapi");
     if (!vkey) return;
     const BOXES = await loadRegions(env, "ais", {
       hormuz: { latBottom: 24.4, latTop: 27.2, lonLeft: 55.0, lonRight: 57.8 },
@@ -24479,7 +24558,7 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
     // -> exchange code for a long-lived user token, pull the Pages + their tokens, store them. From
     // then on Aura operates the Pages via the Graph API (durable, no cookies). app id/secret = KV data.
     if (url.pathname === "/auth/facebook/start") {
-      const appId = await env.AURA_KV.get("secret:fb_app_id").catch(() => null);
+      const appId = await getSecret(env, "fb_app_id");
       if (!appId) return new Response("Facebook app not configured (secret:fb_app_id)", { status: 500 });
       const ver = (await env.AURA_KV.get("config:fb:graph_version").catch(() => null)) || "v21.0";
       const redirectUri = `https://${url.hostname}/auth/facebook/callback`;
@@ -24503,8 +24582,8 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       let stateRec = null; try { const r = await env.AURA_KV.get(`oauth:state:${state}`); if (r) stateRec = JSON.parse(r); } catch {}
       if (!stateRec) return new Response("Invalid or expired connect attempt. Please try again.", { status: 400 });
       await env.AURA_KV.delete(`oauth:state:${state}`).catch(() => {});
-      const appId = await env.AURA_KV.get("secret:fb_app_id").catch(() => null);
-      const appSecret = await env.AURA_KV.get("secret:fb_app_secret").catch(() => null);
+      const appId = await getSecret(env, "fb_app_id");
+      const appSecret = await getSecret(env, "fb_app_secret");
       const ver = (await env.AURA_KV.get("config:fb:graph_version").catch(() => null)) || "v21.0";
       const redirectUri = `https://${url.hostname}/auth/facebook/callback`;
       let tok;
@@ -24552,7 +24631,7 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
     // and land them on their PTA. This is how every citizen authenticates. Generic engine; the
     // client_id/secret are DATA in KV.
     if (url.pathname === "/auth/google/start") {
-      const gcid = await env.AURA_KV.get("secret:google_client_id").catch(() => null);
+      const gcid = await getSecret(env, "google_client_id");
       if (!gcid) return new Response("Google sign-in not configured", { status: 500 });
       const redirectUri = `https://${url.hostname}/auth/google/callback`;
       const state = Array.from(crypto.getRandomValues(new Uint8Array(12))).map(b => b.toString(16).padStart(2, "0")).join("");
@@ -24576,8 +24655,8 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       let stateRec = null; try { const r = await env.AURA_KV.get(`oauth:state:${state}`); if (r) stateRec = JSON.parse(r); } catch {}
       if (!stateRec) return new Response("Invalid or expired sign-in attempt. Please try again.", { status: 400 });
       await env.AURA_KV.delete(`oauth:state:${state}`).catch(() => {});
-      const gcid = await env.AURA_KV.get("secret:google_client_id").catch(() => null);
-      const gsec = await env.AURA_KV.get("secret:google_client_secret").catch(() => null);
+      const gcid = await getSecret(env, "google_client_id");
+      const gsec = await getSecret(env, "google_client_secret");
       const redirectUri = `https://${url.hostname}/auth/google/callback`;
       // exchange the code for tokens
       let tokenData;
@@ -25176,7 +25255,7 @@ function openAlbum(idx){
         if (!layout) {
           // Unknown type -> the Canvas brain synthesizes a screen, then caches it.
           try {
-            const apiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+            const apiKey = await getSecret(env, "anthropic");
             if (apiKey) {
               const sys = await loadPrompt(env, "adaptive_canvas", "You are Aura's Adaptive Canvas engine. Given a business type, decide the SHAPE of that business's home screen: which rooms (left-nav sections) it gets and in what order, tailored to how that business actually operates. Return ONLY a JSON object, no prose, no code fences: {\"type\":\"<slug>\",\"label\":\"<Title>\",\"greeting\":\"<short on-brand greeting>\",\"rooms\":[{\"key\":\"<slug>\",\"label\":\"<Title>\",\"kind\":\"<kind>\"}]}. Use 5 to 8 rooms. ALWAYS include a first room {key:home,label:Home,kind:chat} and a {key:money,label:Money,kind:money} room. Choose each room's kind from EXACTLY this set: chat, storefront, inventory, orders, reservations, menu, foh, boh, hours, reviews, customers, gallery, delivery, commerce, money. Pick the rooms a real owner of this business would want as the operating surface.");
               const d = await callAnthropic(apiKey, { model: "claude-sonnet-4-5", max_tokens: 700, system: sys, messages: [{ role: "user", content: "Business type: " + type }] });
@@ -25310,8 +25389,8 @@ function openAlbum(idx){
     // SecureSpend analysis. They cannot touch anything else in Aura.
     const _pHeaders = { "content-type": "application/json", "access-control-allow-origin": "*" };
     const _plaidCreds = async () => ({
-      cid: await env.AURA_KV.get("secret:plaid_client_id").catch(() => null),
-      sec: await env.AURA_KV.get("secret:plaid_secret").catch(() => null),
+      cid: await getSecret(env, "plaid_client_id"),
+      sec: await getSecret(env, "plaid_secret"),
       penv: (await env.AURA_KV.get("config:plaid:env").catch(() => null)) || "sandbox"
     });
     const _plaidBase = (penv) => penv === "production" ? "https://production.plaid.com" : "https://sandbox.plaid.com";
@@ -25730,8 +25809,8 @@ function openAlbum(idx){
           const recs = (p.recordings && p.recordings.raw && p.recordings.raw.recordings) || [];
           const need = Array.from(new Set(recs.map((r) => r.call_sid).filter((s) => s && !have.has(s))));
           if (need.length) {
-            const tsid = await env.AURA_KV.get("secret:twilio_account_sid").catch(() => null);
-            const ttok = await env.AURA_KV.get("secret:twilio_auth_token").catch(() => null);
+            const tsid = await getSecret(env, "twilio_account_sid");
+            const ttok = await getSecret(env, "twilio_auth_token");
             if (tsid && ttok) {
               const tAuth = "Basic " + btoa(tsid + ":" + ttok);
               const fetched = await Promise.all(need.map((cs) =>
@@ -25776,10 +25855,10 @@ function openAlbum(idx){
         email = url.searchParams.get("email") || "";
       }
       if (amount < 50) amount = 1000;
-      let stripeKey = await env.AURA_KV.get("secret:stripe").catch(() => null);
+      let stripeKey = await getSecret(env, "stripe");
       if (!stripeKey) return new Response(JSON.stringify({ ok: false, error: "Stripe not configured" }), { status: 500, headers: { "content-type": "application/json", ...cors } });
       if (stripeKey.startsWith("{")) { try { const j = JSON.parse(stripeKey); stripeKey = j.secret_key || j.key || stripeKey; } catch {} }
-      let pubKey = await env.AURA_KV.get("secret:stripe_pub").catch(() => null);
+      let pubKey = await getSecret(env, "stripe_pub");
       if (pubKey && pubKey.startsWith("{")) { try { const j = JSON.parse(pubKey); pubKey = j.publishable_key || j.key || pubKey; } catch {} }
       if (!pubKey) return new Response(JSON.stringify({ ok: false, error: "Publishable key missing. Set KV secret:stripe_pub to your Stripe pk_live key." }), { status: 500, headers: { "content-type": "application/json", ...cors } });
       const params = new URLSearchParams();
@@ -25856,7 +25935,7 @@ function openAlbum(idx){
       }
       const convo = history.slice(-18).map(m => ({ role: m.role, content: m.content }));
       convo.push({ role: "user", content: message });
-      const apiKey = await env.AURA_KV.get("secret:anthropic").catch(() => null);
+      const apiKey = await getSecret(env, "anthropic");
       if (!apiKey) return new Response(JSON.stringify({ ok: false, error: "Brain not configured" }), { status: 500, headers: { "content-type": "application/json", ...cors } });
       try {
         const data = await callAnthropic(apiKey, { model: "claude-sonnet-4-5", max_tokens: 1024, system: systemPrompt, messages: convo });
@@ -25946,7 +26025,7 @@ function openAlbum(idx){
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: _vc });
       const _vh = { "content-type": "application/json", ..._vc };
       const _auth = request.headers.get("authorization") || "";
-      const _tok = env.AURA_OPERATOR_TOKEN || await env.AURA_KV.get("secret:aura_operator_token").catch(() => null);
+      const _tok = env.AURA_OPERATOR_TOKEN || await getSecret(env, "aura_operator_token");
       const _isOp = !!_tok && _auth === "Bearer " + _tok;
       if (!_isOp) return new Response(JSON.stringify({ ok: false, error: "OPERATOR_REQUIRED" }), { status: 401, headers: _vh });
       let q = url.searchParams.get("q") || "";
@@ -26080,7 +26159,7 @@ function openAlbum(idx){
       // Ask the brain for a short structured read-back of the business from what we scraped.
       let understood = { name: domain, summary: context || "", vibe: "" };
       try {
-        let aiKey = env.OPENAI_API_KEY || await env.AURA_KV.get("secret:openai").catch(() => null);
+        let aiKey = env.OPENAI_API_KEY || await getSecret(env, "openai");
         if (aiKey && aiKey.startsWith("{")) { try { aiKey = JSON.parse(aiKey).api_key; } catch {} }
         if (aiKey && context) {
           const cr = await pfetch(env, "openai", "core:chat", "https://api.openai.com/v1/chat/completions", {
@@ -26221,7 +26300,7 @@ function openAlbum(idx){
     if (url.pathname === "/logs") {
       // Operator-only endpoint â€” Aura reads her own logs
       const authHeader = request.headers.get("authorization") || "";
-      const opToken = env.OPERATOR_TOKEN || await env.AURA_KV.get("secret:aura_operator_token").catch(() => null) || "";
+      const opToken = env.OPERATOR_TOKEN || await getSecret(env, "aura_operator_token") || "";
       if (!authHeader.includes(opToken)) {
         return new Response(JSON.stringify({ ok: false, error: "OPERATOR_REQUIRED" }), { status: 401, headers: { "Content-Type": "application/json" } });
       }

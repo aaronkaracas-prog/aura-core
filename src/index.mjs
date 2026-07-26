@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.739-2026-07-26";
+const BUILD = "aura-core-v4.9.740-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -11745,7 +11745,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               feed: (i.metadata && i.metadata.feed) || null,
               at: (i.metadata && i.metadata.at) || null,
             }));
-            const bad = rows.filter((r) => r.origin !== "external" && r.origin !== "human");
+            const bad = rows.filter((r) => r.origin !== "external" && r.origin !== "human" && r.origin !== "self_published");
+            const laundered = rows.filter((r) => r.origin === "self_published");
             return { cmd: "KNOWLEDGE", payload: { ok: true,
               store: "AI Search built-in storage on instance `aura-feeds` - where facts live since v4.9.734",
               count: rows.length, items: rows.slice(0, 40),
@@ -11753,6 +11754,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 ? "every item carries origin external (or the older `human`, same meaning)"
                 : bad.length + " item(s) without an origin tag: " + bad.map((r) => r.key).join(", ")
                   + " - an untagged item cannot later be separated from Aura's own output",
+              self_published: laundered.length === 0
+                ? "none - no ingested document cites a domain Aura owns"
+                : laundered.length + " document(s) tagged origin=self_published: " + laundered.map((r) => r.key).join(", ")
+                  + " - these cite domains Aura owns, so they may be her own output returning through an "
+                  + "external channel. Do not treat them as independent evidence.",
               membrane: "INVARIANT: nothing Aura generates may enter this store. Facts are written by "
                 + "ingestFeedResult only. Reflections live in aura-think's Session archive and aura-think "
                 + "holds no AI_SEARCH binding, so the separation is enforced by wrangler config rather "
@@ -22316,6 +22322,61 @@ function _distillToMarkdown(feedId, command, source, iso, payload) {
   return lines.join("\n");
 }
 
+// ══ EPISTEMIC LAUNDERING — THE BOUNDARY DEFEATED THROUGH THE WORLD (v4.9.740) ════════════════════
+//
+// Named by the Council and live TODAY, not hypothetical. Aura publishes to ~357 domains she owns.
+// WEB_SEARCH goes out to Tavily. If anything she published gets indexed and comes back through a
+// search, her own output re-enters the facts store tagged origin=external - and the provenance
+// boundary is defeated not by going AROUND it but by going THROUGH the world. Every downstream
+// guarantee (the membrane, the origin filter, the reflection separation) assumes external means
+// "not authored here", and a self-published page laundered through a search engine breaks exactly
+// that assumption while satisfying every check.
+//
+// CONSERVATIVE BY DESIGN: if ANY source URL in a payload belongs to his estate, the WHOLE document
+// is tagged self_published. Per-article granularity is not available at file level, and a document
+// containing a mix is not clean external evidence. Better to under-trust a real fact than to let one
+// laundered one in - the whole point of the tag is that it can be relied on.
+// Domains come from config:domains:all, which is the same source WORLD_MAP reads and is deliberately
+// NOT in _GUARDED_KEYS: it is an inventory that changes as he buys domains, not a steering key.
+let _selfHostsCache = { at: 0, set: null };
+async function _selfOwnedHosts(env) {
+  try {
+    if (_selfHostsCache.set && Date.now() - _selfHostsCache.at < 10 * 60 * 1000) return _selfHostsCache.set;
+    const raw = await env.AURA_KV.get("config:domains:all").catch(() => null);
+    let list = [];
+    if (raw) {
+      try { const p = JSON.parse(raw); list = Array.isArray(p) ? p : (typeof p === "string" ? p.split(",") : []); }
+      catch { list = String(raw).split(","); }
+    }
+    const set = new Set();
+    for (const d of list) {
+      const h = String(d || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
+      if (h) set.add(h);
+    }
+    _selfHostsCache = { at: Date.now(), set };
+    return set;
+  } catch { return new Set(); }
+}
+
+// Returns the self-owned hosts found anywhere in a payload. Empty means the document is clean.
+function _selfPublishedIn(text, ownedSet) {
+  const hits = new Set();
+  try {
+    if (!ownedSet || !ownedSet.size) return hits;
+    const re = /https?:\/\/([a-z0-9.-]+)/gi;
+    let m;
+    while ((m = re.exec(String(text))) !== null) {
+      const host = String(m[1]).toLowerCase().replace(/^www\./, "");
+      if (ownedSet.has(host)) hits.add(host);
+      else {
+        // also match a subdomain of an owned apex, e.g. blog.etatracker.world
+        for (const owned of ownedSet) { if (host.endsWith("." + owned)) { hits.add(host); break; } }
+      }
+    }
+  } catch {}
+  return hits;
+}
+
 async function ingestFeedResult(env, feedId, command, payload) {
   try {
     // Staging has no AURA_KNOWLEDGE binding on purpose - it must skip, not throw. Same shape as
@@ -22339,7 +22400,12 @@ async function ingestFeedResult(env, feedId, command, payload) {
     // statement lives in the indexed body rather than as a sixth field.
     // NOTE for anyone filtering: objects written before v4.9.737 carry origin:"human" and mean the
     // same thing. Match both until the old ones age out.
-    const meta = { origin: "external", feed: feedId, command: String(command || ""), source: src, at: iso };
+    // Does this payload contain anything Aura published? If so it is NOT clean external evidence.
+    const _payloadText = JSON.stringify(payload || {});
+    const _self = _selfPublishedIn(_payloadText, await _selfOwnedHosts(env));
+    const _laundered = _self.size > 0;
+    const meta = { origin: _laundered ? "self_published" : "external",
+      feed: feedId, command: String(command || ""), source: src, at: iso };
 
     // ══ RAW LIVES IN A BUCKET NOTHING INDEXES (v4.9.727) ══════════════════════════════════════
     // It used to go to raw/ inside AURA_KNOWLEDGE, on the stated understanding that the instance's
@@ -22369,7 +22435,13 @@ async function ingestFeedResult(env, feedId, command, payload) {
     // non-polling sibling and returns sub-second. Metadata rides in the third argument and was
     // confirmed by reading the item BACK after indexing - at queue time it reads null on everything,
     // which is a receipt, not a rejection.
-    const md = _distillToMarkdown(feedId, command, src, iso, payload);
+    let md = _distillToMarkdown(feedId, command, src, iso, payload);
+    if (_laundered) {
+      md = "> PROVENANCE WARNING: this document cites domains Aura owns (" + [..._self].join(", ") + "). "
+         + "It came back through an external channel but at least part of it may be Aura's own published "
+         + "output returning through the world. It is tagged origin=self_published and must NOT be treated "
+         + "as independent evidence.\n\n" + md;
+    }
     const itemKey = "feeds/" + feedId + "/" + day + "/" + stamp + ".md";
     let indexed = null;
     try {

@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.735-2026-07-26";
+const BUILD = "aura-core-v4.9.736-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -11715,7 +11715,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const debris = wantRaw ? [] : objects.filter((o) => !String(o.key).startsWith("feeds/")).map((o) => o.key);
         return { cmd: "KNOWLEDGE", payload: { ok: true, bucket: wantRaw ? "aura-knowledge-raw (indexed by nothing)" : "aura-knowledge (indexed by aura-feeds)", prefix, count: objects.length,
           truncated: !!listed.truncated, objects,
-          debris: debris.length === 0 ? "none - every object in the indexed bucket is under feeds/"
+          // Both of these described the INDEXED bucket even when listing the archive - a field
+          // reporting on something other than what is on screen, which is the defect this command
+          // exists to catch. They are omitted rather than reworded when they do not apply.
+          debris: wantRaw ? "n/a - this bucket is indexed by nothing, so nothing here is debris"
+            : debris.length === 0 ? "none - every object in the indexed bucket is under feeds/"
             : debris.length + " object(s) in the INDEXED bucket outside feeds/: " + debris.join(", ")
               + " - these are indexed and will surface in real answers. Delete with "
               + "`wrangler r2 object delete \"aura-knowledge/<key>\" --remote` (the --remote is load-bearing; "
@@ -11727,7 +11731,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // This text described the raw/ prefix arrangement that was REPLACED in v4.9.727. Left
           // unchanged it would be a fossil in the one command whose job is saying what is really
           // there - the same defect as a comment describing a fix that no longer holds.
-          indexed_by: "AI Search instance `aura-feeds` (namespace `aura`) indexes the aura-knowledge bucket. "
+          indexed_by: wantRaw
+            ? "NOTHING indexes this bucket, and that is the mechanism. It is the data source of no AI "
+              + "Search instance, so raw payloads cannot leak into retrieval by configuration drift. Kept "
+              + "so a wrong distillation is re-derived rather than re-fetched from a provider we may lose "
+              + "permission to call."
+            : "AI Search instance `aura-feeds` (namespace `aura`) indexes the aura-knowledge bucket. "
             + "Its `prefix: feeds/` setting was MEASURED NOT TO SCOPE - a sync indexed the raw/ prefix too and "
             + "raw outranked the distilled facts - so raw now lives in aura-knowledge-raw, which is the data "
             + "source of no instance. Separation by construction, not configuration. Raw is kept so a wrong "

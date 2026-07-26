@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.740-2026-07-26";
+const BUILD = "aura-core-v4.9.741-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16699,10 +16699,21 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         catch { launchedList = launchedRaw.split(","); }
       }
       launchedList = launchedList.map(d => String(d).trim()).filter(Boolean);
-      let allList = [];
-      if (allRaw) {
-        try { const p = JSON.parse(allRaw); allList = Array.isArray(p) ? p : (typeof p === "string" ? allRaw.split(",") : allRaw.split(",")); }
-        catch { allList = allRaw.split(","); }
+      // DERIVED FROM CLOUDFLARE. `WORLD_MAP fresh` bypasses the hour cache.
+      const _wantFresh = String(args[0] || "").toLowerCase() === "fresh";
+      const _z = await cfZones(env, { fresh: _wantFresh });
+      let allList = [], _zoneNote = "";
+      if (_z.ok) {
+        allList = _z.zones.map((x) => x.name);
+        _zoneNote = "derived from Cloudflare /zones (" + _z.source + ", age " + _z.age_seconds + "s). "
+          + "A zone at Cloudflare is what makes a doorway servable - the registrar cannot answer that.";
+      } else {
+        // Fall back to the stored list, but SAY it is the stale one rather than pretending.
+        let fb = [];
+        if (allRaw) { try { const p = JSON.parse(allRaw); fb = Array.isArray(p) ? p : allRaw.split(","); } catch { fb = allRaw.split(","); } }
+        allList = fb;
+        _zoneNote = "CLOUDFLARE UNREACHABLE (" + _z.error + ") - falling back to config:domains:all, which has NO WRITER "
+          + "and measured 182 against Cloudflare's 501 on 2026-07-26. Treat this list as incomplete.";
       }
       allList = allList.map(d => String(d).trim()).filter(Boolean);
       const launchedSet = new Set(launchedList);
@@ -16720,6 +16731,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       }));
 
       const summary = {
+        source: _zoneNote,
         total: allList.length,
         live: launchedList.length,
         registered_not_live: allList.length - launchedList.length,
@@ -18791,11 +18803,22 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       return { cmd: "DOMAIN_LAUNCH", payload: await launchDomain(domain, desc, theme, env) };
     }
     case "DOMAIN_STATUS": {
+      // Was reporting total_domains from config:domains:all - 182 against Cloudflare's real 501.
       const launched = await env.AURA_KV.get("config:domains:launched").catch(() => null);
-      const all = await env.AURA_KV.get("config:domains:all").catch(() => null);
-      const launchedList = launched ? JSON.parse(launched) : [];
-      const allList = all ? all.split(",") : [];
-      return { cmd: "DOMAIN_STATUS", payload: { ok: true, total_domains: allList.length, launched: launchedList.length, launched_list: launchedList } };
+      let launchedList = []; try { launchedList = launched ? JSON.parse(launched) : []; } catch { launchedList = []; }
+      const dz = await cfZones(env, { fresh: String(args[0] || "").toLowerCase() === "fresh" });
+      if (!dz.ok) return { cmd: "DOMAIN_STATUS", payload: { ok: false, error: dz.error,
+        note: "the portfolio derives from Cloudflare now; there is no trustworthy stored fallback (config:domains:all has no writer)" } };
+      const zoneNames = new Set(dz.zones.map((z) => z.name));
+      // A launched domain with no Cloudflare zone cannot be serving anything - name them rather than count them in.
+      const orphanLaunched = launchedList.filter((d) => !zoneNames.has(String(d).trim()));
+      const activeZones = dz.zones.filter((z) => z.status === "active").length;
+      return { cmd: "DOMAIN_STATUS", payload: { ok: true,
+        total_domains: dz.zones.length, active_zones: activeZones,
+        launched: launchedList.length, launched_list: launchedList,
+        launched_without_a_zone: orphanLaunched.length ? orphanLaunched
+          : "none - every launched domain has a Cloudflare zone",
+        source: dz.source + ", age " + dz.age_seconds + "s (DOMAIN_STATUS fresh to bypass)" } };
     }
     case "MERCURY_BALANCE": {
       const bal = await getMercuryBalance(env);
@@ -21382,6 +21405,61 @@ async function spaceshipSyncOne(domain, env) {
 // Sweep with a CURSOR. A Worker cannot hold 177 domains x 2 API calls in one request without hitting the
 // CPU limit, and Cloudflare rate-limits bulk zone creation - so this does a slice per call and hands back
 // next_cursor. Progress survives a failure because each domain is committed at the registrar as it goes.
+// ══ THE PORTFOLIO DERIVES FROM CLOUDFLARE, IT IS NOT STORED (v4.9.741) ═══════════════════════════
+//
+// MEASURED 2026-07-26, three live sources and three different answers:
+//   Cloudflare  /zones total_count  = 501   <- zones that exist
+//   Spaceship   /api/v1/domains     = 357   <- that ONE registrar only
+//   config:domains:all (KV)         = 182   <- a hand-typed list
+// `config:domains:all` has ZERO WRITERS anywhere in this worker. It was pasted in once and has
+// drifted ever since, while WORLD_MAP, DOMAIN_STATUS and VERIFY's "portfolio state" all read it as
+// if it were current. She could see 182 of 501 domains - 36% of the business - and every count
+// downstream inherited that. Same fossil as the 305 handler count, on the number that describes the
+// whole company.
+//
+// WHY CLOUDFLARE AND NOT THE REGISTRAR: a zone existing at Cloudflare is what makes a doorway
+// SERVABLE. A domain sitting at a registrar with nameservers pointed elsewhere cannot host anything.
+// "What can Aura actually serve" is a question only Cloudflare can answer, and ~144 of these are not
+// at Spaceship at all.
+//
+// CACHED, NOT STORED. Zones change when Aaron buys or transfers a domain - independent of deploys -
+// so build-string keying (which WHERE uses correctly for source-derived facts) is wrong here. A one
+// hour TTL plus an explicit `fresh` bypass: staleness is bounded and visible rather than permanent
+// and invisible. The cache always reports its own age so a reader can judge it.
+async function cfZones(env, opts) {
+  const wantFresh = !!(opts && opts.fresh);
+  const CACHE_KEY = "derived:cf_zones";
+  try {
+    if (!wantFresh) {
+      const raw = await env.AURA_KV.get(CACHE_KEY);
+      if (raw) {
+        const c = JSON.parse(raw);
+        const age = (Date.now() - Date.parse(c.at)) / 1000;
+        if (age < 3600) return { ok: true, source: "cache", age_seconds: Math.round(age), at: c.at, zones: c.zones };
+      }
+    }
+    const token = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
+    if (!token) return { ok: false, error: "no cloudflare token (secret:cf_api_token)" };
+    const zones = [];
+    let page = 1, totalPages = 1;
+    while (page <= totalPages && page <= 25) {           // 25 x 50 = 1250 zone ceiling
+      const r = await fetch("https://api.cloudflare.com/client/v4/zones?per_page=50&page=" + page,
+        { headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" } });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.success) return { ok: false, error: "cloudflare " + r.status + " " + JSON.stringify(j.errors || []).slice(0, 160) };
+      totalPages = (j.result_info && j.result_info.total_pages) || 1;
+      for (const z of (j.result || [])) zones.push({ name: z.name, status: z.status, id: z.id });
+      page += 1;
+    }
+    zones.sort((a, b) => a.name.localeCompare(b.name));
+    const at = new Date().toISOString();
+    try { await env.AURA_KV.put(CACHE_KEY, JSON.stringify({ at, zones }), { expirationTtl: 7 * 24 * 3600 }); } catch {}
+    return { ok: true, source: "cloudflare (live)", age_seconds: 0, at, zones };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+  }
+}
+
 async function spaceshipSyncAll(env, start, limit) {
   const h = await _ssHeaders(env);
   // Pull the portfolio and keep only the ones NOT already on Cloudflare - re-running is always safe.

@@ -90,6 +90,21 @@ new_classes = ["AisCollectorDO"]
 tag = "v3-ledger-do"
 new_sqlite_classes = ["LedgerDO"]
 
+# ══ THE KNOWLEDGE BUCKET (2026-07-26) ═══════════════════════════════════════════════════════════
+# Where distilled facts land on their way into AI Search. The instance `aura-feeds` in namespace
+# `aura` indexes this bucket under the `feeds/` prefix, so ONE bucket serves every future tracker -
+# --prefix scopes an instance to a key prefix, which is why twenty-five trackers do not need
+# twenty-five buckets.
+# The bucket was created and CONFIRMED present before this binding was written. A binding to a
+# resource that does not exist fails the entire deploy - that is not theory, it split source from
+# running for ten minutes today when SS_STRIPE was declared before its secret existed.
+# NOT bound on the staging twin, deliberately: staging has isolated KV/D1/Vectorize, and pointing it
+# at the live knowledge bucket would write test facts into real memory. Code must therefore treat a
+# missing binding as normal and skip, the same way _egressDO does with LEDGER_DO.
+[[r2_buckets]]
+binding = "AURA_KNOWLEDGE"
+bucket_name = "aura-knowledge"
+
 [[send_email]]
 name = "SEND_EMAIL"
 

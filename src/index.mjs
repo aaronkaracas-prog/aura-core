@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.738-2026-07-26";
+const BUILD = "aura-core-v4.9.739-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -3400,13 +3400,40 @@ async function processCommand(line, env, isOp) {
       // That is backwards: a read leaks a key, a write DESTROYS one - and a silently rotated
       // `secret:cloudflare` takes every domain and DNS record with it. The rates table was better
       // protected than the bank. Same door, both directions, same deliberateness.
+      // ══ THE CONSTITUTION GUARDED THE CODE AND LEFT THE STEERING OPEN (v4.9.739) ═══════════════
+      // Named by a five-seat Council as "protected-list bypass by indirection", then confirmed here
+      // against live source. CONSTITUTIONAL_MARKERS are FUNCTION NAMES and note keys, checked when
+      // source is edited via PROPOSE -> VALIDATE -> PROMOTE. But roughly forty `config:` keys steer
+      // behaviour from KV and only six patterns were guarded. A change that says "set
+      // config:brain:model to X" or "update config:northstar" edits no function, trips no marker,
+      // and needs no override - so the gate the whole self-modification story rests on protects the
+      // code while leaving the configuration that DRIVES the code unlocked.
+      // The additions below are the keys where a change alters WHAT SHE IS or WHAT SHE MAY DO, not
+      // operational tuning. Deliberately NOT guarding email:from, image:quality, page:*, domains:*
+      // and the rest - over-guarding makes the override routine, and an override people type without
+      // thinking is not a gate, it is a keystroke.
+      //   northstar      - her goals. Rewriting these redirects everything downstream of them.
+      //   owner:*        - who she believes the operator IS. An identity swap is the whole game.
+      //   brain/core/fast model + provider - which mind reasons, and through whom.
+      //   gov:*          - the propagation brakes that make her structurally unable to trip a flag.
+      //   agent:url      - where the brain lives. Repointing it is a redirect attack with no code change.
+      //   core:map       - the door registry. A wrong door sends her confidently to the wrong place.
       const _GUARDED_KEYS = [/^config:rates:table$/i, /^config:rate:calibrated$/i,
                              /^balance:/i, /^usage:anchor:/i, /^config:budget:/i,
-                             /^secret:/i];
+                             /^secret:/i,
+                             /^config:northstar$/i, /^config:owner:/i,
+                             /^config:brain:/i, /^config:core:provider$/i, /^config:core:map$/i,
+                             /^config:fast:model$/i, /^config:gov:/i, /^config:agent:url$/i];
       if (_GUARDED_KEYS.some((r) => r.test(key)) && !/OVERRIDE_CONSTITUTIONAL/.test(line)) {
         return { cmd: "SETKV", payload: { ok: false, error: "GUARDED_KEY",
           key,
-          why: /^secret:/i.test(key)
+          why: /^config:(northstar|owner:|brain:|core:provider|core:map|fast:model|gov:|agent:url)/i.test(key)
+            ? "This key STEERS her rather than tunes her. The constitutional list protects FUNCTION "
+              + "NAMES in source, so a change here alters what she is or what she may do while editing "
+              + "no code and tripping no marker - which is exactly how a self-modification gate gets "
+              + "walked around rather than broken. Her goals, who she thinks the operator is, which "
+              + "mind reasons, the propagation brakes, and where the brain lives all live in KV."
+            : /^secret:/i.test(key)
             ? "This key is a CREDENTIAL. Overwriting it does not leak it - it destroys it, and " +
               "whatever it opened stops opening until someone notices. secret:cloudflare controls " +
               "every domain and DNS record; secret:mercury is the bank. Reading one is already a " +

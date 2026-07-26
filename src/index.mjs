@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.724-2026-07-26";
+const BUILD = "aura-core-v4.9.725-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -11677,13 +11677,25 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           if (raw) { const m = JSON.parse(raw); last_ok = m.last_ok || null; last_error = m.last_error || null;
             if (last_ok) age_hours = +((Date.now() - Date.parse(last_ok)) / 3600000).toFixed(1); }
         } catch {}
-        let live = null;
+        let live = null, liveWhy = null;
         if (doProbe && configured && PROBES[id]) {
-          try { live = await PROBES[id](key); } catch { live = false; }
+          // ══ NORMALISE, DO NOT CONSUME RAW (fixed v4.9.725) ══════════════════════════════════════
+          // A probe may return a bare boolean or {ok, why}. This consumed the return value directly,
+          // so the moment the oilprice probe started explaining itself, `live` became an OBJECT -
+          // truthy - and the `f.live === false` dead-check below stopped matching. FEEDS reported
+          // dead: 0 and status "configured" for a feed that was returning HTTP 402 in the same
+          // payload. A false green, introduced by the change that made the failure legible, in the
+          // one command whose job is saying whether a feed actually works.
+          // SERVICE_STATUS already normalises through ping(); this is its sibling and was missed.
+          try {
+            const _r = await PROBES[id](key);
+            if (_r && typeof _r === "object") { live = _r.ok === true; liveWhy = _r.why || null; }
+            else live = !!_r;
+          } catch (e) { live = false; liveWhy = "threw: " + String((e && e.message) || e).slice(0, 140); }
         }
         const status = !configured ? "no_key" : live === false ? "DEAD" : live === true ? "live" : "configured";
         return { id, name: f.name, provider: f.provider, cost: f.cost, layer: f.layer,
-                 configured, live, status, last_ok, age_hours, last_error };
+                 configured, live, live_note: liveWhy, status, last_ok, age_hours, last_error };
       }));
       const paid = feeds.filter(f => f.cost === "paid");
       const free = feeds.filter(f => f.cost === "free");
@@ -11697,7 +11709,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                    not_configured: notConfigured.length, dead: dead.length,
                    stale_over_48h: stale.length, never_delivered: neverSeen.length },
         findings: [
-          ...(dead.length ? [{ level: "alert", detail: "DEAD (key present, provider rejects): " + dead.map(f => f.id).join(", ") }] : []),
+          ...(dead.length ? [{ level: "alert", detail: "DEAD (key present, provider rejects): " +
+            dead.map(f => f.id + (f.live_note ? " [" + String(f.live_note).slice(0, 150) + "]" : "")).join("; ") }] : []),
           ...(stale.length ? [{ level: "warn", detail: "No data in over 48h: " + stale.map(f => f.id + " (" + f.age_hours + "h)").join(", ") }] : []),
           ...(() => {
             // Split what used to be one line. A feed with no command in FEED_OF_COMMAND has no path

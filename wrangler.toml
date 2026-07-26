@@ -114,6 +114,15 @@ bucket_name = "aura-knowledge"
 binding = "AURA_KNOWLEDGE_RAW"
 bucket_name = "aura-knowledge-raw"
 
+# ══ AI SEARCH, NAMESPACE-LEVEL (2026-07-26) ═══════════════════════════════════════════════════
+# Binds the `aura` namespace, so env.AI_SEARCH reaches every instance in it and can create more at
+# RUNTIME - which is what makes one-instance-per-tracker a configuration change rather than a deploy.
+# This binding replaces the older env.AI.autorag() route.
+# Adding it changes no behaviour on its own; nothing calls it until the probe below is proven.
+[[ai_search_namespaces]]
+binding = "AI_SEARCH"
+namespace = "aura"
+
 [[send_email]]
 name = "SEND_EMAIL"
 

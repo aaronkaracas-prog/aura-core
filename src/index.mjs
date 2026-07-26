@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.728-2026-07-26";
+const BUILD = "aura-core-v4.9.729-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -11643,6 +11643,53 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // KNOWLEDGE            -> the indexed distilled facts (feeds/ prefix)
       // KNOWLEDGE raw/       -> the untouched payloads kept for re-distillation
       if (!isOp) return { cmd: "KNOWLEDGE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      // ══ PROBE BEFORE COMMITTING (v4.9.729) ═══════════════════════════════════════════════════
+      // `KNOWLEDGE PUSH` exercises the Items API once and REPORTS WHAT ACTUALLY HAPPENED, because
+      // two things the docs do not answer decide whether the real ingestion path can use it:
+      //   1. METADATA. The documented signature is uploadAndPoll(filename, content) - two args, no
+      //      metadata parameter. Origin tagging is the one part of this that cannot be added
+      //      retroactively, so if custom metadata cannot ride along, built-in storage is not usable
+      //      for facts and the R2 path stays. This tries a third argument and reports what comes back.
+      //   2. LATENCY. uploadAndPoll WAITS for indexing. The feed hook awaits its write, so indexing
+      //      time would land inside every feed command. This times it.
+      // Probing with one throwaway document beats reading a reference page and reporting it as
+      // working - which today alone produced a cache that defaulted on, a prefix that did not scope,
+      // and a delete that deleted nothing while printing success.
+      if (String(args[0] || "").toUpperCase() === "PUSH") {
+        if (!env.AI_SEARCH) return { cmd: "KNOWLEDGE", payload: { ok: false, error: "AI_SEARCH not bound" } };
+        const t0 = Date.now();
+        const probeKey = "probe/items-api-" + new Date().toISOString().replace(/[:.]/g, "-") + ".md";
+        const body = "# Items API probe\n\n- purpose: prove built-in storage indexes on arrival\n"
+                   + "- origin: human (probe, not a real fact)\n- marker: ZANZIBAR-PROBE-" + Date.now() + "\n";
+        const out = { probe_key: probeKey };
+        try {
+          const inst = env.AI_SEARCH.get("aura-feeds");
+          out.instance_resolved = !!inst;
+          out.items_present = !!(inst && inst.items);
+          let res;
+          try {
+            // third argument is speculative - if metadata is unsupported this is where we find out
+            res = await inst.items.uploadAndPoll(probeKey, body, { metadata: { origin: "human", feed: "probe" } });
+            out.metadata_arg_accepted = true;
+          } catch (e1) {
+            out.metadata_arg_accepted = false;
+            out.metadata_arg_error = String((e1 && e1.message) || e1).slice(0, 200);
+            res = await inst.items.uploadAndPoll(probeKey, body);
+          }
+          out.ok = true;
+          out.result_keys = res && typeof res === "object" ? Object.keys(res) : typeof res;
+          out.status = res && res.status;
+          out.raw_result = res;
+        } catch (e) {
+          out.ok = false;
+          out.error = String((e && e.message) || e).slice(0, 300);
+        }
+        out.elapsed_ms = Date.now() - t0;
+        out.read_this = "elapsed_ms is the cost this would add to EVERY feed command if the real path "
+          + "uses uploadAndPoll. metadata_arg_accepted decides whether built-in storage can carry the "
+          + "origin tag at all - if false, facts stay on the R2 path regardless of sync latency.";
+        return { cmd: "KNOWLEDGE", payload: out };
+      }
       if (!env.AURA_KNOWLEDGE) return { cmd: "KNOWLEDGE", payload: { ok: false,
         error: "AURA_KNOWLEDGE not bound",
         why: "the r2_buckets binding is missing from this worker's config - on the staging twin that is deliberate" } };

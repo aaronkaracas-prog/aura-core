@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.731-2026-07-26";
+const BUILD = "aura-core-v4.9.732-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -11656,41 +11656,52 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // working - which today alone produced a cache that defaulted on, a prefix that did not scope,
       // and a delete that deleted nothing while printing success.
       if (String(args[0] || "").toUpperCase() === "PUSH") {
-        // ══ AN RPC SURFACE CANNOT BE ENUMERATED (v4.9.731) ═══════════════════════════════════════
-        // Walking the prototype chain returned ["connect","fetch"] on the namespace and
-        // ["catch","finally","then"] on the instance and on items - i.e. an RPC stub and two
-        // Promises. Remote methods are PROXIED and resolved on the other side, so no amount of
-        // reflection will list them. Same lesson already recorded about the Agents SDK: a shape you
-        // can inspect is not a fact about what runs.
-        // What RPC DOES answer is calls. A method that does not exist fails differently from one
-        // that exists and errors - so try the candidates and read the errors, each on a short
-        // timeout so a polling call cannot eat the request the way uploadAndPoll did at ~30s.
+        // ══ HOW DOES METADATA GO IN? (v4.9.732) ══════════════════════════════════════════════════
+        // SETTLED by the last probe: items.upload(key, body) exists, is NON-POLLING, returns in well
+        // under a second, and its result carries a `metadata` field - so metadata is first-class on
+        // the item model. uploadAndPoll polls and blows the request timeout; create/insert/put/add
+        // do not exist ("The RPC receiver does not implement the method").
+        // OPEN: the shape of the third argument. Three plausible forms, tried in order, each read
+        // back from the RESULT rather than assumed from the absence of an error - a call that
+        // silently ignores an unknown option looks identical to one that honoured it, and that
+        // difference is the whole origin-tagging guarantee.
         if (!env.AI_SEARCH) return { cmd: "KNOWLEDGE", payload: { ok: false, error: "AI_SEARCH not bound" } };
-        const out = { note: "each candidate called once with a 6s ceiling; read the ERROR TEXT - "
-          + "'no such method' means absent, anything else means it exists and did something" };
-        const cap = (pr, ms) => Promise.race([pr,
-          new Promise((_, rej) => setTimeout(() => rej(new Error("__probe_timeout_" + ms + "ms")), ms))]);
         const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-        const body = "# probe\n\n- marker: ZANZIBAR-" + Date.now() + "\n- origin: human (probe)\n";
+        const body = "# metadata shape probe\n\n- marker: ZANZIBAR-" + Date.now() + "\n";
+        const want = { origin: "human", feed: "probe" };
+        const forms = {
+          nested_metadata: { metadata: want },
+          flat_object: want,
+          custom_metadata: { customMetadata: want },
+        };
+        const out = { settled: "items.upload(key, body) is the ingestion method - non-polling, sub-second",
+          question: "which third-argument shape actually lands in item.metadata",
+          returned: {} };
         try {
-          const inst = await cap(Promise.resolve(env.AI_SEARCH.get("aura-feeds")), 6000);
-          out.instance_resolved = !!inst;
-          out.instance_type = typeof inst;
-          const items = inst && inst.items;
-          out.items_type = typeof items;
-          out.attempts = {};
-          for (const m of ["upload", "create", "insert", "put", "add", "uploadAndPoll"]) {
-            const key = "probe/" + m + "-" + stamp + ".md";
+          const items = env.AI_SEARCH.get("aura-feeds").items;
+          for (const [label, arg] of Object.entries(forms)) {
+            const key = "probe/meta-" + label + "-" + stamp + ".md";
             try {
-              const r = await cap(Promise.resolve(items[m](key, body)), 6000);
-              out.attempts[m] = { ok: true, result: r && typeof r === "object" ? Object.keys(r) : String(r) };
+              const r = await items.upload(key, body, arg);
+              out.returned[label] = { ok: true, metadata: (r && r.metadata) || null, status: r && r.status };
             } catch (e) {
-              out.attempts[m] = { ok: false, error: String((e && e.message) || e).slice(0, 180) };
+              out.returned[label] = { ok: false, error: String((e && e.message) || e).slice(0, 180) };
             }
+          }
+          // and a control with NO third argument, so "metadata appeared" can be told apart from
+          // "metadata is always populated with something"
+          try {
+            const r = await items.upload("probe/meta-control-" + stamp + ".md", body);
+            out.returned.no_third_arg_control = { ok: true, metadata: (r && r.metadata) || null };
+          } catch (e) {
+            out.returned.no_third_arg_control = { ok: false, error: String((e && e.message) || e).slice(0, 180) };
           }
         } catch (e) {
           out.fatal = String((e && e.message) || e).slice(0, 300);
         }
+        out.read_this = "the winning form is the one whose returned .metadata contains origin:human AND "
+          + "whose control returns null or empty. If every form returns the same thing, the argument is "
+          + "being ignored and origin tagging cannot live here.";
         return { cmd: "KNOWLEDGE", payload: { ok: true, ...out } };
       }
       if (!env.AURA_KNOWLEDGE) return { cmd: "KNOWLEDGE", payload: { ok: false,

@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.713-2026-07-26";
+const BUILD = "aura-core-v4.9.714-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -292,9 +292,17 @@ async function _egressDO(env, rec) {
     const cost = Math.max(0, (uncached * R.in + tcache * R.cacheRead + cwrite * R.cacheWrite + tout * R.out) / 1e6);
     let path = rec.endpoint || "?";
     try { path = new URL(rec.endpoint).pathname; } catch {}
+    // ══ THREE PROVIDERS WERE SHARING ONE BUCKET (v4.9.713) ═══════════════════════════════════════
+    // The KV rollup keys by_endpoint on provider+path; this stored the bare path. So openai, xai and
+    // groq all POST to /v1/chat/completions and the DO merged them into a single row, while KV kept
+    // openai/v1/chat/completions and groq/openai/v1/chat/completions apart. Measured on 2026-07-25:
+    // KV had three distinct endpoints, the DO had three that happened not to collide - on 07-24 they
+    // would have. Same key shape as KV now, so the two are comparable and neither loses a provider.
+    // Rows written before this deploy keep the bare path; a day's DO can therefore hold both shapes.
+    const epKey = (rec.provider || "unknown") + path;
     await stub.fetch("https://ledger/record", { method: "POST", body: JSON.stringify({
       day, at: new Date().toISOString(), provider: rec.provider || "unknown",
-      model: rec.model || "unknown", endpoint: path, caller: rec.caller || "unlabelled",
+      model: rec.model || "unknown", endpoint: epKey, caller: rec.caller || "unlabelled",
       tenant: rec.tenant || "aura", status: Number(rec.status) || 0, ms: Number(rec.ms) || 0,
       tokens_in: tin, tokens_out: tout, cached_in: tcache, cache_write: cwrite, cost_usd: cost,
     }) });
@@ -761,6 +769,27 @@ export class LedgerDO {
           "SELECT COUNT(*) calls, SUM(tokens_in) tin, SUM(tokens_out) tout, SUM(cached_in) cached, " +
           "SUM(cost_usd) cost, SUM(CASE WHEN status=0 OR status>=400 THEN 1 ELSE 0 END) errors FROM egress"
         )][0] || {};
+        // ══ PARITY BEFORE RETIREMENT (v4.9.713) ═══════════════════════════════════════════════════
+        // The DO was migrated on a claim that it gave "better resolution for free". Measured against
+        // KV on a full clean day, that was true of endpoints, callers and models and FALSE of these
+        // two: KV reported errors_by {openai 500: 6, openai 503: 1} and no_usage, and the DO reported
+        // a bare `errors: 7`. The rollup's own comment beside errors_by says why that is not good
+        // enough - a count with no attribution says something broke and refuses to say what. Both
+        // were already in the table as columns; only the read was missing. The KV rollup does not
+        // get retired until the DO is at parity, and totals agreeing is not parity.
+        const errors_by = {};
+        for (const row of this.sql.exec(
+          "SELECT provider p, status s, COUNT(*) n FROM egress WHERE status=0 OR status>=400 " +
+          "GROUP BY provider, status"
+        )) errors_by[(row.p || "unknown") + " " + (row.s || "network")] = row.n;
+        // A call to a completions/messages endpoint that carried NO tokens either way. Not an error -
+        // the provider answered - but the usage never arrived or never parsed, so it is spend that
+        // cannot be priced. Same definition as the KV rollup, deliberately, so the two are comparable.
+        const nou = [...this.sql.exec(
+          "SELECT COUNT(*) n FROM egress WHERE tokens_in=0 AND tokens_out=0 AND (" +
+          "endpoint LIKE '%completions%' OR endpoint LIKE '%messages%' OR " +
+          "endpoint LIKE '%generateContent%' OR endpoint LIKE '%generations%')"
+        )][0] || {};
         const by = (col) => {
           const out = {};
           for (const row of this.sql.exec(
@@ -771,7 +800,8 @@ export class LedgerDO {
           return out;
         };
         return Response.json({ ok: true,
-          calls: tot.calls || 0, errors: tot.errors || 0,
+          calls: tot.calls || 0, errors: tot.errors || 0, errors_by,
+          no_usage: nou.n || 0,
           tokens_in: tot.tin || 0, tokens_out: tot.tout || 0, cached_in: tot.cached || 0,
           cost_usd: +(tot.cost || 0).toFixed(6),
           by_provider: by("provider"), by_caller: by("caller"),

@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.725-2026-07-26";
+const BUILD = "aura-core-v4.9.726-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -11634,6 +11634,43 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       return { cmd: "BRIEF", payload: { ok: true, business: brRaw, live_findings: live, brief: brR.reasoning } };
     }
 
+    case "KNOWLEDGE": {
+      // ══ WHAT IS ACTUALLY IN THE KNOWLEDGE BUCKET ═════════════════════════════════════════════
+      // Without this, "did ingestion work" is only answerable from the Cloudflare dashboard, and a
+      // capability you cannot check from the same place you run everything else is one you stop
+      // checking. Lists keys with their custom metadata, so the origin tag is visible rather than
+      // assumed - the whole point of tagging is lost if nobody can see whether the tag is there.
+      // KNOWLEDGE            -> the indexed distilled facts (feeds/ prefix)
+      // KNOWLEDGE raw/       -> the untouched payloads kept for re-distillation
+      if (!isOp) return { cmd: "KNOWLEDGE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      if (!env.AURA_KNOWLEDGE) return { cmd: "KNOWLEDGE", payload: { ok: false,
+        error: "AURA_KNOWLEDGE not bound",
+        why: "the r2_buckets binding is missing from this worker's config - on the staging twin that is deliberate" } };
+      try {
+        const prefix = args[0] || "feeds/";
+        const listed = await env.AURA_KNOWLEDGE.list({ prefix, limit: 40, include: ["customMetadata"] });
+        const objects = (listed.objects || []).map((o) => ({
+          key: o.key,
+          size: o.size,
+          uploaded: o.uploaded,
+          origin: (o.customMetadata && o.customMetadata.origin) || null,
+          feed: (o.customMetadata && o.customMetadata.feed) || null,
+          source: (o.customMetadata && o.customMetadata.source) || null,
+        }));
+        const untagged = objects.filter((o) => o.origin !== "human").length;
+        return { cmd: "KNOWLEDGE", payload: { ok: true, prefix, count: objects.length,
+          truncated: !!listed.truncated, objects,
+          origin_check: untagged === 0
+            ? "every object carries origin=human"
+            : untagged + " object(s) WITHOUT origin=human - nothing should reach this bucket untagged; "
+              + "an untagged fact cannot later be separated from Aura's own output, which is model collapse",
+          indexed_by: "AI Search instance `aura-feeds` in namespace `aura` indexes the feeds/ prefix only. "
+            + "raw/ is kept deliberately and NOT indexed, so a wrong distillation is re-derived rather than re-fetched." } };
+      } catch (e) {
+        return { cmd: "KNOWLEDGE", payload: { ok: false, error: String((e && e.message) || e) } };
+      }
+    }
+
     case "FEEDS": {
       // v4.9.520: INGESTION DATA-FEED MONITOR. These are the feeds Aura brings IN to consume (oil, weather,
       // maps, marine, fire, aircraft, search) - NOT infrastructure (that's VITALS). A feed failing means Aura
@@ -22058,6 +22095,93 @@ async function auraTodo(env, rest) {
 // The monitor:*:last pattern already existed for workers and storms; this extends it to feeds, which is
 // the incomplete-pattern fix again. Any ingest site calls feedOk/feedFail and FEEDS can then answer the
 // question it is named for: is this data still arriving, and when did it last arrive.
+// ══ INGEST AT INGESTION TIME (v4.9.726) ═══════════════════════════════════════════════════════════
+//
+// THE THESIS THIS IMPLEMENTS, in Aaron's words: "don't search at query time, ingest at ingestion
+// time - Aura KNOWS." Today nine feeds are configured, several answer live, and every one of them
+// fetches data, answers ONE question with it, and throws it away. FEEDS probe says it plainly:
+// configured, never recorded a delivery. He is already paying for this data and using it once.
+//
+// WHY HERE AND NOWHERE ELSE: feedOk() already fires from exactly one place - the /cmd dispatch -
+// for every command in FEED_OF_COMMAND, and it already holds the result. It knows a feed delivered
+// and discards the payload. So this is not a new ingestion path, a new cron, or a new worker; it is
+// the existing hook keeping what it already had. Same reasoning that put freshness and the memory
+// hook here rather than at five ingest sites.
+//
+// WHY AUTHORIZED FEEDS AND NOT A CRAWLER: from 2026-09-15 Cloudflare enforces permission-based
+// crawling - verification proves a bot's IDENTITY, and access depends on its CLASSIFICATION and each
+// site owner's policy. Anything Aura fetches from a third-party site is an AI crawler under that
+// model. These feeds are authorized API calls against keys already paid for, so they are the durable
+// path and a crawler is the fragile one.
+//
+// TWO WRITES, AND THE SECOND ONE IS THE POINT:
+//   raw/<feed>/<day>/<stamp>.json   - the untouched payload. NOT indexed; the instance is scoped to
+//                                     the feeds/ prefix. Distillation is LOSSY and this first shape
+//                                     is a guess. Keeping raw means a wrong shape is re-distilled
+//                                     rather than re-fetched from a provider we may no longer be
+//                                     permitted to fetch. Storage is cheap; that permission is not.
+//   feeds/<feed>/<day>/<stamp>.md   - the distilled fact, indexed by AI Search (chunk 1024,
+//                                     hybrid vector+BM25, reranked).
+//
+// ORIGIN IS THE ONE-WAY DOOR. Every object carries origin=human in R2 custom metadata because it
+// came from an outside authority. Nothing Aura generates is ever written here carrying that tag. A
+// MASE loop that learns from its own output is model collapse, and the separation CANNOT be added
+// retroactively once there is volume - which is why the tag ships in the first line of ingestion
+// code rather than in a later pass. The instance-level custom_metadata declaration that makes it
+// FILTERABLE at query time is a dashboard step and can come later; the tag being ON the object is
+// the part that is irreversible if skipped.
+function _distillToMarkdown(feedId, command, source, iso, payload) {
+  const lines = [];
+  lines.push("# " + feedId + " - " + command);
+  lines.push("");
+  lines.push("- feed: " + feedId);
+  lines.push("- command: " + command);
+  lines.push("- source: " + source);
+  lines.push("- observed_at: " + iso);
+  lines.push("- origin: human (external authority, not generated by Aura)");
+  lines.push("");
+  lines.push("## Facts");
+  const walk = (obj, path) => {
+    if (lines.length > 400) return;                       // bounded: a chunk budget, not a dump
+    if (obj === null || obj === undefined) return;
+    if (typeof obj !== "object") { lines.push("- " + (path || "value") + ": " + String(obj).slice(0, 400)); return; }
+    if (Array.isArray(obj)) {
+      obj.slice(0, 25).forEach((v, i) => walk(v, path + "[" + i + "]"));
+      if (obj.length > 25) lines.push("- " + path + ": (" + obj.length + " items, first 25 kept)");
+      return;
+    }
+    for (const [k, v] of Object.entries(obj)) walk(v, path ? path + "." + k : k);
+  };
+  walk(payload, "");
+  return lines.join("\n");
+}
+
+async function ingestFeedResult(env, feedId, command, payload) {
+  try {
+    // Staging has no AURA_KNOWLEDGE binding on purpose - it must skip, not throw. Same shape as
+    // _egressDO with LEDGER_DO. Writing test facts into live knowledge is worse than not testing.
+    if (!env || !env.AURA_KNOWLEDGE || !payload) return;
+    const iso = new Date().toISOString();
+    const day = iso.slice(0, 10);
+    const stamp = iso.replace(/[:.]/g, "-");
+    const src = String(payload.source || payload.provider || feedId);
+    const meta = { origin: "human", feed: feedId, command: String(command || ""), source: src, at: iso };
+
+    await env.AURA_KNOWLEDGE.put("raw/" + feedId + "/" + day + "/" + stamp + ".json",
+      JSON.stringify({ feed: feedId, command, at: iso, payload }),
+      { httpMetadata: { contentType: "application/json" }, customMetadata: meta });
+
+    await env.AURA_KNOWLEDGE.put("feeds/" + feedId + "/" + day + "/" + stamp + ".md",
+      _distillToMarkdown(feedId, command, src, iso, payload),
+      { httpMetadata: { contentType: "text/markdown" }, customMetadata: meta });
+  } catch (e) {
+    // Never break the command being recorded - but SAY something. A silent catch here would make
+    // "nothing was ingested" indistinguishable from "ingestion is not wired", which is the exact
+    // defect class this whole day was spent removing.
+    try { console.warn("[INGEST] " + feedId + " failed: " + ((e && e.message) || e)); } catch {}
+  }
+}
+
 async function feedOk(env, id, detail) {
   try {
     await env.AURA_KV.put("monitor:feed:" + id,
@@ -26287,7 +26411,15 @@ function openAlbum(idx){
           if (_fid) {
             const _pl = r?.payload || {};
             if (_pl.ok === false) await feedFail(env, _fid, _pl.error || "command reported not ok");
-            else await feedOk(env, _fid, _cw);
+            else {
+              await feedOk(env, _fid, _cw);
+              // KEEP WHAT IT ALREADY HAD. This payload was fetched, answered one question, and was
+              // discarded. AWAITED, not waitUntil: this worker's fetch handler is fetch(request, env)
+              // with no ctx, so there is no waitUntil to reach from here. Two R2 puts is a few ms, and
+              // awaiting means a failed write is visible now rather than vanishing into a detached
+              // promise - which is the better trade for the write that carries the origin tag.
+              await ingestFeedResult(env, _fid, _cw, _pl);
+            }
           }
         } catch { /* freshness must never break the command it records */ }
         // MEMORY. /cmd was built to skip the brain and save money - and it skipped her memory too, because

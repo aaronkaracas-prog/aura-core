@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.718-2026-07-26";
+const BUILD = "aura-core-v4.9.719-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -220,25 +220,71 @@ async function meterCoreBrain(env, model, inTok, cachedIn, cacheWrite, outTok) {
     const _fresh = Math.max(0, (inTok || 0) - (cachedIn || 0));
     return (_fresh * R.in + (cachedIn || 0) * R.cacheRead + (cacheWrite || 0) * R.cacheWrite + (outTok || 0) * R.out) / 1e6;
   } catch { return 0; }
-  // eslint-disable-next-line no-unreachable
+  // The dead writer that used to sit here is GONE (v4.9.719). It was unreachable behind the
+  // return above and carried an eslint no-unreachable suppression, but it was a complete,
+  // correct-looking meter:core:<day> writer - and this worker's own WHERE / readOwnSource grep
+  // this file to derive what it can do, so a retired ledger writer reads as a live capability.
+  // It was also one deleted `return` away from silently double-counting every Anthropic call
+  // against egress:<day>. Its readers now derive from egress via _egressDay.
+}
+
+// ══ THE VIEWS THAT WERE PROMISED AND NEVER BUILT (v4.9.719) ═══════════════════════════════════════
+//
+// WHY THIS EXISTS, because the answer to "why is this the fourth AIMARGIN lockdown" is written here.
+// AIMARGIN is not a component that can be locked. It is a READER over several independently-written
+// ledgers, and locking it has meant "make the readers agree with the writers as they exist today".
+// The writers then changed three times in five days and nothing failed loudly, because a retired
+// writer does not throw - its readers just quietly get zero.
+//
+// WHAT WAS ACTUALLY FOUND, both workers, same shape: meterCoreBrain (here) and _meterCall (server.ts)
+// were both retired with an early `return` and their bodies left behind under an eslint
+// no-unreachable suppression, each with a note saying the body goes "on the next pass". That pass
+// never came, and the READERS were never moved. Result:
+//   meter:core:<day>   - ZERO writers, three readers. AUDIT's reconciler computes
+//                        dayTotal = text + img + vid + core with core permanently 0, so the internal
+//                        meter understated by aura-core's entire brain - which is precisely the bug
+//                        the comment above that line says was fixed in v4.9.636.
+//   meter:tokens:<day> - aura-think's writer died with _meterCall, so it is aura-core-only now. It is
+//                        the DENOMINATOR for CALIBRATE and the "ours" side of the requests/tokens/
+//                        pennies match. Half our tokens were being compared against all of theirs.
+//   burn:<day>         - same, aura-core-only, while the comment beside its writer still claims both
+//                        workers feed it.
+//
+// THE FIX IS NOT ANOTHER ROUND OF READER PATCHING - that is lockdown #5. egress:<day> already records
+// every provider call from BOTH workers with the provider's own usage numbers, so every retired
+// ledger is a SLICE of it. This is that slice, derived, in one place. Repointing the readers here
+// means the next writer change cannot silently short a number, because there is one writer left.
+//
+// NOT TOUCHED, deliberately: burn:<day> and the LedgerDO still receive writes. They are REDUNDANT,
+// not WRONG - every figure in them is derived from the same rate table and they agree. Redundancy
+// costs writes; a silent zero costs correctness. Only the second kind is fixed here.
+async function _egressDay(env, day) {
+  const empty = { found: false, cost_usd: 0, core_brain: 0,
+                  tokens: { in: 0, out: 0, cache_read: 0, cache_write: 0, calls: 0 }, by_model: {} };
   try {
-    if (!env || !env.AURA_KV) return 0;
-    const m = String(model || "");
-    const R = _rateFor(m);
-    const fresh = Math.max(0, (inTok || 0) - (cachedIn || 0));
-    const cost = (fresh * R.in + (cachedIn || 0) * R.cacheRead
-                  + (cacheWrite || 0) * R.cacheWrite + (outTok || 0) * R.out) / 1e6;
-    if (!(cost > 0)) return 0;
-    const d = new Date().toISOString().slice(0, 10);
-    const k = "meter:core:" + d;
-    const raw = await env.AURA_KV.get(k);
-    const led = raw ? JSON.parse(raw) : { day: d, cost_usd: 0, calls: 0, in: 0, cached: 0, out: 0, by_model: {} };
-    led.cost_usd = +(led.cost_usd + cost).toFixed(6);
-    led.calls += 1; led.in += inTok || 0; led.cached += cachedIn || 0; led.out += outTok || 0;
-    led.by_model[m || "unknown"] = +(((led.by_model[m || "unknown"] || 0) + cost)).toFixed(6);
-    await env.AURA_KV.put(k, JSON.stringify(led), { expirationTtl: 120 * 24 * 3600 });
-    return cost;
-  } catch { return 0; }
+    if (!env || !env.AURA_KV) return empty;
+    const raw = await env.AURA_KV.get("egress:" + day);
+    if (!raw) return empty;
+    const j = JSON.parse(raw);
+    const bc = j.by_caller || {};
+    // aura-core's OWN brain is exactly what meter:core used to hold: brainFetch fronts every Anthropic
+    // call site in this worker, and brainFetch:stream is its streaming sibling. Named by CALLER rather
+    // than by provider, because "anthropic" also includes aura-think's traffic over the same key.
+    const core = (Number(bc.brainFetch?.cost) || 0) + (Number(bc["brainFetch:stream"]?.cost) || 0);
+    return {
+      found: true,
+      cost_usd: Number(j.cost_usd) || 0,
+      core_brain: +core.toFixed(6),
+      tokens: {
+        in: Number(j.tokens_in) || 0,
+        out: Number(j.tokens_out) || 0,
+        cache_read: Number(j.cached_in) || 0,
+        cache_write: Number(j.cache_write) || 0,
+        calls: Number(j.calls) || 0,
+      },
+      by_model: j.by_model || {},
+    };
+  } catch { return empty; }
 }
 
 // ══ THE EGRESS METER, aura-core SIDE ── SAME LEDGER, SAME KEY ═══════════════════════════════════
@@ -356,6 +402,10 @@ async function _egressCore(env, rec) {
       led.errors_by[ek] = (led.errors_by[ek] || 0) + 1;
     }
     led.tokens_in += tin; led.tokens_out += tout; led.cached_in += tcache;
+    // v4.9.719: cache_write was priced but never accumulated here, so egress:<day> was missing the one
+    // field meter:tokens had that it did not. It is the last thing standing between "egress has most of
+    // it" and "egress has all of it", which is what lets the legacy readers below be repointed safely.
+    led.cache_write = (led.cache_write || 0) + cwrite;
     // PRICE IT. The first version recorded aura-core's tokens and left cost at zero, so brainFetch's
     // Anthropic traffic showed up as 3 calls and 6,356 tokens for $0.00 - visible at last, and still
     // wrong in the direction that matters for a margin engine.
@@ -578,7 +628,11 @@ async function brainFetch(url, opts, env, caller) {
         // it is real spend - but never touched meter:tokens, so every aura-core turn added a `turn`
         // with no matching `call`. The token ledger is the denominator for calibrating a rate against
         // what a provider actually billed, so a short denominator makes every derived price wrong.
-        // Both workers now write both counters. calls === turns because nothing increments one alone.
+        // NO LONGER TRUE, corrected v4.9.719: aura-think stopped writing BOTH counters when _meterCall
+        // was retired 2026-07-23, so this block is the ONLY writer and burn:<day> / meter:tokens:<day>
+        // are aura-core-only. They still increment together here, so they agree with each other while
+        // seeing half the system - which is why every reader that mattered now derives from egress:<day>
+        // instead. Kept as a redundant local counter, not as a cross-check and not as a denominator.
         const _tk = "meter:tokens:" + day;
         const _traw = await env.AURA_KV.get(_tk);
         const _t = _traw ? JSON.parse(_traw) : { day, in: 0, out: 0, cache_read: 0, cache_write: 0, calls: 0 };
@@ -18030,7 +18084,8 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       }
       const spendText = Number(await kvg("meter:spend:" + day, "0")) || 0;
       let spendCore = 0, spendImg = 0, spendVid = 0;
-      try { spendCore = Number(JSON.parse(await kvg("meter:core:" + day, "{}")).cost_usd) || 0; } catch {}
+      // v4.9.719: was reading meter:core, which has had no writer since 2026-07-22 and returned 0.
+      try { spendCore = (await _egressDay(env, day)).core_brain; } catch {}
       try { spendImg = Number(JSON.parse(await kvg("meter:images:" + day, "{}")).cost_usd) || 0; } catch {}
       try { spendVid = Number(JSON.parse(await kvg("meter:videos:" + day, "{}")).cost_usd) || 0; } catch {}
       const legacySum = +(spendText + spendCore + spendImg + spendVid).toFixed(6);
@@ -18253,20 +18308,28 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
               note: (bad ? "NEGATIVE DAY TOTAL - impossible; a pricing bug is banked in this ledger. "
                          : "") + (stale ? "ledger has calls but no timestamp. " : "") +
                     "Run /truecost to compare against what the providers actually billed." };
+            // ══ THIS CHECK WAS ASKING A QUESTION THAT NO LONGER MEANS ANYTHING (v4.9.719) ═════
+            // It compared meter:tokens against burn:<day> on the rule "both are written by one
+            // chokepoint and MUST agree". That rule died when _meterCall was retired in aura-think:
+            // both counters are now aura-core-only, they still increment together in the same block,
+            // so the check passes while measuring half the system. A green light over a short number
+            // is worse than a red one. The honest question now is whether the ONE remaining writer is
+            // recording - and whether the legacy pair has fallen behind it, which is expected and is
+            // reported rather than alarmed about.
             const t = JSON.parse((await kvg("meter:tokens:" + day, "{}")) || "{}");
             const b = JSON.parse((await kvg("burn:" + day, "{}")) || "{}");
             const calls = Number(t.calls) || 0, turns = Number(b.turns) || 0;
-            if (!calls && !turns) return { ok: true, egress_calls: e.calls,
-              note: "egress recording; legacy counters retired (they no longer write)" };
-            const drift = turns > 0 ? Math.abs(calls - turns) / turns : 1;
-            return drift <= 0.02
-              ? { ok: true, egress_calls: e.calls, calls, turns, note: "egress recording; legacy counters agree" }
-              : { ok: false, MISMATCH: true, calls, turns, delta: calls - turns,
-                  note: "COUNTER DIVERGENCE - meter:tokens counted " + calls + " calls and burn:<day> " +
-                        "counted " + turns + " turns for the same day. Both are written by one chokepoint " +
-                        "and MUST agree; a gap means a second writer exists. Do NOT trust any per-token " +
-                        "rate derived from meter:tokens until this is zero - the denominator is wrong, so " +
-                        "every calibrated price built on it is wrong too." };
+            if (!e.calls && (calls || turns))
+              return { ok: false, MISMATCH: true, egress_calls: 0, calls, turns,
+                note: "THE METER IS NOT RECORDING - egress:<day> has no calls for today while the " +
+                      "legacy counters do. egress is the only writer left; if it is empty and they " +
+                      "are not, every cost figure this command reports is derived from nothing." };
+            return { ok: true, egress_calls: e.calls, legacy_calls: calls, legacy_turns: turns,
+              legacy_scope: "aura-core only - aura-think stopped writing burn:<day> and meter:tokens:<day> " +
+                            "when _meterCall was retired 2026-07-23. They are kept as a redundant local " +
+                            "counter, NOT as a cross-check: they cannot see the other worker, so a gap " +
+                            "against egress is expected and is not a fault.",
+              note: "egress:<day> is the single writer and the authority for every figure above." };
           } catch (e) { return { ok: false, error: "integrity check failed: " + (e && e.message) }; }
         })(),
         meter_health: insane ? ("CORRUPT - " + insane + " impossible cost(s) refused; a rate table is wrong")
@@ -21753,7 +21816,9 @@ async function calibrateRates(env, day) {
     // price moves, so this produces an ABSOLUTE rate with nothing circular in it - the same reason
     // CALIBRATE_VIDEO (their charge / our seconds) has never needed a reset.
     let tok = null;
-    try { const r = await env.AURA_KV.get("meter:tokens:" + d); if (r) tok = JSON.parse(r); } catch {}
+    // v4.9.719: same short denominator as the match above. A rate calibrated against half the token
+    // volume is wrong by construction, and every price derived from it inherits the error.
+    try { const _e = await _egressDay(env, d); if (_e.found) tok = _e.tokens; } catch {}
     if (tok && (Number(tok.in) || Number(tok.cache_read))) {
       const tIn = Number(tok.in) || 0, tOut = Number(tok.out) || 0;
       const tRead = Number(tok.cache_read) || 0, tWrite = Number(tok.cache_write) || 0;
@@ -22551,7 +22616,8 @@ async function auditAll(env, scope, win) {
       // FOUR ledgers, not three. meter:core is aura-core's OWN Claude brain - every /chat turn and the
       // ~29 Anthropic call sites behind brainFetch. It was computed and discarded until v4.9.636, so
       // every "internal meter" figure before that understated by an entire worker.
-      try { const r = await env.AURA_KV.get("meter:core:" + k); if (r) { const j = JSON.parse(r); core = num(j.cost_usd); coreModels = j.by_model || null; } } catch {}
+      // v4.9.719: meter:core has no writer. Derived from egress:<day> instead - same number, live.
+      try { const _e = await _egressDay(env, k); core = _e.core_brain; coreModels = _e.by_model || null; } catch {}
       const dayTotal = text + img + vid + core;
       if (dayTotal > 0) daily.push({ day: k, usd: +dayTotal.toFixed(4),
                                      text: +text.toFixed(4), images: +img.toFixed(4), video: +vid.toFixed(4),
@@ -23514,7 +23580,11 @@ async function reconcileTrueCost(env, day) {
   // against three quarters of our spend, and the resulting ratio was wrong in our favour, every day,
   // silently. It is the same omission AIMARGIN had, in the one command whose entire job is to catch
   // exactly this kind of discrepancy.
-  for (const [k, label] of [["meter:images:", "images"], ["meter:videos:", "videos"], ["meter:core:", "core_brain"]]) {
+  // v4.9.719: meter:core removed from this loop - no writer since 2026-07-22, so it contributed 0 and
+  // the reconciler compared three quarters of our spend against the providers' full bill, in our
+  // favour, silently. Exactly the omission the comment above says was fixed. Derived below instead.
+  try { const _c = (await _egressDay(env, d)).core_brain; if (_c > 0) { meteredParts.core_brain = +_c.toFixed(6); metered += _c; } } catch {}
+  for (const [k, label] of [["meter:images:", "images"], ["meter:videos:", "videos"]]) {
     try {
       const raw = await env.AURA_KV.get(k + d);
       if (raw) { const j = JSON.parse(raw); const c = Number(j?.cost_usd) || 0; meteredParts[label] = c; metered += c; }
@@ -23536,7 +23606,10 @@ async function reconcileTrueCost(env, day) {
   usage.meta      = { ok: false, error: "adapter not built" };
 
   let ours = { in: 0, out: 0, cache_read: 0, cache_write: 0, calls: 0 };
-  try { const t = await env.AURA_KV.get("meter:tokens:" + d); if (t) ours = { ...ours, ...JSON.parse(t) }; } catch {}
+  // v4.9.719: meter:tokens lost aura-think when _meterCall was retired, so "ours" was aura-core only
+  // and this compared HALF our tokens against ALL of theirs - in the one command whose entire job is
+  // "the requests, the tokens, the exact penny - everything matches". egress has both workers.
+  try { const _e = await _egressDay(env, d); if (_e.found) ours = { ..._e.tokens }; } catch {}
 
   const covered = Object.entries(usage).filter(([, u]) => u.ok);
   const theirs = covered.reduce((a, [, u]) => ({

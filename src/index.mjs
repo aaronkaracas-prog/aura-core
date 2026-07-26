@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.741-2026-07-26";
+const BUILD = "aura-core-v4.9.742-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -18653,6 +18653,134 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       if (!isOp) return { cmd: "PLAN", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       return { cmd: "PLAN", payload: await auraPlan(env, rest) };
     }
+    case "PREDICT": {
+      // ══ THE SIGNAL SHE CANNOT AUTHOR (v4.9.742) ══════════════════════════════════════════════
+      //
+      // THREE COUNCIL ROUNDS SAID THE SAME THING IN DIFFERENT WORDS. Round 1: the missing piece is
+      // an EXTERNAL, NON-CIRCULAR VERIFIER, and wiring the improvement loop before one exists is
+      // "grading her own homework". Round 4: "controlled mutation and strong containment, NO
+      // SELECTION - the human is the fitness function." Round 5: the boundary must be structural so
+      // she cannot treat her own output as evidence.
+      // One finding, three costumes: SHE CANNOT IMPROVE HERSELF BECAUSE NO SIGNAL EXISTS THAT SHE
+      // DOES NOT PRODUCE. Everything else is machinery, and she already has all of it - self-edit
+      // pipeline, VERIFY oracle, regression gate, delegation, execution scoring, reflection.
+      // Machinery was never the blocker.
+      //
+      // THIS IS THE SIGNAL. Not more machinery: one loop. COMMIT to a claim about the world BEFORE
+      // the fact, with a deadline and a command that will settle it. When the deadline passes, the
+      // command runs and reality answers. The score is the gap between what she said and what
+      // happened, and she cannot write it because she does not control the answer.
+      //
+      // WHY IT IS NON-CIRCULAR, stated precisely so nobody blurs it later:
+      //   - the claim is recorded BEFORE the outcome exists, so it cannot be retrofitted
+      //   - it is settled by a COMMAND WHOSE OUTPUT COMES FROM OUTSIDE HER (a provider, Cloudflare,
+      //     the registrar, a feed) - the same class of oracle VERIFY already uses
+      //   - the expected value is stored at commit time and compared literally, not re-judged
+      //   - execution_score measures whether a TURN RAN. This measures whether a CLAIM WAS TRUE.
+      //     Those are different questions and the first one was never a fitness signal.
+      //
+      // WHAT IT DELIBERATELY DOES NOT DO: nothing here is wired to AURA_EVOLVE or to any edit. The
+      // Council was unanimous that a loop she both feeds and grades optimises into confident
+      // nonsense - so this only ACCUMULATES A RECORD. What may read it, and under what gates, is the
+      // next Council question and is not decided here.
+      //
+      //   PREDICT <horizon> <command> => <expected>   e.g. PREDICT 1h PING => aura-core-v4.9.742
+      //   PREDICT settle          - run every prediction whose deadline has passed
+      //   PREDICT score           - the record: resolved, hit, miss, calibration
+      //   PREDICT open            - what is committed and not yet settled
+      if (!isOp) return { cmd: "PREDICT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const pRest = (rest || "").trim();
+        const pKey = (id) => "predict:" + id;
+        const pIndex = "predict:index";
+        const loadIndex = async () => { try { const r = await KV.get(env, pIndex); return r ? JSON.parse(r) : []; } catch { return []; } };
+        const saveIndex = async (ix) => { try { await KV.put(env, pIndex, JSON.stringify(ix.slice(-500))); } catch {} };
+
+        // ── SCORE ────────────────────────────────────────────────────────────────────────────
+        if (/^score\b/i.test(pRest)) {
+          const ix = await loadIndex();
+          const rows = [];
+          for (const id of ix) { try { const r = await KV.get(env, pKey(id)); if (r) rows.push(JSON.parse(r)); } catch {} }
+          const resolved = rows.filter((r) => r.outcome === "hit" || r.outcome === "miss");
+          const hit = resolved.filter((r) => r.outcome === "hit").length;
+          const unsettleable = rows.filter((r) => r.outcome === "unsettleable").length;
+          return { cmd: "PREDICT", payload: { ok: true,
+            committed: rows.length, resolved: resolved.length, open: rows.filter((r) => r.outcome === "open").length,
+            hit, miss: resolved.length - hit, unsettleable,
+            accuracy: resolved.length ? +(hit / resolved.length).toFixed(3) : null,
+            recent: resolved.slice(-10).map((r) => ({ at: r.at, claim: r.command + " => " + r.expected, outcome: r.outcome, saw: String(r.saw || "").slice(0, 80) })),
+            what_this_is: "the fraction of claims about the world that turned out true. She commits before "
+              + "the fact and a command settles it from outside her, so she cannot write this number.",
+            honest_limit: resolved.length < 20
+              ? "too few resolved predictions (" + resolved.length + ") to mean anything yet - a rate over a handful of "
+                + "samples is noise wearing a percentage. Treat it as a record being built, not a measurement."
+              : "sample is large enough to read, but accuracy is only as honest as the difficulty of the claims - "
+                + "trivially true predictions inflate it, which is why the claim and the command are stored verbatim.",
+            not_wired_to: "nothing. No edit, promotion or routing decision reads this. Wiring it is a Council question." } };
+        }
+
+        // ── OPEN ─────────────────────────────────────────────────────────────────────────────
+        if (/^open\b/i.test(pRest)) {
+          const ix = await loadIndex(); const rows = [];
+          for (const id of ix) { try { const r = await KV.get(env, pKey(id)); if (r) { const j = JSON.parse(r); if (j.outcome === "open") rows.push(j); } } catch {} }
+          return { cmd: "PREDICT", payload: { ok: true, open: rows.length,
+            predictions: rows.map((r) => ({ id: r.id, claim: r.command + " => " + r.expected, due: r.due,
+              overdue: Date.parse(r.due) < Date.now() })) } };
+        }
+
+        // ── SETTLE ───────────────────────────────────────────────────────────────────────────
+        if (/^settle\b/i.test(pRest)) {
+          const ix = await loadIndex(); const settled = [];
+          for (const id of ix) {
+            let j = null;
+            try { const r = await KV.get(env, pKey(id)); j = r ? JSON.parse(r) : null; } catch {}
+            if (!j || j.outcome !== "open") continue;
+            if (Date.parse(j.due) > Date.now()) continue;
+            // REALITY ANSWERS. The command runs now; its output is not hers to choose.
+            let saw = "", outcome = "unsettleable";
+            try {
+              const r = await processCommand(j.command, env, true);
+              saw = JSON.stringify((r && r.payload) || r || {});
+              outcome = saw.includes(j.expected) ? "hit" : "miss";
+            } catch (e) {
+              // An unrunnable command is NOT a miss. A miss means the world disagreed; this means we
+              // never asked it. Collapsing the two would let a broken settler look like a bad
+              // predictor, which is the defect this whole system spent a day removing.
+              saw = "settler failed: " + String((e && e.message) || e).slice(0, 140);
+              outcome = "unsettleable";
+            }
+            j.outcome = outcome; j.saw = saw.slice(0, 400); j.settled_at = new Date().toISOString();
+            try { await KV.put(env, pKey(id), JSON.stringify(j), { expirationTtl: 400 * 24 * 3600 }); } catch {}
+            settled.push({ id, claim: j.command + " => " + j.expected, outcome });
+          }
+          return { cmd: "PREDICT", payload: { ok: true, settled: settled.length, results: settled,
+            note: settled.length ? "reality answered - see PREDICT score" : "nothing was due" } };
+        }
+
+        // ── COMMIT ───────────────────────────────────────────────────────────────────────────
+        const m = pRest.match(/^(\d+)([mhd])\s+(.+?)\s*=>\s*(.+)$/i);
+        if (!m) return { cmd: "PREDICT", payload: { ok: false,
+          error: "Usage: PREDICT <horizon> <command> => <expected>   |  PREDICT settle | score | open",
+          example: "PREDICT 1h SPACESHIP_STATUS => \"unsynced\":0",
+          why: "the claim must name a COMMAND that will settle it from outside her, and an EXPECTED "
+             + "value stored now. A prediction with no settling command is an opinion." } };
+        const qty = parseInt(m[1], 10);
+        const unit = m[2].toLowerCase();
+        const ms = qty * (unit === "m" ? 60000 : unit === "h" ? 3600000 : 86400000);
+        const command = m[3].trim();
+        const expected = m[4].trim();
+        const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        const rec = { id, at: new Date().toISOString(), due: new Date(Date.now() + ms).toISOString(),
+                      command, expected, outcome: "open", saw: null, settled_at: null };
+        try { await KV.put(env, pKey(id), JSON.stringify(rec), { expirationTtl: 400 * 24 * 3600 }); } catch {}
+        const ix = await loadIndex(); ix.push(id); await saveIndex(ix);
+        return { cmd: "PREDICT", payload: { ok: true, id, committed: rec.at, due: rec.due,
+          claim: command + " => " + expected,
+          note: "committed BEFORE the outcome exists. PREDICT settle after the deadline; the command runs "
+              + "and reality answers. Nothing reads this score - accumulating the record is the whole job for now." } };
+      }
+    }
+
     case "VERIFY": {
       // The door for "is what I believe about myself actually true", and - against a baseline - "did a
       // change break something real". VERIFY baseline freezes the current state as known-good.

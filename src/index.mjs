@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.723-2026-07-26";
+const BUILD = "aura-core-v4.9.724-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -1748,6 +1748,19 @@ async function getSecret(env, name) {
 // wrong place. Hoisted to module scope so both use ONE registry, and so a probe added here is
 // automatically available to SERVICE_STATUS instead of needing to be written twice.
 // Each probe takes the raw secret and returns a boolean, or {ok, why} for the ones that can explain.
+// ══ WHICH FEEDS ARE INSTRUMENTED AT ALL (hoisted v4.9.723) ═══════════════════════════════════════
+// This map decides whether a feed can EVER report freshness: feedOk/feedFail fire from exactly one
+// place - the /cmd dispatch - and only for a command listed here. It was a local const inside that
+// dispatch, so FEEDS could not see it, and its "configured but never recorded a delivery" finding
+// lumped together two completely different situations: a feed whose ingest path exists and simply
+// has not run, and a feed where NOTHING writes freshness and nothing ever will. The second is not a
+// quiet feed, it is an unmeasured one - the same distinction as a bot score of zero meaning "not
+// measured" rather than "none found", which is the defect this system keeps rediscovering.
+// Hoisted so FEEDS can tell them apart and say which is which.
+const FEED_OF_COMMAND = { NEWS_QUERY: "currents", OIL_PRICE: "oilprice", MARINE_WX: "openweather",
+                          FETCH_PLACES: "google_maps", WEB_SEARCH: "tavily", AIS_QUERY: "aisstream",
+                          AIS_TRANSITS: "aisstream", STORM_REPORTS: "firms", STORM_QUERY: "firms" };
+
 const FEED_PROBES = {
         openweather: async (k) => (await fetch("https://api.openweathermap.org/data/2.5/weather?q=London&appid=" + k)).ok,
         google_maps: async (k) => { const r = await fetch("https://maps.googleapis.com/maps/api/place/textsearch/json?query=coffee%20in%20London&key=" + k); const j = await r.json().catch(() => ({})); return r.ok && (j.status === "OK" || j.status === "ZERO_RESULTS"); },
@@ -1755,7 +1768,7 @@ const FEED_PROBES = {
         tavily:      async (k) => (await fetch("https://api.tavily.com/search", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ api_key: k, query: "ping", max_results: 1 }) })).ok,
         brave_search:async (k) => (await fetch("https://api.search.brave.com/res/v1/web/search?q=ping&count=1", { headers: { "X-Subscription-Token": k, Accept: "application/json" } })).ok,
         geonames:    async (k) => { const r = await fetch("http://api.geonames.org/searchJSON?q=London&maxRows=1&username=" + k); const j = await r.json().catch(() => ({})); return r.ok && !j.status; },
-        oilprice:    async (k) => (await fetch("https://api.oilpriceapi.com/v1/prices/latest", { headers: { Authorization: "Token " + k } })).ok,
+        oilprice:    async (k) => { const r = await fetch("https://api.oilpriceapi.com/v1/prices/latest", { headers: { Authorization: "Token " + k } }); if (r.ok) return { ok: true }; const t = await r.text().catch(() => ""); return { ok: false, why: "http " + r.status + (t ? " - " + t.replace(/\s+/g, " ").slice(0, 180) : " - no body returned") }; },
       };
 
 // === GOVERNOR - THE PROPAGATION BRAKES ===
@@ -11686,7 +11699,23 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         findings: [
           ...(dead.length ? [{ level: "alert", detail: "DEAD (key present, provider rejects): " + dead.map(f => f.id).join(", ") }] : []),
           ...(stale.length ? [{ level: "warn", detail: "No data in over 48h: " + stale.map(f => f.id + " (" + f.age_hours + "h)").join(", ") }] : []),
-          ...(neverSeen.length ? [{ level: "info", detail: "Configured but never recorded a delivery: " + neverSeen.map(f => f.id).join(", ") + ". Freshness only counts from when feedOk() was wired into that ingest path." }] : []),
+          ...(() => {
+            // Split what used to be one line. A feed with no command in FEED_OF_COMMAND has no path
+            // that could ever write freshness - reporting it beside a feed that is merely quiet reads
+            // as nine silent feeds when it is really three unmeasured ones and six unused ones.
+            const _instr = new Set(Object.values(FEED_OF_COMMAND));
+            const _quiet = neverSeen.filter(f => _instr.has(f.id));
+            const _blind = neverSeen.filter(f => !_instr.has(f.id));
+            return [
+              ...(_quiet.length ? [{ level: "info", detail: "Instrumented but no delivery recorded yet: " +
+                _quiet.map(f => f.id).join(", ") + ". A command exists that would write freshness for each of these; " +
+                "it has not been run, or has not succeeded, since freshness was wired." }] : []),
+              ...(_blind.length ? [{ level: "warn", detail: "NOT INSTRUMENTED - no ingest path writes freshness for: " +
+                _blind.map(f => f.id).join(", ") + ". These will read as 'never delivered' forever regardless of whether " +
+                "they work, because nothing calls feedOk for them. That is an unmeasured feed, not a silent one - " +
+                "add a command to FEED_OF_COMMAND to make the question answerable." }] : []),
+            ];
+          })(),
         ],
         note: "Cost model: paid = burns money per use; free = open no cost; gov = government public data. " +
               "Add a feed by writing feeds:catalog in KV - no code change. Run FEEDS probe for a real " +
@@ -26241,10 +26270,7 @@ function openAlbum(idx){
         // has no data behind it, which is exactly why FEEDS was an inventory and not an audit.
         try {
           const _cw = String(q).trim().split(/\s+/)[0].toUpperCase();
-          const _FEED_OF = { NEWS_QUERY: "currents", OIL_PRICE: "oilprice", MARINE_WX: "openweather",
-                             FETCH_PLACES: "google_maps", WEB_SEARCH: "tavily", AIS_QUERY: "aisstream",
-                             AIS_TRANSITS: "aisstream", STORM_REPORTS: "firms", STORM_QUERY: "firms" };
-          const _fid = _FEED_OF[_cw];
+          const _fid = FEED_OF_COMMAND[_cw];
           if (_fid) {
             const _pl = r?.payload || {};
             if (_pl.ok === false) await feedFail(env, _fid, _pl.error || "command reported not ok");

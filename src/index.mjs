@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.712-2026-07-24";
+const BUILD = "aura-core-v4.9.713-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -417,7 +417,14 @@ async function pfetch(env, provider, caller, url, opts, tenant) {
   return res;
 }
 
-async function brainFetch(url, opts, env) {
+// v4.9.713: `caller` is OPTIONAL and defaults to the old label, so all 28 existing call sites are
+// untouched. It exists because the 10-minute resource heartbeat - a max_tokens:1 "hi" to sonnet -
+// was landing in the ledger under `brainFetch`, the same label as real reasoning. Today that was 13
+// of 27 anthropic calls: half of what looked like thinking was a pulse check. The cost was
+// negligible; the LABEL was not, because SENTRY learns what a normal caller looks like from these
+// rows, and AIMARGIN attributes spend by them. A meter that files a heartbeat as work is wrong in
+// the one way this system cannot tolerate.
+async function brainFetch(url, opts, env, caller) {
   env = env || _BRAIN_ENV;
   let body;
   try { body = JSON.parse(opts && opts.body ? opts.body : "{}"); } catch { body = {}; }
@@ -434,7 +441,7 @@ async function brainFetch(url, opts, env) {
   }
 
   // streaming: caching-injected body, real fetch, untouched Response. Nothing else.
-  if (isStream) return await pfetch(env, "anthropic", "brainFetch:stream", url, { ...opts, body: JSON.stringify(body) });
+  if (isStream) return await pfetch(env, "anthropic", (caller || "brainFetch") + ":stream", url, { ...opts, body: JSON.stringify(body) });
 
   // ── 2. L1 ANSWER CACHE: has anyone already asked this exact thing? ──
   let cacheKey = null;
@@ -474,7 +481,7 @@ async function brainFetch(url, opts, env) {
   } catch (e) { cacheKey = null; }
 
   // ── 3. the real call ──
-  const r = await pfetch(env, "anthropic", "brainFetch", url, { ...opts, body: JSON.stringify(body) });
+  const r = await pfetch(env, "anthropic", caller || "brainFetch", url, { ...opts, body: JSON.stringify(body) });
   if (!r.ok) return r;
 
   const j = await r.json();
@@ -3148,15 +3155,29 @@ async function processCommand(line, env, isOp) {
       // KV table that overrides it. A lock with a door beside it is not a lock.
       // These require the override phrase in the same command, so changing them is deliberate and
       // leaves a trace, rather than being one keystroke away from a silently wrong meter.
+      // ══ THE ASYMMETRY THIS LIST HAD (v4.9.713) ═══════════════════════════════════════════════
+      // GETKV guards `secret:` hard - masked by default for everyone, override required, so revealing
+      // a credential is a deliberate act that leaves a trace. SETKV guarded nothing. Reading the
+      // Mercury credential was protected; OVERWRITING it was one keystroke, no override, no marker.
+      // That is backwards: a read leaks a key, a write DESTROYS one - and a silently rotated
+      // `secret:cloudflare` takes every domain and DNS record with it. The rates table was better
+      // protected than the bank. Same door, both directions, same deliberateness.
       const _GUARDED_KEYS = [/^config:rates:table$/i, /^config:rate:calibrated$/i,
-                             /^balance:/i, /^usage:anchor:/i, /^config:budget:/i];
+                             /^balance:/i, /^usage:anchor:/i, /^config:budget:/i,
+                             /^secret:/i];
       if (_GUARDED_KEYS.some((r) => r.test(key)) && !/OVERRIDE_CONSTITUTIONAL/.test(line)) {
         return { cmd: "SETKV", payload: { ok: false, error: "GUARDED_KEY",
           key,
-          why: "This key is part of the meter: it sets what tokens cost, what a balance is anchored " +
-               "at, or what the budget ceiling is. Changing it changes every number AIMARGIN reports, " +
-               "which is exactly the surface the constitutional lock exists to protect - and editing " +
-               "KV would have walked around the source lock entirely.",
+          why: /^secret:/i.test(key)
+            ? "This key is a CREDENTIAL. Overwriting it does not leak it - it destroys it, and " +
+              "whatever it opened stops opening until someone notices. secret:cloudflare controls " +
+              "every domain and DNS record; secret:mercury is the bank. Reading one is already a " +
+              "deliberate act with an override; writing one is now the same, so a rotation is " +
+              "always something chosen rather than something that happened."
+            : "This key is part of the meter: it sets what tokens cost, what a balance is anchored " +
+              "at, or what the budget ceiling is. Changing it changes every number AIMARGIN reports, " +
+              "which is exactly the surface the constitutional lock exists to protect - and editing " +
+              "KV would have walked around the source lock entirely.",
           how: "Repeat the command with OVERRIDE_CONSTITUTIONAL appended if this is deliberate: " +
                "SETKV " + key + " <value> OVERRIDE_CONSTITUTIONAL" } };
       }
@@ -17606,11 +17627,38 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
               "/cmd, /chat or another operator path today. A human operator is not a bot. Treat as a " +
               "credential probe until shown otherwise - rotate the operator token if this is unexplained.");
         // 10. ENUMERATION. One network touching many distinct paths is mapping, not browsing.
-        for (const [asn, paths] of Object.entries(inb.paths_seen || {})) {
-          const n = Object.keys(paths || {}).length;
-          if (n >= 15)
+        //
+        // ══ TWENTY ALERTS IS ZERO ALERTS (v4.9.713) ══════════════════════════════════════════════
+        // This fired ALERT on any network over a flat 15 and produced twenty of them in one day, out
+        // of ninety networks seen - Microsoft, two Amazon ranges and DigitalOcean among them. A page
+        // of red that a reader learns to scroll past is worse than no rule, because it looks like
+        // coverage. Rules 11 and 12 immediately below already say the right thing - "relative to what
+        // this system normally sees, not an absolute" - and this one was the only bare constant left.
+        // So: same floor, but graded against the pack. A network materially above the other crawlers
+        // is an ALERT; the ordinary tail is still REPORTED, in one line, where it can be read.
+        // NOTE the standing limit above - with no bot score there is nothing here that distinguishes
+        // a search crawler from a scanner. This grades VOLUME, not intent, and must not be read as
+        // if it grades intent.
+        {
+          const walkers = Object.entries(inb.paths_seen || {})
+            .map(([asn, paths]) => [asn, Object.keys(paths || {}).length])
+            .filter(([, n]) => n >= 15)
+            .sort((a, b) => b[1] - a[1]);
+          const mid = median(walkers.map(([, n]) => n));
+          const loud = [], tail = [];
+          for (const [asn, n] of walkers) {
+            ((n >= 100 || (mid && n >= mid * 4)) ? loud : tail).push([asn, n]);
+          }
+          for (const [asn, n] of loud)
             add("ALERT", "path enumeration", "network AS" + asn + " touched " + n + " distinct paths " +
-                "today. A visitor reads a page; a scanner walks the tree.");
+                "today, against a median of " + (mid || 0) + " across the " + walkers.length +
+                " networks walking more than one page. A visitor reads a page; a scanner walks the tree.");
+          if (tail.length)
+            add("REVIEW", "routine path walking", tail.length + " further network(s) touched 15+ distinct " +
+                "paths today without standing out from the pack: " +
+                tail.map(([a, n]) => "AS" + a + " (" + n + ")").join(", ") +
+                ". Listed rather than alerted - this is what ordinary crawling looks like here, and it " +
+                "is the baseline the ALERTs above are measured against.");
         }
         // 11. A SURGE OF AUTOMATION. Relative to what this system normally sees, not an absolute.
         const bm = median(inbBase.automated);
@@ -23776,7 +23824,7 @@ async function watchResources(env) {
     try {
       const ak = await KV.get(env, "secret:anthropic");
       if (ak) {
-        const r = await brainFetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": ak, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 1, messages: [{ role: "user", content: "hi" }] }) });
+        const r = await brainFetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": ak, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 1, messages: [{ role: "user", content: "hi" }] }) }, env, "healthcheck");
         if (!r.ok) { const e = await r.json().catch(()=>({})); const msg = e?.error?.message || ""; if (/credit balance/i.test(msg)) concerns.push({ provider: "anthropic", level: "critical", note: "brain credits low/empty" }); }
       }
     } catch {}

@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.719-2026-07-26";
+const BUILD = "aura-core-v4.9.720-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -260,7 +260,7 @@ async function meterCoreBrain(env, model, inTok, cachedIn, cacheWrite, outTok) {
 // costs writes; a silent zero costs correctness. Only the second kind is fixed here.
 async function _egressDay(env, day) {
   const empty = { found: false, cost_usd: 0, core_brain: 0,
-                  tokens: { in: 0, out: 0, cache_read: 0, cache_write: 0, calls: 0 }, by_model: {} };
+                  tokens: { in: 0, out: 0, cache_read: 0, cache_write: 0, calls: 0 }, day_by_model: {} };
   try {
     if (!env || !env.AURA_KV) return empty;
     const raw = await env.AURA_KV.get("egress:" + day);
@@ -282,7 +282,11 @@ async function _egressDay(env, day) {
         cache_write: Number(j.cache_write) || 0,
         calls: Number(j.calls) || 0,
       },
-      by_model: j.by_model || {},
+      // NAMED day_by_model, not by_model, and deliberately: this is EVERY model the day touched,
+      // including the healthcheck. The core_brain COST above is a real slice (derived by caller);
+      // there is no per-caller model breakdown in the KV rollup, so a brain-only version of this
+      // cannot be derived here. Reporting it under a core_* name was wrong for exactly one deploy.
+      day_by_model: j.by_model || {},
     };
   } catch { return empty; }
 }
@@ -22617,11 +22621,11 @@ async function auditAll(env, scope, win) {
       // ~29 Anthropic call sites behind brainFetch. It was computed and discarded until v4.9.636, so
       // every "internal meter" figure before that understated by an entire worker.
       // v4.9.719: meter:core has no writer. Derived from egress:<day> instead - same number, live.
-      try { const _e = await _egressDay(env, k); core = _e.core_brain; coreModels = _e.by_model || null; } catch {}
+      try { const _e = await _egressDay(env, k); core = _e.core_brain; coreModels = _e.day_by_model || null; } catch {}
       const dayTotal = text + img + vid + core;
       if (dayTotal > 0) daily.push({ day: k, usd: +dayTotal.toFixed(4),
                                      text: +text.toFixed(4), images: +img.toFixed(4), video: +vid.toFixed(4),
-                                     core_brain: +core.toFixed(4), core_by_model: coreModels });
+                                     core_brain: +core.toFixed(4), day_by_model: coreModels });
     }
     const total = daily.reduce((a, x) => a + x.usd, 0);
     const margin = await call("AIMARGIN status");

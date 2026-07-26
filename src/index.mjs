@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.716-2026-07-26";
+const BUILD = "aura-core-v4.9.717-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -1618,9 +1618,14 @@ const SECRET_ALIAS = (() => {
 // A family with no entry here simply never checks the store and reads KV, so this map is the whole
 // migration switch: add a line, add the binding, that credential stops living in plaintext.
 const SECRET_BINDING = {
+  // FIRST TIER-0 MIGRATION (v4.9.717). Stripe first on purpose: it is genuinely tier-0, it has a live
+  // check so the move is verifiable rather than assumed, and its blast radius is smallest today
+  // because no revenue flows through it yet. Cloudflare and Mercury follow once this path is proven.
+  // Safe in any order - getSecret falls through to KV if the binding is missing, empty, or throws, so
+  // this line can ship before the secret exists and nothing changes until it does.
+  stripe: "SS_STRIPE",
   // cloudflare: "SS_CLOUDFLARE",
   // mercury:    "SS_MERCURY",
-  // stripe:     "SS_STRIPE",
   // github_token: "SS_GITHUB",
   // operator:   "SS_OPERATOR",
 };

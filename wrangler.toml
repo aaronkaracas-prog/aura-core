@@ -84,6 +84,29 @@ new_sqlite_classes = ["LedgerDO"]
 [[send_email]]
 name = "SEND_EMAIL"
 
+# ══ TIER-0 CREDENTIALS OUT OF PLAINTEXT (2026-07-26) ════════════════════════════════════════════
+# 49 credentials live in KV as plaintext - the bank, the token that controls every domain and DNS
+# record, the registrar, GitHub, Stripe, and the operator token itself. GETKV masks them and SETKV
+# now guards them, but both are mitigation sitting ON TOP of plaintext. Secrets Store removes the
+# plaintext: the value cannot be read back after creation, only the Worker runtime decrypts it at
+# execution, and there is no write path from this Worker at all - so GETKV cannot return it, LISTKV
+# cannot find it, and SETKV cannot destroy it, because it stops being a KV key.
+#
+# The store is `default_secrets_store` and it has existed since 2026-01-08. Beta allows exactly one
+# store per account, which is why `wrangler secrets-store store create` fails with
+# maximum_stores_exceeded - there was never a second one to make.
+#
+# STRIPE FIRST, deliberately: real tier-0, has a live check so the move is verifiable, and the
+# smallest blast radius today because no revenue flows yet. Cloudflare and Mercury follow once this
+# exact path is proven end to end.
+#
+# NOT bound on the staging twin. Staging has its own isolated KV, so it keeps the KV fallback and a
+# self-edit tested there never touches the production payment credential.
+[[secrets_store_secrets]]
+binding = "SS_STRIPE"
+store_id = "8aaeeb2dddae4cce9659c7c21c8d738d"
+secret_name = "stripe"
+
 [browser]
 binding = "BROWSER"
 

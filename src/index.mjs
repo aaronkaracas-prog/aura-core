@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.734-2026-07-26";
+const BUILD = "aura-core-v4.9.735-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -11687,11 +11687,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       try {
         // `KNOWLEDGE raw` reads the OTHER bucket - the one nothing indexes. Without this the
         // command would silently report only what is indexed and look like the whole picture.
-        const wantRaw = String(args[0] || "").toLowerCase().startsWith("raw");
+        // ══ A DEFAULT FILTER HID THE DEBRIS (v4.9.735) ═══════════════════════════════════════════
+        // This defaulted to prefix "feeds/", so the command written to inspect the indexed bucket
+        // could not see the raw/ objects sitting inside it - the exact objects that were outranking
+        // real facts in retrieval. An inspector with a default filter reports a clean room because it
+        // is only looking at the tidy corner. Default is now EVERYTHING, and anything in the indexed
+        // bucket outside feeds/ is called out as debris rather than quietly listed.
+        // Bucket selection is an EXACT match on "raw" now, not startsWith - so `KNOWLEDGE raw/` means
+        // "the indexed bucket, prefix raw/" (what we actually needed) and `KNOWLEDGE raw` means the
+        // archive bucket. startsWith made those two indistinguishable.
+        const wantRaw = String(args[0] || "").toLowerCase() === "raw";
         const bucket = wantRaw ? env.AURA_KNOWLEDGE_RAW : env.AURA_KNOWLEDGE;
         if (!bucket) return { cmd: "KNOWLEDGE", payload: { ok: false,
           error: (wantRaw ? "AURA_KNOWLEDGE_RAW" : "AURA_KNOWLEDGE") + " not bound" } };
-        const prefix = wantRaw ? (args[1] || "") : (args[0] || "feeds/");
+        const prefix = wantRaw ? (args[1] || "") : (args[0] || "");
         const listed = await bucket.list({ prefix, limit: 40, include: ["customMetadata"] });
         const objects = (listed.objects || []).map((o) => ({
           key: o.key,
@@ -11702,8 +11711,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           source: (o.customMetadata && o.customMetadata.source) || null,
         }));
         const untagged = objects.filter((o) => o.origin !== "human").length;
+        // Anything in the INDEXED bucket outside feeds/ should not be there. Naming it beats listing it.
+        const debris = wantRaw ? [] : objects.filter((o) => !String(o.key).startsWith("feeds/")).map((o) => o.key);
         return { cmd: "KNOWLEDGE", payload: { ok: true, bucket: wantRaw ? "aura-knowledge-raw (indexed by nothing)" : "aura-knowledge (indexed by aura-feeds)", prefix, count: objects.length,
           truncated: !!listed.truncated, objects,
+          debris: debris.length === 0 ? "none - every object in the indexed bucket is under feeds/"
+            : debris.length + " object(s) in the INDEXED bucket outside feeds/: " + debris.join(", ")
+              + " - these are indexed and will surface in real answers. Delete with "
+              + "`wrangler r2 object delete \"aura-knowledge/<key>\" --remote` (the --remote is load-bearing; "
+              + "without it wrangler deletes from a local simulation and still prints Delete complete) then re-sync.",
           origin_check: untagged === 0
             ? "every object carries origin=human"
             : untagged + " object(s) WITHOUT origin=human - nothing should reach this bucket untagged; "

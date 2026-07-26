@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.729-2026-07-26";
+const BUILD = "aura-core-v4.9.730-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -11656,39 +11656,40 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // working - which today alone produced a cache that defaulted on, a prefix that did not scope,
       // and a delete that deleted nothing while printing success.
       if (String(args[0] || "").toUpperCase() === "PUSH") {
+        // ══ ASK THE OBJECT WHAT IT HAS (v4.9.730) ════════════════════════════════════════════════
+        // The previous probe guessed method names from a docs example and reported
+        // metadata_arg_accepted:false when BOTH attempts had actually died on a timeout - a boolean
+        // that collapsed "metadata refused" and "call failed for any reason" into one value. That is
+        // the same defect being removed from this codebase all day, written fresh into the probe
+        // meant to prevent it. So: enumerate first, call second, and never infer a cause from a
+        // failure that has more than one possible cause.
+        //
+        // WHAT IS ALREADY SETTLED: uploadAndPoll POLLS UNTIL INDEXED and blew through the Worker
+        // request timeout at ~30s per attempt. It cannot be used in a request path regardless of
+        // anything else, so the real ingestion path needs a non-polling upload - if one exists.
         if (!env.AI_SEARCH) return { cmd: "KNOWLEDGE", payload: { ok: false, error: "AI_SEARCH not bound" } };
-        const t0 = Date.now();
-        const probeKey = "probe/items-api-" + new Date().toISOString().replace(/[:.]/g, "-") + ".md";
-        const body = "# Items API probe\n\n- purpose: prove built-in storage indexes on arrival\n"
-                   + "- origin: human (probe, not a real fact)\n- marker: ZANZIBAR-PROBE-" + Date.now() + "\n";
-        const out = { probe_key: probeKey };
-        try {
-          const inst = env.AI_SEARCH.get("aura-feeds");
-          out.instance_resolved = !!inst;
-          out.items_present = !!(inst && inst.items);
-          let res;
-          try {
-            // third argument is speculative - if metadata is unsupported this is where we find out
-            res = await inst.items.uploadAndPoll(probeKey, body, { metadata: { origin: "human", feed: "probe" } });
-            out.metadata_arg_accepted = true;
-          } catch (e1) {
-            out.metadata_arg_accepted = false;
-            out.metadata_arg_error = String((e1 && e1.message) || e1).slice(0, 200);
-            res = await inst.items.uploadAndPoll(probeKey, body);
+        const out = {};
+        const names = (o) => {
+          const seen = new Set();
+          for (let x = o; x && x !== Object.prototype; x = Object.getPrototypeOf(x)) {
+            for (const n of Object.getOwnPropertyNames(x)) if (n !== "constructor") seen.add(n);
           }
-          out.ok = true;
-          out.result_keys = res && typeof res === "object" ? Object.keys(res) : typeof res;
-          out.status = res && res.status;
-          out.raw_result = res;
+          return [...seen].sort();
+        };
+        try {
+          const ns = env.AI_SEARCH;
+          out.namespace_methods = names(ns);
+          const inst = ns.get("aura-feeds");
+          out.instance_methods = names(inst);
+          out.items_methods = inst && inst.items ? names(inst.items) : null;
         } catch (e) {
-          out.ok = false;
-          out.error = String((e && e.message) || e).slice(0, 300);
+          out.enumerate_error = String((e && e.message) || e).slice(0, 300);
         }
-        out.elapsed_ms = Date.now() - t0;
-        out.read_this = "elapsed_ms is the cost this would add to EVERY feed command if the real path "
-          + "uses uploadAndPoll. metadata_arg_accepted decides whether built-in storage can carry the "
-          + "origin tag at all - if false, facts stay on the R2 path regardless of sync latency.";
-        return { cmd: "KNOWLEDGE", payload: out };
+        out.settled = "uploadAndPoll polls until indexed and exceeded the Worker request timeout at "
+          + "~30s. Whatever non-polling upload appears in items_methods is the candidate for the real "
+          + "ingestion path. Metadata support is still UNKNOWN - the earlier probe's false reading was "
+          + "a timeout, not a rejection.";
+        return { cmd: "KNOWLEDGE", payload: { ok: true, ...out } };
       }
       if (!env.AURA_KNOWLEDGE) return { cmd: "KNOWLEDGE", payload: { ok: false,
         error: "AURA_KNOWLEDGE not bound",

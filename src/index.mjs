@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.722-2026-07-26";
+const BUILD = "aura-core-v4.9.723-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -1738,6 +1738,25 @@ async function getSecret(env, name) {
   }
   return null;
 }
+
+// ══ ONE PROBE REGISTRY, REACHABLE FROM BOTH CHECKERS (v4.9.723) ══════════════════════════════════
+// There were TWO checker registries in this file that did not agree. FEEDS had working live probes
+// for oilprice and geonames; SERVICE_STATUS reported oilprice as `live: null` (not checked) and had
+// no geonames entry at all. The capability existed and was simply out of reach - PROBES was a local
+// const inside `case "FEEDS"`, invisible to the command that reports service health. Same shape as
+// the google_maps check testing the wrong API: not a missing capability, a capability wired to the
+// wrong place. Hoisted to module scope so both use ONE registry, and so a probe added here is
+// automatically available to SERVICE_STATUS instead of needing to be written twice.
+// Each probe takes the raw secret and returns a boolean, or {ok, why} for the ones that can explain.
+const FEED_PROBES = {
+        openweather: async (k) => (await fetch("https://api.openweathermap.org/data/2.5/weather?q=London&appid=" + k)).ok,
+        google_maps: async (k) => { const r = await fetch("https://maps.googleapis.com/maps/api/place/textsearch/json?query=coffee%20in%20London&key=" + k); const j = await r.json().catch(() => ({})); return r.ok && (j.status === "OK" || j.status === "ZERO_RESULTS"); },
+        currents:    async (k) => (await fetch("https://api.currentsapi.services/v1/latest-news?apiKey=" + k + "&page_size=1")).ok,
+        tavily:      async (k) => (await fetch("https://api.tavily.com/search", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ api_key: k, query: "ping", max_results: 1 }) })).ok,
+        brave_search:async (k) => (await fetch("https://api.search.brave.com/res/v1/web/search?q=ping&count=1", { headers: { "X-Subscription-Token": k, Accept: "application/json" } })).ok,
+        geonames:    async (k) => { const r = await fetch("http://api.geonames.org/searchJSON?q=London&maxRows=1&username=" + k); const j = await r.json().catch(() => ({})); return r.ok && !j.status; },
+        oilprice:    async (k) => (await fetch("https://api.oilpriceapi.com/v1/prices/latest", { headers: { Authorization: "Token " + k } })).ok,
+      };
 
 // === GOVERNOR - THE PROPAGATION BRAKES ===
 // Every outbound social action must clear this BEFORE it happens. Tracks Aura's own pace
@@ -11634,15 +11653,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // FEEDS <probe> runs a real authenticated call per feed. Without it this command reports "configured"
       // for a feed that has been dead for weeks - which is an inventory, not an audit.
       const doProbe = /\bprobe|live|check\b/i.test(rest || "");
-      const PROBES = {
-        openweather: async (k) => (await fetch("https://api.openweathermap.org/data/2.5/weather?q=London&appid=" + k)).ok,
-        google_maps: async (k) => { const r = await fetch("https://maps.googleapis.com/maps/api/place/textsearch/json?query=coffee%20in%20London&key=" + k); const j = await r.json().catch(() => ({})); return r.ok && (j.status === "OK" || j.status === "ZERO_RESULTS"); },
-        currents:    async (k) => (await fetch("https://api.currentsapi.services/v1/latest-news?apiKey=" + k + "&page_size=1")).ok,
-        tavily:      async (k) => (await fetch("https://api.tavily.com/search", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ api_key: k, query: "ping", max_results: 1 }) })).ok,
-        brave_search:async (k) => (await fetch("https://api.search.brave.com/res/v1/web/search?q=ping&count=1", { headers: { "X-Subscription-Token": k, Accept: "application/json" } })).ok,
-        geonames:    async (k) => { const r = await fetch("http://api.geonames.org/searchJSON?q=London&maxRows=1&username=" + k); const j = await r.json().catch(() => ({})); return r.ok && !j.status; },
-        oilprice:    async (k) => (await fetch("https://api.oilpriceapi.com/v1/prices/latest", { headers: { Authorization: "Token " + k } })).ok,
-      };
+      const PROBES = FEED_PROBES;   // hoisted to module scope v4.9.723 - see FEED_PROBES
       const feeds = await Promise.all(Object.entries(catalog).map(async ([id, f]) => {
         let configured = false, key = null;
         try { key = await KV.get(env, f.secret); configured = !!key; } catch {}
@@ -16698,7 +16709,16 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       await Promise.all(defs.map(async (d) => {
         const present = await has(d.key);
         let live = null, liveWhy = null;
-        if (present && d.check) { const _p = await ping(d.check); live = _p.ok; liveWhy = _p.why; }
+        // FALL BACK TO THE SHARED PROBE REGISTRY (v4.9.723). A service with no check of its own is
+        // reported live:null - "not measured" - which was honest but wrong for oilprice, because
+        // FEEDS already had a working probe for it that this command could not see. Now an entry
+        // without its own check borrows the shared one, so adding a probe in one place lights up
+        // both commands and the two registries can never drift apart again.
+        const _fallback = (!d.check && FEED_PROBES[d.id])
+          ? (async () => { const k = await getSecret(env, d.key); return k ? await FEED_PROBES[d.id](k) : { ok: false, why: "no key" }; })
+          : null;
+        const _fn = d.check || _fallback;
+        if (present && _fn) { const _p = await ping(_fn); live = _p.ok; liveWhy = _p.why; }
         const r = regMap[d.id] || {};
         services[d.id] = {
           label: d.label,

@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.730-2026-07-26";
+const BUILD = "aura-core-v4.9.731-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -11656,39 +11656,41 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // working - which today alone produced a cache that defaulted on, a prefix that did not scope,
       // and a delete that deleted nothing while printing success.
       if (String(args[0] || "").toUpperCase() === "PUSH") {
-        // ══ ASK THE OBJECT WHAT IT HAS (v4.9.730) ════════════════════════════════════════════════
-        // The previous probe guessed method names from a docs example and reported
-        // metadata_arg_accepted:false when BOTH attempts had actually died on a timeout - a boolean
-        // that collapsed "metadata refused" and "call failed for any reason" into one value. That is
-        // the same defect being removed from this codebase all day, written fresh into the probe
-        // meant to prevent it. So: enumerate first, call second, and never infer a cause from a
-        // failure that has more than one possible cause.
-        //
-        // WHAT IS ALREADY SETTLED: uploadAndPoll POLLS UNTIL INDEXED and blew through the Worker
-        // request timeout at ~30s per attempt. It cannot be used in a request path regardless of
-        // anything else, so the real ingestion path needs a non-polling upload - if one exists.
+        // ══ AN RPC SURFACE CANNOT BE ENUMERATED (v4.9.731) ═══════════════════════════════════════
+        // Walking the prototype chain returned ["connect","fetch"] on the namespace and
+        // ["catch","finally","then"] on the instance and on items - i.e. an RPC stub and two
+        // Promises. Remote methods are PROXIED and resolved on the other side, so no amount of
+        // reflection will list them. Same lesson already recorded about the Agents SDK: a shape you
+        // can inspect is not a fact about what runs.
+        // What RPC DOES answer is calls. A method that does not exist fails differently from one
+        // that exists and errors - so try the candidates and read the errors, each on a short
+        // timeout so a polling call cannot eat the request the way uploadAndPoll did at ~30s.
         if (!env.AI_SEARCH) return { cmd: "KNOWLEDGE", payload: { ok: false, error: "AI_SEARCH not bound" } };
-        const out = {};
-        const names = (o) => {
-          const seen = new Set();
-          for (let x = o; x && x !== Object.prototype; x = Object.getPrototypeOf(x)) {
-            for (const n of Object.getOwnPropertyNames(x)) if (n !== "constructor") seen.add(n);
-          }
-          return [...seen].sort();
-        };
+        const out = { note: "each candidate called once with a 6s ceiling; read the ERROR TEXT - "
+          + "'no such method' means absent, anything else means it exists and did something" };
+        const cap = (pr, ms) => Promise.race([pr,
+          new Promise((_, rej) => setTimeout(() => rej(new Error("__probe_timeout_" + ms + "ms")), ms))]);
+        const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const body = "# probe\n\n- marker: ZANZIBAR-" + Date.now() + "\n- origin: human (probe)\n";
         try {
-          const ns = env.AI_SEARCH;
-          out.namespace_methods = names(ns);
-          const inst = ns.get("aura-feeds");
-          out.instance_methods = names(inst);
-          out.items_methods = inst && inst.items ? names(inst.items) : null;
+          const inst = await cap(Promise.resolve(env.AI_SEARCH.get("aura-feeds")), 6000);
+          out.instance_resolved = !!inst;
+          out.instance_type = typeof inst;
+          const items = inst && inst.items;
+          out.items_type = typeof items;
+          out.attempts = {};
+          for (const m of ["upload", "create", "insert", "put", "add", "uploadAndPoll"]) {
+            const key = "probe/" + m + "-" + stamp + ".md";
+            try {
+              const r = await cap(Promise.resolve(items[m](key, body)), 6000);
+              out.attempts[m] = { ok: true, result: r && typeof r === "object" ? Object.keys(r) : String(r) };
+            } catch (e) {
+              out.attempts[m] = { ok: false, error: String((e && e.message) || e).slice(0, 180) };
+            }
+          }
         } catch (e) {
-          out.enumerate_error = String((e && e.message) || e).slice(0, 300);
+          out.fatal = String((e && e.message) || e).slice(0, 300);
         }
-        out.settled = "uploadAndPoll polls until indexed and exceeded the Worker request timeout at "
-          + "~30s. Whatever non-polling upload appears in items_methods is the candidate for the real "
-          + "ingestion path. Metadata support is still UNKNOWN - the earlier probe's false reading was "
-          + "a timeout, not a rejection.";
         return { cmd: "KNOWLEDGE", payload: { ok: true, ...out } };
       }
       if (!env.AURA_KNOWLEDGE) return { cmd: "KNOWLEDGE", payload: { ok: false,

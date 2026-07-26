@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.733-2026-07-26";
+const BUILD = "aura-core-v4.9.734-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -11655,54 +11655,31 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // Probing with one throwaway document beats reading a reference page and reporting it as
       // working - which today alone produced a cache that defaulted on, a prefix that did not scope,
       // and a delete that deleted nothing while printing success.
-      if (String(args[0] || "").toUpperCase() === "PUSH") {
-        // ══ READ IT BACK AFTER INDEXING, NOT AT QUEUE TIME (v4.9.733) ════════════════════════════
-        // The last probe had all four forms return metadata:null INCLUDING the control - but every
-        // response carried status:"queued". That response is a RECEIPT, not a final state, so null
-        // at queue time cannot distinguish "argument ignored" from "not populated yet". Calling that
-        // settled would have been the same mistake as reading a zero as "none found".
-        // So: upload WITH metadata, wait for the queue to drain, then read the item back and look.
-        // Also probes list/get/delete - delete matters because every probe document so far is sitting
-        // in built-in storage and WILL surface in real queries.
+      // ══ CLEAN OUT THE PROBE DOCUMENTS ═════════════════════════════════════════════════════════
+      // Seven probe files were uploaded into built-in storage while working out this API. They are
+      // INDEXED, so they will surface in real answers - debris from the build showing up as
+      // knowledge. `delete` takes the item ID, not the key (it answers item_not_found for a key),
+      // and list() returns a {success, result, result_info} envelope with the items under .result.
+      if (String(args[0] || "").toUpperCase() === "CLEAN") {
         if (!env.AI_SEARCH) return { cmd: "KNOWLEDGE", payload: { ok: false, error: "AI_SEARCH not bound" } };
-        const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-        const key = "probe/readback-" + stamp + ".md";
-        const want = { origin: "human", feed: "probe" };
-        const out = { probe_key: key, sent_metadata: want };
-        const cap = (pr, ms) => Promise.race([pr,
-          new Promise((_, rej) => setTimeout(() => rej(new Error("__timeout_" + ms)), ms))]);
+        const out = { removed: [], failed: [] };
         try {
           const items = env.AI_SEARCH.get("aura-feeds").items;
-          out.upload = await cap(items.upload(key, "# readback probe\n\n- marker: ZANZIBAR-" + Date.now() + "\n",
-            { metadata: want }), 8000).then((r) => ({ status: r && r.status, metadata: (r && r.metadata) || null }))
-            .catch((e) => ({ error: String((e && e.message) || e).slice(0, 160) }));
-          // give the queue a moment - short, because this runs inside a request
-          await new Promise((r) => setTimeout(r, 6000));
-          for (const [label, call] of [
-            ["list", () => items.list()],
-            ["get", () => items.get(key)],
-          ]) {
-            try {
-              const r = await cap(Promise.resolve(call()), 8000);
-              if (label === "list") {
-                const arr = Array.isArray(r) ? r : (r && (r.items || r.result || r.objects)) || [];
-                const mine = (Array.isArray(arr) ? arr : []).filter((i) => i && i.key === key);
-                out.list = { shape: r && typeof r === "object" ? Object.keys(r) : typeof r,
-                  count: Array.isArray(arr) ? arr.length : null,
-                  this_item: mine.length ? { status: mine[0].status, metadata: mine[0].metadata } : "not found yet" };
-              } else {
-                out.get = { status: r && r.status, metadata: (r && r.metadata) || null,
-                  keys: r && typeof r === "object" ? Object.keys(r) : typeof r };
-              }
-            } catch (e) { out[label] = { error: String((e && e.message) || e).slice(0, 160) }; }
+          const listed = await items.list();
+          const arr = (listed && (listed.result || listed.items)) || [];
+          out.total_items = Array.isArray(arr) ? arr.length : 0;
+          for (const it of (Array.isArray(arr) ? arr : [])) {
+            const k = String((it && it.key) || "");
+            if (!k.startsWith("probe/")) continue;
+            try { await items.delete(it.id); out.removed.push(k); }
+            catch (e) { out.failed.push({ key: k, error: String((e && e.message) || e).slice(0, 120) }); }
           }
-          try { out.delete_probe_doc = await cap(Promise.resolve(items.delete(key)), 8000).then(() => "ok"); }
-          catch (e) { out.delete_probe_doc = String((e && e.message) || e).slice(0, 160); }
-        } catch (e) { out.fatal = String((e && e.message) || e).slice(0, 300); }
-        out.read_this = "if get/list show metadata {origin:human} AFTER indexing, the third argument works "
-          + "and the queue-time null was just an unpopulated receipt. If it is still null once status is "
-          + "no longer queued, metadata cannot be set at write time and facts stay on the R2 path.";
-        return { cmd: "KNOWLEDGE", payload: { ok: true, ...out } };
+          out.ok = true;
+          out.note = "only keys under probe/ are touched; real facts live under feeds/";
+        } catch (e) {
+          out.ok = false; out.error = String((e && e.message) || e).slice(0, 300);
+        }
+        return { cmd: "KNOWLEDGE", payload: out };
       }
       if (!env.AURA_KNOWLEDGE) return { cmd: "KNOWLEDGE", payload: { ok: false,
         error: "AURA_KNOWLEDGE not bound",
@@ -22258,9 +22235,35 @@ async function ingestFeedResult(env, feedId, command, payload) {
         { httpMetadata: { contentType: "application/json" }, customMetadata: meta });
     }
 
-    await env.AURA_KNOWLEDGE.put("feeds/" + feedId + "/" + day + "/" + stamp + ".md",
-      _distillToMarkdown(feedId, command, src, iso, payload),
-      { httpMetadata: { contentType: "text/markdown" }, customMetadata: meta });
+    // ══ INDEXED ON ARRIVAL, NOT ON A SCHEDULE (v4.9.734) ══════════════════════════════════════
+    // The distilled fact goes to AI Search BUILT-IN STORAGE via items.upload, which indexes each
+    // file as it arrives - no sync job, no interval, no 31-day idle pause. R2-as-a-source floors at
+    // a ONE HOUR scheduled sync, which is the wrong shape for a price cut or a headline that matters
+    // in ten minutes.
+    // PROBED, NOT ASSUMED, because the docs get-started example is a trap here: uploadAndPoll POLLS
+    // until indexing finishes and blows the Worker request timeout at ~30s. `upload` is the
+    // non-polling sibling and returns sub-second. Metadata rides in the third argument and was
+    // confirmed by reading the item BACK after indexing - at queue time it reads null on everything,
+    // which is a receipt, not a rejection.
+    const md = _distillToMarkdown(feedId, command, src, iso, payload);
+    const itemKey = "feeds/" + feedId + "/" + day + "/" + stamp + ".md";
+    let indexed = null;
+    try {
+      if (env.AI_SEARCH) {
+        const r = await env.AI_SEARCH.get("aura-feeds").items.upload(itemKey, md, { metadata: meta });
+        indexed = (r && r.status) || "uploaded";
+      }
+    } catch (e) {
+      indexed = "failed: " + String((e && e.message) || e).slice(0, 120);
+    }
+    // FALL BACK TO THE PROVEN PATH RATHER THAN LOSE THE FACT. The R2 route is live and works end to
+    // end; it is only slower to index. A fact that exists an hour late beats a fact that never
+    // existed, and the raw payload is archived either way so nothing is unrecoverable.
+    if (!indexed || String(indexed).startsWith("failed")) {
+      await env.AURA_KNOWLEDGE.put(itemKey, md,
+        { httpMetadata: { contentType: "text/markdown" }, customMetadata: meta });
+    }
+    try { await env.AURA_KV.put("knowledge:last_ingest", JSON.stringify({ at: iso, feed: feedId, key: itemKey, indexed }), { expirationTtl: 30 * 24 * 3600 }); } catch {}
   } catch (e) {
     // Never break the command being recorded - but SAY something. A silent catch here would make
     // "nothing was ingested" indistinguishable from "ingestion is not wired", which is the exact

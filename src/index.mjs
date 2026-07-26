@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.720-2026-07-26";
+const BUILD = "aura-core-v4.9.721-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16641,13 +16641,25 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       // judged present by the same rule that will find its key. Non-secret keys read literally.
       const has = async (k) => { try { const v = /^secret:/i.test(k) ? await getSecret(env, k) : await KV.get(env, k); return !!v; } catch { return false; } };
       // helper: live ping with a tight timeout so one slow API can't stall the whole snapshot
+      // ══ A BARE `false` IS THE BOT-SCORE DEFECT AGAIN (v4.9.721) ══════════════════════════════
+      // This returned whatever the check returned - a boolean - so every failure collapsed to
+      // `live: false` with the reason discarded. google_maps sat red and unexplained for days while
+      // Google's own response carried an error_message naming the cause (billing off, API not
+      // enabled, key restricted). A checker that knows why and refuses to say is worse than one that
+      // cannot tell, because it looks like it looked.
+      // A check may now return a bare boolean (unchanged, most of them do) or {ok, why}. Normalised
+      // here so no call site has to care. A timeout still yields null = not measured, which is a
+      // THIRD state and must never collapse into false.
       const ping = async (fn) => {
         try {
-          return await Promise.race([
+          const r = await Promise.race([
             fn(),
-            new Promise((res) => setTimeout(() => res(null), 5000))  // 5s cap -> null (unknown)
+            new Promise((res) => setTimeout(() => res("__timeout__"), 5000))  // 5s cap
           ]);
-        } catch { return false; }
+          if (r === "__timeout__") return { ok: null, why: "no answer within 5s - not measured, not failed" };
+          if (r && typeof r === "object") return { ok: r.ok === true, why: r.why || null };
+          return { ok: !!r, why: null };
+        } catch (e) { return { ok: false, why: "threw: " + String((e && e.message) || e).slice(0, 140) }; }
       };
 
       // Define every service: key, label, what it powers, and a live check (null check = key-presence only)
@@ -16665,14 +16677,14 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         { id: "oilprice", label: "OilPriceAPI", powers: "oil/Brent (OIL_PRICE)", key: "secret:oilprice", check: null },
         { id: "openweather", label: "OpenWeather", powers: "marine weather (MARINE_WX)", key: "secret:openweather", check: async () => { const k = await getSecret(env, "openweather"); if(!k) return false; const r = await fetch("https://api.openweathermap.org/data/2.5/weather?q=London&appid="+k); return r.ok; } },
         { id: "aisstream", label: "AISStream", powers: "live ship positions (AIS)", key: "secret:aisstream", check: null },
-        { id: "google_maps", label: "Google Maps", powers: "places (FETCH_PLACES)", key: "secret:google_maps", check: async () => { const k = await getSecret(env, "google_maps"); if(!k) return false; const r = await fetch("https://maps.googleapis.com/maps/api/geocode/json?address=London&key="+k); const j = await r.json().catch(()=>({})); return r.ok && j.status !== "REQUEST_DENIED"; } },
+        { id: "google_maps", label: "Google Maps", powers: "places (FETCH_PLACES)", key: "secret:google_maps", check: async () => { const k = await getSecret(env, "google_maps"); if(!k) return { ok:false, why:"no key" }; const r = await fetch("https://maps.googleapis.com/maps/api/geocode/json?address=London&key="+k); const j = await r.json().catch(()=>({})); const good = r.ok && j.status === "OK"; return good ? { ok:true } : { ok:false, why: "http " + r.status + " / " + (j.status || "?") + (j.error_message ? " - " + String(j.error_message).slice(0,170) : " - Google returned no error_message") }; } },
         { id: "google_oauth", label: "Google OAuth", powers: "sign-in / identity", key: "secret:google_client_id", check: null },
         { id: "mercury", label: "Mercury", powers: "operating bank", key: "secret:mercury_api_key",
           check: async () => { const m = await getMercuryBalance(env); return !!(m && m.ok); } },
         { id: "stripe", label: "Stripe", powers: "incoming revenue", key: "secret:stripe",
           check: async () => { const s = await getStripeBalance(env); return !!(s && s.ok); } },
         { id: "plaid", label: "Plaid", powers: "bank connections", key: "secret:plaid_client_id", check: null },
-        { id: "twilio", label: "Twilio", powers: "SMS + voice + lines", key: "secret:twilio_sid", check: async () => { const sid = await getSecret(env, "twilio_account_sid") || await getSecret(env, "twilio_sid"); const tok = await getSecret(env, "twilio_auth_token"); if(!sid||!tok) return false; const r = await fetch("https://api.twilio.com/2010-04-01/Accounts/"+sid+".json",{headers:{"Authorization":"Basic "+btoa(sid+":"+tok)}}); return r.ok; } },
+        { id: "twilio", label: "Twilio", powers: "SMS + voice + lines", key: "secret:twilio_sid", check: async () => { const sid = await getSecret(env, "twilio_account_sid") || await getSecret(env, "twilio_sid"); const tok = await getSecret(env, "twilio_auth_token"); if(!sid||!tok) return { ok:false, why:"sid or auth token missing" }; const r = await fetch("https://api.twilio.com/2010-04-01/Accounts/"+sid+".json",{headers:{"Authorization":"Basic "+btoa(sid+":"+tok)}}); if (r.ok) return { ok:true }; const jb = await r.json().catch(()=>({})); return { ok:false, why: "http " + r.status + (jb && jb.message ? " - " + String(jb.message).slice(0,140) : "") + (r.status===401 ? " (note: a VALID credential on an unpaid or suspended account also returns 401 - check billing before rotating the key)" : "") }; } },
         { id: "cloudflare", label: "Cloudflare", powers: "the whole stack (Workers/KV/D1)", key: "secret:cf_api_token", check: async () => { const k = env.CF_API_TOKEN || await getSecret(env, "cf_api_token"); if(!k) return false; const r = await fetch("https://api.cloudflare.com/client/v4/user/tokens/verify",{headers:{"Authorization":"Bearer "+k}}); return r.ok; } },
         // ══ THE ONE THAT MATTERED MOST HAD NO CHECK (v4.9.718) ═══════════════════════════════════
         // key_present:true here meant "a string exists in KV", not "the credential works" - and this
@@ -16685,14 +16697,15 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
 
       await Promise.all(defs.map(async (d) => {
         const present = await has(d.key);
-        let live = null;
-        if (present && d.check) live = await ping(d.check);
+        let live = null, liveWhy = null;
+        if (present && d.check) { const _p = await ping(d.check); live = _p.ok; liveWhy = _p.why; }
         const r = regMap[d.id] || {};
         services[d.id] = {
           label: d.label,
           powers: d.powers,
           key_present: present,
           live,                                   // true=verified up, false=down/invalid, null=not live-checked
+          live_note: liveWhy,                     // WHY it is down - the providers usually say, and it was being discarded
           cost_model: r.cost_model || "unknown",  // free | trial | payg | funded | unknown
           funded: r.funded === true,              // is a card on file / will it scale
           funding_note: r.funding_note || "",
@@ -22321,9 +22334,32 @@ async function verifyAgainstReality(env) {
       const nowFailing = new Set(snap.failing);
       const broke = [...nowFailing].filter(c => !wasFailing.has(c));
       const fixed = [...wasFailing].filter(c => !nowFailing.has(c));
+      // ══ A STALE BASELINE CANNOT NAME A CAUSE (v4.9.721) ═══════════════════════════════════════
+      // The note below used to say "roll back before debugging forward" whenever anything broke and
+      // base.build !== BUILD - which is true after ANY deploy, including sixty-four of them. On
+      // 2026-07-26 it reported REGRESSION and advised a rollback because `domains` newly disagreed:
+      // 357 registered against 350 at Cloudflare. Aaron had bought seven domains. No deploy can cause
+      // that, and rolling back would have changed nothing while costing a working build.
+      // The gate was correct by its own rules and WRONG ABOUT CAUSE, which is the more dangerous
+      // failure - it is the same shape as every other bug found today: a signal that looks external,
+      // is genuinely external, and is being read as answering a question it cannot answer.
+      // So: measure the distance. One build back, a regression is attributable. Sixty-four builds and
+      // five days back, it is not, and saying so is the honest output.
+      const _baseAgeDays = (() => {
+        const t = Date.parse(base.at || ""); return isNaN(t) ? null : +(Math.max(0, Date.now() - t) / 86400000).toFixed(2);
+      })();
+      const _buildGap = (() => {
+        const p = (v) => { const m = String(v || "").match(/(\d+)\.(\d+)\.(\d+)/); return m ? (+m[1] * 1e6 + +m[2] * 1e3 + +m[3]) : null; };
+        const a = p(base.build), b = p(BUILD); return (a === null || b === null) ? null : Math.abs(b - a);
+      })();
+      // Attributable only if the baseline is recent AND close in builds. Both, not either.
+      const _attributable = (_baseAgeDays !== null && _baseAgeDays <= 1)
+                         && (_buildGap !== null && _buildGap <= 3);
       out.since_baseline = {
         baseline_at: base.at, baseline_build: base.build, now_build: BUILD,
         build_changed: base.build !== BUILD,
+        baseline_age_days: _baseAgeDays,
+        builds_since_baseline: _buildGap,
         newly_broken: broke, newly_fixed: fixed,
         verdict: broke.length ? "REGRESSION - something that agreed with reality no longer does"
                : fixed.length ? "IMPROVED - fewer disagreements with reality than the baseline"
@@ -22354,9 +22390,17 @@ async function verifyAgainstReality(env) {
             caveat: "This proves the same checks ran faster. It does NOT prove she got better at anything - " +
                     "capability improvement still needs an outcome signal from outside, which is revenue." };
         })(),
-        note: broke.length && base.build !== BUILD
-          ? "The build changed AND checks broke. Treat the edit as the cause until proven otherwise - roll back before debugging forward."
-          : "Set a new baseline with VERIFY baseline once the current state is known-good.",
+        note: !broke.length
+          ? "Set a new baseline with VERIFY baseline once the current state is known-good."
+          : _attributable
+            ? "The build changed AND checks broke, and the baseline is close enough to attribute (" +
+              _buildGap + " build(s), " + _baseAgeDays + " day(s)). Treat the edit as the cause until " +
+              "proven otherwise - roll back before debugging forward."
+            : "CANNOT ATTRIBUTE. Something broke, but this baseline is " + _baseAgeDays + " day(s) and ~" +
+              _buildGap + " build(s) old, so `newly_broken` spans every change in between AND anything " +
+              "that moved in the outside world - domains bought, a key expiring, a provider changing a " +
+              "response. Do NOT roll back on this signal alone: read the broken check and ask whether a " +
+              "deploy could plausibly cause it at all. Then re-baseline so the next run can answer.",
       };
     } else {
       out.since_baseline = { verdict: "NO BASELINE", note: "Run VERIFY baseline to freeze the current state as known-good. Every later VERIFY then reports what an edit broke or fixed against it." };

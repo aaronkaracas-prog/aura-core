@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.732-2026-07-26";
+const BUILD = "aura-core-v4.9.733-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -11656,52 +11656,52 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // working - which today alone produced a cache that defaulted on, a prefix that did not scope,
       // and a delete that deleted nothing while printing success.
       if (String(args[0] || "").toUpperCase() === "PUSH") {
-        // ══ HOW DOES METADATA GO IN? (v4.9.732) ══════════════════════════════════════════════════
-        // SETTLED by the last probe: items.upload(key, body) exists, is NON-POLLING, returns in well
-        // under a second, and its result carries a `metadata` field - so metadata is first-class on
-        // the item model. uploadAndPoll polls and blows the request timeout; create/insert/put/add
-        // do not exist ("The RPC receiver does not implement the method").
-        // OPEN: the shape of the third argument. Three plausible forms, tried in order, each read
-        // back from the RESULT rather than assumed from the absence of an error - a call that
-        // silently ignores an unknown option looks identical to one that honoured it, and that
-        // difference is the whole origin-tagging guarantee.
+        // ══ READ IT BACK AFTER INDEXING, NOT AT QUEUE TIME (v4.9.733) ════════════════════════════
+        // The last probe had all four forms return metadata:null INCLUDING the control - but every
+        // response carried status:"queued". That response is a RECEIPT, not a final state, so null
+        // at queue time cannot distinguish "argument ignored" from "not populated yet". Calling that
+        // settled would have been the same mistake as reading a zero as "none found".
+        // So: upload WITH metadata, wait for the queue to drain, then read the item back and look.
+        // Also probes list/get/delete - delete matters because every probe document so far is sitting
+        // in built-in storage and WILL surface in real queries.
         if (!env.AI_SEARCH) return { cmd: "KNOWLEDGE", payload: { ok: false, error: "AI_SEARCH not bound" } };
         const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-        const body = "# metadata shape probe\n\n- marker: ZANZIBAR-" + Date.now() + "\n";
+        const key = "probe/readback-" + stamp + ".md";
         const want = { origin: "human", feed: "probe" };
-        const forms = {
-          nested_metadata: { metadata: want },
-          flat_object: want,
-          custom_metadata: { customMetadata: want },
-        };
-        const out = { settled: "items.upload(key, body) is the ingestion method - non-polling, sub-second",
-          question: "which third-argument shape actually lands in item.metadata",
-          returned: {} };
+        const out = { probe_key: key, sent_metadata: want };
+        const cap = (pr, ms) => Promise.race([pr,
+          new Promise((_, rej) => setTimeout(() => rej(new Error("__timeout_" + ms)), ms))]);
         try {
           const items = env.AI_SEARCH.get("aura-feeds").items;
-          for (const [label, arg] of Object.entries(forms)) {
-            const key = "probe/meta-" + label + "-" + stamp + ".md";
+          out.upload = await cap(items.upload(key, "# readback probe\n\n- marker: ZANZIBAR-" + Date.now() + "\n",
+            { metadata: want }), 8000).then((r) => ({ status: r && r.status, metadata: (r && r.metadata) || null }))
+            .catch((e) => ({ error: String((e && e.message) || e).slice(0, 160) }));
+          // give the queue a moment - short, because this runs inside a request
+          await new Promise((r) => setTimeout(r, 6000));
+          for (const [label, call] of [
+            ["list", () => items.list()],
+            ["get", () => items.get(key)],
+          ]) {
             try {
-              const r = await items.upload(key, body, arg);
-              out.returned[label] = { ok: true, metadata: (r && r.metadata) || null, status: r && r.status };
-            } catch (e) {
-              out.returned[label] = { ok: false, error: String((e && e.message) || e).slice(0, 180) };
-            }
+              const r = await cap(Promise.resolve(call()), 8000);
+              if (label === "list") {
+                const arr = Array.isArray(r) ? r : (r && (r.items || r.result || r.objects)) || [];
+                const mine = (Array.isArray(arr) ? arr : []).filter((i) => i && i.key === key);
+                out.list = { shape: r && typeof r === "object" ? Object.keys(r) : typeof r,
+                  count: Array.isArray(arr) ? arr.length : null,
+                  this_item: mine.length ? { status: mine[0].status, metadata: mine[0].metadata } : "not found yet" };
+              } else {
+                out.get = { status: r && r.status, metadata: (r && r.metadata) || null,
+                  keys: r && typeof r === "object" ? Object.keys(r) : typeof r };
+              }
+            } catch (e) { out[label] = { error: String((e && e.message) || e).slice(0, 160) }; }
           }
-          // and a control with NO third argument, so "metadata appeared" can be told apart from
-          // "metadata is always populated with something"
-          try {
-            const r = await items.upload("probe/meta-control-" + stamp + ".md", body);
-            out.returned.no_third_arg_control = { ok: true, metadata: (r && r.metadata) || null };
-          } catch (e) {
-            out.returned.no_third_arg_control = { ok: false, error: String((e && e.message) || e).slice(0, 180) };
-          }
-        } catch (e) {
-          out.fatal = String((e && e.message) || e).slice(0, 300);
-        }
-        out.read_this = "the winning form is the one whose returned .metadata contains origin:human AND "
-          + "whose control returns null or empty. If every form returns the same thing, the argument is "
-          + "being ignored and origin tagging cannot live here.";
+          try { out.delete_probe_doc = await cap(Promise.resolve(items.delete(key)), 8000).then(() => "ok"); }
+          catch (e) { out.delete_probe_doc = String((e && e.message) || e).slice(0, 160); }
+        } catch (e) { out.fatal = String((e && e.message) || e).slice(0, 300); }
+        out.read_this = "if get/list show metadata {origin:human} AFTER indexing, the third argument works "
+          + "and the queue-time null was just an unpopulated receipt. If it is still null once status is "
+          + "no longer queued, metadata cannot be set at write time and facts stay on the R2 path.";
         return { cmd: "KNOWLEDGE", payload: { ok: true, ...out } };
       }
       if (!env.AURA_KNOWLEDGE) return { cmd: "KNOWLEDGE", payload: { ok: false,

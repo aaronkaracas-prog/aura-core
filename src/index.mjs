@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.721-2026-07-26";
+const BUILD = "aura-core-v4.9.722-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -11636,7 +11636,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const doProbe = /\bprobe|live|check\b/i.test(rest || "");
       const PROBES = {
         openweather: async (k) => (await fetch("https://api.openweathermap.org/data/2.5/weather?q=London&appid=" + k)).ok,
-        google_maps: async (k) => { const r = await fetch("https://maps.googleapis.com/maps/api/geocode/json?address=London&key=" + k); const j = await r.json().catch(() => ({})); return r.ok && j.status !== "REQUEST_DENIED"; },
+        google_maps: async (k) => { const r = await fetch("https://maps.googleapis.com/maps/api/place/textsearch/json?query=coffee%20in%20London&key=" + k); const j = await r.json().catch(() => ({})); return r.ok && (j.status === "OK" || j.status === "ZERO_RESULTS"); },
         currents:    async (k) => (await fetch("https://api.currentsapi.services/v1/latest-news?apiKey=" + k + "&page_size=1")).ok,
         tavily:      async (k) => (await fetch("https://api.tavily.com/search", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ api_key: k, query: "ping", max_results: 1 }) })).ok,
         brave_search:async (k) => (await fetch("https://api.search.brave.com/res/v1/web/search?q=ping&count=1", { headers: { "X-Subscription-Token": k, Accept: "application/json" } })).ok,
@@ -16677,7 +16677,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         { id: "oilprice", label: "OilPriceAPI", powers: "oil/Brent (OIL_PRICE)", key: "secret:oilprice", check: null },
         { id: "openweather", label: "OpenWeather", powers: "marine weather (MARINE_WX)", key: "secret:openweather", check: async () => { const k = await getSecret(env, "openweather"); if(!k) return false; const r = await fetch("https://api.openweathermap.org/data/2.5/weather?q=London&appid="+k); return r.ok; } },
         { id: "aisstream", label: "AISStream", powers: "live ship positions (AIS)", key: "secret:aisstream", check: null },
-        { id: "google_maps", label: "Google Maps", powers: "places (FETCH_PLACES)", key: "secret:google_maps", check: async () => { const k = await getSecret(env, "google_maps"); if(!k) return { ok:false, why:"no key" }; const r = await fetch("https://maps.googleapis.com/maps/api/geocode/json?address=London&key="+k); const j = await r.json().catch(()=>({})); const good = r.ok && j.status === "OK"; return good ? { ok:true } : { ok:false, why: "http " + r.status + " / " + (j.status || "?") + (j.error_message ? " - " + String(j.error_message).slice(0,170) : " - Google returned no error_message") }; } },
+        { id: "google_maps", label: "Google Maps", powers: "places (FETCH_PLACES)", key: "secret:google_maps", check: async () => { const k = await getSecret(env, "google_maps"); if(!k) return { ok:false, why:"no key" }; const r = await fetch("https://maps.googleapis.com/maps/api/place/textsearch/json?query=coffee%20in%20London&key="+k); const j = await r.json().catch(()=>({})); const good = r.ok && (j.status === "OK" || j.status === "ZERO_RESULTS"); return good ? { ok:true } : { ok:false, why: "PLACES api - http " + r.status + " / " + (j.status || "?") + (j.error_message ? " - " + String(j.error_message).slice(0,260) : " - Google returned no error_message") }; } },
         { id: "google_oauth", label: "Google OAuth", powers: "sign-in / identity", key: "secret:google_client_id", check: null },
         { id: "mercury", label: "Mercury", powers: "operating bank", key: "secret:mercury_api_key",
           check: async () => { const m = await getMercuryBalance(env); return !!(m && m.ok); } },
@@ -22361,7 +22361,10 @@ async function verifyAgainstReality(env) {
         baseline_age_days: _baseAgeDays,
         builds_since_baseline: _buildGap,
         newly_broken: broke, newly_fixed: fixed,
-        verdict: broke.length ? "REGRESSION - something that agreed with reality no longer does"
+        verdict: broke.length
+               ? (_attributable
+                  ? "REGRESSION - something that agreed with reality no longer does, and the baseline is close enough to blame the edit"
+                  : "DISAGREEMENT APPEARED - something that agreed with reality no longer does, but this baseline is too old to say what caused it. See note.")
                : fixed.length ? "IMPROVED - fewer disagreements with reality than the baseline"
                : "UNCHANGED - same relationship to reality as the baseline",
         // ══ THE HONEST HALF OF "DID THIS EDIT IMPROVE ME" ═══════════════════════════════════

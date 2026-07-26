@@ -102,10 +102,18 @@ name = "SEND_EMAIL"
 #
 # NOT bound on the staging twin. Staging has its own isolated KV, so it keeps the KV fallback and a
 # self-edit tested there never touches the production payment credential.
-[[secrets_store_secrets]]
-binding = "SS_STRIPE"
-store_id = "8aaeeb2dddae4cce9659c7c21c8d738d"
-secret_name = "stripe"
+# PARKED 2026-07-26. This binding is correct but cannot be declared until the secret exists - a
+# Worker referencing a missing Secrets Store secret fails the ENTIRE deploy with code 10182, which
+# is how source and running diverged for ten minutes today. `wrangler secrets-store secret create`
+# is an open-beta command and its interactive prompt returned "Need to pass in a value" after
+# accepting input on Windows, so `stripe` was never created in the store.
+# The code side (SECRET_BINDING.stripe = "SS_STRIPE") is already live and completely inert without
+# this block: getSecret falls through to KV when the binding is absent. Uncomment ONLY after
+# `wrangler secrets-store secret list <store-id> --remote` actually shows `stripe`.
+# [[secrets_store_secrets]]
+# binding = "SS_STRIPE"
+# store_id = "8aaeeb2dddae4cce9659c7c21c8d738d"
+# secret_name = "stripe"
 
 [browser]
 binding = "BROWSER"

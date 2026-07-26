@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.717-2026-07-26";
+const BUILD = "aura-core-v4.9.718-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -443,8 +443,30 @@ async function brainFetch(url, opts, env, caller) {
   //    checking every one of the 28 callers for .text()/.headers use before shipping, not after.
   const isStream = body && body.stream === true;
 
-  // ── 1. PROMPT CACHING: string system -> cached block array. The single highest-value line here. ──
-  if (typeof body.system === "string" && body.system.length > 500) {
+  // ── 1. PROMPT CACHING ──────────────────────────────────────────────────────────────────────────
+  // ══ THIS LINE CALLED ITSELF "the single highest-value line here" AND HAD NEVER FIRED ═══════════
+  // Measured 2026-07-26 across two full days and 78 Anthropic calls: cache reads AND cache writes
+  // were both exactly zero. Proof was arithmetic - haiku on 07-25 (38,730 in / 9,788 out) cost
+  // $0.08767, which matches the UNCACHED formula to the last digit. Nothing was ever cached.
+  //
+  // CAUSE: the gate was 500 CHARACTERS, about 125 tokens. Anthropic's minimum CACHEABLE PREFIX is
+  // 1024 tokens on most models and 4096 on Claude Haiku 4.5 - the model this path mostly uses. A
+  // prefix under the floor is SILENTLY IGNORED: no error, no warning, cache_creation_input_tokens
+  // simply comes back absent. So the marker was applied on every call and discarded on every call,
+  // while the comment above it asserted it was the biggest win in the function.
+  //
+  // AND IT CANNOT BE MADE TO WORK AT THIS TRAFFIC SHAPE, which is the honest part: the average
+  // Anthropic request here is ~763 tokens END TO END. There is no 4096-token prefix to cache. The
+  // fix is not to force it - it is to stop claiming it, apply the marker only when it can actually
+  // do something, and report cache_write in the ledger so this is measurable instead of requiring
+  // someone to re-derive a day's cost by hand. If the system prompt ever grows past the floor this
+  // starts working on its own and the ledger will say so.
+  //
+  // 16000 chars ~= 4000 tokens at the usual 4-chars-per-token rule, sitting just under the highest
+  // current minimum. Deliberately conservative: applying the marker below the floor costs nothing
+  // but encodes a belief that is false, and this system has paid for false beliefs all week.
+  const CACHEABLE_PREFIX_CHARS = 16000;
+  if (typeof body.system === "string" && body.system.length >= CACHEABLE_PREFIX_CHARS) {
     body.system = [{ type: "text", text: body.system, cache_control: { type: "ephemeral" } }];
   }
 
@@ -767,6 +789,7 @@ export class LedgerDO {
         // the whole day in four aggregate queries instead of N key reads
         const tot = [...this.sql.exec(
           "SELECT COUNT(*) calls, SUM(tokens_in) tin, SUM(tokens_out) tout, SUM(cached_in) cached, " +
+          "SUM(cache_write) cwrite, " +
           "SUM(cost_usd) cost, SUM(CASE WHEN status=0 OR status>=400 THEN 1 ELSE 0 END) errors FROM egress"
         )][0] || {};
         // ══ PARITY BEFORE RETIREMENT (v4.9.713) ═══════════════════════════════════════════════════
@@ -803,6 +826,17 @@ export class LedgerDO {
           calls: tot.calls || 0, errors: tot.errors || 0, errors_by,
           no_usage: nou.n || 0,
           tokens_in: tot.tin || 0, tokens_out: tot.tout || 0, cached_in: tot.cached || 0,
+          // ══ CACHING WAS INVISIBLE (v4.9.718) ══════════════════════════════════════════════════
+          // cache_write has been a column on every row since the DO shipped and was never selected,
+          // so the only way to discover that prompt caching had NEVER fired was to re-derive a day's
+          // cost by hand and notice it matched the uncached formula exactly. A meter that records a
+          // number and refuses to report it is how a dead optimisation stays dead quietly. Both
+          // halves now show, plus the ratio - if cache_write climbs while cache_read stays at zero,
+          // caching is costing money (writes bill at a premium) and returning nothing.
+          cache_write: tot.cwrite || 0,
+          cache_hit_ratio: (tot.cached || 0) + (tot.cwrite || 0) > 0
+            ? +((tot.cached || 0) / ((tot.cached || 0) + (tot.cwrite || 0))).toFixed(3)
+            : null,
           cost_usd: +(tot.cost || 0).toFixed(6),
           by_provider: by("provider"), by_caller: by("caller"),
           by_model: by("model"), by_tenant: by("tenant"), by_endpoint: by("endpoint") });
@@ -16582,7 +16616,13 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         { id: "plaid", label: "Plaid", powers: "bank connections", key: "secret:plaid_client_id", check: null },
         { id: "twilio", label: "Twilio", powers: "SMS + voice + lines", key: "secret:twilio_sid", check: async () => { const sid = await getSecret(env, "twilio_account_sid") || await getSecret(env, "twilio_sid"); const tok = await getSecret(env, "twilio_auth_token"); if(!sid||!tok) return false; const r = await fetch("https://api.twilio.com/2010-04-01/Accounts/"+sid+".json",{headers:{"Authorization":"Basic "+btoa(sid+":"+tok)}}); return r.ok; } },
         { id: "cloudflare", label: "Cloudflare", powers: "the whole stack (Workers/KV/D1)", key: "secret:cf_api_token", check: async () => { const k = env.CF_API_TOKEN || await getSecret(env, "cf_api_token"); if(!k) return false; const r = await fetch("https://api.cloudflare.com/client/v4/user/tokens/verify",{headers:{"Authorization":"Bearer "+k}}); return r.ok; } },
-        { id: "github", label: "GitHub", powers: "code + auto-deploy", key: "secret:github_token", check: null }
+        // ══ THE ONE THAT MATTERED MOST HAD NO CHECK (v4.9.718) ═══════════════════════════════════
+        // key_present:true here meant "a string exists in KV", not "the credential works" - and this
+        // is the credential that lets her read her own source: aura-comms and aura-ops resolve only
+        // via github_blob because those repos are private, so a dead token silently costs her
+        // self-knowledge rather than throwing. It was reported live:null (honestly labelled as
+        // not-checked) and nothing would have noticed an expiry until a self-read came back empty.
+        { id: "github", label: "GitHub", powers: "code + auto-deploy", key: "secret:github_token", check: async () => { const k = await getSecret(env, "github_token"); if(!k) return false; const r = await fetch("https://api.github.com/user", { headers: { "Authorization": "Bearer " + k, "User-Agent": "aura-core", "Accept": "application/vnd.github+json" } }); return r.ok; } }
       ];
 
       await Promise.all(defs.map(async (d) => {

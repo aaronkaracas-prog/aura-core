@@ -1,6 +1,15 @@
 name = "aura-core-v2"
 main = "src/index.mjs"
-compatibility_date = "2025-01-01"
+# ══ THE RUNTIME PIN, EIGHTEEN MONTHS BEHIND (2026-07-26) ═══════════════════════════════════════
+# compatibility_date is NOT a project date - it pins which version of the Cloudflare Workers runtime
+# this code runs against. It sat at 2025-01-01 while the date was 2026-07-26, so eighteen months of
+# runtime fixes and corrected defaults were being declined. Cloudflare gates behaviour changes behind
+# this date precisely so a bump is deliberate, which also means never bumping is a decision nobody
+# made on purpose.
+# nodejs_compat v2 semantics activated at 2024-09-23, so that transition is already behind us and is
+# not what this bump changes. What it DOES change cannot be fully enumerated from here - which is why
+# this goes to the staging twin first. The twin exists for exactly this and has not been used once.
+compatibility_date = "2026-07-01"
 compatibility_flags = ["nodejs_compat"]
 
 # ── PRODUCTION (top level = the live worker, deployed with `wrangler deploy`) ──

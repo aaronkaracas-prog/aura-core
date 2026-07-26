@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.727-2026-07-26";
+const BUILD = "aura-core-v4.9.728-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -11670,8 +11670,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             ? "every object carries origin=human"
             : untagged + " object(s) WITHOUT origin=human - nothing should reach this bucket untagged; "
               + "an untagged fact cannot later be separated from Aura's own output, which is model collapse",
-          indexed_by: "AI Search instance `aura-feeds` in namespace `aura` indexes the feeds/ prefix only. "
-            + "raw/ is kept deliberately and NOT indexed, so a wrong distillation is re-derived rather than re-fetched." } };
+          // This text described the raw/ prefix arrangement that was REPLACED in v4.9.727. Left
+          // unchanged it would be a fossil in the one command whose job is saying what is really
+          // there - the same defect as a comment describing a fix that no longer holds.
+          indexed_by: "AI Search instance `aura-feeds` (namespace `aura`) indexes the aura-knowledge bucket. "
+            + "Its `prefix: feeds/` setting was MEASURED NOT TO SCOPE - a sync indexed the raw/ prefix too and "
+            + "raw outranked the distilled facts - so raw now lives in aura-knowledge-raw, which is the data "
+            + "source of no instance. Separation by construction, not configuration. Raw is kept so a wrong "
+            + "distillation is re-derived rather than re-fetched from a provider we may lose permission to call." } };
       } catch (e) {
         return { cmd: "KNOWLEDGE", payload: { ok: false, error: String((e && e.message) || e) } };
       }

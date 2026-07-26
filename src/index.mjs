@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.726-2026-07-26";
+const BUILD = "aura-core-v4.9.727-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -11647,8 +11647,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         error: "AURA_KNOWLEDGE not bound",
         why: "the r2_buckets binding is missing from this worker's config - on the staging twin that is deliberate" } };
       try {
-        const prefix = args[0] || "feeds/";
-        const listed = await env.AURA_KNOWLEDGE.list({ prefix, limit: 40, include: ["customMetadata"] });
+        // `KNOWLEDGE raw` reads the OTHER bucket - the one nothing indexes. Without this the
+        // command would silently report only what is indexed and look like the whole picture.
+        const wantRaw = String(args[0] || "").toLowerCase().startsWith("raw");
+        const bucket = wantRaw ? env.AURA_KNOWLEDGE_RAW : env.AURA_KNOWLEDGE;
+        if (!bucket) return { cmd: "KNOWLEDGE", payload: { ok: false,
+          error: (wantRaw ? "AURA_KNOWLEDGE_RAW" : "AURA_KNOWLEDGE") + " not bound" } };
+        const prefix = wantRaw ? (args[1] || "") : (args[0] || "feeds/");
+        const listed = await bucket.list({ prefix, limit: 40, include: ["customMetadata"] });
         const objects = (listed.objects || []).map((o) => ({
           key: o.key,
           size: o.size,
@@ -11658,7 +11664,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           source: (o.customMetadata && o.customMetadata.source) || null,
         }));
         const untagged = objects.filter((o) => o.origin !== "human").length;
-        return { cmd: "KNOWLEDGE", payload: { ok: true, prefix, count: objects.length,
+        return { cmd: "KNOWLEDGE", payload: { ok: true, bucket: wantRaw ? "aura-knowledge-raw (indexed by nothing)" : "aura-knowledge (indexed by aura-feeds)", prefix, count: objects.length,
           truncated: !!listed.truncated, objects,
           origin_check: untagged === 0
             ? "every object carries origin=human"
@@ -22167,9 +22173,23 @@ async function ingestFeedResult(env, feedId, command, payload) {
     const src = String(payload.source || payload.provider || feedId);
     const meta = { origin: "human", feed: feedId, command: String(command || ""), source: src, at: iso };
 
-    await env.AURA_KNOWLEDGE.put("raw/" + feedId + "/" + day + "/" + stamp + ".json",
-      JSON.stringify({ feed: feedId, command, at: iso, payload }),
-      { httpMetadata: { contentType: "application/json" }, customMetadata: meta });
+    // ══ RAW LIVES IN A BUCKET NOTHING INDEXES (v4.9.727) ══════════════════════════════════════
+    // It used to go to raw/ inside AURA_KNOWLEDGE, on the stated understanding that the instance's
+    // `prefix: "feeds/"` would keep it out of the index. MEASURED: it did not. A sync reported
+    // completed: 2 and the search returned raw/currents/....json as a retrieved chunk, OUTRANKING
+    // the distilled markdown it was supposed to be excluded in favour of - a dense JSON blob matches
+    // broadly, so it wins on relevance while being the wrong answer shape.
+    // That claim came from reading --prefix in the CLI help and reporting it as working without
+    // testing it. Same error as a health check calling a different API than the feature calls.
+    // So: separation BY CONSTRUCTION, not by configuration. A bucket that is not the data source of
+    // any instance cannot be indexed, and there is no flag to misread. Not --exclude-items - after a
+    // filtering flag silently failed once, a second filtering flag is not evidence of anything.
+    const _rawBucket = env.AURA_KNOWLEDGE_RAW || null;
+    if (_rawBucket) {
+      await _rawBucket.put(feedId + "/" + day + "/" + stamp + ".json",
+        JSON.stringify({ feed: feedId, command, at: iso, payload }),
+        { httpMetadata: { contentType: "application/json" }, customMetadata: meta });
+    }
 
     await env.AURA_KNOWLEDGE.put("feeds/" + feedId + "/" + day + "/" + stamp + ".md",
       _distillToMarkdown(feedId, command, src, iso, payload),

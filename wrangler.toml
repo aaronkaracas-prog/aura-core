@@ -105,6 +105,15 @@ new_sqlite_classes = ["LedgerDO"]
 binding = "AURA_KNOWLEDGE"
 bucket_name = "aura-knowledge"
 
+# RAW, DELIBERATELY IN ITS OWN BUCKET (2026-07-26). The AI Search instance `aura-feeds` points at
+# aura-knowledge. It points at NOTHING here - which is the entire mechanism. Raw payloads were first
+# written to a raw/ prefix inside the indexed bucket, trusting the instance's prefix setting to keep
+# them out; a measured sync indexed them anyway and they outranked the distilled facts in retrieval.
+# Separation by construction beats separation by configuration: there is no flag here to misread.
+[[r2_buckets]]
+binding = "AURA_KNOWLEDGE_RAW"
+bucket_name = "aura-knowledge-raw"
+
 [[send_email]]
 name = "SEND_EMAIL"
 

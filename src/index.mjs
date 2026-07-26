@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.715-2026-07-26";
+const BUILD = "aura-core-v4.9.716-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16532,7 +16532,17 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       if (reg) { try { regMap = JSON.parse(reg); } catch {} }
 
       // helper: a key exists check
-      const has = async (k) => { try { const v = await KV.get(env, k); return !!v; } catch { return false; } };
+      // ══ PRESENCE AND LIVENESS WERE ASKING DIFFERENT QUESTIONS (v4.9.716) ═══════════════════════
+      // `has` took the literal `key` field off each definition and read exactly that name. But the
+      // twilio entry's key is "secret:twilio_sid" while the credential is stored under
+      // secret:twilio_account_sid - so key_present came back FALSE for a credential that exists, and
+      // because liveness is gated on `present && d.check`, its live check never ran. A working
+      // service reported identically to one with no key at all. Note the tell: twilio's own `check`
+      // already hand-rolled the fallback (account_sid || sid), so the two halves of the same entry
+      // disagreed about what the credential is called, and the half without the fallback decided.
+      // Now presence resolves through getSecret exactly as the read path does, so a service is
+      // judged present by the same rule that will find its key. Non-secret keys read literally.
+      const has = async (k) => { try { const v = /^secret:/i.test(k) ? await getSecret(env, k) : await KV.get(env, k); return !!v; } catch { return false; } };
       // helper: live ping with a tight timeout so one slow API can't stall the whole snapshot
       const ping = async (fn) => {
         try {

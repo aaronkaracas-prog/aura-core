@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.755-2026-07-27";
+const BUILD = "aura-core-v4.9.756-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -15424,7 +15424,21 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             e2 ? String(e2.via_edge_id) : "no edge", !!(e2 && e1 && e2.via_edge_id === e1.id),
             "this is the exact thing that was read but never written until v4.9.752");
 
-          // ── 4. REVOCATION CASCADES. Cut hop one; hop two must die with it.
+          // ── 3b. HOP THREE. The beach story is three or four hops, not two - and a cascade that
+          // reaches one level down is not proof that it reaches two. Depth is where a breadth-first
+          // walk with a visited set either works or quietly stops early.
+          const c2b = "phone:+1555" + String(Date.now() + 9).slice(-7);
+          const inv2b = await run('INVITE {"app":"' + tag + '","from":"' + (born2 ? born2.id : "") + '","to_contact":"' + c2b + '","to_name":"' + tag + 'hop3","relationship":"friend","via_edge_id":"' + (e2 ? e2.id : "") + '"}');
+          if (inv2b.invite_id) madeInvites.push(inv2b.invite_id);
+          await run("ACCEPT " + inv2b.invite_id);
+          const born3 = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(c2b).first();
+          if (born3) madeEntities.push(born3.id);
+          const e3 = await db.prepare("SELECT id, state, via_edge_id FROM pta_edges WHERE from_id = ? AND to_id = ? ORDER BY created_at DESC").bind(born2 ? born2.id : "", born3 ? born3.id : "").first();
+          check("hop three was born", "an entity", born3 ? born3.id : "none", !!born3);
+          check("the chain reaches three deep", "hop three points at hop two's edge (" + (e2 ? e2.id : "?") + ")",
+            e3 ? String(e3.via_edge_id) : "no edge", !!(e3 && e2 && e3.via_edge_id === e2.id));
+
+          // ── 4. REVOCATION CASCADES. Cut hop one; hops two AND three must die with it.
           const rev = await run("PTA_REVOKE " + (e1 ? e1.id : "") + " test cascade");
           const e1After = e1 ? await db.prepare("SELECT state FROM pta_edges WHERE id = ?").bind(e1.id).first() : null;
           const e2After = e2 ? await db.prepare("SELECT state FROM pta_edges WHERE id = ?").bind(e2.id).first() : null;
@@ -15432,7 +15446,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           check("THE CASCADE REACHED DOWNSTREAM", "revoked", e2After ? e2After.state : "missing",
             e2After && e2After.state === "revoked",
             "the spec says the chain breaks upstream - if this fails, someone keeps access through a link that no longer exists");
-          check("the cascade reported what it cut", "at least 1", String(rev && rev.cascaded), !!(rev && rev.cascaded >= 1));
+          const e3After = e3 ? await db.prepare("SELECT state FROM pta_edges WHERE id = ?").bind(e3.id).first() : null;
+          check("THE CASCADE REACHED TWO LEVELS DOWN", "revoked", e3After ? e3After.state : "missing",
+            e3After && e3After.state === "revoked",
+            "one level proves the query runs; two proves the breadth-first walk actually recurses");
+          check("the cascade reported what it cut", "2", String(rev && rev.cascaded), !!(rev && rev.cascaded === 2));
 
           // ── 4b. THE LAW LAYER ACTUALLY REFUSES. A permission check that only ever says yes is
           // worse than none, so the denials matter more than the grants here.
@@ -15448,6 +15466,25 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // ── 5. NOTHING IS DELETED. Revocation is a state change plus a history row.
           const hist = e2 ? await db.prepare("SELECT COUNT(*) n FROM pta_history WHERE edge_id = ?").bind(e2.id).first() : null;
           check("history survives revocation", "at least 1 row", hist ? String(hist.n) : "0", !!(hist && hist.n >= 1));
+
+          // ── 5b. MASS TOUCH. Taylor Swift touches a million fans in ONE MOMENT; that moment is the
+          // shared origin they all trace back to, and "Keep Your Fans" is a QUERY over it. Three
+          // recipients is enough to prove the mechanism: one origin_id, many edges, one row they all
+          // point at. If this fails, owning the root of a tree is a story rather than a fact.
+          const originMoment = "moment_" + tag;
+          const fanIds = [];
+          for (let i = 0; i < 3; i++) {
+            const fc = "phone:+1555" + String(Date.now() + 20 + i).slice(-7);
+            const fi = await run('INVITE {"app":"' + tag + '","from":"' + root.entity.id + '","to_contact":"' + fc + '","to_name":"' + tag + 'fan' + i + '","relationship":"fan","origin_id":"' + originMoment + '"}');
+            if (fi.invite_id) { madeInvites.push(fi.invite_id); await run("ACCEPT " + fi.invite_id); }
+            const fe = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(fc).first();
+            if (fe) { madeEntities.push(fe.id); fanIds.push(fe.id); }
+          }
+          const tree = await db.prepare("SELECT COUNT(*) n FROM pta_edges WHERE origin_id = ?").bind(originMoment).first();
+          check("MASS TOUCH: one moment, many edges", "3 edges sharing one origin", tree ? String(tree.n) : "0",
+            !!(tree && tree.n === 3),
+            "this is Keep Your Fans - owning the root of a tree is only real if the tree is queryable");
+          check("every fan was born", "3 entities", String(fanIds.length), fanIds.length === 3);
 
           // ── 6. DECLINE LEAVES NOTHING. An offer never accepted must create nobody.
           const c3 = "phone:+1555" + String(Date.now() + 3).slice(-7);
@@ -15503,8 +15540,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             + "test the doorway or the authentication ceremony, and ptaCan is not yet WIRED to anything - "
             + "every command that reads another entity's data is operator-gated, so a refusal there would "
             + "gate Aaron out of his own system and change nothing about safety. Enforcement belongs at "
-            + "the doorway, where a visitor who is not the operator asks to see something. Also untested: "
-            + "mass touch (one moment, many recipients, origin_id) and depth beyond two hops." } };
+            + "the doorway, where a visitor who is not the operator asks to see something." } };
       }
     }
 

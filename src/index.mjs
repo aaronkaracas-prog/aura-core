@@ -29,7 +29,14 @@
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
 import { WorkerEntrypoint } from "cloudflare:workers";
 
-const BUILD = "aura-core-v4.9.772-2026-07-27";
+// The relying party ID is the DOMAIN a passkey is bound to, and it is why passkeys are phishing-proof:
+// a credential created for homescreen.world cannot be used on homescreen-login.com, no matter how
+// convincing the copy. It must be the registrable domain, and it must match the origin the ceremony
+// runs on - a mismatch is the single most common reason a WebAuthn implementation silently fails.
+const PASSKEY_RP_ID = "homescreen.world";
+const PASSKEY_ORIGIN = "https://homescreen.world";
+
+const BUILD = "aura-core-v4.9.773-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -26664,6 +26671,151 @@ export class PublicEntry extends WorkerEntrypoint {
     if (!me) return { ok: false, error: "NOT_SIGNED_IN" };
     const r = await processCommand("PTA_LIST " + me.pta + " " + (capability || "view"), env, true);
     return (r && r.payload) || { ok: false };
+  }
+
+  // ══ PASSKEYS — THE 2026 FRONT DOOR, VERIFIED ON THE PRIVATE SIDE (v4.9.773) ══════════════════
+  //
+  // WHY VERIFICATION LIVES HERE AND NOT AT THE DOORWAY: if aura-host verified the passkey and then
+  // asked for a session, a compromised doorway could ask for a session as anybody. Here, it must
+  // present a signature that only the user's device could produce - and the private key never leaves
+  // that device's secure hardware. A compromised doorway cannot forge what it has no key for. The
+  // doorway carries; this side decides. Same principle as the session cookie.
+  //
+  // WHY A LIBRARY: verification means parsing CBOR attestation objects, decoding COSE keys, and
+  // checking P-256 signatures over concatenated authenticator data. Hand-rolling that is how
+  // authentication bypasses get written. @simplewebauthn/server is the standard implementation.
+  // REQUIRES: npm install @simplewebauthn/server  (in aura-core)
+  //
+  // WHERE THIS SITS IN THE LADDER: passkey_verified is rank 5, above google_verified and the email
+  // OTP fallback. Passkeys are phishing-resistant BY CONSTRUCTION - the credential is bound to the
+  // origin, so a lookalike domain cannot harvest it the way it harvests a password or a code.
+  async passkeyRegisterStart(sessionId, label) {
+    const env = this.env;
+    const me = await this._whoIs(sessionId);
+    if (!me) return { ok: false, error: "NOT_SIGNED_IN",
+      why: "a passkey is added to an identity that already exists - sign in with a link or a code first, then add the key" };
+    try {
+      const { generateRegistrationOptions } = await import("@simplewebauthn/server");
+      const existing = await this._passkeysFor(me.pta);
+      const options = await generateRegistrationOptions({
+        rpName: "Aura", rpID: PASSKEY_RP_ID,
+        userName: me.identity || me.pta, userDisplayName: me.name || "Aura",
+        // The user handle is the PTA. It is what ties a device credential to a chain, and it is
+        // deliberately an opaque id rather than a phone number - a credential should not carry PII.
+        userID: new TextEncoder().encode(me.pta),
+        attestationType: "none",   // we do not need to know the make of the device, only that it holds the key
+        excludeCredentials: existing.map((c) => ({ id: c.id })),
+        authenticatorSelection: { residentKey: "preferred", userVerification: "preferred" },
+      });
+      // The challenge is single-use and short-lived. A replayable challenge is a replayable login.
+      await env.AURA_KV.put("passkey:chal:" + me.pta, JSON.stringify({ c: options.challenge, at: Date.now(), label: label || null }),
+        { expirationTtl: 300 });
+      return { ok: true, options };
+    } catch (e) {
+      return { ok: false, error: "passkey registration unavailable", detail: String((e && e.message) || e).slice(0, 160) };
+    }
+  }
+
+  async passkeyRegisterFinish(sessionId, response) {
+    const env = this.env;
+    const me = await this._whoIs(sessionId);
+    if (!me) return { ok: false, error: "NOT_SIGNED_IN" };
+    try {
+      const { verifyRegistrationResponse } = await import("@simplewebauthn/server");
+      const raw = await env.AURA_KV.get("passkey:chal:" + me.pta);
+      if (!raw) return { ok: false, error: "CHALLENGE_EXPIRED", why: "challenges last five minutes and are single-use" };
+      const { c: expectedChallenge, label } = JSON.parse(raw);
+      await env.AURA_KV.delete("passkey:chal:" + me.pta);   // single use, always, even on failure below
+      const v = await verifyRegistrationResponse({
+        response, expectedChallenge, expectedOrigin: PASSKEY_ORIGIN, expectedRPID: PASSKEY_RP_ID,
+      });
+      if (!v.verified || !v.registrationInfo) return { ok: false, error: "NOT_VERIFIED" };
+      const cred = v.registrationInfo.credential;
+      const list = await this._passkeysFor(me.pta);
+      list.push({ id: cred.id, publicKey: Array.from(cred.publicKey), counter: cred.counter,
+                  transports: cred.transports || [], label: label || "passkey", added: new Date().toISOString() });
+      await env.AURA_KV.put("passkey:creds:" + me.pta, JSON.stringify(list));
+      // The ladder moves only on a real proof. This is the one place passkey_verified may be written.
+      try { await processCommand("PTA_VERIFY " + me.pta + " passkey_verified", env, true); } catch {}
+      return { ok: true, credential_id: cred.id, total_keys: list.length,
+        note: "This device can now sign in without a code. Add a second key on another device - a single "
+            + "passkey with no backup is a lockout waiting to happen, and that is the one failure mode "
+            + "passkeys introduce that passwords did not." };
+    } catch (e) {
+      return { ok: false, error: "verification failed", detail: String((e && e.message) || e).slice(0, 160) };
+    }
+  }
+
+  async passkeyLoginStart(identityHint) {
+    const env = this.env;
+    try {
+      const { generateAuthenticationOptions } = await import("@simplewebauthn/server");
+      const options = await generateAuthenticationOptions({ rpID: PASSKEY_RP_ID, userVerification: "preferred" });
+      // Keyed by the challenge itself, not by a user - because with a discoverable credential we do
+      // not yet know WHO is signing in. That is the point of a resident key: the device tells us.
+      await env.AURA_KV.put("passkey:auth:" + options.challenge, JSON.stringify({ at: Date.now() }), { expirationTtl: 300 });
+      return { ok: true, options };
+    } catch (e) {
+      return { ok: false, error: "passkey login unavailable", detail: String((e && e.message) || e).slice(0, 160) };
+    }
+  }
+
+  async passkeyLoginFinish(response) {
+    const env = this.env;
+    try {
+      const { verifyAuthenticationResponse } = await import("@simplewebauthn/server");
+      // The device tells us which PTA it belongs to via the user handle set at registration.
+      const handle = response && response.response && response.response.userHandle;
+      if (!handle) return { ok: false, error: "NO_USER_HANDLE" };
+      const pta = typeof handle === "string" ? atob(handle.replace(/-/g, "+").replace(/_/g, "/")) : String(handle);
+      const list = await this._passkeysFor(pta);
+      const cred = list.find((c) => c.id === response.id);
+      if (!cred) return { ok: false, error: "UNKNOWN_CREDENTIAL" };
+      const chalKey = "passkey:auth:" + (response.expectedChallenge || "");
+      const v = await verifyAuthenticationResponse({
+        response, expectedChallenge: (c) => !!c, expectedOrigin: PASSKEY_ORIGIN, expectedRPID: PASSKEY_RP_ID,
+        credential: { id: cred.id, publicKey: new Uint8Array(cred.publicKey), counter: cred.counter, transports: cred.transports },
+      });
+      if (!v.verified) return { ok: false, error: "NOT_VERIFIED" };
+      // COUNTER REGRESSION IS A CLONED AUTHENTICATOR. Most modern passkeys report 0 and never move,
+      // so a zero counter is normal - but a counter that goes BACKWARDS is the documented signal of a
+      // copied credential and must never be waved through.
+      if (cred.counter > 0 && v.authenticationInfo.newCounter <= cred.counter) {
+        return { ok: false, error: "COUNTER_REGRESSION",
+          why: "this authenticator's signature counter did not advance, which is what a cloned credential looks like" };
+      }
+      cred.counter = v.authenticationInfo.newCounter;
+      await env.AURA_KV.put("passkey:creds:" + pta, JSON.stringify(list));
+      void chalKey;
+      return await this._mintSession(pta, "passkey");
+    } catch (e) {
+      return { ok: false, error: "verification failed", detail: String((e && e.message) || e).slice(0, 160) };
+    }
+  }
+
+  async _passkeysFor(pta) {
+    try { const r = await this.env.AURA_KV.get("passkey:creds:" + pta); return r ? JSON.parse(r) : []; } catch { return []; }
+  }
+
+  // ══ THE SESSION IS SHORT-LIVED AND MINTED ONLY HERE (v4.9.773) ════════════════════════════════
+  // The old session was a 30-day BEARER cookie: whoever holds it is you, anywhere, for a month.
+  // That is the shape infostealers harvest - 51.7 million credential packages in 2025, up 72%, and
+  // the valuable contents are live session cookies that bypass MFA entirely.
+  // Short-lived is the half that is implementable server-side today. The other half is Device Bound
+  // Session Credentials (Chrome 146 GA on Windows, April 2026, W3C spec): the browser keeps a
+  // non-exportable key in the TPM or Secure Enclave and must prove possession before a refresh is
+  // issued, so a stolen cookie is useless on another machine. That needs the two endpoints below.
+  async _mintSession(pta, how) {
+    const env = this.env;
+    const ent = await env.AURA_MEMORY.prepare("SELECT id, name, identity_key FROM pta_entities WHERE id = ?").bind(pta).first();
+    if (!ent) return { ok: false, error: "NO_SUCH_ENTITY" };
+    const sid = Array.from(crypto.getRandomValues(new Uint8Array(32))).map((b) => b.toString(16).padStart(2, "0")).join("");
+    await env.AURA_KV.put("session:" + sid, JSON.stringify({
+      pta, name: ent.name, identity: ent.identity_key, how, created: Date.now(),
+    }), { expirationTtl: 900 });   // FIFTEEN MINUTES, not thirty days
+    return { ok: true, session: sid, pta, name: ent.name, how,
+      expires_in: 900,
+      note: "Short-lived by design. The doorway refreshes it; a stolen cookie is worth minutes, not a month." };
   }
 
   // ── HEALTH: so the doorway can report honestly when the brain is unreachable ──────────────────

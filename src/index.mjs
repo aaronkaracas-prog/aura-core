@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.757-2026-07-27";
+const BUILD = "aura-core-v4.9.758-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -14102,6 +14102,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // Carried, not invented: the sender states which edge they arrived on and which moment this
         // belongs to. Stored on the invitation so ACCEPT can stamp it onto the edge it creates.
         via_edge_id: iv.via_edge_id || iv.via || null, origin_id: iv.origin_id || iv.origin || null,
+        // WHERE and WHEN ride with the offer. The giver states where they were and when this stops
+        // mattering; the receiver's own place is added at ACCEPT, because only they know where they were.
+        place: iv.place || null, expires_at: iv.expires_at || null, act_by: iv.act_by || null,
         message: iv.message || null, status: "pending", created: ts
       };
       // store the invitation keyed by the CONTACT POINT (so ACCEPT can find it) + by id
@@ -14127,6 +14130,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       let acRaw = rest.trim();
       let acId = acRaw, acHow = "";
       if (acRaw.includes(":::")) { const sp = acRaw.split(":::"); acId = sp[0].trim(); acHow = sp.slice(1).join(":::").trim(); }
+      // ACCEPT <invite_id> [@ {"lat":..,"lon":..,"label":".."}] - where the RECEIVER was. Optional by
+      // design; a link opened from a couch has no meaningful place and must not be forced to invent one.
+      let acPlace = null;
+      const acPlaceMatch = acRaw.match(/@\s*(\{.*\})\s*$/);
+      if (acPlaceMatch) { try { acPlace = JSON.parse(acPlaceMatch[1]); acId = acId.replace(/@\s*\{.*\}\s*$/, "").trim(); } catch {} }
       if (!acId) return { cmd: "ACCEPT", payload: { ok: false, error: "Usage: ACCEPT <invite_id> [::: how they arrived]" } };
       const invRaw = await env.AURA_KV.get(`invite:${acId}`).catch(() => null);
       if (!invRaw) return { cmd: "ACCEPT", payload: { ok: false, error: "No invitation: " + acId } };
@@ -14150,7 +14158,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // carries the shared moment of a mass touch: one concert, a million edges, one row.
         const edgeCtx = JSON.stringify({ edge_type: "relationship", relationship: invite.relationship || invite.tier,
           permission: invite.tier, impact: "consented_connection",
-          via_edge_id: invite.via_edge_id || null, origin_id: invite.origin_id || null });
+          via_edge_id: invite.via_edge_id || null, origin_id: invite.origin_id || null,
+          // BOTH SIDES OF ONE TOUCH. The giver's place came with the invitation; the receiver's is
+          // stated here at the moment of acceptance, because only they can say where they were.
+          place: (invite.place || acPlace) ? { given: invite.place || null, received: acPlace || null } : null,
+          expires_at: invite.expires_at || null, act_by: invite.act_by || null });
         const gr = await processCommand(`PTA_GRANT ${invite.from} ${bornId} ${edgeCtx}`, env, true);
         // ══ AN ACCEPTED INVITATION LEFT ITS EDGE PENDING FOREVER (v4.9.754) ═══════════════════
         // PTA_GRANT inserts every edge as `pending` - correct for a grant that still awaits a yes.
@@ -15220,7 +15232,29 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // `who_introduced` already lives in the relationship JSON — the right idea in an unqueryable
       // place. These are columns so SQL can walk it.
       // STORED, NOT DISPLAYED. Showing a chain reveals who knows whom, and that decision is open.
-      for (const col of ["via_edge_id TEXT", "origin_id TEXT"]) {
+      // ══ WHERE IT HAPPENED, AND WHEN IT STOPS MATTERING (v4.9.758) ════════════════════════════
+      //
+      // LOCATION belongs to the TOUCH, not the person. A person does not have a location; a MOMENT
+      // does. Aaron: "if I give the girl on the beach a PTA it needs to know where I gave it to her
+      // and she needs to know where she received it." MOMENT already stamps place/surroundings as
+      // TEXT; this is the coordinate half, and it is per-EDGE so each touch carries its own.
+      // DELIBERATELY OPTIONAL, and this is the one place I pushed back: mandatory GPS on every touch
+      // builds a movement graph of every person who ever accepts a PTA - the most sensitive dataset
+      // in this system - and that cuts against a consent-first design. Grandma sending an image from
+      // her couch gains nothing and carries real liability. So: captured when the touch is PHYSICAL,
+      // never invented, and never retrofittable - which is exactly why the column must exist now.
+      //
+      // ETA is not a step in the chain, it is THE CLOCK ON EVERY STEP. And it is the mechanism for
+      // something already decided: context DISSOLVES ("it's too much to keep the whole planet in line
+      // with one PTA"). Dissolution is not a decay rule the system enforces - it is a clock the giver
+      // sets on the touch. Aaron's five map onto the edge: the situation (when it started, when it
+      // ends), the data (how stale), the outcome (how long it stays true), the relevance (the
+      // moment), the disposition (the deadline to act).
+      //   expires_at - when this context stops being live. Nothing is deleted; it stops counting.
+      //   act_by     - the disposition deadline. The moment by which something must happen.
+      // NOTHING ENFORCES THESE YET and the code says so where it is read - a clock nobody checks is
+      // a timestamp, exactly like the verification ladder before it was ranked.
+      for (const col of ["via_edge_id TEXT", "origin_id TEXT", "place TEXT", "expires_at TEXT", "act_by TEXT"]) {
         try { await db.prepare("ALTER TABLE pta_edges ADD COLUMN " + col).run(); } catch {}
       }
       const fromId = args[0] || "";
@@ -15269,8 +15303,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (!parent) viaEdge = null;
       }
       const originId = ctx.origin_id || ctx.origin || null;
-      await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, permission, relationship, impact, context, via_edge_id, origin_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .bind(edgeId, fromId, toId, edgeType, "pending", permission, relationship, impact, context, viaEdge, originId, now, now).run();
+      // PLACE: both sides' view of one touch. `given` is where the giver was, `received` where the
+      // receiver was - hand-to-hand they match, a link sent across the world they do not, and that
+      // difference is itself a fact worth keeping. Stored verbatim; never inferred from an IP.
+      const place = ctx.place ? JSON.stringify(ctx.place) : null;
+      const expiresAt = ctx.expires_at || ctx.expires || null;
+      const actBy = ctx.act_by || ctx.deadline || null;
+      await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, permission, relationship, impact, context, via_edge_id, origin_id, place, expires_at, act_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(edgeId, fromId, toId, edgeType, "pending", permission, relationship, impact, context, viaEdge, originId, place, expiresAt, actBy, now, now).run();
       // Record in history
       const histId = "hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
       await db.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)")

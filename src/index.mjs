@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.764-2026-07-27";
+const BUILD = "aura-core-v4.9.765-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -15674,6 +15674,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const t0 = Date.now();
           // Build directly in SQL. Going through INVITE/ACCEPT would measure the invite path, not
           // the cascade - and the cascade is the thing under test.
+          let linkFailures = 0;
           const mkEnt = async (n) => {
             const id = "pta_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map((b) => b.toString(16).padStart(2, "0")).join("");
             await db.prepare("INSERT INTO pta_entities (id, type, identity_key, name, created_at, updated_at) VALUES (?, 'person', ?, ?, ?, ?)")
@@ -15684,6 +15685,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const id = "edge_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map((b) => b.toString(16).padStart(2, "0")).join("");
             await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, permission, via_edge_id, created_at, updated_at) VALUES (?, ?, ?, 'grant', 'active', '{\"can_view\":true}', ?, ?, ?)")
               .bind(id, from, to, via || null, new Date().toISOString(), new Date().toISOString()).run();
+            // Verify the link landed. An INSERT that silently drops a column looks identical to a
+            // correct one until something reads it - which is exactly how two rounds were spent
+            // debugging a "leak" that was an unlinked fixture.
+            if (via) {
+              const back = await db.prepare("SELECT via_edge_id FROM pta_edges WHERE id = ?").bind(id).first();
+              if (!back || back.via_edge_id !== via) linkFailures++;
+            }
             return id;
           };
           const rootId = await mkEnt("root");
@@ -15707,6 +15715,28 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           }
           t("build_ms", Date.now() - t0);
           t("edges_built", total);
+
+          // ══ ASSERT THE FIXTURE BEFORE TRUSTING THE TEST (v4.9.765) ═══════════════════════════
+          // The previous run reported a LEAK. The diagnostic showed the sampled edge had NO lineage
+          // at all - so the permission check was right and the TREE was never linked. Two rounds were
+          // spent debugging a fixture while reading it as a system failure.
+          // A test that cannot build its own fixture cannot test anything, and the only way to know
+          // is to check. Exactly ONE edge should have a null via_edge_id: the root.
+          const orphans = await db.prepare(
+            "SELECT COUNT(*) n FROM pta_edges WHERE from_id = ? AND via_edge_id IS NULL"
+          ).bind(rootId).first();
+          const orphanCount = (orphans && orphans.n) || 0;
+          if (orphanCount > 1) {
+            return { cmd: "PTA_SCALE", payload: { ok: false, error: "FIXTURE_NOT_LINKED",
+              edges_built: total, edges_with_no_lineage: orphanCount, expected: 1,
+              why: "The test tree was not wired: " + orphanCount + " edges have no via_edge_id when only "
+                 + "the root should. Nothing downstream of this means anything - a leak reported against "
+                 + "an unlinked tree is a bug in the harness, not in the permission model.",
+              note: "This assertion exists because two rounds were spent reading exactly that as a real leak.",
+              timings } };
+          }
+          t("edges_with_no_lineage", orphanCount);
+          t("link_write_failures", linkFailures);
 
           const t1 = Date.now();
           const rev = await processCommand("PTA_REVOKE " + rootEdge + " scale test", env, true);

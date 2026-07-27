@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.762-2026-07-27";
+const BUILD = "aura-core-v4.9.763-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2121,9 +2121,39 @@ async function ptaCan(env, actorId, capability, subjectId) {
     for (const e of active) {
       let perm = null;
       try { perm = JSON.parse(e.permission || "null"); } catch { perm = null; }
-      if (perm && perm[key] === true) {
-        return { allowed: true, reason: "active " + e.edge_type + " edge grants " + key, via_edge: e.id };
+      if (!perm || perm[key] !== true) continue;
+      // ══ REVOCATION IS CHECKED UPWARD, NOT PROPAGATED DOWNWARD (v4.9.763) ═══════════════════
+      //
+      // MEASURED, not theorised: revoking a root with 901 descendant edges took 56 SECONDS and
+      // truncated at 500, leaving 400 people holding access through a link that no longer existed -
+      // and a second run left 480 active while reporting no truncation at all. An eager cascade is
+      // O(tree) inside one request, and the stated goal is the whole planet on a PTA. It does not
+      // scale and no amount of tuning fixes the shape.
+      //
+      // So the authority moves. An edge is only live if EVERY EDGE IT DESCENDS FROM is still live.
+      // Revocation writes ONE row - instant, complete, never partial. The cost moves to the check,
+      // where it is O(DEPTH) rather than O(tree): a chain is three or four hops in practice and
+      // twelve at the ceiling, so this is a handful of lookups on a path that already touches the
+      // database. Width is unbounded; depth is not. That asymmetry is the whole fix.
+      // It is also strictly MORE correct: there is no window in which a cascade is halfway done, and
+      // nothing can be missed by a walk that ran out of budget.
+      let cursor = e.via_edge_id, hops = 0;
+      const walked = new Set([e.id]);
+      while (cursor && hops < 24) {
+        if (walked.has(cursor)) break;            // a consent graph can cycle; stop rather than spin
+        walked.add(cursor);
+        const anc = await db.prepare("SELECT id, state, via_edge_id FROM pta_edges WHERE id = ?").bind(cursor).first();
+        if (!anc) break;                          // lineage points at nothing - treat as a root
+        if (anc.state === "revoked") {
+          return { allowed: false,
+            reason: "an ancestor of this grant was revoked (" + anc.id + ", " + (hops + 1) + " hop(s) up) - "
+                  + "access that arrived through a broken link is not access",
+            via_edge: e.id, revoked_ancestor: anc.id };
+        }
+        cursor = anc.via_edge_id; hops++;
       }
+      return { allowed: true, reason: "active " + e.edge_type + " edge grants " + key + ", and its lineage is intact",
+        via_edge: e.id, lineage_hops_checked: hops };
     }
     return { allowed: false,
       reason: "active edge(s) exist but none grants " + key,
@@ -15676,10 +15706,28 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           t("revoke_ms", Date.now() - t1);
 
           const stillActive = await db.prepare("SELECT COUNT(*) n FROM pta_edges WHERE from_id = ? AND state = 'active'").bind(rootId).first();
+          // THE REAL QUESTION is not how many rows still SAY active - it is whether anyone can still
+          // GET IN. Sample a descendant and ask the decider, because that is what a doorway will ask.
+          let leakCheck = null;
+          try {
+            const leaf = await db.prepare("SELECT to_id FROM pta_edges WHERE from_id = ? AND state = 'active' LIMIT 1").bind(rootId).first();
+            if (leaf) { const v = await ptaCan(env, leaf.to_id, "view", rootId); leakCheck = { entity: leaf.to_id, allowed: v.allowed, reason: v.reason }; }
+          } catch {}
           return { cmd: "PTA_SCALE", payload: { ok: true, fan, depth,
             built: { entities: made.length, edges: total },
-            cascade: { reported: rp.cascaded, truncated: rp.truncated || false, walk: rp.walk || null },
+            // rp.walk being ABSENT means the revoke did not complete normally - the first version
+            // turned that into `truncated: false`, which read as success while 480 edges stayed live.
+            // Undefined is not false. Say which it is.
+            cascade: { reported: rp.cascaded, ok: rp.ok !== false,
+              truncated: rp.truncated === true ? true : (rp.walk ? false : "unknown - the revoke returned no walk, so it did not complete normally"),
+              walk: rp.walk || null, error: rp.error || undefined },
             still_active_after_revoke: (stillActive && stillActive.n) || 0,
+            leak_check: leakCheck,
+            leak_verdict: leakCheck
+              ? (leakCheck.allowed
+                  ? "LEAK - a descendant of the revoked root can still get in. This is the failure that matters."
+                  : "NO LEAK - rows may still read active, but the decider denies them by lineage. Display lags; safety does not.")
+              : "no descendant available to sample",
             timings,
             read_this: (rp.truncated
               ? "TRUNCATED. The ceiling was hit and the tree is only PARTIALLY revoked - which is the "
@@ -16020,7 +16068,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       try {
         const seen = new Set([edgeId]);
         let frontier = [edgeId];
-        for (let depth = 0; depth < 12 && frontier.length; depth++) {
+        // The walk is now a CONVENIENCE, not the authority. ptaCan checks lineage upward, so access
+        // is already dead the instant the root row flips - before this loop runs at all. This just
+        // materialises the state so a human reading the table sees what is true. Capped hard and
+        // low (2 levels, 100 edges) because it is optional: a big tree simply stays un-materialised
+        // and is still correctly denied. Before v4.9.763 this loop WAS correctness, took 56 seconds
+        // on 901 edges, and truncated - leaving 400 people with access and nothing recording who.
+        for (let depth = 0; depth < 2 && frontier.length; depth++) {
           const ph = frontier.map(() => "?").join(",");
           const kids = await db.prepare(
             "SELECT id, to_id, state FROM pta_edges WHERE via_edge_id IN (" + ph + ") AND state != 'revoked'"
@@ -16031,7 +16085,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           for (const k of (kids?.results || [])) {
             if (seen.has(k.id)) continue;
             seen.add(k.id);
-            if (cascaded.length >= 500) { truncated = true; break; }
+            if (cascaded.length >= 100) { truncated = true; break; }
             await revokeOne(k.id, k.state, { reason, previous_state: k.state, revoked_by_cascade_from: edgeId, depth: depth + 1 });
             cascaded.push({ edge_id: k.id, to: k.to_id, depth: depth + 1 });
             next.push(k.id);
@@ -16067,9 +16121,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             + "Nothing is deleted; every revocation is a row in pta_history."
           : "no downstream edges came through this one",
         truncation_warning: truncated
-          ? "CEILING HIT at 500 edges - the branch is only PARTIALLY revoked. Re-run to continue; the "
-            + "command is idempotent and already-revoked edges are skipped."
-          : undefined } };
+          ? "The convenience walk stopped at its ceiling - the rest of the tree is NOT marked revoked in "
+            + "the table. THIS IS NOT A PERMISSION PROBLEM: ptaCan checks lineage upward, so every "
+            + "descendant is already denied. What is un-materialised is the display, not the safety."
+          : undefined,
+        authority_note: "Revoking THIS row is what ends access. Descendants are denied by ptaCan walking "
+          + "their lineage upward and finding this revocation, whether or not the walk below reached them. "
+          + "Revocation is one write and it is never partial." } };
     }
 
     case "PTA_LOOKUP": {

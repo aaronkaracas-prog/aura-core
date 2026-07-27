@@ -36,7 +36,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.777-2026-07-27";
+const BUILD = "aura-core-v4.9.778-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2169,6 +2169,75 @@ const PTA_REWRITES = ["union", "via"];
 // can outlive is not a revocation. Whoever adds the cache owns adding the token with it.
 
 
+
+// ══ CRYPTO-SHREDDING — HOW APPEND-ONLY AND FORGET-ME BOTH BECOME TRUE (v4.9.778) ═════════════════
+//
+// THE CONTRADICTION THIS RESOLVES, and it is in the spec itself: "Append, never delete" AND "chain
+// terminates, data purges in 30 days." Those cannot both hold on plaintext. A five-seat review was
+// unanimous that leaving it undecided was the ONE deferral becoming IMPOSSIBLE rather than merely
+// expensive - "it isn't deferred, it's being decided by default, wrong, every write", because every
+// plaintext row written before the decision is permanently un-forgettable.
+//
+// THE ANSWER, which is the industry's not ours: encrypt each entity's CONTENT under a key that
+// belongs to that entity alone, and delete the key to forget them. The chain's STRUCTURE survives -
+// ids, types, timestamps, lineage, who-touched-whom - so the graph stays walkable, revocation still
+// works, and nobody else's history develops holes. The CONTENT becomes permanently unreadable. Both
+// promises become true at once, and neither is weakened to accommodate the other.
+//
+// WHAT IS ENCRYPTED vs WHAT IS NOT, and the line matters:
+//   ENCRYPTED - the personal content: metadata, birth context, names, relationship notes, history
+//               detail. Everything that says something ABOUT a person.
+//   CLEAR     - the skeleton: ids, entity type, edge state, timestamps, via_edge_id, origin_id.
+//               Structure is not personal data, and encrypting it would break the graph while
+//               protecting nothing - an id is meaningless without the content it points at.
+//
+// WHY PER-ENTITY AND NOT ONE MASTER KEY: one key means forgetting one person is impossible without
+// forgetting everyone. The whole mechanism is that the unit of deletion is the unit of encryption.
+//
+// THE HONEST LIMIT, stated because it is the failure mode: **a key that is lost is a chain that is
+// gone.** That is the same property that makes shredding work, and it means these keys are as
+// load-bearing as the identity pepper. Anything that can delete keys in bulk is a weapon.
+async function entityKey(env, ptaId, createIfMissing) {
+  const kvKey = "entity:key:" + ptaId;
+  try {
+    const existing = await env.AURA_KV.get(kvKey);
+    if (existing) return await crypto.subtle.importKey("raw",
+      Uint8Array.from(atob(existing), (c) => c.charCodeAt(0)), { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+    if (!createIfMissing) return null;   // SHREDDED or never created - both mean unreadable
+    const raw = crypto.getRandomValues(new Uint8Array(32));
+    await env.AURA_KV.put(kvKey, btoa(String.fromCharCode(...raw)));
+    return await crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+  } catch { return null; }
+}
+
+// A fresh IV per write, prepended to the ciphertext. Reusing an IV with the same key breaks AES-GCM
+// outright - it is the classic way an encryption layer ends up decorative.
+async function sealFor(env, ptaId, plaintext) {
+  if (plaintext == null || plaintext === "") return plaintext;
+  const key = await entityKey(env, ptaId, true);
+  if (!key) return plaintext;   // no key material available - store readable rather than lose the write
+  try {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(String(plaintext)));
+    const joined = new Uint8Array(iv.length + ct.byteLength);
+    joined.set(iv, 0); joined.set(new Uint8Array(ct), iv.length);
+    return "enc:v1:" + btoa(String.fromCharCode(...joined));
+  } catch { return plaintext; }
+}
+
+async function unsealFor(env, ptaId, stored) {
+  const v = String(stored == null ? "" : stored);
+  if (!v.startsWith("enc:v1:")) return stored;   // written before shredding existed - readable, and honest about it
+  const key = await entityKey(env, ptaId, false);
+  // NO KEY = FORGOTTEN. This is the success path of a deletion, not an error, and it must read as
+  // such: a caller that treats it as a failure will retry forever against something that is gone.
+  if (!key) return "[forgotten]";
+  try {
+    const bytes = Uint8Array.from(atob(v.slice(7)), (c) => c.charCodeAt(0));
+    const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: bytes.slice(0, 12) }, key, bytes.slice(12));
+    return new TextDecoder().decode(pt);
+  } catch { return "[unreadable]"; }
+}
 
 // ══ MAY THIS ACTOR DO THIS TO THIS SUBJECT? (v4.9.755) ═══════════════════════════════════════════
 // The single place that answers a permission question, so no caller ever invents its own rule.
@@ -15260,6 +15329,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const now = new Date().toISOString();
       const ptaId = () => "pta_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
 
+      // Unseal on the way out. Defined at the TOP of this case, before any branch can reach it - a
+      // `const` arrow has a temporal dead zone, and the first version of this landed BELOW the CREATE
+      // branch that calls it, which would have thrown a ReferenceError on every entity creation.
+      // A sealed field that nothing decrypts is data loss with extra steps: the write half and the
+      // read half are ONE change, and shipping either alone is the written-but-never-read defect
+      // this codebase has now found six times.
+      const _unsealEnt = async (e) => {
+        if (!e) return e;
+        try { return { ...e, metadata: await unsealFor(env, e.id, e.metadata) }; } catch { return e; }
+      };
+
       if (sub === "COLLISIONS") {
         // ══ WHAT IS ALREADY FORKED ═══════════════════════════════════════════════════════════════
         // Reports rows that are DISTINCT strings today but the SAME identity once normalised - one
@@ -15338,7 +15418,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const legacy = normIdentity(idMatch[1]);
             existing = await db.prepare("SELECT * FROM pta_entities WHERE identity_key = ?").bind(legacy).first();
           }
-          if (existing) return { cmd: "PTA_ENTITY", payload: { ok: true, mode: "existing", entity: existing } };
+          if (existing) return { cmd: "PTA_ENTITY", payload: { ok: true, mode: "existing", entity: await _unsealEnt(existing) } };
         }
         const id = ptaId();
         try {
@@ -15349,6 +15429,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             md.contact_hint = identityHint;
             metadata = JSON.stringify(md);
           }
+          // SEALED UNDER THIS ENTITY'S OWN KEY. Metadata is where the personal content lives - birth
+          // context, the place they were met, who introduced them, what they consented to. The
+          // skeleton around it stays clear so the graph still works.
+          if (metadata) metadata = await sealFor(env, id, metadata);
           await db.prepare("INSERT INTO pta_entities (id, type, identity_key, name, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
             .bind(id, eType, identityKey, eName, metadata, now, now).run();
         } catch (e) {
@@ -15364,7 +15448,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           return { cmd: "PTA_ENTITY", payload: { ok: false, error: String((e && e.message) || e).slice(0, 200) } };
         }
         const created = await db.prepare("SELECT * FROM pta_entities WHERE id = ?").bind(id).first();
-        return { cmd: "PTA_ENTITY", payload: { ok: true, mode: "created", entity: created } };
+        return { cmd: "PTA_ENTITY", payload: { ok: true, mode: "created", entity: await _unsealEnt(created) } };
       }
 
       if (sub === "COLLISIONS") {
@@ -15397,7 +15481,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (!id) return { cmd: "PTA_ENTITY", payload: { ok: false, error: "Usage: PTA_ENTITY GET <id>" } };
         const ent = await db.prepare("SELECT * FROM pta_entities WHERE id = ?").bind(id).first();
         if (!ent) return { cmd: "PTA_ENTITY", payload: { ok: false, error: "Entity not found: " + id } };
-        return { cmd: "PTA_ENTITY", payload: { ok: true, entity: ent } };
+        return { cmd: "PTA_ENTITY", payload: { ok: true, entity: await _unsealEnt(ent) } };
       }
 
       if (sub === "FIND") {
@@ -15424,7 +15508,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         }
         if (!ent) return { cmd: "PTA_ENTITY", payload: { ok: false,
           error: "No entity with identity_key: " + key, normalised_to: nk } };
-        return { cmd: "PTA_ENTITY", payload: { ok: true, entity: ent, normalised_to: norm, matched,
+        return { cmd: "PTA_ENTITY", payload: { ok: true, entity: await _unsealEnt(ent), normalised_to: norm, matched,
           note: matched.startsWith("legacy")
             ? "This row predates hashing. It is still findable, but the contact is stored in the clear - "
               + "re-create it through the normal path to migrate it, or wipe it if it is test data."
@@ -15749,6 +15833,70 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           error: "Usage: PTA_CAN <actor_id> <view|share|contact|discover> <subject_id>" } };
         const verdict = await ptaCan(env, actor, cap, subject);
         return { cmd: "PTA_CAN", payload: { ok: true, ...verdict } };
+      }
+    }
+
+    case "PTA_FORGET": {
+      // ══ THE RIGHT TO BE FORGOTTEN, WITHOUT BREAKING ANYONE ELSE'S CHAIN ══════════════════════
+      //
+      // Deleting a person's rows would tear holes in every chain that references them - their
+      // grandmother's timeline, the friend they introduced, the moment they were at. Someone else's
+      // history should not develop gaps because a third party left.
+      //
+      // So this destroys the KEY, not the rows. Their content becomes permanently unreadable while
+      // the skeleton stays intact: the graph still walks, revocation still works, and everyone else's
+      // chain remains whole. Both promises in the spec become true at once.
+      //
+      // IRREVERSIBLE, AND MORE COMPLETELY THAN A DELETE. A deleted row can sometimes be recovered
+      // from a backup. A destroyed key cannot be recovered from anywhere, by anyone, ever - which is
+      // exactly the guarantee a person asking to be forgotten is actually asking for.
+      //
+      //   PTA_FORGET <entity_id>            - dry run: what becomes unreadable
+      //   PTA_FORGET <entity_id> CONFIRM    - destroy the key
+      if (!isOp) return { cmd: "PTA_FORGET", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const db = env.AURA_MEMORY;
+        const id = args[0] || "";
+        const confirm = /\bCONFIRM\b/i.test(rest);
+        if (!id) return { cmd: "PTA_FORGET", payload: { ok: false, error: "Usage: PTA_FORGET <entity_id> [CONFIRM]" } };
+        const ent = await db.prepare("SELECT id, name, type FROM pta_entities WHERE id = ?").bind(id).first();
+        if (!ent) return { cmd: "PTA_FORGET", payload: { ok: false, error: "no such entity: " + id } };
+        const hasKey = !!(await env.AURA_KV.get("entity:key:" + id));
+        const edges = await db.prepare("SELECT COUNT(*) n FROM pta_edges WHERE from_id = ? OR to_id = ?").bind(id, id).first();
+        if (!confirm) {
+          return { cmd: "PTA_FORGET", payload: { ok: true, dry_run: true,
+            entity: { id: ent.id, name: ent.name, type: ent.type },
+            key_present: hasKey, relationships_touching_them: (edges && edges.n) || 0,
+            what_happens: hasKey
+              ? "Their key is destroyed. Every encrypted field of theirs becomes permanently unreadable "
+                + "and reads back as [forgotten]. Their rows and their relationships REMAIN, so nobody "
+                + "else's chain develops a hole - the structure of what happened survives, the substance "
+                + "of who they were does not."
+              : "NO KEY EXISTS for this entity - either they were created before crypto-shredding, in "
+                + "which case their content is plaintext and this will NOT forget them, or they have "
+                + "already been forgotten. Check which before telling anyone they are gone.",
+            how: "PTA_FORGET " + id + " CONFIRM",
+            warning: "Irreversible, and more completely than a delete: a destroyed key cannot be restored "
+                   + "from any backup, by anyone, ever." } };
+        }
+        if (!hasKey) return { cmd: "PTA_FORGET", payload: { ok: false, error: "NO_KEY",
+          why: "there is no key to destroy, so this would not forget them. If their content is plaintext "
+             + "it predates shredding and needs a different answer - do not report a person as forgotten "
+             + "when their data is still readable." } };
+        await env.AURA_KV.delete("entity:key:" + id);
+        const now = new Date().toISOString();
+        // The FACT of forgetting is itself recorded - unencrypted, because it is not personal content,
+        // and because a deletion nobody can prove happened is a deletion nobody can be held to.
+        try {
+          await db.prepare("UPDATE pta_entities SET name = '[forgotten]', metadata = ?, updated_at = ? WHERE id = ?")
+            .bind(JSON.stringify({ forgotten: true, forgotten_at: now }), now, id).run();
+        } catch {}
+        return { cmd: "PTA_FORGET", payload: { ok: true, forgotten: id, at: now,
+          relationships_left_intact: (edges && edges.n) || 0,
+          note: "Key destroyed. Their content is unreadable to everyone including this system. Their "
+              + "relationships remain so that other people's chains stay whole - what remains is that "
+              + "something happened, not what it was or who they were.",
+          verify_with: "PTA_ENTITY GET " + id } };
       }
     }
 

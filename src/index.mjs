@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.747-2026-07-27";
+const BUILD = "aura-core-v4.9.748-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2007,9 +2007,40 @@ async function readOwnSource(env, branch, worker) {
 // no answer, and the fallback names itself in the response so a silent regression cannot hide.
 // Returns { reply, ... } on success, or { failed: "<reason>" } so the caller can SAY why it fell back.
 // Guessing at a silent failure has cost this build more time than any bug in it - so it reports.
-async function proxyToAgent(env, line, isOp) {
+// ══ ONE AGENT PER IDENTITY — THE PLATFORM'S OWN MODEL, WHICH THIS WAS VIOLATING (v4.9.748) ═══════
+//
+// Cloudflare's Project Think announcement states the thesis plainly: "Traditional applications serve
+// many users from one instance. AGENTS ARE ONE-TO-ONE. Each agent is a unique instance, serving one
+// user... you can build 'one agent per customer' or 'one agent per task'. The marginal cost of
+// spawning a new agent is effectively zero." Each instance is its own Durable Object with its own
+// SQLite database, addressed by an arbitrary name, hibernating to zero cost when idle. Millions of
+// instances is the DESIGNED case, not the stretch case.
+//
+// This function hardcoded ONE name - "aura-solid" - for everyone. A five-seat architectural review
+// was unanimous that this is wrong and named it a global bottleneck and single failure domain.
+//
+// THE HONEST NUANCE THEY DID NOT HAVE: today only the operator ever reaches the agent at all. A
+// non-operator was refused here and fell back to the local prose path - so one user on one instance
+// was, briefly, correct. The defect is what happens NEXT: under this system's model every visitor
+// arrives holding an identity, and if they all landed on "aura-solid" they would share one Session,
+// one conversation history and one memory. That is unmergeable once it happens, which puts it in the
+// cheap-now-impossible-later category alongside origin tagging and identity uniqueness.
+//
+// So the instance is DERIVED from who is asking:
+//   operator            -> "aura-solid", unchanged. Days of accumulated context live there and must not move.
+//   an identity holder  -> their own instance. Own Durable Object, own SQLite, own memory, hibernating.
+//   nobody              -> no agent. The local path, exactly as before.
+// Names are sanitised because the instance name rides in a URL path segment.
+function agentInstanceFor(isOp, ptaId) {
+  if (isOp) return "aura-solid";
+  const id = String(ptaId || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "");
+  return id ? ("pta-" + id).slice(0, 64) : null;
+}
+
+async function proxyToAgent(env, line, isOp, ptaId) {
   try {
-    if (!isOp) return { failed: "not operator - public doorways keep the local path by design" };
+    const instance = agentInstanceFor(isOp, ptaId);
+    if (!instance) return { failed: "no identity - an anonymous visitor has no agent instance of their own, so the local path answers" };
     const tok = env.AURA_OPERATOR_TOKEN || await getSecret(env, "aura_operator_token");
     if (!tok) return { failed: "no operator token in env.AURA_OPERATOR_TOKEN or secret:aura_operator_token" };
     // SERVICE BINDING, NOT THE PUBLIC INTERNET. The first version fetched aura-think's workers.dev URL
@@ -2017,7 +2048,7 @@ async function proxyToAgent(env, line, isOp) {
     // public URL. Aaron's call and he is right: traffic should never leave Cloudflare only to come back.
     // A service binding is internal, faster, and free. The public fetch stays ONLY as a last resort for
     // the case where the binding is missing, and it names itself when it happens.
-    const path = "/agents/aura-agent/aura-solid/turn";
+    const path = "/agents/aura-agent/" + instance + "/turn";
     const body = JSON.stringify({ text: line, channel: "cmd" });
     const headers = { "content-type": "application/json", authorization: "Bearer " + tok };
     let r;
@@ -2028,8 +2059,12 @@ async function proxyToAgent(env, line, isOp) {
         return { failed: "service binding threw: " + String(e?.message ?? e).slice(0, 160) };
       }
     } else {
-      const base = (await KV.get(env, "config:agent:url"))
-        || "https://aura-think.aaronkaracas.workers.dev/agents/aura-agent/aura-solid";
+      // The public fallback must honour the SAME instance - pointing every visitor at one name here
+      // would reintroduce the shared-memory bug on the very path taken when the binding is missing.
+      const cfgBase = await KV.get(env, "config:agent:url");
+      const base = cfgBase
+        ? cfgBase.replace(/\/agents\/aura-agent\/[^/]+$/, "/agents/aura-agent/" + instance)
+        : "https://aura-think.aaronkaracas.workers.dev/agents/aura-agent/" + instance;
       try {
         r = await fetch(base + "/turn", { method: "POST", headers, body });
       } catch (e) {
@@ -2041,7 +2076,8 @@ async function proxyToAgent(env, line, isOp) {
     let j = null; try { j = JSON.parse(txt); } catch { return { failed: "agent returned non-JSON: " + txt.slice(0, 160) }; }
     if (j && j.ok === false) return { failed: "agent said not ok: " + String(j.error || "").slice(0, 200) };
     if (j && typeof j.reply === "string" && j.reply.trim()) {
-      return { reply: j.reply, rung: j.rung || null, cost: j.turn_cost || null, via: "aura-think" };
+      return { reply: j.reply, rung: j.rung || null, cost: j.turn_cost || null,
+               via: "aura-think", instance };
     }
     return { failed: "agent replied with no usable text: " + txt.slice(0, 160) };
   } catch (e) { return { failed: "proxy threw: " + String(e?.message ?? e).slice(0, 160) }; }

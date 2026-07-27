@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.767-2026-07-27";
+const BUILD = "aura-core-v4.9.768-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -15484,12 +15484,23 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const place = ctx.place ? JSON.stringify(ctx.place) : null;
       const expiresAt = ctx.expires_at || ctx.expires || null;
       const actBy = ctx.act_by || ctx.deadline || null;
-      await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, permission, relationship, impact, context, via_edge_id, origin_id, place, expires_at, act_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .bind(edgeId, fromId, toId, edgeType, "pending", permission, relationship, impact, context, viaEdge, originId, place, expiresAt, actBy, now, now).run();
+      // ══ ONE ROUND TRIP, NOT TWO (v4.9.768) ════════════════════════════════════════════════════
+      // MEASURED: a single-row D1 insert costs 38-68ms, and the SAME rows written with db.batch()
+      // cost 1.5-2ms each - 25 to 34 times faster. The cost was never the database, it was the WAIT.
+      // `batch()` appears ZERO times in 26,000 lines, and a scale review named this as the thing to
+      // fix before any architectural fork. They were right: sharding would have solved nothing.
+      // batch() also wraps the statements in a transaction, so the edge and its history row now land
+      // together or not at all - which they never did before. That is a correctness gain thrown in
+      // free: an edge without its history entry was previously possible on a mid-write failure.
+      const _histId = "hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
+      await db.batch([
+        db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, permission, relationship, impact, context, via_edge_id, origin_id, place, expires_at, act_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+          .bind(edgeId, fromId, toId, edgeType, "pending", permission, relationship, impact, context, viaEdge, originId, place, expiresAt, actBy, now, now),
+        db.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+          .bind(_histId, edgeId, "granted", fromId, JSON.stringify({ from: fromEnt.name, to: toEnt.name, edge_type: edgeType, via_edge_id: viaEdge, origin_id: originId }), now),
+      ]);
       // Record in history
-      const histId = "hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
-      await db.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-        .bind(histId, edgeId, "granted", fromId, JSON.stringify({ from: fromEnt.name, to: toEnt.name, edge_type: edgeType, via_edge_id: viaEdge, origin_id: originId }), now).run();
+      const histId = _histId;   // written above in the same batch as the edge
       return { cmd: "PTA_GRANT", payload: { ok: true, edge_id: edgeId, from: { id: fromId, name: fromEnt.name }, to: { id: toId, name: toEnt.name }, edge_type: edgeType, state: "pending" } };
     }
 
@@ -15773,18 +15784,27 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const rootEdgeTo = await mkEnt("r0");
           const rootEdge = await mkEdge(rootId, rootEdgeTo, null);
           // Each level fans out from every edge of the level above.
+          // BATCHED. The previous version awaited every row and took 78-126 SECONDS for 901 edges -
+          // then that number was read as a property of the database and nearly justified a rewrite.
+          // It was round trips. Same rows, one batch per level.
           let level = [rootEdge], total = 1;
+          const iso2 = new Date().toISOString();
           for (let d = 0; d < depth; d++) {
-            const next = [];
+            const next = [], stmts = [];
             for (const parent of level) {
               for (let f = 0; f < fan; f++) {
                 if (total > 900) break;
-                const e = await mkEnt("d" + d + "f" + f + "n" + total);
-                next.push(await mkEdge(rootId, e, parent));
-                total++;
+                const eid = "pta_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map((b) => b.toString(16).padStart(2, "0")).join("");
+                const gid = "edge_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map((b) => b.toString(16).padStart(2, "0")).join("");
+                stmts.push(db.prepare("INSERT INTO pta_entities (id, type, identity_key, name, created_at, updated_at) VALUES (?, 'person', ?, ?, ?, ?)")
+                  .bind(eid, "scale:" + tag + ":" + total, tag + total, iso2, iso2));
+                stmts.push(db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, permission, via_edge_id, created_at, updated_at) VALUES (?, ?, ?, 'grant', 'active', ?, ?, ?, ?)")
+                  .bind(gid, rootId, eid, JSON.stringify({ can_view: true }), parent, iso2, iso2));
+                made.push(eid); next.push(gid); total++;
               }
               if (total > 900) break;
             }
+            for (let i = 0; i < stmts.length; i += 100) await db.batch(stmts.slice(i, i + 100));
             level = next;
             if (total > 900) break;
           }

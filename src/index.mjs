@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.758-2026-07-27";
+const BUILD = "aura-core-v4.9.759-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2007,6 +2007,50 @@ async function readOwnSource(env, branch, worker) {
 // no answer, and the fallback names itself in the response so a silent regression cannot hide.
 // Returns { reply, ... } on success, or { failed: "<reason>" } so the caller can SAY why it fell back.
 // Guessing at a silent failure has cost this build more time than any bug in it - so it reports.
+// ══ THE CONTACT IS THE LOOKUP KEY AND THE PII — SPLIT THEM (v4.9.759) ════════════════════════════
+//
+// Every seat of an architectural review flagged the same thing: a bare `phone:+1555...` stored as
+// both the deduplication key and the personal data. Three of five called it blocking. They are right,
+// and NORMALISATION HAD TO COME FIRST (v4.9.749) - hashing two spellings of one number produces two
+// different hashes and freezes the fork permanently, unfindable and unmergeable.
+//
+// HMAC, NOT A BARE HASH. A phone number has about 10^10 possibilities; a plain SHA-256 of one is
+// brute-forced in seconds on a laptop, so an unkeyed hash is obfuscation, not protection. The pepper
+// is what makes the digest meaningless to anyone holding a copy of the table.
+//
+// THE RISK, STATED PLAINLY BECAUSE IT IS REAL: if the pepper is lost, EVERY identity becomes
+// unfindable forever. There is no recovery - that is the same property that makes it safe. It is
+// generated once and stored beside the other tier-0 credentials, and it must be backed up like one.
+//
+// A HINT IS KEPT DELIBERATELY. `phone:···1234` is stored beside the hash so a human can recognise a
+// row without the system holding the number. Debugging an identity graph you cannot read at all is
+// how people end up dumping plaintext back in "just temporarily".
+async function identityPepper(env) {
+  let pep = await getSecret(env, "identity_pepper");
+  if (pep) return pep;
+  // First use: mint one. A system secret, not a user credential - but losing it loses every lookup.
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  pep = Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+  try { await env.AURA_KV.put("secret:identity_pepper", pep); } catch {}
+  return pep;
+}
+
+async function hashIdentity(env, normalised) {
+  const v = String(normalised || "").trim();
+  if (!v) return { key: v, hint: null };
+  const pep = await identityPepper(env);
+  if (!pep) return { key: v, hint: null, unhashed_reason: "no pepper available - refusing to store a weak digest" };
+  const enc = new TextEncoder();
+  const k = await crypto.subtle.importKey("raw", enc.encode(pep), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", k, enc.encode(v));
+  const hex = Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  // The hint shows the SCHEME and the last four - enough to recognise, not enough to reconstruct.
+  const m = v.match(/^([a-z]+):(.*)$/i);
+  const scheme = m ? m[1] : "id";
+  const tail = m ? String(m[2]).slice(-4) : v.slice(-4);
+  return { key: "h:" + hex, hint: scheme + ":\u00b7\u00b7\u00b7" + tail };
+}
+
 // ══ MAY THIS ACTOR DO THIS TO THIS SUBJECT? (v4.9.755) ═══════════════════════════════════════════
 // The single place that answers a permission question, so no caller ever invents its own rule.
 //
@@ -15070,7 +15114,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const idMatch = restStr.match(/identity:(\S+)/);
         // NORMALISE AT THE DOOR. Every write goes through the canonical form, so two spellings of the
         // same contact can never become two people. Unrecognised shapes pass through untouched.
-        if (idMatch) identityKey = normIdentity(idMatch[1]);
+        // NORMALISE, THEN HASH. Order is load-bearing: hashing an unnormalised contact freezes two
+        // spellings into two permanently unmergeable identities.
+        let identityHint = null;
+        if (idMatch) {
+          const norm = normIdentity(idMatch[1]);
+          const h = await hashIdentity(env, norm);
+          identityKey = h.key;
+          identityHint = h.hint;
+        }
         const metaMatch = restStr.match(/meta:({.*})/);
         if (metaMatch) try { metadata = metaMatch[1]; JSON.parse(metadata); } catch { return { cmd: "PTA_ENTITY", payload: { ok: false, error: "Invalid meta JSON" } }; }
         // ══ ONE HUMAN, ONE ENTITY — ENFORCED BY THE DATABASE (v4.9.747) ═══════════════════════
@@ -15099,11 +15151,24 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           } catch {}
         }
         if (identityKey) {
-          const existing = await db.prepare("SELECT * FROM pta_entities WHERE identity_key = ?").bind(identityKey).first();
+          // Look up the hash, then the legacy plaintext - rows written before v4.9.759 hold the raw
+          // normalised contact and must stay findable, or every existing person forks on next contact.
+          let existing = await db.prepare("SELECT * FROM pta_entities WHERE identity_key = ?").bind(identityKey).first();
+          if (!existing && idMatch) {
+            const legacy = normIdentity(idMatch[1]);
+            existing = await db.prepare("SELECT * FROM pta_entities WHERE identity_key = ?").bind(legacy).first();
+          }
           if (existing) return { cmd: "PTA_ENTITY", payload: { ok: true, mode: "existing", entity: existing } };
         }
         const id = ptaId();
         try {
+          // The hint rides in metadata so a human can recognise a row without the table holding a
+          // readable contact. `phone:...1234` is enough to identify, not enough to reconstruct.
+          if (identityHint) {
+            let md = {}; try { md = metadata ? JSON.parse(metadata) : {}; } catch { md = {}; }
+            md.contact_hint = identityHint;
+            metadata = JSON.stringify(md);
+          }
           await db.prepare("INSERT INTO pta_entities (id, type, identity_key, name, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
             .bind(id, eType, identityKey, eName, metadata, now, now).run();
         } catch (e) {
@@ -15160,19 +15225,30 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // miss the very row it just created, which is the sibling half of this fix.
         const key = args[1] || "";
         if (!key) return { cmd: "PTA_ENTITY", payload: { ok: false, error: "Usage: PTA_ENTITY FIND <identity_key> (e.g. phone:+13105551234)" } };
-        const nk = normIdentity(key);
+        const norm = normIdentity(key);
+        const hashed = await hashIdentity(env, norm);
+        const nk = hashed.key;
         // Try the normalised form first, then the literal - rows written before v4.9.749 hold the raw
         // spelling and must stay findable. Reporting WHICH matched is the difference between "found"
         // and "found a legacy row", and that distinction is what makes COLLISIONS actionable.
         let ent = await db.prepare("SELECT * FROM pta_entities WHERE identity_key = ?").bind(nk).first();
         let matched = "normalised";
-        if (!ent && nk !== key) {
-          ent = await db.prepare("SELECT * FROM pta_entities WHERE identity_key = ?").bind(key).first();
-          matched = "legacy (stored before normalisation)";
+        if (!ent) {
+          // Legacy ladder: normalised plaintext (v749-v758), then the raw string as typed (pre-v749).
+          ent = await db.prepare("SELECT * FROM pta_entities WHERE identity_key = ?").bind(norm).first();
+          matched = ent ? "legacy plaintext (stored before hashing)" : matched;
+          if (!ent && norm !== key) {
+            ent = await db.prepare("SELECT * FROM pta_entities WHERE identity_key = ?").bind(key).first();
+            matched = ent ? "legacy raw (stored before normalisation)" : matched;
+          }
         }
         if (!ent) return { cmd: "PTA_ENTITY", payload: { ok: false,
           error: "No entity with identity_key: " + key, normalised_to: nk } };
-        return { cmd: "PTA_ENTITY", payload: { ok: true, entity: ent, normalised_to: nk, matched } };
+        return { cmd: "PTA_ENTITY", payload: { ok: true, entity: ent, normalised_to: norm, matched,
+          note: matched.startsWith("legacy")
+            ? "This row predates hashing. It is still findable, but the contact is stored in the clear - "
+              + "re-create it through the normal path to migrate it, or wipe it if it is test data."
+            : undefined } };
       }
 
       if (sub === "LIST") {

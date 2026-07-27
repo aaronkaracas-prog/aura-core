@@ -36,7 +36,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.778-2026-07-27";
+const BUILD = "aura-core-v4.9.779-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -3828,7 +3828,7 @@ async function processCommand(line, env, isOp) {
       //   core:map       - the door registry. A wrong door sends her confidently to the wrong place.
       const _GUARDED_KEYS = [/^config:rates:table$/i, /^config:rate:calibrated$/i,
                              /^balance:/i, /^usage:anchor:/i, /^config:budget:/i,
-                             /^secret:/i,
+                             /^secret:/i, /^entity:key:/i, /^passkey:creds:/i,
                              /^config:northstar$/i, /^config:owner:/i,
                              /^config:brain:/i, /^config:core:provider$/i, /^config:core:map$/i,
                              /^config:fast:model$/i, /^config:gov:/i, /^config:agent:url$/i];
@@ -15337,7 +15337,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // this codebase has now found six times.
       const _unsealEnt = async (e) => {
         if (!e) return e;
-        try { return { ...e, metadata: await unsealFor(env, e.id, e.metadata) }; } catch { return e; }
+        try {
+          return { ...e,
+            name: await unsealFor(env, e.id, e.name),
+            metadata: await unsealFor(env, e.id, e.metadata) };
+        } catch { return e; }
       };
 
       if (sub === "COLLISIONS") {
@@ -15433,6 +15437,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // context, the place they were met, who introduced them, what they consented to. The
           // skeleton around it stays clear so the graph still works.
           if (metadata) metadata = await sealFor(env, id, metadata);
+          // THE NAME IS SEALED TOO, and that is what makes forgetting a pure key destruction rather
+          // than a mutation. The first version left `name` in the clear, so PTA_FORGET had to
+          // OVERWRITE it - which contradicted the entire design: append-only was meant to survive and
+          // the content was meant to become unreadable, not deleted. Worse, the overwrite made the
+          // test unfalsifiable: the final read said "[forgotten]" whether or not the encryption
+          // worked at all, because the field had simply been replaced.
+          eName = await sealFor(env, id, eName);
           await db.prepare("INSERT INTO pta_entities (id, type, identity_key, name, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
             .bind(id, eType, identityKey, eName, metadata, now, now).run();
         } catch (e) {
@@ -15885,17 +15896,24 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
              + "when their data is still readable." } };
         await env.AURA_KV.delete("entity:key:" + id);
         const now = new Date().toISOString();
-        // The FACT of forgetting is itself recorded - unencrypted, because it is not personal content,
-        // and because a deletion nobody can prove happened is a deletion nobody can be held to.
+        // ══ NOTHING IS OVERWRITTEN — THE KEY DESTRUCTION IS THE WHOLE ACT (v4.9.779) ═══════════
+        // The first version overwrote name and metadata with a tombstone. That was wrong twice: it
+        // MUTATED an append-only record, and it made the outcome unfalsifiable - the row would read
+        // "[forgotten]" whether the encryption worked or not, because the content had simply been
+        // replaced. Now the sealed fields stay exactly where they are and become undecryptable. What
+        // is written is only the FACT and the TIME, appended to history where facts belong, because a
+        // deletion nobody can prove happened is a deletion nobody can be held to.
         try {
-          await db.prepare("UPDATE pta_entities SET name = '[forgotten]', metadata = ?, updated_at = ? WHERE id = ?")
-            .bind(JSON.stringify({ forgotten: true, forgotten_at: now }), now, id).run();
+          await db.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, NULL, 'forgotten', ?, ?, ?)")
+            .bind("hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map((x) => x.toString(16).padStart(2, "0")).join(""),
+                  id, JSON.stringify({ reason: "right to be forgotten", key_destroyed: true }), now).run();
         } catch {}
         return { cmd: "PTA_FORGET", payload: { ok: true, forgotten: id, at: now,
           relationships_left_intact: (edges && edges.n) || 0,
-          note: "Key destroyed. Their content is unreadable to everyone including this system. Their "
-              + "relationships remain so that other people's chains stay whole - what remains is that "
-              + "something happened, not what it was or who they were.",
+          note: "Key destroyed. NOTHING was overwritten - their sealed name and metadata sit exactly "
+              + "where they were and can no longer be decrypted by anyone, including this system. The "
+              + "append-only record is intact and their relationships remain, so other people's chains "
+              + "stay whole. What survives is that something happened, not what it was or who they were.",
           verify_with: "PTA_ENTITY GET " + id } };
       }
     }

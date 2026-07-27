@@ -36,7 +36,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.774-2026-07-27";
+const BUILD = "aura-core-v4.9.775-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16274,6 +16274,48 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               + "consent is decorative");
           }
 
+          // ── 5f. PRM — THE TRUST WEB. The third organ, and the one that was a name until v4.9.774.
+          // The checks that matter here are the REFUSALS and the non-grant: a trust layer that can be
+          // self-inflated is a scoreboard, and one that quietly grants access is a permission layer
+          // wearing a disguise.
+          const vA = root.entity.id, vB = born1 ? born1.id : null, vC = born3 ? born3.id : null;
+
+          const selfV = await run("PTA_VOUCH " + vA + " " + vA + " myself");
+          check("SELF-VOUCH IS REFUSED", "refused", selfV.ok ? "ALLOWED" : "refused: " + (selfV.error || ""),
+            !selfV.ok && selfV.error === "SELF_VOUCH",
+            "a node that can inflate its own standing turns a trust web into a scoreboard, and it "
+            + "would be gamed within a day of anyone noticing");
+
+          if (vB && vC) {
+            const v1 = await run("PTA_VOUCH " + vB + " " + vC + " knows their work");
+            check("a vouch writes an edge", "an edge id", v1.edge_id || "none", !!v1.edge_id);
+            const vRow = v1.edge_id ? await db.prepare("SELECT edge_type, state FROM pta_edges WHERE id = ?").bind(v1.edge_id).first() : null;
+            check("the vouch edge is typed and active", "vouch/active",
+              vRow ? vRow.edge_type + "/" + vRow.state : "missing",
+              !!(vRow && vRow.edge_type === "vouch" && vRow.state === "active"));
+
+            const v2 = await run("PTA_VOUCH " + vB + " " + vC + " again");
+            check("VOUCHING TWICE RESTATES, IT DOES NOT STACK", "the same edge, flagged already",
+              v2.already ? "already: " + v2.edge_id : "a second edge: " + (v2.edge_id || "?"),
+              !!(v2.already && v2.edge_id === v1.edge_id),
+              "a countable vouch invites farming - it is a standing statement, not a tally");
+
+            // THE ONE THAT MATTERS MOST: a vouch must grant nothing.
+            const afterVouch = await ptaCan(env, vB, "view", vC);
+            check("A VOUCH GRANTS NOTHING", "denied", afterVouch.allowed ? "ALLOWED BY A VOUCH" : "denied",
+              !afterVouch.allowed,
+              "a vouch makes an approach legible, it does not authorise one. If vouching granted access, "
+              + "the permission layer would be bypassable by saying something nice about someone.");
+
+            const t = await run("PTA_TRUST " + vA + " " + vC);
+            check("trust returns a path, not a score", "hops and a path, no numeric score",
+              (t.hops === null ? "no path" : t.hops + " hops") + (typeof t.score === "undefined" ? ", no score field" : ", HAS A SCORE FIELD"),
+              typeof t.score === "undefined" && t.ok === true,
+              "the spec says 'not a score, a web' - a stored or returned figure is the thing that gets farmed");
+            check("trust sees the vouch", "at least 1 voucher", String(t.vouches),
+              !!(t.vouches >= 1));
+          }
+
           // ── 6. DECLINE LEAVES NOTHING. An offer never accepted must create nobody.
           const c3 = "phone:+1555" + String(Date.now() + 3).slice(-7);
           const inv3 = await run('INVITE {"app":"' + tag + '","from":"' + root.entity.id + '","to_contact":"' + c3 + '","to_name":"' + tag + 'declined"}');
@@ -16324,6 +16366,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           verdict: failed.length === 0
             ? "propagation works end to end: consent-first birth, a written and walkable chain, a cascade that reaches downstream, decline leaving nothing, and one contact resolving to one person."
             : failed.length + " check(s) failed - read `expected` against `actual`, not the ok flag.",
+          organs: "PERMISSION (ptaCan, default-deny, lineage-aware) + CRM (entities, edges, append-only "
+            + "history) + PRM (vouches as edges, trust as a computed view). All three exercised above - "
+            + "the spec's own test is 'break one, the organism dies', and until v4.9.774 the third was a name.",
           what_this_does_not_prove: "This exercises the GRAPH and the permission DECIDER. It does not "
             + "test the doorway or the authentication ceremony, and ptaCan is not yet WIRED to anything - "
             + "every command that reads another entity's data is operator-gated, so a refusal there would "

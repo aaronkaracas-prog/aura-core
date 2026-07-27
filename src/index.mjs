@@ -36,7 +36,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.776-2026-07-27";
+const BUILD = "aura-core-v4.9.777-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16185,12 +16185,40 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // worse than none, so the denials matter more than the grants here.
           const canSelf = await ptaCan(env, root.entity.id, "view", root.entity.id);
           check("an entity may always act on itself", "allowed", canSelf.allowed ? "allowed" : "denied: " + canSelf.reason, canSelf.allowed);
+          // ══ A DENIAL MUST FIRE FOR THE STATED REASON, NOT MERELY FIRE (v4.9.777) ═══════════════
+          // A five-seat review found this and it verified: every denial check asserted only that
+          // `allowed` was false. "A REVOKED EDGE GRANTS NOTHING" would have passed IDENTICALLY if the
+          // denial came from "no edge exists at all" - a completely different code path. Default-deny
+          // means a broken query, a typo'd id, or an internal error ALSO produces a denial, so
+          // asserting the verdict alone proves nothing about the logic that produced it.
+          // Their phrasing, and it is the rule now: **test that DENY fires for the STATED reason.**
           const canStranger = await ptaCan(env, root.entity.id, "view", born2 ? born2.id : "nobody");
-          check("NO EDGE MEANS NO ACCESS", "denied", canStranger.allowed ? "ALLOWED - default-open" : "denied", !canStranger.allowed,
-            "default deny is the whole point - a permission layer that fails open is not one");
+          check("NO EDGE MEANS NO ACCESS - for that reason", "denied because no edge exists",
+            (canStranger.allowed ? "ALLOWED - default-open" : "denied: ") + (canStranger.reason || ""),
+            !canStranger.allowed && /no edge/i.test(canStranger.reason || ""),
+            "default deny is the whole point - but a denial that fires for the wrong reason is a check "
+            + "that proves nothing, because an error denies too");
           const canRevoked = await ptaCan(env, born1 ? born1.id : "", "view", root.entity.id);
-          check("A REVOKED EDGE GRANTS NOTHING", "denied", canRevoked.allowed ? "ALLOWED after revocation" : "denied", !canRevoked.allowed,
-            "the edge was revoked in the cascade above - if this says allowed, revocation is cosmetic");
+          check("A REVOKED EDGE GRANTS NOTHING - for that reason", "denied because the edge is revoked/inactive",
+            (canRevoked.allowed ? "ALLOWED after revocation" : "denied: ") + (canRevoked.reason || ""),
+            !canRevoked.allowed && /revok|not active|none is active/i.test(canRevoked.reason || ""),
+            "if this denies because NO EDGE was found instead, revocation was never exercised and the "
+            + "cascade could be entirely broken while this check stayed green");
+
+          // ══ FAIL-CLOSED, PROVEN RATHER THAN CLAIMED ═══════════════════════════════════════════
+          // ptaCan claims to deny on internal error. Nothing had ever tested that, and a review named
+          // it: "not injecting internal DB error to prove fail-closed". An unexercised error path is
+          // an assumption. Passing a malformed subject drives the lookup down a failure route; the
+          // requirement is that it DENIES rather than throwing or returning allowed.
+          const canBroken = await ptaCan(env, root.entity.id, "view", "'; DROP TABLE pta_edges; --");
+          check("A BROKEN LOOKUP DENIES RATHER THAN THROWS", "denied, no exception",
+            canBroken && typeof canBroken.allowed === "boolean"
+              ? (canBroken.allowed ? "ALLOWED" : "denied: " + (canBroken.reason || "")) : "threw or returned nothing",
+            !!(canBroken && canBroken.allowed === false),
+            "a permission check that fails OPEN turns an outage into a breach, and one that throws "
+            + "leaves the caller to decide - which is the same thing with extra steps");
+          const stillThere = await db.prepare("SELECT COUNT(*) n FROM pta_edges").first();
+          check("the table survived that", "still queryable", stillThere ? "yes" : "gone", !!stillThere);
 
           // ── 5. NOTHING IS DELETED. Revocation is a state change plus a history row.
           const hist = e2 ? await db.prepare("SELECT COUNT(*) n FROM pta_history WHERE edge_id = ?").bind(e2.id).first() : null;
@@ -16302,8 +16330,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
             // THE ONE THAT MATTERS MOST: a vouch must grant nothing.
             const afterVouch = await ptaCan(env, vB, "view", vC);
-            check("A VOUCH GRANTS NOTHING", "denied", afterVouch.allowed ? "ALLOWED BY A VOUCH" : "denied",
-              !afterVouch.allowed,
+            check("A VOUCH GRANTS NOTHING - for that reason", "denied because no grant exists, not because of an error",
+              (afterVouch.allowed ? "ALLOWED BY A VOUCH" : "denied: ") + (afterVouch.reason || ""),
+              !afterVouch.allowed && !/failed|error/i.test(afterVouch.reason || ""),
               "a vouch makes an approach legible, it does not authorise one. If vouching granted access, "
               + "the permission layer would be bypassable by saying something nice about someone.");
 

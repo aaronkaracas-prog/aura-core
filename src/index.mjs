@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.756-2026-07-27";
+const BUILD = "aura-core-v4.9.757-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -15486,6 +15486,46 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             "this is Keep Your Fans - owning the root of a tree is only real if the tree is queryable");
           check("every fan was born", "3 entities", String(fanIds.length), fanIds.length === 3);
 
+          // ── 5c. THE DIAMOND. Two independent paths to one person: revoking ONE must not kill the
+          // other. Named by a review seat as "the exact bug the lineage column can hide" - and the
+          // reasoning that it is safe (the cascade revokes EDGES, not entities, so a path whose
+          // lineage points elsewhere is untouched) is exactly the kind of untested reasoning that
+          // produced the last three bugs. So: assert it.
+          const dRoot = await run("PTA_ENTITY CREATE person " + tag + "droot identity:phone:+1555" + String(Date.now() + 40).slice(-7));
+          if (dRoot.entity) madeEntities.push(dRoot.entity.id);
+          const dcContact = "phone:+1555" + String(Date.now() + 41).slice(-7);
+          // path one: dRoot -> target
+          const dInv1 = await run('INVITE {"app":"' + tag + '","from":"' + dRoot.entity.id + '","to_contact":"' + dcContact + '","to_name":"' + tag + 'diamond"}');
+          if (dInv1.invite_id) { madeInvites.push(dInv1.invite_id); await run("ACCEPT " + dInv1.invite_id); }
+          const dTarget = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(dcContact).first();
+          if (dTarget) madeEntities.push(dTarget.id);
+          const dPath1 = await db.prepare("SELECT id FROM pta_edges WHERE from_id = ? AND to_id = ?").bind(dRoot.entity.id, dTarget ? dTarget.id : "").first();
+          // path two: root -> the SAME person, independent lineage
+          const dGrant = await run("PTA_GRANT " + root.entity.id + " " + (dTarget ? dTarget.id : "") + ' {"edge_type":"grant","permission":{"can_view":true}}');
+          const dPath2 = (dGrant && dGrant.edge_id) || null;
+          if (dPath2) await db.prepare("UPDATE pta_edges SET state = 'active' WHERE id = ?").bind(dPath2).run();
+          // cut path one only
+          await run("PTA_REVOKE " + (dPath1 ? dPath1.id : "") + " diamond test");
+          const dP1 = dPath1 ? await db.prepare("SELECT state FROM pta_edges WHERE id = ?").bind(dPath1.id).first() : null;
+          const dP2 = dPath2 ? await db.prepare("SELECT state FROM pta_edges WHERE id = ?").bind(dPath2).first() : null;
+          check("the cut path is revoked", "revoked", dP1 ? dP1.state : "missing", !!(dP1 && dP1.state === "revoked"));
+          check("THE OTHER PATH SURVIVES", "active", dP2 ? dP2.state : "missing", !!(dP2 && dP2.state === "active"),
+            "access held through an INDEPENDENT grant must not die because a different path was cut - "
+            + "the cascade revokes edges, not people, and this is the assertion of that");
+
+          // ── 5d. A CYCLE MUST NOT HANG. Consent graphs can loop (A introduces B, B reintroduces A).
+          // The visited set exists for this; an untested visited set is a hope.
+          const cyA = dPath1 ? dPath1.id : null;
+          if (cyA && dPath2) {
+            try { await db.prepare("UPDATE pta_edges SET via_edge_id = ? WHERE id = ?").bind(dPath2, cyA).run(); } catch {}
+            try { await db.prepare("UPDATE pta_edges SET via_edge_id = ?, state = 'active' WHERE id = ?").bind(cyA, dPath2).run(); } catch {}
+            const cyStart = Date.now();
+            const cyRes = await run("PTA_REVOKE " + cyA + " cycle test");
+            check("A CYCLE TERMINATES", "a result in under 8s", (Date.now() - cyStart) + "ms",
+              (Date.now() - cyStart) < 8000 && !!cyRes,
+              "A -> B -> A is legal in a consent graph. Without the visited set this walk never ends.");
+          }
+
           // ── 6. DECLINE LEAVES NOTHING. An offer never accepted must create nobody.
           const c3 = "phone:+1555" + String(Date.now() + 3).slice(-7);
           const inv3 = await run('INVITE {"app":"' + tag + '","from":"' + root.entity.id + '","to_contact":"' + c3 + '","to_name":"' + tag + 'declined"}');
@@ -15582,6 +15622,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // the three. Bounded and honest beats unbounded and hopeful.
       const cascaded = [];
       let truncated = false;
+      // ══ INSTRUMENT THE WALK (v4.9.757) ═══════════════════════════════════════════════════════
+      // All five seats of an architectural review named the cascade as the thing that breaks first
+      // under load and asked for the same cheap signal: depth, edges visited, and duration per
+      // revocation. The reason it is cheap and worth it - a revoke that times out leaves the tree
+      // HALF cut, which is the worst of the three outcomes, and it will happen silently on a wide
+      // fan-out long before anyone reasons about it. One counter tells you before it costs anything.
+      const _t0 = Date.now();
+      let maxDepth = 0, scanned = 0;
       try {
         const seen = new Set([edgeId]);
         let frontier = [edgeId];
@@ -15591,6 +15639,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             "SELECT id, to_id, state FROM pta_edges WHERE via_edge_id IN (" + ph + ") AND state != 'revoked'"
           ).bind(...frontier).all();
           const next = [];
+          scanned += (kids?.results || []).length;
+          maxDepth = depth + 1;
           for (const k of (kids?.results || [])) {
             if (seen.has(k.id)) continue;
             seen.add(k.id);
@@ -15611,8 +15661,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           warning: "The root edge IS revoked but the downstream walk stopped early. Some edges granted "
                  + "through this one may still be active. Re-run PTA_REVOKE on this edge - it is idempotent." } };
       }
+      const _walk = { depth: maxDepth, edges_scanned: scanned, edges_revoked: cascaded.length, ms: Date.now() - _t0 };
+      // Persist a rolling sample so a trend is visible without a dashboard. Bounded and cheap.
+      try {
+        const k = "pta:cascade:stats";
+        let st = []; const raw = await KV.get(env, k); if (raw) { try { st = JSON.parse(raw) || []; } catch {} }
+        st.push({ at: now, ..._walk }); if (st.length > 200) st = st.slice(-200);
+        await KV.put(env, k, JSON.stringify(st));
+      } catch {}
       return { cmd: "PTA_REVOKE", payload: { ok: true, edge_id: edgeId, state: "revoked", reason,
         cascaded: cascaded.length, also_revoked: cascaded, truncated: truncated || undefined,
+        walk: _walk,
+        walk_note: "depth = how many levels the cascade descended · edges_scanned = rows examined · "
+          + "edges_revoked = rows actually cut. If scanned climbs far above revoked, the lineage graph "
+          + "is wide and this query is the thing that will time out first. Last 200 runs in KV at pta:cascade:stats.",
         cascade_note: cascaded.length
           ? "Access granted THROUGH this edge was revoked too - the spec's 'the chain breaks upstream'. "
             + "Nothing is deleted; every revocation is a row in pta_history."

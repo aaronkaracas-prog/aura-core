@@ -36,7 +36,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.775-2026-07-27";
+const BUILD = "aura-core-v4.9.776-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16308,12 +16308,40 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               + "the permission layer would be bypassable by saying something nice about someone.");
 
             const t = await run("PTA_TRUST " + vA + " " + vC);
-            check("trust returns a path, not a score", "hops and a path, no numeric score",
-              (t.hops === null ? "no path" : t.hops + " hops") + (typeof t.score === "undefined" ? ", no score field" : ", HAS A SCORE FIELD"),
+            check("trust returns no score field", "no numeric score",
+              typeof t.score === "undefined" ? "no score field" : "HAS A SCORE FIELD",
               typeof t.score === "undefined" && t.ok === true,
-              "the spec says 'not a score, a web' - a stored or returned figure is the thing that gets farmed");
+              "the spec says 'not a score, a web' - a returned figure is the thing that gets farmed");
             check("trust sees the vouch", "at least 1 voucher", String(t.vouches),
               !!(t.vouches >= 1));
+
+            // ══ HOP DISTANCE, ON A PATH THAT STILL EXISTS ═══════════════════════════════════════
+            // The first version of this check asked vA -> vC, whose connecting edges the cascade had
+            // ALREADY REVOKED earlier in this same test. It returned "no path" and PASSED, because
+            // the assertion was about the absence of a score - so the traversal it claimed to prove
+            // had never run once. Same shape as the edge-exists-versus-edge-state bug: a check that
+            // passes by asking a question with no answer.
+            // The fan edges are still active, so they are a real path to measure against.
+            if (fanIds.length) {
+              const tDirect = await run("PTA_TRUST " + root.entity.id + " " + fanIds[0]);
+              check("HOP DISTANCE IS COMPUTED ON A LIVE PATH", "1 hop, directly connected",
+                tDirect.hops === null ? "no path found" : tDirect.hops + " hop(s)",
+                tDirect.hops === 1,
+                "these two ARE directly connected by an active edge - if this says no path, the "
+                + "traversal is broken and every trust answer is silently empty");
+              check("the path names who is on it", "a path array with the subject",
+                Array.isArray(tDirect.path) ? tDirect.path.map((x) => x.name).join(" -> ") : "no path",
+                Array.isArray(tDirect.path) && tDirect.path.length >= 1);
+              // Two fans are NOT connected to each other directly - they are 2 hops apart via root.
+              if (fanIds.length > 1) {
+                const tTwo = await run("PTA_TRUST " + fanIds[0] + " " + fanIds[1]);
+                check("an indirect path is found and measured", "2 hops via the shared root",
+                  tTwo.hops === null ? "no path found" : tTwo.hops + " hop(s)",
+                  tTwo.hops === 2,
+                  "this is the answer a person actually wants - not a score, but 'two hops away, "
+                  + "through someone you both know'");
+              }
+            }
           }
 
           // ── 6. DECLINE LEAVES NOTHING. An offer never accepted must create nobody.

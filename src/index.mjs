@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.752-2026-07-27";
+const BUILD = "aura-core-v4.9.753-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -15253,6 +15253,146 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         entity_claimed: claimed || undefined,
         note: claimed ? "This acceptance MINTED a person - an unclaimed placeholder became their PTA. "
                       + "Nothing was transmitted to them before this moment." : undefined } };
+    }
+
+    case "PTA_TEST": {
+      // ══ DOES PROPAGATION ACTUALLY WORK, END TO END ═══════════════════════════════════════════
+      //
+      // WHY THIS EXISTS AND NOT A CHECKLIST OF MANUAL COMMANDS: three separate times this week a PTA
+      // capability existed on one side and not its sibling, and each looked healthy from the outside.
+      // via_edge_id was CREATED (v746), READ by the revocation cascade (v751), and WRITTEN BY NOTHING
+      // until v752 - twelve INSERT sites, not one populated it. The cascade would have walked an empty
+      // column, found zero children every time, and reported `cascaded: 0` as though the tree were
+      // clean. A green light over a permission leak.
+      //
+      // So this does not assert that commands RETURN OK. It asserts what is TRUE IN THE DATABASE
+      // afterwards: that a chain was written, that it can be walked, and that cutting it upstream
+      // actually kills what is downstream. Every check states what it expected and what it saw.
+      //
+      // SELF-CLEANING: every entity, edge and invitation is created under a run-scoped marker and
+      // removed at the end - including on failure. A test that leaves debris in the identity graph
+      // is worse than no test, because the debris looks like real people.
+      //
+      //   PTA_TEST          - run it
+      //   PTA_TEST keep     - run it and leave the rows in place for inspection
+      if (!isOp) return { cmd: "PTA_TEST", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const db = env.AURA_MEMORY;
+        const keep = /\bkeep\b/i.test(rest);
+        const tag = "ptatest" + Date.now().toString(36);
+        const checks = [];
+        const madeEntities = [], madeInvites = [];
+        const check = (name, expected, actual, pass, why) =>
+          checks.push({ check: name, expected, actual, pass: !!pass, ...(why ? { why } : {}) });
+        const run = async (cmd) => {
+          try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; }
+          catch (e) { return { ok: false, error: String((e && e.message) || e).slice(0, 160) }; }
+        };
+        try {
+          // ── 0. a root PTA: someone who already exists and does the inviting
+          const root = await run("PTA_ENTITY CREATE person " + tag + "root identity:phone:+1555" + String(Date.now()).slice(-7));
+          if (!root.ok || !root.entity) throw new Error("could not create root entity: " + JSON.stringify(root).slice(0, 160));
+          madeEntities.push(root.entity.id);
+          check("root exists", "an entity id", root.entity.id, !!root.entity.id);
+
+          // ── 1. OFFER TO A STRANGER. Nothing about them may exist yet.
+          const c1 = "phone:+1555" + String(Date.now() + 1).slice(-7);
+          const inv1 = await run('INVITE {"app":"' + tag + '","from":"' + root.entity.id + '","to_contact":"' + c1 + '","to_name":"' + tag + 'hop1","relationship":"friend"}');
+          if (inv1.invite_id) madeInvites.push(inv1.invite_id);
+          check("invite to a stranger accepted by the system", "ok", inv1.ok ? "ok" : JSON.stringify(inv1).slice(0, 120), !!inv1.ok);
+          const preBirth = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(c1).first();
+          check("NOTHING is created before consent", "no entity", preBirth ? "an entity exists: " + preBirth.id : "no entity", !preBirth,
+            "the invite half must create nothing - that is what makes bulk invites inert");
+
+          // ── 2. ACCEPTANCE IS BIRTH
+          const acc1 = await run("ACCEPT " + inv1.invite_id);
+          const born1 = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(c1).first();
+          if (born1) madeEntities.push(born1.id);
+          check("acceptance mints the person", "an entity now exists", born1 ? born1.id : "none", !!born1);
+          const e1 = await db.prepare("SELECT id, state, via_edge_id FROM pta_edges WHERE from_id = ? AND to_id = ? ORDER BY created_at DESC").bind(root.entity.id, born1 ? born1.id : "").first();
+          check("an edge was written on acceptance", "an edge", e1 ? e1.id : "none", !!e1);
+
+          // ── 3. HOP TWO, NAMING THE EDGE IT CAME THROUGH. This is the write path that did not exist.
+          const c2 = "phone:+1555" + String(Date.now() + 2).slice(-7);
+          const inv2 = await run('INVITE {"app":"' + tag + '","from":"' + (born1 ? born1.id : "") + '","to_contact":"' + c2 + '","to_name":"' + tag + 'hop2","relationship":"friend","via_edge_id":"' + (e1 ? e1.id : "") + '"}');
+          if (inv2.invite_id) madeInvites.push(inv2.invite_id);
+          await run("ACCEPT " + inv2.invite_id);
+          const born2 = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(c2).first();
+          if (born2) madeEntities.push(born2.id);
+          const e2 = await db.prepare("SELECT id, state, via_edge_id FROM pta_edges WHERE from_id = ? AND to_id = ? ORDER BY created_at DESC").bind(born1 ? born1.id : "", born2 ? born2.id : "").first();
+          check("hop two was born", "an entity", born2 ? born2.id : "none", !!born2);
+          check("THE CHAIN IS WRITTEN", "hop two's edge points at hop one's edge (" + (e1 ? e1.id : "?") + ")",
+            e2 ? String(e2.via_edge_id) : "no edge", !!(e2 && e1 && e2.via_edge_id === e1.id),
+            "this is the exact thing that was read but never written until v4.9.752");
+
+          // ── 4. REVOCATION CASCADES. Cut hop one; hop two must die with it.
+          const rev = await run("PTA_REVOKE " + (e1 ? e1.id : "") + " test cascade");
+          const e1After = e1 ? await db.prepare("SELECT state FROM pta_edges WHERE id = ?").bind(e1.id).first() : null;
+          const e2After = e2 ? await db.prepare("SELECT state FROM pta_edges WHERE id = ?").bind(e2.id).first() : null;
+          check("the revoked edge is revoked", "revoked", e1After ? e1After.state : "missing", e1After && e1After.state === "revoked");
+          check("THE CASCADE REACHED DOWNSTREAM", "revoked", e2After ? e2After.state : "missing",
+            e2After && e2After.state === "revoked",
+            "the spec says the chain breaks upstream - if this fails, someone keeps access through a link that no longer exists");
+          check("the cascade reported what it cut", "at least 1", String(rev && rev.cascaded), !!(rev && rev.cascaded >= 1));
+
+          // ── 5. NOTHING IS DELETED. Revocation is a state change plus a history row.
+          const hist = e2 ? await db.prepare("SELECT COUNT(*) n FROM pta_history WHERE edge_id = ?").bind(e2.id).first() : null;
+          check("history survives revocation", "at least 1 row", hist ? String(hist.n) : "0", !!(hist && hist.n >= 1));
+
+          // ── 6. DECLINE LEAVES NOTHING. An offer never accepted must create nobody.
+          const c3 = "phone:+1555" + String(Date.now() + 3).slice(-7);
+          const inv3 = await run('INVITE {"app":"' + tag + '","from":"' + root.entity.id + '","to_contact":"' + c3 + '","to_name":"' + tag + 'declined"}');
+          if (inv3.invite_id) madeInvites.push(inv3.invite_id);
+          const declined = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(c3).first();
+          check("an unaccepted invite creates nobody", "no entity", declined ? declined.id : "no entity", !declined,
+            "declining must cost the decliner nothing - no row, no trace");
+
+          // ── 7. ONE CONTACT, ONE PERSON - including across spellings.
+          const dupBase = String(Date.now() + 4).slice(-7);
+          const dupA = await run("PTA_ENTITY CREATE person " + tag + "dupA identity:phone:1555" + dupBase);
+          const dupB = await run("PTA_ENTITY CREATE person " + tag + "dupB identity:phone:+1555" + dupBase);
+          if (dupA.entity) madeEntities.push(dupA.entity.id);
+          if (dupB.entity && dupB.entity.id !== (dupA.entity || {}).id) madeEntities.push(dupB.entity.id);
+          check("two spellings of one number resolve to one entity",
+            "the same id twice", ((dupA.entity || {}).id || "?") + " vs " + ((dupB.entity || {}).id || "?"),
+            !!(dupA.entity && dupB.entity && dupA.entity.id === dupB.entity.id),
+            "normalisation is what makes 'already registered' possible - without it a uniqueness check waves both through");
+        } catch (e) {
+          checks.push({ check: "test harness", expected: "no exception", actual: String((e && e.message) || e).slice(0, 200), pass: false });
+        }
+
+        // ── CLEANUP. Always, including after a failure. Debris in the identity graph looks like people.
+        let cleaned = { entities: 0, edges: 0, invites: 0 };
+        if (!keep) {
+          for (const id of madeEntities) {
+            try {
+              const ed = await db.prepare("SELECT id FROM pta_edges WHERE from_id = ? OR to_id = ?").bind(id, id).all();
+              for (const e of (ed?.results || [])) {
+                await db.prepare("DELETE FROM pta_history WHERE edge_id = ?").bind(e.id).run();
+                await db.prepare("DELETE FROM pta_edges WHERE id = ?").bind(e.id).run();
+                cleaned.edges++;
+              }
+              await db.prepare("DELETE FROM pta_entities WHERE id = ?").bind(id).run();
+              cleaned.entities++;
+              await env.AURA_KV.delete("pta:state:" + id).catch(() => {});
+              await env.AURA_KV.delete("pta:timeline:" + id).catch(() => {});
+            } catch {}
+          }
+          for (const iv of madeInvites) { try { await env.AURA_KV.delete("invite:" + iv); cleaned.invites++; } catch {} }
+        }
+
+        const failed = checks.filter((c) => !c.pass);
+        return { cmd: "PTA_TEST", payload: { ok: failed.length === 0,
+          run: tag, passed: checks.length - failed.length, failed: failed.length,
+          checks,
+          cleanup: keep ? "SKIPPED (keep) - rows left in place for inspection" : cleaned,
+          verdict: failed.length === 0
+            ? "propagation works end to end: consent-first birth, a written and walkable chain, a cascade that reaches downstream, decline leaving nothing, and one contact resolving to one person."
+            : failed.length + " check(s) failed - read `expected` against `actual`, not the ok flag.",
+          what_this_does_not_prove: "This exercises the GRAPH. It does not test the doorway, the "
+            + "authentication ceremony, or what a recipient is permitted to SEE - only that the edges, "
+            + "the lineage and the revocation behave as the spec says." } };
+      }
     }
 
     case "PTA_REVOKE": {

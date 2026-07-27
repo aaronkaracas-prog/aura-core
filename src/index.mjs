@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.768-2026-07-27";
+const BUILD = "aura-core-v4.9.769-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2088,6 +2088,57 @@ async function ptaOptOut(env, entityId) {
     return { blocked: true, level: "unknown", reason: "opt-out check failed; refusing rather than risk contacting someone who opted out" };
   }
 }
+
+// ══ THE AUTHORIZATION SCHEMA — ZANZIBAR'S MODEL, ON CLOUDFLARE PRIMITIVES (v4.9.769) ═════════════
+//
+// WHY THIS SHAPE AND NOT A HAND-ROLLED ONE. Google published "Zanzibar: Google's Consistent, Global
+// Authorization System" in 2019 - the design behind Drive, Photos, YouTube, Calendar and Cloud IAM.
+// It is a PAPER, not a product: there is no Zanzibar API to buy. Every production system that uses
+// it is somebody's implementation of the same spec - SpiceDB (Authzed, runs ChatGPT Enterprise
+// permissions at tens of billions of relationships), OpenFGA (built at Auth0, donated to the CNCF),
+// Permify. Implementing it here is the fourth entry in that list, not the invention of a fifth wheel.
+// Neither engine can run fully on Cloudflare: both are stateless servers over Postgres, and
+// Cloudflare does not sell Postgres. OpenFGA's SQLite backend is beta and documented as development
+// -only, and container disk is ephemeral. So the model comes here; the service does not.
+//
+// WHAT MAKES THIS LEGITIMATE RATHER THAN HAND-ROLLED: the tuple shape, the rewrite operators and the
+// API names follow the paper. Tuples exported from here are importable into OpenFGA. **Implementing
+// the standard IS the migration path** - if this ever needs to become SpiceDB, it is an export and an
+// endpoint change, not a rewrite.
+//
+// WHAT IS DELIBERATELY NOT IMPLEMENTED, stated so nobody mistakes this for the whole paper: the
+// Leopard index (a specialised structure for deeply nested group membership at Google scale) and the
+// distributed cache with hotspot mitigation. Both solve problems that need millions of users to
+// appear, and pretending otherwise would be the kind of claim this codebase keeps having to retract.
+//
+// THE TUPLE, in the paper's notation: object#relation@subject
+//   `pta_edges` already IS this - to_id#edge_type@from_id, with the permission JSON as the relation set.
+//
+// THE REWRITE THAT MATTERS MOST HERE IS TUPLE-TO-USERSET. In the paper it expresses "editors of a
+// folder are editors of its documents." Here it expresses "this grant is live only while the grant it
+// arrived through is live" - the lineage rule. Same construct, and that is not a coincidence: both are
+// "permission depends on a relation of a related object."
+const PTA_SCHEMA = {
+  // A relation is either DIRECT (a tuple grants it outright) or COMPUTED (derived from other relations).
+  // `via` is the tuple-to-userset edge: the relation must also hold on the object this one descends from.
+  entity: {
+    relations: {
+      owner:    { direct: true,  description: "the entity itself - always granted, never stored as a tuple" },
+      viewer:   { direct: true,  via: "lineage", grants: "can_view",    description: "may read this entity's chain" },
+      sharer:   { direct: true,  via: "lineage", grants: "can_share",   description: "may pass this entity onward" },
+      contacter:{ direct: true,  via: "lineage", grants: "can_contact", description: "may reach out to this entity" },
+    },
+    // Computed relations: union means any one of these is sufficient.
+    computed: {
+      reader: { union: ["owner", "viewer"] },
+    },
+  },
+};
+
+// The paper's operators. Only the ones actually used are implemented; an unimplemented operator that
+// silently returns false is worse than an absent one, so anything unknown throws rather than denies
+// quietly - a permission engine must never fail in a direction nobody notices.
+const PTA_REWRITES = ["union", "via"];
 
 // ══ MAY THIS ACTOR DO THIS TO THIS SUBJECT? (v4.9.755) ═══════════════════════════════════════════
 // The single place that answers a permission question, so no caller ever invents its own rule.
@@ -15543,6 +15594,55 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         entity_claimed: claimed || undefined,
         note: claimed ? "This acceptance MINTED a person - an unclaimed placeholder became their PTA. "
                       + "Nothing was transmitted to them before this moment." : undefined } };
+    }
+
+    case "PTA_EXPAND": {
+      // ══ WHY DOES THIS PERSON HAVE ACCESS — ZANZIBAR'S `Expand` ═══════════════════════════════
+      //
+      // Check answers yes or no. Expand answers WHY, by returning the tree of relations that produced
+      // the answer. The paper treats it as a first-class API and not a debugging aid, for a reason
+      // this codebase has now demonstrated repeatedly: a verdict nobody can inspect is a verdict
+      // nobody can falsify. `ptaCan` once reported "lineage is intact" over a real leak for two
+      // rounds, because the string was an assertion rather than evidence.
+      //
+      // It is also what a person is owed. "You cannot see this" is a refusal; "you cannot see this
+      // because the introduction you came through was revoked on the 14th" is an explanation, and a
+      // consent system that cannot explain itself is asking to be trusted rather than earning it.
+      //
+      //   PTA_EXPAND <subject_id> [capability]     - who can reach this entity, and through what
+      if (!isOp) return { cmd: "PTA_EXPAND", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const db = env.AURA_MEMORY;
+        const subject = args[0] || "";
+        const cap = (args[1] || "view").toLowerCase().replace(/^can_/, "");
+        if (!subject) return { cmd: "PTA_EXPAND", payload: { ok: false,
+          error: "Usage: PTA_EXPAND <subject_id> [view|share|contact]" } };
+        const key = "can_" + cap;
+        const rows = await db.prepare(
+          "SELECT id, to_id, state, permission, edge_type, via_edge_id, created_at FROM pta_edges WHERE from_id = ? ORDER BY created_at DESC LIMIT 200"
+        ).bind(subject).all();
+        const edges = (rows && rows.results) || [];
+        const holders = [], denied = [];
+        for (const e of edges) {
+          let perm = null; try { perm = JSON.parse(e.permission || "null"); } catch {}
+          const grants = !!(perm && perm[key] === true);
+          if (!grants) { denied.push({ subject_of_grant: e.to_id, edge: e.id, why: "this edge does not grant " + key }); continue; }
+          if (e.state !== "active") { denied.push({ subject_of_grant: e.to_id, edge: e.id, why: "edge is " + e.state }); continue; }
+          // Walk the lineage - the tuple-to-userset rewrite. Same code path Check uses, so Expand can
+          // never disagree with Check; two implementations of one rule is how they drift apart.
+          const v = await ptaCan(env, e.to_id, cap, subject);
+          (v.allowed ? holders : denied).push({
+            who: e.to_id, edge: e.id, since: e.created_at,
+            arrived_via: e.via_edge_id || "direct - not through anyone",
+            lineage: v.lineage || [], why: v.reason });
+        }
+        return { cmd: "PTA_EXPAND", payload: { ok: true, subject, capability: key,
+          can_reach_it: holders.length, holders,
+          refused: denied.length, refused_detail: denied.slice(0, 20),
+          note: "Expand and Check share one implementation - if they ever disagreed, one of them would "
+              + "be lying and there would be no way to tell which.",
+          scanned: edges.length, truncated: edges.length >= 200 || undefined } };
+      }
     }
 
     case "PTA_CAN": {

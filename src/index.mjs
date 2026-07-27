@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.759-2026-07-27";
+const BUILD = "aura-core-v4.9.760-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2049,6 +2049,44 @@ async function hashIdentity(env, normalised) {
   const scheme = m ? m[1] : "id";
   const tail = m ? String(m[2]).slice(-4) : v.slice(-4);
   return { key: "h:" + hex, hint: scheme + ":\u00b7\u00b7\u00b7" + tail };
+}
+
+// ══ A PERMANENT OPT-OUT THAT NOTHING CHECKS (v4.9.760) ═══════════════════════════════════════════
+//
+// Found by accident while testing hashing: the entity "Mike", born from consent at a bar in June,
+// carries `do_not_contact: true` and `opt_out_permanent: true`. He asked never to be contacted again
+// and the system recorded it. Then `PTA_ENTITY CREATE` handed him straight back, because those flags
+// appear exactly ONCE in this entire file - at the moment they are written. Nothing reads them.
+//
+// This is the fifth instance of the same defect today (trust_level, verification_level, can_view,
+// via_edge_id, and now this) and it is the most serious of them, because the others were incomplete
+// features and this one is a promise to a person. The whole design rests on consent meaning
+// something; a withdrawal that nothing honours is worse than never offering the choice.
+//
+// TWO DISTINCT STATES, deliberately not merged:
+//   do_not_contact     - do not reach out. They may still hold a PTA and use it.
+//   opt_out_permanent  - the door is closed for good. No invitation, no re-add, no resurrection by
+//                        someone re-entering their number. Reversible ONLY by the person themselves.
+// Returns WHY, because a refusal nobody can explain gets worked around instead of respected.
+async function ptaOptOut(env, entityId) {
+  try {
+    if (!entityId) return { blocked: false };
+    const ent = await env.AURA_MEMORY.prepare("SELECT metadata FROM pta_entities WHERE id = ?").bind(entityId).first();
+    if (!ent) return { blocked: false };
+    let md = {}; try { md = JSON.parse(ent.metadata || "{}"); } catch { return { blocked: false }; }
+    if (md.opt_out_permanent === true) return { blocked: true, level: "permanent",
+      since: md.opted_out_at || null,
+      reason: "This person opted out PERMANENTLY. They cannot be invited, re-added, or contacted, and "
+            + "re-entering their number does not resurrect them. Only they can reverse it." };
+    if (md.do_not_contact === true) return { blocked: true, level: "do_not_contact",
+      since: md.opted_out_at || null,
+      reason: "This person asked not to be contacted. Their PTA still exists and they may still use it - "
+            + "what is refused is reaching out to them." };
+    return { blocked: false };
+  } catch {
+    // FAIL CLOSED. If the check itself breaks, refuse rather than contact someone who may have said no.
+    return { blocked: true, level: "unknown", reason: "opt-out check failed; refusing rather than risk contacting someone who opted out" };
+  }
 }
 
 // ══ MAY THIS ACTOR DO THIS TO THIS SUBJECT? (v4.9.755) ═══════════════════════════════════════════
@@ -14137,6 +14175,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (!sender) return { cmd: "INVITE", payload: { ok: false, error: "Sender is not a real PTA: " + iv.from } };
       // contact point must be email: or phone: (the trust anchor; phone is higher trust)
       if (!/^(email|phone):/i.test(iv.to_contact)) return { cmd: "INVITE", payload: { ok: false, error: "to_contact must be email:... or phone:..." } };
+      // ENFORCED HERE because INVITE is the door that REACHES OUT. An opt-out that only stops the
+      // sending and not the offering is not an opt-out.
+      try {
+        const norm = normIdentity(iv.to_contact);
+        const h = await hashIdentity(env, norm);
+        let ex = await env.AURA_MEMORY.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(h.key).first();
+        if (!ex) ex = await env.AURA_MEMORY.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(norm).first();
+        if (ex) {
+          const oo = await ptaOptOut(env, ex.id);
+          if (oo.blocked) return { cmd: "INVITE", payload: { ok: false, error: "OPTED_OUT",
+            level: oo.level, since: oo.since, why: oo.reason,
+            note: "Recorded and honoured. Nothing was sent and no invitation exists." } };
+        }
+      } catch {}
       const inviteId = "inv_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
       const ts = new Date().toISOString();
       const invite = {
@@ -15640,6 +15692,25 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             check("A CYCLE TERMINATES", "a result in under 8s", (Date.now() - cyStart) + "ms",
               (Date.now() - cyStart) < 8000 && !!cyRes,
               "A -> B -> A is legal in a consent graph. Without the visited set this walk never ends.");
+          }
+
+          // ── 5e. AN OPT-OUT MUST BE HONOURED. Found live: an entity carrying opt_out_permanent was
+          // handed straight back by CREATE, because those flags appeared exactly once in the file -
+          // at the moment they were written. A withdrawal nothing honours is worse than never having
+          // offered the choice, and unlike the other four dead fields this one is a promise to a person.
+          const ooContact = "phone:+1555" + String(Date.now() + 60).slice(-7);
+          const ooEnt = await run("PTA_ENTITY CREATE person " + tag + "optout identity:" + ooContact);
+          if (ooEnt.entity) {
+            madeEntities.push(ooEnt.entity.id);
+            let md = {}; try { md = JSON.parse(ooEnt.entity.metadata || "{}"); } catch {}
+            md.do_not_contact = true; md.opt_out_permanent = true; md.opted_out_at = new Date().toISOString();
+            await db.prepare("UPDATE pta_entities SET metadata = ? WHERE id = ?").bind(JSON.stringify(md), ooEnt.entity.id).run();
+            const ooInv = await run('INVITE {"app":"' + tag + '","from":"' + root.entity.id + '","to_contact":"' + ooContact + '","to_name":"' + tag + 'blocked"}');
+            if (ooInv.invite_id) madeInvites.push(ooInv.invite_id);
+            check("A PERMANENT OPT-OUT IS HONOURED", "refused", ooInv.ok ? "INVITED ANYWAY" : "refused: " + (ooInv.error || ""),
+              !ooInv.ok && ooInv.error === "OPTED_OUT",
+              "someone said never contact me again and the system agreed - if this passes an invite, "
+              + "consent is decorative");
           }
 
           // ── 6. DECLINE LEAVES NOTHING. An offer never accepted must create nobody.

@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.763-2026-07-27";
+const BUILD = "aura-core-v4.9.764-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2137,23 +2137,31 @@ async function ptaCan(env, actorId, capability, subjectId) {
       // database. Width is unbounded; depth is not. That asymmetry is the whole fix.
       // It is also strictly MORE correct: there is no window in which a cascade is halfway done, and
       // nothing can be missed by a walk that ran out of budget.
+      // The chain is RECORDED, not just walked. A verdict of "lineage is intact" is unfalsifiable
+      // without it - and that exact string appeared over a real leak, which is how this was found.
+      const chain = [];
       let cursor = e.via_edge_id, hops = 0;
       const walked = new Set([e.id]);
       while (cursor && hops < 24) {
         if (walked.has(cursor)) break;            // a consent graph can cycle; stop rather than spin
         walked.add(cursor);
         const anc = await db.prepare("SELECT id, state, via_edge_id FROM pta_edges WHERE id = ?").bind(cursor).first();
-        if (!anc) break;                          // lineage points at nothing - treat as a root
+        if (!anc) { chain.push({ id: cursor, state: "MISSING" }); break; }
+        chain.push({ id: anc.id, state: anc.state });
         if (anc.state === "revoked") {
           return { allowed: false,
             reason: "an ancestor of this grant was revoked (" + anc.id + ", " + (hops + 1) + " hop(s) up) - "
                   + "access that arrived through a broken link is not access",
-            via_edge: e.id, revoked_ancestor: anc.id };
+            via_edge: e.id, revoked_ancestor: anc.id, lineage: chain };
         }
         cursor = anc.via_edge_id; hops++;
       }
-      return { allowed: true, reason: "active " + e.edge_type + " edge grants " + key + ", and its lineage is intact",
-        via_edge: e.id, lineage_hops_checked: hops };
+      return { allowed: true,
+        reason: chain.length
+          ? "active " + e.edge_type + " edge grants " + key + ", and all " + chain.length + " ancestor(s) are live"
+          : "active " + e.edge_type + " edge grants " + key + " and has NO lineage - it is a root grant, "
+            + "not something that arrived through a chain",
+        via_edge: e.id, via_edge_id: e.via_edge_id || null, lineage_hops_checked: hops, lineage: chain };
     }
     return { allowed: false,
       reason: "active edge(s) exist but none grants " + key,
@@ -15711,7 +15719,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           let leakCheck = null;
           try {
             const leaf = await db.prepare("SELECT to_id FROM pta_edges WHERE from_id = ? AND state = 'active' LIMIT 1").bind(rootId).first();
-            if (leaf) { const v = await ptaCan(env, leaf.to_id, "view", rootId); leakCheck = { entity: leaf.to_id, allowed: v.allowed, reason: v.reason }; }
+            if (leaf) { const v = await ptaCan(env, leaf.to_id, "view", rootId);
+              leakCheck = { entity: leaf.to_id, allowed: v.allowed, reason: v.reason,
+                via_edge: v.via_edge || null, its_via_edge_id: v.via_edge_id || null, lineage: v.lineage || [],
+                root_edge_was: rootEdge }; }
           } catch {}
           return { cmd: "PTA_SCALE", payload: { ok: true, fan, depth,
             built: { entities: made.length, edges: total },

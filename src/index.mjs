@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.751-2026-07-27";
+const BUILD = "aura-core-v4.9.752-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -14053,6 +14053,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         invite_id: inviteId, app: iv.app, from: iv.from, from_name: sender.name,
         to_contact: iv.to_contact, to_name: iv.to_name || null,
         relationship: iv.relationship || null, tier: iv.tier || "connection",
+        // Carried, not invented: the sender states which edge they arrived on and which moment this
+        // belongs to. Stored on the invitation so ACCEPT can stamp it onto the edge it creates.
+        via_edge_id: iv.via_edge_id || iv.via || null, origin_id: iv.origin_id || iv.origin || null,
         message: iv.message || null, status: "pending", created: ts
       };
       // store the invitation keyed by the CONTACT POINT (so ACCEPT can find it) + by id
@@ -14095,7 +14098,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const ts = new Date().toISOString();
       // write the relationship edge (sender -> invitee)
       try {
-        const edgeCtx = JSON.stringify({ edge_type: "relationship", relationship: invite.relationship || invite.tier, permission: invite.tier, impact: "consented_connection" });
+        // LINEAGE RIDES THROUGH THE INVITATION. If the sender was themselves invited, they name the
+        // edge they arrived on, and this new edge records it - which is how Aaron -> Jane -> Thailand
+        // becomes walkable, and how revoking Jane can break the chain downstream of her. origin_id
+        // carries the shared moment of a mass touch: one concert, a million edges, one row.
+        const edgeCtx = JSON.stringify({ edge_type: "relationship", relationship: invite.relationship || invite.tier,
+          permission: invite.tier, impact: "consented_connection",
+          via_edge_id: invite.via_edge_id || null, origin_id: invite.origin_id || null });
         await processCommand(`PTA_GRANT ${invite.from} ${bornId} ${edgeCtx}`, env, true);
       } catch (e) {}
       // stamp origin context (only if newly created)
@@ -15176,12 +15185,32 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const relationship = ctx.relationship ? JSON.stringify(ctx.relationship) : null;
       const impact = ctx.impact ? JSON.stringify(ctx.impact) : null;
       const context = ctxRaw || null;
-      await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, permission, relationship, impact, context, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .bind(edgeId, fromId, toId, edgeType, "pending", permission, relationship, impact, context, now, now).run();
+      // ══ THE COLUMN WAS ADDED AND NOTHING EVER WROTE IT (v4.9.752) ═════════════════════════════
+      // via_edge_id was created in v4.9.746 and READ by the revocation cascade in v4.9.751 - and
+      // twelve INSERT sites later, not one populated it. So the cascade walked an empty column,
+      // found zero children every time, and reported `cascaded: 0` as though the tree were clean.
+      // A green light over a permission leak, built by the same hand that built the leak's fix. This
+      // is the third time in one session that a capability existed on one side and not its sibling.
+      //
+      // NOW: an edge records where it CAME FROM. `via` is the edge this touch travelled through -
+      // Aaron -> Jane -> Thailand becomes a walkable chain instead of three unrelated rows. `origin`
+      // is the shared moment a mass touch traces back to; one concert, a million edges, one row they
+      // all point at. Passed in the context JSON, so every existing caller keeps working unchanged
+      // and any caller that knows its lineage can state it.
+      // VALIDATED, not trusted: a via_edge_id that names no real edge is dropped rather than stored,
+      // because a lineage pointer into nothing is worse than none - it makes a broken chain look intact.
+      let viaEdge = ctx.via_edge_id || ctx.via || null;
+      if (viaEdge) {
+        const parent = await db.prepare("SELECT id FROM pta_edges WHERE id = ?").bind(viaEdge).first();
+        if (!parent) viaEdge = null;
+      }
+      const originId = ctx.origin_id || ctx.origin || null;
+      await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, permission, relationship, impact, context, via_edge_id, origin_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(edgeId, fromId, toId, edgeType, "pending", permission, relationship, impact, context, viaEdge, originId, now, now).run();
       // Record in history
       const histId = "hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
       await db.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-        .bind(histId, edgeId, "granted", fromId, JSON.stringify({ from: fromEnt.name, to: toEnt.name, edge_type: edgeType }), now).run();
+        .bind(histId, edgeId, "granted", fromId, JSON.stringify({ from: fromEnt.name, to: toEnt.name, edge_type: edgeType, via_edge_id: viaEdge, origin_id: originId }), now).run();
       return { cmd: "PTA_GRANT", payload: { ok: true, edge_id: edgeId, from: { id: fromId, name: fromEnt.name }, to: { id: toId, name: toEnt.name }, edge_type: edgeType, state: "pending" } };
     }
 

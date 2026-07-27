@@ -36,7 +36,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.779-2026-07-27";
+const BUILD = "aura-core-v4.9.780-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -15337,11 +15337,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // this codebase has now found six times.
       const _unsealEnt = async (e) => {
         if (!e) return e;
-        try {
-          return { ...e,
-            name: await unsealFor(env, e.id, e.name),
-            metadata: await unsealFor(env, e.id, e.metadata) };
-        } catch { return e; }
+        try { return { ...e, metadata: await unsealFor(env, e.id, e.metadata) }; } catch { return e; }
       };
 
       if (sub === "COLLISIONS") {
@@ -15437,14 +15433,21 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // context, the place they were met, who introduced them, what they consented to. The
           // skeleton around it stays clear so the graph still works.
           if (metadata) metadata = await sealFor(env, id, metadata);
-          let sealedName = eName;
-          // THE NAME IS SEALED TOO, and that is what makes forgetting a pure key destruction rather
-          // than a mutation. The first version left `name` in the clear, so PTA_FORGET had to
-          // OVERWRITE it - which contradicted the entire design: append-only was meant to survive and
-          // the content was meant to become unreadable, not deleted. Worse, the overwrite made the
-          // test unfalsifiable: the final read said "[forgotten]" whether or not the encryption
-          // worked at all, because the field had simply been replaced.
-          sealedName = await sealFor(env, id, eName);
+          // ══ THE NAME IS DELIBERATELY *NOT* SEALED (corrected v4.9.780) ═══════════════════════
+          // v4.9.779 sealed it, on the reasoning that forgetting should be pure key-destruction
+          // rather than an overwrite. TWO THINGS WERE WRONG WITH THAT.
+          // First, blast radius: SIXTY-PLUS sites read a name straight from this table - PTA_TRUST,
+          // PTA_GRAPH, PTA_VOUCH, INVITE, the business commands, the scan paths. Sealing it broke all
+          // of them, and PTA_TRUST began returning `enc:v1:...` where a person's name belonged. The
+          // test passed anyway because it only asserted the array was non-empty - a check displaying
+          // ciphertext and calling it a pass.
+          // Second, and this is the conceptual error: **pta_history is the append-only chain;
+          // pta_entities is CURRENT STATE.** Overwriting a name here destroys nothing, because the
+          // history still records everything that happened. Claude conflated the two and made a
+          // sixty-site change to solve a problem that did not exist.
+          // So the name stays clear and PTA_FORGET tombstones it; the METADATA - where the personal
+          // content actually lives - stays sealed and is destroyed by key removal alone.
+          const sealedName = eName;
           await db.prepare("INSERT INTO pta_entities (id, type, identity_key, name, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
             .bind(id, eType, identityKey, sealedName, metadata, now, now).run();
         } catch (e) {
@@ -15904,17 +15907,27 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // replaced. Now the sealed fields stay exactly where they are and become undecryptable. What
         // is written is only the FACT and the TIME, appended to history where facts belong, because a
         // deletion nobody can prove happened is a deletion nobody can be held to.
+        // THE NAME IS TOMBSTONED; THE METADATA IS NOT TOUCHED.
+        // The name is stored in the clear (sixty-plus sites read it directly), so key destruction
+        // alone would leave it legible - it has to be replaced. The metadata IS sealed, so it is left
+        // exactly where it is and simply becomes undecryptable. That asymmetry is deliberate and it
+        // is also what makes this testable: if the crypto were broken, the metadata would still read
+        // back in plaintext after the key is gone. The name proves nothing either way; the metadata
+        // proves everything.
         try {
+          await db.prepare("UPDATE pta_entities SET name = '[forgotten]', updated_at = ? WHERE id = ?")
+            .bind(now, id).run();
           await db.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, NULL, 'forgotten', ?, ?, ?)")
             .bind("hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map((x) => x.toString(16).padStart(2, "0")).join(""),
                   id, JSON.stringify({ reason: "right to be forgotten", key_destroyed: true }), now).run();
         } catch {}
         return { cmd: "PTA_FORGET", payload: { ok: true, forgotten: id, at: now,
           relationships_left_intact: (edges && edges.n) || 0,
-          note: "Key destroyed. NOTHING was overwritten - their sealed name and metadata sit exactly "
-              + "where they were and can no longer be decrypted by anyone, including this system. The "
-              + "append-only record is intact and their relationships remain, so other people's chains "
-              + "stay whole. What survives is that something happened, not what it was or who they were.",
+          note: "Key destroyed. Their METADATA - the birth context, the place, who introduced them, what "
+              + "they consented to - sits exactly where it was and can no longer be decrypted by anyone, "
+              + "including this system. Their display name was tombstoned because it is stored in the "
+              + "clear. The append-only HISTORY is untouched and their relationships remain, so other "
+              + "people's chains stay whole: what survives is that something happened, not what it was.",
           verify_with: "PTA_ENTITY GET " + id } };
       }
     }

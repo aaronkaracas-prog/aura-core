@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.745-2026-07-27";
+const BUILD = "aura-core-v4.9.746-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -14932,97 +14932,6 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       return { cmd: "PTA_ENTITY", payload: { ok: false, error: "Sub-commands: CREATE, GET, FIND, LIST, UPDATE" } };
     }
 
-    case "PTA_OFFER": {
-      // ══ THE BEACH HANDOFF — A PTA OFFERED TO SOMEONE NOT YET INSIDE (v4.9.745) ═══════════════
-      //
-      // THE MODEL, in Aaron's words: "a PTA is passed on by TOUCH. It doesn't matter if it's a
-      // transaction or Grandma making an image or the long-lost cousin that finally touches their
-      // PTA." He hands a girl on the beach his PTA with context — "Aaron likes you." She shows a
-      // friend. Three hops out it is still traceable. Taylor Swift touches a million fans in ONE
-      // moment and owns the root of that tree.
-      //
-      // WHY THIS COMMAND HAD TO EXIST: PTA_GRANT and PTA_SHARE both hard-fail with "To entity not
-      // found" unless the recipient is ALREADY a row. But acceptance is what brings someone into
-      // existence — "those recipients exist because they have to accept it." So the order was
-      // inverted: you had to already be inside before you could be invited in, which means the beach
-      // handoff — the entire propagation story — could not happen to a stranger. Every person on the
-      // planet is currently a stranger.
-      //
-      // CONSENT-FIRST, NOT INFECTION-FIRST. A virus does not ask; a PTA does, and still spreads.
-      // Declining is the ONLY thing that stops propagation, and it must cost the decliner nothing:
-      // **THE PENDING OFFER CARRIES NO PAYLOAD.** The invitation says someone wants to share
-      // something. It does not say what. Accept and the content flows; decline and nothing was ever
-      // transmitted. That is the spec's "refusal leaks nothing and logs nothing."
-      //
-      // IDENTITY IS PHONE/EMAIL-ANCHORED AND ALREADY DEDUPED. pta_entities.identity_key plus
-      // PTA_ENTITY CREATE's dedup means an unclaimed placeholder minted here RESOLVES TO THE SAME
-      // ENTITY when that person later signs up through PTA_CREATE. One human, one verified contact,
-      // one chain — which is why identity collision, the hardest problem in any identity system,
-      // never arises here. It was solved before this command existed.
-      //
-      //   PTA_OFFER <from_id> <phone:+1555...|email:a@b.com> [json context]
-      if (!isOp) return { cmd: "PTA_OFFER", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      {
-        const db = env.AURA_MEMORY;
-        // LINEAGE COLUMNS, added idempotently. D1 has no ADD COLUMN IF NOT EXISTS, so a second run
-        // throws "duplicate column" and that is the success case - swallowed deliberately rather than
-        // guarded by a flag somebody would forget to set.
-        //   via_edge_id - the hop this touch came through. Aaron -> Jane -> Thailand becomes walkable.
-        //   origin_id   - the shared moment a mass touch traces back to. Taylor's concert is ONE row
-        //                 that a million edges point at, which is what makes "Keep Your Fans" a query.
-        // `who_introduced` already lives inside the relationship JSON - the right idea in an unqueryable
-        // place. These are columns so SQL can actually walk the tree.
-        for (const col of ["via_edge_id TEXT", "origin_id TEXT"]) {
-          try { await db.prepare("ALTER TABLE pta_edges ADD COLUMN " + col).run(); } catch {}
-        }
-        const fromId = args[0] || "";
-        const ident = (args[1] || "").trim();
-        if (!fromId || !ident) return { cmd: "PTA_OFFER", payload: { ok: false,
-          error: "Usage: PTA_OFFER <from_id> <phone:+1555...|email:a@b.com> [json context]" } };
-        if (!/^(phone|email):/i.test(ident)) return { cmd: "PTA_OFFER", payload: { ok: false,
-          error: "recipient must be phone:... or email:...",
-          why: "identity is opt-in and anchored to a verified contact - that is what makes one human "
-             + "one entity, and what makes anonymous mass-minting (spam) impossible" } };
-        const from = await db.prepare("SELECT id, name FROM pta_entities WHERE id = ?").bind(fromId).first();
-        if (!from) return { cmd: "PTA_OFFER", payload: { ok: false, error: "From entity not found: " + fromId } };
-
-        // Resolve or mint the UNCLAIMED recipient. Dedup on identity_key so a later self-signup lands
-        // on this same entity rather than forking the chain.
-        let to = await db.prepare("SELECT id, name, metadata FROM pta_entities WHERE identity_key = ?").bind(ident).first();
-        let minted = false;
-        const now = new Date().toISOString();
-        if (!to) {
-          const newId = "ent_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
-          await db.prepare("INSERT INTO pta_entities (id, type, identity_key, name, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-            .bind(newId, "person", ident, "(unclaimed)", JSON.stringify({ claimed: false, first_offered_at: now }), now, now).run();
-          to = { id: newId, name: "(unclaimed)" };
-          minted = true;
-        }
-
-        let ctx = {};
-        const ctxRaw = rest.slice(rest.indexOf(ident) + ident.length).trim();
-        if (ctxRaw.indexOf("{") >= 0) { try { ctx = JSON.parse(ctxRaw.slice(ctxRaw.indexOf("{"))); } catch {} }
-
-        // PENDING. No permission granted, no payload attached. Nothing reaches them until they accept.
-        const edgeId = "edge_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
-        await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, relationship, context, via_edge_id, origin_id, created_at, updated_at) VALUES (?, ?, ?, 'grant', 'pending', ?, ?, ?, ?, ?, ?)")
-          .bind(edgeId, fromId, to.id,
-                JSON.stringify({ how_met: ctx.how_met || null, who_introduced: ctx.who_introduced || fromId }),
-                JSON.stringify({ note: ctx.note || null }),
-                ctx.via_edge_id || null, ctx.origin_id || null, now, now).run();
-        return { cmd: "PTA_OFFER", payload: { ok: true, edge_id: edgeId, to: to.id, identity: ident,
-          recipient_minted: minted, state: "pending",
-          accept_with: "PTA_ACCEPT " + edgeId,
-          carries_no_payload: "This offer transmits NOTHING. The recipient is told someone wants to share "
-            + "something, not what it is. Accepting activates the edge and the content flows; declining "
-            + "leaves nothing transmitted and nothing to regret.",
-          lineage: { via_edge_id: ctx.via_edge_id || null, origin_id: ctx.origin_id || null,
-            note: "via_edge_id is the hop this came through; origin_id is the shared moment (a concert, "
-                + "a launch) that a mass touch traces back to. STORED, NOT DISPLAYED - showing a chain "
-                + "reveals who knows whom, and that decision is not made yet." } } };
-      }
-    }
-
     case "PTA_GRANT": {
       // Create a relationship edge in the graph. Three layers carried in one call.
       // PTA_GRANT <from_id> <to_id> [json context with: edge_type, permission, relationship, impact]
@@ -15032,6 +14941,25 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // impact: {notes: [...]}
       if (!isOp) return { cmd: "PTA_GRANT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const db = env.AURA_MEMORY;
+      // ══ LINEAGE — THE ONE THING PROPAGATION ACTUALLY LACKED (v4.9.746) ═══════════════════════
+      // A PTA spreads by TOUCH: Aaron -> the girl on the beach -> her friend -> Thailand. Taylor
+      // touches a million fans in one moment and owns the root of that tree. All of that already
+      // WORKS — INVITE offers to a contact point creating nothing, ACCEPT is where the person comes
+      // into existence, MOMENT births from a tap with place/connector/surroundings, APPROACH wakes a
+      // dormant PTA when the person themselves arrives. Three consent-first birth paths, built and
+      // tested months ago.
+      // What was missing is that the resulting edges are ISLANDS. There is no column saying which
+      // hop this came through or which moment it started at, so the tree cannot be walked. Pay-it-
+      // forward and Keep Your Fans are both traversals of exactly that tree.
+      //   via_edge_id - the hop. Aaron->Jane->Thailand becomes a chain instead of three unrelated rows.
+      //   origin_id   - the shared moment a mass touch traces back to. One concert, a million edges,
+      //                 one row they all point at.
+      // `who_introduced` already lives in the relationship JSON — the right idea in an unqueryable
+      // place. These are columns so SQL can walk it.
+      // STORED, NOT DISPLAYED. Showing a chain reveals who knows whom, and that decision is open.
+      for (const col of ["via_edge_id TEXT", "origin_id TEXT"]) {
+        try { await db.prepare("ALTER TABLE pta_edges ADD COLUMN " + col).run(); } catch {}
+      }
       const fromId = args[0] || "";
       const toId = args[1] || "";
       if (!fromId || !toId) return { cmd: "PTA_GRANT", payload: { ok: false, error: "Usage: PTA_GRANT <from_id> <to_id> [json context]" } };
@@ -15080,11 +15008,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (edge.state === "revoked") return { cmd: "PTA_ACCEPT", payload: { ok: false, error: "Cannot accept a revoked PTA â€” must be re-granted" } };
       const now = new Date().toISOString();
       await db.prepare("UPDATE pta_edges SET state = 'active', updated_at = ? WHERE id = ?").bind(now, edgeId).run();
-      // ══ ACCEPTANCE IS WHAT BRINGS SOMEONE INTO EXISTENCE (v4.9.745) ═══════════════════════════
-      // Aaron: "those recipients exist because they have to accept it." An entity minted as unclaimed
-      // by PTA_OFFER is a placeholder holding a verified contact and nothing else - no payload ever
-      // reached it. Accepting is the moment it becomes a person's PTA. Marked here rather than left
-      // implicit so "unclaimed" and "claimed but quiet" can never look the same.
+      // ══ ACCEPTANCE IS WHAT BRINGS SOMEONE INTO EXISTENCE ══════════════════════════════════════
+      // Aaron: "those recipients exist because they have to accept it." The canonical birth-by-
+      // consent path is INVITE -> ACCEPT (the top-level ACCEPT command), which creates NOTHING about
+      // the invitee until they say yes. This handler accepts an already-created pending EDGE, which
+      // is the other half: an entity that exists but has never claimed itself. Marked explicitly so
+      // "unclaimed" and "claimed but quiet" can never look the same.
       let claimed = false;
       try {
         const ent = await db.prepare("SELECT id, metadata FROM pta_entities WHERE id = ?").bind(edge.to_id).first();

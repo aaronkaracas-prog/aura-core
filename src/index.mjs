@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.753-2026-07-27";
+const BUILD = "aura-core-v4.9.754-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -14105,7 +14105,25 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const edgeCtx = JSON.stringify({ edge_type: "relationship", relationship: invite.relationship || invite.tier,
           permission: invite.tier, impact: "consented_connection",
           via_edge_id: invite.via_edge_id || null, origin_id: invite.origin_id || null });
-        await processCommand(`PTA_GRANT ${invite.from} ${bornId} ${edgeCtx}`, env, true);
+        const gr = await processCommand(`PTA_GRANT ${invite.from} ${bornId} ${edgeCtx}`, env, true);
+        // ══ AN ACCEPTED INVITATION LEFT ITS EDGE PENDING FOREVER (v4.9.754) ═══════════════════
+        // PTA_GRANT inserts every edge as `pending` - correct for a grant that still awaits a yes.
+        // But THIS path IS the yes: the person accepted, their PTA was born from that acceptance,
+        // and the edge carrying the relationship was never moved to active. So the entity read
+        // "active" in KV while the edge that actually carries the permission sat pending, and
+        // nothing anywhere would have moved it. Consent was given and the record did not show it.
+        // PTA_TEST did not catch this because it checked that an edge EXISTS, not what STATE it is
+        // in - the check I did not write is where the bug was.
+        const grantedEdgeId = (gr && gr.payload && gr.payload.edge_id) || null;
+        if (grantedEdgeId) {
+          const nowA = new Date().toISOString();
+          await env.AURA_MEMORY.prepare("UPDATE pta_edges SET state = 'active', updated_at = ? WHERE id = ? AND state = 'pending'")
+            .bind(nowA, grantedEdgeId).run();
+          await env.AURA_MEMORY.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+            .bind("hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join(""),
+                  grantedEdgeId, "accepted", bornId,
+                  JSON.stringify({ via: "ACCEPT", invite_id: invite.invite_id, note: "activated by the invitee's own yes" }), nowA).run();
+        }
       } catch (e) {}
       // stamp origin context (only if newly created)
       if (bornMode === "created") {
@@ -15311,6 +15329,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           check("acceptance mints the person", "an entity now exists", born1 ? born1.id : "none", !!born1);
           const e1 = await db.prepare("SELECT id, state, via_edge_id FROM pta_edges WHERE from_id = ? AND to_id = ? ORDER BY created_at DESC").bind(root.entity.id, born1 ? born1.id : "").first();
           check("an edge was written on acceptance", "an edge", e1 ? e1.id : "none", !!e1);
+          check("THE EDGE IS ACTIVE, NOT PENDING", "active", e1 ? e1.state : "none", !!(e1 && e1.state === "active"),
+            "the person SAID YES - if the edge is still pending, consent was given and the record does not "
+            + "show it. This check was missing from the first version of PTA_TEST and that is exactly where "
+            + "the bug was hiding: it asserted an edge EXISTS, not what state it is in.");
 
           // ── 3. HOP TWO, NAMING THE EDGE IT CAME THROUGH. This is the write path that did not exist.
           const c2 = "phone:+1555" + String(Date.now() + 2).slice(-7);
@@ -15321,6 +15343,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           if (born2) madeEntities.push(born2.id);
           const e2 = await db.prepare("SELECT id, state, via_edge_id FROM pta_edges WHERE from_id = ? AND to_id = ? ORDER BY created_at DESC").bind(born1 ? born1.id : "", born2 ? born2.id : "").first();
           check("hop two was born", "an entity", born2 ? born2.id : "none", !!born2);
+          check("hop two's edge is active too", "active", e2 ? e2.state : "none", !!(e2 && e2.state === "active"));
           check("THE CHAIN IS WRITTEN", "hop two's edge points at hop one's edge (" + (e1 ? e1.id : "?") + ")",
             e2 ? String(e2.via_edge_id) : "no edge", !!(e2 && e1 && e2.via_edge_id === e1.id),
             "this is the exact thing that was read but never written until v4.9.752");

@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.761-2026-07-27";
+const BUILD = "aura-core-v4.9.762-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -15558,14 +15558,32 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const e = await db.prepare("DELETE FROM pta_edges").run(); edges = (e && e.meta && e.meta.changes) || 0;
             const x = await db.prepare("DELETE FROM pta_entities").run(); ents = (x && x.meta && x.meta.changes) || 0;
           } else {
-            for (const r of rows) {
-              const ed = await db.prepare("SELECT id FROM pta_edges WHERE from_id = ? OR to_id = ?").bind(r.id, r.id).all();
-              for (const e of (ed?.results || [])) {
-                await db.prepare("DELETE FROM pta_history WHERE edge_id = ?").bind(e.id).run(); hist++;
-                await db.prepare("DELETE FROM pta_edges WHERE id = ?").bind(e.id).run(); edges++;
+            // ══ COUNT ROWS, NOT STATEMENTS (fixed v4.9.762) ═══════════════════════════════════
+            // The first version incremented once per DELETE EXECUTED, so it reported 192 history rows
+            // removed when the dry run had counted 46 - a number that looked like a measurement and
+            // was a loop counter. meta.changes is what the database actually deleted.
+            // ALSO: this branch was per-entity sequential and took 63 SECONDS for 179 entities. At
+            // ten thousand it times out and leaves the graph half-wiped. Batched now - one pass to
+            // collect, then set-based deletes.
+            const keepSet = new Set(keepIds);
+            const victims = rows.map((r) => r.id);
+            for (let i = 0; i < victims.length; i += 50) {
+              const batch = victims.slice(i, i + 50);
+              const ph = batch.map(() => "?").join(",");
+              const ed = await db.prepare("SELECT id FROM pta_edges WHERE from_id IN (" + ph + ") OR to_id IN (" + ph + ")").bind(...batch, ...batch).all();
+              const edgeIds = (ed?.results || []).map((e) => e.id);
+              for (let j = 0; j < edgeIds.length; j += 50) {
+                const eb = edgeIds.slice(j, j + 50);
+                const eph = eb.map(() => "?").join(",");
+                const h = await db.prepare("DELETE FROM pta_history WHERE edge_id IN (" + eph + ")").bind(...eb).run();
+                hist += (h && h.meta && h.meta.changes) || 0;
+                const e2 = await db.prepare("DELETE FROM pta_edges WHERE id IN (" + eph + ")").bind(...eb).run();
+                edges += (e2 && e2.meta && e2.meta.changes) || 0;
               }
-              await db.prepare("DELETE FROM pta_entities WHERE id = ?").bind(r.id).run(); ents++;
+              const x = await db.prepare("DELETE FROM pta_entities WHERE id IN (" + ph + ")").bind(...batch).run();
+              ents += (x && x.meta && x.meta.changes) || 0;
             }
+            void keepSet;
           }
           // The KV side of a PTA: state, timeline, invitations, circles. Leaving these behind would
           // resurrect ghosts - a timeline for an entity that no longer exists.
@@ -15588,6 +15606,103 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           note: "The graph is clear. The identity pepper is UNTOUCHED - it is a system secret, not a "
               + "person, and regenerating it would orphan any surviving hashed row.",
           next: "PTA_TEST to confirm the machinery still works on an empty graph." } };
+      }
+    }
+
+    case "PTA_SCALE": {
+      // ══ DOES IT HOLD AT SCALE — MEASURED, NOT ASSUMED ════════════════════════════════════════
+      //
+      // All five seats of an architectural review named the same thing as what breaks first: the
+      // REVOCATION CASCADE under fan-out and depth. Nobody guessed at a number, and neither will
+      // this - it builds a real tree, revokes the root, and reports what the walk actually cost.
+      //
+      // WHY IT MATTERS MORE THAN A CORRECTNESS TEST: a cascade that times out leaves the tree HALF
+      // revoked, which is worse than one that fails outright - some people keep access and nobody
+      // knows which. The ceiling (500 edges / 12 levels) was chosen without evidence. This is the
+      // evidence.
+      //
+      //   PTA_SCALE              - a modest tree (fan 10, depth 3)
+      //   PTA_SCALE <fan> <depth>  - e.g. PTA_SCALE 30 4
+      // Self-cleaning. Bounded hard, because a scale test that runs away is an outage.
+      if (!isOp) return { cmd: "PTA_SCALE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const db = env.AURA_MEMORY;
+        const fan = Math.min(Math.max(parseInt(args[0] || "10", 10) || 10, 2), 40);
+        const depth = Math.min(Math.max(parseInt(args[1] || "3", 10) || 3, 1), 6);
+        const tag = "ptascale" + Date.now().toString(36);
+        const made = [], timings = {};
+        const t = (k, v) => { timings[k] = v; };
+        try {
+          const t0 = Date.now();
+          // Build directly in SQL. Going through INVITE/ACCEPT would measure the invite path, not
+          // the cascade - and the cascade is the thing under test.
+          const mkEnt = async (n) => {
+            const id = "pta_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map((b) => b.toString(16).padStart(2, "0")).join("");
+            await db.prepare("INSERT INTO pta_entities (id, type, identity_key, name, created_at, updated_at) VALUES (?, 'person', ?, ?, ?, ?)")
+              .bind(id, "scale:" + tag + ":" + n, tag + n, new Date().toISOString(), new Date().toISOString()).run();
+            made.push(id); return id;
+          };
+          const mkEdge = async (from, to, via) => {
+            const id = "edge_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map((b) => b.toString(16).padStart(2, "0")).join("");
+            await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, permission, via_edge_id, created_at, updated_at) VALUES (?, ?, ?, 'grant', 'active', '{\"can_view\":true}', ?, ?, ?)")
+              .bind(id, from, to, via || null, new Date().toISOString(), new Date().toISOString()).run();
+            return id;
+          };
+          const rootId = await mkEnt("root");
+          const rootEdgeTo = await mkEnt("r0");
+          const rootEdge = await mkEdge(rootId, rootEdgeTo, null);
+          // Each level fans out from every edge of the level above.
+          let level = [rootEdge], total = 1;
+          for (let d = 0; d < depth; d++) {
+            const next = [];
+            for (const parent of level) {
+              for (let f = 0; f < fan; f++) {
+                if (total > 900) break;
+                const e = await mkEnt("d" + d + "f" + f + "n" + total);
+                next.push(await mkEdge(rootId, e, parent));
+                total++;
+              }
+              if (total > 900) break;
+            }
+            level = next;
+            if (total > 900) break;
+          }
+          t("build_ms", Date.now() - t0);
+          t("edges_built", total);
+
+          const t1 = Date.now();
+          const rev = await processCommand("PTA_REVOKE " + rootEdge + " scale test", env, true);
+          const rp = (rev && rev.payload) || {};
+          t("revoke_ms", Date.now() - t1);
+
+          const stillActive = await db.prepare("SELECT COUNT(*) n FROM pta_edges WHERE from_id = ? AND state = 'active'").bind(rootId).first();
+          return { cmd: "PTA_SCALE", payload: { ok: true, fan, depth,
+            built: { entities: made.length, edges: total },
+            cascade: { reported: rp.cascaded, truncated: rp.truncated || false, walk: rp.walk || null },
+            still_active_after_revoke: (stillActive && stillActive.n) || 0,
+            timings,
+            read_this: (rp.truncated
+              ? "TRUNCATED. The ceiling was hit and the tree is only PARTIALLY revoked - which is the "
+                + "outcome to fear: some people kept access and nothing says who. The ceiling needs raising "
+                + "or the cascade needs to move off the request path."
+              : ((stillActive && stillActive.n) > 0
+                  ? "EDGES SURVIVED that descend from the revoked root - the walk did not reach them."
+                  : "The whole tree was cut inside one request.")),
+            scale_note: "revoke_ms is the number that matters. A Worker request has a wall-clock budget; "
+              + "when this approaches it, revocation must become a queued job rather than a synchronous "
+              + "walk - and until then, this is the measurement that says when." } };
+        } catch (e) {
+          return { cmd: "PTA_SCALE", payload: { ok: false, error: String((e && e.message) || e).slice(0, 200), timings } };
+        } finally {
+          // Always clean, including after a failure. Batched - the per-row version took 63s for 179.
+          try {
+            for (let i = 0; i < made.length; i += 50) {
+              const b = made.slice(i, i + 50), ph = b.map(() => "?").join(",");
+              await db.prepare("DELETE FROM pta_edges WHERE from_id IN (" + ph + ") OR to_id IN (" + ph + ")").bind(...b, ...b).run();
+              await db.prepare("DELETE FROM pta_entities WHERE id IN (" + ph + ")").bind(...b).run();
+            }
+          } catch {}
+        }
       }
     }
 

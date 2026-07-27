@@ -36,7 +36,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.773-2026-07-27";
+const BUILD = "aura-core-v4.9.774-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16568,6 +16568,150 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       await db.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)")
         .bind(h2, linkEdgeId, "introduced", ownerId, JSON.stringify({ introduced_via: obj.name, from: owner.name, to: recip.name }), now).run();
       return { cmd: "PTA_SHARE", payload: { ok: true, share_edge_id: shareEdgeId, link_edge_id: linkEdgeId, object: obj.name, from: owner.name, to: recip.name, state: "pending" } };
+    }
+
+    case "PTA_VOUCH": {
+      // ══ PRM — THE THIRD ORGAN, AND IT WAS THE THIN ONE (v4.9.774) ═════════════════════════════
+      //
+      // The spec calls PTA three organs fused: PERMISSION (the law), CRM (the chain), PRM (the trust
+      // web). "Break one, the organism dies." Measured in source before building: `vouch` appeared
+      // ONCE, `graph_distance` ZERO. Permission and the chain were substantially built; the trust
+      // layer was a name.
+      //
+      // A VOUCH IS AN EDGE, NOT A SCORE. That is the whole design and it is load-bearing. The spec
+      // says "not a score, a web", then uses figures like #PRM_8.2 - and those two things cannot both
+      // be true. **The moment a trust NUMBER gates access, there is an incentive to farm it.** That is
+      // the same Goodhart argument a five-seat Council used to refuse wiring the prediction ledger,
+      // and it applies here identically: a scalar gets optimised, a web of attributable claims does
+      // not, because every claim has a name attached and a chain behind it.
+      //
+      // It is also the industry answer. W3C Verifiable Credentials are exactly this - signed,
+      // revocable claims that "link multiple credentials into verifiable trust graphs". A vouch here
+      // is that shape without the signature: an edge from A to B saying something specific, revocable
+      // by the voucher, and carrying its own lineage.
+      //
+      //   PTA_VOUCH <from_id> <to_id> [what they are vouching for]
+      if (!isOp) return { cmd: "PTA_VOUCH", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const db = env.AURA_MEMORY;
+        const fromId = args[0] || "", toId = args[1] || "";
+        const forWhat = rest.slice(rest.indexOf(toId) + toId.length).trim() || null;
+        if (!fromId || !toId) return { cmd: "PTA_VOUCH", payload: { ok: false,
+          error: "Usage: PTA_VOUCH <from_id> <to_id> [what you are vouching for]" } };
+        if (fromId === toId) return { cmd: "PTA_VOUCH", payload: { ok: false,
+          error: "SELF_VOUCH",
+          why: "an entity cannot vouch for itself. A trust web where a node can inflate its own standing "
+             + "is a scoreboard, and it will be gamed within a day of anyone noticing." } };
+        const a = await db.prepare("SELECT id, name FROM pta_entities WHERE id = ?").bind(fromId).first();
+        const b = await db.prepare("SELECT id, name FROM pta_entities WHERE id = ?").bind(toId).first();
+        if (!a) return { cmd: "PTA_VOUCH", payload: { ok: false, error: "voucher not found: " + fromId } };
+        if (!b) return { cmd: "PTA_VOUCH", payload: { ok: false, error: "subject not found: " + toId } };
+        // Idempotent: vouching twice restates rather than stacks. Countable vouches invite farming.
+        const dupe = await db.prepare("SELECT id FROM pta_edges WHERE from_id = ? AND to_id = ? AND edge_type = 'vouch' AND state != 'revoked'").bind(fromId, toId).first();
+        if (dupe) return { cmd: "PTA_VOUCH", payload: { ok: true, edge_id: dupe.id, already: true,
+          note: "already vouched - a vouch is a standing statement, not a tally. Revoke it to withdraw." } };
+        const now = new Date().toISOString();
+        const edgeId = "edge_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map((x) => x.toString(16).padStart(2, "0")).join("");
+        const histId = "hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map((x) => x.toString(16).padStart(2, "0")).join("");
+        await db.batch([
+          db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, permission, relationship, context, created_at, updated_at) VALUES (?, ?, ?, 'vouch', 'active', ?, ?, ?, ?, ?)")
+            .bind(edgeId, fromId, toId, JSON.stringify({}), JSON.stringify({ vouched_for: forWhat }), JSON.stringify({ note: forWhat }), now, now),
+          db.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, ?, 'vouched', ?, ?, ?)")
+            .bind(histId, edgeId, fromId, JSON.stringify({ from: a.name, to: b.name, for: forWhat }), now),
+        ]);
+        return { cmd: "PTA_VOUCH", payload: { ok: true, edge_id: edgeId, from: a.name, to: b.name, for: forWhat,
+          note: "A vouch GRANTS NOTHING. It is a statement, not a permission - it makes an approach legible, "
+              + "it does not authorise one. Access still comes from an explicit grant and ptaCan." } };
+      }
+    }
+
+    case "PTA_TRUST": {
+      // ══ TRUST IS A VIEW, NEVER A STORED NUMBER ═══════════════════════════════════════════════
+      //
+      // Computed at read time from edges that already exist, and deliberately NOT persisted. A stored
+      // score is a thing to farm and a thing to go stale; a view is neither, because it is always
+      // derived from what is currently true.
+      //
+      // It returns WHO and HOW FAR, not a figure. The spec's own words: "not a score, a web." When
+      // someone approaches, the question a person actually asks is not "are they an 8.2" - it is
+      // "who do we both know, and how did they get to me." That is answerable, checkable, and
+      // impossible to inflate without inflating a real relationship someone would notice.
+      //
+      //   PTA_TRUST <viewer_id> <subject_id> [max_hops=3]
+      if (!isOp) return { cmd: "PTA_TRUST", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const db = env.AURA_MEMORY;
+        const viewer = args[0] || "", subject = args[1] || "";
+        const maxHops = Math.min(Math.max(parseInt(args[2] || "3", 10) || 3, 1), 5);
+        if (!viewer || !subject) return { cmd: "PTA_TRUST", payload: { ok: false,
+          error: "Usage: PTA_TRUST <viewer_id> <subject_id> [max_hops=3]" } };
+
+        // WHO VOUCHED for the subject, and does the viewer know any of them? A vouch from a stranger
+        // is noise; a vouch from someone you already have an edge to is the entire signal.
+        const vouchers = await db.prepare(
+          "SELECT from_id, relationship, created_at FROM pta_edges WHERE to_id = ? AND edge_type = 'vouch' AND state = 'active'"
+        ).bind(subject).all();
+        const vlist = [];
+        for (const v of (vouchers?.results || [])) {
+          const who = await db.prepare("SELECT name FROM pta_entities WHERE id = ?").bind(v.from_id).first();
+          let known = false;
+          try {
+            const link = await db.prepare(
+              "SELECT id FROM pta_edges WHERE ((from_id = ? AND to_id = ?) OR (from_id = ? AND to_id = ?)) AND state = 'active' LIMIT 1"
+            ).bind(viewer, v.from_id, v.from_id, viewer).first();
+            known = !!link;
+          } catch {}
+          let forWhat = null; try { forWhat = JSON.parse(v.relationship || "{}").vouched_for; } catch {}
+          vlist.push({ voucher: v.from_id, name: who ? who.name : "(unknown)", for: forWhat,
+            since: v.created_at, known_to_you: known });
+        }
+
+        // HOW FAR — breadth-first over active edges in either direction. Distance is the honest
+        // measure: "two hops, through someone you know" says more than any number could.
+        let hops = null, path = null;
+        try {
+          const seen = new Set([viewer]);
+          let frontier = [{ id: viewer, trail: [] }];
+          for (let d = 1; d <= maxHops && frontier.length && hops === null; d++) {
+            const next = [];
+            for (const node of frontier) {
+              const nb = await db.prepare(
+                "SELECT from_id, to_id FROM pta_edges WHERE (from_id = ? OR to_id = ?) AND state = 'active' LIMIT 100"
+              ).bind(node.id, node.id).all();
+              for (const e of (nb?.results || [])) {
+                const other = e.from_id === node.id ? e.to_id : e.from_id;
+                if (seen.has(other)) continue;
+                seen.add(other);
+                const trail = node.trail.concat([other]);
+                if (other === subject) { hops = d; path = trail; break; }
+                next.push({ id: other, trail });
+              }
+              if (hops !== null) break;
+            }
+            frontier = next;
+          }
+        } catch {}
+
+        const named = [];
+        for (const id of (path || [])) {
+          const n = await db.prepare("SELECT name FROM pta_entities WHERE id = ?").bind(id).first();
+          named.push({ id, name: n ? n.name : "(unknown)" });
+        }
+        return { cmd: "PTA_TRUST", payload: { ok: true, viewer, subject,
+          hops, path: named.length ? named : null,
+          reachable: hops !== null,
+          vouches: vlist.length, vouchers: vlist,
+          vouched_by_someone_you_know: vlist.filter((v) => v.known_to_you).length,
+          read_this: hops === null
+            ? "No path within " + maxHops + " hops. That is not a verdict on them - it is the honest "
+              + "statement that you have no connection to check."
+            : hops + " hop(s) away" + (named.length > 1 ? " via " + named.slice(0, -1).map((x) => x.name).join(" -> ") : " - directly connected"),
+          why_no_number: "There is deliberately no score here. A trust figure is a thing to farm, and the "
+            + "moment one gates access somebody optimises it. Who vouched and how far away they are "
+            + "cannot be inflated without inflating a real relationship someone would notice.",
+          and_it_grants_nothing: "This is context for a human decision, not an authorisation. Access "
+            + "comes from an explicit grant, checked by ptaCan." } };
+      }
     }
 
     case "PTA_GRAPH": {

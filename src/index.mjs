@@ -15437,15 +15437,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // context, the place they were met, who introduced them, what they consented to. The
           // skeleton around it stays clear so the graph still works.
           if (metadata) metadata = await sealFor(env, id, metadata);
+          let sealedName = eName;
           // THE NAME IS SEALED TOO, and that is what makes forgetting a pure key destruction rather
           // than a mutation. The first version left `name` in the clear, so PTA_FORGET had to
           // OVERWRITE it - which contradicted the entire design: append-only was meant to survive and
           // the content was meant to become unreadable, not deleted. Worse, the overwrite made the
           // test unfalsifiable: the final read said "[forgotten]" whether or not the encryption
           // worked at all, because the field had simply been replaced.
-          eName = await sealFor(env, id, eName);
+          sealedName = await sealFor(env, id, eName);
           await db.prepare("INSERT INTO pta_entities (id, type, identity_key, name, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-            .bind(id, eType, identityKey, eName, metadata, now, now).run();
+            .bind(id, eType, identityKey, sealedName, metadata, now, now).run();
         } catch (e) {
           // THE RACE, now caught instead of duplicating: another request inserted the same identity
           // between our SELECT and our INSERT. The index rejected us, which is correct - so re-read

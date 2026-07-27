@@ -27,7 +27,9 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.770-2026-07-27";
+import { WorkerEntrypoint } from "cloudflare:workers";
+
+const BUILD = "aura-core-v4.9.771-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -26547,6 +26549,78 @@ async function captureAisHistory(env) {
       } catch {}
     }
   } catch {}
+}
+
+// ══ THE PUBLIC BOUNDARY — A NAMED, FIXED SURFACE (v4.9.771) ══════════════════════════════════════
+//
+// THE PROBLEM, stated concretely because it is present tense and not hypothetical: this worker holds
+// the self-edit pipeline and 49 credentials including the bank, the registrar, GitHub, Stripe and the
+// Cloudflare token that controls every domain. It also answers ~65 public routes - /home/greet,
+// /auth/google/callback, /plaid/connect, /confirm-payment. **The process that can rewrite its own
+// source is the process answering requests from strangers.** That is the Council's fourth containment
+// item and it has been open since they named it.
+//
+// WHY A SERVICE BINDING ALONE IS NOT A BOUNDARY: a binding that forwards arbitrary commands is a hole
+// with extra steps. If the public worker can call processCommand, then compromising the public worker
+// is compromising everything - the boundary exists on a diagram and nowhere else.
+//
+// SO: A FIXED LIST OF NAMED METHODS. This is Cloudflare's WorkerEntrypoint, the platform's own
+// primitive for service-to-service RPC, and the standard backend-for-frontend shape. The public
+// worker can call exactly what is written here and nothing else. If it is ever compromised, the
+// attacker gets these methods - not the ability to rewrite Aura or read Mercury.
+//
+// THE RULES FOR ANYTHING ADDED HERE, and they are the whole point:
+//   1. NEVER expose processCommand, GETKV, SETKV, or anything taking a command string. The moment one
+//      method takes arbitrary input and runs it, this entire class becomes decorative.
+//   2. Every method validates its own arguments. The caller is not trusted - it is the public.
+//   3. No method returns a secret, a credential, or another entity's data without a ptaCan check.
+//   4. Operator-only capability NEVER appears here. If it needs isOp, it does not belong on this surface.
+export class PublicEntry extends WorkerEntrypoint {
+  // ── IDENTITY: the doorway's three verbs ──────────────────────────────────────────────────────
+  // Offer a PTA to a contact point. Creates NOTHING about the recipient - that is INVITE's contract
+  // and it is what makes bulk invites inert.
+  async ptaInvite(from, toContact, opts) {
+    const env = this.env;
+    if (typeof from !== "string" || typeof toContact !== "string") return { ok: false, error: "bad arguments" };
+    if (!/^(phone|email):/i.test(normIdentity(toContact))) return { ok: false, error: "recipient must be a phone or email" };
+    const payload = { app: "door", from, to_contact: toContact,
+      to_name: (opts && String(opts.name || "").slice(0, 80)) || null,
+      relationship: (opts && String(opts.relationship || "").slice(0, 40)) || null,
+      via_edge_id: (opts && opts.via_edge_id) || null,
+      origin_id: (opts && opts.origin_id) || null,
+      place: (opts && opts.place) || null };
+    const r = await processCommand("INVITE " + JSON.stringify(payload), env, false);
+    return (r && r.payload) || { ok: false };
+  }
+
+  // Accept an invitation. THE moment a person comes into existence. Their own place is stated here
+  // because only they know where they were.
+  async ptaAccept(inviteId, place) {
+    const env = this.env;
+    if (typeof inviteId !== "string" || !/^inv_[a-f0-9]+$/i.test(inviteId)) return { ok: false, error: "bad invite id" };
+    const suffix = place && typeof place === "object" ? " @ " + JSON.stringify(place) : "";
+    const r = await processCommand("ACCEPT " + inviteId + suffix, env, false);
+    return (r && r.payload) || { ok: false };
+  }
+
+  // May this actor do this to this subject? The doorway's only authorization question.
+  async ptaCheck(actor, capability, subject) {
+    if (typeof actor !== "string" || typeof capability !== "string" || typeof subject !== "string") {
+      return { allowed: false, reason: "bad arguments" };
+    }
+    return await ptaCan(this.env, actor, capability, subject);
+  }
+
+  // What can this person reach? What a homescreen needs to render, and never more than Check allows.
+  async ptaList(actor, capability) {
+    const env = this.env;
+    if (typeof actor !== "string") return { ok: false, error: "bad arguments" };
+    const r = await processCommand("PTA_LIST " + actor + " " + (capability || "view"), env, true);
+    return (r && r.payload) || { ok: false };
+  }
+
+  // ── HEALTH: so the doorway can report honestly when the brain is unreachable ──────────────────
+  async ping() { return { ok: true, build: BUILD, surface: "public", ts: new Date().toISOString() }; }
 }
 
 export default {

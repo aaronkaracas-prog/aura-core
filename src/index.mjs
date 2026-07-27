@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.754-2026-07-27";
+const BUILD = "aura-core-v4.9.755-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2007,6 +2007,52 @@ async function readOwnSource(env, branch, worker) {
 // no answer, and the fallback names itself in the response so a silent regression cannot hide.
 // Returns { reply, ... } on success, or { failed: "<reason>" } so the caller can SAY why it fell back.
 // Guessing at a silent failure has cost this build more time than any bug in it - so it reports.
+// ══ MAY THIS ACTOR DO THIS TO THIS SUBJECT? (v4.9.755) ═══════════════════════════════════════════
+// The single place that answers a permission question, so no caller ever invents its own rule.
+//
+// THE RULES, deliberately few and stated rather than inferred:
+//   1. An entity may always act on ITSELF. Nobody needs a grant to read their own chain.
+//   2. Otherwise there must be an ACTIVE edge whose permission grants the capability. Pending is not
+//      yet consent; revoked is consent withdrawn. Only `active` counts.
+//   3. Direction matters. An edge FROM the subject TO the actor is the subject granting access - that
+//      is the one that authorises. An edge the other way is the actor's own grant to them and says
+//      nothing about what the actor may see.
+//   4. DEFAULT DENY. No edge, no permission, unparseable permission - all refuse. A permission layer
+//      that fails open is not a permission layer.
+// Returns WHY in every case: a refusal that cannot be explained gets worked around rather than fixed.
+async function ptaCan(env, actorId, capability, subjectId) {
+  const cap = String(capability || "").toLowerCase().replace(/^can_/, "");
+  const key = "can_" + cap;
+  try {
+    if (!actorId || !subjectId) return { allowed: false, reason: "actor and subject are both required" };
+    if (actorId === subjectId) return { allowed: true, reason: "an entity may always act on itself", via_edge: null };
+    const db = env.AURA_MEMORY;
+    const rows = await db.prepare(
+      "SELECT id, state, permission, edge_type FROM pta_edges WHERE from_id = ? AND to_id = ? ORDER BY created_at DESC"
+    ).bind(subjectId, actorId).all();
+    const edges = (rows && rows.results) || [];
+    if (!edges.length) return { allowed: false, reason: "no edge from the subject to the actor - nothing was ever granted", via_edge: null };
+    const active = edges.filter((e) => e.state === "active");
+    if (!active.length) return { allowed: false,
+      reason: "an edge exists but none is active (" + edges.map((e) => e.state).join(", ") + ") - pending is not yet consent, revoked is consent withdrawn",
+      via_edge: null };
+    for (const e of active) {
+      let perm = null;
+      try { perm = JSON.parse(e.permission || "null"); } catch { perm = null; }
+      if (perm && perm[key] === true) {
+        return { allowed: true, reason: "active " + e.edge_type + " edge grants " + key, via_edge: e.id };
+      }
+    }
+    return { allowed: false,
+      reason: "active edge(s) exist but none grants " + key,
+      granted_instead: active.map((e) => { try { return Object.keys(JSON.parse(e.permission || "{}")); } catch { return []; } }).flat(),
+      via_edge: null };
+  } catch (e) {
+    // DEFAULT DENY ON ERROR. A permission check that fails open turns an outage into a data breach.
+    return { allowed: false, reason: "permission check failed, denying by default: " + String((e && e.message) || e).slice(0, 140) };
+  }
+}
+
 // ══ ONE PERSON, ONE KEY — NORMALISE BEFORE COMPARING (v4.9.749) ══════════════════════════════════
 //
 // The uniqueness index added in v4.9.747 prevents duplicate STRINGS. It does not prevent duplicate
@@ -15273,6 +15319,36 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                       + "Nothing was transmitted to them before this moment." : undefined } };
     }
 
+    case "PTA_CAN": {
+      // ══ THE LAW LAYER WAS WRITTEN AND NEVER READ (v4.9.755) ═══════════════════════════════════
+      //
+      // The spec calls Permission the law layer - "the rules, the consent, the kill switch, who can
+      // approach, when, how, what they see" - and "Permission protects the Chain." Measured in
+      // source: ten references to can_view / can_share / can_contact, EVERY ONE A WRITE. Nothing
+      // anywhere refuses an action because permission says no. The organ that is supposed to protect
+      // the other two was decorative, exactly like verification_level and the trust integer.
+      //
+      // THIS IS THE DECIDER, not the enforcement. The honest reason: every command that reads
+      // another entity's data is operator-gated today, so wiring a refusal into them would gate
+      // Aaron out of his own system and change nothing about safety. The place enforcement belongs is
+      // the doorway - where a visitor who is not the operator asks to see something - and that does
+      // not exist yet.
+      // So: build the decider now, correct and testable, so the doorway calls ONE function when it
+      // lands instead of inventing a sixth rule. Naming it and leaving it unwired is honest; wiring
+      // it somewhere it does nothing would be theatre.
+      //
+      //   PTA_CAN <actor_id> <capability> <subject_id>
+      //     e.g. PTA_CAN pta_abc view pta_xyz
+      if (!isOp) return { cmd: "PTA_CAN", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const actor = args[0] || "", cap = (args[1] || "").toLowerCase(), subject = args[2] || "";
+        if (!actor || !cap || !subject) return { cmd: "PTA_CAN", payload: { ok: false,
+          error: "Usage: PTA_CAN <actor_id> <view|share|contact|discover> <subject_id>" } };
+        const verdict = await ptaCan(env, actor, cap, subject);
+        return { cmd: "PTA_CAN", payload: { ok: true, ...verdict } };
+      }
+    }
+
     case "PTA_TEST": {
       // ══ DOES PROPAGATION ACTUALLY WORK, END TO END ═══════════════════════════════════════════
       //
@@ -15358,6 +15434,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             "the spec says the chain breaks upstream - if this fails, someone keeps access through a link that no longer exists");
           check("the cascade reported what it cut", "at least 1", String(rev && rev.cascaded), !!(rev && rev.cascaded >= 1));
 
+          // ── 4b. THE LAW LAYER ACTUALLY REFUSES. A permission check that only ever says yes is
+          // worse than none, so the denials matter more than the grants here.
+          const canSelf = await ptaCan(env, root.entity.id, "view", root.entity.id);
+          check("an entity may always act on itself", "allowed", canSelf.allowed ? "allowed" : "denied: " + canSelf.reason, canSelf.allowed);
+          const canStranger = await ptaCan(env, root.entity.id, "view", born2 ? born2.id : "nobody");
+          check("NO EDGE MEANS NO ACCESS", "denied", canStranger.allowed ? "ALLOWED - default-open" : "denied", !canStranger.allowed,
+            "default deny is the whole point - a permission layer that fails open is not one");
+          const canRevoked = await ptaCan(env, born1 ? born1.id : "", "view", root.entity.id);
+          check("A REVOKED EDGE GRANTS NOTHING", "denied", canRevoked.allowed ? "ALLOWED after revocation" : "denied", !canRevoked.allowed,
+            "the edge was revoked in the cascade above - if this says allowed, revocation is cosmetic");
+
           // ── 5. NOTHING IS DELETED. Revocation is a state change plus a history row.
           const hist = e2 ? await db.prepare("SELECT COUNT(*) n FROM pta_history WHERE edge_id = ?").bind(e2.id).first() : null;
           check("history survives revocation", "at least 1 row", hist ? String(hist.n) : "0", !!(hist && hist.n >= 1));
@@ -15412,9 +15499,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           verdict: failed.length === 0
             ? "propagation works end to end: consent-first birth, a written and walkable chain, a cascade that reaches downstream, decline leaving nothing, and one contact resolving to one person."
             : failed.length + " check(s) failed - read `expected` against `actual`, not the ok flag.",
-          what_this_does_not_prove: "This exercises the GRAPH. It does not test the doorway, the "
-            + "authentication ceremony, or what a recipient is permitted to SEE - only that the edges, "
-            + "the lineage and the revocation behave as the spec says." } };
+          what_this_does_not_prove: "This exercises the GRAPH and the permission DECIDER. It does not "
+            + "test the doorway or the authentication ceremony, and ptaCan is not yet WIRED to anything - "
+            + "every command that reads another entity's data is operator-gated, so a refusal there would "
+            + "gate Aaron out of his own system and change nothing about safety. Enforcement belongs at "
+            + "the doorway, where a visitor who is not the operator asks to see something. Also untested: "
+            + "mass touch (one moment, many recipients, origin_id) and depth beyond two hops." } };
       }
     }
 

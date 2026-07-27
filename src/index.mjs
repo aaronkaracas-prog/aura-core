@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.769-2026-07-27";
+const BUILD = "aura-core-v4.9.770-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2139,6 +2139,27 @@ const PTA_SCHEMA = {
 // silently returns false is worse than an absent one, so anything unknown throws rather than denies
 // quietly - a permission engine must never fail in a direction nobody notices.
 const PTA_REWRITES = ["union", "via"];
+
+// ══ CONSISTENCY TOKENS (ZANZIBAR'S "ZOOKIE") — DELIBERATELY NOT BUILT, AND THE TRIGGER FOR WHEN ═══
+//
+// The paper's hardest idea solves THE NEW ENEMY PROBLEM: you revoke someone, then the content
+// changes, and a check served from a stale replica lets the revoked person see the new version. Their
+// answer is a consistency token stamped on each object, so a check can demand "at least as fresh as
+// this write."
+//
+// IT IS NOT BUILT HERE, AND TODAY THAT IS CORRECT RATHER THAN LAZY. The new enemy problem REQUIRES a
+// cache or a replica to exist. `ptaCan` has neither: D1 is a single Durable Object with one writer,
+// and every check reads it directly. There is no stale read to serve, so there is no window to close.
+// Building it now would be machinery guarding a problem this system does not have - the exact wrapper
+// pattern that keeps getting caught here.
+//
+// **IT BECOMES NECESSARY THE MOMENT EITHER OF THESE IS TRUE, and this comment is the tripwire:**
+//   1. permission check results get cached anywhere (they will, for latency), or
+//   2. D1 read replicas are used for permission reads.
+// Either one reopens the window, and the fix is not optional at that point: a revocation that a cache
+// can outlive is not a revocation. Whoever adds the cache owns adding the token with it.
+
+
 
 // ══ MAY THIS ACTOR DO THIS TO THIS SUBJECT? (v4.9.755) ═══════════════════════════════════════════
 // The single place that answers a permission question, so no caller ever invents its own rule.
@@ -15594,6 +15615,53 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         entity_claimed: claimed || undefined,
         note: claimed ? "This acceptance MINTED a person - an unclaimed placeholder became their PTA. "
                       + "Nothing was transmitted to them before this moment." : undefined } };
+    }
+
+    case "PTA_LIST": {
+      // ══ WHAT CAN THIS PERSON REACH — ZANZIBAR'S `ListObjects` ════════════════════════════════
+      //
+      // Check answers one question. Expand answers why. ListObjects answers the question a DOORWAY
+      // asks: someone just arrived - what do they get to see? Without it a homescreen either renders
+      // nothing, or renders everything and filters client-side, which is a permission layer with a
+      // hole in it shaped like a browser devtools panel.
+      //
+      // Enumerated by walking THEIR edges and asking Check on each, rather than by trusting the row.
+      // Slower than a single query and deliberately so: one implementation of the rule means Check,
+      // Expand and List can never disagree, and a list that says yes where Check says no is the exact
+      // failure that makes an authorization system worse than none.
+      //
+      //   PTA_LIST <actor_id> [view|share|contact]
+      if (!isOp) return { cmd: "PTA_LIST", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const db = env.AURA_MEMORY;
+        const actor = args[0] || "";
+        const cap = (args[1] || "view").toLowerCase().replace(/^can_/, "");
+        if (!actor) return { cmd: "PTA_LIST", payload: { ok: false, error: "Usage: PTA_LIST <actor_id> [view|share|contact]" } };
+        const rows = await db.prepare(
+          "SELECT id, from_id, state, permission, edge_type, via_edge_id, created_at FROM pta_edges WHERE to_id = ? AND state = 'active' ORDER BY created_at DESC LIMIT 200"
+        ).bind(actor).all();
+        const edges = (rows && rows.results) || [];
+        const reachable = [], withheld = [];
+        const seen = new Set();
+        for (const e of edges) {
+          if (seen.has(e.from_id)) continue;
+          seen.add(e.from_id);
+          const v = await ptaCan(env, actor, cap, e.from_id);
+          const ent = await db.prepare("SELECT name, type, metadata FROM pta_entities WHERE id = ?").bind(e.from_id).first();
+          let hint = null; try { hint = ent && JSON.parse(ent.metadata || "{}").contact_hint; } catch {}
+          const row = { id: e.from_id, name: ent ? ent.name : "(unknown)", type: ent ? ent.type : null,
+                        contact_hint: hint || undefined, since: e.created_at,
+                        arrived_via: e.via_edge_id || "direct" };
+          if (v.allowed) reachable.push(row);
+          else withheld.push({ ...row, why: v.reason });
+        }
+        return { cmd: "PTA_LIST", payload: { ok: true, actor, capability: "can_" + cap,
+          count: reachable.length, reachable,
+          withheld: withheld.length, withheld_detail: withheld.slice(0, 20),
+          note: "Every row was confirmed with the same Check a doorway would run - this list cannot say "
+              + "yes where Check says no, because it IS Check.",
+          scanned: edges.length, truncated: edges.length >= 200 || undefined } };
+      }
     }
 
     case "PTA_EXPAND": {

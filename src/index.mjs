@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.748-2026-07-27";
+const BUILD = "aura-core-v4.9.750-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2007,6 +2007,53 @@ async function readOwnSource(env, branch, worker) {
 // no answer, and the fallback names itself in the response so a silent regression cannot hide.
 // Returns { reply, ... } on success, or { failed: "<reason>" } so the caller can SAY why it fell back.
 // Guessing at a silent failure has cost this build more time than any bug in it - so it reports.
+// ══ ONE PERSON, ONE KEY — NORMALISE BEFORE COMPARING (v4.9.749) ══════════════════════════════════
+//
+// The uniqueness index added in v4.9.747 prevents duplicate STRINGS. It does not prevent duplicate
+// PEOPLE, and the live table proves it:
+//   phone:4048271500  and  phone:14048271500              -> CNN, same number, two entities
+//   aaronkaracas@gmail.com and email:aaronkaracas@gmail.com -> Aaron himself, two entities
+// Every write site invented its own format - some prefixed, some not, phone numbers with and without
+// a country code. "One entity, one chain, birth to death" cannot survive that, and it is precisely
+// the failure the index was meant to stop.
+//
+// NORMALISATION MUST COME BEFORE HASHING. An architectural review flagged the bare contact string as
+// both dedupe key and stored PII, and hashing is the right answer to that - but hashing an
+// UNNORMALISED key freezes the fork forever, because two spellings hash to different values and
+// nothing can ever match them again.
+//
+// CONSERVATIVE BY DESIGN: anything this cannot confidently canonicalise is returned UNCHANGED rather
+// than guessed at. A wrong merge grants one person access to another's history and cannot be undone,
+// so the failure mode must be "left alone", never "merged optimistically".
+// Aaron's note, and it shapes this: identity keys will NOT be only phone numbers - the scheme list
+// grows to whatever the industry anchors on. So the shape is scheme:value with a per-scheme rule, and
+// an unknown scheme passes through untouched instead of being mangled into a known one.
+function normIdentity(raw) {
+  const v = String(raw == null ? "" : raw).trim();
+  if (!v) return v;
+  let scheme = null, value = v;
+  const m = v.match(/^([a-z][a-z0-9_-]*):(.*)$/i);
+  if (m) { scheme = m[1].toLowerCase(); value = m[2].trim(); }
+  if (!scheme) {
+    // Un-prefixed: infer only the two unambiguous shapes, never anything else.
+    if (value.includes("@")) scheme = "email";
+    else if (/^\+?[\d\s().-]{7,}$/.test(value)) scheme = "phone";
+    else return v;
+  }
+  if (scheme === "email") return "email:" + value.toLowerCase();
+  if (scheme === "phone") {
+    const d = value.replace(/[^\d]/g, "");
+    if (!d) return v;
+    if (value.startsWith("+")) return "phone:+" + d;
+    if (d.length === 10) return "phone:+1" + d;                 // NANP, no country code
+    if (d.length >= 11) return "phone:+" + d;                   // country code already present
+    return v;                                                   // too short to be a real number
+  }
+  // Every other scheme (lead:, public:, internal:, person:, demo:, did:, whatever comes next) has its
+  // SCHEME lowercased only - the value may be case-significant and is not ours to change.
+  return scheme + ":" + value;
+}
+
 // ══ ONE AGENT PER IDENTITY — THE PLATFORM'S OWN MODEL, WHICH THIS WAS VIOLATING (v4.9.748) ═══════
 //
 // Cloudflare's Project Think announcement states the thesis plainly: "Traditional applications serve
@@ -14895,6 +14942,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // PTA_ENTITY CREATE <type> <name> [identity:<key>] [meta:<json>]
       // PTA_ENTITY GET <id>
       // PTA_ENTITY FIND <identity_key>  (e.g. phone:+13105551234 or email:aaron@auras.guide)
+      // PTA_ENTITY COLLISIONS            (which identities are stored under more than one spelling)
       // PTA_ENTITY LIST [type]
       // PTA_ENTITY UPDATE <id> [name:<new>] [meta:<json>]
       if (!isOp) return { cmd: "PTA_ENTITY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
@@ -14903,6 +14951,31 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const now = new Date().toISOString();
       const ptaId = () => "pta_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
 
+      if (sub === "COLLISIONS") {
+        // ══ WHAT IS ALREADY FORKED ═══════════════════════════════════════════════════════════════
+        // Reports rows that are DISTINCT strings today but the SAME identity once normalised - one
+        // human or thing split across two chains. READ-ONLY and deliberately so: merging would grant
+        // one side's relationships access to the other side's history. That is irreversible and
+        // belongs to a person, not a migration.
+        const all = await db.prepare("SELECT id, identity_key, name, created_at FROM pta_entities WHERE identity_key IS NOT NULL").all();
+        const groups = {};
+        for (const r of (all?.results || [])) {
+          const k = normIdentity(r.identity_key);
+          (groups[k] = groups[k] || []).push({ id: r.id, stored: r.identity_key, name: r.name, created_at: r.created_at });
+        }
+        const forked = Object.entries(groups).filter(([, rows]) => rows.length > 1)
+          .map(([normalised, rows]) => ({ normalised, count: rows.length, rows }));
+        return { cmd: "PTA_ENTITY", payload: { ok: true,
+          scanned: (all?.results || []).length,
+          forked_identities: forked.length, detail: forked,
+          note: forked.length
+            ? "Each group is ONE identity stored under more than one spelling. Writes are normalised from "
+              + "v4.9.749 so no NEW fork can form; these are historical and need a human decision."
+            : "no identity is stored under more than one spelling",
+          why_not_automatic: "Merging two chains grants one side's relationships access to the other "
+            + "side's history. Irreversible, and it belongs to a person rather than a migration." } };
+      }
+
       if (sub === "CREATE") {
         const eType = (args[1] || "").toLowerCase();
         if (!eType) return { cmd: "PTA_ENTITY", payload: { ok: false, error: "Usage: PTA_ENTITY CREATE <type> <name> [identity:<key>] [meta:<json>]" } };
@@ -14910,7 +14983,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const restStr = rest.slice(rest.indexOf(eName) + eName.length).trim();
         let identityKey = null, metadata = null;
         const idMatch = restStr.match(/identity:(\S+)/);
-        if (idMatch) identityKey = idMatch[1];
+        // NORMALISE AT THE DOOR. Every write goes through the canonical form, so two spellings of the
+        // same contact can never become two people. Unrecognised shapes pass through untouched.
+        if (idMatch) identityKey = normIdentity(idMatch[1]);
         const metaMatch = restStr.match(/meta:({.*})/);
         if (metaMatch) try { metadata = metaMatch[1]; JSON.parse(metadata); } catch { return { cmd: "PTA_ENTITY", payload: { ok: false, error: "Invalid meta JSON" } }; }
         // ══ ONE HUMAN, ONE ENTITY — ENFORCED BY THE DATABASE (v4.9.747) ═══════════════════════
@@ -14962,6 +15037,31 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         return { cmd: "PTA_ENTITY", payload: { ok: true, mode: "created", entity: created } };
       }
 
+      if (sub === "COLLISIONS") {
+        // ══ WHAT IS ALREADY FORKED ═══════════════════════════════════════════════════════════════
+        // Reports rows that are DISTINCT strings today but the SAME identity once normalised - i.e.
+        // one human or thing split across two chains. Read-only and deliberately so: merging is not
+        // automatic because it would grant one side's relationships access to the other side's
+        // history, and that is a decision with a person on the other end of it.
+        const all = await db.prepare("SELECT id, identity_key, name, created_at FROM pta_entities WHERE identity_key IS NOT NULL").all();
+        const groups = {};
+        for (const r of (all?.results || [])) {
+          const k = normIdentity(r.identity_key);
+          (groups[k] = groups[k] || []).push({ id: r.id, stored: r.identity_key, name: r.name, created_at: r.created_at });
+        }
+        const forked = Object.entries(groups).filter(([, rows]) => rows.length > 1)
+          .map(([normalised, rows]) => ({ normalised, count: rows.length, rows }));
+        return { cmd: "PTA_ENTITY", payload: { ok: true,
+          scanned: (all?.results || []).length,
+          forked_identities: forked.length, detail: forked,
+          note: forked.length
+            ? "Each group is ONE identity stored under more than one spelling. New writes are normalised "
+              + "from v4.9.749 so no NEW fork can form; these are historical and need a human decision."
+            : "no identity is stored under more than one spelling",
+          why_not_automatic: "Merging two chains grants one side's relationships access to the other "
+            + "side's history. That is irreversible and belongs to a person, not a migration." } };
+      }
+
       if (sub === "GET") {
         const id = args[1] || "";
         if (!id) return { cmd: "PTA_ENTITY", payload: { ok: false, error: "Usage: PTA_ENTITY GET <id>" } };
@@ -14971,11 +15071,23 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
 
       if (sub === "FIND") {
+        // FIND normalises identically - a lookup that does not use the same rule as the write will
+        // miss the very row it just created, which is the sibling half of this fix.
         const key = args[1] || "";
         if (!key) return { cmd: "PTA_ENTITY", payload: { ok: false, error: "Usage: PTA_ENTITY FIND <identity_key> (e.g. phone:+13105551234)" } };
-        const ent = await db.prepare("SELECT * FROM pta_entities WHERE identity_key = ?").bind(key).first();
-        if (!ent) return { cmd: "PTA_ENTITY", payload: { ok: false, error: "No entity with identity_key: " + key } };
-        return { cmd: "PTA_ENTITY", payload: { ok: true, entity: ent } };
+        const nk = normIdentity(key);
+        // Try the normalised form first, then the literal - rows written before v4.9.749 hold the raw
+        // spelling and must stay findable. Reporting WHICH matched is the difference between "found"
+        // and "found a legacy row", and that distinction is what makes COLLISIONS actionable.
+        let ent = await db.prepare("SELECT * FROM pta_entities WHERE identity_key = ?").bind(nk).first();
+        let matched = "normalised";
+        if (!ent && nk !== key) {
+          ent = await db.prepare("SELECT * FROM pta_entities WHERE identity_key = ?").bind(key).first();
+          matched = "legacy (stored before normalisation)";
+        }
+        if (!ent) return { cmd: "PTA_ENTITY", payload: { ok: false,
+          error: "No entity with identity_key: " + key, normalised_to: nk } };
+        return { cmd: "PTA_ENTITY", payload: { ok: true, entity: ent, normalised_to: nk, matched } };
       }
 
       if (sub === "LIST") {
@@ -15569,17 +15681,58 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
     case "PTA_VERIFY": {
       // Set verification level on an entity. Trust floor for the graph.
-      // PTA_VERIFY <entity_id> <level: unverified|phone_verified|email_verified|identity_verified|aura_verified>
+      // PTA_VERIFY <entity_id> <level>   - levels and their ranks are returned in the reply
       if (!isOp) return { cmd: "PTA_VERIFY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const db = env.AURA_MEMORY;
       const entId = args[0] || "";
       const level = (args[1] || "").toLowerCase();
-      const validLevels = ["unverified", "phone_verified", "email_verified", "identity_verified", "aura_verified"];
+      // ══ THE LADDER IS ORDERED NOW, AND IT MATCHES 2026 (v4.9.750) ═════════════════════════════
+      //
+      // TWO THINGS WERE WRONG. (1) `google_verified` is written by the OAuth path and was NOT in this
+      // list, so PTA_VERIFY would reject a level the system itself had already stored - a validator
+      // that disagrees with live data. (2) The list was FLAT: five strings with no order, so nothing
+      // could ever ask "is this identity verified ENOUGH", which is why 13 references write it and
+      // ZERO gate on it. An unordered level is a label, not a floor.
+      //
+      // THE DISTINCTION THAT MATTERS AND WAS NEVER WRITTEN DOWN:
+      //   identity_key is the ANCHOR - what makes one person ONE entity. A phone or an email is
+      //     correct here and always will be; Google and Apple anchor the same way.
+      //   verification_level is the AUTH - how strongly they proved they are that person on RETURN.
+      //   Holding someone's phone number is NOT authenticating them. Conflating the two is how a
+      //   contact list becomes mistaken for a set of verified accounts.
+      //
+      // WHY passkey SITS ABOVE THE OTP RUNGS, checked against the industry rather than assumed:
+      // FIDO2/WebAuthn passkeys are the 2026 default - 800M Google accounts, 175M at Amazon, default
+      // for new Microsoft accounts since May 2025, 1.3B authentications a month. NIST SP 800-63-4
+      // considers SMS INADEQUATE for AAL2 (SIM swap, SS7), and the UAE central bank ordered licensed
+      // financial institutions off SMS and email OTP by March 2026. The guidance for anything new is
+      // passkeys primary, OTP or magic link as the fallback for unsupported devices.
+      // Aura already HAS the fallback (VERIFY_REQUEST/VERIFY_CONFIRM email OTP). What is missing is
+      // the primary, and the WebAuthn ceremony belongs at the doorway with a real library - NOT
+      // hand-rolled here. This rung exists so the ceremony has somewhere true to land.
+      const VERIFICATION_LADDER = {
+        unverified:        { rank: 0, means: "a contact string exists. Nothing was proven." },
+        phone_verified:    { rank: 1, means: "an SMS code was received. NIST SP 800-63-4 rates SMS inadequate for AAL2 - SIM swap and SS7. Treat as weak." },
+        email_verified:    { rank: 2, means: "an emailed code was received (VERIFY_REQUEST/VERIFY_CONFIRM). Only as strong as their inbox." },
+        google_verified:   { rank: 3, means: "federated OIDC. Strength is Google's, not ours." },
+        identity_verified: { rank: 4, means: "a document or third-party identity check." },
+        passkey_verified:  { rank: 5, means: "FIDO2/WebAuthn. Phishing-resistant by construction, origin-bound, private key never leaves the device. The 2026 primary." },
+        aura_verified:     { rank: 6, means: "Aura's own highest assertion, on top of a real proof - never instead of one." },
+      };
+      const validLevels = Object.keys(VERIFICATION_LADDER);
       if (!entId || !validLevels.includes(level)) return { cmd: "PTA_VERIFY", payload: { ok: false, error: "Usage: PTA_VERIFY <entity_id> <unverified|phone_verified|email_verified|identity_verified|aura_verified>" } };
       const ent = await db.prepare("SELECT id, name FROM pta_entities WHERE id = ?").bind(entId).first();
       if (!ent) return { cmd: "PTA_VERIFY", payload: { ok: false, error: "Entity not found" } };
       await db.prepare("UPDATE pta_entities SET verification_level = ?, updated_at = ? WHERE id = ?").bind(level, new Date().toISOString(), entId).run();
-      return { cmd: "PTA_VERIFY", payload: { ok: true, entity_id: entId, name: ent.name, verification_level: level } };
+      return { cmd: "PTA_VERIFY", payload: { ok: true, entity_id: entId, name: ent.name,
+        verification_level: level, rank: VERIFICATION_LADDER[level].rank,
+        means: VERIFICATION_LADDER[level].means,
+        ladder: Object.fromEntries(Object.entries(VERIFICATION_LADDER).map(([k, v]) => [k, v.rank])),
+        anchor_vs_auth: "identity_key is the ANCHOR (what makes one person one entity - a phone is fine "
+          + "and always will be). This field is the AUTH (how strongly they proved they are that person "
+          + "on return). Holding a phone number is not authenticating anybody.",
+        honest_limit: "NOTHING GATES ON THIS YET. It is recorded and reportable, and no code path refuses "
+          + "an action because the rank is too low. A floor that is never checked is a label." } };
     }
 
     case "VERIFY_REQUEST": {

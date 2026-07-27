@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.743-2026-07-26";
+const BUILD = "aura-core-v4.9.744-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -18704,10 +18704,35 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           const resolved = rows.filter((r) => r.outcome === "hit" || r.outcome === "miss");
           const hit = resolved.filter((r) => r.outcome === "hit").length;
           const unsettleable = rows.filter((r) => r.outcome === "unsettleable").length;
+          // ══ CALIBRATION, NOT ACCURACY (v4.9.744) ═══════════════════════════════════════════
+          // Four seats independently said a raw accuracy rate is the gameable number: only ever
+          // claim certainties and it goes to 1.0 while meaning nothing. BRIER SCORE is not gameable
+          // that way - it is the mean squared error between stated confidence and outcome, so
+          // claiming 0.95 and being right 60% of the time scores WORSE than claiming 0.6 and being
+          // right 60%. Lower is better; 0.25 is what you get by saying 0.5 to everything.
+          // And the independent score EXCLUDES self-settled claims entirely, because a claim about
+          // herself settled by herself is not evidence about the world however often it is right.
+          const indep = resolved.filter((r) => r.settler_class === "external");
+          const indepHit = indep.filter((r) => r.outcome === "hit").length;
+          const brier = (set) => set.length
+            ? +(set.reduce((a2, r) => { const c = typeof r.confidence === "number" ? r.confidence : 0.5;
+                const o = r.outcome === "hit" ? 1 : 0; return a2 + (c - o) * (c - o); }, 0) / set.length).toFixed(4)
+            : null;
           return { cmd: "PREDICT", payload: { ok: true,
             committed: rows.length, resolved: resolved.length, open: rows.filter((r) => r.outcome === "open").length,
             hit, miss: resolved.length - hit, unsettleable,
-            accuracy: resolved.length ? +(hit / resolved.length).toFixed(3) : null,
+            independent: { resolved: indep.length, hit: indepHit,
+              brier: brier(indep),
+              note: "external settlers only - this is the only figure that is evidence about the world" },
+            self_settled_excluded: resolved.filter((r) => r.settler_class === "self").length,
+            unclassified: resolved.filter((r) => r.settler_class !== "self" && r.settler_class !== "external").length,
+            brier_all: brier(resolved),
+            brier_means: "mean squared error of stated confidence vs outcome. LOWER IS BETTER. 0.25 is "
+              + "what saying 0.5 to everything scores. Unlike accuracy it cannot be inflated by only "
+              + "predicting certainties.",
+            accuracy_raw: resolved.length ? +(hit / resolved.length).toFixed(3) : null,
+            accuracy_warning: "raw accuracy is the GAMEABLE number - it goes to 1.0 by only ever claiming "
+              + "things that were already certain. Read independent.brier instead.",
             recent: resolved.slice(-10).map((r) => ({ at: r.at, claim: r.command + " => " + r.expected, outcome: r.outcome, saw: String(r.saw || "").slice(0, 80) })),
             // A miss is only meaningful if the reader can check it. Showing what reality returned
             // beside the claim is what let the first false miss be caught in under a minute.
@@ -18721,7 +18746,14 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
                 + "samples is noise wearing a percentage. Treat it as a record being built, not a measurement."
               : "sample is large enough to read, but accuracy is only as honest as the difficulty of the claims - "
                 + "trivially true predictions inflate it, which is why the claim and the command are stored verbatim.",
-            not_wired_to: "nothing. No edit, promotion or routing decision reads this. Wiring it is a Council question." } };
+            not_wired_to: "NOTHING, and the fifth Council was UNANIMOUS that it should stay that way - not "
+              + "as a temporary state but as the default. Their reasoning: the moment an accuracy figure "
+              + "gates a decision, there is an incentive to shape the figure, and the one signal she cannot "
+              + "corrupt stops being one. A mirror, not a lever. Their stated precondition before the "
+              + "question may even be REOPENED: a human review of at least 200 settled claims with "
+              + "difficulty and base-rate metadata present - which is what confidence and settler_class "
+              + "are for. Four of five also held that a written reflection may influence behaviour ONLY "
+              + "via the full PROPOSE -> VALIDATE (node --check) -> PROMOTE (0%) -> human APPROVE path." } };
         }
 
         // ── OPEN ─────────────────────────────────────────────────────────────────────────────
@@ -18774,6 +18806,38 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         }
 
         // ── COMMIT ───────────────────────────────────────────────────────────────────────────
+        // ══ WHAT THE FIFTH COUNCIL DEMANDED BEFORE ANYTHING MAY EVER READ THIS (v4.9.744) ═══════
+        // Five seats, zero failures, and for the first time they said STOP rather than build next:
+        // UNANIMOUS that this ledger must never become an autonomous control signal. Claude: "leave
+        // it read-only forever - its whole value is being the one signal she can't corrupt. Keep it
+        // a mirror, not a lever." Grok: "an unread ledger is an uncontaminated audit; the first
+        // reader that affects behaviour Goodharts it."
+        // They also named the defect that was already sitting in the first four records: TRIVIALLY
+        // TRUE CLAIMS and SELF-CONTROLLED SETTLERS. Verified against source rather than taken on
+        // trust - `PING` returns BUILD, a constant in this very file, so `PING => aura-core-v4.9.742`
+        // was a claim about herself settled by herself. Fully circular, and nothing recorded that.
+        // THEIR PREREQUISITE, and the only thing built here: explicit DIFFICULTY and BASE-RATE
+        // metadata on every record, before volume accumulates. This is a one-way door - 200
+        // predictions logged without confidence cannot be calibrated retroactively, exactly like
+        // origin tagging on ingested facts.
+        //   confidence: a probability, so BRIER SCORE (calibration) is computable. Accuracy alone is
+        //     gameable by only ever claiming certainties; calibration is not, because saying 0.95 and
+        //     being right 60% of the time scores worse than saying 0.6 and being right 60%.
+        //   settler_class: self | external | unclassified. NOT a guess - a command is only `external`
+        //     if it is on the declared list of commands that reach a third party. Anything unproven
+        //     is `unclassified`, never optimistically `external`, because claiming independence that
+        //     was not verified is the precise error this whole system keeps removing.
+        const SELF_SETTLED = ["PING","SHOW_BUILD","WHERE","STAT","HELP","NORTHSTAR","TODO","HOW",
+                              "GETKV","LISTKV","VERSION","WHOAMI","PREDICT","AURA_READ_SELF"];
+        const EXTERNAL_SETTLED = ["SPACESHIP_STATUS","DOMAIN_STATUS","WORLD_MAP","CF_API","SERVICE_STATUS",
+                                  "FEEDS","NEWS_QUERY","OIL_PRICE","MARINE_WX","FETCH_PLACES","WEB_SEARCH",
+                                  "AIS_QUERY","STORM_REPORTS","VERIFY","AIMARGIN"];
+        const classifySettler = (cmd) => {
+          const head = String(cmd).trim().split(/\s+/)[0].toUpperCase();
+          if (SELF_SETTLED.includes(head)) return "self";
+          if (EXTERNAL_SETTLED.includes(head)) return "external";
+          return "unclassified";
+        };
         const m = pRest.match(/^(\d+)([mhd])\s+(.+?)\s*=>\s*(.+)$/i);
         if (!m) return { cmd: "PREDICT", payload: { ok: false,
           error: "Usage: PREDICT <horizon> <command> => <expected>   |  PREDICT settle | score | open",
@@ -18786,12 +18850,27 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         const command = m[3].trim();
         const expected = m[4].trim();
         const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        // confidence rides as a trailing "@0.8" on the expected value, optional, default 0.5 -
+        // deliberately NOT 1.0: an unstated confidence is not certainty, it is an unstated confidence.
+        let conf = 0.5, expClean = expected;
+        const cm = expected.match(/^(.*?)\s*@\s*(0?\.\d+|1(?:\.0+)?)$/);
+        if (cm) { expClean = cm[1].trim(); conf = parseFloat(cm[2]); }
+        const settlerClass = classifySettler(command);
         const rec = { id, at: new Date().toISOString(), due: new Date(Date.now() + ms).toISOString(),
-                      command, expected, outcome: "open", saw: null, settled_at: null };
+                      command, expected: expClean, confidence: conf, settler_class: settlerClass,
+                      outcome: "open", saw: null, settled_at: null };
         try { await KV.put(env, pKey(id), JSON.stringify(rec), { expirationTtl: 400 * 24 * 3600 }); } catch {}
         const ix = await loadIndex(); ix.push(id); await saveIndex(ix);
         return { cmd: "PREDICT", payload: { ok: true, id, committed: rec.at, due: rec.due,
-          claim: command + " => " + expected,
+          claim: command + " => " + expClean, confidence: conf, settler_class: settlerClass,
+          settler_warning: settlerClass === "self"
+            ? "SELF-SETTLED: this command answers from her own source, config or KV, so the claim is "
+              + "about herself and settled by herself. It is recorded, but it is NOT evidence about the "
+              + "world and is excluded from the independent score."
+            : settlerClass === "unclassified"
+              ? "UNCLASSIFIED settler - not on the declared external list, so independence is unproven. "
+                + "Counted separately rather than assumed independent."
+              : null,
           note: "committed BEFORE the outcome exists. PREDICT settle after the deadline; the command runs "
               + "and reality answers. Nothing reads this score - accumulating the record is the whole job for now." } };
       }

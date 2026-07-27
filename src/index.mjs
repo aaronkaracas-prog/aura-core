@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.766-2026-07-27";
+const BUILD = "aura-core-v4.9.767-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -15653,6 +15653,72 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           note: "The graph is clear. The identity pepper is UNTOUCHED - it is a system secret, not a "
               + "person, and regenerating it would orphan any surviving hashed row.",
           next: "PTA_TEST to confirm the machinery still works on an empty graph." } };
+      }
+    }
+
+    case "WRITEBENCH": {
+      // ══ IS THE WRITE PATH SLOW, OR IS IT ROUND TRIPS? (v4.9.767) ═════════════════════════════
+      //
+      // A scale review was unanimous that 86-140ms per single-row insert is the thing to fix before
+      // any architectural fork, and four of five called it overhead rather than a database limit.
+      // They are probably right and I helped hide it: build time went 78s -> 126s between two runs
+      // because I had ADDED a read-back verification per edge, tripling the round trips, and then
+      // read the result as a property of the store.
+      //
+      // MEASURE, DO NOT REASON. This times the same N inserts three ways:
+      //   sequential  - one await per row, which is what every write in this codebase does today
+      //   batched     - db.batch([...]), ONE round trip for many statements. Used ZERO times in
+      //                 26,000 lines, which is the actual finding.
+      //   parallel    - Promise.all of individual runs, to separate "round trip latency" from
+      //                 "database throughput". If parallel is much faster than sequential, the cost
+      //                 is waiting, not writing - and batching is the fix rather than sharding.
+      // Self-cleaning. Bounded.
+      if (!isOp) return { cmd: "WRITEBENCH", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const db = env.AURA_MEMORY;
+        const n = Math.min(Math.max(parseInt(args[0] || "60", 10) || 60, 10), 200);
+        const tag = "wb" + Date.now().toString(36);
+        const mk = (i, mode) => ({ id: "pta_" + tag + mode + i, key: "bench:" + tag + ":" + mode + ":" + i });
+        const iso = new Date().toISOString();
+        const SQL = "INSERT INTO pta_entities (id, type, identity_key, name, created_at, updated_at) VALUES (?, 'person', ?, ?, ?, ?)";
+        const out = {};
+        try {
+          // 1. SEQUENTIAL - today's shape
+          let t = Date.now();
+          for (let i = 0; i < n; i++) { const r = mk(i, "s"); await db.prepare(SQL).bind(r.id, r.key, "bench", iso, iso).run(); }
+          out.sequential = { total_ms: Date.now() - t, per_row_ms: +((Date.now() - t) / n).toFixed(1) };
+
+          // 2. BATCHED - one round trip per chunk
+          t = Date.now();
+          for (let c = 0; c < n; c += 50) {
+            const stmts = [];
+            for (let i = c; i < Math.min(c + 50, n); i++) { const r = mk(i, "b"); stmts.push(db.prepare(SQL).bind(r.id, r.key, "bench", iso, iso)); }
+            await db.batch(stmts);
+          }
+          out.batched = { total_ms: Date.now() - t, per_row_ms: +((Date.now() - t) / n).toFixed(1), chunk: 50 };
+
+          // 3. PARALLEL - separates latency from throughput
+          t = Date.now();
+          await Promise.all(Array.from({ length: n }, (_, i) => {
+            const r = mk(i, "p"); return db.prepare(SQL).bind(r.id, r.key, "bench", iso, iso).run();
+          }));
+          out.parallel = { total_ms: Date.now() - t, per_row_ms: +((Date.now() - t) / n).toFixed(1) };
+        } catch (e) {
+          out.error = String((e && e.message) || e).slice(0, 200);
+        } finally {
+          try { await db.prepare("DELETE FROM pta_entities WHERE identity_key LIKE ?").bind("bench:" + tag + ":%").run(); } catch {}
+        }
+        const seq = (out.sequential && out.sequential.per_row_ms) || 0;
+        const bat = (out.batched && out.batched.per_row_ms) || 0;
+        return { cmd: "WRITEBENCH", payload: { ok: !out.error, rows: n, ...out,
+          speedup: (seq && bat) ? +(seq / bat).toFixed(1) + "x faster batched" : null,
+          read_this: (seq && bat && seq / bat > 3)
+            ? "THE COST IS ROUND TRIPS, NOT THE DATABASE. Batching is the fix and it is a platform "
+              + "primitive this codebase uses ZERO times in 26,000 lines. Sharding would not have helped."
+            : "Batching did not help much, which points at the write itself rather than the wait - "
+              + "that would be the case for sharding or a different store.",
+          honest_limit: "One run on one worker instance. Latency to D1 varies by colo and by cold start, "
+            + "and this codebase has already been burned once by trusting a single timing sample." } };
       }
     }
 

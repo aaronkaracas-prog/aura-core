@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.765-2026-07-27";
+const BUILD = "aura-core-v4.9.766-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2110,7 +2110,16 @@ async function ptaCan(env, actorId, capability, subjectId) {
     if (actorId === subjectId) return { allowed: true, reason: "an entity may always act on itself", via_edge: null };
     const db = env.AURA_MEMORY;
     const rows = await db.prepare(
-      "SELECT id, state, permission, edge_type FROM pta_edges WHERE from_id = ? AND to_id = ? ORDER BY created_at DESC"
+      // ══ via_edge_id WAS NOT IN THIS SELECT (fixed v4.9.766) ═══════════════════════════════════
+      // The upward lineage check read `e.via_edge_id` from a row that never contained it. undefined
+      // cursor -> the while loop never ran -> every grant reported "no lineage, it is a root grant"
+      // -> ALLOWED. The revocation check had never worked, not once, and it announced its own
+      // correctness while doing so.
+      // Two rounds went into hunting this as a broken test fixture. What settled it was asserting the
+      // fixture instead of arguing about it: once the tree was PROVEN linked, the null could only be
+      // coming from the reader. THE LESSON IS THE SAME ONE AS THE LEDGER'S cache_write COLUMN -
+      // written, present, and absent from the SELECT. When a value reads empty, check that it was asked for.
+      "SELECT id, state, permission, edge_type, via_edge_id FROM pta_edges WHERE from_id = ? AND to_id = ? ORDER BY created_at DESC"
     ).bind(subjectId, actorId).all();
     const edges = (rows && rows.results) || [];
     if (!edges.length) return { allowed: false, reason: "no edge from the subject to the actor - nothing was ever granted", via_edge: null };

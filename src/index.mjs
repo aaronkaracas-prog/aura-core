@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.760-2026-07-27";
+const BUILD = "aura-core-v4.9.761-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -15517,6 +15517,80 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
     }
 
+    case "PTA_WIPE": {
+      // ══ CLEAR THE GRAPH BEFORE REAL PEOPLE ARRIVE ════════════════════════════════════════════
+      // Every PTA in the table today is test residue - onboarding experiments, demo rows, Council
+      // scenarios, harness leftovers. Aaron: "it's all just dirt in our system." Dirt in an identity
+      // graph is worse than dirt anywhere else, because a stale row looks exactly like a person: it
+      // has a contact, a chain, and edges, and nothing about it announces that it was never real.
+      //
+      // DESTRUCTIVE AND IRREVERSIBLE, so it demands the word out loud. `PTA_WIPE` alone reports what
+      // it WOULD remove and removes nothing - a dry run is the default because the alternative is a
+      // typo that deletes an identity graph.
+      //   PTA_WIPE               - count and sample what would go
+      //   PTA_WIPE CONFIRM       - actually remove it
+      //   PTA_WIPE CONFIRM KEEP <id> [<id>...]  - remove everything EXCEPT these
+      if (!isOp) return { cmd: "PTA_WIPE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const db = env.AURA_MEMORY;
+        const up = rest.toUpperCase();
+        const confirm = /\bCONFIRM\b/.test(up);
+        const keepIds = (rest.match(/\b(pta_[a-f0-9]+|ent_[a-f0-9]+)\b/gi) || []).map((x) => x.toLowerCase());
+        const all = await db.prepare("SELECT id, name, identity_key, created_at FROM pta_entities").all();
+        const rows = (all?.results || []).filter((r) => !keepIds.includes(String(r.id).toLowerCase()));
+        const edgeCount = await db.prepare("SELECT COUNT(*) n FROM pta_edges").first();
+        const histCount = await db.prepare("SELECT COUNT(*) n FROM pta_history").first();
+        if (!confirm) {
+          return { cmd: "PTA_WIPE", payload: { ok: true, dry_run: true,
+            would_remove: { entities: rows.length, edges: (edgeCount && edgeCount.n) || 0, history: (histCount && histCount.n) || 0 },
+            keeping: keepIds.length ? keepIds : "nothing - every entity would go",
+            sample: rows.slice(0, 12).map((r) => ({ id: r.id, name: r.name, created_at: r.created_at })),
+            how: "PTA_WIPE CONFIRM   (or: PTA_WIPE CONFIRM KEEP pta_xxx pta_yyy)",
+            warning: "Irreversible. Chains, edges and history are removed permanently - there is no "
+                   + "revocation-style tombstone here, this is deletion." } };
+        }
+        let ents = 0, edges = 0, hist = 0, kv = 0;
+        try {
+          // History first, then edges, then entities - a child row orphaned by a failure halfway is
+          // harder to reason about than one that simply has not been reached yet.
+          if (!keepIds.length) {
+            const h = await db.prepare("DELETE FROM pta_history").run(); hist = (h && h.meta && h.meta.changes) || 0;
+            const e = await db.prepare("DELETE FROM pta_edges").run(); edges = (e && e.meta && e.meta.changes) || 0;
+            const x = await db.prepare("DELETE FROM pta_entities").run(); ents = (x && x.meta && x.meta.changes) || 0;
+          } else {
+            for (const r of rows) {
+              const ed = await db.prepare("SELECT id FROM pta_edges WHERE from_id = ? OR to_id = ?").bind(r.id, r.id).all();
+              for (const e of (ed?.results || [])) {
+                await db.prepare("DELETE FROM pta_history WHERE edge_id = ?").bind(e.id).run(); hist++;
+                await db.prepare("DELETE FROM pta_edges WHERE id = ?").bind(e.id).run(); edges++;
+              }
+              await db.prepare("DELETE FROM pta_entities WHERE id = ?").bind(r.id).run(); ents++;
+            }
+          }
+          // The KV side of a PTA: state, timeline, invitations, circles. Leaving these behind would
+          // resurrect ghosts - a timeline for an entity that no longer exists.
+          for (const pref of ["pta:state:", "pta:timeline:", "invite:", "invites:pending:", "circle:"]) {
+            let cursor = null;
+            for (let page = 0; page < 20; page++) {
+              const l = await env.AURA_KV.list({ prefix: pref, limit: 1000, cursor: cursor || undefined });
+              for (const k of (l?.keys || [])) { await env.AURA_KV.delete(k.name).catch(() => {}); kv++; }
+              if (!l || l.list_complete || !l.cursor) break;
+              cursor = l.cursor;
+            }
+          }
+        } catch (e) {
+          return { cmd: "PTA_WIPE", payload: { ok: false, error: String((e && e.message) || e).slice(0, 200),
+            removed_so_far: { entities: ents, edges, history: hist, kv_keys: kv },
+            note: "Partial. Re-run PTA_WIPE CONFIRM - it is idempotent." } };
+        }
+        return { cmd: "PTA_WIPE", payload: { ok: true, removed: { entities: ents, edges, history: hist, kv_keys: kv },
+          kept: keepIds.length ? keepIds : "nothing",
+          note: "The graph is clear. The identity pepper is UNTOUCHED - it is a system secret, not a "
+              + "person, and regenerating it would orphan any surviving hashed row.",
+          next: "PTA_TEST to confirm the machinery still works on an empty graph." } };
+      }
+    }
+
     case "PTA_TEST": {
       // ══ DOES PROPAGATION ACTUALLY WORK, END TO END ═══════════════════════════════════════════
       //
@@ -15546,9 +15620,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const madeEntities = [], madeInvites = [];
         const check = (name, expected, actual, pass, why) =>
           checks.push({ check: name, expected, actual, pass: !!pass, ...(why ? { why } : {}) });
+        // ══ THE TEST MUST NOT KNOW HOW IDENTITY IS STORED (fixed v4.9.761) ═══════════════════
+        // It looked entities up with raw SQL on the plaintext contact. The moment identity became
+        // HASHED (v4.9.759) every one of those lookups missed and sixteen checks failed - while the
+        // system was working correctly. A test coupled to the storage format breaks every time the
+        // storage format improves, and worse, it reports the improvement as a regression.
+        // Now it resolves through PTA_ENTITY FIND, the same door everything else uses, which carries
+        // the hash-then-legacy ladder. The test asks the question a caller would ask.
         const run = async (cmd) => {
           try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; }
           catch (e) { return { ok: false, error: String((e && e.message) || e).slice(0, 160) }; }
+        };
+        const findByContact = async (contact) => {
+          const r = await run("PTA_ENTITY FIND " + contact);
+          return (r && r.ok && r.entity) ? r.entity : null;
         };
         try {
           // ── 0. a root PTA: someone who already exists and does the inviting
@@ -15562,13 +15647,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const inv1 = await run('INVITE {"app":"' + tag + '","from":"' + root.entity.id + '","to_contact":"' + c1 + '","to_name":"' + tag + 'hop1","relationship":"friend"}');
           if (inv1.invite_id) madeInvites.push(inv1.invite_id);
           check("invite to a stranger accepted by the system", "ok", inv1.ok ? "ok" : JSON.stringify(inv1).slice(0, 120), !!inv1.ok);
-          const preBirth = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(c1).first();
+          const preBirth = await findByContact(c1);
           check("NOTHING is created before consent", "no entity", preBirth ? "an entity exists: " + preBirth.id : "no entity", !preBirth,
             "the invite half must create nothing - that is what makes bulk invites inert");
 
           // ── 2. ACCEPTANCE IS BIRTH
           const acc1 = await run("ACCEPT " + inv1.invite_id);
-          const born1 = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(c1).first();
+          const born1 = await findByContact(c1);
           if (born1) madeEntities.push(born1.id);
           check("acceptance mints the person", "an entity now exists", born1 ? born1.id : "none", !!born1);
           const e1 = await db.prepare("SELECT id, state, via_edge_id FROM pta_edges WHERE from_id = ? AND to_id = ? ORDER BY created_at DESC").bind(root.entity.id, born1 ? born1.id : "").first();
@@ -15583,7 +15668,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const inv2 = await run('INVITE {"app":"' + tag + '","from":"' + (born1 ? born1.id : "") + '","to_contact":"' + c2 + '","to_name":"' + tag + 'hop2","relationship":"friend","via_edge_id":"' + (e1 ? e1.id : "") + '"}');
           if (inv2.invite_id) madeInvites.push(inv2.invite_id);
           await run("ACCEPT " + inv2.invite_id);
-          const born2 = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(c2).first();
+          const born2 = await findByContact(c2);
           if (born2) madeEntities.push(born2.id);
           const e2 = await db.prepare("SELECT id, state, via_edge_id FROM pta_edges WHERE from_id = ? AND to_id = ? ORDER BY created_at DESC").bind(born1 ? born1.id : "", born2 ? born2.id : "").first();
           check("hop two was born", "an entity", born2 ? born2.id : "none", !!born2);
@@ -15599,7 +15684,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const inv2b = await run('INVITE {"app":"' + tag + '","from":"' + (born2 ? born2.id : "") + '","to_contact":"' + c2b + '","to_name":"' + tag + 'hop3","relationship":"friend","via_edge_id":"' + (e2 ? e2.id : "") + '"}');
           if (inv2b.invite_id) madeInvites.push(inv2b.invite_id);
           await run("ACCEPT " + inv2b.invite_id);
-          const born3 = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(c2b).first();
+          const born3 = await findByContact(c2b);
           if (born3) madeEntities.push(born3.id);
           const e3 = await db.prepare("SELECT id, state, via_edge_id FROM pta_edges WHERE from_id = ? AND to_id = ? ORDER BY created_at DESC").bind(born2 ? born2.id : "", born3 ? born3.id : "").first();
           check("hop three was born", "an entity", born3 ? born3.id : "none", !!born3);
@@ -15645,7 +15730,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const fc = "phone:+1555" + String(Date.now() + 20 + i).slice(-7);
             const fi = await run('INVITE {"app":"' + tag + '","from":"' + root.entity.id + '","to_contact":"' + fc + '","to_name":"' + tag + 'fan' + i + '","relationship":"fan","origin_id":"' + originMoment + '"}');
             if (fi.invite_id) { madeInvites.push(fi.invite_id); await run("ACCEPT " + fi.invite_id); }
-            const fe = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(fc).first();
+            const fe = await findByContact(fc);
             if (fe) { madeEntities.push(fe.id); fanIds.push(fe.id); }
           }
           const tree = await db.prepare("SELECT COUNT(*) n FROM pta_edges WHERE origin_id = ?").bind(originMoment).first();
@@ -15665,7 +15750,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // path one: dRoot -> target
           const dInv1 = await run('INVITE {"app":"' + tag + '","from":"' + dRoot.entity.id + '","to_contact":"' + dcContact + '","to_name":"' + tag + 'diamond"}');
           if (dInv1.invite_id) { madeInvites.push(dInv1.invite_id); await run("ACCEPT " + dInv1.invite_id); }
-          const dTarget = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(dcContact).first();
+          const dTarget = await findByContact(dcContact);
           if (dTarget) madeEntities.push(dTarget.id);
           const dPath1 = await db.prepare("SELECT id FROM pta_edges WHERE from_id = ? AND to_id = ?").bind(dRoot.entity.id, dTarget ? dTarget.id : "").first();
           // path two: root -> the SAME person, independent lineage
@@ -15717,7 +15802,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const c3 = "phone:+1555" + String(Date.now() + 3).slice(-7);
           const inv3 = await run('INVITE {"app":"' + tag + '","from":"' + root.entity.id + '","to_contact":"' + c3 + '","to_name":"' + tag + 'declined"}');
           if (inv3.invite_id) madeInvites.push(inv3.invite_id);
-          const declined = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(c3).first();
+          const declined = await findByContact(c3);
           check("an unaccepted invite creates nobody", "no entity", declined ? declined.id : "no entity", !declined,
             "declining must cost the decliner nothing - no row, no trace");
 

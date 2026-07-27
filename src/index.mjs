@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.746-2026-07-27";
+const BUILD = "aura-core-v4.9.747-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -14877,14 +14877,51 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (idMatch) identityKey = idMatch[1];
         const metaMatch = restStr.match(/meta:({.*})/);
         if (metaMatch) try { metadata = metaMatch[1]; JSON.parse(metadata); } catch { return { cmd: "PTA_ENTITY", payload: { ok: false, error: "Invalid meta JSON" } }; }
-        // Dedup: if identity_key exists, return existing
+        // ══ ONE HUMAN, ONE ENTITY — ENFORCED BY THE DATABASE (v4.9.747) ═══════════════════════
+        // A five-seat architectural review found this and it verified against the schema: there was
+        // NO UNIQUE CONSTRAINT on identity_key. Dedup was a SELECT-then-INSERT in application code,
+        // which is read-modify-write — the same race class as the ledger lost-update found earlier
+        // today. Two concurrent arrivals on the same phone created TWO entities, and "one entity,
+        // one chain, birth to death" silently became false. Silent, and unmergeable afterwards:
+        // merging two chains would grant one person's contacts access to the other's history.
+        // A PARTIAL index so NULL identity_key (objects, moments, un-anchored entities) stays legal.
+        try {
+          await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_pta_entities_identity ON pta_entities(identity_key) WHERE identity_key IS NOT NULL").run();
+        } catch (e) {
+          // Index creation fails ONLY if duplicates already exist. Say which, rather than swallowing:
+          // an un-enforceable constraint is worth knowing about, and the duplicates need a human.
+          try {
+            const dup = await db.prepare("SELECT identity_key, COUNT(*) n FROM pta_entities WHERE identity_key IS NOT NULL GROUP BY identity_key HAVING n > 1").all();
+            if (dup && dup.results && dup.results.length) {
+              return { cmd: "PTA_ENTITY", payload: { ok: false, error: "DUPLICATE_IDENTITIES",
+                duplicates: dup.results,
+                why: "identity_key already has duplicate rows, so the uniqueness constraint cannot be "
+                   + "applied. Each of these is one human or thing split across two chains. They must be "
+                   + "resolved deliberately - merging is not automatic because it would grant one side's "
+                   + "relationships access to the other side's history." } };
+            }
+          } catch {}
+        }
         if (identityKey) {
           const existing = await db.prepare("SELECT * FROM pta_entities WHERE identity_key = ?").bind(identityKey).first();
           if (existing) return { cmd: "PTA_ENTITY", payload: { ok: true, mode: "existing", entity: existing } };
         }
         const id = ptaId();
-        await db.prepare("INSERT INTO pta_entities (id, type, identity_key, name, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-          .bind(id, eType, identityKey, eName, metadata, now, now).run();
+        try {
+          await db.prepare("INSERT INTO pta_entities (id, type, identity_key, name, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+            .bind(id, eType, identityKey, eName, metadata, now, now).run();
+        } catch (e) {
+          // THE RACE, now caught instead of duplicating: another request inserted the same identity
+          // between our SELECT and our INSERT. The index rejected us, which is correct - so re-read
+          // and return THEIR row. The loser of the race gets the winner's entity, which is the whole
+          // point. Only re-raise if it was not a uniqueness collision.
+          const other = identityKey
+            ? await db.prepare("SELECT * FROM pta_entities WHERE identity_key = ?").bind(identityKey).first()
+            : null;
+          if (other) return { cmd: "PTA_ENTITY", payload: { ok: true, mode: "existing", entity: other,
+            note: "concurrent creation resolved to the existing entity - the uniqueness index caught a race" } };
+          return { cmd: "PTA_ENTITY", payload: { ok: false, error: String((e && e.message) || e).slice(0, 200) } };
+        }
         const created = await db.prepare("SELECT * FROM pta_entities WHERE id = ?").bind(id).first();
         return { cmd: "PTA_ENTITY", payload: { ok: true, mode: "created", entity: created } };
       }
@@ -14937,7 +14974,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // PTA_GRANT <from_id> <to_id> [json context with: edge_type, permission, relationship, impact]
       // edge_type: grant (default), share, create, introduce, participate, own
       // permission: {can_contact, can_view, can_share, ...}
-      // relationship: {how_met, who_introduced, context, trust_level (1-10)}
+      // relationship: {how_met, who_introduced, context}
+      // trust_level (1-10) REMOVED v4.9.747: it appeared once in this codebase - in this comment.
+      // Nothing wrote it and nothing read it, so it was a documented field that did not exist. The
+      // review was blunt about it: "either it means something (define it) or delete it", and a
+      // scalar trust score is farmable the moment anything gates on it. Trust here is a VIEW over
+      // edges - who vouched, through which hop - not a number stored on one.
       // impact: {notes: [...]}
       if (!isOp) return { cmd: "PTA_GRANT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const db = env.AURA_MEMORY;
@@ -23337,6 +23379,27 @@ async function northStar(env, rest) {
 //   HOW            -> every door
 // Matched on intent words, so "picture", "photo", "generate an image" all land in the same place.
 const AURA_DOORS = [
+  // ══ THE DOOR THAT WAS MISSING, AND ITS ABSENCE COST A DUPLICATE (v4.9.747) ══════════════════
+  // ~40 identity/consent commands grew across two naming conventions with no canonical map, and a
+  // fifth birth path was built and removed because of it. Every seat of the architectural review
+  // named the command surface as the real defect - "the duplicate birth path wasn't an accident,
+  // it was inevitable." This is the fix: one door per act, so the sixth never gets built.
+  { id: "identity", words: ["pta", "identity", "person", "invite", "consent", "birth", "onboard",
+                            "entity", "relationship", "edge", "grant", "revoke", "propagate", "touch"],
+    door: "One act, one door: OFFER to a stranger -> INVITE (creates NOTHING until they accept) · "
+        + "BIRTH on acceptance -> ACCEPT · BIRTH from a physical tap -> MOMENT (stamps place, connector, "
+        + "time of day, surroundings) · WAKE a dormant identity when the person themselves arrives -> "
+        + "APPROACH · SELF-ARRIVAL -> PTA_CREATE (born active, arriving by choice IS consent) · "
+        + "RELATIONSHIP edge -> PTA_GRANT · REVOKE -> PTA_REVOKE (never deletes) · READ one -> "
+        + "PTA_ENTITY GET/FIND/LIST · READ relationships -> PTA_STATUS · GROUP / mass touch -> PTA_INTENT",
+    routes_through: "D1 tables pta_entities / pta_edges / pta_history. identity_key is UNIQUE, so one "
+        + "verified contact is one entity. Edges carry via_edge_id (the hop) and origin_id (the shared "
+        + "moment) so the propagation tree can be walked.",
+    holds: "consent-first birth (nothing exists before a yes), append-only history that revocation never "
+        + "deletes, and the lineage that makes pay-it-forward and mass-touch readable.",
+    never: "NEVER add a new birth path. There are four and they cover every case: offered, tapped, "
+        + "dormant-then-arrived, self-created. A fifth was built on 2026-07-27 and removed the same day "
+        + "because INVITE already did it, and did it better - INVITE leaves no row at all on decline." },
   { id: "image", words: ["image", "picture", "photo", "showit", "generate image", "render", "art"],
     door: "POST /showit?prompt=...",
     routes_through: "AIMARGIN image policy (config:policy:image) -> resolves provider + model + quality",

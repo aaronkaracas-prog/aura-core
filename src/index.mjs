@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.742-2026-07-26";
+const BUILD = "aura-core-v4.9.743-2026-07-26";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -18709,6 +18709,11 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
             hit, miss: resolved.length - hit, unsettleable,
             accuracy: resolved.length ? +(hit / resolved.length).toFixed(3) : null,
             recent: resolved.slice(-10).map((r) => ({ at: r.at, claim: r.command + " => " + r.expected, outcome: r.outcome, saw: String(r.saw || "").slice(0, 80) })),
+            // A miss is only meaningful if the reader can check it. Showing what reality returned
+            // beside the claim is what let the first false miss be caught in under a minute.
+            read_the_saw: "every resolved row carries what the settling command actually returned. If a "
+              + "miss looks wrong, compare `claim` against `saw` before believing the score - the first "
+              + "live miss was a quoting artifact, not a bad prediction.",
             what_this_is: "the fraction of claims about the world that turned out true. She commits before "
               + "the fact and a command settles it from outside her, so she cannot write this number.",
             honest_limit: resolved.length < 20
@@ -18741,7 +18746,18 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
             try {
               const r = await processCommand(j.command, env, true);
               saw = JSON.stringify((r && r.payload) || r || {});
-              outcome = saw.includes(j.expected) ? "hit" : "miss";
+              // ══ A BRITTLE MATCH MANUFACTURES FALSE MISSES (v4.9.743) ═══════════════════════
+              // First live settle produced one: the claim `SPACESHIP_STATUS => unsynced:0` was
+              // CORRECT - reality returned "unsynced":0 - and scored a MISS, because the shell had
+              // stripped the quotes and a literal includes() could not see `"unsynced":0` inside
+              // `unsynced:0`. A fitness signal that reports failure when the claim was right is
+              // worse than no signal: it teaches the wrong lesson with confidence.
+              // So compare on a NORMALISED form - quotes, spaces and commas removed from both sides,
+              // case-folded - which survives shell quoting and JSON punctuation without becoming a
+              // fuzzy match. `unsynced:0` still cannot match `unsynced:7`. Substring is retained
+              // deliberately: the claim is "this appears in the answer", not "this IS the answer".
+              const _norm = (x) => String(x).toLowerCase().replace(/["'\s,]/g, "");
+              outcome = (saw.includes(j.expected) || _norm(saw).includes(_norm(j.expected))) ? "hit" : "miss";
             } catch (e) {
               // An unrunnable command is NOT a miss. A miss means the world disagreed; this means we
               // never asked it. Collapsing the two would let a broken settler look like a bad

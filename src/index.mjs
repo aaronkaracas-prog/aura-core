@@ -29,7 +29,7 @@
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
 import { WorkerEntrypoint } from "cloudflare:workers";
 
-const BUILD = "aura-core-v4.9.771-2026-07-27";
+const BUILD = "aura-core-v4.9.772-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -26576,12 +26576,41 @@ async function captureAisHistory(env) {
 //   3. No method returns a secret, a credential, or another entity's data without a ptaCan check.
 //   4. Operator-only capability NEVER appears here. If it needs isOp, it does not belong on this surface.
 export class PublicEntry extends WorkerEntrypoint {
+  // ══ WHO IS ASKING — THE SESSION IS THE PROOF, NOT AN OPERATOR TOKEN (v4.9.772) ═══════════════
+  //
+  // The first live call through the doorway returned OPERATOR_REQUIRED, and that failure was the
+  // most useful result of the whole build: it revealed that the ONLY identity this system could
+  // prove was "holds the admin token" - which is exactly one person. A stranger handing their PTA
+  // to another stranger has no operator anywhere in the picture.
+  //
+  // The authority to invite comes from BEING the `from` entity. That proof already exists and was
+  // nearly rebuilt: an `aura_session` cookie keys session:<id> in KV holding {pta, name, identity},
+  // written by the OAuth callbacks and the email-OTP flow. So this resolves that session and acts AS
+  // that entity. No new mechanism, and no second source of truth about who someone is.
+  //
+  // THE RULE THIS ENFORCES, and it is the one that matters: **a caller may only act as the entity
+  // their session names.** Passing a `from` that is not your own PTA is refused - otherwise anyone
+  // could invite the world on anyone's behalf, and the consent model would be theatre.
+  async _whoIs(sessionId) {
+    if (typeof sessionId !== "string" || !/^[a-f0-9]{8,128}$/i.test(sessionId)) return null;
+    try {
+      const raw = await this.env.AURA_KV.get("session:" + sessionId);
+      if (!raw) return null;
+      const sess = JSON.parse(raw);
+      return sess && sess.pta ? sess : null;
+    } catch { return null; }
+  }
+
   // ── IDENTITY: the doorway's three verbs ──────────────────────────────────────────────────────
   // Offer a PTA to a contact point. Creates NOTHING about the recipient - that is INVITE's contract
   // and it is what makes bulk invites inert.
-  async ptaInvite(from, toContact, opts) {
+  async ptaInvite(sessionId, toContact, opts) {
     const env = this.env;
-    if (typeof from !== "string" || typeof toContact !== "string") return { ok: false, error: "bad arguments" };
+    const me = await this._whoIs(sessionId);
+    if (!me) return { ok: false, error: "NOT_SIGNED_IN",
+      why: "an invitation is made BY someone. Sign in first - the session is what says which PTA you are." };
+    const from = me.pta;
+    if (typeof toContact !== "string") return { ok: false, error: "bad arguments" };
     if (!/^(phone|email):/i.test(normIdentity(toContact))) return { ok: false, error: "recipient must be a phone or email" };
     const payload = { app: "door", from, to_contact: toContact,
       to_name: (opts && String(opts.name || "").slice(0, 80)) || null,
@@ -26589,12 +26618,21 @@ export class PublicEntry extends WorkerEntrypoint {
       via_edge_id: (opts && opts.via_edge_id) || null,
       origin_id: (opts && opts.origin_id) || null,
       place: (opts && opts.place) || null };
-    const r = await processCommand("INVITE " + JSON.stringify(payload), env, false);
+    // isOp TRUE, and ONLY because the caller has already been proven to BE the from-entity above.
+    // The operator flag here means "this action is authorised", not "an admin asked" - and the
+    // authorisation came from their own session, which is the only thing that makes it honest.
+    // The `from` is taken from the SESSION and never from the request, so a caller cannot invite
+    // on anyone else's behalf no matter what they send.
+    const r = await processCommand("INVITE " + JSON.stringify(payload), env, true);
     return (r && r.payload) || { ok: false };
   }
 
   // Accept an invitation. THE moment a person comes into existence. Their own place is stated here
   // because only they know where they were.
+  // ACCEPT is deliberately NOT session-gated. The whole point is that the person accepting does not
+  // have an account yet - acceptance is what BRINGS THEM INTO EXISTENCE. Requiring a session here
+  // would mean you must already be inside to be let in. The invite_id itself is the credential: it
+  // is unguessable, single-use, and was sent to a contact point only they control.
   async ptaAccept(inviteId, place) {
     const env = this.env;
     if (typeof inviteId !== "string" || !/^inv_[a-f0-9]+$/i.test(inviteId)) return { ok: false, error: "bad invite id" };
@@ -26604,18 +26642,27 @@ export class PublicEntry extends WorkerEntrypoint {
   }
 
   // May this actor do this to this subject? The doorway's only authorization question.
-  async ptaCheck(actor, capability, subject) {
-    if (typeof actor !== "string" || typeof capability !== "string" || typeof subject !== "string") {
+  // Check is asked about YOURSELF against a subject. The actor is the session's PTA, so nobody can
+  // probe what someone else is allowed to do - which is itself an information leak about the graph.
+  async ptaCheck(sessionId, capability, subject) {
+    const me = await this._whoIs(sessionId);
+    if (!me) return { allowed: false, reason: "NOT_SIGNED_IN" };
+    if (typeof capability !== "string" || typeof subject !== "string") {
       return { allowed: false, reason: "bad arguments" };
     }
-    return await ptaCan(this.env, actor, capability, subject);
+    return await ptaCan(this.env, me.pta, capability, subject);
   }
 
   // What can this person reach? What a homescreen needs to render, and never more than Check allows.
-  async ptaList(actor, capability) {
+  // A person may list what THEY can reach, and only that. The actor comes from the session, never
+  // from the request - this previously took an `actor` argument and passed isOp:true, which meant
+  // any caller could enumerate anyone's reachable entities. That was a rule-three violation of this
+  // class's own stated rules, safe only by accident, and exactly the shape that erodes.
+  async ptaList(sessionId, capability) {
     const env = this.env;
-    if (typeof actor !== "string") return { ok: false, error: "bad arguments" };
-    const r = await processCommand("PTA_LIST " + actor + " " + (capability || "view"), env, true);
+    const me = await this._whoIs(sessionId);
+    if (!me) return { ok: false, error: "NOT_SIGNED_IN" };
+    const r = await processCommand("PTA_LIST " + me.pta + " " + (capability || "view"), env, true);
     return (r && r.payload) || { ok: false };
   }
 

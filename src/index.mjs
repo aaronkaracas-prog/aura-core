@@ -27,7 +27,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-const BUILD = "aura-core-v4.9.750-2026-07-27";
+const BUILD = "aura-core-v4.9.751-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -15238,11 +15238,71 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (edge.state === "revoked") return { cmd: "PTA_REVOKE", payload: { ok: true, note: "Already revoked", edge_id: edgeId } };
       const reason = rest.slice(rest.indexOf(edgeId) + edgeId.length).trim() || null;
       const now = new Date().toISOString();
-      await db.prepare("UPDATE pta_edges SET state = 'revoked', updated_at = ? WHERE id = ?").bind(now, edgeId).run();
-      const histId = "hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
-      await db.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-        .bind(histId, edgeId, "revoked", null, JSON.stringify({ reason, previous_state: edge.state }), now).run();
-      return { cmd: "PTA_REVOKE", payload: { ok: true, edge_id: edgeId, state: "revoked", reason } };
+      const hid = () => "hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
+      const revokeOne = async (id, prevState, detail) => {
+        await db.prepare("UPDATE pta_edges SET state = 'revoked', updated_at = ? WHERE id = ?").bind(now, id).run();
+        await db.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+          .bind(hid(), id, "revoked", null, JSON.stringify(detail), now).run();
+      };
+      await revokeOne(edgeId, edge.state, { reason, previous_state: edge.state, cascade_root: true });
+
+      // ══ REVOCATION CASCADES — THE SPEC SAID SO AND THE CODE DID NOT (v4.9.751) ════════════════
+      //
+      // The PTA spec is explicit: "Jimmy revokes Friend -> Friend loses access... If Friend shared
+      // Jimmy to others -> THEIR ACCESS ALSO DIES. The chain breaks upstream." This handler revoked
+      // exactly ONE edge. So Jimmy could cut Jane off and everyone Jane passed him to KEPT their
+      // access - through a link that no longer exists. That is a permission LEAK, not a missing
+      // feature: the person who revoked believes they are cut off and they are not.
+      //
+      // It could not have been built before v4.9.746, because until `via_edge_id` existed there was
+      // no record of who arrived through whom. The lineage column was added for pay-it-forward; this
+      // is the safety half of the same fact, and it is the more important half.
+      //
+      // BREADTH-FIRST with a visited set and a hard ceiling. A cycle in a consent graph is possible
+      // (A introduces B, B later reintroduces A) and an unbounded walk inside a request is how a
+      // revocation becomes a timeout - which would leave the tree HALF revoked, the worst outcome of
+      // the three. Bounded and honest beats unbounded and hopeful.
+      const cascaded = [];
+      let truncated = false;
+      try {
+        const seen = new Set([edgeId]);
+        let frontier = [edgeId];
+        for (let depth = 0; depth < 12 && frontier.length; depth++) {
+          const ph = frontier.map(() => "?").join(",");
+          const kids = await db.prepare(
+            "SELECT id, to_id, state FROM pta_edges WHERE via_edge_id IN (" + ph + ") AND state != 'revoked'"
+          ).bind(...frontier).all();
+          const next = [];
+          for (const k of (kids?.results || [])) {
+            if (seen.has(k.id)) continue;
+            seen.add(k.id);
+            if (cascaded.length >= 500) { truncated = true; break; }
+            await revokeOne(k.id, k.state, { reason, previous_state: k.state, revoked_by_cascade_from: edgeId, depth: depth + 1 });
+            cascaded.push({ edge_id: k.id, to: k.to_id, depth: depth + 1 });
+            next.push(k.id);
+          }
+          if (truncated) break;
+          frontier = next;
+        }
+      } catch (e) {
+        // A cascade that fails silently is worse than one that does not run - the operator would
+        // believe the whole branch was cut. Say it, and say what WAS cut before it stopped.
+        return { cmd: "PTA_REVOKE", payload: { ok: false, error: "CASCADE_INCOMPLETE",
+          root_revoked: edgeId, also_revoked: cascaded,
+          detail: String((e && e.message) || e).slice(0, 200),
+          warning: "The root edge IS revoked but the downstream walk stopped early. Some edges granted "
+                 + "through this one may still be active. Re-run PTA_REVOKE on this edge - it is idempotent." } };
+      }
+      return { cmd: "PTA_REVOKE", payload: { ok: true, edge_id: edgeId, state: "revoked", reason,
+        cascaded: cascaded.length, also_revoked: cascaded, truncated: truncated || undefined,
+        cascade_note: cascaded.length
+          ? "Access granted THROUGH this edge was revoked too - the spec's 'the chain breaks upstream'. "
+            + "Nothing is deleted; every revocation is a row in pta_history."
+          : "no downstream edges came through this one",
+        truncation_warning: truncated
+          ? "CEILING HIT at 500 edges - the branch is only PARTIALLY revoked. Re-run to continue; the "
+            + "command is idempotent and already-revoked edges are skipped."
+          : undefined } };
     }
 
     case "PTA_LOOKUP": {

@@ -36,7 +36,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.793-2026-07-28";
+const BUILD = "aura-core-v4.9.794-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16860,7 +16860,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
           // ── 2. ACCEPTANCE IS BIRTH
           const acc1 = await run("ACCEPT " + inv1.invite_id);
-          const born1 = await findByContact(c1);
+          // ══ TRACK WHAT WE CREATED FROM THE CREATION, NOT FROM A LOOKUP (v4.9.794) ═════════════
+          // 11 rows of debris survive from the runs on 2026-07-27 21:38-21:39 - the ones that failed
+          // when identity became hashed. The cause: `madeEntities` was populated from a LOOKUP, so
+          // when the lookup broke the harness LOST TRACK OF WHAT IT HAD CREATED and cleaned up
+          // nothing. **A self-cleaning test that forgets its own litter the moment something breaks
+          // is not self-cleaning — it is self-cleaning only while nothing is wrong**, which is
+          // exactly when it does not matter.
+          // ACCEPT returns the born id directly. Use that; fall back to the lookup only if it is absent.
+          const born1 = (acc1 && acc1.pta) ? { id: acc1.pta } : await findByContact(c1);
           if (born1) madeEntities.push(born1.id);
           check("acceptance mints the person", "an entity now exists", born1 ? born1.id : "none", !!born1);
           const e1 = await db.prepare("SELECT id, state, via_edge_id FROM pta_edges WHERE from_id = ? AND to_id = ? ORDER BY created_at DESC").bind(root.entity.id, born1 ? born1.id : "").first();
@@ -16874,8 +16882,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const c2 = "phone:+1555" + String(Date.now() + 2).slice(-7);
           const inv2 = await run('INVITE {"app":"' + tag + '","from":"' + (born1 ? born1.id : "") + '","to_contact":"' + c2 + '","to_name":"' + tag + 'hop2","relationship":"friend","via_edge_id":"' + (e1 ? e1.id : "") + '"}');
           if (inv2.invite_id) madeInvites.push(inv2.invite_id);
-          await run("ACCEPT " + inv2.invite_id);
-          const born2 = await findByContact(c2);
+          const acc2 = await run("ACCEPT " + inv2.invite_id);
+          const born2 = (acc2 && acc2.pta) ? { id: acc2.pta } : await findByContact(c2);
           if (born2) madeEntities.push(born2.id);
           const e2 = await db.prepare("SELECT id, state, via_edge_id FROM pta_edges WHERE from_id = ? AND to_id = ? ORDER BY created_at DESC").bind(born1 ? born1.id : "", born2 ? born2.id : "").first();
           check("hop two was born", "an entity", born2 ? born2.id : "none", !!born2);
@@ -16890,8 +16898,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const c2b = "phone:+1555" + String(Date.now() + 9).slice(-7);
           const inv2b = await run('INVITE {"app":"' + tag + '","from":"' + (born2 ? born2.id : "") + '","to_contact":"' + c2b + '","to_name":"' + tag + 'hop3","relationship":"friend","via_edge_id":"' + (e2 ? e2.id : "") + '"}');
           if (inv2b.invite_id) madeInvites.push(inv2b.invite_id);
-          await run("ACCEPT " + inv2b.invite_id);
-          const born3 = await findByContact(c2b);
+          const acc3 = await run("ACCEPT " + inv2b.invite_id);
+          const born3 = (acc3 && acc3.pta) ? { id: acc3.pta } : await findByContact(c2b);
           if (born3) madeEntities.push(born3.id);
           const e3 = await db.prepare("SELECT id, state, via_edge_id FROM pta_edges WHERE from_id = ? AND to_id = ? ORDER BY created_at DESC").bind(born2 ? born2.id : "", born3 ? born3.id : "").first();
           check("hop three was born", "an entity", born3 ? born3.id : "none", !!born3);
@@ -16964,8 +16972,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           for (let i = 0; i < 3; i++) {
             const fc = "phone:+1555" + String(Date.now() + 20 + i).slice(-7);
             const fi = await run('INVITE {"app":"' + tag + '","from":"' + root.entity.id + '","to_contact":"' + fc + '","to_name":"' + tag + 'fan' + i + '","relationship":"fan","origin_id":"' + originMoment + '"}');
-            if (fi.invite_id) { madeInvites.push(fi.invite_id); await run("ACCEPT " + fi.invite_id); }
-            const fe = await findByContact(fc);
+            let fa = null;
+            if (fi.invite_id) { madeInvites.push(fi.invite_id); fa = await run("ACCEPT " + fi.invite_id); }
+            const fe = (fa && fa.pta) ? { id: fa.pta } : await findByContact(fc);
             if (fe) { madeEntities.push(fe.id); fanIds.push(fe.id); }
           }
           const tree = await db.prepare("SELECT COUNT(*) n FROM pta_edges WHERE origin_id = ?").bind(originMoment).first();

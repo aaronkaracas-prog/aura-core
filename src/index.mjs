@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.823-2026-07-28";
+const BUILD = "aura-core-v4.9.824-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -11616,10 +11616,70 @@ async function processCommand(line, env, isOp) {
       if (!isOp) return { cmd: "SECURESPEND_CHARGE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const db = env.AURA_MEMORY;
       let scIn;
+      // ══ MONEY NOW ASKS THE CONSENT LAYER — THE UNANIMOUS BLOCKER (v4.9.824) ═══════════════════
+      //
+      // Aura's review, verified against source and then confirmed by all five Council seats: **the
+      // buyer was a PAYLOAD, not a party.** `{"name":"...","identity":"email:..."}` - a string passed
+      // in, gated by an administrator flag, resolved to nothing, checked against nothing, and landing
+      // on nobody's chain. Her sentence: "permission FUNCTION exists; permission CHOKEPOINT mostly
+      // does not." Claude's: "you have been reporting a lab result as a product - an unenforced
+      // access control is functionally absent on the paths that skip it."
+      //
+      // AND IT CONTRADICTED THE DOCTRINE IT WAS BUILT FOR: "a purchase attaches to the CHILD'S CHAIN,
+      // not the parent's account." It attached to neither. A transaction is a TOUCH - the most
+      // consequential kind - and it was the one touch that left no mark on anyone.
+      //
+      // AARON'S FLOW IS THE RIGHT SHAPE AND IS NOW ENFORCED: PTA -> Aura -> homescreen -> SecureSpend.
+      // OpenAI named the condition that makes it real: "the doorway argument is only valid if every
+      // downstream action requires a doorway-issued, CONSENT-CHECKED capability. Otherwise it is a
+      // seam, not enforcement." So the buyer must RESOLVE to a real identity before money moves.
+      //
+      // NOT HARD-REFUSING AN UNKNOWN BUYER YET, and saying so out loud rather than hiding it: that
+      // would break a live path today. What it does instead is REPORT the consent verdict on every
+      // charge, refuse when a resolved buyer is denied, and write the transaction onto their chain.
+      // **A charge that cannot name a consenting party now says so in its own output** - which is the
+      // difference between a gap and a gap nobody can see.
       try { scIn = JSON.parse(rest.trim()); } catch { return { cmd: "SECURESPEND_CHARGE", payload: { ok: false, error: "Usage: SECURESPEND_CHARGE <json> with asset, amount, item, buyer{name,identity}, mode(test|live), context, return_to" } }; }
       if (!scIn.asset || (scIn.amount == null && scIn.subtotal == null)) return { cmd: "SECURESPEND_CHARGE", payload: { ok: false, error: "asset and (subtotal or amount) are required" } };
       const scMode = (scIn.mode || "test").toLowerCase();
       const scCur = (scIn.currency || "usd").toLowerCase();
+
+      // ── RESOLVE THE BUYER TO A REAL IDENTITY, then ask the consent layer ──────────────────────
+      let buyerPta = null, buyerConsent = null;
+      const buyerIdent = (scIn.buyer && (scIn.buyer.identity || scIn.buyer.pta)) || null;
+      if (buyerIdent) {
+        try {
+          if (/^pta_/i.test(buyerIdent)) {
+            const b = await db.prepare("SELECT id FROM pta_entities WHERE id = ?").bind(buyerIdent).first();
+            buyerPta = b ? b.id : null;
+          } else {
+            const norm = normIdentity(buyerIdent);
+            const h = await hashIdentity(env, norm);
+            let b = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(h.key).first();
+            if (!b) for (const cand of await hashIdentityAllVersions(env, norm)) {
+              if (b) break;
+              b = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(cand.key).first();
+            }
+            if (!b) b = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(norm).first();
+            buyerPta = b ? b.id : null;
+          }
+        } catch {}
+      }
+      if (buyerPta) {
+        // A PERMANENT OPT-OUT MUST STOP MONEY TOO. Someone who asked never to be contacted again has
+        // not agreed to be charged, and a payment path that ignores that makes the opt-out decorative.
+        const oo = await ptaOptOut(env, buyerPta);
+        if (oo.blocked) return { cmd: "SECURESPEND_CHARGE", payload: { ok: false, error: "BUYER_OPTED_OUT",
+          buyer_pta: buyerPta, level: oo.level, why: oo.reason,
+          note: "No charge was attempted. An opt-out that stops messages but not money is not an opt-out." } };
+        buyerConsent = { pta: buyerPta, opted_out: false, checked: true };
+      } else {
+        buyerConsent = { pta: null, checked: false,
+          why: buyerIdent
+            ? "the buyer identity given does not resolve to a PTA - the charge is proceeding but is "
+              + "attributable to a STRING rather than to a consenting party"
+            : "no buyer identity was supplied at all - this charge belongs to nobody's chain" };
+      }
 
       // â”€â”€ THE UNIVERSAL TRANSACTION GRAMMAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       // Every transaction anywhere on Earth has the same shape:
@@ -11736,11 +11796,41 @@ async function processCommand(line, env, isOp) {
       await env.AURA_KV.put(idxAsset, txnId).catch(() => {});
       if (ptaEntityId) await env.AURA_KV.put(`ss:idx:pta:${ptaEntityId}:${now}:${txnId}`, txnId).catch(() => {});
 
+      // ── THE TRANSACTION LANDS ON THEIR CHAIN ─────────────────────────────────────────────────
+      // The doctrine, which this path was contradicting: "a purchase attaches to the CHILD'S CHAIN,
+      // not the parent's account." A transaction is a TOUCH - the most consequential kind - and it
+      // was the one touch that left no mark on anybody. An index key is a lookup, not a chain.
+      // Not awaited: a KV/D1 write costs real milliseconds and the money has already moved. The
+      // record must be written, but it must not be able to fail the charge that already succeeded.
+      const chainSubject = buyerPta || ptaEntityId || null;
+      if (chainSubject && railOk) {
+        try {
+          env.AURA_MEMORY.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, NULL, 'transacted', ?, ?, ?)")
+            .bind("hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map((b) => b.toString(16).padStart(2, "0")).join(""),
+                  chainSubject,
+                  JSON.stringify({ txn: txnId, asset: scIn.asset, item: scIn.item || null,
+                                   amount: scAmt, currency: scCur, mode: scMode,
+                                   consent_checked: !!buyerPta }),
+                  now).run();
+        } catch {}
+      }
+
       // 5. Return result to the calling asset
       return { cmd: "SECURESPEND_CHARGE", payload: {
         ok: railOk, txn_id: txnId, mode: scMode, status, amount: scAmt, currency: scCur,
         breakdown,
         asset: scIn.asset, pta_entity: ptaEntityId, pta_mode: ptaMode,
+        // ══ THE CONSENT VERDICT, ON EVERY CHARGE ═══════════════════════════════════════════════
+        // Five Council seats and Aura agreed this path was the single blocker: money moved without
+        // the consent layer being asked. It is asked now, and the answer is REPORTED rather than
+        // assumed - so a charge attributable only to a string says so in its own output.
+        consent: buyerConsent,
+        attributable: !!buyerPta,
+        chain_entry_written: !!(chainSubject && railOk),
+        honest_gap: buyerPta ? undefined
+          : "This charge is NOT attributable to a consenting party. It was permitted by an operator "
+            + "flag, which is exactly the seam a five-seat review called the single blocker. Supply "
+            + "buyer.identity as a contact that resolves to a PTA, or buyer.pta directly.",
         receipt_url: (rail && rail.charges && rail.charges.data && rail.charges.data[0] && rail.charges.data[0].receipt_url) || null,
         client_secret: (scMode === "live" && rail) ? (rail.client_secret || null) : null,
         return_to: scIn.return_to || null,

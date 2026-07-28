@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.806-2026-07-28";
+const BUILD = "aura-core-v4.9.807-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -1733,10 +1733,37 @@ const SECRET_BINDING = {
   // github_token: "SS_GITHUB",
   // operator:   "SS_OPERATOR",
 };
+// ══ SECRETS WERE FETCHED FROM SCRATCH ON EVERY SINGLE CALL (v4.9.807) ════════════════════════════
+//
+// MEASURED, not suspected: one INVITE took 2,391ms. `deliverInvitation` makes three getSecret calls,
+// and getSecret hit KV EVERY TIME - trying each name in a family in turn, so a family with two
+// aliases is two reads, and a MISSING secret is the worst case because it exhausts every name before
+// returning null. That is four to six KV round trips per invitation, for credentials that do not
+// change. And getSecret is called by nearly every command in this file, so the cost was everywhere.
+//
+// SIXTY SECONDS, AND THE REASON FOR THAT NUMBER: long enough that a burst of work pays the lookup
+// once, short enough that a ROTATED secret is picked up within a minute without a deploy. A cache
+// with no expiry would mean rotating a credential silently fails to take effect until an isolate
+// recycles - which is the kind of quiet wrongness this codebase keeps finding, and it would be
+// especially bad for the one thing rotation exists for: a leaked key.
+// NEGATIVE RESULTS ARE CACHED TOO, deliberately. A missing secret is the EXPENSIVE case - it tries
+// every alias and finds nothing - and it is also the common case during setup.
+const _secretCache = new Map();
+const SECRET_TTL_MS = 60000;
+
 async function getSecret(env, name) {
   if (!env || !name) return null;
   const bare = String(name).replace(/^secret:/i, "");
   const fam = SECRET_ALIAS[bare] || bare;
+  const hit = _secretCache.get(fam);
+  if (hit && Date.now() - hit.at < SECRET_TTL_MS) return hit.v;
+  const v = await _getSecretUncached(env, fam);
+  _secretCache.set(fam, { v, at: Date.now() });
+  return v;
+}
+
+async function _getSecretUncached(env, fam) {
+  if (!env || !fam) return null;
   // 1. the encrypted store, if this family has been bound. Access is asynchronous by design.
   const binding = SECRET_BINDING[fam];
   if (binding && env[binding] && typeof env[binding].get === "function") {

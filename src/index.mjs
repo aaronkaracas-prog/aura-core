@@ -36,7 +36,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.782-2026-07-28";
+const BUILD = "aura-core-v4.9.783-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2169,6 +2169,47 @@ const PTA_REWRITES = ["union", "via"];
 // can outlive is not a revocation. Whoever adds the cache owns adding the token with it.
 
 
+
+// ══ THE GATE — WHERE THE DECIDER ACTUALLY DECIDES (v4.9.783) ═════════════════════════════════════
+//
+// A five-seat review was unanimous and blunt: "a tested decider that doesn't decide is not deferred,
+// it's theater." `ptaCan` was correct, tested, and called by nothing that could refuse - every command
+// reading another entity's data was operator-gated, so the decider sat beside the door instead of in it.
+//
+// THEIR FIX, and it is better than mine was: **make operator bypass an EXPLICIT PERMISSION rather
+// than an ABSENCE OF CHECKING.** The difference is not cosmetic:
+//   - An absence is invisible. Nobody can count it, nobody can audit it, and the day a non-operator
+//     path reaches that code the check simply is not there.
+//   - An explicit permission runs the same gate, returns a reason, and is RECORDED. The code path is
+//     exercised on every call, so it cannot rot unnoticed, and "how often did the operator bypass
+//     consent this week" becomes a question with an answer.
+//
+// This is the ONE place any caller asks whether an action is allowed. The operator passes isOp; the
+// doorway passes the PTA its session names. Same function, same rules, different authority - and the
+// authority is always stated rather than assumed.
+async function ptaGate(env, capability, subjectId, ctx) {
+  const c = ctx || {};
+  if (c.isOp) {
+    // Recorded, bounded, and deliberately cheap. A bypass nobody can count is a bypass nobody governs.
+    try {
+      const day = new Date().toISOString().slice(0, 10);
+      const key = "pta:bypass:" + day;
+      const raw = await env.AURA_KV.get(key);
+      const log = raw ? JSON.parse(raw) : { day, count: 0, recent: [] };
+      log.count += 1;
+      log.recent.push({ at: new Date().toISOString(), capability, subject: subjectId });
+      if (log.recent.length > 50) log.recent = log.recent.slice(-50);
+      await env.AURA_KV.put(key, JSON.stringify(log), { expirationTtl: 90 * 24 * 3600 });
+    } catch {}
+    return { allowed: true, bypass: true,
+      reason: "operator bypass - an explicit permission, not an absence of checking. Recorded at "
+            + "pta:bypass:<day> so it is countable and auditable." };
+  }
+  if (!c.actorPta) return { allowed: false,
+    reason: "no identity - the caller is neither the operator nor a session naming a PTA, so there is "
+          + "nobody to check permission FOR" };
+  return await ptaCan(env, c.actorPta, capability, subjectId);
+}
 
 // ══ CRYPTO-SHREDDING — HOW APPEND-ONLY AND FORGET-ME BOTH BECOME TRUE (v4.9.778) ═════════════════
 //
@@ -15496,7 +15537,21 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (!id) return { cmd: "PTA_ENTITY", payload: { ok: false, error: "Usage: PTA_ENTITY GET <id>" } };
         const ent = await db.prepare("SELECT * FROM pta_entities WHERE id = ?").bind(id).first();
         if (!ent) return { cmd: "PTA_ENTITY", payload: { ok: false, error: "Entity not found: " + id } };
-        return { cmd: "PTA_ENTITY", payload: { ok: true, entity: await _unsealEnt(ent) } };
+        // THE GATE RUNS HERE, on every read of another entity's record. The operator passes it as an
+        // explicit bypass rather than skipping it, so this code path is exercised every single time
+        // and cannot quietly stop working the day a non-operator caller reaches it.
+        // `callerPta` does NOT exist here - processCommand's signature is (line, env, isOp) and that
+        // variable lives only inside llmReply. The first version referenced it and would have thrown a
+        // ReferenceError on EVERY read; node --check and esbuild both passed it, because a scope error
+        // is not a syntax error. Caught by checking the signature rather than trusting a clean build.
+        // Inside processCommand the caller is the operator or nobody. A session-identified caller
+        // reaches this data through PublicEntry.ptaGet, which passes its own actorPta and CAN be denied
+        // - that path is where the gate does real work rather than recording a bypass.
+        const gate = await ptaGate(env, "view", id, { isOp, actorPta: null });
+        if (!gate.allowed) return { cmd: "PTA_ENTITY", payload: { ok: false, error: "NOT_PERMITTED",
+          why: gate.reason, subject: id } };
+        return { cmd: "PTA_ENTITY", payload: { ok: true, entity: await _unsealEnt(ent),
+          access: gate.bypass ? "operator bypass (recorded)" : gate.reason } };
       }
 
       if (sub === "FIND") {
@@ -15818,6 +15873,32 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           note: "Expand and Check share one implementation - if they ever disagreed, one of them would "
               + "be lying and there would be no way to tell which.",
           scanned: edges.length, truncated: edges.length >= 200 || undefined } };
+      }
+    }
+
+    case "PTA_BYPASS": {
+      // ══ HOW OFTEN DID THE OPERATOR OVERRIDE CONSENT ══════════════════════════════════════════
+      // The point of making bypass explicit is that it becomes answerable. A number nobody can read
+      // is the same as no number, and the whole argument for an explicit permission over an absence
+      // was that an absence cannot be audited.
+      if (!isOp) return { cmd: "PTA_BYPASS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const days = Math.min(Math.max(parseInt(args[0] || "7", 10) || 7, 1), 90);
+        const out = [];
+        let total = 0;
+        for (let d = 0; d < days; d++) {
+          const day = new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
+          try {
+            const raw = await KV.get(env, "pta:bypass:" + day);
+            if (raw) { const j = JSON.parse(raw); total += j.count || 0; out.push({ day, count: j.count, recent: d === 0 ? j.recent.slice(-10) : undefined }); }
+          } catch {}
+        }
+        return { cmd: "PTA_BYPASS", payload: { ok: true, window_days: days, total_bypasses: total, by_day: out,
+          what_this_means: "Every one of these is a moment the operator read someone's record without a "
+            + "grant from them. That is legitimate - it is his system - but it is now COUNTABLE, which "
+            + "is the whole difference between an explicit permission and an absence of checking.",
+          honest_limit: "This counts operator bypasses only. A visitor denied at the doorway is not here; "
+            + "that is a different question and needs its own record." } };
       }
     }
 
@@ -27276,6 +27357,21 @@ export class PublicEntry extends WorkerEntrypoint {
     return { ok: true, session: sid, pta, name: ent.name, how,
       expires_in: 900,
       note: "Short-lived by design. The doorway refreshes it; a stolen cookie is worth minutes, not a month." };
+  }
+
+  // Read another entity's record AS the session's PTA. This is the first public path where a refusal
+  // is possible and meaningful - the operator is not involved, so the gate is doing real work rather
+  // than recording a bypass. It is the reason the decider stopped being theater.
+  async ptaGet(sessionId, subjectId) {
+    const env = this.env;
+    const me = await this._whoIs(sessionId);
+    if (!me) return { ok: false, error: "NOT_SIGNED_IN" };
+    if (typeof subjectId !== "string") return { ok: false, error: "bad arguments" };
+    const gate = await ptaGate(env, "view", subjectId, { isOp: false, actorPta: me.pta });
+    if (!gate.allowed) return { ok: false, error: "NOT_PERMITTED", why: gate.reason };
+    const ent = await env.AURA_MEMORY.prepare("SELECT id, type, name, metadata, created_at FROM pta_entities WHERE id = ?").bind(subjectId).first();
+    if (!ent) return { ok: false, error: "NOT_FOUND" };
+    return { ok: true, entity: { ...ent, metadata: await unsealFor(env, ent.id, ent.metadata) }, access: gate.reason };
   }
 
   // ── HEALTH: so the doorway can report honestly when the brain is unreachable ──────────────────

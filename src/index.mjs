@@ -36,7 +36,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.789-2026-07-28";
+const BUILD = "aura-core-v4.9.790-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16118,19 +16118,36 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const rows = await db.prepare("SELECT id, name, type, metadata, created_at FROM pta_entities ORDER BY created_at DESC LIMIT 1000").all();
         const all = (rows && rows.results) || [];
         const withMeta = all.filter((r) => r.metadata && String(r.metadata).trim() !== "" && String(r.metadata) !== "{}");
-        const unsealed = withMeta.filter((r) => !String(r.metadata).startsWith("enc:v1:"));
+        // ══ AN AUDIT THAT OVER-REPORTS GETS IGNORED (v4.9.790) ═══════════════════════════════
+        // The first run flagged 14 entities. ONE was a real person; two were `[forgotten]` tombstones
+        // (plaintext `{"forgotten":true}` containing nothing personal, written by the old PTA_FORGET)
+        // and eleven were `ptatest*` debris from a run whose cleanup did not finish. **A warning that
+        // cries wolf on tombstones and test litter trains its reader to skim it**, and then the one
+        // that matters hides in the noise. So the categories are separated and only the real column
+        // decides the verdict.
+        const isTombstone = (r) => { try { const m = JSON.parse(r.metadata); return m && m.forgotten === true; } catch { return false; } };
+        const isTestRow = (r) => /^(ptatest|ptascale|wb[a-z0-9]{6})/i.test(String(r.name || ""));
+        const rawUnsealed = withMeta.filter((r) => !String(r.metadata).startsWith("enc:v1:"));
+        const tombstones = rawUnsealed.filter(isTombstone);
+        const testDebris = rawUnsealed.filter((r) => !isTombstone(r) && isTestRow(r));
+        const unsealed = rawUnsealed.filter((r) => !isTombstone(r) && !isTestRow(r));
         let noKey = 0;
         for (const r of unsealed.slice(0, 50)) {
           try { if (!(await env.AURA_KV.get("entity:key:" + r.id))) noKey++; } catch {}
         }
         return { cmd: "PTA_AUDIT", payload: { ok: unsealed.length === 0,
           entities: all.length, with_content: withMeta.length,
-          sealed: withMeta.length - unsealed.length,
-          UNSEALED: unsealed.length,
+          sealed: withMeta.length - rawUnsealed.length,
+          UNSEALED_REAL_PEOPLE: unsealed.length,
+          tombstones: tombstones.length,
+          test_debris: testDebris.length,
+          noise_note: "Tombstones are `{forgotten:true}` markers holding nothing personal - plaintext is "
+            + "correct for them. Test debris is harness litter from a run that did not finish cleaning. "
+            + "NEITHER is a person at risk, and counting them as one is how a real warning gets skimmed.",
           unsealed_sample: unsealed.slice(0, 15).map((r) => ({ id: r.id, name: r.name, type: r.type, created_at: r.created_at })),
           verdict: unsealed.length === 0
             ? "Every entity carrying content has it encrypted. Forgetting works for all of them."
-            : unsealed.length + " entities carry content in PLAINTEXT. **PTA_FORGET CANNOT forget them** - "
+            : unsealed.length + " REAL entities carry content in PLAINTEXT. **PTA_FORGET CANNOT forget them** - "
               + "destroying a key that protects nothing changes nothing, and reporting them as forgotten "
               + "would be a false promise to a person. They were written by a path that bypasses sealing.",
           what_to_do: unsealed.length === 0 ? null

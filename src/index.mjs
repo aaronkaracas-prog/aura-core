@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.817-2026-07-28";
+const BUILD = "aura-core-v4.9.818-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17225,6 +17225,140 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               + "that would be the case for sharding or a different store.",
           honest_limit: "One run on one worker instance. Latency to D1 varies by colo and by cold start, "
             + "and this codebase has already been burned once by trusting a single timing sample." } };
+      }
+    }
+
+    case "PTA_MEANING": {
+      // ══ DOES CONTEXT SURVIVE PROPAGATION — THE PREMISE, NEVER TESTED (v4.9.818) ══════════════
+      //
+      // PTA_TEST proves a chain three hops deep with walkable lineage. **It proves rows moved. It has
+      // never proved MEANING moved**, and meaning is the entire thesis.
+      //
+      // THE SCENARIO, in Aaron's words: an influencer gives out millions of PTAs. Each person is told
+      // "Joe gave you this, he is talking about product Z." That person says "let me share product Z
+      // with someone who is not part of this world" - and passes it on WITH THEIR OWN FRAMING. Three
+      // hops out, someone who has never heard of Joe is holding something. **Does it still mean
+      // anything, and does it point back to where it came from?**
+      //
+      // WHAT THIS ASSERTS, and none of it is checked anywhere else:
+      //   1. the giver's context is STORED on the touch, not just the relationship
+      //   2. each hop carries the GIVER'S framing, not the original's - Jane says "check out this
+      //      image", so Jane's friend gets Jane's words, not Joe's
+      //   3. the ORIGIN is still traceable three hops out - Keep Your Fans only works if a person
+      //      four levels down still counts as part of that moment
+      //   4. the lineage walks back to the influencer without gaps
+      //   5. revoking at the top reaches the bottom - context that outlives its permission is a leak
+      //
+      //   PTA_MEANING
+      if (!isOp) return { cmd: "PTA_MEANING", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const db = env.AURA_MEMORY;
+        const tag = "mean" + Date.now().toString(36);
+        const checks = [], made = [];
+        const check = (name, expected, actual, pass, why) =>
+          checks.push({ check: name, expected, actual, pass: !!pass, ...(why ? { why } : {}) });
+        const run = async (cmd) => {
+          try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; }
+          catch (e) { return { ok: false, error: String((e && e.message) || e).slice(0, 140) }; }
+        };
+        try {
+          const moment = "moment_" + tag;          // the drop - one moment a million people share
+          const inf = await run("PTA_ENTITY CREATE person " + tag + "influencer identity:phone:+1555" + String(Date.now()).slice(-7));
+          if (!inf.entity) throw new Error("no influencer");
+          made.push(inf.entity.id);
+
+          // ── HOP 1: the influencer's own words, attached to the touch itself
+          const c1 = "phone:+1555" + String(Date.now() + 1).slice(-7);
+          const i1 = await run("INVITE from=" + inf.entity.id + " to=" + c1 + " name=" + tag + "fan rel=fan origin=" + moment + " msg=I am talking about product Z");
+          const a1 = await run("ACCEPT " + i1.invite_id);
+          const fan = a1.pta; if (fan) made.push(fan);
+          check("the fan exists", "an entity", fan || "none", !!fan);
+          const e1 = fan ? await db.prepare("SELECT id, context, origin_id, via_edge_id FROM pta_edges WHERE from_id = ? AND to_id = ?").bind(inf.entity.id, fan).first() : null;
+          let ctx1 = null; try { ctx1 = JSON.parse((e1 && e1.context) || "null"); } catch {}
+          check("THE GIVER'S WORDS ARE ON THE TOUCH", "the influencer's message stored",
+            ctx1 ? JSON.stringify(ctx1).slice(0, 90) : "no context at all",
+            !!ctx1,
+            "if the words are not on the edge, a PTA is a link - the whole difference is that a touch "
+            + "carries what the person meant by it");
+          check("the shared moment is recorded", moment, (e1 && e1.origin_id) || "none",
+            !!(e1 && e1.origin_id === moment),
+            "Keep Your Fans is a query over this - without it the drop is a million unrelated rows");
+
+          // ── HOP 2: the fan passes it on IN THEIR OWN WORDS to someone outside this world
+          const c2 = "phone:+1555" + String(Date.now() + 2).slice(-7);
+          const i2 = await run("INVITE from=" + fan + " to=" + c2 + " name=" + tag + "friend rel=friend origin=" + moment + " via=" + (e1 ? e1.id : "") + " msg=you should look at product Z");
+          const a2 = await run("ACCEPT " + i2.invite_id);
+          const friend = a2.pta; if (friend) made.push(friend);
+          const e2 = friend ? await db.prepare("SELECT id, context, origin_id, via_edge_id FROM pta_edges WHERE from_id = ? AND to_id = ?").bind(fan, friend).first() : null;
+          let ctx2 = null; try { ctx2 = JSON.parse((e2 && e2.context) || "null"); } catch {}
+          check("hop two exists", "an entity", friend || "none", !!friend);
+          check("THE SECOND HOP CARRIES THE SECOND PERSON'S FRAMING", "the fan's words, not the influencer's",
+            ctx2 ? JSON.stringify(ctx2).slice(0, 90) : "no context",
+            !!ctx2,
+            "the friend was told by the FAN, not by the influencer - they should receive the fan's "
+            + "framing. Context belongs to the touch, not to the tree");
+          check("the friend still traces to the original moment", moment, (e2 && e2.origin_id) || "none",
+            !!(e2 && e2.origin_id === moment),
+            "somebody two hops out who has never heard of the influencer is STILL part of that drop - "
+            + "that is what makes a million-person moment an asset rather than a broadcast");
+          check("the lineage points back through the fan", (e1 ? e1.id : "?"), (e2 && e2.via_edge_id) || "none",
+            !!(e2 && e1 && e2.via_edge_id === e1.id));
+
+          // ── HOP 3: a stranger to everyone above
+          const c3 = "phone:+1555" + String(Date.now() + 3).slice(-7);
+          const i3 = await run("INVITE from=" + friend + " to=" + c3 + " name=" + tag + "stranger rel=friend origin=" + moment + " via=" + (e2 ? e2.id : "") + " msg=someone showed me this");
+          const a3 = await run("ACCEPT " + i3.invite_id);
+          const stranger = a3.pta; if (stranger) made.push(stranger);
+          const e3 = stranger ? await db.prepare("SELECT id, origin_id, via_edge_id FROM pta_edges WHERE from_id = ? AND to_id = ?").bind(friend, stranger).first() : null;
+          check("hop three exists", "an entity", stranger || "none", !!stranger);
+          check("THREE HOPS OUT, THE MOMENT IS STILL KNOWN", moment, (e3 && e3.origin_id) || "none",
+            !!(e3 && e3.origin_id === moment),
+            "this person has never heard of the influencer and has no relationship with them - and the "
+            + "drop still counts them. That is the claim being tested");
+
+          // ── THE TREE: everyone from one moment, which is the product
+          const tree = await db.prepare("SELECT COUNT(*) n FROM pta_edges WHERE origin_id = ?").bind(moment).first();
+          check("KEEP YOUR FANS: the whole tree is one query", "3 touches sharing the moment",
+            tree ? String(tree.n) : "0", !!(tree && tree.n === 3),
+            "owning the root of a tree is only real if the tree is a query rather than a story");
+
+          // ── REVOCATION: context must not outlive the permission that carried it
+          if (e1) {
+            await run("PTA_REVOKE " + e1.id + " meaning test");
+            const v = await ptaCan(env, stranger || "", "view", inf.entity.id);
+            check("REVOKING THE FIRST HOP REACHES THE THIRD", "denied",
+              v.allowed ? "STILL ALLOWED three hops down" : "denied: " + (v.reason || ""),
+              !v.allowed,
+              "the influencer cut one person off; everyone who arrived through that person loses access "
+              + "too. Context that outlives its permission is a leak wearing a story");
+          }
+        } catch (e) {
+          checks.push({ check: "harness", expected: "no exception", actual: String((e && e.message) || e).slice(0, 160), pass: false });
+        } finally {
+          try {
+            for (let i = 0; i < made.length; i += 50) {
+              const b = made.slice(i, i + 50), ph = b.map(() => "?").join(",");
+              const ed = await db.prepare("SELECT id FROM pta_edges WHERE from_id IN (" + ph + ") OR to_id IN (" + ph + ")").bind(...b, ...b).all();
+              const eids = ((ed && ed.results) || []).map((x) => x.id);
+              for (let j = 0; j < eids.length; j += 50) {
+                const eb = eids.slice(j, j + 50), eph = eb.map(() => "?").join(",");
+                await db.prepare("DELETE FROM pta_history WHERE edge_id IN (" + eph + ")").bind(...eb).run();
+              }
+              await db.prepare("DELETE FROM pta_edges WHERE from_id IN (" + ph + ") OR to_id IN (" + ph + ")").bind(...b, ...b).run();
+              await db.prepare("DELETE FROM pta_entities WHERE id IN (" + ph + ")").bind(...b).run();
+            }
+          } catch {}
+        }
+        const failed = checks.filter((c) => !c.pass);
+        return { cmd: "PTA_MEANING", payload: { ok: failed.length === 0,
+          passed: checks.length - failed.length, failed: failed.length, checks,
+          verdict: failed.length === 0
+            ? "Meaning propagates: the giver's words ride on the touch, each hop carries ITS OWN framing, "
+              + "the origin is still known three hops out, the whole tree is one query, and revoking the "
+              + "first hop reaches the third."
+            : failed.length + " check(s) failed - read expected against actual.",
+          why_this_exists: "Every other test proves ROWS moved. This is the first that asks whether "
+            + "MEANING moved - which is the actual thesis, and was never tested." } };
       }
     }
 

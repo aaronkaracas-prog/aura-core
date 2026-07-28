@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.804-2026-07-28";
+const BUILD = "aura-core-v4.9.805-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2380,6 +2380,43 @@ async function deliverInvitation(env, toContact, inviteId, fromName, message) {
 
   return { delivered: false, channel: "unknown", link,
     why: "the contact is neither a phone nor an email, so there is nowhere to send it" };
+}
+
+// ══ THE ROUTING SEAM — BUILT DARK, BEFORE IT IS NEEDED (v4.9.805) ════════════════════════════════
+//
+// A five-seat review reversed its own "stay on one store" verdict once the ceiling was MEASURED
+// rather than assumed: 826 bytes per person, 10 GB fixed, ~6.5 million people - and the flagship use
+// case (a top account converting 1% of its audience) needs 6.6 to 7.7 million. **The single store
+// fails at the case that proves the thesis, not after years of growth.**
+// Their recommendation, near-unanimous: build the seam NOW and dark, launch on the shared store, and
+// fill a second one only when an account approaches the threshold. "Do not wait for the first whale
+// to force an emergency cutover, but do not shard the entire system preemptively."
+//
+// WHERE I DISAGREED WITH THEM, and it is arithmetic rather than opinion: four seats said shard by
+// ROOT AND ITS TREE. **That does not fix the flagship** - one tree at 6.6 million is still 102% of
+// one store, so isolating it moves the ceiling without raising it. Worse, it BREAKS "one human, one
+// chain": a fan who accepts from two different roots would live in two shards with two chains, which
+// is precisely the identity forking made structurally impossible earlier today.
+// **The resolution is that a person's CHAIN and a root's INDEX are different objects.** The person
+// shards by person - one human, one place, invariant intact. The INDEX shards by root, and an index
+// is POINTERS: 6.6 million ids is a few hundred megabytes, not eleven gigabytes. It fits trivially.
+//
+// TODAY THIS RETURNS THE SHARED STORE FOR EVERYONE. Nothing routes anywhere else, there is no second
+// database, and no dual write path exists - that last part matters, because a dual write path is
+// exactly the fire one seat warned about, and it starts the moment two stores exist WITHOUT a
+// resolver in front of them. The seam is the resolver, in place first.
+async function storeFor(env, entityId) {
+  // The map is empty by design. When a store is added it is one KV entry, and every caller that
+  // already goes through this function starts routing correctly without being touched.
+  try {
+    const raw = await KV.get(env, "config:shard:map");
+    if (raw) {
+      const map = JSON.parse(raw);
+      const named = map && entityId && map[entityId];
+      if (named && env[named]) return { db: env[named], shard: named, shared: false };
+    }
+  } catch {}
+  return { db: env.AURA_MEMORY, shard: "shared", shared: true };
 }
 
 // ══ ONE PLACE THAT WRITES ENTITY METADATA (v4.9.789) ═════════════════════════════════════════════
@@ -16288,6 +16325,33 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
     }
 
+    case "PTA_SHARD": {
+      // ══ WHERE DOES THIS ENTITY LIVE, AND HOW CLOSE IS THE CEILING ════════════════════════════
+      // The seam is dark today - everyone resolves to the shared store. This exists so that stays
+      // TRUE by inspection rather than by assumption, and so the day a second store appears the
+      // routing can be checked rather than trusted.
+      if (!isOp) return { cmd: "PTA_SHARD", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const id = args[0] || null;
+        const where = await storeFor(env, id);
+        let map = {};
+        try { map = JSON.parse((await KV.get(env, "config:shard:map")) || "{}"); } catch {}
+        return { cmd: "PTA_SHARD", payload: { ok: true,
+          entity: id || "(none given)", resolves_to: where.shard, is_shared: where.shared,
+          shards_configured: Object.keys(map).length,
+          how_to_add: "Bind a second D1 in wrangler config, then SETKV config:shard:map with "
+            + "{\"<entity_id>\": \"<BINDING_NAME>\"}. Every caller already routes through storeFor, "
+            + "so nothing else changes.",
+          why_dark_today: "There is no second store and no dual write path. A dual write path without a "
+            + "resolver in front of it is how a sharding migration turns into an outage - so the resolver "
+            + "exists first, doing nothing, and the second store is added later without touching callers.",
+          the_disagreement_worth_remembering: "Four review seats said shard by ROOT AND ITS TREE. That "
+            + "does not fix the flagship - one tree at 6.6M is still over one store - and it breaks one "
+            + "human/one chain, because a person accepting from two roots would live in two shards. "
+            + "A person's CHAIN shards by person; a root's INDEX shards by root, and an index is pointers." } };
+      }
+    }
+
     case "PTA_FOOTPRINT": {
       // ══ HOW MANY PEOPLE FIT — MEASURED, NOT ESTIMATED (v4.9.804) ═════════════════════════════
       //
@@ -16320,7 +16384,22 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // A "person" is one entity plus their share of edges and history. Row overhead (indexes,
         // page alignment, the SQLite b-tree itself) is real and not in these numbers, so the
         // multiplier below is stated openly rather than hidden inside a single reassuring figure.
+        // ══ WHERE ARE THE BYTES, ACTUALLY (v4.9.805) ═══════════════════════════════════════════
+        // Aaron reframed the whole question and was right: at this stage PTA is JUST MINTING. One
+        // person accepting is one entity, one edge, and a couple of history rows - and that IS the
+        // 826 bytes. His simple framing and the complicated one hit the same wall.
+        // But it exposed something skipped: 826 was measured as ONE NUMBER without asking WHERE the
+        // bytes are. **History is append-only, written once, and almost never read** - the classic
+        // candidate for cold storage. If it is half the footprint, moving it doubles capacity and no
+        // sharding is needed at all. That is a far simpler answer than a routing seam, and it is
+        // cheap to check. Measure the composition before choosing an architecture.
         const perPersonContent = (entBytes + edgeBytes + histBytes) / nEnt;
+        const composition = {
+          entity_bytes_per_person: Math.round(entBytes / nEnt),
+          edge_bytes_per_person: Math.round(edgeBytes / nEnt),
+          history_bytes_per_person: Math.round(histBytes / nEnt),
+          history_share: +((histBytes / (entBytes + edgeBytes + histBytes)) * 100).toFixed(1),
+        };
         const OVERHEAD = 2.0;                     // indexes and page overhead; deliberately generous
         const perPerson = perPersonContent * OVERHEAD;
         const CEILING = 10 * 1024 * 1024 * 1024;
@@ -16345,6 +16424,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             honest_note: "Content bytes are MEASURED from real rows. The multiplier for indexes and page "
               + "overhead is an ESTIMATE and is stated separately so it can be argued with rather than "
               + "buried inside one confident number." },
+          composition,
+          if_history_moved_out: {
+            bytes_per_person: Math.round((entBytes + edgeBytes) / nEnt * OVERHEAD),
+            capacity_people: Math.floor(CEILING / ((entBytes + edgeBytes) / nEnt * OVERHEAD)),
+            what_this_would_mean: "History is APPEND-ONLY, written once and almost never read on the hot "
+              + "path - the textbook case for cold storage (R2 or a separate database). Moving it changes "
+              + "no behaviour a person can see: the chain still exists, it is just not in the same place "
+              + "as the identity it belongs to. **If this number is materially larger than the capacity "
+              + "above, that is a simpler fix than sharding and it should be done first.**",
+          },
           d1_ceiling_gb: 10,
           capacity_people: capacity,
           act_at_60_percent: at60,

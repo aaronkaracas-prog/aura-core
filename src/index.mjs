@@ -36,7 +36,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.786-2026-07-28";
+const BUILD = "aura-core-v4.9.787-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -14456,8 +14456,46 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // without a real yes) and births consensual (the person decides they exist, not the sender).
       // Usage (JSON): INVITE {"app":"<app>","from":"<sender pta>","to_contact":"email:...","to_name":"<name>","relationship":"<relationship>","tier":"<tier>","message":"..."}
       if (!isOp) return { cmd: "INVITE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      // ══ A SHELL-SAFE FORM, BECAUSE JSON ON A COMMAND LINE KEEPS BREAKING (v4.9.787) ══════════
+      // Embedded JSON has now failed three times in one session from PowerShell: the escaped quotes
+      // break argument parsing badly enough that the AUTH HEADER splits, and the command arrives
+      // unauthenticated. The error it produces - OPERATOR_REQUIRED - points at permissions and has
+      // nothing to do with the real cause, which is the worst kind of error message.
+      // That is a defect in the COMMAND SURFACE, not in the shell. A command only usable from a
+      // language that quotes JSON gracefully is a command that does not work where it is actually
+      // typed. JSON still parses; the key=value form needs no quotes at all.
+      //   INVITE from=pta_abc to=phone:+13105550888 name=Beach rel=friend msg=Aaron likes you
+      // `msg` is deliberately LAST-WINS-TO-END-OF-LINE, because a human message contains spaces and
+      // demanding quotes around it would reintroduce the exact problem this solves.
       let iv;
-      try { iv = JSON.parse(rest.trim()); } catch { return { cmd: "INVITE", payload: { ok: false, error: 'Usage: INVITE {"app","from","to_contact","to_name","relationship","tier","message"}' } }; }
+      const _raw = rest.trim();
+      if (_raw.startsWith("{")) {
+        try { iv = JSON.parse(_raw); } catch { return { cmd: "INVITE", payload: { ok: false,
+          error: "that JSON did not parse",
+          try_instead: "INVITE from=<pta> to=phone:+1... name=<name> rel=<relationship> msg=<free text to end of line>",
+          why: "the key=value form needs no quotes, so a shell cannot mangle it" } }; }
+      } else {
+        iv = { app: "door" };
+        const msgAt = _raw.search(/(^|\s)msg=/);
+        const head = msgAt >= 0 ? _raw.slice(0, msgAt) : _raw;
+        if (msgAt >= 0) iv.message = _raw.slice(msgAt).replace(/^\s*msg=/, "").trim();
+        for (const tok of head.split(/\s+/).filter(Boolean)) {
+          const eq = tok.indexOf("=");
+          if (eq < 1) continue;
+          const k = tok.slice(0, eq).toLowerCase(), v = tok.slice(eq + 1);
+          if (k === "from") iv.from = v;
+          else if (k === "to" || k === "to_contact") iv.to_contact = v;
+          else if (k === "name" || k === "to_name") iv.to_name = v;
+          else if (k === "rel" || k === "relationship") iv.relationship = v;
+          else if (k === "app") iv.app = v;
+          else if (k === "tier") iv.tier = v;
+          else if (k === "via" || k === "via_edge_id") iv.via_edge_id = v;
+          else if (k === "origin" || k === "origin_id") iv.origin_id = v;
+        }
+        if (!iv.from || !iv.to_contact) return { cmd: "INVITE", payload: { ok: false,
+          error: "from and to are required",
+          usage: "INVITE from=<pta> to=phone:+1... [name=<name>] [rel=<relationship>] [msg=<free text>]" } };
+      }
       if (!iv.app || !iv.from || !iv.to_contact) return { cmd: "INVITE", payload: { ok: false, error: "app, from, to_contact required" } };
       // verify the sender is a real PTA (you need a PTA to offer one - accountability)
       const sender = await env.AURA_MEMORY.prepare("SELECT id, name FROM pta_entities WHERE id = ?").bind(iv.from).first();

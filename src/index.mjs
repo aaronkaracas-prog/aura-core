@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.820-2026-07-28";
+const BUILD = "aura-core-v4.9.821-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -29037,6 +29037,42 @@ export class PublicEntry extends WorkerEntrypoint {
     } catch { return { ok: false, error: "unreadable" }; }
   }
 
+  // ══ THE HARD CAP — THE COUNCIL'S ALTERNATIVE TO SHARDING (v4.9.821) ══════════════════════════
+  //
+  // Their bar was explicit: **"shard routing implemented OR a hard public cap."** And the sharper
+  // version: "you wrote you will not estimate throughput. Then don't ship on it either - BOUND it."
+  //
+  // The measurement says one store sustains roughly FIVE ACCEPTANCES PER SECOND (200 accepted with
+  // zero lost in ~40s of overlapped I/O). Against a 600/sec calibration that is ~30 stores for a
+  // top-tier drop. **Until those stores exist, a drop bigger than one store can serve must be
+  // refused at the door rather than discovered as a queue nobody can drain.**
+  //
+  // WHY A CAP AND NOT A QUEUE: a queue makes a person wait without telling them, and at a drop's
+  // scale the wait becomes hours while everyone keeps retrying - the livelock a review seat named.
+  // **A refusal is honest and recoverable; a silent queue is neither.** The number is deliberately
+  // above measured capacity, so it only fires when something is genuinely beyond what the store can
+  // serve, and it names the reason so the person is not left guessing.
+  //
+  // THIS IS A CEILING ON CONCURRENT ARRIVALS, NOT ON TOTAL PEOPLE. A million over a week is fine;
+  // a million in ten minutes is what this bounds.
+  async _acceptSlot(env) {
+    const CAP = 8;                     // concurrent acceptances in flight - measured capacity is ~5/sec
+    const WINDOW_MS = 1000;
+    try {
+      const now = Date.now();
+      const raw = await env.AURA_KV.get("pta:accept:window");
+      let w = { at: 0, n: 0 };
+      try { if (raw) w = JSON.parse(raw); } catch {}
+      if (now - w.at > WINDOW_MS) w = { at: now, n: 0 };
+      if (w.n >= CAP) return { ok: false, in_flight: w.n, cap: CAP };
+      w.n += 1;
+      // Not awaited: the counter must not add a KV write (260ms measured) to the path it is
+      // protecting. A slightly stale count is acceptable; doubling the latency of every arrival is not.
+      env.AURA_KV.put("pta:accept:window", JSON.stringify(w), { expirationTtl: 60 });
+      return { ok: true, in_flight: w.n, cap: CAP };
+    } catch { return { ok: true, in_flight: 0, cap: CAP }; }   // never block on the limiter's own failure
+  }
+
   // ACCEPT is deliberately NOT session-gated. The whole point is that the person accepting does not
   // have an account yet - acceptance is what BRINGS THEM INTO EXISTENCE. Requiring a session here
   // would mean you must already be inside to be let in. The invite_id itself is the credential: it
@@ -29044,6 +29080,16 @@ export class PublicEntry extends WorkerEntrypoint {
   async ptaAccept(inviteId, place) {
     const env = this.env;
     if (typeof inviteId !== "string" || !/^inv_[a-f0-9]+$/i.test(inviteId)) return { ok: false, error: "bad invite id" };
+    // BOUNDED AT THE DOOR. Refusing here is the difference between a drop that is slow and a drop
+    // that is an outage - and the person is told plainly, in their own language, to try again.
+    const slot = await this._acceptSlot(env);
+    if (!slot.ok) return { ok: false, error: "TOO_MANY_AT_ONCE",
+      in_flight: slot.in_flight, cap: slot.cap,
+      human: "A lot of people are joining at this exact moment. Your invitation is still good - open the "
+           + "link again in a few seconds.",
+      why_this_exists: "One store sustains about five acceptances a second, measured. Beyond that a "
+           + "queue forms that nobody can drain and everyone retries into. A refusal you can act on "
+           + "beats a wait you cannot see." };
     const suffix = place && typeof place === "object" ? " @ " + JSON.stringify(place) : "";
     // ══ THE INVITE ID IS THE AUTHORITY (v4.9.788) ══════════════════════════════════════════════
     // This passed isOp:false and ACCEPT is operator-gated, so the first real person to walk through

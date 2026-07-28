@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.815-2026-07-28";
+const BUILD = "aura-core-v4.9.816-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17225,6 +17225,81 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               + "that would be the case for sharding or a different store.",
           honest_limit: "One run on one worker instance. Latency to D1 varies by colo and by cold start, "
             + "and this codebase has already been burned once by trusting a single timing sample." } };
+      }
+    }
+
+    case "PTA_STORM": {
+      // ══ THE MULTI-MACHINE LOAD TEST, RUN FROM INSIDE (v4.9.816) ══════════════════════════════
+      //
+      // The Council's sign-off bar needs sustained writes/sec under load applied from MULTIPLE
+      // MACHINES - which nobody could produce, because four consecutive attempts to orchestrate it
+      // from a laptop shell failed (a missing -Parallel, hung background jobs, an empty output file)
+      // and each hang cost minutes of somebody's afternoon.
+      // **A Worker can call itself.** N parallel fetches to this same endpoint land on N SEPARATE
+      // Cloudflare machines - that IS multi-machine external load, and orchestrating it here means it
+      // can be measured properly instead of guessed at from a shell that keeps locking up.
+      //
+      // WHAT IT MEASURES: real concurrent acceptances against ONE database, which is the number the
+      // whole storage argument rests on. Every earlier attempt measured concurrency INSIDE one
+      // request, where the worker serialises everything - a floor, not a ceiling.
+      //
+      //   PTA_STORM [requests=10] [people_each=20]
+      if (!isOp) return { cmd: "PTA_STORM", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const n = Math.min(Math.max(parseInt(args[0] || "10", 10) || 10, 2), 40);
+        const each = Math.min(Math.max(parseInt(args[1] || "20", 10) || 20, 5), 60);
+        const self = "https://aura-core-v2.aaronkaracas.workers.dev/cmd";
+        const tok = await getSecret(env, "aura_operator_token");
+        if (!tok) return { cmd: "PTA_STORM", payload: { ok: false, error: "no operator token to call myself with" } };
+
+        const t0 = Date.now();
+        const results = await Promise.all(Array.from({ length: n }, async (_, i) => {
+          const t = Date.now();
+          try {
+            const r = await fetch(self + "?q=" + encodeURIComponent("PTA_LAUNCH " + each + " 0"),
+              { headers: { Authorization: "Bearer " + tok } });
+            const j = await r.json();
+            return { i, ms: Date.now() - t, born: (j && j.payload && j.payload.born_in_drop) || 0,
+                     status: r.status, ok: !!(j && j.payload && j.payload.ok) };
+          } catch (e) {
+            return { i, ms: Date.now() - t, born: 0, error: String((e && e.message) || e).slice(0, 90) };
+          }
+        }));
+        const secs = (Date.now() - t0) / 1000;
+        const born = results.reduce((a, r) => a + r.born, 0);
+        const asked = n * each;
+        const lat = results.map((r) => r.ms).sort((a, b) => a - b);
+        const p99 = lat[Math.min(lat.length - 1, Math.floor(lat.length * 0.99))];
+        const failed = results.filter((r) => r.error || !r.ok);
+
+        // Four database writes per acceptance: the entity, the relationship, and two chain rows.
+        const wps = +(born * 4 / secs).toFixed(1);
+        const TARGET = 600;   // Instagram's viral hour was 2M writes in 60 minutes = ~555/sec
+
+        return { cmd: "PTA_STORM", payload: {
+          ok: failed.length === 0 && born === asked,
+          parallel_requests: n, people_each: each,
+          people_asked: asked, people_born: born, LOST: asked - born,
+          seconds: +secs.toFixed(1),
+          WRITES_PER_SECOND: wps,
+          target_writes_per_second: TARGET,
+          meets_target: wps >= TARGET,
+          latency_ms: { fastest: lat[0], median: lat[Math.floor(lat.length / 2)], p99, slowest: lat[lat.length - 1] },
+          failed_requests: failed.length, failure_sample: failed.slice(0, 3),
+          read_this: (asked - born) > 0
+            ? "**ACCEPTANCES WERE LOST.** " + (asked - born) + " people said yes and do not exist. That is "
+              + "the only failure here that cannot be tuned away later - everything else is a speed problem."
+            : (wps >= TARGET
+                ? "Nothing lost and the rate clears the calibration. One store handles this shape of drop."
+                : "Nothing lost, but the rate is BELOW the calibration. That is not a fault - it is the "
+                  + "capacity of ONE store, and it says how many stores a real drop needs: divide the "
+                  + "target by this number."),
+          how_many_stores_a_million_person_hour_needs: wps > 0 ? Math.ceil(TARGET / wps) : null,
+          honest_limits: "Each parallel fetch is a separate Cloudflare machine, so this IS external "
+            + "multi-machine load - but it is a BURST, not the 15-minute soak the review asked for, and "
+            + "it runs inside one request's budget. Treat it as the shape of the answer, not the "
+            + "sign-off itself.",
+          then_run: "PTA_INVARIANTS - the numbers must still read zero AFTER the storm, not just before." } };
       }
     }
 

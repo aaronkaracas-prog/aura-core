@@ -36,7 +36,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.790-2026-07-28";
+const BUILD = "aura-core-v4.9.791-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16098,6 +16098,54 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           error: "Usage: PTA_CAN <actor_id> <view|share|contact|discover> <subject_id>" } };
         const verdict = await ptaCan(env, actor, cap, subject);
         return { cmd: "PTA_CAN", payload: { ok: true, ...verdict } };
+      }
+    }
+
+    case "PTA_RESEAL": {
+      // ══ REPAIR, SO A PERSON IS NOT PERMANENTLY UNPROTECTABLE (v4.9.791) ══════════════════════
+      //
+      // The audit can find someone written in plaintext by a path that bypassed sealing. Without this
+      // they stay that way forever, because metadata only re-seals when something happens to rewrite
+      // it - and for a person who arrived once and did nothing since, that is never. **The audit
+      // would report them at risk indefinitely and nothing would ever change it.**
+      // Reads the plaintext, writes it back through the one sealing path, and changes NOTHING about
+      // the content itself. Idempotent: a row already sealed is left alone rather than double-wrapped.
+      //
+      //   PTA_RESEAL <entity_id>   - one person
+      //   PTA_RESEAL ALL           - every real unsealed row the audit reports (skips tombstones and
+      //                              test litter, because re-sealing a `{forgotten:true}` marker would
+      //                              make a deletion look like live content)
+      if (!isOp) return { cmd: "PTA_RESEAL", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const db = env.AURA_MEMORY;
+        const target = (args[0] || "").trim();
+        if (!target) return { cmd: "PTA_RESEAL", payload: { ok: false, error: "Usage: PTA_RESEAL <entity_id> | PTA_RESEAL ALL" } };
+        const isTomb = (m) => { try { const j = JSON.parse(m); return j && j.forgotten === true; } catch { return false; } };
+        const isTest = (n) => /^(ptatest|ptascale|wb[a-z0-9]{6})/i.test(String(n || ""));
+
+        let rows;
+        if (target.toUpperCase() === "ALL") {
+          const all = await db.prepare("SELECT id, name, metadata FROM pta_entities WHERE metadata IS NOT NULL AND metadata != '' AND metadata != '{}' LIMIT 1000").all();
+          rows = ((all && all.results) || []).filter((r) =>
+            !String(r.metadata).startsWith("enc:v1:") && !isTomb(r.metadata) && !isTest(r.name));
+        } else {
+          const one = await db.prepare("SELECT id, name, metadata FROM pta_entities WHERE id = ?").bind(target).first();
+          if (!one) return { cmd: "PTA_RESEAL", payload: { ok: false, error: "no such entity: " + target } };
+          if (String(one.metadata || "").startsWith("enc:v1:"))
+            return { cmd: "PTA_RESEAL", payload: { ok: true, already_sealed: true, entity: target,
+              note: "nothing to do - this row is already encrypted" } };
+          rows = [one];
+        }
+        const done = [], failed = [];
+        for (const r of rows) {
+          try { await writeEntityMeta(env, r.id, r.metadata); done.push({ id: r.id, name: r.name }); }
+          catch (e) { failed.push({ id: r.id, error: String((e && e.message) || e).slice(0, 120) }); }
+        }
+        return { cmd: "PTA_RESEAL", payload: { ok: failed.length === 0,
+          resealed: done.length, entities: done, failed: failed.length ? failed : undefined,
+          note: "Their content is unchanged - it is the same bytes, now encrypted under their own key. "
+              + "PTA_FORGET can honour a request from them from this moment on, which it could not before.",
+          verify_with: "PTA_AUDIT" } };
       }
     }
 

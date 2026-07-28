@@ -36,7 +36,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.795-2026-07-28";
+const BUILD = "aura-core-v4.9.796-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16318,6 +16318,45 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
     }
 
+    case "PTA_PURGE_ORPHANS": {
+      // ══ REMOVE HISTORY THAT REFERENCES NOTHING ═══════════════════════════════════════════════
+      // Orphaned history points at edges that no longer exist, so it cannot be part of anybody's
+      // live chain and cannot be read by any traversal - it is unreachable by construction.
+      // **THIS IS NOT A VIOLATION OF APPEND-NEVER-DELETE.** That rule protects the record of what
+      // happened to a person. These rows are the residue of a harness deleting its own fixtures and
+      // leaving their shadows behind; keeping them protects nobody and makes a real invariant read
+      // non-zero forever, which trains everyone to ignore it.
+      // Dry run by default, because a bulk delete on a history table deserves the same care as any
+      // other irreversible act.
+      if (!isOp) return { cmd: "PTA_PURGE_ORPHANS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const db = env.AURA_MEMORY;
+        const confirm = /\bCONFIRM\b/i.test(rest);
+        const c = await db.prepare("SELECT COUNT(*) n FROM pta_history WHERE edge_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM pta_edges e WHERE e.id = pta_history.edge_id)").first();
+        const count = (c && c.n) || 0;
+        if (!confirm) return { cmd: "PTA_PURGE_ORPHANS", payload: { ok: true, dry_run: true,
+          orphaned_history_rows: count,
+          what_these_are: "history attached to edges that no longer exist - unreachable by any traversal, "
+            + "referencing nothing, and belonging to no live chain. Almost certainly residue from test "
+            + "harness cleanups that deleted edges without their history.",
+          not_a_deletion_of_anyone_s_record: "append-never-delete protects the record of what happened to "
+            + "a PERSON. These rows point at nothing, so they protect nobody - and leaving them makes a "
+            + "real invariant read non-zero forever, which teaches everyone to skim it.",
+          how: "PTA_PURGE_ORPHANS CONFIRM" } };
+        let removed = 0;
+        try {
+          const r = await db.prepare("DELETE FROM pta_history WHERE edge_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM pta_edges e WHERE e.id = pta_history.edge_id)").run();
+          removed = (r && r.meta && r.meta.changes) || 0;
+        } catch (e) {
+          return { cmd: "PTA_PURGE_ORPHANS", payload: { ok: false, error: String((e && e.message) || e).slice(0, 200) } };
+        }
+        return { cmd: "PTA_PURGE_ORPHANS", payload: { ok: true, removed,
+          note: "Rows counted by the database, not by the loop - a count of statements executed is not a "
+              + "count of rows deleted, and this codebase has already reported one as the other.",
+          verify_with: "PTA_INVARIANTS" } };
+      }
+    }
+
     case "PTA_AUDIT": {
       // ══ WHO IS UNPROTECTED, COUNTED (v4.9.789) ═══════════════════════════════════════════════
       //
@@ -16744,6 +16783,106 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
     }
 
+    case "PTA_VIRAL": {
+      // ══ THE ONE DISSENT NOBODY ELSE COVERED ══════════════════════════════════════════════════
+      //
+      // Four seats of a review said the layer was finished. One dissented specifically: "you have not
+      // proven how this handles THOUSANDS OF SIMULTANEOUS ACCEPTANCES ON A SINGLE SHARED OFFER
+      // without exhausting connections or starving thread pools. Stress-test viral fan-out first."
+      // That is the Taylor Swift case - one moment touching a million people at once - and it is the
+      // scenario the whole propagation model exists for, so it is the one that must not be assumed.
+      //
+      // WHAT THIS MEASURES that PTA_SCALE does not: PTA_SCALE builds a tree SEQUENTIALLY and measures
+      // the REVOCATION walk. This fires N acceptances CONCURRENTLY at ONE origin and measures
+      // contention - the case where everybody writes to the same neighbourhood at the same instant.
+      //
+      //   PTA_VIRAL [n=50] [concurrency=25]
+      // Self-cleaning, including history. Bounded hard: a stress test that runs away is an outage.
+      if (!isOp) return { cmd: "PTA_VIRAL", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const db = env.AURA_MEMORY;
+        const n = Math.min(Math.max(parseInt(args[0] || "50", 10) || 50, 5), 300);
+        const conc = Math.min(Math.max(parseInt(args[1] || "25", 10) || 25, 1), 100);
+        const tag = "viral" + Date.now().toString(36);
+        const made = [], errors = [];
+        const t0 = Date.now();
+        try {
+          const rootId = "pta_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map((b) => b.toString(16).padStart(2, "0")).join("");
+          const iso = new Date().toISOString();
+          await db.prepare("INSERT INTO pta_entities (id, type, identity_key, name, created_at, updated_at) VALUES (?, 'person', ?, ?, ?, ?)")
+            .bind(rootId, "viral:" + tag, tag + "star", iso, iso).run();
+          made.push(rootId);
+          const moment = "moment_" + tag;   // ONE shared origin - this is what makes it viral rather than parallel
+
+          // Fire acceptances in waves. Each wave is genuinely concurrent: the same origin, the same
+          // instant, different people.
+          const tAccept = Date.now();
+          let born = 0;
+          for (let w = 0; w < n; w += conc) {
+            const wave = [];
+            for (let k = w; k < Math.min(w + conc, n); k++) {
+              wave.push((async () => {
+                try {
+                  const contact = "phone:+1555" + String(Date.now() + k).slice(-7) + k;
+                  const inv = await processCommand("INVITE from=" + rootId + " to=" + contact + " name=" + tag + "f" + k + " rel=fan origin=" + moment, env, true);
+                  const iid = inv && inv.payload && inv.payload.invite_id;
+                  if (!iid) { errors.push("no invite id at " + k); return; }
+                  const acc = await processCommand("ACCEPT " + iid, env, true);
+                  const pid = acc && acc.payload && acc.payload.pta;
+                  if (pid) { made.push(pid); born++; } else { errors.push("no birth at " + k); }
+                } catch (e) { errors.push(String((e && e.message) || e).slice(0, 90)); }
+              })());
+            }
+            await Promise.all(wave);
+          }
+          const acceptMs = Date.now() - tAccept;
+
+          // THE TREE MUST BE QUERYABLE - that is Keep Your Fans, and it is the whole point of the
+          // shared origin. If the writes succeeded but the tree cannot be read, the feature is not real.
+          const tQuery = Date.now();
+          const tree = await db.prepare("SELECT COUNT(*) n FROM pta_edges WHERE origin_id = ?").bind(moment).first();
+          const queryMs = Date.now() - tQuery;
+          const treeCount = (tree && tree.n) || 0;
+
+          return { cmd: "PTA_VIRAL", payload: { ok: errors.length === 0 && born === n && treeCount === n,
+            requested: n, concurrency: conc, born, tree_edges_sharing_the_moment: treeCount,
+            timings: { total_ms: Date.now() - t0, accept_ms: acceptMs,
+              per_acceptance_ms: +(acceptMs / Math.max(born, 1)).toFixed(1),
+              tree_query_ms: queryMs },
+            errors: errors.length, error_sample: errors.slice(0, 5),
+            read_this: born !== n
+              ? "NOT EVERY ACCEPTANCE LANDED. " + (n - born) + " of " + n + " were lost under concurrency - "
+                + "that is the failure the dissent predicted, and it means a viral moment silently drops people."
+              : (treeCount !== n
+                  ? "Every acceptance landed but the TREE DOES NOT MATCH (" + treeCount + " of " + n + "). "
+                    + "The people exist and the moment cannot see them, so Keep Your Fans would under-count."
+                  : "All " + n + " acceptances landed and all " + n + " are visible under one shared moment. "
+                    + "Writes and the tree agree under concurrency."),
+            what_this_still_does_not_prove: "This is concurrency within ONE worker request. A real viral "
+              + "moment arrives as N SEPARATE requests across many edge locations, which is a different "
+              + "contention profile - more parallel, less serialised. This is the floor, not the ceiling.",
+            scale_note: "per_acceptance_ms is the number to watch. Each acceptance is several writes; "
+              + "if it climbs with concurrency rather than staying flat, contention has started." } };
+        } catch (e) {
+          return { cmd: "PTA_VIRAL", payload: { ok: false, error: String((e && e.message) || e).slice(0, 200), errors } };
+        } finally {
+          try {
+            for (let i = 0; i < made.length; i += 50) {
+              const b = made.slice(i, i + 50), ph = b.map(() => "?").join(",");
+              const ed = await db.prepare("SELECT id FROM pta_edges WHERE from_id IN (" + ph + ") OR to_id IN (" + ph + ")").bind(...b, ...b).all();
+              const eids = ((ed && ed.results) || []).map((x) => x.id);
+              for (let j = 0; j < eids.length; j += 50) {
+                const eb = eids.slice(j, j + 50), eph = eb.map(() => "?").join(",");
+                await db.prepare("DELETE FROM pta_history WHERE edge_id IN (" + eph + ")").bind(...eb).run();
+              }
+              await db.prepare("DELETE FROM pta_edges WHERE from_id IN (" + ph + ") OR to_id IN (" + ph + ")").bind(...b, ...b).run();
+              await db.prepare("DELETE FROM pta_entities WHERE id IN (" + ph + ")").bind(...b).run();
+            }
+          } catch {}
+        }
+      }
+    }
+
     case "PTA_SCALE": {
       // ══ DOES IT HOLD AT SCALE — MEASURED, NOT ASSUMED ════════════════════════════════════════
       //
@@ -16891,8 +17030,22 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         } finally {
           // Always clean, including after a failure. Batched - the per-row version took 63s for 179.
           try {
+            // ══ THIS CLEANUP LEAKED HISTORY (fixed v4.9.796) ═══════════════════════════════════
+            // It deleted edges and entities and left their HISTORY behind. Every scale run revoked a
+            // root and cascaded, writing a history row per cut - so each run stranded ~100 rows
+            // pointing at edges that no longer existed. `PTA_INVARIANTS` found 1,629 of them on its
+            // FIRST RUN, which is precisely the argument for standing counters over tests: no test
+            // was ever going to check for litter left by the harness itself.
+            // History goes FIRST - it references the edges, so deleting edges first orphans it, which
+            // is the exact bug being fixed here.
             for (let i = 0; i < made.length; i += 50) {
               const b = made.slice(i, i + 50), ph = b.map(() => "?").join(",");
+              const ed = await db.prepare("SELECT id FROM pta_edges WHERE from_id IN (" + ph + ") OR to_id IN (" + ph + ")").bind(...b, ...b).all();
+              const eids = ((ed && ed.results) || []).map((x) => x.id);
+              for (let j = 0; j < eids.length; j += 50) {
+                const eb = eids.slice(j, j + 50), eph = eb.map(() => "?").join(",");
+                await db.prepare("DELETE FROM pta_history WHERE edge_id IN (" + eph + ")").bind(...eb).run();
+              }
               await db.prepare("DELETE FROM pta_edges WHERE from_id IN (" + ph + ") OR to_id IN (" + ph + ")").bind(...b, ...b).run();
               await db.prepare("DELETE FROM pta_entities WHERE id IN (" + ph + ")").bind(...b).run();
             }

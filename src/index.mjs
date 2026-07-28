@@ -36,7 +36,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.784-2026-07-28";
+const BUILD = "aura-core-v4.9.785-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16037,6 +16037,92 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           error: "Usage: PTA_CAN <actor_id> <view|share|contact|discover> <subject_id>" } };
         const verdict = await ptaCan(env, actor, cap, subject);
         return { cmd: "PTA_CAN", payload: { ok: true, ...verdict } };
+      }
+    }
+
+    case "PTA_EXPORT": {
+      // ══ THE CLAIM THAT WAS FALSE UNTIL THIS EXISTED (v4.9.785) ═══════════════════════════════
+      //
+      // The spec's moral centre: **"databases are owned by companies, PTA chains are owned by
+      // entities."** A five-seat review called it the deferral that was accumulating MORAL debt
+      // rather than technical debt - "each day makes migration a bigger event and your central claim
+      // more of a lie." Every chain lives in one Cloudflare account. Ownership you cannot exercise is
+      // not ownership; it is a promise about someone else's database.
+      //
+      // EXPORT IS WHAT MAKES IT TRUE. Not a roadmap item - the single feature that converts the claim
+      // from aspiration to fact. It is also the one thing Meta structurally cannot offer, because
+      // their revenue depends on the chain NOT being portable.
+      //
+      // WHAT IS EXPORTED, and the line is a real one: **their side of everything.** Their entity,
+      // their decrypted content, their history, and for each relationship the fact of it, its state
+      // and its timing.
+      // WHAT IS NOT: **the other party's private content.** An edge to Jane is Jane's relationship
+      // too - exporting her metadata, her name and her chain because she once accepted an invitation
+      // would make one person's right to leave into another person's data breach. They get the shape
+      // of their relationships, not the substance of the people in them.
+      //
+      // FORMAT: plain JSON with a declared schema and a stated mapping to W3C Verifiable Credentials
+      // and JSON-LD, so it is importable rather than merely readable. An export nobody can ingest is
+      // a screenshot with extra steps.
+      if (!isOp) return { cmd: "PTA_EXPORT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const db = env.AURA_MEMORY;
+        const id = args[0] || "";
+        if (!id) return { cmd: "PTA_EXPORT", payload: { ok: false, error: "Usage: PTA_EXPORT <entity_id>" } };
+        const ent = await db.prepare("SELECT * FROM pta_entities WHERE id = ?").bind(id).first();
+        if (!ent) return { cmd: "PTA_EXPORT", payload: { ok: false, error: "no such entity: " + id } };
+
+        const edgesOut = await db.prepare("SELECT id, to_id, edge_type, state, permission, context, via_edge_id, origin_id, place, created_at, updated_at FROM pta_edges WHERE from_id = ? ORDER BY created_at").bind(id).all();
+        const edgesIn = await db.prepare("SELECT id, from_id, edge_type, state, permission, context, via_edge_id, origin_id, place, created_at, updated_at FROM pta_edges WHERE to_id = ? ORDER BY created_at").bind(id).all();
+
+        // History for edges they are ON. The chain is theirs; the events on it are the record of what
+        // happened to them, which is the part a person is actually asking for when they ask to leave.
+        const edgeIds = [...(edgesOut?.results || []), ...(edgesIn?.results || [])].map((e) => e.id);
+        let history = [];
+        if (edgeIds.length) {
+          for (let i = 0; i < edgeIds.length; i += 50) {
+            const b = edgeIds.slice(i, i + 50), ph = b.map(() => "?").join(",");
+            const h = await db.prepare("SELECT id, edge_id, action, actor_id, detail, created_at FROM pta_history WHERE edge_id IN (" + ph + ") ORDER BY created_at").bind(...b).all();
+            history = history.concat((h?.results || []));
+          }
+        }
+
+        const counterparty = (otherId) => ({ pta: otherId,
+          note: "identifier only - this person's own name, content and chain are theirs and are not in "
+              + "your export. Your right to leave is not their loss of privacy." });
+
+        return { cmd: "PTA_EXPORT", payload: { ok: true,
+          schema: "pta-export/v1",
+          maps_to: "Entities map to W3C DID subjects; edges map to Verifiable Credential relationship "
+                 + "claims (issuer=from, subject=to); the whole document is JSON-LD shaped so an "
+                 + "importer can consume it rather than merely read it.",
+          exported_at: new Date().toISOString(),
+          you: {
+            pta: ent.id, type: ent.type, verification_level: ent.verification_level,
+            name: await unsealFor(env, ent.id, ent.name),
+            content: await unsealFor(env, ent.id, ent.metadata),
+            created_at: ent.created_at,
+            identity_anchor: "held as a keyed hash, not reversible - the contact you verified with is "
+                           + "not stored in a form anyone can read back, including us",
+          },
+          relationships_you_granted: (edgesOut?.results || []).map((e) => ({
+            edge: e.id, to: counterparty(e.to_id), type: e.edge_type, state: e.state,
+            permission: (() => { try { return JSON.parse(e.permission || "null"); } catch { return null; } })(),
+            arrived_via: e.via_edge_id, shared_moment: e.origin_id,
+            where: (() => { try { return JSON.parse(e.place || "null"); } catch { return null; } })(),
+            since: e.created_at, last_change: e.updated_at })),
+          relationships_granted_to_you: (edgesIn?.results || []).map((e) => ({
+            edge: e.id, from: counterparty(e.from_id), type: e.edge_type, state: e.state,
+            arrived_via: e.via_edge_id, shared_moment: e.origin_id, since: e.created_at })),
+          your_chain: history.map((h) => ({ at: h.created_at, action: h.action, edge: h.edge_id,
+            by: h.actor_id === id ? "you" : counterparty(h.actor_id).pta,
+            detail: (() => { try { return JSON.parse(h.detail || "null"); } catch { return h.detail; } })() })),
+          counts: { granted: (edgesOut?.results || []).length, received: (edgesIn?.results || []).length, chain_events: history.length },
+          what_is_deliberately_absent: "Other people's names, content and chains. An edge to someone is "
+            + "their relationship too, and exporting their substance because they once accepted your "
+            + "invitation would turn your right to leave into their data breach.",
+          this_is_the_point: "A chain you cannot take with you is not yours. This is the feature that "
+            + "makes 'owned by entities, not companies' a fact rather than a sentence." } };
       }
     }
 

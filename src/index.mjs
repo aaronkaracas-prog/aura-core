@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.822-2026-07-28";
+const BUILD = "aura-core-v4.9.823-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17452,6 +17452,41 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             !!(e3 && e3.origin_id === moment),
             "this person has never heard of the influencer and has no relationship with them - and the "
             + "drop still counts them. That is the claim being tested");
+
+          // ══ COPY OR GRAPH? — AURA'S CATCH, AND IT IS THE RIGHT ONE (v4.9.823) ═══════════════
+          // Her words: "easy to pass when hop text is COPIED into the next row by the harness rather
+          // than only retrieved by walk at read time. If context survives three hops is storage
+          // denormalisation, you proved COPY, not GRAPH. Demand: walk only, still see giver framing."
+          // She is right that every check above reads the row it just wrote. **Nothing yet walks
+          // BACKWARDS from the stranger to recover what the influencer originally said** - which is
+          // the actual claim: three hops out, the chain still reaches the moment it began.
+          let walked = [], reachedRoot = false, originalWords = null;
+          {
+            let cursor = e3 ? e3.via_edge_id : null, hops = 0;
+            while (cursor && hops < 12) {
+              const anc = await db.prepare("SELECT id, from_id, context, via_edge_id FROM pta_edges WHERE id = ?").bind(cursor).first();
+              if (!anc) break;
+              let c = null; try { c = JSON.parse(anc.context || "null"); } catch {}
+              walked.push({ edge: anc.id, said: (c && c.said) || null });
+              if (anc.from_id === inf.entity.id) { reachedRoot = true; originalWords = (c && c.said) || null; break; }
+              cursor = anc.via_edge_id; hops++;
+            }
+          }
+          check("THE WALK REACHES THE ORIGIN FROM THREE HOPS OUT", "the influencer's edge, by following via_edge_id only",
+            reachedRoot ? "reached after " + walked.length + " step(s)" : "never reached - walked " + walked.length,
+            reachedRoot,
+            "this is the difference between COPY and GRAPH. Every other check reads a row it just "
+            + "wrote. This one starts at a stranger and walks BACKWARDS with no shortcuts");
+          check("AND RECOVERS WHAT THE INFLUENCER ORIGINALLY SAID", "'I am talking about product Z'",
+            originalWords || "nothing recovered",
+            !!(originalWords && String(originalWords).includes("product Z")),
+            "a person who has never heard of the influencer holds something that can be traced back to "
+            + "the exact sentence that started it - retrieved by walking, not by having been handed a copy");
+          check("each step of the walk carries its own words", "a distinct sentence per hop",
+            walked.map((w) => (w.said || "-").slice(0, 24)).join(" | ") || "none",
+            walked.length >= 2 && new Set(walked.map((w) => w.said)).size === walked.length,
+            "if two hops carry the SAME sentence, the framing was copied forward rather than replaced "
+            + "by each giver - which would mean context echoes instead of travelling");
 
           // ── THE TREE: everyone from one moment, which is the product
           const tree = await db.prepare("SELECT COUNT(*) n FROM pta_edges WHERE origin_id = ?").bind(moment).first();

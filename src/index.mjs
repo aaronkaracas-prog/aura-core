@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.819-2026-07-28";
+const BUILD = "aura-core-v4.9.820-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17353,9 +17353,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // nothing about the cascade. Check the edge that actually exists, and check WHY it fails.
             const strangerEdge = e3 ? await db.prepare("SELECT state FROM pta_edges WHERE id = ?").bind(e3.id).first() : null;
             const vLine = stranger ? await ptaCan(env, stranger, "view", friend) : { allowed: true, reason: "no stranger" };
-            check("REVOKING THE FIRST HOP REACHES THE THIRD", "denied because an ANCESTOR was revoked",
+            // TWO CORRECT DENIALS, NOT ONE. Revocation reaches a descendant by EITHER route: the
+            // downward cascade marks the edge itself revoked (it materialises two levels), or the
+            // upward lineage walk finds a revoked ancestor. **Both mean the revocation arrived.**
+            // The first version demanded the word "ancestor" and failed on a correct system - I
+            // over-specified this check in the same edit where I fixed another for being too loose.
+            // The line to hold: it must deny for a REVOCATION reason, not because no edge was found,
+            // which would prove nothing at all.
+            check("REVOKING THE FIRST HOP REACHES THE THIRD", "denied because of a revocation, by either route",
               vLine.allowed ? "STILL ALLOWED three hops down" : "denied: " + (vLine.reason || ""),
-              !vLine.allowed && /ancestor/i.test(vLine.reason || ""),
+              !vLine.allowed && /revok|ancestor/i.test(vLine.reason || ""),
               "the influencer cut one person off; everyone who arrived through that person loses access "
               + "too. Context that outlives its permission is a leak wearing a story");
           }

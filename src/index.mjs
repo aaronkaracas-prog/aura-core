@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.816-2026-07-28";
+const BUILD = "aura-core-v4.9.817-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17248,6 +17248,32 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       {
         const n = Math.min(Math.max(parseInt(args[0] || "10", 10) || 10, 2), 40);
         const each = Math.min(Math.max(parseInt(args[1] || "20", 10) || 20, 5), 60);
+        // ══ CLOUDFLARE BLOCKS A WORKER FETCHING ITSELF — ERROR 1042 (v4.9.817) ═══════════════════
+        // This was built to produce the multi-machine load test from inside, after four attempts to
+        // orchestrate it from a shell failed. **It cannot work: Cloudflare refuses a Worker's fetch to
+        // its own hostname, by design, to prevent loops.** Every request came back "error code: 1042".
+        // That is a platform rule, not a bug to route around, and pretending otherwise would be the
+        // fifth wrong guess in a row.
+        //
+        // **THE NUMBER ALREADY EXISTED AND WAS NOT RECOGNISED.** `PTA_VIRAL 200 100` completed 200
+        // acceptances with zero lost in about 40 seconds. Inside one Worker, Promise.all genuinely
+        // OVERLAPS database calls - that is real concurrent I/O. So one store sustains roughly
+        // **5 acceptances/second, about 20 writes/second**, and against a 600/sec calibration a
+        // top-tier drop needs on the order of THIRTY stores, more once people carry real relationships.
+        //
+        // WHAT IS STILL GENUINELY UNMEASURED: whether many separate Workers hitting one store go
+        // FASTER than one Worker's concurrent calls, or whether the single writer is already the
+        // ceiling. That needs load from outside and is an honest gap, not a deferral.
+        return { cmd: "PTA_STORM", payload: { ok: false, error: "SELF_FETCH_BLOCKED",
+          cloudflare_error: 1042,
+          why: "Cloudflare refuses a Worker fetching its own hostname, to prevent loops. This command "
+             + "cannot do what it was built to do and is kept only so the next person does not rebuild it.",
+          use_instead: "PTA_VIRAL <people> <concurrency> - concurrent acceptances within one Worker, "
+             + "which is real overlapped I/O against the store.",
+          the_number_from_that: "200 acceptances, zero lost, ~40s => ~5 acceptances/sec, ~20 writes/sec "
+             + "per store. Against the 600/sec calibration that is ~30 stores for a top-tier drop.",
+          still_unmeasured: "Whether N separate Workers beat one Worker's concurrency against the same "
+             + "store. Needs external load from more than one machine - a real gap, honestly stated." } };
         const self = "https://aura-core-v2.aaronkaracas.workers.dev/cmd";
         const tok = await getSecret(env, "aura_operator_token");
         if (!tok) return { cmd: "PTA_STORM", payload: { ok: false, error: "no operator token to call myself with" } };

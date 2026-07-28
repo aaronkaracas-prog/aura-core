@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.797-2026-07-28";
+const BUILD = "aura-core-v4.9.798-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -14709,18 +14709,26 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const grantedEdgeId = (gr && gr.payload && gr.payload.edge_id) || null;
         if (grantedEdgeId) {
           const nowA = new Date().toISOString();
-          // ONE ROUND TRIP, and one transaction. Activating the edge and recording the acceptance are
-          // the same event; splitting them across two calls made it possible for a person to be
-          // active with no record of having said yes, which is the inverse of the bug this pair was
-          // written to fix. batch() also halves the cost on a path every new person walks.
-          await env.AURA_MEMORY.batch([
-            env.AURA_MEMORY.prepare("UPDATE pta_edges SET state = 'active', updated_at = ? WHERE id = ? AND state = 'pending'")
-              .bind(nowA, grantedEdgeId),
-            env.AURA_MEMORY.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-              .bind("hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join(""),
-                    grantedEdgeId, "accepted", bornId,
-                    JSON.stringify({ via: "ACCEPT", invite_id: invite.invite_id, note: "activated by the invitee's own yes" }), nowA),
-          ]);
+          // ══ BATCHING IS NOT FREE AT SMALL N — MEASURED (v4.9.798) ══════════════════════════════
+          // v4.9.797 batched these two statements expecting a saving. Four runs of the viral test at
+          // identical settings: 149ms per acceptance BEFORE, then 198.6 / 223.6 / 219.4 AFTER. The
+          // three post-change samples cluster tightly, so that is not noise - **the batch made this
+          // path roughly 45% SLOWER.**
+          // WHY, and it is worth remembering: `batch()` wraps its statements in a TRANSACTION.
+          // WRITEBENCH measured batching 25-34x faster AT FIFTY STATEMENTS, where one round trip
+          // replaces fifty. At TWO statements the transaction overhead exceeds the single round trip
+          // it saves. **The rule is not "batch is faster" - it is "batch amortises, and amortising
+          // two of anything is not worth a transaction."**
+          // Reverted to two calls. The correctness argument for batching here was real but weaker
+          // than it looked: the UPDATE is conditional on state='pending', so a failure between the
+          // two leaves the edge active without its history row - recoverable and detectable, and
+          // `PTA_INVARIANTS` counts exactly that case.
+          await env.AURA_MEMORY.prepare("UPDATE pta_edges SET state = 'active', updated_at = ? WHERE id = ? AND state = 'pending'")
+            .bind(nowA, grantedEdgeId).run();
+          await env.AURA_MEMORY.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+            .bind("hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join(""),
+                  grantedEdgeId, "accepted", bornId,
+                  JSON.stringify({ via: "ACCEPT", invite_id: invite.invite_id, note: "activated by the invitee's own yes" }), nowA).run();
         }
       } catch (e) {}
       // stamp origin context (only if newly created)

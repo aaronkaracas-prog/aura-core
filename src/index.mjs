@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.809-2026-07-28";
+const BUILD = "aura-core-v4.9.810-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -1665,11 +1665,41 @@ async function verifyOperator(request, env) {
   return false;
 }
 
+// ══ MEASURED: A KV WRITE IS 260ms, A MISS IS 129ms, A HIT IS 6ms, A D1 QUERY IS 15ms (v4.9.810) ══
+//
+// Four guesses at where time went were wrong before this was measured, and the model was BACKWARDS.
+// A whole day went into removing D1 round trips and batching D1 writes - **D1 costs 15ms.** It was
+// never the expense. **A KV write costs 260ms: seventeen times a D1 query.** And a KV MISS costs
+// 129ms against 6ms for a hit, so looking for something that is not there costs twenty times more
+// than finding it.
+//
+// CONFIG READS ARE THE WORST CASE: they are read constantly, they change almost never, and an unset
+// one is a MISS every single time - 129ms to be told nothing, repeatedly, forever.
+// So `config:` reads are cached for 30 seconds, INCLUDING the misses, which are the expensive half.
+// Thirty seconds because config is changed deliberately by a human and a short wait for it to take
+// effect is acceptable; secrets use sixty for the same reason. **Nothing else is cached** - an
+// invitation, a session or a counter must be read fresh, and caching those would trade real
+// correctness for imaginary speed, which is the trade this codebase keeps catching itself making.
+const _cfgCache = new Map();
+const CFG_TTL_MS = 30000;
+
 const KV = {
   async get(env, k) {
-    try { return await env.AURA_KV.get(k); } catch { return null; }
+    const cacheable = typeof k === "string" && k.startsWith("config:");
+    if (cacheable) {
+      const hit = _cfgCache.get(k);
+      if (hit && Date.now() - hit.at < CFG_TTL_MS) return hit.v;
+    }
+    try {
+      const v = await env.AURA_KV.get(k);
+      if (cacheable) _cfgCache.set(k, { v, at: Date.now() });
+      return v;
+    } catch { return null; }
   },
   async put(env, k, v, opts) {
+    // A write must invalidate its own cached value, or changing a config setting appears to do
+    // nothing for thirty seconds - the exact quiet wrongness this cache is supposed to avoid.
+    if (typeof k === "string" && k.startsWith("config:")) _cfgCache.delete(k);
     try { return await env.AURA_KV.put(k, v, opts); } catch {}
   },
   async del(env, k) {
@@ -14731,7 +14761,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const raw = await KV.get(env, key);
         const log = raw ? JSON.parse(raw) : { count: 0 };
         log.count += 1; sentToday = log.count;
-        await KV.put(env, key, JSON.stringify(log), { expirationTtl: 30 * 24 * 3600 });
+        // NOT AWAITED. This is telemetry - a number nobody reads synchronously - and a KV write costs
+        // 260ms MEASURED. Making a person wait a quarter of a second for a counter is paying real
+        // latency for a statistic. The read above still blocks because the value is returned, and
+        // after the first invitation of a day it is a 6ms cache hit rather than a 129ms miss.
+        KV.put(env, key, JSON.stringify(log), { expirationTtl: 30 * 24 * 3600 });
         if (log.count === 25 || log.count === 100 || log.count === 500) {
           await auraRemember(env, "Invitation pattern worth a look: " + iv.from + " has sent " + log.count
             + " invitations today. Mass invites are inert by design - nothing exists until someone accepts - "
@@ -18294,7 +18328,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           if (ctx && !log.contexts.includes(ctx)) log.contexts.push(ctx);
           if (log.contexts.length > 40) log.contexts = log.contexts.slice(-40);
           askerToday = log.count;
-          await KV.put(env, key, JSON.stringify(log), { expirationTtl: 30 * 24 * 3600 });
+          KV.put(env, key, JSON.stringify(log), { expirationTtl: 30 * 24 * 3600 });   // telemetry, not awaited
           // Thresholds are deliberately loose. This is not a limit - it is a nudge to the one entity
           // that can actually judge whether a hundred searches is a curious person or a harvester.
           // ══ COUNTING WAS A LIMIT THAT FAILS OPEN, AND ALL FIVE SEATS SAID SO ════════════════

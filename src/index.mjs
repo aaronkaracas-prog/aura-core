@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.813-2026-07-28";
+const BUILD = "aura-core-v4.9.814-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17042,20 +17042,28 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const med = (a) => { const b = a.slice().sort((x, y) => x - y); return b[Math.floor(b.length / 2)]; };
         const time = async (fn) => { const t = Date.now(); try { await fn(); } catch {} return Date.now() - t; };
         const key = "latency:probe:" + Date.now().toString(36);
-        const kvGet = [], kvPut = [], kvMiss = [], d1Sel = [], d1Ins = [], cpu = [];
+        const kvGet = [], kvPut = [], kvMiss = [], d1Sel = [], d1Ins = [], cpu = [], r2Put = [], r2Get = [];
         for (let i = 0; i < reps; i++) {
           kvPut.push(await time(() => env.AURA_KV.put(key, "x".repeat(64))));
           kvGet.push(await time(() => env.AURA_KV.get(key)));
           kvMiss.push(await time(() => env.AURA_KV.get("latency:absent:" + i)));
           d1Sel.push(await time(() => env.AURA_MEMORY.prepare("SELECT 1 n").first()));
           d1Ins.push(await time(() => env.AURA_MEMORY.prepare("SELECT COUNT(*) n FROM pta_entities").first()));
+          // R2, because moving the append-only chain there is the open architectural question: it is
+          // 37% of every person's bytes and nothing reads it on a hot path. But history is WRITTEN on
+          // the hot path - two rows per acceptance - so the trade is only worth it if an R2 write is
+          // not worse than the D1 write it replaces. Measured rather than assumed.
+          r2Put.push(await time(() => env.AURA_KNOWLEDGE.put("latency/probe-" + i, "x".repeat(512))));
+          r2Get.push(await time(() => env.AURA_KNOWLEDGE.get("latency/probe-" + i)));
           // Pure compute, no I/O - the control. If this is also slow the problem is not storage at all.
           cpu.push(await time(async () => { let x = 0; for (let j = 0; j < 200000; j++) x += j; return x; }));
         }
         try { await env.AURA_KV.delete(key); } catch {}
+        try { for (let i = 0; i < reps; i++) await env.AURA_KNOWLEDGE.delete("latency/probe-" + i); } catch {}
         const out = {
           kv_put_ms: med(kvPut), kv_get_hit_ms: med(kvGet), kv_get_miss_ms: med(kvMiss),
           d1_trivial_select_ms: med(d1Sel), d1_count_query_ms: med(d1Ins),
+          r2_put_ms: med(r2Put), r2_get_ms: med(r2Get),
           pure_compute_ms: med(cpu),
         };
         const slowest = Object.entries(out).sort((a, b) => b[1] - a[1])[0];
@@ -17070,6 +17078,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                   + "the opposite of what was assumed when two round trips were removed with no effect."
                 : "Both are fast here, so the cost measured on INVITE lives somewhere neither of these "
                   + "touches - most likely the per-request work that happens before any command runs."),
+          the_chain_question: "The append-only chain is 37% of every person's bytes and NOTHING reads it "
+            + "on a hot path - moving it out takes capacity from 6.5M to 10.3M people. But it is WRITTEN "
+            + "on the hot path, twice per acceptance. **Compare r2_put_ms against d1_count_query_ms: if R2 "
+            + "is materially slower, moving the chain buys storage by spending latency on every person who "
+            + "ever joins.** Also costs two of the seven invariants, which currently JOIN history against "
+            + "edges in SQL and would have to become something else.",
           why_this_exists: "Three consecutive guesses at where the time goes were wrong. A primitive that "
             + "does nothing (SELECT 1) still costs the round trip; a loop that touches no storage costs "
             + "only CPU. Comparing them says which world the problem is in." } };

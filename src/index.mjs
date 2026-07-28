@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.818-2026-07-28";
+const BUILD = "aura-core-v4.9.819-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -14830,7 +14830,26 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // edge they arrived on, and this new edge records it - which is how Aaron -> Jane -> Thailand
         // becomes walkable, and how revoking Jane can break the chain downstream of her. origin_id
         // carries the shared moment of a mass touch: one concert, a million edges, one row.
+        // ══ THE MESSAGE WAS DROPPED AT ACCEPTANCE — THE WHOLE THESIS (fixed v4.9.819) ═══════════
+        //
+        // `INVITE` stored the giver's words on the invitation. `ACCEPT` built the edge and THREW THEM
+        // AWAY. Everything survived except the one thing that matters: edge_type, relationship,
+        // permission, impact - the plumbing - and not "I am talking about product Z."
+        // **The words died at the exact moment they were supposed to become permanent.**
+        //
+        // Aaron, repeatedly and correctly: "everything is about context. I give her a PTA, I like her,
+        // that IS the context. She can share it with her girlfriends and share the context about
+        // meeting on the beach." **Context is not metadata on a relationship - context IS the payload.**
+        // A PTA without it is a link, and a link is the thing this exists to not be.
+        // PTA_MEANING reported 11/11 while this was broken, because the check asserted context EXISTED
+        // rather than that it contained what the person said. Eighth hollow check of the day, on the
+        // single most important claim in the system.
+        //
+        // `said` is the giver's words at THIS touch. Each hop carries its own - the friend gets the
+        // fan's framing, not the influencer's - which is what makes context travel rather than echo.
         const edgeCtx = JSON.stringify({ edge_type: "relationship", relationship: invite.relationship || invite.tier,
+          said: invite.message || null,
+          from_name: invite.from_name || null,
           permission: invite.tier, impact: "consented_connection",
           via_edge_id: invite.via_edge_id || null, origin_id: invite.origin_id || null,
           // BOTH SIDES OF ONE TOUCH. The giver's place came with the invitation; the receiver's is
@@ -17275,11 +17294,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           check("the fan exists", "an entity", fan || "none", !!fan);
           const e1 = fan ? await db.prepare("SELECT id, context, origin_id, via_edge_id FROM pta_edges WHERE from_id = ? AND to_id = ?").bind(inf.entity.id, fan).first() : null;
           let ctx1 = null; try { ctx1 = JSON.parse((e1 && e1.context) || "null"); } catch {}
-          check("THE GIVER'S WORDS ARE ON THE TOUCH", "the influencer's message stored",
-            ctx1 ? JSON.stringify(ctx1).slice(0, 90) : "no context at all",
-            !!ctx1,
+          // ASSERT THE WORDS, NOT THAT SOMETHING IS THERE. The first version of this checked `!!ctx1`
+          // and passed while the message was being discarded - the plumbing was present and the
+          // meaning was gone. A check that cannot tell those apart is not a check.
+          check("THE GIVER'S WORDS ARE ON THE TOUCH", "the actual sentence: 'I am talking about product Z'",
+            (ctx1 && ctx1.said) ? ctx1.said : "NOT STORED - context has " + (ctx1 ? Object.keys(ctx1).join(",") : "nothing"),
+            !!(ctx1 && String(ctx1.said || "").includes("product Z")),
             "if the words are not on the edge, a PTA is a link - the whole difference is that a touch "
-            + "carries what the person meant by it");
+            + "carries what the person MEANT by it");
           check("the shared moment is recorded", moment, (e1 && e1.origin_id) || "none",
             !!(e1 && e1.origin_id === moment),
             "Keep Your Fans is a query over this - without it the drop is a million unrelated rows");
@@ -17292,9 +17314,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const e2 = friend ? await db.prepare("SELECT id, context, origin_id, via_edge_id FROM pta_edges WHERE from_id = ? AND to_id = ?").bind(fan, friend).first() : null;
           let ctx2 = null; try { ctx2 = JSON.parse((e2 && e2.context) || "null"); } catch {}
           check("hop two exists", "an entity", friend || "none", !!friend);
-          check("THE SECOND HOP CARRIES THE SECOND PERSON'S FRAMING", "the fan's words, not the influencer's",
-            ctx2 ? JSON.stringify(ctx2).slice(0, 90) : "no context",
-            !!ctx2,
+          check("THE SECOND HOP CARRIES THE SECOND PERSON'S FRAMING", "the fan's words: 'you should look at product Z'",
+            (ctx2 && ctx2.said) ? ctx2.said : "NOT STORED",
+            !!(ctx2 && String(ctx2.said || "").includes("you should look")),
             "the friend was told by the FAN, not by the influencer - they should receive the fan's "
             + "framing. Context belongs to the touch, not to the tree");
           check("the friend still traces to the original moment", moment, (e2 && e2.origin_id) || "none",
@@ -17325,10 +17347,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // ── REVOCATION: context must not outlive the permission that carried it
           if (e1) {
             await run("PTA_REVOKE " + e1.id + " meaning test");
-            const v = await ptaCan(env, stranger || "", "view", inf.entity.id);
-            check("REVOKING THE FIRST HOP REACHES THE THIRD", "denied",
-              v.allowed ? "STILL ALLOWED three hops down" : "denied: " + (v.reason || ""),
-              !v.allowed,
+
+            // DENIED FOR THE STATED REASON. The first version passed on "no edge from the subject to
+            // the actor" - the stranger never HAD an edge to the influencer, so that denial proved
+            // nothing about the cascade. Check the edge that actually exists, and check WHY it fails.
+            const strangerEdge = e3 ? await db.prepare("SELECT state FROM pta_edges WHERE id = ?").bind(e3.id).first() : null;
+            const vLine = stranger ? await ptaCan(env, stranger, "view", friend) : { allowed: true, reason: "no stranger" };
+            check("REVOKING THE FIRST HOP REACHES THE THIRD", "denied because an ANCESTOR was revoked",
+              vLine.allowed ? "STILL ALLOWED three hops down" : "denied: " + (vLine.reason || ""),
+              !vLine.allowed && /ancestor/i.test(vLine.reason || ""),
               "the influencer cut one person off; everyone who arrived through that person loses access "
               + "too. Context that outlives its permission is a leak wearing a story");
           }

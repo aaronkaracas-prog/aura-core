@@ -36,7 +36,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.792-2026-07-28";
+const BUILD = "aura-core-v4.9.793-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16345,13 +16345,21 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             arrived_via: e.via_edge_id, shared_moment: e.origin_id,
             where: (() => { try { return JSON.parse(e.place || "null"); } catch { return null; } })(),
             since: e.created_at, last_change: e.updated_at })),
+          // WHERE WAS MISSING FROM THIS SIDE and it nearly produced a wrong conclusion: an incoming
+          // relationship omitted `place` entirely, so a touch that DID record a location looked
+          // identical to one that did not. The reporter, not the data. Both directions carry it now,
+          // and both sides of the touch are shown - the giver's place came with the invitation, the
+          // receiver's was stated at the moment they accepted.
           relationships_granted_to_you: (edgesIn?.results || []).map((e) => ({
             edge: e.id, from: counterparty(e.from_id), type: e.edge_type, state: e.state,
-            arrived_via: e.via_edge_id, shared_moment: e.origin_id, since: e.created_at })),
+            arrived_via: e.via_edge_id, shared_moment: e.origin_id,
+            where: (() => { try { return JSON.parse(e.place || "null"); } catch { return null; } })(),
+            since: e.created_at })),
           your_chain: history.map((h) => ({ at: h.created_at, action: h.action, edge: h.edge_id,
             by: h.actor_id === id ? "you" : counterparty(h.actor_id).pta,
             detail: (() => { try { return JSON.parse(h.detail || "null"); } catch { return h.detail; } })() })),
-          counts: { granted: (edgesOut?.results || []).length, received: (edgesIn?.results || []).length, chain_events: history.length },
+          counts: { granted: (edgesOut?.results || []).length, received: (edgesIn?.results || []).length, chain_events: history.length,
+            with_a_place: [...(edgesOut?.results || []), ...(edgesIn?.results || [])].filter((e) => e.place).length },
           what_is_deliberately_absent: "Other people's names, content and chains. An edge to someone is "
             + "their relationship too, and exporting their substance because they once accepted your "
             + "invitation would turn your right to leave into their data breach.",

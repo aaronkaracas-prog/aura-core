@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.811-2026-07-28";
+const BUILD = "aura-core-v4.9.812-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -18166,8 +18166,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       return { cmd: "PTA_SHARE", payload: { ok: true, share_edge_id: shareEdgeId, link_edge_id: linkEdgeId, object: obj.name, from: owner.name, to: recip.name, state: "pending" } };
     }
 
-    case "PTA_DISCOVER": {
-      // ══ DISCOVERABILITY IS A CHOICE, NOT A DEFAULT (v4.9.800) ════════════════════════════════
+    case "PTA_FINDABLE": {
+      // ══ RENAMED FROM PTA_DISCOVER, WHICH WAS ALREADY TAKEN (v4.9.812) ════════════════════════
+      // This command was built as `PTA_DISCOVER` and SHADOWED AN EXISTING COMMAND OF THAT NAME -
+      // "discover all entities connected to a moment, the community that formed", which is the Keep
+      // Your Fans tree query and one of the most important things in this system. It has been dead
+      // code since v4.9.800 and **the deploy warned about it on every single build**: "this case
+      // clause will never be evaluated because it duplicates an earlier case clause". I read past
+      // that warning six times.
+      // Same class as PTA_OFFER duplicating INVITE - a command built on top of one that already
+      // existed - and that one is recorded in this codebase as the mistake not to repeat.
+      // The names were also simply wrong round: this is about being FINDABLE. Discovering the
+      // community of a moment is a different act and keeps the name it had first.
+      // ══ FINDABILITY IS A CHOICE, NOT A DEFAULT (v4.9.800) ════════════════════════════════════
       //
       // "Do you want to be discovered today? Yes. Don't want to be? Turn it off." That is the whole
       // user-facing idea and it should stay that simple. All the complexity below exists to make sure
@@ -18187,30 +18198,30 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // mean today, not until someone remembers to revoke it. An opt-in that outlives the intention
       // behind it becomes a default by neglect.
       //
-      //   PTA_DISCOVER <entity_id> ON <context,context> [near <lat>,<lon>] [radius <km>] [for <hours>]
-      //   PTA_DISCOVER <entity_id> OFF
-      //   PTA_DISCOVER <entity_id>            - what is currently set
-      if (!isOp) return { cmd: "PTA_DISCOVER", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      //   PTA_FINDABLE <entity_id> ON <context,context> [near <lat>,<lon>] [radius <km>] [for <hours>]
+      //   PTA_FINDABLE <entity_id> OFF
+      //   PTA_FINDABLE <entity_id>            - what is currently set
+      if (!isOp) return { cmd: "PTA_FINDABLE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       {
         const db = env.AURA_MEMORY;
         try { await db.prepare("CREATE TABLE IF NOT EXISTS pta_discovery (entity_id TEXT PRIMARY KEY, contexts TEXT, lat REAL, lon REAL, radius_km REAL, expires_at TEXT, set_at TEXT)").run(); } catch {}
         const id = args[0] || "";
         const mode = (args[1] || "").toUpperCase();
-        if (!id) return { cmd: "PTA_DISCOVER", payload: { ok: false,
-          error: "Usage: PTA_DISCOVER <entity_id> ON <contexts> [near <lat>,<lon>] [radius <km>] [for <hours>] | OFF" } };
+        if (!id) return { cmd: "PTA_FINDABLE", payload: { ok: false,
+          error: "Usage: PTA_FINDABLE <entity_id> ON <contexts> [near <lat>,<lon>] [radius <km>] [for <hours>] | OFF" } };
         const ent = await db.prepare("SELECT id, name FROM pta_entities WHERE id = ?").bind(id).first();
-        if (!ent) return { cmd: "PTA_DISCOVER", payload: { ok: false, error: "no such entity: " + id } };
+        if (!ent) return { cmd: "PTA_FINDABLE", payload: { ok: false, error: "no such entity: " + id } };
 
         if (mode === "OFF") {
           await db.prepare("DELETE FROM pta_discovery WHERE entity_id = ?").bind(id).run();
-          return { cmd: "PTA_DISCOVER", payload: { ok: true, discoverable: false,
+          return { cmd: "PTA_FINDABLE", payload: { ok: true, discoverable: false,
             note: "Off. The row is DELETED, not flagged - there is nothing left to filter incorrectly, and "
                 + "no query can return someone whose record does not exist." } };
         }
 
         if (mode !== "ON") {
           const cur = await db.prepare("SELECT * FROM pta_discovery WHERE entity_id = ? AND expires_at > ?").bind(id, new Date().toISOString()).first();
-          return { cmd: "PTA_DISCOVER", payload: { ok: true, discoverable: !!cur,
+          return { cmd: "PTA_FINDABLE", payload: { ok: true, discoverable: !!cur,
             current: cur ? { contexts: JSON.parse(cur.contexts || "[]"), near: cur.lat != null ? { lat: cur.lat, lon: cur.lon } : null,
               radius_km: cur.radius_km, expires_at: cur.expires_at } : null,
             note: cur ? "Discoverable until the time shown, and only in these contexts." : "Not discoverable. Nobody can find them by anything." } };
@@ -18236,7 +18247,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const SENSITIVE = /(health|medical|diagnos|therapy|recovery|addict|sober|hiv|cancer|disab|religio|church|mosque|synagog|muslim|jewish|christian|catholic|sexual|gay|lesbian|trans|queer|politic|democrat|republican|union|immigra|undocument|ethnic|race|racial|minor|child|teen)/i;
         const ctxRaw = (rest.match(/\bON\s+([^\s]+)/i) || [])[1] || "";
         const contexts = ctxRaw.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
-        if (!contexts.length) return { cmd: "PTA_DISCOVER", payload: { ok: false,
+        if (!contexts.length) return { cmd: "PTA_FINDABLE", payload: { ok: false,
           error: "at least one context is required - discoverable FOR something, never discoverable in general" } };
         const sensitive = contexts.filter((c) => SENSITIVE.test(c));
         const near = (rest.match(/\bnear\s+(-?[\d.]+)\s*,\s*(-?[\d.]+)/i) || []);
@@ -18255,12 +18266,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             await auraRemember(env, "A PTA became discoverable in a SENSITIVE context: " + sensitive.join(", ")
               + " (entity " + id + "). Not blocked - recorded, because you are present at every touch and "
               + "this is the kind of pattern worth your attention if it repeats or if searches for it spike.",
-              { kind: "signal", via: "PTA_DISCOVER" });
+              { kind: "signal", via: "PTA_FINDABLE" });
           } catch {}
         }
         await db.prepare("INSERT INTO pta_discovery (entity_id, contexts, lat, lon, radius_km, expires_at, set_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(entity_id) DO UPDATE SET contexts=excluded.contexts, lat=excluded.lat, lon=excluded.lon, radius_km=excluded.radius_km, expires_at=excluded.expires_at, set_at=excluded.set_at")
           .bind(id, JSON.stringify(contexts), lat, lon, radius, expires, now.toISOString()).run();
-        return { cmd: "PTA_DISCOVER", payload: { ok: true, discoverable: true, entity: ent.name,
+        return { cmd: "PTA_FINDABLE", payload: { ok: true, discoverable: true, entity: ent.name,
           contexts, near: lat != null ? { lat, lon } : null, radius_km: radius,
           sensitive_contexts: sensitive.length ? sensitive : undefined,
           sensitive_note: sensitive.length
@@ -19140,6 +19151,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     }
 
     case "PTA_DISCOVER": {
+      // ══ THIS IS KEEP YOUR FANS, AND IT WAS DEAD FOR TWELVE BUILDS (restored v4.9.812) ═════════
+      // A command named PTA_DISCOVER was added in v4.9.800 for an unrelated feature (opt-in
+      // findability) and SHADOWED this one - JavaScript takes the first matching case, so everything
+      // below became unreachable. **The tree query at the centre of the whole product stopped
+      // existing and nothing failed**, because a dead case clause is silent.
+      // esbuild warned on EVERY deploy - "this case clause will never be evaluated" - and it was read
+      // past six times. The other command is now PTA_FINDABLE.
+      // THE LESSON, and it is the seventh version of it today: **the build system was telling the
+      // truth and nobody was listening.** Read the warnings; they are the cheapest instrument here.
       // Discover all entities connected to a moment â€” the community that formed.
       // PTA_DISCOVER <moment_id>
       if (!isOp) return { cmd: "PTA_DISCOVER", payload: { ok: false, error: "OPERATOR_REQUIRED" } };

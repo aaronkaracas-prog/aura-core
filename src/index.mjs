@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.802-2026-07-28";
+const BUILD = "aura-core-v4.9.803-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17857,8 +17857,29 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (!asker) return { cmd: "PTA_NEARBY", payload: { ok: false, error: "Usage: PTA_NEARBY <asker_id> [context] [at <lat>,<lon>]" } };
         const ctx = (args[1] && !/^at$/i.test(args[1])) ? String(args[1]).toLowerCase() : null;
         const at = (rest.match(/\bat\s+(-?[\d.]+)\s*,\s*(-?[\d.]+)/i) || []);
-        const aLat = at[1] != null ? parseFloat(at[1]) : null;
-        const aLon = at[2] != null ? parseFloat(at[2]) : null;
+        // ══ THE TRIANGULATION LEAK, AND THE FIX (v4.9.803) ════════════════════════════════════
+        //
+        // FOUND BY ALL FIVE SEATS OF A REVIEW, AND MISSED ENTIRELY BY ME. The found person's radius
+        // protects them from a DISTANT stranger. It does nothing against a MOBILE one. In their
+        // words: "2km radius doesn't hide you if I can query at 100m steps and see when you appear
+        // and disappear." Step the query point across a city and you binary-search somebody to a
+        // precision they never agreed to - **the radius silently narrows to a point.**
+        // A single query was always honest. The ATTACK IS THE SEQUENCE, which is the same shape as
+        // every other defect in this system: nothing wrong in the moment, everything wrong in the
+        // aggregate.
+        //
+        // THE FIX IS GEOMETRIC, NOT ADMINISTRATIVE. The query point is SNAPPED TO A GRID before any
+        // comparison, so stepping at 100m produces the IDENTICAL result - there is no gradient to
+        // walk, and the attack stops being possible rather than being detected afterwards. A rate
+        // limit only slows a determined searcher; snapping removes the information they were mining.
+        // Distance comes back as a COARSE BAND rather than a number, for the same reason: an exact
+        // distance from a known point is a circle, and three circles are an address.
+        const GRID_KM = 2;                       // roughly a neighbourhood
+        const snap = (v, km) => { const d = km / 111; return Math.round(v / d) * d; };
+        const rawLat = at[1] != null ? parseFloat(at[1]) : null;
+        const rawLon = at[2] != null ? parseFloat(at[2]) : null;
+        const aLat = rawLat != null ? snap(rawLat, GRID_KM) : null;
+        const aLon = rawLon != null ? snap(rawLon, GRID_KM) : null;
 
         // ══ THE PATTERN IS THE SIGNAL, NOT THE SEARCH (v4.9.801) ══════════════════════════════
         //
@@ -17884,6 +17905,24 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           await KV.put(env, key, JSON.stringify(log), { expirationTtl: 30 * 24 * 3600 });
           // Thresholds are deliberately loose. This is not a limit - it is a nudge to the one entity
           // that can actually judge whether a hundred searches is a curious person or a harvester.
+          // ══ COUNTING WAS A LIMIT THAT FAILS OPEN, AND ALL FIVE SEATS SAID SO ════════════════
+          // "Observation without enforcement is logging, not safety." "At 3am with ten thousand
+          // searches scraping, the system counts diligently while the harm completes." They are right:
+          // a signal to someone who may be asleep is judgment AFTER extraction, and the harvest is
+          // finished before anybody reads the number.
+          // So there is now a ceiling that actually REFUSES. It is set high enough that no ordinary
+          // person will ever meet it - a human looking for people to meet does not run five hundred
+          // searches in a day - and it is a CIRCUIT BREAKER, not a quota: it stops the sequence and
+          // says why, rather than silently degrading. It resets daily.
+          if (log.count > 500) {
+            return { cmd: "PTA_NEARBY", payload: { ok: false, error: "SEARCH_CEILING",
+              searches_today: log.count,
+              why: "This is far past what looking for people looks like, and enumeration is the shape "
+                 + "abuse takes here - a sequence of individually reasonable queries reconstructing what "
+                 + "no single person agreed to reveal. Resets tomorrow.",
+              not_a_quota: "Ordinary use will never reach this. It exists because counting without "
+                 + "refusing is logging, and the harvest completes before anyone reads a log." } };
+          }
           if (log.count === 50 || log.count === 200 || log.contexts.length === 25) {
             await auraRemember(env, "Discovery pattern worth a look: " + asker + " has run " + log.count
               + " searches today across " + log.contexts.length + " contexts (" + log.contexts.slice(-8).join(", ")
@@ -17914,8 +17953,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             if (distance > (r.radius_km || 10)) { excludedDistance++; continue; }
           }
           const ent = await db.prepare("SELECT name FROM pta_entities WHERE id = ?").bind(r.entity_id).first();
+          // A BAND, NOT A NUMBER. An exact distance from a known point describes a circle, and three
+          // circles from three points describe an address. Bands are useful to a human deciding
+          // whether to meet someone and useless for reconstructing where they live.
+          const band = distance == null ? null
+            : distance < 2 ? "very close" : distance < 10 ? "nearby" : distance < 50 ? "same area" : "far";
           found.push({ pta: r.entity_id, name: ent ? ent.name : "(unknown)", contexts: cs,
-            distance_km: distance != null ? +distance.toFixed(2) : null,
+            distance: band,
             // The stored date is a far-future sentinel, not a real deadline. Showing it would imply a
             // limit nobody set - the same class of small untruth as a comment claiming a property the
             // code does not have.
@@ -17930,6 +17974,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           your_searches_today: askerToday,
           this_grants_nothing: "Finding someone is not permission to approach them. It tells you they chose "
             + "to be findable. Reaching them still goes through INVITE, which they can decline with no trace.",
+          precision_note: "Your query point was snapped to a ~" + GRID_KM + "km grid and distances are "
+            + "reported as bands. Moving a short distance and searching again returns the SAME result, "
+            + "which is deliberate: it is what stops a sequence of honest queries from triangulating "
+            + "somebody to a precision they never agreed to.",
           watched_not_limited: "This search is recorded against the asker, and Aura is told when a pattern "
             + "is worth a look. Nothing here restricts anybody - a single search always looks legitimate, "
             + "and the difference between curiosity and harvesting only exists in the count." } };

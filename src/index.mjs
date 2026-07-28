@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.805-2026-07-28";
+const BUILD = "aura-core-v4.9.806-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16999,6 +16999,141 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               + "that would be the case for sharding or a different store.",
           honest_limit: "One run on one worker instance. Latency to D1 varies by colo and by cold start, "
             + "and this codebase has already been burned once by trusting a single timing sample." } };
+      }
+    }
+
+    case "PTA_LAUNCH": {
+      // ══ THE ACTUAL HYPOTHESIS, MEASURED (v4.9.806) ═══════════════════════════════════════════
+      //
+      // AARON CORRECTED THE MODEL, AND HE IS RIGHT: **"forget when MrBeast gives out X PTAs and they
+      // are minted - all these people will IMMEDIATELY be using that PTA, manipulating, propagating,
+      // sharing context every step of the way. That is the hypothesis."**
+      //
+      // Everything measured so far was MINTING. 826 bytes per person: one entity, one edge, two
+      // history rows, then silence. **That is not the event.** The event is a drop where N people
+      // come into existence and are all immediately ACTIVE - and that is two different numbers, not
+      // one: storage that keeps growing per person, and a WRITE RATE against a store with a single
+      // writer.
+      // Twice now the wrong thing was measured: first a total without its composition, then minting
+      // without usage. This measures the drop as described.
+      //
+      //   PTA_LAUNCH [people=40] [actions_each=3]
+      // Each person is minted, then performs `actions_each` real operations - sharing onward, which
+      // is what actually happens and what actually costs. Self-cleaning, bounded hard.
+      if (!isOp) return { cmd: "PTA_LAUNCH", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const db = env.AURA_MEMORY;
+        const n = Math.min(Math.max(parseInt(args[0] || "40", 10) || 40, 5), 150);
+        const acts = Math.min(Math.max(parseInt(args[1] || "3", 10) || 3, 0), 10);
+        const tag = "launch" + Date.now().toString(36);
+        const made = [], errors = [];
+        const bytesNow = async () => {
+          const q = async (sql) => { try { const r = await db.prepare(sql).first(); return (r && r.n) || 0; } catch { return 0; } };
+          return (await q("SELECT SUM(LENGTH(COALESCE(id,''))+LENGTH(COALESCE(identity_key,''))+LENGTH(COALESCE(name,''))+LENGTH(COALESCE(metadata,''))) n FROM pta_entities"))
+               + (await q("SELECT SUM(LENGTH(COALESCE(id,''))+LENGTH(COALESCE(from_id,''))+LENGTH(COALESCE(to_id,''))+LENGTH(COALESCE(permission,''))+LENGTH(COALESCE(relationship,''))+LENGTH(COALESCE(context,''))+LENGTH(COALESCE(via_edge_id,''))+LENGTH(COALESCE(origin_id,''))+LENGTH(COALESCE(place,''))) n FROM pta_edges"))
+               + (await q("SELECT SUM(LENGTH(COALESCE(id,''))+LENGTH(COALESCE(edge_id,''))+LENGTH(COALESCE(action,''))+LENGTH(COALESCE(actor_id,''))+LENGTH(COALESCE(detail,''))) n FROM pta_history"));
+        };
+        const t0 = Date.now();
+        const beforeBytes = await bytesNow();
+        try {
+          const rootId = "pta_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map((b) => b.toString(16).padStart(2, "0")).join("");
+          const iso = new Date().toISOString();
+          await db.prepare("INSERT INTO pta_entities (id, type, identity_key, name, created_at, updated_at) VALUES (?, 'person', ?, ?, ?, ?)")
+            .bind(rootId, "launch:" + tag, tag + "star", iso, iso).run();
+          made.push(rootId);
+          const moment = "moment_" + tag;
+
+          // ── PHASE ONE: THE DROP. Everyone is minted from one shared moment.
+          const tMint = Date.now();
+          const born = [];
+          for (let w = 0; w < n; w += 25) {
+            const wave = [];
+            for (let k = w; k < Math.min(w + 25, n); k++) {
+              wave.push((async () => {
+                try {
+                  const c = "phone:+1555" + String(Date.now() + k).slice(-7) + k;
+                  const inv = await processCommand("INVITE from=" + rootId + " to=" + c + " name=" + tag + "p" + k + " rel=fan origin=" + moment, env, true);
+                  const iid = inv && inv.payload && inv.payload.invite_id;
+                  if (!iid) return;
+                  const acc = await processCommand("ACCEPT " + iid, env, true);
+                  const pid = acc && acc.payload && acc.payload.pta;
+                  if (pid) { made.push(pid); born.push(pid); }
+                } catch (e) { errors.push(String((e && e.message) || e).slice(0, 70)); }
+              })());
+            }
+            await Promise.all(wave);
+          }
+          const mintMs = Date.now() - tMint;
+          const afterMintBytes = await bytesNow();
+
+          // ── PHASE TWO: THEY USE IT. This is the part every previous measurement skipped - people
+          // do not accept and go quiet, they immediately pass it on with their own context.
+          const tAct = Date.now();
+          let actionsDone = 0;
+          for (const person of born) {
+            const wave = [];
+            for (let a = 0; a < acts; a++) {
+              wave.push((async () => {
+                try {
+                  const c = "phone:+1555" + String(Date.now() + Math.floor(Math.random() * 1e6)).slice(-7) + a;
+                  const inv = await processCommand("INVITE from=" + person + " to=" + c + " name=" + tag + "on rel=friend origin=" + moment + " msg=passing this on", env, true);
+                  const iid = inv && inv.payload && inv.payload.invite_id;
+                  if (iid) {
+                    const acc = await processCommand("ACCEPT " + iid, env, true);
+                    const pid = acc && acc.payload && acc.payload.pta;
+                    if (pid) made.push(pid);
+                    actionsDone++;
+                  }
+                } catch (e) { errors.push(String((e && e.message) || e).slice(0, 70)); }
+              })());
+            }
+            await Promise.all(wave);
+          }
+          const actMs = Date.now() - tAct;
+          const afterAllBytes = await bytesNow();
+
+          const mintCost = born.length ? (afterMintBytes - beforeBytes) / born.length : 0;
+          const totalPeople = made.length - 1;
+          const fullCost = totalPeople ? (afterAllBytes - beforeBytes) / totalPeople : 0;
+          const OVERHEAD = 2.0, CEILING = 10 * 1024 * 1024 * 1024;
+          const capMint = mintCost ? Math.floor(CEILING / (mintCost * OVERHEAD)) : 0;
+          const capReal = fullCost ? Math.floor(CEILING / (fullCost * OVERHEAD)) : 0;
+
+          return { cmd: "PTA_LAUNCH", payload: { ok: errors.length === 0,
+            dropped: n, born_in_drop: born.length, actions_each: acts, actions_completed: actionsDone,
+            people_total_after_propagation: totalPeople,
+            bytes_per_person: { just_minted: Math.round(mintCost), after_they_used_it: Math.round(fullCost),
+              multiplier: mintCost ? +(fullCost / mintCost).toFixed(2) : null },
+            capacity: { if_they_never_act: capMint, as_actually_used: capReal,
+              lost_to_activity: capMint - capReal },
+            throughput: { mint_ms: mintMs, mints_per_second: +(born.length / (mintMs / 1000)).toFixed(1),
+              activity_ms: actMs, writes_per_second: +(actionsDone / Math.max(actMs / 1000, 0.001)).toFixed(1) },
+            errors: errors.length, error_sample: errors.slice(0, 3),
+            read_this: "**Compare the two capacities.** The first is what every earlier measurement reported - "
+              + "people who accept and go quiet. The second is what happens when they actually use it, which "
+              + "is the stated hypothesis. If the second is much smaller, then storage capacity is set by "
+              + "ACTIVITY rather than by headcount, and planning around a per-person figure is planning "
+              + "around a number that does not describe the event.",
+            what_this_still_does_not_prove: "One worker request, one region, a synthetic tree one level "
+              + "deep. A real drop is N separate requests worldwide and propagation that keeps going. "
+              + "Treat mints_per_second as a floor and the byte multiplier as a lower bound." } };
+        } catch (e) {
+          return { cmd: "PTA_LAUNCH", payload: { ok: false, error: String((e && e.message) || e).slice(0, 200), errors } };
+        } finally {
+          try {
+            for (let i = 0; i < made.length; i += 50) {
+              const b = made.slice(i, i + 50), ph = b.map(() => "?").join(",");
+              const ed = await db.prepare("SELECT id FROM pta_edges WHERE from_id IN (" + ph + ") OR to_id IN (" + ph + ")").bind(...b, ...b).all();
+              const eids = ((ed && ed.results) || []).map((x) => x.id);
+              for (let j = 0; j < eids.length; j += 50) {
+                const eb = eids.slice(j, j + 50), eph = eb.map(() => "?").join(",");
+                await db.prepare("DELETE FROM pta_history WHERE edge_id IN (" + eph + ")").bind(...eb).run();
+              }
+              await db.prepare("DELETE FROM pta_edges WHERE from_id IN (" + ph + ") OR to_id IN (" + ph + ")").bind(...b, ...b).run();
+              await db.prepare("DELETE FROM pta_entities WHERE id IN (" + ph + ")").bind(...b).run();
+            }
+          } catch {}
+        }
       }
     }
 

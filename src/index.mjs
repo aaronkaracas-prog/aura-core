@@ -36,7 +36,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.783-2026-07-28";
+const BUILD = "aura-core-v4.9.784-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2034,25 +2034,76 @@ async function readOwnSource(env, branch, worker) {
 // A HINT IS KEPT DELIBERATELY. `phone:···1234` is stored beside the hash so a human can recognise a
 // row without the system holding the number. Debugging an identity graph you cannot read at all is
 // how people end up dumping plaintext back in "just temporarily".
-async function identityPepper(env) {
-  let pep = await getSecret(env, "identity_pepper");
-  if (pep) return pep;
-  // First use: mint one. A system secret, not a user credential - but losing it loses every lookup.
+// ══ THE PEPPER IS VERSIONED, SO IT CAN BE ROTATED (v4.9.784) ═════════════════════════════════════
+//
+// THE OMISSION NOBODY SAW UNTIL THREE COUNCIL SEATS FOUND IT INDEPENDENTLY. The pepper was a single
+// static secret under an append-only identity chain: if it ever leaked it could not be replaced
+// without invalidating every identity lookup that had ever been made. That is the same shape as
+// crypto-shredding before it was decided - **a key with no rotation plan is a decision being made by
+// default**, and the default is "we can never rotate."
+//
+// THE FIX IS KEY VERSIONING, which is what every system that survives a key compromise does. A hash
+// carries the version that produced it (`h:v2:...`); lookups try the CURRENT version first and then
+// walk backwards through retired ones. Rotation mints a new version, keeps the old ones readable, and
+// re-hashes a row lazily the next time it is touched. Nothing is invalidated at the moment of
+// rotation, which is the entire point: a rotation that breaks lookups is one nobody will ever perform.
+//
+// UNVERSIONED `h:<hex>` HASHES ARE VERSION 1. They predate this and stay findable - a migration that
+// strands existing rows is not a migration.
+async function identityPepper(env, version) {
+  const v = version || (parseInt(await KV.get(env, "config:identity:pepper_version").catch(() => null) || "1", 10) || 1);
+  const name = v === 1 ? "identity_pepper" : "identity_pepper_v" + v;
+  let pep = await getSecret(env, name);
+  if (pep) return { version: v, secret: pep };
+  // First use of this version: mint it. A system secret, not a user credential - and losing it loses
+  // every lookup made under it, which is why rotation keeps the old ones rather than replacing them.
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   pep = Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
-  try { await env.AURA_KV.put("secret:identity_pepper", pep); } catch {}
-  return pep;
+  try { await env.AURA_KV.put("secret:" + name, pep); } catch {}
+  return { version: v, secret: pep };
+}
+
+// Every version that can still resolve a lookup, newest first. Retired peppers are kept precisely so
+// that yesterday's hashes remain findable; deleting one is a deliberate act of forgetting everybody
+// who was hashed under it.
+// All hashes a lookup might need to try, newest version first. Without this, rotation would silently
+// orphan every row written under a previous pepper - which is exactly the failure versioning exists
+// to prevent, and it would look like the people had simply vanished.
+async function hashIdentityAllVersions(env, normalised) {
+  const out = [];
+  for (const pp of await identityPepperVersions(env)) {
+    try {
+      const enc = new TextEncoder();
+      const k = await crypto.subtle.importKey("raw", enc.encode(pp.secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+      const sig = await crypto.subtle.sign("HMAC", k, enc.encode(String(normalised)));
+      const hexRaw = Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+      out.push({ version: pp.version, key: "h:" + (pp.version === 1 ? hexRaw : "v" + pp.version + ":" + hexRaw) });
+    } catch {}
+  }
+  return out;
+}
+
+async function identityPepperVersions(env) {
+  const cur = parseInt(await KV.get(env, "config:identity:pepper_version").catch(() => null) || "1", 10) || 1;
+  const out = [];
+  for (let v = cur; v >= 1; v--) {
+    const p = await getSecret(env, v === 1 ? "identity_pepper" : "identity_pepper_v" + v);
+    if (p) out.push({ version: v, secret: p });
+  }
+  return out;
 }
 
 async function hashIdentity(env, normalised) {
   const v = String(normalised || "").trim();
   if (!v) return { key: v, hint: null };
-  const pep = await identityPepper(env);
-  if (!pep) return { key: v, hint: null, unhashed_reason: "no pepper available - refusing to store a weak digest" };
+  const pp = await identityPepper(env);
+  if (!pp || !pp.secret) return { key: v, hint: null, unhashed_reason: "no pepper available - refusing to store a weak digest" };
   const enc = new TextEncoder();
-  const k = await crypto.subtle.importKey("raw", enc.encode(pep), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const k = await crypto.subtle.importKey("raw", enc.encode(pp.secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const sig = await crypto.subtle.sign("HMAC", k, enc.encode(v));
-  const hex = Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  const hexRaw = Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  // Version 1 stays UNPREFIXED so every hash written before versioning existed still matches exactly.
+  const hex = pp.version === 1 ? hexRaw : "v" + pp.version + ":" + hexRaw;
   // The hint shows the SCHEME and the last four - enough to recognise, not enough to reconstruct.
   const m = v.match(/^([a-z]+):(.*)$/i);
   const scheme = m ? m[1] : "id";
@@ -15456,8 +15507,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // normalised contact and must stay findable, or every existing person forks on next contact.
           let existing = await db.prepare("SELECT * FROM pta_entities WHERE identity_key = ?").bind(identityKey).first();
           if (!existing && idMatch) {
-            const legacy = normIdentity(idMatch[1]);
-            existing = await db.prepare("SELECT * FROM pta_entities WHERE identity_key = ?").bind(legacy).first();
+            const normed = normIdentity(idMatch[1]);
+            // Retired pepper versions FIRST, then legacy plaintext. If dedup does not walk versions, a
+            // rotation forks every existing person the next time they are touched - the single worst
+            // outcome, because it is silent and unmergeable.
+            for (const cand of await hashIdentityAllVersions(env, normed)) {
+              if (existing) break;
+              if (cand.key === identityKey) continue;
+              existing = await db.prepare("SELECT * FROM pta_entities WHERE identity_key = ?").bind(cand.key).first();
+            }
+            if (!existing) existing = await db.prepare("SELECT * FROM pta_entities WHERE identity_key = ?").bind(normed).first();
           }
           if (existing) return { cmd: "PTA_ENTITY", payload: { ok: true, mode: "existing", entity: await _unsealEnt(existing) } };
         }
@@ -15567,6 +15626,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // and "found a legacy row", and that distinction is what makes COLLISIONS actionable.
         let ent = await db.prepare("SELECT * FROM pta_entities WHERE identity_key = ?").bind(nk).first();
         let matched = "normalised";
+        // Walk retired pepper versions before giving up. A row hashed under an older pepper is still
+        // that person; failing to find them would look like they never existed.
+        if (!ent) {
+          for (const cand of await hashIdentityAllVersions(env, norm)) {
+            if (cand.key === nk) continue;
+            const older = await db.prepare("SELECT * FROM pta_entities WHERE identity_key = ?").bind(cand.key).first();
+            if (older) { ent = older; matched = "pepper v" + cand.version + " (retired - rotate this row on next write)"; break; }
+          }
+        }
         if (!ent) {
           // Legacy ladder: normalised plaintext (v749-v758), then the raw string as typed (pre-v749).
           ent = await db.prepare("SELECT * FROM pta_entities WHERE identity_key = ?").bind(norm).first();
@@ -15873,6 +15941,46 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           note: "Expand and Check share one implementation - if they ever disagreed, one of them would "
               + "be lying and there would be no way to tell which.",
           scanned: edges.length, truncated: edges.length >= 200 || undefined } };
+      }
+    }
+
+    case "PTA_ROTATE_PEPPER": {
+      // ══ ROTATING A KEY THAT COULD NOT BE ROTATED ═════════════════════════════════════════════
+      // Minting a new version does NOT invalidate anything: old peppers stay readable, lookups walk
+      // backwards through them, and a row re-hashes to the current version the next time it is
+      // written. **A rotation that breaks lookups is a rotation nobody will ever perform**, which is
+      // how a compromised key ends up living forever.
+      // Dry run by default. Retiring an old version is a SEPARATE and deliberate act, because
+      // deleting a retired pepper permanently orphans everyone hashed under it - that is not
+      // rotation, that is mass forgetting.
+      if (!isOp) return { cmd: "PTA_ROTATE_PEPPER", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const confirm = /\bCONFIRM\b/i.test(rest);
+        const versions = await identityPepperVersions(env);
+        const cur = versions.length ? versions[0].version : 1;
+        if (!confirm) {
+          return { cmd: "PTA_ROTATE_PEPPER", payload: { ok: true, dry_run: true,
+            current_version: cur, versions_available: versions.map((v) => v.version),
+            what_happens: "Version " + (cur + 1) + " is minted and becomes the one NEW hashes use. Every "
+              + "older version stays in place, so existing rows remain findable and nobody is orphaned. "
+              + "Rows re-hash to the new version the next time they are written - lazily, never in a "
+              + "migration that could half-finish.",
+            when_to_do_this: "If the pepper is ever exposed, or on a schedule. Before this existed, a "
+              + "leaked pepper could not be replaced without invalidating every identity lookup ever "
+              + "made - which meant in practice it would never have been replaced at all.",
+            how: "PTA_ROTATE_PEPPER CONFIRM" } };
+        }
+        const next = cur + 1;
+        const minted = await identityPepper(env, next);
+        if (!minted || !minted.secret) return { cmd: "PTA_ROTATE_PEPPER", payload: { ok: false, error: "MINT_FAILED" } };
+        await KV.put(env, "config:identity:pepper_version", String(next));
+        return { cmd: "PTA_ROTATE_PEPPER", payload: { ok: true, rotated_to: next, previous: cur,
+          note: "New hashes use v" + next + ". Older versions are RETAINED and lookups walk backwards "
+              + "through them, so nothing was invalidated and no row needs migrating today.",
+          retiring_old_versions: "A separate, deliberate act. Deleting a retired pepper permanently "
+            + "orphans everyone hashed under it - that is not rotation, it is mass forgetting.",
+          verify_with: "PTA_ENTITY CREATE person RotateCheck identity:phone:+15550001234 (twice - the "
+            + "second must return mode:existing, proving dedup still walks the old version)" } };
       }
     }
 
@@ -16721,11 +16829,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           organs: "PERMISSION (ptaCan, default-deny, lineage-aware) + CRM (entities, edges, append-only "
             + "history) + PRM (vouches as edges, trust as a computed view). All three exercised above - "
             + "the spec's own test is 'break one, the organism dies', and until v4.9.774 the third was a name.",
-          what_this_does_not_prove: "This exercises the GRAPH and the permission DECIDER. It does not "
-            + "test the doorway or the authentication ceremony, and ptaCan is not yet WIRED to anything - "
-            + "every command that reads another entity's data is operator-gated, so a refusal there would "
-            + "gate Aaron out of his own system and change nothing about safety. Enforcement belongs at "
-            + "the doorway, where a visitor who is not the operator asks to see something." } };
+          // This paragraph said "ptaCan is not yet WIRED to anything" and stopped being true the moment
+          // v4.9.783 shipped. A test that describes the system inaccurately in its own footer is the
+          // same fossil class as a comment claiming a fix that no longer holds.
+          what_this_does_not_prove: "This exercises the GRAPH, the permission DECIDER and the GATE. "
+            + "ptaCan IS wired as of v4.9.783: PTA_ENTITY GET runs ptaGate on every read, the operator "
+            + "passes as an EXPLICIT recorded bypass rather than by skipping the check, and PTA_BYPASS "
+            + "counts them. What is still untested here: the doorway itself, the authentication ceremony, "
+            + "and a REFUSAL of a real visitor - that path exists (PublicEntry.ptaGet) but nothing has "
+            + "walked through it yet, because nobody has a session." } };
       }
     }
 

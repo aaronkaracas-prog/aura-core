@@ -36,7 +36,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.781-2026-07-27";
+const BUILD = "aura-core-v4.9.782-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -15902,14 +15902,28 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                   ? "NO - THE METADATA IS STORED IN PLAINTEXT. Destroying the key would tombstone the "
                     + "name and change NOTHING about the content. Do not tell anyone they were forgotten."
                   : "N/A - this entity has no metadata to protect"),
+            // The old wording said "no key means their content is plaintext" while sealed_state was
+            // simultaneously reporting the metadata as encrypted - the command contradicting itself in
+            // one payload. The two cases are distinguishable and now are: sealed content plus no key
+            // is ALREADY FORGOTTEN (the success state); unsealed content plus no key is a row that
+            // predates encryption and cannot be shredded at all.
             what_happens: hasKey
-              ? "Their key is destroyed. Every encrypted field of theirs becomes permanently unreadable "
-                + "and reads back as [forgotten]. Their rows and their relationships REMAIN, so nobody "
-                + "else's chain develops a hole - the structure of what happened survives, the substance "
-                + "of who they were does not."
-              : "NO KEY EXISTS for this entity - either they were created before crypto-shredding, in "
-                + "which case their content is plaintext and this will NOT forget them, or they have "
-                + "already been forgotten. Check which before telling anyone they are gone.",
+              ? "Their key is destroyed. Every encrypted field becomes permanently unreadable and reads "
+                + "back as [forgotten]. Rows and relationships REMAIN, so nobody else's chain develops a "
+                + "hole - the structure of what happened survives, the substance of who they were does not."
+              : (sealedState.metadata_sealed
+                  ? "ALREADY FORGOTTEN. The content is encrypted and the key is gone, which is the finished "
+                    + "state, not an error. Nothing further to do and nothing further that can be done."
+                  : "NO KEY AND NO ENCRYPTION. This row predates crypto-shredding, so its content is in "
+                    + "plaintext and destroying a key would change nothing. It cannot be shredded - do not "
+                    + "report this person as forgotten."),
+            // KV IS EVENTUALLY CONSISTENT, AND THIS COST THREE FAILED VERIFICATIONS. A read moments
+            // after the key is deleted can still be served a CACHED copy and will decrypt happily -
+            // so the content looks untouched and the shred looks broken. It is not: the key is gone
+            // and the cache expires. Never verify a shred immediately after confirming it.
+            verification_note: "KV is eventually consistent. A read within roughly a minute of CONFIRM may "
+              + "still decrypt from a cached key and show the content intact. That is cache, not failure - "
+              + "wait before verifying, or read sealed_state above, which reports what is actually on disk.",
             how: "PTA_FORGET " + id + " CONFIRM",
             warning: "Irreversible, and more completely than a delete: a destroyed key cannot be restored "
                    + "from any backup, by anyone, ever." } };

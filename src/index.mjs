@@ -36,7 +36,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.785-2026-07-28";
+const BUILD = "aura-core-v4.9.786-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -27375,6 +27375,37 @@ export class PublicEntry extends WorkerEntrypoint {
 
   // Accept an invitation. THE moment a person comes into existence. Their own place is stated here
   // because only they know where they were.
+  // ══ LOOK AT AN INVITATION WITHOUT ACCEPTING IT (v4.9.786) ════════════════════════════════════
+  // A person cannot consent to something they have not seen. Every other path either creates nothing
+  // (INVITE) or creates them (ACCEPT) - there was no way to simply LOOK, which meant the doorway
+  // would have had to ask someone to say yes to an unlabelled link. That is not consent, it is a dare.
+  // Creates nothing, records nothing, and reveals only what the SENDER chose to attach: their display
+  // name and the context they wrote. Not their contact, not their chain, not who else they know.
+  async inviteLook(inviteId) {
+    const env = this.env;
+    if (typeof inviteId !== "string" || !/^inv_[a-f0-9]+$/i.test(inviteId)) return { ok: false, error: "bad invite id" };
+    try {
+      const raw = await env.AURA_KV.get("invite:" + inviteId);
+      if (!raw) return { ok: false, error: "NOT_FOUND",
+        why: "this invitation does not exist, or it was already used. Invitations are single-use." };
+      const iv = JSON.parse(raw);
+      if (iv.status && iv.status !== "pending") return { ok: false, error: "ALREADY_USED" };
+      let fromName = null;
+      try {
+        const f = await env.AURA_MEMORY.prepare("SELECT name FROM pta_entities WHERE id = ?").bind(iv.from).first();
+        fromName = f ? f.name : null;
+      } catch {}
+      return { ok: true, invite_id: inviteId,
+        from_name: fromName || "Someone",
+        relationship: iv.relationship || null,
+        message: iv.message || null,
+        place: iv.place || null,
+        sent: iv.created || null,
+        what_this_is: "an invitation to hold a PTA - your own record, that you control, that nobody can "
+                    + "read without your say-so. Accepting creates it. Declining leaves nothing behind." };
+    } catch { return { ok: false, error: "unreadable" }; }
+  }
+
   // ACCEPT is deliberately NOT session-gated. The whole point is that the person accepting does not
   // have an account yet - acceptance is what BRINGS THEM INTO EXISTENCE. Requiring a session here
   // would mean you must already be inside to be let in. The invite_id itself is the credential: it

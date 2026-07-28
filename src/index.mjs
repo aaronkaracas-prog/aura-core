@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.801-2026-07-28";
+const BUILD = "aura-core-v4.9.802-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17916,14 +17916,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const ent = await db.prepare("SELECT name FROM pta_entities WHERE id = ?").bind(r.entity_id).first();
           found.push({ pta: r.entity_id, name: ent ? ent.name : "(unknown)", contexts: cs,
             distance_km: distance != null ? +distance.toFixed(2) : null,
-            discoverable_until: r.expires_at });
+            // The stored date is a far-future sentinel, not a real deadline. Showing it would imply a
+            // limit nobody set - the same class of small untruth as a comment claiming a property the
+            // code does not have.
+            discoverable: "until they turn it off" });
         }
         return { cmd: "PTA_NEARBY", payload: { ok: true, asker, context: ctx || "any",
           found: found.length, people: found,
           excluded: { wrong_context: excludedContext, outside_their_own_radius: excludedDistance, yourself: excludedSelf },
-          not_counted_at_all: "Anyone who never opted in, and anyone whose window has lapsed. They are not "
-            + "hidden from this result - they were never in the query. That is the difference between a "
-            + "filter and an absence, and it is the whole point.",
+          not_counted_at_all: "Anyone who never opted in. They are not hidden from this result - they were "
+            + "never in the query. That is the difference between a filter and an absence, and it is the "
+            + "whole point.",
           your_searches_today: askerToday,
           this_grants_nothing: "Finding someone is not permission to approach them. It tells you they chose "
             + "to be findable. Reaching them still goes through INVITE, which they can decline with no trace.",

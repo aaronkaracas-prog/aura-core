@@ -36,7 +36,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.791-2026-07-28";
+const BUILD = "aura-core-v4.9.792-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2315,6 +2315,68 @@ async function sealFor(env, ptaId, plaintext) {
     joined.set(iv, 0); joined.set(new Uint8Array(ct), iv.length);
     return "enc:v1:" + btoa(String.fromCharCode(...joined));
   } catch { return plaintext; }
+}
+
+// ══ AN INVITATION NOBODY RECEIVES IS HALF A FEATURE (v4.9.792) ═══════════════════════════════════
+//
+// `INVITE` stored an invitation and returned an id. **It sent nothing.** No SMS, no email - the only
+// way anyone ever received one was a human copying the URL out of a terminal and handing it over.
+// The whole propagation model rests on a stranger being reachable, and the reach was never built.
+//
+// FAILS LOUDLY AND HONESTLY. If a credential is missing this does NOT pretend to have sent something:
+// it returns exactly what is absent and hands back the link so the invitation can still be delivered
+// by hand. **A delivery that silently no-ops is worse than none, because the sender believes the
+// person was asked and the person was never asked** - and in a consent system that is the difference
+// between "they declined" and "they never heard from you".
+async function deliverInvitation(env, toContact, inviteId, fromName, message) {
+  const doorway = (await KV.get(env, "config:doorway:url")) || "https://aura-host.aaronkaracas.workers.dev";
+  const link = doorway.replace(/\/+$/, "") + "/i/" + inviteId;
+  const norm = normIdentity(toContact);
+  const who = fromName || "Someone";
+  const body = who + " sent you something" + (message ? ': "' + String(message).slice(0, 120) + '"' : "") + "\n\n" + link;
+
+  if (/^phone:/i.test(norm)) {
+    const to = norm.replace(/^phone:/i, "");
+    const sid = await getSecret(env, "twilio_account_sid");
+    const tok = await getSecret(env, "twilio_auth_token");
+    const from = await getSecret(env, "twilio_from_number");
+    const missing = [];
+    if (!sid) missing.push("twilio_account_sid");
+    if (!tok) missing.push("twilio_auth_token");
+    if (!from) missing.push("twilio_from_number");
+    if (missing.length) return { delivered: false, channel: "sms", missing, link,
+      why: "the invitation EXISTS and the link works - it just was not sent. Set these secrets, or "
+         + "hand the link over yourself." };
+    try {
+      const r = await fetch("https://api.twilio.com/2010-04-01/Accounts/" + sid + "/Messages.json", {
+        method: "POST",
+        headers: { "Authorization": "Basic " + btoa(sid + ":" + tok), "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ To: to, From: from, Body: body }).toString(),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) return { delivered: false, channel: "sms", link,
+        error: (j && (j.message || j.error_message)) || ("HTTP " + r.status),
+        why: "Twilio refused it. Common causes: the number is unverified on a trial account, the A2P "
+           + "campaign is not approved for this use, or the From number cannot message that country." };
+      return { delivered: true, channel: "sms", to_masked: "···" + to.slice(-4), sid: j.sid || null, link };
+    } catch (e) {
+      return { delivered: false, channel: "sms", link, error: String((e && e.message) || e).slice(0, 160) };
+    }
+  }
+
+  if (/^email:/i.test(norm)) {
+    const to = norm.replace(/^email:/i, "");
+    // The SEND_EMAIL binding is Cloudflare Email Routing, which can only send to VERIFIED destination
+    // addresses. That is a real constraint and not a bug - saying so beats a delivery that fails
+    // silently for every stranger, which is exactly who this feature exists to reach.
+    if (!env.SEND_EMAIL) return { delivered: false, channel: "email", link, missing: ["SEND_EMAIL binding"] };
+    return { delivered: false, channel: "email", link,
+      why: "Cloudflare Email Routing only sends to addresses VERIFIED in this account, so it cannot "
+         + "reach a stranger. Email invitations need a transactional sender. The link works meanwhile." };
+  }
+
+  return { delivered: false, channel: "unknown", link,
+    why: "the contact is neither a phone nor an email, so there is nowhere to send it" };
 }
 
 // ══ ONE PLACE THAT WRITES ENTITY METADATA (v4.9.789) ═════════════════════════════════════════════
@@ -14561,7 +14623,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         pend.push(inviteId);
         await env.AURA_KV.put(`invites:pending:${iv.to_contact}`, JSON.stringify(pend)).catch(() => {});
       } catch {}
-      return { cmd: "INVITE", payload: { ok: true, invite_id: inviteId, from: sender.name, to_contact: iv.to_contact, status: "pending", note: "Invitation offered. NO PTA created yet - it is born only when the invitee accepts." } };
+      // DELIVERY, ADDED v4.9.792. Until now this returned an id and sent NOTHING.
+      const _sent = await deliverInvitation(env, iv.to_contact, inviteId, sender.name, iv.message);
+      return { cmd: "INVITE", payload: { ok: true, invite_id: inviteId, from: sender.name, to_contact: iv.to_contact, status: "pending",
+        link: _sent.link, delivered: _sent.delivered, delivery: _sent,
+        note: "Invitation offered. NO PTA created yet - it is born only when the invitee accepts." } };
     }
 
     case "ACCEPT": {

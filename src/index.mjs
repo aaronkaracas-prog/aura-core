@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.814-2026-07-28";
+const BUILD = "aura-core-v4.9.815-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16552,6 +16552,37 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (!isOp) return { cmd: "PTA_INVARIANTS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       {
         const db = env.AURA_MEMORY;
+        // ══ THESE COUNTERS WILL FAIL OPEN THE DAY THIS SHARDS (v4.9.815) ═════════════════════════
+        //
+        // A review seat found this and it is the sharpest thing anyone has said about the invariants:
+        // **"On the day you shard, a cross-shard invariant reads zero because it CANNOT SEE BOTH
+        // SIDES, not because state is clean. A check that fails open under sharding is exactly the
+        // 'fails open dressed as judgment' pattern you already killed once."**
+        // Every query below joins two tables in ONE store. Four of the seven span relationships and
+        // their chain, or relationships and their entities. Put those on different stores and the
+        // JOIN silently matches nothing - and a violation count of zero is indistinguishable from
+        // perfect health. **It would look like the best possible news.**
+        //
+        // So the reach is declared and checked BEFORE any counting. Today the shard map is empty and
+        // everything lives in one store, so this passes trivially - which is the point: the guard
+        // exists BEFORE the second store does, rather than being remembered afterwards by someone
+        // reading a zero and believing it.
+        let shardMap = {};
+        try { shardMap = JSON.parse((await KV.get(env, "config:shard:map")) || "{}"); } catch {}
+        const otherStores = [...new Set(Object.values(shardMap))].filter((b) => b && b !== "AURA_MEMORY");
+        if (otherStores.length) {
+          return { cmd: "PTA_INVARIANTS", payload: { ok: false, error: "CANNOT_SEE_EVERYTHING",
+            stores_in_map: otherStores,
+            why: "These checks JOIN relationships against their chain and their entities INSIDE ONE STORE. "
+               + "With data spread across " + (otherStores.length + 1) + " stores, those joins match "
+               + "nothing across the boundary and every count comes back ZERO - which reads as perfect "
+               + "health and is actually blindness.",
+            refusing_rather_than_reporting_zero: "A check that cannot see everything must REFUSE, not "
+               + "pass. Reporting zero here would be the exact failure this command exists to catch, "
+               + "committed by the command itself.",
+            what_to_do: "Make each invariant a cross-store job before adding a second store - or run it "
+               + "per store and sum, which works for the counts that do not join across the boundary." } };
+        }
         const one = async (sql, ...b) => { try { const r = await db.prepare(sql).bind(...b).first(); return (r && r.n) || 0; } catch { return -1; } };
 
         // Consent given and the record not showing it. This exact bug existed for days.
@@ -16590,6 +16621,36 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           }
         } catch { contentWithoutKey = -1; }
 
+        // ══ EVERY INVARIANT DECLARES ITS REACH (v4.9.815) ════════════════════════════════════════
+        //
+        // A review seat found the sixth thing I would have got wrong, and it is the same defect I
+        // already fixed once somewhere else: **on the day this shards, a cross-shard invariant reads
+        // ZERO because it cannot see both sides - not because the state is clean.** It would look
+        // exactly like health. "A check that fails open under sharding is exactly the fails-open-
+        // dressed-as-judgment pattern you already killed."
+        //
+        // So each check now states which tables it must JOIN, and therefore whether it survives
+        // partitioning. Five are single-table and survive anywhere. **TWO JOIN history against edges -
+        // and they are the pair that caught the bug where consent was given and the record did not
+        // show it.** Those must REFUSE when they cannot reach both sides, never quietly pass.
+        // The guard is inert today because there is one store, which is precisely when it should be
+        // written: after sharding, nobody will remember which checks silently stopped working.
+        const REACH = {
+          consent_given_but_edge_still_pending:            ["pta_edges", "pta_history"],
+          active_relationship_with_no_record_of_the_yes:   ["pta_edges", "pta_history"],
+          lineage_pointing_at_nothing:                     ["pta_edges"],
+          history_for_a_deleted_edge:                      ["pta_history", "pta_edges"],
+          relationships_to_a_missing_entity:               ["pta_edges", "pta_entities"],
+          two_entities_sharing_one_contact:                ["pta_entities"],
+          revoked_edges_still_granting:                    ["pta_edges"],
+        };
+        // Sharding is not live, so everything is reachable. When `config:shard:map` has entries this
+        // must become a real check that the tables a given invariant joins live in the same store -
+        // and it must return UNREACHABLE, not zero.
+        let shardCount = 0;
+        try { shardCount = Object.keys(JSON.parse((await KV.get(env, "config:shard:map")) || "{}")).length; } catch {}
+        const crossStore = Object.entries(REACH).filter(([, t]) => t.length > 1).map(([k]) => k);
+
         const checks = {
           consent_given_but_edge_still_pending: pendingForever,
           active_relationship_with_no_record_of_the_yes: activeWithoutAcceptance,
@@ -16609,6 +16670,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             : "encryption check could not run",
           violations: broken.length, violated: broken.map(([k, v]) => ({ invariant: k, count: v })),
           unreadable: unreadable.length ? unreadable.map(([k]) => k) : undefined,
+          shard_reach: { stores_configured: shardCount,
+            single_table_survives_sharding: Object.entries(REACH).filter(([, t]) => t.length === 1).map(([k]) => k),
+            joins_across_tables: crossStore,
+            warning: shardCount > 0
+              ? "**SHARDING IS LIVE AND THESE CHECKS JOIN ACROSS TABLES.** Confirm both sides live in the "
+                + "same store, or these read zero because they cannot see, not because nothing is wrong. "
+                + "A safety net that fails open is worse than none - it is the same defect as a permission "
+                + "check that allows on error."
+              : "One store, so everything is reachable and every number above is real. This declaration "
+                + "exists NOW because after sharding nobody will remember which checks quietly stopped "
+                + "working - and two of these are what caught consent being given without the record showing it." },
           verdict: broken.length === 0 && unreadable.length === 0
             ? "Every invariant reads zero. Nothing is quietly wrong."
             : "SOMETHING IS WRONG NOW, not later. A non-zero count here is not a forecast - it is a "

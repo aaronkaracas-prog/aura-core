@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.821-2026-07-28";
+const BUILD = "aura-core-v4.9.822-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -14787,8 +14787,26 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       return { cmd: "INVITE", payload: { ok: true, invite_id: inviteId, from: sender.name, to_contact: iv.to_contact, status: "pending",
         link: _sent.link, delivered: _sent.delivered, delivery: _sent, sent_today: sentToday,
         phase_ms: _tPhase,
-        phase_note: "Milliseconds per phase. Whichever number dominates is where the 2.4 seconds lives - "
-          + "and two guesses at it have already been wrong, so this is the one that decides the fix.",
+        // ══ THE BUDGET — SO THE 389ms INDEX CANNOT COME BACK UNNOTICED (v4.9.822) ═══════════════
+        // A review seat asked for exactly this: "the 922ms command has a documented budget so the next
+        // person doesn't re-add the 389ms index." Written into the command's own output, because a
+        // budget in a document is a budget nobody reads at the moment it matters.
+        // MEASURED PRIMITIVES that make these numbers mean something: a KV WRITE is 242ms, a KV MISS
+        // 121ms, a KV HIT 8ms, a SQL query 22ms, an R2 write 236ms. **Storage round trips dominate
+        // everything; compute is free.** The way to break this budget is to add a KV write or a miss
+        // to the path - which is precisely how it got to 3,244ms before.
+        budget_ms: { opt_out_check: 60, store_invitation: 300, invite_counter: 20, delivery: 40, total_warm: 500 },
+        over_budget: Object.entries({ opt_out_check: 60, store_invitation: 300, invite_counter: 20, delivery: 40 })
+          .filter(([k, v]) => (_tPhase[k] || 0) > v * 2)
+          .map(([k, v]) => k + " took " + _tPhase[k] + "ms against a " + v + "ms budget"),
+        budget_note: "A phase at more than DOUBLE its budget means something was added to that path. "
+          + "The usual culprit is a key-value write (242ms) or a lookup that misses (121ms). This "
+          + "command was 3,244ms before those were found and removed - the largest single win was "
+          + "DELETING an index nothing read. Cold starts legitimately exceed these; the second call "
+          + "should not.",
+        phase_note: "Milliseconds per phase, against the budget above. Storage round trips are the "
+          + "entire cost here - four confident guesses about where the time went were all wrong, and "
+          + "measuring six primitives ended it in ten minutes.",
         note: "Invitation offered. NO PTA created yet - it is born only when the invitee accepts." } };
     }
 
@@ -17244,6 +17262,103 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               + "that would be the case for sharding or a different store.",
           honest_limit: "One run on one worker instance. Latency to D1 varies by colo and by cold start, "
             + "and this codebase has already been burned once by trusting a single timing sample." } };
+      }
+    }
+
+    case "PTA_CRASH": {
+      // ══ WHAT SURVIVES AN INTERRUPTION — THE COUNCIL'S RECOVERY BAR (v4.9.822) ════════════════
+      //
+      // Their requirement, twice stated: "kill mid-spike and prove recovery + invariants still zero"
+      // and "invariant sweep after induced crashes." Everything measured so far assumed every
+      // operation ran to completion. **A drop is exactly when they will not.**
+      //
+      // WHAT AN INTERRUPTION LOOKS LIKE HERE: a Worker request has a wall-clock budget, and an
+      // acceptance is several writes. Die between them and you get a HALF-BORN person - an entity
+      // with no relationship, a relationship with no chain entry, a person active with no record of
+      // having said yes. **None of those throw. They just sit there looking like data.**
+      //
+      // So this deliberately abandons work at each seam and then asks the invariants what they see.
+      // A half-written person must be either COMPLETE or INVISIBLE - never half-present and counted.
+      //
+      //   PTA_CRASH
+      if (!isOp) return { cmd: "PTA_CRASH", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const db = env.AURA_MEMORY;
+        const tag = "crash" + Date.now().toString(36);
+        const made = [], checks = [];
+        const check = (name, expected, actual, pass, why) =>
+          checks.push({ check: name, expected, actual, pass: !!pass, ...(why ? { why } : {}) });
+        const iso = new Date().toISOString();
+        try {
+          // ── SEAM 1: an entity written, then the process "dies" before its relationship exists.
+          const orphan = "pta_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map((b) => b.toString(16).padStart(2, "0")).join("");
+          await db.prepare("INSERT INTO pta_entities (id, type, identity_key, name, created_at, updated_at) VALUES (?, 'person', ?, ?, ?, ?)")
+            .bind(orphan, "crash:" + tag + ":1", tag + "halfborn", iso, iso).run();
+          made.push(orphan);
+          const inv1 = await processCommand("PTA_INVARIANTS", env, true);
+          const v1 = (inv1 && inv1.payload) || {};
+          check("an entity with no relationship is not a violation", "0 violations",
+            String(v1.violations), v1.violations === 0,
+            "a person who exists and has not been connected yet is a NORMAL state, not corruption - "
+            + "flagging it would make the counters cry wolf on every arrival in flight");
+
+          // ── SEAM 2: a relationship written, then death before the chain entry.
+          const half = "edge_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map((b) => b.toString(16).padStart(2, "0")).join("");
+          await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, permission, created_at, updated_at) VALUES (?, ?, ?, 'relationship', 'active', ?, ?, ?)")
+            .bind(half, orphan, orphan, JSON.stringify({ can_view: true }), iso, iso).run();
+          const inv2 = await processCommand("PTA_INVARIANTS", env, true);
+          const v2 = (inv2 && inv2.payload) || {};
+          check("AN ACTIVE RELATIONSHIP WITH NO RECORD OF THE YES IS CAUGHT", "at least 1 violation",
+            String((v2.checks || {}).active_relationship_with_no_record_of_the_yes),
+            ((v2.checks || {}).active_relationship_with_no_record_of_the_yes || 0) >= 1,
+            "THIS is the dangerous half-state: someone is connected and nothing records that they "
+            + "agreed. If the counters cannot see it, a crash mid-acceptance produces consent nobody "
+            + "gave and nobody can find");
+
+          // ── SEAM 3: clean it up the way a repair would, and confirm the counters go quiet again.
+          await db.prepare("DELETE FROM pta_edges WHERE id = ?").bind(half).run();
+          const inv3 = await processCommand("PTA_INVARIANTS", env, true);
+          const v3 = (inv3 && inv3.payload) || {};
+          check("removing the half-state clears the violation", "0 violations",
+            String(v3.violations), v3.violations === 0,
+            "a counter that stays lit after the cause is gone is as useless as one that never lights");
+
+          // ── SEAM 4: an interrupted CHAIN entry - history pointing at an edge that never landed.
+          const ghost = "hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map((b) => b.toString(16).padStart(2, "0")).join("");
+          await db.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, ?, 'accepted', ?, ?, ?)")
+            .bind(ghost, "edge_never_written_" + tag, orphan, JSON.stringify({ crash: true }), iso).run();
+          const inv4 = await processCommand("PTA_INVARIANTS", env, true);
+          const v4 = (inv4 && inv4.payload) || {};
+          check("A CHAIN ENTRY FOR A RELATIONSHIP THAT NEVER LANDED IS CAUGHT", "at least 1 violation",
+            String((v4.checks || {}).history_for_a_deleted_edge),
+            ((v4.checks || {}).history_for_a_deleted_edge || 0) >= 1,
+            "the other side of the same crash - the chain wrote and the relationship did not");
+          await db.prepare("DELETE FROM pta_history WHERE id = ?").bind(ghost).run();
+
+          const inv5 = await processCommand("PTA_INVARIANTS", env, true);
+          const v5 = (inv5 && inv5.payload) || {};
+          check("the system returns to clean", "0 violations", String(v5.violations), v5.violations === 0);
+        } catch (e) {
+          checks.push({ check: "harness", expected: "no exception", actual: String((e && e.message) || e).slice(0, 150), pass: false });
+        } finally {
+          try {
+            for (const id of made) {
+              await db.prepare("DELETE FROM pta_edges WHERE from_id = ? OR to_id = ?").bind(id, id).run();
+              await db.prepare("DELETE FROM pta_entities WHERE id = ?").bind(id).run();
+            }
+          } catch {}
+        }
+        const failed = checks.filter((c) => !c.pass);
+        return { cmd: "PTA_CRASH", payload: { ok: failed.length === 0,
+          passed: checks.length - failed.length, failed: failed.length, checks,
+          verdict: failed.length === 0
+            ? "Interruptions are visible. A person half-created is either complete or caught - never "
+              + "half-present and counted as real."
+            : failed.length + " check(s) failed - a crash state exists that nothing would notice.",
+          what_this_does_not_prove: "This simulates the seams by writing them directly. It does not kill "
+            + "a real request mid-flight, which no test inside the system can do. What it proves is that "
+            + "IF such a state occurs, the standing counters see it - which is the part that matters, "
+            + "because the failure mode is silence rather than error." } };
       }
     }
 

@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.807-2026-07-28";
+const BUILD = "aura-core-v4.9.808-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -14673,6 +14673,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (!sender) return { cmd: "INVITE", payload: { ok: false, error: "Sender is not a real PTA: " + iv.from } };
       // contact point must be email: or phone: (the trust anchor; phone is higher trust)
       if (!/^(email|phone):/i.test(iv.to_contact)) return { cmd: "INVITE", payload: { ok: false, error: "to_contact must be email:... or phone:..." } };
+      // ══ WHERE DOES THE TIME GO — MEASURED, NOT REASONED (v4.9.808) ═══════════════════════════
+      // One INVITE costs ~2.4 seconds. TWO consecutive guesses at the cause were wrong: batching two
+      // statements (reverted, no change) and uncached secret lookups (cached, no change - 2,677 then
+      // 2,544 against a 2,391 baseline). Reasoning about where time goes has now failed twice in a
+      // row on the same command, while INSTRUMENTING has ended every other hard problem today.
+      // So: a stopwatch on each phase, reported in the response. The next fix will be aimed at a
+      // number instead of a hypothesis.
+      const _tPhase = {}; let _tMark = Date.now();
+      const _lap = (k) => { _tPhase[k] = Date.now() - _tMark; _tMark = Date.now(); };
+
       // ENFORCED HERE because INVITE is the door that REACHES OUT. An opt-out that only stops the
       // sending and not the offering is not an opt-out.
       try {
@@ -14687,6 +14697,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             note: "Recorded and honoured. Nothing was sent and no invitation exists." } };
         }
       } catch {}
+      _lap("opt_out_check");
       const inviteId = "inv_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
       const ts = new Date().toISOString();
       const invite = {
@@ -14712,6 +14723,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // DELIVERY, ADDED v4.9.792. Until now this returned an id and sent NOTHING.
       // The other place a pattern hides. One invitation is always fine; ninety declines followed by a
       // ninety-first is not, and neither is a burst nobody could have typed. Counted, never capped.
+      _lap("store_invitation");
       let sentToday = 0;
       try {
         const day = new Date().toISOString().slice(0, 10);
@@ -14727,9 +14739,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             { kind: "signal", via: "INVITE" });
         }
       } catch {}
+      _lap("invite_counter");
       const _sent = await deliverInvitation(env, iv.to_contact, inviteId, sender.name, iv.message);
+      _lap("delivery");
       return { cmd: "INVITE", payload: { ok: true, invite_id: inviteId, from: sender.name, to_contact: iv.to_contact, status: "pending",
         link: _sent.link, delivered: _sent.delivered, delivery: _sent, sent_today: sentToday,
+        phase_ms: _tPhase,
+        phase_note: "Milliseconds per phase. Whichever number dominates is where the 2.4 seconds lives - "
+          + "and two guesses at it have already been wrong, so this is the one that decides the fix.",
         note: "Invitation offered. NO PTA created yet - it is born only when the invitee accepts." } };
     }
 

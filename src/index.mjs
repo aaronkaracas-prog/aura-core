@@ -36,7 +36,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.788-2026-07-28";
+const BUILD = "aura-core-v4.9.789-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2315,6 +2315,29 @@ async function sealFor(env, ptaId, plaintext) {
     joined.set(iv, 0); joined.set(new Uint8Array(ct), iv.length);
     return "enc:v1:" + btoa(String.fromCharCode(...joined));
   } catch { return plaintext; }
+}
+
+// ══ ONE PLACE THAT WRITES ENTITY METADATA (v4.9.789) ═════════════════════════════════════════════
+//
+// FOUND BY THE FIRST REAL PERSON THROUGH THE DOOR. Their record came back `metadata_sealed: false` -
+// **the human who arrived through the front door had their content in PLAINTEXT while operator-created
+// test rows were encrypted.** Exactly backwards, and it would have stayed invisible without the raw
+// on-disk diagnostic, because every read path unseals and plaintext reads identically to decrypted.
+//
+// THE CAUSE IS THE PATTERN THIS CODEBASE KEEPS PRODUCING: sealing was added at ONE insert site
+// (PTA_ENTITY CREATE) while NINETEEN other paths write the same column - eight more inserts and
+// ELEVEN updates. ACCEPT was the worst of them: it creates the entity through the sealed path, then
+// OVERWRITES metadata with plaintext in a follow-up UPDATE. The seal was real and then undone.
+//
+// So there is now one function. Anything writing entity metadata calls it, and it seals. A future
+// caller that writes the column directly is the bug; `PTA_AUDIT` exists to find them.
+async function writeEntityMeta(env, ptaId, metaObj, when) {
+  const now = when || new Date().toISOString();
+  const plain = typeof metaObj === "string" ? metaObj : JSON.stringify(metaObj || {});
+  const sealed = await sealFor(env, ptaId, plain);
+  await env.AURA_MEMORY.prepare("UPDATE pta_entities SET metadata = ?, updated_at = ? WHERE id = ?")
+    .bind(sealed, now, ptaId).run();
+  return sealed;
 }
 
 async function unsealFor(env, ptaId, stored) {
@@ -13662,7 +13685,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         meta.reason = "Arrived and created their own PTA";
         meta.about = pc.about || null;
         if (understood) meta.understood = understood;
-        await env.AURA_MEMORY.prepare("UPDATE pta_entities SET metadata = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(meta), ts, pcId).run();
+        await writeEntityMeta(env, pcId, meta, ts);
       } catch (e) {}
       // also store an app profile so it shows in the spine's context.apps
       try {
@@ -14398,7 +14421,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             surroundings: moment.baked_context, person_provided: personCtx
           };
           meta.consent_scope = "Consented to: " + moment.offer + (moment.place ? (" at " + (moment.place_context && moment.place_context.name ? moment.place_context.name : moment.place)) : "");
-          await env.AURA_MEMORY.prepare("UPDATE pta_entities SET metadata = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(meta), ts, bornId).run();
+          await writeEntityMeta(env, bornId, meta, ts);   // SEALED - this is a real person arriving
         } catch {}
         await env.AURA_KV.put(`pta:state:${bornId}`, "active").catch(() => {});
         // EDGES â€” the graph thickens: person was at this place, connected via this connector
@@ -14429,7 +14452,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const ent = await env.AURA_MEMORY.prepare("SELECT metadata FROM pta_entities WHERE id = ?").bind(mArg).first();
           let meta = {}; if (ent && ent.metadata) { try { meta = JSON.parse(ent.metadata); } catch {} }
           meta.do_not_contact = true; meta.opted_out_at = ts; meta.opt_out_permanent = true;
-          await env.AURA_MEMORY.prepare("UPDATE pta_entities SET metadata = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(meta), ts, mArg).run();
+          await writeEntityMeta(env, mArg, meta, ts);
         } catch {}
         try {
           let evs = []; const tl = await env.AURA_KV.get(`pta:timeline:${mArg}`); if (tl) { try { evs = JSON.parse(tl) || []; } catch {} }
@@ -14614,7 +14637,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           meta.origin = invite.app; meta.created_by = invite.from;
           meta.reason = `Accepted ${invite.from_name}'s invitation to ${invite.app} as ${invite.relationship || "a connection"}`;
           meta.born_from_consent = true;
-          await env.AURA_MEMORY.prepare("UPDATE pta_entities SET metadata = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(meta), ts, bornId).run();
+          await writeEntityMeta(env, bornId, meta, ts);   // SEALED - this is a real person arriving
         } catch (e) {}
       }
       // born ACTIVE - because it was born from their own yes (no dormancy needed; consent already given)
@@ -16075,6 +16098,48 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           error: "Usage: PTA_CAN <actor_id> <view|share|contact|discover> <subject_id>" } };
         const verdict = await ptaCan(env, actor, cap, subject);
         return { cmd: "PTA_CAN", payload: { ok: true, ...verdict } };
+      }
+    }
+
+    case "PTA_AUDIT": {
+      // ══ WHO IS UNPROTECTED, COUNTED (v4.9.789) ═══════════════════════════════════════════════
+      //
+      // Sealing was added at one write site and NINETEEN others bypassed it. That gap was invisible
+      // for a full day because every read path unseals, and plaintext reads identically to decrypted
+      // content - the system could not tell you which of its people were unprotected, so it did not.
+      // The first REAL person through the doorway turned out to be one of them.
+      //
+      // This counts them. Not a fix - a floodlight. **A protection nobody can measure is a protection
+      // nobody can trust**, and the same reasoning that made operator bypass explicit rather than
+      // absent applies here: an invisible gap is one that grows.
+      if (!isOp) return { cmd: "PTA_AUDIT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const db = env.AURA_MEMORY;
+        const rows = await db.prepare("SELECT id, name, type, metadata, created_at FROM pta_entities ORDER BY created_at DESC LIMIT 1000").all();
+        const all = (rows && rows.results) || [];
+        const withMeta = all.filter((r) => r.metadata && String(r.metadata).trim() !== "" && String(r.metadata) !== "{}");
+        const unsealed = withMeta.filter((r) => !String(r.metadata).startsWith("enc:v1:"));
+        let noKey = 0;
+        for (const r of unsealed.slice(0, 50)) {
+          try { if (!(await env.AURA_KV.get("entity:key:" + r.id))) noKey++; } catch {}
+        }
+        return { cmd: "PTA_AUDIT", payload: { ok: unsealed.length === 0,
+          entities: all.length, with_content: withMeta.length,
+          sealed: withMeta.length - unsealed.length,
+          UNSEALED: unsealed.length,
+          unsealed_sample: unsealed.slice(0, 15).map((r) => ({ id: r.id, name: r.name, type: r.type, created_at: r.created_at })),
+          verdict: unsealed.length === 0
+            ? "Every entity carrying content has it encrypted. Forgetting works for all of them."
+            : unsealed.length + " entities carry content in PLAINTEXT. **PTA_FORGET CANNOT forget them** - "
+              + "destroying a key that protects nothing changes nothing, and reporting them as forgotten "
+              + "would be a false promise to a person. They were written by a path that bypasses sealing.",
+          what_to_do: unsealed.length === 0 ? null
+            : "Find the write path (grep for UPDATE pta_entities SET metadata and for INSERT INTO "
+              + "pta_entities) and route it through writeEntityMeta. Then re-run this. Existing rows "
+              + "re-seal the next time their metadata is written through the correct path.",
+          why_this_exists: "Sealing was added at ONE write site while nineteen others wrote the same "
+            + "column. The gap was invisible for a day because every read path unseals - plaintext and "
+            + "decrypted look identical from outside. A protection nobody can measure is one nobody can trust." } };
       }
     }
 

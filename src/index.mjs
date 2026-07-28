@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.812-2026-07-28";
+const BUILD = "aura-core-v4.9.813-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -18222,9 +18222,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (mode !== "ON") {
           const cur = await db.prepare("SELECT * FROM pta_discovery WHERE entity_id = ? AND expires_at > ?").bind(id, new Date().toISOString()).first();
           return { cmd: "PTA_FINDABLE", payload: { ok: true, discoverable: !!cur,
+            // The sentinel was leaking here too. It was fixed in PTA_NEARBY and left in this branch -
+            // the same "fix one, miss its sibling" that put OPERATOR_REQUIRED in front of the first
+            // real stranger. Showing a date implies a limit nobody set.
             current: cur ? { contexts: JSON.parse(cur.contexts || "[]"), near: cur.lat != null ? { lat: cur.lat, lon: cur.lon } : null,
-              radius_km: cur.radius_km, expires_at: cur.expires_at } : null,
-            note: cur ? "Discoverable until the time shown, and only in these contexts." : "Not discoverable. Nobody can find them by anything." } };
+              radius_km: cur.radius_km, until: "they turn it off" } : null,
+            note: cur ? "Findable in these contexts, until they turn it off." : "Not findable. Nobody can find them by anything." } };
         }
 
         // ══ NOTHING IS REFUSED, AND NOTHING EXPIRES — CORRECTED (v4.9.801) ════════════════════

@@ -33,10 +33,13 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 // a credential created for homescreen.world cannot be used on homescreen-login.com, no matter how
 // convincing the copy. It must be the registrable domain, and it must match the origin the ceremony
 // runs on - a mismatch is the single most common reason a WebAuthn implementation silently fails.
+// Set once per isolate after the identity uniqueness index is confirmed - see PTA_ENTITY CREATE.
+let _identityIndexEnsured = false;
+
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.796-2026-07-28";
+const BUILD = "aura-core-v4.9.797-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -14706,12 +14709,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const grantedEdgeId = (gr && gr.payload && gr.payload.edge_id) || null;
         if (grantedEdgeId) {
           const nowA = new Date().toISOString();
-          await env.AURA_MEMORY.prepare("UPDATE pta_edges SET state = 'active', updated_at = ? WHERE id = ? AND state = 'pending'")
-            .bind(nowA, grantedEdgeId).run();
-          await env.AURA_MEMORY.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-            .bind("hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join(""),
-                  grantedEdgeId, "accepted", bornId,
-                  JSON.stringify({ via: "ACCEPT", invite_id: invite.invite_id, note: "activated by the invitee's own yes" }), nowA).run();
+          // ONE ROUND TRIP, and one transaction. Activating the edge and recording the acceptance are
+          // the same event; splitting them across two calls made it possible for a person to be
+          // active with no record of having said yes, which is the inverse of the bug this pair was
+          // written to fix. batch() also halves the cost on a path every new person walks.
+          await env.AURA_MEMORY.batch([
+            env.AURA_MEMORY.prepare("UPDATE pta_edges SET state = 'active', updated_at = ? WHERE id = ? AND state = 'pending'")
+              .bind(nowA, grantedEdgeId),
+            env.AURA_MEMORY.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+              .bind("hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join(""),
+                    grantedEdgeId, "accepted", bornId,
+                    JSON.stringify({ via: "ACCEPT", invite_id: invite.invite_id, note: "activated by the invitee's own yes" }), nowA),
+          ]);
         }
       } catch (e) {}
       // stamp origin context (only if newly created)
@@ -15631,8 +15640,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // one chain, birth to death" silently became false. Silent, and unmergeable afterwards:
         // merging two chains would grant one person's contacts access to the other's history.
         // A PARTIAL index so NULL identity_key (objects, moments, un-anchored entities) stays legal.
+        // ══ THIS RAN ON EVERY SINGLE PERSON BORN (fixed v4.9.797) ═══════════════════════════════
+        // `CREATE UNIQUE INDEX IF NOT EXISTS` is idempotent and harmless - and it is a FULL DATABASE
+        // ROUND TRIP per entity creation, forever, to re-create an index that already exists. The
+        // viral measurement put an acceptance at ~149ms across roughly nine round trips; this was one
+        // of them, doing nothing, on every person who ever joins.
+        // Now once per isolate. The flag is module-scope, so a cold start pays it and nothing else
+        // does - and a `IF NOT EXISTS` on a fresh isolate is still correct because the index persists
+        // in the database, not in the worker.
         try {
-          await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_pta_entities_identity ON pta_entities(identity_key) WHERE identity_key IS NOT NULL").run();
+          if (!_identityIndexEnsured) {
+            await db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS idx_pta_entities_identity ON pta_entities(identity_key) WHERE identity_key IS NOT NULL").run();
+            _identityIndexEnsured = true;
+          }
         } catch (e) {
           // Index creation fails ONLY if duplicates already exist. Say which, rather than swallowing:
           // an un-enforceable constraint is worth knowing about, and the duplicates need a human.

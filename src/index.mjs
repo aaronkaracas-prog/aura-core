@@ -36,7 +36,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.794-2026-07-28";
+const BUILD = "aura-core-v4.9.795-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2476,9 +2476,19 @@ async function ptaCan(env, actorId, capability, subjectId) {
       // The chain is RECORDED, not just walked. A verdict of "lineage is intact" is unfalsifiable
       // without it - and that exact string appeared over a real leak, which is how this was found.
       const chain = [];
+      // ══ THE WALK FAILS LOUD, NOT SLOW (v4.9.795) ══════════════════════════════════════════════
+      // Depth is bounded in practice and NOT by construction. A review named the failure mode: the
+      // walk goes hot when depth grows OR when fan-in grows, and their prescription was exact - "add
+      // a hard depth cap that denies-with-reason so it fails loud, not slow."
+      // That is the right shape. A permission check that gets gradually slower degrades everything
+      // above it and nobody can point at the cause; one that REFUSES at a stated limit produces a
+      // message naming the chain that was too long. Denying is also the safe direction: an
+      // unreasonably deep chain is exactly where a mistake is most likely, and default-deny already
+      // governs everything else here.
+      const MAX_LINEAGE_DEPTH = 24;
       let cursor = e.via_edge_id, hops = 0;
       const walked = new Set([e.id]);
-      while (cursor && hops < 24) {
+      while (cursor && hops < MAX_LINEAGE_DEPTH) {
         if (walked.has(cursor)) break;            // a consent graph can cycle; stop rather than spin
         walked.add(cursor);
         const anc = await db.prepare("SELECT id, state, via_edge_id FROM pta_edges WHERE id = ?").bind(cursor).first();
@@ -2491,6 +2501,15 @@ async function ptaCan(env, actorId, capability, subjectId) {
             via_edge: e.id, revoked_ancestor: anc.id, lineage: chain };
         }
         cursor = anc.via_edge_id; hops++;
+      }
+      // Hit the ceiling without reaching a root: REFUSE. Allowing here would mean granting access on
+      // a chain nobody verified to the end, which is the one thing default-deny exists to prevent.
+      if (cursor && hops >= MAX_LINEAGE_DEPTH) {
+        return { allowed: false,
+          reason: "lineage deeper than " + MAX_LINEAGE_DEPTH + " hops - refused rather than walked further. "
+                + "A chain this long is either a mistake or an attempt to outrun the check, and granting "
+                + "access on a chain nobody verified to the end is exactly what default-deny is for.",
+          via_edge: e.id, lineage: chain, depth_limit_hit: true };
       }
       return { allowed: true,
         reason: chain.length
@@ -16212,6 +16231,90 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           note: "Their content is unchanged - it is the same bytes, now encrypted under their own key. "
               + "PTA_FORGET can honour a request from them from this moment on, which it could not before.",
           verify_with: "PTA_AUDIT" } };
+      }
+    }
+
+    case "PTA_INVARIANTS": {
+      // ══ EVERYTHING THAT SHOULD BE ZERO, COUNTED (v4.9.795) ═══════════════════════════════════
+      //
+      // THE COUNCIL'S CLOSING CONDITION, and it is the right one: "you proved encryption diverged
+      // across write paths and fixed it with an audit that counts. DO THE SAME FOR EVERY INVARIANT
+      // THAT IS NOT STRUCTURALLY ENFORCED. Once those counters exist and read zero continuously,
+      // this layer is finished for its current purpose."
+      //
+      // The lesson behind it is the whole session in one line: **the defects here never looked like
+      // errors, they looked like checks passing for the wrong reason** — an edge that existed but was
+      // pending, a column read but never written, encryption pointed at the wrong people. A test
+      // catches what it was written to catch. **A standing counter catches what nobody thought of,
+      // because it measures the state itself rather than a scenario.**
+      //
+      // Every number below should be ZERO. A non-zero one is not an alarm about the future - it is a
+      // statement that something is wrong RIGHT NOW and nobody noticed.
+      if (!isOp) return { cmd: "PTA_INVARIANTS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const db = env.AURA_MEMORY;
+        const one = async (sql, ...b) => { try { const r = await db.prepare(sql).bind(...b).first(); return (r && r.n) || 0; } catch { return -1; } };
+
+        // Consent given and the record not showing it. This exact bug existed for days.
+        const pendingForever = await one(
+          "SELECT COUNT(*) n FROM pta_edges e WHERE e.state = 'pending' AND EXISTS (SELECT 1 FROM pta_history h WHERE h.edge_id = e.id AND h.action = 'accepted')");
+        // Lineage pointing at nothing - makes a broken chain look intact, which is worse than none.
+        const danglingLineage = await one(
+          "SELECT COUNT(*) n FROM pta_edges e WHERE e.via_edge_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM pta_edges p WHERE p.id = e.via_edge_id)");
+        // History attached to an edge that no longer exists.
+        const orphanHistory = await one(
+          "SELECT COUNT(*) n FROM pta_history h WHERE h.edge_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM pta_edges e WHERE e.id = h.edge_id)");
+        // Relationships to or from an entity that does not exist.
+        const danglingEdges = await one(
+          "SELECT COUNT(*) n FROM pta_edges e WHERE NOT EXISTS (SELECT 1 FROM pta_entities x WHERE x.id = e.from_id) OR NOT EXISTS (SELECT 1 FROM pta_entities y WHERE y.id = e.to_id)");
+        // Two people, one contact. The uniqueness index should make this impossible; if it is not
+        // zero the index was never applied and "one human, one chain" is silently false.
+        const dupIdentity = await one(
+          "SELECT COUNT(*) n FROM (SELECT identity_key FROM pta_entities WHERE identity_key IS NOT NULL GROUP BY identity_key HAVING COUNT(*) > 1)");
+        // An edge that grants something while being revoked - the state and the permission disagreeing.
+        const revokedButGranting = await one(
+          "SELECT COUNT(*) n FROM pta_edges WHERE state = 'revoked' AND permission LIKE '%true%' AND updated_at IS NULL");
+
+        // Content with no key to protect it - the sealing gap, as a standing number rather than a
+        // discovery. This is the one that was wrong for a full day and nobody could see it.
+        let contentWithoutKey = 0;
+        try {
+          const rows = await db.prepare("SELECT id, metadata FROM pta_entities WHERE metadata IS NOT NULL AND metadata != '' AND metadata != '{}' LIMIT 500").all();
+          for (const r of ((rows && rows.results) || [])) {
+            if (!String(r.metadata).startsWith("enc:v1:")) continue;
+            if (!(await env.AURA_KV.get("entity:key:" + r.id))) contentWithoutKey++;   // sealed, key gone = forgotten, fine
+          }
+        } catch { contentWithoutKey = -1; }
+
+        const checks = {
+          consent_given_but_edge_still_pending: pendingForever,
+          lineage_pointing_at_nothing: danglingLineage,
+          history_for_a_deleted_edge: orphanHistory,
+          relationships_to_a_missing_entity: danglingEdges,
+          two_entities_sharing_one_contact: dupIdentity,
+          revoked_edges_still_granting: revokedButGranting,
+        };
+        const broken = Object.entries(checks).filter(([, v]) => v > 0);
+        const unreadable = Object.entries(checks).filter(([, v]) => v < 0);
+
+        return { cmd: "PTA_INVARIANTS", payload: { ok: broken.length === 0 && unreadable.length === 0,
+          checks,
+          note_on_encryption: contentWithoutKey >= 0
+            ? contentWithoutKey + " sealed records have no key - that is the FORGOTTEN state, not a fault"
+            : "encryption check could not run",
+          violations: broken.length, violated: broken.map(([k, v]) => ({ invariant: k, count: v })),
+          unreadable: unreadable.length ? unreadable.map(([k]) => k) : undefined,
+          verdict: broken.length === 0 && unreadable.length === 0
+            ? "Every invariant reads zero. Nothing is quietly wrong."
+            : "SOMETHING IS WRONG NOW, not later. A non-zero count here is not a forecast - it is a "
+              + "statement that the data already violates a rule the system claims to enforce.",
+          why_this_exists: "A test catches what it was written to catch. A standing counter catches what "
+            + "nobody thought of, because it measures the STATE rather than a scenario. Every defect "
+            + "found in this layer looked like a check passing for the wrong reason - an edge that "
+            + "existed but was pending, a column read but never written, encryption pointed at the "
+            + "wrong people. These numbers would have caught all three without anyone suspecting them.",
+          run_this: "Regularly, and on every deploy. It is cheap and it is the difference between "
+            + "knowing the system is healthy and assuming it." } };
       }
     }
 

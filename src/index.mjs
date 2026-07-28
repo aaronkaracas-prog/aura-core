@@ -36,7 +36,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.787-2026-07-28";
+const BUILD = "aura-core-v4.9.788-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -27452,7 +27452,17 @@ export class PublicEntry extends WorkerEntrypoint {
     const env = this.env;
     if (typeof inviteId !== "string" || !/^inv_[a-f0-9]+$/i.test(inviteId)) return { ok: false, error: "bad invite id" };
     const suffix = place && typeof place === "object" ? " @ " + JSON.stringify(place) : "";
-    const r = await processCommand("ACCEPT " + inviteId + suffix, env, false);
+    // ══ THE INVITE ID IS THE AUTHORITY (v4.9.788) ══════════════════════════════════════════════
+    // This passed isOp:false and ACCEPT is operator-gated, so the first real person to walk through
+    // the doorway was refused by the brain it fronts - with OPERATOR_REQUIRED, an error about
+    // admin rights shown to someone who has no idea what an operator is.
+    // The same mistake was fixed in ptaInvite and left here. THE REASONING IS IDENTICAL: isOp on this
+    // call means "THIS ACTION IS AUTHORISED", not "an admin asked". The authorisation comes from
+    // possession of the invite id - unguessable, single-use, and delivered to a contact point only
+    // this person controls. That IS the credential; requiring a session instead would mean you must
+    // already be inside to be let in, and acceptance is the act that brings someone into existence.
+    // The id is validated against a strict pattern above before it ever reaches this line.
+    const r = await processCommand("ACCEPT " + inviteId + suffix, env, true);
     return (r && r.payload) || { ok: false };
   }
 

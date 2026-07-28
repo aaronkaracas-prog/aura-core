@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.808-2026-07-28";
+const BUILD = "aura-core-v4.9.809-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16977,6 +16977,60 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           note: "The graph is clear. The identity pepper is UNTOUCHED - it is a system secret, not a "
               + "person, and regenerating it would orphan any surviving hashed row.",
           next: "PTA_TEST to confirm the machinery still works on an empty graph." } };
+      }
+    }
+
+    case "LATENCY": {
+      // ══ WHAT DOES ONE OPERATION ACTUALLY COST (v4.9.809) ═════════════════════════════════════
+      //
+      // The phase stopwatch on INVITE showed something neither expected: every phase costs 350-550ms
+      // REGARDLESS OF WHAT IT DOES. A single KV put costs about what two D1 queries plus a hash cost.
+      // That is not any one slow thing - it is a FIXED PER-OPERATION LATENCY, and it explains why
+      // removing two round trips from the acceptance path changed nothing measurable.
+      // It also showed 1,444ms of 3,244 - 44% - elapsing BEFORE the command's first line, which means
+      // a large part of what looked like INVITE's cost belongs to every command equally.
+      //
+      // Three guesses at performance have now been wrong (batching, the per-create index, secret
+      // caching). This measures the primitives directly so the fourth attempt is aimed at a number.
+      // MEDIAN OF SEVERAL, not one sample - a single timing has already misled this project once,
+      // when a lone 149ms outlier produced a confident and wrong theory about transaction overhead.
+      if (!isOp) return { cmd: "LATENCY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const reps = Math.min(Math.max(parseInt(args[0] || "7", 10) || 7, 3), 25);
+        const med = (a) => { const b = a.slice().sort((x, y) => x - y); return b[Math.floor(b.length / 2)]; };
+        const time = async (fn) => { const t = Date.now(); try { await fn(); } catch {} return Date.now() - t; };
+        const key = "latency:probe:" + Date.now().toString(36);
+        const kvGet = [], kvPut = [], kvMiss = [], d1Sel = [], d1Ins = [], cpu = [];
+        for (let i = 0; i < reps; i++) {
+          kvPut.push(await time(() => env.AURA_KV.put(key, "x".repeat(64))));
+          kvGet.push(await time(() => env.AURA_KV.get(key)));
+          kvMiss.push(await time(() => env.AURA_KV.get("latency:absent:" + i)));
+          d1Sel.push(await time(() => env.AURA_MEMORY.prepare("SELECT 1 n").first()));
+          d1Ins.push(await time(() => env.AURA_MEMORY.prepare("SELECT COUNT(*) n FROM pta_entities").first()));
+          // Pure compute, no I/O - the control. If this is also slow the problem is not storage at all.
+          cpu.push(await time(async () => { let x = 0; for (let j = 0; j < 200000; j++) x += j; return x; }));
+        }
+        try { await env.AURA_KV.delete(key); } catch {}
+        const out = {
+          kv_put_ms: med(kvPut), kv_get_hit_ms: med(kvGet), kv_get_miss_ms: med(kvMiss),
+          d1_trivial_select_ms: med(d1Sel), d1_count_query_ms: med(d1Ins),
+          pure_compute_ms: med(cpu),
+        };
+        const slowest = Object.entries(out).sort((a, b) => b[1] - a[1])[0];
+        return { cmd: "LATENCY", payload: { ok: true, samples: reps, median_ms: out,
+          slowest: slowest[0] + " at " + slowest[1] + "ms",
+          read_this: out.pure_compute_ms > 100
+            ? "COMPUTE ITSELF IS SLOW, which means this is not a storage problem - the worker is starved "
+              + "or contended, and no amount of removing round trips will help."
+            : (out.kv_get_hit_ms > 150 || out.d1_trivial_select_ms > 150
+                ? "STORAGE ROUND TRIPS ARE EXPENSIVE. A trivial SELECT that returns a constant still pays "
+                  + "the full network cost, so the fix is FEWER OPERATIONS, not cheaper ones - and that is "
+                  + "the opposite of what was assumed when two round trips were removed with no effect."
+                : "Both are fast here, so the cost measured on INVITE lives somewhere neither of these "
+                  + "touches - most likely the per-request work that happens before any command runs."),
+          why_this_exists: "Three consecutive guesses at where the time goes were wrong. A primitive that "
+            + "does nothing (SELECT 1) still costs the round trip; a loop that touches no storage costs "
+            + "only CPU. Comparing them says which world the problem is in." } };
       }
     }
 

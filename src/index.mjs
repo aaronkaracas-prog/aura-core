@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.810-2026-07-28";
+const BUILD = "aura-core-v4.9.811-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -14744,12 +14744,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       };
       // store the invitation keyed by the CONTACT POINT (so ACCEPT can find it) + by id
       await env.AURA_KV.put(`invite:${inviteId}`, JSON.stringify(invite)).catch(() => {});
-      // index pending invites by contact so a person can see what's waiting for them
-      try {
-        let pend = []; const ex = await env.AURA_KV.get(`invites:pending:${iv.to_contact}`); if (ex) { try { pend = JSON.parse(ex) || []; } catch {} }
-        pend.push(inviteId);
-        await env.AURA_KV.put(`invites:pending:${iv.to_contact}`, JSON.stringify(pend)).catch(() => {});
-      } catch {}
+      // ══ REMOVED: AN INDEX WITH NO READER, COSTING 389ms PER INVITATION (v4.9.811) ═════════════
+      // `invites:pending:<contact>` was written here and deleted by PTA_WIPE. **Nothing read it. Not
+      // one query, not one command, not one code path.** Its comment said "so a person can see what's
+      // waiting for them" - a feature that does not exist.
+      // THE COST, measured rather than assumed: a KV MISS (129ms) plus a KV PUT (260ms) on a
+      // read-modify-write, on the critical path of every invitation. **389ms of every person's
+      // invitation went into maintaining an index nobody could read.** That is a third of what the
+      // whole command costs after the other fixes.
+      // SEVENTH INSTANCE OF THIS PATTERN TODAY - written and never read, alongside trust_level,
+      // verification_level, can_view, via_edge_id, opt_out_permanent and the sealing gap. It is the
+      // most reliable defect in this codebase and the cheapest to find: **grep for the reader before
+      // building the writer.**
+      // If "what is waiting for this contact" is ever needed, `invite:<id>` is the authoritative
+      // record and a real index can be built THEN - with a reader, and knowing it costs 389ms.
       // DELIVERY, ADDED v4.9.792. Until now this returned an id and sent NOTHING.
       // The other place a pattern hides. One invitation is always fine; ninety declines followed by a
       // ninety-first is not, and neither is a burst nobody could have typed. Counted, never capped.

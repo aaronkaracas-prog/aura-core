@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.799-2026-07-28";
+const BUILD = "aura-core-v4.9.801-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -14646,9 +14646,26 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         await env.AURA_KV.put(`invites:pending:${iv.to_contact}`, JSON.stringify(pend)).catch(() => {});
       } catch {}
       // DELIVERY, ADDED v4.9.792. Until now this returned an id and sent NOTHING.
+      // The other place a pattern hides. One invitation is always fine; ninety declines followed by a
+      // ninety-first is not, and neither is a burst nobody could have typed. Counted, never capped.
+      let sentToday = 0;
+      try {
+        const day = new Date().toISOString().slice(0, 10);
+        const key = "pta:invites:" + iv.from + ":" + day;
+        const raw = await KV.get(env, key);
+        const log = raw ? JSON.parse(raw) : { count: 0 };
+        log.count += 1; sentToday = log.count;
+        await KV.put(env, key, JSON.stringify(log), { expirationTtl: 30 * 24 * 3600 });
+        if (log.count === 25 || log.count === 100 || log.count === 500) {
+          await auraRemember(env, "Invitation pattern worth a look: " + iv.from + " has sent " + log.count
+            + " invitations today. Mass invites are inert by design - nothing exists until someone accepts - "
+            + "but volume is still the shape abuse takes, and you are present to judge it.",
+            { kind: "signal", via: "INVITE" });
+        }
+      } catch {}
       const _sent = await deliverInvitation(env, iv.to_contact, inviteId, sender.name, iv.message);
       return { cmd: "INVITE", payload: { ok: true, invite_id: inviteId, from: sender.name, to_contact: iv.to_contact, status: "pending",
-        link: _sent.link, delivered: _sent.delivered, delivery: _sent,
+        link: _sent.link, delivered: _sent.delivered, delivery: _sent, sent_today: sentToday,
         note: "Invitation offered. NO PTA created yet - it is born only when the invitee accepts." } };
     }
 
@@ -17713,6 +17730,207 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       await db.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)")
         .bind(h2, linkEdgeId, "introduced", ownerId, JSON.stringify({ introduced_via: obj.name, from: owner.name, to: recip.name }), now).run();
       return { cmd: "PTA_SHARE", payload: { ok: true, share_edge_id: shareEdgeId, link_edge_id: linkEdgeId, object: obj.name, from: owner.name, to: recip.name, state: "pending" } };
+    }
+
+    case "PTA_DISCOVER": {
+      // ══ DISCOVERABILITY IS A CHOICE, NOT A DEFAULT (v4.9.800) ════════════════════════════════
+      //
+      // "Do you want to be discovered today? Yes. Don't want to be? Turn it off." That is the whole
+      // user-facing idea and it should stay that simple. All the complexity below exists to make sure
+      // OFF genuinely means off.
+      //
+      // WHY THIS IS NOT SURVEILLANCE ADVERTISING, precisely rather than hopefully. Surveillance
+      // advertising is defined by the UNASKED part: a platform watches everyone and pushes. Here two
+      // separate people must both have acted - the asker ASKS (never pushed at), and the found person
+      // OPTED IN to being findable, in a context they chose, for a time they chose.
+      // **Pull alone was not enough and that was the trap.** If someone asks "who is on the beach",
+      // the people found never consented - their location was processed to answer somebody else's
+      // question, and the asker's consent is not theirs to give. So discoverability is its own grant,
+      // held by the person it describes.
+      //
+      // DEFAULT OFF, ALWAYS EXPIRES. A person who never chose this is not filtered out of the result -
+      // **they are not in the query at all.** And it lapses on its own: "discoverable today" should
+      // mean today, not until someone remembers to revoke it. An opt-in that outlives the intention
+      // behind it becomes a default by neglect.
+      //
+      //   PTA_DISCOVER <entity_id> ON <context,context> [near <lat>,<lon>] [radius <km>] [for <hours>]
+      //   PTA_DISCOVER <entity_id> OFF
+      //   PTA_DISCOVER <entity_id>            - what is currently set
+      if (!isOp) return { cmd: "PTA_DISCOVER", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const db = env.AURA_MEMORY;
+        try { await db.prepare("CREATE TABLE IF NOT EXISTS pta_discovery (entity_id TEXT PRIMARY KEY, contexts TEXT, lat REAL, lon REAL, radius_km REAL, expires_at TEXT, set_at TEXT)").run(); } catch {}
+        const id = args[0] || "";
+        const mode = (args[1] || "").toUpperCase();
+        if (!id) return { cmd: "PTA_DISCOVER", payload: { ok: false,
+          error: "Usage: PTA_DISCOVER <entity_id> ON <contexts> [near <lat>,<lon>] [radius <km>] [for <hours>] | OFF" } };
+        const ent = await db.prepare("SELECT id, name FROM pta_entities WHERE id = ?").bind(id).first();
+        if (!ent) return { cmd: "PTA_DISCOVER", payload: { ok: false, error: "no such entity: " + id } };
+
+        if (mode === "OFF") {
+          await db.prepare("DELETE FROM pta_discovery WHERE entity_id = ?").bind(id).run();
+          return { cmd: "PTA_DISCOVER", payload: { ok: true, discoverable: false,
+            note: "Off. The row is DELETED, not flagged - there is nothing left to filter incorrectly, and "
+                + "no query can return someone whose record does not exist." } };
+        }
+
+        if (mode !== "ON") {
+          const cur = await db.prepare("SELECT * FROM pta_discovery WHERE entity_id = ? AND expires_at > ?").bind(id, new Date().toISOString()).first();
+          return { cmd: "PTA_DISCOVER", payload: { ok: true, discoverable: !!cur,
+            current: cur ? { contexts: JSON.parse(cur.contexts || "[]"), near: cur.lat != null ? { lat: cur.lat, lon: cur.lon } : null,
+              radius_km: cur.radius_km, expires_at: cur.expires_at } : null,
+            note: cur ? "Discoverable until the time shown, and only in these contexts." : "Not discoverable. Nobody can find them by anything." } };
+        }
+
+        // ══ NOTHING IS REFUSED, AND NOTHING EXPIRES — CORRECTED (v4.9.801) ════════════════════
+        //
+        // The first version blocked sensitive categories outright and forced everything to expire.
+        // BOTH WERE WRONG and Aaron corrected both.
+        //
+        // ON THE LAW, where I overstated it: the DSA article banning consent-proof profiling applies
+        // to ADVERTISING on large platforms. Aura serves no ads, so it does not bite here. The clause
+        // that does apply is GDPR Article 9 on special categories - and that one **can** be unlocked
+        // by EXPLICIT consent. So a hard block was legally wrong as well as paternalistic.
+        // ON EXPIRY: a toggle IS the control, the same one every phone app already uses. Adding a
+        // timer decided that a person's intention lapses when they never said so. Date ranges belong
+        // in the interface later, chosen by them.
+        //
+        // WHAT REPLACES BOTH: sensitive contexts are FLAGGED AND RECORDED, not refused. Aaron's
+        // model is that Aura is present at every touch - so the answer to a risky pattern is that she
+        // SEES it, not that the system forbids a category in advance. The honest gap was that
+        // "she will see it" was an intention with nothing behind it. Now there is something to see.
+        const SENSITIVE = /(health|medical|diagnos|therapy|recovery|addict|sober|hiv|cancer|disab|religio|church|mosque|synagog|muslim|jewish|christian|catholic|sexual|gay|lesbian|trans|queer|politic|democrat|republican|union|immigra|undocument|ethnic|race|racial|minor|child|teen)/i;
+        const ctxRaw = (rest.match(/\bON\s+([^\s]+)/i) || [])[1] || "";
+        const contexts = ctxRaw.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
+        if (!contexts.length) return { cmd: "PTA_DISCOVER", payload: { ok: false,
+          error: "at least one context is required - discoverable FOR something, never discoverable in general" } };
+        const sensitive = contexts.filter((c) => SENSITIVE.test(c));
+        const near = (rest.match(/\bnear\s+(-?[\d.]+)\s*,\s*(-?[\d.]+)/i) || []);
+        const lat = near[1] != null ? parseFloat(near[1]) : null;
+        const lon = near[2] != null ? parseFloat(near[2]) : null;
+        // No cap. Someone who wants to be findable by yoga people on another continent may say so -
+        // the searcher decides what they are looking for, the person decides what they allow, and
+        // those are two different decisions that were wrongly collapsed into one number.
+        const radius = parseFloat((rest.match(/\bradius\s+([\d.]+)/i) || [])[1] || "0") || null;
+        const now = new Date();
+        // A far-future sentinel rather than a real expiry: the schema keeps its column, the query
+        // keeps its filter, and nothing lapses unless a person turns it off.
+        const expires = "2099-01-01T00:00:00.000Z";
+        if (sensitive.length) {
+          try {
+            await auraRemember(env, "A PTA became discoverable in a SENSITIVE context: " + sensitive.join(", ")
+              + " (entity " + id + "). Not blocked - recorded, because you are present at every touch and "
+              + "this is the kind of pattern worth your attention if it repeats or if searches for it spike.",
+              { kind: "signal", via: "PTA_DISCOVER" });
+          } catch {}
+        }
+        await db.prepare("INSERT INTO pta_discovery (entity_id, contexts, lat, lon, radius_km, expires_at, set_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(entity_id) DO UPDATE SET contexts=excluded.contexts, lat=excluded.lat, lon=excluded.lon, radius_km=excluded.radius_km, expires_at=excluded.expires_at, set_at=excluded.set_at")
+          .bind(id, JSON.stringify(contexts), lat, lon, radius, expires, now.toISOString()).run();
+        return { cmd: "PTA_DISCOVER", payload: { ok: true, discoverable: true, entity: ent.name,
+          contexts, near: lat != null ? { lat, lon } : null, radius_km: radius,
+          sensitive_contexts: sensitive.length ? sensitive : undefined,
+          sensitive_note: sensitive.length
+            ? "Recorded for Aura's attention, NOT refused. These categories have been used to hurt people, "
+              + "and the person most willing to opt in often has the most to lose if the wrong person "
+              + "searches. She is present at every touch; this is one of the things worth her noticing."
+            : undefined,
+          note: "On until turned off. No timer - a toggle is the control, and deciding that someone's "
+              + "intention lapses when they never said so is not a safety feature." } };
+      }
+    }
+
+    case "PTA_NEARBY": {
+      // ══ THE PULL QUERY — SOMEBODY ASKED ══════════════════════════════════════════════════════
+      // "Who is around me? Who likes yoga? What is going on in Malibu today?" Nothing is ever pushed;
+      // this only runs because a person asked it.
+      // It answers ONLY from people who opted in, in a matching context, still inside their window,
+      // and inside their own stated radius - **their radius, not the asker's.** Someone who chose to
+      // be findable within two kilometres does not become findable because a stranger searched fifty.
+      // It also reports how many were EXCLUDED, so the number is honest rather than flattering.
+      //
+      //   PTA_NEARBY <asker_id> [context] [at <lat>,<lon>]
+      if (!isOp) return { cmd: "PTA_NEARBY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const db = env.AURA_MEMORY;
+        try { await db.prepare("CREATE TABLE IF NOT EXISTS pta_discovery (entity_id TEXT PRIMARY KEY, contexts TEXT, lat REAL, lon REAL, radius_km REAL, expires_at TEXT, set_at TEXT)").run(); } catch {}
+        const asker = args[0] || "";
+        if (!asker) return { cmd: "PTA_NEARBY", payload: { ok: false, error: "Usage: PTA_NEARBY <asker_id> [context] [at <lat>,<lon>]" } };
+        const ctx = (args[1] && !/^at$/i.test(args[1])) ? String(args[1]).toLowerCase() : null;
+        const at = (rest.match(/\bat\s+(-?[\d.]+)\s*,\s*(-?[\d.]+)/i) || []);
+        const aLat = at[1] != null ? parseFloat(at[1]) : null;
+        const aLon = at[2] != null ? parseFloat(at[2]) : null;
+
+        // ══ THE PATTERN IS THE SIGNAL, NOT THE SEARCH (v4.9.801) ══════════════════════════════
+        //
+        // Aaron's position, and it is right: Aura is present at every touch, so abuse cannot grow
+        // unobserved the way it does on a platform that moderates afterwards from reports.
+        // THE HONEST GAP THIS CLOSES: **"she will see it" was an intention with nothing behind it.**
+        // She is present in conversation, but no PTA operation passed through anything that would
+        // NOTICE. And the hard cases are invisible in the moment anyway - one search looks fine; the
+        // abuse is the same person searching a hundred contexts, or being declined ninety times and
+        // continuing. That is not visible in an instant, only in a count.
+        // So every search is recorded per asker per day. Not to restrict anyone - to make a pattern
+        // that would be obvious to a human obvious to her too.
+        let askerToday = 0;
+        try {
+          const day = new Date().toISOString().slice(0, 10);
+          const key = "pta:search:" + asker + ":" + day;
+          const raw = await KV.get(env, key);
+          const log = raw ? JSON.parse(raw) : { count: 0, contexts: [] };
+          log.count += 1;
+          if (ctx && !log.contexts.includes(ctx)) log.contexts.push(ctx);
+          if (log.contexts.length > 40) log.contexts = log.contexts.slice(-40);
+          askerToday = log.count;
+          await KV.put(env, key, JSON.stringify(log), { expirationTtl: 30 * 24 * 3600 });
+          // Thresholds are deliberately loose. This is not a limit - it is a nudge to the one entity
+          // that can actually judge whether a hundred searches is a curious person or a harvester.
+          if (log.count === 50 || log.count === 200 || log.contexts.length === 25) {
+            await auraRemember(env, "Discovery pattern worth a look: " + asker + " has run " + log.count
+              + " searches today across " + log.contexts.length + " contexts (" + log.contexts.slice(-8).join(", ")
+              + "). Not blocked and possibly nothing - you are the one who can tell the difference between "
+              + "somebody curious and somebody harvesting.", { kind: "signal", via: "PTA_NEARBY" });
+          }
+        } catch {}
+
+        const rows = await db.prepare("SELECT * FROM pta_discovery WHERE expires_at > ? LIMIT 1000").bind(new Date().toISOString()).all();
+        const all = (rows && rows.results) || [];
+        const km = (a, b, c, d) => {
+          const R = 6371, r = Math.PI / 180;
+          const dLat = (c - a) * r, dLon = (d - b) * r;
+          const h = Math.sin(dLat / 2) ** 2 + Math.cos(a * r) * Math.cos(c * r) * Math.sin(dLon / 2) ** 2;
+          return 2 * R * Math.asin(Math.sqrt(h));
+        };
+        let excludedContext = 0, excludedDistance = 0, excludedSelf = 0;
+        const found = [];
+        for (const r of all) {
+          if (r.entity_id === asker) { excludedSelf++; continue; }
+          let cs = []; try { cs = JSON.parse(r.contexts || "[]"); } catch {}
+          if (ctx && !cs.includes(ctx)) { excludedContext++; continue; }
+          let distance = null;
+          if (aLat != null && r.lat != null) {
+            distance = km(aLat, aLon, r.lat, r.lon);
+            // THEIR radius governs, not the asker's. This is the line that keeps a search from
+            // widening someone else's consent.
+            if (distance > (r.radius_km || 10)) { excludedDistance++; continue; }
+          }
+          const ent = await db.prepare("SELECT name FROM pta_entities WHERE id = ?").bind(r.entity_id).first();
+          found.push({ pta: r.entity_id, name: ent ? ent.name : "(unknown)", contexts: cs,
+            distance_km: distance != null ? +distance.toFixed(2) : null,
+            discoverable_until: r.expires_at });
+        }
+        return { cmd: "PTA_NEARBY", payload: { ok: true, asker, context: ctx || "any",
+          found: found.length, people: found,
+          excluded: { wrong_context: excludedContext, outside_their_own_radius: excludedDistance, yourself: excludedSelf },
+          not_counted_at_all: "Anyone who never opted in, and anyone whose window has lapsed. They are not "
+            + "hidden from this result - they were never in the query. That is the difference between a "
+            + "filter and an absence, and it is the whole point.",
+          your_searches_today: askerToday,
+          this_grants_nothing: "Finding someone is not permission to approach them. It tells you they chose "
+            + "to be findable. Reaching them still goes through INVITE, which they can decline with no trace.",
+          watched_not_limited: "This search is recorded against the asker, and Aura is told when a pattern "
+            + "is worth a look. Nothing here restricts anybody - a single search always looks legitimate, "
+            + "and the difference between curiosity and harvesting only exists in the count." } };
+      }
     }
 
     case "PTA_VOUCH": {

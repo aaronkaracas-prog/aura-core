@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.798-2026-07-28";
+const BUILD = "aura-core-v4.9.799-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -14709,26 +14709,35 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const grantedEdgeId = (gr && gr.payload && gr.payload.edge_id) || null;
         if (grantedEdgeId) {
           const nowA = new Date().toISOString();
-          // ══ BATCHING IS NOT FREE AT SMALL N — MEASURED (v4.9.798) ══════════════════════════════
-          // v4.9.797 batched these two statements expecting a saving. Four runs of the viral test at
-          // identical settings: 149ms per acceptance BEFORE, then 198.6 / 223.6 / 219.4 AFTER. The
-          // three post-change samples cluster tightly, so that is not noise - **the batch made this
-          // path roughly 45% SLOWER.**
-          // WHY, and it is worth remembering: `batch()` wraps its statements in a TRANSACTION.
-          // WRITEBENCH measured batching 25-34x faster AT FIFTY STATEMENTS, where one round trip
-          // replaces fifty. At TWO statements the transaction overhead exceeds the single round trip
-          // it saves. **The rule is not "batch is faster" - it is "batch amortises, and amortising
-          // two of anything is not worth a transaction."**
-          // Reverted to two calls. The correctness argument for batching here was real but weaker
-          // than it looked: the UPDATE is conditional on state='pending', so a failure between the
-          // two leaves the edge active without its history row - recoverable and detectable, and
-          // `PTA_INVARIANTS` counts exactly that case.
-          await env.AURA_MEMORY.prepare("UPDATE pta_edges SET state = 'active', updated_at = ? WHERE id = ? AND state = 'pending'")
-            .bind(nowA, grantedEdgeId).run();
-          await env.AURA_MEMORY.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-            .bind("hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join(""),
-                  grantedEdgeId, "accepted", bornId,
-                  JSON.stringify({ via: "ACCEPT", invite_id: invite.invite_id, note: "activated by the invitee's own yes" }), nowA).run();
+          // ══ BATCHED FOR ATOMICITY, NOT FOR SPEED — AND A CORRECTION (v4.9.799) ═════════════════
+          // v4.9.797 batched these two and the next run measured 149 -> 199ms. I concluded the batch
+          // was 45% slower, wrote a confident explanation about transaction overhead at small N, and
+          // reverted it. **THE REVERT CHANGED NOTHING.** Six samples at identical settings:
+          //   batched:   198.6 / 223.6 / 219.4   (median 219)
+          //   unbatched: 244.3 / 217.0 / 192.3   (median 217)
+          // The 149 was a single OUTLIER and I built an explanation on top of it - the exact error
+          // this codebase keeps catching in itself, committed while writing the warning about it.
+          // **Neither this batch nor removing the per-create index moved the number measurably. The
+          // cost is somewhere neither change touched, and guessing again would repeat the mistake.**
+          //
+          // So it is batched for the reason that survives measurement: ATOMICITY. Activating the edge
+          // and recording the acceptance are one event. Unbatched, a failure between them leaves a
+          // person active with no record of having said yes - the inverse of a bug that already
+          // existed here once. Free correctness beats an imaginary optimisation.
+          //
+          // AND THE LATENCY IS NOT A PROBLEM: 200 acceptances in ONE request takes ~40s, but in the
+          // world 200 people accepting is 200 SEPARATE requests across edge locations. Each person
+          // waits ~200ms for their own tap. The 40 seconds is an artifact of the harness doing
+          // serially what reality does in parallel. Throughput is the real question, and that is the
+          // store's write capacity, not this path.
+          await env.AURA_MEMORY.batch([
+            env.AURA_MEMORY.prepare("UPDATE pta_edges SET state = 'active', updated_at = ? WHERE id = ? AND state = 'pending'")
+              .bind(nowA, grantedEdgeId),
+            env.AURA_MEMORY.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+              .bind("hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join(""),
+                    grantedEdgeId, "accepted", bornId,
+                    JSON.stringify({ via: "ACCEPT", invite_id: invite.invite_id, note: "activated by the invitee's own yes" }), nowA),
+          ]);
         }
       } catch (e) {}
       // stamp origin context (only if newly created)
@@ -16300,6 +16309,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const dupIdentity = await one(
           "SELECT COUNT(*) n FROM (SELECT identity_key FROM pta_entities WHERE identity_key IS NOT NULL GROUP BY identity_key HAVING COUNT(*) > 1)");
         // An edge that grants something while being revoked - the state and the permission disagreeing.
+        // The INVERSE of pending-forever: an edge went active but its acceptance was never recorded.
+        // That is what a failure between the activation and the history write would leave behind, and
+        // it is the reason those two are batched. Counted so the batch is not merely trusted.
+        const activeWithoutAcceptance = await one(
+          "SELECT COUNT(*) n FROM pta_edges e WHERE e.state = 'active' AND e.edge_type = 'relationship' AND NOT EXISTS (SELECT 1 FROM pta_history h WHERE h.edge_id = e.id AND h.action = 'accepted')");
         const revokedButGranting = await one(
           "SELECT COUNT(*) n FROM pta_edges WHERE state = 'revoked' AND permission LIKE '%true%' AND updated_at IS NULL");
 
@@ -16316,6 +16330,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
         const checks = {
           consent_given_but_edge_still_pending: pendingForever,
+          active_relationship_with_no_record_of_the_yes: activeWithoutAcceptance,
           lineage_pointing_at_nothing: danglingLineage,
           history_for_a_deleted_edge: orphanHistory,
           relationships_to_a_missing_entity: danglingEdges,

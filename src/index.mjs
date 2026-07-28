@@ -36,7 +36,7 @@ import { WorkerEntrypoint } from "cloudflare:workers";
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.780-2026-07-27";
+const BUILD = "aura-core-v4.9.781-2026-07-27";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -15877,11 +15877,31 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const ent = await db.prepare("SELECT id, name, type FROM pta_entities WHERE id = ?").bind(id).first();
         if (!ent) return { cmd: "PTA_FORGET", payload: { ok: false, error: "no such entity: " + id } };
         const hasKey = !!(await env.AURA_KV.get("entity:key:" + id));
+        // ══ SHOW THE RAW STORED BYTES (v4.9.781) ═════════════════════════════════════════════════
+        // Every read path unseals, so nothing could answer the only question that matters: IS this
+        // row actually encrypted? The falsifiable test failed - metadata came back in plaintext after
+        // the key was destroyed - and no amount of reading the code settled why, because the code
+        // looked correct. This reports what is ON DISK, unsealed by nothing, so the next answer is a
+        // measurement instead of an argument.
+        const rawRow = await db.prepare("SELECT name, metadata FROM pta_entities WHERE id = ?").bind(id).first();
+        const sealedState = {
+          name_sealed: !!(rawRow && String(rawRow.name || "").startsWith("enc:v1:")),
+          metadata_sealed: !!(rawRow && String(rawRow.metadata || "").startsWith("enc:v1:")),
+          metadata_present: !!(rawRow && rawRow.metadata),
+          raw_metadata_prefix: rawRow && rawRow.metadata ? String(rawRow.metadata).slice(0, 24) : null,
+        };
         const edges = await db.prepare("SELECT COUNT(*) n FROM pta_edges WHERE from_id = ? OR to_id = ?").bind(id, id).first();
         if (!confirm) {
           return { cmd: "PTA_FORGET", payload: { ok: true, dry_run: true,
             entity: { id: ent.id, name: ent.name, type: ent.type },
             key_present: hasKey, relationships_touching_them: (edges && edges.n) || 0,
+            sealed_state: sealedState,
+            shred_would_work: sealedState.metadata_sealed
+              ? "YES - the metadata is encrypted on disk, so destroying the key makes it unreadable"
+              : (sealedState.metadata_present
+                  ? "NO - THE METADATA IS STORED IN PLAINTEXT. Destroying the key would tombstone the "
+                    + "name and change NOTHING about the content. Do not tell anyone they were forgotten."
+                  : "N/A - this entity has no metadata to protect"),
             what_happens: hasKey
               ? "Their key is destroyed. Every encrypted field of theirs becomes permanently unreadable "
                 + "and reads back as [forgotten]. Their rows and their relationships REMAIN, so nobody "

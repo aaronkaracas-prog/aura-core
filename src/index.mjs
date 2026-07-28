@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.803-2026-07-28";
+const BUILD = "aura-core-v4.9.804-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -16285,6 +16285,76 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           note: "Their content is unchanged - it is the same bytes, now encrypted under their own key. "
               + "PTA_FORGET can honour a request from them from this moment on, which it could not before.",
           verify_with: "PTA_AUDIT" } };
+      }
+    }
+
+    case "PTA_FOOTPRINT": {
+      // ══ HOW MANY PEOPLE FIT — MEASURED, NOT ESTIMATED (v4.9.804) ═════════════════════════════
+      //
+      // THE QUESTION THIS ANSWERS, and it is the only scale question that matters: **D1's ceiling is
+      // 10 GB and cannot be raised. How many PTAs is that?**
+      // A review said stay on the single store and instrument the distance to the ceiling. This is
+      // that instrument. It reads ACTUAL bytes of ACTUAL rows rather than guessing at a schema,
+      // because an estimate of storage is exactly the kind of confident number that has been wrong
+      // twice today.
+      //
+      // WHY IT MATTERS NOW: the real target is one influencer's audience. Cristiano Ronaldo has ~664
+      // million on Instagram and about a billion across platforms; MrBeast ~774 million; twenty-two
+      // accounts sit above 200 million. **At one percent conversion Ronaldo alone is 6.6 million
+      // PTAs.** If the ceiling arrives before that, the storage fork is not a future decision - it is
+      // triggered by the first serious user.
+      if (!isOp) return { cmd: "PTA_FOOTPRINT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const db = env.AURA_MEMORY;
+        const size = async (sql) => { try { const r = await db.prepare(sql).first(); return (r && r.n) || 0; } catch { return -1; } };
+        // length() on text is bytes for ASCII and close enough for the mixed content here; the point
+        // is a real order of magnitude from real rows, not a byte-exact accounting.
+        const entBytes = await size("SELECT SUM(LENGTH(COALESCE(id,'')) + LENGTH(COALESCE(type,'')) + LENGTH(COALESCE(identity_key,'')) + LENGTH(COALESCE(name,'')) + LENGTH(COALESCE(metadata,'')) + LENGTH(COALESCE(created_at,'')) + LENGTH(COALESCE(updated_at,''))) n FROM pta_entities");
+        const edgeBytes = await size("SELECT SUM(LENGTH(COALESCE(id,'')) + LENGTH(COALESCE(from_id,'')) + LENGTH(COALESCE(to_id,'')) + LENGTH(COALESCE(edge_type,'')) + LENGTH(COALESCE(state,'')) + LENGTH(COALESCE(permission,'')) + LENGTH(COALESCE(relationship,'')) + LENGTH(COALESCE(context,'')) + LENGTH(COALESCE(via_edge_id,'')) + LENGTH(COALESCE(origin_id,'')) + LENGTH(COALESCE(place,'')) + LENGTH(COALESCE(created_at,'')) + LENGTH(COALESCE(updated_at,''))) n FROM pta_edges");
+        const histBytes = await size("SELECT SUM(LENGTH(COALESCE(id,'')) + LENGTH(COALESCE(edge_id,'')) + LENGTH(COALESCE(action,'')) + LENGTH(COALESCE(actor_id,'')) + LENGTH(COALESCE(detail,'')) + LENGTH(COALESCE(created_at,''))) n FROM pta_history");
+        const nEnt = await size("SELECT COUNT(*) n FROM pta_entities");
+        const nEdge = await size("SELECT COUNT(*) n FROM pta_edges");
+        const nHist = await size("SELECT COUNT(*) n FROM pta_history");
+        if (nEnt <= 0) return { cmd: "PTA_FOOTPRINT", payload: { ok: false, error: "no entities to measure" } };
+
+        // A "person" is one entity plus their share of edges and history. Row overhead (indexes,
+        // page alignment, the SQLite b-tree itself) is real and not in these numbers, so the
+        // multiplier below is stated openly rather than hidden inside a single reassuring figure.
+        const perPersonContent = (entBytes + edgeBytes + histBytes) / nEnt;
+        const OVERHEAD = 2.0;                     // indexes and page overhead; deliberately generous
+        const perPerson = perPersonContent * OVERHEAD;
+        const CEILING = 10 * 1024 * 1024 * 1024;
+        const capacity = Math.floor(CEILING / perPerson);
+        const at60 = Math.floor(capacity * 0.6);
+
+        const audience = [
+          { who: "Cristiano Ronaldo (Instagram)", people: 664000000 },
+          { who: "MrBeast (all platforms)", people: 774000000 },
+          { who: "Kylie Jenner (Instagram)", people: 382000000 },
+          { who: "Khaby Lame (all platforms)", people: 254000000 },
+          { who: "a 1M-follower creator", people: 1000000 },
+        ].map((a) => ({ ...a,
+          at_1_percent: Math.round(a.people * 0.01),
+          fits_at_1_percent: Math.round(a.people * 0.01) < capacity,
+          percent_of_ceiling_at_1_percent: +((a.people * 0.01 / capacity) * 100).toFixed(1) }));
+
+        return { cmd: "PTA_FOOTPRINT", payload: { ok: true,
+          measured_from: { entities: nEnt, edges: nEdge, history_rows: nHist },
+          bytes_per_person: { content_only: Math.round(perPersonContent), with_overhead_estimate: Math.round(perPerson),
+            overhead_multiplier: OVERHEAD,
+            honest_note: "Content bytes are MEASURED from real rows. The multiplier for indexes and page "
+              + "overhead is an ESTIMATE and is stated separately so it can be argued with rather than "
+              + "buried inside one confident number." },
+          d1_ceiling_gb: 10,
+          capacity_people: capacity,
+          act_at_60_percent: at60,
+          influencer_reality: audience,
+          read_this: "The ceiling is fixed at 10 GB and cannot be raised. Divide it by what a person "
+            + "actually costs and that is how many people fit in one database - full stop. The question "
+            + "is not whether the fork happens but which audience triggers it.",
+          caveat: "Measured on a tiny sample, so the per-person figure will move as real chains grow - "
+            + "somebody with two hundred relationships costs far more than somebody with one. Re-run "
+            + "this as volume arrives; it is the tripwire, not a one-time answer." } };
       }
     }
 

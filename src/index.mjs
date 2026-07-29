@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.830-2026-07-29";
+const BUILD = "aura-core-v4.9.832-2026-07-29";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2582,22 +2582,54 @@ async function ptaWakeGate(env, opts) {
 
   if (!actor || !subject) return { allowed: false, reason: "a wake must name who is acting and about whom" };
 
+  // ══ DEFINED BEFORE ANY CHECK THAT USES IT (v4.9.831) ═══════════════════════════════════════
+  // The first version put this AFTER the opt-out check that calls it, so every denial threw
+  // "Cannot access '_meterDeny' before initialization" - a `const` arrow has a temporal dead zone.
+  // **The identical mistake I made with `_unsealEnt` this morning, in the same file, having written
+  // the comment explaining it.** And it surfaced as a phantom opt-out rather than as an error,
+  // because `ptaOptOut` fails CLOSED - one cause wearing two symptoms.
+  //
+  // WHY DENIALS ARE METERED AT ALL. Aura: "'every attempt is metered' - CLAIM FALSE. The counter
+  // increments only on the ALLOW path, after all denies returned." **A refusal that leaves no trace
+  // is indistinguishable from a wake that never existed**, and the count of what a system DECLINED
+  // to do is the only evidence the gate does anything in production rather than in its own test.
+  const day = new Date().toISOString().slice(0, 10);
+  let wakeCount = 0, meter = {};
+  try {
+    const raw = await env.AURA_KV.get("pta:wakes:" + subject + ":" + day);
+    meter = raw ? (JSON.parse(raw) || {}) : {};
+    wakeCount = meter.count || 0;
+  } catch {}
+  const _meterDeny = (code) => {
+    try {
+      const d = { ...(meter.denied_by_code || {}) };
+      d[code] = (d[code] || 0) + 1;
+      env.AURA_KV.put("pta:wakes:" + subject + ":" + day,
+        JSON.stringify({ ...meter, attempted: (meter.attempted || 0) + 1, denied_by_code: d,
+                         last: new Date().toISOString() }), { expirationTtl: 3 * 86400 });
+    } catch {}
+  };
+
   // 1. OPT-OUT IS THE HARDEST STOP and it comes first, because a person who withdrew should never
   //    be reached by something that was set in motion before they withdrew.
   const oo = await ptaOptOut(env, subject);
-  if (oo.blocked) _meterDeny("OPTED_OUT");
+  if (oo.blocked) {
+    _meterDeny("OPTED_OUT");
     return { allowed: false, code: "OPTED_OUT", level: oo.level,
     reason: "this person opted out (" + oo.level + "). A wake scheduled before they withdrew must not "
           + "survive the withdrawal - that is precisely the case an asynchronous action gets wrong." };
+  }
 
   // 2. THE GRANT MUST BE LIVE RIGHT NOW. Not at schedule time. Now.
   const may = await ptaCan(env, actor, "initiate", subject);
-  if (!may.allowed) _meterDeny("NO_INITIATIVE");
+  if (!may.allowed) {
+    _meterDeny("NO_INITIATIVE");
     return { allowed: false, code: "NO_INITIATIVE",
     reason: "no live grant to initiate: " + (may.reason || "unknown"),
     lineage: may.lineage,
     note: "can_view does not imply can_initiate. Being allowed to KNOW something is not being allowed "
         + "to BRING IT UP - that distinction is the one the whole review said was missing." };
+  }
 
   // 3. PURPOSE. A grant is for something. Firing outside it is a different act wearing its clothes.
   let granted = [];
@@ -2653,34 +2685,14 @@ async function ptaWakeGate(env, opts) {
   // hollow checks dress up as architecture." She was right; it read like a limit and enforced
   // nothing. Either it binds or it goes - so it binds.
   const INFLIGHT_MAX = 40;
-  const day = new Date().toISOString().slice(0, 10);
-  let wakeCount = 0, meter = {};
-  try {
-    const raw = await env.AURA_KV.get("pta:wakes:" + subject + ":" + day);
-    meter = raw ? (JSON.parse(raw) || {}) : {};
-    wakeCount = meter.count || 0;
-  } catch {}
-  // ══ DENIALS ARE THE NUMBER THAT PROVES THE GATE WORKS (v4.9.830) ═══════════════════════════
-  // Aura: "'every attempt is metered' - CLAIM FALSE. The counter increments only on the ALLOW path,
-  // after all denies returned." She was right and I had written the opposite in the brief.
-  // **A refusal that leaves no trace is indistinguishable from a wake that never existed**, and the
-  // count of things a system DECLINED to do is the only evidence the gate does anything in production
-  // rather than in its own test.
-  const _meterDeny = (code) => {
-    try {
-      const d = { ...(meter.denied_by_code || {}) };
-      d[code] = (d[code] || 0) + 1;
-      env.AURA_KV.put("pta:wakes:" + subject + ":" + day,
-        JSON.stringify({ ...meter, attempted: (meter.attempted || 0) + 1, denied_by_code: d,
-                         last: new Date().toISOString() }), { expirationTtl: 3 * 86400 });
-    } catch {}
-  };
-  if (wakeCount >= WAKE_CAP_PER_DAY) _meterDeny("WAKE_BUDGET_SPENT");
+  if (wakeCount >= WAKE_CAP_PER_DAY) {
+    _meterDeny("WAKE_BUDGET_SPENT");
     return { allowed: false, code: "WAKE_BUDGET_SPENT",
     woken_today: wakeCount, cap: WAKE_CAP_PER_DAY,
     reason: "this person has already been woken " + wakeCount + " times today. Consent to be contacted "
           + "about something is not consent to be contacted about it endlessly - a cap is what keeps "
           + "initiative from becoming attrition." };
+  }
 
   // THE GRAVEYARD IS ALSO A COST. Unbounded pending intentions against one person are both a spam
   // surface and a bill nobody authorised - and every one of them will wake, check, and be judged.
@@ -2688,21 +2700,25 @@ async function ptaWakeGate(env, opts) {
     const raw = await env.AURA_KV.get("pta:schedule:" + subject);
     const items = raw ? (JSON.parse(raw) || []) : [];
     const pending = items.filter((x) => x && x.status === "pending").length;
-    if (pending >= INFLIGHT_MAX) _meterDeny("TOO_MANY_INTENTIONS");
+    if (pending >= INFLIGHT_MAX) {
+      _meterDeny("TOO_MANY_INTENTIONS");
       return { allowed: false, code: "TOO_MANY_INTENTIONS",
       pending, max: INFLIGHT_MAX,
       reason: pending + " intentions are already waiting for this person. Past a point, a queue of "
             + "pending acts is not attentiveness - it is a backlog that will arrive as a burst and "
             + "read as harassment." };
+    }
   } catch {}
 
   // WHO PAYS. An intention that cannot name a payer is one nobody agreed to fund, and an agent that
   // spends anonymously is how a treasury drains without anybody deciding to drain it.
   const payer = o.payer || null;
-  if (o.costs_money && !payer) _meterDeny("NO_PAYER");
+  if (o.costs_money && !payer) {
+    _meterDeny("NO_PAYER");
     return { allowed: false, code: "NO_PAYER",
     reason: "this wake would spend money and names no payer. An agent that spends anonymously is how "
           + "a treasury empties without anyone having decided to empty it." };
+  }
 
   // DEFAULT IS NOT TO THINK. A wake may send what was already written; it may not invoke a model
   // unless that was granted explicitly. Thinking on wake is the expensive default the industry

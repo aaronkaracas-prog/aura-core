@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.843-2026-07-29";
+const BUILD = "aura-core-v4.9.844-2026-07-29";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -18642,26 +18642,50 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // existed - what did not was a query that knew the difference between who is here and who
           // ever was. This proves the count MOVES when somebody leaves, which is the only thing that
           // makes it a membership rather than an attendance record.
-          const gBefore = await run("PTA_MOMENT_WHO " + moment);
-          check("THE GROUP KNOWS WHO IS IN IT", "3 members from one shared moment",
+          // ══ A MOMENT HOLDS TWO SHAPES, AND REVOCATION DIFFERS (v4.9.844) ═══════════════════
+          // The first version of this test revoked the top of the propagation chain above and
+          // expected two members to survive. It got ZERO, and **the code was right while the test was
+          // wrong.** Those three edges are a CHAIN - influencer to fan to friend to stranger - where
+          // each depends on the one above, so cutting the top correctly takes everyone below.
+          //
+          // **A GROUP IS NOT A CHAIN.** Twenty people on a trip each granted INDEPENDENTLY: siblings
+          // on one moment, no lineage between them. One leaves, nineteen stay. Both shapes are real,
+          // both are legitimate, and the difference only shows up when somebody goes.
+          // Tested here on siblings, because that is the group case.
+          const trip = "moment_trip_" + tag;
+          const travellers = [];
+          for (let k = 0; k < 3; k++) {
+            const c = "phone:+1555" + String(Date.now() + 40 + k).slice(-7);
+            const iv = await run("INVITE from=" + inf.entity.id + " to=" + c + " name=" + tag + "trip" + k + " rel=friend origin=" + trip + " msg=coming to Paris");
+            if (iv.invite_id) {
+              const ac = await run("ACCEPT " + iv.invite_id);
+              if (ac.pta) { made.push(ac.pta); travellers.push(ac.pta); }
+            }
+          }
+          const gBefore = await run("PTA_MOMENT_WHO " + trip);
+          check("A MOMENT KNOWS WHO IS ON IT", "3 travellers from one shared moment",
             gBefore.members === undefined ? "no answer" : String(gBefore.members),
             gBefore.members === 3,
-            "N parties, one origin - the same shape whether it is a stadium or a dinner party");
-          if (e1) {
-            await run("PTA_REVOKE " + e1.id + " left the group");
-            const gAfter = await run("PTA_MOMENT_WHO " + moment);
-            check("AND THE COUNT MOVES WHEN SOMEBODY LEAVES", "2 members, 1 departed",
-              gAfter.members === undefined ? "no answer" : (gAfter.members + " members, " + gAfter.left + " left"),
-              gAfter.members === 2 && gAfter.left >= 1,
+            "N parties, one origin, each granted independently - the same shape whether it is a "
+            + "stadium or a dinner party");
+          const leaverEdge = travellers.length
+            ? await db.prepare("SELECT id FROM pta_edges WHERE origin_id = ? AND to_id = ?").bind(trip, travellers[0]).first()
+            : null;
+          if (leaverEdge) {
+            await run("PTA_REVOKE " + leaverEdge.id + " cannot come after all");
+            const gAfter = await run("PTA_MOMENT_WHO " + trip);
+            check("AND THE COUNT MOVES WHEN ONE LEAVES", "2 on it, 1 departed",
+              gAfter.members === undefined ? "no answer" : (gAfter.members + " on it, " + gAfter.left + " left"),
+              gAfter.members === 2 && gAfter.left === 1,
               "**for a million fans this difference is noise; for twenty people splitting a bill it is "
-              + "nineteen versus twenty** - and every earlier query counted everybody who had EVER "
-              + "joined while meaning the people who are still here");
-            const gAll = await run("PTA_MOMENT_WHO " + moment + " ALL");
-            check("and the one who left is still in the history", "departed is visible on request",
+              + "nineteen versus twenty.** Every earlier query counted everybody who had EVER joined "
+              + "while meaning the people who are still here");
+            const gAll = await run("PTA_MOMENT_WHO " + trip + " ALL");
+            check("the one who left is still in the history", "departed visible on request",
               (gAll.departed && gAll.departed.length) ? "recorded" : "vanished",
               !!(gAll.departed && gAll.departed.length),
-              "leaving is not deletion - the chain keeps what happened, it just stops counting them as "
-              + "present");
+              "leaving is not deletion - the chain keeps what happened, it just stops counting them "
+              + "as present. Yusuf never went to Paris and is still in the story");
           }
 
           // ── REVOCATION: context must not outlive the permission that carried it

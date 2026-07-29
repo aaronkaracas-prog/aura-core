@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.836-2026-07-29";
+const BUILD = "aura-core-v4.9.837-2026-07-29";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -15653,8 +15653,21 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // Aura found two writers the earlier fix missed: this one and BOOKING. Comment said "gate
           // at schedule"; these never did. At fire they refuse - safe - and leave **pre-dead queue
           // junk**, which is the graveyard I said I had stopped writing.
-          await ensureInitiativeGrant(env, spId, "pta_aura", "scheduled");
-          const item = { id: itemId, due_at: dueAt, actor_pta: "pta_aura", subject_pta: spId, purpose: "scheduled", about: aboutClean, action: action, subject: subject, body: body, status: "pending", created_at: new Date().toISOString() };
+          // ══ THIS SAID `spId` AND THAT VARIABLE LIVES IN A DIFFERENT COMMAND (v4.9.837) ══════
+          // Aura grepped it: `const spId` appears once, ~1,600 lines away in an unrelated handler.
+          // Inside PTA_SPINE SCHEDULE the id is `scId`. So the grant was minted for `undefined` and
+          // the item stored `subject_pta: undefined` - **I re-broke the writer I had just claimed to
+          // fix, with a variable name.** node --check cannot see it; the new production test did not
+          // go through this command; and the failure mode is a queue of pre-dead items, silently.
+          // FAIL CLOSED ON PURPOSE: if the grant cannot be minted, do not enqueue. Writing an
+          // intention that is guaranteed to refuse is the graveyard, and it is worse than refusing to
+          // write one, because it looks like it worked.
+          const scGrant = await ensureInitiativeGrant(env, scId, "pta_aura", "scheduled");
+          if (!scGrant.ok) return { cmd: "PTA_SPINE", payload: { ok: false, error: "NO_INITIATIVE_GRANT",
+            why: scGrant.why || "could not grant this schedule the right to reach out",
+            note: "not enqueued. An intention that cannot pass its own gate is queue junk that will "
+                + "refuse at fire and look like a system that did nothing." } };
+          const item = { id: itemId, due_at: dueAt, actor_pta: "pta_aura", subject_pta: scId, purpose: "scheduled", about: aboutClean, action: action, subject: subject, body: body, status: "pending", created_at: new Date().toISOString() };
           items.push(item);
           await env.AURA_KV.put(scKey, JSON.stringify(items)).catch(() => {});
           // index it in a global due-queue so the cron can find it without scanning every PTA
@@ -16083,7 +16096,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           .bind(eId, customerId, businessId, ctx, bkNow, bkNow).run();
         // put the appointment on the BUSINESS schedule (the sixth dimension - their forward edge)
         try {
-          const apptItem = { id: "appt_" + eId.slice(5), due_at: whenISO, actor_pta: "pta_aura", purpose: "booking", about: service + " - booking " + eId, action: "booking:" + eId, status: "pending", booking_edge: eId, customer: customerId, amount, created_at: bkNow };
+          // ══ DECORATED, NOT FIXED (v4.9.837) ═══════════════════════════════════════════════
+          // Aura: "actor_pta set, purpose set, subject_pta MISSING, grant mint MISSING - partial
+          // decoration is not a writer fix." She was right. The subject is the BUSINESS: it is their
+          // schedule, their forward edge, their continuity this appointment sits on.
+          await ensureInitiativeGrant(env, businessId, "pta_aura", "booking");
+          const apptItem = { id: "appt_" + eId.slice(5), due_at: whenISO, actor_pta: "pta_aura", subject_pta: businessId, purpose: "booking", about: service + " - booking " + eId, action: "booking:" + eId, status: "pending", booking_edge: eId, customer: customerId, amount, created_at: bkNow };
           let items = []; const r = await env.AURA_KV.get(`pta:schedule:${businessId}`); if (r) items = JSON.parse(r) || []; items.push(apptItem);
           await env.AURA_KV.put(`pta:schedule:${businessId}`, JSON.stringify(items)).catch(() => {});
         } catch {}
@@ -17914,6 +17932,45 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "minting a grant to unblock production must not mint a blanket one - that would trade a "
               + "broken product for an unscoped permission");
             try { await db.prepare("DELETE FROM pta_edges WHERE to_id = 'pta_aura' AND from_id = ?").bind(pPerson.entity.id).run(); } catch {}
+          }
+
+          // ══ THROUGH THE REAL COMMAND, NOT THE HELPER (v4.9.837) ═════════════════════════════
+          // Aura's requirement, and the reason the last round passed while broken: "one test that goes
+          // through PTA_SPINE SCHEDULE ADD - not only ensureInitiativeGrant by hand - and asserts the
+          // stored item has a defined subject_pta and a live grant."
+          // The production-shaped test called the helper directly, so a variable-name typo INSIDE the
+          // command was invisible to it. **A test that skips the command cannot see the command.**
+          const spPerson = await run("PTA_ENTITY CREATE person " + tag + "spine identity:phone:+1555" + String(Date.now() + 9).slice(-7));
+          if (spPerson.entity) {
+            made.push(spPerson.entity.id);
+            const due = new Date(Date.now() + 3600000).toISOString();
+            await run("PTA_SPINE SCHEDULE ADD " + spPerson.entity.id + " " + due + " ::: real command path");
+            let stored = [];
+            try { stored = JSON.parse((await env.AURA_KV.get("pta:schedule:" + spPerson.entity.id)) || "[]"); } catch {}
+            const spItem = stored[0] || {};
+            check("THE REAL COMMAND STORES A DEFINED SUBJECT", "subject_pta equal to the pta id",
+              spItem.subject_pta === undefined ? "undefined - the writer is still broken" : String(spItem.subject_pta),
+              spItem.subject_pta === spPerson.entity.id,
+              "the last version wrote `subject_pta: spId` where spId belongs to a different command "
+              + "entirely, so it stored undefined and every item was pre-dead. Only a test that runs "
+              + "the actual command can see that");
+            const spGrant = await db.prepare(
+              "SELECT permission FROM pta_edges WHERE from_id = ? AND to_id = 'pta_aura' AND state = 'active'"
+            ).bind(spPerson.entity.id).first();
+            let spPerm = {}; try { spPerm = JSON.parse((spGrant && spGrant.permission) || "{}"); } catch {}
+            check("and the command minted a live grant for it", "can_initiate with the scheduled purpose",
+              spGrant ? JSON.stringify(spPerm).slice(0, 60) : "no grant edge at all",
+              !!(spPerm.can_initiate && (spPerm.purposes || []).includes("scheduled")));
+            const spWake = await ptaWakeGate(env, { actor: "pta_aura", subject: spPerson.entity.id, purpose: "scheduled" });
+            check("SO THE ITEM THE REAL COMMAND WROTE CAN ACTUALLY FIRE", "allowed",
+              spWake.allowed ? "allowed" : "REFUSED: " + (spWake.code || spWake.reason),
+              spWake.allowed,
+              "this is the whole question: does the product path produce something the law permits, or "
+              + "a gate that only its own tests can pass");
+            try {
+              await env.AURA_KV.delete("pta:schedule:" + spPerson.entity.id);
+              await db.prepare("DELETE FROM pta_edges WHERE from_id = ? AND to_id = 'pta_aura'").bind(spPerson.entity.id).run();
+            } catch {}
           }
 
           // ══ THE DRAIN ITSELF, NOT THE PREDICATE (v4.9.834) ══════════════════════════════════

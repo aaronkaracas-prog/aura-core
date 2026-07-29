@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.838-2026-07-29";
+const BUILD = "aura-core-v4.9.839-2026-07-29";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -15321,6 +15321,97 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         note: "Invitation offered. NO PTA created yet - it is born only when the invitee accepts." } };
     }
 
+    case "REFUSE": {
+      // ══ REFUSING IS AN ANSWER, NOT A SILENCE (v4.9.839) ══════════════════════════════════════
+      //
+      // Until now declining was silence BY OMISSION: nothing called anything, so a person who wanted
+      // to say "I don't know who this is" had no way to say it. That is not the same as a decline
+      // costing nothing - it is a decline that cannot speak.
+      //
+      // AARON'S RULE, and it settles the whole design: **"Aura always gives both parties as much
+      // information as she has. Nothing is hidden. It's one circle."** So a refusal travels back with
+      // whatever the person chose to say, exactly as the offer travelled out with whatever the sender
+      // chose to say. The symmetry already existed in the invitation - the recipient always knew who
+      // it was from - and this is the other half of it, which was simply missing.
+      //
+      // THREE KINDS OF NO, and they are not the same act:
+      //   · a COLD refusal - no reason, nothing further, gone
+      //   · "I DON'T KNOW WHO THIS IS" - not a rejection of the offer, a MISSING-CONTEXT problem,
+      //     and the one thing Aura is standing there to solve
+      //   · a considered no - understood and declined, which is genuinely useful to the sender in a
+      //     way a silent decline never is
+      //
+      // AND IT DISSOLVES THE SPAM PROBLEM WITHOUT A TALLY. A sender who receives ten thousand "I do
+      // not know who this is" replies has been TOLD ten thousand times. That is a harder wall than a
+      // rate limit and it records nothing about any of the ten thousand people.
+      //
+      // NOTHING IS RECORDED ABOUT THE PERSON WHO REFUSED. Their reason is a MESSAGE FROM THEM, not a
+      // row about them - so "declining leaves nothing behind" stays literally true. No entity is
+      // created, no edge, no chain. The invitation is closed and the sender is answered.
+      //
+      //   REFUSE <invite_id> [::: why]
+      if (!isOp) return { cmd: "REFUSE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const inviteId = (args[0] || "").trim();
+        const why = rest.includes(":::") ? rest.split(":::").slice(1).join(":::").trim() : "";
+        if (!inviteId) return { cmd: "REFUSE", payload: { ok: false, error: "Usage: REFUSE <invite_id> [::: why]" } };
+        let invite = null;
+        try { const raw = await env.AURA_KV.get("invite:" + inviteId); if (raw) invite = JSON.parse(raw); } catch {}
+        if (!invite) return { cmd: "REFUSE", payload: { ok: false, error: "NOT_FOUND",
+          why: "this invitation does not exist or was already answered. Invitations are single-use." } };
+        if (invite.status && invite.status !== "pending") return { cmd: "REFUSE", payload: { ok: false, error: "ALREADY_ANSWERED", status: invite.status } };
+
+        // The invitation is closed. NOT deleted - the SENDER's record of having offered is theirs, and
+        // erasing it would hide from them that they were answered at all. What is absent is any record
+        // about the person who said no.
+        try {
+          invite.status = "refused";
+          invite.refused_at = new Date().toISOString();
+          if (why) invite.refused_reason = why;
+          await env.AURA_KV.put("invite:" + inviteId, JSON.stringify(invite), { expirationTtl: 90 * 24 * 3600 });
+        } catch {}
+
+        // THE SENDER IS ANSWERED. On their timeline, where they will actually see it - a refusal
+        // nobody is told about teaches nobody anything, and the whole point is that Jane learns to say
+        // who she is next time.
+        try {
+          let evs = []; const tl = await env.AURA_KV.get("pta:timeline:" + invite.from);
+          if (tl) { try { evs = JSON.parse(tl) || []; } catch {} }
+          evs.push({ ts: new Date().toISOString(), kind: "offer_refused",
+            event: "An offer was refused" + (why ? ": \"" + why.slice(0, 200) + "\"" : " without a reason given") });
+          await env.AURA_KV.put("pta:timeline:" + invite.from, JSON.stringify(evs.slice(-200))).catch(() => {});
+        } catch {}
+
+        // A refusal that says "I do not know who this is" is a QUESTION wearing a no. It is the exact
+        // case Aura exists for, so she is told - not to police anybody, but because somebody just said
+        // they lacked the context she was standing there holding.
+        const confused = /don'?t know|who is this|who are you|no idea|unfamiliar|never heard|what is this|don'?t understand/i.test(why);
+        if (confused) {
+          try {
+            await auraRemember(env, "An offer was refused for lack of CONTEXT rather than lack of interest: "
+              + JSON.stringify(why).slice(0, 220) + " (from " + invite.from + ", " + (invite.from_name || "unnamed") + "). "
+              + "This is the case you are there for - the person did not reject the offer, they could not "
+              + "place the sender. Whatever you know about who this is and why they reached out is the "
+              + "answer that was missing at the moment it was needed.",
+              { kind: "signal", via: "REFUSE" });
+          } catch {}
+        }
+
+        return { cmd: "REFUSE", payload: { ok: true, refused: inviteId,
+          sender_told: true, reason_given: why || null,
+          context_problem: confused || undefined,
+          nothing_recorded_about_you: "No entity, no relationship, no chain entry. Your reason is a "
+            + "message FROM you, not a record ABOUT you - refusing still costs you nothing.",
+          the_sender_learns: why
+            ? "They were told what you said, so they can answer it or stop."
+            : "They were told the offer was refused, with no reason attached.",
+          note: confused
+            ? "You said you could not place the sender. That is a question rather than a no, and Aura "
+              + "has been told - she is the one holding the answer."
+            : undefined } };
+      }
+    }
+
     case "ACCEPT": {
       // RECEIVER-DRIVEN PROPAGATION - the consent half. THE INVITEE accepts an invitation. THIS is
       // the moment of birth: only now is their PTA created, born from THEIR yes, stamped with the
@@ -30241,6 +30332,19 @@ export class PublicEntry extends WorkerEntrypoint {
       env.AURA_KV.put("pta:accept:window", JSON.stringify(w), { expirationTtl: 60 });
       return { ok: true, in_flight: w.n, cap: CAP };
     } catch { return { ok: true, in_flight: 0, cap: CAP }; }   // never block on the limiter's own failure
+  }
+
+  // ══ THE PUBLIC WAY TO SAY NO, AND WHY (v4.9.839) ═════════════════════════════════════════════
+  // Not session-gated, for the same reason ACCEPT is not: the person refusing has no account, and the
+  // invite id IS the credential. Requiring an identity to decline would be the strangest possible
+  // rule - it would make saying no cost more than saying yes.
+  async ptaRefuse(inviteId, why) {
+    const env = this.env;
+    if (typeof inviteId !== "string" || !/^inv_[a-f0-9]+$/i.test(inviteId)) return { ok: false, error: "bad invite id" };
+    const reason = (typeof why === "string" ? why : "").slice(0, 300);
+    const r = await processCommand("REFUSE " + inviteId + (reason ? " ::: " + reason : ""), env, true);
+    const p = (r && r.payload) ? r.payload : r;
+    return p && p.ok ? { ok: true, sender_told: true, reason_given: !!reason } : { ok: false, error: (p && p.error) || "could not refuse" };
   }
 
   // ACCEPT is deliberately NOT session-gated. The whole point is that the person accepting does not

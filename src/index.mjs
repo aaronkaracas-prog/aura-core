@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.829-2026-07-29";
+const BUILD = "aura-core-v4.9.830-2026-07-29";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2540,6 +2540,38 @@ async function unsealFor(env, ptaId, stored) {
 //      permission to mention a medical result.
 //   4. STALENESS. An intention set long ago against a chain that has moved on is the graveyard.
 //      Old does not mean forbidden - it means SAY SO, so a human can judge it.
+// ══ ONE EXIT FOR EVERY DELAYED OUTBOUND ACT (v4.9.830) ═══════════════════════════════════════════
+//
+// Aura found the second pipe: `drainSchedule` was gated and `advanceWorkflow` was not, and a workflow
+// step's `do` can be `EMAIL_SEND`. **"Decider on one queue, second queue still shoots"** - the same
+// disease a third time in one day.
+// Her prescription, taken verbatim: ONE function that is the only way a delayed act reaches the
+// world. Both drains call it. There is no third queue, and adding one should feel like a violation
+// rather than a convenience.
+async function fireIntention(env, item) {
+  const it = item || {};
+  const wake = await ptaWakeGate(env, {
+    actor: it.actor_pta || null,
+    subject: it.subject_pta || null,
+    purpose: it.purpose || null,
+    scheduled_at: it.created_at || null,
+    costs_money: !!it.costs_money,
+    payer: it.payer || null,
+  });
+  if (!wake.allowed) return { fired: false, refused: true, code: wake.code || "REFUSED", reason: wake.reason };
+
+  // THE THINK LOCK IS A LOCK, NOT A NOTE. Aura: "when drain grows a model branch, `if (!wake.may_think)
+  // template only`. Today: no model branch - good. Don't add one real quick." So the refusal is here
+  // BEFORE such a branch can be added, rather than as a comment asking a future author to remember.
+  if (it.needs_model && !wake.may_think) {
+    return { fired: false, refused: true, code: "THINKING_NOT_GRANTED",
+      reason: "this intention wants a model and can_think was not granted. Send what is already "
+            + "written, or ask for thinking explicitly - an agent that reasons unprompted spends "
+            + "money to have thoughts nobody asked for." };
+  }
+  return { fired: true, wake };
+}
+
 async function ptaWakeGate(env, opts) {
   const o = opts || {};
   const actor = o.actor || null;          // who would act (usually the twin's own agent)
@@ -2553,13 +2585,15 @@ async function ptaWakeGate(env, opts) {
   // 1. OPT-OUT IS THE HARDEST STOP and it comes first, because a person who withdrew should never
   //    be reached by something that was set in motion before they withdrew.
   const oo = await ptaOptOut(env, subject);
-  if (oo.blocked) return { allowed: false, code: "OPTED_OUT", level: oo.level,
+  if (oo.blocked) _meterDeny("OPTED_OUT");
+    return { allowed: false, code: "OPTED_OUT", level: oo.level,
     reason: "this person opted out (" + oo.level + "). A wake scheduled before they withdrew must not "
           + "survive the withdrawal - that is precisely the case an asynchronous action gets wrong." };
 
   // 2. THE GRANT MUST BE LIVE RIGHT NOW. Not at schedule time. Now.
   const may = await ptaCan(env, actor, "initiate", subject);
-  if (!may.allowed) return { allowed: false, code: "NO_INITIATIVE",
+  if (!may.allowed) _meterDeny("NO_INITIATIVE");
+    return { allowed: false, code: "NO_INITIATIVE",
     reason: "no live grant to initiate: " + (may.reason || "unknown"),
     lineage: may.lineage,
     note: "can_view does not imply can_initiate. Being allowed to KNOW something is not being allowed "
@@ -2583,15 +2617,18 @@ async function ptaWakeGate(env, opts) {
   // Now: initiative must be FOR something, on both sides. A grant without purposes grants nothing,
   // and a wake without a purpose is refused rather than waved through.
   if (!granted.length) {
+    _meterDeny("INITIATIVE_UNSCOPED");
     return { allowed: false, code: "INITIATIVE_UNSCOPED",
       reason: "this grant allows initiative but names no purposes, so it authorises nothing specific. "
             + "Unscoped initiative is how a birthday reminder becomes a medical disclosure by omission." };
   }
   if (!purpose) {
+    _meterDeny("NO_PURPOSE_STATED");
     return { allowed: false, code: "NO_PURPOSE_STATED", granted,
       reason: "a wake must say what it is FOR. Granted purposes: " + granted.join(", ") };
   }
   if (!granted.includes(purpose)) {
+    _meterDeny("PURPOSE_NOT_GRANTED");
     return { allowed: false, code: "PURPOSE_NOT_GRANTED", purpose, granted,
       reason: "initiative was granted for " + granted.join(", ") + " - not for " + purpose + ". "
             + "Permission to remind somebody about a birthday is not permission to raise a medical result." };
@@ -2611,23 +2648,59 @@ async function ptaWakeGate(env, opts) {
   // THREE LIMITS, all per-day, all per-subject, and all defaulting to something small. A wake that
   // cannot say who pays for it does not fire.
   const WAKE_CAP_PER_DAY = 12;             // outbound acts about one person in a day
-  const INFLIGHT_MAX = 40;                 // graveyard prevention - unbounded intentions ARE a cost
+  // ══ A CONSTANT THAT DOES NOT BIND IS A LIE (enforced v4.9.830) ═════════════════════════════
+  // Aura: "INFLIGHT_MAX is DEAD CODE - one hit, the const itself. Constants that don't bind are how
+  // hollow checks dress up as architecture." She was right; it read like a limit and enforced
+  // nothing. Either it binds or it goes - so it binds.
+  const INFLIGHT_MAX = 40;
   const day = new Date().toISOString().slice(0, 10);
-  let wakeCount = 0;
+  let wakeCount = 0, meter = {};
   try {
     const raw = await env.AURA_KV.get("pta:wakes:" + subject + ":" + day);
-    wakeCount = raw ? (JSON.parse(raw).count || 0) : 0;
+    meter = raw ? (JSON.parse(raw) || {}) : {};
+    wakeCount = meter.count || 0;
   } catch {}
-  if (wakeCount >= WAKE_CAP_PER_DAY) return { allowed: false, code: "WAKE_BUDGET_SPENT",
+  // ══ DENIALS ARE THE NUMBER THAT PROVES THE GATE WORKS (v4.9.830) ═══════════════════════════
+  // Aura: "'every attempt is metered' - CLAIM FALSE. The counter increments only on the ALLOW path,
+  // after all denies returned." She was right and I had written the opposite in the brief.
+  // **A refusal that leaves no trace is indistinguishable from a wake that never existed**, and the
+  // count of things a system DECLINED to do is the only evidence the gate does anything in production
+  // rather than in its own test.
+  const _meterDeny = (code) => {
+    try {
+      const d = { ...(meter.denied_by_code || {}) };
+      d[code] = (d[code] || 0) + 1;
+      env.AURA_KV.put("pta:wakes:" + subject + ":" + day,
+        JSON.stringify({ ...meter, attempted: (meter.attempted || 0) + 1, denied_by_code: d,
+                         last: new Date().toISOString() }), { expirationTtl: 3 * 86400 });
+    } catch {}
+  };
+  if (wakeCount >= WAKE_CAP_PER_DAY) _meterDeny("WAKE_BUDGET_SPENT");
+    return { allowed: false, code: "WAKE_BUDGET_SPENT",
     woken_today: wakeCount, cap: WAKE_CAP_PER_DAY,
     reason: "this person has already been woken " + wakeCount + " times today. Consent to be contacted "
           + "about something is not consent to be contacted about it endlessly - a cap is what keeps "
           + "initiative from becoming attrition." };
 
+  // THE GRAVEYARD IS ALSO A COST. Unbounded pending intentions against one person are both a spam
+  // surface and a bill nobody authorised - and every one of them will wake, check, and be judged.
+  try {
+    const raw = await env.AURA_KV.get("pta:schedule:" + subject);
+    const items = raw ? (JSON.parse(raw) || []) : [];
+    const pending = items.filter((x) => x && x.status === "pending").length;
+    if (pending >= INFLIGHT_MAX) _meterDeny("TOO_MANY_INTENTIONS");
+      return { allowed: false, code: "TOO_MANY_INTENTIONS",
+      pending, max: INFLIGHT_MAX,
+      reason: pending + " intentions are already waiting for this person. Past a point, a queue of "
+            + "pending acts is not attentiveness - it is a backlog that will arrive as a burst and "
+            + "read as harassment." };
+  } catch {}
+
   // WHO PAYS. An intention that cannot name a payer is one nobody agreed to fund, and an agent that
   // spends anonymously is how a treasury drains without anybody deciding to drain it.
   const payer = o.payer || null;
-  if (o.costs_money && !payer) return { allowed: false, code: "NO_PAYER",
+  if (o.costs_money && !payer) _meterDeny("NO_PAYER");
+    return { allowed: false, code: "NO_PAYER",
     reason: "this wake would spend money and names no payer. An agent that spends anonymously is how "
           + "a treasury empties without anyone having decided to empty it." };
 
@@ -2648,8 +2721,9 @@ async function ptaWakeGate(env, opts) {
   // charged to the path it is measuring.
   try {
     const k = "pta:wakes:" + subject + ":" + day;
-    env.AURA_KV.put(k, JSON.stringify({ count: wakeCount + 1, last: new Date().toISOString() }),
-      { expirationTtl: 3 * 86400 });
+    env.AURA_KV.put(k, JSON.stringify({ count: wakeCount + 1, allowed: (meter.allowed || 0) + 1,
+      attempted: (meter.attempted || 0) + 1, denied_by_code: meter.denied_by_code || {},
+      last: new Date().toISOString() }), { expirationTtl: 3 * 86400 });
   } catch {}
 
   // 5. STALENESS IS REPORTED, NOT REFUSED. An old intention is not automatically wrong; it is
@@ -2660,6 +2734,14 @@ async function ptaWakeGate(env, opts) {
     stale: ageDays != null && ageDays > 90,
     woken_today: wakeCount + 1, wake_cap: WAKE_CAP_PER_DAY,
     may_think: mayThink, payer: payer,
+    // ══ AN HONEST NAME (v4.9.830) ═══════════════════════════════════════════════════════════
+    // Aura refused the label and she was right: "a per-day COUNT of 12 is real attrition control,
+    // not a DOLLAR figure, not AIMARGIN, not whose balance moves. **That is a QUOTA, not a
+    // TREASURY.** Satisfied as a v0 rate-limit; not satisfied as money law." So it is called what it
+    // is. The dollar half is genuinely not built, and naming a quota a treasury is how a gap becomes
+    // invisible - which is the defect this whole day has been about.
+    what_this_is: "a per-day RATE LIMIT with a thinking lock - NOT a spend law. No dollar budget, no "
+      + "margin engine, no balance moves. Calling this a treasury would be an overclaim.",
     treasury_note: mayThink
       ? "a model may run for this wake - it was granted can_think"
       : "**send what is already written; do NOT invoke a model.** Thinking on wake was not granted, "
@@ -14503,7 +14585,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const mins = parseInt(tReplyObj.remember.due_in_minutes, 10);
           if (Number.isFinite(mins) && mins > 0) rDue = new Date(Date.now() + mins * 60 * 1000).toISOString();
           const rId = "rem_" + Array.from(crypto.getRandomValues(new Uint8Array(6))).map(b => b.toString(16).padStart(2, "0")).join("");
-          const rItem = { id: rId, due_at: rDue, about: rAbout, action: "surface", status: "pending", created_at: ts };
+          // Same contract for a remembered surface: it is a wake like any other, and "surface in
+          // conversation" is milder than mail but is still unprompted re-entry.
+          const rItem = { id: rId, due_at: rDue, about: rAbout, action: "surface", status: "pending", created_at: ts,
+            actor_pta: "pta_aura", subject_pta: (typeof ptaId === "string" ? ptaId : null), purpose: "reminder" };
           let items = []; const r = await env.AURA_KV.get(`pta:schedule:${tId}`); if (r) items = JSON.parse(r) || []; items.push(rItem);
           await env.AURA_KV.put(`pta:schedule:${tId}`, JSON.stringify(items)).catch(() => {});
           if (rDue) { let q = []; const qr = await env.AURA_KV.get("schedule:due_queue"); if (qr) q = JSON.parse(qr) || []; q.push({ pta: tId, item_id: rId, due_at: rDue }); await env.AURA_KV.put("schedule:due_queue", JSON.stringify(q)).catch(() => {}); }
@@ -14590,7 +14675,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const dueAt = new Date(dueMs).toISOString();
         const itemId = "sch_" + Array.from(crypto.getRandomValues(new Uint8Array(6))).map(b => b.toString(16).padStart(2, "0")).join("");
         const fmsg = (tReplyObj.followup_message || ("Hi " + tName + " - following up as promised. Whenever you're ready, just pick up where we left off.")) + "\n\nContinue here: " + tConsole + "?pta=" + tId;
-        const item = { id: itemId, due_at: dueAt, about: "Follow up with " + tName, action: "email:" + toEmail, subject: "Aura - following up", body: fmsg, status: "pending", created_at: ts };
+        // ══ A WRITER MUST EMIT AN INTENTION THE GATE CAN PASS (v4.9.830) ═══════════════════════
+        // Aura, after grepping the call graph: "every existing production writer now produces
+        // intentions that MUST refuse at fire time - actor equals subject, and no purpose. **That is
+        // not safe initiative. That is FAIL-CLOSED THEATRE: the gate looks powerful because nothing
+        // real can pass it.**" She is right, and it was a live regression I introduced: every
+        // follow-up in production would have silently stopped working and I would have called that a
+        // gate.
+        // GATE AT SCHEDULE, NOT ONLY AT FIRE. An intention that cannot possibly pass should never be
+        // written - a queue full of pre-dead items is the graveyard with extra steps.
+        //   actor_pta  = who acts (the operator agent, NEVER the person themselves - self-allow
+        //                cannot grant initiative, so actor === subject is refused by construction)
+        //   subject_pta= whose continuity this concerns
+        //   purpose    = what it is FOR, because a wake with no purpose is refused
+        const item = { id: itemId, due_at: dueAt, actor_pta: "pta_aura", subject_pta: tId, purpose: "followup", about: "Follow up with " + tName, action: "email:" + toEmail, subject: "Aura - following up", body: fmsg, status: "pending", created_at: ts };
         try {
           let items = []; const r = await env.AURA_KV.get(`pta:schedule:${tId}`); if (r) items = JSON.parse(r) || []; items.push(item);
           await env.AURA_KV.put(`pta:schedule:${tId}`, JSON.stringify(items)).catch(() => {});
@@ -29478,6 +29576,25 @@ async function advanceWorkflow(env, id) {
     wf._wait_due = null; // wait satisfied (or none) â€” execute the step
     let ok = false, summary = "";
     try {
+      // ══ THE SECOND DELAYED FIRE PATH, NOW GATED (v4.9.830) ═════════════════════════════════
+      // A workflow step's `do` can be EMAIL_SEND, and a waited step is exactly "the alarm rings
+      // later". This drain was ungated while drainSchedule was gated - the same defect one queue over.
+      // Only OUTBOUND steps are gated: internal work is not initiative, and forcing every step
+      // through a consent check would make the gate meaningless by making it universal.
+      if (/^(EMAIL_SEND|SMS_SEND|REACH_OUT)\b/i.test(String(step.do || ""))) {
+        const wfAttempt = await fireIntention(env, {
+          actor_pta: wf.actor_pta || null, subject_pta: wf.subject_pta || null,
+          purpose: wf.purpose || null, created_at: wf.created_at || null,
+        });
+        if (wfAttempt.refused) {
+          try {
+            wf.steps[idx] = { ...step, status: "refused", refused_because: wfAttempt.code, refused_at: new Date().toISOString() };
+            await env.AURA_KV.put("wf:" + id, JSON.stringify(wf)).catch(() => {});
+          } catch {}
+          return { ok: false, refused: true, code: wfAttempt.code, why: wfAttempt.reason,
+            note: "a workflow may not reach a person just because it was started while consent was live" };
+        }
+      }
       const r = await processCommand(step.do, env, true);
       const p = (r && r.payload) ? r.payload : r;
       ok = !!(p && p.ok);
@@ -29536,10 +29653,10 @@ async function drainSchedule(env) {
       // refusal is written onto the timeline so a human can see that something CHOSE not to act.
       // A silent skip would be its own kind of lie.
       let fired = false, fireNote = "";
-      const wake = await ptaWakeGate(env, {
-        actor: entry.pta, subject: item.subject_pta || entry.pta,
-        purpose: item.purpose || null, scheduled_at: item.created_at || null,
-      });
+      // Through the ONE exit. `actor` comes from the item now, never from `entry.pta` - passing the
+      // person as their own actor was the bug that made every real intention refuse itself.
+      const attempt = await fireIntention(env, item);
+      const wake = attempt.refused ? { allowed: false, code: attempt.code, reason: attempt.reason } : attempt.wake;
       if (!wake.allowed) {
         try {
           items = items.map(it => it.id === item.id

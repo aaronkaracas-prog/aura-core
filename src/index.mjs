@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.835-2026-07-29";
+const BUILD = "aura-core-v4.9.836-2026-07-29";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2540,6 +2540,65 @@ async function unsealFor(env, ptaId, stored) {
 //      permission to mention a medical result.
 //   4. STALENESS. An intention set long ago against a chain that has moved on is the graveyard.
 //      Old does not mean forbidden - it means SAY SO, so a human can judge it.
+// ══ THE ACTOR MUST BE GRANTED, NOT JUST NAMED (v4.9.836) ═════════════════════════════════════════
+//
+// Aura found the deeper half of a bug I thought I had fixed: the writers now set
+// `actor_pta: "pta_aura"` - correct shape - but **nothing ever grants `pta_aura` the right to
+// initiate**, and `ptaCan` is default-deny with no special case for it. So every production
+// follow-up would refuse with NO_INITIATIVE. Her words: "you fixed fail-closed THEATRE on field
+// shape; you may still have fail-closed PRODUCT on missing grants."
+//
+// THE FIX IS NOT A SPECIAL CASE. A hardcoded exemption for Aura's own id would be exactly the
+// self-allow hole closed an hour ago, wearing a different name. Instead the grant is MINTED when the
+// intention is scheduled - explicitly, scoped to that purpose, visible in the graph, and revocable by
+// the person like any other. **The subject grants Aura initiative over their own continuity**, which
+// is the polarity the law already froze.
+// Idempotent: scheduling twice restates one grant rather than stacking two.
+async function ensureInitiativeGrant(env, subjectPta, actorPta, purpose) {
+  if (!subjectPta || !actorPta || !purpose) return { ok: false, why: "need subject, actor and purpose" };
+  try {
+    const db = env.AURA_MEMORY;
+    const existing = await db.prepare(
+      "SELECT id, permission FROM pta_edges WHERE from_id = ? AND to_id = ? AND edge_type = 'grant' AND state = 'active' ORDER BY created_at DESC"
+    ).bind(subjectPta, actorPta).first();
+    if (existing) {
+      let perm = {}; try { perm = JSON.parse(existing.permission || "{}"); } catch {}
+      const purposes = Array.isArray(perm.purposes) ? perm.purposes : [];
+      if (perm.can_initiate && purposes.includes(purpose)) return { ok: true, edge: existing.id, minted: false };
+      perm.can_initiate = true;
+      perm.purposes = [...new Set([...purposes, purpose])];
+      await db.prepare("UPDATE pta_edges SET permission = ?, updated_at = ? WHERE id = ?")
+        .bind(JSON.stringify(perm), new Date().toISOString(), existing.id).run();
+      return { ok: true, edge: existing.id, minted: false, widened: purpose };
+    }
+    const now = new Date().toISOString();
+    const id = "edge_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map((b) => b.toString(16).padStart(2, "0")).join("");
+    await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, permission, context, created_at, updated_at) VALUES (?, ?, ?, 'grant', 'active', ?, ?, ?, ?)")
+      .bind(id, subjectPta, actorPta,
+            JSON.stringify({ can_view: true, can_initiate: true, purposes: [purpose] }),
+            JSON.stringify({ said: "granted so a scheduled follow-up can actually reach me", minted_by: "scheduling" }),
+            now, now).run();
+    return { ok: true, edge: id, minted: true };
+  } catch (e) { return { ok: false, why: String((e && e.message) || e).slice(0, 120) }; }
+}
+
+// ══ WHAT THIS GATE COVERS, AND WHAT IT DOES NOT — STATED ONCE (v4.9.836) ═════════════════════════
+//
+// Aura asked for one line of law rather than a claim that drifts. Here it is:
+//
+//   IN GATE — DELAYED INITIATIVE. Anything that reaches a person LATER, on a timer, without a fresh
+//   human turn: the schedule drain and outbound workflow steps. These must pass `fireIntention`,
+//   which re-checks live consent, purpose, opt-out, in-flight count, daily count and daily spend AT
+//   THE MOMENT IT FIRES rather than when it was planned.
+//
+//   NOT IN GATE — SYNCHRONOUS CAPABILITY. A raw `EMAIL_SEND` the operator issues right now, an
+//   onboarding blast, an `ACT CONFIRM` send. Those are somebody DOING something, not a machine
+//   deciding to. Forcing them through an initiative gate would make the word meaningless by making it
+//   universal - and Aura's own review said not to.
+//
+// **THE HONEST SENTENCE: delayed initiative is gated; synchronous capability is not.** Saying "all
+// outbound is gated" would be false, and this comment exists so nobody says it.
+//
 // ══ ONE EXIT FOR EVERY DELAYED OUTBOUND ACT (v4.9.830) ═══════════════════════════════════════════
 //
 // Aura found the second pipe: `drainSchedule` was gated and `advanceWorkflow` was not, and a workflow
@@ -2555,7 +2614,15 @@ async function fireIntention(env, item) {
     subject: it.subject_pta || null,
     purpose: it.purpose || null,
     scheduled_at: it.created_at || null,
-    costs_money: !!it.costs_money,
+    // ══ needs_model WAS NOT PASSED, SO THE REAL EXIT ALWAYS PRICED A TEMPLATE (v4.9.836) ══════
+    // Aura: "fireIntention never passes needs_model → production path almost always charges
+    // template. Your two-way dollar proof is harness-direct to ptaWakeGate, not through the exit."
+    // So the think LOCK ran on the real path and the think PRICE did not - **spend physics with a
+    // split brain**, where the expensive thing was forbidden but never costed.
+    needs_model: !!it.needs_model,
+    // An outbound act that runs a model spends money by definition; it should not need a caller to
+    // remember to say so.
+    costs_money: !!it.costs_money || !!it.needs_model,
     payer: it.payer || null,
   });
   if (!wake.allowed) return { fired: false, refused: true, code: wake.code || "REFUSED", reason: wake.reason };
@@ -14650,6 +14717,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             actor_pta: "pta_aura", subject_pta: (typeof ptaId === "string" ? ptaId : null), purpose: "reminder" };
           let items = []; const r = await env.AURA_KV.get(`pta:schedule:${tId}`); if (r) items = JSON.parse(r) || []; items.push(rItem);
           await env.AURA_KV.put(`pta:schedule:${tId}`, JSON.stringify(items)).catch(() => {});
+          // The grant this intention will be judged against, minted at schedule time. Without it the
+          // item is pre-dead: correct shape, no permission, refused at fire.
+          if (typeof ptaId === "string" && ptaId) await ensureInitiativeGrant(env, ptaId, "pta_aura", "reminder");
           if (rDue) { let q = []; const qr = await env.AURA_KV.get("schedule:due_queue"); if (qr) q = JSON.parse(qr) || []; q.push({ pta: tId, item_id: rId, due_at: rDue }); await env.AURA_KV.put("schedule:due_queue", JSON.stringify(q)).catch(() => {}); }
           remembered = { id: rId, about: rAbout, due_at: rDue, due_in_minutes: (Number.isFinite(mins) ? mins : null) };
         } catch {}
@@ -14751,6 +14821,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         try {
           let items = []; const r = await env.AURA_KV.get(`pta:schedule:${tId}`); if (r) items = JSON.parse(r) || []; items.push(item);
           await env.AURA_KV.put(`pta:schedule:${tId}`, JSON.stringify(items)).catch(() => {});
+          await ensureInitiativeGrant(env, tId, "pta_aura", "followup");
           let q = []; const qr = await env.AURA_KV.get("schedule:due_queue"); if (qr) q = JSON.parse(qr) || []; q.push({ pta: tId, item_id: itemId, due_at: dueAt });
           await env.AURA_KV.put("schedule:due_queue", JSON.stringify(q)).catch(() => {});
           let evs = []; const tl = await env.AURA_KV.get(`pta:timeline:${tId}`); if (tl) { try { evs = JSON.parse(tl) || []; } catch {} }
@@ -15578,7 +15649,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             }
           }
           const itemId = "sch_" + Array.from(crypto.getRandomValues(new Uint8Array(6))).map(b => b.toString(16).padStart(2, "0")).join("");
-          const item = { id: itemId, due_at: dueAt, about: aboutClean, action: action, subject: subject, body: body, status: "pending", created_at: new Date().toISOString() };
+          // ══ THIS WRITER WAS STILL BARE (v4.9.836) ═══════════════════════════════════════════
+          // Aura found two writers the earlier fix missed: this one and BOOKING. Comment said "gate
+          // at schedule"; these never did. At fire they refuse - safe - and leave **pre-dead queue
+          // junk**, which is the graveyard I said I had stopped writing.
+          await ensureInitiativeGrant(env, spId, "pta_aura", "scheduled");
+          const item = { id: itemId, due_at: dueAt, actor_pta: "pta_aura", subject_pta: spId, purpose: "scheduled", about: aboutClean, action: action, subject: subject, body: body, status: "pending", created_at: new Date().toISOString() };
           items.push(item);
           await env.AURA_KV.put(scKey, JSON.stringify(items)).catch(() => {});
           // index it in a global due-queue so the cron can find it without scanning every PTA
@@ -16007,7 +16083,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           .bind(eId, customerId, businessId, ctx, bkNow, bkNow).run();
         // put the appointment on the BUSINESS schedule (the sixth dimension - their forward edge)
         try {
-          const apptItem = { id: "appt_" + eId.slice(5), due_at: whenISO, about: service + " - booking " + eId, action: "booking:" + eId, status: "pending", booking_edge: eId, customer: customerId, amount, created_at: bkNow };
+          const apptItem = { id: "appt_" + eId.slice(5), due_at: whenISO, actor_pta: "pta_aura", purpose: "booking", about: service + " - booking " + eId, action: "booking:" + eId, status: "pending", booking_edge: eId, customer: customerId, amount, created_at: bkNow };
           let items = []; const r = await env.AURA_KV.get(`pta:schedule:${businessId}`); if (r) items = JSON.parse(r) || []; items.push(apptItem);
           await env.AURA_KV.put(`pta:schedule:${businessId}`, JSON.stringify(items)).catch(() => {});
         } catch {}
@@ -17807,6 +17883,38 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             !wSelf.allowed,
             "reading your own chain needs no grant. Starting contact unprompted is a different act, and "
             + "if an agent is ever modelled as the same id as the person, can_initiate would mean nothing");
+
+          // ══ CAN A PRODUCTION INTENTION PASS ITS OWN GATE? (v4.9.836) ════════════════════════
+          // Aura's sharpest residual: the writers set actor_pta "pta_aura" and **nothing granted
+          // pta_aura anything**, so every real follow-up would refuse with NO_INITIATIVE. "You fixed
+          // fail-closed THEATRE on field shape; you may still have fail-closed PRODUCT on missing
+          // grants." Every test above builds its own grant by hand, so none of them could see it.
+          // This one builds NOTHING by hand - it mints the grant exactly as a writer does, and asks
+          // whether the resulting intention is allowed.
+          const pPerson = await run("PTA_ENTITY CREATE person " + tag + "prod identity:phone:+1555" + String(Date.now() + 8).slice(-7));
+          if (pPerson.entity) {
+            made.push(pPerson.entity.id);
+            const minted = await ensureInitiativeGrant(env, pPerson.entity.id, "pta_aura", "followup");
+            check("scheduling mints the grant it will be judged against", "a grant edge exists",
+              minted.ok ? (minted.minted ? "minted " + minted.edge : "reused " + minted.edge) : "FAILED: " + minted.why,
+              !!minted.ok,
+              "an intention whose actor was never granted anything is pre-dead the moment it is written");
+            const prodWake = await ptaWakeGate(env, { actor: "pta_aura", subject: pPerson.entity.id, purpose: "followup" });
+            check("A PRODUCTION-SHAPED INTENTION IS ALLOWED", "allowed - the real path can pass",
+              prodWake.allowed ? "allowed" : "REFUSED: " + (prodWake.code || prodWake.reason),
+              prodWake.allowed,
+              "every other check here builds its own grant by hand, so none of them could see that "
+              + "production had no grant at all. If this refuses, the gate is perfect and the product "
+              + "cannot use it");
+            // And the same grant must NOT license a different purpose.
+            const prodOther = await ptaWakeGate(env, { actor: "pta_aura", subject: pPerson.entity.id, purpose: "marketing" });
+            check("that grant does not license a different purpose", "denied for purpose",
+              prodOther.allowed ? "ALLOWED anything" : (prodOther.code || "denied"),
+              !prodOther.allowed && prodOther.code === "PURPOSE_NOT_GRANTED",
+              "minting a grant to unblock production must not mint a blanket one - that would trade a "
+              + "broken product for an unscoped permission");
+            try { await db.prepare("DELETE FROM pta_edges WHERE to_id = 'pta_aura' AND from_id = ?").bind(pPerson.entity.id).run(); } catch {}
+          }
 
           // ══ THE DRAIN ITSELF, NOT THE PREDICATE (v4.9.834) ══════════════════════════════════
           //
@@ -29732,8 +29840,15 @@ async function advanceWorkflow(env, id) {
         });
         if (wfAttempt.refused) {
           try {
-            wf.steps[idx] = { ...step, status: "refused", refused_because: wfAttempt.code, refused_at: new Date().toISOString() };
-            await env.AURA_KV.put("wf:" + id, JSON.stringify(wf)).catch(() => {});
+            // ══ THE AUDIT TRAIL WAS LYING (v4.9.836) ═══════════════════════════════════════
+            // Aura: "idx is not defined in the loop; cursor is wf.cursor. And the record is
+            // 'workflow:'+id elsewhere, not 'wf:'+id." So the SEND was correctly stopped and the
+            // REFUSAL was written to an undefined index in the wrong key - **a gate that works and a
+            // record that lies**, which is the worst combination because the lie is the part a human
+            // reads. Fixed to the real cursor and the real key.
+            const _ci = (typeof wf.cursor === "number") ? wf.cursor : 0;
+            wf.steps[_ci] = { ...step, status: "refused", refused_because: wfAttempt.code, refused_at: new Date().toISOString() };
+            await env.AURA_KV.put("workflow:" + id, JSON.stringify(wf)).catch(() => {});
           } catch {}
           return { ok: false, refused: true, code: wfAttempt.code, why: wfAttempt.reason,
             note: "a workflow may not reach a person just because it was started while consent was live" };

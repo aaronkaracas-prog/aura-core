@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.824-2026-07-28";
+const BUILD = "aura-core-v4.9.825-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2511,6 +2511,86 @@ async function unsealFor(env, ptaId, stored) {
     const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: bytes.slice(0, 12) }, key, bytes.slice(12));
     return new TextDecoder().decode(pt);
   } catch { return "[unreadable]"; }
+}
+
+// ══ MAY THIS STILL HAPPEN? — THE WAKE GATE (v4.9.825) ════════════════════════════════════════════
+//
+// SIX-WAY CONSENSUS, and the sharpest finding of the whole review. Aura and five Council seats
+// arrived at the same gap independently:
+//   "You proved a revoked first hop denies the third. But A SCHEDULED WAKE IS A FOURTH THING - the
+//    agent acts unprompted after the human who consented has gone silent, changed, or died. **Your
+//    immune system is SYNCHRONOUS; the scheduler is ASYNCHRONOUS. Nothing you built gates a FUTURE
+//    action against PRESENT consent.**"
+//   "Millions of single-writer sleepers create A GRAVEYARD OF STALE INTENTIONS. Alarms fire from
+//    outdated context unless every scheduled act revalidates consent, relevance and identity AT WAKE."
+//   "An agent that wakes itself spends money to have thoughts nobody asked for." (Aura, on treasury)
+//
+// EVERYTHING BUILT TODAY CHECKS PERMISSION AT THE MOMENT OF ASKING. A schedule asks nobody - it just
+// fires. So this is the gate that runs when the alarm rings, not when the plan was made.
+//
+// AND THE LAYER ABOVE, WHICH ALL FIVE NAMED: **revocation of INITIATIVE is a different thing from
+// revocation of ACCESS.** You can stop someone reading your chain. Until now nothing could stop your
+// own agent deciding to speak. `can_initiate` is that grant, and it is deliberately NOT implied by
+// `can_view` - being allowed to know something is not being allowed to bring it up.
+//
+// FOUR CHECKS, IN THIS ORDER, AND THE ORDER IS THE ARGUMENT:
+//   1. OPT-OUT first. Someone who asked never to be contacted has not agreed to be woken about.
+//   2. THE GRANT MUST BE LIVE NOW - not when the wake was scheduled. That is the entire point.
+//   3. THE PURPOSE must match what was granted. Permission to remind about a birthday is not
+//      permission to mention a medical result.
+//   4. STALENESS. An intention set long ago against a chain that has moved on is the graveyard.
+//      Old does not mean forbidden - it means SAY SO, so a human can judge it.
+async function ptaWakeGate(env, opts) {
+  const o = opts || {};
+  const actor = o.actor || null;          // who would act (usually the twin's own agent)
+  const subject = o.subject || null;      // whose chain this concerns
+  const purpose = String(o.purpose || "").toLowerCase();
+  const scheduledAt = o.scheduled_at || null;
+  const now = Date.now();
+
+  if (!actor || !subject) return { allowed: false, reason: "a wake must name who is acting and about whom" };
+
+  // 1. OPT-OUT IS THE HARDEST STOP and it comes first, because a person who withdrew should never
+  //    be reached by something that was set in motion before they withdrew.
+  const oo = await ptaOptOut(env, subject);
+  if (oo.blocked) return { allowed: false, code: "OPTED_OUT", level: oo.level,
+    reason: "this person opted out (" + oo.level + "). A wake scheduled before they withdrew must not "
+          + "survive the withdrawal - that is precisely the case an asynchronous action gets wrong." };
+
+  // 2. THE GRANT MUST BE LIVE RIGHT NOW. Not at schedule time. Now.
+  const may = await ptaCan(env, actor, "initiate", subject);
+  if (!may.allowed) return { allowed: false, code: "NO_INITIATIVE",
+    reason: "no live grant to initiate: " + (may.reason || "unknown"),
+    lineage: may.lineage,
+    note: "can_view does not imply can_initiate. Being allowed to KNOW something is not being allowed "
+        + "to BRING IT UP - that distinction is the one the whole review said was missing." };
+
+  // 3. PURPOSE. A grant is for something. Firing outside it is a different act wearing its clothes.
+  let granted = [];
+  try {
+    const e = await env.AURA_MEMORY.prepare(
+      "SELECT permission FROM pta_edges WHERE from_id = ? AND to_id = ? AND state = 'active' ORDER BY created_at DESC"
+    ).bind(subject, actor).first();
+    const perm = JSON.parse((e && e.permission) || "{}");
+    granted = Array.isArray(perm.purposes) ? perm.purposes.map((x) => String(x).toLowerCase()) : [];
+  } catch {}
+  if (purpose && granted.length && !granted.includes(purpose)) {
+    return { allowed: false, code: "PURPOSE_NOT_GRANTED", purpose, granted,
+      reason: "initiative was granted for " + granted.join(", ") + " - not for " + purpose + ". "
+            + "Permission to remind somebody about a birthday is not permission to raise a medical result." };
+  }
+
+  // 4. STALENESS IS REPORTED, NOT REFUSED. An old intention is not automatically wrong; it is
+  //    automatically SUSPECT, and the honest thing is to hand a human that fact rather than to
+  //    silently act or silently drop it.
+  const ageDays = scheduledAt ? Math.floor((now - new Date(scheduledAt).getTime()) / 86400000) : null;
+  return { allowed: true, purpose: purpose || null, age_days: ageDays,
+    stale: ageDays != null && ageDays > 90,
+    reason: "grant is live now, purpose matches, and the person has not withdrawn",
+    staleness_note: (ageDays != null && ageDays > 90)
+      ? "This intention is " + ageDays + " days old. It is permitted, but the context that made it "
+        + "sensible may be gone - a wake from an outdated world is the graveyard of stale intentions."
+      : undefined };
 }
 
 // ══ MAY THIS ACTOR DO THIS TO THIS SUBJECT? (v4.9.755) ═══════════════════════════════════════════
@@ -17352,6 +17432,140 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               + "that would be the case for sharding or a different store.",
           honest_limit: "One run on one worker instance. Latency to D1 varies by colo and by cold start, "
             + "and this codebase has already been burned once by trusting a single timing sample." } };
+      }
+    }
+
+    case "PTA_WAKE": {
+      // ══ PROVING THE FOURTH THING (v4.9.825) ══════════════════════════════════════════════════
+      //
+      // Six reviewers found the same gap: every permission check in this system runs WHEN SOMEBODY
+      // ASKS. A scheduled wake asks nobody. So "revoked first hop denies the third" says nothing
+      // about an alarm that fires next Tuesday on behalf of a relationship that ended on Monday.
+      //
+      // THE CENTRAL CASE, and it is the one that makes this worth building: schedule an intention
+      // while consent is live, REVOKE the consent, then fire the wake. **It must refuse.** If it
+      // fires, initiative outlived revocation and every reassurance about consent in this system is
+      // conditional on nobody ever scheduling anything.
+      //
+      //   PTA_WAKE
+      if (!isOp) return { cmd: "PTA_WAKE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const db = env.AURA_MEMORY;
+        const tag = "wake" + Date.now().toString(36);
+        const made = [], checks = [];
+        const check = (name, expected, actual, pass, why) =>
+          checks.push({ check: name, expected, actual, pass: !!pass, ...(why ? { why } : {}) });
+        const run = async (cmd) => {
+          try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; }
+          catch (e) { return { ok: false, error: String((e && e.message) || e).slice(0, 140) }; }
+        };
+        try {
+          const a = await run("PTA_ENTITY CREATE person " + tag + "person identity:phone:+1555" + String(Date.now()).slice(-7));
+          const b = await run("PTA_ENTITY CREATE person " + tag + "agent identity:phone:+1555" + String(Date.now() + 1).slice(-7));
+          if (!a.entity || !b.entity) throw new Error("could not create the pair");
+          made.push(a.entity.id, b.entity.id);
+          const person = a.entity.id, agent = b.entity.id;
+
+          // A grant of INITIATIVE, for one stated purpose only.
+          const g = await run("PTA_GRANT " + person + " " + agent + ' {"edge_type":"grant","permission":{"can_view":true,"can_initiate":true,"purposes":["birthday"]}}');
+          const edgeId = g.edge_id;
+          if (edgeId) await db.prepare("UPDATE pta_edges SET state = 'active' WHERE id = ?").bind(edgeId).run();
+
+          const scheduledAt = new Date().toISOString();
+          const w1 = await ptaWakeGate(env, { actor: agent, subject: person, purpose: "birthday", scheduled_at: scheduledAt });
+          check("a live grant permits the wake", "allowed",
+            w1.allowed ? "allowed" : "denied: " + (w1.reason || ""), w1.allowed);
+
+          // ── PURPOSE. The grant said birthday. Medical is a different act wearing its clothes.
+          const w2 = await ptaWakeGate(env, { actor: agent, subject: person, purpose: "medical", scheduled_at: scheduledAt });
+          check("A PURPOSE THAT WAS NOT GRANTED IS REFUSED", "denied for purpose",
+            w2.allowed ? "ALLOWED anything" : (w2.code || "denied"),
+            !w2.allowed && w2.code === "PURPOSE_NOT_GRANTED",
+            "permission to remind somebody about a birthday is not permission to raise a medical result - "
+            + "if one grant licenses every subject, initiative has no shape");
+
+          // ── VIEW DOES NOT IMPLY INITIATIVE. The layer above, made concrete.
+          const c = await run("PTA_ENTITY CREATE person " + tag + "viewer identity:phone:+1555" + String(Date.now() + 2).slice(-7));
+          if (c.entity) {
+            made.push(c.entity.id);
+            const g2 = await run("PTA_GRANT " + person + " " + c.entity.id + ' {"edge_type":"grant","permission":{"can_view":true}}');
+            if (g2.edge_id) await db.prepare("UPDATE pta_edges SET state = 'active' WHERE id = ?").bind(g2.edge_id).run();
+            const canSee = await ptaCan(env, c.entity.id, "view", person);
+            const mayWake = await ptaWakeGate(env, { actor: c.entity.id, subject: person, purpose: "birthday" });
+            check("CAN VIEW DOES NOT IMPLY CAN INITIATE", "may read, may NOT wake",
+              (canSee.allowed ? "reads" : "cannot read") + " / " + (mayWake.allowed ? "WAKES" : "cannot wake"),
+              canSee.allowed && !mayWake.allowed,
+              "being allowed to KNOW something is not being allowed to BRING IT UP. Revocation of "
+              + "initiative is a different act from revocation of access - that is the layer the whole "
+              + "review said was missing");
+          }
+
+          // ══ THE CENTRAL CASE: revoke AFTER the intention was set, then fire ══════════════════
+          if (edgeId) {
+            await run("PTA_REVOKE " + edgeId + " consent withdrawn after scheduling");
+            const w3 = await ptaWakeGate(env, { actor: agent, subject: person, purpose: "birthday", scheduled_at: scheduledAt });
+            check("INITIATIVE DOES NOT OUTLIVE REVOCATION", "denied at wake time",
+              w3.allowed ? "FIRED ANYWAY - initiative outlived consent" : "denied: " + (w3.code || w3.reason || ""),
+              !w3.allowed,
+              "the intention was scheduled while consent was live and the consent was then withdrawn. "
+              + "If this fires, every assurance about consent in this system is conditional on nobody "
+              + "ever scheduling anything");
+          }
+
+          // ── OPT-OUT MUST BEAT A PRE-EXISTING SCHEDULE.
+          const d = await run("PTA_ENTITY CREATE person " + tag + "gone identity:phone:+1555" + String(Date.now() + 3).slice(-7));
+          if (d.entity) {
+            made.push(d.entity.id);
+            const g3 = await run("PTA_GRANT " + d.entity.id + " " + agent + ' {"edge_type":"grant","permission":{"can_view":true,"can_initiate":true}}');
+            if (g3.edge_id) await db.prepare("UPDATE pta_edges SET state = 'active' WHERE id = ?").bind(g3.edge_id).run();
+            let md = {}; try { md = JSON.parse(d.entity.metadata || "{}"); } catch {}
+            md.opt_out_permanent = true; md.do_not_contact = true; md.opted_out_at = new Date().toISOString();
+            await db.prepare("UPDATE pta_entities SET metadata = ? WHERE id = ?").bind(JSON.stringify(md), d.entity.id).run();
+            const w4 = await ptaWakeGate(env, { actor: agent, subject: d.entity.id, purpose: "birthday", scheduled_at: scheduledAt });
+            check("AN OPT-OUT KILLS A WAKE SET BEFORE IT", "denied for opting out",
+              w4.allowed ? "WOKE SOMEBODY WHO LEFT" : (w4.code || "denied"),
+              !w4.allowed && w4.code === "OPTED_OUT",
+              "somebody withdrew AFTER the alarm was set. An action already in motion must not survive "
+              + "the withdrawal - that is the exact case an asynchronous system gets wrong");
+          }
+
+          // ── STALENESS IS REPORTED, NOT REFUSED.
+          const old = new Date(Date.now() - 200 * 86400000).toISOString();
+          const g4 = await run("PTA_GRANT " + person + " " + agent + ' {"edge_type":"grant","permission":{"can_view":true,"can_initiate":true}}');
+          if (g4.edge_id) await db.prepare("UPDATE pta_edges SET state = 'active' WHERE id = ?").bind(g4.edge_id).run();
+          const w5 = await ptaWakeGate(env, { actor: agent, subject: person, purpose: "birthday", scheduled_at: old });
+          check("an old intention is flagged, not silently obeyed or silently dropped", "allowed but marked stale",
+            w5.allowed ? (w5.stale ? "allowed, stale at " + w5.age_days + " days" : "allowed, not flagged") : "denied",
+            !!(w5.allowed && w5.stale),
+            "an intention from a world that has moved on is not automatically wrong - it is automatically "
+            + "SUSPECT, and the honest thing is to hand a human that fact rather than guess for them");
+        } catch (e) {
+          checks.push({ check: "harness", expected: "no exception", actual: String((e && e.message) || e).slice(0, 150), pass: false });
+        } finally {
+          try {
+            for (let i = 0; i < made.length; i += 50) {
+              const b = made.slice(i, i + 50), ph = b.map(() => "?").join(",");
+              const ed = await db.prepare("SELECT id FROM pta_edges WHERE from_id IN (" + ph + ") OR to_id IN (" + ph + ")").bind(...b, ...b).all();
+              const eids = ((ed && ed.results) || []).map((x) => x.id);
+              for (let j = 0; j < eids.length; j += 50) {
+                const eb = eids.slice(j, j + 50), eph = eb.map(() => "?").join(",");
+                await db.prepare("DELETE FROM pta_history WHERE edge_id IN (" + eph + ")").bind(...eb).run();
+              }
+              await db.prepare("DELETE FROM pta_edges WHERE from_id IN (" + ph + ") OR to_id IN (" + ph + ")").bind(...b, ...b).run();
+              await db.prepare("DELETE FROM pta_entities WHERE id IN (" + ph + ")").bind(...b).run();
+            }
+          } catch {}
+        }
+        const failed = checks.filter((c) => !c.pass);
+        return { cmd: "PTA_WAKE", payload: { ok: failed.length === 0,
+          passed: checks.length - failed.length, failed: failed.length, checks,
+          verdict: failed.length === 0
+            ? "Initiative is a grant, not a capability. A scheduled action asks again at the moment it "
+              + "fires - so consent withdrawn on Monday stops an alarm set for Tuesday."
+            : failed.length + " check(s) failed - a future action can still escape present consent.",
+          why_this_exists: "Every other check in this system runs WHEN SOMEBODY ASKS. A schedule asks "
+            + "nobody. Six reviewers found that gap independently: the immune system was synchronous "
+            + "and the scheduler is not." } };
       }
     }
 

@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.841-2026-07-29";
+const BUILD = "aura-core-v4.9.843-2026-07-29";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -18626,10 +18626,43 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             + "by each giver - which would mean context echoes instead of travelling");
 
           // ── THE TREE: everyone from one moment, which is the product
-          const tree = await db.prepare("SELECT COUNT(*) n FROM pta_edges WHERE origin_id = ?").bind(moment).first();
-          check("KEEP YOUR FANS: the whole tree is one query", "3 touches sharing the moment",
+          const tree = await db.prepare("SELECT COUNT(*) n FROM pta_edges WHERE origin_id = ? AND state = 'active'").bind(moment).first();
+          // ══ ACTIVE, NOT EVER (v4.9.842) ═══════════════════════════════════════════════════
+          // This counted everybody who had EVER joined, including people who had left. Aaron found
+          // the group primitive already existed; the gap was that no query said which state it meant.
+          // **For a million fans the difference is noise. For twenty people splitting a bill it is
+          // nineteen versus twenty.**
+          check("KEEP YOUR FANS: the LIVE tree is one query", "3 touches ACTIVE on the moment",
             tree ? String(tree.n) : "0", !!(tree && tree.n === 3),
-            "owning the root of a tree is only real if the tree is a query rather than a story");
+            "owning the root of a tree is only real if the tree is a query rather than a story - and "
+            + "only useful if it counts who is in it NOW rather than who ever was");
+
+          // ══ A GROUP IS WHO IS IN IT NOW (v4.9.842) ══════════════════════════════════════════
+          // Aaron: "what did we just do with Keep Your Fans then?" The group primitive already
+          // existed - what did not was a query that knew the difference between who is here and who
+          // ever was. This proves the count MOVES when somebody leaves, which is the only thing that
+          // makes it a membership rather than an attendance record.
+          const gBefore = await run("PTA_MOMENT_WHO " + moment);
+          check("THE GROUP KNOWS WHO IS IN IT", "3 members from one shared moment",
+            gBefore.members === undefined ? "no answer" : String(gBefore.members),
+            gBefore.members === 3,
+            "N parties, one origin - the same shape whether it is a stadium or a dinner party");
+          if (e1) {
+            await run("PTA_REVOKE " + e1.id + " left the group");
+            const gAfter = await run("PTA_MOMENT_WHO " + moment);
+            check("AND THE COUNT MOVES WHEN SOMEBODY LEAVES", "2 members, 1 departed",
+              gAfter.members === undefined ? "no answer" : (gAfter.members + " members, " + gAfter.left + " left"),
+              gAfter.members === 2 && gAfter.left >= 1,
+              "**for a million fans this difference is noise; for twenty people splitting a bill it is "
+              + "nineteen versus twenty** - and every earlier query counted everybody who had EVER "
+              + "joined while meaning the people who are still here");
+            const gAll = await run("PTA_MOMENT_WHO " + moment + " ALL");
+            check("and the one who left is still in the history", "departed is visible on request",
+              (gAll.departed && gAll.departed.length) ? "recorded" : "vanished",
+              !!(gAll.departed && gAll.departed.length),
+              "leaving is not deletion - the chain keeps what happened, it just stops counting them as "
+              + "present");
+          }
 
           // ── REVOCATION: context must not outlive the permission that carried it
           if (e1) {
@@ -18976,7 +19009,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // THE TREE MUST BE QUERYABLE - that is Keep Your Fans, and it is the whole point of the
           // shared origin. If the writes succeeded but the tree cannot be read, the feature is not real.
           const tQuery = Date.now();
-          const tree = await db.prepare("SELECT COUNT(*) n FROM pta_edges WHERE origin_id = ?").bind(moment).first();
+          const tree = await db.prepare("SELECT COUNT(*) n FROM pta_edges WHERE origin_id = ? AND state = 'active'").bind(moment).first();
           const queryMs = Date.now() - tQuery;
           const treeCount = (tree && tree.n) || 0;
 
@@ -19369,7 +19402,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const fe = (fa && fa.pta) ? { id: fa.pta } : await findByContact(fc);
             if (fe) { madeEntities.push(fe.id); fanIds.push(fe.id); }
           }
-          const tree = await db.prepare("SELECT COUNT(*) n FROM pta_edges WHERE origin_id = ?").bind(originMoment).first();
+          const tree = await db.prepare("SELECT COUNT(*) n FROM pta_edges WHERE origin_id = ? AND state = 'active'").bind(originMoment).first();
           check("MASS TOUCH: one moment, many edges", "3 edges sharing one origin", tree ? String(tree.n) : "0",
             !!(tree && tree.n === 3),
             "this is Keep Your Fans - owning the root of a tree is only real if the tree is queryable");
@@ -20071,6 +20104,86 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           watched_not_limited: "This search is recorded against the asker, and Aura is told when a pattern "
             + "is worth a look. Nothing here restricts anybody - a single search always looks legitimate, "
             + "and the difference between curiosity and harvesting only exists in the count." } };
+      }
+    }
+
+    case "PTA_MOMENT_WHO": {
+      // ══ RENAMED — PTA_GROUP WAS ALREADY TAKEN (v4.9.843) ═════════════════════════════════════
+      // `PTA_GROUP` already exists at ~20365: permission groups on an entity, circles with different
+      // access. A completely different feature, and this would have SHADOWED it - JavaScript takes
+      // the first matching case, so everything below would have become unreachable.
+      // **Second time today.** `PTA_DISCOVER` was shadowed the same way this morning, and the rule
+      // written down afterwards was "grep for the name before building the thing." It was not run.
+      // The build warned on both occasions; this time it was read on the first deploy rather than
+      // the sixth.
+      // The name is also more accurate: this asks who is on a MOMENT, not who is in a permission
+      // circle. Those are different objects that were briefly sharing a word.
+      // ══ WHO IS ON THIS MOMENT RIGHT NOW ══════════════════════════════════════════════════════
+      //
+      // Aaron pushed back when Claude said a group PTA did not exist: "what did we just do with Keep
+      // Your Fans then?" **He was right.** `origin_id` already binds N people to one shared moment,
+      // each edge revokes alone, and the surviving-path test already proves the others are untouched.
+      // The primitive was there and Claude did not look before speaking.
+      //
+      // BUT TWO THINGS WERE GENUINELY MISSING, and both are narrow:
+      //   1. **Every existing group query counts `WHERE origin_id = ?` WITHOUT FILTERING STATE**, so
+      //      it counts people who already LEFT. For a million fans that is noise. **For twenty people
+      //      splitting a bill it is the difference between nineteen and twenty**, which is the whole
+      //      point of asking.
+      //   2. Nothing could answer "who is in this group right now" at all.
+      //
+      // THE SAME PRIMITIVE SERVES BOTH SCALES. A stadium and a dinner party are the same shape: N
+      // parties, one shared origin, individually revocable. Keep Your Fans is the million; the Paris
+      // trip is the twenty. **Nothing here is specific to either.**
+      //
+      //   PTA_MOMENT_WHO <origin_id>          - who is on it now, who left, and when
+      //   PTA_MOMENT_WHO <origin_id> ALL      - include the ones who left, for a history
+      if (!isOp) return { cmd: "PTA_MOMENT_WHO", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const db = env.AURA_MEMORY;
+        const origin = (args[0] || "").trim();
+        const wantAll = /\bALL\b/i.test(rest);
+        if (!origin) return { cmd: "PTA_MOMENT_WHO", payload: { ok: false, error: "Usage: PTA_MOMENT_WHO <origin_id> [ALL]" } };
+
+        const rows = await db.prepare(
+          "SELECT id, from_id, to_id, state, context, via_edge_id, created_at, updated_at FROM pta_edges WHERE origin_id = ? ORDER BY created_at"
+        ).bind(origin).all();
+        const all = (rows && rows.results) || [];
+        if (!all.length) return { cmd: "PTA_MOMENT_WHO", payload: { ok: true, origin, members: 0,
+          note: "no touch carries this origin. Either the moment never happened or nobody accepted." } };
+
+        const name = async (id) => {
+          try { const e = await db.prepare("SELECT name FROM pta_entities WHERE id = ?").bind(id).first(); return e ? e.name : null; } catch { return null; }
+        };
+        const shape = async (e) => ({
+          pta: e.to_id, name: await name(e.to_id), edge: e.id,
+          joined: e.created_at,
+          said: (() => { try { return (JSON.parse(e.context || "{}") || {}).said || null; } catch { return null; } })(),
+          arrived_via: e.via_edge_id || null,
+        });
+
+        // ACTIVE ONLY, unless asked otherwise. This is the fix: the state filter that every other
+        // query over a shared moment was missing.
+        const live = all.filter((e) => e.state === "active");
+        const gone = all.filter((e) => e.state !== "active");
+        const members = [];
+        for (const e of live) members.push(await shape(e));
+        const departed = [];
+        if (wantAll) for (const e of gone) departed.push({ ...(await shape(e)), state: e.state, left: e.updated_at });
+
+        return { cmd: "PTA_MOMENT_WHO", payload: { ok: true, origin,
+          members: members.length, ever: all.length, left: gone.length,
+          who: members,
+          departed: wantAll ? departed : undefined,
+          held_by: live.length ? live[0].from_id : (all[0] && all[0].from_id),
+          read_this: "MEMBERS counts only ACTIVE relationships - the people who are in this right now. "
+            + "EVER counts everybody who ever joined. Those two numbers differ the moment somebody "
+            + "leaves, and every earlier query over a shared moment reported the second while meaning "
+            + "the first.",
+          why_it_matters: "For a million fans the difference is noise. **For twenty people splitting a "
+            + "bill it is nineteen versus twenty**, and the bill is wrong either way you get it wrong.",
+          scale_note: "A stadium and a dinner party are the same shape here: N parties, one shared "
+            + "origin, individually revocable. Nothing in this command knows which it is looking at." } };
       }
     }
 

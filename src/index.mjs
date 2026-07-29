@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.837-2026-07-29";
+const BUILD = "aura-core-v4.9.838-2026-07-29";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -14711,17 +14711,30 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const mins = parseInt(tReplyObj.remember.due_in_minutes, 10);
           if (Number.isFinite(mins) && mins > 0) rDue = new Date(Date.now() + mins * 60 * 1000).toISOString();
           const rId = "rem_" + Array.from(crypto.getRandomValues(new Uint8Array(6))).map(b => b.toString(16).padStart(2, "0")).join("");
-          // Same contract for a remembered surface: it is a wake like any other, and "surface in
-          // conversation" is milder than mail but is still unprompted re-entry.
-          const rItem = { id: rId, due_at: rDue, about: rAbout, action: "surface", status: "pending", created_at: ts,
-            actor_pta: "pta_aura", subject_pta: (typeof ptaId === "string" ? ptaId : null), purpose: "reminder" };
-          let items = []; const r = await env.AURA_KV.get(`pta:schedule:${tId}`); if (r) items = JSON.parse(r) || []; items.push(rItem);
-          await env.AURA_KV.put(`pta:schedule:${tId}`, JSON.stringify(items)).catch(() => {});
-          // The grant this intention will be judged against, minted at schedule time. Without it the
-          // item is pre-dead: correct shape, no permission, refused at fire.
-          if (typeof ptaId === "string" && ptaId) await ensureInitiativeGrant(env, ptaId, "pta_aura", "reminder");
-          if (rDue) { let q = []; const qr = await env.AURA_KV.get("schedule:due_queue"); if (qr) q = JSON.parse(qr) || []; q.push({ pta: tId, item_id: rId, due_at: rDue }); await env.AURA_KV.put("schedule:due_queue", JSON.stringify(q)).catch(() => {}); }
-          remembered = { id: rId, about: rAbout, due_at: rDue, due_in_minutes: (Number.isFinite(mins) ? mins : null) };
+          // ══ REWRITTEN IN THE RIGHT ORDER (v4.9.838) ════════════════════════════════════════
+          // Two separate edits landed out of sequence and left `remGrant` USED at the guard and
+          // DECLARED eleven lines below it - the temporal dead zone, for the third time today, from
+          // patching a block twice instead of rewriting it once. Declared, then checked, then used.
+          //
+          // Same contract as any other wake: "surface in conversation" is milder than mail but it is
+          // still unprompted re-entry, and it fails closed like every other writer rather than
+          // enqueueing work its own gate will refuse.
+          const remSubject = (typeof ptaId === "string" && ptaId) ? ptaId : (typeof tId === "string" ? tId : null);
+          const remGrant = remSubject
+            ? await ensureInitiativeGrant(env, remSubject, "pta_aura", "reminder")
+            : { ok: false, why: "no pta id in scope to grant against" };
+          if (!remGrant.ok) {
+            remembered = { error: "NO_INITIATIVE_GRANT", why: remGrant.why,
+              note: "nothing was scheduled - an intention that cannot pass its own gate is queue junk "
+                  + "that looks like it worked" };
+          } else {
+            const rItem = { id: rId, due_at: rDue, about: rAbout, action: "surface", status: "pending",
+              created_at: ts, actor_pta: "pta_aura", subject_pta: remSubject, purpose: "reminder" };
+            let items = []; const r = await env.AURA_KV.get(`pta:schedule:${tId}`); if (r) items = JSON.parse(r) || []; items.push(rItem);
+            await env.AURA_KV.put(`pta:schedule:${tId}`, JSON.stringify(items)).catch(() => {});
+            if (rDue) { let q = []; const qr = await env.AURA_KV.get("schedule:due_queue"); if (qr) q = JSON.parse(qr) || []; q.push({ pta: tId, item_id: rId, due_at: rDue }); await env.AURA_KV.put("schedule:due_queue", JSON.stringify(q)).catch(() => {}); }
+            remembered = { id: rId, about: rAbout, due_at: rDue, due_in_minutes: (Number.isFinite(mins) ? mins : null) };
+          }
         } catch {}
       }
       // HOME mode: apply any actions the person took on items Aura is holding (done / snooze / pause).
@@ -14821,13 +14834,24 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         try {
           let items = []; const r = await env.AURA_KV.get(`pta:schedule:${tId}`); if (r) items = JSON.parse(r) || []; items.push(item);
           await env.AURA_KV.put(`pta:schedule:${tId}`, JSON.stringify(items)).catch(() => {});
-          await ensureInitiativeGrant(env, tId, "pta_aura", "followup");
+          // ══ FAIL-CLOSED PARITY (v4.9.838) ══════════════════════════════════════════════════
+          // Aura, in the non-blocking list: "home/followup don't check grant.ok - still enqueue if
+          // mint fails, unlike SPINE. Asymmetry." That asymmetry is the same defect she rejected the
+          // last build for, one command over - a writer that enqueues work its own gate will refuse.
+          // She said she would not block on it. That is not a reason to leave it.
+          const fuGrant = await ensureInitiativeGrant(env, tId, "pta_aura", "followup");
+          if (!fuGrant.ok) {
+            scheduled = { error: "NO_INITIATIVE_GRANT", why: fuGrant.why,
+              note: "no follow-up was scheduled. Queueing one that cannot pass its own gate would look "
+                  + "like it worked and silently refuse later." };
+          } else {
           let q = []; const qr = await env.AURA_KV.get("schedule:due_queue"); if (qr) q = JSON.parse(qr) || []; q.push({ pta: tId, item_id: itemId, due_at: dueAt });
           await env.AURA_KV.put("schedule:due_queue", JSON.stringify(q)).catch(() => {});
           let evs = []; const tl = await env.AURA_KV.get(`pta:timeline:${tId}`); if (tl) { try { evs = JSON.parse(tl) || []; } catch {} }
           evs.push({ ts, event: "Aura will follow up by email in " + tReplyObj.followup_minutes + " min (due " + dueAt + ")", kind: "scheduled" });
           await env.AURA_KV.put(`pta:timeline:${tId}`, JSON.stringify(evs)).catch(() => {});
           scheduled = { item_id: itemId, due_at: dueAt, in_minutes: tReplyObj.followup_minutes };
+          }
         } catch (e) {}
       }
       return { cmd: "PTA_TALK", payload: { ok: true, pta: tId, reply: tReplyObj.reply, followup_scheduled: !!scheduled, scheduled, remembered, hold: (tMode === "home" ? (tReplyObj.hold || null) : undefined), reminder_actions_applied: (tMode === "home" ? reminderActionsApplied : undefined), page_built: (tMode === "home" ? pageBuilt : undefined) } };
@@ -16095,20 +16119,33 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, relationship, context, created_at, updated_at) VALUES (?, ?, ?, 'books', 'requested', 'customer', ?, ?, ?)")
           .bind(eId, customerId, businessId, ctx, bkNow, bkNow).run();
         // put the appointment on the BUSINESS schedule (the sixth dimension - their forward edge)
+        let bkGrantFailed = null;
         try {
           // ══ DECORATED, NOT FIXED (v4.9.837) ═══════════════════════════════════════════════
           // Aura: "actor_pta set, purpose set, subject_pta MISSING, grant mint MISSING - partial
           // decoration is not a writer fix." She was right. The subject is the BUSINESS: it is their
           // schedule, their forward edge, their continuity this appointment sits on.
-          await ensureInitiativeGrant(env, businessId, "pta_aura", "booking");
+          // ══ A THROW INSIDE A SWALLOWING CATCH IS NOT FAIL-CLOSED (v4.9.838) ═══════════════
+          // The first attempt threw here - and this whole block sits in `try { } catch {}`, which
+          // Aura had already named: "errors swallowed by outer try/catch." So the throw was caught
+          // and discarded, the appointment silently skipped, and the response said the booking
+          // succeeded. **Decorative fail-closed: the strictest-looking line in the block did
+          // nothing.** Report it instead, where a caller can see it.
+          const bkGrant = await ensureInitiativeGrant(env, businessId, "pta_aura", "booking");
+          bkGrantFailed = bkGrant.ok ? null : (bkGrant.why || "could not grant booking initiative");
+          if (bkGrant.ok) {
           const apptItem = { id: "appt_" + eId.slice(5), due_at: whenISO, actor_pta: "pta_aura", subject_pta: businessId, purpose: "booking", about: service + " - booking " + eId, action: "booking:" + eId, status: "pending", booking_edge: eId, customer: customerId, amount, created_at: bkNow };
           let items = []; const r = await env.AURA_KV.get(`pta:schedule:${businessId}`); if (r) items = JSON.parse(r) || []; items.push(apptItem);
           await env.AURA_KV.put(`pta:schedule:${businessId}`, JSON.stringify(items)).catch(() => {});
+          }
         } catch {}
         // record on both timelines
         await bkTimeline(customerId, "Booked " + service + " with " + (biz.name || businessId) + " for " + whenISO + (amount ? (" ($" + amount + ")") : ""), "booking_made");
         await bkTimeline(businessId, "New booking: " + service + " for a customer at " + whenISO + (amount ? (" ($" + amount + ")") : ""), "booking_received");
-        return { cmd: "BOOKING", payload: { ok: true, booking: eId, customer: customerId, business: businessId, when: whenISO, service, amount, state: "requested" } };
+        return { cmd: "BOOKING", payload: { ok: true,
+          // A booking still happened - the edge is real - but if the schedule entry was skipped the
+          // caller must be told, rather than reading ok:true and assuming a reminder exists.
+          schedule_entry: bkGrantFailed ? "NOT WRITTEN: " + bkGrantFailed : "written", booking: eId, customer: customerId, business: businessId, when: whenISO, service, amount, state: "requested" } };
       }
 
       if (bkSub === "STATE") {

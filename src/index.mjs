@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.840-2026-07-29";
+const BUILD = "aura-core-v4.9.841-2026-07-29";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -12006,7 +12006,36 @@ async function processCommand(line, env, isOp) {
       if (!isOp) return { cmd: "SECURESPEND_CHARGE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const db = env.AURA_MEMORY;
       let scIn;
-      // ══ MONEY NOW ASKS THE CONSENT LAYER — THE UNANIMOUS BLOCKER (v4.9.824) ═══════════════════
+      // ══ WHO MAY MOVE MONEY, IN WHAT TENSE, AND WHAT THE CHAIN MAY CLAIM (v4.9.841) ═══════════
+      //
+      // This block is law, written the way the delayed-initiative law is written, because the same
+      // confusion has now been rebuilt twice and pulled down twice.
+      //
+      // **PTA NEVER AUTHORISES A CARD CAPTURE. There is no `can_spend` and there will not be one.**
+      // A consent graph is not a payment ACL, and every attempt to make it one has been an import of
+      // bank-permission shape into a continuity substrate.
+      //
+      // AUTHORISATION IS THREE THINGS PRESENT AT ONCE: a human, an instrument they control, and a
+      // moment of intent. **The doorway is the SCENE, not the authoriser** - and that distinction is
+      // what "the doorway authorises" was hiding. Remove any one of the three and this system has no
+      // named replacement, which is the real hole a five-model review was pointing at from the wrong
+      // angle: today the only hard check on this command is an operator flag.
+      //
+      //   PRESENT SPEND      human + instrument + moment. The twin RECORDS after the rail succeeds.
+      //   OPERATOR CHARGE    a DIFFERENT SPECIES. Admin did it. The chain must say so.
+      //   DELAYED SPEND      NOT BUILT. It needs a MANDATE - explicit, scoped, revocable,
+      //                      rail-backed, created in a human moment. Not an initiative grant.
+      //                      An agent may PROPOSE spend and open a doorway moment. It may not capture.
+      //
+      // AND THE THING THAT WAS ACTUALLY WRONG HERE: `consent_checked: !!buyerPta` equated RESOLVING
+      // AN IDENTITY with THAT PERSON AGREEING TO THIS CHARGE, and wrote `transacted` on their chain as
+      // though they had participated. Aura named it exactly: **"the twin becomes a consent laundering
+      // surface - money moved because an admin could, and the chain reads as if the person took
+      // part."** For a system whose product is an honest record, that is worse than a failed charge.
+      // Every row now names its real authoriser, and no row claims a consent nobody gave.
+      //
+      // OPT-OUT IS NOT PAYMENT AUTHORISATION. It stays a hard stop, because somebody who withdrew
+      // should not be charged - but "not opted out" is not "agreed to buy this".
       //
       // Aura's review, verified against source and then confirmed by all five Council seats: **the
       // buyer was a PAYLOAD, not a party.** `{"name":"...","identity":"email:..."}` - a string passed
@@ -12062,9 +12091,14 @@ async function processCommand(line, env, isOp) {
         if (oo.blocked) return { cmd: "SECURESPEND_CHARGE", payload: { ok: false, error: "BUYER_OPTED_OUT",
           buyer_pta: buyerPta, level: oo.level, why: oo.reason,
           note: "No charge was attempted. An opt-out that stops messages but not money is not an opt-out." } };
-        buyerConsent = { pta: buyerPta, opted_out: false, checked: true };
+        // NOT "checked: true". We resolved who they are and confirmed they have not withdrawn.
+        // Neither of those is agreement to this purchase, and saying so was the lie.
+        buyerConsent = { pta: buyerPta, identity_resolved: true, not_opted_out: true,
+          consented_to_this_charge: false,
+          why: "resolving an identity is not agreement. Nothing in this path asked this person about "
+             + "this purchase - the card moment did, or an operator did." };
       } else {
-        buyerConsent = { pta: null, checked: false,
+        buyerConsent = { pta: null, identity_resolved: false, consented_to_this_charge: false,
           why: buyerIdent
             ? "the buyer identity given does not resolve to a PTA - the charge is proceeding but is "
               + "attributable to a STRING rather than to a consenting party"
@@ -12192,15 +12226,37 @@ async function processCommand(line, env, isOp) {
       // was the one touch that left no mark on anybody. An index key is a lookup, not a chain.
       // Not awaited: a KV/D1 write costs real milliseconds and the money has already moved. The
       // record must be written, but it must not be able to fail the charge that already succeeded.
+      // ══ THE ROW NAMES ITS REAL AUTHORISER (v4.9.841) ═════════════════════════════════════════
+      // The previous version wrote `action: 'transacted'` with `actor_id` = THE BUYER and
+      // `consent_checked: !!buyerPta` - so an operator-driven charge produced a chain entry that read
+      // as though the person had bought something. **That is the counterfeit-consent failure, written
+      // by hand, into the one record the whole product asks people to trust.**
+      //
+      // `authorized_by` is now the truth of the act, not a story about it:
+      //   cardholder_present - a human confirmed on a live rail with their own instrument
+      //   operator           - an administrator ran it. Real, allowed, and NOT the subject's doing.
+      //   test_no_human      - a synthetic run. No card, no person, no consent of any kind.
+      // And when an operator did it, `actor_id` is the OPERATOR, not the buyer - the buyer appears as
+      // the subject of the purchase without being credited with the decision.
       const chainSubject = buyerPta || ptaEntityId || null;
+      const authorizedBy = scMode === "live"
+        ? (buyerPta ? "cardholder_present" : "operator")
+        : "test_no_human";
       if (chainSubject && railOk) {
         try {
           env.AURA_MEMORY.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, NULL, 'transacted', ?, ?, ?)")
             .bind("hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map((b) => b.toString(16).padStart(2, "0")).join(""),
-                  chainSubject,
+                  authorizedBy === "cardholder_present" ? chainSubject : "operator",
                   JSON.stringify({ txn: txnId, asset: scIn.asset, item: scIn.item || null,
                                    amount: scAmt, currency: scCur, mode: scMode,
-                                   consent_checked: !!buyerPta }),
+                                   subject_pta: chainSubject,
+                                   authorized_by: authorizedBy,
+                                   subject_consented_to_this_charge: false,
+                                   note: authorizedBy === "cardholder_present"
+                                     ? "a live rail with a resolved buyer - the card moment is the consent, not this record"
+                                     : "NOT the subject's decision. " + (authorizedBy === "operator"
+                                         ? "An administrator ran this charge."
+                                         : "Synthetic run: no card, no human, no consent.") }),
                   now).run();
         } catch {}
       }
@@ -12215,12 +12271,17 @@ async function processCommand(line, env, isOp) {
         // the consent layer being asked. It is asked now, and the answer is REPORTED rather than
         // assumed - so a charge attributable only to a string says so in its own output.
         consent: buyerConsent,
+        authorized_by: authorizedBy,
         attributable: !!buyerPta,
+        delayed_spend: "NOT BUILT. An agent may propose a purchase and open a doorway moment; it may "
+          + "not capture. Money moving when the human is not pressing the button needs a MANDATE - "
+          + "explicit, scoped, revocable, rail-backed, created in a human moment - and that object "
+          + "does not exist yet. Until it does, this is the honest sentence rather than a gap.",
         chain_entry_written: !!(chainSubject && railOk),
         honest_gap: buyerPta ? undefined
-          : "This charge is NOT attributable to a consenting party. It was permitted by an operator "
-            + "flag, which is exactly the seam a five-seat review called the single blocker. Supply "
-            + "buyer.identity as a contact that resolves to a PTA, or buyer.pta directly.",
+          : "This charge names no person. It was permitted by an operator flag, and the chain records "
+            + "it as an OPERATOR act rather than as something this buyer did. Supply buyer.identity or "
+            + "buyer.pta if the purchase should attach to somebody's chain.",
         receipt_url: (rail && rail.charges && rail.charges.data && rail.charges.data[0] && rail.charges.data[0].receipt_url) || null,
         client_secret: (scMode === "live" && rail) ? (rail.client_secret || null) : null,
         return_to: scIn.return_to || null,

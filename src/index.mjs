@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.834-2026-07-29";
+const BUILD = "aura-core-v4.9.835-2026-07-29";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2688,7 +2688,22 @@ async function ptaWakeGate(env, opts) {
   //
   // THREE LIMITS, all per-day, all per-subject, and all defaulting to something small. A wake that
   // cannot say who pays for it does not fire.
+  // ══ THE DOLLAR HALF — WHAT MAKES THIS A SPEND LAW (v4.9.835) ═══════════════════════════════
+  // Aura refused the word "treasury" for the count-only version and she was right: "a per-day COUNT
+  // is real attrition control, not a DOLLAR figure, not AIMARGIN, not whose balance moves. **That is
+  // a QUOTA, not a TREASURY.**"
+  // The distinction is not pedantry. Sending a pre-written line costs essentially nothing; INVOKING A
+  // MODEL costs real money. A cap of twelve stops somebody being pestered fifty times and does
+  // nothing about fifty dollars spent thinking about them once. Two different harms, and only one
+  // was bounded.
+  // So there is a daily DOLLAR ceiling as well as a daily COUNT, both per subject, and the estimated
+  // cost of this wake is charged against it BEFORE the act rather than observed afterwards -
+  // "a cost meter reports spend; it doesn't stop it" is already written into this codebase's own
+  // ledger, and it applies here.
   const WAKE_CAP_PER_DAY = 12;             // outbound acts about one person in a day
+  const WAKE_USD_PER_DAY = 0.25;           // ceiling on what one person's twin may spend waking about them
+  const COST_TEMPLATE = 0.0002;            // sending something already written
+  const COST_THINKING = 0.02;              // a model run - two orders of magnitude more, which is the point
   // ══ A CONSTANT THAT DOES NOT BIND IS A LIE (enforced v4.9.830) ═════════════════════════════
   // Aura: "INFLIGHT_MAX is DEAD CODE - one hit, the const itself. Constants that don't bind are how
   // hollow checks dress up as architecture." She was right; it read like a limit and enforced
@@ -2701,6 +2716,20 @@ async function ptaWakeGate(env, opts) {
     reason: "this person has already been woken " + wakeCount + " times today. Consent to be contacted "
           + "about something is not consent to be contacted about it endlessly - a cap is what keeps "
           + "initiative from becoming attrition." };
+  }
+
+  // THE DOLLAR CEILING. Charged before the act, not observed after it - a meter that reports spend
+  // does not stop it, and the whole reason thinking is gated is that it is the expensive thing.
+  const spentToday = Number(meter.usd || 0);
+  const thisCost = o.needs_model ? COST_THINKING : COST_TEMPLATE;
+  if (spentToday + thisCost > WAKE_USD_PER_DAY) {
+    await _meterDeny("WAKE_SPEND_CEILING");
+    return { allowed: false, code: "WAKE_SPEND_CEILING",
+      spent_today_usd: +spentToday.toFixed(4), this_would_cost_usd: thisCost, ceiling_usd: WAKE_USD_PER_DAY,
+      reason: "waking about this person has already cost $" + spentToday.toFixed(4) + " today and this "
+            + "would take it past $" + WAKE_USD_PER_DAY + ". A count stops somebody being pestered; a "
+            + "dollar ceiling stops money being spent thinking about them - and those are two different "
+            + "harms with only one number each." };
   }
 
   // THE GRAVEYARD IS ALSO A COST. Unbounded pending intentions against one person are both a spam
@@ -2750,6 +2779,7 @@ async function ptaWakeGate(env, opts) {
     // spent twice, and the point of a cap is that the count is true when the next wake reads it.
     await env.AURA_KV.put(k, JSON.stringify({ count: wakeCount + 1, allowed: (meter.allowed || 0) + 1,
       attempted: (meter.attempted || 0) + 1, denied_by_code: meter.denied_by_code || {},
+      usd: +(spentToday + thisCost).toFixed(6),
       last: new Date().toISOString() }), { expirationTtl: 3 * 86400 });
   } catch {}
 
@@ -2767,8 +2797,10 @@ async function ptaWakeGate(env, opts) {
     // TREASURY.** Satisfied as a v0 rate-limit; not satisfied as money law." So it is called what it
     // is. The dollar half is genuinely not built, and naming a quota a treasury is how a gap becomes
     // invisible - which is the defect this whole day has been about.
-    what_this_is: "a per-day RATE LIMIT with a thinking lock - NOT a spend law. No dollar budget, no "
-      + "margin engine, no balance moves. Calling this a treasury would be an overclaim.",
+    spent_today_usd: +(spentToday + thisCost).toFixed(4), spend_ceiling_usd: WAKE_USD_PER_DAY,
+    what_this_is: "a per-day rate limit AND a per-day dollar ceiling, with thinking locked behind an "
+      + "explicit grant. Still NOT the margin engine and no external balance moves - the cost of a wake "
+      + "is estimated here, not billed - so this bounds spending without yet being accounting.",
     treasury_note: mayThink
       ? "a model may run for this wake - it was granted can_think"
       : "**send what is already written; do NOT invoke a model.** Thinking on wake was not granted, "
@@ -17865,6 +17897,28 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               !wPay.allowed && wPay.code === "NO_PAYER",
               "an agent that spends without naming who pays is how a treasury empties without anybody "
               + "having decided to empty it");
+
+            // THE DOLLAR CEILING MUST BITE TOO, and separately from the count. Twelve wakes of a
+            // pre-written line is fine; one expensive thought is a different harm with a different
+            // number, and a cap that only counts cannot tell them apart.
+            const dayD = new Date().toISOString().slice(0, 10);
+            await env.AURA_KV.put("pta:wakes:" + t1.entity.id + ":" + dayD,
+              JSON.stringify({ count: 1, usd: 0.24, last: new Date().toISOString() }), { expirationTtl: 3 * 86400 });
+            const wSpend = await ptaWakeGate(env, { actor: agent, subject: t1.entity.id, purpose: "birthday", needs_model: true });
+            check("THE DAILY DOLLAR CEILING REFUSES A COSTLY WAKE", "denied on spend, not on count",
+              wSpend.allowed ? "ALLOWED past the dollar ceiling" : (wSpend.code || "denied"),
+              !wSpend.allowed && wSpend.code === "WAKE_SPEND_CEILING",
+              "only ONE wake has happened today, so the COUNT cap is nowhere near - this must refuse on "
+              + "MONEY. If it passes, a rate limit was being called a spend law");
+            // And a cheap wake at the same spend level must still be allowed - the ceiling must
+            // discriminate by cost, not simply latch shut.
+            const wCheap = await ptaWakeGate(env, { actor: agent, subject: t1.entity.id, purpose: "birthday" });
+            check("a cheap wake still passes at the same spend level", "allowed - it costs almost nothing",
+              wCheap.allowed ? "allowed" : "denied: " + (wCheap.code || ""),
+              wCheap.allowed,
+              "sending something already written is two orders of magnitude cheaper than thinking. A "
+              + "ceiling that blocks both equally is not pricing anything, it is just another counter");
+            try { await env.AURA_KV.delete("pta:wakes:" + t1.entity.id + ":" + dayD); } catch {}
 
             // THE BUDGET MUST ACTUALLY BITE. Burn the daily allowance and check it refuses - a cap
             // that never fires is a comment, and this codebase has found eight of those today.

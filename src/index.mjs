@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.825-2026-07-28";
+const BUILD = "aura-core-v4.9.826-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17642,6 +17642,56 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const inv5 = await processCommand("PTA_INVARIANTS", env, true);
           const v5 = (inv5 && inv5.payload) || {};
           check("the system returns to clean", "0 violations", String(v5.violations), v5.violations === 0);
+
+          // ══ DOES ANYTHING SURVIVE THE SHRED? — GEMINI'S CATCH, MADE FALSIFIABLE (v4.9.826) ═══
+          //
+          // Their words: "destroying the encryption key deletes the raw payloads, but the agent's
+          // autonomous summarisation primitive already embedded the secret into UN-ENCRYPTED
+          // long-term memory." **Forgetting is real for the chain and untested against anything
+          // DERIVED from it.**
+          // Grepped first: today NOTHING copies entity content into a second store - only identifiers
+          // reach the memory inbox, never the content. So this is a TRIPWIRE, not a live bug. It
+          // exists so that the day somebody adds summarisation, indexing, or a managed memory
+          // extractor, **this test fails instead of the promise silently becoming false.**
+          const marker = "SHREDCANARY" + tag.toUpperCase();
+          const canary = "pta_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map((b) => b.toString(16).padStart(2, "0")).join("");
+          await db.prepare("INSERT INTO pta_entities (id, type, identity_key, name, created_at, updated_at) VALUES (?, 'person', ?, ?, ?, ?)")
+            .bind(canary, "canary:" + tag, tag + "canary", iso, iso).run();
+          made.push(canary);
+          await writeEntityMeta(env, canary, { secret: marker, note: "content that must not survive shredding" });
+          try { await env.AURA_KV.delete("entity:key:" + canary); } catch {}
+
+          // The chain copy must now be unreadable.
+          const readBack = await db.prepare("SELECT metadata FROM pta_entities WHERE id = ?").bind(canary).first();
+          const unsealed = readBack ? await unsealFor(env, canary, readBack.metadata) : null;
+          check("SHREDDING MAKES THE CHAIN COPY UNREADABLE", "the marker is gone",
+            String(unsealed || "").includes(marker) ? "MARKER STILL READABLE" : String(unsealed || "none"),
+            !String(unsealed || "").includes(marker),
+            "the key was destroyed, so the content it protected must not come back");
+
+          // And nothing anywhere else may still be holding it in the clear.
+          let leaked = [];
+          try {
+            const kv = await env.AURA_KV.list({ prefix: "mem:inbox:", limit: 100 });
+            for (const k of (kv?.keys || [])) {
+              const v = await env.AURA_KV.get(k.name);
+              if (v && v.includes(marker)) leaked.push(k.name);
+            }
+          } catch {}
+          try {
+            const h = await db.prepare("SELECT COUNT(*) n FROM pta_history WHERE detail LIKE ?").bind("%" + marker + "%").first();
+            if (h && h.n > 0) leaked.push("pta_history x" + h.n);
+          } catch {}
+          try {
+            const e = await db.prepare("SELECT COUNT(*) n FROM pta_edges WHERE context LIKE ? OR relationship LIKE ?").bind("%" + marker + "%", "%" + marker + "%").first();
+            if (e && e.n > 0) leaked.push("pta_edges x" + e.n);
+          } catch {}
+          check("NOTHING DERIVED FROM IT SURVIVES THE SHRED", "no copy anywhere in the clear",
+            leaked.length ? "FOUND IN: " + leaked.join(", ") : "no copy found",
+            leaked.length === 0,
+            "a summary written from plaintext outlives the key that protected the original. If this "
+            + "ever fails, forgetting became a promise the system cannot keep - and it would fail "
+            + "SILENTLY, because the chain copy would still look correctly destroyed");
         } catch (e) {
           checks.push({ check: "harness", expected: "no exception", actual: String((e && e.message) || e).slice(0, 150), pass: false });
         } finally {

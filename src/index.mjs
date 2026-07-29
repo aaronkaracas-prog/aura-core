@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.826-2026-07-28";
+const BUILD = "aura-core-v4.9.827-2026-07-28";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2574,7 +2574,24 @@ async function ptaWakeGate(env, opts) {
     const perm = JSON.parse((e && e.permission) || "{}");
     granted = Array.isArray(perm.purposes) ? perm.purposes.map((x) => String(x).toLowerCase()) : [];
   } catch {}
-  if (purpose && granted.length && !granted.includes(purpose)) {
+  // ══ UNSCOPED INITIATIVE FAILED OPEN — AURA CAUGHT IT (v4.9.827) ═════════════════════════════
+  // The first version only refused when a purpose list EXISTED and did not match. So a grant with no
+  // `purposes` at all licensed EVERY purpose, and a wake with no stated purpose passed regardless.
+  // Her line: **"unscoped initiative is how birthday becomes medical by omission."** Worse, my own
+  // tests granted bare `can_initiate: true` without purposes - teaching the system that unscoped
+  // initiative is normal in the same file that proved purpose matters.
+  // Now: initiative must be FOR something, on both sides. A grant without purposes grants nothing,
+  // and a wake without a purpose is refused rather than waved through.
+  if (!granted.length) {
+    return { allowed: false, code: "INITIATIVE_UNSCOPED",
+      reason: "this grant allows initiative but names no purposes, so it authorises nothing specific. "
+            + "Unscoped initiative is how a birthday reminder becomes a medical disclosure by omission." };
+  }
+  if (!purpose) {
+    return { allowed: false, code: "NO_PURPOSE_STATED", granted,
+      reason: "a wake must say what it is FOR. Granted purposes: " + granted.join(", ") };
+  }
+  if (!granted.includes(purpose)) {
     return { allowed: false, code: "PURPOSE_NOT_GRANTED", purpose, granted,
       reason: "initiative was granted for " + granted.join(", ") + " - not for " + purpose + ". "
             + "Permission to remind somebody about a birthday is not permission to raise a medical result." };
@@ -2611,7 +2628,17 @@ async function ptaCan(env, actorId, capability, subjectId) {
   const key = "can_" + cap;
   try {
     if (!actorId || !subjectId) return { allowed: false, reason: "actor and subject are both required" };
-    if (actorId === subjectId) return { allowed: true, reason: "an entity may always act on itself", via_edge: null };
+    if (actorId === subjectId) {
+      // ══ SELF-ALLOW MUST NOT SATISFY INITIATIVE (v4.9.827) ══════════════════════════════════
+      // Aura's landmine: "if 'my agent' is ever modelled as the SAME id as me, can_initiate is
+      // meaningless." Reading your own chain needs no grant. Reaching OUT unprompted is a different
+      // act, and it must never be authorised by the accident of an id matching itself.
+      if (cap === "initiate") return { allowed: false,
+        reason: "self-allow does not grant initiative. Reading your own chain needs no permission; "
+              + "starting contact without a fresh human turn does - and an agent must be a DISTINCT "
+              + "id holding an explicit grant, never the person's own id acting on itself." };
+      return { allowed: true, reason: "an entity may always act on itself", via_edge: null };
+    }
     const db = env.AURA_MEMORY;
     const rows = await db.prepare(
       // ══ via_edge_id WAS NOT IN THIS SELECT (fixed v4.9.766) ═══════════════════════════════════
@@ -17516,7 +17543,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const d = await run("PTA_ENTITY CREATE person " + tag + "gone identity:phone:+1555" + String(Date.now() + 3).slice(-7));
           if (d.entity) {
             made.push(d.entity.id);
-            const g3 = await run("PTA_GRANT " + d.entity.id + " " + agent + ' {"edge_type":"grant","permission":{"can_view":true,"can_initiate":true}}');
+            const g3 = await run("PTA_GRANT " + d.entity.id + " " + agent + ' {"edge_type":"grant","permission":{"can_view":true,"can_initiate":true,"purposes":["birthday"]}}');
             if (g3.edge_id) await db.prepare("UPDATE pta_edges SET state = 'active' WHERE id = ?").bind(g3.edge_id).run();
             let md = {}; try { md = JSON.parse(d.entity.metadata || "{}"); } catch {}
             md.opt_out_permanent = true; md.do_not_contact = true; md.opted_out_at = new Date().toISOString();
@@ -17529,9 +17556,36 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               + "the withdrawal - that is the exact case an asynchronous system gets wrong");
           }
 
+          // ══ UNSCOPED INITIATIVE MUST DENY — THE FAIL-OPEN AURA FOUND ════════════════════════
+          const e2 = await run("PTA_ENTITY CREATE person " + tag + "bare identity:phone:+1555" + String(Date.now() + 4).slice(-7));
+          if (e2.entity) {
+            made.push(e2.entity.id);
+            const gBare = await run("PTA_GRANT " + person + " " + e2.entity.id + ' {"edge_type":"grant","permission":{"can_view":true,"can_initiate":true}}');
+            if (gBare.edge_id) await db.prepare("UPDATE pta_edges SET state = 'active' WHERE id = ?").bind(gBare.edge_id).run();
+            const wBare = await ptaWakeGate(env, { actor: e2.entity.id, subject: person, purpose: "birthday" });
+            check("INITIATIVE WITH NO PURPOSES GRANTS NOTHING", "denied as unscoped",
+              wBare.allowed ? "ALLOWED - any purpose whatsoever" : (wBare.code || "denied"),
+              !wBare.allowed && wBare.code === "INITIATIVE_UNSCOPED",
+              "the first version only refused when a purpose list existed and did not match, so a grant "
+              + "with NO purposes licensed everything. Unscoped initiative is how a birthday reminder "
+              + "becomes a medical disclosure by omission");
+            const wNoPurpose = await ptaWakeGate(env, { actor: agent, subject: person, purpose: null });
+            check("A WAKE MUST SAY WHAT IT IS FOR", "denied with no purpose stated",
+              wNoPurpose.allowed ? "ALLOWED without saying why" : (wNoPurpose.code || "denied"),
+              !wNoPurpose.allowed,
+              "both sides must be scoped - a grant that names purposes and a wake that names one");
+          }
+          // ── SELF-ALLOW MUST NOT SATISFY INITIATIVE.
+          const wSelf = await ptaWakeGate(env, { actor: person, subject: person, purpose: "birthday" });
+          check("SELF-ALLOW DOES NOT GRANT INITIATIVE", "denied even though it is the same entity",
+            wSelf.allowed ? "ALLOWED - an id matching itself authorised outbound" : "denied",
+            !wSelf.allowed,
+            "reading your own chain needs no grant. Starting contact unprompted is a different act, and "
+            + "if an agent is ever modelled as the same id as the person, can_initiate would mean nothing");
+
           // ── STALENESS IS REPORTED, NOT REFUSED.
           const old = new Date(Date.now() - 200 * 86400000).toISOString();
-          const g4 = await run("PTA_GRANT " + person + " " + agent + ' {"edge_type":"grant","permission":{"can_view":true,"can_initiate":true}}');
+          const g4 = await run("PTA_GRANT " + person + " " + agent + ' {"edge_type":"grant","permission":{"can_view":true,"can_initiate":true,"purposes":["birthday"]}}');
           if (g4.edge_id) await db.prepare("UPDATE pta_edges SET state = 'active' WHERE id = ?").bind(g4.edge_id).run();
           const w5 = await ptaWakeGate(env, { actor: agent, subject: person, purpose: "birthday", scheduled_at: old });
           check("an old intention is flagged, not silently obeyed or silently dropped", "allowed but marked stale",
@@ -29356,8 +29410,38 @@ async function drainSchedule(env) {
       let items = []; try { const r = await env.AURA_KV.get(scKey); if (r) items = JSON.parse(r) || []; } catch {}
       const item = items.find(it => it.id === entry.item_id);
       if (!item || item.status === "done") continue; // already handled, drop from queue
-      // FIRE THE ACTION. Email first (structured so brain-decides-at-fire-time can layer on later).
+      // ══ THE GATE RUNS HERE, WHERE THE ALARM ACTUALLY RINGS (v4.9.827) ═══════════════════════
+      //
+      // Aura checked the source rather than the writeup and found what I had missed: `ptaWakeGate`
+      // had SEVEN call sites - one definition and six inside its own test. **ZERO here.** Her words:
+      // "you built the immune test for asynchronous initiative and left the existing asynchronous
+      // initiator ungated - the same disease class as ptaCan existing while money didn't call it."
+      // Third time today: build the decider, forget the caller. The proof is the CALL GRAPH, not the
+      // test.
+      //
+      // So an intention now re-asks at fire time. If consent was withdrawn after this was scheduled,
+      // if the person opted out, if the purpose was never granted - the mail does not go, and the
+      // refusal is written onto the timeline so a human can see that something CHOSE not to act.
+      // A silent skip would be its own kind of lie.
       let fired = false, fireNote = "";
+      const wake = await ptaWakeGate(env, {
+        actor: entry.pta, subject: item.subject_pta || entry.pta,
+        purpose: item.purpose || null, scheduled_at: item.created_at || null,
+      });
+      if (!wake.allowed) {
+        try {
+          items = items.map(it => it.id === item.id
+            ? { ...it, status: "refused", refused_at: new Date().toISOString(), refused_because: wake.code || wake.reason }
+            : it);
+          await env.AURA_KV.put(scKey, JSON.stringify(items)).catch(() => {});
+          let evs2 = []; const tl2 = await env.AURA_KV.get(`pta:timeline:${entry.pta}`);
+          if (tl2) { try { evs2 = JSON.parse(tl2) || []; } catch {} }
+          evs2.push({ ts: new Date().toISOString(), kind: "schedule_refused",
+            event: "Did NOT act on a scheduled intention: " + (wake.reason || wake.code || "not permitted at fire time") });
+          await env.AURA_KV.put(`pta:timeline:${entry.pta}`, JSON.stringify(evs2.slice(-200))).catch(() => {});
+        } catch {}
+        continue;   // the intention is spent, not retried - a refusal is an answer
+      }
       if (item.action && /^email:/i.test(item.action)) {
         const to = item.action.replace(/^email:/i, "").trim();
         const subject = item.subject || "Following up";

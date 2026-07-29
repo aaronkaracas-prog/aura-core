@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.832-2026-07-29";
+const BUILD = "aura-core-v4.9.833-2026-07-29";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2600,11 +2600,20 @@ async function ptaWakeGate(env, opts) {
     meter = raw ? (JSON.parse(raw) || {}) : {};
     wakeCount = meter.count || 0;
   } catch {}
-  const _meterDeny = (code) => {
+  // ══ THE METER IS AWAITED, AND THAT IS DELIBERATE (v4.9.833) ════════════════════════════════
+  // The first version fired these writes without awaiting, to save the 242ms a KV write costs. The
+  // test then failed: an earlier allow-write landed AFTER the counter was set high and overwrote it.
+  // **That is not a test artifact - it is the cap failing open.** A burst of concurrent wakes loses
+  // increments, so the counter UNDERCOUNTS and lets wakes through: a limit defeated by exactly the
+  // surge it exists to stop.
+  // The latency argument does not apply here. A wake is not on a human's critical path - nobody is
+  // waiting on it - so correctness beats 242ms. Fire-and-forget was right for abuse telemetry on a
+  // person's own request; it is wrong for a number that GATES an action.
+  const _meterDeny = async (code) => {
     try {
       const d = { ...(meter.denied_by_code || {}) };
       d[code] = (d[code] || 0) + 1;
-      env.AURA_KV.put("pta:wakes:" + subject + ":" + day,
+      await env.AURA_KV.put("pta:wakes:" + subject + ":" + day,
         JSON.stringify({ ...meter, attempted: (meter.attempted || 0) + 1, denied_by_code: d,
                          last: new Date().toISOString() }), { expirationTtl: 3 * 86400 });
     } catch {}
@@ -2614,7 +2623,7 @@ async function ptaWakeGate(env, opts) {
   //    be reached by something that was set in motion before they withdrew.
   const oo = await ptaOptOut(env, subject);
   if (oo.blocked) {
-    _meterDeny("OPTED_OUT");
+    await _meterDeny("OPTED_OUT");
     return { allowed: false, code: "OPTED_OUT", level: oo.level,
     reason: "this person opted out (" + oo.level + "). A wake scheduled before they withdrew must not "
           + "survive the withdrawal - that is precisely the case an asynchronous action gets wrong." };
@@ -2623,7 +2632,7 @@ async function ptaWakeGate(env, opts) {
   // 2. THE GRANT MUST BE LIVE RIGHT NOW. Not at schedule time. Now.
   const may = await ptaCan(env, actor, "initiate", subject);
   if (!may.allowed) {
-    _meterDeny("NO_INITIATIVE");
+    await _meterDeny("NO_INITIATIVE");
     return { allowed: false, code: "NO_INITIATIVE",
     reason: "no live grant to initiate: " + (may.reason || "unknown"),
     lineage: may.lineage,
@@ -2649,18 +2658,18 @@ async function ptaWakeGate(env, opts) {
   // Now: initiative must be FOR something, on both sides. A grant without purposes grants nothing,
   // and a wake without a purpose is refused rather than waved through.
   if (!granted.length) {
-    _meterDeny("INITIATIVE_UNSCOPED");
+    await _meterDeny("INITIATIVE_UNSCOPED");
     return { allowed: false, code: "INITIATIVE_UNSCOPED",
       reason: "this grant allows initiative but names no purposes, so it authorises nothing specific. "
             + "Unscoped initiative is how a birthday reminder becomes a medical disclosure by omission." };
   }
   if (!purpose) {
-    _meterDeny("NO_PURPOSE_STATED");
+    await _meterDeny("NO_PURPOSE_STATED");
     return { allowed: false, code: "NO_PURPOSE_STATED", granted,
       reason: "a wake must say what it is FOR. Granted purposes: " + granted.join(", ") };
   }
   if (!granted.includes(purpose)) {
-    _meterDeny("PURPOSE_NOT_GRANTED");
+    await _meterDeny("PURPOSE_NOT_GRANTED");
     return { allowed: false, code: "PURPOSE_NOT_GRANTED", purpose, granted,
       reason: "initiative was granted for " + granted.join(", ") + " - not for " + purpose + ". "
             + "Permission to remind somebody about a birthday is not permission to raise a medical result." };
@@ -2686,7 +2695,7 @@ async function ptaWakeGate(env, opts) {
   // nothing. Either it binds or it goes - so it binds.
   const INFLIGHT_MAX = 40;
   if (wakeCount >= WAKE_CAP_PER_DAY) {
-    _meterDeny("WAKE_BUDGET_SPENT");
+    await _meterDeny("WAKE_BUDGET_SPENT");
     return { allowed: false, code: "WAKE_BUDGET_SPENT",
     woken_today: wakeCount, cap: WAKE_CAP_PER_DAY,
     reason: "this person has already been woken " + wakeCount + " times today. Consent to be contacted "
@@ -2701,7 +2710,7 @@ async function ptaWakeGate(env, opts) {
     const items = raw ? (JSON.parse(raw) || []) : [];
     const pending = items.filter((x) => x && x.status === "pending").length;
     if (pending >= INFLIGHT_MAX) {
-      _meterDeny("TOO_MANY_INTENTIONS");
+      await _meterDeny("TOO_MANY_INTENTIONS");
       return { allowed: false, code: "TOO_MANY_INTENTIONS",
       pending, max: INFLIGHT_MAX,
       reason: pending + " intentions are already waiting for this person. Past a point, a queue of "
@@ -2714,7 +2723,7 @@ async function ptaWakeGate(env, opts) {
   // spends anonymously is how a treasury drains without anybody deciding to drain it.
   const payer = o.payer || null;
   if (o.costs_money && !payer) {
-    _meterDeny("NO_PAYER");
+    await _meterDeny("NO_PAYER");
     return { allowed: false, code: "NO_PAYER",
     reason: "this wake would spend money and names no payer. An agent that spends anonymously is how "
           + "a treasury empties without anyone having decided to empty it." };
@@ -2737,7 +2746,9 @@ async function ptaWakeGate(env, opts) {
   // charged to the path it is measuring.
   try {
     const k = "pta:wakes:" + subject + ":" + day;
-    env.AURA_KV.put(k, JSON.stringify({ count: wakeCount + 1, allowed: (meter.allowed || 0) + 1,
+    // AWAITED for the same reason: an increment that may not have landed is an allowance that can be
+    // spent twice, and the point of a cap is that the count is true when the next wake reads it.
+    await env.AURA_KV.put(k, JSON.stringify({ count: wakeCount + 1, allowed: (meter.allowed || 0) + 1,
       attempted: (meter.attempted || 0) + 1, denied_by_code: meter.denied_by_code || {},
       last: new Date().toISOString() }), { expirationTtl: 3 * 86400 });
   } catch {}

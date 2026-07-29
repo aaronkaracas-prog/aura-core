@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.827-2026-07-28";
+const BUILD = "aura-core-v4.9.828-2026-07-29";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2597,12 +2597,74 @@ async function ptaWakeGate(env, opts) {
             + "Permission to remind somebody about a birthday is not permission to raise a medical result." };
   }
 
-  // 4. STALENESS IS REPORTED, NOT REFUSED. An old intention is not automatically wrong; it is
+  // ══ 4. MAY YOU SPEND? — THE TREASURY HALF (v4.9.828) ═══════════════════════════════════════
+  //
+  // Aura's verdict on the first version: "**we solved 'may you speak?' not 'may you spend?'**" She
+  // was precise about why. The gate returned ALLOWED with zero regard for cost - no budget, no rung,
+  // no cap, no payer - so "an allowed wake can still mean burn money to have thoughts nobody asked
+  // for, only now with a polite consent badge."
+  // Her rule, and it is the one that makes this different from the industry's proactive metric:
+  // **a wake COSTS, the default is NOT to think, and a wake must EARN its place on the timer.**
+  // Her own timer is empty on purpose. If the product metric becomes unasked reach-out, it aligns
+  // with the industry against a lesson already paid for.
+  //
+  // THREE LIMITS, all per-day, all per-subject, and all defaulting to something small. A wake that
+  // cannot say who pays for it does not fire.
+  const WAKE_CAP_PER_DAY = 12;             // outbound acts about one person in a day
+  const INFLIGHT_MAX = 40;                 // graveyard prevention - unbounded intentions ARE a cost
+  const day = new Date().toISOString().slice(0, 10);
+  let wakeCount = 0;
+  try {
+    const raw = await env.AURA_KV.get("pta:wakes:" + subject + ":" + day);
+    wakeCount = raw ? (JSON.parse(raw).count || 0) : 0;
+  } catch {}
+  if (wakeCount >= WAKE_CAP_PER_DAY) return { allowed: false, code: "WAKE_BUDGET_SPENT",
+    woken_today: wakeCount, cap: WAKE_CAP_PER_DAY,
+    reason: "this person has already been woken " + wakeCount + " times today. Consent to be contacted "
+          + "about something is not consent to be contacted about it endlessly - a cap is what keeps "
+          + "initiative from becoming attrition." };
+
+  // WHO PAYS. An intention that cannot name a payer is one nobody agreed to fund, and an agent that
+  // spends anonymously is how a treasury drains without anybody deciding to drain it.
+  const payer = o.payer || null;
+  if (o.costs_money && !payer) return { allowed: false, code: "NO_PAYER",
+    reason: "this wake would spend money and names no payer. An agent that spends anonymously is how "
+          + "a treasury empties without anyone having decided to empty it." };
+
+  // DEFAULT IS NOT TO THINK. A wake may send what was already written; it may not invoke a model
+  // unless that was granted explicitly. Thinking on wake is the expensive default the industry
+  // reaches for, and it is exactly the thing that must be asked for rather than assumed.
+  let mayThink = false;
+  try {
+    const e = await env.AURA_MEMORY.prepare(
+      "SELECT permission FROM pta_edges WHERE from_id = ? AND to_id = ? AND state = 'active' ORDER BY created_at DESC"
+    ).bind(subject, actor).first();
+    mayThink = !!(JSON.parse((e && e.permission) || "{}").can_think);
+  } catch {}
+
+  // METER EVERY ATTEMPT, allowed or refused. A refusal that leaves no trace is indistinguishable
+  // from a wake that never existed, and the count of things a system DECLINED to do is the number
+  // that tells you whether the gate is working at all. Not awaited - a 242ms write must not be
+  // charged to the path it is measuring.
+  try {
+    const k = "pta:wakes:" + subject + ":" + day;
+    env.AURA_KV.put(k, JSON.stringify({ count: wakeCount + 1, last: new Date().toISOString() }),
+      { expirationTtl: 3 * 86400 });
+  } catch {}
+
+  // 5. STALENESS IS REPORTED, NOT REFUSED. An old intention is not automatically wrong; it is
   //    automatically SUSPECT, and the honest thing is to hand a human that fact rather than to
   //    silently act or silently drop it.
   const ageDays = scheduledAt ? Math.floor((now - new Date(scheduledAt).getTime()) / 86400000) : null;
   return { allowed: true, purpose: purpose || null, age_days: ageDays,
     stale: ageDays != null && ageDays > 90,
+    woken_today: wakeCount + 1, wake_cap: WAKE_CAP_PER_DAY,
+    may_think: mayThink, payer: payer,
+    treasury_note: mayThink
+      ? "a model may run for this wake - it was granted can_think"
+      : "**send what is already written; do NOT invoke a model.** Thinking on wake was not granted, "
+        + "and the default is not to think - an agent that reasons unprompted spends money to have "
+        + "thoughts nobody asked for",
     reason: "grant is live now, purpose matches, and the person has not withdrawn",
     staleness_note: (ageDays != null && ageDays > 90)
       ? "This intention is " + ageDays + " days old. It is permitted, but the context that made it "
@@ -17569,10 +17631,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "the first version only refused when a purpose list existed and did not match, so a grant "
               + "with NO purposes licensed everything. Unscoped initiative is how a birthday reminder "
               + "becomes a medical disclosure by omission");
-            const wNoPurpose = await ptaWakeGate(env, { actor: agent, subject: person, purpose: null });
-            check("A WAKE MUST SAY WHAT IT IS FOR", "denied with no purpose stated",
+            // AGAINST A LIVE GRANT, and asserting the CODE. The first version used `agent`, whose
+            // grant had already been revoked earlier in this test - so it denied with NO_INITIATIVE
+            // and never reached the purpose logic it claimed to prove. Ninth hollow check of the day,
+            // inside the test written to prove a fail-open was shut.
+            const gLive = await run("PTA_GRANT " + person + " " + e2.entity.id + ' {"edge_type":"grant","permission":{"can_view":true,"can_initiate":true,"purposes":["birthday"]}}');
+            if (gLive.edge_id) await db.prepare("UPDATE pta_edges SET state = 'active' WHERE id = ?").bind(gLive.edge_id).run();
+            const wNoPurpose = await ptaWakeGate(env, { actor: e2.entity.id, subject: person, purpose: null });
+            check("A WAKE MUST SAY WHAT IT IS FOR", "denied specifically for stating no purpose",
               wNoPurpose.allowed ? "ALLOWED without saying why" : (wNoPurpose.code || "denied"),
-              !wNoPurpose.allowed,
+              !wNoPurpose.allowed && wNoPurpose.code === "NO_PURPOSE_STATED",
               "both sides must be scoped - a grant that names purposes and a wake that names one");
           }
           // ── SELF-ALLOW MUST NOT SATISFY INITIATIVE.
@@ -17582,6 +17650,48 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             !wSelf.allowed,
             "reading your own chain needs no grant. Starting contact unprompted is a different act, and "
             + "if an agent is ever modelled as the same id as the person, can_initiate would mean nothing");
+
+          // ══ THE TREASURY HALF — "MAY YOU SPEND?" ════════════════════════════════════════════
+          // Aura's bar: a wake COSTS, the default is NOT to think, and a wake must EARN its place on
+          // the timer. Her own timer is empty on purpose, so a proactive metric that ignores cost
+          // "aligns with the industry against a lesson already paid for."
+          const t1 = await run("PTA_ENTITY CREATE person " + tag + "budget identity:phone:+1555" + String(Date.now() + 5).slice(-7));
+          if (t1.entity) {
+            made.push(t1.entity.id);
+            const gT = await run("PTA_GRANT " + t1.entity.id + " " + agent + ' {"edge_type":"grant","permission":{"can_view":true,"can_initiate":true,"purposes":["birthday"]}}');
+            if (gT.edge_id) await db.prepare("UPDATE pta_edges SET state = 'active' WHERE id = ?").bind(gT.edge_id).run();
+
+            // DEFAULT IS NOT TO THINK. The grant above never said can_think.
+            const wThink = await ptaWakeGate(env, { actor: agent, subject: t1.entity.id, purpose: "birthday" });
+            check("A WAKE MAY NOT THINK UNLESS THINKING WAS GRANTED", "allowed, but may_think false",
+              wThink.allowed ? ("allowed, may_think=" + wThink.may_think) : "denied",
+              wThink.allowed && wThink.may_think === false,
+              "sending what is already written costs almost nothing; invoking a model costs real money. "
+              + "The expensive thing must be ASKED FOR, not assumed - that is the whole difference "
+              + "between an assistant and a meter running in somebody's name");
+
+            // A WAKE THAT SPENDS MUST NAME A PAYER.
+            const wPay = await ptaWakeGate(env, { actor: agent, subject: t1.entity.id, purpose: "birthday", costs_money: true });
+            check("A SPENDING WAKE WITH NO PAYER IS REFUSED", "denied for no payer",
+              wPay.allowed ? "ALLOWED to spend anonymously" : (wPay.code || "denied"),
+              !wPay.allowed && wPay.code === "NO_PAYER",
+              "an agent that spends without naming who pays is how a treasury empties without anybody "
+              + "having decided to empty it");
+
+            // THE BUDGET MUST ACTUALLY BITE. Burn the daily allowance and check it refuses - a cap
+            // that never fires is a comment, and this codebase has found eight of those today.
+            const day2 = new Date().toISOString().slice(0, 10);
+            await env.AURA_KV.put("pta:wakes:" + t1.entity.id + ":" + day2,
+              JSON.stringify({ count: 999, last: new Date().toISOString() }), { expirationTtl: 3 * 86400 });
+            const wCap = await ptaWakeGate(env, { actor: agent, subject: t1.entity.id, purpose: "birthday" });
+            check("THE DAILY WAKE BUDGET ACTUALLY REFUSES", "denied once the allowance is spent",
+              wCap.allowed ? "ALLOWED past the cap" : (wCap.code || "denied"),
+              !wCap.allowed && wCap.code === "WAKE_BUDGET_SPENT",
+              "consent to be contacted about something is not consent to be contacted about it "
+              + "endlessly. A cap that never fires is a comment - and a limit nobody can hit is the "
+              + "same defect as a check nobody calls");
+            try { await env.AURA_KV.delete("pta:wakes:" + t1.entity.id + ":" + day2); } catch {}
+          }
 
           // ── STALENESS IS REPORTED, NOT REFUSED.
           const old = new Date(Date.now() - 200 * 86400000).toISOString();
@@ -17614,8 +17724,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         return { cmd: "PTA_WAKE", payload: { ok: failed.length === 0,
           passed: checks.length - failed.length, failed: failed.length, checks,
           verdict: failed.length === 0
-            ? "Initiative is a grant, not a capability. A scheduled action asks again at the moment it "
-              + "fires - so consent withdrawn on Monday stops an alarm set for Tuesday."
+            ? "Initiative is a grant, not a capability, and it costs something. A scheduled action asks "
+              + "again at the moment it fires - so consent withdrawn on Monday stops an alarm set for "
+              + "Tuesday - and it must say who pays, stay inside a daily allowance, and not invoke a "
+              + "model unless thinking was granted."
             : failed.length + " check(s) failed - a future action can still escape present consent.",
           why_this_exists: "Every other check in this system runs WHEN SOMEBODY ASKS. A schedule asks "
             + "nobody. Six reviewers found that gap independently: the immune system was synchronous "

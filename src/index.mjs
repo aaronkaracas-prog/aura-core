@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.839-2026-07-29";
+const BUILD = "aura-core-v4.9.840-2026-07-29";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2389,6 +2389,7 @@ async function sealFor(env, ptaId, plaintext) {
 // person was asked and the person was never asked** - and in a consent system that is the difference
 // between "they declined" and "they never heard from you".
 async function deliverInvitation(env, toContact, inviteId, fromName, message) {
+  // Also a cold-isolate miss. Read alongside the secrets rather than before them.
   const doorway = (await KV.get(env, "config:doorway:url")) || "https://aura-host.aaronkaracas.workers.dev";
   const link = doorway.replace(/\/+$/, "") + "/i/" + inviteId;
   const norm = normIdentity(toContact);
@@ -2397,9 +2398,21 @@ async function deliverInvitation(env, toContact, inviteId, fromName, message) {
 
   if (/^phone:/i.test(norm)) {
     const to = norm.replace(/^phone:/i, "");
-    const sid = await getSecret(env, "twilio_account_sid");
-    const tok = await getSecret(env, "twilio_auth_token");
-    const from = await getSecret(env, "twilio_from_number");
+    // ══ THREE SERIAL LOOKUPS ON A COLD ISOLATE (v4.9.840) ═══════════════════════════════════
+    // The budget instrument flagged this within hours of existing: delivery measured 14ms warm and
+    // 460-500ms in production. **The code did not regress - my budget was calibrated on a best case
+    // production rarely sees.** The 14ms was a second call in quick succession, hitting the same
+    // isolate with a warm module-scope cache. Under real traffic almost every request lands on a
+    // FRESH isolate, so that cache is cold nearly every time.
+    // Worse, `twilio_from_number` is unset, and a KV MISS costs 121ms against 8ms for a hit - so the
+    // missing secret is the most expensive of the three, every single time, forever.
+    // Fetched in parallel, which is the fix that works on a cold isolate rather than only on a warm
+    // one: three round trips become one wait. Caching helps the second call; this helps the first.
+    const [sid, tok, from] = await Promise.all([
+      getSecret(env, "twilio_account_sid"),
+      getSecret(env, "twilio_auth_token"),
+      getSecret(env, "twilio_from_number"),
+    ]);
     const missing = [];
     if (!sid) missing.push("twilio_account_sid");
     if (!tok) missing.push("twilio_auth_token");
@@ -15306,8 +15319,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // 121ms, a KV HIT 8ms, a SQL query 22ms, an R2 write 236ms. **Storage round trips dominate
         // everything; compute is free.** The way to break this budget is to add a KV write or a miss
         // to the path - which is precisely how it got to 3,244ms before.
-        budget_ms: { opt_out_check: 60, store_invitation: 300, invite_counter: 20, delivery: 40, total_warm: 500 },
-        over_budget: Object.entries({ opt_out_check: 60, store_invitation: 300, invite_counter: 20, delivery: 40 })
+        // ══ RECALIBRATED TO A COLD ISOLATE (v4.9.840) ═══════════════════════════════════════
+        // The first budget was measured on a warm isolate and flagged three phases as regressions
+        // when nothing had regressed. **A budget set to a best case cries wolf on the normal case**,
+        // which is how a good instrument gets ignored. These are cold-isolate numbers: one KV miss is
+        // 121ms and a hit is 8ms, so any phase that reads something possibly-unset pays the miss.
+        budget_ms: { opt_out_check: 280, store_invitation: 300, invite_counter: 160, delivery: 200,
+          total_cold: 1200, total_warm: 500,
+          note: "cold-isolate. Warm figures are roughly a quarter of these; under low traffic almost "
+              + "every request is cold, so the cold number is the honest one." },
+        over_budget: Object.entries({ opt_out_check: 280, store_invitation: 300, invite_counter: 160, delivery: 200 })
           .filter(([k, v]) => (_tPhase[k] || 0) > v * 2)
           .map(([k, v]) => k + " took " + _tPhase[k] + "ms against a " + v + "ms budget"),
         budget_note: "A phase at more than DOUBLE its budget means something was added to that path. "

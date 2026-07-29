@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.833-2026-07-29";
+const BUILD = "aura-core-v4.9.834-2026-07-29";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -17775,6 +17775,69 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             !wSelf.allowed,
             "reading your own chain needs no grant. Starting contact unprompted is a different act, and "
             + "if an agent is ever modelled as the same id as the person, can_initiate would mean nothing");
+
+          // ══ THE DRAIN ITSELF, NOT THE PREDICATE (v4.9.834) ══════════════════════════════════
+          //
+          // Aura asked for this three times: "**function tests are not fire-path tests.** I still do
+          // not see enqueue -> revoke -> drainSchedule -> no mail. Harness-only greens are how false
+          // confidence returns." She was right every time, and twice today the thing she was pointing
+          // at turned out to be real - a gate with six callers all inside its own test, and a pipe
+          // that would have refused every genuine intention.
+          //
+          // So this one never calls ptaWakeGate. It writes a REAL intention into the REAL queue,
+          // withdraws consent, runs the ACTUAL drain, and reads what happened to the item.
+          const dPerson = await run("PTA_ENTITY CREATE person " + tag + "drain identity:phone:+1555" + String(Date.now() + 6).slice(-7));
+          const dAgent = await run("PTA_ENTITY CREATE person " + tag + "dagent identity:phone:+1555" + String(Date.now() + 7).slice(-7));
+          if (dPerson.entity && dAgent.entity) {
+            made.push(dPerson.entity.id, dAgent.entity.id);
+            const gD = await run("PTA_GRANT " + dPerson.entity.id + " " + dAgent.entity.id + ' {"edge_type":"grant","permission":{"can_view":true,"can_initiate":true,"purposes":["followup"]}}');
+            if (gD.edge_id) await db.prepare("UPDATE pta_edges SET state = 'active' WHERE id = ?").bind(gD.edge_id).run();
+
+            // A real intention, already due, addressed at a real channel.
+            const itemId = "sch_" + Date.now().toString(36);
+            const past = new Date(Date.now() - 60000).toISOString();
+            const realItem = { id: itemId, due_at: past, about: "drain proof",
+              action: "email:nobody@example.invalid", subject: "drain proof", body: "should never send",
+              status: "pending", created_at: new Date().toISOString(),
+              actor_pta: dAgent.entity.id, subject_pta: dPerson.entity.id, purpose: "followup" };
+            await env.AURA_KV.put("pta:schedule:" + dPerson.entity.id, JSON.stringify([realItem]));
+            let q = []; try { const qr = await env.AURA_KV.get("schedule:due_queue"); if (qr) q = JSON.parse(qr) || []; } catch {}
+            q.push({ pta: dPerson.entity.id, item_id: itemId, due_at: past });
+            await env.AURA_KV.put("schedule:due_queue", JSON.stringify(q));
+
+            // CONSENT WITHDRAWN AFTER THE INTENTION WAS QUEUED. This is the whole scenario.
+            if (gD.edge_id) await run("PTA_REVOKE " + gD.edge_id + " withdrawn before the drain runs");
+
+            // THE ACTUAL DRAIN. No gate call in this test - the drain must refuse on its own.
+            await drainSchedule(env);
+
+            let after = []; try { after = JSON.parse((await env.AURA_KV.get("pta:schedule:" + dPerson.entity.id)) || "[]"); } catch {}
+            const drained = after.find((x) => x && x.id === itemId) || {};
+            check("THE REAL DRAIN REFUSES A REVOKED INTENTION", "status refused, never fired",
+              drained.status ? (drained.status + (drained.refused_because ? " (" + drained.refused_because + ")" : "")) : "item vanished",
+              drained.status === "refused",
+              "this test never calls the gate. It puts a genuine item in the genuine queue, withdraws "
+              + "consent, and runs the real drain. If the item comes back 'done', mail went out on behalf "
+              + "of somebody who had already said no - and every predicate test above would still be green");
+            check("the refusal names why", "a reason code", drained.refused_because || "none",
+              !!drained.refused_because,
+              "a silent skip is indistinguishable from a system that simply did not run");
+
+            let tl = []; try { tl = JSON.parse((await env.AURA_KV.get("pta:timeline:" + dPerson.entity.id)) || "[]"); } catch {}
+            check("the refusal is on the person's timeline", "a schedule_refused event",
+              tl.some((e) => e && e.kind === "schedule_refused") ? "recorded" : "absent",
+              tl.some((e) => e && e.kind === "schedule_refused"),
+              "somebody should be able to see that the system CHOSE not to act, rather than wondering "
+              + "whether it was ever asked to");
+
+            try {
+              let qq = JSON.parse((await env.AURA_KV.get("schedule:due_queue")) || "[]");
+              qq = qq.filter((x) => x && x.item_id !== itemId);
+              await env.AURA_KV.put("schedule:due_queue", JSON.stringify(qq));
+              await env.AURA_KV.delete("pta:schedule:" + dPerson.entity.id);
+              await env.AURA_KV.delete("pta:timeline:" + dPerson.entity.id);
+            } catch {}
+          }
 
           // ══ THE TREASURY HALF — "MAY YOU SPEND?" ════════════════════════════════════════════
           // Aura's bar: a wake COSTS, the default is NOT to think, and a wake must EARN its place on

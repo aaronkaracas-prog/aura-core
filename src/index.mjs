@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.854-2026-07-30";
+const BUILD = "aura-core-v4.9.855-2026-07-30";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -13802,14 +13802,25 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // THIS IS WHAT LAYER B AND LAYER D BOTH NEED. An interest score built on facts that never
       // expire is scoring a person who no longer exists, and a wake gate reading stale memory
       // interrupts about something already resolved. Supersession is load-bearing for both.
+      // ══ THE TABLE NAME WAS ALREADY TAKEN - FOURTH SHADOWED NAME IN THIS CODEBASE ══════════════
+      // First deploy of this command returned "D1_ERROR: no such column: subject". A `facts` table
+      // ALREADY EXISTS in this D1 database, created by something outside this file, with a different
+      // schema. `CREATE TABLE IF NOT EXISTS facts` found it, skipped creation, and the index then
+      // failed on columns that were never there. The command reported SCHEMA_FAILED on every call.
+      // Same pattern as PTA_GROUP and PTA_DISCOVER before it: a name chosen without checking whether
+      // the namespace was free. `semantic_facts` is unambiguous and says what it holds.
+      // AND THE FAILURE WAS LOUD, which is the only reason it took one deploy instead of a month -
+      // the schema step reports SCHEMA_FAILED with the D1 error text instead of swallowing it. A
+      // catch here would have produced an empty result forever, which is the disease this whole day
+      // has been about.
       if (!isOp) return { cmd: "FACT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const fDb = env.AURA_MEMORY;
       if (!fDb) return { cmd: "FACT", payload: { ok: false, error: "no D1 binding" } };
       try {
         await fDb.prepare(
-          "CREATE TABLE IF NOT EXISTS facts (id TEXT PRIMARY KEY, subject TEXT NOT NULL, predicate TEXT NOT NULL, " +
+          "CREATE TABLE IF NOT EXISTS semantic_facts (id TEXT PRIMARY KEY, subject TEXT NOT NULL, predicate TEXT NOT NULL, " +
           "value TEXT, valid_from TEXT NOT NULL, valid_until TEXT, superseded_by TEXT, source TEXT)").run();
-        await fDb.prepare("CREATE INDEX IF NOT EXISTS idx_facts_current ON facts (subject, predicate, valid_until)").run();
+        await fDb.prepare("CREATE INDEX IF NOT EXISTS idx_semfacts_current ON semantic_facts (subject, predicate, valid_until)").run();
       } catch (e) {
         await noteSwallowed(env, "FACT:schema", e);
         return { cmd: "FACT", payload: { ok: false, error: "SCHEMA_FAILED", detail: String(e && e.message || e) } };
@@ -13827,7 +13838,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const id = "fact_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
         let prior = null;
         try {
-          prior = await fDb.prepare("SELECT id, value FROM facts WHERE subject=? AND predicate=? AND valid_until IS NULL")
+          prior = await fDb.prepare("SELECT id, value FROM semantic_facts WHERE subject=? AND predicate=? AND valid_until IS NULL")
             .bind(subject, predicate).first();
         } catch (e) {
           // A FAILED CURRENCY CHECK MUST NOT MINT A SECOND CURRENT FACT. Two rows with valid_until
@@ -13842,9 +13853,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           return { cmd: "FACT", payload: { ok: true, unchanged: true, id: prior.id, subject, predicate, value,
             note: "already true and still true - restating a fact does not create a new version" } };
         if (prior) {
-          await fDb.prepare("UPDATE facts SET valid_until=?, superseded_by=? WHERE id=?").bind(now, id, prior.id).run();
+          await fDb.prepare("UPDATE semantic_facts SET valid_until=?, superseded_by=? WHERE id=?").bind(now, id, prior.id).run();
         }
-        await fDb.prepare("INSERT INTO facts (id, subject, predicate, value, valid_from, valid_until, superseded_by, source) " +
+        await fDb.prepare("INSERT INTO semantic_facts (id, subject, predicate, value, valid_from, valid_until, superseded_by, source) " +
           "VALUES (?, ?, ?, ?, ?, NULL, NULL, ?)").bind(id, subject, predicate, value, now, "operator").run();
         await auraRemember(env, "A fact changed: " + subject + " " + predicate + " is now \"" + value.slice(0, 120) +
           "\"" + (prior ? " (was \"" + String(prior.value).slice(0, 80) + "\")" : " (first recorded)"), "fact");
@@ -13857,7 +13868,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (fSub === "FORGET") {
         const subject = fArgs[0], predicate = fArgs[1];
         if (!subject || !predicate) return { cmd: "FACT", payload: { ok: false, error: "Usage: FACT FORGET <subject> <predicate>" } };
-        const r = await fDb.prepare("UPDATE facts SET valid_until=? WHERE subject=? AND predicate=? AND valid_until IS NULL")
+        const r = await fDb.prepare("UPDATE semantic_facts SET valid_until=? WHERE subject=? AND predicate=? AND valid_until IS NULL")
           .bind(now, subject, predicate).run();
         return { cmd: "FACT", payload: { ok: true, subject, predicate, closed: r?.meta?.changes ?? 0, at: now,
           note: "The fact is no longer current. It is NOT asserted false and it is NOT deleted - " +
@@ -13868,8 +13879,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const subject = fArgs[0], predicate = fArgs[1];
         if (!subject) return { cmd: "FACT", payload: { ok: false, error: "Usage: FACT HISTORY <subject> [predicate]" } };
         const rows = predicate
-          ? (await fDb.prepare("SELECT * FROM facts WHERE subject=? AND predicate=? ORDER BY valid_from ASC").bind(subject, predicate).all())?.results
-          : (await fDb.prepare("SELECT * FROM facts WHERE subject=? ORDER BY valid_from ASC").bind(subject).all())?.results;
+          ? (await fDb.prepare("SELECT * FROM semantic_facts WHERE subject=? AND predicate=? ORDER BY valid_from ASC").bind(subject, predicate).all())?.results
+          : (await fDb.prepare("SELECT * FROM semantic_facts WHERE subject=? ORDER BY valid_from ASC").bind(subject).all())?.results;
         return { cmd: "FACT", payload: { ok: true, subject, predicate: predicate || null,
           versions: (rows || []).length,
           history: (rows || []).map((r) => ({ predicate: r.predicate, value: r.value, from: r.valid_from,
@@ -13882,8 +13893,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const predicate = fArgs[1] || null;
       if (!subject) return { cmd: "FACT", payload: { ok: false, error: "Usage: FACT GET <subject> [predicate]" } };
       const rows = predicate
-        ? (await fDb.prepare("SELECT * FROM facts WHERE subject=? AND predicate=? AND valid_until IS NULL").bind(subject, predicate).all())?.results
-        : (await fDb.prepare("SELECT * FROM facts WHERE subject=? AND valid_until IS NULL ORDER BY predicate ASC").bind(subject).all())?.results;
+        ? (await fDb.prepare("SELECT * FROM semantic_facts WHERE subject=? AND predicate=? AND valid_until IS NULL").bind(subject, predicate).all())?.results
+        : (await fDb.prepare("SELECT * FROM semantic_facts WHERE subject=? AND valid_until IS NULL ORDER BY predicate ASC").bind(subject).all())?.results;
       return { cmd: "FACT", payload: { ok: true, subject, predicate: predicate || null,
         current: (rows || []).map((r) => ({ predicate: r.predicate, value: r.value, since: r.valid_from })),
         count: (rows || []).length,

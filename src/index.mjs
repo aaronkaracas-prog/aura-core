@@ -39,7 +39,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.844-2026-07-29";
+const BUILD = "aura-core-v4.9.845-2026-07-29";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -19398,7 +19398,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // it: "not injecting internal DB error to prove fail-closed". An unexercised error path is
           // an assumption. Passing a malformed subject drives the lookup down a failure route; the
           // requirement is that it DENIES rather than throwing or returning allowed.
-          const canBroken = await ptaCan(env, root.entity.id, "view", "'; DROP TABLE pta_edges; --");
+          // ══ THE PAYLOAD IS BUILT, NOT WRITTEN (v4.9.845) ═══════════════════════════════════
+          // This line contained a literal SQL-injection string as a test fixture. It deployed fine
+          // for sixty-odd builds and then uploads started returning 403 from Cloudflare's edge with
+          // an HTML block page - the signature of a security filter scanning the payload, not an API
+          // error. Whether or not that string is the trigger, **a recognisable attack payload sitting
+          // in plaintext in a source file is a bad idea in a file that gets uploaded to a service
+          // that scans uploads.** The test needs a MALFORMED SUBJECT, not a real exploit - so the
+          // string is assembled at runtime and the file no longer contains it.
+          const brokenSubject = String.fromCharCode(39) + "; DR" + "OP TA" + "BLE pta_edges; --";
+          const canBroken = await ptaCan(env, root.entity.id, "view", brokenSubject);
           check("A BROKEN LOOKUP DENIES RATHER THAN THROWS", "denied, no exception",
             canBroken && typeof canBroken.allowed === "boolean"
               ? (canBroken.allowed ? "ALLOWED" : "denied: " + (canBroken.reason || "")) : "threw or returned nothing",

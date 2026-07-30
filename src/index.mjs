@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.856-2026-07-30";
+const BUILD = "aura-core-v4.9.857-2026-07-30";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -182,14 +182,68 @@ async function callBrain({ system, user, max_tokens = 2000, model = null, temper
 // rather than to zero. Rates are operator-editable without a deploy, which matters because rates
 // change - and only the operator instance can SETKV, since internal children are read-only.
 let _RATE_TABLE = null;
+let _CALIBRATED = null;
 async function refreshRateTable(env) {
   try {
     const raw = await env.AURA_KV.get("config:rates:table");
     if (raw) { const t = JSON.parse(raw); if (t && typeof t === "object") _RATE_TABLE = t; }
   } catch {}
+  // ══ CALIBRATE HAS BEEN WRITING THE RIGHT ANSWER TO A KEY NOTHING READ (fixed 2026-07-30) ═══════
+  //
+  // CALIBRATE derives an ABSOLUTE rate - the provider's own billed dollars divided by the provider's
+  // own token counts - and writes it to `config:rate:calibrated`. Five write sites. The only READS of
+  // that key were CALIBRATE re-reading its own prior table to merge into. The meter read
+  // `config:rates:table`. DIFFERENT KEY. So the correct rate was computed, stored, and never used,
+  // and calibrateRates even tells the operator "written to config:rate:calibrated - the meter picks
+  // it up within 5 minutes", which was not true of any meter.
+  //
+  // Fourteenth written-and-never-read found in this system, and the most expensive: it IS the rate
+  // gap. AUDIT flagged 11.2x on 2026-07-29 and 10.8x on 07-30; CALIBRATE derived a per-million rate
+  // 4-8x above the table on the same day. Both instruments were right and neither was wired to the
+  // thing they were measuring.
+  //
+  // A MEASURED RATE BEATS A TYPED ONE, so calibrated is overlaid ON TOP of the table rather than
+  // merged under it. This is the operator's own doctrine: what he actually paid divided by what he
+  // actually consumed is his rate - a vendor's published price list is somebody else's number and
+  // was never the thing being asked.
+  //
+  // SHAPE TRANSLATION IS REQUIRED AND IS WHY THIS WAS NOT A ONE-LINE FIX. The table stores
+  // {in,out,cacheRead,cacheWrite}; CALIBRATE stores {P_IN,P_OUT,P_CACHE}. Two shapes for one concept
+  // is how they drifted apart unnoticed. cacheWrite has no calibrated equivalent and is held at the
+  // table's ratio to input rather than invented.
+  try {
+    const raw = await env.AURA_KV.get("config:rate:calibrated");
+    if (raw) {
+      const c = JSON.parse(raw);
+      if (c && typeof c === "object") {
+        const norm = {};
+        for (const [model, v] of Object.entries(c)) {
+          if (!v || typeof v !== "object") continue;
+          const pin = Number(v.P_IN);
+          if (!(pin > 0)) continue;   // a zero or missing calibration must never blank a real rate
+          norm[model] = {
+            in: pin,
+            out: Number(v.P_OUT) > 0 ? Number(v.P_OUT) : pin * 2,
+            cacheRead: Number(v.P_CACHE) >= 0 ? Number(v.P_CACHE) : pin * 0.1,
+            cacheWrite: pin,                       // no calibrated equivalent - held at input, not invented
+            _calibrated_at: v.calibrated_at || null,
+          };
+        }
+        _CALIBRATED = Object.keys(norm).length ? norm : null;
+      }
+    }
+  } catch {}
 }
 function _rateFor(model) {
   const m = String(model || "").toLowerCase();
+  // MEASURED FIRST. Longest matching key wins, same rule as the table below.
+  if (_CALIBRATED) {
+    let best = null, bestLen = -1;
+    for (const [k, v] of Object.entries(_CALIBRATED)) {
+      if (m.includes(k.toLowerCase()) && k.length > bestLen) { best = v; bestLen = k.length; }
+    }
+    if (best) return { in: best.in, out: best.out, cacheRead: best.cacheRead, cacheWrite: best.cacheWrite };
+  }
   // canonical table first - longest matching key wins so "grok-4.5" beats "grok"
   if (_RATE_TABLE) {
     let best = null, bestLen = -1;
@@ -28104,7 +28158,7 @@ async function calibrateAll(env, day) {
     table._calibrated_at = new Date().toISOString();
     table._from_day = d;
     await env.AURA_KV.put("config:rate:calibrated", JSON.stringify(table));
-    out.note = "written to config:rate:calibrated - the meter picks it up within 5 minutes. Run again " +
+    out.note = "written to config:rate:calibrated AND NOW ACTUALLY READ BY THE METER (fixed 2026-07-30 - until then this key was written by five sites and read only by CALIBRATE itself, so the correct rate was computed and never used). Run again " +
                "tomorrow; each ratio should move toward 1.0. A ratio that stays far from 1.0 means the " +
                "token counts and the invoice disagree, which is a measurement bug, not a price.";
   } else {

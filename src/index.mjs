@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.849-2026-07-30";
+const BUILD = "aura-core-v4.9.850-2026-07-30";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -3168,7 +3168,105 @@ async function auraRemember(env, event, kind) {
       JSON.stringify({ at: new Date().toISOString(), kind: kind || "moment",
                        event: String(event).slice(0, 400), via: "aura-core" }),
       { expirationTtl: 14 * 24 * 3600 });
+    // ══ THE EMBEDDING PIPELINE WAS BUILT, BOUND, DEPLOYED AND DEAD (wired 2026-07-30) ═══════════
+    //
+    // embedText / storeEventVector / getSemanticEvents / getHybridEvents have existed for a long
+    // time. Checked against source before writing a line of anything new:
+    //   getHybridEvents  - ZERO callers.
+    //   storeEventVector - reached only through writeEvent, and writeEvent's ONLY four callers are
+    //                      LOAD TESTS (endur, seed, storm). No real path ever wrote a vector.
+    // So the Vectorize index has been costing bindings and attention while holding nothing but test
+    // traffic. Thirteenth written-and-never-read in this file, and the largest: it is the substrate
+    // the interest layer needs, and it was already here.
+    //
+    // THIS IS THE HOOK IT SHOULD ALWAYS HAVE HAD. auraRemember is the one choke point every real
+    // moment passes through - "one hook, one destination" - so embedding here means the index fills
+    // with what actually happened instead of what a load test invented.
+    //
+    // SUBJECT "operator" ON PURPOSE, and stated rather than assumed: these are moments in AURA's own
+    // stream, which is a PROXY for what the operator cares about, not a direct record of it. When a
+    // PTA entity has its own moment stream the identical call takes that entity's id and the code
+    // does not change. Calling it "operator" keeps that honest instead of pretending it is universal.
+    //
+    // NEVER BLOCKS AND NEVER THROWS. An embedding is a model call - it belongs nowhere near the path
+    // of the action it describes. Fire and forget, same as the inbox write above.
+    const _txt = String(event || "").slice(0, 400);
+    if (_txt && env.VECTORIZE && env.AI) {
+      storeEventVector("operator", (kind || "moment") + "_" + Date.now(), _txt, env).catch(() => {});
+      bumpInterest(env, _txt).catch(() => {});
+    }
   } catch (e) { /* memory capture never blocks the action it records */ }
+}
+
+// ══ THE INTEREST LAYER ── STRENGTH OVER TIME, ON TOP OF THE INDEX THAT ALREADY EXISTS ══════════
+//
+// Layer B of the ambient-agent target. The wake gate can VETO (live grant, purpose, opt-out, payer,
+// budget) but it cannot RANK - it knows what she MAY say and nothing about what is worth saying.
+// This is the missing half.
+//
+// BUILT OVER VECTORIZE, NOT BESIDE IT. Vectorize already holds the evidence, embedded, addressable.
+// A second store of the same moments would be a parallel memory that can rot and drift, and this
+// file has paid for that pattern more than once. So the vector index stays the evidence and this
+// holds only what an embedding cannot: WHICH topic, HOW strongly, WHEN last seen.
+//
+// DECAY IS THE POINT, not a refinement. An interest model without decay is a record of what someone
+// used to care about, and it grows monotonically until everything looks equally important. Half-life
+// is 14 days: strength is multiplied by 0.5^(days_elapsed/14) before every bump, so a topic that
+// stops appearing fades on its own rather than needing a cleanup job.
+//
+// TOPICS ARE EXTRACTED WITHOUT A MODEL CALL, deliberately. This runs on every remembered moment - a
+// model call here would put an LLM in the path of every action Aura takes. Word frequency against a
+// stopword list is crude and it is honest about being crude; the semantic half already exists in
+// Vectorize and is what INTEREST RECALL queries.
+const INTEREST_KEY = "interest:topics";
+const INTEREST_HALFLIFE_DAYS = 14;
+const INTEREST_MAX_TOPICS = 300;
+const INTEREST_STOP = new Set(("the a an and or but if then than that this these those is are was were be been being have has had do does did " +
+  "for to of in on at by with from as it its i you he she they we me my your his her their our not no yes so up down out over under " +
+  "will would can could should may might must shall about into after before when while where which who whom what how why all any some " +
+  "one two three new now got get run ran ok okay just also very more most much many each other same such only own too via per").split(" "));
+
+function interestTopics(text) {
+  const words = String(text || "").toLowerCase().replace(/[^a-z0-9\s_-]/g, " ").split(/\s+/);
+  const seen = new Map();
+  for (const w of words) {
+    if (w.length < 4 || w.length > 32) continue;   // "the" is noise, a hash is not a topic
+    if (INTEREST_STOP.has(w)) continue;
+    if (/^\d+$/.test(w)) continue;
+    seen.set(w, (seen.get(w) || 0) + 1);
+  }
+  // One moment cannot make a topic important by repeating a word inside itself.
+  return [...seen.keys()].slice(0, 12);
+}
+
+function decayInterest(bag, now) {
+  for (const k of Object.keys(bag)) {
+    const t = bag[k];
+    const days = (now - (t.at || now)) / 86400000;
+    if (days > 0) t.w = +(t.w * Math.pow(0.5, days / INTEREST_HALFLIFE_DAYS)).toFixed(4);
+    if (t.w < 0.01) delete bag[k];   // faded to nothing is gone, not kept at zero
+  }
+  return bag;
+}
+
+async function bumpInterest(env, text) {
+  const topics = interestTopics(text);
+  if (!topics.length) return;
+  try {
+    const now = Date.now();
+    let bag = {};
+    try { bag = JSON.parse((await env.AURA_KV.get(INTEREST_KEY)) || "{}"); } catch {}
+    decayInterest(bag, now);
+    for (const t of topics) {
+      const cur = bag[t] || { w: 0, at: now, n: 0 };
+      bag[t] = { w: +(cur.w + 1).toFixed(4), at: now, n: (cur.n || 0) + 1,
+                 first: cur.first || new Date(now).toISOString() };
+    }
+    // Bounded so this can never become the thing it is measuring.
+    const keys = Object.keys(bag).sort((a, b) => bag[b].w - bag[a].w);
+    if (keys.length > INTEREST_MAX_TOPICS) for (const k of keys.slice(INTEREST_MAX_TOPICS)) delete bag[k];
+    await env.AURA_KV.put(INTEREST_KEY, JSON.stringify(bag), { expirationTtl: 180 * 24 * 3600 });
+  } catch { /* an interest signal is never worth failing a moment over */ }
 }
 
 // === NOTICE I WAS CHANGED (v4.9.560) — the second half of a life ===
@@ -13575,6 +13673,66 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           return { cmd: "GRAPH_GET", payload: { ok: true, entity: { id: node.id, type: node.type, name: node.name, key: node.identity_key, props: meta, created_at: node.created_at, updated_at: node.updated_at }, out_edges: out.results || [], in_edges: inc.results || [] } };
         } catch (e) { return { cmd: "GRAPH_GET", payload: { ok: false, error: String(e.message) } }; } }
     }
+    case "INTEREST": {
+      // ══ LAYER B ── WHAT IS WORTH SAYING, AS OPPOSED TO WHAT MAY BE SAID ═══════════════════════
+      //
+      //   INTEREST                -> top topics by decayed strength, and the state of the substrate
+      //   INTEREST RECALL <query> -> semantic recall over the moment index (the evidence, not the tally)
+      //   INTEREST WHY <topic>    -> the moments behind one topic
+      //
+      // WHY THIS EXISTS: ptaWakeGate answers "may I speak" - live grant, purpose match, opt-out,
+      // named payer, budget. Nothing in this system answered "is this worth speaking about." The
+      // industry's trigger layer scores interest x recency x urgency x relationship and tunes it on
+      // dismiss-versus-engage; that feedback signal is corrupted, because a dismissal is a click and
+      // clicks read as engagement. So the consent gate stays the VETO and this is only the RANKING -
+      // relevance never overrides a missing grant, and the order is gate first, rank second.
+      //
+      // THE SUBSTRATE WAS ALREADY HERE. embedText, storeEventVector, getSemanticEvents and
+      // getHybridEvents have existed for months with ZERO real callers - the write reached only from
+      // load tests, the hybrid read reached from nothing at all. This is the first reader the vector
+      // memory has ever had. Nothing new was built to store or embed anything.
+      if (!isOp) return { cmd: "INTEREST", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const iSub = (args[0] || "").toUpperCase();
+      const iArg = rest.slice((args[0] || "").length).trim();
+
+      if (iSub === "RECALL" || iSub === "WHY") {
+        const q = iArg || "";
+        if (!q) return { cmd: "INTEREST", payload: { ok: false, error: "Usage: INTEREST RECALL <query>" } };
+        const hits = await getSemanticEvents("operator", q, env, 8);
+        return { cmd: "INTEREST", payload: { ok: true, mode: iSub.toLowerCase(), query: q,
+          matches: hits.length, moments: hits,
+          note: hits.length ? null : "nothing above the 0.7 similarity floor - either it has not come up, or it has not come up in these words",
+          source: "Vectorize (@cf/baai/bge-base-en-v1.5), filtered to subject=operator" } };
+      }
+
+      const now = Date.now();
+      let bag = {};
+      try { bag = JSON.parse((await env.AURA_KV.get(INTEREST_KEY)) || "{}"); } catch {}
+      const before = Object.keys(bag).length;
+      decayInterest(bag, now);   // read-time decay: the number you see is the number as of now
+      const top = Object.keys(bag).sort((a, b) => bag[b].w - bag[a].w).slice(0, 25)
+        .map((k) => ({ topic: k, strength: bag[k].w, mentions: bag[k].n,
+                       last_seen: new Date(bag[k].at).toISOString(), first_seen: bag[k].first || null }));
+      return { cmd: "INTEREST", payload: { ok: true,
+        topics_tracked: before, topics_live_after_decay: Object.keys(bag).length, top,
+        half_life_days: INTEREST_HALFLIFE_DAYS,
+        how: "Strength decays by half every " + INTEREST_HALFLIFE_DAYS + " days, so this is what is " +
+             "live NOW rather than what was ever mentioned. Topics are extracted by word frequency " +
+             "against a stopword list - no model call, because this runs on every moment Aura records.",
+        honest_limits: [
+          "Word frequency is crude. It cannot tell a topic from a word that happens to recur, and it " +
+          "has no idea two different words mean the same thing. The semantic half is INTEREST RECALL, " +
+          "which queries the embedding index instead.",
+          "Subject is 'operator' - these are moments from AURA's own stream, which is a proxy for what " +
+          "the operator cares about, not a direct record of it. Per-entity interest is the same code " +
+          "with a different subject id and is not wired yet.",
+          "Nothing consumes this yet. It ranks nothing until the wake gate reads it, and that is a " +
+          "deliberate next step rather than an oversight - a ranker wired into a trigger before its " +
+          "numbers are trustworthy is how a proactive agent learns to interrupt badly.",
+        ],
+        next: "INTEREST RECALL <query> for the moments themselves" } };
+    }
+
     case "GRAPH_STATS": {
       //   GRAPH_STATS -> the whole of reality at a glance: entity counts by type + edge counts by type
       if (!isOp) return { cmd: "GRAPH_STATS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };

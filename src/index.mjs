@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.850-2026-07-30";
+const BUILD = "aura-core-v4.9.851-2026-07-30";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -3233,6 +3233,16 @@ function interestTopics(text) {
     if (w.length < 4 || w.length > 32) continue;   // "the" is noise, a hash is not a topic
     if (INTEREST_STOP.has(w)) continue;
     if (/^\d+$/.test(w)) continue;
+    // ══ VERSION STRINGS AND DATES ARE NOT TOPICS (fixed 2026-07-30, first run) ═══════════════
+    // The first INTEREST read came back with "aura-core-v4", "850-2026-07-30" and "849-2026-07-30"
+    // at the top. Every deploy would have minted two more - tokens that appear exactly once, never
+    // recur, and sit at full strength until they decay, crowding a 300-slot tally with dead build
+    // numbers. A ranker whose top entries are version strings is not worth reading, and the first
+    // job of one is to be worth reading.
+    if (/\d/.test(w) && /[-_.]/.test(w)) continue;          // 850-2026-07-30, v4.9.850, aura-core-v4
+    if (/^v?\d/.test(w)) continue;                           // v4, 4.9.850
+    if (/^\d{4}-\d{2}/.test(w)) continue;                    // bare dates
+    if (/^[0-9a-f]{8,}$/.test(w)) continue;                  // hashes and ids
     seen.set(w, (seen.get(w) || 0) + 1);
   }
   // One moment cannot make a topic important by repeating a word inside itself.
@@ -13698,11 +13708,26 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (iSub === "RECALL" || iSub === "WHY") {
         const q = iArg || "";
         if (!q) return { cmd: "INTEREST", payload: { ok: false, error: "Usage: INTEREST RECALL <query>" } };
-        const hits = await getSemanticEvents("operator", q, env, 8);
+        const r = await semanticSearch("operator", q, env, 8);
+        if (!r.ok) return { cmd: "INTEREST", payload: { ok: false, mode: iSub.toLowerCase(), query: q,
+          error: r.error || "search failed", embedded: r.embedded,
+          note: "This is a REAL failure, not an empty result. The two are not the same and this " +
+                "pipeline spent months unable to tell them apart." } };
+        const FLOOR = 0.5;
+        const above = r.matches.filter((m) => m.score > FLOOR);
+        const below = r.matches.filter((m) => m.score <= FLOOR);
         return { cmd: "INTEREST", payload: { ok: true, mode: iSub.toLowerCase(), query: q,
-          matches: hits.length, moments: hits,
-          note: hits.length ? null : "nothing above the 0.7 similarity floor - either it has not come up, or it has not come up in these words",
-          source: "Vectorize (@cf/baai/bge-base-en-v1.5), filtered to subject=operator" } };
+          matches: above.length, moments: above,
+          floor: FLOOR,
+          near_misses: below.length ? below.slice(0, 3) : undefined,
+          searched: r.matches.length,
+          note: r.matches.length === 0
+            ? "The index returned NOTHING for subject=operator - not a weak match, none at all. Either " +
+              "no moment has been embedded since the entityId metadata index was created, or the " +
+              "filter is not matching."
+            : (above.length ? null : "Found " + r.matches.length + " candidates, all below the floor. " +
+              "The scores are in near_misses - if they look right, the floor is wrong, not the index."),
+          source: "Vectorize (@cf/baai/bge-base-en-v1.5, 768d), filtered to subject=operator" } };
       }
 
       const now = Date.now();
@@ -24698,20 +24723,43 @@ async function storeEventVector(entityId, eventId, text, env) {
   } catch { return false; }
 }
 
-async function getSemanticEvents(entityId, query, env, limit = 5) {
+// ══ THE 0.7 FLOOR WAS NEVER ONCE CHECKED AGAINST A REAL QUERY (2026-07-30) ═══════════════════
+// This function had ZERO callers until today, so its threshold has never been tested. It is too high
+// for this model: bge-base-en-v1.5 puts related-but-not-identical short text around 0.5-0.65, so a
+// genuine match at 0.62 was being thrown away and reported as "nothing found" - indistinguishable
+// from an empty index, which is exactly how the missing metadata index hid here for months too.
+// Two failures, same shape: a value that looks reasonable, silently discarding real results.
+//
+// semanticSearch returns EVERYTHING with its score. A caller that wants a floor applies one and can
+// say what it dropped. A search that returns nothing should be able to prove it found nothing, and
+// this one could not.
+async function semanticSearch(entityId, query, env, limit = 8) {
+  const out = { ok: false, matches: [], error: null, embedded: false };
   try {
     const embedding = await embedText(query, env);
-    if (!embedding) return [];
+    if (!embedding) { out.error = "embedding failed - env.AI unavailable or the model refused the text"; return out; }
+    out.embedded = true;
     const results = await env.VECTORIZE.query(embedding, {
       topK: limit,
       filter: { entityId },
       returnMetadata: true
     });
-    return (results?.matches || [])
-      .filter(m => m.score > 0.7)
-      .map(m => m.metadata?.text)
-      .filter(Boolean);
-  } catch { return []; }
+    out.ok = true;
+    out.matches = (results?.matches || []).map((m) => ({
+      score: +Number(m.score || 0).toFixed(4),
+      text: m.metadata?.text || null,
+      ts: m.metadata?.ts || null,
+      id: m.id || null,
+    })).filter((m) => m.text);
+    return out;
+  } catch (e) { out.error = String(e && e.message || e); return out; }
+}
+
+async function getSemanticEvents(entityId, query, env, limit = 5, floor = 0.5) {
+  // Kept for getHybridEvents, which expects plain strings. Floor is now a parameter with an honest
+  // default rather than a hard-coded 0.7 nobody had ever validated.
+  const r = await semanticSearch(entityId, query, env, limit);
+  return r.matches.filter((m) => m.score > floor).map((m) => m.text);
 }
 
 async function getHybridEvents(entityId, query, env) {

@@ -11,10 +11,13 @@
 // a KV round-trip per turn that could only ever return nothing. The CALLS are gone; the variables and
 // their `if (v)` guards are untouched on purpose - neutering 29 sites is safe, restructuring 29 sites
 // in one deploy is not. A later pass deletes the dead variables.
-// STILL OPEN AND NAMED SO IT IS NOT LOST: the North Star is stated in TWO places - here at the
-// NORTHSTAR handler, and in aura-think's SOUL block. Two copies of one declaration drift. aura-core is
-// the canonical one because five workers can call it; SOUL carries it so she can answer without a tool.
-// Whoever edits one MUST edit the other until that is designed properly.
+// CLOSED 2026-07-30 - THIS WAS A FOSSIL. It read: "STILL OPEN AND NAMED SO IT IS NOT LOST: the North
+// Star is stated in TWO places... Whoever edits one MUST edit the other until that is designed
+// properly." It WAS designed properly. aura-think no longer carries a copy - it fetches this one live
+// via NORTHSTAR and its own comment now reads "ONE COPY, AND IT IS NOT THIS FILE'S." So the top of
+// aura-core was instructing every future editor to maintain a duplicate that does not exist, which is
+// exactly the failure this file names elsewhere: a note outliving the truth it was meant to point at,
+// and then standing in for it. aura-core remains canonical because five workers can call it.
 //
 // v4.9.661 - THE notes: NAMESPACE IS RETIRED AS A PLACE THINGS LIVE.
 // It had been archived twice and grew back both times, because 12 handlers WROTE to it and a prompt
@@ -39,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.845-2026-07-29";
+const BUILD = "aura-core-v4.9.846-2026-07-30";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -28519,16 +28522,55 @@ async function northStar(env, rest) {
   let realTxns = 0, testTxns = 0;
   try { const raw = await kv.get("pta:ledger:aura:hot"); if (raw) { const l = JSON.parse(raw);
         revenue = revenue || num(l.revenue_all_time); realTxns = num(l.real_transactions); testTxns = num(l.test_transactions); } } catch {}
-  let activeMerchants = 0, pipeline = {};
+  // ══ THE NORTH STAR GATES READ A TABLE THAT DOES NOT EXIST (2026-07-30) ═══════════════════════
+  //
+  // This block ran `SELECT state, COUNT(*) FROM entities GROUP BY state`. There is NO `entities`
+  // table. Every CREATE TABLE in this file makes `pta_entities`, `pta_edges`, `pta_history`,
+  // `pta_moments`, `pta_groups`, `pta_discovery`, `entitlements`, `events`, `profile`, `egress`.
+  // The bare string `entities` appeared exactly twice in 33,000 lines, both as READS, both wrapped
+  // in `.catch(() => null)` - so the query failed silently, `pipeline` stayed {}, activeMerchants
+  // stayed 0, and:
+  //     gate 1  Object.keys(pipeline).length > 0   -> FALSE FOREVER
+  //     gate 2  activeMerchants > 0                -> FALSE FOREVER
+  // A thousand real merchants could be onboarded and this would still report "next real step: a
+  // merchant exists as a real entity." The one signal the file calls unfakeable was unpassable, and
+  // an empty catch hid it. Reader with no writer, again - and this one landed on the North Star.
+  //
+  // AND THE COLUMN WAS WRONG TOO, which is why a table rename is not the fix. `pta_entities` is
+  // (id, type, identity_key, name, metadata, created_at, updated_at) - there is no `state` column.
+  // Entity state lives in KV as `pta:state:<id>`, written as "active" | "dormant" | "opted_out" at
+  // PTA_CREATE, CIRCLE and APPROACH. So existence is a D1 question and state is a KV question, and
+  // the old query asked one place for both.
+  //
+  // BOUNDED ON PURPOSE. State is one KV key per entity, so a full rollup is O(entities) reads. This
+  // reads the newest 200 and SAYS SO when it truncates, rather than pretending a partial is a total.
+  // A `state` column on pta_entities would make this one query - that is a schema change with a
+  // migration and a dual-write, and it is not being made silently here.
+  let activeMerchants = 0, pipeline = {}, pipelineNote = null, entityTotal = 0;
   try {
     const db = env.AURA_MEMORY;
-    if (db) { const r = await db.prepare("SELECT state, COUNT(*) as n FROM entities GROUP BY state").all().catch(() => null);
-      for (const row of (r?.results || [])) { pipeline[row.state] = row.n; if (row.state === "active") activeMerchants = row.n; } }
+    if (db) {
+      entityTotal = Number((await db.prepare("SELECT COUNT(*) AS n FROM pta_entities").first().catch(() => null))?.n || 0);
+      const rows = (await db.prepare("SELECT id FROM pta_entities ORDER BY created_at DESC LIMIT 200").all().catch(() => null))?.results || [];
+      for (const row of rows) {
+        let st = "unknown";
+        try { st = (await env.AURA_KV.get(`pta:state:${row.id}`)) || "unknown"; } catch {}
+        pipeline[st] = (pipeline[st] || 0) + 1;
+      }
+      activeMerchants = pipeline.active || 0;
+      if (entityTotal > rows.length) {
+        pipelineNote = "state rolled up over the " + rows.length + " newest of " + entityTotal +
+                       " entities - state is one KV key per entity, so this read is bounded deliberately";
+      }
+    }
   } catch {}
 
   // The gates between here and there, in order. Each is a fact, not an opinion.
   const gates = [
-    { step: "a merchant exists as a real entity (PTA_ENTITY + grant edge)", done: Object.keys(pipeline).length > 0 },
+    // GATE 1 NOW READS A COUNT, NOT THE SHAPE OF A ROLLUP. `Object.keys(pipeline).length > 0` was
+    // true only if the (broken) state query returned rows - so a real entity with no KV state key
+    // would still read as "no merchant exists". Existence is entityTotal. State is gate 2's job.
+    { step: "a merchant exists as a real entity (PTA_ENTITY + grant edge)", done: entityTotal > 0 },
     { step: "a merchant reaches 'active'", done: activeMerchants > 0 },
     { step: "a checkout exists that a stranger can reach", done: false, note: "no launched doorway has a live checkout on record" },
     { step: "one real (non-test) transaction settles", done: realTxns > 0 },
@@ -28541,7 +28583,9 @@ async function northStar(env, rest) {
                   "this system - the audits, the meters, the self-reads - is instrumentation. Instrumentation " +
                   "without an outcome signal is a very well-lit room with nothing in it.",
     distance: { revenue_all_time: +revenue.toFixed(2), real_transactions: realTxns,
-                test_transactions: testTxns, active_merchants: activeMerchants, pipeline },
+                test_transactions: testTxns, active_merchants: activeMerchants,
+                entities_total: entityTotal, pipeline,
+                ...(pipelineNote ? { pipeline_note: pipelineNote } : {}) },
     gates,
     next_real_step: nextStep ? nextStep.step : "GATE ONE PASSED - the loop now has a real signal. The north star itself does not move; the gates after it do.",
     honest_note: realTxns > 0
@@ -28580,8 +28624,11 @@ const AURA_DOORS = [
         + "BIRTH on acceptance -> ACCEPT · BIRTH from a physical tap -> MOMENT (stamps place, connector, "
         + "time of day, surroundings) · WAKE a dormant identity when the person themselves arrives -> "
         + "APPROACH · SELF-ARRIVAL -> PTA_CREATE (born active, arriving by choice IS consent) · "
-        + "RELATIONSHIP edge -> PTA_GRANT · REVOKE -> PTA_REVOKE (never deletes) · READ one -> "
-        + "PTA_ENTITY GET/FIND/LIST · READ relationships -> PTA_STATUS · GROUP / mass touch -> PTA_INTENT",
+        + "RELATIONSHIP edge -> PTA_GRANT · REVOKE -> PTA_REVOKE (never deletes) · DECLINE an offer -> "
+        + "REFUSE (leaves NO row - the reason INVITE is the canonical offer) · READ one -> "
+        + "PTA_ENTITY GET/FIND/LIST · READ relationships -> PTA_STATUS · WHO IS ON A MOMENT NOW -> "
+        + "PTA_MOMENT_WHO (filters state='active', so leavers drop out of the count) · "
+        + "DECLARE a mass touch -> PTA_INTENT",
     routes_through: "D1 tables pta_entities / pta_edges / pta_history. identity_key is UNIQUE, so one "
         + "verified contact is one entity. Edges carry via_edge_id (the hop) and origin_id (the shared "
         + "moment) so the propagation tree can be walked.",
@@ -28589,7 +28636,21 @@ const AURA_DOORS = [
         + "deletes, and the lineage that makes pay-it-forward and mass-touch readable.",
     never: "NEVER add a new birth path. There are four and they cover every case: offered, tapped, "
         + "dormant-then-arrived, self-created. A fifth was built on 2026-07-27 and removed the same day "
-        + "because INVITE already did it, and did it better - INVITE leaves no row at all on decline." },
+        + "because INVITE already did it, and did it better - INVITE leaves no row at all on decline.",
+    // ══ THE DOOR ITSELF WENT STALE, WHICH IS THE SAME DISEASE ONE LAYER UP (2026-07-30) ═════════
+    // This registry exists so a sixth birth path never gets built. Two days after the fifth was
+    // removed, the registry was missing REFUSE (the decline path, v4.9.839) and still routed
+    // "GROUP / mass touch" to PTA_INTENT while PTA_MOMENT_WHO had become the door for who is on a
+    // moment - and a name got shadowed twice in one day while this sat unread. A map of the doors is
+    // only load-bearing if adding a door means editing the map in the same commit.
+    // NOT LISTED HERE ON PURPOSE, because they are not acts of birth or consent and belong under
+    // their own topics if they ever need doors: PTA_FORGET (crypto-shred), PTA_EXPORT (portability),
+    // PTA_VOUCH / PTA_TRUST (the PRM view), PTA_FINDABLE / PTA_NEARBY (discovery).
+    open_question: "pta_entities has NO state column - entity state lives in KV as pta:state:<id>. "
+        + "So 'does this entity exist' is a D1 question and 'is it active' is a KV question, and any "
+        + "rollup over both is O(entities) reads. northStar and auditBusiness both asked D1 for state "
+        + "and silently got nothing for it. A state column with a migration and a dual-write would "
+        + "make it one query; that decision has not been made." },
   { id: "image", words: ["image", "picture", "photo", "showit", "generate image", "render", "art"],
     door: "POST /showit?prompt=...",
     routes_through: "AIMARGIN image policy (config:policy:image) -> resolves provider + model + quality",
@@ -29094,21 +29155,33 @@ async function auditBusiness(env) {
   }
 
   // 3. The first merchant. A pipeline stalled at the same stage is the tell.
+  // SAME BROKEN QUERY AS northStar, FIXED THE SAME WAY (2026-07-30). This read `FROM entities`, a
+  // table that does not exist, inside an empty catch - so `rows` was always [] and this auditor has
+  // been raising a `no_merchant` alert on every single run regardless of what is in the graph. An
+  // alert that fires unconditionally is not a finding, it is furniture. Existence comes from D1
+  // (pta_entities); state comes from KV (`pta:state:<id>`), because pta_entities has no state column.
   try {
     const db = env.AURA_MEMORY;
     if (db) {
-      const r = await db.prepare("SELECT state, COUNT(*) as n FROM entities GROUP BY state").all().catch(() => null);
-      const rows = r?.results || [];
-      if (rows.length) {
-        snap.pipeline = Object.fromEntries(rows.map((x) => [x.state, x.n]));
-        const active = rows.find((x) => x.state === "active");
-        if (!active || !active.n) findings.push({ level: "alert", kind: "no_active_merchant",
-          detail: "No merchant has reached 'active'. Pipeline: " +
-                  rows.map((x) => x.state + "=" + x.n).join(", ") + ". Until one is active there is no " +
-                  "path to a transaction." });
+      const total = Number((await db.prepare("SELECT COUNT(*) AS n FROM pta_entities").first().catch(() => null))?.n || 0);
+      const ids = (await db.prepare("SELECT id FROM pta_entities ORDER BY created_at DESC LIMIT 200").all().catch(() => null))?.results || [];
+      const roll = {};
+      for (const row of ids) {
+        let st = "unknown";
+        try { st = (await env.AURA_KV.get(`pta:state:${row.id}`)) || "unknown"; } catch {}
+        roll[st] = (roll[st] || 0) + 1;
+      }
+      if (total > 0) {
+        snap.pipeline = roll;
+        snap.entities_total = total;
+        if (total > ids.length) snap.pipeline_note = "state sampled over the " + ids.length + " newest of " + total;
+        if (!roll.active) findings.push({ level: "alert", kind: "no_active_merchant",
+          detail: "No merchant has reached 'active'. " + total + " entities exist; state of the newest " +
+                  ids.length + ": " + (Object.keys(roll).map((k) => k + "=" + roll[k]).join(", ") || "none recorded") +
+                  ". Until one is active there is no path to a transaction." });
       } else {
         findings.push({ level: "alert", kind: "no_merchant",
-          detail: "No merchants in the pipeline at all. The first doorway needs a real merchant behind it." });
+          detail: "No entities in pta_entities at all. The first doorway needs a real merchant behind it." });
       }
     }
   } catch {}
@@ -30816,6 +30889,30 @@ export default {
     //   burn audit   - hourly. Pure KV, but hourly is enough to catch a runaway.
     //   business     - ON DEMAND ONLY (BUSINESS_AUDIT command). It hits real financial APIs.
     //   self audit   - every 6h, already throttled internally.
+    // ══ THIS COMMENT USED TO SAY "None of these burn tokens" AND THAT WAS FALSE (2026-07-30) ═══
+    // It cost a week of tokens. `precomputeHotBriefs` runs `SITUATION_BRIEF <topic>` for up to 12
+    // topics, refreshing each every 4 minutes - a feed-loaded model call at ~33,000 tokens a shot,
+    // up to 4,320 a day, with nobody asking for anything. It is dormant only while
+    // `situation:hot_topics` is empty; one topic ("hormuz") was left in that key while testing and
+    // it ran unattended for days. xAI's own usage chart showed a flat week and then a step change,
+    // while AIMARGIN folded the whole thing into `modelFor` where it was indistinguishable from
+    // Aaron's own questions.
+    //
+    // WHICH OF THESE CAN SPEND, and what switches each on - checked, not assumed:
+    //   precomputeHotBriefs  MODEL CALLS   gate: situation:hot_topics   (non-empty = live)
+    //   drainSchedule        SENDS EMAIL   gate: schedule:due_queue
+    //   drainWorkflows       runs commands gate: workflow:due_queue
+    //   captureAisHistory    outbound API  gate: ais:watchlist
+    //   watchResources       MODEL CALL    gate: watch:resources:last_run (throttled)
+    //   watchA2P             outbound API  every tick
+    //   runHealthChecks      outbound API  every tick
+    //   noticeIWasChanged / pollVideoJobs / maybeReconcileDaily: no model call
+    //
+    // THE REAL DEFECT IS THE CLASS, NOT THE INSTANCE: any of these can spend with no human in the
+    // loop, is switched on by a KV key with no owner and no timestamp, and reports its spend under a
+    // caller name shared with real user turns. A per-job caller label so AIMARGIN can NAME them is
+    // the fix; until that exists, an unattended job is invisible on day one and only shows up as a
+    // shape on a vendor's chart in week two.
     ctx.waitUntil(maybeAuditBurn(env).catch(() => {}));
     ctx.waitUntil(maybeSelfAudit(env).catch(() => {}));
     // NOT on a daily timer. Aaron's point, and he is right: nobody reprices tokens day to day. A price

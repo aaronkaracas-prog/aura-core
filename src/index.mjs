@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.855-2026-07-30";
+const BUILD = "aura-core-v4.9.856-2026-07-30";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -13768,6 +13768,101 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           return { cmd: "GRAPH_GET", payload: { ok: true, entity: { id: node.id, type: node.type, name: node.name, key: node.identity_key, props: meta, created_at: node.created_at, updated_at: node.updated_at }, out_edges: out.results || [], in_edges: inc.results || [] } };
         } catch (e) { return { cmd: "GRAPH_GET", payload: { ok: false, error: String(e.message) } }; } }
     }
+    case "CARD": {
+      // ══ LAYER E ── THE EXPLAINABLE PROACTIVE SURFACE ═══════════════════════════════════════════
+      //
+      //   CARD <purpose>            - assemble a candidate card and ask the gate whether it may show
+      //   CARD <purpose> ABOUT <q>  - anchor the recall on a specific topic instead of the top interest
+      //
+      // THIS IS THE PIECE THAT MAKES THE OTHERS A PRODUCT. The reference architecture calls Layer E
+      // "not a chat response but a proactive card" that must state WHICH MEMORY triggered it, WHICH
+      // EVENT triggered it, and WHY NOW. Every input for that already exists and until now nothing
+      // assembled them:
+      //   A  what is TRUE   -> semantic_facts, current values only, superseded excluded
+      //   A  what HAPPENED  -> the moment index, semantic recall with real scores
+      //   B  what MATTERS   -> the decayed interest tally
+      //   D  whether I MAY  -> ptaWakeGate: live grant, purpose match, opt-out, payer, budget
+      //
+      // IT ASSEMBLES AND EXPLAINS. IT DOES NOT SEND. Deliberate: the industry's Layer D is scored on
+      // engagement and tuned by dismiss-versus-engage, and that signal is corrupted because a
+      // dismissal is a click. The measured human ceiling is three to five interruptions a day and
+      // roughly half the users who mute notifications eventually leave. So the first honest version
+      // of a proactive surface is one you can INSPECT before it can interrupt anyone - the card and
+      // its reasons, side by side with the gate's verdict, with nothing delivered.
+      //
+      // AND THE GATE RUNS EVEN WHEN THE CARD IS EMPTY. A surface that only checks permission once it
+      // has something to say learns to find something to say. Verdict first, content second.
+      if (!isOp) return { cmd: "CARD", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const cPurpose = (args[0] || "").toLowerCase();
+      if (!cPurpose) return { cmd: "CARD", payload: { ok: false, error: "Usage: CARD <purpose> [ABOUT <query>]" } };
+      const cAboutIx = rest.toUpperCase().indexOf(" ABOUT ");
+      const cQuery = cAboutIx >= 0 ? rest.slice(cAboutIx + 7).trim() : null;
+
+      // ── D: may I speak at all? Asked FIRST, and its answer stands whatever the content turns out to be.
+      let gate = null;
+      try {
+        gate = await ptaWakeGate(env, { actor: "pta_aura", subject: "pta_aura", purpose: cPurpose });
+      } catch (e) {
+        await noteSwallowed(env, "CARD:wake_gate", e);
+        return { cmd: "CARD", payload: { ok: false, error: "GATE_UNAVAILABLE",
+          note: "The consent gate could not be reached, so no card was assembled. A surface that " +
+                "renders when it cannot check permission is not a gated surface." } };
+      }
+
+      // ── B: what matters right now, decayed to today
+      let interests = [];
+      try {
+        const bag = JSON.parse((await env.AURA_KV.get(INTEREST_KEY)) || "{}");
+        decayInterest(bag, Date.now());
+        interests = Object.keys(bag).sort((a, b) => bag[b].w - bag[a].w).slice(0, 5)
+          .map((k) => ({ topic: k, strength: bag[k].w }));
+      } catch (e) { await noteSwallowed(env, "CARD:interest_read", e); }
+
+      const anchor = cQuery || (interests[0] && interests[0].topic) || null;
+
+      // ── A: what happened, and what is true
+      let moments = [], factRows = [];
+      if (anchor) {
+        const sr = await semanticSearch("operator", anchor, env, 5);
+        moments = sr.matches.filter((m) => m.score > 0.5).slice(0, 3);
+      }
+      try {
+        factRows = (await env.AURA_MEMORY.prepare(
+          "SELECT predicate, value, valid_from FROM semantic_facts WHERE valid_until IS NULL ORDER BY valid_from DESC LIMIT 5"
+        ).all())?.results || [];
+      } catch (e) { await noteSwallowed(env, "CARD:fact_read", e); }
+
+      const haveSomething = !!(anchor && (moments.length || factRows.length));
+      return { cmd: "CARD", payload: { ok: true, purpose: cPurpose,
+        would_show: !!(gate && gate.allowed) && haveSomething,
+        gate: { allowed: !!(gate && gate.allowed), code: gate?.code || null, reason: gate?.reason || null,
+                may_think: gate?.may_think ?? null, payer: gate?.payer ?? null },
+        card: haveSomething ? {
+          anchor,
+          why_this: interests.length && !cQuery
+            ? "highest live interest (" + interests[0].topic + ", strength " + interests[0].strength + ")"
+            : "asked for explicitly",
+          because_i_remember: moments.map((m) => ({ moment: m.text, similarity: m.score, at: m.ts })),
+          and_i_know: factRows.map((f) => ({ predicate: f.predicate, value: f.value, since: f.valid_from })),
+          why_now: "assembled on demand - THERE IS NO EVENT TRIGGER YET. Layer C (continuous ingestion) " +
+                   "is not built, so nothing in this system can currently say a real-world thing just " +
+                   "happened. Until it does, 'why now' is 'because you asked', and calling that a " +
+                   "proactive card would be a lie.",
+        } : null,
+        missing: haveSomething ? null : (anchor ? "nothing recalled above the floor for '" + anchor + "'"
+                                                : "no interest topics yet - the tally builds from moments"),
+        interests,
+        honest_state: [
+          "This assembles and explains. It does NOT deliver anything to anyone.",
+          "The gate is asked BEFORE the content is built, so a card can never talk its way into being shown.",
+          "Layer C is absent: no calendar, mail, location or feed is watched, so nothing here is " +
+            "triggered by the world. This is the shape of a proactive card, driven by a command.",
+          "Measured constraint, not opinion: the human ceiling is 3-5 interruptions a day and roughly " +
+            "half of users who mute notifications eventually leave. WAKE_CAP_PER_DAY is 12. That number " +
+            "should come down before anything here is ever wired to a delivery path.",
+        ] } };
+    }
+
     case "FACT": {
       // ══ SEMANTIC MEMORY WITH TEMPORAL VALIDITY ── THE OPERATION EVERYTHING ELSE FAILS WITHOUT ══
       //
@@ -13934,7 +14029,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             "contact somebody rather than risk contacting a person who permanently opted out.",
         instrumented: ["isOptedOut:kv_identity", "isOptedOut:d1_resolve", "isOptedOut:kv_pta", "isOptedOut:outer",
           "MOMENT_OPTOUT:d1_lookup", "GRAPH_PUT:existence_check", "connect_edge:existence_check",
-          "FACT:schema", "FACT:currency_check"],
+          "FACT:schema", "FACT:currency_check", "CARD:wake_gate", "CARD:interest_read", "CARD:fact_read"],
         honest_gap: "The 1,423 figure is a census, not a to-do list. Classified: 71 supply a default " +
                     "on failure (correct), 2 are cache reads (correct), ~102 are record-not-found " +
                     "lookups where null legitimately means no record, and 15 are truth numbers. Of " +

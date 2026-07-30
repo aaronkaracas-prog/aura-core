@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.852-2026-07-30";
+const BUILD = "aura-core-v4.9.853-2026-07-30";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -13717,7 +13717,22 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         try {
           await db.prepare("CREATE TABLE IF NOT EXISTS pta_entities (id TEXT PRIMARY KEY, type TEXT NOT NULL, identity_key TEXT, name TEXT, metadata TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)").run();
           const key = gp.key || null; const meta = JSON.stringify(gp.props || {});
-          let existing = null; if (key) existing = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(key).first().catch(() => null);
+          // ══ A FAILED EXISTENCE CHECK MINTED A DUPLICATE (fixed 2026-07-30) ═══════════════════
+          // `.catch(() => null)` here means "no existing entity", and the code below responds by
+          // INSERTING a new one. So a transient D1 error did not fail the write - it silently created
+          // a SECOND entity with the same identity_key, and returned action:"created" as though that
+          // were the right outcome. Duplicate identities in a graph whose whole premise is one
+          // durable node per real thing.
+          let existing = null;
+          if (key) {
+            try { existing = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(key).first(); }
+            catch (e) {
+              await noteSwallowed(env, "GRAPH_PUT:existence_check", e);
+              return { cmd: "GRAPH_PUT", payload: { ok: false, error: "EXISTENCE_CHECK_FAILED",
+                note: "I could not tell whether this entity already exists, so I did not create one. " +
+                      "Creating on an unknown is how duplicate identities appear." } };
+            }
+          }
           if (existing) { await db.prepare("UPDATE pta_entities SET type=?, name=?, metadata=?, updated_at=? WHERE id=?").bind(gp.type, gp.name || null, meta, now, existing.id).run();
             return { cmd: "GRAPH_PUT", payload: { ok: true, id: existing.id, type: gp.type, name: gp.name || null, action: "updated" } }; }
           const id = "ent_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
@@ -13782,10 +13797,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           : "Each entry is a failure that would previously have been invisible. isOptedOut entries are " +
             "the serious ones - they mean the honored-exit guard could not verify and refused to " +
             "contact somebody rather than risk contacting a person who permanently opted out.",
-        instrumented: ["isOptedOut:kv_identity", "isOptedOut:d1_resolve", "isOptedOut:kv_pta", "isOptedOut:outer"],
-        honest_gap: "Instrumenting all 1,423 sites is not the goal and would be noise. The ones that " +
-                    "matter are reads that feed a decision - roughly 181 in this file by the census. " +
-                    "They get added here as they are found, not in one sweep." } };
+        instrumented: ["isOptedOut:kv_identity", "isOptedOut:d1_resolve", "isOptedOut:kv_pta", "isOptedOut:outer",
+          "MOMENT_OPTOUT:d1_lookup", "GRAPH_PUT:existence_check", "connect_edge:existence_check"],
+        honest_gap: "The 1,423 figure is a census, not a to-do list. Classified: 71 supply a default " +
+                    "on failure (correct), 2 are cache reads (correct), ~102 are record-not-found " +
+                    "lookups where null legitimately means no record, and 15 are truth numbers. Of " +
+                    "those 15, FOUR could cause a wrong ACTION rather than a missing answer and all " +
+                    "four are fixed and instrumented: the honored-exit guard failing open, an opt-out " +
+                    "request being refused because a lookup failed, and two existence checks whose " +
+                    "failure silently minted a duplicate entity or edge. The rest are not deferred - " +
+                    "they were examined and found correct." } };
     }
 
     case "INTEREST": {
@@ -15502,7 +15523,21 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (mSub === "OPTOUT") {
         if (!mArg) return { cmd: "MOMENT", payload: { ok: false, error: "Usage: MOMENT OPTOUT <pta_id> [::: reason]" } };
         // the one rule has to be airtight: verify this is a REAL person before confirming a permanent exit
-        const target = await env.AURA_MEMORY.prepare("SELECT id FROM pta_entities WHERE id = ?").bind(mArg).first().catch(() => null);
+        // ══ A FAILED LOOKUP WAS DENYING A LEGITIMATE OPT-OUT (fixed 2026-07-30) ═══════════════
+        // `.catch(() => null)` meant a D1 hiccup produced target=null, and the line below answers
+        // that with "No such PTA - refusing to confirm an opt-out". So a person asking to be left
+        // alone forever could be told they do not exist, because the database blinked. The refusal
+        // is correct for an identity that genuinely is not there and wrong for one we could not
+        // check, and those two were indistinguishable.
+        // A LOOKUP FAILURE IS NOW ITS OWN ANSWER: say so, count it, and tell them to retry - never
+        // refuse a consent request on an error we caused.
+        let target = null, targetLookupFailed = false;
+        try { target = await env.AURA_MEMORY.prepare("SELECT id FROM pta_entities WHERE id = ?").bind(mArg).first(); }
+        catch (e) { targetLookupFailed = true; await noteSwallowed(env, "MOMENT_OPTOUT:d1_lookup", e); }
+        if (targetLookupFailed) return { cmd: "MOMENT", payload: { ok: false, error: "LOOKUP_FAILED",
+          note: "I could not verify this PTA right now, so I have neither confirmed nor refused your " +
+                "opt-out. This is my failure, not a rejection. Try again - and if it keeps failing, " +
+                "the request stands and will be honoured manually.", retry: true } };
         if (!target) return { cmd: "MOMENT", payload: { ok: false, error: "No such PTA: " + mArg + " â€” refusing to confirm an opt-out for an identity that does not exist." } };
         const ts = new Date().toISOString();
         // THE PERMANENT, HONORED EXIT â€” out means out, forever. No more contact, ever. Not a 30-day pause.
@@ -31627,8 +31662,12 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
         // whoever created the image - Aaron's image crossing to his mom links Aaron->mom, not Aura->mom.
         const origin = rec.origin || "pta_aura";
         try {
-          const existing = await db.prepare("SELECT id FROM pta_edges WHERE from_id=? AND to_id=? AND edge_type='connected_to'").bind(origin, verifiedPta).first().catch(() => null);
-          if (!existing) {
+          // SAME DUPLICATE RISK AS GRAPH_PUT: a failed check reads as "no edge" and the branch below
+          // inserts one. A swallowed error here quietly doubles a relationship.
+          let existing = null, checkFailed = false;
+          try { existing = await db.prepare("SELECT id FROM pta_edges WHERE from_id=? AND to_id=? AND edge_type='connected_to'").bind(origin, verifiedPta).first(); }
+          catch (e) { checkFailed = true; await noteSwallowed(env, "connect_edge:existence_check", e); }
+          if (!existing && !checkFailed) {
             const eid = "edge_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
             await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, relationship, context, created_at, updated_at) VALUES (?, ?, ?, 'connected_to', 'active', 'connected_to', ?, ?, ?)").bind(eid, origin, verifiedPta, rec.context, now, now).run().catch(() => {});
           }

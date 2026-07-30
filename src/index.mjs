@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.851-2026-07-30";
+const BUILD = "aura-core-v4.9.852-2026-07-30";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -3417,17 +3417,87 @@ async function mintDoorway(env, { context, name, handle, via, image, dest, creat
 // SHARED HONORED-EXIT GUARD â€” one check used by every contact channel (email, SMS, future channels),
 // so "out means out" can never drift between paths. Takes an identity like "email:a@b.com" or
 // "phone:+1555...". Returns true if this person has permanently opted out, by identity key or resolved PTA.
+// ══ SILENT FAILURE, MADE COUNTABLE (2026-07-30) ═══════════════════════════════════════════════
+// A census of this file found 1,324 places where a failure is swallowed, and aura-think has 99 more.
+// Most are correct - a memory write that fails must never block the action it records. The dangerous
+// subset is narrow and specific: a READ whose empty result is INDISTINGUISHABLE from a real answer,
+// feeding a decision. Three of those surfaced in one day:
+//   - northStar queried a table that does not exist, inside .catch(() => null), so two North Star
+//     gates were unpassable for an unknown length of time and reported "no merchant exists".
+//   - The Vectorize metadata index was never created, so every semantic query returned [] through
+//     catch { return [] } - a dead pipeline that looked exactly like "nothing matched".
+//   - A similarity floor of 0.7 discarded real results and reported no match.
+// None of them could be seen from outside, because a swallowed failure and an empty answer produce
+// the same bytes.
+//
+// THE PROPORTIONATE FIX IS NOT REMOVING 1,423 CATCHES. It is making the load-bearing ones LEAVE A
+// TRACE. This counts them, in KV, per day, per site - so a fault that used to live indefinitely now
+// shows up as a number somebody can read. SWALLOWED reports it.
+async function noteSwallowed(env, where, err) {
+  try {
+    const day = new Date().toISOString().slice(0, 10);
+    const key = "swallowed:" + day;
+    let bag = {};
+    try { bag = JSON.parse((await env.AURA_KV.get(key)) || "{}"); } catch {}
+    const cur = bag[where] || { n: 0, first: new Date().toISOString(), last_error: null };
+    bag[where] = { n: cur.n + 1, first: cur.first, last: new Date().toISOString(),
+                   last_error: String(err && err.message || err || "").slice(0, 160) };
+    await env.AURA_KV.put(key, JSON.stringify(bag), { expirationTtl: 30 * 24 * 3600 });
+    console.warn("[SWALLOWED] " + where + " -> " + String(err && err.message || err).slice(0, 200));
+  } catch { /* the counter itself must never throw - that would be the same disease */ }
+}
+
+// ══ THE HONORED-EXIT GUARD FAILED OPEN, AND IT IS THE ONE THAT MUST NOT (fixed 2026-07-30) ══════
+//
+// This function is described three lines above as existing so that "out means out" can never drift
+// between paths. It drifted on every infrastructure hiccup: `catch { return false }` and
+// `.catch(() => null)` both mean NOT OPTED OUT, so a KV timeout or a D1 error turned a permanent,
+// promised exit into a sent email. Fail-open on the single consent guarantee the product asks people
+// to trust, and completely invisible - the send succeeded, nothing logged, nobody could know.
+//
+// NOW FAILS CLOSED. If the check cannot be COMPLETED, the answer is "treat as opted out". A message
+// that does not go out is a delay; a message that goes to someone who asked never to hear from us
+// again is a broken promise, and those are not the same size of mistake. v4.9.836 named this exact
+// distinction - "fail-closed product instead of fail-closed theatre" - and this was the theatre.
+//
+// AND IT IS LOUD. Every fail-closed is counted by noteSwallowed and logged, so "we stopped sending
+// email" can never be a silent condition either. Both failure directions are now visible; before,
+// neither was.
 async function isOptedOut(env, identity) {
   if (!identity) return false;
   const idKey = String(identity).toLowerCase().trim();
+  let checked = false;
   try {
-    let opted = await env.AURA_KV.get("pta:optout:" + idKey).catch(() => null);
+    let opted = null;
+    try {
+      opted = await env.AURA_KV.get("pta:optout:" + idKey);
+      checked = true;
+    } catch (e) {
+      await noteSwallowed(env, "isOptedOut:kv_identity", e);
+      return true;   // could not verify -> treat as opted out
+    }
     if (!opted) {
-      const ent = await env.AURA_MEMORY.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(idKey).first().catch(() => null);
-      if (ent && ent.id) opted = await env.AURA_KV.get("pta:optout:" + ent.id).catch(() => null);
+      let ent = null;
+      try {
+        ent = await env.AURA_MEMORY.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(idKey).first();
+      } catch (e) {
+        await noteSwallowed(env, "isOptedOut:d1_resolve", e);
+        return true;   // the PTA-scoped opt-out could not be checked at all
+      }
+      if (ent && ent.id) {
+        try {
+          opted = await env.AURA_KV.get("pta:optout:" + ent.id);
+        } catch (e) {
+          await noteSwallowed(env, "isOptedOut:kv_pta", e);
+          return true;
+        }
+      }
     }
     return !!opted;
-  } catch { return false; }
+  } catch (e) {
+    await noteSwallowed(env, "isOptedOut:outer", e);
+    return true;   // NEVER false from a failure. Only a completed check may say "not opted out".
+  }
 }
 
 async function sendEmail(env, to, subject, body, opts) {
@@ -13683,6 +13753,41 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           return { cmd: "GRAPH_GET", payload: { ok: true, entity: { id: node.id, type: node.type, name: node.name, key: node.identity_key, props: meta, created_at: node.created_at, updated_at: node.updated_at }, out_edges: out.results || [], in_edges: inc.results || [] } };
         } catch (e) { return { cmd: "GRAPH_GET", payload: { ok: false, error: String(e.message) } }; } }
     }
+    case "SWALLOWED": {
+      // ══ WHAT FAILED QUIETLY, AS A NUMBER ═══════════════════════════════════════════════════
+      //   SWALLOWED            -> today
+      //   SWALLOWED <YYYY-MM-DD>
+      //
+      // A census on 2026-07-30 found 1,324 swallowed-failure sites in this file and 99 in aura-think.
+      // Most are correct. The dangerous ones are reads whose empty result is indistinguishable from a
+      // real answer - and three of those had been live and invisible: a query against a table that
+      // does not exist, a Vectorize filter with no metadata index, and a similarity floor that
+      // discarded real matches. Every one produced a plausible empty result and no trace.
+      // This is the trace. Sites call noteSwallowed() when they eat an error; this reads the tally.
+      if (!isOp) return { cmd: "SWALLOWED", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const swDay = (args[0] || new Date().toISOString().slice(0, 10)).trim();
+      let swBag = {};
+      try { swBag = JSON.parse((await env.AURA_KV.get("swallowed:" + swDay)) || "{}"); } catch {}
+      const sites = Object.keys(swBag).sort((a, b) => swBag[b].n - swBag[a].n)
+        .map((k) => ({ site: k, count: swBag[k].n, first: swBag[k].first, last: swBag[k].last,
+                       last_error: swBag[k].last_error }));
+      return { cmd: "SWALLOWED", payload: { ok: true, day: swDay, sites: sites.length,
+        total: sites.reduce((a, s) => a + s.count, 0), detail: sites,
+        clean: sites.length === 0,
+        reading: sites.length === 0
+          ? "Nothing counted today. That means no INSTRUMENTED site ate an error - it does not mean " +
+            "nothing failed quietly. Only sites that call noteSwallowed() are visible here, and the " +
+            "census counted 1,423 places that could swallow. This number growing is the alarm; this " +
+            "number being zero is not yet an all-clear."
+          : "Each entry is a failure that would previously have been invisible. isOptedOut entries are " +
+            "the serious ones - they mean the honored-exit guard could not verify and refused to " +
+            "contact somebody rather than risk contacting a person who permanently opted out.",
+        instrumented: ["isOptedOut:kv_identity", "isOptedOut:d1_resolve", "isOptedOut:kv_pta", "isOptedOut:outer"],
+        honest_gap: "Instrumenting all 1,423 sites is not the goal and would be noise. The ones that " +
+                    "matter are reads that feed a decision - roughly 181 in this file by the census. " +
+                    "They get added here as they are found, not in one sweep." } };
+    }
+
     case "INTEREST": {
       // ══ LAYER B ── WHAT IS WORTH SAYING, AS OPPOSED TO WHAT MAY BE SAID ═══════════════════════
       //

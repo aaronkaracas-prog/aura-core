@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.848-2026-07-30";
+const BUILD = "aura-core-v4.9.849-2026-07-30";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -446,7 +446,13 @@ async function _egressCore(env, rec) {
     };
     bump(led.by_provider, rec.provider);
     bump(led.by_caller, rec.caller || "unlabelled");
-    bump(led.by_model, rec.model || "unknown");
+    // ══ "unknown" READ AS A HOLE IN THE METER AND IT WAS NOT ONE (2026-07-30) ═══════════════════
+    // AIMARGIN showed `unknown: {calls: 76, in: 0, out: 0, cost: 0}` and it looked like 76 provider
+    // calls whose tokens had gone missing. They had not: those are catalogue and health probes -
+    // GET /v1/models and the like - which have NO MODEL because they do not run one, and no tokens
+    // because none were generated. Correctly recorded, wrongly named. A row filed under "unknown"
+    // invites exactly the reading it got: something we failed to measure. This says what it is.
+    bump(led.by_model, rec.model || (tin || tout ? "unattributed" : "no_model_call"));
     let path = rec.endpoint || "?";
     try { path = new URL(rec.endpoint).pathname; } catch {}
     bump(led.by_endpoint, rec.provider + path);
@@ -29414,10 +29420,36 @@ async function auditBurn(env) {
         .filter(([n, p]) => p && p.ok && !ORG_WIDE.includes(n))
         .reduce((a, [, p]) => a + num(p.total), 0);
       if (auraOnly > 1 && metered > 0 && auraOnly > metered * 3) {
+        // ══ THIS HAS FIRED TWICE, TEN DAYS APART, AT THE SAME RATIO (2026-07-30) ═══════════════
+        // 07-19 measured 13.43x against real billing and the rate table was corrected. 07-20 that
+        // correction was REVERTED on the reasoning that xAI's published price needs no calibration,
+        // and the conversion used was `published value / 100000`. The gap came straight back: 11.2x
+        // on 07-29 and 10.8x on 07-30 (billed $0.667 vs metered $0.0617, xAI only, both from this
+        // machine's own instruments). CALIBRATE, which divides provider dollars by TOKEN COUNTS and
+        // needs no rate table at all, independently derived a per-million rate 4-8x above the table.
+        //
+        // THE CONVERSION CANNOT FALSIFY ITSELF. PRICES reports "nothing derived, nothing to
+        // calibrate, nothing to reset" - so a divisor that is wrong by a factor of ten reads as the
+        // vendor's own number and confirms whatever it produced. Only billing can settle it, which
+        // is what this finding is.
+        //
+        // NOT SILENTLY CORRECTED HERE. Changing a rate table on an inference is how 07-20 happened.
+        // The ratio is stated, the decision is named, and it stays the operator's.
+        const ratio = auraOnly / metered;
         findings.push({ level: "alert", kind: "meter_gap",
           detail: "Yesterday Aura-scoped providers billed $" + auraOnly.toFixed(2) + " while Aura metered $" +
-                  metered.toFixed(4) + " (" + (auraOnly / metered).toFixed(1) + "x). A rate table has drifted " +
-                  "or something is running outside the meter." });
+                  metered.toFixed(4) + " (" + ratio.toFixed(1) + "x). A rate table has drifted " +
+                  "or something is running outside the meter.",
+          ratio: +ratio.toFixed(2),
+          history: "fired at 13.4x on 2026-07-19 (corrected, then reverted 07-20) and again at ~11x on " +
+                   "07-29/07-30. A repeat at the same magnitude is a wrong rate, not a bad day.",
+          decide: ratio > 5
+            ? "A gap this size is a UNIT ERROR, not drift. Run CALIBRATE for the rate derived from " +
+              "billing over token counts - it needs no rate table and cannot inherit the same mistake. " +
+              "If it agrees, the divisor in discoverPrices (published / 100000) is the suspect."
+            : "Small gap - could be an unmetered path rather than a rate. Check by_caller for a caller " +
+              "with calls but no tokens before touching any rate.",
+          every_floor_is_optimistic_by: ratio > 5 ? "~" + ratio.toFixed(0) + "x until this is settled" : null });
       }
       if (trueCost > 0) {
         findings.push({ level: "info", kind: "org_spend",

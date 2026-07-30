@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.847-2026-07-30";
+const BUILD = "aura-core-v4.9.848-2026-07-30";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -28611,17 +28611,50 @@ async function northStar(env, rest) {
   try {
     const db = env.AURA_MEMORY;
     if (db) {
+      // ONE D1 COUNT. This is the whole of gate 1 and it is a single fast query.
       entityTotal = Number((await db.prepare("SELECT COUNT(*) AS n FROM pta_entities").first().catch(() => null))?.n || 0);
-      const rows = (await db.prepare("SELECT id FROM pta_entities ORDER BY created_at DESC LIMIT 200").all().catch(() => null))?.results || [];
-      for (const row of rows) {
-        let st = "unknown";
-        try { st = (await env.AURA_KV.get(`pta:state:${row.id}`)) || "unknown"; } catch {}
-        pipeline[st] = (pipeline[st] || 0) + 1;
-      }
-      activeMerchants = pipeline.active || 0;
-      if (entityTotal > rows.length) {
-        pipelineNote = "state rolled up over the " + rows.length + " newest of " + entityTotal +
-                       " entities - state is one KV key per entity, so this read is bounded deliberately";
+      // ══ THE STATE ROLLUP WAS 200 SEQUENTIAL KV READS ON THE HOT PATH (fixed 2026-07-30) ═══════
+      //
+      // I wrote that this morning while fixing the phantom `FROM entities` query, and it made
+      // NORTHSTAR take THIRTY-FOUR SECONDS - measured: RUN "NORTHSTAR" returned ms:34144.
+      //
+      // WHY THAT WAS SO MUCH WORSE THAN IT LOOKS: aura-think awaits NORTHSTAR on the request path.
+      // refreshSoulIfStale() -> soulFingerprint() -> _northStarBlock() -> _northStarText() ->
+      // core("NORTHSTAR"), and its _nsCache is an INSTANCE field, so a COLD Durable Object always
+      // misses it. Every cold turn therefore sat waiting on a 34-second cross-worker call before she
+      // could answer, which occupies the object and is exactly what produces
+      // "blockConcurrencyWhile() waited for too long" -> error code 1101.
+      //
+      // A KV read is ~10-100ms and I put 200 of them in a loop. The broken query this replaced failed
+      // instantly into an empty catch, so the fix was slower than the bug by four orders of magnitude.
+      //
+      // NOW: the rollup is CACHED IN KV and recomputed at most every 5 minutes, and the sample is 50
+      // rather than 200. Gate 1 (does a merchant exist) never needed it - that is entityTotal, one
+      // query. Gate 2 (is one active) tolerates a five-minute-old number; nothing here is a live
+      // control loop. On a cache hit this costs one KV read instead of two hundred.
+      const ROLL_KEY = "northstar:state_rollup";
+      const ROLL_TTL_MS = 5 * 60 * 1000;
+      let cached = null;
+      try { cached = JSON.parse((await env.AURA_KV.get(ROLL_KEY)) || "null"); } catch {}
+      if (cached && cached.at && (Date.now() - cached.at) < ROLL_TTL_MS) {
+        pipeline = cached.pipeline || {};
+        activeMerchants = pipeline.active || 0;
+        pipelineNote = (cached.note || null);
+      } else {
+        const rows = (await db.prepare("SELECT id FROM pta_entities ORDER BY created_at DESC LIMIT 50").all().catch(() => null))?.results || [];
+        // Parallel, and only 50 - this runs at most once every five minutes, never on a warm read.
+        const states = await Promise.all(rows.map(async (row) => {
+          try { return (await env.AURA_KV.get(`pta:state:${row.id}`)) || "unknown"; } catch { return "unknown"; }
+        }));
+        for (const st of states) pipeline[st] = (pipeline[st] || 0) + 1;
+        activeMerchants = pipeline.active || 0;
+        if (entityTotal > rows.length) {
+          pipelineNote = "state sampled over the " + rows.length + " newest of " + entityTotal +
+                         " entities, cached for 5 minutes - state is one KV key per entity, so this " +
+                         "read is bounded deliberately and kept off the hot path";
+        }
+        try { await env.AURA_KV.put(ROLL_KEY, JSON.stringify({ at: Date.now(), pipeline, note: pipelineNote }),
+                                    { expirationTtl: 3600 }); } catch {}
       }
     }
   } catch {}
@@ -29225,13 +29258,15 @@ async function auditBusiness(env) {
     const db = env.AURA_MEMORY;
     if (db) {
       const total = Number((await db.prepare("SELECT COUNT(*) AS n FROM pta_entities").first().catch(() => null))?.n || 0);
-      const ids = (await db.prepare("SELECT id FROM pta_entities ORDER BY created_at DESC LIMIT 200").all().catch(() => null))?.results || [];
+      // SAME 200-SEQUENTIAL-KV-READS MISTAKE AS northStar, FIXED THE SAME WAY (2026-07-30). AUDIT
+      // measured 34,734ms for the same reason NORTHSTAR measured 34,144ms. 50, in parallel, and the
+      // audit is on-demand rather than on the hot path - but 200 serial round-trips is wrong anywhere.
+      const ids = (await db.prepare("SELECT id FROM pta_entities ORDER BY created_at DESC LIMIT 50").all().catch(() => null))?.results || [];
       const roll = {};
-      for (const row of ids) {
-        let st = "unknown";
-        try { st = (await env.AURA_KV.get(`pta:state:${row.id}`)) || "unknown"; } catch {}
-        roll[st] = (roll[st] || 0) + 1;
-      }
+      const states = await Promise.all(ids.map(async (row) => {
+        try { return (await env.AURA_KV.get(`pta:state:${row.id}`)) || "unknown"; } catch { return "unknown"; }
+      }));
+      for (const st of states) roll[st] = (roll[st] || 0) + 1;
       if (total > 0) {
         snap.pipeline = roll;
         snap.entities_total = total;

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.853-2026-07-30";
+const BUILD = "aura-core-v4.9.854-2026-07-30";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -13768,6 +13768,130 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           return { cmd: "GRAPH_GET", payload: { ok: true, entity: { id: node.id, type: node.type, name: node.name, key: node.identity_key, props: meta, created_at: node.created_at, updated_at: node.updated_at }, out_edges: out.results || [], in_edges: inc.results || [] } };
         } catch (e) { return { cmd: "GRAPH_GET", payload: { ok: false, error: String(e.message) } }; } }
     }
+    case "FACT": {
+      // ══ SEMANTIC MEMORY WITH TEMPORAL VALIDITY ── THE OPERATION EVERYTHING ELSE FAILS WITHOUT ══
+      //
+      //   FACT SET <subject> <predicate> <value>   - supersedes whatever was true before
+      //   FACT GET <subject> [predicate]           - what is TRUE NOW
+      //   FACT HISTORY <subject> <predicate>       - every version, with the window it was true for
+      //   FACT FORGET <subject> <predicate>        - ends the current fact without asserting a new one
+      //
+      // WHY THIS EXISTS. The survey consensus is that a memory system must do five things - store,
+      // retrieve, update, compress, forget - and that "most teams build the first two and skip the
+      // rest, and that is where the failures accumulate." Aura had store (archive + Vectorize),
+      // retrieve (FTS + semantic) and compress (DISTILL). She had no UPDATE: `valid_until` appeared
+      // zero times in either worker, so the archive was append-only and, in the words of the same
+      // survey, "the old version of a fact and the new version coexist, and the agent has to guess
+      // which is current."
+      //
+      // That is not theoretical here. In one day the compaction threshold went 40000 -> 18000 ->
+      // 40000 and chatRecovery went true -> false -> true. All six statements are in her archive,
+      // all equally true, none pointing at the others.
+      //
+      // EPISODIC AND SEMANTIC ARE DIFFERENT THINGS AND THIS IS THE SPLIT EVERY PRODUCTION SYSTEM
+      // CONVERGED ON. The archive holds what HAPPENED - moments, append-only, correctly permanent,
+      // because an event does not stop having occurred. This holds what IS TRUE - and truth changes.
+      // Conflating them is why an append-only store degrades: it is right for one and wrong for the
+      // other.
+      //
+      // SUPERSESSION, NOT DELETION. Setting a new value closes the old one with a valid_until and a
+      // pointer to its replacement. Nothing is destroyed - "old entries marked invalid rather than
+      // deleted", which is what AWS AgentCore does and what PTA_REVOKE already does for edges. The
+      // same doctrine, applied to facts: history is preserved forever, only currency changes.
+      //
+      // THIS IS WHAT LAYER B AND LAYER D BOTH NEED. An interest score built on facts that never
+      // expire is scoring a person who no longer exists, and a wake gate reading stale memory
+      // interrupts about something already resolved. Supersession is load-bearing for both.
+      if (!isOp) return { cmd: "FACT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const fDb = env.AURA_MEMORY;
+      if (!fDb) return { cmd: "FACT", payload: { ok: false, error: "no D1 binding" } };
+      try {
+        await fDb.prepare(
+          "CREATE TABLE IF NOT EXISTS facts (id TEXT PRIMARY KEY, subject TEXT NOT NULL, predicate TEXT NOT NULL, " +
+          "value TEXT, valid_from TEXT NOT NULL, valid_until TEXT, superseded_by TEXT, source TEXT)").run();
+        await fDb.prepare("CREATE INDEX IF NOT EXISTS idx_facts_current ON facts (subject, predicate, valid_until)").run();
+      } catch (e) {
+        await noteSwallowed(env, "FACT:schema", e);
+        return { cmd: "FACT", payload: { ok: false, error: "SCHEMA_FAILED", detail: String(e && e.message || e) } };
+      }
+      const fSub = (args[0] || "").toUpperCase();
+      const fRest = rest.slice((args[0] || "").length).trim();
+      const fArgs = fRest.split(/\s+/);
+      const now = new Date().toISOString();
+
+      if (fSub === "SET") {
+        const subject = fArgs[0], predicate = fArgs[1];
+        const value = fRest.slice(fRest.indexOf(predicate) + (predicate || "").length).trim();
+        if (!subject || !predicate || !value)
+          return { cmd: "FACT", payload: { ok: false, error: "Usage: FACT SET <subject> <predicate> <value>" } };
+        const id = "fact_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+        let prior = null;
+        try {
+          prior = await fDb.prepare("SELECT id, value FROM facts WHERE subject=? AND predicate=? AND valid_until IS NULL")
+            .bind(subject, predicate).first();
+        } catch (e) {
+          // A FAILED CURRENCY CHECK MUST NOT MINT A SECOND CURRENT FACT. Two rows with valid_until
+          // NULL for the same subject+predicate is precisely the ambiguity this whole command exists
+          // to remove - refusing is the only correct answer.
+          await noteSwallowed(env, "FACT:currency_check", e);
+          return { cmd: "FACT", payload: { ok: false, error: "CURRENCY_CHECK_FAILED",
+            note: "I could not tell what was true before, so I did not write what is true now. Two " +
+                  "current values for one predicate is the exact ambiguity this replaces." } };
+        }
+        if (prior && String(prior.value) === String(value))
+          return { cmd: "FACT", payload: { ok: true, unchanged: true, id: prior.id, subject, predicate, value,
+            note: "already true and still true - restating a fact does not create a new version" } };
+        if (prior) {
+          await fDb.prepare("UPDATE facts SET valid_until=?, superseded_by=? WHERE id=?").bind(now, id, prior.id).run();
+        }
+        await fDb.prepare("INSERT INTO facts (id, subject, predicate, value, valid_from, valid_until, superseded_by, source) " +
+          "VALUES (?, ?, ?, ?, ?, NULL, NULL, ?)").bind(id, subject, predicate, value, now, "operator").run();
+        await auraRemember(env, "A fact changed: " + subject + " " + predicate + " is now \"" + value.slice(0, 120) +
+          "\"" + (prior ? " (was \"" + String(prior.value).slice(0, 80) + "\")" : " (first recorded)"), "fact");
+        return { cmd: "FACT", payload: { ok: true, id, subject, predicate, value, valid_from: now,
+          superseded: prior ? { id: prior.id, was: prior.value, closed_at: now } : null,
+          note: prior ? "The old value is not deleted - it is closed with a valid_until and points at this one."
+                      : "First value for this subject and predicate." } };
+      }
+
+      if (fSub === "FORGET") {
+        const subject = fArgs[0], predicate = fArgs[1];
+        if (!subject || !predicate) return { cmd: "FACT", payload: { ok: false, error: "Usage: FACT FORGET <subject> <predicate>" } };
+        const r = await fDb.prepare("UPDATE facts SET valid_until=? WHERE subject=? AND predicate=? AND valid_until IS NULL")
+          .bind(now, subject, predicate).run();
+        return { cmd: "FACT", payload: { ok: true, subject, predicate, closed: r?.meta?.changes ?? 0, at: now,
+          note: "The fact is no longer current. It is NOT asserted false and it is NOT deleted - " +
+                "'we no longer know this' and 'this is untrue' are different claims." } };
+      }
+
+      if (fSub === "HISTORY") {
+        const subject = fArgs[0], predicate = fArgs[1];
+        if (!subject) return { cmd: "FACT", payload: { ok: false, error: "Usage: FACT HISTORY <subject> [predicate]" } };
+        const rows = predicate
+          ? (await fDb.prepare("SELECT * FROM facts WHERE subject=? AND predicate=? ORDER BY valid_from ASC").bind(subject, predicate).all())?.results
+          : (await fDb.prepare("SELECT * FROM facts WHERE subject=? ORDER BY valid_from ASC").bind(subject).all())?.results;
+        return { cmd: "FACT", payload: { ok: true, subject, predicate: predicate || null,
+          versions: (rows || []).length,
+          history: (rows || []).map((r) => ({ predicate: r.predicate, value: r.value, from: r.valid_from,
+            until: r.valid_until, current: !r.valid_until, superseded_by: r.superseded_by })),
+          note: "Every version and the window it was true for. Nothing here was deleted." } };
+      }
+
+      // default: GET - what is true NOW
+      const subject = fArgs[0] || (fSub === "GET" ? null : args[0]);
+      const predicate = fArgs[1] || null;
+      if (!subject) return { cmd: "FACT", payload: { ok: false, error: "Usage: FACT GET <subject> [predicate]" } };
+      const rows = predicate
+        ? (await fDb.prepare("SELECT * FROM facts WHERE subject=? AND predicate=? AND valid_until IS NULL").bind(subject, predicate).all())?.results
+        : (await fDb.prepare("SELECT * FROM facts WHERE subject=? AND valid_until IS NULL ORDER BY predicate ASC").bind(subject).all())?.results;
+      return { cmd: "FACT", payload: { ok: true, subject, predicate: predicate || null,
+        current: (rows || []).map((r) => ({ predicate: r.predicate, value: r.value, since: r.valid_from })),
+        count: (rows || []).length,
+        note: "Only what is true NOW. Superseded values are excluded by default and are in FACT HISTORY.",
+        scope: "This is SEMANTIC memory - what is true. The archive holds EPISODIC memory - what " +
+               "happened - and stays append-only, because an event does not stop having occurred." } };
+    }
+
     case "SWALLOWED": {
       // ══ WHAT FAILED QUIETLY, AS A NUMBER ═══════════════════════════════════════════════════
       //   SWALLOWED            -> today
@@ -13798,7 +13922,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             "the serious ones - they mean the honored-exit guard could not verify and refused to " +
             "contact somebody rather than risk contacting a person who permanently opted out.",
         instrumented: ["isOptedOut:kv_identity", "isOptedOut:d1_resolve", "isOptedOut:kv_pta", "isOptedOut:outer",
-          "MOMENT_OPTOUT:d1_lookup", "GRAPH_PUT:existence_check", "connect_edge:existence_check"],
+          "MOMENT_OPTOUT:d1_lookup", "GRAPH_PUT:existence_check", "connect_edge:existence_check",
+          "FACT:schema", "FACT:currency_check"],
         honest_gap: "The 1,423 figure is a census, not a to-do list. Classified: 71 supply a default " +
                     "on failure (correct), 2 are cache reads (correct), ~102 are record-not-found " +
                     "lookups where null legitimately means no record, and 15 are truth numbers. Of " +

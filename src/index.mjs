@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.846-2026-07-30";
+const BUILD = "aura-core-v4.9.847-2026-07-30";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -23902,6 +23902,36 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         })(),
         meter_health: insane ? ("CORRUPT - " + insane + " impossible cost(s) refused; a rate table is wrong")
                              : "sane (no impossible costs refused)",
+        // ══ UNATTENDED JOBS - THE THING THAT ACTUALLY BURNED A WEEK (2026-07-30) ══════════════════
+        // Every one of these can spend with no human in the loop, is switched on by a KV key with no
+        // owner and no timestamp, and reports its spend under a caller shared with real user turns.
+        // "hormuz" sat in situation:hot_topics from an old test and ran SITUATION_BRIEF every four
+        // minutes for days. The meter was honest the whole time; nothing NAMED the job.
+        // Listed here so the switches are one command away instead of requiring somebody to remember
+        // which KV keys gate which cron helper.
+        unattended: await (async () => {
+          try {
+            const day = new Date().toISOString().slice(0, 10);
+            const read = async (k) => { try { return (await env.AURA_KV.get(k)) || null; } catch { return null; } };
+            const live = (v) => { try { const p = JSON.parse(v || "[]"); return Array.isArray(p) ? p.length : 0; } catch { return 0; } };
+            const hot = await read("situation:hot_topics");
+            const sched = await read("schedule:due_queue");
+            const wf = await read("workflow:due_queue");
+            const ais = await read("ais:watchlist");
+            const briefs = parseInt((await read("cron:unattended:briefs:" + day)) || "0", 10) || 0;
+            return {
+              note: "jobs that can spend without anyone asking. A non-zero 'on' is money moving on a timer.",
+              briefs_today: briefs,
+              switches: {
+                "situation:hot_topics": { on: live(hot), spends: "MODEL CALLS - SITUATION_BRIEF per topic every 4 min, ~33k tokens each, capped at 48/day" },
+                "schedule:due_queue":   { on: live(sched), spends: "SENDS EMAIL - drainSchedule fires due items" },
+                "workflow:due_queue":   { on: live(wf), spends: "runs commands - drainWorkflows" },
+                "ais:watchlist":        { on: live(ais), spends: "outbound API per vessel, every minute" },
+              },
+              clear_with: "SETKV <key> []",
+            };
+          } catch (e) { return { error: String(e && e.message || e) }; }
+        })(),
         balances,
         ...(!_wantDetail ? { inventory: "run `AIMARGIN detail` for what is built and what is deliberately not" } : {}),
         ...(!_wantDetail ? {} : { built: ["policy engine (text/image/core/video/style lanes)", "5 providers with measured floors",
@@ -27151,19 +27181,50 @@ async function deployConsole(env) {
 // every single minute - the brief is "a few minutes fresh," which for a situation read is correct.
 async function precomputeHotBriefs(env) {
   try {
+    // ══ THIS JOB COST A WEEK OF TOKENS AND NOTHING NAMED IT (2026-07-30) ═════════════════════════
+    // One topic ("hormuz") was left in situation:hot_topics while testing. This function then ran
+    // SITUATION_BRIEF for it every 4 minutes, forever - a feed-loaded model call around 33,000 tokens
+    // a shot. xAI's usage chart showed a flat week and then a step change; AIMARGIN folded the spend
+    // into `modelFor`, where it was indistinguishable from Aaron's own questions. Nobody could see it
+    // because nothing counted it separately and nothing capped it.
+    //
+    // THREE GUARDS, none of which change what the job DOES when it is legitimately wanted:
+    //   1. A HARD DAILY CEILING. 12 topics refreshing every 4 minutes is up to 4,320 briefs a day.
+    //      No human use of this feature needs that. At the cap it stops and says so.
+    //   2. A COUNTER PER DAY, at cron:unattended:briefs:<day>, so an unattended job is a NUMBER
+    //      somebody can read on day one instead of a shape on a vendor's chart in week two.
+    //   3. A LOUD LOG on every real brief, so a live tail shows unattended spend as it happens.
+    // The general fix - a caller label per unattended job so AIMARGIN names them all - is still owed.
+    // This is the one that already burned us, guarded first.
+    const DAILY_CAP = 48;
+    const day = new Date().toISOString().slice(0, 10);
+    const capKey = "cron:unattended:briefs:" + day;
+    let done = 0;
+    try { done = parseInt((await env.AURA_KV.get(capKey)) || "0", 10) || 0; } catch {}
+    if (done >= DAILY_CAP) {
+      console.warn("[UNATTENDED] brief precompute at its daily cap (" + DAILY_CAP + ") - skipping. " +
+                   "Clear situation:hot_topics if this is not wanted.");
+      return;
+    }
     const REFRESH_MS = 4 * 60 * 1000; // refresh each hot brief at most every 4 minutes
     let topics = [];
     try { const t = await env.AURA_KV.get("situation:hot_topics"); if (t) { const p = JSON.parse(t); if (Array.isArray(p)) topics = p.filter(x => typeof x === "string"); } } catch {}
     if (!topics.length) return; // nothing marked hot -> nothing to precompute
     const now = Date.now();
     for (const topic of topics.slice(0, 12)) { // hard cap so a long list can't run away
+      if (done >= DAILY_CAP) break;
       try {
         const stampKey = `situation:brief_cache:${topic}`;
         let due = true;
         try { const existing = await env.AURA_KV.get(stampKey); if (existing) { const ej = JSON.parse(existing); if (ej && ej.computed_at && (now - new Date(ej.computed_at).getTime()) < REFRESH_MS) due = false; } } catch {}
         if (!due) continue;
+        // A REAL MODEL CALL IS ABOUT TO HAPPEN THAT NOBODY ASKED FOR. Say so, and count it.
+        console.warn("[UNATTENDED] SITUATION_BRIEF " + topic + " - nobody asked for this; " +
+                     (done + 1) + "/" + DAILY_CAP + " today. Switch: situation:hot_topics");
         // recompute: pull fresh feeds then brief, store with an honest freshness stamp
         const br = await processCommand(`SITUATION_BRIEF ${topic}`, env, true);
+        done++;
+        try { await env.AURA_KV.put(capKey, String(done), { expirationTtl: 3 * 24 * 3600 }); } catch {}
         const payload = (br && br.payload) ? br.payload : br;
         if (payload && payload.ok) {
           await env.AURA_KV.put(stampKey, JSON.stringify({ topic, brief: payload, computed_at: new Date().toISOString() }), { expirationTtl: 3600 }).catch(() => {});

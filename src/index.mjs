@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.859-2026-07-31-one-resolver-one-ledger";
+const BUILD = "aura-core-v4.9.860-2026-07-31-every-lane-priced";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -452,7 +452,16 @@ async function _egressCore(env, rec) {
     led.by_provider ??= {}; led.by_caller ??= {}; led.by_model ??= {}; led.by_endpoint ??= {};
     led.by_tenant ??= {};
     led.no_usage ??= 0; led.errors ??= 0; led.cost_usd ??= 0;
-    led.tokens_in ??= 0; led.tokens_out ??= 0; led.cached_in ??= 0; led.calls ??= 0;
+    // ══ COST-ONLY ADJUSTMENT (2026-07-31) ══════════════════════════════════════════════════════
+    // Provider-routed images DO reach egress through pfetch - but as a call with NO USAGE, so they
+    // priced at $0. Measured: three grok images read core:image {calls: 3, cost: 0} while the images
+    // bucket said $0.006. This hole was declared closed after fixing only the @cf/ path, on the
+    // assumption that "pfetch already records it" meant pfetch already PRICED it. It records the
+    // call. It cannot price per-image billing, because there are no tokens to price.
+    // So the lane states its cost AFTER the fact, and the call is already counted - this adds money
+    // and touches no counter. Getting that backwards would double the REQUEST count, which is the
+    // one figure that reconciles directly against a provider's own dashboard.
+    const _costOnly = rec.cost_only === true;
     const u = rec.usage || {};
     const tin  = Number(u.prompt_tokens ?? u.input_tokens ?? 0) || 0;
     // ══ REASONING TOKENS ARE BILLED AND WERE NEVER COUNTED (2026-07-23) ═══════════════════
@@ -465,8 +474,8 @@ async function _egressCore(env, rec) {
     const tout = (Number(u.completion_tokens ?? u.output_tokens ?? 0) || 0) + treason;
     const tcache = Number(u.cache_read_input_tokens ?? u.prompt_tokens_details?.cached_tokens ?? 0) || 0;
     const cwrite = Number(u.cache_creation_input_tokens ?? 0) || 0;
-    led.calls += 1;
-    if (!rec.status || rec.status >= 400) {
+    if (!_costOnly) led.calls += 1;
+    if (!_costOnly && (!rec.status || rec.status >= 400)) {
       led.errors += 1;
       // WHICH provider and WHICH endpoint failed. `errors: 4` with no attribution is a number nobody
       // can act on - it says something broke and refuses to say what.
@@ -474,11 +483,11 @@ async function _egressCore(env, rec) {
       const ek = rec.provider + " " + (rec.status || "network") ;
       led.errors_by[ek] = (led.errors_by[ek] || 0) + 1;
     }
-    led.tokens_in += tin; led.tokens_out += tout; led.cached_in += tcache;
+    if (!_costOnly) { led.tokens_in += tin; led.tokens_out += tout; led.cached_in += tcache; }
     // v4.9.719: cache_write was priced but never accumulated here, so egress:<day> was missing the one
     // field meter:tokens had that it did not. It is the last thing standing between "egress has most of
     // it" and "egress has all of it", which is what lets the legacy readers below be repointed safely.
-    led.cache_write = (led.cache_write || 0) + cwrite;
+    if (!_costOnly) led.cache_write = (led.cache_write || 0) + cwrite;
     // PRICE IT. The first version recorded aura-core's tokens and left cost at zero, so brainFetch's
     // Anthropic traffic showed up as 3 calls and 6,356 tokens for $0.00 - visible at last, and still
     // wrong in the direction that matters for a margin engine.
@@ -509,10 +518,16 @@ async function _egressCore(env, rec) {
     const _stated = rec.cost_usd != null ? Number(rec.cost_usd) : null;
     const cost = (_stated != null && isFinite(_stated) && _stated >= 0) ? _stated : Math.max(0, _raw);
     led.cost_usd = +((led.cost_usd || 0) + cost).toFixed(6);
+    // cost_fixed is the part of this row's cost that did NOT come from tokens - per image, per
+    // second, per neuron. The reprice-at-read pass recomputes cost from tokens, so without this a
+    // per-image row is repriced to $0 the moment anyone reads it: correct at write, zero at read.
+    // Token cost is DERIVED and must reprice; a stated cost is already the real number and must not.
+    const _fixed = (_stated != null && isFinite(_stated) && _stated >= 0) ? _stated : 0;
     const bump = (bag, key) => {
       bag[key] = bag[key] || { calls: 0, in: 0, out: 0, cached: 0, cost: 0 };
-      bag[key].calls += 1; bag[key].in += tin; bag[key].out += tout; bag[key].cached += tcache;
+      if (!_costOnly) { bag[key].calls += 1; bag[key].in += tin; bag[key].out += tout; bag[key].cached += tcache; }
       bag[key].cost = +(((bag[key].cost || 0) + cost)).toFixed(6);
+      if (_fixed > 0) bag[key].cost_fixed = +(((bag[key].cost_fixed || 0) + _fixed)).toFixed(8);
     };
     bump(led.by_provider, rec.provider);
     bump(led.by_caller, rec.caller || "unlabelled");
@@ -537,11 +552,16 @@ async function _egressCore(env, rec) {
     //             and the margin is the difference. Their spend lands on our invoice, so isolation
     //             and quota stop being reporting niceties and become the product.
     bump(led.by_tenant, rec.tenant || "aura");
-    if (!tin && !tout && /completions|messages|generateContent|generations/.test(path)) led.no_usage = (led.no_usage || 0) + 1;
+    if (!_costOnly && !tin && !tout && /completions|messages|generateContent|generations/.test(path)) led.no_usage = (led.no_usage || 0) + 1;
     led.last = new Date().toISOString();
     await kv.put(k, JSON.stringify(led), { expirationTtl: 120 * 24 * 3600 });
-    // and the append-only row in the Durable Object - atomic, no per-key write ceiling
-    await _egressDO(env, rec);
+    // and the append-only row in the Durable Object - atomic, no per-key write ceiling.
+    // A cost-only row is SKIPPED here on purpose: _egressDO appends a CALL, and this row is an
+    // adjustment to a call the DO already has. Sending it would inflate the DO's call count and
+    // break the KV-vs-DO parity check, which is the stated condition for retiring the KV rollup.
+    // KNOWN AND ACCEPTED: the DO will therefore be short by the per-image cost until it learns the
+    // same adjustment. Written down rather than discovered later as an unexplained divergence.
+    if (!_costOnly) await _egressDO(env, rec);
   } catch (e) { try { console.warn("[EGRESS] record failed (call still succeeded): " + (e && e.message)); } catch {} }
 }
 
@@ -24266,7 +24286,17 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           const R = _rateFor(model);
           const tin = Number(m.in) || 0, tout = Number(m.out) || 0, tc = Number(m.cached) || 0;
           const uncached = (tin >= tc) ? Math.max(0, tin - tc) : tin;
-          const c = (uncached * R.in + tc * R.cacheRead + tout * R.out) / 1e6;
+          // ══ NON-TOKEN COST SURVIVED THE WRITE AND DIED AT THE READ (fixed 2026-07-31) ═══════
+          // This pass recomputes every row from TOKENS, which is right for anything billed per
+          // token and silently wrong for anything that is not. Measured the day the @cf/ image
+          // lane went live: by_provider carried cloudflare $0.000634 while by_model reported
+          // `@cf/black-forest-labs/flux-1-schnell: 0` in the same payload - correct at write,
+          // zero at read, because zero tokens times any rate is zero.
+          // cost_fixed is the stated, already-real part: per image, per second, per neuron. It is
+          // ADDED BACK rather than repriced, because there is no rate to reprice it with - the
+          // number IS the measurement. Token cost stays derived so calibrating still corrects
+          // history, which is the whole point of pricing at read.
+          const c = (uncached * R.in + tc * R.cacheRead + tout * R.out) / 1e6 + (Number(m.cost_fixed) || 0);
           byModel[model] = +c.toFixed(6); total += c;
         }
         const atWrite = Number(egressToday.cost_usd) || 0;
@@ -31129,14 +31159,26 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // addSpend writes meter:spend - a LEGACY key. spend_today reads egress:<day>. So the line above
   // has been fixing a hole in a ledger nobody looks at any more, which is why images kept coming
   // back as $0 in AIMARGIN however many times this was "closed".
-  // Provider-routed images already land in egress via pfetch, so recording them again here would
-  // double-count. ONLY the binding path (@cf/, which never touches pfetch) is written here.
-  if (model.startsWith("@cf/")) {
+  //
+  // BOTH PATHS, and the difference is only whether the CALL is already counted:
+  //   @cf/  - env.AI.run() is a binding, never touches pfetch. Nothing recorded it. Full row.
+  //   xai / openai / google - pfetch recorded the call, with no usage, so it priced at $0.
+  //           Cost-only adjustment: add the money, touch no counter.
+  // The first version of this fix covered only the @cf/ branch, on the assumption that "pfetch
+  // already records it" meant pfetch already priced it. It records the call; it cannot price
+  // per-image billing. Pinning images back to grok reopened the hole within the hour.
+  if (costUsd != null && costUsd >= 0) {
     try {
+      const _cf = model.startsWith("@cf/");
       await _egressCore(env, {
-        provider: "cloudflare", caller: "core:image", model,
-        endpoint: "https://workers-ai/" + model, status: 200,
-        usage: null, cost_usd: costUsd,
+        provider: _cf ? "cloudflare" : (/^grok-imagine/i.test(model) ? "xai"
+                     : /^(gpt-image|dall-e)/i.test(model) ? "openai"
+                     : /gemini|nano-banana/i.test(model) ? "google" : "unknown"),
+        caller: "core:image", model,
+        endpoint: _cf ? "https://workers-ai/" + model : "https://image/" + model,
+        status: 200, usage: null,
+        cost_usd: costUsd,
+        cost_only: !_cf,          // pfetch already counted the call for every provider-routed image
       });
     } catch (e) { try { console.warn("[IMG] egress write failed: " + (e && e.message)); } catch {} }
   }

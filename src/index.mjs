@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.861-2026-07-31-text-only-denominator";
+const BUILD = "aura-core-v4.9.862-2026-07-31-anthropic-date-range";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -28149,7 +28149,14 @@ async function calibrateAll(env, day) {
 
   for (const [prov, ours] of Object.entries(eg.by_provider)) {
     const b = billed[prov];
-    if (!b || !b.ok) { out.skipped[prov] = (b && b.error) || "no billing adapter"; continue; }
+    // The adapters already return `called` (the exact URL) and `status` on failure, and this line
+    // used to drop both - so a broken adapter reported a bare message and every diagnosis started
+    // with a re-read of the source. Surface what it already knows.
+    if (!b || !b.ok) {
+      out.skipped[prov] = (b && b.error) || "no billing adapter";
+      if (b && (b.called || b.status)) out.skipped[prov + "_detail"] = { status: b.status || null, called: b.called || null };
+      continue;
+    }
 
     // TEXT ONLY on both sides of the division, or the ratio is meaningless.
     let theirs = 0;
@@ -30382,8 +30389,21 @@ async function _trueCostAnthropic(env, day) {
   // So the call now matches the reference exactly. On failure it returns the URL it actually called,
   // because an adapter that fails without saying what it asked for costs another round trip to
   // diagnose - and this one cost several.
+  // ══ THE 07-23 "FIX" IS WHAT BROKE IT (found + fixed 2026-07-31) ═══════════════════════════════
+  // The note above says ending_at was REMOVED because "the documented example does not send
+  // ending_at at all". That was reasoned from Anthropic's doc page and never tested against the live
+  // endpoint - and it made every call fail with "Invalid date range: ending date must be after
+  // starting date", which is exactly the error it was written to fix. Recorded as done, never true.
+  //
+  // PROVEN BY A CALLER THAT ALREADY WORKS: RAW_COST hits this same endpoint with BOTH starting_at
+  // AND ending_at and returns http 200 with full per-day, per-model, per-token_type rows. Two callers,
+  // one endpoint, one works - so the difference between them IS the bug, and no guessing was needed.
+  // The lesson worth more than the line: when one caller works and another does not, diff the callers
+  // before reading any documentation.
+  const _next = new Date(new Date(day + "T00:00:00Z").getTime() + 86400000).toISOString().slice(0, 10);
   const url = "https://api.anthropic.com/v1/organizations/cost_report?starting_at=" + day +
-              "T00:00:00Z&bucket_width=1d&limit=1&group_by[]=description";
+              "T00:00:00Z&ending_at=" + _next + "T00:00:00Z" +
+              "&bucket_width=1d&limit=1&group_by[]=description";
   const r = await fetch(url, { headers: { "x-api-key": key, "anthropic-version": "2023-06-01" } });
   const d = await r.json().catch(() => ({}));
   if (!r.ok) return { ok: false, error: (d?.error?.message || JSON.stringify(d)).slice(0, 200),

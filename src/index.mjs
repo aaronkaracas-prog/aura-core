@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.862-2026-07-31-anthropic-date-range";
+const BUILD = "aura-core-v4.9.863-2026-07-31-anthropic-clamp-now";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -30400,9 +30400,22 @@ async function _trueCostAnthropic(env, day) {
   // one endpoint, one works - so the difference between them IS the bug, and no guessing was needed.
   // The lesson worth more than the line: when one caller works and another does not, diff the callers
   // before reading any documentation.
-  const _next = new Date(new Date(day + "T00:00:00Z").getTime() + 86400000).toISOString().slice(0, 10);
+  // ══ THE ERROR MESSAGE WAS LYING ABOUT THE CAUSE (2026-07-31, second pass) ═════════════════════
+  // Restoring ending_at was necessary and not sufficient. The surfaced URL showed the request as
+  //   starting_at=2026-07-31T00:00:00Z  ending_at=2026-08-01T00:00:00Z  -> 400
+  // and August 1st IS after July 31st. The real fault is that ending_at was IN THE FUTURE: asking for
+  // today's bucket means asking for a day that has not finished. RAW_COST, which works, always ends at
+  // `now`. Anthropic reports that as "ending date must be after starting date", which is not what is
+  // wrong - and two sessions were spent on the date ORDER because the message said so.
+  // LESSON: a provider's error text is a hint, not a diagnosis. The working caller is the diagnosis.
+  //
+  // Clamp to now, never the future. A partial current day returns partial billing, which is honest;
+  // Anthropic's billing lags anyway, so calibrate YESTERDAY for a complete figure.
+  const _dayEnd = new Date(day + "T00:00:00Z").getTime() + 86400000;
+  const _endMs = Math.min(_dayEnd, Date.now());
+  const _endIso = new Date(_endMs).toISOString().slice(0, 19) + "Z";
   const url = "https://api.anthropic.com/v1/organizations/cost_report?starting_at=" + day +
-              "T00:00:00Z&ending_at=" + _next + "T00:00:00Z" +
+              "T00:00:00Z&ending_at=" + _endIso +
               "&bucket_width=1d&limit=1&group_by[]=description";
   const r = await fetch(url, { headers: { "x-api-key": key, "anthropic-version": "2023-06-01" } });
   const d = await r.json().catch(() => ({}));

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.860-2026-07-31-every-lane-priced";
+const BUILD = "aura-core-v4.9.861-2026-07-31-text-only-denominator";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -28033,9 +28033,11 @@ async function discoverPrices(env) {
     }
     await env.AURA_KV.put("config:rate:published", JSON.stringify(out.models));
     out.ok = true;
-    out.note = "Published prices straight from xAI. price-per-million = their value / 100000; images are " +
-               "image_price * 1e-11. Nothing derived, nothing to calibrate, nothing to reset. Re-run after " +
-               "a vendor announcement - `changed` will name anything that moved.";
+    out.note = "Published prices straight from xAI. price-per-million = their value / 10000; images are " +
+               "image_price * 1e-10 - ONE unit, 1e-10 USD, for tokens and images alike. Corrected 2026-07-31 " +
+               "from /100000 and 1e-11, which were 10x low and confirmed themselves against an equally 10x-low " +
+               "rate table. Settled by a controlled burn: 3 images moved the account $0.06. Nothing derived, " +
+               "nothing to calibrate, nothing to reset. Re-run after a vendor announcement - `changed` names it.";
     if (out.changed.length) console.warn("[PRICES] CHANGED: " + out.changed.map((c) => c.model).join(","));
     return out;
   } catch (e) { return { ok: false, error: String(e?.message ?? e).slice(0, 200) }; }
@@ -28155,7 +28157,15 @@ async function calibrateAll(env, day) {
       if (/imagine|image|video|dall|sora/i.test(label)) continue;
       theirs += Number(v) || 0;
     }
-    const oursUsd = Number(ours.cost) || 0;
+    // ══ AND TEXT-ONLY ON OUR SIDE TOO (fixed 2026-07-31) ══════════════════════════════════════
+    // The loop above strips image/video from THEIR billing, then this line took our WHOLE provider
+    // cost - which since v4.9.860 includes per-image and per-neuron charges via cost_fixed. Media out
+    // of the numerator, media still in the denominator: the exact asymmetry the comment above warns
+    // about, reintroduced by the fix that finally got images onto the ledger at all.
+    // Measured the day it landed: xai ours.cost $0.039328 of which $0.02 was a single grok image, so
+    // the true text denominator was $0.019328 and any ratio derived here would have come out HALF.
+    // cost_fixed is exactly the non-token part, so subtracting it leaves token spend and nothing else.
+    const oursUsd = Math.max(0, (Number(ours.cost) || 0) - (Number(ours.cost_fixed) || 0));
     if (theirs <= 0) { out.skipped[prov] = "no text billing on " + d; continue; }
     if (oursUsd <= 0) { out.skipped[prov] = "we metered $0 - denominator unusable"; continue; }
 

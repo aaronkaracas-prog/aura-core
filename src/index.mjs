@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.857-2026-07-30";
+const BUILD = "aura-core-v4.9.859-2026-07-31-one-resolver-one-ledger";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -491,7 +491,23 @@ async function _egressCore(env, rec) {
     // and gets refused at the write instead of offsetting real spend in the day total. (See server.ts.)
     const _raw = (uncached * R.in + tcache * R.cacheRead + cwrite * R.cacheWrite + tout * R.out) / 1e6;
     if (_raw < 0) { try { console.warn("[EGRESS] REFUSED negative cost " + _raw.toFixed(6) + " for " + (rec.model || "?")); } catch {} }
-    const cost = Math.max(0, _raw);
+    // ══ NOT EVERYTHING THAT COSTS MONEY HAS TOKENS (2026-07-31) ════════════════════════════════
+    // egress:<day> calls itself "the single writer and the authority for every figure above", and it
+    // was not: it could only price things billed per token. Images bill per image, video per second,
+    // Workers AI per neuron - so three whole lanes wrote units into their own private ledgers and
+    // contributed $0 here. spend_today read egress, so it excluded them.
+    //
+    // This is the same shape as the retired-writer bug, one level out. The image lane was PATCHED for
+    // exactly this once - the comment in auraGenerateImage still reads "the paid path recorded a
+    // per-image ledger but never touched meter:spend" - but the patch went into meter:spend, which
+    // was then retired and replaced by egress. The fix landed in the ledger that stopped being the
+    // authority, and the hole reopened in silence.
+    //
+    // rec.cost_usd lets a caller state a cost it computed itself. It is deliberately an OVERRIDE and
+    // not an addition: a lane either bills by token or it does not, and a row that did both would be
+    // double-counted the way the legacy counter double-counts images today.
+    const _stated = rec.cost_usd != null ? Number(rec.cost_usd) : null;
+    const cost = (_stated != null && isFinite(_stated) && _stated >= 0) ? _stated : Math.max(0, _raw);
     led.cost_usd = +((led.cost_usd || 0) + cost).toFixed(6);
     const bump = (bag, key) => {
       bag[key] = bag[key] || { calls: 0, in: 0, out: 0, cached: 0, cost: 0 };
@@ -27940,7 +27956,30 @@ async function discoverPrices(env) {
     const d = await r.json().catch(() => ({}));
     if (!r.ok) return { ok: false, error: (d?.error || "http " + r.status) };
 
-    const PER_M = 1e5;   // published value / 100000 = USD per million tokens
+    // ══ THE UNIT WAS 10x LOW FOR TEN DAYS, AND IT WAS THE WHOLE RATE GAP (fixed 2026-07-30) ══════
+    // This was 1e5, anchored on grok-imagine-image: image_price 200000000 against "a measured $0.002".
+    // That anchor was WRONG. $0.002 is grok-imagine-image's media-INPUT charge; its GENERATION price is
+    // $0.02. So the divisor came out 10x low, and because the hardcoded table it was checked against was
+    // ALSO 10x low, each confirmed the other and the comment recorded "exactly the original table" as
+    // proof. Two wrong numbers agreeing is not a verification, and nothing inside this system could tell
+    // the difference - the conversion validated itself against a copy of its own error.
+    //
+    // SETTLED AGAINST xAI'S PUBLISHED PRICE PAGE (docs.x.ai/developers/pricing), 18 of 18 data points at
+    // exactly 10x: grok-4.5 $2.00/$0.30/$6.00, grok-build-0.1 $1.00/$0.20/$2.00, grok-4.3 and all three
+    // grok-4.20 variants $1.25/$0.20/$2.50. Reconciled forward: repricing 2026-07-30's real token counts
+    // at these rates gives $1.2599 against $1.3342 xAI actually billed - within 5.9%, where the meter had
+    // been reading 10.6x low.
+    //
+    // THE FALSIFYING CASE, kept here because it is the only one that could never be explained away:
+    // grok-imagine-image-quality published a per_image of $0.005 under the old unit. No such price exists
+    // anywhere on xAI's list - its media input is $0.01 and its outputs are $0.05 and $0.07. At the
+    // corrected unit it is $0.05, which is exactly the 1K output price. One model where the coincidence
+    // broke, sitting in the output the whole time.
+    //
+    // ONE UNIT FOR EVERYTHING: 1e-10 USD, text tokens and images alike. Per-million = value / 1e4;
+    // per-image = value / 1e10. If a future run disagrees with the price page, the PAGE wins - a
+    // published number we cannot reconcile against the vendor's own list is a bug in this conversion.
+    const PER_M = 1e4;   // published value / 10000 = USD per million tokens (1e-10 USD per token)
     const priorRaw = await env.AURA_KV.get("config:rate:published").catch(() => null);
     const prior = priorRaw ? JSON.parse(priorRaw) : {};
 
@@ -27956,8 +27995,10 @@ async function discoverPrices(env) {
         if (was && (was.P_IN !== rate.P_IN || was.P_OUT !== rate.P_OUT))
           out.changed.push({ model: id, was: was.P_IN + "/" + was.P_OUT, now: rate.P_IN + "/" + rate.P_OUT });
       } else if (m.image_price != null) {
-        // Images bill per image, not per token. 1e-11 USD, verified against a measured $0.002.
-        out.models[id] = { per_image: +(Number(m.image_price) * 1e-11).toFixed(6) };
+        // Images bill per image, not per token - but the UNIT is the same 1e-10 as text (see PER_M
+        // above). This was 1e-11, which made grok-imagine-image-quality report $0.005, a price that
+        // exists nowhere on xAI's list. At 1e-10 it is $0.05, its published 1K output price.
+        out.models[id] = { per_image: +(Number(m.image_price) * 1e-10).toFixed(6) };
       }
     }
     await env.AURA_KV.put("config:rate:published", JSON.stringify(out.models));
@@ -28355,11 +28396,16 @@ async function calibrateRates(env, day) {
     // TEXT ONLY. Media models are billed per image/second, not per token - they have their own
     // calibration (CALIBRATE_VIDEO) and must never contaminate a per-token rate.
     const lines = xai.lines || {};
-    let textBilled = 0; const textModels = [];
+    let textBilled = 0; const textModels = []; const billedByModel = {};
     for (const [label, v] of Object.entries(lines)) {
       if (/imagine|image|video/i.test(label)) continue;
       const m = label.replace(/^API\s+/i, "").trim();
-      textBilled += Number(v) || 0; textModels.push(m);
+      const amt = Number(v) || 0;
+      textBilled += amt; textModels.push(m);
+      // Keep the amount WITH the stripped name. Re-deriving the original key later meant guessing at
+      // the label format, and a guess that misses reads as "no billing for this model" - a silent
+      // skip that looks identical to a model nobody used.
+      billedByModel[m] = (billedByModel[m] || 0) + amt;
     }
     if (textBilled <= 0) { out.note = "no text billing from xAI on " + d; return out; }
 
@@ -28370,45 +28416,106 @@ async function calibrateRates(env, day) {
     // resetting, the design is wrong. Tokens are a fact about what was SENT and do not move when the
     // price moves, so this produces an ABSOLUTE rate with nothing circular in it - the same reason
     // CALIBRATE_VIDEO (their charge / our seconds) has never needed a reset.
-    let tok = null;
-    // v4.9.719: same short denominator as the match above. A rate calibrated against half the token
-    // volume is wrong by construction, and every price derived from it inherits the error.
-    try { const _e = await _egressDay(env, d); if (_e.found) tok = _e.tokens; } catch {}
-    if (tok && (Number(tok.in) || Number(tok.cache_read))) {
-      const tIn = Number(tok.in) || 0, tOut = Number(tok.out) || 0;
-      const tRead = Number(tok.cache_read) || 0, tWrite = Number(tok.cache_write) || 0;
-      // Solve for the input price, holding the SHAPE of the rate card (out and cache priced relative to
-      // input, as every provider does). One unknown, one equation, no circularity:
-      //   billed = (in*P + write*P + read*P*cacheRatio + out*P*outRatio) / 1e6
-      const LIVE0 = { P_IN: 1.34, P_OUT: 2.69, P_CACHE: 0.27 };
-      const outRatio = LIVE0.P_OUT / LIVE0.P_IN, cacheRatio = LIVE0.P_CACHE / LIVE0.P_IN;
-      const weighted = tIn + tWrite + tRead * cacheRatio + tOut * outRatio;
-      if (weighted > 0) {
-        const pIn = (textBilled * 1e6) / weighted;
-        if (pIn > 0.001 && pIn <= 50) {
-          const next = { P_IN: +pIn.toFixed(6), P_OUT: +(pIn * outRatio).toFixed(6),
-                         P_CACHE: +(pIn * cacheRatio).toFixed(6),
-                         calibrated_at: new Date().toISOString(), method: "billed / tokens (absolute)",
-                         tokens: { in: tIn, out: tOut, cache_read: tRead, cache_write: tWrite },
-                         billed_usd: +textBilled.toFixed(4) };
-          const existingRaw0 = await env.AURA_KV.get("config:rate:calibrated");
-          const table0 = existingRaw0 ? JSON.parse(existingRaw0) : {};
-          for (const m of textModels) { table0[m] = next; out.calibrated[m] = next; }
-          await env.AURA_KV.put("config:rate:calibrated", JSON.stringify(table0));
-          out.method = "tokens";
-          out.text_billed_usd = +textBilled.toFixed(4);
-          out.tokens = next.tokens;
-          out.derived_P_IN = next.P_IN;
-          out.note = "ABSOLUTE rate derived from xAI's $" + textBilled.toFixed(4) + " over " +
-                     (tIn + tRead + tWrite + tOut).toLocaleString() + " tokens. Nothing circular: token " +
-                     "counts do not change when the price changes, so this never drifts and never needs " +
-                     "a reset. Re-run any time - it will land on the same number until xAI reprices.";
-          console.log("[CALIBRATE] absolute P_IN $" + next.P_IN.toFixed(4) + "/M from " + textBilled.toFixed(4) + " / tokens");
-          return out;
-        }
-        out.note = "derived P_IN $" + pIn.toFixed(4) + "/M is implausible - refused";
+    // ══ THREE DEFECTS, ALL IN THE DENOMINATOR (found + fixed 2026-07-31) ═══════════════════════
+    // The comment directly above says defect 3 was "it divided ALL xAI billing by TEXT-ONLY
+    // metering". It was fixed - and then reintroduced as its own mirror image, which is why this
+    // needs writing down rather than just correcting:
+    //
+    //  1. WHOLE-DAY DENOMINATOR. It took _egressDay().tokens, which is {j.tokens_in, j.tokens_out,
+    //     j.cached_in} - EVERY PROVIDER on the day. So xAI-only billed dollars were divided by
+    //     xAI + Anthropic + OpenAI + Groq tokens. Proven from the stored artefact: the calibration
+    //     written on 2026-07-30 carried tokens {in 1976094, out 85980} while the xAI slice was
+    //     {in 1946597, out 60989}. Anthropic's 29k in and 25k out sat in the denominator. Numerator
+    //     one provider, denominator all of them - the same error, pointing the other way.
+    //
+    //  2. CACHE DOUBLE-COUNTED. The weighting was tIn + tRead*cacheRatio, treating input and cached
+    //     as disjoint. They are not: xAI's own docs define a full cache hit as cached_tokens EQUAL
+    //     to prompt_tokens, and their long-context threshold counts "total prompt tokens (including
+    //     cached tokens)". So 1.6M tokens were counted twice and the derived price came out low.
+    //
+    //  3. ONE RATE, THREE MODELS, A FOURTH MODEL'S SHAPE. A single blended P_IN was written to
+    //     grok-4.5, grok-build-0.1 and grok-4.3 using LIVE0 = {1.34, 2.69, 0.27} - the REVERTED
+    //     07-19 card - for its ratios. Those models have genuinely different cards. Verified: those
+    //     ratios reproduce the stored P_IN 0.539005 to four decimals, so this is what ran.
+    //
+    // Now: each billed model is solved against ITS OWN tokens, with cache netted out of input, using
+    // ITS OWN card for shape. The shape is read from config:rates:table directly rather than through
+    // _rateFor, because _rateFor returns the CALIBRATED rate first - and deriving a new calibration
+    // from the shape of the previous one is exactly the self-referential loop the note above says
+    // was removed. Shape from the typed card, magnitude from the bill.
+    let dayModels = null;
+    try { const _e = await _egressDay(env, d); if (_e.found) dayModels = _e.day_by_model || null; } catch {}
+    let shapes = {};
+    try { const _s = await env.AURA_KV.get("config:rates:table"); if (_s) shapes = JSON.parse(_s) || {}; } catch {}
+    const _shapeFor = (mid) => {
+      const m = String(mid || "").toLowerCase();
+      let best = null, bestLen = -1;
+      for (const [k, v] of Object.entries(shapes)) {
+        if (k.startsWith("_") || !v || typeof v !== "object") continue;
+        if (m.includes(k.toLowerCase()) && k.length > bestLen) { best = v; bestLen = k.length; }
+      }
+      const pin = Number(best?.in) || 0;
+      if (!(pin > 0)) return { outRatio: 3, cacheRatio: 0.15 };   // grok-4.5's published shape as the default
+      return { outRatio: (Number(best.out) || pin * 3) / pin,
+               cacheRatio: (Number(best.cacheRead ?? best.cache_read) || pin * 0.15) / pin };
+    };
+    // Match a billing label to its egress row. Labels arrive as the model id (already stripped of a
+    // leading "API "), so an exact match is tried first and a substring match only as a fallback.
+    const _rowFor = (label) => {
+      if (!dayModels) return null;
+      if (dayModels[label]) return dayModels[label];
+      const l = String(label || "").toLowerCase();
+      for (const [k, v] of Object.entries(dayModels)) {
+        const kk = k.toLowerCase();
+        if (kk === l || kk.includes(l) || l.includes(kk)) return v;
+      }
+      return null;
+    };
+
+    if (dayModels && textModels.length) {
+      const table0raw = await env.AURA_KV.get("config:rate:calibrated");
+      const table0 = table0raw ? JSON.parse(table0raw) : {};
+      const skipped = {};
+      let wrote = 0;
+      for (const label of textModels) {
+        const billed = Number(billedByModel[label]) || 0;
+        if (billed <= 0) { skipped[label] = "no billed amount"; continue; }
+        const row = _rowFor(label);
+        if (!row) { skipped[label] = "billed $" + billed.toFixed(4) + " but no egress row - the meter never saw this model, which is its own fault to chase"; continue; }
+        const tIn = Number(row.in) || 0, tOut = Number(row.out) || 0, tRead = Number(row.cached) || 0;
+        // Cache is INSIDE input for every OpenAI-compatible provider. Never let this go negative:
+        // if cached exceeds input the provider reports them separately, so input IS the uncached count.
+        const uncached = (tIn >= tRead) ? Math.max(0, tIn - tRead) : tIn;
+        const { outRatio, cacheRatio } = _shapeFor(label);
+        const weighted = uncached + tRead * cacheRatio + tOut * outRatio;
+        if (!(weighted > 0)) { skipped[label] = "no tokens recorded"; continue; }
+        const pIn = (billed * 1e6) / weighted;
+        // The ceiling is what makes the feedback loop safe to leave on. Below the floor is a parse
+        // failure, not a bargain. Either way: refuse and SAY so rather than store a number.
+        if (!(pIn > 0.001 && pIn <= 50)) { skipped[label] = "derived P_IN $" + pIn.toFixed(4) + "/M is implausible - refused"; continue; }
+        const next = { P_IN: +pIn.toFixed(6), P_OUT: +(pIn * outRatio).toFixed(6),
+                       P_CACHE: +(pIn * cacheRatio).toFixed(6),
+                       calibrated_at: new Date().toISOString(), method: "billed / own tokens, cache netted (absolute)",
+                       tokens: { in: tIn, uncached, out: tOut, cache_read: tRead },
+                       shape: { outRatio: +outRatio.toFixed(4), cacheRatio: +cacheRatio.toFixed(4) },
+                       billed_usd: +billed.toFixed(4) };
+        table0[label] = next; out.calibrated[label] = next; wrote++;
+      }
+      if (wrote) {
+        await env.AURA_KV.put("config:rate:calibrated", JSON.stringify(table0));
+        out.method = "tokens (per model)";
+        out.text_billed_usd = +textBilled.toFixed(4);
+        if (Object.keys(skipped).length) out.skipped = skipped;
+        out.note = "Per-model absolute rates from xAI's own billing over THIS MODEL's own tokens, " +
+                   "cache netted out of input. Nothing blended, nothing borrowed from another model's " +
+                   "card except the out/cache RATIOS, which are ratios and so survive a unit error. " +
+                   "Re-run any time - it lands on the same number until xAI reprices or the mix changes.";
+        console.log("[CALIBRATE] " + wrote + " model(s): " + Object.keys(out.calibrated).map((m) => m + " $" + out.calibrated[m].P_IN).join(", "));
         return out;
       }
+      out.skipped = skipped;
+      out.note = "nothing calibrated - see `skipped` for the reason on each model";
+      return out;
     }
 
     // Fallback only until a day of token data exists. Flagged as the inferior method on purpose.
@@ -30796,8 +30903,10 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // operator picks a policy, not a model. A raw config:image:model still wins if set (power-user override),
   // so nothing that already worked breaks. Aura's own world just runs the "cheapest" policy like any operator.
   const IMAGE_POLICY = {
-    // policy -> { model, quality }. Cheapest is the floor we proved (Grok $0.002); quality is Gemini's
-    // best (Nano Banana); balanced sits at OpenAI mini. Update these as the proven floors move.
+    // policy -> { model, quality }. Cheapest is the floor MEASURED at $0.02/image (Grok, 2026-07-31
+    // burn - see the RATE table below for the evidence); quality is Gemini's best (Nano Banana);
+    // balanced sits at OpenAI mini. This comment said $0.002 for a week, which was the meter's error
+    // repeated as a fact - do not restate a rate here, the RATE table is the one place it lives.
     cheapest: { model: "grok-imagine-image",            quality: "low"  },
     balanced: { model: "gpt-image-1-mini",              quality: "low"  },
     quality:  { model: "gemini-3.1-flash-lite-image",   quality: "high" },
@@ -30913,22 +31022,82 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // model's published per-quality figure, so the floor is MEASURED - not eyeballed off a lagging dashboard.
   const tokens = imgUsage ? (imgUsage.total_tokens ?? imgUsage.output_tokens ?? null) : null;
   let costUsd = null;
+  // Declared HERE, not inside the try below, because the image-meter block that reads it is a
+  // SEPARATE try. A block-scoped `let` would have thrown ReferenceError straight into a bare catch,
+  // and the whole meter write would have failed silently - the exact shape of failure this file
+  // keeps finding. node --check does not catch scope, only syntax.
+  let neurons = null;
   try {
-    const RATE = {   // approx $/image, model -> quality (published rates; update on price change). More-specific keys first.
-      "gemini-3.1-flash-lite-image": { low: 0.045, medium: 0.045, high: 0.045 },   // Google Nano Banana 2 Lite (flat-ish)
-      "gemini-3.1-flash-image":      { low: 0.067, medium: 0.067, high: 0.067 },   // Google Nano Banana 2
-      "gemini-3-pro-image":          { low: 0.134, medium: 0.134, high: 0.134 },   // Google Nano Banana Pro
-      "gemini-2.5-flash-image":      { low: 0.039, medium: 0.039, high: 0.039 },   // Google Nano Banana (older)
-      "grok-imagine-image-quality": { low: 0.005, medium: 0.005, high: 0.005 },   // xAI flat per-image (no tiers)
-      "grok-imagine-image":         { low: 0.002, medium: 0.002, high: 0.002 },   // xAI flat per-image (no tiers)
-      "gpt-image-1-mini": { low: 0.005, medium: 0.030, high: 0.052 },
-      "gpt-image-1":      { low: 0.011, medium: 0.040, high: 0.170 },
-      "gpt-image-1.5":    { low: 0.009, medium: 0.034, high: 0.133 },
-      "gpt-image-2":      { low: 0.006, medium: 0.053, high: 0.211 },
+    // ══ THESE WERE 10x LOW AND IT WAS MEASURED, NOT ARGUED (2026-07-31) ═══════════════════════════
+    // grok-imagine-image read $0.002 with the comment "the floor we proved". It was never proved - it
+    // was the published value run through a price-discovery unit that was itself 10x low, so the wrong
+    // number got written down as a fact and then cited as one.
+    //
+    // THE CONTROLLED BURN THAT SETTLED IT, on an account with zero other xAI traffic that day:
+    // three images via GENERATE_IMAGE, nothing else moving. Credits went $47.37 -> $47.31 and the
+    // usage counter went $0.09 -> $0.15 - both instruments agreeing on $0.06 - with requests +3 and
+    // tokens +3 (images bill per image, not per token). $0.06 / 3 = $0.02 an image. The meter had
+    // recorded $0.006 for the three.
+    //
+    // The operator's doctrine and the reason this is written as a measurement: what he actually paid
+    // divided by what he actually consumed IS the rate. A vendor's list is somebody else's number.
+    // It happens to agree here; when a provider runs a sale it will not, and only the burn will know.
+    //
+    // TO RE-MEASURE ANY ROW: zero the lane for a day, note credits, burn a known count through the
+    // real door (not a test path), read credits again, divide. Label what was measured and what was
+    // only inferred - they are not the same evidence and must not look the same in this table.
+    const RATE = {   // $/image, model -> quality. MEASURED where marked; inferred otherwise.
+      "gemini-3.1-flash-lite-image": { low: 0.045, medium: 0.045, high: 0.045 },   // inferred - Google Nano Banana 2 Lite
+      "gemini-3.1-flash-image":      { low: 0.067, medium: 0.067, high: 0.067 },   // inferred - Google Nano Banana 2
+      "gemini-3-pro-image":          { low: 0.134, medium: 0.134, high: 0.134 },   // inferred - Google Nano Banana Pro
+      "gemini-2.5-flash-image":      { low: 0.039, medium: 0.039, high: 0.039 },   // inferred - Google Nano Banana (older)
+      "grok-imagine-image-quality": { low: 0.05,  medium: 0.05,  high: 0.05  },   // INFERRED (was 0.005, same 10x) - NOT yet burned
+      "grok-imagine-image":         { low: 0.02,  medium: 0.02,  high: 0.02  },   // MEASURED 2026-07-31, 3-image burn, $0.06 drawdown
+      "gpt-image-1-mini": { low: 0.005, medium: 0.030, high: 0.052 },              // inferred
+      "gpt-image-1":      { low: 0.011, medium: 0.040, high: 0.170 },              // inferred
+      "gpt-image-1.5":    { low: 0.009, medium: 0.034, high: 0.133 },              // inferred
+      "gpt-image-2":      { low: 0.006, medium: 0.053, high: 0.211 },              // inferred
     };
     const mkey = Object.keys(RATE).find((k) => model.toLowerCase().startsWith(k));
     if (mkey) costUsd = RATE[mkey][quality] ?? RATE[mkey].medium ?? null;
-    // @cf/ Cloudflare models are effectively free-tier compute - no per-image token bill to meter.
+    // ══ THE @cf/ PATH BILLED NOTHING AND RECORDED NOTHING (found live 2026-07-31) ═══════════════
+    // Pointing config:image:model at flux-1-schnell took an image from $0.02 to fractions of a cent -
+    // and made it INVISIBLE. env.AI.run() is a BINDING call, not a fetch, so it never passes through
+    // pfetch and never reaches egress: after the first flux image, by_caller."core:image" still read
+    // 3 calls. Not recorded as free. Not recorded at all. The comment here used to say "@cf/ models
+    // are effectively free-tier compute - no per-image token bill to meter", which is true only
+    // inside the 10,000 neuron/day allocation and false the moment it is crossed - and nothing was
+    // counting the neurons, so nothing could tell which side of that line we were on.
+    //
+    // Operator's instruction, and it is the right one: micro-pennies still have a calculation behind
+    // them. So the neurons are computed, the dollars are derived from them, and both are recorded.
+    // Free allocation is deliberately NOT subtracted here - this is the GROSS cost of the work, and
+    // the discount is an account-level fact. Netting it here would rebuild the same blindness one
+    // layer up, where a lane that looks free stops being watched.
+    //
+    // Rates from Cloudflare's published Workers AI pricing: $0.011 per 1,000 neurons.
+    //   flux-1-schnell   4.80 neurons / 512x512 tile   +  9.60 neurons / step
+    //   flux-2-klein-4b  5.37 in-tile  / 26.05 out-tile
+    // ASSUMPTIONS, NAMED SO THEY CAN BE FALSIFIED: the call passes only { prompt }, so steps and size
+    // are whatever the binding defaults to. 1024x1024 = 4 tiles and 4 steps is schnell's documented
+    // default. If the Workers AI dashboard disagrees with `neurons` in the image meter, the dashboard
+    // is right and these constants are wrong - that comparison is the whole point of recording them.
+    if (model.startsWith("@cf/")) {
+      const CF_NEURONS = {
+        "@cf/black-forest-labs/flux-1-schnell": { tile: 4.80, step: 9.60, tiles: 4, steps: 4 },
+        "@cf/black-forest-labs/flux-2-klein-4b": { tile: 26.05, step: 0, tiles: 4, steps: 0 },
+        "@cf/leonardo/lucid-origin": { tile: 636.00, step: 12.00, tiles: 4, steps: 4 },
+        "@cf/leonardo/phoenix-1.0": { tile: 530.00, step: 10.00, tiles: 4, steps: 4 },
+      };
+      const cf = CF_NEURONS[model];
+      if (cf) {
+        neurons = +(cf.tile * cf.tiles + cf.step * cf.steps).toFixed(2);
+        costUsd = +((neurons / 1000) * 0.011).toFixed(8);
+      } else {
+        // An unpriced @cf model must not read as free. Say the number is unknown.
+        costUsd = null;
+      }
+    }
   } catch {}
   // Rolling per-day image meter (the TREASURY for images), same shape as the text meter.
   try {
@@ -30938,6 +31107,9 @@ async function auraGenerateImage(prompt, env, opts = {}) {
     const rec = raw ? JSON.parse(raw) : { day, count: 0, tokens: 0, cost_usd: 0 };
     rec.count += 1;
     rec.tokens += (tokens || 0);
+    // Neurons are the unit Cloudflare bills and the ONLY figure their dashboard shows, so it is the
+    // one that can be reconciled against them. Dollars here are derived; neurons are the measurement.
+    if (neurons != null) rec.neurons = +(((rec.neurons || 0) + neurons)).toFixed(2);
     rec.cost_usd = Math.round(((rec.cost_usd || 0) + (costUsd || 0)) * 1e6) / 1e6;
     rec.last = { id, model, quality, tokens, cost_usd: costUsd, at: new Date().toISOString() };
     await env.AURA_KV.put(mk, JSON.stringify(rec), { expirationTtl: 30 * 24 * 3600 }).catch(() => {});
@@ -30953,6 +31125,21 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // The paid path recorded a per-image ledger but never touched meter:spend, so four images at $0.002
   // each were invisible to every spend number in the system. Text was counted; images were not.
   await addSpend(env, costUsd);
+  // ══ AND INTO EGRESS, WHICH IS THE ONE THAT IS READ (2026-07-31) ════════════════════════════
+  // addSpend writes meter:spend - a LEGACY key. spend_today reads egress:<day>. So the line above
+  // has been fixing a hole in a ledger nobody looks at any more, which is why images kept coming
+  // back as $0 in AIMARGIN however many times this was "closed".
+  // Provider-routed images already land in egress via pfetch, so recording them again here would
+  // double-count. ONLY the binding path (@cf/, which never touches pfetch) is written here.
+  if (model.startsWith("@cf/")) {
+    try {
+      await _egressCore(env, {
+        provider: "cloudflare", caller: "core:image", model,
+        endpoint: "https://workers-ai/" + model, status: 200,
+        usage: null, cost_usd: costUsd,
+      });
+    } catch (e) { try { console.warn("[IMG] egress write failed: " + (e && e.message)); } catch {} }
+  }
   return { ok: true, id, image_url: meta.url, prompt: meta.prompt, model, quality, tokens, cost_usd: costUsd };
 }
 

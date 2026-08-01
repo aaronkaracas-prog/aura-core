@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.863-2026-07-31-anthropic-clamp-now";
+const BUILD = "aura-core-v4.9.864-2026-08-01-brain-pin-honoured";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -144,7 +144,15 @@ async function callBrain({ system, user, max_tokens = 2000, model = null, temper
   const msgs = [];
   if (system) msgs.push({ role: "system", content: String(system) });
   msgs.push({ role: "user", content: String(user || "") });
-  const r = await fetch(EP.url, {
+  // ══ THIS WAS A RAW fetch() AND THEREFORE UNMETERED (found + fixed 2026-08-01) ═════════════════
+  // The Anthropic branch above goes through brainFetch -> pfetch and lands in egress:<day>. This
+  // branch called fetch() directly, so every Grok/OpenAI/Gemini/Meta call made through callBrain was
+  // invisible to the ledger that calls itself "the single writer and the authority for every figure".
+  // It did not matter while callBrain had one caller. It mattered the moment brainFetch started
+  // redirecting the pin here - spend would have LEFT a metered path and landed on an unmetered one,
+  // so the Anthropic line would fall and nothing would rise. A cost fix that hides its own cost.
+  // Caught by tracing the recursion before shipping, not by the ledger going quiet a week later.
+  const r = await pfetch(env, route.provider === "grok" ? "xai" : route.provider, "callBrain", EP.url, {
     method: "POST",
     headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
     body: JSON.stringify({ model: route.model, max_tokens: cap, messages: msgs,
@@ -637,6 +645,55 @@ async function brainFetch(url, opts, env, caller) {
 
   // streaming: caching-injected body, real fetch, untouched Response. Nothing else.
   if (isStream) return await pfetch(env, "anthropic", (caller || "brainFetch") + ":stream", url, { ...opts, body: JSON.stringify(body) });
+
+  // ══ THE POLICY HAD ONE CALLER AND SIXTY-FIVE BYPASSES (2026-08-01) ═══════════════════════════
+  // callBrain was written because "the policy has to reach BOTH workers or it is not a policy, it is
+  // a preference" - and then it was given exactly ONE caller. Counted live: 31 sites hardcode a
+  // claude model, 34 read config:brain:model and POST it to api.anthropic.com regardless of what it
+  // says. So setting the pin to a grok model would not SWITCH those sites, it would BREAK them -
+  // they would send "grok-4.5" to Anthropic's endpoint. The control the pin implies does not exist.
+  //
+  // brainFetch is the one place all thirty pass through, and it already parses the body, so the pin
+  // can be honoured HERE instead of at thirty call sites with thirty different response parsers.
+  //
+  // THIS IS A SHIM AND IS NAMED AS ONE. The stated doctrine in callBrain is "each provider gets its
+  // REAL request/response shape - no translation layer pretending they are the same", and reshaping
+  // a Grok reply into Anthropic's block format is exactly such a layer. It is contained in one
+  // function and one direction rather than spread across thirty edits, and it is reversible by
+  // deleting this block. THE EXIT: convert call sites to callBrain over time; when the last one is
+  // converted this block deletes itself. Do not let it become the permanent answer.
+  //
+  // NOT REDIRECTED, on purpose: liveness probes. A health check exists to answer "does the Anthropic
+  // key work" - silently routing it to Grok would make a dead Anthropic key report green, which is
+  // the instrument-lying failure this codebase has paid for repeatedly. max_tokens <= 5 is the
+  // probe shape (they all use 1); no real work happens in five tokens.
+  const _isProbe = (Number(body?.max_tokens) || 0) <= 5 || /health|probe|check|status/i.test(String(caller || ""));
+  if (!_isProbe) {
+    try {
+      const _route = await _brainRoute(env);
+      if (_route && _route.provider && _route.provider !== "anthropic") {
+        const _sys = typeof body.system === "string" ? body.system
+                   : Array.isArray(body.system) ? body.system.map((b) => b?.text || "").join("\n") : "";
+        const _usr = (body.messages || []).map((m) => typeof m?.content === "string" ? m.content
+                     : Array.isArray(m?.content) ? m.content.map((c) => c?.text || "").join("\n") : "").join("\n");
+        const _r = await callBrain({ system: _sys, user: _usr, max_tokens: body.max_tokens || 2000 }, env);
+        if (_r && _r.ok) {
+          // Shaped as an Anthropic response so all thirty existing parsers keep working unchanged.
+          return new Response(JSON.stringify({
+            content: [{ type: "text", text: _r.text || "" }],
+            model: _r.model, stop_reason: "end_turn",
+            usage: { input_tokens: _r.usage?.in || 0, output_tokens: _r.usage?.out || 0 },
+            _routed_by: "brainFetch->callBrain", _provider: _r.provider,
+          }), { status: 200, headers: { "content-type": "application/json" } });
+        }
+        // A failed redirect FALLS THROUGH to Anthropic rather than returning an error. The pin is a
+        // cost preference; it must never be the reason a turn dies.
+        console.warn("[BRAIN] redirect to " + _route.provider + " failed, falling back to Anthropic: " + (_r && _r.error));
+      }
+    } catch (e) {
+      try { console.warn("[BRAIN] redirect threw, falling back to Anthropic: " + (e && e.message)); } catch {}
+    }
+  }
 
   // ── 2. L1 ANSWER CACHE: has anyone already asked this exact thing? ──
   let cacheKey = null;

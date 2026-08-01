@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.864-2026-08-01-brain-pin-honoured";
+const BUILD = "aura-core-v4.9.865-2026-08-01-promote-status-dated";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -4716,10 +4716,51 @@ async function processCommand(line, env, isOp) {
         const r = await fetch("https://api.github.com" + path, { headers: { "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github+json", "User-Agent": "aura-promote" } });
         return { ok: r.ok, status: r.status, j: await r.json().catch(() => ({})) };
       };
-      const runs = await gh("/repos/aaronkaracas-prog/aura-core/actions/runs?per_page=10");
+      // ══ IT REPORTED A THREE-WEEK-OLD RUN AS THE CURRENT STATE (found by Aura, fixed 2026-08-01) ══
+      // Asked to check live build, promote status and source size together, she noticed this pointed
+      // at run 29175199907 from 2026-07-12 while main was at e7ae322 from today - and said so. The
+      // command was not wrong about the world; it was wrong about WHICH QUESTION IT ANSWERS. It says
+      // "the most recent promote-to-live run" and gets read as "the state of the current build",
+      // because it reported `success` with no date, no commit, and nothing to compare against.
+      //
+      // Same family as the bot score reading zero as "none found", the health check calling a
+      // different Google API than the feature, and presence vs liveness inside one entry: the
+      // instrument does not fail, it answers an older question confidently.
+      //
+      // AND THE HONEST CAUSE IS NOT A BUG IN GITHUB. Deploys have been going out by `wrangler deploy`
+      // from the operator's terminal, which never touches the promote workflow - so there genuinely
+      // are no recent promote runs. A stale pointer is the CORRECT answer to "when did a promote last
+      // run". It is a wrong answer to "was the live build promoted cleanly", and only one of those
+      // was being asked.
+      //
+      // Fix: carry the run's DATE and COMMIT, fetch what main actually points at now, and state
+      // plainly whether this promote describes the current code or an older one. Never let a stale
+      // success read as a current success.
+      const PER_PAGE = 50;   // was 10 - "no run found" meant "none in the last 10", which is not the same claim
+      const runs = await gh("/repos/aaronkaracas-prog/aura-core/actions/runs?per_page=" + PER_PAGE);
       if (!runs.ok) return { cmd: "AURA_PROMOTE_STATUS", payload: { ok: false, error: "Could not read runs: " + runs.status } };
+      // What is actually on main RIGHT NOW - the thing a promote claim has to be measured against.
+      let mainSha = null, mainWhen = null, mainMsg = null;
+      try {
+        const head = await gh("/repos/aaronkaracas-prog/aura-core/commits/main");
+        if (head.ok) {
+          mainSha = (head.j.sha || "").slice(0, 7) || null;
+          mainWhen = head.j?.commit?.committer?.date || head.j?.commit?.author?.date || null;
+          mainMsg = (head.j?.commit?.message || "").split("\n")[0].slice(0, 90) || null;
+        }
+      } catch {}
       const run = (runs.j.workflow_runs || []).find(r => r.name === "promote-to-live" || (r.path || "").includes("promote-to-live"));
-      if (!run) return { cmd: "AURA_PROMOTE_STATUS", payload: { ok: true, found: false, note: "No promote-to-live run found yet." } };
+      if (!run) return { cmd: "AURA_PROMOTE_STATUS", payload: { ok: true, found: false,
+        searched_runs: (runs.j.workflow_runs || []).length,
+        main_head: mainSha, main_committed_at: mainWhen,
+        note: "No promote-to-live run in the last " + PER_PAGE + " workflow runs. That is NOT the same as "
+            + "'never promoted' - it means none recently. If deploys are going out via `wrangler deploy` "
+            + "from a terminal, this is expected and correct: the promote workflow is simply not the path "
+            + "being used, and this command cannot tell you anything about how the live build got there." } };
+      const _runSha = (run.head_sha || "").slice(0, 7) || null;
+      const _runWhen = run.updated_at || run.created_at || null;
+      const _ageDays = _runWhen ? Math.floor((Date.now() - new Date(_runWhen).getTime()) / 86400000) : null;
+      const _describesMain = !!(_runSha && mainSha && _runSha === mainSha);
       // get per-job detail so we can see which step is where
       const jobs = await gh(`/repos/aaronkaracas-prog/aura-core/actions/runs/${run.id}/jobs`);
       const jobSummary = (jobs.ok ? jobs.j.jobs : []).map(j => ({ name: j.name, status: j.status, conclusion: j.conclusion }));
@@ -4730,9 +4771,18 @@ async function processCommand(line, env, isOp) {
         jobs: jobSummary,
         waiting_for_approval: waitingApproval,
         run_url: run.html_url,
+        // The three facts that stop a stale success reading as a current one.
+        run_commit: _runSha, run_at: _runWhen, run_age_days: _ageDays,
+        main_head: mainSha, main_committed_at: mainWhen, main_message: mainMsg,
+        describes_current_main: _describesMain,
         note: waitingApproval ? "Version uploaded at 0%. WAITING FOR YOUR APPROVAL to flip to 100%."
             : run.status !== "completed" ? "Pipeline still running."
-            : run.conclusion === "success" ? "Promote completed successfully."
+            : !_describesMain
+              ? "STALE - this promote describes commit " + (_runSha || "?") + (_ageDays != null ? " from " + _ageDays + " days ago" : "")
+                + ", but main is now at " + (mainSha || "?") + ". It says nothing about how the CURRENT build got live. "
+                + "If you deploy with `wrangler deploy`, that is the expected state and not a fault - but do not "
+                + "read this run's conclusion as evidence about today's code."
+            : run.conclusion === "success" ? "Promote completed successfully, and it describes the commit main is on now."
             : "Promote did not succeed - see jobs for the failing step."
       } };
     }

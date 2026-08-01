@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.865-2026-08-01-promote-status-dated";
+const BUILD = "aura-core-v4.9.866-2026-08-01-core-through-gateway";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -93,6 +93,34 @@ const BRAIN_POLICY = {
   best:     { provider: "anthropic", model: "claude-opus-4-8" },
 };
 
+// ══ AI GATEWAY, SAME MAP AS aura-think ── ONE KEY, BOTH WORKERS ══════════════════════════════
+// aura-think routes its provider calls through the gateway so every request is logged OUTSIDE the
+// worker. aura-core did not, which meant the gateway saw only part of the traffic while the xAI
+// console saw all of it - comparing them would have produced a gap that was STRUCTURAL, not real,
+// and we would have spent an evening chasing it. That is the same shape as every split-ledger bug
+// this file has already paid for.
+// It reads `config:gateway:providers`, THE SAME KEY aura-think reads. Not a copy, not a parallel
+// map - one place, both workers, so they can never disagree about which provider is routed.
+// PROVIDER NOT IN THE MAP -> DIRECT. Unlisted is the normal state for anything unverified.
+// The value is the FULL path segment, so a wrong path is fixed with SETKV, never a deploy.
+async function _gatewayFor(env, provider) {
+  try {
+    const on = await KV.get(env, "config:gateway:on");
+    if (!on || !/^(1|true|on|yes)$/i.test(String(on).trim())) return null;
+    const tok = await KV.get(env, "secret:cf_aig_token");
+    if (!tok) return null;                      // no token = 401 on every call. Go direct instead.
+    const raw = await KV.get(env, "config:gateway:providers");
+    let map = { grok: "grok" };
+    try { if (raw) { const j = JSON.parse(raw); if (j && typeof j === "object") map = j; } } catch {}
+    const path = map[provider];
+    if (!path) return null;
+    const acct = (await KV.get(env, "config:cf:account_id")) || "3db0de2c6fce92757e2c4e4f83d7eb16";
+    const name = (await KV.get(env, "config:gateway:name")) || "default";
+    return { base: "https://gateway.ai.cloudflare.com/v1/" + acct + "/" + name + "/" + path,
+             header: { "cf-aig-authorization": "Bearer " + String(tok).trim() } };
+  } catch { return null; }
+}
+
 async function _brainRoute(env, override) {
   const pol = ((await env.AURA_KV.get("config:policy:text").catch(() => null)) || "cheapest").trim();
   const r = { ...(BRAIN_POLICY[pol] || BRAIN_POLICY.cheapest) };
@@ -141,6 +169,22 @@ async function callBrain({ system, user, max_tokens = 2000, model = null, temper
   if (!EP) return { ok: false, error: "unknown provider " + route.provider };
   const key = env[EP.envk] || await KV.get(env, EP.key);
   if (!key) return { ok: false, error: "no key for " + route.provider, provider: route.provider, model: route.model };
+  // Swap only the ORIGIN+prefix, keep each provider's own path tail exactly as it is. The provider
+  // key still travels in Authorization - the gateway header is IN ADDITION, never a replacement.
+  const _gw = await _gatewayFor(env, route.provider);
+  let _url = EP.url, _gwHeader = {};
+  if (_gw) {
+    // The tail is DECLARED, not derived. First version stripped /^https?:\/\/[^/]+\/v1/ from the URL,
+    // which works for x.ai, openai and meta and MANGLES gemini - its path is /v1beta/openai/..., so
+    // stripping "/v1" leaves "beta/openai/..." and the result was ".../grokbeta/openai/...". Found by
+    // running the rewrite against all four endpoints instead of the one I had in mind. A regex over
+    // URLs is a guess about every URL it has not seen; every provider here speaks chat/completions,
+    // so say that instead.
+    const tail = "/chat/completions";
+    _url = _gw.base + tail;
+    _gwHeader = _gw.header;
+    try { console.log("[GW] core routing " + route.provider + " -> " + _url); } catch {}
+  }
   const msgs = [];
   if (system) msgs.push({ role: "system", content: String(system) });
   msgs.push({ role: "user", content: String(user || "") });
@@ -152,9 +196,9 @@ async function callBrain({ system, user, max_tokens = 2000, model = null, temper
   // redirecting the pin here - spend would have LEFT a metered path and landed on an unmetered one,
   // so the Anthropic line would fall and nothing would rise. A cost fix that hides its own cost.
   // Caught by tracing the recursion before shipping, not by the ledger going quiet a week later.
-  const r = await pfetch(env, route.provider === "grok" ? "xai" : route.provider, "callBrain", EP.url, {
+  const r = await pfetch(env, route.provider === "grok" ? "xai" : route.provider, "callBrain", _url, {
     method: "POST",
-    headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
+    headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json", ..._gwHeader },
     body: JSON.stringify({ model: route.model, max_tokens: cap, messages: msgs,
                            ...(temperature != null ? { temperature } : {}) }),
   });

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.879-2026-08-02-epoch-line-in-the-sand";
+const BUILD = "aura-core-v4.9.880-2026-08-02-reference-not-copy";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -20893,6 +20893,23 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
     }
 
+    case "PROJECT": {
+      // `PROJECT <actor_id> <subject_id> <query>` - resolve a bounded projection of the subject's
+      // continuity, under a live grant, right now. The door for the read path of the inversion.
+      //
+      // This is the command that makes "the continuity owns the intelligence" testable rather than
+      // stated. Before it, the only way a mind got context was for something to COPY it into a
+      // prompt. After it, a mind ASKS, the gate decides, and what comes back is scoped to a grant
+      // that can be revoked or superseded out from under it between one call and the next.
+      if (!isOp) return { cmd: "PROJECT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const _pa = (rest || "").trim().split(/\s+/);
+      const _pActor = _pa[0] || "", _pSubject = _pa[1] || "", _pQuery = _pa.slice(2).join(" ").trim();
+      if (!_pActor || !_pSubject) return { cmd: "PROJECT", payload: { ok: false,
+        error: "Usage: PROJECT <actor_id> <subject_id> <query>",
+        note: "The actor is who is asking. The subject is whose continuity is being read. They are " +
+              "different on purpose - an entity reading itself needs no grant and no projection." } };
+      return { cmd: "PROJECT", payload: await projectUnderGrant(env, _pActor, _pSubject, _pQuery) };
+    }
     case "PTA_EPOCH": {
       // ══ THE LINE IN THE SAND (v4.9.879, Council round 6) ═════════════════════════════════════
       // `PTA_EPOCH <entity_id> <reason>` - everything granted before this moment stops counting.
@@ -25929,6 +25946,81 @@ async function getHybridEvents(entityId, query, env) {
     }
   }
   return combined;
+}
+
+// ══ PROJECT ── THE READ PATH OF THE INVERSION (v4.9.880, Council rounds 5+6) ══════════════════
+//
+// Two councils of five, cold and independent, converged on ONE primitive in five vocabularies:
+// a revocable REFERENCE, never a copy. "A pointer to a live query, resolved at read time, never
+// inlined." "GRANT{subject, predicate, projectionHandle, expiry}." "A revocable pointer resolved at
+// read time." That is the whole disagreement with how every lab built memory: they COPY context into
+// the model product, which is why revocation cannot reach it afterwards and why five shipped in five
+// months and none reads another.
+//
+// This is that pointer. It does not return a subject's history. It RESOLVES a bounded projection,
+// under a live grant, at the moment of asking - and resolves to nothing the moment the grant stops
+// counting. Nothing is stored, nothing is cached, and no projection outlives the call that made it.
+//
+// THE GATE COMES FIRST, BEFORE ANY CONTENT IS TOUCHED. Same order CARD uses, for the same reason: a
+// projection that is assembled and then filtered has already been read, and "we didn't show it" is
+// not a permission system. ptaCan runs before getHybridEvents, always.
+//
+// WHY THIS FUNCTION AND NOT A NEW ONE. getHybridEvents has existed for months with ZERO production
+// callers - recency plus semantic, deduped, capped at eight, and already entity-scoped at the
+// Vectorize query itself (`filter: { entityId }`, not a post-filter, so another subject's vectors are
+// never RETRIEVED rather than retrieved-and-dropped). The source calls it "the thirteenth
+// written-and-never-read, the largest, the substrate the interest layer needs, and it was already
+// here." It was. This wires it, it does not replace it.
+//
+// WHAT THE CALLER GETS BACK: the projection AND the edge id that authorised it. A projection that
+// cannot name its own authority is indistinguishable from data somebody copied, which is the exact
+// thing this architecture exists to refuse.
+//
+// HONEST LIMIT, stated because the Council was blunt about it: this bounds what a reasoner is GIVEN.
+// It cannot bound what a reasoner RETAINS. Four of five seats said continuity re-enters through
+// caches, embeddings and learned weights regardless - "everyone claims stateless, then caches
+// prompt." Resolving at read time makes revocation reach everything the substrate holds. It does not
+// reach inside a rented model, and no line of code here can pretend otherwise.
+async function projectUnderGrant(env, actorId, subjectId, query, capability = "view") {
+  const out = { ok: false, actor: actorId, subject: subjectId, allowed: false, via_edge: null,
+                items: [], count: 0, resolved_at: new Date().toISOString() };
+  try {
+    if (!actorId || !subjectId) { out.error = "actor and subject are both required"; return out; }
+
+    // ── THE GATE, BEFORE ANY READ ────────────────────────────────────────────────────────────
+    const gate = await ptaCan(env, actorId, capability, subjectId);
+    out.allowed = !!gate?.allowed;
+    out.reason = gate?.reason || null;
+    out.via_edge = gate?.via_edge || null;
+    out.lineage_hops_checked = gate?.lineage_hops_checked ?? null;
+    if (!out.allowed) {
+      out.ok = true;   // a refusal is a successful answer, not an error
+      out.note = "No projection was assembled. The gate is asked BEFORE anything is read, so this is " +
+                 "not a filtered result - the subject's events were never retrieved.";
+      return out;
+    }
+
+    // ── RESOLVE, NOW, UNDER THAT GRANT ───────────────────────────────────────────────────────
+    const items = await getHybridEvents(subjectId, String(query || ""), env);
+    out.items = (items || []).map((e) => ({
+      type: e.type || "event",
+      text: String(e.summary || e.body || "").slice(0, 600),
+      ts: e.ts || null,
+    })).filter((e) => e.text);
+    out.count = out.items.length;
+    out.ok = true;
+    out.note = "Resolved at read time under edge " + (out.via_edge || "?") + ". Not stored, not cached. " +
+               "Ask again after that edge is revoked or superseded and this returns nothing - which is " +
+               "what makes it a reference rather than a copy.";
+    return out;
+  } catch (e) {
+    // FAILS CLOSED. An error must never become an unauthorised projection: no items, and say why.
+    out.ok = false; out.allowed = false; out.items = []; out.count = 0;
+    out.error = String(e?.message ?? e);
+    out.note = "Projection failed and returned nothing. A read path that yields content when its own " +
+               "checks threw is a breach wearing an error message.";
+    return out;
+  }
 }
 
 async function writeEvent(entityId, sessionId, channel, type, body, summary, env) {

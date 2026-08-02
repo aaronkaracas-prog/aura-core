@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.892-2026-08-02-module-scope-not-block-scope";
+const BUILD = "aura-core-v4.9.893-2026-08-02-the-narrower-true-invariant";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -26433,10 +26433,21 @@ async function getHybridEvents(entityId, query, env) {
 // thing this architecture exists to refuse.
 //
 // HONEST LIMIT, stated because the Council was blunt about it: this bounds what a reasoner is GIVEN.
-// It cannot bound what a reasoner RETAINS. Four of five seats said continuity re-enters through
-// caches, embeddings and learned weights regardless - "everyone claims stateless, then caches
-// prompt." Resolving at read time makes revocation reach everything the substrate holds. It does not
-// reach inside a rented model, and no line of code here can pretend otherwise.
+// It cannot bound what a reasoner RETAINS. Resolving at read time makes revocation reach everything
+// the substrate holds. It does not reach inside a rented model, and no line of code here can pretend
+// otherwise.
+//
+// SETTLED 2026-08-02, and the wording above was written while it was still arguable. Round five split
+// three-two on whether verifiable discard was achievable. Round eight asked directly and it collapsed
+// to FIVE AGAINST - no seat defended it. Their finding: revocation cannot reach a weight, because a
+// gradient step is a mixing operation and the influence cannot be surgically withdrawn afterwards.
+// "rent(learn=False) is revocable. rent(learn=True) is sale with a kill-switch."
+//
+// SO THE INVARIANT IS NARROWER THAN IT WAS FIRST WRITTEN, and this is the true version:
+//     THE SUBSTRATE OUTLIVES ANY MODEL THAT DOES NOT LEARN FROM IT.
+// Not "any model". The moment a rented reasoner updates on a projection, continuity has left the
+// substrate and revocation is a story about future reads only. Whether that holds for the models this
+// system actually rents is a fact with a date on it, not a property of this code - see REASONERS.
 // ══ SHARED MOMENTS ARE N INDEPENDENT CLAIMS (v4.9.887, Council round 7) ══════════════════════════
 //
 // Five seats, cold, unanimous on the core rule and split two ways on its edges. What they agreed:

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.899-2026-08-02-unknown-is-not-ok";
+const BUILD = "aura-core-v4.9.900-2026-08-02-the-comment-is-not-the-constant";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -4343,7 +4343,16 @@ async function processCommand(line, env, isOp) {
       } catch (e) { return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Fetch failed: " + e.message } }; }
       const srcLines = srcText.split("\n");
       const mode = (rsArgs[0] || "").toUpperCase();
-      const buildLine = (srcLines.find(l => l.includes("const BUILD")) || "").trim();
+      // ══ THE COMMENT ABOUT THE CONSTANT IS NOT THE CONSTANT (fixed 2026-08-02) ═══════════════
+      // This was `find(l => l.includes("const BUILD"))` - first line CONTAINING the string. Minutes
+      // after adding a BUILD constant to server.ts, STAT returned the COMMENT eleven lines above it,
+      // because that comment explains the constant and therefore mentions it. The extractor was
+      // fooled by prose about the thing it was looking for.
+      // Now: match a DECLARATION - optional export, const/let/var, BUILD, equals - anchored at the
+      // start of the line. A comment can say anything about BUILD and will never match; a real
+      // declaration always will.
+      const _BUILD_DECL = /^\s*(?:export\s+)?(?:const|let|var)\s+BUILD\s*=/;
+      const buildLine = (srcLines.find(l => _BUILD_DECL.test(l)) || "").trim();
 
       if (mode === "STAT") {
         return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "stat", worker, lines: srcLines.length, bytes: srcText.length, build: buildLine, source: worker === "aura-core" ? "github:main" : "github-api" } };

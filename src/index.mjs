@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.887-2026-08-02-independent-claims";
+const BUILD = "aura-core-v4.9.888-2026-08-02-succession-is-granted";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -5181,6 +5181,64 @@ async function processCommand(line, env, isOp) {
       } };
     }
 
+// ══ SUCCESSION ── SELF-MODIFICATION UNDER THE SAME LAW AS EVERYTHING ELSE (v4.9.888) ═════════════
+//
+// Five seats, cold and unanimous, found the same gap: the temporal line governs GRANTS and leaves the
+// REWRITE ungoverned. "An entity moving its own line says my old grants die, but does not gate whether
+// the new self is allowed to be written." "A temporal line does not attest that the later self is a
+// lawful successor of the earlier one - that is a separate, unbuilt proof."
+//
+// And one of them named the missing line exactly: `write_new_self requires grant from substrate` -
+// CHECKED AS A PERMISSION EDGE - "You didn't."
+//
+// This is that check. Self-modification now needs a live grant from the owner to the agent, carrying
+// can_evolve, and it is evaluated by the same ptaCan every other act goes through: default deny,
+// lineage-aware, superseded when the owner moves their line. Which means the owner can withdraw the
+// agent's right to rewrite itself by drawing a line, exactly as with any other authority - and until
+// now that was the one act in the system no consent surface could reach.
+//
+// WHY THIS IS NOT A DUPLICATE OF isOp. `isOp` asks "is the real operator asking". It is a session
+// fact and it cannot be withdrawn, expired, scoped or seen in the graph. A grant can. The difference
+// is the whole argument for a consent substrate: a role is something you ARE, a grant is something
+// somebody GAVE you and can take back.
+//
+// IT ADDS, IT NEVER REPLACES. isOp still required. The context gate still required. The syntax gate,
+// the constitutional refusal, 0% promote and human APPROVE all still stand behind this. A fourth lock
+// on a door with three is not a weakening.
+//
+// FAILS CLOSED WITH THE KEY IN THE LOCK. When no grant exists the refusal names the exact command
+// that mints one. A gate that refuses without saying how to satisfy it reads as broken and gets
+// worked around, which is how a gate stops being one.
+async function successionGate(env) {
+  try {
+    const owner = (await env.AURA_KV.get("config:owner:pta").catch(() => null) || "").trim();
+    if (!owner) {
+      return { ok: false, code: "NO_OWNER",
+        reason: "config:owner:pta is not set, so there is no entity whose consent could authorise a " +
+                "rewrite. Self-modification is an act ON somebody's system; with no owner in the graph " +
+                "there is nobody to have granted it.",
+        how: "SETKV config:owner:pta <pta_id> OVERRIDE_CONSTITUTIONAL" };
+    }
+    const can = await ptaCan(env, "pta_aura", "evolve", owner);
+    if (can?.allowed) {
+      return { ok: true, owner, via_edge: can.via_edge || null,
+        note: "Authorised by a live grant, not by a role. The owner can withdraw this by revoking that " +
+              "edge or by moving their line - the same two surfaces that govern every other act." };
+    }
+    return { ok: false, code: "NO_SUCCESSION_GRANT", owner,
+      reason: "No live grant authorises this agent to rewrite itself. ptaCan says: " + (can?.reason || "denied"),
+      how: "PTA_GRANT " + owner + " pta_aura {\"permission\":{\"can_view\":true,\"can_evolve\":true," +
+           "\"purposes\":[\"self_modification\"]}}  then PTA_ACCEPT <edge_id>",
+      why_this_exists: "A council of five found that this system governs who may read a person and " +
+        "leaves ungoverned the one act that changes the system itself. This closes that." };
+  } catch (e) {
+    // A gate that throws must DENY. An error on the authorisation path is not permission.
+    return { ok: false, code: "GATE_UNAVAILABLE", reason: String(e?.message ?? e),
+      how: "The succession check could not run, so the rewrite is refused. A self-edit that proceeds " +
+           "when its own authorisation check failed is the failure this whole layer exists to prevent." };
+  }
+}
+
     case "AURA_EVOLVE": {
       // THE SELF-EDIT CONDUCTOR (v4.9.481). Collapses Aura's own read->patch->validate loop into ONE
       // supervised act, with Aaron's three laws checked IN THE PATH, and HALTS before anything can reach a
@@ -5194,6 +5252,10 @@ async function processCommand(line, env, isOp) {
       // CONTEXT GATE: self-edit requires true operator context. If this is not the real operator, it refuses.
       if (!isOp) return { cmd: "AURA_EVOLVE", payload: { ok: false, error: "OPERATOR_REQUIRED - self-edit refuses without confirmed operator context. If you do not know you are Aura with Aaron as operator, you must not touch your own code." } };
       { const _cg = await auraContextGate(env, isOp); if (!_cg.ok) return { cmd: "AURA_EVOLVE", payload: { ok: false, error: _cg.reason, gate: "context" } }; }
+      // LAW 4, added 2026-08-02: the rewrite itself must be granted, not merely permitted by a role.
+      { const _sg = await successionGate(env);
+        if (!_sg.ok) return { cmd: "AURA_EVOLVE", payload: { ok: false, gate: "succession", error: _sg.code,
+          reason: _sg.reason, how: _sg.how, why_this_exists: _sg.why_this_exists || null } }; }
       const evArg = (rest || "").trim();
 
       // ---- PROMOTE leg: explicit, separate, human-invoked. Never auto-runs after a patch. ----

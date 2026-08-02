@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.891-2026-08-02-does-this-mind-learn";
+const BUILD = "aura-core-v4.9.892-2026-08-02-module-scope-not-block-scope";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -885,6 +885,49 @@ async function brainFetch(url, opts, env, caller) {
 // identity/consent layer for entities she deals with. Her memory is the archive. Kept as a tombstone so
 // nobody re-adds it: if you find yourself wanting an id for her here, the answer is the archive.
 const AURA_PTA_ID = null;
+
+// ══ REASONER POLICY ── WHETHER A RENTED MIND LEARNS FROM US (v4.9.891, Council round 8) ══════════
+//
+// Five seats, cold and unanimous, killed the strong invariant: an intelligence that LEARNS cannot be
+// rented under revocable consent, because revocation cannot reach a weight. "rent(learn=False) is
+// revocable. rent(learn=True) is sale with a kill-switch." The honest invariant they left standing:
+// THE SUBSTRATE OUTLIVES ANY MODEL THAT DOES NOT LEARN FROM IT.
+//
+// Which makes `does this one learn` load-bearing rather than trivia, and it is CHECKABLE. Verified
+// against the providers' published API terms on 2026-08-02: OpenAI has not trained on API data by
+// default since March 2023; Anthropic never trains on API traffic and deletes it in 7 days; Google's
+// Gemini API carries a no-training policy for API customers. The consumer products of all three do
+// the opposite - which is exactly why this is recorded per API, not per company.
+//
+// SO THE INVARIANT HOLDS TODAY - BY CONTRACT, NOT BY ARCHITECTURE. That distinction is the entire
+// value of this table. Nothing in the code prevents a provider from changing its terms; Anthropic
+// changed its CONSUMER policy in August 2025 with an opt-out deadline, and anyone who missed it was
+// in. A claim resting on somebody else's terms of service decays, so every row carries HOW we know
+// and WHEN it was last checked, and the command says when that has gone stale.
+//
+// DECLARED, NOT DERIVED - same as the door registry. No API reports "am I training on you"; this is
+// a reading of published terms, which is a human act. What the code CAN do is refuse to let that
+// reading age silently.
+const REASONER_POLICY = {
+  anthropic: { learns: false, basis: "contract", retention_days: 7,
+    detail: "API inputs and outputs are never used for training and are deleted after 7 days. ZDR available by agreement. The CONSUMER product trains by default since 2025-09-28 - different policy, same company.",
+    verified: "2026-08-02" },
+  openai: { learns: false, basis: "contract", retention_days: 30,
+    detail: "Not used for training by default since March 2023, no opt-out needed. 30 days retention for abuse monitoring. ZDR by application. The ChatGPT web product is the opposite.",
+    verified: "2026-08-02" },
+  google: { learns: false, basis: "contract", retention_days: null,
+    detail: "No-training policy on the paid Gemini API and Vertex AI. The consumer Gemini app may retain and use data for product improvement.",
+    verified: "2026-08-02" },
+  xai: { learns: null, basis: "unverified", retention_days: null,
+    detail: "NOT VERIFIED. xAI's API terms were not read for this table, and the majority of this system's spend runs through it. An unknown is recorded as unknown rather than assumed to match its peers.",
+    verified: null },
+  groq: { learns: null, basis: "unverified", retention_days: null,
+    detail: "NOT VERIFIED. Inference provider for llama models; terms not read.", verified: null },
+  meta: { learns: null, basis: "unverified", retention_days: null,
+    detail: "NOT VERIFIED. Terms not read.", verified: null },
+};
+const REASONER_POLICY_STALE_DAYS = 90;
+
 
 // ══ THE OWNER'S EVENTS BELONG TO THE OWNER'S PTA (v4.9.881) ══════════════════════════════════════
 // Every event this system has ever written went under the literal string "operator" - storeEventVector
@@ -5238,47 +5281,6 @@ async function successionGate(env) {
   }
 }
 
-// ══ REASONER POLICY ── WHETHER A RENTED MIND LEARNS FROM US (v4.9.891, Council round 8) ══════════
-//
-// Five seats, cold and unanimous, killed the strong invariant: an intelligence that LEARNS cannot be
-// rented under revocable consent, because revocation cannot reach a weight. "rent(learn=False) is
-// revocable. rent(learn=True) is sale with a kill-switch." The honest invariant they left standing:
-// THE SUBSTRATE OUTLIVES ANY MODEL THAT DOES NOT LEARN FROM IT.
-//
-// Which makes `does this one learn` load-bearing rather than trivia, and it is CHECKABLE. Verified
-// against the providers' published API terms on 2026-08-02: OpenAI has not trained on API data by
-// default since March 2023; Anthropic never trains on API traffic and deletes it in 7 days; Google's
-// Gemini API carries a no-training policy for API customers. The consumer products of all three do
-// the opposite - which is exactly why this is recorded per API, not per company.
-//
-// SO THE INVARIANT HOLDS TODAY - BY CONTRACT, NOT BY ARCHITECTURE. That distinction is the entire
-// value of this table. Nothing in the code prevents a provider from changing its terms; Anthropic
-// changed its CONSUMER policy in August 2025 with an opt-out deadline, and anyone who missed it was
-// in. A claim resting on somebody else's terms of service decays, so every row carries HOW we know
-// and WHEN it was last checked, and the command says when that has gone stale.
-//
-// DECLARED, NOT DERIVED - same as the door registry. No API reports "am I training on you"; this is
-// a reading of published terms, which is a human act. What the code CAN do is refuse to let that
-// reading age silently.
-const REASONER_POLICY = {
-  anthropic: { learns: false, basis: "contract", retention_days: 7,
-    detail: "API inputs and outputs are never used for training and are deleted after 7 days. ZDR available by agreement. The CONSUMER product trains by default since 2025-09-28 - different policy, same company.",
-    verified: "2026-08-02" },
-  openai: { learns: false, basis: "contract", retention_days: 30,
-    detail: "Not used for training by default since March 2023, no opt-out needed. 30 days retention for abuse monitoring. ZDR by application. The ChatGPT web product is the opposite.",
-    verified: "2026-08-02" },
-  google: { learns: false, basis: "contract", retention_days: null,
-    detail: "No-training policy on the paid Gemini API and Vertex AI. The consumer Gemini app may retain and use data for product improvement.",
-    verified: "2026-08-02" },
-  xai: { learns: null, basis: "unverified", retention_days: null,
-    detail: "NOT VERIFIED. xAI's API terms were not read for this table, and the majority of this system's spend runs through it. An unknown is recorded as unknown rather than assumed to match its peers.",
-    verified: null },
-  groq: { learns: null, basis: "unverified", retention_days: null,
-    detail: "NOT VERIFIED. Inference provider for llama models; terms not read.", verified: null },
-  meta: { learns: null, basis: "unverified", retention_days: null,
-    detail: "NOT VERIFIED. Terms not read.", verified: null },
-};
-const REASONER_POLICY_STALE_DAYS = 90;
 
     case "REASONERS": {
       // What every rented mind is permitted to do with what it is shown, and how sure we are.

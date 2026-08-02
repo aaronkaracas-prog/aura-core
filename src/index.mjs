@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.883-2026-08-02-the-embed-must-land";
+const BUILD = "aura-core-v4.9.884-2026-08-02-who-holds-this-moment";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -21991,7 +21991,72 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         return { cmd: "PTA_MOMENT", payload: { ok: true, moment: mom, participant_count: participants ? participants.c : 0 } };
       }
 
-      return { cmd: "PTA_MOMENT", payload: { ok: false, error: "Sub-commands: CREATE, LIST, GET" } };
+      if (sub === "CLAIMS") {
+        // ══ WHO HAS CLAIM TO THIS MOMENT (v4.9.884, Council round 6) ═══════════════════════════
+        // The counterexample no other seat found: "a shared moment is JOINTLY AUTHORED continuity.
+        // When the other party revokes, they are reaching into a continuity that is partly yours.
+        // There exist seams where your own past and foreign grant are the SAME BYTES."
+        //
+        // Everything built today assumes one subject owns a thing. Epoch supersedes YOUR grants.
+        // PROJECT resolves A subject's continuity. Neither has a word for a moment two entities both
+        // have claim to - and pta_moments has a singular creator_id while participants exist only as
+        // edges tagged with moment_id, discoverable by COUNT. `PTA_MOMENT GET` answers "three
+        // participants" and cannot say who, or whether any of them still stands by it.
+        //
+        // THIS ANSWERS THE QUESTION AND ENFORCES NOTHING, deliberately. A rule about whose revocation
+        // wins, written before anyone can see who holds claim, is a gate nobody can verify - and this
+        // file has spent a day removing exactly that shape. Measure first: VERIFY existed before the
+        // regression gate, detection before containment, the ledger before the reconciliation.
+        //
+        // A CLAIM IS LIVE IF two things hold, and both are already primitives: the edge is active,
+        // AND it was not superseded when that participant drew their own line. The epoch check runs
+        // per participant against THEIR OWN epoch_at - because withdrawing from a shared moment by
+        // moving your line is a withdrawal, even though nobody typed the word revoke.
+        const momId = args[1] || "";
+        if (!momId) return { cmd: "PTA_MOMENT", payload: { ok: false, error: "Usage: PTA_MOMENT CLAIMS <moment_id>" } };
+        const mom = await db.prepare("SELECT * FROM pta_moments WHERE id = ?").bind(momId).first();
+        if (!mom) return { cmd: "PTA_MOMENT", payload: { ok: false, error: "Moment not found: " + momId } };
+
+        const rows = await db.prepare(
+          "SELECT e.id, e.from_id, e.to_id, e.edge_type, e.state, e.created_at, " +
+          "f.name AS from_name, t.name AS to_name, f.epoch_at AS from_epoch, t.epoch_at AS to_epoch " +
+          "FROM pta_edges e LEFT JOIN pta_entities f ON f.id = e.from_id " +
+          "LEFT JOIN pta_entities t ON t.id = e.to_id WHERE e.moment_id = ? ORDER BY e.created_at"
+        ).bind(momId).all().catch(() => ({ results: [] }));
+
+        const claims = ((rows && rows.results) || []).map((e) => {
+          const superseded = !!(e.from_epoch && String(e.created_at || "") < String(e.from_epoch));
+          return {
+            edge: e.id, edge_type: e.edge_type, state: e.state,
+            holder: e.from_id, holder_name: e.from_name || null,
+            counterparty: e.to_id, counterparty_name: e.to_name || null,
+            created_at: e.created_at,
+            live: e.state === "active" && !superseded,
+            why: e.state !== "active"
+              ? "edge is " + e.state
+              : (superseded ? "superseded - this holder drew a line at " + e.from_epoch + ", after this edge was made" : null),
+          };
+        });
+        const live = claims.filter((c) => c.live);
+        const holders = [...new Set(live.map((c) => c.holder))];
+
+        return { cmd: "PTA_MOMENT", payload: { ok: true, moment_id: momId, name: mom.name,
+          creator_id: mom.creator_id, live_from: mom.live_from, live_until: mom.live_until,
+          claims, total_claims: claims.length, live_claims: live.length, live_holders: holders,
+          jointly_held: holders.length > 1,
+          note: holders.length > 1
+            ? "JOINTLY HELD by " + holders.length + " entities. This moment is part of more than one " +
+              "continuity at once, so no single holder's history fully contains it and no single " +
+              "holder's withdrawal fully removes it."
+            : "Held by " + holders.length + " entity. Nothing about this moment is co-owned today.",
+          not_enforced: "NOTHING here changes what PROJECT returns or what ptaCan allows. A shared " +
+            "moment still projects under whichever subject the vector was indexed against, and a " +
+            "holder withdrawing does not remove it from a co-holder's projection. That rule is not " +
+            "written because nobody could see the claims to write it against - which is what this " +
+            "answers. Stating the gap beats a gate that looks enforced and is not." } };
+      }
+
+      return { cmd: "PTA_MOMENT", payload: { ok: false, error: "Sub-commands: CREATE, LIST, GET, CLAIMS" } };
     }
 
     case "PTA_SCAN": {

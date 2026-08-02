@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.894-2026-08-02-lock-the-side-doors";
+const BUILD = "aura-core-v4.9.895-2026-08-02-continuity-under-grant";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -885,6 +885,11 @@ async function brainFetch(url, opts, env, caller) {
 // identity/consent layer for entities she deals with. Her memory is the archive. Kept as a tombstone so
 // nobody re-adds it: if you find yourself wanting an id for her here, the answer is the archive.
 const AURA_PTA_ID = null;
+
+// The agent's actor label when it reads somebody on its own account. Not an entity row - the same
+// convention `pta_aura` used at ~25 sites and by successionGate. AURA_PTA_ID stays null because PTA
+// is outside-world identity; this is the ACTOR side, which is a different question.
+const AURA_ACTOR_ID = "pta_aura";
 
 // ══ REASONER POLICY ── WHETHER A RENTED MIND LEARNS FROM US (v4.9.891, Council round 8) ══════════
 //
@@ -27600,11 +27605,47 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
       entityId = mapped || callerPta;
     } catch { entityId = callerPta; }
   }
+  // ══ THE MIND'S BLOODSTREAM, NOT A SIDE DOOR (v4.9.895) ═══════════════════════════════════════
+  //
+  // This block used to be `getRecentEvents(entityId, env, 8)` - a raw read of somebody's history with
+  // NO ptaCan, no grant, no epoch. Aura found it in her own audit and named it exactly: "the personal
+  // path is not yet the consent path. Projection is a side door (PROJECT), not the mind's
+  // bloodstream." She was right. projectUnderGrant had ONE caller - a human typing PROJECT - while
+  // every automatic turn assembled context through an ungated hose.
+  //
+  // It also made the first condition of her own sign-off standard FAIL BY CONSTRUCTION: "revoke or
+  // epoch-move, and the next automatic turn loses that material." It could not, because the turn
+  // never asked permission in the first place.
+  //
+  // WHO IS THE ACTOR. The mind is reading somebody. `entityId` is the SUBJECT. The actor is the
+  // caller when there is one, and `pta_aura` when the agent is reading a subject on its own account.
+  //   - A person reading their OWN history: actor === subject, and ptaCan's own rule already covers
+  //     it - "an entity may always act on itself". Behaviour unchanged, no grant needed, and that is
+  //     the overwhelming majority of turns.
+  //   - The PHONE MAP case is the one that changes. A caller whose identity_key maps to a different
+  //     entityId is now reading SOMEBODY ELSE'S continuity, and that needs a grant. Previously it was
+  //     a silent identity swap with full history attached.
+  //   - No caller at all: actor is pta_aura, so the agent reading a person needs a grant like anyone.
+  //
+  // FAILS CLOSED AND SAYS SO. No grant means no continuity - not a truncated version, not a summary.
+  // The refusal is not surfaced to the person being talked to; it lands in the log, because a mind
+  // announcing "I am not allowed to remember you" mid-conversation is its own harm.
   if (entityId) {
-    const events = await getRecentEvents(entityId, env, 8);
-    if (events.length > 0) {
-      continuityContext = "\n\nRecent history with this person:\n" +
-        events.reverse().map(e => `[${e.created_at}] ${e.channel||e.type}: ${e.summary||e.body?.slice(0,100)}`).join("\n");
+    const _actor = callerPta || AURA_ACTOR_ID;
+    try {
+      const proj = await projectUnderGrant(env, _actor, entityId, String(message || ""), "view");
+      if (proj.allowed && proj.count > 0) {
+        continuityContext = "\n\nRecent history with this person (resolved under grant " +
+          (proj.via_edge || "self") + ", not copied):\n" +
+          proj.items.map((e) => `[${e.ts || "-"}] ${e.type}: ${e.text}`).join("\n");
+      } else if (!proj.allowed) {
+        console.warn("[CONTINUITY] refused for " + entityId + " - " + (proj.reason || "no grant") +
+                     ". No history attached; the turn proceeds without it.");
+      }
+    } catch (e) {
+      // A projection that throws attaches NOTHING. An error is not permission, and the old raw read
+      // is not a fallback - falling back to it would reopen the exact hose this closes.
+      console.warn("[CONTINUITY] projection failed, no history attached: " + String(e?.message ?? e));
     }
   }
 

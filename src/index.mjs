@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.872-2026-08-02-wake-cap-four";
+const BUILD = "aura-core-v4.9.873-2026-08-02-source-cached-by-build";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2117,7 +2117,28 @@ async function governorRecord(env, action, pageId) {
 // === RELIABLE SELF-SOURCE READ (v4.9.493) - one helper all self-reads use ===
 // The public raw CDN 404s under load / after pushes; this tries authenticated GitHub API first,
 // then raw CDN, then a KV cache, and self-heals the cache on success. So Aura can ALWAYS read herself.
-async function readOwnSource(env, branch, worker) {
+async function readOwnSource(env, branch, worker, fresh) {
+  // ══ 25 SECONDS, EVERY CALL, FOR A FILE THAT DID NOT CHANGE (fixed 2026-08-02) ═════════════════
+  // `[CORE] 'AURA_READ_SELF' exceeded 25000ms` fired three times tonight and the bound was the only
+  // thing keeping those turns alive. The cause is directly below: a 2.8MB fetch from the raw CDN with
+  // `Cache-Control: no-cache`, on EVERY call, several times per turn, followed by a grep over the
+  // result. The KV cache underneath existed but was a LAST RESORT - read only after the network had
+  // already failed - so the slow path was always the fast path.
+  //
+  // THE PATTERN IS ALREADY IN THIS FILE AND ALREADY PROVEN (v4.9.652, WHERE): cache under a key that
+  // IS THE BUILD STRING. A deploy changes the key and discards the cache, so staleness is impossible
+  // without a deploy, there is no TTL to guess and no invalidation to forget. Not a new mechanism -
+  // the same one, applied to its sibling.
+  //
+  // HONEST LIMIT, stated rather than buried: BUILD is aura-core's. Deploying aura-THINK does not
+  // change it, so that worker's cached source can lag until aura-core next deploys. Bounded two ways
+  // - a 6 hour TTL on the entry, and `AURA_READ_SELF ... fresh` bypasses entirely. For aura-core
+  // itself, which is the overwhelming majority of these reads, the key is exact.
+  //
+  // The `no-cache` header on the fetch STAYS. It is there because GitHub's raw CDN serves the
+  // previous version for minutes after a push, which is the known false positive in VERIFY's
+  // source-vs-running check. Letting the edge cache paper over that would trade a slow read for a
+  // wrong one.
   let _branch = branch || null;   // resolved against the worker map below
   // v4.9.596: the `worker` argument was ACCEPTED AND IGNORED - _repo was hardcoded to "aura-core", so
   // every call asking for "aura-think" silently got the hands instead of the brain. She has never once
@@ -2157,6 +2178,18 @@ async function readOwnSource(env, branch, worker) {
   const looksComplete = (s) => s && s.length > _minBytes && !s.startsWith("404") &&
     (s.includes("export default") || s.includes("export class") || s.trimEnd().endsWith("}") || s.includes("addEventListener"));
   let got = null, via = null;
+  // ── 0) THE BUILD-KEYED CACHE, READ FIRST. This is the whole fix: on a repeat read within one
+  //    build there is no network call, no 2.8MB transfer and no 25-second wall.
+  const _bk = "self:src:" + _w + ":" + BUILD;
+  if (!fresh) {
+    const hit = await env.AURA_KV.get(_bk).catch(() => null);
+    if (hit && looksComplete(hit)) {
+      return { ok: true, source: hit, via: "kv_build_cache", worker: _w, repo: _repo, path: _path,
+               bytes: hit.length, cache_key: _bk,
+               note: "Served from the cache keyed to this build. A deploy changes the key, so this " +
+                     "cannot be stale for aura-core. Append `fresh` to force a live read." };
+    }
+  }
   // 1) raw CDN - no 1MB limit, returns the WHOLE file
   try {
     const sr = await fetch("https://raw.githubusercontent.com/aaronkaracas-prog/" + _repo + "/" + _branch + "/" + _path, { headers: { "User-Agent": "aura-self-read", "Cache-Control": "no-cache" } });
@@ -2246,7 +2279,13 @@ async function readOwnSource(env, branch, worker) {
     const cached = await env.AURA_KV.get(_ck).catch(() => null);
     if (cached && looksComplete(cached)) { got = cached; via = "kv_cache"; }
   }
-  if (got != null && via !== "kv_cache") await env.AURA_KV.put(_ck, got).catch(() => {});
+  if (got != null && via !== "kv_cache") {
+    // TWO WRITES, TWO DIFFERENT JOBS. The build-keyed entry is the fast path and expires with the
+    // build. The unkeyed one is the disaster fallback: if GitHub is down AND the build has moved,
+    // a stale copy of her source beats no source at all - she can still read herself and say so.
+    await env.AURA_KV.put(_bk, got, { expirationTtl: 6 * 3600 }).catch(() => {});
+    await env.AURA_KV.put(_ck, got).catch(() => {});
+  }
   return got ? { ok: true, source: got, via, worker: _w, repo: _repo, path: _path, bytes: got.length }
              : { ok: false, worker: _w, repo: _repo, path: _path,
                  error: "cannot read " + _w + " (" + _repo + "/" + _path + "): raw cdn, github blob and per-worker cache all failed. If the repo or path is named differently, set config:repo:" + _w + ' to {"repo":"...","path":"..."}.' };
@@ -3955,7 +3994,11 @@ async function processCommand(line, env, isOp) {
           // API, then KV cache, with a completeness check). The old inline code used the github CONTENTS
           // API which truncates at 1MB, so ~9000 lines of this 20000-line file were invisible to self-read,
           // which is why GREP kept missing real code past line ~10960. One correct read path now.
-          const _ros = await readOwnSource(env, readBranch, worker);  // worker: "aura-think" reads her BRAIN, else her hands
+          // `fresh` anywhere in the line forces a live read past the build-keyed cache - the same
+          // escape hatch WHERE has, and for the same reason: after a push but before a deploy, the
+          // cache key has not moved yet and someone verifying a commit needs the network copy.
+          const _wantFresh = /\bfresh\b/i.test(String(rest || ""));
+          const _ros = await readOwnSource(env, readBranch, worker, _wantFresh);  // worker: "aura-think" reads her BRAIN, else her hands
           if (!_ros.ok) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Could not read own source (full-file read failed): " + _ros.error } };
           srcText = _ros.source;
         } else {
@@ -29392,7 +29435,13 @@ async function verifyAgainstReality(env) {
   // BUILD is a constant in source, but a RUNNING worker returning it is evidence the deployed code is
   // the code she read. If these ever disagree, the deploy did not land.
   try {
-    const live = await readOwnSource(env, null, "aura-core");
+    // ══ THIS ONE MUST BYPASS THE CACHE, OR IT GRADES ITS OWN HOMEWORK (2026-08-02) ═════════════
+    // The build-keyed source cache added today is keyed on BUILD - the running build. So a cached
+    // read would return source that was fetched WHEN THAT BUILD WAS CURRENT, guaranteeing it
+    // contains the running BUILD string, guaranteeing this check passes. The single most important
+    // check in VERIFY - did the deploy actually land, or is GitHub ahead of Cloudflare - would have
+    // been silently disabled by a performance fix. `fresh` forces the network read.
+    const live = await readOwnSource(env, null, "aura-core", true);
     const inSrc = live.ok && live.source ? (live.source.match(/const BUILD = "([^"]+)"/) || [])[1] : null;
     add("build", inSrc || "(unreadable)", BUILD, inSrc === BUILD,
         inSrc === BUILD ? "source on GitHub matches the running worker"

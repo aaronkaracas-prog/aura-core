@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.874-2026-08-02-media-and-stream-connected";
+const BUILD = "aura-core-v4.9.875-2026-08-02-one-door-for-secrets";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -144,7 +144,7 @@ async function callBrain({ system, user, max_tokens = 2000, model = null, temper
   const cap = Math.max(16, Math.min(16000, parseInt(max_tokens, 10) || 2000));
 
   if (route.provider === "anthropic") {
-    const key = env.ANTHROPIC_API_KEY || await getSecret(env, "anthropic");
+    const key = await getSecret(env, "anthropic");
     if (!key) return { ok: false, error: "no Anthropic key", provider: route.provider, model: route.model };
     const r = await brainFetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -1847,7 +1847,7 @@ async function scanLiveEvents(env, topN = 8) {
 }
 
 async function getOperatorToken(env) {
-  return env.OPERATOR_TOKEN || await getSecret(env, "aura_operator_token");
+  return await getSecret(env, "aura_operator_token");
 }
 
 async function verifyOperator(request, env) {
@@ -1982,6 +1982,31 @@ const _secretCache = new Map();
 const SECRET_TTL_MS = 60000;
 
 async function getSecret(env, name) {
+  // ══ 43 CALL SITES HAD A PRIVATE ENTRANCE (swept 2026-08-02) ══════════════════════════════════
+  // v4.9.715 converted 200 sites to this one door. 49 others kept the shape
+  //     env.CF_API_TOKEN || await getSecret(env, "cf_api_token")
+  // where the wrangler secret SHORT-CIRCUITS before this function is ever called. A per-worker
+  // wrangler secret therefore beat the KV copy that all five workers share, which is the mechanical
+  // cause of "I set the key and nothing changed" - Aaron's stated pet peeve, with a real instance
+  // tonight: a good CF token written to KV, ignored, VERIFY still failing on a stale worker secret.
+  // Deleting that one secret and redeploying turned the check green off KV. That was the proof.
+  //
+  // 43 swept, across cf_api_token, openai, anthropic, xai, grok_api_key, aura_operator_token,
+  // mercury_api_key, twilio_auth_token, twilio_account_sid and stripe - every one CONFIRMED present
+  // in KV by `LISTKV secret:` BEFORE the edit, not after. Behaviour is identical where both copies
+  // agree; where they disagree KV now wins, which is the intent.
+  //
+  // ══ FIVE DELIBERATE EXCEPTIONS, AND THEY ARE A REAL GAP ══════════════════════════════════════
+  //   session_secret (x2) · xai_management_key · spaceship_api_key · spaceship_api_secret · google
+  // These have NO KV value at all. They work today ONLY because a wrangler secret exists on
+  // aura-core, which means: no other worker can read them, and recreating this worker loses them.
+  // Sweeping them would have signed sessions with null and locked the doorway. So the shortcut stays
+  // and the gap is NAMED rather than converted into an outage.
+  //
+  // TO CLOSE EACH: write the value to KV under the family name, then delete the `env.X ||` prefix at
+  // its call site. Not done blind - the value has to be copied from the wrangler secret first, and
+  // session_secret in particular invalidates every live session the moment it changes, so it wants a
+  // quiet window rather than a mid-session edit.
   if (!env || !name) return null;
   const bare = String(name).replace(/^secret:/i, "");
   const fam = SECRET_ALIAS[bare] || bare;
@@ -3360,7 +3385,7 @@ async function proxyToAgent(env, line, isOp, ptaId) {
   try {
     const instance = agentInstanceFor(isOp, ptaId);
     if (!instance) return { failed: "no identity - an anonymous visitor has no agent instance of their own, so the local path answers" };
-    const tok = env.AURA_OPERATOR_TOKEN || await getSecret(env, "aura_operator_token");
+    const tok = await getSecret(env, "aura_operator_token");
     if (!tok) return { failed: "no operator token in env.AURA_OPERATOR_TOKEN or secret:aura_operator_token" };
     // SERVICE BINDING, NOT THE PUBLIC INTERNET. The first version fetched aura-think's workers.dev URL
     // and Cloudflare refused it with error 1042 - a Worker calling another Worker on the same account by
@@ -3806,7 +3831,7 @@ async function sendEmail(env, to, subject, body, opts) {
       }
     } catch {}
   }
-  const cfToken = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
+  const cfToken = await getSecret(env, "cf_api_token");
   if (!cfToken) { result.error = "no CF API token"; return result; }
   // deliverability: a real From name (not bare noreply@) helps inbox placement
   const fromAddr = opts.from || (await KV.get(env, "config:email:from")) || "noreply@auras.guide";
@@ -10975,7 +11000,7 @@ async function processCommand(line, env, isOp) {
     }
     case "CLOUDFLARE_STATUS": {
       if (!isOp) return { cmd: "CLOUDFLARE_STATUS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      const cfToken = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
+      const cfToken = await getSecret(env, "cf_api_token");
       const cfAccount = env.CF_ACCOUNT_ID || "3db0de2c6fce92757e2c4e4f83d7eb16";
       if (!cfToken) return { cmd: "CLOUDFLARE_STATUS", payload: { ok: false, error: "No CF token" } };
       const H = { "Authorization": "Bearer " + cfToken, "Content-Type": "application/json" };
@@ -11023,7 +11048,7 @@ async function processCommand(line, env, isOp) {
       if (!CF_METHODS.includes(cfMethod) || !cfPath.startsWith("/") || cfPath.includes("://") || cfPath.includes("..")) {
         return { cmd: "CF_API", payload: { ok: false, error: "Usage: CF_API <GET|POST|PUT|PATCH|DELETE> </path?query> [json body]. Path is relative to https://api.cloudflare.com/client/v4 and must start with /. Example: CF_API GET /zones?name=example.com" } };
       }
-      const cfApiToken = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
+      const cfApiToken = await getSecret(env, "cf_api_token");
       if (!cfApiToken) return { cmd: "CF_API", payload: { ok: false, error: "No CF token (env.CF_API_TOKEN or secret:cf_api_token)" } };
       // Body = everything after the path token; must be valid JSON when present.
       const cfAfterMethod = rest.slice(cfMethod.length).trim();
@@ -11121,7 +11146,7 @@ async function processCommand(line, env, isOp) {
       //   ROLLBACK_SELF TO <version_id>  -> redeploy a specific version by id
       if (!isOp) return { cmd: "ROLLBACK_SELF", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const rbAccount = env.CF_ACCOUNT_ID || (await env.AURA_KV.get("config:cf:account_id").catch(() => null)) || "3db0de2c6fce92757e2c4e4f83d7eb16";
-      const rbToken = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
+      const rbToken = await getSecret(env, "cf_api_token");
       if (!rbToken) return { cmd: "ROLLBACK_SELF", payload: { ok: false, error: "No CF token (secret:cf_api_token)" } };
       const rbScript = "aura-core-v2";
       const cfGet = async (path) => {
@@ -11189,7 +11214,7 @@ async function processCommand(line, env, isOp) {
       // reads each zone's worker routes, returns a compact summary (worker -> count + domain list).
       // One call instead of hundreds. No domain names baked in - all pulled live from CF.
       if (!isOp) return { cmd: "ROUTE_AUDIT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      const tok = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
+      const tok = await getSecret(env, "cf_api_token");
       if (!tok) return { cmd: "ROUTE_AUDIT", payload: { ok: false, error: "No CF token" } };
       const cf = async (path) => {
         const r = await fetch("https://api.cloudflare.com/client/v4" + path, { headers: { Authorization: "Bearer " + tok } });
@@ -11233,7 +11258,7 @@ async function processCommand(line, env, isOp) {
       const domain = (parts[0] || "").toLowerCase();
       const target = parts[1] || "";
       if (!domain || !target) return { cmd: "ROUTE_SET_ONE", payload: { ok: false, error: "Usage: ROUTE_SET_ONE <domain> <target_worker>" } };
-      const tok = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
+      const tok = await getSecret(env, "cf_api_token");
       if (!tok) return { cmd: "ROUTE_SET_ONE", payload: { ok: false, error: "No CF token" } };
       const cf = async (path, method, jsonBody) => {
         const r = await fetch("https://api.cloudflare.com/client/v4" + path, {
@@ -11276,7 +11301,7 @@ async function processCommand(line, env, isOp) {
       const skipRaw = pipeIdx >= 0 ? body.slice(pipeIdx + 1) : "";
       if (!target) return { cmd: "ROUTE_SET_ALL", payload: { ok: false, error: "Usage: ROUTE_SET_ALL [DRY] <target_worker> | skipA, skipB" } };
       const skip = new Set(skipRaw.split(",").map(s => s.trim().toLowerCase()).filter(Boolean));
-      const tok = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
+      const tok = await getSecret(env, "cf_api_token");
       if (!tok) return { cmd: "ROUTE_SET_ALL", payload: { ok: false, error: "No CF token" } };
       const cf = async (path, method, jsonBody) => {
         const r = await fetch("https://api.cloudflare.com/client/v4" + path, {
@@ -11343,7 +11368,7 @@ async function processCommand(line, env, isOp) {
       const isMgmt = /^\/v1\/billing|^\/auth/.test(path);
       const key = isMgmt
         ? (env.XAI_MANAGEMENT_KEY || await getSecret(env, "xai_management_key"))
-        : (env.XAI_API_KEY || await getSecret(env, "grok_api_key"));
+        : (await getSecret(env, "grok_api_key"));
       if (!key) return { cmd: "XAI_API", payload: { ok: false, error: isMgmt ? "no XAI management key" : "no xAI key" } };
       const base = isMgmt ? "https://management-api.x.ai" : "https://api.x.ai";
       try {
@@ -11389,8 +11414,8 @@ async function processCommand(line, env, isOp) {
       } else {
         return { cmd: "TWILIO_API", payload: { ok: false, error: "Path must start with / or be a full https://*.twilio.com URL" } };
       }
-      const twSid = env.TWILIO_ACCOUNT_SID || await getSecret(env, "twilio_account_sid") || await getSecret(env, "twilio_sid");
-      const twToken = env.TWILIO_AUTH_TOKEN || await getSecret(env, "twilio_auth_token");
+      const twSid = await getSecret(env, "twilio_account_sid") || await getSecret(env, "twilio_sid");
+      const twToken = await getSecret(env, "twilio_auth_token");
       if (!twSid || !twToken) return { cmd: "TWILIO_API", payload: { ok: false, error: "Missing Twilio creds (need secret:twilio_account_sid and secret:twilio_auth_token in KV)" } };
       const twAfterMethod = rest.slice(twMethod.length).trim();
       let twBody = twAfterMethod.slice(twTarget.length).trim();
@@ -15160,7 +15185,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // Vertical-neutral email sender via Cloudflare Email Service REST API.
       // Usage: EMAIL_SEND <to> <subject> | <body text>
       if (!isOp) return { cmd: "EMAIL_SEND", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      const cfToken = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
+      const cfToken = await getSecret(env, "cf_api_token");
       if (!cfToken) return { cmd: "EMAIL_SEND", payload: { ok: false, error: "No CF API token" } };
       const emailRest = rest.trim();
       const emailTo = (args[0] || "").trim();
@@ -23089,7 +23114,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
 
       // OPENAI â€” try the costs/usage endpoint; honestly report if unavailable (OpenAI deprecated most billing reads)
       try {
-        let k = env.OPENAI_API_KEY || await getSecret(env, "openai");
+        let k = await getSecret(env, "openai");
         if (k && k.startsWith("{")) { try { k = JSON.parse(k).api_key; } catch {} }
         if (!k) { out.providers.openai = { ok: false, error: "no key" }; }
         else {
@@ -23187,7 +23212,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           check: async () => { const s = await getStripeBalance(env); return !!(s && s.ok); } },
         { id: "plaid", label: "Plaid", powers: "bank connections", key: "secret:plaid_client_id", check: null },
         { id: "twilio", label: "Twilio", powers: "SMS + voice + lines", key: "secret:twilio_sid", check: async () => { const sid = await getSecret(env, "twilio_account_sid") || await getSecret(env, "twilio_sid"); const tok = await getSecret(env, "twilio_auth_token"); if(!sid||!tok) return { ok:false, why:"sid or auth token missing" }; const r = await fetch("https://api.twilio.com/2010-04-01/Accounts/"+sid+".json",{headers:{"Authorization":"Basic "+btoa(sid+":"+tok)}}); if (r.ok) return { ok:true }; const jb = await r.json().catch(()=>({})); return { ok:false, why: "http " + r.status + (jb && jb.message ? " - " + String(jb.message).slice(0,140) : "") + (r.status===401 ? " (note: a VALID credential on an unpaid or suspended account also returns 401 - check billing before rotating the key)" : "") }; } },
-        { id: "cloudflare", label: "Cloudflare", powers: "the whole stack (Workers/KV/D1)", key: "secret:cf_api_token", check: async () => { const k = env.CF_API_TOKEN || await getSecret(env, "cf_api_token"); if(!k) return false; const r = await fetch("https://api.cloudflare.com/client/v4/user/tokens/verify",{headers:{"Authorization":"Bearer "+k}}); return r.ok; } },
+        { id: "cloudflare", label: "Cloudflare", powers: "the whole stack (Workers/KV/D1)", key: "secret:cf_api_token", check: async () => { const k = await getSecret(env, "cf_api_token"); if(!k) return false; const r = await fetch("https://api.cloudflare.com/client/v4/user/tokens/verify",{headers:{"Authorization":"Bearer "+k}}); return r.ok; } },
         // ══ THE ONE THAT MATTERED MOST HAD NO CHECK (v4.9.718) ═══════════════════════════════════
         // key_present:true here meant "a string exists in KV", not "the credential works" - and this
         // is the credential that lets her read her own source: aura-comms and aura-ops resolve only
@@ -23908,7 +23933,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       if (!isOp) return { cmd: "DOMAIN_DIAGNOSE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const dDomain = (args[0] || "").toLowerCase().trim();
       if (!dDomain) return { cmd: "DOMAIN_DIAGNOSE", payload: { ok: false, error: "Usage: DOMAIN_DIAGNOSE <domain>" } };
-      const dToken = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
+      const dToken = await getSecret(env, "cf_api_token");
       const report = { domain: dDomain };
       try {
         const zr = await (await fetch(`https://api.cloudflare.com/client/v4/zones?name=${dDomain}`, { headers: { "Authorization": "Bearer " + dToken } })).json();
@@ -25954,7 +25979,7 @@ function stripAgentLeak(text) {
 
 async function fastReply(env, { system, user, maxTokens = 700, model } = {}) {
   try {
-    const apiKey = env.ANTHROPIC_API_KEY || await getSecret(env, "anthropic");
+    const apiKey = await getSecret(env, "anthropic");
     if (!apiKey) return null;
     const m = model || (await env.AURA_KV.get("config:fast:model").catch(() => null)) || "claude-haiku-4-5-20251001";
     // v4.9.504: THE FUNNEL - conversational arm. fastReply is the prose path (founder chat, unknown-asset,
@@ -26526,7 +26551,7 @@ async function llmReply(message, env, sessionId, isOp = false, callerPta = null)
   const _timingRequested = typeof message === "string" && /!!timing/i.test(message);
   if (_timingRequested && typeof message === "string") message = message.replace(/!!timing/gi, "").trim();
 
-  const apiKey = env.ANTHROPIC_API_KEY || await getSecret(env, "anthropic");
+  const apiKey = await getSecret(env, "anthropic");
   if (!apiKey) return "Anthropic API key not configured.";
 
   const memKey = `memory:${sessionId}`;
@@ -27059,7 +27084,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
   // 2. OpenAI â€” full agent loop (primary working brain; gets the same READ/RUN/FETCH cycle)
   if (!raw) {
     try {
-      const openaiKey = env.OPENAI_API_KEY || await getSecret(env, "openai");
+      const openaiKey = await getSecret(env, "openai");
       let openaiApiKey = openaiKey;
       if (openaiKey && openaiKey.startsWith("{")) { try { openaiApiKey = JSON.parse(openaiKey).api_key; } catch {} }
       if (openaiApiKey) {
@@ -27121,7 +27146,7 @@ ${operatorContext}${continuityContext}${mem ? `\n\nContext from memory:\n${mem.s
   // 3. Fallback: xAI Grok
   if (!raw) {
     try {
-      const grokKey = env.GROK_API_KEY || await getSecret(env, "grok_api_key");
+      const grokKey = await getSecret(env, "grok_api_key");
       if (grokKey) {
         const grokRes = await pfetch(env, "xai", "core:chat", "https://api.x.ai/v1/chat/completions", {
           method: "POST",
@@ -27419,7 +27444,7 @@ async function getSystemStatus(env) {
     patch_queue: patchStatus,
     pending_approval: pendingPatch ? { worker: pendingPatch, waiting: true } : null,
     autonomy: {
-      cf_deploy_ready: !!(env.CF_API_TOKEN || await getSecret(env, "cf_api_token")),
+      cf_deploy_ready: !!(await getSecret(env, "cf_api_token")),
       rollback_ready: workerStatus.some(w => w.snapshot_ts !== null)
     }
   };
@@ -27428,7 +27453,7 @@ async function getSystemStatus(env) {
 
 // â”€â”€â”€ Self-Tail: Aura reads her own CF logs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function getSelfLogs(env, options = {}) {
-  const cfToken = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
+  const cfToken = await getSecret(env, "cf_api_token");
   const cfAccount = await getSecret(env, "cf_account_id") || "3db0de2c6fce92757e2c4e4f83d7eb16";
   if (!cfToken) return { ok: false, error: "No CF token available" };
 
@@ -27527,9 +27552,9 @@ async function logError(env, worker, error, context = {}) {
 // collects responses, detects agreement/disagreement, and synthesizes output.
 
 async function multiModelConsensus(question, env) {
-  const anthropicKey = env.ANTHROPIC_API_KEY || await getSecret(env, "anthropic");
-  const openaiKey = env.OPENAI_API_KEY || await getSecret(env, "openai");
-  const grokKey = env.GROK_API_KEY || await getSecret(env, "grok_api_key");
+  const anthropicKey = await getSecret(env, "anthropic");
+  const openaiKey = await getSecret(env, "openai");
+  const grokKey = await getSecret(env, "grok_api_key");
 
   const sysPrompt = `You are an expert analyst. Answer the following question concisely and directly. Be specific. Do not hedge unnecessarily.`;
 
@@ -27723,7 +27748,7 @@ async function checkRateLimit(request, env, isOp) {
 // Aura's treasury intelligence layer. Read-only by default.
 
 async function getMercuryAccounts(env) {
-  const key = env.MERCURY_API_KEY || await getSecret(env, "mercury_api_key");
+  const key = await getSecret(env, "mercury_api_key");
   if (!key) return { ok: false, error: "Mercury API key not configured" };
   const res = await fetch("https://api.mercury.com/api/v1/accounts", {
     headers: { "Authorization": "Bearer " + key }
@@ -27734,7 +27759,7 @@ async function getMercuryAccounts(env) {
 }
 
 async function getMercuryTransactions(env, accountId, limit = 10) {
-  const key = env.MERCURY_API_KEY || await getSecret(env, "mercury_api_key");
+  const key = await getSecret(env, "mercury_api_key");
   if (!key) return { ok: false, error: "Mercury API key not configured" };
   const id = accountId || await env.AURA_KV.get("config:mercury:checking_id").catch(() => null);
   if (!id) return { ok: false, error: "No Mercury account ID configured" };
@@ -27764,7 +27789,7 @@ async function getMercuryBalance(env) {
 
 // â”€â”€â”€ Stripe + OrapPay Integration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function getStripeKey(env) {
-  return env.STRIPE_SECRET_KEY || await getSecret(env, "stripe");
+  return await getSecret(env, "stripe");
 }
 
 async function stripeRequest(path, method, body, env) {
@@ -27838,7 +27863,7 @@ async function createStripeCheckout(amount, currency, product, successUrl, cance
 // aura-host serves them. No HTML ever lives in this file.
 
 async function llmGeneratePage(prompt, env) {
-  const apiKey = env.ANTHROPIC_API_KEY || await getSecret(env, "anthropic");
+  const apiKey = await getSecret(env, "anthropic");
   if (!apiKey) return null;
   const lgpModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
   const res = await brainFetch("https://api.anthropic.com/v1/messages", {
@@ -27880,7 +27905,7 @@ async function _ssHeaders(env) {
 
 async function spaceshipSyncOne(domain, env) {
   const out = { domain, steps: [] };
-  const cfToken = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
+  const cfToken = await getSecret(env, "cf_api_token");
   if (!cfToken) return { ok: false, ...out, error: "no CF token" };
   const acct = (await getSecret(env, "cf_account_id")) || "3db0de2c6fce92757e2c4e4f83d7eb16";
   const cfh = { "Authorization": "Bearer " + cfToken, "Content-Type": "application/json" };
@@ -27960,7 +27985,7 @@ async function cfZones(env, opts) {
         if (age < 3600) return { ok: true, source: "cache", age_seconds: Math.round(age), at: c.at, zones: c.zones };
       }
     }
-    const token = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
+    const token = await getSecret(env, "cf_api_token");
     if (!token) return { ok: false, error: "no cloudflare token (secret:cf_api_token)" };
     const zones = [];
     let page = 1, totalPages = 1;
@@ -28011,7 +28036,7 @@ async function spaceshipSyncAll(env, start, limit) {
 }
 
 async function launchDomain(domain, description, theme, env) {
-  const cfToken = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
+  const cfToken = await getSecret(env, "cf_api_token");
   const results = { domain, steps: [] };
 
   // Step 1: Find CF zone
@@ -28284,7 +28309,7 @@ async function watchA2P(env) {
 async function discoverPrices(env) {
   const out = { at: new Date().toISOString(), source: "xai GET /v1/models", models: {}, changed: [] };
   try {
-    const key = env.XAI_API_KEY || await getSecret(env, "grok_api_key") || await getSecret(env, "xai");
+    const key = await getSecret(env, "grok_api_key") || await getSecret(env, "xai");
     if (!key) return { ok: false, error: "no xAI key" };
     // ══ FREE CALLS ARE STILL REQUESTS (2026-07-23) ═══════════════════════════════════════════
   // /v1/models consumes no tokens, so it never looked like something a COST meter should count. But
@@ -29425,7 +29450,7 @@ async function verifyAgainstReality(env) {
   // The most external check available. Needs Workers:Read - if the token lacks it, say so plainly
   // rather than falling back to her source and calling that an answer.
   try {
-    const tok = env.CF_API_TOKEN || await getSecret(env, "cf_api_token");
+    const tok = await getSecret(env, "cf_api_token");
     const acct = await KV.get(env, "config:cf:account_id") || "3db0de2c6fce92757e2c4e4f83d7eb16";
     if (tok) {
       const r = await fetch("https://api.cloudflare.com/client/v4/accounts/" + acct + "/workers/scripts",
@@ -31246,7 +31271,7 @@ async function auraSubmitVideo(prompt, env, opts = {}) {
     }
   } catch {}
 
-  const key = env.XAI_API_KEY || await getSecret(env, "xai");
+  const key = await getSecret(env, "xai");
   if (!key) throw new Error("no xAI key");
   const body = { model, prompt: _styled.slice(0, 2000), duration,
                  aspect_ratio: opts.aspect_ratio || "16:9", resolution: opts.resolution || resolved.resolution };
@@ -31291,7 +31316,7 @@ async function auraSubmitVideo(prompt, env, opts = {}) {
 // async systems quietly rot).
 async function pollVideoJobs(env) {
   try {
-    const key = env.XAI_API_KEY || await getSecret(env, "xai");
+    const key = await getSecret(env, "xai");
     if (!key) return;
     const list = await env.AURA_KV.list({ prefix: "vidjob:" });
     for (const k of (list?.keys || []).slice(0, 10)) {
@@ -31405,7 +31430,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       else if (out instanceof ArrayBuffer) { b64 = btoa(String.fromCharCode(...new Uint8Array(out))); }
     } else if (/^(gpt-image|dall-e)/i.test(model)) {
       // OpenAI - a SELECTABLE option the margin layer can name, never the hardwired default.
-      let key = env.OPENAI_API_KEY || await getSecret(env, "openai");
+      let key = await getSecret(env, "openai");
       if (key && key.startsWith("{")) { try { key = JSON.parse(key).api_key; } catch {} }
       if (!key) throw new Error("no OpenAI key");
       const r = await pfetch(env, "openai", "core:image", "https://api.openai.com/v1/images/generations", {
@@ -31422,7 +31447,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
     } else if (/^grok-imagine/i.test(model)) {
       // xAI Grok image (Aurora). OpenAI-compatible /images/generations at api.x.ai, key XAI_API_KEY.
       // xAI does NOT support quality/size/style on images - sending them errors - so we omit them here.
-      let key = env.XAI_API_KEY || await getSecret(env, "xai");
+      let key = await getSecret(env, "xai");
       if (!key) throw new Error("no xAI key");
       const r = await pfetch(env, "xai", "core:image", "https://api.x.ai/v1/images/generations", {
         method: "POST",
@@ -31658,7 +31683,7 @@ async function watchResources(env) {
     } catch {}
     // OpenAI key validity
     try {
-      let k = env.OPENAI_API_KEY || await getSecret(env, "openai"); if (k && k.startsWith("{")) { try { k = JSON.parse(k).api_key; } catch {} }
+      let k = await getSecret(env, "openai"); if (k && k.startsWith("{")) { try { k = JSON.parse(k).api_key; } catch {} }
       if (k) { const r = await pfetch(env, "openai", "healthcheck", "https://api.openai.com/v1/models", { headers: { "Authorization": "Bearer " + k } }); if (!r.ok && r.status === 429) concerns.push({ provider: "openai", level: "critical", note: "rate/billing limit" }); }
     } catch {}
 
@@ -34207,7 +34232,7 @@ function openAlbum(idx){
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: _vc });
       const _vh = { "content-type": "application/json", ..._vc };
       const _auth = request.headers.get("authorization") || "";
-      const _tok = env.AURA_OPERATOR_TOKEN || await getSecret(env, "aura_operator_token");
+      const _tok = await getSecret(env, "aura_operator_token");
       const _isOp = !!_tok && _auth === "Bearer " + _tok;
       if (!_isOp) return new Response(JSON.stringify({ ok: false, error: "OPERATOR_REQUIRED" }), { status: 401, headers: _vh });
       let q = url.searchParams.get("q") || "";
@@ -34346,7 +34371,7 @@ function openAlbum(idx){
       // Ask the brain for a short structured read-back of the business from what we scraped.
       let understood = { name: domain, summary: context || "", vibe: "" };
       try {
-        let aiKey = env.OPENAI_API_KEY || await getSecret(env, "openai");
+        let aiKey = await getSecret(env, "openai");
         if (aiKey && aiKey.startsWith("{")) { try { aiKey = JSON.parse(aiKey).api_key; } catch {} }
         if (aiKey && context) {
           const cr = await pfetch(env, "openai", "core:chat", "https://api.openai.com/v1/chat/completions", {
@@ -34487,7 +34512,7 @@ function openAlbum(idx){
     if (url.pathname === "/logs") {
       // Operator-only endpoint â€” Aura reads her own logs
       const authHeader = request.headers.get("authorization") || "";
-      const opToken = env.OPERATOR_TOKEN || await getSecret(env, "aura_operator_token") || "";
+      const opToken = await getSecret(env, "aura_operator_token") || "";
       if (!authHeader.includes(opToken)) {
         return new Response(JSON.stringify({ ok: false, error: "OPERATOR_REQUIRED" }), { status: 401, headers: { "Content-Type": "application/json" } });
       }

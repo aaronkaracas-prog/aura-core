@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.897-2026-08-02-reported-not-enforced";
+const BUILD = "aura-core-v4.9.898-2026-08-02-read-the-worker-you-asked-for";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -4285,6 +4285,25 @@ async function processCommand(line, env, isOp) {
         readBranch = "aura-proposes";
         rsArgs = args.slice(1);
         rsRest = rest.replace(/^\s*CANDIDATE\s*/i, "");
+      }
+      // ══ A WORKER NAME WITHOUT THE KEYWORD ANSWERED ABOUT THE WRONG WORKER (fixed 2026-08-02) ══
+      // `AURA_READ_SELF STAT aura-think` returned aura-core - 35,846 lines of the wrong file - with
+      // ok:true and no warning, because the worker name is only read after a literal WORKER keyword
+      // and everything else falls through to the default. Confidently wrong, which is worse than an
+      // error: the caller reads a build string and a byte count and has no reason to doubt them.
+      // Now: if any argument names a known worker and WORKER is missing, refuse and say the exact
+      // line to run. A near-miss on a command that reads source must never silently read a different
+      // source.
+      if ((rsArgs[0] || "").toUpperCase() !== "WORKER") {
+        const _stray = (rsArgs || []).find((a) => KNOWN_WORKERS[String(a || "").toLowerCase()]);
+        if (_stray) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "MISSING_WORKER_KEYWORD",
+          saw: _stray,
+          why: "'" + _stray + "' is a known worker but the WORKER keyword is missing, so this would have " +
+               "read aura-core instead and told you it succeeded. That is how a self-read returns the " +
+               "wrong file with a straight face.",
+          how: "AURA_READ_SELF WORKER " + String(_stray).toLowerCase() + " " +
+               (rsArgs.filter((a) => a !== _stray).join(" ") || "STAT"),
+          known: Object.keys(KNOWN_WORKERS).join(", ") } };
       }
       if ((rsArgs[0] || "").toUpperCase() === "WORKER") {
         worker = (args[1] || "").toLowerCase();
@@ -30978,6 +30997,22 @@ const AURA_DOORS = [
     routes_through: "live source of all five workers + live KV counts",
     holds: "every command, tool, skill, action, and where data lives - derived at the moment asked",
     never: "Never write a static index of capabilities. Stored maps rot; this one cannot." },
+  // ══ ADDED 2026-08-02 - THE DOOR THAT WAS MISSING WHEN IT MATTERED ═══════════════════════════
+  // Aura, mid-audit, needed to read aura-think and reached for fetch_url with a hand-built GitHub
+  // URL - wrong branch (main, it is master) and wrong filename (index.mjs, it is server.ts). It 404'd,
+  // she spent steps hunting the sandbox filesystem for source that was never there, and the turn ran
+  // out of budget before it produced an answer. The correct door was one keyword away and HOW did not
+  // know it existed. That is exactly the failure this registry was built to prevent, on a command
+  // older than the registry.
+  { id: "another-worker", words: ["aura-think", "read another worker", "brain source", "server.ts",
+      "other worker", "read aura-", "aura-comms", "aura-host", "aura-ops", "aura-media", "aura-stream"],
+    door: "AURA_READ_SELF WORKER <name> [STAT|GREP <term>|SECTION <a> <b>|CAPABILITIES]",
+    routes_through: "the per-worker repo/branch/path map inside AURA_READ_SELF - aura-think is server.ts on master, not index.mjs on main",
+    holds: "every worker's real source: aura-core, aura-think, aura-comms, aura-host, aura-media, aura-ops, aura-stream",
+    never: "Never fetch a worker's source by hand-building a raw.githubusercontent URL. The branch and " +
+           "filename differ per worker, a wrong guess 404s silently, and the map already knows. Omitting " +
+           "the WORKER keyword used to read aura-core and say it succeeded - it now refuses and names the " +
+           "line to run." },
   { id: "memory", words: ["remember", "memory", "recall", "what did i", "archive", "past"],
     door: "her core memory block (always in her prompt) then search_context for the archive",
     routes_through: "aura-core writes every command to mem:inbox -> aura-think drains into a searchable archive",

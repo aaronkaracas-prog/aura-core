@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.878-2026-08-02-watch-a-real-key";
+const BUILD = "aura-core-v4.9.879-2026-08-02-epoch-line-in-the-sand";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -3222,9 +3222,37 @@ async function ptaCan(env, actorId, capability, subjectId) {
       // fixture instead of arguing about it: once the tree was PROVEN linked, the null could only be
       // coming from the reader. THE LESSON IS THE SAME ONE AS THE LEDGER'S cache_write COLUMN -
       // written, present, and absent from the SELECT. When a value reads empty, check that it was asked for.
-      "SELECT id, state, permission, edge_type, via_edge_id FROM pta_edges WHERE from_id = ? AND to_id = ? ORDER BY created_at DESC"
+      "SELECT id, state, permission, edge_type, via_edge_id, created_at FROM pta_edges WHERE from_id = ? AND to_id = ? ORDER BY created_at DESC"
     ).bind(subjectId, actorId).all();
-    const edges = (rows && rows.results) || [];
+    let edges = (rows && rows.results) || [];
+
+    // ══ EPOCH CHECK ── THE SUBJECT'S OWN LINE IN THE SAND (2026-08-02) ═══════════════════════════
+    // Asked for in the SAME SELECT as via_edge_id, deliberately. The comment above this query records
+    // what happened the last time a column was written, present, and left out of the read: the
+    // lineage check never ran and reported its own correctness while allowing everything. Two rounds
+    // were spent hunting that. One line here is cheaper than repeating it.
+    //
+    // A grant issued under an older epoch no longer counts. The row is untouched and the history is
+    // intact - it is superseded, not deleted, and the denial says which.
+    let _epochAt = null;
+    try {
+      const _se = await db.prepare("SELECT epoch_at FROM pta_entities WHERE id = ?").bind(subjectId).first();
+      _epochAt = _se?.epoch_at || null;
+    } catch { _epochAt = null; }
+    // FAIL OPEN ON THIS READ ONLY, and the distinction is deliberate: a missing column or a failed
+    // lookup must not deny every grant in the system. The lineage walk below still fails CLOSED,
+    // because that is the check that answers "was this withdrawn". This one answers "did the subject
+    // move on", and the safe answer to not knowing is "they did not".
+    if (_epochAt) {
+      const before = edges.length;
+      edges = edges.filter((e) => String(e.created_at || "") >= String(_epochAt));
+      if (!edges.length && before) {
+        return { allowed: false, via_edge: null,
+          reason: "every edge from this subject predates the line they drew at " + _epochAt + ". " +
+                  "Superseded, not deleted - the edges and their history are intact and still readable, " +
+                  "they simply stopped counting when the subject moved on." };
+      }
+    }
     if (!edges.length) return { allowed: false, reason: "no edge from the subject to the actor - nothing was ever granted", via_edge: null };
     const active = edges.filter((e) => e.state === "active");
     if (!active.length) return { allowed: false,
@@ -18013,6 +18041,34 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       //   act_by     - the disposition deadline. The moment by which something must happen.
       // NOTHING ENFORCES THESE YET and the code says so where it is read - a clock nobody checks is
       // a timestamp, exactly like the verification ladder before it was ranked.
+      // ══ EPOCH ── REVOKING YOUR OWN PAST WITHOUT DELETING IT (2026-08-02, Council round 6) ══════
+      // Five seats, cold and independent, all rejected "an entity's own continuity has no revocation
+      // surface". They produced FOUR different counterexamples: a compromised or coerced past self
+      // (stolen key, malware, childhood consent, a corporate split), memory that has become toxic to
+      // present execution, a departed subunit's influence inside a firm, and - the one that lands
+      // hardest - growth. "You must be able to revoke your 5-year-old grant TO your future self.
+      // Without that, no growth and no right to be forgotten."
+      //
+      // epoch_at is that surface, and it costs one timestamp. An entity marks a moment; every grant
+      // made before it stops counting, IN ONE WRITE. Same shape this file already chose for revoke: O(1) to
+      // withdraw, cost paid on the check, because an eager cascade over 901 descendants measured 56
+      // seconds and left 400 people still holding access.
+      //
+      // SUPERSEDED IS NOT DELETED. The edge stays, its history stays, and the reason it stopped
+      // counting is legible. That is the same distinction the interest tally draws between decay and
+      // deletion - a lifetime of context is the asset, and nothing here removes any of it.
+      //
+      // AND IT IS CHECKED, not merely stored. ptaCan denies EPOCH_SUPERSEDED below. The columns two
+      // lines down - expires_at, act_by - are the warning: they were added, nothing reads them, and
+      // the comment above says so plainly. A clock nobody checks is a timestamp.
+      // WHY A TIMESTAMP AND NOT A COUNTER ON EVERY EDGE: the first cut added `subject_epoch` to
+      // pta_edges and stamped it at issue. That needs EIGHT insert sites changed, and any one missed
+      // writes the DEFAULT 0 - which, the moment an entity bumps to 1, silently supersedes brand new
+      // grants. The failure would look exactly like a broken permission system and would be found by
+      // someone losing access. Every insert already writes created_at, so a line in the sand needs no
+      // new column on the edge and no site to miss: an edge is superseded iff it was created before
+      // the subject drew the line.
+      try { await db.prepare("ALTER TABLE pta_entities ADD COLUMN epoch_at TEXT").run(); } catch {}
       for (const col of ["via_edge_id TEXT", "origin_id TEXT", "place TEXT", "expires_at TEXT", "act_by TEXT"]) {
         try { await db.prepare("ALTER TABLE pta_edges ADD COLUMN " + col).run(); } catch {}
       }
@@ -20837,6 +20893,81 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
     }
 
+    case "PTA_EPOCH": {
+      // ══ THE LINE IN THE SAND (v4.9.879, Council round 6) ═════════════════════════════════════
+      // `PTA_EPOCH <entity_id> <reason>` - everything granted before this moment stops counting.
+      // `PTA_EPOCH <entity_id>` with no reason reports the current line without moving it.
+      //
+      // WHY THIS EXISTS. A council of five, asked cold whether "an entity's own continuity has no
+      // revocation surface", rejected it unanimously and produced four different counterexamples:
+      // a compromised or coerced past self (stolen key, malware, childhood consent, a corporate
+      // split); memory that has become toxic to present execution; a departed subunit's influence
+      // inside a firm; and growth - "you must be able to revoke your 5-year-old grant TO your future
+      // self. Without that, no growth and no right to be forgotten."
+      //
+      // WHAT IT IS NOT. It is not deletion and it is not forgetting. Every edge survives, every
+      // history row survives, and ptaCan says exactly why a grant stopped counting. A lifetime of
+      // context is the asset; nothing here removes any of it. The interest tally already draws this
+      // same distinction between decay and deletion, and it matters more here: a system that
+      // conflated "superseded" with "erased" would answer a request to move on by destroying the
+      // past.
+      //
+      // A REASON IS REQUIRED TO MOVE IT. Mass supersession of every grant an entity ever made is the
+      // largest single act in this graph, and an unexplained one is unauditable a week later. The
+      // reason lands in pta_history beside the edges it affected, which is where someone looking for
+      // "why did my access stop" will actually be standing.
+      if (!isOp) return { cmd: "PTA_EPOCH", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const _eArgs = (rest || "").trim().split(/\s+/);
+      const _eid = _eArgs[0] || "";
+      const _ereason = _eArgs.slice(1).join(" ").trim();
+      if (!_eid) return { cmd: "PTA_EPOCH", payload: { ok: false,
+        error: "Usage: PTA_EPOCH <entity_id> [reason]",
+        note: "With no reason it REPORTS the current line. With a reason it MOVES it, and every grant " +
+              "made before now stops counting. Nothing is deleted." } };
+      {
+        const db = env.AURA_MEMORY;
+        try {
+          try { await db.prepare("ALTER TABLE pta_entities ADD COLUMN epoch_at TEXT").run(); } catch {}
+          const ent = await db.prepare("SELECT id, name, type, epoch_at FROM pta_entities WHERE id = ?").bind(_eid).first();
+          if (!ent) return { cmd: "PTA_EPOCH", payload: { ok: false, error: "Entity not found: " + _eid } };
+
+          // How many edges the line would affect - counted BEFORE moving it, so the number reported
+          // is the number a human can still act on rather than a fait accompli.
+          const _now = new Date().toISOString();
+          const _cnt = await db.prepare(
+            "SELECT COUNT(*) AS n FROM pta_edges WHERE from_id = ? AND created_at < ? AND state = 'active'"
+          ).bind(_eid, _ereason ? _now : (ent.epoch_at || _now)).first().catch(() => ({ n: 0 }));
+
+          if (!_ereason) {
+            return { cmd: "PTA_EPOCH", payload: { ok: true, moved: false, entity: _eid, name: ent.name,
+              epoch_at: ent.epoch_at || null,
+              superseded_now: ent.epoch_at ? (Number(_cnt?.n) || 0) : 0,
+              would_supersede_if_moved_now: Number(_cnt?.n) || 0,
+              note: ent.epoch_at
+                ? "This entity has drawn a line. Grants made before it do not count, and ptaCan says so by name."
+                : "No line drawn. Every grant this entity made still counts on its own terms.",
+              how: "PTA_EPOCH " + _eid + " <reason> to move it. Nothing is deleted either way." } };
+          }
+
+          await db.prepare("UPDATE pta_entities SET epoch_at = ?, updated_at = ? WHERE id = ?")
+            .bind(_now, _now, _eid).run();
+          try {
+            await db.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, ?, 'epoch', ?, ?, ?)")
+              .bind("hist_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16), "-", _eid,
+                    JSON.stringify({ epoch_at: _now, reason: _ereason.slice(0, 400), superseded: Number(_cnt?.n) || 0 }), _now).run();
+          } catch {}
+          return { cmd: "PTA_EPOCH", payload: { ok: true, moved: true, entity: _eid, name: ent.name,
+            epoch_at: _now, previous_epoch_at: ent.epoch_at || null,
+            superseded: Number(_cnt?.n) || 0, reason: _ereason.slice(0, 400),
+            note: "Every active grant this entity made before " + _now + " stops counting from now. " +
+                  "NOTHING WAS DELETED - the edges and their history are intact, ptaCan simply says they " +
+                  "predate the line. Grants made after this moment are unaffected.",
+            reversible: "Moving the line back is not offered. A subject who drew it and then had it " +
+                        "quietly undone would have no way to know - re-granting is an explicit act by " +
+                        "the subject, which is what consent means here." } };
+        } catch (e) { return { cmd: "PTA_EPOCH", payload: { ok: false, error: String(e?.message ?? e) } }; }
+      }
+    }
     case "PTA_REVOKE": {
       // Revoke a PTA. Does NOT delete â€” moves to revoked state. History preserved forever.
       // PTA_REVOKE <edge_id> [reason]

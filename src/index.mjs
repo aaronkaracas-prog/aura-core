@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.881-2026-08-02-events-under-a-pta";
+const BUILD = "aura-core-v4.9.882-2026-08-02-receipts-are-not-memory";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -3534,7 +3534,30 @@ async function auraRemember(env, event, kind) {
     // NEVER BLOCKS AND NEVER THROWS. An embedding is a model call - it belongs nowhere near the path
     // of the action it describes. Fire and forget, same as the inbox write above.
     const _txt = String(event || "").slice(0, 400);
-    if (_txt && env.VECTORIZE && env.AI) {
+
+    // ══ WHAT GETS EMBEDDED IS NOT WHAT GETS REMEMBERED (v4.9.882) ════════════════════════════
+    // PROJECT started returning real content today, and the first six items were all "I WAS CHANGED"
+    // deploy notices - in answer to "what have I been building". Correct semantically, useless as an
+    // answer, and the same defect the interest tally had before it was re-sourced this morning: the
+    // index is dominated by MACHINE OUTPUT.
+    //
+    // Two kinds do it. `act` and `failure` are command receipts - the literal text is
+    // "AURA_READ_SELF: CAPABILITIES  ->  <200 chars of reply>  [1234ms]" - and they fire on every
+    // non-routine command, so they are the highest-volume writer by a wide margin. `was_changed`
+    // fires on every deploy; there were fifteen today.
+    //
+    // THEY STILL GET REMEMBERED. The timeline write below is untouched, the inbox is untouched, and
+    // NORTHSTAR and CARD still read them. What stops is the EMBEDDING - because the vector index
+    // answers "what do I recall about X", and a receipt of a command answers that question about
+    // nothing. A deploy is also now a first-class row in events:<day> since Layer C shipped, so the
+    // fact is not lost, it is held somewhere queryable instead of somewhere it drowns out meaning.
+    //
+    // THE RULE, and it is the one the stopword list earned this morning: fix the SOURCE, do not
+    // filter the OUTPUT. Dropping deploy notices at read time would have left the receipts, which are
+    // the larger half. Lessons, plans, facts and self-edits still embed - those are distilled meaning
+    // rather than a transcript of what a command printed.
+    const _NOT_SEMANTIC = new Set(["act", "failure", "was_changed"]);
+    if (_txt && env.VECTORIZE && env.AI && !_NOT_SEMANTIC.has(String(kind || ""))) {
       // Was the literal "operator". Now the owner's PTA when one is set, so what she records lands
       // under an identity the consent substrate can actually resolve. Falls back to "operator" when
       // no owner PTA exists, which keeps a fresh install working unchanged.

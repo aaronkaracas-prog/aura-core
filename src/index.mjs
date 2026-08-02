@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.871-2026-08-02-filler-is-not-a-topic";
+const BUILD = "aura-core-v4.9.872-2026-08-02-wake-cap-four";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2852,6 +2852,22 @@ async function fireIntention(env, item) {
   return { fired: true, wake };
 }
 
+// ══ THE WAKE CAP — MEASURED, NOT GUESSED, AND HOISTED SO IT CANNOT BE MISQUOTED ═══════════════
+// Lowered 12 -> 4 on 2026-08-02. Twelve was never derived from anything; the measured human ceiling
+// is three to five interruptions a day, and roughly half of the people who mute notifications never
+// come back. Twelve is not a cap on that scale, it is permission.
+//
+// HOISTED TO MODULE SCOPE, and that is the more important half. It was a local const inside
+// ptaWakeGate, so CARD's honest_state could not read it and hardcoded the STRING "WAKE_CAP_PER_DAY
+// is 12" instead. Change the constant and that sentence keeps saying twelve - a limit and a
+// description of the limit, free to disagree. This codebase has now found that shape in FEED_PROBES,
+// in _FEED_OF, in the 305-command seed, in the compaction diagnostic and in the HOW council door.
+// One declaration, every reader derives.
+//
+// The dollar ceiling stays where it is: a count cap stops somebody being pestered fifty times and
+// does nothing about fifty dollars spent thinking about them once. Two harms, two bounds.
+const WAKE_CAP_PER_DAY = 4;
+
 async function ptaWakeGate(env, opts) {
   const o = opts || {};
   const actor = o.actor || null;          // who would act (usually the twin's own agent)
@@ -2980,7 +2996,8 @@ async function ptaWakeGate(env, opts) {
   // cost of this wake is charged against it BEFORE the act rather than observed afterwards -
   // "a cost meter reports spend; it doesn't stop it" is already written into this codebase's own
   // ledger, and it applies here.
-  const WAKE_CAP_PER_DAY = 12;             // outbound acts about one person in a day
+  // WAKE_CAP_PER_DAY is declared at module scope above this function - see the note there. A local
+  // copy here is what let CARD's description drift from the value it describes.
   const WAKE_USD_PER_DAY = 0.25;           // ceiling on what one person's twin may spend waking about them
   const COST_TEMPLATE = 0.0002;            // sending something already written
   const COST_THINKING = 0.02;              // a model run - two orders of magnitude more, which is the point
@@ -14164,8 +14181,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           "Layer C is absent: no calendar, mail, location or feed is watched, so nothing here is " +
             "triggered by the world. This is the shape of a proactive card, driven by a command.",
           "Measured constraint, not opinion: the human ceiling is 3-5 interruptions a day and roughly " +
-            "half of users who mute notifications eventually leave. WAKE_CAP_PER_DAY is 12. That number " +
-            "should come down before anything here is ever wired to a delivery path.",
+            "half of users who mute notifications eventually leave. WAKE_CAP_PER_DAY is " +
+            WAKE_CAP_PER_DAY + (WAKE_CAP_PER_DAY > 5
+              ? ". That number should come down before anything here is ever wired to a delivery path."
+              : ", inside that ceiling.") +
+            " DERIVED from the constant, never retyped - this sentence said 12 for as long as the " +
+            "constant did, and would have kept saying it afterwards.",
         ] } };
     }
 

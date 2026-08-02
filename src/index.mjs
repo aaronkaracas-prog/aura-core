@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.886-2026-08-02-list-tells-the-truth-too";
+const BUILD = "aura-core-v4.9.887-2026-08-02-independent-claims";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -22101,6 +22101,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           creator_name: creatorEnt?.name || null,
           claims, total_claims: claims.length, live_claims: live.length, live_holders: holders,
           jointly_held: holders.length > 1,
+          // ══ TOMBSTONE (v4.9.887) ═══════════════════════════════════════════════════════════
+          // Unanimous across five seats: the record survives every holder withdrawing. What it is
+          // FOR changes - audit, provenance, dispute, and proving non-use. Not projection.
+          // "It answers who was here and why each stopped counting."
+          tombstone: claims.length > 0 && live.length === 0,
+          tombstone_note: (claims.length > 0 && live.length === 0)
+            ? "TOMBSTONE. Every holder has withdrawn, and the record is intact. It exists now to " +
+              "answer who was here and why each claim stopped counting - not to be projected. " +
+              "Nothing was deleted; a moment that vanished when the last person left would erase " +
+              "the evidence that it happened at all."
+            : null,
           note: holders.length > 1
             ? "JOINTLY HELD by " + holders.length + " entities. This moment is part of more than one " +
               "continuity at once, so no single holder's history fully contains it and no single " +
@@ -26191,9 +26202,50 @@ async function getHybridEvents(entityId, query, env) {
 // caches, embeddings and learned weights regardless - "everyone claims stateless, then caches
 // prompt." Resolving at read time makes revocation reach everything the substrate holds. It does not
 // reach inside a rented model, and no line of code here can pretend otherwise.
+// ══ SHARED MOMENTS ARE N INDEPENDENT CLAIMS (v4.9.887, Council round 7) ══════════════════════════
+//
+// Five seats, cold, unanimous on the core rule and split two ways on its edges. What they agreed:
+// a withdrawal severs THAT HOLDER'S claim and the grants flowing through it, and touches nothing in a
+// co-holder's continuity. The reason, and it is the load-bearing sentence: a co-holder's claim "does
+// not derive from mine - it derives from their own presence at the event. If withdrawal could erase a
+// co-holder, presence would become weaker than absence."
+//
+// The alternative was named and rejected by every seat: any shared-fate or mutual-consent rule "turns
+// memory into hostage-taking" and "only looks clean for two people who already agree". Agreement never
+// needed a rule.
+//
+// WHAT THEY DID NOT AGREE, and so is NOT built here - two live three-two splits, written down rather
+// than frozen by whoever shipped first:
+//   (a) Can a withdrawing holder revoke their own attributable content inside a co-holder's memory -
+//       likeness, utterance, the identity binding - leaving "you were at a concert with [redacted]"?
+//       openai and meta say yes, bounded to your own payload. grok, gemini and claude say hard no.
+//   (b) Does the rule change at scale? grok and meta say ten thousand holders is ten thousand
+//       independent claims and only query cost moves. openai, gemini and claude want a threshold
+//       above which a moment is effectively public - "a protest is not revocable by one marcher
+//       leaving", and "at scale, per-holder revocation is a lie you should stop offering".
+// Both are questions about what this system's law should BE, not about what is technically true.
+//
+// A claim is live on the same two conditions PTA_MOMENT CLAIMS already uses: the edge is active, and
+// it was not superseded when that holder moved their own line. One definition, two readers.
+async function liveMomentClaims(env, momentId) {
+  const db = env.AURA_MEMORY;
+  const rows = await db.prepare(
+    "SELECT e.id, e.from_id, e.state, e.created_at, f.epoch_at AS from_epoch " +
+    "FROM pta_edges e LEFT JOIN pta_entities f ON f.id = e.from_id WHERE e.moment_id = ?"
+  ).bind(momentId).all().catch(() => ({ results: [] }));
+  const live = [];
+  for (const e of (rows?.results || [])) {
+    const superseded = !!(e.from_epoch && String(e.created_at || "") < String(e.from_epoch));
+    if (e.state === "active" && !superseded) live.push(e.from_id);
+  }
+  return { live_holders: [...new Set(live)], total: (rows?.results || []).length,
+           tombstone: live.length === 0 && (rows?.results || []).length > 0 };
+}
+
 async function projectUnderGrant(env, actorId, subjectId, query, capability = "view") {
   const out = { ok: false, actor: actorId, subject: subjectId, allowed: false, via_edge: null,
                 items: [], count: 0, resolved_at: new Date().toISOString() };
+  const db = env.AURA_MEMORY;
   try {
     if (!actorId || !subjectId) { out.error = "actor and subject are both required"; return out; }
 
@@ -26211,7 +26263,36 @@ async function projectUnderGrant(env, actorId, subjectId, query, capability = "v
     }
 
     // ── RESOLVE, NOW, UNDER THAT GRANT ───────────────────────────────────────────────────────
+    // ══ MOMENT CLAIMS, CHECKED FOR THIS SUBJECT ONLY ════════════════════════════════════════
+    // The rule the Council reached unanimously: a co-holder's withdrawal is not this subject's
+    // business. So the filter asks whether THIS subject still holds a live claim on any moment it
+    // is part of - never whether anyone else does. Reading a co-holder's state here would be the
+    // hostage-taking every seat rejected, implemented by accident.
+    // Cheap today because moments are few. Every seat named the same first break: claim-resolution
+    // cost at read time, superlinear in holder count. The measurement to watch is read latency
+    // against holder count, and this is the line that will show it.
     const items = await getHybridEvents(subjectId, String(query || ""), env);
+    try {
+      const mine = await db.prepare(
+        "SELECT DISTINCT moment_id FROM pta_edges WHERE from_id = ? AND moment_id IS NOT NULL"
+      ).bind(subjectId).all().catch(() => ({ results: [] }));
+      const moments = (mine?.results || []).map((r) => r.moment_id).filter(Boolean);
+      if (moments.length) {
+        const held = [];
+        for (const m of moments) {
+          const c = await liveMomentClaims(env, m);
+          if (c.live_holders.includes(subjectId)) held.push(m);
+        }
+        out.moments_total = moments.length;
+        out.moments_live_for_subject = held.length;
+        out.moments_withdrawn_by_subject = moments.length - held.length;
+        if (held.length !== moments.length) {
+          out.moment_note = "This subject has withdrawn from " + (moments.length - held.length) +
+            " moment(s) it was part of. Those claims are severed for THIS subject. Co-holders are " +
+            "untouched - their claim comes from their own presence, not through this one.";
+        }
+      }
+    } catch { /* a claim report must never cost the projection it describes */ }
     out.items = (items || []).map((e) => ({
       type: e.type || "event",
       text: String(e.summary || e.body || "").slice(0, 600),

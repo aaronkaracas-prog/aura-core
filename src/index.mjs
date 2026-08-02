@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.875-2026-08-02-one-door-for-secrets";
+const BUILD = "aura-core-v4.9.876-2026-08-02-secrets-migrate";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -5155,6 +5155,70 @@ async function processCommand(line, env, isOp) {
       // no values. This is what a health check should have been using all along, and it means nobody
       // needs to read a real secret just to confirm one is present.
       if (!isOp) return { cmd: "SECRETS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+
+      // ══ MIGRATE ── THE FIVE CREDENTIALS THAT EXIST IN ONLY ONE PLACE (v4.9.876) ═══════════════
+      // The 2026-08-02 sweep put 43 call sites behind getSecret. Five could NOT be swept because
+      // they have no KV value at all - session_secret, xai_management_key, spaceship_api_key,
+      // spaceship_api_secret, google. They work only because a wrangler secret sits on aura-core,
+      // which means no other worker can read them and recreating this worker loses them outright.
+      //
+      // A wrangler secret is WRITE-ONLY from outside - `wrangler secret list` shows names, never
+      // values - so the obvious fix is for Aaron to paste each one again. That is exactly the thing
+      // he has said he should never have to do. But the RUNTIME can read them: env.SESSION_SECRET is
+      // a plain string inside the worker. So the worker moves its own credentials, nobody retypes
+      // anything, and no value passes through a terminal.
+      //
+      // TWO RULES:
+      //  1. NEVER OVERWRITE. If KV already holds a value it is left alone, even when it differs from
+      //     env - a difference is a finding to report, not a conflict to resolve silently. Guessing
+      //     which copy is correct is how a working credential gets replaced by a stale one.
+      //  2. DRY RUN BY DEFAULT. `SECRETS MIGRATE` reports; `SECRETS MIGRATE apply` writes.
+      //
+      // Copying the SAME value into KV changes nothing about behaviour - sessions signed with
+      // session_secret stay valid because the secret itself does not change, only where it is read
+      // from. (An earlier claim that this would invalidate sessions was wrong: that risk belongs to
+      // ROTATING the secret, not to copying it.)
+      if ((args[0] || "").toUpperCase() === "MIGRATE") {
+        const apply = (args[1] || "").toLowerCase() === "apply";
+        // env var name -> canonical KV family name (getSecret resolves aliases from there)
+        const MOVE = { SESSION_SECRET: "session_secret", XAI_MANAGEMENT_KEY: "xai_management_key",
+                       SPACESHIP_API_KEY: "spaceship_api_key", SPACESHIP_API_SECRET: "spaceship_api_secret",
+                       GOOGLE_API_KEY: "google", ANTHROPIC_ADMIN_KEY: "anthropic_admin",
+                       OPENAI_ADMIN_KEY: "openai_admin", STRIPE_ISSUING_KEY: "stripe_issuing",
+                       CF_AGENT_MEMORY_TOKEN: "cf_agent_memory_token", ANTHROPIC_API_KEY: "anthropic",
+                       OPENAI_API_KEY: "openai", GROK_API_KEY: "grok_api_key",
+                       MERCURY_API_KEY: "mercury_api_key", OPERATOR_TOKEN: "aura_operator_token" };
+        const fp = (s) => { let h = 0; const t = String(s); for (let i = 0; i < t.length; i++) h = ((h << 5) - h + t.charCodeAt(i)) | 0; return (h >>> 0).toString(16).padStart(8, "0"); };
+        const report = [];
+        for (const [envName, kvName] of Object.entries(MOVE)) {
+          const ev = env[envName];
+          const kv = await env.AURA_KV.get("secret:" + kvName).catch(() => null);
+          if (!ev && !kv) { report.push({ env: envName, kv: "secret:" + kvName, state: "ABSENT_BOTH" }); continue; }
+          if (!ev) { report.push({ env: envName, kv: "secret:" + kvName, state: "KV_ONLY - already the single source, nothing to do" }); continue; }
+          if (!kv) {
+            if (apply) { await env.AURA_KV.put("secret:" + kvName, String(ev)); }
+            report.push({ env: envName, kv: "secret:" + kvName, fingerprint: fp(ev),
+              state: apply ? "MOVED - now readable by every worker" : "WOULD MOVE - wrangler-only today" });
+            continue;
+          }
+          const same = fp(ev) === fp(kv);
+          report.push({ env: envName, kv: "secret:" + kvName, state: same ? "IN_SYNC" : "DIVERGED",
+            env_fingerprint: fp(ev), kv_fingerprint: fp(kv),
+            note: same ? null : "The wrangler secret and the KV copy are DIFFERENT values. Not touched - " +
+                  "this is reported so a human decides which is correct. Since v4.9.875 the KV copy is " +
+                  "what the code reads, so if the wrangler one was the good one, that call path changed." });
+        }
+        const moved = report.filter(r => /^MOVED/.test(r.state)).length;
+        const would = report.filter(r => /^WOULD MOVE/.test(r.state)).length;
+        const diverged = report.filter(r => r.state === "DIVERGED").length;
+        return { cmd: "SECRETS", payload: { ok: true, applied: apply, moved, would_move: would, diverged, report,
+          note: apply ? "Values copied from this worker's runtime into KV. No value passed through a terminal."
+                      : "DRY RUN - nothing written. Re-run as `SECRETS MIGRATE apply` to move them.",
+          next: diverged ? "DIVERGED entries need a human decision before anything is written." :
+                (would ? "Run `SECRETS MIGRATE apply`, then the remaining `env.X ||` shortcuts can be swept."
+                       : "Nothing left to move.") } };
+      }
+
       const out = {};
       try {
         const l = await env.AURA_KV.list({ prefix: "secret:", limit: 200 });

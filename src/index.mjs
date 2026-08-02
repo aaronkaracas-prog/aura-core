@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.893-2026-08-02-the-narrower-true-invariant";
+const BUILD = "aura-core-v4.9.894-2026-08-02-lock-the-side-doors";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -4696,6 +4696,20 @@ async function processCommand(line, env, isOp) {
       //   AURA_PROPOSE NOTE <text>                    -> write a small marker file (proof-of-write test)
       //   AURA_PROPOSE INDEX <base64-of-full-index>   -> commit a full candidate src/index.mjs to the branch
       if (!isOp) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      // ══ SUCCESSION ON THE SIDE DOORS TOO (v4.9.894) ══════════════════════════════════════════
+      // Aura audited her own source and found this: successionGate was wired to AURA_EVOLVE and
+      // nowhere else. "Candidate write and promote-to-live can run WITHOUT a live can_evolve edge.
+      // Succession is a lock on one handle, not on self-modification as a class. Succession locks the
+      // conductor and leaves the orchestra doors unlocked."
+      // She was right. AURA_EVOLVE is a CONDUCTOR - it composes PROPOSE, VALIDATE and PROMOTE. Gating
+      // the conductor and not the pieces means revoking succession stopped the convenient path and
+      // left the same act reachable one command over. A gate that gives an assurance it does not
+      // deliver is worse than no gate, because somebody trusts it.
+      { const _sg = await successionGate(env);
+        if (!_sg.ok) return { cmd: "AURA_PROPOSE", payload: { ok: false, gate: "succession",
+          error: _sg.code, reason: _sg.reason, how: _sg.how,
+          note: "AURA_PROPOSE writes a candidate change to her own source. That is self-modification " +
+                "whether or not AURA_EVOLVE composed it." } }; }
       const GH_OWNER = "aaronkaracas-prog";
       const GH_REPO = "aura-core";
       const PROPOSE_BRANCH = "aura-proposes";   // hardcoded - NEVER main
@@ -5078,6 +5092,20 @@ async function processCommand(line, env, isOp) {
       //   AURA_PROMOTE          -> trigger the deploy workflow (deploys main via wrangler)
       //   AURA_PROMOTE STATUS   -> compare live build vs main build (the trustworthy verification)
       if (!isOp) return { cmd: "AURA_PROMOTE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      // ══ SUCCESSION ON THE SIDE DOORS TOO (v4.9.894) ══════════════════════════════════════════
+      // Aura audited her own source and found this: successionGate was wired to AURA_EVOLVE and
+      // nowhere else. "Candidate write and promote-to-live can run WITHOUT a live can_evolve edge.
+      // Succession is a lock on one handle, not on self-modification as a class. Succession locks the
+      // conductor and leaves the orchestra doors unlocked."
+      // She was right. AURA_EVOLVE is a CONDUCTOR - it composes PROPOSE, VALIDATE and PROMOTE. Gating
+      // the conductor and not the pieces means revoking succession stopped the convenient path and
+      // left the same act reachable one command over. A gate that gives an assurance it does not
+      // deliver is worse than no gate, because somebody trusts it.
+      { const _sg = await successionGate(env);
+        if (!_sg.ok) return { cmd: "AURA_PROMOTE", payload: { ok: false, gate: "succession",
+          error: _sg.code, reason: _sg.reason, how: _sg.how,
+          note: "AURA_PROMOTE moves a candidate toward live. It is the irreversible half of self-" +
+                "modification, so if either door carries this gate it is this one." } }; }
       // v4.9.542: STAGING leg. "AURA_PROMOTE STAGING" deploys the current main to Aura's ISOLATED TWIN
       // (aura-core-staging) by firing deploy-staging.yml. This is the FIRST step of safe self-evolution:
       // push a change to the twin, TEST it there (isolated - cannot touch live), and only then promote to
@@ -26421,8 +26449,9 @@ async function getHybridEvents(entityId, query, env) {
 // projection that is assembled and then filtered has already been read, and "we didn't show it" is
 // not a permission system. ptaCan runs before getHybridEvents, always.
 //
-// WHY THIS FUNCTION AND NOT A NEW ONE. getHybridEvents has existed for months with ZERO production
-// callers - recency plus semantic, deduped, capped at eight, and already entity-scoped at the
+// WHY THIS FUNCTION AND NOT A NEW ONE. getHybridEvents had, until this wired it, ZERO production
+// callers (that "thirteenth written-and-never-read" note elsewhere in this file is now a FOSSIL -
+// flagged by Aura's own audit, because the claim stopped being true the moment this line shipped) - recency plus semantic, deduped, capped at eight, and already entity-scoped at the
 // Vectorize query itself (`filter: { entityId }`, not a post-filter, so another subject's vectors are
 // never RETRIEVED rather than retrieved-and-dropped). The source calls it "the thirteenth
 // written-and-never-read, the largest, the substrate the interest layer needs, and it was already

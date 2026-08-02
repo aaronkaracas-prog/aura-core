@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.870-2026-08-02-interest-note-door";
+const BUILD = "aura-core-v4.9.871-2026-08-02-filler-is-not-a-topic";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -3432,7 +3432,22 @@ const INTEREST_MAX_TOPICS = 300;
 const INTEREST_STOP = new Set(("the a an and or but if then than that this these those is are was were be been being have has had do does did " +
   "for to of in on at by with from as it its i you he she they we me my your his her their our not no yes so up down out over under " +
   "will would can could should may might must shall about into after before when while where which who whom what how why all any some " +
-  "one two three new now got get run ran ok okay just also very more most much many each other same such only own too via per").split(" "));
+  "one two three new now got get run ran ok okay just also very more most much many each other same such only own too via per " +
+  // ══ CONVERSATIONAL FILLER — ADDED 2026-08-02, AND WHY THIS IS NOT THE MISTAKE IT LOOKS LIKE ═══
+  // The first tally fed by Aaron's own prose returned: want · understand · actually · blocking ·
+  // autonomy · right. Four of six carry no subject. `autonomy` and `blocking` are the answer; the
+  // rest is the scaffolding a person puts around a question.
+  //
+  // v4.9.869 REFUSED to widen this list, deliberately, and that refusal still stands for what it was
+  // about: `true`, `run_conclusion`, `n17761`, `pins_overriding_policy` were MACHINE ARTIFACTS, and
+  // filtering those would have been papering over a wrong SOURCE - the tally was ranking Aura's own
+  // output and no stopword list can fix that. The source is right now. What is left is ordinary
+  // English filler, which is the one thing a stopword list is actually for.
+  // The test for anything added here: would a human ever say "I'm interested in <word>"? If not, it
+  // is scaffolding. If yes, it stays out of this list however common it is.
+  "want wants need needs think thinks know knows understand understands make makes take takes look " +
+  "looks going really pretty basically actually right thing things stuff lot bit way ways sure " +
+  "maybe probably actually let lets said say says tell told asked ask trying tried").split(" "));
 
 function interestTopics(text) {
   const words = String(text || "").toLowerCase().replace(/[^a-z0-9\s_-]/g, " ").split(/\s+/);

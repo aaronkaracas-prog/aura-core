@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.882-2026-08-02-receipts-are-not-memory";
+const BUILD = "aura-core-v4.9.883-2026-08-02-the-embed-must-land";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -3561,9 +3561,21 @@ async function auraRemember(env, event, kind) {
       // Was the literal "operator". Now the owner's PTA when one is set, so what she records lands
       // under an identity the consent substrate can actually resolve. Falls back to "operator" when
       // no owner PTA exists, which keeps a fresh install working unchanged.
-      ownerSubject(env).then((subj) =>
-        storeEventVector(subj, (kind || "moment") + "_" + Date.now(), _txt, env)
-      ).catch(() => {});
+      //
+      // ══ AWAITED, AND v4.9.881 IS WHY (fixed 2026-08-02) ═══════════════════════════════════
+      // The first cut was `ownerSubject(env).then(subj => storeEventVector(...)).catch(...)`. Nothing
+      // awaited it. The old line fired storeEventVector DIRECTLY, so the embedding at least started
+      // before the response went out; adding a KV read in front meant the vector write did not even
+      // BEGIN until a promise resolved, and by then the worker could be done. Measured: a lesson
+      // written after 881 never appeared in a projection that asked for it almost verbatim.
+      //
+      // This is the waitUntil lesson from earlier the same day, reintroduced four hours later in a
+      // different costume: DEFERRED WORK IS THE FIRST THING DROPPED. auraRemember is already awaited
+      // at its call sites, so awaiting here is free in the only sense that matters - it happens.
+      try {
+        const _subj = await ownerSubject(env);
+        await storeEventVector(_subj, (kind || "moment") + "_" + Date.now(), _txt, env);
+      } catch { /* an embedding must never break the moment it describes */ }
       // ══ THE INTEREST BUMP USED TO LIVE HERE, AND IT WAS MEASURING THE WRONG THING ═══════════
       // (removed 2026-08-02.) Every moment this function records is AURA'S OWN OUTPUT: a command
       // receipt ("AURA_READ_SELF: CAPABILITIES -> <reply> [1234ms]"), a deploy self-notice ("I WAS

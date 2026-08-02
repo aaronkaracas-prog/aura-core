@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.873-2026-08-02-source-cached-by-build";
+const BUILD = "aura-core-v4.9.874-2026-08-02-media-and-stream-connected";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -2152,7 +2152,15 @@ async function readOwnSource(env, branch, worker, fresh) {
                  "aura-think": { repo: "aura-think", path: "src/server.ts", branch: "master" },
                  "aura-ops": { repo: "aura-ops", path: "src/index.mjs", branch: "main" },
                  "aura-comms": { repo: "aura-comms", path: "src/index.mjs", branch: "main" },
-                 "aura-host": { repo: "aura-host", path: "src/index.mjs", branch: "main" } };
+                 "aura-host": { repo: "aura-host", path: "src/index.mjs", branch: "main" },
+                 // ADDED 2026-08-02. Both are LIVE (HTTP 200) and were missing from this map while
+                 // present in KNOWN_WORKERS - and because this resolves with `_map[_w] || _map["aura-core"]`,
+                 // asking for aura-media silently returned AURA-CORE'S SOURCE under the aura-media name.
+                 // It never reached the repo-discovery path below, because the read SUCCEEDED with the
+                 // wrong file. Two maps of the same set, disagreeing, one of them fabricating - exactly
+                 // what the comment three lines down warns about, live for these two names the whole time.
+                 "aura-media": { repo: "aura-media", path: "src/index.mjs", branch: "main" },
+                 "aura-stream": { repo: "aura-stream", path: "src/index.mjs", branch: "main" } };
   let _cfg = _map[_w] || _map["aura-core"];
   try {
     const ov = await env.AURA_KV.get("config:repo:" + _w);
@@ -29380,7 +29388,11 @@ async function verifyAgainstReality(env) {
   // ── 1. WHICH WORKERS ACTUALLY ANSWER ────────────────────────────────────────────────────────
   // A service binding that responds is proof of deployment. This is external: the worker either
   // answers or it does not, and no comment in her source can change that.
-  const bound = { AURA_OPS: "aura-ops", AURA_HOST: "aura-host", AURA_COMMS: "aura-comms", AURA_THINK: "aura-think" };
+  // AURA_MEDIA / AURA_STREAM added 2026-08-02. This map hardcoded four bindings while KNOWN_WORKERS
+  // named seven, so two live workers could never be probed and showed up only as "claimed but never
+  // answered". A prober that cannot see a worker reports its own blind spot as the worker's absence.
+  const bound = { AURA_OPS: "aura-ops", AURA_HOST: "aura-host", AURA_COMMS: "aura-comms",
+                  AURA_THINK: "aura-think", AURA_MEDIA: "aura-media", AURA_STREAM: "aura-stream" };
   const answering = [];
   for (const [binding, name] of Object.entries(bound)) {
     if (!env[binding] || typeof env[binding].fetch !== "function") { add("worker:" + name, "bound in config", "NO BINDING", false); continue; }

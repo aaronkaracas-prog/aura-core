@@ -55,6 +55,23 @@ service = "aura-comms"
 binding = "AURA_THINK"
 service = "aura-think"
 
+
+# ══ TWO LIVE WORKERS NOTHING WAS CONNECTED TO (2026-08-02) ══════════════════════════════════════
+# aura-media and aura-stream both answer HTTP 200 on their workers.dev URLs - they are deployed and
+# running right now. They were named in KNOWN_WORKERS and NOWHERE ELSE: no service binding, no entry
+# in readOwnSource's repo map, and VERIFY's worker probe hardcoded four bindings so it could never
+# test them. VERIFY reported "claimed in source but never answered", which was literally true and read
+# like they might not exist. They do - two limbs the rest of the system had no way to reach.
+# Declared only AFTER both were confirmed live: a binding to a service that does not exist fails the
+# ENTIRE deploy, which is how source and running diverged for ten minutes on 2026-07-26.
+[[services]]
+binding = "AURA_MEDIA"
+service = "aura-media"
+
+[[services]]
+binding = "AURA_STREAM"
+service = "aura-stream"
+
 [[durable_objects.bindings]]
 name = "ENTITY_DO"
 class_name = "EntityDO"
@@ -204,6 +221,17 @@ service = "aura-comms"
 [[env.staging.services]]
 binding = "AURA_THINK"
 service = "aura-think"
+
+
+# The twin gets these for the same reason it gets AURA_THINK: a self-edit tested on staging must
+# exercise the real binding path, not silently skip a worker the live one can reach.
+[[env.staging.services]]
+binding = "AURA_MEDIA"
+service = "aura-media"
+
+[[env.staging.services]]
+binding = "AURA_STREAM"
+service = "aura-stream"
 
 [[env.staging.durable_objects.bindings]]
 name = "ENTITY_DO"

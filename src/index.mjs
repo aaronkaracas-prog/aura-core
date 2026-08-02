@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.880-2026-08-02-reference-not-copy";
+const BUILD = "aura-core-v4.9.881-2026-08-02-events-under-a-pta";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -885,6 +885,41 @@ async function brainFetch(url, opts, env, caller) {
 // identity/consent layer for entities she deals with. Her memory is the archive. Kept as a tombstone so
 // nobody re-adds it: if you find yourself wanting an id for her here, the answer is the archive.
 const AURA_PTA_ID = null;
+
+// ══ THE OWNER'S EVENTS BELONG TO THE OWNER'S PTA (v4.9.881) ══════════════════════════════════════
+// Every event this system has ever written went under the literal string "operator" - storeEventVector
+// at auraRemember, semanticSearch in CARD and INTEREST RECALL. Internally consistent, so it works: the
+// same literal on both ends. But PROJECT resolves a projection for a PTA ID, so it asked for
+// pta_<owner> and found an empty store. The substrate had a read path and nothing was flowing into it
+// under an identity the substrate recognises.
+//
+// TWO WAYS TO GET THIS WRONG, both of which this avoids:
+//  1. Repoint the writes and walk away. Every existing vector is keyed "operator"; the moment writes
+//     move, CARD's because_i_remember goes blank and months of moments are orphaned - present in the
+//     index, unreachable by any query. Silent, and it would look like the retrieval broke.
+//  2. Let reads fall back to "operator" for ANY subject. Then anyone holding a view grant on their
+//     OWN pta reads the operator's entire history. That is not a migration, it is a permission hole,
+//     and it is exactly the shape this codebase keeps finding.
+//
+// So: writes move to the owner's PTA, and the legacy bucket stays readable for THAT SUBJECT ONLY.
+// The fallback is scoped by identity, not by convenience.
+async function ownerSubject(env) {
+  try {
+    const p = (await env.AURA_KV.get("config:owner:pta").catch(() => null) || "").trim();
+    return p || "operator";
+  } catch { return "operator"; }
+}
+
+// TRUE only for the one subject whose history genuinely lives in the legacy bucket. Every other
+// entity gets exactly its own events and nothing else.
+async function isOwnerSubject(env, subjectId) {
+  if (!subjectId) return false;
+  if (subjectId === "operator") return true;
+  try {
+    const p = (await env.AURA_KV.get("config:owner:pta").catch(() => null) || "").trim();
+    return !!p && p === subjectId;
+  } catch { return false; }
+}
 
 // ============================================================================
 // SEED_ARCHETYPES â€” the Adaptive Canvas's home-screen SHAPE per business type.
@@ -3500,7 +3535,12 @@ async function auraRemember(env, event, kind) {
     // of the action it describes. Fire and forget, same as the inbox write above.
     const _txt = String(event || "").slice(0, 400);
     if (_txt && env.VECTORIZE && env.AI) {
-      storeEventVector("operator", (kind || "moment") + "_" + Date.now(), _txt, env).catch(() => {});
+      // Was the literal "operator". Now the owner's PTA when one is set, so what she records lands
+      // under an identity the consent substrate can actually resolve. Falls back to "operator" when
+      // no owner PTA exists, which keeps a fresh install working unchanged.
+      ownerSubject(env).then((subj) =>
+        storeEventVector(subj, (kind || "moment") + "_" + Date.now(), _txt, env)
+      ).catch(() => {});
       // ══ THE INTEREST BUMP USED TO LIVE HERE, AND IT WAS MEASURING THE WRONG THING ═══════════
       // (removed 2026-08-02.) Every moment this function records is AURA'S OWN OUTPUT: a command
       // receipt ("AURA_READ_SELF: CAPABILITIES -> <reply> [1234ms]"), a deploy self-notice ("I WAS
@@ -25932,9 +25972,22 @@ async function getSemanticEvents(entityId, query, env, limit = 5, floor = 0.5) {
 async function getHybridEvents(entityId, query, env) {
   // Recency: last 3 events always included
   const recent = await getRecentEvents(entityId, env, 3);
-  
+
   // Semantic: top 5 relevant events based on current query
-  const semantic = await getSemanticEvents(entityId, query, env, 5);
+  let semantic = await getSemanticEvents(entityId, query, env, 5);
+
+  // ══ THE LEGACY BUCKET, FOR ONE SUBJECT ONLY (v4.9.881) ═══════════════════════════════════════
+  // Months of the owner's moments are indexed under the literal "operator" rather than under their
+  // PTA. Reading both for THAT subject is the migration bridge; reading both for anyone else would
+  // hand every grant-holder the operator's history. isOwnerSubject decides on identity, never on
+  // convenience, and the check happens before the second query runs rather than filtering after.
+  try {
+    if (entityId !== "operator" && await isOwnerSubject(env, entityId)) {
+      const legacy = await getSemanticEvents("operator", query, env, 5);
+      const seen = new Set(semantic);
+      for (const t of legacy) if (!seen.has(t)) semantic.push(t);
+    }
+  } catch { /* the bridge must never break the primary read */ }
   
   // Combine: recent events + semantic events (deduplicated)
   const recentTexts = new Set(recent.map(e => e.summary || e.body));

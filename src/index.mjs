@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.885-2026-08-02-a-zero-that-means-absent";
+const BUILD = "aura-core-v4.9.886-2026-08-02-list-tells-the-truth-too";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -21988,7 +21988,32 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         let moments;
         if (creatorId) moments = await db.prepare("SELECT * FROM pta_moments WHERE creator_id = ? ORDER BY created_at DESC LIMIT 50").bind(creatorId).all();
         else moments = await db.prepare("SELECT * FROM pta_moments ORDER BY created_at DESC LIMIT 50").all();
-        return { cmd: "PTA_MOMENT", payload: { ok: true, moments: moments.results } };
+
+        // ══ THE SIBLING, ONE COMMAND OVER (2026-08-02) ═══════════════════════════════════════════
+        // CLAIMS learned to say `orphan: true` a build ago. LIST did not, and LIST is what anyone runs
+        // FIRST - so the honest answer lived behind the command nobody reaches for. A six-week-old
+        // record whose entity and creator are both deleted still printed here as a normal moment.
+        // Bounded at 50 rows, so this is at most 50 primary-key lookups on a command nobody calls in a
+        // loop. Cheap enough to always be true beats correct-if-you-ask-the-right-way.
+        const _rows = moments.results || [];
+        const _out = [];
+        for (const m of _rows) {
+          let ent = null, cre = null;
+          try { ent = await db.prepare("SELECT id FROM pta_entities WHERE id = ?").bind(m.id).first(); } catch {}
+          try { cre = m.creator_id ? await db.prepare("SELECT id FROM pta_entities WHERE id = ?").bind(m.creator_id).first() : null; } catch {}
+          const orphan = !ent || !cre;
+          _out.push(orphan
+            ? { ...m, orphan: true,
+                orphan_detail: (!ent ? "moment entity gone. " : "") + (!cre ? "creator gone. " : "") +
+                               "Stale row - nothing cascades from pta_entities to pta_moments." }
+            : { ...m, orphan: false });
+        }
+        const _dead = _out.filter((m) => m.orphan).length;
+        return { cmd: "PTA_MOMENT", payload: { ok: true, moments: _out, total: _out.length, orphans: _dead,
+          note: _dead ? _dead + " of " + _out.length + " are STALE: the moment or its creator no longer " +
+                        "exists. They are listed rather than hidden - a row that disappears silently is " +
+                        "worse than one that says what it is."
+                      : null } };
       }
 
       if (sub === "GET") {

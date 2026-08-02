@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.877-2026-08-02-layer-c-events";
+const BUILD = "aura-core-v4.9.878-2026-08-02-watch-a-real-key";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -3688,11 +3688,32 @@ async function watchWorld(env) {
         (was, now) => k + " changed: " + was + " -> " + now);
     }
 
-    // THE PORTFOLIO. Domains appearing or disappearing is the outside world moving, not her.
+    // ══ A DEAD WATCH, REMOVED THE DAY IT WAS WRITTEN (2026-08-02) ═════════════════════════════
+    // There was a watch here on `domains:count`. That key does not exist and never has - the domain
+    // count is DERIVED LIVE from Cloudflare, and this file already says twice that
+    // `config:domains:all` has no writer. So it could never fire: a claim to be watching something
+    // while measuring nothing, which is the exact defect this codebase spent a day removing (a health
+    // check calling the wrong Google API, a bot score of zero reading as "none found", a probe
+    // registry nothing could reach). Caught by asking what the key actually held instead of assuming.
+    // Watching it properly means an outbound call to Cloudflare every minute, which breaks this
+    // watcher's one rule: it costs nothing because everything it reads was already computed.
+    //
+    // AARON STOPPED THIS BEFORE IT SHIPPED, and the correction is worth more than the removal: the
+    // portfolio is ALREADY answered three ways and I was inventing a fourth.
+    //   SPACESHIP_STATUS         - total/synced, derived LIVE from the registrar
+    //   VERIFY                   - collides that against Cloudflare's zones (357 / 357 synced)
+    //   config:domains:launched  - the ONE stored key, appended by launchDomain when a domain
+    //                              actually goes live
+    // So the RIGHT watch is the launch, not the count. A domain going live is a thing that HAPPENED;
+    // a registrar total is inventory, and inventory is not an event. It is also free - launchDomain
+    // already wrote this key as a by-product of doing the work.
     try {
-      const dom = await kv.get("domains:count").catch(() => null);
-      if (dom) await noticeChange(env, "portfolio", "domains", dom,
-        (was, now) => "domain count moved " + was + " -> " + now);
+      const launched = await kv.get("config:domains:launched").catch(() => null);
+      if (launched) {
+        const n = (JSON.parse(launched) || []).length;
+        await noticeChange(env, "portfolio", "launched", String(n),
+          (was, now) => "a domain went live - launched count " + was + " -> " + now);
+      }
     } catch {}
 
     // WORKER LIVENESS, from the failure counters runHealthChecks already writes every tick. A worker
@@ -14440,8 +14461,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         honest_state: [
           "This assembles and explains. It does NOT deliver anything to anyone.",
           "The gate is asked BEFORE the content is built, so a card can never talk its way into being shown.",
-          "Layer C is absent: no calendar, mail, location or feed is watched, so nothing here is " +
-            "triggered by the world. This is the shape of a proactive card, driven by a command.",
+          // CORRECTED 2026-08-02, and the fossil is the lesson: `why_now` was rewritten for Layer C
+          // and THIS SENTENCE, three lines below it, still said Layer C was absent. Same defect the
+          // rest of this file keeps finding - the value changed and its description did not.
+          "Layer C IS built (watchWorld, on the existing tick): it compares values another job " +
+            "already computed and emits an event only on a DELTA, so `why_now` above is either a " +
+            "real trigger or an honest admission that nothing moved. What it does NOT watch is a " +
+            "calendar, a mailbox or a location - outside sources with their own cost, and each one " +
+            "earns its place by mattering rather than by being addable.",
           "Measured constraint, not opinion: the human ceiling is 3-5 interruptions a day and roughly " +
             "half of users who mute notifications eventually leave. WAKE_CAP_PER_DAY is " +
             WAKE_CAP_PER_DAY + (WAKE_CAP_PER_DAY > 5

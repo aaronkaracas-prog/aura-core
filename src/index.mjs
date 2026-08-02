@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.898-2026-08-02-read-the-worker-you-asked-for";
+const BUILD = "aura-core-v4.9.899-2026-08-02-unknown-is-not-ok";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -35383,6 +35383,28 @@ function openAlbum(idx){
               { expirationTtl: 14 * 24 * 3600 });
           }
         } catch { /* a lost memory must never break the command it describes */ }
+        // ══ AN UNKNOWN COMMAND MUST NOT REPORT SUCCESS (v4.9.899) ══════════════════════════════
+        // processCommand returns null for anything it does not recognise - correct, because /chat
+        // uses that null as the signal to fall through to reasoning. But THIS line spread it into
+        // `{ ok: true, brain_used: false, ...null }`, which produces a flawless success with no cmd
+        // and no payload. Three times today that swallowed real work: `GET /truecost?...` (RUN sends
+        // commands, not routes), `SEMANTIC_SEARCH` (invented name), and seven `lesson:...` writes
+        // that were KV keys rather than commands. Each returned ok:true in under half a second and
+        // did nothing, and each time the absence was read as "it worked".
+        // A gate that passes everything it does not understand is not a gate.
+        if (r === null || r === undefined) {
+          const _w = String(q).trim().split(/\s+/)[0];
+          return new Response(JSON.stringify({ ok: false, ms: Date.now() - _t0, brain_used: false,
+            error: "UNKNOWN_COMMAND", saw: _w.slice(0, 60),
+            why: "No handler matched. Nothing ran and nothing was written - this used to return ok:true " +
+                 "with an empty body, which is indistinguishable from a command that succeeded quietly.",
+            hint: /^(GET|POST|PUT|DELETE)\b/i.test(_w)
+              ? "That looks like an HTTP route. RUN sends COMMANDS to /cmd - reach a route with curl against the worker URL instead."
+              : (/:/.test(_w)
+                ? "That looks like a KV key. To write one: SETKV " + _w + " <value>. To read: GETKV " + _w + "."
+                : "Check the name with WHERE " + _w.toUpperCase() + ", or ask HOW <what you are trying to do> for the right door.") }),
+            { status: 200, headers: _vh });
+        }
         return new Response(JSON.stringify({ ok: true, ms: Date.now() - _t0, brain_used: false, ...r }), { status: 200, headers: _vh });
       } catch (e) {
         return new Response(JSON.stringify({ ok: false, ms: Date.now() - _t0, error: String(e?.message ?? e) }), { status: 500, headers: _vh });

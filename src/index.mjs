@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.869-2026-08-02-interest-from-his-words";
+const BUILD = "aura-core-v4.9.870-2026-08-02-interest-note-door";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -14376,6 +14376,28 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             : (above.length ? null : "Found " + r.matches.length + " candidates, all below the floor. " +
               "The scores are in near_misses - if they look right, the floor is wrong, not the index."),
           source: "Vectorize (@cf/baai/bge-base-en-v1.5, 768d), filtered to subject=operator" } };
+      }
+
+      if (iSub === "NOTE") {
+        // ══ THE DOOR FOR THE ONLY PATH AARON ACTUALLY TALKS THROUGH ═══════════════════════════
+        // v4.9.869 moved the interest bump off command receipts and onto the operator's prose - but
+        // it hooked aura-core's /chat, and Aaron does not use /chat. `ASK` posts straight to
+        // aura-think's /turn and `RUN` posts to /cmd, so the tally would have sat empty forever
+        // while looking correctly wired. Fixing the SOURCE and missing the ROUTE is the same defect
+        // one layer up, and it would have read as "the fix didn't work".
+        //
+        // ONE IMPLEMENTATION, ONE DOOR. The tokenizer, the stopword list, the decay and the 300-slot
+        // bound all live here and stay here. aura-think does not get its own copy that can drift -
+        // two rankers disagreeing about what he cares about is the parallel-memory failure this file
+        // has paid for repeatedly. The brain calls this; it does not reimplement it.
+        if (!iArg || iArg.length < 12) return { cmd: "INTEREST", payload: { ok: false,
+          error: "Usage: INTEREST NOTE <a sentence the operator actually wrote>",
+          why: "Below 12 characters there is no topic to extract - 'ok' and 'yes' are not interests." } };
+        const _noted = interestTopics(iArg);
+        await bumpInterest(env, iArg);
+        return { cmd: "INTEREST", payload: { ok: true, noted: _noted.length, topics: _noted,
+          note: "Ranked from the operator's own words. Nothing here came from a payload, a command " +
+                "name or a build string." } };
       }
 
       const now = Date.now();

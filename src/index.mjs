@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.868-2026-08-01-card-distinct-actor";
+const BUILD = "aura-core-v4.9.869-2026-08-02-interest-from-his-words";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -3384,7 +3384,24 @@ async function auraRemember(env, event, kind) {
     const _txt = String(event || "").slice(0, 400);
     if (_txt && env.VECTORIZE && env.AI) {
       storeEventVector("operator", (kind || "moment") + "_" + Date.now(), _txt, env).catch(() => {});
-      bumpInterest(env, _txt).catch(() => {});
+      // ══ THE INTEREST BUMP USED TO LIVE HERE, AND IT WAS MEASURING THE WRONG THING ═══════════
+      // (removed 2026-08-02.) Every moment this function records is AURA'S OWN OUTPUT: a command
+      // receipt ("AURA_READ_SELF: CAPABILITIES -> <reply> [1234ms]"), a deploy self-notice ("I WAS
+      // CHANGED. I am now aura-core-v4.9.867..."), a fact write. Feeding that to a word-frequency
+      // ranker produced exactly what you would expect, and the first live CARD proved it:
+      //     true 265.6 · mode 119.2 · aura-core 116.9 · aura_read_self 113.2 · worker 113.2
+      // `true` is the token out of `"ok":true` in a JSON payload. `aura_read_self` is a tool name.
+      // Not one of the top five is a thing Aaron cares about, and the card's "why_this" line was
+      // therefore driven by a boolean.
+      //
+      // THE FIX IS NOT A LONGER STOPWORD LIST. That was tried once already for version strings, and
+      // widening it again just moves the next artifact to the top - the file's own comment says a
+      // ranker whose top entries are build numbers is not worth reading. The source was wrong, not
+      // the filter. Interest is now bumped where the OPERATOR'S OWN WORDS arrive (see the /chat
+      // path), which is the only place a sentence Aaron actually wrote exists in this worker.
+      //
+      // The vector write above STAYS. An embedded index of what she did is real evidence and is what
+      // INTEREST RECALL searches; it was never the problem. What was wrong was ranking by it.
     }
   } catch (e) { /* memory capture never blocks the action it records */ }
 }
@@ -34548,6 +34565,26 @@ function openAlbum(idx){
               note: "The agent was unreachable, so this ran as a COMMAND on the local path - real execution, " +
                     "no model, no narration. The result above is the command's own output." });
           }
+          // ══ WHAT HE ACTUALLY SAID — THE ONLY HONEST INTEREST SIGNAL IN THIS WORKER ═══════════
+          // `line` here is a sentence Aaron typed. Not a command receipt, not a payload, not a
+          // build string - prose, in his own words, on his own initiative. That is what Layer B was
+          // always supposed to rank, and until now it never saw a single one of them.
+          //
+          // THREE GUARDS, each for a stated reason:
+          //   isOp        - a stranger at a public doorway is not the person whose interests this
+          //                 ranks. The tally is named for the operator and must only contain him.
+          //   not-a-command - "AIMARGIN", "LISTKV mem:inbox:", "CARD checkin" are tool invocations.
+          //                 A tool he reaches for is not a subject he cares about, and admitting
+          //                 them is how `aura_read_self` reached strength 113 in the first place.
+          //   length      - a bare "ok" or "yes" carries no topic and only adds noise.
+          //
+          // FIRE AND FORGET, as before: an interest signal is never worth failing a turn over.
+          try {
+            if (isOp && line && line.trim().length >= 12 &&
+                !/^[A-Z][A-Z0-9_]{2,}(\s|$)/.test(line.trim())) {
+              bumpInterest(env, line).catch(() => {});
+            }
+          } catch { /* ranking must never cost him an answer */ }
           const reply = ok ? agentTry.reply
                            : await llmReply(line, env, sessionId, isOp, request.headers.get("x-pta-entity") || null);
           if (lines.length === 1) {

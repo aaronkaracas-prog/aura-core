@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.889-2026-08-02-a-gate-you-can-open";
+const BUILD = "aura-core-v4.9.890-2026-08-02-grant-what-the-gate-asks-for";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -5266,7 +5266,41 @@ async function successionGate(env) {
           how: "SETKV config:owner:pta <pta_id> OVERRIDE_CONSTITUTIONAL" } };
 
         if (_sub === "GRANT") {
-          const g = await ensureInitiativeGrant(env, owner, "pta_aura", "self_modification");
+          // ══ WHY NOT ensureInitiativeGrant (corrected 2026-08-02, same hour it shipped) ═════════
+          // v4.9.889 minted through ensureInitiativeGrant. It wrote the edge, and the gate still
+          // refused - "active edge(s) exist but none grants can_evolve". That function writes exactly
+          // {can_view, can_initiate, purposes}: it is the INITIATIVE primitive, and it can never
+          // produce can_evolve however many times it is called. A door that calls a function which
+          // does not do the thing.
+          // Caught in one round instead of three only because the failure said which half failed -
+          // "the grant was written but the gate still refuses, read gate.reason". Reusing an existing
+          // function is right; reusing one that does something adjacent is not.
+          const db = env.AURA_MEMORY;
+          const now_ts = new Date().toISOString();
+          let g;
+          const existing = await db.prepare(
+            "SELECT id, permission FROM pta_edges WHERE from_id = ? AND to_id = 'pta_aura' AND edge_type = 'grant' AND state = 'active' ORDER BY created_at DESC"
+          ).bind(owner).first().catch(() => null);
+          if (existing) {
+            let perm = {}; try { perm = JSON.parse(existing.permission || "{}"); } catch {}
+            const purposes = Array.isArray(perm.purposes) ? perm.purposes : [];
+            perm.can_view = true; perm.can_evolve = true;
+            perm.purposes = [...new Set([...purposes, "self_modification"])];
+            await db.prepare("UPDATE pta_edges SET permission = ?, updated_at = ? WHERE id = ?")
+              .bind(JSON.stringify(perm), now_ts, existing.id).run();
+            g = { ok: true, edge: existing.id, minted: false, note: "extended an existing live grant" };
+          } else {
+            const eid = "edge_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
+            await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, permission, context, created_at, updated_at) VALUES (?, ?, 'pta_aura', 'grant', 'active', ?, ?, ?, ?)")
+              .bind(eid, owner, JSON.stringify({ can_view: true, can_evolve: true, purposes: ["self_modification"] }),
+                    JSON.stringify({ granted_by: "AURA_SUCCESSION GRANT" }), now_ts, now_ts).run();
+            try {
+              await db.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, ?, 'granted', ?, ?, ?)")
+                .bind("hist_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16), eid, owner,
+                      JSON.stringify({ purpose: "self_modification", can_evolve: true }), now_ts).run();
+            } catch {}
+            g = { ok: true, edge: eid, minted: true };
+          }
           const now = await successionGate(env);
           return { cmd: "AURA_SUCCESSION", payload: { ok: !!now.ok, granted: g, gate: now,
             note: now.ok

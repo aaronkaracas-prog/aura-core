@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.867-2026-08-01-reconcile-verdict-surfaced";
+const BUILD = "aura-core-v4.9.868-2026-08-01-card-distinct-actor";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -14040,9 +14040,32 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const cQuery = cAboutIx >= 0 ? rest.slice(cAboutIx + 7).trim() : null;
 
       // ── D: may I speak at all? Asked FIRST, and its answer stands whatever the content turns out to be.
+      //
+      // ══ THE SUBJECT IS THE PERSON, NOT HERSELF (fixed 2026-08-01) ═══════════════════════════════
+      // This asked the gate with actor AND subject both "pta_aura", and the gate correctly refused:
+      // self-allow cannot satisfy initiate, so the FIRST live CARD run returned would_show:false /
+      // NO_INITIATIVE. That was the wake gate working exactly as designed and the CALLER holding it
+      // wrong - which meant Layer E could never surface, however good the card was.
+      //
+      // The polarity is already frozen in law one screen up: **the subject grants Aura initiative
+      // over their own continuity.** A card interrupts a PERSON. So the person is the subject, and
+      // Aura is a distinct actor holding a scoped, revocable grant from them.
+      //
+      // AND IT STILL DOES NOT MINT ITS OWN GRANT. ensureInitiativeGrant is called at SCHEDULE time by
+      // the paths that create an intention, because scheduling is an explicit act by somebody. A
+      // surface that granted itself permission on read would be the self-allow hole wearing a new
+      // name - the exact substitution v4.9.836 refused. So when the grant is absent this REFUSES and
+      // names the one command that mints it, rather than quietly arranging its own consent.
+      const cOwner = ((await env.AURA_KV.get("config:owner:pta").catch(() => null)) || "").trim();
+      if (!cOwner) {
+        return { cmd: "CARD", payload: { ok: false, error: "NO_SUBJECT",
+          note: "config:owner:pta is not set, so there is nobody this card would be shown TO. A card " +
+                "interrupts a person; without a subject the gate has no consent to check and the only " +
+                "honest answer is to refuse. Set it with SETKV config:owner:pta <pta_id>." } };
+      }
       let gate = null;
       try {
-        gate = await ptaWakeGate(env, { actor: "pta_aura", subject: "pta_aura", purpose: cPurpose });
+        gate = await ptaWakeGate(env, { actor: "pta_aura", subject: cOwner, purpose: cPurpose });
       } catch (e) {
         await noteSwallowed(env, "CARD:wake_gate", e);
         return { cmd: "CARD", payload: { ok: false, error: "GATE_UNAVAILABLE",
@@ -14074,8 +14097,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       } catch (e) { await noteSwallowed(env, "CARD:fact_read", e); }
 
       const haveSomething = !!(anchor && (moments.length || factRows.length));
+      // A refusal that does not say how to clear it reads as "broken" and gets retried forever. This
+      // one names the single command, with the exact permission shape ensureInitiativeGrant writes,
+      // so the grant a human mints by hand is byte-identical to the one the scheduler mints. Two
+      // shapes for one meaning is how a gate starts passing things it should not.
+      const fixIt = (gate && gate.code === "NO_INITIATIVE")
+        ? "PTA_GRANT " + cOwner + " pta_aura {\"permission\":{\"can_view\":true,\"can_initiate\":true," +
+          "\"purposes\":[\"" + cPurpose + "\"]}}"
+        : null;
       return { cmd: "CARD", payload: { ok: true, purpose: cPurpose,
+        subject: cOwner, actor: "pta_aura",
         would_show: !!(gate && gate.allowed) && haveSomething,
+        grant_with: fixIt,
         gate: { allowed: !!(gate && gate.allowed), code: gate?.code || null, reason: gate?.reason || null,
                 may_think: gate?.may_think ?? null, payer: gate?.payer ?? null },
         card: haveSomething ? {

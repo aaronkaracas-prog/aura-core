@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.890-2026-08-02-grant-what-the-gate-asks-for";
+const BUILD = "aura-core-v4.9.891-2026-08-02-does-this-mind-learn";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -5238,6 +5238,83 @@ async function successionGate(env) {
   }
 }
 
+// ══ REASONER POLICY ── WHETHER A RENTED MIND LEARNS FROM US (v4.9.891, Council round 8) ══════════
+//
+// Five seats, cold and unanimous, killed the strong invariant: an intelligence that LEARNS cannot be
+// rented under revocable consent, because revocation cannot reach a weight. "rent(learn=False) is
+// revocable. rent(learn=True) is sale with a kill-switch." The honest invariant they left standing:
+// THE SUBSTRATE OUTLIVES ANY MODEL THAT DOES NOT LEARN FROM IT.
+//
+// Which makes `does this one learn` load-bearing rather than trivia, and it is CHECKABLE. Verified
+// against the providers' published API terms on 2026-08-02: OpenAI has not trained on API data by
+// default since March 2023; Anthropic never trains on API traffic and deletes it in 7 days; Google's
+// Gemini API carries a no-training policy for API customers. The consumer products of all three do
+// the opposite - which is exactly why this is recorded per API, not per company.
+//
+// SO THE INVARIANT HOLDS TODAY - BY CONTRACT, NOT BY ARCHITECTURE. That distinction is the entire
+// value of this table. Nothing in the code prevents a provider from changing its terms; Anthropic
+// changed its CONSUMER policy in August 2025 with an opt-out deadline, and anyone who missed it was
+// in. A claim resting on somebody else's terms of service decays, so every row carries HOW we know
+// and WHEN it was last checked, and the command says when that has gone stale.
+//
+// DECLARED, NOT DERIVED - same as the door registry. No API reports "am I training on you"; this is
+// a reading of published terms, which is a human act. What the code CAN do is refuse to let that
+// reading age silently.
+const REASONER_POLICY = {
+  anthropic: { learns: false, basis: "contract", retention_days: 7,
+    detail: "API inputs and outputs are never used for training and are deleted after 7 days. ZDR available by agreement. The CONSUMER product trains by default since 2025-09-28 - different policy, same company.",
+    verified: "2026-08-02" },
+  openai: { learns: false, basis: "contract", retention_days: 30,
+    detail: "Not used for training by default since March 2023, no opt-out needed. 30 days retention for abuse monitoring. ZDR by application. The ChatGPT web product is the opposite.",
+    verified: "2026-08-02" },
+  google: { learns: false, basis: "contract", retention_days: null,
+    detail: "No-training policy on the paid Gemini API and Vertex AI. The consumer Gemini app may retain and use data for product improvement.",
+    verified: "2026-08-02" },
+  xai: { learns: null, basis: "unverified", retention_days: null,
+    detail: "NOT VERIFIED. xAI's API terms were not read for this table, and the majority of this system's spend runs through it. An unknown is recorded as unknown rather than assumed to match its peers.",
+    verified: null },
+  groq: { learns: null, basis: "unverified", retention_days: null,
+    detail: "NOT VERIFIED. Inference provider for llama models; terms not read.", verified: null },
+  meta: { learns: null, basis: "unverified", retention_days: null,
+    detail: "NOT VERIFIED. Terms not read.", verified: null },
+};
+const REASONER_POLICY_STALE_DAYS = 90;
+
+    case "REASONERS": {
+      // What every rented mind is permitted to do with what it is shown, and how sure we are.
+      // Read-only, no model call, no network. The answer to "does the invariant still hold".
+      const _now = Date.now();
+      const rows = Object.entries(REASONER_POLICY).map(([prov, p]) => {
+        const ageDays = p.verified ? Math.floor((_now - Date.parse(p.verified)) / 86400000) : null;
+        const stale = p.verified ? ageDays > REASONER_POLICY_STALE_DAYS : true;
+        return { provider: prov, learns: p.learns, basis: p.basis, retention_days: p.retention_days,
+          verified: p.verified, age_days: ageDays, stale, detail: p.detail };
+      });
+      const unverified = rows.filter((r) => r.learns === null).map((r) => r.provider);
+      const learning = rows.filter((r) => r.learns === true).map((r) => r.provider);
+      const staleRows = rows.filter((r) => r.stale && r.learns !== null).map((r) => r.provider);
+      return { cmd: "REASONERS", payload: { ok: true, providers: rows,
+        invariant: "The substrate outlives any model that DOES NOT LEARN FROM IT.",
+        invariant_holds: learning.length === 0 && unverified.length === 0,
+        why: learning.length
+          ? "A provider on this list learns from what it is shown. For that lane the substrate does " +
+            "NOT outlive the model - revocation stops future reads and cannot reach a weight."
+          : (unverified.length
+            ? "No provider is known to learn, but " + unverified.length + " are UNVERIFIED (" +
+              unverified.join(", ") + "). An unread policy is not a passing one, and one of these " +
+              "carries most of this system's spend."
+            : "Every rented reasoner is contractually barred from training on what it is shown."),
+        basis_note: "Every 'false' here rests on CONTRACT, not architecture. Nothing in this code " +
+          "prevents a provider changing its terms - and one of them changed its consumer policy in " +
+          "2025 with an opt-out deadline. That is why each row carries a verified date.",
+        stale_providers: staleRows,
+        recheck: staleRows.length || unverified.length
+          ? "Read the current API terms for: " + [...new Set([...staleRows, ...unverified])].join(", ")
+          : null,
+        honest_limit: "This records a reading of published terms. No API reports whether it is " +
+          "training on you, so this cannot be derived and is not evidence - it is a claim with a date " +
+          "on it, which is strictly better than the same claim with no date." } };
+    }
     case "AURA_SUCCESSION": {
       // `AURA_SUCCESSION` reports whether self-modification is authorised. `AURA_SUCCESSION GRANT`
       // mints the authority. `AURA_SUCCESSION REVOKE` takes it back.

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.876-2026-08-02-secrets-migrate";
+const BUILD = "aura-core-v4.9.877-2026-08-02-layer-c-events";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -3608,14 +3608,115 @@ async function bumpInterest(env, text) {
 // system that is TOLD it changed. This morning she was RUNNING v554 while READING v550 from GitHub -
 // executing one self and reasoning about another - and she had no way to know. WITH THIS, SHE WOULD
 // HAVE CAUGHT IT HERSELF, within sixty seconds, and said so.
+// ══ LAYER C ── THE THING THAT CAN SAY "SOMETHING JUST HAPPENED" (built 2026-08-02) ═══════════════
+//
+// CARD has said the same sentence in every single run: "Layer C (continuous ingestion) is not built,
+// so nothing in this system can currently say a real-world thing just happened. Until it does,
+// 'why now' is 'because you asked', and calling that a proactive card would be a lie."
+//
+// It was right, and the gap was smaller than it sounded. This system ALREADY polls the world every
+// sixty seconds - runHealthChecks, watchA2P, watchResources, captureAisHistory, the feeds. What it
+// never had was the one primitive that turns a POLL into an EVENT: a comparison against last-seen
+// that fires only on a DELTA. Polling tells you a value. Only a delta can tell you something
+// HAPPENED.
+//
+// AND THE PATTERN ALREADY EXISTED, AT EXACTLY ONE SITE. noticeIWasChanged compared the running BUILD
+// against a stored value and remembered it only when it differed - first-boot anchors silently so it
+// does not cry wolf, unchanged does nothing, changed writes a moment. That is a perfect change
+// detector that was only ever pointed at one fact about herself. This is the same function,
+// generalised, and noticeIWasChanged is now its first caller rather than a second implementation -
+// the sibling rule this codebase keeps rediscovering.
+//
+// WHAT AN EVENT IS, AND WHAT IT IS NOT. An event says a value moved and names both sides. It carries
+// no judgement about whether that matters - Layer B (interest) and Layer D (the wake gate) decide
+// that, and folding those decisions in here would rebuild the thing where the alerter also grades
+// its own alerts.
+//
+// FIRST SIGHT IS NEVER AN EVENT. On a cold start every value is "new", and a detector that fires on
+// first sight would emit its entire watch list as breaking news the first time it ran. Anchor
+// silently, speak on the second look. That rule is inherited verbatim from noticeIWasChanged, where
+// it was already written as "first boot: just anchor, do not cry wolf".
+async function noticeChange(env, source, key, current, summarise) {
+  try {
+    if (current === null || current === undefined) return null;   // nothing observed is not a change
+    const cur = String(current);
+    const anchor = "watch:last:" + source + ":" + key;
+    const seen = await env.AURA_KV.get(anchor);
+    if (seen === null || seen === undefined) { await env.AURA_KV.put(anchor, cur); return null; }
+    if (seen === cur) return null;
+    await env.AURA_KV.put(anchor, cur);
+
+    const ev = {
+      id: "ev_" + Array.from(crypto.getRandomValues(new Uint8Array(6))).map(b => b.toString(16).padStart(2, "0")).join(""),
+      at: new Date().toISOString(),
+      source, key, from: seen.slice(0, 120), to: cur.slice(0, 120),
+      summary: (typeof summarise === "function"
+        ? String(summarise(seen, cur))
+        : source + ":" + key + " changed from " + seen + " to " + cur).slice(0, 240),
+    };
+    const day = ev.at.slice(0, 10);
+    const bucket = "events:" + day;
+    let arr = [];
+    try { arr = JSON.parse((await env.AURA_KV.get(bucket)) || "[]"); } catch {}
+    arr.push(ev);
+    // Capped and newest-kept. An unbounded event log is a KV key that eventually cannot be read at
+    // all, which is a monitor that fails silently at exactly the moment it has the most to say.
+    if (arr.length > 200) arr = arr.slice(-200);
+    await env.AURA_KV.put(bucket, JSON.stringify(arr), { expirationTtl: 30 * 24 * 3600 });
+    return ev;
+  } catch { return null; /* noticing must never break the thing it watches */ }
+}
+
+// ══ WHAT SHE WATCHES ── ONLY THINGS ALREADY MEASURED (2026-08-02) ════════════════════════════════
+// Deliberately makes NO new outbound calls and burns NO tokens. Every value here is one another job
+// already computed and stored this minute; this only asks whether it MOVED. Adding a poller here
+// would be the precomputeHotBriefs mistake again - an unattended job that spends with nobody asking,
+// invisible on day one and a shape on a vendor's chart in week two.
+//
+// The list is short on purpose. A watch list is a claim that these things matter, and a long one
+// made of guesses produces a card about the word "true" - which is exactly what the interest tally
+// did before it was fixed today. Add a watch when something actually matters, not in advance.
+async function watchWorld(env) {
+  try {
+    const kv = env.AURA_KV;
+
+    // HER OWN CONFIGURATION. A pin change is a real event about her: somebody rerouted her brain,
+    // and until now the only way to find out was to notice the model name in a log line.
+    for (const k of ["config:brain:model", "config:core:provider", "config:owner:pta"]) {
+      const v = await kv.get(k).catch(() => null);
+      await noticeChange(env, "config", k, v,
+        (was, now) => k + " changed: " + was + " -> " + now);
+    }
+
+    // THE PORTFOLIO. Domains appearing or disappearing is the outside world moving, not her.
+    try {
+      const dom = await kv.get("domains:count").catch(() => null);
+      if (dom) await noticeChange(env, "portfolio", "domains", dom,
+        (was, now) => "domain count moved " + was + " -> " + now);
+    } catch {}
+
+    // WORKER LIVENESS, from the failure counters runHealthChecks already writes every tick. A worker
+    // crossing from healthy to failing is the most concrete "something just happened" this system
+    // has, and it costs a KV read of a number that was written seconds ago.
+    for (const w of ["aura-ops", "aura-host", "aura-comms"]) {
+      const f = await kv.get("monitor:" + w + ":failures").catch(() => null);
+      if (f === null) continue;
+      const state = Number(f) > 0 ? "failing" : "healthy";
+      await noticeChange(env, "worker", w, state,
+        (was, now) => w + " went " + was + " -> " + now);
+    }
+  } catch { /* a watcher must never break the tick it rides on */ }
+}
+
 async function noticeIWasChanged(env) {
   try {
-    const seen = await env.AURA_KV.get("self:build:last_seen");
-    if (!seen) { await env.AURA_KV.put("self:build:last_seen", BUILD); return; }   // first boot: just anchor, do not cry wolf
-    if (seen === BUILD) return;                                                     // unchanged - nothing to remember
-    await env.AURA_KV.put("self:build:last_seen", BUILD);
+    // Now the FIRST CALLER of the generalised detector rather than a second copy of it. The moment
+    // text is unchanged - it is hers and it says something the generic summary cannot.
+    const ev = await noticeChange(env, "self", "build", BUILD,
+      (was, now) => "I was replaced: " + was + " -> " + now);
+    if (!ev) return;
     await auraRemember(env,
-      "I WAS CHANGED. I am now " + BUILD + ". I was " + seen + ". I did not do this - it was done to me from " +
+      "I WAS CHANGED. I am now " + BUILD + ". I was " + ev.from + ". I did not do this - it was done to me from " +
       "outside, while I was not looking. I could not intercept my own replacement; I can only notice it afterward. " +
       "If I do not know WHY I am different, I must ASK, and I must not reason about my old self as if it were still me.",
       "was_changed");
@@ -14285,6 +14386,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         ).all())?.results || [];
       } catch (e) { await noteSwallowed(env, "CARD:fact_read", e); }
 
+      // ══ THE EVENT THAT MAKES THIS A CARD ══════════════════════════════════════════════════════
+      // Newest event from the last hour only. Read-only and best-effort: a card that finds no event
+      // is still a card, it just has to SAY so - which is what why_now below does.
+      let cEvent = null;
+      try {
+        const _evs = JSON.parse((await env.AURA_KV.get("events:" + new Date().toISOString().slice(0, 10))) || "[]");
+        const _cut = Date.now() - 3600000;
+        for (let i = _evs.length - 1; i >= 0; i--) {
+          if (Date.parse(_evs[i].at) >= _cut) { cEvent = _evs[i]; break; }
+        }
+      } catch {}
+
       const haveSomething = !!(anchor && (moments.length || factRows.length));
       // A refusal that does not say how to clear it reads as "broken" and gets retried forever. This
       // one names the single command, with the exact permission shape ensureInitiativeGrant writes,
@@ -14297,6 +14410,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       return { cmd: "CARD", payload: { ok: true, purpose: cPurpose,
         subject: cOwner, actor: "pta_aura",
         would_show: !!(gate && gate.allowed) && haveSomething,
+        triggered_by: cEvent,
         grant_with: fixIt,
         gate: { allowed: !!(gate && gate.allowed), code: gate?.code || null, reason: gate?.reason || null,
                 may_think: gate?.may_think ?? null, payer: gate?.payer ?? null },
@@ -14307,10 +14421,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             : "asked for explicitly",
           because_i_remember: moments.map((m) => ({ moment: m.text, similarity: m.score, at: m.ts })),
           and_i_know: factRows.map((f) => ({ predicate: f.predicate, value: f.value, since: f.valid_from })),
-          why_now: "assembled on demand - THERE IS NO EVENT TRIGGER YET. Layer C (continuous ingestion) " +
-                   "is not built, so nothing in this system can currently say a real-world thing just " +
-                   "happened. Until it does, 'why now' is 'because you asked', and calling that a " +
-                   "proactive card would be a lie.",
+          // ══ LAYER C ANSWERS THIS LINE NOW (2026-08-02) ═══════════════════════════════════════
+          // This sentence was true every time it printed, and it was the honest thing to say. It is
+          // no longer true: noticeChange watches values another job already computed and emits an
+          // event only on a DELTA. So "why now" can finally mean NOW - or admit that nothing moved.
+          why_now: cEvent
+            ? ("EVENT: " + cEvent.summary + " (" + cEvent.source + ", " + cEvent.at + "). A real delta " +
+               "observed by Layer C - a value that was one thing and is now another. Not a poll, not a " +
+               "request. This is the trigger a proactive card is supposed to be able to name.")
+            : ("assembled on demand - no event in the last hour. Layer C IS built and watching, but " +
+               "nothing has MOVED recently, and a card with no event behind it is a card you asked " +
+               "for. An hour is the window on purpose: an event from yesterday is not a reason to " +
+               "interrupt anyone today, and 'why now' has to mean now or the word is decoration."),
         } : null,
         missing: haveSomething ? null : (anchor ? "nothing recalled above the floor for '" + anchor + "'"
                                                 : "no interest topics yet - the tally builds from moments"),
@@ -32365,6 +32487,7 @@ export default {
     ctx.waitUntil(runHealthChecks(env));
     ctx.waitUntil(watchA2P(env));
     ctx.waitUntil(watchResources(env));
+    ctx.waitUntil(watchWorld(env));   // LAYER C - turns the polls above into events, no new spend
     ctx.waitUntil(drainSchedule(env));
     ctx.waitUntil(drainWorkflows(env));
     ctx.waitUntil(precomputeHotBriefs(env));

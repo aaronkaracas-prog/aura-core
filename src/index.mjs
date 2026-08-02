@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.900-2026-08-02-the-comment-is-not-the-constant";
+const BUILD = "aura-core-v4.9.901-2026-08-02-verify-covers-the-brain";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -30573,6 +30573,35 @@ async function verifyAgainstReality(env) {
     add("build", inSrc || "(unreadable)", BUILD, inSrc === BUILD,
         inSrc === BUILD ? "source on GitHub matches the running worker"
                         : "GitHub source and the RUNNING worker disagree - a deploy or a push did not land");
+  } catch {}
+
+  // ── 4a. THE BRAIN'S BUILD, SAME CHECK, SECOND WORKER (added 2026-08-02) ─────────────────────
+  // Row 4 has only ever covered aura-core. aura-think - the worker that does the reasoning - had no
+  // BUILD constant and no way to report one, so "did the brain's deploy land" was unanswerable. That
+  // is not theoretical: today a server.ts one version behind was deployed and nothing could tell us,
+  // and several rounds went into diagnosing it as a code bug.
+  // Same shape as row 4 and for the same reason: GitHub is the CLAIM, the running worker is the
+  // REALITY, and a source-to-source comparison would prove nothing at all.
+  try {
+    const tSrc = await readOwnSource(env, null, "aura-think", true);   // fresh, never the build cache
+    const tInSrc = tSrc.ok && tSrc.source
+      ? (tSrc.source.match(/^\s*(?:export\s+)?(?:const|let|var)\s+BUILD\s*=\s*"([^"]+)"/m) || [])[1]
+      : null;
+    let tLive = null;
+    try {
+      const r = await env.AURA_THINK.fetch(new Request("https://aura-think/build"));
+      const j = await r.json();
+      tLive = j?.build || null;
+    } catch (e) { tLive = null; }
+    if (!tLive) {
+      add("build:aura-think", tInSrc || "(unreadable)", "no answer from /build", false,
+          "The brain did not report a running build. Either /build is not deployed yet or the service " +
+          "binding failed - and until it answers, a split-brain on aura-think stays invisible.");
+    } else {
+      add("build:aura-think", tInSrc || "(unreadable)", tLive, tInSrc === tLive,
+          tInSrc === tLive ? "aura-think source on GitHub matches its running worker"
+                           : "aura-think's GitHub source and its RUNNING worker disagree - a deploy or a push did not land");
+    }
   } catch {}
 
   // ── 4b. SEMANTIC CHECKS ── DOES IT ANSWER CORRECTLY, NOT JUST ANSWER ────────────────────────

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.884-2026-08-02-who-holds-this-moment";
+const BUILD = "aura-core-v4.9.885-2026-08-02-a-zero-that-means-absent";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -20926,7 +20926,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         }
 
         // ── CLEANUP. Always, including after a failure. Debris in the identity graph looks like people.
-        let cleaned = { entities: 0, edges: 0, invites: 0 };
+        let cleaned = { entities: 0, edges: 0, invites: 0, moments: 0 };
         if (!keep) {
           for (const id of madeEntities) {
             try {
@@ -20940,6 +20940,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               cleaned.entities++;
               await env.AURA_KV.delete("pta:state:" + id).catch(() => {});
               await env.AURA_KV.delete("pta:timeline:" + id).catch(() => {});
+            } catch {}
+          }
+          // Moments too. Nothing cascades from pta_entities to pta_moments, so a harness that made a
+          // moment used to leave the row behind forever - and a stale moment row reads as a real one
+          // on LIST. Found 2026-08-02 via a six-week-old orphan whose creator and entity were both
+          // long deleted. Same reason the entity sweep exists: debris in the graph looks like people.
+          for (const id of madeEntities) {
+            try {
+              const r = await db.prepare("DELETE FROM pta_moments WHERE id = ? OR creator_id = ?").bind(id, id).run();
+              cleaned.moments = (cleaned.moments || 0) + (r?.meta?.changes || 0);
             } catch {}
           }
           for (const iv of madeInvites) { try { await env.AURA_KV.delete("invite:" + iv); cleaned.invites++; } catch {} }
@@ -22017,6 +22027,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const mom = await db.prepare("SELECT * FROM pta_moments WHERE id = ?").bind(momId).first();
         if (!mom) return { cmd: "PTA_MOMENT", payload: { ok: false, error: "Moment not found: " + momId } };
 
+        // ══ IS ANY OF THIS STILL REAL (added 2026-08-02, found the day CLAIMS shipped) ═══════════
+        // The first moment CLAIMS was ever run against - TaylorSwiftLA2026, six weeks old - returned
+        // a clean zero. It turned out the moment ENTITY and its CREATOR had both been deleted, while
+        // the pta_moments row survived: nothing cascades from pta_entities to pta_moments.
+        // So three surfaces reported on a thing that was not there. LIST showed it, GET said
+        // "participant_count: 0", CLAIMS said "total_claims: 0" - and every one of those reads as
+        // "nobody joined yet" rather than "the subject of this record no longer exists".
+        // A zero that means "absent" and a zero that means "none" have to be different answers.
+        const momEnt = await db.prepare("SELECT id FROM pta_entities WHERE id = ?").bind(momId).first().catch(() => null);
+        const creatorEnt = mom.creator_id
+          ? await db.prepare("SELECT id, name FROM pta_entities WHERE id = ?").bind(mom.creator_id).first().catch(() => null)
+          : null;
+        const orphan = !momEnt || !creatorEnt;
+
         const rows = await db.prepare(
           "SELECT e.id, e.from_id, e.to_id, e.edge_type, e.state, e.created_at, " +
           "f.name AS from_name, t.name AS to_name, f.epoch_at AS from_epoch, t.epoch_at AS to_epoch " +
@@ -22042,6 +22066,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
         return { cmd: "PTA_MOMENT", payload: { ok: true, moment_id: momId, name: mom.name,
           creator_id: mom.creator_id, live_from: mom.live_from, live_until: mom.live_until,
+          orphan,
+          orphan_detail: orphan
+            ? ("STALE RECORD. " + (!momEnt ? "The moment entity is gone. " : "") +
+               (!creatorEnt ? "The creator (" + mom.creator_id + ") is gone. " : "") +
+               "This row survived because nothing cascades from pta_entities to pta_moments. The zero " +
+               "below means ABSENT, not 'nobody joined'.")
+            : null,
+          creator_name: creatorEnt?.name || null,
           claims, total_claims: claims.length, live_claims: live.length, live_holders: holders,
           jointly_held: holders.length > 1,
           note: holders.length > 1

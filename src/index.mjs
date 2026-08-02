@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.888-2026-08-02-succession-is-granted";
+const BUILD = "aura-core-v4.9.889-2026-08-02-a-gate-you-can-open";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -5227,8 +5227,7 @@ async function successionGate(env) {
     }
     return { ok: false, code: "NO_SUCCESSION_GRANT", owner,
       reason: "No live grant authorises this agent to rewrite itself. ptaCan says: " + (can?.reason || "denied"),
-      how: "PTA_GRANT " + owner + " pta_aura {\"permission\":{\"can_view\":true,\"can_evolve\":true," +
-           "\"purposes\":[\"self_modification\"]}}  then PTA_ACCEPT <edge_id>",
+      how: "AURA_SUCCESSION GRANT",
       why_this_exists: "A council of five found that this system governs who may read a person and " +
         "leaves ungoverned the one act that changes the system itself. This closes that." };
   } catch (e) {
@@ -5239,6 +5238,67 @@ async function successionGate(env) {
   }
 }
 
+    case "AURA_SUCCESSION": {
+      // `AURA_SUCCESSION` reports whether self-modification is authorised. `AURA_SUCCESSION GRANT`
+      // mints the authority. `AURA_SUCCESSION REVOKE` takes it back.
+      //
+      // WHY THIS COMMAND EXISTS AT ALL. The succession gate refused correctly and pointed at
+      // `PTA_GRANT <owner> pta_aura` - which cannot work, because PTA_GRANT validates that both ends
+      // are real entities and `pta_aura` is a CONVENTION, not a row. It is the actor label used at
+      // roughly twenty-five sites, and ensureInitiativeGrant writes edges to it directly without
+      // validating either side. So the gate was correct and its instruction was a dead end: a refusal
+      // that cannot be satisfied is a wall, not a gate.
+      //
+      // The fix is not to make pta_aura an entity - that was tried this morning and reverted, because
+      // an entity id and a convention are different things and the convention is load-bearing in
+      // twenty-five places. The fix is a door that mints through the function the rest of the system
+      // already uses.
+      //
+      // GRANTING IS AN EXPLICIT HUMAN ACT AND STAYS ONE. This command requires the operator, and it
+      // is the only path. Nothing in the self-edit pipeline can call it - an agent that could grant
+      // itself the right to rewrite itself has a permission system in name only, which is the exact
+      // substitution v4.9.836 refused when it declined to hardcode an exemption for her own id.
+      if (!isOp) return { cmd: "AURA_SUCCESSION", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const _sub = (rest || "").trim().toUpperCase();
+        const owner = (await env.AURA_KV.get("config:owner:pta").catch(() => null) || "").trim();
+        if (!owner) return { cmd: "AURA_SUCCESSION", payload: { ok: false, error: "NO_OWNER",
+          how: "SETKV config:owner:pta <pta_id> OVERRIDE_CONSTITUTIONAL" } };
+
+        if (_sub === "GRANT") {
+          const g = await ensureInitiativeGrant(env, owner, "pta_aura", "self_modification");
+          const now = await successionGate(env);
+          return { cmd: "AURA_SUCCESSION", payload: { ok: !!now.ok, granted: g, gate: now,
+            note: now.ok
+              ? "Self-modification is now authorised BY A GRANT rather than by a role. Withdraw it with " +
+                "AURA_SUCCESSION REVOKE, or by moving your own line - the same two surfaces that govern " +
+                "every other act in this graph."
+              : "The grant was written but the gate still refuses. That means something else in ptaCan " +
+                "denies it - read `gate.reason` rather than assuming the write failed." } };
+        }
+
+        if (_sub === "REVOKE") {
+          const db = env.AURA_MEMORY;
+          const now = new Date().toISOString();
+          const r = await db.prepare(
+            "UPDATE pta_edges SET state = 'revoked', updated_at = ? WHERE from_id = ? AND to_id = 'pta_aura' AND state = 'active'"
+          ).bind(now, owner).run().catch(() => null);
+          const after = await successionGate(env);
+          return { cmd: "AURA_SUCCESSION", payload: { ok: true, revoked_edges: r?.meta?.changes ?? 0,
+            still_authorised: !!after.ok, gate: after,
+            note: "Every active grant from you to the agent is revoked, self-modification included. The " +
+                  "edges and their history are intact - revoked, not deleted. Re-granting is an explicit " +
+                  "act, which is what makes this consent rather than a setting." } };
+        }
+
+        const now = await successionGate(env);
+        return { cmd: "AURA_SUCCESSION", payload: { ok: true, authorised: !!now.ok, owner, gate: now,
+          how: now.ok ? "AURA_SUCCESSION REVOKE to withdraw it" : "AURA_SUCCESSION GRANT to authorise it",
+          what_this_governs: "AURA_EVOLVE - the agent rewriting its own source. Reported here rather " +
+            "than only refused at the door, because an authority nobody can see the state of is one " +
+            "nobody can audit." } };
+      }
+    }
     case "AURA_EVOLVE": {
       // THE SELF-EDIT CONDUCTOR (v4.9.481). Collapses Aura's own read->patch->validate loop into ONE
       // supervised act, with Aaron's three laws checked IN THE PATH, and HALTS before anything can reach a

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.895-2026-08-02-continuity-under-grant";
+const BUILD = "aura-core-v4.9.897-2026-08-02-reported-not-enforced";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -26570,6 +26570,25 @@ async function projectUnderGrant(env, actorId, subjectId, query, capability = "v
           out.moment_note = "This subject has withdrawn from " + (moments.length - held.length) +
             " moment(s) it was part of. Those claims are severed for THIS subject. Co-holders are " +
             "untouched - their claim comes from their own presence, not through this one.";
+          // ══ AND THIS IS REPORTED, NOT ENFORCED - SAID PLAINLY (v4.9.897) ══════════════════
+          // Aura audited this and was right: "liveMomentClaims does not filter out.items. Withdrawal
+          // is a note, not a deny. Co-holder independence is a reporting convention, not an
+          // access-control property." The items below are the FULL hybrid result either way.
+          //
+          // WHY IT IS NOT ENFORCED, which is the part worth knowing: EVENTS CARRY NO MOMENT
+          // LINKAGE. Checked this turn - the EntityDO events table is (seq, ts, type, channel,
+          // summary, body), the D1 one adds session_id and entity_id, and the vector metadata is
+          // {entityId, eventId, text, ts}. Not one of them records which moment an event belongs to.
+          // There is nothing to filter ON. A filter written now would match a field nothing
+          // populates, remove nothing, and report itself as enforcement - which is the exact shape
+          // this codebase has spent a day removing.
+          //
+          // WHAT WOULD HAVE TO CHANGE, so this is a spec and not a shrug: writeEvent and
+          // storeEventVector would need to accept and record a moment_id, something would need to
+          // SET one (nothing does today - writeEvent has no moment parameter), and only then can a
+          // projection drop items belonging to moments this subject has left.
+          out.moment_enforcement = "REPORTED, NOT ENFORCED - events carry no moment_id, so there is " +
+            "nothing to filter on. See the note in source for what would have to change first.";
         }
       }
     } catch { /* a claim report must never cost the projection it describes */ }

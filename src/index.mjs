@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.921-2026-08-03-forensics-not-permission";
+const BUILD = "aura-core-v4.9.922-2026-08-03-a-pass-about-another-commit";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -5114,6 +5114,49 @@ async function processCommand(line, env, isOp) {
       if (status !== "completed") gate = "RUNNING";
       else if (conclusion === "success") gate = "PASS";
       else gate = "FAIL";
+
+      // ══ A PASS ABOUT A DIFFERENT COMMIT IS NOT A PASS (fixed 2026-08-03) ═══════════════════════
+      // This read the LATEST run on the proposal branch and reported its conclusion, with nothing
+      // comparing that run to the candidate sitting there now. Caught live: it returned gate PASS
+      // citing a GitHub Actions run from 2026-07-12 for build v4.9.550 - three weeks stale, a month
+      // old - and the promote pipeline consumed it as authorisation to deploy. Nothing bad happened
+      // only because the patch leg had already failed, so main equalled live and the deploy was a
+      // no-op. The gate did not protect anything; the ABSENCE OF A CHANGE did.
+      //
+      // The run knows which commit it tested (head_sha). The branch knows what is on it. Comparing
+      // them is one field, and without it this is the last lock in the self-edit chain answering a
+      // question about a build nobody asked about.
+      //
+      // Same defect AURA_PROMOTE_STATUS had before v4.9.865 taught it to say describes_current_main
+      // false - and that fix already existed, one command over, unread.
+      let staleness = null;
+      try {
+        const head = await gh(`/repos/${GH_OWNER}/${GH_REPO}/git/ref/heads/${PROPOSE_BRANCH}`);
+        const headSha = head.ok ? (head.j && head.j.object && head.j.object.sha) : null;
+        const runSha = run.head_sha || null;
+        const ageDays = run.run_started_at
+          ? Math.floor((Date.now() - Date.parse(run.run_started_at)) / 86400000) : null;
+        const describesHead = !!(headSha && runSha && headSha === runSha);
+        staleness = { branch_head_sha: headSha, run_head_sha: runSha,
+          describes_current_candidate: describesHead, run_age_days: ageDays };
+        if (gate === "PASS" && headSha && runSha && !describesHead) {
+          gate = "STALE";
+          staleness.why = "This run tested commit " + String(runSha).slice(0, 7) + "; the proposal " +
+            "branch is now at " + String(headSha).slice(0, 7) + ". The PASS is real and it is about a " +
+            "DIFFERENT candidate. Push the current candidate to " + PROPOSE_BRANCH + " and let the " +
+            "Action run, then check again.";
+        } else if (gate === "PASS" && ageDays !== null && ageDays > 7 && !headSha) {
+          gate = "STALE";
+          staleness.why = "The run is " + ageDays + " days old and the branch head could not be read " +
+            "to confirm it describes the current candidate. Refusing to call that a pass - an " +
+            "unverifiable gate is not a gate.";
+        }
+      } catch (e) {
+        // Fail CLOSED. If staleness cannot be established, a PASS is not trustworthy - this is the
+        // last lock before a self-edit deploys and it does not get the benefit of the doubt.
+        if (gate === "PASS") { gate = "STALE"; staleness = { why: "Could not verify the run matches " +
+          "the current candidate (" + String(e && e.message || e).slice(0, 80) + "). Failing closed." }; }
+      }
       return { cmd: "AURA_VALIDATE", payload: {
         ok: true,
         gate,
@@ -5122,7 +5165,9 @@ async function processCommand(line, env, isOp) {
         action_conclusion: conclusion,
         run_url: run.html_url,
         run_started: run.run_started_at,
-        verdict: gate === "PASS" ? "Candidate passed node --check on real Node. Eligible to advance to staging (piece 4)."
+        staleness,
+        verdict: gate === "STALE" ? ("STALE PASS - not eligible. " + ((staleness && staleness.why) || ""))
+              : gate === "PASS" ? "Candidate passed node --check on real Node, and the run tested the commit currently on the proposal branch. Eligible to advance."
               : gate === "FAIL" ? "Candidate FAILED node --check (syntax error). Rejected - cannot advance. See run_url for the error."
               : gate === "RUNNING" ? "Validation Action still running. Check again in ~20-30s."
               : "No validation run yet."

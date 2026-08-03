@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.903-2026-08-03-the-list-is-free";
+const BUILD = "aura-core-v4.9.904-2026-08-03-the-case-set-has-a-reader";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -5364,6 +5364,53 @@ async function successionGate(env) {
 }
 
 
+    case "EVALS": {
+      // ══ THE CASE SET ── WHAT ACTUALLY WENT WRONG, KEPT (v4.9.904) ═══════════════════════════
+      // `EVALS` lists the failures this system has absorbed, worst first. `EVALS <n>` shows one.
+      //
+      // The field's standard for production agents is ONLINE EVALUATION: live traffic IS the eval
+      // set, scored continuously, and "the only defense that scales is an eval set that keeps
+      // absorbing the new failure modes real usage surfaces." aura-think already scored every turn -
+      // 0/0.5/1, groundedness as a veto, stratified tags. What it did not do was ACCUMULATE. A
+      // failure was written once and never asked again.
+      //
+      // Now every FAILED or UNVERIFIED turn lands in evals:cases, deduped by the normalised question.
+      // This is the reader, written in the same change as the writer - because today produced a
+      // telemetry store with zero readers while commenting on that exact pattern, and a record nobody
+      // can ask for is a fossil.
+      //
+      // RANKED BY times_seen, not recency. A failure that happened once is an incident; the same
+      // failure twenty times is a defect, and the ranking should say which is which without anyone
+      // reading dates.
+      if (!isOp) return { cmd: "EVALS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        let cases = [];
+        try { cases = JSON.parse((await env.AURA_KV.get("evals:cases").catch(() => null)) || "[]"); } catch {}
+        const pick = (rest || "").trim();
+        if (/^\d+$/.test(pick)) {
+          const c = cases.sort((a, b) => (b.times_seen || 1) - (a.times_seen || 1))[Number(pick) - 1];
+          return { cmd: "EVALS", payload: c
+            ? { ok: true, case: c, note: "One absorbed failure. `q` is the question as asked, normalised." }
+            : { ok: false, error: "No case " + pick + " - there are " + cases.length + "." } };
+        }
+        const sorted = cases.slice().sort((a, b) => (b.times_seen || 1) - (a.times_seen || 1));
+        const repeat = sorted.filter((c) => (c.times_seen || 1) > 1);
+        return { cmd: "EVALS", payload: { ok: true, total: cases.length, repeating: repeat.length,
+          cases: sorted.slice(0, 25).map((c, i) => ({ n: i + 1, times_seen: c.times_seen || 1,
+            verdict: c.last_verdict, reason: c.last_reason, rung: c.rung,
+            question: String(c.q || "").slice(0, 110), last_seen: c.last_seen })),
+          note: cases.length
+            ? "Ranked by how OFTEN each failed, not by when. Once is an incident; repeatedly is a defect."
+            : "No absorbed failures. Either nothing has failed since this shipped, or nothing has been " +
+              "asked - an empty eval set on a quiet system means untested, not healthy.",
+          honest_limit: "These are TURN-SHAPE failures - empty answer, or a universal claim made with " +
+            "no data-tool call. That is not the same as a WRONG answer. A confidently wrong turn that " +
+            "called a tool still scores CLEAN and will never appear here. Separating task completion " +
+            "from task quality is the next thing this needs, and it needs ground truth to do it.",
+          next: "EVALS <n> for one case. Re-running a case costs a real turn, so it is deliberately " +
+                "not automatic and not built - decide that with the bill in view." } };
+      }
+    }
     case "REASONERS": {
       // What every rented mind is permitted to do with what it is shown, and how sure we are.
       // Read-only, no model call, no network. The answer to "does the invariant still hold".

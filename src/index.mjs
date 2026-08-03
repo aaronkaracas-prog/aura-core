@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.929-2026-08-03-the-moment-producer";
+const BUILD = "aura-core-v4.9.930-2026-08-03-the-sentence-went-stale-too";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -23178,11 +23178,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "continuity at once, so no single holder's history fully contains it and no single " +
               "holder's withdrawal fully removes it."
             : "Held by " + holders.length + " entity. Nothing about this moment is co-owned today.",
-          not_enforced: "NOTHING here changes what PROJECT returns or what ptaCan allows. A shared " +
-            "moment still projects under whichever subject the vector was indexed against, and a " +
-            "holder withdrawing does not remove it from a co-holder's projection. That rule is not " +
-            "written because nobody could see the claims to write it against - which is what this " +
-            "answers. Stating the gap beats a gate that looks enforced and is not." } };
+          // ══ THIS SENTENCE WENT STALE THE MOMENT IT BECAME FALSE (fixed 2026-08-03) ═══════════
+          // It read "NOTHING here changes what PROJECT returns... a holder withdrawing does not
+          // remove it from a co-holder's projection." True when written; false the instant v4.9.929
+          // gave moment_id a producer and turned the filter on. Same fossil this file has now caught
+          // in FEED_PROBES, WAKE_CAP, the compaction diagnostic, the getHybridEvents note and the
+          // AURA_APPROVE claim - the value changes and the sentence describing it does not.
+          enforcement: "ENFORCED, for events tagged with a moment. PTA_SCAN tags them at the join, " +
+            "and PROJECT drops items belonging to moments the projecting subject has left - reported " +
+            "as items_dropped_by_withdrawal. A co-holder's copy is a SEPARATE ROW under their own " +
+            "entity and is untouched, which is independent claims holding at the data layer rather " +
+            "than only in a note.",
+          not_enforced: "Events written before v4.9.929, or by any path that does not know a moment, " +
+            "carry no tag and cannot be dropped. This removes what it can see and says so - a filter " +
+            "that implied it covered the whole store would be the thing it was built to replace." } };
       }
 
       return { cmd: "PTA_MOMENT", payload: { ok: false, error: "Sub-commands: CREATE, LIST, GET, CLAIMS" } };

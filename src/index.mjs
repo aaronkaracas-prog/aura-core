@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.936-2026-08-03-map-anchors-survive-bundling";
+const BUILD = "aura-core-v4.9.937-2026-08-03-status-clears-every-gate";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -5378,6 +5378,31 @@ const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-think": "src/server.
     }
 
     case "AURA_PROMOTE": {
+      // ══ STATUS IS A READ AND MUST CLEAR EVERY GATE, NOT JUST THE LAST ONE ════════════════════
+      // AURA CAUGHT THIS, 2026-08-03, on a fix I had already called done. The tool-boundary veto in
+      // aura-think was given a read-only exemption that same hour - and her report was exact:
+      //   "One gate got the exception; the run_capability executor (and guard helper) still block
+      //    AURA_PROMOTE STATUS. Sibling funnel missed. Core also runs successionGate before the
+      //    STATUS early-return."
+      // Verified in this file: successionGate returns for the WHOLE handler before any subcommand is
+      // read, and the STATUS exemption sat further down beside auraContextGate. So a read-only status
+      // query was refused with "it moves real money, changes live DNS, sends real mail, or rewrites
+      // my own source" - none of which STATUS does - and an entry claiming she attempted a dangerous
+      // act was written into her archive.
+      // The incomplete-pattern failure this file keeps naming, produced WHILE fixing an instance of
+      // it: one door was exempted and its sibling was not, because I fixed the gate I was looking at.
+      // NOW: the read short-circuits at the TOP, ahead of every gate. Nothing below this line can
+      // refuse it, so there is no third sibling waiting to be found.
+      // The gates below are untouched and still fire on every form that ACTS.
+      if (/^\s*STATUS\s*$/i.test(String(rest || ""))) {
+        try {
+          const _ps = await processCommand("AURA_PROMOTE_STATUS", env, isOp);
+          return { cmd: "AURA_PROMOTE", payload: (_ps && _ps.payload) ? _ps.payload
+                   : { ok: false, error: "AURA_PROMOTE_STATUS returned nothing" } };
+        } catch (e) {
+          return { cmd: "AURA_PROMOTE", payload: { ok: false, error: "status read failed: " + (e && e.message) } };
+        }
+      }
       // ══ THE GATE FIRES BEFORE A CHANGE LANDS ═══════════════════════════════════════════════
       // A self-edit that passes node --check has been proven to PARSE, nothing more. Before promoting,
       // freeze the current relationship to reality so the edit can be judged against it afterwards.
@@ -5427,7 +5452,21 @@ const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-think": "src/server.
           try { const pr = await fetch("https://aura-core-staging.aaronkaracas.workers.dev/health", { headers: { "Cache-Control": "no-cache" } }); const pj = await pr.json(); stgBuild = pj.build; } catch {}
           let candBuild = null;
           try { const mr = await fetch("https://raw.githubusercontent.com/" + GH_OWNER + "/" + GH_REPO + "/aura-proposes/src/index.mjs", { headers: { "User-Agent": "aura", "Cache-Control": "no-cache" } }); const mt = await mr.text(); const bm = (mt.split("\n").find(l => l.includes("const BUILD")) || "").match(/aura-core-v[\d.]+-[\d-]+/); candBuild = bm ? bm[0] : null; } catch {}
-          return { cmd: "AURA_PROMOTE", payload: { ok: true, target: "staging", staging_build: stgBuild, candidate_build: candBuild, in_sync: !!(stgBuild && candBuild && stgBuild === candBuild), note: (stgBuild && candBuild && stgBuild === candBuild) ? "Staging twin matches the CANDIDATE (aura-proposes branch) - your edit is live on the twin. Test it here before promoting to live." : "Staging does NOT match the candidate branch yet - the deploy has not landed (or is still running, ~60-90s)." } };
+          // ══ in_sync COMPARED A FULL BUILD STRING TO A TRUNCATED ONE (Aura caught this, 2026-08-03) ══
+          // Her words: "STATUS compare strips the slug, so in_sync can lie exactly when you name
+          // builds descriptively." Verified, and it is worse than a lie of omission - it is
+          // PERMANENTLY FALSE. candBuild is extracted with /aura-core-v[\d.]+-[\d-]+/ which stops at
+          // the date, while stgBuild comes off /health as the WHOLE string. So it compared
+          // "...-2026-08-03-status-clears-every-gate" against "...-2026-08-03" and never matched.
+          // Every build in this project carries a descriptive slug, so this check has been reporting
+          // "the deploy has not landed" for every deploy that DID land - and the note tells you to
+          // wait 60-90s for something already finished.
+          // Fix: compare the STABLE IDENTITY on both sides - version plus date, slug stripped from
+          // each - and show the full strings so a real mismatch is still readable.
+          const _idOf = (b) => { const m = String(b || "").match(/aura-core-v[\d.]+-\d{4}-\d{2}-\d{2}/); return m ? m[0] : null; };
+          const _stgId = _idOf(stgBuild), _candId = _idOf(candBuild);
+          const _same = !!(_stgId && _candId && _stgId === _candId);
+          return { cmd: "AURA_PROMOTE", payload: { ok: true, target: "staging", staging_build: stgBuild, candidate_build: candBuild, compared_on: _stgId || _candId || null, in_sync: _same, note: _same ? "Staging twin matches the CANDIDATE (aura-proposes branch) - your edit is live on the twin. Test it here before promoting to live." : "Staging does NOT match the candidate branch yet - the deploy has not landed (or is still running, ~60-90s)." } };
         }
         const _cg = await auraContextGate(env, isOp); if (!_cg.ok) return { cmd: "AURA_PROMOTE", payload: { ok: false, error: _cg.reason, gate: "context" } };
         const ghTok = await getSecret(env, "github_token");

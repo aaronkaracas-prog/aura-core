@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.935-2026-08-03-grep-returns-a-map";
+const BUILD = "aura-core-v4.9.936-2026-08-03-map-anchors-survive-bundling";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -4530,12 +4530,33 @@ const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-think": "src/server.
         }
         // MAP: where, not what. Walk backwards from each hit to the nearest declaration so a line
         // number carries meaning without carrying the line.
-        const _DECL = /^\s*(?:export\s+)?(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z_$][\w$]*)|^\s*case\s+"([A-Z_0-9]+)"/;
+        // ══ THE MAP SAID "r" THIRTY TIMES (fixed 2026-08-03, one build after shipping it) ════════
+        // First live run of the map returned: 41778:r 42077:pfetch 42112:m 42195:r 57629:r 67364:r...
+        // Twenty of thirty-one entries were `r` - a LOCAL from `const r = await pfetch(...)`, not the
+        // function containing the call. The walk stopped at the first declaration above the hit, and
+        // the nearest declaration is nearly always the local on the line before.
+        // WHY THE TEST MISSED IT: I validated against the SOURCE file, and this runs against
+        // Cloudflare's BUNDLED script - locals dominate, many function names are mangled. Second time
+        // today I checked a change against the wrong artifact. She reads bundled code now; that is a
+        // standing property of this system and every future assumption about source shape has to
+        // account for it.
+        // Now: skip throwaway locals and keep climbing for something that SURVIVES BUNDLING - a
+        // function, a class, or a `case "COMMAND"`. A command name is the most useful anchor in this
+        // file and the one thing a bundler never renames.
+        // Three anchor kinds ONLY: a named function, a class, or a `case "COMMAND"`. Measured against
+        // the alternatives on this file: including arrow-function consts produced anchors like
+        // `192:text` and `4534:buildLine` - small helpers that say nothing about where you are.
+        // Restricting to these three gives `callBrain`, `meterCoreBrain`, `_egressCore`,
+        // `verifyOperator`, `AURA_READ_SELF` on every hit. Marginally more characters, far more
+        // meaning - and a command name is the single most useful anchor in this file.
+        // The 4000-line climb is deliberate: some handlers here are very long, and a hit with no
+        // anchor (bare line number) is more honest than one anchored to whatever happened to be near.
+        const _ANCHOR = /^\s*(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)|^\s*(?:export\s+)?class\s+([A-Za-z_$][\w$]*)|^\s*case\s+"([A-Za-z_0-9]+)"/;
         const map = hits.map((h) => {
           let where = null;
-          for (let j = h.line - 1; j >= 0 && j > h.line - 400; j--) {
-            const m = _DECL.exec(srcLines[j]);
-            if (m) { where = m[1] || m[2]; break; }
+          for (let j = h.line - 1; j >= 0 && j > h.line - 4000; j--) {
+            const m = _ANCHOR.exec(srcLines[j]);
+            if (m) { where = m[1] || m[2] || m[3]; break; }
           }
           return where ? h.line + ":" + where : String(h.line);
         });

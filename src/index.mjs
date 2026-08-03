@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.916-2026-08-03-fifty-with-metadata";
+const BUILD = "aura-core-v4.9.917-2026-08-03-an-absence-is-not-searchable";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -5699,6 +5699,9 @@ async function successionGate(env) {
         const rows = (found?.matches || []).map((m) => ({ id: m.id, trust: m.metadata?.trust || "inferred",
           source: m.metadata?.source || null, ts: m.metadata?.ts || null,
           text: String(m.metadata?.text || "").slice(0, 90) }));
+        // `unsure` stays in the list for anything embedded BEFORE v4.9.917, when it was wrongly
+        // vectorised. Nothing writes it any more, so this set shrinks to `scraped` over time by
+        // itself rather than by another edit.
         const EVICTABLE = new Set(["scraped", "unsure"]);
         const goes = rows.filter((r) => EVICTABLE.has(String(r.trust).toLowerCase()));
         const stays = rows.length - goes.length;
@@ -16088,10 +16091,34 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           storeEventVector(_obEnt, "confirmed_" + Date.now() + "_" + i, String(f).slice(0, 300), env,
             "confirmed", "onboard:" + (obSiteUrl || "web")).catch(() => {});
         });
-        (Array.isArray(_g.unsure) ? _g.unsure : []).slice(0, 15).forEach((f, i) => {
-          storeEventVector(_obEnt, "unsure_" + Date.now() + "_" + i, String(f).slice(0, 300), env,
-            "unsure", "onboard:" + (obSiteUrl || "web")).catch(() => {});
-        });
+        // ══ AN ABSENCE IS NOT SOMETHING TO SEARCH FOR (corrected 2026-08-03) ═══════════════════
+        // The first cut embedded the `unsure` list too, symmetrically with `confirmed`. Wrong, and
+        // FORGET made it obvious: 18 of 50 vectors for one business were rows like "Exact review
+        // count (only rating visible)", "Total staff size", "Year established". Those are not facts
+        // that decayed - they are RECORDS OF WHAT SHE COULD NOT FIND, and nobody will ever
+        // semantically search for the absence of a review count.
+        //
+        // The rule, and it is the standard one: a vector store answers "find semantically similar
+        // content"; a structured store answers "find exact matches or filtered results". An unsure
+        // list is the second kind. Storing it in the first put 45% of the index beyond use - more
+        // neighbours, worse neighbours, and eviction needed to undo what ingestion should not have
+        // done.
+        //
+        // So it is KEPT, as structure, where a gap belongs: readable, countable, and exactly what a
+        // second pass should go looking for. It is simply not embedded. Fix the source, do not filter
+        // the output - the same lesson as the interest tally and the deploy notices, and I built the
+        // filter first again.
+        try {
+          const _unsure = Array.isArray(_g.unsure) ? _g.unsure.slice(0, 25) : [];
+          if (_unsure.length) {
+            await env.AURA_KV.put("gaps:" + _obEnt, JSON.stringify({
+              entity: _obEnt, at: new Date().toISOString(), source: obSiteUrl || "web",
+              unsure: _unsure,
+              note: "What the onboard could NOT confirm. Structured, not embedded - an absence is not " +
+                    "something to search for semantically. This is the worklist for a second pass.",
+            }), { expirationTtl: 180 * 24 * 3600 });
+          }
+        } catch { /* recording a gap must never fail an onboard that worked */ }
       } catch { /* an index write must never fail an onboard that worked */ }
 
       let obPta = null;

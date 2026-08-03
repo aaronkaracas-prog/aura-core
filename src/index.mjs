@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.924-2026-08-03-the-chain-had-no-writers";
+const BUILD = "aura-core-v4.9.925-2026-08-03-what-happened";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -5809,6 +5809,113 @@ async function successionGate(env) {
                       "not what went."
                     : "Removed " + removed + " low-trust vectors. This cannot be undone; a vector cannot be " +
                       "un-embedded. What she was told and what she derived are untouched." } };
+      }
+    }
+    case "WHAT_HAPPENED": {
+      // ══ THE FORENSICS READER ── ONE TIMELINE ACROSS SEVEN STORES (v4.9.925) ══════════════════
+      //
+      //   WHAT_HAPPENED              today, everything, newest first
+      //   WHAT_HAPPENED <n>          last n hours
+      //
+      // Seven stores record what this system does and NOTHING could read them together. The
+      // tamper-evident chain, the promote log, consent history, the money ledger, her own noticed
+      // failures, absorbed eval cases, and business signals - each written by whoever needed it,
+      // each readable alone, none of them answering the only question forensics exists for: WHAT
+      // HAPPENED, IN ORDER.
+      //
+      // That gap is the shape of nearly everything found today. getHybridEvents had no callers.
+      // self:vitals had no reader. AUDIT_CHAIN had no writers. moment_id has no producer. A system
+      // that records diligently and cannot recount is not audited - it has receipts in a drawer.
+      //
+      // READ-ONLY AND DETERMINISTIC. No model call, no judgement, no ranking. It merges by timestamp
+      // and says where each line came from. An account of what happened that had an opinion about
+      // what mattered would be a summary, and a summary is the thing you cannot audit.
+      //
+      // WHAT IT CANNOT SEE, stated because a forensic tool that overstates its reach is worse than
+      // none: prompt contents, what a shell command actually did, what a provider returned. It sees
+      // recorded ACTS, not the reasoning behind them.
+      if (!isOp) return { cmd: "WHAT_HAPPENED", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        const hours = Math.max(1, Math.min(168, Number((rest || "").trim()) || 24));
+        const cutoff = Date.now() - hours * 3600000;
+        const ev = [];
+        const add = (at, source, text) => {
+          const t = Date.parse(at);
+          if (!isNaN(t) && t >= cutoff) ev.push({ at, source, text: String(text).slice(0, 220) });
+        };
+
+        // 1. the tamper-evident chain - the consequential acts
+        try {
+          const ks = await env.AURA_KV.list({ prefix: "audit:", limit: 200 });
+          for (const k of (ks.keys || [])) {
+            if (k.name === "audit:head") continue;
+            const raw = await env.AURA_KV.get(k.name);
+            if (!raw) continue;
+            const e = JSON.parse(raw);
+            add(e.at, "chain", e.actor + " " + e.action);
+          }
+        } catch {}
+
+        // 2. self-modification
+        try {
+          const raw = await env.AURA_KV.get("promote:log");
+          for (const p of (JSON.parse(raw || "[]"))) add(p.at, "self-edit", "promoted from " + p.build + " ok=" + p.ok);
+        } catch {}
+
+        // 3. consent - the only one in D1, and the only one that cannot be rewritten by a KV write
+        try {
+          const r = await env.AURA_MEMORY.prepare(
+            "SELECT action, actor_id, detail, created_at FROM pta_history ORDER BY created_at DESC LIMIT 60"
+          ).all();
+          for (const h of (r?.results || [])) add(h.created_at, "consent", h.action + " by " + h.actor_id);
+        } catch {}
+
+        // 4. what she noticed about herself
+        try {
+          const ks = await env.AURA_KV.list({ prefix: "mem:inbox:", limit: 60 });
+          for (const k of (ks.keys || [])) {
+            const raw = await env.AURA_KV.get(k.name);
+            if (!raw) continue;
+            const e = JSON.parse(raw);
+            add(e.at, e.kind === "self_observed" ? "self-noticed" : (e.kind || "inbox"), e.event);
+          }
+        } catch {}
+
+        // 5. failures absorbed as permanent cases
+        try {
+          for (const c of (JSON.parse((await env.AURA_KV.get("evals:cases")) || "[]")))
+            add(c.last_seen, "eval-case", c.last_verdict + ": " + c.q);
+        } catch {}
+
+        // 6. what businesses did
+        try {
+          const ks = await env.AURA_KV.list({ prefix: "business_signals:", limit: 60 });
+          for (const k of (ks.keys || [])) {
+            const id = k.name.replace("business_signals:", "");
+            for (const g of (JSON.parse((await env.AURA_KV.get(k.name)) || "[]")))
+              add(g.at, "business", id + " " + g.name + (g.detail ? " (" + g.detail + ")" : ""));
+          }
+        } catch {}
+
+        // 7. deltas Layer C observed
+        try {
+          const day = new Date().toISOString().slice(0, 10);
+          for (const e of (JSON.parse((await env.AURA_KV.get("events:" + day)) || "[]")))
+            add(e.at, "world", e.summary);
+        } catch {}
+
+        ev.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+        const bySource = ev.reduce((a, e) => { a[e.source] = (a[e.source] || 0) + 1; return a; }, {});
+        return { cmd: "WHAT_HAPPENED", payload: { ok: true, window_hours: hours,
+          total: ev.length, by_source: bySource, timeline: ev.slice(0, 120),
+          sources_read: ["chain (tamper-evident)", "promote:log (self-edits)", "pta_history (consent, D1)",
+                         "mem:inbox (what she noticed)", "evals:cases (absorbed failures)",
+                         "business_signals (what businesses did)", "events:<day> (world deltas)"],
+          note: ev.length ? "Merged by timestamp, newest first. Deterministic - no model decided what belongs here."
+                          : "Nothing recorded in this window. On a quiet system that is accurate; it is not proof nothing happened.",
+          cannot_see: "Prompt contents, what a shell command actually did, and what a provider returned. " +
+            "This shows recorded ACTS, not the reasoning behind them - and a forensic tool that " +
+            "overstated its reach would be worse than none." } };
       }
     }
     case "REASONERS": {

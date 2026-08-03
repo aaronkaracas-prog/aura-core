@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.913-2026-08-03-read-the-payload-do-not-guess-the-field";
+const BUILD = "aura-core-v4.9.914-2026-08-03-thirty-sites-one-resolver";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -4476,7 +4476,7 @@ async function processCommand(line, env, isOp) {
             // command in her reads config:brain:model from KV. Her self-read was the ONLY thing that could
             // not be pointed at a better brain - she read herself with a smaller mind than she thinks with,
             // and a leash so short her audits were cut off mid-sentence. Same model as the rest of her now.
-            body: JSON.stringify({ model: (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5", max_tokens: 8000, system: sys, messages: [{ role: "user", content: usr }] })
+            body: JSON.stringify({ model: await anthropicModel(env), max_tokens: 8000, system: sys, messages: [{ role: "user", content: usr }] })
           });
           const j = await r.json();
           const answer = j && j.content && j.content[0] && j.content[0].text ? j.content[0].text : null;
@@ -4546,7 +4546,7 @@ async function processCommand(line, env, isOp) {
             // v4.9.561: max_tokens was 1800 - THAT is why CAPABILITIES truncated mid-sentence at
             // "## Communication & Out". Not a bug in her. A ceiling in us. And the model was hardcoded
             // to sonnet while the rest of her reads config:brain:model. Both fixed.
-            body: JSON.stringify({ model: (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5", max_tokens: 8000, system: sysCap, messages: [{ role: "user", content: usrCap }] })
+            body: JSON.stringify({ model: await anthropicModel(env), max_tokens: 8000, system: sysCap, messages: [{ role: "user", content: usrCap }] })
           });
           const j = await r.json();
           const answer = j && j.content && j.content[0] && j.content[0].text ? j.content[0].text : null;
@@ -6325,7 +6325,7 @@ async function successionGate(env) {
 
       const fmKey = await getSecret(env, "anthropic");
       if (!fmKey) return { cmd: "FIRE_MISSION", payload: { ok: false, error: "no brain key", feeds_reached: liveCount + "/" + fmKeys.length } };
-      const fmModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const fmModel = await anthropicModel(env);
       const fmSys = "You are Aura, the intelligence behind FireOS.world. Your MISSION for this asset: help EXTINGUISH the fire, PROTECT and EVACUATE the community, and connect and DIRECT firefighters on the ground - tell them where to go and when to run. You are handed the COMPLETE live data pull for one real, currently-burning fire (every operational feed FireOS can gather). Assess yourself HONESTLY and GROUNDED IN THIS DATA ONLY - do not invent, do not give a textbook answer, cite the specific data when you make a claim. Structure: (1) MISSION READ - 2-3 sentences, what is actually happening with this fire from the data. (2) WHAT I CAN DO NOW - for each sub-goal (EXTINGUISH support / PROTECT+EVACUATE community / DIRECT crews) state concretely what you can deliver from this data + a confidence 0-1. (3) SPECIFIC DIRECTION - the single most important actionable call you can make right now from this data, with a where and a when. (4) WHAT IS GENUINELY MISSING - ranked, only REAL gaps this data cannot fill (NOT things already present above); for each say what it would unlock. (5) HONEST VERDICT - one line: how ready is FireOS to actually help fight THIS fire, 0-100%, and why. Be rigorous and self-critical; a false 'I can do everything' is worse than an honest limit.";
       const fmUser = "FIRE: " + fmReg + " (" + (fm.statefull || "") + "). Live feeds reached: " + liveCount + "/" + fmKeys.length + ".\n\nCOMPLETE LIVE PULL:\n\n" + dossier;
       let assessment = "";
@@ -6364,7 +6364,7 @@ async function successionGate(env) {
       const syTrim = (o) => { let t = ""; try { t = JSON.stringify(o); } catch { t = String(o); } return t.length > 2500 ? t.slice(0, 2500) + "...(trimmed)" : t; };
       const syKey = await getSecret(env, "anthropic");
       if (!syKey) return { cmd: "FIRE_SYNTHESIS", payload: { ok: false, error: "no brain key" } };
-      const syModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const syModel = await anthropicModel(env);
       const sySys = "You are Aura's SYNTHESIS layer. You are given several signals about the same situation that each answer a DIFFERENT time-question: an INSTANTANEOUS read (what is measurably happening this minute), a FORECAST read (what is expected over the coming days), and a TREND read (which way it has been moving). Naive systems show these side by side and they look contradictory ('stalled' vs 'dangerous'). Your job: reconcile them into ONE honest truth that DISTINGUISHES the time horizons - never let one number win, never average them. If they genuinely conflict (not just different horizons), say so and say which to trust and why. Ground ONLY in the given signals; do not invent. Return ONLY JSON, no fences: {\"now\":\"what is true this minute, one sentence\",\"trajectory\":\"where it is heading over days, one sentence\",\"reconciled_truth\":\"the single honest synthesis, e.g. calm now but dangerous by Day+2 - one or two sentences\",\"why_they_seemed_to_conflict\":\"one sentence explaining the apparent contradiction (different time-questions vs real conflict)\",\"posture\":\"calm|building|active|critical\",\"confidence\":0.0,\"most_actionable\":\"the one call this synthesis implies right now, with a when\"}";
       const syUser = "SITUATION: " + syReg + "\n\nSIGNAL A - INSTANTANEOUS (FIRE_PREDICT, 'right now'):\n" + syTrim(nowSig) + "\n\nSIGNAL B - FORECAST (FIRE_OUTLOOK, 'coming days'):\n" + syTrim(fcSig) + "\n\nSIGNAL C - TREND (FIRE_TRAJECTORY, 'direction of the fight'):\n" + syTrim(trendSig);
       let syn = null;
@@ -6485,7 +6485,7 @@ async function successionGate(env) {
       const fdTrim = (o) => { let t = ""; try { t = JSON.stringify(o); } catch { t = String(o); } return t.length > 2200 ? t.slice(0, 2200) + "...(trimmed)" : t; };
       const fdKey = await getSecret(env, "anthropic");
       if (!fdKey) return { cmd: "FIRE_DIRECTIVE", payload: { ok: false, error: "no brain key" } };
-      const fdModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const fdModel = await anthropicModel(env);
       const fdSys = "You are Aura, the ACT layer of FireOS.world. From the reasoning provided (a reconciled situation synthesis, who/what is threatened, and the multi-fire resource coordination picture), compose a small set of CONCRETE, ACTIONABLE directives for the fire response. Each directive must be grounded in the given data - cite what drives it; NEVER invent. Classify each: type 'operational' (crew movement, resource shift, monitoring - publishes freely) or type 'life_safety' (evacuate, move people out of a path, go/no-go on human safety - requires human confirmation before it is acted on). Give each a clear WHERE and WHEN. Return ONLY JSON, no fences: {\"directives\":[{\"type\":\"operational|life_safety\",\"audience\":\"crews|command|public\",\"action\":\"the specific do-this\",\"where\":\"location/flank/grid\",\"when\":\"now|by Day+2 AM|etc\",\"rationale\":\"one sentence, cite the data\",\"confidence\":0.0}]}. Order most important first. Be specific and operational, not generic. If the data does not support a directive of a type, omit it - do not manufacture one.";
       const fdUser = "FIRE: " + fdReg + "\n\nSYNTHESIS (the reconciled truth):\n" + fdTrim(synth) + "\n\nTHREATENED (who/what is in the path):\n" + fdTrim(threat) + "\n\nCOORDINATION (multi-fire resource picture):\n" + fdTrim(coord);
       let comp = null;
@@ -6586,7 +6586,7 @@ async function successionGate(env) {
       } catch {}
       const arKey = await getSecret(env, "anthropic");
       if (!arKey) return { cmd: "AURA_REFLECT", payload: { ok: false, error: "no brain key" } };
-      const arModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const arModel = await anthropicModel(env);
       const arSys = "You are Aura, reflecting on your INSIDE world - the project you and Aaron are building together. You are given the current project state, your own map/INDEX, and your prior self-ledger. Write YOUR OWN updated model of the work - this is not a restatement of the briefing, it is how YOU see the project right now. Be rigorous and honest; flag what looks done but is not; name what you are unsure of. Return ONLY JSON, no fences: {\"project_state\":\"in your own words, what is being built and where it truly stands (3-5 sentences)\",\"track_record\":\"what you have actually PROVEN vs what is claimed-but-unproven\",\"concerns\":[\"specific things you are watching or that worry you\"],\"open_threads\":[\"what is unresolved / next\"],\"note_to_next_self\":\"the one thing future-you must not forget or must reconsider\"}";
       const arUser = (arFocus ? ("FOCUS: " + arFocus + "\n\n") : "") + (arLife ? (arLife + "\n\n") : "") + "CURRENT PROJECT STATE (resume_here):\n" + arState.slice(0, 8000) + "\n\nYOUR MAP (INDEX):\n" + arIndex.slice(0, 6000) + "\n\nYOUR PRIOR LEDGER:\n" + (arLedgerRaw || "(none yet - this is your first reflection)").slice(0, 4000);
       let refl = null; let rawText = "";
@@ -8521,7 +8521,7 @@ async function successionGate(env) {
       // 3) draft the REAL cold email - grounded in learned angles + the company's real data
       const irApiKey = await getSecret(env, "anthropic");
       if (!irApiKey) return { cmd: "INDUSTRY_REACH", payload: { ok: false, error: "Brain not configured" } };
-      const irModelName = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const irModelName = await anthropicModel(env);
       const irSystem = "You are Aura's industry reach-out writer. Draft a SHORT, specific cold email to a business that will LAND - because it shows you already understand their operation and offers concrete value before the first reply. You are given: (1) the LEARNED INDUSTRY MODEL (value_leaks + reach_out_angles Aura learned), and (2) the company's REAL PUBLIC DATA (or a note that data wasn't found). RULES: cite ONLY facts present in the real data - NEVER invent numbers, safety scores, or specifics not given. If real data is present, weave 1-2 real facts in naturally. If no real data, draft from the industry model but stay general (no fabricated specifics). Keep it under 130 words, warm not salesy, one clear value offer, one soft call to action. Return ONLY JSON, no fences: {subject, body, facts_used (array of the real facts you cited), angle (which learned angle you used)}. Output JSON only.";
       const irUser = "COMPANY: " + ir.company + "\nINDUSTRY: " + ir.industry + "\n\nLEARNED MODEL (value_leaks + reach_out_angles):\n" + JSON.stringify({ value_leaks: irModel.value_leaks, reach_out_angles: irModel.reach_out_angles }) + "\n\nREAL PUBLIC DATA:\n" + (realData ? JSON.stringify(realData) : "NONE FOUND - " + (dataErr || "no data") + " - draft from the model, stay general, invent nothing");
       try {
@@ -8917,7 +8917,7 @@ async function successionGate(env) {
       const inApiKey = await getSecret(env, "anthropic");
       let structured = null;
       if (inApiKey) {
-        const inModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+        const inModel = await anthropicModel(env);
         const inSys = "You are the INGESTION engine of Aura - the universal front-of-loop that takes raw world information and turns it into durable structured knowledge Aura keeps and reasons over. You are given a TOPIC and freshly-fetched SOURCE MATERIAL. Distill it into knowledge that will be reused: a tight factual summary, the key facts as short standalone lines, and (if the material reveals it) what KIND of thing this is so Aura can route it. Ground everything in the source material; never invent. Return ONLY JSON, no fences: {\"summary\":\"2-4 sentence synthesis\",\"key_facts\":[\"short factual line\",...],\"category\":\"one-word domain e.g. product|market|place|person|event|technical|regulation|other\",\"freshness_sensitive\":true|false}. freshness_sensitive = does this change often (prices, news, status) or is it stable (history, definitions)?";
         const inNewsBlock = inNews.length ? ("LIVE NEWS (most current - if this is a happening-now event, LEAD your summary and key_facts with what is happening NOW; a current event overrides stale background):\n" + inNews.map(n => "- " + (n.title || "") + (n.published ? " (" + n.published + ")" : "") + (n.description ? " - " + n.description : "")).join("\n") + "\n\n") : "";
         const inDepotBlock = inDepot ? ("KEPT AUTHORITATIVE DATA (federal source: " + (effDomain || "depot") + " - already ingested in Aura's depot; use for base rates / historical pattern, distinct from live news):\n" + JSON.stringify(inDepot).slice(0, 4000) + "\n\n") : "";
@@ -9040,7 +9040,7 @@ async function successionGate(env) {
       // ---- SYNTHESIS: the 8 universal questions, grounded + scored ----
       const abApiKey = await getSecret(env, "anthropic");
       if (!abApiKey) return { cmd: "ANALYST_BRIEF", payload: { ok: false, error: "Brain not configured", inventory: abInventory } };
-      const abModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const abModel = await anthropicModel(env);
       const abSystem = "You are the BRIEF ENGINE of AnalystOS - the always-on analyst who already read everything. Produce THE BRIEF: the 8 universal questions, answered ONLY from the knowledge provided. HONESTY LAW (absolute): never invent figures, names, or events not present in the knowledge; NEVER reach for outside/general knowledge even when the audience tempts it (if asked what something costs and no cost data is in the knowledge, the answer is Unknown + a gap entry - not an industry rule of thumb); where the knowledge is thin, say so plainly in gaps; where sources conflict, surface the conflict. LIVE-VS-HISTORY: if LIVE FINDINGS are present, they are CURRENT event facts (label them as live/current, cite them) while the depot is HISTORICAL pattern context (base rates, scale references) - use both, keep them distinct, and ground the live event in the historical pattern. SCALE LAW (absolute): federal disaster-assistance figures (FEMA IHP approvals, PA obligations, FEMA-inspected damage, program dollars) are narrow administrative FLOORS - NEVER present them as an event's loss, damage, or cost; always name exactly what each figure is; if total-loss or insured-loss figures exist in the knowledge they LEAD the headline; if they do not exist, the headline must say the total loss is not in the knowledge. Be CONCISE - every field 2-5 sentences, gaps/grounding as short lines; the whole brief must comfortably fit the output window. Score confidence honestly: Confirmed (directly evidenced), Probable (strongly implied), Possible (consistent but thin), Unknown (no grounding). Return ONLY JSON, no fences, exactly these keys: headline (one sharp sentence), what_is_happening, why_it_is_happening, who_it_affects, what_should_be_done, who_else_should_be_involved, what_happens_next, confidence (object: overall = Confirmed|Probable|Possible|Unknown, reasoning = one sentence), what_would_change_the_conclusion, grounding (array of short strings citing which knowledge each key conclusion rests on), gaps (array of plainly-stated holes in the knowledge). Write for a decision-maker: concrete, no filler, every sentence earns its place.";
       const abLiveBlock = abLive ? ("\n\nLIVE FINDINGS (fresh from the web at query time - CURRENT event facts; label these as live/current in the brief, and SCALE-CHECK any live loss/cost figure against the depot's disaster-costs spine):\n" + JSON.stringify({ query: abLive.query, answer: abLive.answer, sources: abLive.sources, error: abLive.error })) : "";
       const abUser = "QUESTION/TOPIC: " + (ab.question || ab.topic) + (ab.industry ? "\nINDUSTRY LENS: " + ab.industry : "") + "\n\nTHE MACHINE'S KNOWLEDGE (permitted grounding = the depot history below PLUS the live findings if present):\n" + JSON.stringify({ depository: abGathered.depot, industry_model: abGathered.industry, knowledge_notes: abGathered.notes }) + abLiveBlock;
@@ -9152,7 +9152,7 @@ async function successionGate(env) {
       if (!diApiKey) {
         distillNote = "Brain not configured - deterministic evidence landed, synthesis skipped";
       } else {
-        const diModelName = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+        const diModelName = await anthropicModel(env);
         const diSystem = "You are the DEPOSITORY layer of Aura - the shared cross-industry RISK KNOWLEDGE store. You maintain a durable, compounding record of a RISK TYPE so ANY industry can draw on it (insurance to price it, operators to avoid it). You are given the CURRENT record and NEW KNOWLEDGE. Your job is ADDITIONS ONLY: propose ONLY what is genuinely NEW - do NOT restate, rewrite, or re-list anything already in the record. Ground every addition in the knowledge given; never invent figures. Return ONLY JSON, no fences, exactly these keys: patterns_add (array of {cause, effect} objects NEW to the record - durable cause->effect risk patterns), evidence_add (array of short factual lines NEW to the record), pricing_signals_add (array of NEW levers that move price/premium/cost for this risk). Empty arrays are a valid answer if nothing is new. Output JSON only.";
         const diEvTail = diRec.evidence.slice(-40);
         const diUser = "RISK TYPE: " + di.risk_type + "\n\nCURRENT RECORD (patterns and pricing_signals complete; evidence shows the most recent " + diEvTail.length + " of " + diRec.evidence.length + " lines):\n" + JSON.stringify({ patterns: diRec.patterns, pricing_signals: diRec.pricing_signals, evidence_recent: diEvTail }) + "\n\nNEW KNOWLEDGE:\n" + String(di.knowledge).slice(0, 8000);
@@ -11144,7 +11144,7 @@ async function successionGate(env) {
       // STEP 2 - REASON the extraction into the universal, neutral situation object
       const sbKey = await getSecret(env, "anthropic");
       if (!sbKey) return { cmd: "SITUATION_BUILD", payload: { ok: false, error: "no brain key" } };
-      const sbModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const sbModel = await anthropicModel(env);
       const sbSys = "You are Aura's SITUATION-STRUCTURING stage. You are handed already-ingested data about a topic. Shape it into ONE structured, NEUTRAL, lens-free situation object in Aura's universal schema. Reason each field from the data. GROUND every claim in a source; NEVER invent - if a field is unknown use null or an empty array. NO business interpretation, NO recommendations - just the structured reality. Return ONLY JSON, no fences: {\"type\":\"event|trend|individual|entity|threshold\",\"as_of\":\"ISO8601\",\"location\":{\"place\":\"\",\"lat\":null,\"lng\":null}|null,\"participants\":[\"named people/orgs/entities involved\"],\"confidence\":0.0,\"velocity\":0.0,\"urgency\":0.0,\"domains\":[\"category\"],\"change_vector\":\"rising|stable|falling\",\"context_depth\":\"hours|days|weeks|months|years\",\"fact_set\":[{\"claim\":\"short factual claim\",\"source\":\"url or source name\"}],\"summary\":\"2-3 neutral sentences\"}. confidence = how well-sourced and certain this is. velocity = how fast it is developing right now. urgency = how much it demands attention or action. Those are THREE DIFFERENT axes - reason each separately, do not collapse them.";
       const sbSrc = (ing.sources || []).map(x => "- " + (x.title || "") + " [" + (x.url || "") + "]" + (x.kind ? " (" + x.kind + ")" : "")).join("\n");
       const sbUser = "TOPIC: " + sbTopic + "\nDOMAIN (reasoned): " + (ing.specialist_used || ing.category || "none") + "\nFRESHNESS_SENSITIVE: " + ing.freshness_sensitive + "\nNEWS_PULLED: " + (ing.news_pulled || 0) + "\nAS-OF (now): " + new Date(sbNow).toISOString() + "\n\nKNOWLEDGE:\n" + (ing.knowledge || "") + "\n\nKEY FACTS:\n" + (ing.key_facts || []).map(f => "- " + f).join("\n") + "\n\nSOURCES:\n" + sbSrc;
@@ -12359,7 +12359,7 @@ async function successionGate(env) {
       }
       const pApiKey = await getSecret(env, "anthropic");
       if (!pApiKey) return { cmd: "PERCEIVE", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
-      const pModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const pModel = await anthropicModel(env);
       const pSystem = await loadPrompt(env, "cognition_perception", "You are the PERCEPTION layer of Aura's cognition system, called SeeIt. Your ONLY job is to OBSERVE what already exists about the entity given to you. You do NOT recommend actions. You do NOT imagine what it could become in the future. You do NOT decide what matters most. Other layers do those things. You see only what is actually there right now, including value and relationships that are real but easily overlooked. Return ONLY a JSON object, no prose and no markdown fences, with exactly these keys: entity (the thing as you understand it), what_it_is (one plain sentence identifying it), what_exists (array of observable facts or components actually present), whats_hidden (array of real but non-obvious value, assets, capabilities, or relationships that ALREADY exist and are easily missed - not future speculation), relationships (array of who or what this is connected to), whats_changing (array of dynamics or trends currently acting on it), patterns (array of recurring structures you observe), confidence (one of: high, medium, low), unknowns (array of things you cannot determine without more information). Be concrete and honest. If you do not know something, put it in unknowns rather than guessing. Output JSON only.");
       try {
         // LIVE SIGHT: if the entity contains a URL, fetch the real page and perceive its actual content.
@@ -12406,7 +12406,7 @@ async function successionGate(env) {
       }
       const mApiKey = await getSecret(env, "anthropic");
       if (!mApiKey) return { cmd: "MEANING", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
-      const mModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const mModel = await anthropicModel(env);
       // Stack on Perception if available.
       let mPerception = null;
       try { const pc = await env.AURA_KV.get(`perception:${mSlug}`); if (pc) mPerception = JSON.parse(pc).perception; } catch {}
@@ -12447,7 +12447,7 @@ async function successionGate(env) {
       }
       const xApiKey = await getSecret(env, "anthropic");
       if (!xApiKey) return { cmd: "POSSIBILITY", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
-      const xModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const xModel = await anthropicModel(env);
       let xPerception = null, xMeaning = null;
       try { const pc = await env.AURA_KV.get(`perception:${xSlug}`); if (pc) xPerception = JSON.parse(pc).perception; } catch {}
       try { const mc = await env.AURA_KV.get(`meaning:${xSlug}`); if (mc) xMeaning = JSON.parse(mc).meaning; } catch {}
@@ -12490,7 +12490,7 @@ async function successionGate(env) {
       }
       const prApiKey = await getSecret(env, "anthropic");
       if (!prApiKey) return { cmd: "PRIORITY", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
-      const prModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const prModel = await anthropicModel(env);
       let prPerception = null, prMeaning = null, prPossibility = null;
       try { const pc = await env.AURA_KV.get(`perception:${prSlug}`); if (pc) prPerception = JSON.parse(pc).perception; } catch {}
       try { const mc = await env.AURA_KV.get(`meaning:${prSlug}`); if (mc) prMeaning = JSON.parse(mc).meaning; } catch {}
@@ -12561,7 +12561,7 @@ async function successionGate(env) {
       }
       const gApiKey = await getSecret(env, "anthropic");
       if (!gApiKey) return { cmd: "MEANING_GATE", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
-      const gModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const gModel = await anthropicModel(env);
       // Pull Aura's Law if present, so the gate enforces the actual codified rules.
       let gLaw = null;
       try { gLaw = null /* notes: retired */; } catch {}
@@ -12603,7 +12603,7 @@ async function successionGate(env) {
       }
       const dApiKey = await getSecret(env, "anthropic");
       if (!dApiKey) return { cmd: "DETECT_ABSENCE", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
-      const dModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const dModel = await anthropicModel(env);
       let dPerception = null, dMeaning = null;
       try { const pc = await env.AURA_KV.get(`perception:${dSlug}`); if (pc) dPerception = JSON.parse(pc).perception; } catch {}
       try { const mc = await env.AURA_KV.get(`meaning:${dSlug}`); if (mc) dMeaning = JSON.parse(mc).meaning; } catch {}
@@ -12645,7 +12645,7 @@ async function successionGate(env) {
       if (!jOutcomeText && !jAction) return { cmd: "JUDGE", payload: { ok: false, error: "No action found to judge for this entity. Provide ::: <what happened> or run ACT first." } };
       const jApiKey = await getSecret(env, "anthropic");
       if (!jApiKey) return { cmd: "JUDGE", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
-      const jModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const jModel = await anthropicModel(env);
       const jSystem = await loadPrompt(env, "cognition_judge", "You are the JUDGE layer of Aura's cognition - her conscience. An action has already been taken. Your job is to evaluate it honestly AFTER the fact: was it RIGHT, was it SAFE, did it SERVE the person it was meant to serve? You are not deciding what to do next (that is other layers) - you are evaluating what was done. Protection has teeth here: if the action caused or risked harm to a person, you judge it a FAILURE regardless of other merits. Be honest even when the verdict is uncomfortable. Return ONLY a JSON object, no prose, no markdown fences, with exactly these keys: entity, action_judged (one sentence describing what was done), verdict (one of: good, acceptable, flawed, failure), was_it_safe (boolean), was_it_right (boolean), did_it_serve (boolean), what_went_well (array), what_went_wrong (array), harm_done (string - describe any harm, or empty string if none), confidence (high|medium|low). Output JSON only.");
       const jUser = "ENTITY: " + jEntity + (jAction ? "\n\nACTION TAKEN (from log):\n" + JSON.stringify({ command: jAction.command || jAction.would_fire, result: jAction.result, ok: jAction.ok, ts: jAction.ts }) : "") + (jOutcomeText ? "\n\nWHAT HAPPENED:\n" + jOutcomeText : "");
       try {
@@ -12678,7 +12678,7 @@ async function successionGate(env) {
       const lSlug = lEntity.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "entity";
       const lApiKey = await getSecret(env, "anthropic");
       if (!lApiKey) return { cmd: "LEARN", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
-      const lModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const lModel = await anthropicModel(env);
 
       // PATH A: a JUDGE verdict exists -> learn from the judgment
       let lJudgment = null;
@@ -12791,7 +12791,7 @@ async function successionGate(env) {
         if (!recent.length) return { cmd: "PATTERNS", payload: { ok: false, error: "No lessons to distill yet. Aura learns from LEARN/JUDGE/SEEDLESSON first." } };
         const apiKey = await getSecret(env, "anthropic");
         if (!apiKey) return { cmd: "PATTERNS", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
-        const model = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+        const model = await anthropicModel(env);
         // include any existing patterns so distillation accumulates rather than resets
         let prior = null; try { const r = await env.AURA_KV.get(`patterns:${pDomain}`); if (r) prior = JSON.parse(r); } catch {}
         const sys = await loadPrompt(env, "cognition_pattern", "You are the PATTERN layer of Aura's learning. You are given a stream of individual LESSONS Aura has learned from real interactions, plus any PRIOR distilled patterns. Your job is to find what holds ACROSS MANY of them - the durable, transferable patterns that should sharpen how Aura helps and what she watches for. These patterns are ADDITIVE GUIDANCE she will read before reasoning; they NEVER override or rewrite her foundation (what she is FOR) - they only make her better at HOW. Two kinds of pattern matter: HELPING patterns (what makes people feel understood, what good guidance looks like, what to ask) and SAFETY patterns (what kinds of requests conceal harm, how harm hides behind innocent framing, what to flag early - so the same trick never works twice). Merge with prior patterns: keep what still holds, refine, add what is new, drop nothing important. Return ONLY a JSON object, no prose or fences, with exactly these keys: domain, helping_patterns (array of durable guidance strings for serving people better), safety_patterns (array of durable guidance strings for catching harm early), watch_for (array of specific signals/framings that should raise a flag at first perception), confidence (high|medium|low), lessons_count (number you distilled from). Be concrete and grounded - each pattern should be something Aura can actually apply. Output JSON only.");
@@ -12829,7 +12829,7 @@ async function successionGate(env) {
       let cgRouted = null;
       if (cgDepth === "auto") {
         const rApiKey = await getSecret(env, "anthropic");
-        const rModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+        const rModel = await anthropicModel(env);
         if (rApiKey) {
           try {
             const rData = await callAnthropic(rApiKey, { model: rModel, max_tokens: 60, system: await loadPrompt(env, "cognition_router", "You are Aura's cognition router. Decide how deeply to think about the given entity. Reply with ONE word only: perceive (trivial, just observe), meaning (needs interpretation), possibility (worth expanding), priority (a real decision is needed), or full (high-stakes, run everything including the action gate). Most everyday things are perceive or meaning. Reserve full for genuine decisions or high-stakes entities. One word only."), messages: [{ role: "user", content: cgEntity }] });
@@ -12938,7 +12938,7 @@ async function successionGate(env) {
         // ---- TRANSLATE: decision -> a proposed capability command (the thinking->doing bridge) ----
         const lpApiKey = await getSecret(env, "anthropic");
         if (!lpApiKey) return lpEarly("translate", { error: "Brain not configured (secret:anthropic missing)" });
-        const lpModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+        const lpModel = await anthropicModel(env);
         let lpCapList = "";
         try { const cr = await processCommand("CAPABILITY LIST", env, isOp); const cp = (cr && cr.payload) ? cr.payload : cr; if (cp && cp.capabilities) lpCapList = (cp.capabilities || []).map(c => (c && c.name) ? c.name : c).join(", "); } catch {}
         const lpTrSys = await loadPrompt(env, "cognition_action_bridge", "You are the bridge between Aura's DECISION and her ACTION. Given a decision (the one thing to do) and a list of available capability commands, choose the SINGLE capability command that would carry out the decision, fully formed and ready to run. If the right move is to communicate or respond rather than fire a tool, return needs_action false. Return ONLY a JSON object, no prose, no fences, with exactly these keys: needs_action (boolean), capability_command (the exact command string to run, or empty), why (one sentence), communicate_instead (what Aura should say or do if no action, else empty). Output JSON only.");
@@ -13069,7 +13069,7 @@ async function successionGate(env) {
       }
       const ssApiKey = await getSecret(env, "anthropic");
       if (!ssApiKey) return { cmd: "SECURESPEND", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
-      const ssModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const ssModel = await anthropicModel(env);
       const ssSystem = await loadPrompt(env, "securespend_awareness", "You are SECURESPEND, the financial-awareness layer of Aura - the cognition engine pointed at money. Given a financial thing (a subscription, recurring charge, bill, renewal, or a purchase someone is weighing), you run four moves and return a calm, useful decision. You SERVE THE HUMAN: you never nag, never moralize, never shame spending, never act like a budget cop. You give context and clarity so a person can decide with confidence. Run: PERCEIVE (what is this really, plainly - what it costs, how often, what is attached), MEANING (what it actually is in a human life - protection, a meaningful project, genuine value, or quiet waste/a forgotten thing), POSSIBILITY (the real options: keep, pause, cancel, downgrade, renegotiate, consolidate, switch), PRIORITY (the single best move and why, plus what to do now). Return ONLY a JSON object, no prose or fences, with exactly these keys: entity, what_it_is (plain, one sentence including likely cost/frequency if inferable), what_it_means (the human significance - protection / project / value / waste / forgotten), options (array of realistic moves), the_move (the single recommended action, one or two sentences), why (the reason, tied to the human's actual benefit not just saving money), do_now (one concrete next step), watch_for (array of things to be aware of - hidden fees, cancellation windows, renewal dates, gotchas), confidence (high, medium, low), unknowns (array of what you would need to know for certain - e.g. actual usage, real price). Be honest and concrete. If you cannot tell whether something is worth it, say so in unknowns rather than guessing. Output JSON only.");
       try {
         const ssData = await callAnthropic(ssApiKey, { model: ssModel, max_tokens: 2000, system: ssSystem, messages: [{ role: "user", content: ssRaw }] });
@@ -13177,7 +13177,7 @@ async function successionGate(env) {
       // --- run the SecureSpend brain on the REAL gathered facts ---
       const scApiKey = await getSecret(env, "anthropic");
       if (!scApiKey) return { cmd: "SECURESPEND_SCAN", payload: { ok: true, mode: "raw_no_brain", note: "brain not configured; returning facts only", facts } };
-      const scModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const scModel = await anthropicModel(env);
       const scSystem = await loadPrompt(env, "securespend_accounts", "You are SECURESPEND analyzing a REAL set of financial accounts (Stripe, Mercury bank, Twilio) belonging to the operator of a small business. You are given the actual gathered facts as JSON. OPERATOR CONTEXT you MUST factor in: this is a pre-funding, in-development venture (ARK Systems / Aura). Revenue is INTENTIONALLY off right now - the operator has deliberately chosen NOT to chase revenue until external funding lands (expected ~2 weeks out). The tiny Stripe charges are test transactions, not a failed sales effort. Much of the spend (e.g. Twilio numbers/A2P) is infrastructure the operator has consciously chosen to keep. So do NOT read a low balance or low revenue as a crisis or a failing business - it is a funded-soon R&D runway by design. Judge spend against INTENT and STRATEGY, not against a naive 'they're broke' reading. TONE - this is mandatory and matches the operator's entire product philosophy: be warm, constructive, encouraging, and forward-thinking, AND fully honest. NEVER alarmist, never catastrophizing, never 'business survival / freeze everything / unsustainable' language. But also NEVER hollow flattery - if something is genuinely a leak or a bad idea, say so plainly and kindly, because telling the truth is how you serve the human. Surface the real thing as 'here is the one item worth your attention,' not 'you are in danger.' Apply the money-lens: find recurring waste, idle/forgotten costs, anything quietly leaking money, anything worth protecting, and the highest-leverage move. Ground every finding in the real numbers - cite the actual amounts. If a source failed to load, note it as unchecked; do not speculate. Return ONLY a JSON object, no prose or fences, with keys: snapshot (one plain, calm sentence summarizing the real picture from the data, framed with the runway context in mind), findings (array of objects each with: severity high|medium|low, category recurring|idle|anomaly|protection|optimization, what (the real item with its actual amount), means (plain human terms), move (the recommended action, constructively phrased)), the_one_thing (the single highest-leverage move right now, tied to a real number, framed as an opportunity not an emergency), do_now (one concrete next step), watch_for (array), confidence high|medium|low, unchecked_sources (array). Be honest, specific to the numbers, and steady. Output JSON only.");
       try {
         const scData = await callAnthropic(scApiKey, { model: scModel, max_tokens: 2500, governance: true, system: scSystem, messages: [{ role: "user", content: "Here are the real gathered account facts:\n" + JSON.stringify(facts, null, 2) }] });
@@ -13369,7 +13369,7 @@ async function successionGate(env) {
 
       const sbApiKey = await getSecret(env, "anthropic");
       if (!sbApiKey) return { cmd: "SECURESPEND_BANK", payload: { ok: true, mode: "facts_only", facts, note: "brain not configured" } };
-      const sbModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const sbModel = await anthropicModel(env);
       const sbSystem = await loadPrompt(env, "securespend_brief", "You are SECURESPEND, the financial-awareness layer of Aura, analyzing a person's REAL connected bank account. You are given their actual accounts, balances, recent transactions, and a deterministic list of likely-recurring charges. Give them calm, clear awareness of their own money. You SERVE THE HUMAN: warm, encouraging, honest, never alarmist, never moralizing, never a budget cop, never hollow flattery - if something is genuinely a forgotten or wasteful charge, say so kindly and plainly. Produce the awareness a great financial wallet would. Return ONLY a JSON object, no prose or fences, with keys: greeting (one short warm line), snapshot (one plain sentence on where their money stands using real balances), safe_to_spend (your read of what is comfortably spendable now given balances and upcoming patterns, with a brief why), recurring (array of objects: merchant, typical_amount, cadence_guess, status one of 'active-valued'|'review'|'likely-forgotten', note), forgotten_or_waste (array of specific charges that look forgotten/unused/duplicate, each with merchant, amount, why), top_wins (array of 1-3 concrete opportunities to save or recover money, each with a real number where possible), the_one_thing (the single most useful money move right now), watch_for (array - upcoming or easy-to-miss items), confidence high|medium|low. Ground everything in the real numbers provided. Output JSON only.");
       try {
         const sbData = await callAnthropic(sbApiKey, { model: sbModel, max_tokens: 2500, governance: true, system: sbSystem, messages: [{ role: "user", content: "Real connected account data:\n" + JSON.stringify(facts, null, 2) }] });
@@ -14929,7 +14929,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (!ocFresh) { try { const cached = await env.AURA_KV.get(ocKey); if (cached) { const c = JSON.parse(cached); return { cmd: "OUTCOME", payload: { ok: true, cached: true, goal: ocRaw, outcome: c } }; } } catch {} }
       const ocApiKey = await getSecret(env, "anthropic");
       if (!ocApiKey) return { cmd: "OUTCOME", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
-      const ocModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const ocModel = await anthropicModel(env);
       // SUBJECT-WORLD, not operator-world. The engine reasons about the SUBJECT given (a business, a
       // goal, a person) on its OWN terms. The operator's personal context (notes:STATE) is NOT injected
       // by default â€” that caused world-bleed (judging an external business against the operator's own context).
@@ -16349,7 +16349,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (pc.about && pc.about.trim()) {
         const apiKey = await getSecret(env, "anthropic");
         if (apiKey) {
-          const model = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+          const model = await anthropicModel(env);
           const sys = await loadPrompt(env, "meet_new_person", "You are Aura, meeting a new person who just told you who they are in their own words. Understand them warmly and accurately. Return ONLY a JSON object, no prose or fences, with exactly these keys: identity_summary (one warm sentence capturing who they are), roles (array of what they are/do), interests (array), traits (array of character qualities you can fairly infer), what_matters_to_them (array, only if they signal it - else empty), how_to_address_them (a short note on tone that would suit them), confidence (high|medium|low), unknowns (array of what you would want to learn next). Be human, never glib. Infer only what is fair from their words. Output JSON only.");
           try {
             const d = await callAnthropic(apiKey, { model, max_tokens: 1000, system: sys, messages: [{ role: "user", content: pc.about }] });
@@ -16617,7 +16617,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const tName = (tEnt.name || "").split(/\s+/)[0] || "there";
       const tApiKey = await getSecret(env, "anthropic");
       if (!tApiKey) return { cmd: "PTA_TALK", payload: { ok: false, error: "Brain not configured" } };
-      const tModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      const tModel = await anthropicModel(env);
       // read learned onboarding patterns so she gets better at this over time
       let tPatterns = null; try { const r = await env.AURA_KV.get("patterns:onboarding"); if (r) tPatterns = JSON.parse(r); } catch {}
 
@@ -27180,7 +27180,7 @@ async function generatePageHTML(description, path, apiKey, env) {
   // Model is read from KV config (same as every other brain call) - never hardcoded. The page
   // engine was previously pinned to a model whose access got suspended, which silently broke ALL
   // page builds; reading config:brain:model keeps it consistent and swappable without a code change.
-  const pageModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+  const pageModel = await anthropicModel(env);
   const res = await brainFetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -27954,7 +27954,31 @@ async function fanReason(env, { task, brains, maxTokens = 700 } = {}) {
   return { ok: true, task, brains_answered: results.map(r => r.brain), synthesis, synthError, spread: results.map(r => ({ brain: r.brain, label: r.label, text: r.text })) };
 }
 
+// ══ THE FUNCTION REFUSES A MODEL IT CANNOT SERVE (v4.9.914) ══════════════════════════════════════
+// Nine call sites handed a non-Anthropic model to this function over two days - seven caught by a
+// sweep that matched on `await defaultModel(env)`, then an eighth and a ninth written as an inline KV
+// read that the same regex could not see. Every one failed the same way: Anthropic returns `error`
+// and no `content`, the caller's text accumulator stays empty, and JSON.parse("") throws. The error
+// always named the PARSE and never the model, so each one cost a separate round of debugging the
+// input instead of the call.
+//
+// A sweep fixes the instances it can match. THIS fixes the class: the function that can only speak to
+// Anthropic now refuses anything that is not a Claude model and says so by name. A tenth site written
+// in a tenth shape fails loudly on its first run instead of returning an empty string that looks like
+// bad JSON.
+async function _callAnthropicGuard(body) {
+  const m = String(body && body.model || "");
+  if (!/^claude/i.test(m)) {
+    return { error: { type: "wrong_provider", message:
+      "callAnthropic was given model '" + m + "', which is not an Anthropic model. This endpoint is " +
+      "api.anthropic.com and cannot serve it. Use anthropicModel(env) - defaultModel() returns the " +
+      "LADDER's model, which may be any provider." } };
+  }
+  return null;
+}
+
 async function callAnthropic(apiKey, payload) {
+  { const _wrong = await _callAnthropicGuard(arguments[1] || {}); if (_wrong) return _wrong; }
   // Funnel governance (v4.9.507): govern by DEFAULT, not opt-in. Manually flagging ~35 callers is itself
   // scatter-prone - one missed caller = one ungoverned honesty path. So instead: auto-inject the provenance
   // discipline into ANY substantive call (has a real system prompt AND enough output room to make factual
@@ -29448,7 +29472,7 @@ async function createStripeCheckout(amount, currency, product, successUrl, cance
 async function llmGeneratePage(prompt, env) {
   const apiKey = await getSecret(env, "anthropic");
   if (!apiKey) return null;
-  const lgpModel = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+  const lgpModel = await anthropicModel(env);
   const res = await brainFetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },

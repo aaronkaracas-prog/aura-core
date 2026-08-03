@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.904-2026-08-03-the-case-set-has-a-reader";
+const BUILD = "aura-core-v4.9.905-2026-08-03-the-composer";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -5409,6 +5409,148 @@ async function successionGate(env) {
             "from task quality is the next thing this needs, and it needs ground truth to do it.",
           next: "EVALS <n> for one case. Re-running a case costs a real turn, so it is deliberately " +
                 "not automatic and not built - decide that with the bill in view." } };
+      }
+    }
+    case "VERTICAL": {
+      // ══ THE COMPOSER ── ARRIVE AT A VERTICAL NEVER SEEN, UNASSISTED (v4.9.905) ═══════════════
+      //
+      //   VERTICAL <name>                     dry run - learns, discovers, mints, drafts. Sends nothing.
+      //   VERTICAL <name> ::: <entity hint>   same, seeded with one real entity to discover from
+      //   VERTICAL CONFIRM <name>             the same walk, allowed to write back and approach
+      //
+      // WHY THIS EXISTS. Every stage of "arrive at a domain you have never seen and be right about
+      // it" was already built and NOTHING WALKED THEM. Aura audited her own source and found it
+      // before I did: ONBOARD chains discover->perceive->mint->draft INSIDE ITSELF and stops.
+      // INDUSTRY_LEARN has a comment at ~8174 describing an onboarding write-back that ONBOARD never
+      // calls. INDUSTRY_REACH requires a prior LEARN and only drafts. LOOP composes COGNITION, not
+      // enrolment. Her verdict, and it is the reason this is the build rather than another primitive:
+      // "pieces without a composer fail the claim even if every handler is WIRED."
+      //
+      // IT ADDS NO CAPABILITY. Every stage below is an existing command called through the same
+      // processCommand door anything else uses. What is new is the WALK - and the walk is the thing
+      // the claim rests on, because one operator across unlimited verticals is a composition
+      // property, not a capability one.
+      //
+      // SHAPE BORROWED FROM LOOP, DELIBERATELY. LOOP already runs staged, budgeted, dry-by-default
+      // with a confirm gate and a full trace. Inventing a second composer pattern beside a working
+      // one is the wheel this codebase keeps refusing to rebuild. Same stage runner, same budget
+      // check, same early return with partial work, same trace.
+      //
+      // DRY BY DEFAULT AND THAT IS NOT A FORMALITY. Without CONFIRM this reads the world and drafts;
+      // it does not send, does not write back to the industry store, and does not COMMIT an onboard.
+      // Approaching a real business is an act with a counterparty, and every act with a counterparty
+      // in this system is gated.
+      if (!isOp) return { cmd: "VERTICAL", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        let vRaw = (rest || "").trim();
+        let vConfirm = false;
+        if (/^CONFIRM\s+/i.test(vRaw)) { vConfirm = true; vRaw = vRaw.replace(/^CONFIRM\s+/i, "").trim(); }
+        let vHint = "";
+        if (vRaw.includes(":::")) { const sp = vRaw.split(":::"); vRaw = sp[0].trim(); vHint = sp.slice(1).join(":::").trim(); }
+        if (!vRaw) return { cmd: "VERTICAL", payload: { ok: false,
+          error: "Usage: VERTICAL <name>  |  VERTICAL <name> ::: <entity hint>  |  VERTICAL CONFIRM <name>",
+          note: "Dry by default. CONFIRM allows the write-back and the approach." } };
+
+        const vSlug = vRaw.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "vertical";
+        const vT0 = Date.now();
+        const vTiming = {};
+        // Budget exists because her turns die around ten tool calls. Partial work returned beats a
+        // turn that spends real money and says nothing - measured three times today.
+        const vBudgetMs = 90000;
+        const vElapsed = () => Date.now() - vT0;
+        const vStage = async (name, cmd) => {
+          const st = Date.now();
+          const r = await processCommand(cmd, env, isOp);
+          vTiming[name] = Date.now() - st;
+          return (r && r.payload) ? r.payload : r;
+        };
+        const vOut = { ok: true, vertical: vRaw, slug: vSlug, confirmed: vConfirm, stages: {} };
+        const vEarly = (stoppedAt, extra = {}) => ({ cmd: "VERTICAL", payload: {
+          ...vOut, ...extra, complete: false, stopped_at: stoppedAt, timing: vTiming, total_ms: vElapsed(),
+          note: "Stopped at the budget, not at a failure. What ran is above and is real; the rest did " +
+                "not run. A partial walk reported honestly beats a turn that spends and says nothing." } });
+
+        // ── 1. LEARN ── what is already known about this vertical ────────────────────────────
+        // Read first, always. If she has been here before the walk should be cheaper, and if the
+        // store is empty that is itself the finding: this is genuinely a vertical never seen.
+        vOut.stages.learn = await vStage("learn", "INDUSTRY_LEARN " + vRaw);
+        vOut.prior_knowledge = !!(vOut.stages.learn && vOut.stages.learn.ok && (vOut.stages.learn.observations > 0));
+        if (vElapsed() > vBudgetMs) return vEarly("learn");
+
+        // ── 2. DISCOVER + MINT ── go into the world and find a real entity ───────────────────
+        // ONBOARD is the enrolment mechanism: it finds the business itself via Places, the live
+        // site and the web, perceives what it is from ONLY what it gathered, and mints the business
+        // PTA. Never COMMIT here without confirmation - COMMIT is what sends.
+        if (vHint) {
+          vOut.stages.discover = await vStage("discover", (vConfirm ? "ONBOARD COMMIT " : "ONBOARD ") + vHint);
+        } else {
+          vOut.stages.discover = { ok: false, skipped: true,
+            why: "No entity hint given, and discovery of WHICH entities exist in a vertical is the one " +
+                 "stage this system does not have. ONBOARD finds a business you can name; nothing " +
+                 "enumerates the businesses in a domain. That gap is the honest answer to whether the " +
+                 "claim holds unassisted today.",
+            how: "VERTICAL " + vRaw + " ::: <business name>, <city>" };
+        }
+        if (vElapsed() > vBudgetMs) return vEarly("discover");
+
+        // ── 3. APPROACH ── drafted from what was gathered, never from a template ─────────────
+        if (vOut.stages.discover && vOut.stages.discover.ok) {
+          const co = vOut.stages.discover.business || vOut.stages.discover.name || vHint.split(",")[0].trim();
+          vOut.stages.approach = await vStage("approach",
+            'INDUSTRY_REACH ::: {"industry":"' + vRaw.replace(/"/g, "") + '","company":"' + String(co).replace(/"/g, "") + '"}');
+        } else {
+          vOut.stages.approach = { ok: false, skipped: true, why: "nothing was discovered to approach" };
+        }
+        if (vElapsed() > vBudgetMs) return vEarly("approach");
+
+        // ── 4. LEARN BACK ── the arc that was designed and never wired ───────────────────────
+        // INDUSTRY_LEARN's own comment describes an ONBOARDING WRITE-BACK where "each real company
+        // onboarded appends what it taught". ONBOARD never called it. This is that call, and it is
+        // the difference between a system that visits a vertical and one that ACCUMULATES it -
+        // which is the whole compounding claim.
+        if (vConfirm && vOut.stages.discover && vOut.stages.discover.ok) {
+          const obs = [
+            vOut.stages.discover.perception && vOut.stages.discover.perception.what_it_is,
+            vOut.stages.discover.perception && vOut.stages.discover.perception.what_they_sell,
+            vOut.stages.discover.pta && ("minted PTA " + vOut.stages.discover.pta),
+          ].filter(Boolean).join(". ").slice(0, 600);
+          if (obs) vOut.stages.learn_back = await vStage("learn_back", "INDUSTRY_LEARN " + vRaw + " ::: " + obs);
+          else vOut.stages.learn_back = { ok: false, why: "the onboard returned nothing worth appending" };
+        } else {
+          vOut.stages.learn_back = { ok: false, skipped: true,
+            why: vConfirm ? "nothing discovered to learn from" : "dry run - the store is only written on CONFIRM" };
+        }
+
+        // ── 5. MEASURE ── what arriving at this vertical actually cost ───────────────────────
+        // The claim is one operator across unlimited verticals. That is an economic claim before it
+        // is a capability one, so the walk prices itself. Read from the day ledger, not estimated.
+        try {
+          const day = new Date().toISOString().slice(0, 10);
+          const raw = await env.AURA_KV.get("egress:" + day);
+          const e = raw ? JSON.parse(raw) : null;
+          vOut.measure = { day_cost_usd: e ? Number(e.cost_usd || 0) : null, day_calls: e ? Number(e.calls || 0) : null,
+            note: "Day totals, not this walk alone - the meter is per-provider-call, not per-composition. " +
+                  "Cost PER VERTICAL is the number this claim actually needs and it is not isolated yet." };
+        } catch {}
+
+        vOut.complete = true;
+        vOut.timing = vTiming;
+        vOut.total_ms = vElapsed();
+        vOut.honest_state = [
+          "Every stage here is an existing command. This composes them; it adds no capability.",
+          vConfirm ? "CONFIRMED - the onboard could send and the industry store was written."
+                   : "DRY RUN - nothing was sent, nothing was written back, no onboard committed.",
+          "THE GAP THE WALK EXPOSES: discovery needs a named entity. Nothing in this system enumerates " +
+          "WHICH businesses exist in a vertical it has never seen. Until something does, 'arrive " +
+          "unassisted' is true for a business you can name and untrue for a domain you cannot.",
+        ];
+        try {
+          await env.AURA_KV.put("vertical:" + vSlug + ":" + new Date().toISOString(),
+            JSON.stringify({ vertical: vRaw, confirmed: vConfirm, timing: vTiming, total_ms: vOut.total_ms,
+              prior_knowledge: vOut.prior_knowledge, discovered: !!(vOut.stages.discover && vOut.stages.discover.ok) }),
+            { expirationTtl: 90 * 24 * 3600 });
+        } catch {}
+        return { cmd: "VERTICAL", payload: vOut };
       }
     }
     case "REASONERS": {

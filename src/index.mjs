@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.922-2026-08-03-a-pass-about-another-commit";
+const BUILD = "aura-core-v4.9.923-2026-08-03-a-no-op-promote-is-still-a-deploy";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -5139,6 +5139,16 @@ async function processCommand(line, env, isOp) {
         const describesHead = !!(headSha && runSha && headSha === runSha);
         staleness = { branch_head_sha: headSha, run_head_sha: runSha,
           describes_current_candidate: describesHead, run_age_days: ageDays };
+        // The SHAs agreeing proves the run tested THIS candidate. It says nothing about whether this
+        // candidate is the change anyone meant to ship. Measured: a PASS on a candidate from
+        // 2026-07-03, twenty-two days untouched, still eligible - correct and almost certainly not
+        // what the operator wanted. Advisory rather than a refusal: a legitimately old candidate is
+        // possible, and a gate that blocks the legitimate case gets worked around.
+        if (describesHead && ageDays !== null && ageDays > 7) {
+          staleness.advisory = "This candidate is " + ageDays + " days old and nobody has touched the " +
+            "proposal branch since. The run is valid FOR IT - that is a different question from whether " +
+            "it is the change you mean to ship. Check candidate_build against what you expect.";
+        }
         if (gate === "PASS" && headSha && runSha && !describesHead) {
           gate = "STALE";
           staleness.why = "This run tested commit " + String(runSha).slice(0, 7) + "; the proposal " +
@@ -5266,6 +5276,23 @@ async function processCommand(line, env, isOp) {
         return { cmd: "AURA_PROMOTE", payload: { ok: false, error: "Could not merge candidate into main: HTTP " + _mergeRes.status + " " + JSON.stringify(mj).slice(0, 200) } };
       }
       const _merged = _mergeRes.status === 201;
+      // ══ A NO-OP PROMOTE IS STILL A LIVE DEPLOY (fixed 2026-08-03) ═══════════════════════════════
+      // 204 means nothing to merge - main already had the candidate - and this proceeded to fire a
+      // full wrangler deploy of main to live, bindings and DO migrations included. Caught live: a
+      // patch failed on a non-unique oldtext, so there was nothing to promote, and PROMOTE deployed
+      // anyway and reported success. Nothing broke because nothing had changed, which is precisely
+      // what makes it dangerous: a real deploy that does nothing is indistinguishable from a real
+      // deploy that does something, and it teaches everyone to ignore the message.
+      // A promote with no candidate to promote is refused, and says which state it is in.
+      if (!_merged && !/\bFORCE\b/i.test(rest || "")) {
+        return { cmd: "AURA_PROMOTE", payload: { ok: false, error: "NOTHING_TO_PROMOTE",
+          why: "main already contains everything on the proposal branch, so there is no candidate to " +
+               "promote. Firing a live deploy here would redeploy main to itself - a real deploy, real " +
+               "DO migrations, no change - and a no-op that reports success is how a real one slips " +
+               "past unnoticed.",
+          how: "Propose a candidate first (AURA_EVOLVE <old> ||| <new>, then AURA_VALIDATE), or " +
+               "AURA_PROMOTE FORCE to redeploy main deliberately." } };
+      }
       const r = await fetch("https://api.github.com/repos/aaronkaracas-prog/aura-core/actions/workflows/promote-to-live.yml/dispatches", {
         method: "POST",
         headers: { "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github+json", "User-Agent": "aura-promote", "Content-Type": "application/json" },

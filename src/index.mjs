@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.923-2026-08-03-a-no-op-promote-is-still-a-deploy";
+const BUILD = "aura-core-v4.9.924-2026-08-03-the-chain-had-no-writers";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -5798,6 +5798,10 @@ async function successionGate(env) {
         try {
           await env.VECTORIZE.deleteByIds(goes.map((r) => r.id));
           removed = goes.length;
+          // Deletion is irreversible and a vector cannot be un-embedded. What was removed, and from
+          // whom, has to survive the removal.
+          try { await processCommand("AUDIT_CHAIN WRITE " + fSubject + " evicted " + removed +
+            " low-trust vectors", env, true); } catch {}
         } catch (e) { err = String(e?.message ?? e); }
         return { cmd: "FORGET", payload: { ok: !err, subject: fSubject, evicted: removed,
           inspected: rows.length, kept: stays, by_trust: byTrust, error: err,
@@ -5906,6 +5910,10 @@ async function successionGate(env) {
             g = { ok: true, edge: eid, minted: true };
           }
           const now = await successionGate(env);
+          // The right to rewrite herself, granted. If any act belongs in a tamper-evident log it is
+          // the one that authorises changing the code that writes the log.
+          try { await processCommand("AUDIT_CHAIN WRITE " + owner + " granted self-modification to " +
+            "pta_aura via edge " + (g && g.edge), env, true); } catch {}
           return { cmd: "AURA_SUCCESSION", payload: { ok: !!now.ok, granted: g, gate: now,
             note: now.ok
               ? "Self-modification is now authorised BY A GRANT rather than by a role. Withdraw it with " +
@@ -5922,6 +5930,8 @@ async function successionGate(env) {
             "UPDATE pta_edges SET state = 'revoked', updated_at = ? WHERE from_id = ? AND to_id = 'pta_aura' AND state = 'active'"
           ).bind(now, owner).run().catch(() => null);
           const after = await successionGate(env);
+          try { await processCommand("AUDIT_CHAIN WRITE " + owner + " revoked self-modification - " +
+            (r?.meta?.changes ?? 0) + " edge(s)", env, true); } catch {}
           return { cmd: "AURA_SUCCESSION", payload: { ok: true, revoked_edges: r?.meta?.changes ?? 0,
             still_authorised: !!after.ok, gate: after,
             note: "Every active grant from you to the agent is revoked, self-modification included. The " +
@@ -5982,6 +5992,17 @@ async function successionGate(env) {
         // that cannot say what it changed about itself has no forensics, and forensics is the layer
         // that survives after the gates are gone.
         try {
+      // ══ THE CHAIN HAD NO WRITERS (v4.9.924) ══════════════════════════════════════════════════
+      // AUDIT_CHAIN is a hash-linked tamper-evident log: each entry carries the hash of the one
+      // before it, so altering any record breaks every hash after it. It works, VERIFY walks it, and
+      // NOTHING IN 2.9MB EVER CALLED IT. The trail has been empty since the day it shipped.
+      // Its own comment says the trail must be "sufficient to reconstruct the chain behind any
+      // consequential action" - and every consequential act wrote to its own private KV key instead.
+      // Same shape as getHybridEvents with no callers and self:vitals with no reader: the capability
+      // was built, nothing walked to it. Fire-and-forget - an audit write must never fail the act it
+      // is recording, and a missing link is visible in the sequence anyway.
+      try { await processCommand("AUDIT_CHAIN WRITE self-edit promoted from build " + BUILD +
+        " ok=" + !!(prom && prom.payload && prom.payload.ok), env, true); } catch {}
           const hist = await env.AURA_KV.get("promote:log").then((r) => { try { return JSON.parse(r || "[]"); } catch { return []; } });
           hist.push({ at: new Date().toISOString(), build: BUILD,
             ok: !!(prom && prom.payload && prom.payload.ok),
@@ -13850,6 +13871,9 @@ async function successionGate(env) {
       const idxAsset = `ss:idx:asset:${scIn.asset}:${now}:${txnId}`;
       await env.AURA_KV.put(idxAsset, txnId).catch(() => {});
       if (ptaEntityId) await env.AURA_KV.put(`ss:idx:pta:${ptaEntityId}:${now}:${txnId}`, txnId).catch(() => {});
+      // Money moving is the definition of a consequential act.
+      try { await processCommand("AUDIT_CHAIN WRITE " + (ptaEntityId || "securespend") + " charge " +
+        txnId + " " + scAmt + " " + scCur + " status=" + status + " mode=" + scMode, env, true); } catch {}
 
       // ══ THE SIGNAL WIRE ── PAID IS THE ONE THAT MATTERS (v4.9.919) ═══════════════════════════
       // Money moving is the strongest signal a business can send, and the state rules put `paid`
@@ -21951,6 +21975,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
           await db.prepare("UPDATE pta_entities SET epoch_at = ?, updated_at = ? WHERE id = ?")
             .bind(_now, _now, _eid).run();
+          // Mass supersession of every grant an entity ever made is the largest single act in this
+          // graph. It belongs in the tamper-evident log before it belongs anywhere else.
+          try { await processCommand("AUDIT_CHAIN WRITE " + _eid + " drew an epoch line at " + _now +
+            " superseding " + (Number(_cnt?.n) || 0) + " grants - reason: " + _ereason.slice(0, 200), env, true); } catch {}
           try {
             await db.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, ?, 'epoch', ?, ?, ?)")
               .bind("hist_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16), "-", _eid,

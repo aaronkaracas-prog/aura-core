@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.917-2026-08-03-an-absence-is-not-searchable";
+const BUILD = "aura-core-v4.9.918-2026-08-03-state-is-derived-not-typed";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -24052,7 +24052,116 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         return { cmd: "BUSINESS_STATE", payload: { ok: true, ...JSON.parse(raw) } };
       }
 
-      return { cmd: "BUSINESS_STATE", payload: { ok: false, error: "Sub-commands: SET, GET" } };
+      // ══ SIGNAL ── RECORD SOMETHING A BUSINESS DID (v4.9.918) ══════════════════════════════════
+      //   BUSINESS_STATE SIGNAL <entity_id> <name> [detail]
+      //
+      // Everything a business does was already POSSIBLE - /claim, SECURESPEND_CHARGE, PTA_SCAN, the
+      // doorway - and NOTHING was observed. business_state was only ever written by a human calling
+      // SET, so every state past `trial` existed as a label with no path into it. The enum was not
+      // too rigid; it was UNWIRED, which looks identical from outside.
+      //
+      // THE SIGNAL NAME IS NOT VALIDATED, DELIBERATELY. "What counts as a signal today will be a
+      // different signal tomorrow." A switch statement over signal names would need a deploy every
+      // time the world changes, and this system already learned that lesson: feeds live in
+      // feeds:catalog so adding one is a KV write, WHERE derives rather than stores, config is 495
+      // keys rather than 495 constants. Vocabulary is data. Computation is code.
+      if (sub === "SIGNAL") {
+        const entityId = args[1] || "";
+        const name = (args[2] || "").toLowerCase();
+        if (!entityId || !name) return { cmd: "BUSINESS_STATE", payload: { ok: false,
+          error: "Usage: BUSINESS_STATE SIGNAL <entity_id> <name> [detail]",
+          known_today: "claimed, visited, paid, replied, scanned, went_quiet, site_changed - and any " +
+                       "name you invent, because the set is not fixed in code." } };
+        const detail = args.slice(3).join(" ").trim() || null;
+        const sk = "business_signals:" + entityId;
+        let sig = [];
+        try { sig = JSON.parse((await env.AURA_KV.get(sk)) || "[]"); } catch {}
+        sig.push({ name, detail, at: new Date().toISOString() });
+        if (sig.length > 200) sig = sig.slice(-200);
+        await env.AURA_KV.put(sk, JSON.stringify(sig), { expirationTtl: 400 * 24 * 3600 });
+        // A signal is a real-world delta, so it goes through Layer C like every other one - one
+        // change detector, not a second private copy.
+        try { await noticeChange(env, "business", entityId, name + ":" + sig.length,
+          (was, now) => "business " + entityId + " signalled " + name); } catch {}
+        return { cmd: "BUSINESS_STATE", payload: { ok: true, entity_id: entityId, signal: name,
+          total_signals: sig.length,
+          note: "Recorded. State is DERIVED from signals - see BUSINESS_STATE READ." } };
+      }
+
+      // ══ READ ── THE STATE IS A CONSEQUENCE, NOT A DECISION (v4.9.918) ════════════════════════
+      // Derives the state from what the business actually did, against rules that live in KV at
+      // `config:business:states` rather than in this file. Seeded on first read; edit the KV value
+      // and the vocabulary changes with no deploy.
+      //
+      // WHY DERIVED. A state somebody TYPED is a claim about the past that stops being true silently.
+      // A state COMPUTED from signals cannot drift from what happened, and it is the same shape this
+      // system already uses everywhere it works: execution_score from turn signals, SENTRY findings
+      // from ledger signals, INTEREST rank from decay. Deterministic signals in, a state out.
+      //
+      // AND WHAT TO OFFER IS NOT IN HERE. Free, a trial, a dollar, a deal because they are struggling
+      // - that is a JUDGEMENT from context and it belongs to her, not to a lookup table. Conflating
+      // "what they are" with "what we should do" is what makes staged CRMs feel robotic. This answers
+      // only the first.
+      if (sub === "READ" || sub === "DERIVE") {
+        const entityId = args[1] || "";
+        if (!entityId) return { cmd: "BUSINESS_STATE", payload: { ok: false, error: "Usage: BUSINESS_STATE READ <entity_id>" } };
+        const DEFAULT_RULES = [
+          { state: "active",      any: ["paid", "subscribed", "used_service"] },
+          { state: "trial",       any: ["claimed", "signed_up", "replied"] },
+          { state: "engaged",     any: ["visited", "scanned", "opened"] },
+          { state: "contacted",   any: ["outreach_sent"] },
+          { state: "lead",        any: [] },
+        ];
+        let rules = DEFAULT_RULES;
+        try {
+          const raw = await env.AURA_KV.get("config:business:states");
+          if (raw) rules = JSON.parse(raw);
+          else await env.AURA_KV.put("config:business:states", JSON.stringify(DEFAULT_RULES));
+        } catch {}
+        let sig = [];
+        try { sig = JSON.parse((await env.AURA_KV.get("business_signals:" + entityId)) || "[]"); } catch {}
+        const names = new Set(sig.map((x) => x.name));
+        const hit = rules.find((r) => !r.any.length || r.any.some((n) => names.has(n))) || rules[rules.length - 1];
+        let typed = null;
+        try { const raw = await env.AURA_KV.get("business_state:" + entityId); if (raw) typed = JSON.parse(raw).state; } catch {}
+        const last = sig.length ? sig[sig.length - 1] : null;
+        const quietDays = last ? Math.floor((Date.now() - Date.parse(last.at)) / 86400000) : null;
+        return { cmd: "BUSINESS_STATE", payload: { ok: true, entity_id: entityId,
+          derived: hit.state, typed, agree: typed ? typed === hit.state : null,
+          signals: sig.length, distinct: [...names], last_signal: last, quiet_days: quietDays,
+          rules_from: "config:business:states (KV, editable without a deploy)",
+          note: typed && typed !== hit.state
+            ? "The typed state and the derived state DISAGREE. What the business did wins - a state " +
+              "somebody typed is a claim about the past that stops being true without telling anyone."
+            : "Derived from what the business actually did.",
+          not_answered_here: "WHAT TO OFFER them - free, trial, a dollar, a deal because they are " +
+            "struggling - is a judgement from context, not a lookup from a state. This says what they " +
+            "ARE, never what should happen next." } };
+      }
+
+      if (sub === "LIST") {
+        // The funnel. Every tracked business by derived state - the aggregate view that did not exist,
+        // which is why "how many did we onboard and how many converted" was unanswerable.
+        const keys = await env.AURA_KV.list({ prefix: "business_signals:", limit: 500 });
+        const rows = [];
+        for (const k of (keys.keys || [])) {
+          const id = k.name.replace("business_signals:", "");
+          const r = await processCommand("BUSINESS_STATE READ " + id, env, true).catch(() => null);
+          const p = r && r.payload;
+          if (p && p.ok) rows.push({ entity: id, state: p.derived, signals: p.signals, quiet_days: p.quiet_days });
+        }
+        const byState = rows.reduce((a, r) => { a[r.state] = (a[r.state] || 0) + 1; return a; }, {});
+        return { cmd: "BUSINESS_STATE", payload: { ok: true, tracked: rows.length, by_state: byState,
+          businesses: rows.sort((a, b) => (b.signals || 0) - (a.signals || 0)).slice(0, 50),
+          note: rows.length ? "Derived states, not typed ones." :
+            "No business has recorded a signal yet. Onboarding mints a PTA; it does not by itself mean " +
+            "the business DID anything, and this counts doing.",
+          honest_limit: "Lists businesses that have at least one SIGNAL. A business onboarded and never " +
+            "heard from again has no signals and does not appear - which is accurate and is also the " +
+            "number worth watching." } };
+      }
+
+      return { cmd: "BUSINESS_STATE", payload: { ok: false, error: "Sub-commands: SET, GET, SIGNAL, READ, LIST" } };
     }
 
     // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.928-2026-08-03-pool-sort-and-a-quiet-inbox";
+const BUILD = "aura-core-v4.9.929-2026-08-03-the-moment-producer";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -23252,6 +23252,26 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, permission, relationship, context, created_at, updated_at, group_id, moment_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
         .bind(edgeId, targetId, scanner.id, "grant", "active", groupPerms, JSON.stringify(relContext), intent ? JSON.stringify(intent) : null, now, now, groupId, momentId).run();
 
+      // ══ THE MOMENT PRODUCER (v4.9.929) ═══════════════════════════════════════════════════════
+      // PTA_MOMENT CLAIMS could see who held a moment and PROJECT could report a withdrawal, and
+      // neither could act on it - because no event carried a moment_id. Building the filter first
+      // was declined twice: a filter over a field nothing populates removes nothing and reports
+      // itself as enforcement, which is the exact shape this codebase spent a day removing.
+      // This is the producer. Someone joins a moment; what that join was ABOUT is written as an
+      // event tagged with the moment, under both entities. When either withdraws, their projection
+      // can drop it - and the co-holder's copy is a separate row that stays, which is the
+      // independent-claims rule holding at the data layer rather than only in a note.
+      if (momentId) {
+        try {
+          const momText = "Met at " + (momentName || momentId) +
+            (intent && intent.context ? " - " + String(intent.context).slice(0, 160) : "");
+          await storeEventVector(scanner.id, "moment_" + Date.now(), momText, env, "confirmed",
+            "pta_scan:" + momentId, momentId);
+          await storeEventVector(targetId, "moment_" + Date.now() + "_t", momText, env, "confirmed",
+            "pta_scan:" + momentId, momentId);
+        } catch { /* a moment record must never fail the introduction it describes */ }
+      }
+
       // 7. If moment exists, connect scanner to moment (community formation)
       let momentEdgeId = null;
       if (momentId) {
@@ -27310,7 +27330,7 @@ const TRUST_TIER = {
 };
 const trustRank = (t) => TRUST_TIER[String(t || "").toLowerCase()] ?? TRUST_TIER.inferred;
 
-async function storeEventVector(entityId, eventId, text, env, trust = "inferred", source = null) {
+async function storeEventVector(entityId, eventId, text, env, trust = "inferred", source = null, momentId = null) {
   try {
     const embedding = await embedText(text, env);
     if (!embedding) return false;
@@ -27320,8 +27340,13 @@ async function storeEventVector(entityId, eventId, text, env, trust = "inferred"
       // DEFAULT IS `inferred`, NOT `operator`. Everything already in the index predates this field and
       // will read as inferred - which is honest: nobody recorded where it came from, so it does not
       // get to claim it was verified. An unlabelled memory must never sort above a labelled one.
+      // momentId added 2026-08-03. Twice this was declined as theatre - a filter over a field nothing
+      // populates removes nothing and reports itself as enforcement. PTA_SCAN is the producer that
+      // makes it real: when someone joins a moment, what they were told at that moment is written
+      // here TAGGED WITH IT, so a projection can drop it when they withdraw.
       metadata: { entityId, eventId, text: text.slice(0, 200), ts: Date.now(),
-                  trust: String(trust || "inferred"), source: source ? String(source).slice(0, 80) : null }
+                  trust: String(trust || "inferred"), source: source ? String(source).slice(0, 80) : null,
+                  ...(momentId ? { momentId: String(momentId).slice(0, 40) } : {}) }
     }]);
     return true;
   } catch { return false; }
@@ -27365,6 +27390,7 @@ async function semanticSearch(entityId, query, env, limit = 8) {
       id: m.id || null,
       trust: m.metadata?.trust || "inferred",
       source: m.metadata?.source || null,
+      momentId: m.metadata?.momentId || null,
     })).filter((m) => m.text)
       // ══ TIER FIRST, SIMILARITY SECOND ═══════════════════════════════════════════════════════
       // A lower-trust memory NEVER outranks a higher one for the same query, however similar it is.
@@ -27393,7 +27419,7 @@ async function getSemanticEvents(entityId, query, env, limit = 5, floor = 0.5) {
   // Returns objects now. Callers that want text read .text.
   const r = await semanticSearch(entityId, query, env, limit);
   return r.matches.filter((m) => m.score > floor)
-    .map((m) => ({ text: m.text, trust: m.trust || "inferred", score: m.score, source: m.source || null }));
+    .map((m) => ({ text: m.text, trust: m.trust || "inferred", score: m.score, source: m.source || null, momentId: m.momentId || null }));
 }
 
 async function getHybridEvents(entityId, query, env) {
@@ -27432,7 +27458,7 @@ async function getHybridEvents(entityId, query, env) {
                             ts: e.created_at || null, trust: "inferred", source: "timeline" })),
     ...semantic.filter((x) => !recentTexts.has(x.text))
                .map((x) => ({ type: "semantic", summary: x.text, body: x.text,
-                              trust: x.trust || "inferred", score: x.score, source: x.source })),
+                              trust: x.trust || "inferred", score: x.score, source: x.source, momentId: x.momentId || null })),
   ];
   merged.sort((a, b) => (trustRank(b.trust) - trustRank(a.trust)) || ((b.score || 0) - (a.score || 0)));
   return merged.slice(0, 8);
@@ -27552,7 +27578,7 @@ async function projectUnderGrant(env, actorId, subjectId, query, capability = "v
     // Cheap today because moments are few. Every seat named the same first break: claim-resolution
     // cost at read time, superlinear in holder count. The measurement to watch is read latency
     // against holder count, and this is the line that will show it.
-    const items = await getHybridEvents(subjectId, String(query || ""), env);
+    let items = await getHybridEvents(subjectId, String(query || ""), env);
     try {
       const mine = await db.prepare(
         "SELECT DISTINCT moment_id FROM pta_edges WHERE from_id = ? AND moment_id IS NOT NULL"
@@ -27567,6 +27593,17 @@ async function projectUnderGrant(env, actorId, subjectId, query, capability = "v
         out.moments_total = moments.length;
         out.moments_live_for_subject = held.length;
         out.moments_withdrawn_by_subject = moments.length - held.length;
+        // ══ AND NOW IT ENFORCES (v4.9.929) ══════════════════════════════════════════════════
+        // Events carry a momentId since PTA_SCAN became the producer, so a withdrawal can finally
+        // remove something instead of only being reported. Drops items belonging to moments THIS
+        // subject has left; a co-holder's copy is a different row under their entity and is
+        // untouched - independent claims, at the data layer.
+        const dead = new Set(moments.filter((m) => !held.includes(m)));
+        if (dead.size) {
+          const before = items.length;
+          items = (items || []).filter((e) => !(e.momentId && dead.has(e.momentId)));
+          out.items_dropped_by_withdrawal = before - items.length;
+        }
         if (held.length !== moments.length) {
           out.moment_note = "This subject has withdrawn from " + (moments.length - held.length) +
             " moment(s) it was part of. Those claims are severed for THIS subject. Co-holders are " +
@@ -27588,8 +27625,10 @@ async function projectUnderGrant(env, actorId, subjectId, query, capability = "v
           // storeEventVector would need to accept and record a moment_id, something would need to
           // SET one (nothing does today - writeEvent has no moment parameter), and only then can a
           // projection drop items belonging to moments this subject has left.
-          out.moment_enforcement = "REPORTED, NOT ENFORCED - events carry no moment_id, so there is " +
-            "nothing to filter on. See the note in source for what would have to change first.";
+          out.moment_enforcement = "ENFORCED for events tagged with a moment. PTA_SCAN tags them at " +
+            "the join; anything written before v4.9.929, or by a path that does not know a moment, " +
+            "carries no tag and cannot be dropped - so this removes what it can see and says so " +
+            "rather than implying the whole store is covered.";
         }
       }
     } catch { /* a claim report must never cost the projection it describes */ }

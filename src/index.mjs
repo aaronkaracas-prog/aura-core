@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.932-2026-08-03-no-foreign-model-to-anthropic";
+const BUILD = "aura-core-v4.9.933-2026-08-03-she-reads-what-is-running";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -743,24 +743,17 @@ async function brainFetch(url, opts, env, caller) {
   // MEASURED, egress:2026-08-03: anthropic made 61 calls, 47 recorded as claude-sonnet-4-5, and the
   // remaining 14 appear in `errors_by` as "anthropic 404", in `no_usage`, and NOWHERE in by_model.
   // Fourteen calls a day going out and dying silently.
-  //
   // THE CHAIN: config:brain:model is pinned to grok-build-0.1. The ~34 sites that read that pin build
   // a request with model: "grok-build-0.1". brainFetch tries to redirect it to grok; when that
   // redirect fails it falls through to api.anthropic.com WITH THE MODEL STRING UNCHANGED, so
   // Anthropic receives "grok-build-0.1" and returns 404 for an unknown model.
-  //
   // The comment above is RIGHT that a cost preference must never be the reason a turn dies. The
   // implementation was wrong: falling through to Anthropic only means anything if the request carries
-  // an ANTHROPIC model. As written, the safety net could not catch a single thing - it converted a
-  // soft redirect failure into a hard 404 every time.
-  // I wrote that fallback on 2026-08-01 and did not handle this case.
-  //
-  // A FOREIGN MODEL NAME NEVER REACHES ANTHROPIC. If the pin points elsewhere and the redirect did
-  // not take, the request is completed on a real Claude model rather than refused - one that costs
-  // slightly more is strictly better than one that 404s. Substitution is ANNOUNCED, because a request
+  // an ANTHROPIC model. As written, the safety net could not catch a single thing.
+  // A FOREIGN MODEL NAME NEVER REACHES ANTHROPIC. Substitution is ANNOUNCED, because a request
   // quietly answered by a different model than the caller asked for is its own kind of lie.
-  // Verified against Anthropic's current model list before choosing the default, not from memory:
-  // claude-haiku-4-5-20251001 is valid and current, and is the cheapest Claude rung.
+  // Verified against Anthropic's current model list, not from memory: claude-haiku-4-5-20251001 is
+  // valid and current, and is the cheapest Claude rung.
   try {
     const _m = String(body?.model || "");
     if (_m && !/^claude[-.]/i.test(_m)) {
@@ -769,7 +762,6 @@ async function brainFetch(url, opts, env, caller) {
                    "pinned provider did not take; see the [BRAIN] line above for why.");
       body.model = "claude-haiku-4-5-20251001";
     }
-    // A missing model is the same fault wearing a different hat: Anthropic 400s on an absent model.
     if (!_m) body.model = "claude-haiku-4-5-20251001";
   } catch { /* never let the guard be the thing that breaks the call it is protecting */ }
 
@@ -2340,8 +2332,53 @@ async function readOwnSource(env, branch, worker, fresh) {
                      "cannot be stale for aura-core. Append `fresh` to force a live read." };
     }
   }
-  // 1) raw CDN - no 1MB limit, returns the WHOLE file
+  // ══ 0) CLOUDFLARE FIRST ── SHE SHOULD READ WHAT IS RUNNING, NOT WHAT WAS COMMITTED ═══════════
+  // Every self-read path in this file went to GitHub. GitHub holds what was COMMITTED; Cloudflare
+  // holds what is EXECUTING. VERIFY exists precisely because those diverge, and they did twice on
+  // 2026-07-26 - a failed deploy alongside a successful push left main ten minutes ahead of live,
+  // and a self-read would have described code that was not running.
+  // Aaron's read, and it is the correct one: GitHub is the backup and the diff target. The running
+  // script is the truth about herself.
+  //
+  // `GET /accounts/{id}/workers/scripts/{name}` returns the raw script (Cloudflare API: "Download
+  // Worker"), needing Workers Scripts Read, Workers Scripts Write, or Workers Tail Read.
+  //
+  // THIS WILL OFTEN FAIL AND THAT IS HANDLED. The CF token has been missing Workers:Read for weeks -
+  // VERIFY reports a 403 on the deploy list and that failure is a recorded accepted baseline entry.
+  // So this tries, and falls through to GitHub when it cannot read. WHICH ONE ANSWERED IS REPORTED
+  // in `via`, because "she read herself" meaning two different things silently is how a self-model
+  // drifts from the thing it describes.
+  //
+  // NOT ASSUMED: a module Worker can come back as multipart rather than plain source. looksComplete()
+  // already guards every path here and rejects anything that is not whole source, so a multipart body
+  // falls through to GitHub rather than being greped as if it were code. If `via` never reports
+  // cloudflare once the token has Workers Scripts Read, that is the multipart case and it needs a
+  // parser - not a retry.
+  // Script names are NOT repo names: this worker deploys as `aura-core-v2` (see wrangler.toml `name`).
   try {
+    const _cfTok = await getSecret(env, "cf_api_token");
+    const _cfAcct = (await KV.get(env, "config:cf:account_id")) || "3db0de2c6fce92757e2c4e4f83d7eb16";
+    const CF_SCRIPT = { "aura-core": "aura-core-v2" };
+    const _script = CF_SCRIPT[_w] || _w;
+    if (_cfTok && _branch === "main") {   // a CANDIDATE read is about a branch, which Cloudflare has no notion of
+      const cr = await fetch("https://api.cloudflare.com/client/v4/accounts/" + _cfAcct +
+                             "/workers/scripts/" + _script,
+                             { headers: { "Authorization": "Bearer " + _cfTok, "User-Agent": "aura-self-read" } });
+      if (cr.ok) {
+        const ct = await cr.text();
+        if (looksComplete(ct)) { got = ct; via = "cloudflare:running"; }
+        else console.warn("[SELF-READ] Cloudflare returned " + ct.length + " bytes that are not whole source " +
+                          "(likely multipart) - falling through to GitHub");
+      } else {
+        console.warn("[SELF-READ] Cloudflare script read " + cr.status + " for " + _script +
+                     (cr.status === 403 ? " - the CF token lacks Workers Scripts Read" : "") + "; using GitHub");
+      }
+    }
+  } catch (e) { try { console.warn("[SELF-READ] Cloudflare path threw: " + (e && e.message)); } catch {} }
+
+  // 1) raw CDN - no 1MB limit, returns the WHOLE file. NOW THE FALLBACK, not the first word: this is
+  //    what was committed, which is the right answer for a diff and the wrong one for "what am I".
+  if (got == null) try {
     const sr = await fetch("https://raw.githubusercontent.com/aaronkaracas-prog/" + _repo + "/" + _branch + "/" + _path, { headers: { "User-Agent": "aura-self-read", "Cache-Control": "no-cache" } });
     if (sr.ok) { const t = await sr.text(); if (looksComplete(t)) { got = t; via = "raw_cdn"; } }
     // Branch fallback: main/master. A repo renaming its default branch should not make her blind to

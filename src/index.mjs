@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.909-2026-08-03-recency-does-not-jump-the-queue";
+const BUILD = "aura-core-v4.9.910-2026-08-03-enumerate-then-onboard";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -5453,8 +5453,13 @@ async function successionGate(env) {
         let vRaw = (rest || "").trim();
         let vConfirm = false;
         if (/^CONFIRM\s+/i.test(vRaw)) { vConfirm = true; vRaw = vRaw.replace(/^CONFIRM\s+/i, "").trim(); }
-        let vHint = "";
+        let vHint = "", vWhere = "";
         if (vRaw.includes(":::")) { const sp = vRaw.split(":::"); vRaw = sp[0].trim(); vHint = sp.slice(1).join(":::").trim(); }
+        // "VERTICAL dog grooming in Sacramento CA" - the geography for the category search.
+        if (!vHint) {
+          const mw = vRaw.match(/^(.*?)\s+in\s+(.+)$/i);
+          if (mw) { vRaw = mw[1].trim(); vWhere = mw[2].trim(); }
+        }
         if (!vRaw) return { cmd: "VERTICAL", payload: { ok: false,
           error: "Usage: VERTICAL <name>  |  VERTICAL <name> ::: <entity hint>  |  VERTICAL CONFIRM <name>",
           note: "Dry by default. CONFIRM allows the write-back and the approach." } };
@@ -5489,15 +5494,46 @@ async function successionGate(env) {
         // ONBOARD is the enrolment mechanism: it finds the business itself via Places, the live
         // site and the web, perceives what it is from ONLY what it gathered, and mints the business
         // PTA. Never COMMIT here without confirmation - COMMIT is what sends.
+        // ══ ENUMERATION WAS NEVER MISSING - NOTHING CALLED IT (v4.9.910) ═══════════════════════
+        // The first cut of this walk reported: "nothing enumerates the businesses in a domain, so
+        // 'arrive unassisted' is true for a business you can name and untrue for a domain you
+        // cannot." That was honest about the WALK and wrong about the SYSTEM. FETCH_PLACES is a
+        // CATEGORY search - "dog grooming in Sacramento" returns ten real businesses with names,
+        // addresses, ratings and place_ids. The capability was there; no path led to it.
+        // Same shape as getHybridEvents with no callers, INDUSTRY_LEARN's unwired write-back, and
+        // self:vitals with no reader. A composer's real job is finding these, and it found one by
+        // being honest about what it could not do.
+        //
+        // GEOGRAPHY IS REQUIRED AND NOT INVENTED. A category search without a place returns whatever
+        // Google feels like. If no place is given the walk says so rather than guessing a city and
+        // presenting a national sample as if it were a local one.
         if (vHint) {
           vOut.stages.discover = await vStage("discover", (vConfirm ? "ONBOARD COMMIT " : "ONBOARD ") + vHint);
+          vOut.stages.enumerate = { ok: true, skipped: true, why: "an entity was named, so no search was needed" };
+        } else if (vWhere) {
+          vOut.stages.enumerate = await vStage("enumerate", "FETCH_PLACES " + vRaw + " in " + vWhere);
+          const cands = (vOut.stages.enumerate && vOut.stages.enumerate.places) || [];
+          vOut.candidates = cands.slice(0, 10).map((p) => ({ name: p.name, address: p.address, rating: p.rating }));
+          if (cands.length) {
+            // ONE onboard, not ten. Each is ~45 seconds and a real bill, and ten would blow the turn
+            // budget before the walk finished. The rest are returned as candidates so the operator -
+            // or a later scheduled pass - decides who else is worth the spend.
+            const top = cands[0];
+            const subject = top.name + (top.address ? ", " + top.address : "");
+            vOut.stages.discover = await vStage("discover", (vConfirm ? "ONBOARD COMMIT " : "ONBOARD ") + subject);
+            vOut.discovered_subject = subject;
+            vOut.candidates_not_onboarded = cands.length - 1;
+          } else {
+            vOut.stages.discover = { ok: false, skipped: true,
+              why: "the category search returned nothing for '" + vRaw + " in " + vWhere + "'" };
+          }
         } else {
           vOut.stages.discover = { ok: false, skipped: true,
-            why: "No entity hint given, and discovery of WHICH entities exist in a vertical is the one " +
-                 "stage this system does not have. ONBOARD finds a business you can name; nothing " +
-                 "enumerates the businesses in a domain. That gap is the honest answer to whether the " +
-                 "claim holds unassisted today.",
-            how: "VERTICAL " + vRaw + " ::: <business name>, <city>" };
+            why: "No entity and no place. Enumeration needs a geography - a category search without " +
+                 "one returns an arbitrary national sample and calling that 'the businesses in this " +
+                 "vertical' would be a guess wearing a result's clothes.",
+            how: "VERTICAL " + vRaw + " in <city>   (enumerate, then onboard the top hit)   or   " +
+                 "VERTICAL " + vRaw + " ::: <business name>, <city>   (skip enumeration)" };
         }
         if (vElapsed() > vBudgetMs) return vEarly("discover");
 
@@ -5548,9 +5584,13 @@ async function successionGate(env) {
           "Every stage here is an existing command. This composes them; it adds no capability.",
           vConfirm ? "CONFIRMED - the onboard could send and the industry store was written."
                    : "DRY RUN - nothing was sent, nothing was written back, no onboard committed.",
-          "THE GAP THE WALK EXPOSES: discovery needs a named entity. Nothing in this system enumerates " +
-          "WHICH businesses exist in a vertical it has never seen. Until something does, 'arrive " +
-          "unassisted' is true for a business you can name and untrue for a domain you cannot.",
+          vOut.stages.enumerate && vOut.stages.enumerate.ok && !vOut.stages.enumerate.skipped
+            ? "ENUMERATED from a category search - the businesses were not supplied. One was onboarded; " +
+              "the rest are listed as candidates rather than silently spent on."
+            : "No enumeration ran this walk - an entity was named, or no geography was given.",
+          "WHAT IS STILL NOT AUTOMATIC: which VERTICALS to open, and which candidate is worth the " +
+          "onboard. The walk enumerates within a category once you name the category and the place. " +
+          "Choosing the category is still a human act.",
         ];
         try {
           await env.AURA_KV.put("vertical:" + vSlug + ":" + new Date().toISOString(),

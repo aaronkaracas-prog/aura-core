@@ -249,3 +249,22 @@ class_name = "LedgerDO"
 
 [env.staging.browser]
 binding = "BROWSER"
+
+# ══ NATIVE OBSERVABILITY ── THE PLATFORM ALREADY MEASURES THIS (2026-08-03) ═════════════════════
+# Cloudflare ships per-Worker request counts, error rates, CPU time, wall time and duration, viewable
+# per Worker or aggregated across all of them, with automatic instrumentation of binding operations
+# (KV, R2, Durable Objects) and handler invocations - no code changes required. It was never enabled.
+# Meanwhile runHealthChecks was fetching each worker to guess whether it was alive, and got it wrong
+# about three of them for as long as it has existed. Hand-rolling a worse version of a platform
+# primitive is the thing this project keeps catching itself doing.
+# head_sampling_rate 1 on logs because this is a low-traffic system and losing a log to sampling
+# costs more here than the storage does. Traces at 10% - enough to see shape, not enough to pay for.
+[observability]
+enabled = true
+
+[observability.logs]
+head_sampling_rate = 1
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 0.1

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.926-2026-08-03-a-worker-that-answers-is-alive";
+const BUILD = "aura-core-v4.9.927-2026-08-03-one-roster";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -3878,7 +3878,7 @@ async function watchWorld(env) {
     // WORKER LIVENESS, from the failure counters runHealthChecks already writes every tick. A worker
     // crossing from healthy to failing is the most concrete "something just happened" this system
     // has, and it costs a KV read of a number that was written seconds ago.
-    for (const w of ["aura-ops", "aura-host", "aura-comms"]) {
+    for (const w of AURA_WORKERS) {
       const f = await kv.get("monitor:" + w + ":failures").catch(() => null);
       if (f === null) continue;
       // THREE failures, not one. A single miss is a cold start or a timeout, and emitting a world
@@ -4289,7 +4289,17 @@ async function processCommand(line, env, isOp) {
       // Optional "WORKER <name>" prefix lets Aura read ANY of her workers, not just aura-core.
       // e.g. AURA_READ_SELF WORKER aura-comms GREP greeting. Repos are private, so we fetch via the
       // GitHub contents API with the stored token. No WORKER prefix = aura-core (her default self).
-      const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-think": "src/server.ts", "aura-comms": "src/index.mjs", "aura-host": "src/index.mjs", "aura-media": "src/index.mjs", "aura-ops": "src/index.mjs", "aura-stream": "src/index.mjs" };
+      // ══ ONE ROSTER ── FOUR LISTS DISAGREED ABOUT WHAT SHE IS (v4.9.927) ═════════════════════════════
+// runHealthChecks watched 4 workers. watchWorld watched 3. VERIFY probed 6. The source map knew 5.
+// Cloudflare says 9 scripts are deployed. Every list was written when its own feature was, and none
+// was extended when a worker was added - so aura-media and aura-stream were connected this morning,
+// verified by VERIFY, and invisible to both the health check and Layer C. The BRAIN was health-checked
+// by nothing at all.
+// Declared once. A worker added here is watched, health-checked and probed by everything that reads
+// it - which is the only way a roster stops drifting from the account.
+const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
+
+const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-think": "src/server.ts", "aura-comms": "src/index.mjs", "aura-host": "src/index.mjs", "aura-media": "src/index.mjs", "aura-ops": "src/index.mjs", "aura-stream": "src/index.mjs" };
       let worker = "aura-core";
       let readBranch = "main"; // v4.9.550: CANDIDATE reads the proposal branch (aura-proposes) so she can VERIFY her own edit before it deploys
       let rsArgs = args, rsRest = rest;
@@ -29432,11 +29442,12 @@ async function runHealthChecks(env) {
   const opToken = await getSecret(env, "aura_operator_token")
     || await getSecret(env, "operator_token") || "";
 
+  // Derived from the roster, not hand-listed. The binding name is the worker name uppercased with
+  // dashes to underscores - the convention every binding in wrangler.toml already follows - so
+  // adding a worker to AURA_WORKERS is enough and there is no second list to forget.
   const workers = [
     { name: "aura-core-v2", binding: env.AURA_OPS ? "self" : null },
-    { name: "aura-ops", binding: env.AURA_OPS },
-    { name: "aura-host", binding: env.AURA_HOST },
-    { name: "aura-comms", binding: env.AURA_COMMS }
+    ...AURA_WORKERS.map((w) => ({ name: w, binding: env[w.toUpperCase().replace(/-/g, "_")] || null })),
   ];
 
   for (const worker of workers) {
@@ -31519,8 +31530,8 @@ async function verifyAgainstReality(env) {
   // AURA_MEDIA / AURA_STREAM added 2026-08-02. This map hardcoded four bindings while KNOWN_WORKERS
   // named seven, so two live workers could never be probed and showed up only as "claimed but never
   // answered". A prober that cannot see a worker reports its own blind spot as the worker's absence.
-  const bound = { AURA_OPS: "aura-ops", AURA_HOST: "aura-host", AURA_COMMS: "aura-comms",
-                  AURA_THINK: "aura-think", AURA_MEDIA: "aura-media", AURA_STREAM: "aura-stream" };
+  // Was a hand-written map that drifted from the roster twice. Derived now.
+  const bound = Object.fromEntries(AURA_WORKERS.map((w) => [w.toUpperCase().replace(/-/g, "_"), w]));
   const answering = [];
   for (const [binding, name] of Object.entries(bound)) {
     if (!env[binding] || typeof env[binding].fetch !== "function") { add("worker:" + name, "bound in config", "NO BINDING", false); continue; }

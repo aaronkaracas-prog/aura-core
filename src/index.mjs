@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.901-2026-08-02-verify-covers-the-brain";
+const BUILD = "aura-core-v4.9.902-2026-08-03-the-agent-prefix-is-not-optional";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -30589,7 +30589,14 @@ async function verifyAgainstReality(env) {
       : null;
     let tLive = null;
     try {
-      const r = await env.AURA_THINK.fetch(new Request("https://aura-think/build"));
+      // ══ THE AGENT PREFIX IS NOT OPTIONAL (fixed 2026-08-03) ═══════════════════════════════
+      // First cut asked for a bare "https://aura-think/build". routeAgentRequest only routes paths
+      // shaped /agents/<class>/<instance>/..., so a bare path never reaches the agent at all and the
+      // worker's top-level handler returns "Not found" - which arrives here as "no answer from
+      // /build" and reads like the route is missing. It was not. Two rounds went into blaming the
+      // deploy and then the auth gate before a curl against the FULL path returned it instantly.
+      // Same instance name every other call in this system uses: aura-solid.
+      const r = await env.AURA_THINK.fetch(new Request("https://aura-think/agents/aura-agent/aura-solid/build"));
       const j = await r.json();
       tLive = j?.build || null;
     } catch (e) { tLive = null; }

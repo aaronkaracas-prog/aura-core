@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.907-2026-08-03-seven-sites-one-resolver";
+const BUILD = "aura-core-v4.9.908-2026-08-03-a-memory-knows-where-it-came-from";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -3622,7 +3622,15 @@ async function auraRemember(env, event, kind) {
       // at its call sites, so awaiting here is free in the only sense that matters - it happens.
       try {
         const _subj = await ownerSubject(env);
-        await storeEventVector(_subj, (kind || "moment") + "_" + Date.now(), _txt, env);
+        // ══ THE KIND ALREADY KNOWS THE TIER (v4.9.908) ══════════════════════════════════════
+        // A lesson Aaron wrote and a fact she derived are not the same kind of knowing, and the
+        // caller has always known which - it passes `kind`. Mapping it here means no call site has
+        // to learn a new argument and nothing defaults to a trust it did not earn.
+        const _TIER_OF_KIND = { lesson: "operator", plan: "operator", todo: "operator",
+                                fact: "derived", self_edit: "derived", was_changed: "derived",
+                                learning: "confirmed", scraped: "scraped" };
+        await storeEventVector(_subj, (kind || "moment") + "_" + Date.now(), _txt, env,
+          _TIER_OF_KIND[String(kind || "")] || "inferred", "auraRemember:" + (kind || "moment"));
       } catch { /* an embedding must never break the moment it describes */ }
       // ══ THE INTEREST BUMP USED TO LIVE HERE, AND IT WAS MEASURING THE WRONG THING ═══════════
       // (removed 2026-08-02.) Every moment this function records is AURA'S OWN OUTPUT: a command
@@ -15880,6 +15888,34 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         obRead = JSON.parse(t);
       } catch (e) { return { cmd: "ONBOARD", payload: { ok: false, error: "Understanding pass failed: " + String(e.message), model_used: obModel, discovered } }; }
       // 5) MINT THE BUSINESS PTA from the identity she found
+      // ══ THE GROUNDING SPLIT SURVIVES INTO THE STORE (v4.9.908) ═══════════════════════════════
+      // ONBOARD's whole discipline is that it separates what it PULLED AND VERIFIED from what it
+      // merely saw, and refuses to assert the second. On Wag Hotels that was twenty-two confirmed
+      // facts against six unsure ones. Until now that distinction lived for one turn and died at the
+      // store: everything the onboard learned went into the index at the same trust as everything
+      // else, so six weeks later a thing she was UNSURE about would come back looking exactly like a
+      // thing she had CHECKED.
+      //
+      // That is the poisoning surface in this system, and it is not hypothetical - it is the
+      // MemoryGraft shape exactly: read a page, store a summary, retrieve it later as your own proven
+      // finding. A scraped business site is untrusted input by definition. Storing what it said at
+      // `confirmed` because SHE wrote the summary would be laundering its trust through her.
+      //
+      // So: confirmed facts store as `confirmed`, unsure ones as `unsure`, and the raw scrape is not
+      // stored at all. Fire-and-forget - an index write must never fail an onboard that succeeded.
+      try {
+        const _g = obRead.grounding || {};
+        const _obEnt = "biz:" + String(obRead.business_name || obRaw).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 60);
+        (Array.isArray(_g.confirmed) ? _g.confirmed : []).slice(0, 25).forEach((f, i) => {
+          storeEventVector(_obEnt, "confirmed_" + Date.now() + "_" + i, String(f).slice(0, 300), env,
+            "confirmed", "onboard:" + (obSiteUrl || "web")).catch(() => {});
+        });
+        (Array.isArray(_g.unsure) ? _g.unsure : []).slice(0, 15).forEach((f, i) => {
+          storeEventVector(_obEnt, "unsure_" + Date.now() + "_" + i, String(f).slice(0, 300), env,
+            "unsure", "onboard:" + (obSiteUrl || "web")).catch(() => {});
+        });
+      } catch { /* an index write must never fail an onboard that worked */ }
+
       let obPta = null;
       const obContact = obRead.contact || {};
       const obIdEmail = obContact.email && /@/.test(String(obContact.email)) ? ("email:" + String(obContact.email).trim()) : null;
@@ -26657,14 +26693,51 @@ async function embedText(text, env) {
   } catch { return null; }
 }
 
-async function storeEventVector(entityId, eventId, text, env) {
+// ══ TRUST TIERS ── WHERE A MEMORY CAME FROM, CARRIED INTO RETRIEVAL (v4.9.908) ══════════════════
+//
+// Until now every vector carried {entityId, eventId, text, ts} and NOTHING about its origin, so
+// semanticSearch ranked a scraped stranger's page identically to something Aaron said. Two separate
+// problems turned out to be the same missing field:
+//
+//   QUALITY - fifteen deploy notices outranked real content for hours. They were genuinely the most
+//   SIMILAR text and completely useless. The 2026 retrieval literature says this outright: "the
+//   bottleneck shifts decisively from storage to relevance - ensuring the most USEFUL, not merely the
+//   most SIMILAR, records are returned."
+//
+//   SECURITY - OWASP ASI06 (Memory & Context Poisoning, 2026 Agentic Top 10) prescribes five layers.
+//   MEANING_GATE covers input moderation, SENTRY covers behavioural monitoring, pta_history and the
+//   egress ledger cover forensics. The one absent layer is TRUST-AWARE RETRIEVAL. Published attack
+//   success rates run 80-99.8%, and the reason is stated plainly: "agents trust their own memories
+//   implicitly - there is no external source to validate against."
+//
+//   HONESTY - ONBOARD already computes grounding.confirmed vs grounding.unsure, distinguishing what
+//   it PULLED AND VERIFIED from what it merely saw. That distinction was computed at write and thrown
+//   away at store. This carries it through to the only place it changes an answer.
+//
+// A SORT KEY, NOT A WEIGHT. Tiers order first, similarity orders within a tier. A weight can be
+// overwhelmed by a very similar low-trust match, which is exactly the failure being fixed.
+const TRUST_TIER = {
+  operator:  100,   // Aaron said it
+  derived:    90,   // computed deterministically from her own data - WHERE, VERIFY, AIMARGIN
+  confirmed:  70,   // she pulled it AND verified it (grounding.confirmed)
+  unsure:     40,   // she saw it and could not confirm it (grounding.unsure)
+  inferred:   30,   // a model's summary of any of the above
+  scraped:    20,   // raw third-party text, nobody vouched for it
+};
+const trustRank = (t) => TRUST_TIER[String(t || "").toLowerCase()] ?? TRUST_TIER.inferred;
+
+async function storeEventVector(entityId, eventId, text, env, trust = "inferred", source = null) {
   try {
     const embedding = await embedText(text, env);
     if (!embedding) return false;
     await env.VECTORIZE.upsert([{
       id: `${entityId}:${eventId}`,
       values: embedding,
-      metadata: { entityId, eventId, text: text.slice(0, 200), ts: Date.now() }
+      // DEFAULT IS `inferred`, NOT `operator`. Everything already in the index predates this field and
+      // will read as inferred - which is honest: nobody recorded where it came from, so it does not
+      // get to claim it was verified. An unlabelled memory must never sort above a labelled one.
+      metadata: { entityId, eventId, text: text.slice(0, 200), ts: Date.now(),
+                  trust: String(trust || "inferred"), source: source ? String(source).slice(0, 80) : null }
     }]);
     return true;
   } catch { return false; }
@@ -26697,7 +26770,19 @@ async function semanticSearch(entityId, query, env, limit = 8) {
       text: m.metadata?.text || null,
       ts: m.metadata?.ts || null,
       id: m.id || null,
-    })).filter((m) => m.text);
+      trust: m.metadata?.trust || "inferred",
+      source: m.metadata?.source || null,
+    })).filter((m) => m.text)
+      // ══ TIER FIRST, SIMILARITY SECOND ═══════════════════════════════════════════════════════
+      // A lower-trust memory NEVER outranks a higher one for the same query, however similar it is.
+      // Vectorize returns by cosine alone; this re-sorts what came back. Note the honest limit: topK
+      // is applied by Vectorize BEFORE this sees anything, so a high-trust match ranked 9th by cosine
+      // never arrives to be promoted. Ordering what returns is a real improvement and not the whole
+      // fix - the whole fix is a filtered query per tier, which costs more calls and is a later
+      // decision made with the bill in view.
+      .sort((a, b) => (trustRank(b.trust) - trustRank(a.trust)) || (b.score - a.score));
+    out.trust_note = "Ordered by TRUST TIER first, similarity within tier. A scraped page cannot " +
+      "outrank something the operator said just by being worded more like the question.";
     return out;
   } catch (e) { out.error = String(e && e.message || e); return out; }
 }
@@ -26937,7 +27022,9 @@ async function writeEvent(entityId, sessionId, channel, type, body, summary, env
   // Store vector embedding asynchronously (non-blocking)
   const vectorText = summary || (body ? body.slice(0, 200) : "");
   if (vectorText && entityId) {
-    storeEventVector(entityId, eventId, vectorText, env).catch(() => {});
+    // An event is something that happened and was recorded, not something verified. `confirmed` is
+    // reserved for facts she pulled AND checked - see ONBOARD's grounding split.
+    storeEventVector(entityId, eventId, vectorText, env, "inferred", "writeEvent:" + String(type || "event")).catch(() => {});
   }
   // Invalidate the rendered read cache so the next read rebuilds from D1 truth.
   try { await env.AURA_KV.delete(`readcache:${entityId}`); } catch {}

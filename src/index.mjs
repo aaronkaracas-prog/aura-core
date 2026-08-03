@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.933-2026-08-03-she-reads-what-is-running";
+const BUILD = "aura-core-v4.9.934-2026-08-03-every-worker-one-reader";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -4420,8 +4420,21 @@ const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-think": "src/server.
       }
       const repoPath = KNOWN_WORKERS[worker];
       let srcText;
+      // Declared HERE, beside srcText, not inside the branch that sets it - a `let` inside the try
+      // would be a ReferenceError at the payload below, and node --check does not catch scope.
+      // Third time this exact class has come up in this project; the check is always "is the
+      // declaration in the same block as every read", not "does it parse".
+      let _srcVia = "unknown";
       try {
-        if (worker === "aura-core") {
+        // ══ EVERY WORKER GOES THROUGH ONE READER (fixed 2026-08-03) ══════════════════════════════
+        // Only aura-core used readOwnSource. Every other worker took the inline GitHub branch below,
+        // so the Cloudflare path added minutes earlier reached exactly one of seven workers - and I
+        // said out loud that it reached all of them without checking. It did not.
+        // readOwnSource already handles per-worker repo/path/branch and now tries Cloudflare first,
+        // so routing everything through it means aura-comms and aura-ops - PRIVATE repos that
+        // previously REQUIRED secret:github_token - can be read with no GitHub credential at all.
+        // The inline branch is kept as the fallback for anything readOwnSource cannot resolve.
+        if (true) {
           // v4.9.499: use the FIXED readOwnSource helper (raw CDN first - no 1MB limit - then github blob
           // API, then KV cache, with a completeness check). The old inline code used the github CONTENTS
           // API which truncates at 1MB, so ~9000 lines of this 20000-line file were invisible to self-read,
@@ -4433,6 +4446,7 @@ const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-think": "src/server.
           const _ros = await readOwnSource(env, readBranch, worker, _wantFresh);  // worker: "aura-think" reads her BRAIN, else her hands
           if (!_ros.ok) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Could not read own source (full-file read failed): " + _ros.error } };
           srcText = _ros.source;
+          _srcVia = _ros.via || "unknown";
         } else {
           // other workers are private repos -> GitHub contents API with the stored token
           const ghTok = await getSecret(env, "github_token");
@@ -4446,6 +4460,7 @@ const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-think": "src/server.
           }
           if (got == null) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Could not fetch " + worker + "/" + repoPath + " from GitHub (tried main + master)" } };
           srcText = got;
+          _srcVia = "github-api";
         }
       } catch (e) { return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Fetch failed: " + e.message } }; }
       const srcLines = srcText.split("\n");
@@ -4462,7 +4477,15 @@ const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-think": "src/server.
       const buildLine = (srcLines.find(l => _BUILD_DECL.test(l)) || "").trim();
 
       if (mode === "STAT") {
-        return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "stat", worker, lines: srcLines.length, bytes: srcText.length, build: buildLine, source: worker === "aura-core" ? "github:main" : "github-api" } };
+        return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "stat", worker, lines: srcLines.length, bytes: srcText.length, build: buildLine, // ══ THIS LABEL LIED, AND IT LIED CONFIDENTLY (fixed 2026-08-03) ═══════════════════════
+        // It was hardcoded. The Cloudflare read SUCCEEDED on its first live run - the payload came
+        // back with `var BUILD` (a bundler rewrite of `const`), 78,922 lines and 3.7MB against a
+        // 3.0MB source file, which is unmistakably Cloudflare's compiled script and something GitHub
+        // could never return - and `source` still said "github:main". Trusting it would have meant
+        // concluding the change failed and going to hunt a CF token permission that is fine.
+        // Same defect as the promote status and the bot score: not broken, just confidently wrong
+        // about which question it answered. It reports the ACTUAL path now.
+        source: _srcVia } };
       }
       if (mode === "GREP") {
         const t = rsRest.slice(rsArgs[0].length).trim();

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.934-2026-08-03-every-worker-one-reader";
+const BUILD = "aura-core-v4.9.935-2026-08-03-grep-returns-a-map";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -4490,12 +4490,62 @@ const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-think": "src/server.
       if (mode === "GREP") {
         const t = rsRest.slice(rsArgs[0].length).trim();
         if (!t) return { cmd: "AURA_READ_SELF", payload: { ok: false, error: "Usage: AURA_READ_SELF [WORKER <name>] GREP <term>" } };
+        // ══ GREP WAS THE MOST EXPENSIVE LINE IN THE SYSTEM (fixed 2026-08-03) ════════════════════
+        // It returned up to 60 hits x 240 chars = ~14,400 characters, and every one of those lands in
+        // the model's conversation and is RE-BILLED on every subsequent call of that turn. Measured:
+        // one question that asked her to read her own source made 85 tool calls, grew history from
+        // 8,384 to 70,462 tokens mid-turn, ran 61s then 117s, returned EMPTY both times, and drew
+        // $0.58 of real credits for two answers that never arrived.
+        //
+        // Cloudflare names this exact case in the Project Think announcement: "instead of a hundred
+        // model round-trips to read and analyze files, the LLM generates a single script." The
+        // platform answer is that source should not enter the conversation at all - the model writes
+        // code, the code reads the file, only the FINDING comes back. Every previous attempt here
+        // rationed HOW MUCH source entered context (bounding results at 4,000 chars, capping
+        // fan-out); the bound never fixed it because it was rationing the wrong thing.
+        //
+        // NOT REMOVING THE CAPABILITY. She has caught real bugs by reading herself - a stale promote
+        // pointer, a SOUL block claiming a capability that does not exist. Restricting that would
+        // cost more than it saves. What changes is the SHAPE of the answer, in proportion to the
+        // search:
+        //   FEW hits  -> full lines, exactly as before. A narrow search is cheap and useful.
+        //   MANY hits -> a MAP: line numbers and the enclosing declaration, no source text. She then
+        //                SECTIONs the two or three that matter instead of carrying sixty.
+        // A wide search is a question about WHERE something lives, and a map answers that. Reading
+        // sixty lines to find out there are sixty was always paying for the answer twice.
+        // `FULL` forces raw lines regardless - the escape hatch, because a rule with no override
+        // becomes the thing someone works around.
+        const _wantFull = /\bfull\b/i.test(String(rest || ""));
+        const _term = t.replace(/\s+full\s*$/i, "").trim() || t;
         const hits = [];
         for (let i = 0; i < srcLines.length; i++) {
-          if (srcLines[i].toLowerCase().includes(t.toLowerCase())) hits.push({ line: i + 1, text: srcLines[i].slice(0, 240) });
-          if (hits.length >= 60) break;
+          if (srcLines[i].toLowerCase().includes(_term.toLowerCase())) hits.push({ line: i + 1, text: srcLines[i].slice(0, 240) });
+          if (hits.length >= 200) break;   // raised: the MAP can carry what the line dump could not
         }
-        return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "grep", worker, term: t, count: hits.length, hits } };
+        const NARROW = 8;
+        if (_wantFull || hits.length <= NARROW) {
+          return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "grep", worker, term: _term,
+                   count: hits.length, hits: hits.slice(0, 60),
+                   ...(hits.length > 60 ? { note: "capped at 60 of " + hits.length } : {}) } };
+        }
+        // MAP: where, not what. Walk backwards from each hit to the nearest declaration so a line
+        // number carries meaning without carrying the line.
+        const _DECL = /^\s*(?:export\s+)?(?:async\s+)?(?:function|const|let|var|class)\s+([A-Za-z_$][\w$]*)|^\s*case\s+"([A-Z_0-9]+)"/;
+        const map = hits.map((h) => {
+          let where = null;
+          for (let j = h.line - 1; j >= 0 && j > h.line - 400; j--) {
+            const m = _DECL.exec(srcLines[j]);
+            if (m) { where = m[1] || m[2]; break; }
+          }
+          return where ? h.line + ":" + where : String(h.line);
+        });
+        return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "grep-map", worker, term: _term,
+                 count: hits.length + (hits.length >= 200 ? "+" : ""),
+                 where: map,
+                 note: hits.length + " matches - returning a MAP (line:enclosing-declaration) instead of " +
+                       hits.length + " source lines, because source text lands in the conversation and is " +
+                       "re-billed on every later call this turn. Use `AURA_READ_SELF SECTION <start> <end>` " +
+                       "for the few that matter, or add `full` to this command to force raw lines." } };
       }
       if (mode === "SECTION") {
         const a = parseInt(rsArgs[1], 10), b = parseInt(rsArgs[2], 10);

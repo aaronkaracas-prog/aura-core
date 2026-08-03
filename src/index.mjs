@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.925-2026-08-03-what-happened";
+const BUILD = "aura-core-v4.9.926-2026-08-03-a-worker-that-answers-is-alive";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -3881,7 +3881,11 @@ async function watchWorld(env) {
     for (const w of ["aura-ops", "aura-host", "aura-comms"]) {
       const f = await kv.get("monitor:" + w + ":failures").catch(() => null);
       if (f === null) continue;
-      const state = Number(f) > 0 ? "failing" : "healthy";
+      // THREE failures, not one. A single miss is a cold start or a timeout, and emitting a world
+      // event for it produced 200 events a day of pure churn. The rollback trigger already uses 3 as
+      // the threshold for "this is real" - matching it means the event log and the action agree
+      // about what failing means, instead of one crying wolf while the other waits.
+      const state = Number(f) >= 3 ? "failing" : "healthy";
       await noticeChange(env, "worker", w, state,
         (was, now) => w + " went " + was + " -> " + now);
     }
@@ -29387,13 +29391,39 @@ async function servePage(hostname, pathname, env) {
 // Runs every minute. Checks all worker health endpoints.
 // If a worker fails health check 3 times in a row, auto-rollbacks it.
 
+// ══ THE HEALTH CHECK TESTED A CONTRACT ONLY ONE WORKER IMPLEMENTS (fixed 2026-08-03) ═══════════
+// This demanded /health return JSON with ok:true. `/health` exists in exactly ONE place in this
+// codebase - aura-core. aura-host is a page server that 404s unknown paths; aura-comms and aura-ops
+// were never asked to serve it. So res.json() threw on an HTML body, the catch returned false, and
+// THOSE THREE WORKERS HAVE NEVER PASSED. Not once.
+//
+// It surfaced only when WHAT_HAPPENED read the event log as a SEQUENCE: aura-host and aura-comms
+// oscillating healthy->failing->healthy every minute or two, all day, 200 events. They were not
+// flapping. The counter resets to 0 on any pass and increments on any fail, and watchWorld was
+// reading that churn as a real-world delta.
+//
+// AND IT WAS ONE COUNTER-RESET FROM DOING DAMAGE: three consecutive failures fires
+// ROLLBACK_WORKER. Two permanently-failing workers sat next to an automatic rollback trigger.
+//
+// THE FIX IS THE ONE THIS FILE HAS LEARNED SEVEN TIMES TODAY: a health check must test what the
+// thing actually does. A worker that ANSWERS is alive - that is what VERIFY has always used, and
+// VERIFY has reported all of them healthy all day while this reported the opposite. Two instruments
+// measuring the same thing and disagreeing, with the more optimistic one right.
+// /health with ok:true is still honoured where it exists; anything that responds at all counts.
 async function checkWorkerHealth(binding, name) {
   try {
     const res = await binding.fetch(new Request("https://internal/health"));
-    const data = await res.json();
-    return data?.ok === true;
+    // A response - ANY response, including a 404 - proves the worker is running and routing.
+    // Only a throw means it did not answer.
+    if (!res) return false;
+    try {
+      const data = await res.clone().json();
+      if (data && data.ok === true) return true;
+      if (data && data.ok === false) return false;   // it implements the contract and says it is unwell
+    } catch { /* not JSON - a page server, which is not a failure */ }
+    return true;
   } catch (e) {
-    return false;
+    return false;   // no answer at all: genuinely unreachable
   }
 }
 

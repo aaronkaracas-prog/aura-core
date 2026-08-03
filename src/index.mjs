@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.914-2026-08-03-thirty-sites-one-resolver";
+const BUILD = "aura-core-v4.9.915-2026-08-03-the-fourth-stage";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -5642,6 +5642,85 @@ async function successionGate(env) {
             { expirationTtl: 90 * 24 * 3600 });
         } catch {}
         return { cmd: "VERTICAL", payload: vOut };
+      }
+    }
+    case "FORGET": {
+      // ══ EVICTION ── THE FOURTH STAGE, AND THE ONLY ONE MISSING (v4.9.915) ═══════════════════
+      //
+      //   FORGET                        what would go, and why. Nothing is removed.
+      //   FORGET <subject>              scoped to one entity's vectors
+      //   FORGET CONFIRM [<subject>]    actually deletes
+      //
+      // The memory lifecycle is INGESTION -> STORAGE -> RETRIEVAL -> EVICTION. Three were built.
+      // Nothing in this system has ever deleted a vector: Vectorize carries `upsert` and `query` and
+      // no delete call exists anywhere in 2.9MB. Every KV store is bounded - by TTL or by
+      // cap-and-slice - and the vector index is the one store that only grows. ONBOARD now writes up
+      // to forty vectors per business, so at the scale this is built for it is the store that breaks
+      // first, and it breaks as DEGRADED RETRIEVAL rather than as an error: more neighbours, worse
+      // neighbours, and no signal that anything is wrong.
+      //
+      // WHAT GOES, AND THE ORDER IS THE ARGUMENT. Trust decides. `scraped` and `unsure` are things
+      // she READ and could not verify - the lowest-value and highest-risk rows in the index, and the
+      // exact material a poisoned page would land in. `operator` and `derived` never go: what Aaron
+      // said and what she computed from her own data are the two things worth keeping when space runs
+      // out. That is the same ordering retrieval already uses, applied to removal - one trust model,
+      // two directions.
+      //
+      // DRY BY DEFAULT. Deletion is irreversible and a vector cannot be un-embedded. Nothing here
+      // removes anything without CONFIRM, and the dry run reports exactly what would go.
+      //
+      // NOT A TIMER, DELIBERATELY. Automatic eviction is how a system quietly loses the one memory
+      // that mattered. This is a door someone opens knowing what it costs.
+      if (!isOp) return { cmd: "FORGET", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      {
+        let fRest = (rest || "").trim();
+        let fConfirm = false;
+        if (/^CONFIRM\b/i.test(fRest)) { fConfirm = true; fRest = fRest.replace(/^CONFIRM\s*/i, "").trim(); }
+        const fSubject = fRest || null;
+        if (!env.VECTORIZE) return { cmd: "FORGET", payload: { ok: false, error: "no VECTORIZE binding" } };
+        if (!fSubject) return { cmd: "FORGET", payload: { ok: false,
+          error: "Usage: FORGET <subject> | FORGET CONFIRM <subject>",
+          why: "A subject is required. Vectorize has no list-everything call - it answers a QUERY - so " +
+               "eviction is scoped to an entity whose vectors can be retrieved and inspected. " +
+               "Sweeping the whole index blind is not something this should offer.",
+          examples: ["FORGET pta_a81fbd431e49280d", "FORGET biz:good-dog-spa-grooming-granite-bay"] } };
+
+        // Retrieve a broad sample for this subject. A neutral probe rather than a targeted one -
+        // eviction should see what is THERE, not what matches a question.
+        const probe = await embedText("summary of everything known", env);
+        if (!probe) return { cmd: "FORGET", payload: { ok: false, error: "embedding unavailable - cannot inspect the index" } };
+        const found = await env.VECTORIZE.query(probe, { topK: 100, filter: { entityId: fSubject }, returnMetadata: true });
+        const rows = (found?.matches || []).map((m) => ({ id: m.id, trust: m.metadata?.trust || "inferred",
+          source: m.metadata?.source || null, ts: m.metadata?.ts || null,
+          text: String(m.metadata?.text || "").slice(0, 90) }));
+        const EVICTABLE = new Set(["scraped", "unsure"]);
+        const goes = rows.filter((r) => EVICTABLE.has(String(r.trust).toLowerCase()));
+        const stays = rows.length - goes.length;
+        const byTrust = rows.reduce((a, r) => { a[r.trust] = (a[r.trust] || 0) + 1; return a; }, {});
+
+        if (!fConfirm) {
+          return { cmd: "FORGET", payload: { ok: true, dry_run: true, subject: fSubject,
+            inspected: rows.length, would_evict: goes.length, would_keep: stays, by_trust: byTrust,
+            sample: goes.slice(0, 10).map((r) => ({ trust: r.trust, source: r.source, text: r.text })),
+            policy: "Evicts `scraped` and `unsure` only. `operator`, `derived`, `confirmed` and " +
+                    "`inferred` are kept - what he said and what she computed are the last things to go.",
+            note: "Nothing removed. `FORGET CONFIRM " + fSubject + "` to actually delete.",
+            honest_limit: "topK 100 - this inspects a sample, not the whole subject. A store larger " +
+                          "than that needs repeated runs, and the count above is what was SEEN." } };
+        }
+        if (!goes.length) return { cmd: "FORGET", payload: { ok: true, subject: fSubject, evicted: 0,
+          inspected: rows.length, by_trust: byTrust, note: "Nothing evictable found for this subject." } };
+        let removed = 0, err = null;
+        try {
+          await env.VECTORIZE.deleteByIds(goes.map((r) => r.id));
+          removed = goes.length;
+        } catch (e) { err = String(e?.message ?? e); }
+        return { cmd: "FORGET", payload: { ok: !err, subject: fSubject, evicted: removed,
+          inspected: rows.length, kept: stays, by_trust: byTrust, error: err,
+          note: err ? "Deletion failed and nothing is assumed gone - the count above is what was ASKED to go, " +
+                      "not what went."
+                    : "Removed " + removed + " low-trust vectors. This cannot be undone; a vector cannot be " +
+                      "un-embedded. What she was told and what she derived are untouched." } };
       }
     }
     case "REASONERS": {

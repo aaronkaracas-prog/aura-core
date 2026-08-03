@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.910-2026-08-03-enumerate-then-onboard";
+const BUILD = "aura-core-v4.9.911-2026-08-03-say-why-the-first-walk-cannot-approach";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -5545,6 +5545,20 @@ async function successionGate(env) {
         } else {
           vOut.stages.approach = { ok: false, skipped: true, why: "nothing was discovered to approach" };
         }
+        // ══ THE APPROACH STAGE CANNOT BOOTSTRAP ITSELF (noted 2026-08-03) ═══════════════════════
+        // INDUSTRY_REACH refuses without a learned model, and the model is only written on CONFIRM.
+        // So a dry run can never populate what the next stage needs, and the FIRST walk into any
+        // vertical will always fail here. That is not a bug in either command - it is a real ordering
+        // constraint, and it is stated rather than worked around because the alternative is letting a
+        // dry run write to the store, which would make "dry" a lie.
+        if (vOut.stages.approach && !vOut.stages.approach.ok && !vConfirm &&
+            /No learned model/i.test(String(vOut.stages.approach.error || ""))) {
+          vOut.stages.approach.bootstrap_note =
+            "EXPECTED ON A FIRST DRY WALK. The industry model is written only on CONFIRM, so nothing " +
+            "has taught this vertical yet. Run VERTICAL CONFIRM " + vRaw +
+            (vWhere ? " in " + vWhere : "") + " once - that onboard writes back - and the approach " +
+            "stage has something to draw on from then on.";
+        }
         if (vElapsed() > vBudgetMs) return vEarly("approach");
 
         // ── 4. LEARN BACK ── the arc that was designed and never wired ───────────────────────
@@ -5590,7 +5604,10 @@ async function successionGate(env) {
             : "No enumeration ran this walk - an entity was named, or no geography was given.",
           "WHAT IS STILL NOT AUTOMATIC: which VERTICALS to open, and which candidate is worth the " +
           "onboard. The walk enumerates within a category once you name the category and the place. " +
-          "Choosing the category is still a human act.",
+          "Choosing the category is still a human act. PARKED 2026-08-03 as a named open problem - " +
+          "it is a STRATEGY question, not a discovery one: with 501 doorways and more generated on " +
+          "demand, deciding which to open next needs a value model, not a better search. Do not " +
+          "solve it by ranking on whatever signal is nearest to hand.",
         ];
         try {
           await env.AURA_KV.put("vertical:" + vSlug + ":" + new Date().toISOString(),

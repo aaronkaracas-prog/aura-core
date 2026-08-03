@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.905-2026-08-03-the-composer";
+const BUILD = "aura-core-v4.9.906-2026-08-03-scrape-the-business-not-a-page-about-it";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -15736,14 +15736,37 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       try { const ws = await processCommand("WEB_SEARCH " + obRaw + " official website", env, isOp); const wp = (ws && ws.payload) ? ws.payload : ws; if (wp && wp.ok) discovered.web = { answer: wp.answer || null, sources: wp.sources || [] }; } catch (e) {}
       // 3) SCRAPE â€” Tavily /extract across the homepage + the business's OWN sub-pages (everything).
       // AGGREGATORS are never the business's real site - skip them when picking what to scrape.
-      const AGGREGATOR_RE = /(wikipedia\.org|wikimedia|fandom\.com|linkedin\.com|facebook\.com|instagram\.com|twitter\.com|x\.com|youtube\.com|yelp\.com|tripadvisor|bbb\.org|crunchbase|bloomberg\.com\/profile|zoominfo|dnb\.com|manta\.com|chamberofcommerce|chamber\.|\.chamber|chamber\.net|chamber\.com|chamber\.org|glassdoor|indeed\.com|mapquest|yellowpages|dun)/i;
+      // GOVERNMENT AND DIRECTORY PAGES ABOUT A BUSINESS ARE AGGREGATORS TOO (added 2026-08-03).
+      // The original list caught social and review sites and missed the whole class of official
+      // pages that PROFILE a company - a state loan program, an SEC filing, a city permit register.
+      // ibank.ca.gov/wag-hotels is a page about Wag Hotels written by California, and scraping it
+      // produced a bond manager's biography where a business description should have been.
+      const AGGREGATOR_RE = /(wikipedia\.org|wikimedia|fandom\.com|linkedin\.com|facebook\.com|instagram\.com|twitter\.com|x\.com|youtube\.com|yelp\.com|tripadvisor|bbb\.org|crunchbase|bloomberg\.com\/profile|zoominfo|dnb\.com|manta\.com|chamberofcommerce|chamber\.|\.chamber|chamber\.net|chamber\.com|chamber\.org|glassdoor|indeed\.com|mapquest|yellowpages|dun|\.gov(\/|$)|\.gov\.|sec\.gov|opencorporates|bizapedia|buzzfile|apollo\.io|rocketreach|pitchbook|owler|\.edu(\/|$))/i;
       const webSources = (discovered.web && Array.isArray(discovered.web.sources)) ? discovered.web.sources : [];
       const realWebSource = webSources.find(function (s) { try { return s && s.url && !AGGREGATOR_RE.test(s.url); } catch (e) { return false; } });
       const placesSite = (discovered.places && discovered.places.website) || null;
       const placesIsAggregator = placesSite ? AGGREGATOR_RE.test(placesSite) : false;
+      // ══ DOES THE HOST LOOK LIKE THE BUSINESS (added 2026-08-03) ══════════════════════════════
+      // Cheap, general, and it would have caught this one on its own: a page that IS a business
+      // usually lives on a hostname built from the business's name. "Wag Hotels" -> waghotels.com.
+      // ibank.ca.gov shares nothing with it. Not proof - a real site can be named anything - so it
+      // RANKS rather than rejects, sitting between the authoritative Places answer and the raw
+      // first-web-hit fallback that produced the wrong pick.
+      const obNameTokens = String(obRaw).toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2 &&
+        !/^(the|and|inc|llc|ltd|corp|company|co|of|for)$/.test(t));
+      const hostLooksLikeName = (u) => {
+        try {
+          const h = new URL(u).hostname.toLowerCase().replace(/^www\./, "").replace(/[^a-z0-9]/g, "");
+          return obNameTokens.some((t) => h.includes(t));
+        } catch { return false; }
+      };
+      const namedWebSource = webSources.find((x) => {
+        try { return x && x.url && !AGGREGATOR_RE.test(x.url) && hostLooksLikeName(x.url); } catch { return false; }
+      });
       let obSiteUrl =
         (obHintDomain ? ("https://" + obHintDomain) : null) ||
         (placesSite && !placesIsAggregator ? placesSite : null) ||
+        (namedWebSource ? namedWebSource.url : null) ||
         (realWebSource ? realWebSource.url : null) ||
         placesSite ||
         (webSources[0] && webSources[0].url) ||
@@ -26531,6 +26554,28 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           lng: p.geometry && p.geometry.location ? p.geometry.location.lng : null,
           photo: p.photos && p.photos[0] ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${p.photos[0].photo_reference}&key=${gmKey}` : null
         }));
+        // ══ THE OFFICIAL WEBSITE, WHICH TEXT SEARCH DOES NOT RETURN (v4.9.906) ═══════════════
+        // ONBOARD reads `discovered.places.website` to decide what to scrape. Text Search has no
+        // such field, so it was always undefined and selection fell through to the first non-
+        // aggregator WEB_SEARCH hit. Measured: onboarding Wag Hotels picked ibank.ca.gov - a state
+        // loan-profile PAGE ABOUT the business - scraped nine pages of government boilerplate, and
+        // the understanding pass died on malformed JSON. The right domain was printed in the page it
+        // scraped: "FIND THEM ONLINE: waghotels.com".
+        // Google returns the website from the DETAILS endpoint, keyed by place_id. One extra call for
+        // the top hit only - the authoritative answer for the one place that matters, not ten.
+        try {
+          if (places[0] && places[0].place_id) {
+            const du = "https://maps.googleapis.com/maps/api/place/details/json?place_id=" +
+              encodeURIComponent(places[0].place_id) + "&fields=website,formatted_phone_number,url&key=" + gmKey;
+            const dr = await fetch(du);
+            const dd = await dr.json();
+            if (dd && dd.status === "OK" && dd.result) {
+              places[0].website = dd.result.website || null;
+              places[0].phone = dd.result.formatted_phone_number || null;
+              places[0].maps_url = dd.result.url || null;
+            }
+          }
+        } catch { /* details is an enrichment - never fail the search over it */ }
         const cacheKey = "data:places:" + query.toLowerCase().replace(/\s+/g, "_").slice(0, 80);
         await env.AURA_KV.put(cacheKey, JSON.stringify(places));
         return { cmd: "FETCH_PLACES", payload: { ok: true, query, count: places.length, cached_at: cacheKey, places } };

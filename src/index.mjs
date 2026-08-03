@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.931-2026-08-03-the-timeline-can-see-money";
+const BUILD = "aura-core-v4.9.932-2026-08-03-no-foreign-model-to-anthropic";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -738,6 +738,40 @@ async function brainFetch(url, opts, env, caller) {
       try { console.warn("[BRAIN] redirect threw, falling back to Anthropic: " + (e && e.message)); } catch {}
     }
   }
+
+  // ══ THE FALLBACK GUARANTEED A 404 INSTEAD OF CATCHING ANYTHING (found + fixed 2026-08-03) ═════
+  // MEASURED, egress:2026-08-03: anthropic made 61 calls, 47 recorded as claude-sonnet-4-5, and the
+  // remaining 14 appear in `errors_by` as "anthropic 404", in `no_usage`, and NOWHERE in by_model.
+  // Fourteen calls a day going out and dying silently.
+  //
+  // THE CHAIN: config:brain:model is pinned to grok-build-0.1. The ~34 sites that read that pin build
+  // a request with model: "grok-build-0.1". brainFetch tries to redirect it to grok; when that
+  // redirect fails it falls through to api.anthropic.com WITH THE MODEL STRING UNCHANGED, so
+  // Anthropic receives "grok-build-0.1" and returns 404 for an unknown model.
+  //
+  // The comment above is RIGHT that a cost preference must never be the reason a turn dies. The
+  // implementation was wrong: falling through to Anthropic only means anything if the request carries
+  // an ANTHROPIC model. As written, the safety net could not catch a single thing - it converted a
+  // soft redirect failure into a hard 404 every time.
+  // I wrote that fallback on 2026-08-01 and did not handle this case.
+  //
+  // A FOREIGN MODEL NAME NEVER REACHES ANTHROPIC. If the pin points elsewhere and the redirect did
+  // not take, the request is completed on a real Claude model rather than refused - one that costs
+  // slightly more is strictly better than one that 404s. Substitution is ANNOUNCED, because a request
+  // quietly answered by a different model than the caller asked for is its own kind of lie.
+  // Verified against Anthropic's current model list before choosing the default, not from memory:
+  // claude-haiku-4-5-20251001 is valid and current, and is the cheapest Claude rung.
+  try {
+    const _m = String(body?.model || "");
+    if (_m && !/^claude[-.]/i.test(_m)) {
+      console.warn("[BRAIN] '" + _m + "' is not an Anthropic model and this request is going to " +
+                   "api.anthropic.com - substituting claude-haiku-4-5-20251001. The redirect for the " +
+                   "pinned provider did not take; see the [BRAIN] line above for why.");
+      body.model = "claude-haiku-4-5-20251001";
+    }
+    // A missing model is the same fault wearing a different hat: Anthropic 400s on an absent model.
+    if (!_m) body.model = "claude-haiku-4-5-20251001";
+  } catch { /* never let the guard be the thing that breaks the call it is protecting */ }
 
   // ── 2. L1 ANSWER CACHE: has anyone already asked this exact thing? ──
   let cacheKey = null;

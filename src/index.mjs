@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.911-2026-08-03-say-why-the-first-walk-cannot-approach";
+const BUILD = "aura-core-v4.9.912-2026-08-03-the-eighth-site-and-a-hand-built-json";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -5540,8 +5540,17 @@ async function successionGate(env) {
         // ── 3. APPROACH ── drafted from what was gathered, never from a template ─────────────
         if (vOut.stages.discover && vOut.stages.discover.ok) {
           const co = vOut.stages.discover.business || vOut.stages.discover.name || vHint.split(",")[0].trim();
-          vOut.stages.approach = await vStage("approach",
-            'INDUSTRY_REACH ::: {"industry":"' + vRaw.replace(/"/g, "") + '","company":"' + String(co).replace(/"/g, "") + '"}');
+          // INDUSTRY_REACH parses JSON after ':::'. The composer was building that string with the
+          // company name unescaped - "Good Dog Spa & Grooming Granite Bay, 8769 Auburn Folsom Rd..."
+          // carries commas and an ampersand straight into the payload, so the parse failed and the
+          // command reported "industry and company are required" - true, and not the real cause.
+          // JSON.stringify does the escaping properly; hand-building JSON with string concatenation
+          // is how this breaks every time.
+          const reachArgs = JSON.stringify({
+            industry: String(vRaw).slice(0, 80),
+            company: String(co).split(",")[0].trim().slice(0, 80),
+          });
+          vOut.stages.approach = await vStage("approach", "INDUSTRY_REACH ::: " + reachArgs);
         } else {
           vOut.stages.approach = { ok: false, skipped: true, why: "nothing was discovered to approach" };
         }
@@ -8407,7 +8416,14 @@ async function successionGate(env) {
       // WRITE-BACK mode: distill the observation INTO the model (structure / value_leaks / reach_out_angles)
       const ilApiKey = await getSecret(env, "anthropic");
       if (!ilApiKey) return { cmd: "INDUSTRY_LEARN", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
-      const ilModelName = (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+      // ══ THE EIGHTH SITE, MISSED BY THE FIRST SWEEP (fixed 2026-08-03) ═══════════════════════
+      // v4.9.907 swept seven `callAnthropic(k, { model: await defaultModel(env) })` sites onto an
+      // Anthropic-safe resolver. This one reads config:brain:model INLINE - a different SHAPE, same
+      // BUG - so the regex never saw it and it kept handing grok-build-0.1 to api.anthropic.com.
+      // Result: the distill returned nothing, `raw: ""`, and the error blamed the JSON.
+      // The lesson is the one this codebase keeps paying for: a sweep that matches on FORM misses the
+      // same defect written differently. anthropicModel() is now the only way any of these get a model.
+      const ilModelName = await anthropicModel(env);
       const ilSystem = "You are the INDUSTRY-LEARNING layer of Aura. You maintain a durable, compounding MODEL of an industry so Aura can target it better - reach out to businesses in it with specific, valuable insight before the first reply. You are given the CURRENT model and a NEW OBSERVATION (from onboarding a real company, or from historical/industry data). Integrate the observation: add only what is NEW or sharper, merge duplicates, keep it tight and durable (structural truths about the industry, not one company's trivia). Return ONLY a JSON object, no prose, no fences, with exactly these keys: structure (array of durable facts about what this industry has/does/how it works), value_leaks (array of where money/time/value leaks - the openings Aura can help with), reach_out_angles (array of specific, concrete openers that would make a cold email LAND, grounded in real industry facts), patterns (array of cross-company patterns worth remembering). Each array is the FULL merged list (old + new integrated), deduplicated, most valuable first, capped ~12 items each. Output JSON only.";
       const ilUser = "INDUSTRY: " + ilIndustry + "\n\nCURRENT MODEL:\n" + JSON.stringify({ structure: ilModel.structure, value_leaks: ilModel.value_leaks, reach_out_angles: ilModel.reach_out_angles, patterns: ilModel.patterns }) + "\n\nNEW OBSERVATION:\n" + ilObs;
       try {

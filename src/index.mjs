@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.918-2026-08-03-state-is-derived-not-typed";
+const BUILD = "aura-core-v4.9.919-2026-08-03-the-signal-wire";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -13756,6 +13756,19 @@ async function successionGate(env) {
       const idxAsset = `ss:idx:asset:${scIn.asset}:${now}:${txnId}`;
       await env.AURA_KV.put(idxAsset, txnId).catch(() => {});
       if (ptaEntityId) await env.AURA_KV.put(`ss:idx:pta:${ptaEntityId}:${now}:${txnId}`, txnId).catch(() => {});
+
+      // ══ THE SIGNAL WIRE ── PAID IS THE ONE THAT MATTERS (v4.9.919) ═══════════════════════════
+      // Money moving is the strongest signal a business can send, and the state rules put `paid`
+      // at the top for exactly that reason. Fires on the PTA the transaction landed on, and only
+      // when the charge actually succeeded - a failed or simulated charge is not a conversion, and
+      // a state derived from attempts would flatter the funnel.
+      // Fire-and-forget: recording a payment must never fail the payment.
+      try {
+        if (ptaEntityId && status === "succeeded") {
+          await processCommand("BUSINESS_STATE SIGNAL " + ptaEntityId + " paid " +
+            scAmt + " " + scCur + " mode=" + scMode, env, true);
+        }
+      } catch {}
 
       // ── THE TRANSACTION LANDS ON THEIR CHAIN ─────────────────────────────────────────────────
       // The doctrine, which this path was contradicting: "a purchase attaches to the CHILD'S CHAIN,
@@ -34496,6 +34509,16 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
         // carrying the context, and mark the lead crossed. This is the relationship belonging to
         // whoever created the image - Aaron's image crossing to his mom links Aaron->mom, not Aura->mom.
         const origin = rec.origin || "pta_aura";
+        // ══ THE SIGNAL WIRE (v4.9.919) ══════════════════════════════════════════════════════
+        // Business state is DERIVED from signals, and until now the only thing that emitted one was
+        // a human typing it. Every place a business actually DOES something already existed - this
+        // is the walk to it, not new capability. Three sites, one call each, fire-and-forget:
+        // recording that something happened must never fail the thing that happened.
+        // The tap IS the consent, and it is also the clearest engagement signal there is: a real
+        // person redeemed a real token. Signalled against the ORIGIN - whoever's doorway it was -
+        // because that is whose relationship just moved.
+        try { await processCommand("BUSINESS_STATE SIGNAL " + origin + " visited doorway redeemed by " +
+          String(verifiedPta || "unknown").slice(0, 40), env, true); } catch {}
         try {
           // SAME DUPLICATE RISK AS GRAPH_PUT: a failed check reads as "no edge" and the branch below
           // inserts one. A swallowed error here quietly doubles a relationship.
@@ -36352,6 +36375,16 @@ function openAlbum(idx){
         const idx = JSON.parse(await env.AURA_KV.get("business:claimed:index").catch(() => "[]") || "[]");
         idx.unshift({ id, business: name, email, source, created: record.created, status: record.status });
         await env.AURA_KV.put("business:claimed:index", JSON.stringify(idx.slice(0, 500)));
+        // ══ THE SIGNAL WIRE (v4.9.919) ══════════════════════════════════════════════════════
+        // Business state is DERIVED from signals, and until now the only thing that emitted one was
+        // a human typing it. Every place a business actually DOES something already existed - this
+        // is the walk to it, not new capability. Three sites, one call each, fire-and-forget:
+        // recording that something happened must never fail the thing that happened.
+        // A claim is the strongest signal a business can send short of paying: they came to the
+        // doorway and said this is us. Keyed by the claim id when no PTA is known - an unresolved
+        // identity is still an observable act, and fusing it later is a separate job.
+        try { await processCommand("BUSINESS_STATE SIGNAL " + (record.pta || id) + " claimed " +
+          String(name).slice(0, 60), env, true); } catch {}
         // Everything is an Event â€” write to D1 timeline using the same schema as all other event writes
         try {
           await env.AURA_MEMORY.prepare(

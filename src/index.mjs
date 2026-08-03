@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.912-2026-08-03-the-eighth-site-and-a-hand-built-json";
+const BUILD = "aura-core-v4.9.913-2026-08-03-read-the-payload-do-not-guess-the-field";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -5539,18 +5539,35 @@ async function successionGate(env) {
 
         // ── 3. APPROACH ── drafted from what was gathered, never from a template ─────────────
         if (vOut.stages.discover && vOut.stages.discover.ok) {
-          const co = vOut.stages.discover.business || vOut.stages.discover.name || vHint.split(",")[0].trim();
+          // ══ READ THE PAYLOAD, DO NOT GUESS THE FIELD (fixed 2026-08-03) ══════════════════════
+          // This read `.business` then `.name`, and ONBOARD returns neither - the name lives at
+          // `read.business_name`. Both fallbacks were undefined and vHint is empty on an enumerated
+          // walk, so `co` was "" and INDUSTRY_REACH correctly refused with "industry and company are
+          // required". The error was accurate and the cause was two field names invented from memory
+          // rather than read from the response sitting in front of me.
+          // Ordered by authority: what the onboard PERCEIVED, then what the enumeration matched,
+          // then the operator's hint. Never a bare fallthrough that produces an empty string.
+          const co = (vOut.stages.discover.read && vOut.stages.discover.read.business_name)
+            || (vOut.discovered_subject || "").split(",")[0].trim()
+            || vHint.split(",")[0].trim();
+          if (!co) {
+            vOut.stages.approach = { ok: false, skipped: true,
+              why: "the onboard returned no business name to approach - refusing rather than sending " +
+                   "an empty company into the next stage" };
+          }
           // INDUSTRY_REACH parses JSON after ':::'. The composer was building that string with the
           // company name unescaped - "Good Dog Spa & Grooming Granite Bay, 8769 Auburn Folsom Rd..."
           // carries commas and an ampersand straight into the payload, so the parse failed and the
           // command reported "industry and company are required" - true, and not the real cause.
           // JSON.stringify does the escaping properly; hand-building JSON with string concatenation
           // is how this breaks every time.
+          if (co) {
           const reachArgs = JSON.stringify({
             industry: String(vRaw).slice(0, 80),
             company: String(co).split(",")[0].trim().slice(0, 80),
           });
           vOut.stages.approach = await vStage("approach", "INDUSTRY_REACH ::: " + reachArgs);
+          }
         } else {
           vOut.stages.approach = { ok: false, skipped: true, why: "nothing was discovered to approach" };
         }

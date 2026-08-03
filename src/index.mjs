@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.927-2026-08-03-one-roster";
+const BUILD = "aura-core-v4.9.928-2026-08-03-pool-sort-and-a-quiet-inbox";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -3555,10 +3555,24 @@ async function proxyToAgent(env, line, isOp, ptaId) {
 // memory path instead of breaking. One hook, one destination.
 async function auraRemember(env, event, kind) {
   try {
+    // ══ THE INBOX IS FOR THINGS SHE SHOULD RAISE (fixed 2026-08-03) ═════════════════════════════
+    // Everything landed here, including `act` and `failure` - command receipts of the form
+    // "AURA_READ_SELF: CAPABILITIES -> <200 chars> [1234ms]" that fire on every non-routine command.
+    // WHAT_HAPPENED found sixty of them in one day sitting alongside the five failure shapes the
+    // inbox exists to surface. A channel for things worth raising, filled with routine activity, is
+    // a notification list nobody reads - the same failure as the deploy notices drowning the vector
+    // index, one store over.
+    //
+    // The distinction already existed three lines below, deciding what gets EMBEDDED. It simply was
+    // not applied here. Receipts still reach the timeline and the day ledger; they stop reaching the
+    // channel reserved for "look at this".
+    const _NOT_INBOX = new Set(["act", "failure"]);
+    if (!_NOT_INBOX.has(String(kind || ""))) {
     await env.AURA_KV.put("mem:inbox:" + Date.now() + ":" + Math.random().toString(36).slice(2, 7),
       JSON.stringify({ at: new Date().toISOString(), kind: kind || "moment",
                        event: String(event).slice(0, 400), via: "aura-core" }),
       { expirationTtl: 14 * 24 * 3600 });
+    }
     // ══ THE EMBEDDING PIPELINE WAS BUILT, BOUND, DEPLOYED AND DEAD (wired 2026-07-30) ═══════════
     //
     // embedText / storeEventVector / getSemanticEvents / getHybridEvents have existed for a long
@@ -27329,8 +27343,17 @@ async function semanticSearch(entityId, query, env, limit = 8) {
     const embedding = await embedText(query, env);
     if (!embedding) { out.error = "embedding failed - env.AI unavailable or the model refused the text"; return out; }
     out.embedded = true;
+    // ══ SORT A POOL, NOT THE ANSWER (fixed 2026-08-03) ═══════════════════════════════════════
+    // topK was `limit` - it asked for exactly what it returned, so the trust sort below could only
+    // reorder the 8 items COSINE had already chosen. A memory the operator wrote, ranked 9th by
+    // similarity, never arrived to be promoted: the ranking was tier-first over a similarity-first
+    // shortlist, which is similarity-first wearing a tier-first coat.
+    // Fetch a wider pool, sort by tier, then trim. 40 with metadata is inside Vectorize's ceiling of
+    // 50 (it refuses topK above 50 when returnMetadata is on - measured when FORGET asked for 100),
+    // and the extra rows cost one query rather than one per tier.
+    const POOL = Math.min(40, Math.max(limit * 5, 20));
     const results = await env.VECTORIZE.query(embedding, {
-      topK: limit,
+      topK: POOL,
       filter: { entityId },
       returnMetadata: true
     });
@@ -27350,9 +27373,13 @@ async function semanticSearch(entityId, query, env, limit = 8) {
       // never arrives to be promoted. Ordering what returns is a real improvement and not the whole
       // fix - the whole fix is a filtered query per tier, which costs more calls and is a later
       // decision made with the bill in view.
-      .sort((a, b) => (trustRank(b.trust) - trustRank(a.trust)) || (b.score - a.score));
-    out.trust_note = "Ordered by TRUST TIER first, similarity within tier. A scraped page cannot " +
-      "outrank something the operator said just by being worded more like the question.";
+      .sort((a, b) => (trustRank(b.trust) - trustRank(a.trust)) || (b.score - a.score))
+      // Trim AFTER the tier sort. Trimming first is what made the sort cosmetic.
+      .slice(0, limit);
+    out.trust_note = "Ordered by TRUST TIER first, similarity within tier, from a pool of " + POOL +
+      " candidates trimmed to " + limit + " AFTER sorting. A scraped page cannot outrank something " +
+      "the operator said just by being worded more like the question - and a high-trust memory " +
+      "ranked outside the top " + limit + " by cosine now still arrives to be promoted.";
     return out;
   } catch (e) { out.error = String(e && e.message || e); return out; }
 }

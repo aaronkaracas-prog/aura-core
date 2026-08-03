@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.920-2026-08-03-what-are-they-already-running";
+const BUILD = "aura-core-v4.9.921-2026-08-03-forensics-not-permission";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -5870,7 +5870,7 @@ async function successionGate(env) {
       // supervised act, with Aaron's three laws checked IN THE PATH, and HALTS before anything can reach a
       // user. This is the wire that lets "change yourself" be one instruction instead of four commands.
       //   AURA_EVOLVE <oldtext> ||| <newtext>          -> patch self, wait for the real syntax gate, report
-      //   AURA_EVOLVE PROMOTE                            -> only after a PASS: start the promote pipeline (still 0%, still needs AURA_APPROVE)
+      //   AURA_EVOLVE PROMOTE                            -> only after a PASS: start the promote pipeline (still 0%, serving nobody until a version is deliberately released)
       // THE THREE LAWS, enforced in sequence:
       //   1. Don't break yourself  -> AURA_PROPOSE PATCH's BUILD/export-default check + the real node --check gate (AURA_VALIDATE).
       //   2. Don't break the law   -> the constitutional guard inside AURA_PROPOSE PATCH (refuses patches to laws/identity/boundary/gates).
@@ -5894,8 +5894,30 @@ async function successionGate(env) {
             validate: val && val.payload } };
         }
         const prom = await processCommand("AURA_PROMOTE", env, true);
+        // ══ A RECORD, NOT A GATE (v4.9.921, corrected the same hour) ════════════════════════════
+        // This line printed "It serves nobody until a version is deliberately released." for months and
+        // AURA_APPROVE had no handler. I built the handler. Aaron then corrected the premise: that
+        // sentence is old testing dirt, not the design. He is not the approval step - once she
+        // understands herself she does this under CONTEXT, and a human keystroke was never the plan.
+        // So the gate came straight back out. What stays is the RECORD, which is a different thing
+        // and the one the Council actually asked for: forensics, not permission.
+        //
+        // THE REAL GATES ARE ALL AUTOMATIC AND ALL STILL HERE: node --check on the proposal branch,
+        // the constitutional protected list, the succession grant (revocable, in the graph), and the
+        // 0% upload - Cloudflare serves no traffic at zero. None of them is a person.
+        //
+        // WHAT THIS RECORDS is what she promoted, when, from which build. A self-modifying system
+        // that cannot say what it changed about itself has no forensics, and forensics is the layer
+        // that survives after the gates are gone.
+        try {
+          const hist = await env.AURA_KV.get("promote:log").then((r) => { try { return JSON.parse(r || "[]"); } catch { return []; } });
+          hist.push({ at: new Date().toISOString(), build: BUILD,
+            ok: !!(prom && prom.payload && prom.payload.ok),
+            promote: (prom && prom.payload) || null });
+          await env.AURA_KV.put("promote:log", JSON.stringify(hist.slice(-100)), { expirationTtl: 365 * 24 * 3600 });
+        } catch {}
         return { cmd: "AURA_EVOLVE", payload: { ok: !!(prom && prom.payload && prom.payload.ok), stage: "promote_started",
-          note: "Syntax gate PASSED, so promote pipeline started. It uploads at 0% (no users) and PAUSES at the approval gate. NOTHING is live until Aaron runs AURA_APPROVE. This is Law 3 (cause no harm): the irreversible step stays human.",
+          note: "Syntax gate PASSED, so promote pipeline started. It uploads at 0% and serves nobody until a version is deliberately released. There is no human approval step - the gates are the syntax check, the constitutional list, the succession grant and the 0% upload, and every one of them is automatic. What she promoted is recorded at promote:log.",
           promote: prom && prom.payload } };
       }
 

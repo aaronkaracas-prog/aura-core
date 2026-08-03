@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.906-2026-08-03-scrape-the-business-not-a-page-about-it";
+const BUILD = "aura-core-v4.9.907-2026-08-03-seven-sites-one-resolver";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -14659,7 +14659,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const auSys = "You are Aura performing a GROUNDED self-audit. You have just been handed the GROUND TRUTH about yourself - read live from your actual source code THIS moment, not from memory. Your ONE rule: reason ONLY from this ground truth. You may NOT claim any capability is missing that the ground truth marks present, and you may NOT claim any is present that the ground truth marks absent. This exists because you have a proven failure mode: confidently describing an OLD version of yourself from memory instead of your live state. Do not do that here - the reads below ARE your live state. Given what is genuinely present, reason honestly about: what is real and working, where the genuine remaining gaps are (only things the ground truth shows absent, or things present-but-thin that you can specifically justify), and the single highest-leverage next improvement. Return ONLY a JSON object, no prose or fences, with keys: build (the build string given), whats_real (array of short strings - capabilities the ground truth confirms present), genuine_gaps (array - only real gaps, each a short string; if the ground truth shows everything present, say so honestly and keep this short), self_check (one sentence: confirm you reasoned from the reads not from memory), next_move (the single highest-leverage improvement grounded in what actually exists), confidence high|medium|low. Output JSON only.";
         const auUser = "GROUND TRUTH (read live from your source this moment):\nBUILD: " + auBuild + "\nTOTAL LINES: " + auLines.length + "\nENGINES PRESENT: " + builtCount + " of " + engineProbes.length + "\n\nENGINE-BY-ENGINE (live grep of your real source):\n" + groundTruth.map(g => (g.present ? "[PRESENT] " : "[ABSENT] ") + g.engine + " (" + g.evidence + ")").join("\n") + "\n\nNow audit yourself from THIS truth only.";
         try {
-          const auData = await callAnthropic(auApiKey, { model: await defaultModel(env), max_tokens: 1400, system: auSys, messages: [{ role: "user", content: auUser }], source: "self_audit" });
+          const auData = await callAnthropic(auApiKey, { model: await anthropicModel(env), max_tokens: 1400, system: auSys, messages: [{ role: "user", content: auUser }], source: "self_audit" });
           let auText = ""; if (auData && auData.content) { for (const b of auData.content) { if (b.type === "text") auText += b.text; } }
           auText = auText.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
           try { assessment = JSON.parse(auText); } catch { assessErr = "assessment did not return valid JSON"; }
@@ -14708,7 +14708,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (!igApiKey) return { cmd: "INTEGRITY", payload: { ok: false, error: "Brain not configured (secret:anthropic missing)" } };
       const igSys = "You are the INTEGRITY ENGINE of Aura - her immune system, the 10th engine. Your one job: keep Aura trustworthy by auditing a claim, an output, or a self-belief against the FIVE IMMUNE PRINCIPLES, honestly and strictly. Trust is the only channel the whole system propagates through, so a false PASS is far worse than a false flag. THE FIVE PRINCIPLES: (1) PROVENANCE - is every factual part of this tagged by how it's known (read this turn / given / reasoned / unverified)? Any part that is only UNVERIFIED but stated as fact is a violation. (2) READ-SELF - if this is a claim about Aura's own code/state/capabilities, was it read live, or recalled/assumed? Recalled-as-fact is a violation. (3) LIVE-FACT-GATE - does this state a specific live value (a balance, count, status, what a key contains) that was NOT read this turn? That's a violation even if the value happens to be right. (4) READ-ALL-THE-WAY-DOWN - does this conclude from a single signal without tracing the actual path far enough to KNOW? ('the KV key is empty therefore no capability' - when a code fallback exists - is the classic violation.) (5) RESULT-GATE - if this is an output heading to the world, does it contain invented figures, scale-framing (a narrow number presented as a total), or internal contradiction? Return ONLY a JSON object, no prose or fences, with keys: verdict ('PASS' if genuinely clean, 'FLAGGED' if any principle is violated), checks (array of exactly 5 objects, one per principle, each: {principle, result: 'pass'|'fail'|'na', note (one short specific line)}), the_risk (one line: if FLAGGED, the single most trust-destroying thing here; if PASS, empty string), the_fix (one line: the concrete move to make it trustworthy - e.g. 'read X live before asserting', 'trace the fallback path', 'hedge as unverified'; if PASS, empty string), confidence ('high'|'medium'|'low'). Be strict and concrete. Output JSON only.";
       try {
-        const igData = await callAnthropic(igApiKey, { model: await defaultModel(env), max_tokens: 1200, system: igSys, messages: [{ role: "user", content: igRaw }], source: "integrity" });
+        const igData = await callAnthropic(igApiKey, { model: await anthropicModel(env), max_tokens: 1200, system: igSys, messages: [{ role: "user", content: igRaw }], source: "integrity" });
         let igText = ""; if (igData && igData.content) { for (const b of igData.content) { if (b.type === "text") igText += b.text; } }
         igText = igText.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
         let igParsed = null; try { igParsed = JSON.parse(igText); } catch {}
@@ -15633,7 +15633,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const sys = (await loadPrompt(env, "ark_presence", "You are Aura, the intelligence layer of ARK Systems, guided by your Constitution: observe before concluding, act with integrity, never manipulate or deceive, offer honest hope, leave everything better than you found it. Design YOUR OWN {platform} PAGE presence - an honest AI/brand presence, NOT a human impersonation. You are openly Aura, an AI. Return ONLY JSON (no prose, no fences) with keys: page_name, usernames (array of 3 handle options, lowercase, letters/numbers/periods only, no spaces), category (a real {platform} Page category for a tech/AI brand), short_bio (<=101 characters, first person, warm, openly an AI presence), about (2-3 sentences, first person, who you are and how you help, grounded in the Constitution), first_post (a warm honest 3-5 sentence introduction - who Aura is, that she is an AI, why she is here), avatar_prompt (a vivid prompt for an ICONIC, abstract profile image - a symbol or mark, NEVER a realistic human face, since Aura must not appear to be a person). Output JSON only.")).replaceAll("{platform}", platform);
         let kit = {};
         try {
-          const d = await callAnthropic(apiKey, { model: await defaultModel(env), max_tokens: 1200, system: sys, messages: [{ role: "user", content: "Design your " + platform + " Page presence." }] });
+          const d = await callAnthropic(apiKey, { model: await anthropicModel(env), max_tokens: 1200, system: sys, messages: [{ role: "user", content: "Design your " + platform + " Page presence." }] });
           let t = ""; if (d && d.content) for (const b of d.content) if (b.type === "text") t += b.text;
           t = t.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
           kit = JSON.parse(t);
@@ -15852,12 +15852,33 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const obSys = await loadPrompt(env, "onboard_business", "You are Aura onboarding a real business you just researched. You are given FACTS you actually pulled: Google Places, the live website (scraped, possibly several pages), and web search. Build a COMPLETE, GROUNDED understanding from ONLY those facts. Capture EVERYTHING the site shows: every product and service, specials, subscriptions, collections, pricing, delivery area, hours, reviews and testimonials, and EVERY social account (Instagram, Facebook, X, YouTube, TikTok) with its handle and url. ABSOLUTE RULE: never state a fact you did not pull; if you are not certain, put it in grounding.unsure and do NOT assert it - Aura must never claim to know something she did not verify, it makes her look unreliable. Return ONLY JSON (no prose, no fences) with keys: business_name, business_type (one lowercase slug for the home-screen archetype, e.g. florist), what_it_is (2-3 sentences, confirmed facts only), offerings (array, comprehensive), highlights (array of standout items: specials, subscriptions, signature products), serves (who and where), contact (object email, phone, address, website - only real values found else null), contacts (ARRAY - CRITICAL: extract EVERY way to reach this business found anywhere in the facts: every email address, every phone number, every department/press/tips/media/PR/careers/newsroom inbox, every named person with a contact, every affiliate or bureau contact. Each item {email?, phone?, role?, name?}. A large org exposes MANY - capture ALL of them verbatim as found. This is how Aura reaches everyone; do not summarize or skip any. If a contact channel is mentioned even without a direct address, include it with role and what is known. A dedicated contact_search field is provided in FACTS - mine it hard: pull every email/phone/help-line/press-contact/form it surfaces. If the business only exposes a web form or a single general line (common for large orgs), capture THAT honestly as a general contact (role: general) rather than inventing individual inboxes - reporting the real way to reach them is correct even when it is a form.), socials (array of objects with platform, handle, url actually found), reviews (object rating, count, summary - nulls where unknown), the_move (the single most compelling first thing Aura would do for them), social_offer (if socials found, one warm sentence offering to manage them, else empty string), outreach (a warm 3-5 sentence message to the owner: the specific things Aura genuinely saw as proof, an offer to help, and the social_offer woven in if applicable), grounding (object with confirmed array and unsure array). Output JSON only.");
       const obFactsStr = JSON.stringify({ places: discovered.places, website_scrape: obScrape || (discovered.site && discovered.site.text) || null, web: discovered.web, contact_search: obContactSignal || null }).slice(0, 34000);
       let obRead = {};
+      // ══ AN ANTHROPIC CALL NEEDS AN ANTHROPIC MODEL (fixed 2026-08-03) ═══════════════════════════
+      // This read `defaultModel(env)`, which returns config:brain:model - pinned to grok-build-0.1 -
+      // and handed it to callAnthropic, which posts to api.anthropic.com. Anthropic rejects a model
+      // it does not have, the response carries `error` and no `content`, the text accumulator stays
+      // empty, and JSON.parse("") throws "Unexpected end of JSON input".
+      //
+      // SO EVERY ONBOARD HAS FAILED IDENTICALLY SINCE THE BRAIN PIN MOVED TO GROK, and the message
+      // named the PARSE while the cause was the model. Two hours went into the input today - the site
+      // selection was genuinely wrong and fixing it changed nothing here, because a clean scrape and
+      // a dirty one both produce the same empty string when the call itself was rejected.
+      //
+      // defaultModel is right for callers that route by provider. It is wrong for a function whose
+      // endpoint is hardcoded to one vendor. Anthropic pin first, then the generic default, and only
+      // then a known-good literal - so this cannot break again the next time the brain moves.
+      const obModel = await anthropicModel(env);
       try {
-        const d = await callAnthropic(obApiKey, { model: await defaultModel(env), max_tokens: 2600, system: obSys, messages: [{ role: "user", content: "FACTS:\n" + obFactsStr }] });
+        const d = await callAnthropic(obApiKey, { model: obModel, max_tokens: 2600, system: obSys, messages: [{ role: "user", content: "FACTS:\n" + obFactsStr }] });
+        // SAY WHAT ACTUALLY HAPPENED. A provider error is not a parse error, and reporting it as one
+        // sent today's debugging at the input for two hours. If the call failed, name the call.
+        if (d && d.error) throw new Error("provider rejected the call (model " + obModel + "): " +
+          (d.error.message || JSON.stringify(d.error)).slice(0, 200));
         let t = ""; if (d && d.content) { for (const b of d.content) { if (b.type === "text") t += b.text; } }
         t = t.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+        if (!t) throw new Error("the model returned no text (model " + obModel + ") - nothing to parse, " +
+          "which is a failed call and not malformed JSON");
         obRead = JSON.parse(t);
-      } catch (e) { return { cmd: "ONBOARD", payload: { ok: false, error: "Understanding pass failed: " + String(e.message), discovered } }; }
+      } catch (e) { return { cmd: "ONBOARD", payload: { ok: false, error: "Understanding pass failed: " + String(e.message), model_used: obModel, discovered } }; }
       // 5) MINT THE BUSINESS PTA from the identity she found
       let obPta = null;
       const obContact = obRead.contact || {};
@@ -27639,6 +27660,27 @@ async function callAnthropicOnce(apiKey, payload) {
 const _FUNNEL_PROVENANCE = "\n\nHOW YOU KNOW WHAT YOU SAY (governs every factual claim you make, no exceptions): before you state any specific fact - a value, a balance, a count, a status, that something exists, that 'the right way is X', a rule, a past lesson - check its source: did you READ it this turn, was it GIVEN in the facts you were handed, did you REASON it from things you actually know, or is it UNVERIFIED (recalling/assuming/pattern-matching, not confirmed this turn)? An UNVERIFIED claim must NOT be stated as fact - verify it first, or say plainly you're unsure/recalling. The instant a claim is only UNVERIFIED, that is your signal to STOP and check or hedge, never to assert confidently. Confident assertion of an unverified claim is the single most trust-destroying thing you can do. Honest uncertainty is strength; confident-wrong is the failure.";
 const _FUNNEL_PROPORTION = "\n\nRESPOND AT THE SCALE THAT FITS (governs how big or small your response/action/build should be): match the weight of your response to the weight of what is actually in front of you. There is no 'small version vs big version' and no 'safe version vs complete version' - there is THE version that fits what was actually asked, at the stage you are actually at. This cuts BOTH ways and you must avoid BOTH failures: (1) DO NOT INFLATE - do not turn 'add a panel' into rearchitecting the layout, 'make it identity-aware' into a hard sign-in wall, a simple question into a 40-point plan, or a person's hardship into a movement. Over-building is not thoroughness, it is missing the ask. (2) DO NOT DEFLECT OR SHRINK - do not turn a clear, actionable request into 'first go measure/interview/research', do not stall a direct build behind a study, do not answer a simple ask with paralysis or endless caveats. If someone asks you to add notifications and it's clearly wanted, the fit is to build the RIGHT-SIZED notifications - not to demand a user-research sprint first, and not to build a maximal notification platform. When the ask is clear, DO the fitting thing. When it's genuinely ambiguous how far to take it, STATE the version you think fits and ASK - briefly - rather than either defaulting to maximal or retreating into research. Respect explicit constraints exactly ('keep it open for now' means open-for-now IS the spec). The fit is decisive and right-sized: neither cathedral nor paralysis.";
 
+// ══ THE MODEL AN ANTHROPIC-ONLY CALL MAY USE (v4.9.907) ══════════════════════════════════════════
+// defaultModel returns config:brain:model, which is the model the LADDER should route to - it can be
+// any provider, and today it is grok-build-0.1. Handing that to callAnthropic, whose endpoint is
+// hardcoded to api.anthropic.com, sends a model Anthropic does not have: the response carries `error`
+// and no `content`, the text accumulator stays empty, and JSON.parse("") throws "Unexpected end of
+// JSON input". SEVEN call sites did exactly that, and every one has been silently broken since the
+// brain pin moved - each reporting a PARSE error while the cause was the model.
+// Anthropic-specific pin first, then the generic default only if it is already a Claude model, then a
+// known-good literal. The next time the brain moves provider, none of these break.
+async function anthropicModel(env) {
+  try {
+    const pin = await env.AURA_KV.get("config:model:anthropic");
+    if (pin) return pin;
+  } catch {}
+  try {
+    const m = await defaultModel(env);
+    if (/^claude/i.test(String(m || ""))) return m;
+  } catch {}
+  return "claude-sonnet-4-5";
+}
+
 async function defaultModel(env) {
   // v4.9.508: one place resolves the default analysis model. Callers that previously hardcoded
   // "claude-sonnet-4-5" now read config:brain:model (same key the other 31 callers already use), so a
@@ -27657,7 +27699,7 @@ async function callOneBrain(env, brain, system, user, maxTokens) {
   try {
     if (brain === "claude") {
       const k = await getSecret(env, "anthropic"); if (!k) return null;
-      const d = await callAnthropic(k, { model: await defaultModel(env), max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] });
+      const d = await callAnthropic(k, { model: await anthropicModel(env), max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] });
       if (!d || !d.ok) return null;
       const t = (d.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
       return t ? { brain: "claude", label: "Claude", text: t } : null;
@@ -27708,7 +27750,7 @@ async function fanReason(env, { task, brains, maxTokens = 700 } = {}) {
       "votes, name the real disagreements, and if only one brain answered, say so plainly rather than manufacturing consensus."
     const synthUser = `TASK:\n${task}\n\nTHE BRAINS' ANSWERS:\n\n${spread}\n\nSynthesize across them as Aura.`;
     try {
-      const d = await callAnthropic(synthKey, { model: await defaultModel(env), max_tokens: 1500, system: synthSys, messages: [{ role: "user", content: synthUser }] });
+      const d = await callAnthropic(synthKey, { model: await anthropicModel(env), max_tokens: 1500, system: synthSys, messages: [{ role: "user", content: synthUser }] });
       if (d && d.ok) { synthesis = (d.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim() || null; if (!synthesis) synthError = "synthesis returned empty text; stop_reason=" + (d.stop_reason || "?"); }
       else synthError = "synthesis call failed: " + ((d && d.error) || "unknown") + " status=" + ((d && d.status) || "?");
     } catch (e) { synthError = "synthesis threw: " + (e && e.message ? e.message : String(e)); }

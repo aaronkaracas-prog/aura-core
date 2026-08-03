@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.930-2026-08-03-the-sentence-went-stale-too";
+const BUILD = "aura-core-v4.9.931-2026-08-03-the-timeline-can-see-money";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -5925,7 +5925,52 @@ async function successionGate(env) {
           }
         } catch {}
 
-        // 7. deltas Layer C observed
+        // ══ THE MONEY, AND THE ACTS THAT WERE MISSING (v4.9.931) ═══════════════════════════════
+        // Aura audited WHAT_HAPPENED and found fourteen forensic stores it did not read. Her verdict
+        // on the worst of them: "Biggest miss: money. The comment names the money ledger and the
+        // seven readers never touch egress:, burn:, meter:, truth:spend: or securespend:."
+        // She was right, and it was a false claim in my own comment - a forensic timeline that cannot
+        // say what was spent is missing the most consequential class of act there is.
+        //
+        // ADDED HERE ARE THE ONES THAT ARE GENUINELY FORENSIC - an act with a consequence:
+        //   spend        what left the account, from the day ledger
+        //   claim        outcome:ledger - a prediction committed to before the world answered
+        //   opt-out      somebody told this system to stop, and it did
+        //   wake         the agent used one of its four daily interruptions on a person
+        // NOT ADDED, deliberately: burn:/meter:/truth:spend: duplicate the egress ledger and would
+        // double-count the same dollars; loop:/workflow:/gate: are execution traces rather than acts
+        // and would bury the acts in machinery. A timeline that reports everything reports nothing,
+        // and the deploy-notice flood was today's lesson in exactly that.
+        try {
+          const day = new Date().toISOString().slice(0, 10);
+          const raw = await env.AURA_KV.get("egress:" + day);
+          if (raw) {
+            const e = JSON.parse(raw);
+            if (Number(e.cost_usd) > 0) add(new Date().toISOString(), "spend",
+              "$" + Number(e.cost_usd).toFixed(4) + " across " + (e.calls || 0) + " provider calls today");
+          }
+        } catch {}
+        try {
+          for (const c of (JSON.parse((await env.AURA_KV.get("outcome:ledger:index")) || "[]")).slice(0, 40))
+            add(c.logged, "claim", (c.status || "open") + ": " + String(c.claim).slice(0, 140));
+        } catch {}
+        try {
+          for (const b of (JSON.parse((await env.AURA_KV.get("optout:blocked_log")) || "[]")).slice(0, 40))
+            add(b.at || b.ts, "opt-out", "blocked " + (b.channel || "") + " to " + (b.to || b.identity || "?"));
+        } catch {}
+        try {
+          const ks = await env.AURA_KV.list({ prefix: "pta:wakes:", limit: 40 });
+          for (const k of (ks.keys || [])) {
+            const raw2 = await env.AURA_KV.get(k.name);
+            if (!raw2) continue;
+            const w = JSON.parse(raw2);
+            const n = Array.isArray(w) ? w.length : (w?.count || 0);
+            if (n > 0) add(new Date().toISOString(), "wake",
+              k.name.replace("pta:wakes:", "") + " woken " + n + " time(s)");
+          }
+        } catch {}
+
+        // 8. deltas Layer C observed
         try {
           const day = new Date().toISOString().slice(0, 10);
           for (const e of (JSON.parse((await env.AURA_KV.get("events:" + day)) || "[]")))
@@ -5938,7 +5983,12 @@ async function successionGate(env) {
           total: ev.length, by_source: bySource, timeline: ev.slice(0, 120),
           sources_read: ["chain (tamper-evident)", "promote:log (self-edits)", "pta_history (consent, D1)",
                          "mem:inbox (what she noticed)", "evals:cases (absorbed failures)",
-                         "business_signals (what businesses did)", "events:<day> (world deltas)"],
+                         "business_signals (what businesses did)", "events:<day> (world deltas)",
+                         "egress:<day> (money)", "outcome:ledger (claims committed)",
+                         "optout:blocked_log (somebody said stop)", "pta:wakes (interruptions spent)"],
+          not_read: "burn:, meter:, truth:spend: - they duplicate the egress ledger and would double-" +
+            "count the same dollars. loop:, workflow:, gate:, action: - execution traces rather than " +
+            "acts; including them would bury the acts in machinery. Named rather than silently omitted.",
           note: ev.length ? "Merged by timestamp, newest first. Deterministic - no model decided what belongs here."
                           : "Nothing recorded in this window. On a quiet system that is accurate; it is not proof nothing happened.",
           cannot_see: "Prompt contents, what a shell command actually did, and what a provider returned. " +

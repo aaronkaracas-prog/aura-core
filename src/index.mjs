@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.908-2026-08-03-a-memory-knows-where-it-came-from";
+const BUILD = "aura-core-v4.9.909-2026-08-03-recency-does-not-jump-the-queue";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -26788,10 +26788,15 @@ async function semanticSearch(entityId, query, env, limit = 8) {
 }
 
 async function getSemanticEvents(entityId, query, env, limit = 5, floor = 0.5) {
-  // Kept for getHybridEvents, which expects plain strings. Floor is now a parameter with an honest
-  // default rather than a hard-coded 0.7 nobody had ever validated.
+  // ══ THE TIER WAS SORTED AND THEN THROWN AWAY (fixed 2026-08-03) ═══════════════════════════════
+  // This did `.map(m => m.text)` - flattening to plain strings one function after semanticSearch had
+  // just ordered them by trust. The sort ran, produced the right order, and its only output was
+  // discarded. Measured: a query worded like a deploy notice returned one FIRST, above three
+  // operator-tier lessons, which is impossible if tier ordering survives to the caller.
+  // Returns objects now. Callers that want text read .text.
   const r = await semanticSearch(entityId, query, env, limit);
-  return r.matches.filter((m) => m.score > floor).map((m) => m.text);
+  return r.matches.filter((m) => m.score > floor)
+    .map((m) => ({ text: m.text, trust: m.trust || "inferred", score: m.score, source: m.source || null }));
 }
 
 async function getHybridEvents(entityId, query, env) {
@@ -26809,21 +26814,31 @@ async function getHybridEvents(entityId, query, env) {
   try {
     if (entityId !== "operator" && await isOwnerSubject(env, entityId)) {
       const legacy = await getSemanticEvents("operator", query, env, 5);
-      const seen = new Set(semantic);
-      for (const t of legacy) if (!seen.has(t)) semantic.push(t);
+      const seen = new Set(semantic.map((x) => x.text));
+      for (const t of legacy) if (!seen.has(t.text)) semantic.push(t);
     }
   } catch { /* the bridge must never break the primary read */ }
   
-  // Combine: recent events + semantic events (deduplicated)
-  const recentTexts = new Set(recent.map(e => e.summary || e.body));
-  const combined = [...recent];
-  for (const s of semantic) {
-    if (!recentTexts.has(s)) {
-      combined.push({ type: "semantic", summary: s, body: s });
-      if (combined.length >= 8) break;
-    }
-  }
-  return combined;
+  // ══ RECENCY MUST NOT JUMP THE TRUST QUEUE (fixed 2026-08-03) ══════════════════════════════════
+  // This was `const combined = [...recent]` - the last three timeline events PREPENDED before any
+  // semantic result, unconditionally. getRecentEvents reads the entity timeline, which carries no
+  // trust at all, so the first item returned could always be an untiered event however carefully the
+  // vector side had been ordered. That is exactly what happened: a deploy notice came back above
+  // three operator-tier lessons, and the tier sort was never the thing that put it there.
+  //
+  // Recency still matters - a thing that just happened is often the answer - so it is not demoted,
+  // it is TIERED. A timeline event is `inferred`: recorded, not verified. It now competes rather
+  // than pre-empts, and anything the operator said or she derived sits above it.
+  const recentTexts = new Set(recent.map((e) => e.summary || e.body));
+  const merged = [
+    ...recent.map((e) => ({ type: e.type || "event", summary: e.summary || e.body, body: e.body,
+                            ts: e.created_at || null, trust: "inferred", source: "timeline" })),
+    ...semantic.filter((x) => !recentTexts.has(x.text))
+               .map((x) => ({ type: "semantic", summary: x.text, body: x.text,
+                              trust: x.trust || "inferred", score: x.score, source: x.source })),
+  ];
+  merged.sort((a, b) => (trustRank(b.trust) - trustRank(a.trust)) || ((b.score || 0) - (a.score || 0)));
+  return merged.slice(0, 8);
 }
 
 // ══ PROJECT ── THE READ PATH OF THE INVERSION (v4.9.880, Council rounds 5+6) ══════════════════
@@ -26985,6 +27000,10 @@ async function projectUnderGrant(env, actorId, subjectId, query, capability = "v
       type: e.type || "event",
       text: String(e.summary || e.body || "").slice(0, 600),
       ts: e.ts || null,
+      // Surfaced so a reader can see WHY something ranked where it did. A projection that hides its
+      // own ordering is one nobody can check.
+      trust: e.trust || "inferred",
+      source: e.source || null,
     })).filter((e) => e.text);
     out.count = out.items.length;
     out.ok = true;

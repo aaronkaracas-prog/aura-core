@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.915-2026-08-03-the-fourth-stage";
+const BUILD = "aura-core-v4.9.916-2026-08-03-fifty-with-metadata";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -5689,7 +5689,13 @@ async function successionGate(env) {
         // eviction should see what is THERE, not what matches a question.
         const probe = await embedText("summary of everything known", env);
         if (!probe) return { cmd: "FORGET", payload: { ok: false, error: "embedding unavailable - cannot inspect the index" } };
-        const found = await env.VECTORIZE.query(probe, { topK: 100, filter: { entityId: fSubject }, returnMetadata: true });
+        // ══ 50 IS VECTORIZE'S CEILING WITH METADATA, NOT A CHOICE (fixed 2026-08-03) ═══════════
+        // First cut asked for topK 100 and Vectorize refused by name: "with returnValues=true or
+        // returnMetadata=all, max top K is 50; for a top K up to 100, retry with returnValues=false
+        // and returnMetadata=indexed". The metadata IS the policy here - `trust` decides what goes -
+        // so trading it for reach would mean evicting blind. 50 with metadata beats 100 without.
+        const FORGET_PAGE = 50;
+        const found = await env.VECTORIZE.query(probe, { topK: FORGET_PAGE, filter: { entityId: fSubject }, returnMetadata: true });
         const rows = (found?.matches || []).map((m) => ({ id: m.id, trust: m.metadata?.trust || "inferred",
           source: m.metadata?.source || null, ts: m.metadata?.ts || null,
           text: String(m.metadata?.text || "").slice(0, 90) }));
@@ -5705,8 +5711,11 @@ async function successionGate(env) {
             policy: "Evicts `scraped` and `unsure` only. `operator`, `derived`, `confirmed` and " +
                     "`inferred` are kept - what he said and what she computed are the last things to go.",
             note: "Nothing removed. `FORGET CONFIRM " + fSubject + "` to actually delete.",
-            honest_limit: "topK 100 - this inspects a sample, not the whole subject. A store larger " +
-                          "than that needs repeated runs, and the count above is what was SEEN." } };
+            honest_limit: "Inspects up to " + FORGET_PAGE + " vectors - Vectorize's hard ceiling when " +
+                          "metadata is returned, and metadata is what the policy reads. This is a " +
+                          "SAMPLE, not the subject's whole store: the counts above are what was SEEN, " +
+                          "and a larger store needs repeated runs. Reporting a sample as a total is " +
+                          "how a cleanup convinces someone it finished." } };
         }
         if (!goes.length) return { cmd: "FORGET", payload: { ok: true, subject: fSubject, evicted: 0,
           inspected: rows.length, by_trust: byTrust, note: "Nothing evictable found for this subject." } };

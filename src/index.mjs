@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.902-2026-08-03-the-agent-prefix-is-not-optional";
+const BUILD = "aura-core-v4.9.903-2026-08-03-the-list-is-free";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -4503,6 +4503,27 @@ async function processCommand(line, env, isOp) {
         // dedupe by cmd (fallthrough cases share a body)
         const seenC = new Set(); const uniq = [];
         for (const h of handlers) { if (seenC.has(h.cmd)) continue; seenC.add(h.cmd); uniq.push(h); }
+        // ══ THE LIST IS FREE. THE PROSE ABOUT THE LIST IS NOT. (v4.9.903) ═══════════════════════
+        // This command was ALWAYS making a model call - extract every handler by regex, then send the
+        // whole list to a provider with max_tokens 8000 for a reasoning pass. That is where the
+        // 25-second aborts came from: not a grep over 2.8MB, a nested GENERATION inside another
+        // model's turn. It also billed silently, landing in by_caller as `brainFetch` rather than
+        // against the command that caused it.
+        //
+        // The handler list is DETERMINISTIC - a regex over source, exact, no judgement involved. When
+        // the caller is Aura mid-audit asking "what commands exist", the list IS the answer and the
+        // prose is a re-description of it that costs money, adds latency, and rides in her history as
+        // an 11,895-char FAT tool result that gets re-billed every subsequent turn.
+        //
+        // So: no focus argument, no model call. Ever. `CAPABILITIES <focus>` still reasons, because
+        // "what can I do about onboarding" is a judgement question and that is what a model is for.
+        // Same principle as the ladder - deterministic answers should never reach a rung that bills.
+        if (!focus) {
+          return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "capabilities", worker,
+            handler_count: uniq.length, handlers: uniq, reasoned: false, cost: "$0.00",
+            note: "Deterministic list, extracted from live source by regex. No model call, no tokens. " +
+                  "For a reasoning pass over a specific area: AURA_READ_SELF CAPABILITIES <focus>." } };
+        }
         const apiKey2 = await getSecret(env, "anthropic");
         if (!apiKey2) return { cmd: "AURA_READ_SELF", payload: { ok: true, mode: "capabilities", worker, handler_count: uniq.length, handlers: uniq, note: "Raw handler list (brain not configured for reasoning pass)." } };
         // v4.9.561: was .slice(0, 22000) - which silently DROPPED handlers off the end of her own

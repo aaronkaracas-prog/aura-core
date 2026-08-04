@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.938-2026-08-03-where-stops-matching-itself";
+const BUILD = "aura-core-v4.9.939-2026-08-03-self-is-the-whole-picture";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -4878,8 +4878,37 @@ const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-think": "src/server.
           if (selfR.ok) reasoning = selfR.reasoning;
         } catch {}
       }
+      // ══ ONE COMMAND, WHOLE PICTURE, DERIVED (2026-08-03) ══════════════════════════════════════
+      // The operator's actual ask, restated by him more than once: "when I start a new session I just
+      // want to know what Aura is, what she can do, where she lives - one command." What SELF returned
+      // instead was a narrative typed months ago, with identity_canon_present: false, so it could not
+      // notice its own staleness however well its own comment promised it would.
+      // The four things missing from it - where she lives, which door does what, the goals and the
+      // real distance to them, what is open - ALL ALREADY EXIST as live commands. Nothing new is
+      // needed; they were simply never composed. So SELF now fans out to WHERE / HOW / NORTHSTAR /
+      // TODO / AIMARGIN and returns them beside the identity text.
+      // ALL FIVE ARE DETERMINISTIC - no model call, so this stays free and can be run at the top of
+      // every session without thinking about cost.
+      // IN PARALLEL, because five sequential network reads on a path someone is waiting on is the
+      // shape this project has a standing rule against.
+      // A FAILED DOOR REPORTS ITSELF BY NAME. Never a silent omission: a section quietly missing
+      // reads as "she has none of that", which is exactly the lie this command existed to tell.
+      const _live = {};
+      try {
+        const _doors = [["where", "WHERE"], ["doors", "HOW"], ["goals", "NORTHSTAR"], ["open", "TODO"], ["spend", "AIMARGIN"]];
+        const _res = await Promise.all(_doors.map(async ([k, cmd]) => {
+          try {
+            const out = await processCommand(cmd, env, isOp);
+            const pay = out && out.payload;
+            if (!pay || pay.ok === false) return [k, { unavailable: cmd + " returned " + JSON.stringify(pay && pay.error || "nothing") }];
+            return [k, pay];
+          } catch (e) { return [k, { unavailable: cmd + " threw: " + (e && e.message) }]; }
+        }));
+        for (const [k, v] of _res) _live[k] = v;
+      } catch (e) { _live.error = "live composition failed: " + (e && e.message); }
       return { cmd: "WHO_AM_I", payload: { ok: true, identity, capability_count: engineList.length, identity_canon: identityCanon, the_machine: theMachine, operating_state: opState, reasoning,
-        note: "Identity + the whole machine, returned as data (always works). ARK creates AIX; AIX synthesizes all intelligence; Aura is the flagship application on AIX; the machine is one loop pointed at any domain. Run CAPABILITIES for the live command inventory. Add ::: <question> to also get reasoning on a specific aspect." } };
+        where_i_live: _live.where, canonical_doors: _live.doors, goals: _live.goals, open_items: _live.open, spend_today: _live.spend,
+        note: "ONE COMMAND, WHOLE PICTURE. identity/the_machine are written text; where_i_live, canonical_doors, goals, open_items and spend_today are DERIVED LIVE from WHERE, HOW, NORTHSTAR, TODO and AIMARGIN at the moment you asked - nothing here is stored, so nothing here can be stale. No model call: this is free. Any section reading `unavailable` means that door did not answer; it is never silently omitted. Add ::: <question> for reasoning on a specific aspect." } };
     }
 
     case "AURA_READ_NOTES": {

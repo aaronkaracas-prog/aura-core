@@ -4361,6 +4361,98 @@ async function processCommand(line, env, isOp) {
     case "SHOW_BUILD":
       return { cmd: "SHOW_BUILD", payload: { build: BUILD, worker: "aura-core" } };
 
+    case "AURA_OBSERVE": {
+      // LIVE SELF-OBSERVATION: Aura reads what she is DOING RIGHT NOW. Not source code (that is AURA_READ_SELF),
+      // not configuration - her ARCHIVE and LIVE STATE. What signals fired? What lessons is she trying? What did she just do?
+      // The constant audit trail: as she works, she can ask "what am I doing" and get proof.
+      //
+      //   AURA_OBSERVE                              -> last 20 archive entries (recent activity)
+      //   AURA_OBSERVE SIGNALS                      -> current signal state (what changed this turn)
+      //   AURA_OBSERVE LESSONS                      -> active semantic lessons (what she learned)
+      //   AURA_OBSERVE <tag>                        -> all archive entries tagged with <tag> (signal, synthesis, validated, etc)
+      //   AURA_OBSERVE SEARCH <term>                -> full-text search of archive
+      if (!isOp) return { cmd: "AURA_OBSERVE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+
+      const mode = String(args[0] || "").toUpperCase();
+      const param = String(args.slice(1).join(" ") || "");
+
+      try {
+        const kv = env.AURA_KV;
+        const think = env.AURA_THINK;
+
+        if (!think) return { cmd: "AURA_OBSERVE", payload: { ok: false, error: "AURA_THINK service binding not available" } };
+
+        const result = { ok: true, timestamp: new Date().toISOString(), mode: mode || "recent" };
+
+        // SIGNALS: current state of WHERE, NORTHSTAR, BUSINESS_STATE
+        if (mode === "SIGNALS") {
+          try {
+            const prior = await kv.get("aura:signals:prior");
+            result.signals = prior ? JSON.parse(prior) : { note: "no prior signals recorded yet" };
+          } catch (e) {
+            result.signals = { error: String(e?.message || e) };
+          }
+          return { cmd: "AURA_OBSERVE", payload: result };
+        }
+
+        // LESSONS: active semantic lessons stored in KV
+        if (mode === "LESSONS") {
+          try {
+            const lessons = [];
+            const list = await kv.list({ prefix: "aura:semantic:" });
+            if (list && list.keys) {
+              for (const k of list.keys.slice(0, 10)) {
+                try {
+                  const raw = await kv.get(k.name);
+                  if (raw) {
+                    const lesson = JSON.parse(raw);
+                    lessons.push({
+                      id: k.name,
+                      when_applies: lesson.when_applies,
+                      insight: lesson.insight,
+                      confidence: lesson.confidence,
+                      validation_count: lesson.validation_count,
+                    });
+                  }
+                } catch {}
+              }
+            }
+            result.lessons = lessons.length > 0 ? lessons : { note: "no semantic lessons recorded yet" };
+          } catch (e) {
+            result.lessons = { error: String(e?.message || e) };
+          }
+          return { cmd: "AURA_OBSERVE", payload: result };
+        }
+
+        // Query archive via aura-think's /archive/query endpoint
+        let queryUrl = "https://aura-think/archive/query?limit=20";
+        if (mode === "SEARCH") {
+          queryUrl = `https://aura-think/archive/query?search=${encodeURIComponent(param)}&limit=30`;
+        } else if (mode && mode !== "" && mode !== "RECENT" && mode !== "DEFAULT") {
+          // Treat as a tag filter (signal, synthesis, validated, etc)
+          queryUrl = `https://aura-think/archive/query?tag=${encodeURIComponent(mode)}&limit=30`;
+        }
+
+        const archiveResp = await think.fetch(new Request(queryUrl));
+        const archiveData = await archiveResp.json();
+
+        if (archiveData.ok) {
+          result.archive = {
+            query: archiveData.query,
+            entries: archiveData.results,
+            count: archiveData.count,
+            note: "Live archive snapshot from aura-think"
+          };
+        } else {
+          result.archive = { error: archiveData.error || "archive query failed" };
+        }
+
+        return { cmd: "AURA_OBSERVE", payload: result };
+      } catch (e) {
+        return { cmd: "AURA_OBSERVE", payload: { ok: false, error: String(e?.message || e) } };
+      }
+    }
+
     case "AURA_READ_SELF": {
       // SELF-SIGHT (piece 1 of self-editing pipeline). Aura reads her OWN source from the
       // clean, secret-free GitHub mirror (NEVER from KV, which may hold secrets) and can
@@ -26616,6 +26708,202 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         untagged: usage.aura ? undefined : "no tenant-tagged traffic yet today",
         note: "Every egress row carries a tenant. Aura is client #1 on the same path a customer uses - " +
               "which is the point: the meter needs to know nothing about the application it measures." } };
+    }
+
+    case "AURA_OBSERVE": {
+      // ══ AURA'S LIVE AUDIT TRAIL — CONSTANT INTROSPECTION (2026-08-04) ═════════════════════════════
+      // Aura reads her OWN audit trail: signals, lessons, recent actions, validation outcomes.
+      // Not post-hoc search, but LIVE — what changed this turn, what is she trying, what worked/failed.
+      // Industry standard: if the audit-sink can't be read, the apparatus is theatre.
+      //   AURA_OBSERVE           -> full snapshot (signals, lessons, recent actions)
+      //   AURA_OBSERVE signals   -> just what changed this turn (gates, steps, merchants, funnel)
+      //   AURA_OBSERVE lessons   -> active lessons, confidence scores, validation counts
+      //   AURA_OBSERVE recent    -> archive entries from the last 10 minutes
+      if (!isOp) return { cmd: "AURA_OBSERVE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      
+      const obsMode = (rest.trim().toUpperCase() || "FULL").split(/\s+/)[0];
+      const result = { cmd: "AURA_OBSERVE", payload: { ok: true, mode: obsMode, ts: new Date().toISOString(), snapshot: {} } };
+
+      try {
+        // ══ SIGNALS — WHAT CHANGED THIS TURN ═══════════════════════════════════════════════════════
+        // Read prior state vs current to detect deltas. Logged with identity and timestamp in aura-think.
+        if (obsMode === "FULL" || obsMode === "SIGNALS") {
+          try {
+            const priorSig = await env.AURA_KV.get("aura:signals:prior");
+            const currentSig = await env.AURA_KV.get("aura:signals:current");
+            
+            let sigData = { changes: [], count: 0, note: "No signal changes this turn" };
+            if (priorSig && currentSig) {
+              try {
+                const prior = JSON.parse(priorSig);
+                const current = JSON.parse(currentSig);
+                
+                // Detect gate transitions
+                if (prior.gates !== current.gates) {
+                  const priorGates = prior.gates || {};
+                  const currGates = current.gates || {};
+                  for (const g of Object.keys(currGates)) {
+                    if (priorGates[g] !== currGates[g]) {
+                      sigData.changes.push({ 
+                        type: "gate_transition", 
+                        gate: g, 
+                        from: priorGates[g], 
+                        to: currGates[g] 
+                      });
+                    }
+                  }
+                }
+                
+                // Detect next_real_step changes
+                if (prior.next_real_step !== current.next_real_step) {
+                  sigData.changes.push({
+                    type: "next_step_changed",
+                    from: prior.next_real_step,
+                    to: current.next_real_step
+                  });
+                }
+                
+                // Detect merchant deltas
+                if (prior.active_merchants !== current.active_merchants) {
+                  sigData.changes.push({
+                    type: "active_merchants_changed",
+                    from: prior.active_merchants,
+                    to: current.active_merchants,
+                    delta: (current.active_merchants || 0) - (prior.active_merchants || 0)
+                  });
+                }
+                
+                // Detect business state movement
+                if (prior.business_state_summary !== current.business_state_summary) {
+                  sigData.changes.push({
+                    type: "business_state_delta",
+                    from: prior.business_state_summary,
+                    to: current.business_state_summary
+                  });
+                }
+                
+                sigData.count = sigData.changes.length;
+                if (sigData.count > 0) {
+                  sigData.note = sigData.count + " material change(s) since last turn";
+                }
+              } catch (e) {
+                sigData.parse_error = String(e?.message ?? e);
+              }
+            }
+            
+            result.payload.snapshot.signals = sigData;
+          } catch (e) {
+            result.payload.snapshot.signals = { error: String(e?.message ?? e), note: "Could not read signal state" };
+          }
+        }
+
+        // ══ LESSONS — WHAT SHE'S LEARNING ═════════════════════════════════════════════════════════
+        if (obsMode === "FULL" || obsMode === "LESSONS") {
+          try {
+            const lessonKeys = await env.AURA_KV.list({ prefix: "aura:semantic:learned:" });
+            const lessons = { total: 0, by_confidence: {}, active: [] };
+            
+            if (lessonKeys && lessonKeys.keys) {
+              lessons.total = lessonKeys.keys.length;
+              
+              for (const k of lessonKeys.keys.slice(0, 10)) { // Show top 10
+                try {
+                  const raw = await env.AURA_KV.get(k.name);
+                  if (raw) {
+                    const lesson = JSON.parse(raw);
+                    lessons.by_confidence[lesson.confidence || "unknown"] = 
+                      (lessons.by_confidence[lesson.confidence || "unknown"] || 0) + 1;
+                    
+                    lessons.active.push({
+                      id: lesson.id,
+                      when_applies: lesson.when_applies,
+                      insight: lesson.insight,
+                      confidence: lesson.confidence,
+                      validation_count: lesson.validation_count,
+                      last_validated: lesson.last_validated
+                    });
+                  }
+                } catch {}
+              }
+            }
+            
+            result.payload.snapshot.lessons = lessons;
+          } catch (e) {
+            result.payload.snapshot.lessons = { error: String(e?.message ?? e), note: "Could not read lessons" };
+          }
+        }
+
+        // ══ RECENT ACTIONS — WHAT SHE JUST DID ═════════════════════════════════════════════════════
+        if (obsMode === "FULL" || obsMode === "RECENT") {
+          try {
+            // Query aura-think's archive for recent entries (last 10 minutes)
+            const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
+            const recentEntries = {
+              actions: [],
+              failures: [],
+              validations: [],
+              note: "Last 10 minutes of audit entries from aura-think archive"
+            };
+            
+            // Fetch archive search from aura-think
+            try {
+              const archiveUrl = "https://aura-think.aaronkaracas.workers.dev/archive/export?since=" + tenMinutesAgo;
+              const archRes = await fetch(archiveUrl, { 
+                headers: { Authorization: "Bearer " + (env.AURA_TOKEN || "") }
+              });
+              
+              if (archRes.ok) {
+                const archData = await archRes.json();
+                if (archData && archData.entries) {
+                  for (const e of archData.entries.slice(0, 20)) {
+                    if (e.tag && e.tag.includes("acted:")) recentEntries.actions.push(e);
+                    else if (e.tag && e.tag.includes("failure:")) recentEntries.failures.push(e);
+                    else if (e.tag && e.tag.includes("validated:")) recentEntries.validations.push(e);
+                  }
+                }
+              }
+            } catch {}
+            
+            result.payload.snapshot.recent = recentEntries;
+          } catch (e) {
+            result.payload.snapshot.recent = { error: String(e?.message ?? e), note: "Could not fetch recent archive" };
+          }
+        }
+
+        // ══ VALIDATION OUTCOMES — WHAT WORKED/FAILED ═══════════════════════════════════════════════
+        if (obsMode === "FULL") {
+          try {
+            const validationKeys = await env.AURA_KV.list({ prefix: "validated:" });
+            const validations = { total: 0, by_outcome: {}, recent: [] };
+            
+            if (validationKeys && validationKeys.keys) {
+              validations.total = validationKeys.keys.length;
+              
+              for (const k of validationKeys.keys.slice(0, 5)) {
+                try {
+                  const raw = await env.AURA_KV.get(k.name);
+                  if (raw) {
+                    validations.recent.push({
+                      key: k.name,
+                      entry: raw.slice(0, 200) // First 200 chars
+                    });
+                  }
+                } catch {}
+              }
+            }
+            
+            result.payload.snapshot.validations = validations;
+          } catch (e) {
+            result.payload.snapshot.validations = { error: String(e?.message ?? e) };
+          }
+        }
+
+      } catch (e) {
+        result.payload.ok = false;
+        result.payload.error = String(e?.message ?? e);
+      }
+
+      return result;
     }
 
     case "AIMARGIN": {

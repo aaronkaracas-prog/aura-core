@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.937-2026-08-03-status-clears-every-gate";
+const BUILD = "aura-core-v4.9.938-2026-08-03-where-stops-matching-itself";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -26066,7 +26066,35 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
             }
             items.push({ name, kind, desc, line: i + 1 });
           }
-          const build = (src.match(/const BUILD = "([^"]+)"/) || [])[1] || null;
+          // ══ THE REGEX MATCHED ITS OWN SOURCE TEXT (found + fixed 2026-08-03) ══════════════════
+          // Surfaced the moment the `world` context block put WHERE's output in front of Aura:
+          //   aura-core:  build ([^          <- the capture group, not a build
+          //   aura-comms: build ?            aura-ops: build ?
+          //   aura-think: build v1.2.0       <- two deploys stale
+          // Two faults in one line.
+          // 1. SELF-MATCH. The old pattern was /const BUILD = "([^"]+)"/ and this file CONTAINS that
+          //    regex as literal characters. Since v4.9.933 self-read comes from Cloudflare's BUNDLED
+          //    script, where the regex literal is just more text - so it found its own definition
+          //    first and captured `([^`. A search for a declaration matched the search itself.
+          // 2. `const` ONLY. Bundling rewrites `const BUILD` to `var BUILD`, so every other worker
+          //    read as `?` - not missing, just declared with a keyword the pattern refused.
+          // FIX: anchor to a line start, accept const/let/var, take the LAST match (the bundler emits
+          // the real declaration after any incidental text), and require the value to LOOK like a
+          // build - a name, a v-number and a date. A value that fails that test returns null rather
+          // than a plausible fragment, because a wrong build string in her self-image is worse than
+          // an absent one: she reasons from it and cannot tell it is wrong.
+          const build = (() => {
+            const all = [...src.matchAll(/^\s*(?:const|let|var)\s+BUILD\s*=\s*"([^"]+)"/gm)].map((m) => m[1]);
+            const real = all.filter((v) => /^[a-z][\w-]*-v[\d.]+/i.test(v));
+            // PREFER THE WORKER BEING READ. Last-match alone was not safe: this file quotes other
+            // workers' build strings in comments (aura-comms-v7.9.10 appears in the notes above), and
+            // a comment could win. Matching the prefix to `w` makes the right answer structural
+            // rather than positional. Fall back to the last real-looking build only if the prefix
+            // finds nothing - and to null if nothing looks like a build at all.
+            const mine = real.filter((v) => v.toLowerCase().startsWith(String(w).toLowerCase()));
+            if (mine.length) return mine[mine.length - 1];
+            return real.length ? real[real.length - 1] : null;
+          })();
           const hit = wTerm
             ? items.filter((x) => x.name.toLowerCase().includes(wTerm) || (x.desc || "").toLowerCase().includes(wTerm))
             : items;

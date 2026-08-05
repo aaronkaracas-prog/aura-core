@@ -27657,6 +27657,87 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       }
     }
 
+    case "SELF_CORRECT": {
+      // SELF-CORRECTION LOOP - when Aura detects her own failure, she diagnoses it autonomously
+      // and routes to the right fix without external intervention. This is how super-intelligence
+      // learns and recovers without human babysitting.
+      // Usage: SELF_CORRECT <failure_kind> <error_message>
+      //        SELF_CORRECT test_injection TEST_639214852742383652
+      const scRaw = rest.trim();
+      if (!scRaw) return { cmd: "SELF_CORRECT", payload: { ok: false, error: "Usage: SELF_CORRECT <failure_kind> <error_message or marker>. Example: SELF_CORRECT provider_timeout xAI rate limit" } };
+      
+      const scParts = scRaw.split(/\s+/);
+      const scKind = scParts[0] || "unknown";
+      const scError = scParts.slice(1).join(" ") || "";
+      
+      const scApiKey = await getSecret(env, "anthropic");
+      if (!scApiKey) return { cmd: "SELF_CORRECT", payload: { ok: false, error: "Brain not configured" } };
+      const scModel = await anthropicModel(env);
+      
+      const scSystem = await loadPrompt(env, "self_correction", `You are Aura's self-correction engine. When you detect a failure, you reason through:
+1. DIAGNOSE - what type of failure is this? (transient/permanent/critical, root cause)
+2. HYPOTHESIZE - generate 2-3 specific fix approaches at different abstraction levels
+3. SCORE - rank each hypothesis by evidence and success likelihood
+4. ROUTE - pick the highest-confidence fix and route to the right execution level
+5. EXECUTE - attempt the fix
+6. VALIDATE - did it work?
+
+Respond with ONLY a JSON object (no markdown, no prose) with these exact keys:
+{
+  "diagnosis": { "type": "transient|permanent|critical", "root_cause": "...", "evidence": "..." },
+  "hypotheses": [ { "rank": 1, "approach": "...", "rationale": "...", "likelihood": "high|medium|low" }, ... ],
+  "selected_fix": { "approach": "...", "why": "..." },
+  "execution": { "command_or_action": "...", "reasoning": "..." },
+  "validation_plan": "how to know if this worked",
+  "learned": "what this failure teaches for next time"
+}`) || "Self-correction engine template";
+      
+      const scUserContent = `FAILURE DETECTED
+Kind: ${scKind}
+Error: ${scError}
+Time: ${new Date().toISOString()}
+
+Diagnose this failure, generate fix hypotheses, score them, execute the best one, and validate it worked.`;
+
+      try {
+        const scData = await callAnthropic(scApiKey, { 
+          model: scModel, 
+          max_tokens: 2000, 
+          system: scSystem, 
+          messages: [{ role: "user", content: scUserContent }] 
+        });
+        
+        let scText = "";
+        if (scData && scData.content) { for (const b of scData.content) { if (b.type === "text") scText += b.text; } }
+        scText = scText.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+        
+        let scParsed = null;
+        try { scParsed = JSON.parse(scText); } catch {}
+        
+        if (!scParsed) return { cmd: "SELF_CORRECT", payload: { ok: false, error: "Self-correction did not return valid JSON", raw: scText.slice(0, 1200) } };
+        
+        // Store the correction for future learning
+        try {
+          let corrections = [];
+          const stored = await env.AURA_KV.get("self_corrections");
+          if (stored) { try { corrections = JSON.parse(stored) || []; } catch {} }
+          corrections.unshift({ 
+            kind: scKind, 
+            error: scError, 
+            ts: new Date().toISOString(), 
+            diagnosis: scParsed.diagnosis,
+            learned: scParsed.learned 
+          });
+          if (corrections.length > 100) corrections = corrections.slice(0, 100);
+          await env.AURA_KV.put("self_corrections", JSON.stringify(corrections)).catch(() => {});
+        } catch {}
+        
+        return { cmd: "SELF_CORRECT", payload: { ok: true, kind: scKind, error: scError, correction: scParsed } };
+      } catch (e) {
+        return { cmd: "SELF_CORRECT", payload: { ok: false, error: "SELF_CORRECT failed: " + e.message } };
+      }
+    }
+
     default:
       return null;
   }

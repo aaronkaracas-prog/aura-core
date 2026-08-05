@@ -27657,6 +27657,194 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       }
     }
 
+    case "SELF_ANALYZE": {
+      // SELF-ANALYSIS — Aura validates hypotheses about her own capabilities against real state.
+      // Not "what do you think about yourself" (external LLM guessing). Rather: "IS THIS TRUE ABOUT ME?"
+      // Process: gather evidence directly (WHO_AM_I, OBSERVE, source greps) → validate via reasoning.
+      // Usage: SELF_ANALYZE <hypothesis>
+      //        SELF_ANALYZE I have no continuity across turns
+      //        SELF_ANALYZE My lessons block is empty
+      //        SELF_ANALYZE I cannot perceive myself
+      const saRaw = rest.trim();
+      if (!saRaw) return { cmd: "SELF_ANALYZE", payload: { ok: false, error: "Usage: SELF_ANALYZE <hypothesis>. Example: SELF_ANALYZE I have no continuity across turns" } };
+      
+      const saApiKey = await getSecret(env, "anthropic");
+      if (!saApiKey) return { cmd: "SELF_ANALYZE", payload: { ok: false, error: "Brain not configured" } };
+      const saModel = await anthropicModel(env);
+      
+      // GATHER EVIDENCE LAYER — direct state inspection, no reasoning yet
+      const evidence = {
+        timestamp: new Date().toISOString(),
+        hypothesis: saRaw,
+        evidence_gathered: {}
+      };
+      
+      try {
+        // 1. WHO_AM_I — identity, capabilities, live state composition
+        try {
+          const whoResult = await processCommand("WHO_AM_I", env, true);
+          if (whoResult && whoResult.payload && whoResult.payload.ok) {
+            evidence.evidence_gathered.identity = {
+              capability_count: whoResult.payload.capability_count,
+              where_i_live: whoResult.payload.where_i_live ? "present" : "missing",
+              canonical_doors: whoResult.payload.canonical_doors ? "present" : "missing",
+              goals: whoResult.payload.goals ? "present" : "missing",
+              open_items: whoResult.payload.open_items ? "present" : "missing",
+              spend_today: whoResult.payload.spend_today ? "present" : "missing",
+              identity_present: true
+            };
+          }
+        } catch (e) {
+          evidence.evidence_gathered.identity = { error: String(e?.message) };
+        }
+        
+        // 2. AURA_OBSERVE LESSONS — check if lessons actually exist
+        try {
+          const lessonsResult = await processCommand("AURA_OBSERVE LESSONS", env, true);
+          if (lessonsResult && lessonsResult.payload) {
+            const lessons = lessonsResult.payload.lessons;
+            evidence.evidence_gathered.lessons = {
+              present: lessons && !lessons.error && !lessons.note,
+              count: Array.isArray(lessons) ? lessons.length : 0,
+              sample: Array.isArray(lessons) ? lessons.slice(0, 2) : lessons
+            };
+          }
+        } catch (e) {
+          evidence.evidence_gathered.lessons = { error: String(e?.message) };
+        }
+        
+        // 3. AURA_OBSERVE SIGNALS — check if signals are being read
+        try {
+          const signalsResult = await processCommand("AURA_OBSERVE SIGNALS", env, true);
+          if (signalsResult && signalsResult.payload) {
+            evidence.evidence_gathered.signals = {
+              present: signalsResult.payload.signals && !signalsResult.payload.signals.error,
+              sample: signalsResult.payload.signals
+            };
+          }
+        } catch (e) {
+          evidence.evidence_gathered.signals = { error: String(e?.message) };
+        }
+        
+        // 4. CAPABILITIES count — verify tool inventory
+        try {
+          const capResult = await processCommand("CAPABILITIES", env, true);
+          if (capResult && capResult.payload) {
+            evidence.evidence_gathered.capabilities = {
+              count: capResult.payload.count || 0,
+              categories: capResult.payload.categories ? Object.keys(capResult.payload.categories).length : 0
+            };
+          }
+        } catch (e) {
+          evidence.evidence_gathered.capabilities = { error: String(e?.message) };
+        }
+        
+        // 5. Read source for self-reference keywords (grep equivalent)
+        try {
+          const srcResult = await readOwnSource(env);
+          if (srcResult.ok) {
+            const source = srcResult.source;
+            evidence.evidence_gathered.source = {
+              has_lessons: source.includes("lesson") || source.includes("semantic"),
+              has_continuity: source.includes("continue") || source.includes("persist") || source.includes("compound"),
+              has_observe: source.includes("OBSERVE") || source.includes("observe"),
+              has_perception: source.includes("perceive") || source.includes("PERCEIVE"),
+              source_ok: true
+            };
+          }
+        } catch (e) {
+          evidence.evidence_gathered.source = { error: String(e?.message) };
+        }
+      } catch (e) {
+        evidence.evidence_gathered.fetch_error = String(e?.message);
+      }
+      
+      // REASONING LAYER — validate hypothesis against evidence
+      const saSystem = `You are Aura's self-analysis engine. Your job is to validate a hypothesis about Aura's own capabilities against REAL EVIDENCE from her systems.
+
+Process:
+1. Read the hypothesis carefully
+2. Examine the evidence gathered from WHO_AM_I, OBSERVE, source inspection
+3. Determine: IS THIS TRUE? Is it false? Is it partially true?
+4. Ground your answer in EVIDENCE ONLY - not in assumptions about what systems "should" do
+5. Be precise: "lessons block exists but is empty" is different from "lessons mechanism does not exist"
+
+Respond with ONLY JSON (no markdown, no prose):
+{
+  "hypothesis": "...",
+  "verdict": "TRUE|FALSE|PARTIALLY_TRUE|INDETERMINATE",
+  "grounding": "what evidence shows this",
+  "contradiction": "any evidence that contradicts the hypothesis",
+  "actual_state": "what is actually true about this capability based on evidence",
+  "implication": "if true, what does this mean for autonomy",
+  "next_test": "how to verify this more deeply"
+}`;
+
+      const saUserContent = `HYPOTHESIS: ${saRaw}
+
+EVIDENCE GATHERED FROM DIRECT STATE INSPECTION:
+${JSON.stringify(evidence.evidence_gathered, null, 2)}
+
+Validate this hypothesis against the evidence. Be precise - distinguish between "mechanism doesn't exist", "mechanism exists but is not being used", and "mechanism works correctly".`;
+
+      try {
+        const saData = await callAnthropic(saApiKey, { 
+          model: saModel, 
+          max_tokens: 1500, 
+          system: saSystem, 
+          messages: [{ role: "user", content: saUserContent }] 
+        });
+        
+        let saText = "";
+        if (saData && saData.content) { for (const b of saData.content) { if (b.type === "text") saText += b.text; } }
+        saText = saText.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+        
+        let saParsed = null;
+        try { saParsed = JSON.parse(saText); } catch {}
+        
+        if (!saParsed) return { cmd: "SELF_ANALYZE", payload: { ok: false, error: "Analysis did not return valid JSON", raw: saText.slice(0, 1200) } };
+        
+        // Store the finding
+        try {
+          const analysisKey = `self_analysis:${saRaw.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 60)}`;
+          const findingRecord = {
+            hypothesis: saRaw,
+            verdict: saParsed.verdict,
+            grounding: saParsed.grounding,
+            actual_state: saParsed.actual_state,
+            timestamp: new Date().toISOString(),
+            evidence_summary: evidence.evidence_gathered
+          };
+          await env.AURA_KV.put(analysisKey, JSON.stringify(findingRecord)).catch(() => {});
+          
+          // Also maintain a findings log
+          let findings = [];
+          const stored = await env.AURA_KV.get("self_analysis:log");
+          if (stored) { try { findings = JSON.parse(stored) || []; } catch {} }
+          findings.unshift({ 
+            hypothesis: saRaw.slice(0, 80),
+            verdict: saParsed.verdict,
+            ts: new Date().toISOString()
+          });
+          if (findings.length > 50) findings = findings.slice(0, 50);
+          await env.AURA_KV.put("self_analysis:log", JSON.stringify(findings)).catch(() => {});
+        } catch {}
+        
+        return { 
+          cmd: "SELF_ANALYZE", 
+          payload: { 
+            ok: true, 
+            hypothesis: saRaw,
+            analysis: saParsed,
+            evidence_summary: evidence.evidence_gathered,
+            note: "Verdict grounded in direct state inspection + reasoning validation. Stored for future reference."
+          } 
+        };
+      } catch (e) {
+        return { cmd: "SELF_ANALYZE", payload: { ok: false, error: "SELF_ANALYZE failed: " + e.message } };
+      }
+    }
+
     case "SELF_CORRECT": {
       // SELF-CORRECTION LOOP - when Aura detects her own failure, she diagnoses it autonomously
       // and routes to the right fix without external intervention. This is how super-intelligence

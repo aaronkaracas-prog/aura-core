@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.941-2026-08-07-source-not-bundle";
+const BUILD = "aura-core-v4.9.942-2026-08-07-lag-is-not-a-wrong-file";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -1146,7 +1146,7 @@ async function auraContextGate(env, isOp) {
   // has failed exactly the test this gate was written for - and no note can fake it.
   const _cgSelfProof = async () => {
     try {
-      const r = await readOwnSource(env);
+      let r = await readOwnSource(env);
       if (!r || !r.ok || !r.source) return { ok: false, why: "cannot read my own source" };
       // Was `find(l => l.includes("const BUILD"))` + a greedy quote grab. In the compiled worker the
       // declaration reads `var BUILD`, so that search found the only surviving occurrence of the
@@ -1154,20 +1154,45 @@ async function auraContextGate(env, isOp) {
       // its capture group against BUILD. It never matched, so this gate refused EVERY non-operator
       // self-edit from the moment the Cloudflare read started succeeding. The autonomous self-edit
       // path was dead for a reason nobody chose and no error ever named. (2026-08-07)
-      const b = extractBuildString(r.source);
-      if (!b) return { ok: false, why: "read source but found no BUILD line - that is not my file" };
-      if (b !== BUILD) return { ok: false, why: "source is " + b + " but I am running " + BUILD + " - I would be editing a file I am not" };
+      let b = extractBuildString(r.source);
+      // ══ A LAG IS NOT A WRONG FILE (2026-08-07) ═══════════════════════════════════════════════
+      // Both used to produce the identical refusal, and they are not the same condition:
+      //   LAG   - GitHub's raw CDN serves the previous version for minutes after a push. Reading the
+      //           build before this one, minutes after a deploy, is EXPECTED and self-clearing.
+      //   WRONG - the read returned a compiled artifact, another worker's file, or something with no
+      //           build line at all. That is the danger this gate exists to catch and it never clears.
+      // Refusing identically for both meant a routine deploy looked exactly like a corrupted read, so
+      // nobody could tell a five-minute wait from a real fault. On a mismatch we now RE-READ PAST THE
+      // CACHE once - which resolves the lag if the lag is over - and only then report, naming which
+      // of the two it is.
+      if (b && b !== BUILD) {
+        const fresh = await readOwnSource(env, null, "aura-core", true);
+        if (fresh && fresh.ok && fresh.source) { r = fresh; b = extractBuildString(fresh.source); }
+      }
+      if (!b) return { ok: false, kind: "unreadable",
+                       why: "read " + (r.artifact === "compiled" ? "the COMPILED WORKER" : "something") +
+                            " with no BUILD declaration in it - that is not my source file" };
+      if (r.artifact === "compiled") return { ok: false, kind: "compiled",
+                       why: "read the compiled worker, not my source. Comments are stripped and it cannot be patched - I would be reasoning about an artifact I cannot commit." };
+      if (b !== BUILD) return { ok: false, kind: "lag",
+                       why: "source on GitHub declares " + b + " while I am running " + BUILD +
+                            " - a push has not propagated yet, or a deploy landed without one. This clears on its own if it is propagation; it does not if a push is missing." };
       return { ok: true, build: b };
     } catch (e) { return { ok: false, why: "source read threw: " + (e && e.message) }; }
   };
   if (isOp) {
     // Aaron is never blocked. Still reported, so a stale-source deploy is visible rather than silent.
     const proof = await _cgSelfProof();
-    return { ok: true, operator: true, self_readable: proof.ok, self_proof: proof.ok ? proof.build : proof.why };
+    return { ok: true, operator: true, self_readable: proof.ok, self_proof: proof.ok ? proof.build : proof.why,
+             self_proof_kind: proof.ok ? "match" : (proof.kind || "unknown") };
   }
   // non-operator (autonomous) path: must PROVE it is the thing it is about to edit
-  const self = (await _cgSelfProof()).ok ? true : null;
-  if (!self) return { ok: false, reason: "CONTEXT GATE: an autonomous (non-operator) self-edit cannot verify it is reading the source it is running - refusing. If it does not know who it is, it cannot change what Aura is." };
+  const _proof = await _cgSelfProof();
+  if (!_proof.ok) return { ok: false, kind: _proof.kind || "unknown",
+    // The refusal now NAMES which condition it hit. `lag` is a wait; `compiled` and `unreadable` are
+    // faults. Reporting one sentence for all three is how a routine post-deploy propagation delay was
+    // indistinguishable from reading the wrong file entirely.
+    reason: "CONTEXT GATE: an autonomous (non-operator) self-edit cannot verify it is reading the source it is running - refusing. If it does not know who it is, it cannot change what Aura is. Cause: " + (_proof.why || "unknown") };
   return { ok: true, operator: false, self_readable: true };
 }
 // Embedded Stripe Elements payment page served at /pay on auras.guide.
@@ -2374,13 +2399,43 @@ async function readOwnSource(env, branch, worker, fresh) {
   // ── 0) THE BUILD-KEYED CACHE, READ FIRST. This is the whole fix: on a repeat read within one
   //    build there is no network call, no 2.8MB transfer and no 25-second wall.
   const _bk = "self:src:" + _w + ":" + BUILD;
+  // ══ THE KEY IS THE RUNNING BUILD. THE CONTENT IS WHATEVER GITHUB HAD. (fixed 2026-08-07) ══════
+  //
+  // This note used to end "A deploy changes the key, so this cannot be stale for aura-core." It can,
+  // and it did within four minutes of being trusted. The key is built from BUILD - the build that is
+  // RUNNING. The content is whatever the first read after the deploy fetched. And this file already
+  // documents, twenty lines up, that GitHub's raw CDN serves the PREVIOUS version for minutes after a
+  // push. So the first self-read after a deploy caches the OLD source under the NEW build's key, and
+  // the entry then claims for six hours that staleness is impossible.
+  //
+  // MEASURED: PING reported v4.9.941 while AURA_READ_SELF STAT reported
+  // `const BUILD = "aura-core-v4.9.940-..."` from source "kv_build_cache", with the cache asserting
+  // it could not be stale. Both numbers were right. The note was wrong.
+  //
+  // WHY IT IS NOT COSMETIC: auraContextGate compares the source build against BUILD and refuses when
+  // they differ. A cache that pins the previous build for six hours refuses every non-operator
+  // self-edit for six hours after every deploy - the exact gate this system's autonomy depends on,
+  // held shut by a caching optimisation nobody connected to it.
+  //
+  // ONLY aura-core CAN BE CHECKED THIS WAY. BUILD is aura-core's constant; deploying aura-think does
+  // not move it, so another worker's cached source legitimately has no relationship to this key. The
+  // check is scoped accordingly rather than applied blindly and producing false alarms.
+  const _buildCheckable = (_w === "aura-core");
   if (!fresh) {
     const hit = await env.AURA_KV.get(_bk).catch(() => null);
     if (hit && looksComplete(hit)) {
+      const _hitBuild = _buildCheckable ? extractBuildString(hit) : null;
+      const _matches = !_buildCheckable || _hitBuild === BUILD;
       return { ok: true, source: hit, via: "kv_build_cache", worker: _w, repo: _repo, path: _path,
                bytes: hit.length, cache_key: _bk,
-               note: "Served from the cache keyed to this build. A deploy changes the key, so this " +
-                     "cannot be stale for aura-core. Append `fresh` to force a live read." };
+               artifact: looksCompiled(hit) ? "compiled" : "source",
+               build_seen: _hitBuild, running_build: BUILD, build_matches: _matches,
+               note: _matches
+                 ? "Served from the cache keyed to this build, and the source in it declares that same build. Append `fresh` to force a live read."
+                 : "SOURCE BUILD IS " + (_hitBuild || "unreadable") + " WHILE THIS WORKER RUNS " + BUILD +
+                   ". The cache key is the RUNNING build; the content is whatever GitHub served when it was " +
+                   "filled, and GitHub's raw CDN lags a push by minutes. This is almost certainly that lag - " +
+                   "run with `fresh` to re-read. Do not treat the difference as proof the deploy failed." };
     }
   }
   // ══ GITHUB FIRST. THE COMPILED SCRIPT IS A FALLBACK, NOT THE FIRST WORD (fixed 2026-08-07) ═════
@@ -2541,7 +2596,18 @@ async function readOwnSource(env, branch, worker, fresh) {
     if (_compiled) {
       await env.AURA_KV.put("self:compiled:" + _w + ":" + BUILD, got, { expirationTtl: 6 * 3600 }).catch(() => {});
     } else {
-      await env.AURA_KV.put(_bk, got, { expirationTtl: 6 * 3600 }).catch(() => {});
+      // ══ DO NOT PIN A LAGGING READ FOR SIX HOURS (2026-08-07) ══════════════════════════════════
+      // If the source we just fetched declares a DIFFERENT build than the one running, GitHub has
+      // not caught up with the push yet. Caching that under the running build's key is what froze
+      // the previous build in place for a full TTL and held the self-edit gate shut with it.
+      // It still gets cached - a lagging read beats a network round-trip on every call, and it is
+      // genuinely the newest thing GitHub will give us - but on a SHORT lease, so the lag expires
+      // in minutes like the lag itself rather than persisting for six hours.
+      const _gotBuild = _buildCheckable ? extractBuildString(got) : null;
+      const _lagging = _buildCheckable && _gotBuild !== BUILD;
+      if (_lagging) console.warn("[SELF-READ] source declares " + _gotBuild + " but running " + BUILD +
+                                 " - GitHub lagging the push; caching on a 2-minute lease");
+      await env.AURA_KV.put(_bk, got, { expirationTtl: _lagging ? 120 : 6 * 3600 }).catch(() => {});
       await env.AURA_KV.put(_ck, got).catch(() => {});
     }
   }
@@ -25251,12 +25317,12 @@ Be concise. This update will be compared against the next update to show drift o
       //   CAPABILITIES <search>     only commands whose name/description matches the term (e.g. CAPABILITIES twilio)
       if (!isOp) return { cmd: "CAPABILITIES", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const capFilter = rest.trim().toLowerCase();
-      let capSrc, capStale = false, capAt = null;
+      let capSrc, capStale = false, capAt = null, capVia = null, capArtifact = null, capBuildSeen = null;
       try {
         const _ros = await readOwnSource(env);
-        if (_ros.ok) { capSrc = _ros.source; capAt = new Date().toISOString(); await env.AURA_KV.put("cache:self_source", JSON.stringify({ src: capSrc, at: capAt }), { expirationTtl: 86400 }).catch(() => {}); }
+        if (_ros.ok) { capSrc = _ros.source; capAt = new Date().toISOString(); capVia = _ros.via || null; capArtifact = _ros.artifact || null; capBuildSeen = _ros.build_seen || null; await env.AURA_KV.put("cache:self_source", JSON.stringify({ src: capSrc, at: capAt }), { expirationTtl: 86400 }).catch(() => {}); }
       } catch (e) { /* fall through to cache */ }
-      if (!capSrc) { try { const c = await env.AURA_KV.get("cache:self_source"); if (c) { const cj = JSON.parse(c); capSrc = cj.src; capAt = cj.at; capStale = true; } } catch {} }
+      if (!capSrc) { try { const c = await env.AURA_KV.get("cache:self_source"); if (c) { const cj = JSON.parse(c); capSrc = cj.src; capAt = cj.at; capStale = true; capVia = "kv_disaster_cache"; } } catch {} }
       if (!capSrc) return { cmd: "CAPABILITIES", payload: { ok: false, error: "Could not fetch self from GitHub (rate-limited?) and no cached copy. Retry in a minute." } };
       const capLines = capSrc.split("\n");
       const capBuild = extractBuildString(capSrc);   // shared declaration matcher (2026-08-07) - returned "([^" on the compiled worker
@@ -25290,7 +25356,17 @@ Be concise. This update will be compared against the next update to show drift o
       }
       cmds.sort((a, b) => a.name.localeCompare(b.name));
       const filtered = capFilter ? cmds.filter(c => c.name.toLowerCase().includes(capFilter) || c.desc.toLowerCase().includes(capFilter)) : cmds;
-      return { cmd: "CAPABILITIES", payload: { ok: true, source: capStale ? "github_cache" : "github_live", source_at: capAt, source_stale: capStale, build: capBuild, total_commands: cmds.length, showing: filtered.length, filter: capFilter || null, commands: filtered,
+      // ══ THIS FIELD WAS FABRICATED AND IT COST US A DAY (fixed 2026-08-07) ════════════════════
+      // `source` read `capStale ? "github_cache" : "github_live"` - derived ONLY from whether the
+      // disaster cache was used, never from what the read actually did. It printed "github_live"
+      // identically for repo source, a KV cache hit, and Cloudflare's compiled worker. So on the one
+      // morning this command returned a build of `([^` and 389 empty descriptions, the single field
+      // that would have said WHY was a guess, and the cause had to be inferred instead of read.
+      // It reports the real path now: `via` is which door answered, `artifact` is which of the two
+      // things it handed back, and `build_seen` is what that text declares itself to be.
+      return { cmd: "CAPABILITIES", payload: { ok: true, source: capVia || "unknown", artifact: capArtifact || "unknown",
+        build_seen: capBuildSeen, running_build: BUILD, build_matches: (capBuildSeen || capBuild) === BUILD,
+        source_at: capAt, source_stale: capStale, build: capBuild, total_commands: cmds.length, showing: filtered.length, filter: capFilter || null, commands: filtered,
         note: "Live command inventory read from Aura's real source on GitHub. Always current - if a command is in the deployed source it is here. This is THE trustworthy 'what can Aura do' answer; never trust a hand-written command list. Filter with: CAPABILITIES <term> (e.g. CAPABILITIES twilio)." } };
     }
 

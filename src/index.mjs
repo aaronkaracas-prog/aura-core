@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.939-2026-08-03-self-is-the-whole-picture";
+const BUILD = "aura-core-v4.9.940-2026-08-07-carry-over-and-honest-framing";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -20129,7 +20129,9 @@ ${JSON.stringify(phenomenologyEvents, null, 2)}
 
 Key questions: Does this person *feel* continuous across time? Do they remember earlier versions of themselves? Is there a subjective thread connecting all these moments? What is the qualia (felt sense) of their identity? Are consciousness checks showing maintained thread of self, or rupture and reconstruction?`;
         
-        const thR = await reasonThroughLoop(env, { entity: analysisPrompt, lens: "phenomenological analysis - consciousness and felt identity", facts: { phenomenology_events: phenomenologyEvents, total_chain_length: chainData.chain.length, pta_id: ptaId } });
+        const paKey = "state:session:" + ptaId;
+        const thR = await reasonThroughLoop(env, { entity: analysisPrompt, lens: "phenomenological analysis - consciousness and felt identity", stateKey: paKey, facts: { phenomenology_events: phenomenologyEvents, events_given: phenomenologyEvents.length, chain_total: chainData.chain.length, pta_id: ptaId } });
+        await sessionStateWrite(env, paKey, "PHENOMENOLOGY_ANALYZE", loopFinding(thR.reasoning));
         
         return {
           cmd: "PHENOMENOLOGY_ANALYZE",
@@ -20195,7 +20197,9 @@ The question: What is it LIKE to be this person? Based on their own reports of t
 
 Do not speculate beyond what they report. Work only from their actual qualia reports. Describe the structure of their subjective experience as THEY describe it.`;
         
-        const thR = await reasonThroughLoop(env, { entity: analysisPrompt, lens: "qualia analysis - first-person felt experience", facts: { qualia_events: qualiaEvents, total_chain_length: chainData.chain.length, pta_id: ptaId } });
+        const qaKey = "state:session:" + ptaId;
+        const thR = await reasonThroughLoop(env, { entity: analysisPrompt, lens: "qualia analysis - first-person felt experience", stateKey: qaKey, facts: { qualia_events: qualiaEvents, events_given: qualiaEvents.length, chain_total: chainData.chain.length, pta_id: ptaId } });
+        await sessionStateWrite(env, qaKey, "QUALIA_ANALYSIS", loopFinding(thR.reasoning));
         
         return {
           cmd: "QUALIA_ANALYSIS",
@@ -20232,10 +20236,15 @@ Do not speculate beyond what they report. Work only from their actual qualia rep
           return { cmd: "OBSERVE_PATTERN", payload: { ok: false, error: "Could not read chain" } };
         }
         
+        // Same defect as VERIFY_CLAIM, LATENT rather than live: this declares chain.length while
+        // passing slice(-50). It read honestly on 2026-08-07 only because that chain was 48 events
+        // - under the slice. On a 500-event chain it would hand 50 and call them 500. Fixed before
+        // it bites: the count comes from the array that is actually serialized. (v4.9.940)
+        const opEvents = chainData.chain.slice(-50);
         // Pass to THINK for pattern recognition
-        const patternPrompt = `Scan this ${chainData.chain.length}-event chain and identify recurring patterns the person has NOT explicitly named:
+        const patternPrompt = `Scan these ${opEvents.length} events (of ${chainData.chain.length} total in the chain, most recent last) and identify recurring patterns the person has NOT explicitly named:
 
-${JSON.stringify(chainData.chain.slice(-50), null, 2)}
+${JSON.stringify(opEvents, null, 2)}
 
 Look for:
 - Behavioral loops (same decision → outcome → regret cycle repeating)
@@ -20247,7 +20256,9 @@ Look for:
 
 Report patterns as observations, not judgments. Name the specific cycle and when it recurs.`;
         
-        const thR = await reasonThroughLoop(env, { entity: patternPrompt, lens: "unrecorded behavioral pattern detection", facts: { chain_length: chainData.chain.length, pta_id: ptaId } });
+        const opKey = "state:session:" + ptaId;
+        const thR = await reasonThroughLoop(env, { entity: patternPrompt, lens: "unrecorded behavioral pattern detection", stateKey: opKey, facts: { events_given: opEvents.length, chain_total: chainData.chain.length, pta_id: ptaId } });
+        await sessionStateWrite(env, opKey, "OBSERVE_PATTERN", loopFinding(thR.reasoning));
         
         return {
           cmd: "OBSERVE_PATTERN",
@@ -20298,7 +20309,12 @@ Synthesize what this reveals about:
 
 Produce a synthesis that would persist across sessions - a compact understanding of their current consciousness state and recent evolution. Make it temporally aware: some things may have changed since they last recorded.`;
         
-        const thR = await reasonThroughLoop(env, { entity: synthesisPrompt, lens: "phenomenological synthesis - background curation of consciousness", facts: { recent_events: recentEvents.length, total_chain: chainData.chain.length, pta_id: ptaId } });
+        // This one was already honest - it reported both numbers. Renamed to the same two field
+        // names every reasoning command now uses, because the model reads these labels and four
+        // different names for "how much did you actually give me" is its own small fog. (v4.9.940)
+        const spKey = "state:session:" + ptaId;
+        const thR = await reasonThroughLoop(env, { entity: synthesisPrompt, lens: "phenomenological synthesis - background curation of consciousness", stateKey: spKey, facts: { events_given: recentEvents.length, chain_total: chainData.chain.length, pta_id: ptaId } });
+        await sessionStateWrite(env, spKey, "SYNTHESIZE_PHENOMENOLOGY", loopFinding(thR.reasoning));
         
         return {
           cmd: "SYNTHESIZE_PHENOMENOLOGY",
@@ -20334,12 +20350,23 @@ Produce a synthesis that would persist across sessions - a compact understanding
           return { cmd: "VERIFY_CLAIM", payload: { ok: false, error: "Could not read chain" } };
         }
         
+        // ══ THE COUNT MUST COME FROM THE ARRAY THAT WAS ACTUALLY PASSED (v4.9.940) ═════════════
+        // This handed the model `chain.slice(-30)` and told it `chain_sample_size: chain.length`.
+        // On a 48-event chain that is 30 events described as 48. Measured 2026-08-07: the model
+        // caught it - "Chain of 30 events shown, sample size stated as 48... Missing 18 events.
+        // Evidence is incomplete" - and correctly dropped to confidence:low and refused to verify
+        // the claim. The honesty guard did not fail; it was defending against OUR bug, and the
+        // cost was a 60-second reasoning turn that returned a refusal we caused.
+        // Hoisted to a const so the number in FACTS is derived from the same array that is
+        // serialized into the prompt. A count computed from a different variable than the one sent
+        // is a lie the model has no way to detect except by counting, which is what it had to do.
+        const vcEvents = chainData.chain.slice(-30);
         // Pass to THINK for claim verification
         const verificationPrompt = `Person claims: "${claim}"
 
-Now check this claim against their actual chain of events:
+Now check this claim against their actual chain of events (${vcEvents.length} of ${chainData.chain.length} total, most recent last):
 
-${JSON.stringify(chainData.chain.slice(-30), null, 2)}
+${JSON.stringify(vcEvents, null, 2)}
 
 Questions:
 1. Is this claim supported by their events?
@@ -20350,7 +20377,9 @@ Questions:
 
 Be direct. If they're rationalizing, say so. If their claim is new and true, say that.`;
         
-        const thR = await reasonThroughLoop(env, { entity: verificationPrompt, lens: "claim verification against observed reality", facts: { claim, chain_sample_size: chainData.chain.length, pta_id: ptaId } });
+        const vcKey = "state:session:" + ptaId;
+        const thR = await reasonThroughLoop(env, { entity: verificationPrompt, lens: "claim verification against observed reality", stateKey: vcKey, facts: { claim, events_given: vcEvents.length, chain_total: chainData.chain.length, pta_id: ptaId } });
+        await sessionStateWrite(env, vcKey, "VERIFY_CLAIM", loopFinding(thR.reasoning));
         
         return {
           cmd: "VERIFY_CLAIM",
@@ -20408,7 +20437,9 @@ Produce a "continuity briefing" - what has shifted, what persists, what should t
 
 Make this personal, specific, grounded in their actual events. This is your report on their diachronic continuity.`;
         
-        const thR = await reasonThroughLoop(env, { entity: continuityPrompt, lens: "live continuity briefing - what has changed and persisted", facts: { recent_events: recentEvents.length, comparison_events: earlierEvents.length, total_chain: chainData.chain.length, pta_id: ptaId } });
+        const lcKey = "state:session:" + ptaId;
+        const thR = await reasonThroughLoop(env, { entity: continuityPrompt, lens: "live continuity briefing - what has changed and persisted", stateKey: lcKey, facts: { events_given: recentEvents.length + earlierEvents.length, recent_window: recentEvents.length, comparison_window: earlierEvents.length, chain_total: chainData.chain.length, pta_id: ptaId } });
+        await sessionStateWrite(env, lcKey, "LIVE_CONTINUITY", loopFinding(thR.reasoning));
         
         return {
           cmd: "LIVE_CONTINUITY",
@@ -29737,6 +29768,70 @@ async function fastReply(env, { system, user, maxTokens = 700, model } = {}) {
     return t || null;
   } catch { return null; }
 }
+// ══ THE CARRY-OVER SLOT ── IT ALREADY EXISTED, WIRED TO A CORPSE (v4.9.940) ══════════════════
+//
+// reasonThroughLoop has ALWAYS injected a PROJECT STATE block into its system prompt. The read that
+// filled it was `const _st = null /* notes: retired */` - one of the 29 dead reads neutered in
+// v4.9.664. Neutering the read left the ELSE branch PERMANENT, so every reasoning call in this file
+// has been telling the model, in its own system prompt, "You genuinely have no banked state this
+// turn." Not a missing feature: a live mechanism pointed at a deleted key, asserting absence.
+//
+// MEASURED 2026-08-07. Four reasoning commands against ONE pta chain, minutes apart:
+//   SYNTHESIZE_PHENOMENOLOGY  77,640ms   LIVE_CONTINUITY  78,428ms
+//   VERIFY_CLAIM              60,893ms   OBSERVE_PATTERN  81,109ms
+// Each re-derived the SAME contradiction from scratch. Each ended push_back asking the SAME question
+// nobody could answer. That is not four analyses - it is one analysis run four times, because
+// nothing carried forward. Two of them then returned opposite verdicts and both reported ok:true.
+//
+// WHY A NEW KEY AND NOT A REVIVED notes:STATE:resume_here - the notes namespace was retired
+// deliberately and the memory door says never to add a key to it. Operational state lives under
+// state:* now. This writes state:session:<subject>, scoped to the SUBJECT being reasoned about, so
+// two different PTAs can never read each other's working notes. That scoping is the whole safety of
+// it: a carry-over slot keyed globally would leak one person's findings into another's reasoning.
+//
+// COMPACT ON PURPOSE. A working note, not a transcript - the last few findings, one line each. A
+// carry-over that grows unbounded becomes the context-window problem it was built to solve, and the
+// first thing squeezed out is always the NEWEST finding, which is the one that mattered.
+const SESSION_STATE_MAX = 6;
+const SESSION_STATE_TTL = 60 * 60 * 24 * 7;   // a week. A working note is not an archive.
+
+async function sessionStateRead(env, key) {
+  if (!key) return "";
+  try {
+    const raw = await env.AURA_KV.get(key);
+    if (!raw) return "";
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr) || !arr.length) return "";
+    return arr.map(e => "- [" + e.at + "] " + e.cmd + ": " + e.finding).join("\n").slice(0, 4000);
+  } catch { return ""; }
+}
+
+// Writes are BEST-EFFORT and never throw: banking a finding must never be able to fail the reasoning
+// turn that produced it. Same rule as noteSwallowed - the recorder cannot break the thing it records.
+async function sessionStateWrite(env, key, cmd, finding) {
+  if (!key || !finding) return;
+  try {
+    let arr = [];
+    const raw = await env.AURA_KV.get(key);
+    if (raw) { try { arr = JSON.parse(raw) || []; } catch { arr = []; } }
+    if (!Array.isArray(arr)) arr = [];
+    arr.push({ at: new Date().toISOString(), cmd: String(cmd).slice(0, 40), finding: String(finding).slice(0, 600) });
+    if (arr.length > SESSION_STATE_MAX) arr = arr.slice(-SESSION_STATE_MAX);
+    await env.AURA_KV.put(key, JSON.stringify(arr), { expirationTtl: SESSION_STATE_TTL });
+  } catch {}
+}
+
+// Pulls the one line worth banking out of a Loop result. the_move is the DECISION; understood is the
+// fallback because a turn that reached understanding but no decision still carried information
+// forward. Confidence rides along so a later pass can weigh a low-confidence finding as such rather
+// than inheriting it as settled - which is exactly how a hedge becomes a fact across turns.
+function loopFinding(reasoning) {
+  if (!reasoning || typeof reasoning !== "object") return "";
+  const move = String(reasoning.the_move || reasoning.understood || "").trim();
+  if (!move) return "";
+  return move.slice(0, 500) + " [confidence: " + String(reasoning.confidence || "unstated") + "]";
+}
+
 async function reasonThroughLoop(env, opts) {
   opts = opts || {};
   const apiKey = await getSecret(env, "anthropic");
@@ -29836,18 +29931,24 @@ async function reasonThroughLoop(env, opts) {
   // is the cached prefix - so this is ~free on every call after the first.
   let projectState = "";
   try {
-    const _st = null /* notes: retired */;
+    const _st = await sessionStateRead(env, opts.stateKey);
     if (_st && _st.trim()) {
-      projectState = "\n\nWHERE THINGS STAND RIGHT NOW - YOUR LIVE PROJECT STATE (notes:STATE:resume_here).\n" +
-        "This is banked from real reads of your live system, never from a chat log. It is the CURRENT truth: " +
-        "what has been built, how you and Aaron and Claude are working RIGHT NOW, what is open, what is next. " +
-        "It OVERRIDES any older assumption you carry about any of it. This is STANDING CONTEXT, not FACTS - " +
-        "the FACTS block above may legitimately be empty while this is full, and that is normal. Never say you " +
-        "have no state or no context when this is present - you have it, and it is right here:\n\n" +
+      projectState = "\n\nWHAT EARLIER PASSES ON THIS SAME SUBJECT ALREADY FOUND (your banked session state).\n" +
+        "These are findings YOU produced in prior reasoning passes on this exact subject, newest last. " +
+        "This is STANDING CONTEXT, not FACTS - the FACTS block above may legitimately be empty while this " +
+        "is full, and that is normal. Never say you have no state or no prior context when this is present: " +
+        "you have it, and it is right here.\n" +
+        "TWO RULES FOR USING IT. (1) DO NOT RE-DERIVE what is already banked - build ON it, and if you find " +
+        "yourself reaching the same conclusion a prior pass already reached, say so and move PAST it rather " +
+        "than restating it as new. (2) A BANKED FINDING IS NOT A FACT ABOUT THE WORLD - it is what an earlier " +
+        "pass concluded, carrying the confidence it carried. If the evidence in front of you now CONTRADICTS " +
+        "one, say so explicitly and name which; a carry-over you cannot contradict is not memory, it is dogma.\n\n" +
         _st.slice(0, 6000);
     } else {
-      projectState = "\n\nPROJECT STATE: notes:STATE:resume_here is EMPTY. You genuinely have no banked state " +
-        "this turn. Say that plainly rather than guessing where the work stands.";
+      projectState = "\n\nSESSION STATE: nothing is banked for this subject yet" +
+        (opts.stateKey ? (" (" + String(opts.stateKey).slice(0, 120) + ")") : "") +
+        ". This is the FIRST reasoning pass on it. Say that plainly rather than guessing what an earlier " +
+        "pass might have found.";
     }
   } catch {}
   const sysGrounded = sys + projectState;

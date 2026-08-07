@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.943-2026-08-07-a-repeat-is-not-a-re-record";
+const BUILD = "aura-core-v4.9.944-2026-08-07-json-has-no-undefined";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -20693,7 +20693,7 @@ Make this personal, specific, grounded in their actual events. This is your repo
           method: "POST",
           body: JSON.stringify({
             method: "appendChain",
-            params: ["INTERACTION", "capture", { ..._icBody, captured_at: new Date().toISOString() }, undefined, _icIdem]
+            params: ["INTERACTION", "capture", { ..._icBody, captured_at: new Date().toISOString() }, null, _icIdem]
           })
         }));
         const captureData = await captureResp.json();
@@ -20996,7 +20996,7 @@ Be concise. This update will be compared against the next update to show drift o
             params: [eventType, "life", { 
               ..._evData,
               recorded_at: new Date().toISOString()
-            }, undefined, _idem]
+            }, null, _idem]   // null, not undefined: JSON drops undefined and the DO now reads null as "not supplied"
           })
         }));
         const appendData = await appendResp.json();
@@ -36323,8 +36323,17 @@ export class PtaDurableObject {
     const pta = await this.storage.get("pta");
     if (!pta) return { ok: false, error: "PTA not found" };
     
-    // Optimistic concurrency: if caller provided expectedVersion and it doesn't match, conflict
-    if (expectedVersion !== undefined && pta.version !== expectedVersion) {
+    // ══ null IS "NOT SUPPLIED" HERE, AND IT HAS TO BE (fixed 2026-08-07) ═══════════════════════
+    // This read `expectedVersion !== undefined`. Every caller reaches this method one of two ways:
+    // directly (grantEdge, revokeEdge, setPermission - real numbers, fine) or over the DO's JSON
+    // dispatch, `this[method](...params)` from a parsed body. JSON HAS NO undefined. A caller that
+    // wants to skip expectedVersion but pass the argument AFTER it has no choice: JSON.stringify
+    // turns the hole into null. So the guard fired on a caller who never opted into concurrency
+    // control at all, and PTA_EVENT returned "version conflict" on a brand-new event.
+    // It survived until now only because no caller had ever needed to skip a MIDDLE argument - with
+    // a 3-element params array, params[3] is genuinely undefined on the spread. Adding a fifth
+    // argument is what exposed it. The seam was always fragile; nothing had leaned on it.
+    if (expectedVersion !== undefined && expectedVersion !== null && pta.version !== expectedVersion) {
       return { ok: false, error: "version conflict", current_version: pta.version, expected_version: expectedVersion };
     }
 

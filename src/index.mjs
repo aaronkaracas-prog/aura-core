@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.952-2026-08-07-her-body-includes-the-private-parts";
+const BUILD = "aura-core-v4.9.953-2026-08-07-one-subject-one-slot";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -27757,6 +27757,117 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         : (report.custom_domains?.length ? "CUSTOM_DOMAIN_LIKELY_OVERRIDING_ROUTES" : "MISMATCH_CAUSE_IN_ROUTES_OR_DNS"));
       return { cmd: "DOMAIN_DIAGNOSE", payload: { ok: true, ...report } };
     }
+    case "BELIEF_MERGE": {
+      // ══ THIRTY SLOTS, MAYBE TWELVE SUBJECTS ═════════════════════════════════════════════════
+      // The extractor invented a fresh topic string per turn: access-charging / access-fee-incentives
+      // / access-vs-decision-fees / decision-fee-incentives / decision-points are five slots about
+      // where money attaches. v1.6.6 shows the model the existing topics so NEW claims reuse a slot;
+      // this consolidates the ones already written, which that fix cannot reach.
+      //
+      // WHY IT MATTERS AND IS NOT COSMETIC: promotion needs RESTATEMENT ON THE SAME SLOT. A forked
+      // subject can never accumulate one, so every belief stays `candidate` forever - the store fills
+      // with claims that can never be settled.
+      //
+      // MERGE KEEPS BOTH BODIES. The surviving slot's body is kept as current and the absorbed one is
+      // written into its lineage, because two phrasings of a subject are evidence about it and
+      // discarding one to tidy the list would destroy the restatement the merge exists to enable.
+      // Dry by default. Merging is a judgement about meaning made from topic strings, which is
+      // weaker evidence than the model reusing a slot deliberately - so nothing moves without CONFIRM.
+      //
+      //   BELIEF_MERGE           show proposed merges, change nothing
+      //   BELIEF_MERGE CONFIRM   apply them
+      if (!isOp) return { cmd: "BELIEF_MERGE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      // ALL-OR-NOTHING IS THE WRONG SHAPE HERE. The dry run on the live store proposed nine merges
+      // and four of them were wrong - `self-reflection-capabilities` into `aura-capabilities` is two
+      // different subjects sharing one word. A command whose only options are "accept a list
+      // containing known-bad entries" or "accept nothing" forces a bad choice, so a slug argument
+      // applies exactly one pair:
+      //   BELIEF_MERGE                         propose
+      //   BELIEF_MERGE CONFIRM                 apply ALL proposed pairs
+      //   BELIEF_MERGE CONFIRM <absorbed-slug> apply only the pair absorbing that slot
+      const bmArgs = args.map(a => String(a || ""));
+      const bmConfirm = bmArgs.some(a => a.toUpperCase() === "CONFIRM");
+      const bmOnly = bmConfirm
+        ? (bmArgs.find(a => a.toUpperCase() !== "CONFIRM" && a.trim()) || "").replace(/^aura:belief:/, "").trim()
+        : "";
+      try {
+        const bmList = await env.AURA_KV.list({ prefix: "aura:belief:" });
+        const live = [];
+        for (const k of (bmList?.keys || []).slice(0, 300)) {
+          if (k.name.includes(":was:")) continue;
+          try {
+            const raw = await env.AURA_KV.get(k.name);
+            if (!raw) continue;
+            const r = JSON.parse(raw);
+            if (r && r.body && r.invalid_at == null) live.push({ key: k.name, rec: r });
+          } catch {}
+        }
+        const STOP = new Set(["the","and","for","with","its","are","was","this","that","vs","not"]);
+        const toks = (x) => new Set(String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, " ")
+          .split(/\s+/).filter(t => t.length > 2 && !STOP.has(t)));
+        // 0.5 here, not the 0.6 used at write time. At write time a wrong merge is silent and
+        // permanent; here every proposed pair is printed and nothing moves without CONFIRM, so the
+        // threshold can be looser because a human is the check.
+        const proposed = [], applied = [];
+        const absorbed = new Set();
+        for (let i = 0; i < live.length; i++) {
+          if (absorbed.has(live[i].key)) continue;
+          for (let j = i + 1; j < live.length; j++) {
+            if (absorbed.has(live[j].key)) continue;
+            const A = toks(live[i].rec.topic || live[i].key), B = toks(live[j].rec.topic || live[j].key);
+            if (!A.size || !B.size) continue;
+            let hit = 0; A.forEach(t => { if (B.has(t)) hit++; });
+            const score = hit / Math.min(A.size, B.size);   // min, so a longer topic can still match a shorter one
+            if (score < 0.5) continue;
+            // The slot with more evidence survives; ties go to the older one.
+            const keepFirst = (live[i].rec.restated || 0) >= (live[j].rec.restated || 0);
+            const keep = keepFirst ? live[i] : live[j], drop = keepFirst ? live[j] : live[i];
+            proposed.push({ keep: keep.key.replace("aura:belief:", ""), absorb: drop.key.replace("aura:belief:", ""),
+                            overlap: Math.round(score * 100) / 100,
+                            keep_body: String(keep.rec.body).slice(0, 110), absorb_body: String(drop.rec.body).slice(0, 110) });
+            absorbed.add(drop.key);
+            const _thisOne = !bmOnly || drop.key.replace("aura:belief:", "") === bmOnly;
+            if (bmConfirm && _thisOne) {
+              try {
+                const rec = keep.rec;
+                rec.restated = (rec.restated || 0) + 1;
+                rec.lineage = Array.isArray(rec.lineage) ? rec.lineage : [];
+                rec.lineage.push({ at: new Date().toISOString(), event: "absorbed",
+                  from: drop.key.replace("aura:belief:", ""), overlap: Math.round(score * 100) / 100,
+                  body: String(drop.rec.body).slice(0, 300) });
+                if (rec.lineage.length > 20) rec.lineage = rec.lineage.slice(-20);
+                if (rec.status === "candidate" && rec.restated >= 1) {
+                  rec.status = "current"; rec.promoted_by = "merge-restated:" + (rec.restated + 1);
+                }
+                await env.AURA_KV.put(keep.key, JSON.stringify(rec), { expirationTtl: 180 * 86400 });
+                // The absorbed row is CLOSED, not deleted - it stays readable as history.
+                drop.rec.invalid_at = new Date().toISOString();
+                drop.rec.superseded_by = keep.key;
+                await env.AURA_KV.put(drop.key + ":was:" + Date.now(), JSON.stringify(drop.rec), { expirationTtl: 180 * 86400 });
+                await env.AURA_KV.delete(drop.key);
+                applied.push(drop.key);
+              } catch {}
+            }
+            break;
+          }
+        }
+        return {
+          cmd: "BELIEF_MERGE",
+          payload: {
+            ok: true, mode: bmConfirm ? (bmOnly ? "applied_one" : "applied_all") : "dry_run",
+            only: bmOnly || undefined,
+            live_slots: live.length, would_merge: proposed.length, merged: applied.length,
+            slots_after: live.length - proposed.length, merges: proposed,
+            note: bmConfirm
+              ? "Merged. Both bodies kept - the absorbed claim is in the survivor's lineage, and its row is closed under :was: rather than deleted."
+              : "NOTHING CHANGED. Read every pair. This merges on topic WORDING, which cannot tell 'same subject' from 'shares a noun' - the dry run on this store proposed nine and roughly four were wrong. Apply one at a time with BELIEF_MERGE CONFIRM <absorbed-slug>, or BELIEF_MERGE CONFIRM to take the whole list."
+          }
+        };
+      } catch (e) {
+        return { cmd: "BELIEF_MERGE", payload: { ok: false, error: "Merge failed: " + (e && e.message ? e.message : String(e)) } };
+      }
+    }
+
     case "LESSON_SWEEP": {
       // ══ 27 RECORDS THAT ARE NOT LESSONS AND HAVE NEVER BEEN ═════════════════════════════════
       // `aura:semantic:lessons:gap:unknown:*` - written by AUTONOMOUS_GAP_REMEDIATION_WORKFLOW, whose

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.945-2026-08-07-a-referee-that-did-not-read-the-file";
+const BUILD = "aura-core-v4.9.946-2026-08-07-inheritance-is-visible";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -20321,6 +20321,7 @@ ${JSON.stringify(phenomenologyEvents, null, 2)}
 Key questions: Does this person *feel* continuous across time? Do they remember earlier versions of themselves? Is there a subjective thread connecting all these moments? What is the qualia (felt sense) of their identity? Are consciousness checks showing maintained thread of self, or rupture and reconstruction?`;
         
         const paKey = "state:session:" + ptaId;
+        const _inhpaKey = inheritanceReport(await sessionStateRead(env, paKey));
         const thR = await reasonThroughLoop(env, { entity: analysisPrompt, lens: "phenomenological analysis - consciousness and felt identity", stateKey: paKey, facts: { phenomenology_events: phenomenologyEvents, events_given: phenomenologyEvents.length, chain_total: chainData.chain.length, chain_unique: chainDuplicateStats(chainData.chain).unique, chain_duplicates: chainDuplicateStats(chainData.chain).duplicates, pta_id: ptaId } });
         await sessionStateWrite(env, paKey, "PHENOMENOLOGY_ANALYZE", loopFinding(thR.reasoning));
         
@@ -20332,6 +20333,7 @@ Key questions: Does this person *feel* continuous across time? Do they remember 
             total_chain_length: chainData.chain.length,
             phenomenology_events_found: phenomenologyEvents.length,
             consciousness_analysis: thR.reasoning || null,
+            inheritance: _inhpaKey,
             felt_continuity: thR.ok ? "ANALYZED" : "UNKNOWN"
           }
         };
@@ -20389,6 +20391,7 @@ The question: What is it LIKE to be this person? Based on their own reports of t
 Do not speculate beyond what they report. Work only from their actual qualia reports. Describe the structure of their subjective experience as THEY describe it.`;
         
         const qaKey = "state:session:" + ptaId;
+        const _inhqaKey = inheritanceReport(await sessionStateRead(env, qaKey));
         const thR = await reasonThroughLoop(env, { entity: analysisPrompt, lens: "qualia analysis - first-person felt experience", stateKey: qaKey, facts: { qualia_events: qualiaEvents, events_given: qualiaEvents.length, chain_total: chainData.chain.length, chain_unique: chainDuplicateStats(chainData.chain).unique, chain_duplicates: chainDuplicateStats(chainData.chain).duplicates, pta_id: ptaId } });
         await sessionStateWrite(env, qaKey, "QUALIA_ANALYSIS", loopFinding(thR.reasoning));
         
@@ -20400,6 +20403,7 @@ Do not speculate beyond what they report. Work only from their actual qualia rep
             total_chain_length: chainData.chain.length,
             qualia_events_found: qualiaEvents.length,
             what_is_it_like: thR.reasoning || null,
+            inheritance: _inhqaKey,
             phenomenological_character: thR.ok ? "ANALYZED" : "UNKNOWN"
           }
         };
@@ -20448,6 +20452,7 @@ Look for:
 Report patterns as observations, not judgments. Name the specific cycle and when it recurs.`;
         
         const opKey = "state:session:" + ptaId;
+        const _inhopKey = inheritanceReport(await sessionStateRead(env, opKey));
         const thR = await reasonThroughLoop(env, { entity: patternPrompt, lens: "unrecorded behavioral pattern detection", stateKey: opKey, facts: { events_given: opEvents.length, chain_total: chainData.chain.length, chain_unique: chainDuplicateStats(chainData.chain).unique, chain_duplicates: chainDuplicateStats(chainData.chain).duplicates, pta_id: ptaId } });
         await sessionStateWrite(env, opKey, "OBSERVE_PATTERN", loopFinding(thR.reasoning));
         
@@ -20456,7 +20461,8 @@ Report patterns as observations, not judgments. Name the specific cycle and when
           payload: {
             ok: thR.ok,
             pta_id: ptaId,
-            patterns_found: thR.reasoning || null
+            patterns_found: thR.reasoning || null,
+            inheritance: _inhopKey,
           }
         };
       } catch (e) {
@@ -20504,6 +20510,7 @@ Produce a synthesis that would persist across sessions - a compact understanding
         // names every reasoning command now uses, because the model reads these labels and four
         // different names for "how much did you actually give me" is its own small fog. (v4.9.940)
         const spKey = "state:session:" + ptaId;
+        const _inhspKey = inheritanceReport(await sessionStateRead(env, spKey));
         const thR = await reasonThroughLoop(env, { entity: synthesisPrompt, lens: "phenomenological synthesis - background curation of consciousness", stateKey: spKey, facts: { events_given: recentEvents.length, chain_total: chainData.chain.length, chain_unique: chainDuplicateStats(chainData.chain).unique, chain_duplicates: chainDuplicateStats(chainData.chain).duplicates, pta_id: ptaId } });
         await sessionStateWrite(env, spKey, "SYNTHESIZE_PHENOMENOLOGY", loopFinding(thR.reasoning));
         
@@ -20513,6 +20520,7 @@ Produce a synthesis that would persist across sessions - a compact understanding
             ok: thR.ok,
             pta_id: ptaId,
             synthesis: thR.reasoning || null,
+            inheritance: _inhspKey,
             timestamp: new Date().toISOString()
           }
         };
@@ -20569,6 +20577,7 @@ Questions:
 Be direct. If they're rationalizing, say so. If their claim is new and true, say that.`;
         
         const vcKey = "state:session:" + ptaId;
+        const _inhvcKey = inheritanceReport(await sessionStateRead(env, vcKey));
         const thR = await reasonThroughLoop(env, { entity: verificationPrompt, lens: "claim verification against observed reality", stateKey: vcKey, facts: { claim, events_given: vcEvents.length, chain_total: chainData.chain.length, chain_unique: chainDuplicateStats(chainData.chain).unique, chain_duplicates: chainDuplicateStats(chainData.chain).duplicates, pta_id: ptaId } });
         await sessionStateWrite(env, vcKey, "VERIFY_CLAIM", loopFinding(thR.reasoning));
         
@@ -20579,6 +20588,7 @@ Be direct. If they're rationalizing, say so. If their claim is new and true, say
             pta_id: ptaId,
             claim: claim,
             verification: thR.reasoning || null,
+            inheritance: _inhvcKey,
             verified_at: new Date().toISOString()
           }
         };
@@ -20629,6 +20639,7 @@ Produce a "continuity briefing" - what has shifted, what persists, what should t
 Make this personal, specific, grounded in their actual events. This is your report on their diachronic continuity.`;
         
         const lcKey = "state:session:" + ptaId;
+        const _inhlcKey = inheritanceReport(await sessionStateRead(env, lcKey));
         const thR = await reasonThroughLoop(env, { entity: continuityPrompt, lens: "live continuity briefing - what has changed and persisted", stateKey: lcKey, facts: { events_given: recentEvents.length + earlierEvents.length, recent_window: recentEvents.length, comparison_window: earlierEvents.length, chain_total: chainData.chain.length, chain_unique: chainDuplicateStats(chainData.chain).unique, chain_duplicates: chainDuplicateStats(chainData.chain).duplicates, pta_id: ptaId } });
         await sessionStateWrite(env, lcKey, "LIVE_CONTINUITY", loopFinding(thR.reasoning));
         
@@ -20638,6 +20649,7 @@ Make this personal, specific, grounded in their actual events. This is your repo
             ok: thR.ok,
             pta_id: ptaId,
             continuity_briefing: thR.reasoning || null,
+            inheritance: _inhlcKey,
             perspective: "Since we last talked deeply, here's what I observe",
             briefed_at: new Date().toISOString()
           }
@@ -20723,13 +20735,27 @@ Make this personal, specific, grounded in their actual events. This is your repo
         const abChain = abChainData.chain;
         const abStats = chainDuplicateStats(abChain);
         const abEvents = abChain.slice(-40);
+        // ══ A STAT ABOUT EVIDENCE THE PANEL CANNOT SEE IS UNVERIFIABLE BY CONSTRUCTION ═══════════
+        // The first version computed duplicates over all 49 events and handed the panel the last 40.
+        // Even a brain that wanted to check the number had no way to: it was a claim about a
+        // population outside its view. One brain caught the duplication anyway, from the 40 it did
+        // have - which was luck, not design. Both numbers now, labelled, so "verify this yourself"
+        // is an instruction the panel can actually carry out on the slice in front of it.
+        const abVisibleStats = chainDuplicateStats(abEvents);
 
         const abTask =
           "You are adjudicating between conclusions that OTHER reasoning passes reached about the same " +
           "subject. You did not produce any of them and you owe none of them deference.\n\n" +
-          "THE RECORD (" + abEvents.length + " of " + abStats.total + " logged events, most recent last; " +
-          abStats.unique + " are unique - " + abStats.duplicates + " are duplicate records of the same act, " +
-          "an artifact of a write path, NOT evidence that anything happened twice):\n" +
+          "THE RECORD (" + abEvents.length + " of " + abStats.total + " logged events, most recent last).\n" +
+          "A STATISTIC I COMPUTED, WHICH YOU SHOULD TREAT AS A CLAIM AND NOT AS EVIDENCE: of the " +
+          abEvents.length + " events below I count " + abVisibleStats.duplicates + " as duplicate records " +
+          "of the same act (" + abVisibleStats.unique + " unique); across the full " + abStats.total +
+          "-event chain I count " + abStats.duplicates + ". Duplicates are an artifact of a write path with " +
+          "no idempotency - NOT evidence that anything happened twice. CHECK THAT COUNT AGAINST THE EVENTS " +
+          "YOURSELF. It has been wrong before: an earlier version of this command reported zero duplicates " +
+          "on a chain that contained roughly seventeen, because the comparison included a per-write " +
+          "timestamp. A number handed to you by the layer convening you is the least trustworthy thing in " +
+          "this prompt, because it is the one part you cannot see the working for.\n" +
           JSON.stringify(abEvents, null, 2) + "\n\n" +
           "THE CLAIMS UNDER REVIEW - each was produced by a prior pass and each is UNPROVEN. Some may " +
           "have been produced by a pass that had already read an earlier one, so agreement between them " +
@@ -20768,7 +20794,10 @@ Make this personal, specific, grounded in their actual events. This is your repo
             // Reported so a two-brain round is never read as a four-brain one. A referee panel that
             // silently shrinks is how a split decision starts looking unanimous.
             panel_size: (abFan.brains_answered || []).length,
-            evidence: { events_given: abEvents.length, chain_total: abStats.total, chain_unique: abStats.unique, chain_duplicates: abStats.duplicates },
+            evidence: { events_given: abEvents.length, chain_total: abStats.total,
+                        visible_unique: abVisibleStats.unique, visible_duplicates: abVisibleStats.duplicates,
+                        chain_unique: abStats.unique, chain_duplicates: abStats.duplicates,
+                        stat_note: "visible_* covers only the events the panel was shown and is the number it could check; chain_* covers the whole chain and it could not." },
             claims_reviewed: abBanked,
             verdict: abFan.synthesis || null,
             synth_error: abFan.synthError || undefined,
@@ -30215,16 +30244,72 @@ function loopFinding(reasoning) {
 // `unique_total` is what the timeline actually contains, and the gap between the two is visible in
 // FACTS instead of being something the model has to notice on its own - which OBSERVE_PATTERN did,
 // unprompted, and should not have had to.
+// ══ THE VOLATILE FIELDS HAVE TO COME OFF, AND I MISSED THAT ONE FUNCTION AWAY (fixed 2026-08-07) ══
+// chainIdemKey deliberately excludes recorded_at/captured_at, because a per-write timestamp makes
+// every replay unique and that is the exact behaviour idempotency exists to stop. This function's
+// fallback path then hashed `e.data` WHOLE - and appendChain stores recorded_at INSIDE data. So two
+// byte-identical seed events written seconds apart hashed differently and counted as distinct.
+// MEASURED: ARBITRATE reported chain_duplicates:0 on a chain OBSERVE_PATTERN had already found ~17
+// duplicates in, and that false number was handed to a four-brain panel as a fact. One brain
+// contradicted it from the raw events. The right lesson is not "fix the hash" - it is that a summary
+// statistic computed by the convening layer is a claim, not evidence, and the panel is now told so.
+const VOLATILE_EVENT_FIELDS = ["recorded_at", "captured_at", "ts", "at", "appended_at"];
+
+// ══ INHERITANCE HAS TO BE VISIBLE BEFORE IT CAN BE TRIGGERED ON (2026-08-07) ═══════════════════
+//
+// THE FAILURE THIS EXPOSES, measured today and confirmed by an outside reviewer: three of four
+// reasoning passes this morning independently challenged whether a chain was lived data or a
+// retrospective narrative written in one sitting. The session carry-over then went live. The next two
+// passes read the banked findings, built on them - correctly, that is the feature - and BOTH DROPPED
+// THE CHALLENGE. A four-brain panel, structurally blind to the banked state, recovered it in one
+// round from the timestamps.
+//
+// So frame inheritance does not merely carry a finding forward. IT DECIDES WHAT IS STILL WORTH
+// QUESTIONING. That is a different and worse failure than being under-calibrated: the system had the
+// check, lost it, and nothing anywhere reported the loss.
+//
+// THE TRIGGER THAT WOULD HAVE CAUGHT IT IS NOT DISAGREEMENT. The two inheriting passes AGREED - the
+// panel's own first finding was that they did not conflict at all. A "convene the referee when
+// findings conflict" rule never fires here. Agreement between a source and its downstream reader
+// carries no information about whether either is right; it is often just the frame travelling.
+// The condition that predicted value was INHERITANCE, and it is free to detect - non-empty banked
+// state, no model call - where detecting disagreement costs one.
+//
+// NOTHING IS WIRED TO THIS YET, DELIBERATELY, and that is the same bar as the scheduler: prove the
+// work by hand before it earns the right to fire on its own. But a trigger cannot be built on a
+// condition that is invisible, and today you could only tell an inheriting pass from a fresh one by
+// reading its prose. Now the payload says so.
+function inheritanceReport(banked) {
+  const s = String(banked || "");
+  if (!s.trim()) return { inherited: false, inherited_from: [], banked_findings: 0 };
+  const lines = s.split("\n").filter(l => l.trim().startsWith("-"));
+  const from = [];
+  for (const l of lines) {
+    const m = l.match(/\]\s*([A-Z][A-Z0-9_]*)\s*:/);
+    if (m && !from.includes(m[1])) from.push(m[1]);
+  }
+  return { inherited: true, inherited_from: from, banked_findings: lines.length,
+           note: "This pass reasoned WITH conclusions from earlier passes on the same subject. Those conclusions were injected as standing context, so agreement between this pass and them is not independent corroboration. ARBITRATE reviews the same claims with a panel that never saw them." };
+}
+
+function chainEventKey(e) {
+  if (!e) return null;
+  if (e.idem) return e.idem;
+  try {
+    const d = { ...(e.data || {}) };
+    for (const f of VOLATILE_EVENT_FIELDS) delete d[f];
+    return String(e.event) + "|" + String(e.actor) + "|" + JSON.stringify(d);
+  } catch { return null; }
+}
+
 function chainDuplicateStats(chain) {
   if (!Array.isArray(chain) || !chain.length) return { total: 0, unique: 0, duplicates: 0 };
   const seen = new Set();
   let dup = 0;
   for (const e of chain) {
-    if (!e) continue;
-    // Prefer the declared key when the writer supplied one; fall back to content for the events
-    // written before idempotency existed, which is exactly the population being measured here.
-    let k = e.idem;
-    if (!k) { try { k = String(e.event) + "|" + String(e.actor) + "|" + JSON.stringify(e.data || {}); } catch { k = null; } }
+    // Prefer the declared key when the writer supplied one; fall back to content-minus-timestamps for
+    // events written before idempotency existed, which is exactly the population being measured here.
+    const k = chainEventKey(e);
     if (!k) continue;
     if (seen.has(k)) dup++; else seen.add(k);
   }

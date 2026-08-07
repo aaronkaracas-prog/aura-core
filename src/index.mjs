@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.944-2026-08-07-json-has-no-undefined";
+const BUILD = "aura-core-v4.9.945-2026-08-07-a-referee-that-did-not-read-the-file";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -20644,6 +20644,140 @@ Make this personal, specific, grounded in their actual events. This is your repo
         };
       } catch (e) {
         return { cmd: "LIVE_CONTINUITY", payload: { ok: false, error: "Live continuity briefing failed: " + e.message } };
+      }
+    }
+
+    case "ARBITRATE": {
+      // ══ THE REFEREE THAT DID NOT EXIST ═══════════════════════════════════════════════════════
+      //
+      // MEASURED 2026-08-07, four reasoning commands on one chain: LIVE_CONTINUITY concluded "this IS
+      // the first crossing of the teaching threshold - you are inside the hinge, not circling it" at
+      // confidence medium. OBSERVE_PATTERN concluded the same events were "structural to how he
+      // relates to work, not something he resolved" at confidence high. Flatly opposite readings of
+      // identical evidence. BOTH RETURNED ok:true. Nothing in the system noticed, nothing weighed
+      // them, and the operator had four answers and no way to choose.
+      //
+      // That is the shape of the Council - independent seats, disagreement as signal - without the
+      // part that makes disagreement worth having. This is that part.
+      //
+      // ══ WHY THE ARBITER IS BLIND TO THE BANKED STATE, AND WHY THAT IS THE WHOLE DESIGN ═══════
+      //
+      // The session carry-over (state:session:<pta_id>) works: on 2026-08-07 OBSERVE_PATTERN read
+      // VERIFY_CLAIM's finding, cited it, and built on it instead of re-deriving it. Real progress.
+      // And its FIRST side effect was a cost: earlier that morning three of four passes independently
+      // challenged whether the chain was a real life at all ("all events recorded in a single
+      // 90-minute session... a CONSTRUCTED narrative"). After the carry-over landed, neither pass
+      // raised it. An inherited frame does not just carry a finding forward - it decides what is still
+      // worth questioning.
+      //
+      // So an arbiter that reads the banked state is not a referee. It is a fourth voice that already
+      // agrees, and it would convert an echo into a verdict. The Council named this exact failure in
+      // Round 5: a boundary that is a metadata field the query planner can ignore is a suggestion;
+      // only a structural separation is a boundary.
+      //
+      // STRUCTURAL HERE MEANS: this handler calls fanReason() DIRECTLY and never reasonThroughLoop()
+      // with a stateKey. reasonThroughLoop injects banked state into its SYSTEM prompt - the one place
+      // a model cannot help but treat as settled. The prior findings still reach the brains, but as
+      // NUMBERED CLAIMS TO ADJUDICATE inside the task, explicitly labelled as unproven, which is a
+      // completely different epistemic position from "here is what you already know."
+      //
+      // BUILT ON fanReason, NOT BESIDE IT. It already fans to real brains in parallel and already
+      // carries the anti-confabulation rule that forbids the synthesis naming a brain that did not
+      // answer - which for a referee is the difference between a panel and a fiction. Not the Council
+      // (/council on aura-think, top model per provider): HOW says never convene that for what the
+      // cheap rung can answer, and adjudicating two readings of one chain is not a frontier question.
+      //
+      //   ARBITRATE <pta_id>                  adjudicate everything banked for that subject
+      //   ARBITRATE <pta_id> ::: <question>   adjudicate a specific question against the same evidence
+      if (!isOp) return { cmd: "ARBITRATE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const abRaw = rest.trim();
+      const abSplit = abRaw.split(":::");
+      const abPta = (abSplit[0] || "").trim().split(/\s+/)[0] || "";
+      const abQuestion = (abSplit[1] || "").trim();
+      if (!abPta) return { cmd: "ARBITRATE", payload: { ok: false, error: "Usage: ARBITRATE <pta_id> [::: <specific question>]" } };
+
+      try {
+        const abKey = "state:session:" + abPta;
+        const abBanked = await sessionStateRead(env, abKey);
+        if (!abBanked || !abBanked.trim()) {
+          // A referee with nothing to referee should say so, not manufacture a dispute. This is a
+          // real and common state - the FIRST pass on a subject has nothing to arbitrate - and
+          // reporting it plainly costs nothing, where fanning four brains at an empty question
+          // costs money to produce an answer about nothing.
+          return { cmd: "ARBITRATE", payload: { ok: false, error: "NOTHING_BANKED",
+            why: "No prior reasoning passes are banked for " + abPta + " at " + abKey + ", so there is nothing to adjudicate. Run VERIFY_CLAIM / OBSERVE_PATTERN / LIVE_CONTINUITY first - arbitration weighs findings, it does not produce them." } };
+        }
+
+        // The evidence, read fresh from the chain - the arbiter judges the CLAIMS against the RECORD,
+        // so it must hold the record itself and not a prior pass's description of it.
+        const abDoId = env.PTA_DO.idFromName(abPta);
+        const abStub = env.PTA_DO.get(abDoId);
+        const abChainResp = await abStub.fetch(new Request("http://do", {
+          method: "POST",
+          body: JSON.stringify({ method: "getChain", params: [500, true] })
+        }));
+        const abChainData = await abChainResp.json();
+        if (!abChainData.ok || !abChainData.chain) {
+          return { cmd: "ARBITRATE", payload: { ok: false, error: "Could not read chain for " + abPta } };
+        }
+        const abChain = abChainData.chain;
+        const abStats = chainDuplicateStats(abChain);
+        const abEvents = abChain.slice(-40);
+
+        const abTask =
+          "You are adjudicating between conclusions that OTHER reasoning passes reached about the same " +
+          "subject. You did not produce any of them and you owe none of them deference.\n\n" +
+          "THE RECORD (" + abEvents.length + " of " + abStats.total + " logged events, most recent last; " +
+          abStats.unique + " are unique - " + abStats.duplicates + " are duplicate records of the same act, " +
+          "an artifact of a write path, NOT evidence that anything happened twice):\n" +
+          JSON.stringify(abEvents, null, 2) + "\n\n" +
+          "THE CLAIMS UNDER REVIEW - each was produced by a prior pass and each is UNPROVEN. Some may " +
+          "have been produced by a pass that had already read an earlier one, so agreement between them " +
+          "is not independent corroboration and must not be counted as support:\n" + abBanked + "\n\n" +
+          (abQuestion ? ("THE SPECIFIC QUESTION TO SETTLE: " + abQuestion + "\n\n") : "") +
+          "Answer four things, briefly and concretely:\n" +
+          "1. WHERE THEY GENUINELY CONFLICT - two claims that cannot both be true. Name them. If they " +
+          "differ only in emphasis or wording, say so; a manufactured conflict is worse than none.\n" +
+          "2. WHICH IS BETTER SUPPORTED BY THE RECORD ABOVE, and cite the specific events. If the record " +
+          "cannot settle it, say that plainly - 'undecidable on this evidence' is a real verdict and a " +
+          "more useful one than a confident guess.\n" +
+          "3. WHAT EVERY CLAIM MISSED - including anything about the record itself: whether these events " +
+          "look lived or constructed, whether the timestamps are consistent with the story they tell, " +
+          "whether the framing every claim shares is one the evidence actually supports.\n" +
+          "4. WHAT WOULD SETTLE IT - the specific observation or future event that would decide between " +
+          "them. Not a research programme; one falsifier.";
+
+        const abFan = await fanReason(env, { task: abTask, maxTokens: 900 });
+        if (!abFan.ok) return { cmd: "ARBITRATE", payload: { ok: false, error: abFan.error || "no brains answered" } };
+
+        // Banked under its own tag so a later pass can tell an ADJUDICATED question from an asserted
+        // one. Without the tag the verdict becomes just another banked finding, and the next pass
+        // inherits it exactly the way it inherits everything else - which is the loop this exists to
+        // break, closing on itself one turn later.
+        await sessionStateWrite(env, abKey, "ARBITRATE",
+          "ADJUDICATED by " + (abFan.brains_answered || []).join("/") + ": " +
+          String(abFan.synthesis || "").slice(0, 400));
+
+        return {
+          cmd: "ARBITRATE",
+          payload: {
+            ok: true,
+            pta_id: abPta,
+            question: abQuestion || null,
+            brains_answered: abFan.brains_answered,
+            // Reported so a two-brain round is never read as a four-brain one. A referee panel that
+            // silently shrinks is how a split decision starts looking unanimous.
+            panel_size: (abFan.brains_answered || []).length,
+            evidence: { events_given: abEvents.length, chain_total: abStats.total, chain_unique: abStats.unique, chain_duplicates: abStats.duplicates },
+            claims_reviewed: abBanked,
+            verdict: abFan.synthesis || null,
+            synth_error: abFan.synthError || undefined,
+            spread: abFan.spread,
+            note: "The brains that answered did NOT receive the banked session state as context - the prior findings were handed to them as numbered claims to test. A verdict here is independent of the passes it judges; a banked finding is not."
+          }
+        };
+      } catch (e) {
+        return { cmd: "ARBITRATE", payload: { ok: false, error: "Arbitration failed: " + (e && e.message ? e.message : String(e)) } };
       }
     }
 

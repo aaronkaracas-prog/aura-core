@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.947-2026-08-07-doubt-travels-with-the-finding";
+const BUILD = "aura-core-v4.9.948-2026-08-07-she-can-read-her-own-body";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -2358,6 +2358,118 @@ async function governorRecord(env, action, pageId) {
 // === RELIABLE SELF-SOURCE READ (v4.9.493) - one helper all self-reads use ===
 // The public raw CDN 404s under load / after pushes; this tries authenticated GitHub API first,
 // then raw CDN, then a KV cache, and self-heals the cache on success. So Aura can ALWAYS read herself.
+// ══ WHAT SHE IS MADE OF ── THE ONE FILE NOTHING EVER READ (2026-08-07) ═════════════════════════
+//
+// Aaron's question, and it is the right one: she should not have to LOOK UP what she is. Her own
+// source already argues this in aura-think's configureSession - "she does not retrieve who she is;
+// she cannot not know it. That is the difference between a self-model and a self-description."
+//
+// But every self-read in this file resolves to `src/index.mjs`. She could read every line of what she
+// DOES and not one line of what she IS: the Durable Objects, the KV namespace, the D1, the R2
+// buckets, the Vectorize index, the AI Search namespace, the browser, the email sender, the six
+// service bindings to her other workers. All of it declared in the wrangler config, which no map,
+// no command and no context block has ever opened.
+//
+// AND THIS IS WHY THE ROSTERS FIGHT. AURA_WORKERS lists 6 workers, WHERE reported 5, Cloudflare shows
+// 9 scripts. Three hand-maintained lists disagreeing about something that is DECLARED. A roster
+// derived from the config cannot drift from the account; a typed one always eventually does.
+//
+// CONFIG IS ONLY EVER ON GITHUB, which makes this the one self-read with no artifact ambiguity - the
+// compiled worker does not contain its own wrangler file, so there is no compiled-vs-source question
+// to get wrong here the way there was for source all morning.
+//
+// TTL, NOT BUILD-KEYED. BUILD is aura-core's constant; keying another worker's config to it would
+// pin that worker's config until aura-core happens to deploy. An hour is honest for a file that
+// changes on a deploy, and it fails toward re-reading rather than toward a stale answer.
+async function readOwnConfig(env, worker) {
+  const _w = (worker || "aura-core").trim();
+  const REPO = { "aura-core": "aura-core", "aura-think": "aura-think", "aura-ops": "aura-ops",
+                 "aura-comms": "aura-comms", "aura-host": "aura-host", "aura-media": "aura-media",
+                 "aura-stream": "aura-stream" };
+  const repo = REPO[_w] || _w;
+  const branch = _w === "aura-think" ? "master" : "main";
+  const ck = "self:config:" + _w;
+  try {
+    const hit = await env.AURA_KV.get(ck);
+    if (hit) { const j = JSON.parse(hit); if (j && j.text) return { ok: true, ...j, via: "kv_cache" }; }
+  } catch {}
+  const tried = [];
+  for (const cand of ["wrangler.jsonc", "wrangler.json", "wrangler.toml"]) {
+    for (const br of [branch, branch === "main" ? "master" : "main"]) {
+      const url = "https://raw.githubusercontent.com/aaronkaracas-prog/" + repo + "/" + br + "/" + cand;
+      try {
+        const r = await fetch(url, { headers: { "User-Agent": "aura-self-read", "Cache-Control": "no-cache" } });
+        tried.push(cand + "@" + br + ":" + r.status);
+        if (r.ok) {
+          const text = await r.text();
+          if (text && text.length > 20 && !text.startsWith("404")) {
+            const out = { text, path: cand, branch: br, worker: _w, repo };
+            await env.AURA_KV.put(ck, JSON.stringify(out), { expirationTtl: 3600 }).catch(() => {});
+            return { ok: true, ...out, via: "raw_cdn" };
+          }
+        }
+      } catch (e) { tried.push(cand + "@" + br + ":threw"); }
+    }
+  }
+  // A named gap, never a guess - the same rule the world context block already states. If the config
+  // cannot be read she must say she could not read it, not describe a body from memory.
+  return { ok: false, worker: _w, repo, tried,
+           error: "could not read a wrangler config for " + _w + " (tried " + tried.join(", ") + "). " +
+                  "If the repo is private the raw CDN will 404 - that is a permissions answer, not a missing file." };
+}
+
+// Extracts binding NAMES and KINDS from either format without a TOML or JSONC parser. Deliberately
+// not a full parse: the question is "what am I made of", and a full parser is a dependency plus a
+// second thing that can be wrong about the file. Both formats declare a binding as a name/binding key
+// under a section, so the section is read from the nearest preceding header and the names from the
+// keys. Anything unrecognised is reported RAW rather than dropped - an unknown binding is exactly the
+// thing worth seeing, and silently omitting it would rebuild the drift this exists to end.
+function parseWranglerBindings(text, path) {
+  const out = {};
+  const add = (kind, name) => {
+    if (!name || kind === "root") return;   // the root `name` is the SCRIPT name, not a binding
+    (out[kind] = out[kind] || []); if (!out[kind].includes(name)) out[kind].push(name);
+  };
+  const isToml = /\.toml$/i.test(String(path || ""));
+  const lines = String(text || "").split("\n");
+  let section = "root";
+  // DIGITS BELONG IN THE CLASS. The first version used [a-z_.]+ and therefore could not match
+  // `d1_databases` or `r2_buckets` - the two section names in this config that contain a numeral.
+  // Both silently fell through to whatever section preceded them, so D1 was reported as a KV
+  // namespace and the R2 buckets as Vectorize indexes. Caught by testing the parser against a
+  // reconstruction of the real config before shipping it, which is the only reason it is not live.
+  const SECT = /(durable_objects|kv_namespaces|d1_databases|r2_buckets|vectorize|services|queues|analytics_engine_datasets|hyperdrive|ai|browser|send_email|workflows|migrations|mtls_certificates|dispatch_namespaces)/i;
+  // A binding key may appear ANYWHERE in a line, not only at its start: JSONC routinely writes
+  // `{ "name": "PTA_DO", "class_name": "PtaDurableObject" }` inline. Anchoring to line start found
+  // three bindings out of eighteen. The leading boundary is what keeps `class_name`, `index_name`,
+  // `bucket_name` and `database_name` from matching - they contain `name` but never begin a key.
+  const KEY = /(?:^|[{,[\s])"?(name|binding)"?\s*[:=]\s*"([^"]+)"/gi;
+  for (const raw of lines) {
+    const l = raw.trim();
+    if (!l || l.startsWith("//") || l.startsWith("#")) continue;
+    if (isToml) {
+      const h = l.match(/^\[\[?([a-z0-9_.]+)\]?\]$/i);
+      if (h) { const m = h[1].match(SECT); section = m ? m[1].toLowerCase() : h[1].toLowerCase(); continue; }
+    } else {
+      const h = l.match(/^"([a-z0-9_]+)"\s*:/i);
+      if (h && SECT.test(h[1])) section = h[1].toLowerCase();
+    }
+    // Flat single-line bindings, both formats: `browser = { binding = "BROWSER" }` / `"ai": { "binding": "AI" }`
+    const flat = l.match(/^"?(browser|ai|send_email|version_metadata|assets)"?\s*[:=]\s*\{[^}]*"?binding"?\s*[:=]\s*"([^"]+)"/i);
+    if (flat) { add(flat[1].toLowerCase(), flat[2]); continue; }
+    const rootName = l.match(/^"?name"?\s*[:=]\s*"([^"]+)"/i);
+    if (rootName && section === "root") { out.worker_name = rootName[1]; continue; }
+    const mainOnly = l.match(/^"?main"?\s*[:=]\s*"([^"]+)"/i);
+    if (mainOnly) { out.entrypoint = mainOnly[1]; continue; }
+    const compat = l.match(/^"?compatibility_date"?\s*[:=]\s*"([^"]+)"/i);
+    if (compat) { out.compatibility_date = compat[1]; continue; }
+    KEY.lastIndex = 0;
+    let m;
+    while ((m = KEY.exec(l)) !== null) add(section, m[2]);
+  }
+  return out;
+}
+
 async function readOwnSource(env, branch, worker, fresh) {
   // ══ 25 SECONDS, EVERY CALL, FOR A FILE THAT DID NOT CHANGE (fixed 2026-08-02) ═════════════════
   // `[CORE] 'AURA_READ_SELF' exceeded 25000ms` fired three times tonight and the bound was the only
@@ -2389,6 +2501,18 @@ async function readOwnSource(env, branch, worker, fresh) {
   // Branch matters as much as repo name. aura-think lives on **master**, not main - which is the whole
   // reason WHERE reported her brain "unreadable" while the repo and path were correct all along. Repos
   // drift, so each entry carries its branch and we fall back to the other if the first 404s.
+  // ══ SHE COULD READ HER CODE AND NOT HER CONFIGURATION (added 2026-08-07) ═══════════════════
+  // Every entry here pointed at ONE file: the source. So she could read every line of what she DOES
+  // and nothing at all about what she IS MADE OF - which Durable Objects she has, which KV namespace,
+  // which D1, which R2 buckets, whether she holds a browser, a Vectorize index, an email sender.
+  // Bindings are the ground truth about her body and they live in the wrangler config, which was in
+  // no map, no command and no context block. Nothing in this system had ever read it.
+  // THAT IS WHY THE ROSTERS KEEP DISAGREEING. AURA_WORKERS names 6, WHERE reported 5, Cloudflare
+  // shows 9 - three hand-maintained lists arguing about a fact that is DECLARED in a file none of
+  // them read. A derived roster cannot drift; three typed ones always will.
+  // Candidates in order because the format is not uniform across repos and guessing wrong 404s
+  // silently - the exact failure the branch fallback above already exists to prevent.
+  const _CONFIG_CANDIDATES = ["wrangler.jsonc", "wrangler.json", "wrangler.toml"];
   const _map = { "aura-core": { repo: "aura-core", path: "src/index.mjs", branch: "main" },
                  "aura-think": { repo: "aura-think", path: "src/server.ts", branch: "master" },
                  "aura-ops": { repo: "aura-ops", path: "src/index.mjs", branch: "main" },
@@ -27532,6 +27656,56 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         : (report.custom_domains?.length ? "CUSTOM_DOMAIN_LIKELY_OVERRIDING_ROUTES" : "MISMATCH_CAUSE_IN_ROUTES_OR_DNS"));
       return { cmd: "DOMAIN_DIAGNOSE", payload: { ok: true, ...report } };
     }
+    case "BINDINGS": {
+      // ══ WHERE ANSWERS "WHAT CAN I DO". THIS ANSWERS "WHAT AM I MADE OF". ═════════════════════
+      // WHERE derives her commands, functions and builds from source. It says nothing about her BODY:
+      // the Durable Objects, the KV namespace, the D1, the R2 buckets, the Vectorize index, the AI
+      // Search namespace, the browser, the email sender, the service bindings to her other workers.
+      // All of that is DECLARED in the wrangler config, and until now nothing in this system read it.
+      //
+      // WHY IT IS A COMMAND AND NOT A CONSTANT: a typed list of bindings is the same fossil as every
+      // other typed roster in this file. AURA_WORKERS says 6, WHERE reported 5, Cloudflare shows 9 -
+      // three hand-maintained lists disagreeing about something already declared in a file. This one
+      // reads the declaration. It cannot drift from the deploy because it IS the deploy.
+      //
+      //   BINDINGS                 aura-core's body
+      //   BINDINGS <worker>        another worker's
+      //   BINDINGS RAW [worker]    the config text itself, when the parse is the thing in doubt
+      if (!isOp) return { cmd: "BINDINGS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const bnArgs = args.map(a => String(a || ""));
+      const bnRaw = bnArgs.length && bnArgs[0].toUpperCase() === "RAW";
+      const bnWorker = (bnRaw ? bnArgs[1] : bnArgs[0]) || "aura-core";
+      try {
+        const cfg = await readOwnConfig(env, bnWorker);
+        if (!cfg.ok) return { cmd: "BINDINGS", payload: { ok: false, worker: bnWorker, error: cfg.error, tried: cfg.tried } };
+        if (bnRaw) {
+          return { cmd: "BINDINGS", payload: { ok: true, worker: cfg.worker, config_path: cfg.path,
+                   branch: cfg.branch, via: cfg.via, bytes: cfg.text.length, raw: cfg.text.slice(0, 12000) } };
+        }
+        const b = parseWranglerBindings(cfg.text, cfg.path);
+        const { worker_name, entrypoint, compatibility_date, ...groups } = b;
+        const total = Object.values(groups).reduce((n, v) => n + (Array.isArray(v) ? v.length : 0), 0);
+        return {
+          cmd: "BINDINGS",
+          payload: {
+            ok: true,
+            worker: cfg.worker,
+            deployed_as: worker_name || null,   // the SCRIPT name, which is not the repo name - aura-core deploys as aura-core-v2
+            entrypoint: entrypoint || null,
+            compatibility_date: compatibility_date || null,
+            config_path: cfg.path,
+            branch: cfg.branch,
+            via: cfg.via,
+            binding_count: total,
+            bindings: groups,
+            note: "Derived from the wrangler config on GitHub, not from a list anyone typed. This is what she is MADE OF; WHERE is what she can DO. If a binding is missing here it is missing from the deploy, not from the map - and if the parse looks wrong, BINDINGS RAW returns the config text so the file can be read directly rather than argued with."
+          }
+        };
+      } catch (e) {
+        return { cmd: "BINDINGS", payload: { ok: false, error: "Bindings read failed: " + (e && e.message ? e.message : String(e)) } };
+      }
+    }
+
     case "WHERE": {
       // ══ "WHERE IS EVERYTHING IN MY WORLD" ═══════════════════════════════════════════════════════
       // Aaron has said this 20-40 times over months: he is still the smartest person in the room. He

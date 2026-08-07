@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.948-2026-08-07-she-can-read-her-own-body";
+const BUILD = "aura-core-v4.9.949-2026-08-07-show-what-is-actually-there";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -4712,27 +4712,60 @@ async function processCommand(line, env, isOp) {
 
         // LESSONS: active semantic lessons stored in KV
         if (mode === "LESSONS") {
+          // ══ IT COULD NOT SHOW THE THING IT EXISTS TO SHOW (fixed 2026-08-07) ══════════════════
+          // Three defects, all of which made a learning loop unmeasurable while looking healthy:
+          //  1. HARD CAP OF 10, silently. Ten orphan records from the retired gap-remediation
+          //     workflow plus nine real lessons already exceeded it, so a new lesson was INVISIBLE
+          //     and the same ten came back on every call. A truncated list that does not say it is
+          //     truncated is worse than an error - two identical readings looked like "nothing
+          //     changed" when nothing could have been shown to change.
+          //  2. IT PROJECTED FIVE FIELDS AND NONE OF THEM WERE THE NEW ONES. tier, origin,
+          //     observation_count, promoted_by and lineage all existed on the record and none
+          //     reached the payload, so the promotion ladder was running blind.
+          //  3. MALFORMED RECORDS COUNTED AS LESSONS. The orphans have no when_applies and no
+          //     insight, so getRelevantLessons skips every one of them - correctly - while this
+          //     command reported them as ten lessons she had. Same class as CAPABILITIES printing
+          //     `github_live` for a compiled bundle: a display asserting presence over an empty set.
           try {
-            const lessons = [];
+            const usable = [], malformed = [];
             const list = await kv.list({ prefix: "aura:semantic:" });
-            if (list && list.keys) {
-              for (const k of list.keys.slice(0, 10)) {
-                try {
-                  const raw = await kv.get(k.name);
-                  if (raw) {
-                    const lesson = JSON.parse(raw);
-                    lessons.push({
-                      id: k.name,
-                      when_applies: lesson.when_applies,
-                      insight: lesson.insight,
-                      confidence: lesson.confidence,
-                      validation_count: lesson.validation_count,
-                    });
-                  }
-                } catch {}
-              }
+            const keys = (list && list.keys) ? list.keys : [];
+            for (const k of keys.slice(0, 200)) {
+              try {
+                const raw = await kv.get(k.name);
+                if (!raw) continue;
+                const lesson = JSON.parse(raw);
+                // The same test getRelevantLessons applies, so the two can never disagree about
+                // what she actually has. A lesson this command counts and that one skips is a lie.
+                if (!lesson.when_applies || !lesson.insight) { malformed.push(k.name); continue; }
+                usable.push({
+                  id: k.name,
+                  tier: lesson.tier || "rule",
+                  origin: lesson.origin || "unknown",
+                  when_applies: lesson.when_applies,
+                  insight: lesson.insight,
+                  confidence: lesson.confidence,
+                  observation_count: lesson.observation_count ?? 1,
+                  validation_count: lesson.validation_count ?? 0,
+                  promoted_by: lesson.promoted_by || null,
+                  lineage_len: Array.isArray(lesson.lineage) ? lesson.lineage.length : 0,
+                });
+              } catch { malformed.push(k.name); }
             }
-            result.lessons = lessons.length > 0 ? lessons : { note: "no semantic lessons recorded yet" };
+            usable.sort((a, b) => (b.observation_count - a.observation_count) || (b.validation_count - a.validation_count));
+            result.lessons = {
+              total_keys: keys.length,
+              usable: usable.length,
+              malformed: malformed.length,
+              rules: usable.filter(l => l.tier === "rule").length,
+              notes: usable.filter(l => l.tier === "note").length,
+              truncated: keys.length > 200,
+              malformed_keys: malformed.slice(0, 5),
+              malformed_note: malformed.length
+                ? "These carry no when_applies/insight and are SKIPPED by retrieval - they are not lessons she can use. Most are orphans from the retired AUTONOMOUS_GAP_REMEDIATION_WORKFLOW."
+                : undefined,
+              items: usable,
+            };
           } catch (e) {
             result.lessons = { error: String(e?.message || e) };
           }

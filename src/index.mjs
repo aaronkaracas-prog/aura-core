@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.953-2026-08-07-one-subject-one-slot";
+const BUILD = "aura-core-v4.9.954-2026-08-07-a-count-is-not-a-belief";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -27757,6 +27757,65 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         : (report.custom_domains?.length ? "CUSTOM_DOMAIN_LIKELY_OVERRIDING_ROUTES" : "MISMATCH_CAUSE_IN_ROUTES_OR_DNS"));
       return { cmd: "DOMAIN_DIAGNOSE", payload: { ok: true, ...report } };
     }
+    case "BELIEF_RECLASS": {
+      // ══ A COUNT WAS SITTING IN THE STORE AS A CURRENT BELIEF ═════════════════════════════════
+      // Found live: a slot read `handler_count: 364` while the real count was 395. It was TRUE when
+      // formed, nothing ever contradicted it, so invalid_at stayed null and it was retrievable as
+      // current. Supersession answers contradiction and has no answer for DECAY - a claim that was
+      // right, that nothing disputes, and that reality moved past without telling anyone.
+      // v1.6.8 stops NEW measurements entering. This reclassifies the ones already written; that fix
+      // cannot reach them, and they are the ones actively being recited.
+      // Reclassified, never deleted: kind becomes "measurement", so retrieval drops it from her
+      // prompt while the row stays readable as history with its lineage intact.
+      //
+      //   BELIEF_RECLASS           show what would change
+      //   BELIEF_RECLASS CONFIRM   apply it
+      if (!isOp) return { cmd: "BELIEF_RECLASS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const brConfirm = args.some(a => String(a || "").toUpperCase() === "CONFIRM");
+      // Same pattern the writer uses, so the two can never disagree about what a measurement is.
+      const MEASURED = /\b(handler_count|command_count|build\b|v\d+\.\d+\.\d+|\$\d|\d{2,}\s*(commands?|handlers?|functions?|slots?|keys?|events?|lessons?|entities|domains|merchants)|spend|balance|total is|currently \d)/i;
+      try {
+        const brList = await env.AURA_KV.list({ prefix: "aura:belief:" });
+        const changes = [], applied = [];
+        for (const k of (brList?.keys || []).slice(0, 300)) {
+          if (k.name.includes(":was:")) continue;
+          try {
+            const raw = await env.AURA_KV.get(k.name);
+            if (!raw) continue;
+            const r = JSON.parse(raw);
+            if (!r || !r.body) continue;
+            if (r.kind === "measurement") continue;
+            if (!MEASURED.test(String(r.body))) continue;
+            changes.push({ slot: k.name.replace("aura:belief:", ""), was: r.kind || "fact",
+                           status: r.status, body: String(r.body).slice(0, 120) });
+            if (brConfirm) {
+              r.kind = "measurement";
+              r.observed_at = r.valid_from || new Date().toISOString();
+              r.lineage = Array.isArray(r.lineage) ? r.lineage : [];
+              r.lineage.push({ at: new Date().toISOString(), event: "reclassified",
+                to: "measurement", by: "BELIEF_RECLASS",
+                reason: "a derivable live figure - true when observed, silently stale after, and nothing would ever contradict it" });
+              if (r.lineage.length > 20) r.lineage = r.lineage.slice(-20);
+              await env.AURA_KV.put(k.name, JSON.stringify(r), { expirationTtl: 180 * 86400 });
+              applied.push(k.name);
+            }
+          } catch {}
+        }
+        return {
+          cmd: "BELIEF_RECLASS",
+          payload: {
+            ok: true, mode: brConfirm ? "applied" : "dry_run",
+            would_reclassify: changes.length, reclassified: applied.length, changes,
+            note: brConfirm
+              ? "Reclassified. These rows stay readable and keep their lineage; they no longer ride in her prompt, so she re-derives the figure instead of reciting a stale one."
+              : "NOTHING CHANGED. Each of these is a number that was true when observed and that nothing will ever contradict. Run BELIEF_RECLASS CONFIRM to drop them from her prompt while keeping them as history."
+          }
+        };
+      } catch (e) {
+        return { cmd: "BELIEF_RECLASS", payload: { ok: false, error: "Reclass failed: " + (e && e.message ? e.message : String(e)) } };
+      }
+    }
+
     case "BELIEF_MERGE": {
       // ══ THIRTY SLOTS, MAYBE TWELVE SUBJECTS ═════════════════════════════════════════════════
       // The extractor invented a fresh topic string per turn: access-charging / access-fee-incentives

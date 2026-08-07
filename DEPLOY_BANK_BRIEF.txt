@@ -1,0 +1,45 @@
+================================================================================
+DEPLOY BANK_BRIEF to aura-core
+================================================================================
+
+1. Copy index.mjs:
+   Copy-Item C:\path\to\server.ts-folder\index.mjs C:\Users\Aaron Karacas\aura-worker\aura\aura-workers\aura-core\src\index.mjs
+
+2. Verify it compiles:
+   cd C:\Users\Aaron Karacas\aura-worker\aura\aura-workers\aura-core
+   node --check .\src\index.mjs
+
+3. Deploy:
+   npx wrangler deploy
+
+4. Wait:
+   Start-Sleep -Seconds 45
+
+5. Test BANK_BRIEF:
+   RUN "BANK_BRIEF pta:test:001"
+
+Expected output (if Plaid connection exists):
+{
+  "ok": true,
+  "pta_id": "pta:test:001",
+  "transaction_count": 42,
+  "total_outflow": 1234.56,
+  "recurring_merchants": 5,
+  "recurring": [
+    { "merchant": "Stripe", "occurrences": 3, "typical_amount": 99.00 }
+  ],
+  "synced_at": "2026-08-06T02:15:30Z"
+}
+
+If no connection:
+{
+  "ok": false,
+  "error": "No Plaid connection for PTA pta:test:001"
+}
+
+6. Report to: aaronkaracas@gmail.com
+   - PING output
+   - BANK_BRIEF output
+   - Any errors
+
+================================================================================

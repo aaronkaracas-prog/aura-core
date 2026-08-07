@@ -1,0 +1,29 @@
+═══════════════════════════════════════════════════════════════════════════════
+EXTRACTED: CHAIN_EXPORT command
+Removed from index.mjs for cleanliness
+Original location: aura-core v4.9.* line ~20142-20182
+═══════════════════════════════════════════════════════════════════════════════
+
+CHAIN_EXPORT (41 lines):
+- Exports full chain from a PTA for analysis
+- Reads up to 1000 events from PtaDurableObject
+- USAGE: RUN "CHAIN_EXPORT <pta_id> [includeArchive]"
+- Returns: full chain data with metadata (length, export timestamp)
+
+Was diagnostic/analysis only. Restored if needed.
+
+
+═══════════════════════════════════════════════════════════════════════════════
+EXTRACTED: COUNCIL_BRIEF command
+Removed from index.mjs for cleanliness (but FIXED before removal)
+Original location: aura-core v4.9.* line ~20912-20958
+═══════════════════════════════════════════════════════════════════════════════
+
+COUNCIL_BRIEF (47 lines):
+- Architectural assessment via reasonThroughLoop (FIXED from external endpoint)
+- Uses deep reasoning with architectural lens
+- USAGE: RUN "COUNCIL_BRIEF <architectural question>"
+- Returns: assessment from Aura's reasoning engine
+
+NOTE: This command was corrected during extraction to use local reasonThroughLoop
+instead of broken external endpoint call.

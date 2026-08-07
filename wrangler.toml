@@ -93,6 +93,10 @@ class_name = "AisCollectorDO"
 name = "LEDGER_DO"
 class_name = "LedgerDO"
 
+[[durable_objects.bindings]]
+name = "PTA_DO"
+class_name = "PtaDurableObject"
+
 [[migrations]]
 tag = "v1-entitydo"
 new_sqlite_classes = ["EntityDO"]
@@ -106,6 +110,10 @@ new_classes = ["AisCollectorDO"]
 [[migrations]]
 tag = "v3-ledger-do"
 new_sqlite_classes = ["LedgerDO"]
+
+[[migrations]]
+tag = "v4-pta-do"
+new_classes = ["PtaDurableObject"]
 
 # ══ THE KNOWLEDGE BUCKET (2026-07-26) ═══════════════════════════════════════════════════════════
 # Where distilled facts land on their way into AI Search. The instance `aura-feeds` in namespace
@@ -246,6 +254,10 @@ class_name = "AisCollectorDO"
 [[env.staging.durable_objects.bindings]]
 name = "LEDGER_DO"
 class_name = "LedgerDO"
+
+[[env.staging.durable_objects.bindings]]
+name = "PTA_DO"
+class_name = "PtaDurableObject"
 
 [env.staging.browser]
 binding = "BROWSER"

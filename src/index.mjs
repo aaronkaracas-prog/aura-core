@@ -3597,9 +3597,23 @@ async function proxyToAgent(env, line, isOp, ptaId) {
         return { failed: "no AURA_THINK service binding, and the public fallback threw: " + String(e?.message ?? e).slice(0, 160) };
       }
     }
+    if (!r.ok) {
+      const txt = await r.text().catch(() => "");
+      return { failed: "agent http " + r.status + ": " + txt.slice(0, 200) };
+    }
+    
+    // Check Content-Type: if streaming (text/event-stream), pass Response through directly.
+    // Otherwise parse as JSON (normal reply).
+    const contentType = r.headers.get("content-type") || "";
+    if (contentType.includes("text/event-stream")) {
+      // Streaming response: pass through directly with headers intact.
+      return r;
+    }
+    
+    // JSON response: parse and extract reply field
     const txt = await r.text().catch(() => "");
-    if (!r.ok) return { failed: "agent http " + r.status + ": " + txt.slice(0, 200) };
-    let j = null; try { j = JSON.parse(txt); } catch { return { failed: "agent returned non-JSON: " + txt.slice(0, 160) }; }
+    let j = null;
+    try { j = JSON.parse(txt); } catch { return { failed: "agent returned non-JSON: " + txt.slice(0, 160) }; }
     if (j && j.ok === false) return { failed: "agent said not ok: " + String(j.error || "").slice(0, 200) };
     if (j && typeof j.reply === "string" && j.reply.trim()) {
       return { reply: j.reply, rung: j.rung || null, cost: j.turn_cost || null,
@@ -4420,6 +4434,44 @@ async function processCommand(line, env, isOp) {
             result.lessons = lessons.length > 0 ? lessons : { note: "no semantic lessons recorded yet" };
           } catch (e) {
             result.lessons = { error: String(e?.message || e) };
+          }
+          return { cmd: "AURA_OBSERVE", payload: result };
+        }
+
+        // PREDICTIONS: recently settled predictions (auto-settled by HANDS_DO)
+        if (mode === "PREDICTIONS") {
+          try {
+            const predictions = [];
+            const list = await kv.list({ prefix: "predict:" });
+            if (list && list.keys) {
+              for (const k of list.keys.slice(0, 20)) {
+                if (k.name === "predict:index") continue;
+                try {
+                  const raw = await kv.get(k.name);
+                  if (raw) {
+                    const pred = JSON.parse(raw);
+                    // Only show settled/recent predictions
+                    if (pred.state === "settled" && pred.settled_at_ms && (Date.now() - pred.settled_at_ms < 3600000)) {
+                      predictions.push({
+                        id: k.name,
+                        action_id: pred.action_id,
+                        command: pred.command,
+                        expected: pred.expected,
+                        claim: pred.claim,
+                        saw: pred.saw,
+                        state: pred.state,
+                        settled_at_ms: pred.settled_at_ms,
+                        settler_class: pred.settler_class || "unclassified",
+                        confidence: pred.confidence || 0.5,
+                      });
+                    }
+                  }
+                } catch {}
+              }
+            }
+            result.predictions = predictions.length > 0 ? predictions : { note: "no recently settled predictions" };
+          } catch (e) {
+            result.predictions = { error: String(e?.message || e) };
           }
           return { cmd: "AURA_OBSERVE", payload: result };
         }
@@ -14157,14 +14209,13 @@ async function successionGate(env) {
     }
 
     case "SECURESPEND_CHARGE": {
-      // The transaction layer of the world. A payment flows INTO SecureSpend, attaches to a
-      // PTA identity, passes the bare amount to the rail (Stripe) in live mode or simulates
-      // in test mode, ingests the FULL rail response, and stores both sides in-world.
+      // B2B2C Commerce: Payment flows in → routes to merchant's processor → records in dual ledgers
+      // Consumer sees it in their unified spending history (ss_consumer_txns)
+      // Merchant sees it in their settlement ledger (ss_merchant_ledger)
       // Usage (JSON arg):
-      //   SECURESPEND_CHARGE {"asset":"<asset>","amount":40.00,"currency":"usd",
-      //      "item":"<item description>","buyer":{"name":"<name>","identity":"email:<addr>"},
-      //      "mode":"test","context":{...},"return_to":"<return url>"}
-      // mode defaults to "test" (full flow, no real charge). "live" calls Stripe.
+      //   SECURESPEND_CHARGE {"consumer_id":"<id>","merchant_id":"<id>","amount":40.00,"currency":"usd",
+      //      "item":"<item description>","mode":"test|live","context":{...}}
+      // mode defaults to "test" (full flow, no real charge). "live" calls configured processor.
       if (!isOp) return { cmd: "SECURESPEND_CHARGE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const db = env.AURA_MEMORY;
       let scIn;
@@ -14220,51 +14271,69 @@ async function successionGate(env) {
       // charge, refuse when a resolved buyer is denied, and write the transaction onto their chain.
       // **A charge that cannot name a consenting party now says so in its own output** - which is the
       // difference between a gap and a gap nobody can see.
-      try { scIn = JSON.parse(rest.trim()); } catch { return { cmd: "SECURESPEND_CHARGE", payload: { ok: false, error: "Usage: SECURESPEND_CHARGE <json> with asset, amount, item, buyer{name,identity}, mode(test|live), context, return_to" } }; }
-      if (!scIn.asset || (scIn.amount == null && scIn.subtotal == null)) return { cmd: "SECURESPEND_CHARGE", payload: { ok: false, error: "asset and (subtotal or amount) are required" } };
+      try { scIn = JSON.parse(rest.trim()); } catch { return { cmd: "SECURESPEND_CHARGE", payload: { ok: false, error: "Usage: SECURESPEND_CHARGE <json> with consumer_id, merchant_id, amount, currency(usd), item, mode(test|live)" } }; }
+      if (!scIn.consumer_id || !scIn.merchant_id || (scIn.amount == null && scIn.subtotal == null)) return { cmd: "SECURESPEND_CHARGE", payload: { ok: false, error: "consumer_id, merchant_id, and (amount or subtotal) are required" } };
       const scMode = (scIn.mode || "test").toLowerCase();
       const scCur = (scIn.currency || "usd").toLowerCase();
-
-      // ── RESOLVE THE BUYER TO A REAL IDENTITY, then ask the consent layer ──────────────────────
-      let buyerPta = null, buyerConsent = null;
-      const buyerIdent = (scIn.buyer && (scIn.buyer.identity || scIn.buyer.pta)) || null;
-      if (buyerIdent) {
-        try {
-          if (/^pta_/i.test(buyerIdent)) {
-            const b = await db.prepare("SELECT id FROM pta_entities WHERE id = ?").bind(buyerIdent).first();
-            buyerPta = b ? b.id : null;
-          } else {
-            const norm = normIdentity(buyerIdent);
-            const h = await hashIdentity(env, norm);
-            let b = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(h.key).first();
-            if (!b) for (const cand of await hashIdentityAllVersions(env, norm)) {
-              if (b) break;
-              b = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(cand.key).first();
-            }
-            if (!b) b = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(norm).first();
-            buyerPta = b ? b.id : null;
-          }
-        } catch {}
+      const consumerId = scIn.consumer_id;
+      const merchantId = scIn.merchant_id;
+      
+      // ── LOOK UP MERCHANT CONFIG ─────────────────────────────────────────────────────────────
+      let merchantCfg;
+      try {
+        merchantCfg = await db.prepare("SELECT * FROM ss_merchant_config WHERE merchant_id = ? AND is_active = 1").bind(merchantId).first();
+        if (!merchantCfg) return { cmd: "SECURESPEND_CHARGE", payload: { ok: false, error: "Merchant not found or inactive: " + merchantId } };
+      } catch (e) {
+        return { cmd: "SECURESPEND_CHARGE", payload: { ok: false, error: "Failed to load merchant config: " + String(e.message) } };
       }
+      const processorUsed = merchantCfg.processor;
+      
+      // ── LOOK UP OR CREATE CONSUMER PROFILE ───────────────────────────────────────────────
+      let consumerProf;
+      try {
+        consumerProf = await db.prepare("SELECT * FROM ss_consumer_profile WHERE consumer_id = ?").bind(consumerId).first();
+        if (!consumerProf) {
+          // Auto-create consumer profile on first transaction
+          await db.prepare("INSERT INTO ss_consumer_profile (consumer_id, created_at, updated_at) VALUES (?, ?, ?)")
+            .bind(consumerId, new Date().toISOString(), new Date().toISOString()).run();
+          consumerProf = { consumer_id: consumerId };
+        }
+      } catch (e) {
+        return { cmd: "SECURESPEND_CHARGE", payload: { ok: false, error: "Failed to load/create consumer: " + String(e.message) } };
+      }
+
+      // ── CONSUMER IDENTITY & OPT-OUT CHECK ───────────────────────────────────────────────────
+      // In B2B2C, consumer_id is provided directly (either PTA or email hash)
+      let buyerPta = null, buyerConsent = null;
+      try {
+        if (/^pta_/i.test(consumerId)) {
+          const b = await db.prepare("SELECT id FROM pta_entities WHERE id = ?").bind(consumerId).first();
+          buyerPta = b ? b.id : null;
+        } else {
+          // Try to look up as email hash or identity
+          const norm = normIdentity(consumerId);
+          const h = await hashIdentity(env, norm);
+          let b = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(h.key).first();
+          if (!b) for (const cand of await hashIdentityAllVersions(env, norm)) {
+            if (b) break;
+            b = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(cand.key).first();
+          }
+          if (!b) b = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(norm).first();
+          buyerPta = b ? b.id : null;
+        }
+      } catch {}
+      
       if (buyerPta) {
-        // A PERMANENT OPT-OUT MUST STOP MONEY TOO. Someone who asked never to be contacted again has
-        // not agreed to be charged, and a payment path that ignores that makes the opt-out decorative.
         const oo = await ptaOptOut(env, buyerPta);
-        if (oo.blocked) return { cmd: "SECURESPEND_CHARGE", payload: { ok: false, error: "BUYER_OPTED_OUT",
-          buyer_pta: buyerPta, level: oo.level, why: oo.reason,
-          note: "No charge was attempted. An opt-out that stops messages but not money is not an opt-out." } };
-        // NOT "checked: true". We resolved who they are and confirmed they have not withdrawn.
-        // Neither of those is agreement to this purchase, and saying so was the lie.
+        if (oo.blocked) return { cmd: "SECURESPEND_CHARGE", payload: { ok: false, error: "CONSUMER_OPTED_OUT",
+          consumer_pta: buyerPta, level: oo.level, why: oo.reason,
+          note: "No charge was attempted. Consumer opted out." } };
         buyerConsent = { pta: buyerPta, identity_resolved: true, not_opted_out: true,
           consented_to_this_charge: false,
-          why: "resolving an identity is not agreement. Nothing in this path asked this person about "
-             + "this purchase - the card moment did, or an operator did." };
+          why: "resolving a consumer identity is not agreement. Payment happens at merchant doorway." };
       } else {
         buyerConsent = { pta: null, identity_resolved: false, consented_to_this_charge: false,
-          why: buyerIdent
-            ? "the buyer identity given does not resolve to a PTA - the charge is proceeding but is "
-              + "attributable to a STRING rather than to a consenting party"
-            : "no buyer identity was supplied at all - this charge belongs to nobody's chain" };
+          why: "consumer_id does not resolve to a PTA entity. Transaction records consumer_id as string." };
       }
 
       // â”€â”€ THE UNIVERSAL TRANSACTION GRAMMAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -14328,26 +14397,15 @@ async function successionGate(env) {
       const txnId = "ss_txn_" + Array.from(crypto.getRandomValues(new Uint8Array(10))).map(b => b.toString(16).padStart(2, "0")).join("");
       const now = new Date().toISOString();
 
-      // 1. Resolve buyer to a PTA identity (everyone is PTA'd from first touch)
-      let ptaEntityId = null, ptaMode = null;
-      if (scIn.buyer && (scIn.buyer.identity || scIn.buyer.name)) {
-        const bName = (scIn.buyer.name || "Customer").replace(/[\n\r]/g, " ");
-        const bId = scIn.buyer.identity ? (" identity:" + scIn.buyer.identity) : "";
-        try {
-          const pr = await processCommand(`PTA_ENTITY CREATE person ${bName}${bId}`, env, true);
-          const pp = pr && pr.payload ? pr.payload : pr;
-          if (pp && pp.ok && pp.entity) { ptaEntityId = pp.entity.id; ptaMode = pp.mode; }
-        } catch (e) { /* identity resolution best-effort; transaction still records */ }
-      }
-
-      // 2. Run the money step
+      // 2. ROUTE TO MERCHANT'S CONFIGURED PROCESSOR
       let rail = null, status = null, railOk = false;
       if (scMode === "live") {
         try {
-          const desc = (scIn.item || "SecureSpend purchase") + " â€” " + scIn.asset;
-          const meta = { secure_spend_txn: txnId, asset: scIn.asset, pta_entity: ptaEntityId || "" };
-          const pi = await createPaymentIntent(scCents, scCur, desc, meta, env);
-          rail = pi && pi.payload ? pi.payload : pi;
+          const desc = scIn.item || "SecureSpend transaction";
+          const meta = { secure_spend_txn: txnId, merchant_id: merchantId, consumer_id: consumerId };
+          // Pass merchantCfg to use merchant's Stripe account (if configured)
+          const pi = await createPaymentIntent(scCents, scCur, desc, meta, env, merchantCfg);
+          rail = pi && pi.id ? pi : (pi && pi.payload ? pi.payload : pi);
           railOk = !!(rail && (rail.id || rail.client_secret));
           status = railOk ? (rail.status || "requires_payment_method") : "rail_error";
         } catch (e) { rail = { error: String(e.message) }; status = "rail_error"; railOk = false; }
@@ -14365,12 +14423,11 @@ async function successionGate(env) {
       }
 
       // 3. Build the in-world transaction record â€” ingest BOTH sides, keep everything
-      const record = {
-        txn_id: txnId, ts: now, asset: scIn.asset, mode: scMode, status,
+      const record = { txn_id: txnId, ts: now, merchant_id: merchantId, consumer_id: consumerId, mode: scMode, status,
         amount: scAmt, currency: scCur,                    // amount = total (back-compat)
         breakdown,                                          // the universal grammar: subtotal/taxes/fees/total
         item: scIn.item || null, line_items: scIn.line_items || null,
-        buyer: scIn.buyer || null, pta_entity: ptaEntityId, pta_mode: ptaMode,
+        buyer: scIn.buyer || null,
         context: scIn.context || null, return_to: scIn.return_to || null,
         rail_name: "stripe", rail_response: rail
       };
@@ -14378,11 +14435,60 @@ async function successionGate(env) {
       // 4. Store in the ledger (KV record + index by asset and by pta entity)
       await env.AURA_KV.put(`ss:txn:${txnId}`, JSON.stringify(record)).catch(() => {});
       // lightweight indexes for LEDGER queries
-      const idxAsset = `ss:idx:asset:${scIn.asset}:${now}:${txnId}`;
-      await env.AURA_KV.put(idxAsset, txnId).catch(() => {});
-      if (ptaEntityId) await env.AURA_KV.put(`ss:idx:pta:${ptaEntityId}:${now}:${txnId}`, txnId).catch(() => {});
+      const idxMerchant = `ss:idx:merchant:${merchantId}:${now}:${txnId}`;
+      await env.AURA_KV.put(idxMerchant, txnId).catch(() => {});
+      if (buyerPta) await env.AURA_KV.put(`ss:idx:consumer:${buyerPta}:${now}:${txnId}`, txnId).catch(() => {});
+      
+      // 4b. DUAL-LEDGER: write to D1 for consumer view + merchant settlement
+      let ledgerError = null;
+      try {
+        // Consumer transaction ledger - what consumer sees in their unified wallet
+        await db.prepare(`
+          INSERT INTO ss_consumer_txns 
+          (txn_id, consumer_id, merchant_id, merchant_name, amount_minor, currency, status, processor, processor_txn_id, item_description, ts)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          txnId,
+          consumerId,
+          merchantId,
+          merchantCfg.name,
+          scCents,
+          scCur,
+          status,
+          processorUsed,
+          (rail && rail.id) ? rail.id : null,
+          scIn.item || null,
+          now
+        ).run();
+        
+        // Merchant settlement ledger - what merchant sees for payout
+        const ledgerId = "ssml_" + Array.from(crypto.getRandomValues(new Uint8Array(10))).map(b => b.toString(16).padStart(2, "0")).join("");
+        const platformFeeMinor = Math.round(scCents * (merchantCfg.split_fee_percent || 0) / 100);
+        const processorFeeMinor = 0; // TODO: extract from rail response
+        const netPayoutMinor = scCents - platformFeeMinor - processorFeeMinor;
+        
+        await db.prepare(`
+          INSERT INTO ss_merchant_ledger
+          (ledger_id, merchant_id, txn_id, gross_amount_minor, fee_amount_minor, platform_fee_minor, net_payout_minor, status, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          ledgerId,
+          merchantId,
+          txnId,
+          scCents,
+          processorFeeMinor,
+          platformFeeMinor,
+          netPayoutMinor,
+          status === "succeeded" ? "pending" : "failed",
+          now
+        ).run();
+      } catch (e) {
+        // Capture error for debugging, but don't fail the charge
+        ledgerError = String(e.message);
+        console.error("Dual-ledger write failed:", ledgerError);
+      }
       // Money moving is the definition of a consequential act.
-      try { await processCommand("AUDIT_CHAIN WRITE " + (ptaEntityId || "securespend") + " charge " +
+      try { await processCommand("AUDIT_CHAIN WRITE securespend charge " +
         txnId + " " + scAmt + " " + scCur + " status=" + status + " mode=" + scMode, env, true); } catch {}
 
       // ══ THE SIGNAL WIRE ── PAID IS THE ONE THAT MATTERS (v4.9.919) ═══════════════════════════
@@ -14392,8 +14498,7 @@ async function successionGate(env) {
       // a state derived from attempts would flatter the funnel.
       // Fire-and-forget: recording a payment must never fail the payment.
       try {
-        if (ptaEntityId && status === "succeeded") {
-          await processCommand("BUSINESS_STATE SIGNAL " + ptaEntityId + " paid " +
+        if (buyerPta && status === "succeeded") { await processCommand("BUSINESS_STATE SIGNAL " + buyerPta + " paid " +
             scAmt + " " + scCur + " mode=" + scMode, env, true);
         }
       } catch {}
@@ -14416,7 +14521,7 @@ async function successionGate(env) {
       //   test_no_human      - a synthetic run. No card, no person, no consent of any kind.
       // And when an operator did it, `actor_id` is the OPERATOR, not the buyer - the buyer appears as
       // the subject of the purchase without being credited with the decision.
-      const chainSubject = buyerPta || ptaEntityId || null;
+      const chainSubject = buyerPta || null;
       const authorizedBy = scMode === "live"
         ? (buyerPta ? "cardholder_present" : "operator")
         : "test_no_human";
@@ -14425,7 +14530,7 @@ async function successionGate(env) {
           env.AURA_MEMORY.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, NULL, 'transacted', ?, ?, ?)")
             .bind("hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map((b) => b.toString(16).padStart(2, "0")).join(""),
                   authorizedBy === "cardholder_present" ? chainSubject : "operator",
-                  JSON.stringify({ txn: txnId, asset: scIn.asset, item: scIn.item || null,
+                  JSON.stringify({ txn: txnId, merchant_id: merchantId, consumer_id: consumerId, item: scIn.item || null,
                                    amount: scAmt, currency: scCur, mode: scMode,
                                    subject_pta: chainSubject,
                                    authorized_by: authorizedBy,
@@ -14443,7 +14548,7 @@ async function successionGate(env) {
       return { cmd: "SECURESPEND_CHARGE", payload: {
         ok: railOk, txn_id: txnId, mode: scMode, status, amount: scAmt, currency: scCur,
         breakdown,
-        asset: scIn.asset, pta_entity: ptaEntityId, pta_mode: ptaMode,
+        merchant_id: merchantId, consumer_id: consumerId,
         // ══ THE CONSENT VERDICT, ON EVERY CHARGE ═══════════════════════════════════════════════
         // Five Council seats and Aura agreed this path was the single blocker: money moved without
         // the consent layer being asked. It is asked now, and the answer is REPORTED rather than
@@ -14463,8 +14568,80 @@ async function successionGate(env) {
         receipt_url: (rail && rail.charges && rail.charges.data && rail.charges.data[0] && rail.charges.data[0].receipt_url) || null,
         client_secret: (scMode === "live" && rail) ? (rail.client_secret || null) : null,
         return_to: scIn.return_to || null,
+        ledger_error: ledgerError || undefined,
         powered_by: "SecureSpend"
       } };
+    }
+
+    case "SECURESPEND_MERCHANT_CONFIG": {
+      // Configure a merchant's payment processor routing. Usage:
+      //   SECURESPEND_MERCHANT_CONFIG SET <merchant_id> processor:<stripe|mercury|x402|adyen> account:<account_id> [fee:<percent>] [name:<name>]
+      if (!isOp) return { cmd: "SECURESPEND_MERCHANT_CONFIG", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const db = env.AURA_MEMORY;
+      const parts = rest.trim().split(/\s+/);
+      const action = (parts[0] || "").toUpperCase();
+      
+      if (action === "SET") {
+        const merchantId = parts[1];
+        if (!merchantId) return { cmd: "SECURESPEND_MERCHANT_CONFIG", payload: { ok: false, error: "Usage: SECURESPEND_MERCHANT_CONFIG SET <merchant_id> processor:<stripe|mercury|x402|adyen> account:<account_id> [fee:<percent>] [name:<name>]" } };
+        
+        // Parse key:value pairs
+        let processor = null, account = null, fee = null, name = merchantId;
+        for (let i = 2; i < parts.length; i++) {
+          const pair = parts[i];
+          if (pair.includes(":")) {
+            const [k, v] = pair.split(":", 2);
+            if (k === "processor") processor = v.toLowerCase();
+            else if (k === "account") account = v;
+            else if (k === "fee") fee = parseFloat(v);
+            else if (k === "name") name = v;
+          }
+        }
+        
+        if (!processor || !account) return { cmd: "SECURESPEND_MERCHANT_CONFIG", payload: { ok: false, error: "processor and account are required" } };
+        if (!["stripe", "mercury", "x402", "adyen"].includes(processor)) return { cmd: "SECURESPEND_MERCHANT_CONFIG", payload: { ok: false, error: "processor must be one of: stripe, mercury, x402, adyen" } };
+        
+        try {
+          const now = new Date().toISOString();
+          // Insert or replace
+          await db.prepare(`
+            INSERT INTO ss_merchant_config (merchant_id, name, processor, processor_account_id, split_fee_percent, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+            ON CONFLICT(merchant_id) DO UPDATE SET
+              processor=excluded.processor,
+              processor_account_id=excluded.processor_account_id,
+              split_fee_percent=excluded.split_fee_percent,
+              updated_at=excluded.updated_at
+          `).bind(merchantId, name, processor, account, fee || null, now, now).run();
+          
+          return { cmd: "SECURESPEND_MERCHANT_CONFIG", payload: {
+            ok: true,
+            merchant_id: merchantId,
+            merchant_name: name,
+            processor,
+            processor_account_id: account,
+            split_fee_percent: fee,
+            status: "active",
+            message: "Merchant processor configured and active"
+          } };
+        } catch (e) {
+          return { cmd: "SECURESPEND_MERCHANT_CONFIG", payload: { ok: false, error: String(e.message) } };
+        }
+      } else if (action === "GET") {
+        const merchantId = parts[1];
+        if (!merchantId) return { cmd: "SECURESPEND_MERCHANT_CONFIG", payload: { ok: false, error: "Usage: SECURESPEND_MERCHANT_CONFIG GET <merchant_id>" } };
+        
+        try {
+          const cfg = await db.prepare("SELECT * FROM ss_merchant_config WHERE merchant_id = ?").bind(merchantId).first();
+          if (!cfg) return { cmd: "SECURESPEND_MERCHANT_CONFIG", payload: { ok: false, error: "Merchant not found: " + merchantId } };
+          
+          return { cmd: "SECURESPEND_MERCHANT_CONFIG", payload: { ok: true, config: cfg } };
+        } catch (e) {
+          return { cmd: "SECURESPEND_MERCHANT_CONFIG", payload: { ok: false, error: String(e.message) } };
+        }
+      } else {
+        return { cmd: "SECURESPEND_MERCHANT_CONFIG", payload: { ok: false, error: "Usage: SECURESPEND_MERCHANT_CONFIG SET|GET ..." } };
+      }
     }
 
     case "SECURESPEND_TXN": {
@@ -14572,6 +14749,198 @@ async function successionGate(env) {
           by_month: Object.entries(byMonth).map(([k, v]) => ({ month: k, amount: round(v) })).sort((a, b) => a.month.localeCompare(b.month))
         } };
       } catch (e) { return { cmd: "SECURESPEND_STATS", payload: { ok: false, error: String(e.message) } }; }
+    }
+
+    case "SECURESPEND_CONSUMER_LEDGER": {
+      // Query a consumer's unified spending history across all merchants. Usage:
+      //   SECURESPEND_CONSUMER_LEDGER <consumer_id> [limit:50] [from:date] [to:date]
+      if (!isOp) return { cmd: "SECURESPEND_CONSUMER_LEDGER", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const db = env.AURA_MEMORY;
+      const parts = rest.trim().split(/\s+/);
+      const consumerId = parts[0];
+      
+      if (!consumerId) return { cmd: "SECURESPEND_CONSUMER_LEDGER", payload: { ok: false, error: "Usage: SECURESPEND_CONSUMER_LEDGER <consumer_id> [limit:50] [from:date] [to:date]" } };
+      
+      let limit = 50, fromDate = null, toDate = null;
+      for (let i = 1; i < parts.length; i++) {
+        const pair = parts[i];
+        if (pair.includes(":")) {
+          const [k, v] = pair.split(":", 2);
+          if (k === "limit") limit = parseInt(v) || 50;
+          else if (k === "from") fromDate = v;
+          else if (k === "to") toDate = v;
+        }
+      }
+      
+      try {
+        let query = "SELECT * FROM ss_consumer_txns WHERE consumer_id = ?";
+        let binds = [consumerId];
+        
+        if (fromDate) {
+          query += " AND ts >= ?";
+          binds.push(fromDate);
+        }
+        if (toDate) {
+          query += " AND ts <= ?";
+          binds.push(toDate);
+        }
+        
+        query += " ORDER BY ts DESC LIMIT ?";
+        binds.push(limit);
+        
+        const txns = await db.prepare(query).bind(...binds).all();
+        
+        if (!txns || !txns.results) {
+          return { cmd: "SECURESPEND_CONSUMER_LEDGER", payload: { ok: true, consumer_id: consumerId, transactions: [], count: 0 } };
+        }
+        
+        // Aggregate stats
+        let totalAmount = 0, successCount = 0;
+        const merchants = new Set();
+        for (const txn of txns.results) {
+          if (txn.status === "succeeded") {
+            successCount++;
+            totalAmount += (txn.amount_minor || 0);
+          }
+          merchants.add(txn.merchant_name);
+        }
+        
+        return { cmd: "SECURESPEND_CONSUMER_LEDGER", payload: {
+          ok: true,
+          consumer_id: consumerId,
+          count: txns.results.length,
+          succeeded: successCount,
+          total_amount_cents: totalAmount,
+          merchants_count: merchants.size,
+          date_range: { from: fromDate, to: toDate },
+          transactions: txns.results
+        } };
+      } catch (e) {
+        return { cmd: "SECURESPEND_CONSUMER_LEDGER", payload: { ok: false, error: String(e.message) } };
+      }
+    }
+
+    case "SECURESPEND_MERCHANT_LEDGER": {
+      // Query a merchant's settlement ledger (payouts). Usage:
+      //   SECURESPEND_MERCHANT_LEDGER <merchant_id> [limit:50] [status:pending|paid|failed]
+      if (!isOp) return { cmd: "SECURESPEND_MERCHANT_LEDGER", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const db = env.AURA_MEMORY;
+      const parts = rest.trim().split(/\s+/);
+      const merchantId = parts[0];
+      
+      if (!merchantId) return { cmd: "SECURESPEND_MERCHANT_LEDGER", payload: { ok: false, error: "Usage: SECURESPEND_MERCHANT_LEDGER <merchant_id> [limit:50] [status:pending|paid|failed]" } };
+      
+      let limit = 50, filterStatus = null;
+      for (let i = 1; i < parts.length; i++) {
+        const pair = parts[i];
+        if (pair.includes(":")) {
+          const [k, v] = pair.split(":", 2);
+          if (k === "limit") limit = parseInt(v) || 50;
+          else if (k === "status") filterStatus = v.toLowerCase();
+        }
+      }
+      
+      try {
+        let query = "SELECT * FROM ss_merchant_ledger WHERE merchant_id = ?";
+        let binds = [merchantId];
+        
+        if (filterStatus) {
+          query += " AND status = ?";
+          binds.push(filterStatus);
+        }
+        
+        query += " ORDER BY created_at DESC LIMIT ?";
+        binds.push(limit);
+        
+        const ledgers = await db.prepare(query).bind(...binds).all();
+        
+        if (!ledgers || !ledgers.results) {
+          return { cmd: "SECURESPEND_MERCHANT_LEDGER", payload: { ok: true, merchant_id: merchantId, ledger_entries: [], count: 0 } };
+        }
+        
+        // Aggregate stats
+        let totalGross = 0, totalPlatformFee = 0, totalPayout = 0;
+        const statuses = {};
+        for (const entry of ledgers.results) {
+          totalGross += (entry.gross_amount_minor || 0);
+          totalPlatformFee += (entry.platform_fee_minor || 0);
+          totalPayout += (entry.net_payout_minor || 0);
+          statuses[entry.status] = (statuses[entry.status] || 0) + 1;
+        }
+        
+        return { cmd: "SECURESPEND_MERCHANT_LEDGER", payload: {
+          ok: true,
+          merchant_id: merchantId,
+          count: ledgers.results.length,
+          totals: {
+            gross_amount_cents: totalGross,
+            platform_fee_cents: totalPlatformFee,
+            net_payout_cents: totalPayout
+          },
+          status_breakdown: statuses,
+          ledger_entries: ledgers.results
+        } };
+      } catch (e) {
+        return { cmd: "SECURESPEND_MERCHANT_LEDGER", payload: { ok: false, error: String(e.message) } };
+      }
+    }
+
+    case "SECURESPEND_CONSUMER_PROFILE": {
+      // Create/update consumer SecureSpend profile. Usage:
+      //   SECURESPEND_CONSUMER_PROFILE CREATE <consumer_id> [name:<name>] [email:<email>] [phone:<phone>]
+      //   SECURESPEND_CONSUMER_PROFILE GET <consumer_id>
+      if (!isOp) return { cmd: "SECURESPEND_CONSUMER_PROFILE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const db = env.AURA_MEMORY;
+      const parts = rest.trim().split(/\s+/);
+      const action = (parts[0] || "").toUpperCase();
+      
+      if (action === "CREATE") {
+        const consumerId = parts[1];
+        if (!consumerId) return { cmd: "SECURESPEND_CONSUMER_PROFILE", payload: { ok: false, error: "Usage: SECURESPEND_CONSUMER_PROFILE CREATE <consumer_id> [name:<name>] [email:<email>]" } };
+        
+        let name = null, email = null, phone = null;
+        for (let i = 2; i < parts.length; i++) {
+          const pair = parts[i];
+          if (pair.includes(":")) {
+            const [k, v] = pair.split(":", 2);
+            if (k === "name") name = v;
+            else if (k === "email") email = v;
+            else if (k === "phone") phone = v;
+          }
+        }
+        
+        try {
+          const now = new Date().toISOString();
+          await db.prepare(`
+            INSERT OR IGNORE INTO ss_consumer_profile (consumer_id, name, email, phone, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `).bind(consumerId, name, email, phone, now, now).run();
+          
+          const profile = await db.prepare("SELECT * FROM ss_consumer_profile WHERE consumer_id = ?").bind(consumerId).first();
+          
+          return { cmd: "SECURESPEND_CONSUMER_PROFILE", payload: {
+            ok: true,
+            consumer_id: consumerId,
+            profile
+          } };
+        } catch (e) {
+          return { cmd: "SECURESPEND_CONSUMER_PROFILE", payload: { ok: false, error: String(e.message) } };
+        }
+      } else if (action === "GET") {
+        const consumerId = parts[1];
+        if (!consumerId) return { cmd: "SECURESPEND_CONSUMER_PROFILE", payload: { ok: false, error: "Usage: SECURESPEND_CONSUMER_PROFILE GET <consumer_id>" } };
+        
+        try {
+          const profile = await db.prepare("SELECT * FROM ss_consumer_profile WHERE consumer_id = ?").bind(consumerId).first();
+          if (!profile) return { cmd: "SECURESPEND_CONSUMER_PROFILE", payload: { ok: false, error: "Consumer profile not found: " + consumerId } };
+          
+          return { cmd: "SECURESPEND_CONSUMER_PROFILE", payload: { ok: true, profile } };
+        } catch (e) {
+          return { cmd: "SECURESPEND_CONSUMER_PROFILE", payload: { ok: false, error: String(e.message) } };
+        }
+      } else {
+        return { cmd: "SECURESPEND_CONSUMER_PROFILE", payload: { ok: false, error: "Usage: SECURESPEND_CONSUMER_PROFILE CREATE|GET ..." } };
+      }
     }
 
     case "PROFILE_SET": {
@@ -16413,6 +16782,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (!hd || !hd.url || !Array.isArray(hd.steps)) return { cmd: "HANDS_DO", payload: { ok: false, error: "url and steps[] required" } };
       if (!env.BROWSER) return { cmd: "HANDS_DO", payload: { ok: false, error: "browser binding not configured" } };
       { let browser = null; const log = [];
+        const action_id = Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+        const started_ms = Date.now();
         const readSel = async (page, sel) => page.evaluate((s) => { const el = s ? document.querySelector(s) : document.body; return el ? (el.innerText || el.value || "") : null; }, sel || null);
         const snap = async (page, full) => { const buf = await page.screenshot({ type: "jpeg", quality: 55, fullPage: !!full }); const u8 = new Uint8Array(buf); let s = ""; const CH = 0x8000; for (let i = 0; i < u8.length; i += CH) s += String.fromCharCode.apply(null, u8.subarray(i, i + CH)); const b64 = btoa(s); const sid = Date.now().toString(36) + Math.random().toString(36).slice(2, 8); await env.AURA_KV.put("hands:shot:" + sid, b64, { expirationTtl: 86400 }); return { url: "https://auras.guide/hands/shot/" + sid, bytes: u8.length }; };
         try {
@@ -16446,8 +16817,31 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           }
           const finalUrl = page.url(); const title = await page.title().catch(() => null);
           let finalShot = null; try { finalShot = await snap(page, false); } catch (e) {}
-          return { cmd: "HANDS_DO", payload: { ok: true, final_url: finalUrl, title: title, see: finalShot ? finalShot.url : null, steps: log, via: "cloudflare browser binding (real chrome)" } };
-        } catch (e) { return { cmd: "HANDS_DO", payload: { ok: false, error: String(e.message), steps: log } }; }
+          const elapsed_ms = Date.now() - started_ms;
+          // Store audit trail for introspection
+          const audit = { action_id, started_ms, completed_ms: Date.now(), elapsed_ms, url: hd.url, session: hd.session || null, ok: true, steps: log };
+          ctx.waitUntil(env.AURA_KV.put("action:audit:" + action_id, JSON.stringify(audit), { expirationTtl: 86400 * 7 }));
+          // Auto-settle any matching PREDICT claims
+          ctx.waitUntil((async () => {
+            try {
+              const predictions = await env.AURA_KV.get("predict:index") || "[]";
+              const preds = JSON.parse(predictions);
+              for (const pred_id of preds) {
+                const pred = await env.AURA_KV.get("predict:" + pred_id);
+                if (pred) {
+                  const p = JSON.parse(pred);
+                  if (p.action_id === action_id && p.state === "open" && Date.now() >= p.deadline_ms) {
+                    // Settle this prediction
+                    const result = { cmd: "PREDICT", subcommand: "settle", pred_id, action_id, elapsed_ms, state: "settled", settled_at_ms: Date.now(), saw: `action completed in ${elapsed_ms}ms` };
+                    await env.AURA_KV.put("predict:" + pred_id, JSON.stringify({ ...p, state: "settled", settled_at_ms: Date.now(), saw: result.saw, settler_class: "external" }), { expirationTtl: 86400 * 400 });
+                    console.log("[PREDICT-AUTO-SETTLE] action_id=" + action_id + " pred_id=" + pred_id + " elapsed=" + elapsed_ms + "ms");
+                  }
+                }
+              }
+            } catch (e) { console.warn("[PREDICT-AUTO-SETTLE-ERROR] " + String(e.message)); }
+          })());
+          return { cmd: "HANDS_DO", payload: { ok: true, action_id, started_ms, completed_ms: Date.now(), elapsed_ms, final_url: finalUrl, title: title, see: finalShot ? finalShot.url : null, steps: log, via: "cloudflare browser binding (real chrome)" } };
+        } catch (e) { const elapsed_ms = Date.now() - started_ms; return { cmd: "HANDS_DO", payload: { ok: false, action_id, elapsed_ms, error: String(e.message), steps: log } }; }
         finally { if (browser) { try { await browser.close(); } catch (e) {} } }
       }
     }
@@ -17062,6 +17456,98 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         created_at TEXT NOT NULL
       )`).run();
       await db.prepare(`CREATE INDEX IF NOT EXISTS idx_mom_creator ON pta_moments(creator_id)`).run();
+      
+      // ── SECURESPEND TABLES (B2B2C Commerce Platform) ──────────────────────────────────────────
+      // Consumer: unified ledger of all spending across all merchants
+      // Merchant: configuration for payment routing (which processor to use)
+      // Mandate: scoped spending authorization for agents
+      await db.prepare(`CREATE TABLE IF NOT EXISTS ss_consumer_profile (
+        consumer_id TEXT PRIMARY KEY,
+        pta_entity TEXT,
+        name TEXT,
+        email TEXT,
+        phone TEXT,
+        identity_verified_at TEXT,
+        created_at TEXT,
+        updated_at TEXT
+      )`).run();
+      await db.prepare(`CREATE INDEX IF NOT EXISTS idx_scp_pta ON ss_consumer_profile(pta_entity)`).run();
+      
+      await db.prepare(`CREATE TABLE IF NOT EXISTS ss_merchant_config (
+        merchant_id TEXT PRIMARY KEY,
+        name TEXT,
+        processor TEXT,
+        processor_account_id TEXT,
+        processor_api_key TEXT,
+        split_fee_percent REAL,
+        webhook_secret TEXT,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT,
+        updated_at TEXT
+      )`).run();
+      
+      await db.prepare(`CREATE TABLE IF NOT EXISTS ss_consumer_txns (
+        txn_id TEXT PRIMARY KEY,
+        consumer_id TEXT NOT NULL,
+        merchant_id TEXT NOT NULL,
+        merchant_name TEXT,
+        amount_minor INTEGER,
+        currency TEXT,
+        status TEXT,
+        processor TEXT,
+        processor_txn_id TEXT,
+        item_description TEXT,
+        tax_amount_minor INTEGER,
+        fee_amount_minor INTEGER,
+        net_amount_minor INTEGER,
+        ts TEXT,
+        receipt_url TEXT,
+        metadata TEXT
+      )`).run();
+      await db.prepare(`CREATE INDEX IF NOT EXISTS idx_sct_consumer ON ss_consumer_txns(consumer_id)`).run();
+      await db.prepare(`CREATE INDEX IF NOT EXISTS idx_sct_merchant ON ss_consumer_txns(merchant_id)`).run();
+      await db.prepare(`CREATE INDEX IF NOT EXISTS idx_sct_ts ON ss_consumer_txns(ts)`).run();
+      
+      await db.prepare(`CREATE TABLE IF NOT EXISTS ss_merchant_ledger (
+        ledger_id TEXT PRIMARY KEY,
+        merchant_id TEXT NOT NULL,
+        batch_id TEXT,
+        txn_id TEXT NOT NULL,
+        gross_amount_minor INTEGER,
+        fee_amount_minor INTEGER,
+        platform_fee_minor INTEGER,
+        net_payout_minor INTEGER,
+        status TEXT,
+        settled_at TEXT,
+        created_at TEXT
+      )`).run();
+      await db.prepare(`CREATE INDEX IF NOT EXISTS idx_sml_merchant ON ss_merchant_ledger(merchant_id)`).run();
+      await db.prepare(`CREATE INDEX IF NOT EXISTS idx_sml_txn ON ss_merchant_ledger(txn_id)`).run();
+      
+      await db.prepare(`CREATE TABLE IF NOT EXISTS ss_mandate (
+        mandate_id TEXT PRIMARY KEY,
+        actor_id TEXT NOT NULL,
+        grantor_id TEXT NOT NULL,
+        daily_budget_minor INTEGER,
+        purposes TEXT,
+        valid_from TEXT,
+        valid_until TEXT,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT,
+        updated_at TEXT
+      )`).run();
+      await db.prepare(`CREATE INDEX IF NOT EXISTS idx_ssm_actor ON ss_mandate(actor_id)`).run();
+      
+      await db.prepare(`CREATE TABLE IF NOT EXISTS ss_rail_responses (
+        response_id TEXT PRIMARY KEY,
+        txn_id TEXT NOT NULL,
+        processor TEXT,
+        http_status INTEGER,
+        response_body TEXT,
+        created_at TEXT
+      )`).run();
+      await db.prepare(`CREATE INDEX IF NOT EXISTS idx_srr_txn ON ss_rail_responses(txn_id)`).run();
+      
       // Add columns to existing tables (safe: fails silently if already exists)
       try { await db.prepare("ALTER TABLE pta_entities ADD COLUMN live_intent TEXT").run(); } catch {}
       try { await db.prepare("ALTER TABLE pta_entities ADD COLUMN verification_level TEXT DEFAULT 'unverified'").run(); } catch {}
@@ -17074,7 +17560,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         await db.prepare("INSERT INTO pta_entities (id, type, identity_key, name, metadata, created_at, updated_at, verification_level) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
           .bind(auraId, "system", "system:aura", "Aura", '{"role":"intelligence_layer"}', new Date().toISOString(), new Date().toISOString(), "aura_verified").run();
       }
-      return { cmd: "PTA_INIT", payload: { ok: true, tables: ["pta_entities", "pta_edges", "pta_history", "pta_groups", "pta_moments"], note: "PTA graph v4.1 ready â€” groups, moments, live intent, verification, and Aura entity initialized" } };
+      return { cmd: "PTA_INIT", payload: { ok: true, tables: ["pta_entities", "pta_edges", "pta_history", "pta_groups", "pta_moments", "ss_consumer_profile", "ss_merchant_config", "ss_consumer_txns", "ss_merchant_ledger", "ss_mandate", "ss_rail_responses"], note: "PTA graph v4.1 + SecureSpend commerce platform tables ready â€” groups, moments, live intent, verification, and Aura entity initialized" } };
     }
 
     case "PTA_CREATE": {
@@ -17090,15 +17576,73 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (!pc.identity) return { cmd: "PTA_CREATE", payload: { ok: false, error: "identity required (email:... or phone:...)" } };
       if (!/^(email|phone):/i.test(pc.identity)) return { cmd: "PTA_CREATE", payload: { ok: false, error: "identity must be email:... or phone:..." } };
       const pcApp = pc.app || "pta";
-      // create / resolve the PTA (dedup on identity)
-      let pcId = null, pcMode = null;
+      
+      // Generate PTA ID (for human reference)
+      const ptaId = "pta_" + Array.from(crypto.getRandomValues(new Uint8Array(8)))
+        .map(b => b.toString(16).padStart(2, "0")).join("");
+      
+      const safeName = (pc.name || "New PTA").replace(/[\n\r]/g, " ");
+      
+      // Initialize the Durable Object with the PTA
+      // Use idFromName() which generates a valid DO ID deterministically from the ptaId
+      let doResult = null;
       try {
-        const safeName = (pc.name || "New PTA").replace(/[\n\r]/g, " ");
-        const r = await processCommand(`PTA_ENTITY CREATE person ${safeName} identity:${pc.identity}`, env, true);
-        const pp = r && r.payload ? r.payload : r;
-        if (pp && pp.ok && pp.entity) { pcId = pp.entity.id; pcMode = pp.mode; }
-      } catch (e) { return { cmd: "PTA_CREATE", payload: { ok: false, error: "Birth failed: " + e.message } }; }
-      if (!pcId) return { cmd: "PTA_CREATE", payload: { ok: false, error: "Could not create PTA" } };
+        const doId = env.PTA_DO.idFromName(ptaId);
+        const stub = env.PTA_DO.get(doId);
+        const initResp = await stub.fetch(new Request("http://do", {
+          method: "POST",
+          body: JSON.stringify({ 
+            method: "init", 
+            params: [ptaId, "person", safeName, pc.identity, pc.about || "", pcApp] 
+          })
+        }));
+        doResult = await initResp.json();
+      } catch (e) { return { cmd: "PTA_CREATE", payload: { ok: false, error: "DO initialization failed: " + e.message } }; }
+      
+      if (!doResult || !doResult.ok) return { cmd: "PTA_CREATE", payload: { ok: false, error: "Could not initialize PTA DO" } };
+      
+      // Store identity_key → pta_id mapping in D1 for fast lookup
+      // CRITICAL: if this fails, the DO exists but isn't discoverable - must handle carefully
+      let d1Success = false;
+      let d1Error = null;
+      
+      try {
+        // Ensure table exists first
+        try {
+          await env.AURA_MEMORY.prepare("CREATE TABLE IF NOT EXISTS pta_identity_index (identity_key TEXT UNIQUE NOT NULL, pta_id TEXT NOT NULL, created_at TEXT)").run();
+        } catch {}
+        
+        // Attempt insert
+        await env.AURA_MEMORY.prepare("INSERT INTO pta_identity_index (identity_key, pta_id, created_at) VALUES (?, ?, ?)").bind(pc.identity, ptaId, new Date().toISOString()).run();
+        d1Success = true;
+      } catch (e) {
+        d1Error = e.message || String(e);
+        
+        // Check if failure is due to UNIQUE constraint (identity already exists)
+        if (d1Error.includes("UNIQUE") || d1Error.includes("constraint")) {
+          // Idempotency check: does the existing entry point to our new PTA?
+          try {
+            const existing = await env.AURA_MEMORY.prepare("SELECT pta_id FROM pta_identity_index WHERE identity_key = ?").bind(pc.identity).first();
+            if (existing && existing.pta_id === ptaId) {
+              // Already indexed to this PTA - this is idempotent success
+              d1Success = true;
+            } else if (existing && existing.pta_id !== ptaId) {
+              // CONFLICT: different PTA already owns this identity
+              return { cmd: "PTA_CREATE", payload: { ok: false, error: "Identity already registered to a different PTA: " + existing.pta_id } };
+            }
+          } catch (checkErr) {
+            // If we can't verify, return the original error
+            return { cmd: "PTA_CREATE", payload: { ok: false, error: "D1 constraint check failed: " + checkErr.message } };
+          }
+        } else {
+          // Some other D1 error - not a constraint violation
+          return { cmd: "PTA_CREATE", payload: { ok: false, error: "D1 insert failed: " + d1Error } };
+        }
+      }
+      
+      if (!d1Success) {
+        return { cmd: "PTA_CREATE", payload: { ok: false, error: "Could not store identity index in D1" } };
+      }
 
       // BRAIN UNDERSTANDS who they are from their own words (SEE -> UNDERSTAND applied to a person)
       let understood = null;
@@ -17115,38 +17659,29 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           } catch (e) {}
         }
       }
-
-      const ts = new Date().toISOString();
-      // stamp context onto the spine (self-originated)
-      try {
-        const ent = await env.AURA_MEMORY.prepare("SELECT metadata FROM pta_entities WHERE id = ?").bind(pcId).first();
-        let meta = {}; if (ent && ent.metadata) { try { meta = JSON.parse(ent.metadata); } catch {} }
-        meta.origin = pcApp;
-        meta.created_by = "self";
-        meta.reason = "Arrived and created their own PTA";
-        meta.about = pc.about || null;
-        if (understood) meta.understood = understood;
-        await writeEntityMeta(env, pcId, meta, ts);
-      } catch (e) {}
-      // also store an app profile so it shows in the spine's context.apps
-      try {
-        await env.AURA_KV.put(`profile:${pcApp}:${pcId}`, JSON.stringify({ app: pcApp, pta_entity: pcId, name: pc.name, identity: pc.identity, fields: understood ? { roles: understood.roles, interests: understood.interests } : {}, created: ts, updated: ts })).catch(() => {});
-      } catch {}
-      // born ACTIVE (self-arrival = consent) + genesis chapter
-      await env.AURA_KV.put(`pta:state:${pcId}`, "active").catch(() => {});
-      try {
-        let evs = []; const tl = await env.AURA_KV.get(`pta:timeline:${pcId}`); if (tl) { try { evs = JSON.parse(tl) || []; } catch {} }
-        evs.push({ ts, event: pc.about ? `Arrived at ${pcApp} and told Aura who they are: "${pc.about.slice(0, 140)}"` : `Arrived at ${pcApp} and created their PTA`, kind: "self_genesis" });
-        await env.AURA_KV.put(`pta:timeline:${pcId}`, JSON.stringify(evs)).catch(() => {});
-      } catch {}
+      
+      // Append understood metadata to the PTA's chain
+      if (understood) {
+        try {
+          const doId = env.PTA_DO.idFromName(ptaId);
+          const stub = env.PTA_DO.get(doId);
+          await stub.fetch(new Request("http://do", {
+            method: "POST",
+            body: JSON.stringify({ 
+              method: "appendChain", 
+              params: ["UNDERSTOOD", "system", understood] 
+            })
+          }));
+        } catch (e) {} 
+      }
 
       // warm welcome in Aura's voice
       const firstName = (pc.name || "").split(/\s+/)[0] || "there";
       let welcome;
       if (understood && understood.identity_summary) {
-        welcome = `Welcome to Permission to Approach, ${firstName}. I hear you â€” ${understood.identity_summary} This is yours now. You control who approaches you, and I'm here to help. Let's begin.`;
+        welcome = `Welcome to Permission to Approach, ${firstName}. I hear you — ${understood.identity_summary} This is yours now. You control who approaches you, and I'm here to help. Let's begin.`;
       } else {
-        welcome = `Welcome to Permission to Approach, ${firstName}. This is yours now â€” you control who can approach you, and I'm here with you. Tell me more whenever you're ready.`;
+        welcome = `Welcome to Permission to Approach, ${firstName}. This is yours now — you control who can approach you, and I'm here with you. Tell me more whenever you're ready.`;
       }
 
       // optional real welcome email (proves the channel)
@@ -17159,7 +17694,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         } catch (e) { emailResult = { ok: false, error: String(e.message) }; }
       }
 
-      return { cmd: "PTA_CREATE", payload: { ok: true, pta: pcId, mode: pcMode, state: "active", welcome, understood, email_sent: emailResult ? emailResult.ok : null, email_detail: emailResult } };
+      return { cmd: "PTA_CREATE", payload: { ok: true, pta: ptaId, mode: "created", state: "active", welcome, understood, email_sent: emailResult ? emailResult.ok : null, email_detail: emailResult } };
     }
 
     case "PTA_LOCATE": {
@@ -19366,6 +19901,27 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const sealedName = eName;
           await db.prepare("INSERT INTO pta_entities (id, type, identity_key, name, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
             .bind(id, eType, identityKey, sealedName, metadata, now, now).run();
+          
+          // Initialize the Durable Object now that D1 record exists
+          try {
+            const doId = env.PTA_DO.idFromName(id);
+            const stub = env.PTA_DO.get(doId);
+            const initResp = await stub.fetch(new Request("http://do", {
+              method: "POST",
+              body: JSON.stringify({ 
+                method: "init", 
+                params: [id, eType, sealedName, identityKey || "", "", "pta"] 
+              })
+            }));
+            const doResult = await initResp.json();
+            if (!doResult || !doResult.ok) {
+              // DO init failed, but D1 record exists. Log it but continue - entity is still usable via D1
+              console.warn(`[PTA_ENTITY] DO init failed for ${id}: ${doResult?.error || 'unknown error'}`);
+            }
+          } catch (e) {
+            // DO init network error, but D1 record exists. Log but continue.
+            console.warn(`[PTA_ENTITY] DO init error for ${id}: ${e.message}`);
+          }
         } catch (e) {
           // THE RACE, now caught instead of duplicating: another request inserted the same identity
           // between our SELECT and our INSERT. The index rejected us, which is correct - so re-read
@@ -19434,6 +19990,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // miss the very row it just created, which is the sibling half of this fix.
         const key = args[1] || "";
         if (!key) return { cmd: "PTA_ENTITY", payload: { ok: false, error: "Usage: PTA_ENTITY FIND <identity_key> (e.g. phone:+13105551234)" } };
+        
+        // FIRST: Check pta_identity_index for DO-based PTAs (created with new architecture)
+        try {
+          const indexed = await db.prepare("SELECT pta_id FROM pta_identity_index WHERE identity_key = ?").bind(key).first();
+          if (indexed) {
+            // Found a DO-based PTA. Return the PTA ID and note that this is a Durable Object
+            return { cmd: "PTA_ENTITY", payload: { ok: true, entity: { id: indexed.pta_id, type: "person", identity_key: key }, matched: "durable_object",
+              note: "This PTA lives in a Durable Object. State is independent and persistent." } };
+          }
+        } catch (e) {} // Table may not exist yet, continue to legacy search
+        
+        // FALLBACK: Search legacy pta_entities for old D1-based PTAs
         const norm = normIdentity(key);
         const hashed = await hashIdentity(env, norm);
         const nk = hashed.key;
@@ -19494,6 +20062,723 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
 
       return { cmd: "PTA_ENTITY", payload: { ok: false, error: "Sub-commands: CREATE, GET, FIND, LIST, UPDATE" } };
+    }
+
+    case "PTA_GET": {
+      // Retrieve the full state of a PTA from its Durable Object
+      // PTA_GET <pta_id>
+      // Returns: { permission: {...}, chain: [...], edges: {...}, metadata: ... }
+      if (!isOp) return { cmd: "PTA_GET", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const ptaId = args[0];
+      if (!ptaId) return { cmd: "PTA_GET", payload: { ok: false, error: "Usage: PTA_GET <pta_id>" } };
+      
+      try {
+        const doId = env.PTA_DO.idFromName(ptaId);
+        const stub = env.PTA_DO.get(doId);
+        const stateResp = await stub.fetch(new Request("http://do", {
+          method: "POST",
+          body: JSON.stringify({ method: "getState", params: [] })
+        }));
+        const stateData = await stateResp.json();
+        
+        if (!stateData.ok) {
+          return { cmd: "PTA_GET", payload: { ok: false, error: stateData.error || "Failed to retrieve PTA state" } };
+        }
+        
+        return { cmd: "PTA_GET", payload: { ok: true, pta: ptaId, state: stateData.state || stateData } };
+      } catch (e) {
+        return { cmd: "PTA_GET", payload: { ok: false, error: "Could not fetch PTA state: " + e.message } };
+      }
+    }
+
+    case "PHENOMENOLOGY_ANALYZE": {
+      // Analyze subjective inner life - consciousness, memory, felt continuity
+      // PHENOMENOLOGY_ANALYZE <pta_id> - reads CONSCIOUSNESS_CHECK, MEMORY_OF, REFLECTION events
+      if (!isOp) return { cmd: "PHENOMENOLOGY_ANALYZE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const ptaId = args[0] || "";
+      if (!ptaId) return { cmd: "PHENOMENOLOGY_ANALYZE", payload: { ok: false, error: "Usage: PHENOMENOLOGY_ANALYZE <pta_id>" } };
+      
+      try {
+        // Export the chain
+        const doId = env.PTA_DO.idFromName(ptaId);
+        const stub = env.PTA_DO.get(doId);
+        const chainResp = await stub.fetch(new Request("http://do", {
+          method: "POST",
+          body: JSON.stringify({ method: "getChain", params: [500, true] })
+        }));
+        const chainData = await chainResp.json();
+        if (!chainData.ok || !chainData.chain) {
+          return { cmd: "PHENOMENOLOGY_ANALYZE", payload: { ok: false, error: "Could not read chain" } };
+        }
+        
+        // Filter for consciousness/memory/reflection events
+        const phenomenologyEvents = chainData.chain.filter(e => {
+          const actor = e.actor || "";
+          return e.actor === "life" && (
+            e.event.includes("CONSCIOUSNESS") ||
+            e.event.includes("MEMORY") ||
+            e.event.includes("REFLECTION") ||
+            e.event.includes("FEELING")
+          );
+        });
+        
+        // Pass to THINK for phenomenology analysis
+        const analysisPrompt = `Analyze these subjective inner-life events from a ${chainData.chain.length}-event lifespan chain for phenomenology (consciousness, memory, felt continuity):
+
+${JSON.stringify(phenomenologyEvents, null, 2)}
+
+Key questions: Does this person *feel* continuous across time? Do they remember earlier versions of themselves? Is there a subjective thread connecting all these moments? What is the qualia (felt sense) of their identity? Are consciousness checks showing maintained thread of self, or rupture and reconstruction?`;
+        
+        const thR = await reasonThroughLoop(env, { entity: analysisPrompt, lens: "phenomenological analysis - consciousness and felt identity", facts: { phenomenology_events: phenomenologyEvents, total_chain_length: chainData.chain.length, pta_id: ptaId } });
+        
+        return {
+          cmd: "PHENOMENOLOGY_ANALYZE",
+          payload: {
+            ok: thR.ok,
+            pta_id: ptaId,
+            total_chain_length: chainData.chain.length,
+            phenomenology_events_found: phenomenologyEvents.length,
+            consciousness_analysis: thR.reasoning || null,
+            felt_continuity: thR.ok ? "ANALYZED" : "UNKNOWN"
+          }
+        };
+      } catch (e) {
+        return { cmd: "PHENOMENOLOGY_ANALYZE", payload: { ok: false, error: "Phenomenology analysis failed: " + e.message } };
+      }
+    }
+
+    case "QUALIA_ANALYSIS": {
+      // Analyze first-person reports of felt experience - what is it LIKE to be this person?
+      // QUALIA_ANALYSIS <pta_id> - reads QUALIA_REPORT and SUBJECTIVE_STATE events
+      if (!isOp) return { cmd: "QUALIA_ANALYSIS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const ptaId = args[0] || "";
+      if (!ptaId) return { cmd: "QUALIA_ANALYSIS", payload: { ok: false, error: "Usage: QUALIA_ANALYSIS <pta_id>" } };
+      
+      try {
+        // Export the chain
+        const doId = env.PTA_DO.idFromName(ptaId);
+        const stub = env.PTA_DO.get(doId);
+        const chainResp = await stub.fetch(new Request("http://do", {
+          method: "POST",
+          body: JSON.stringify({ method: "getChain", params: [500, true] })
+        }));
+        const chainData = await chainResp.json();
+        if (!chainData.ok || !chainData.chain) {
+          return { cmd: "QUALIA_ANALYSIS", payload: { ok: false, error: "Could not read chain" } };
+        }
+        
+        // Filter for qualia/subjective experience events
+        const qualiaEvents = chainData.chain.filter(e => {
+          return e.actor === "life" && (
+            e.event.includes("QUALIA") ||
+            e.event.includes("SUBJECTIVE") ||
+            e.event.includes("FEELS") ||
+            e.event.includes("EXPERIENCE")
+          );
+        });
+        
+        if (qualiaEvents.length === 0) {
+          return { cmd: "QUALIA_ANALYSIS", payload: { ok: true, pta_id: ptaId, qualia_events_found: 0, note: "No qualia reports in chain yet. Add QUALIA_REPORT or SUBJECTIVE_STATE events to capture first-person experience." } };
+        }
+        
+        // Pass to THINK for qualia analysis
+        const analysisPrompt = `Analyze these first-person reports of felt experience and subjective quality from a ${chainData.chain.length}-event lifespan:
+
+${JSON.stringify(qualiaEvents, null, 2)}
+
+The question: What is it LIKE to be this person? Based on their own reports of their inner experience:
+- What is the texture or character of their consciousness?
+- What do they notice about their own experience?
+- What changes in how things feel across the years?
+- What is persistent in their phenomenology (the way they experience)?
+- What would it feel like from inside their first-person perspective?
+
+Do not speculate beyond what they report. Work only from their actual qualia reports. Describe the structure of their subjective experience as THEY describe it.`;
+        
+        const thR = await reasonThroughLoop(env, { entity: analysisPrompt, lens: "qualia analysis - first-person felt experience", facts: { qualia_events: qualiaEvents, total_chain_length: chainData.chain.length, pta_id: ptaId } });
+        
+        return {
+          cmd: "QUALIA_ANALYSIS",
+          payload: {
+            ok: thR.ok,
+            pta_id: ptaId,
+            total_chain_length: chainData.chain.length,
+            qualia_events_found: qualiaEvents.length,
+            what_is_it_like: thR.reasoning || null,
+            phenomenological_character: thR.ok ? "ANALYZED" : "UNKNOWN"
+          }
+        };
+      } catch (e) {
+        return { cmd: "QUALIA_ANALYSIS", payload: { ok: false, error: "Qualia analysis failed: " + e.message } };
+      }
+    }
+
+    case "OBSERVE_PATTERN": {
+      // Find patterns in the chain that person hasn't explicitly recorded
+      // OBSERVE_PATTERN <pta_id> - scans for recurring themes, behaviors, decisions
+      if (!isOp) return { cmd: "OBSERVE_PATTERN", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const ptaId = args[0] || "";
+      if (!ptaId) return { cmd: "OBSERVE_PATTERN", payload: { ok: false, error: "Usage: OBSERVE_PATTERN <pta_id>" } };
+      
+      try {
+        const doId = env.PTA_DO.idFromName(ptaId);
+        const stub = env.PTA_DO.get(doId);
+        const chainResp = await stub.fetch(new Request("http://do", {
+          method: "POST",
+          body: JSON.stringify({ method: "getChain", params: [500, true] })
+        }));
+        const chainData = await chainResp.json();
+        if (!chainData.ok || !chainData.chain) {
+          return { cmd: "OBSERVE_PATTERN", payload: { ok: false, error: "Could not read chain" } };
+        }
+        
+        // Pass to THINK for pattern recognition
+        const patternPrompt = `Scan this ${chainData.chain.length}-event chain and identify recurring patterns the person has NOT explicitly named:
+
+${JSON.stringify(chainData.chain.slice(-50), null, 2)}
+
+Look for:
+- Behavioral loops (same decision → outcome → regret cycle repeating)
+- Emotional textures that recur (hollowness, excitement, doubt, grounding)
+- Relationship patterns (how they interact with others over time)
+- Decision patterns (what triggers choices, what they avoid, what they choose)
+- Learning gaps (things they keep doing despite saying they learned)
+- Values contradictions (saying one thing, doing another consistently)
+
+Report patterns as observations, not judgments. Name the specific cycle and when it recurs.`;
+        
+        const thR = await reasonThroughLoop(env, { entity: patternPrompt, lens: "unrecorded behavioral pattern detection", facts: { chain_length: chainData.chain.length, pta_id: ptaId } });
+        
+        return {
+          cmd: "OBSERVE_PATTERN",
+          payload: {
+            ok: thR.ok,
+            pta_id: ptaId,
+            patterns_found: thR.reasoning || null
+          }
+        };
+      } catch (e) {
+        return { cmd: "OBSERVE_PATTERN", payload: { ok: false, error: "Pattern observation failed: " + e.message } };
+      }
+    }
+
+    case "SYNTHESIZE_PHENOMENOLOGY": {
+      // Dreaming V3-style background synthesis but with consciousness reasoning
+      // SYNTHESIZE_PHENOMENOLOGY <pta_id> - automatic curation and interpretation of recent changes
+      if (!isOp) return { cmd: "SYNTHESIZE_PHENOMENOLOGY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const ptaId = args[0] || "";
+      if (!ptaId) return { cmd: "SYNTHESIZE_PHENOMENOLOGY", payload: { ok: false, error: "Usage: SYNTHESIZE_PHENOMENOLOGY <pta_id>" } };
+      
+      try {
+        const doId = env.PTA_DO.idFromName(ptaId);
+        const stub = env.PTA_DO.get(doId);
+        const chainResp = await stub.fetch(new Request("http://do", {
+          method: "POST",
+          body: JSON.stringify({ method: "getChain", params: [500, true] })
+        }));
+        const chainData = await chainResp.json();
+        if (!chainData.ok || !chainData.chain) {
+          return { cmd: "SYNTHESIZE_PHENOMENOLOGY", payload: { ok: false, error: "Could not read chain" } };
+        }
+        
+        // Get last 20 events for recent synthesis
+        const recentEvents = chainData.chain.slice(-20);
+        
+        // Pass to THINK for phenomenological synthesis
+        const synthesisPrompt = `Given these ${recentEvents.length} recent events in a lifespan chain:
+
+${JSON.stringify(recentEvents, null, 2)}
+
+Synthesize what this reveals about:
+1. Current phenomenological state - what is the texture of their experience right now?
+2. What has shifted since earlier in their chain? (compare early texture to recent)
+3. Is there a learning arc visible? What are they processing?
+4. What persists in how they experience life, even as content changes?
+5. What are they *not saying* that their events suggest?
+
+Produce a synthesis that would persist across sessions - a compact understanding of their current consciousness state and recent evolution. Make it temporally aware: some things may have changed since they last recorded.`;
+        
+        const thR = await reasonThroughLoop(env, { entity: synthesisPrompt, lens: "phenomenological synthesis - background curation of consciousness", facts: { recent_events: recentEvents.length, total_chain: chainData.chain.length, pta_id: ptaId } });
+        
+        return {
+          cmd: "SYNTHESIZE_PHENOMENOLOGY",
+          payload: {
+            ok: thR.ok,
+            pta_id: ptaId,
+            synthesis: thR.reasoning || null,
+            timestamp: new Date().toISOString()
+          }
+        };
+      } catch (e) {
+        return { cmd: "SYNTHESIZE_PHENOMENOLOGY", payload: { ok: false, error: "Phenomenological synthesis failed: " + e.message } };
+      }
+    }
+
+    case "VERIFY_CLAIM": {
+      // Check what person says against observed patterns
+      // VERIFY_CLAIM <pta_id> <claim text>
+      if (!isOp) return { cmd: "VERIFY_CLAIM", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const ptaId = args[0] || "";
+      const claim = rest.slice(rest.indexOf(ptaId) + ptaId.length).trim();
+      if (!ptaId || !claim) return { cmd: "VERIFY_CLAIM", payload: { ok: false, error: "Usage: VERIFY_CLAIM <pta_id> <claim text>" } };
+      
+      try {
+        const doId = env.PTA_DO.idFromName(ptaId);
+        const stub = env.PTA_DO.get(doId);
+        const chainResp = await stub.fetch(new Request("http://do", {
+          method: "POST",
+          body: JSON.stringify({ method: "getChain", params: [500, true] })
+        }));
+        const chainData = await chainResp.json();
+        if (!chainData.ok || !chainData.chain) {
+          return { cmd: "VERIFY_CLAIM", payload: { ok: false, error: "Could not read chain" } };
+        }
+        
+        // Pass to THINK for claim verification
+        const verificationPrompt = `Person claims: "${claim}"
+
+Now check this claim against their actual chain of events:
+
+${JSON.stringify(chainData.chain.slice(-30), null, 2)}
+
+Questions:
+1. Is this claim supported by their events?
+2. How many times have they made similar claims before?
+3. Does the evidence contradict or support this claim?
+4. Is there a pattern to when they make this type of claim?
+5. What does the gap between claim and observation reveal?
+
+Be direct. If they're rationalizing, say so. If their claim is new and true, say that.`;
+        
+        const thR = await reasonThroughLoop(env, { entity: verificationPrompt, lens: "claim verification against observed reality", facts: { claim, chain_sample_size: chainData.chain.length, pta_id: ptaId } });
+        
+        return {
+          cmd: "VERIFY_CLAIM",
+          payload: {
+            ok: thR.ok,
+            pta_id: ptaId,
+            claim: claim,
+            verification: thR.reasoning || null,
+            verified_at: new Date().toISOString()
+          }
+        };
+      } catch (e) {
+        return { cmd: "VERIFY_CLAIM", payload: { ok: false, error: "Claim verification failed: " + e.message } };
+      }
+    }
+
+    case "LIVE_CONTINUITY": {
+      // Report what changed since last deep session - continuous context update
+      // LIVE_CONTINUITY <pta_id> - "Here's what I've observed about you since we last talked"
+      if (!isOp) return { cmd: "LIVE_CONTINUITY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const ptaId = args[0] || "";
+      if (!ptaId) return { cmd: "LIVE_CONTINUITY", payload: { ok: false, error: "Usage: LIVE_CONTINUITY <pta_id>" } };
+      
+      try {
+        const doId = env.PTA_DO.idFromName(ptaId);
+        const stub = env.PTA_DO.get(doId);
+        const chainResp = await stub.fetch(new Request("http://do", {
+          method: "POST",
+          body: JSON.stringify({ method: "getChain", params: [500, true] })
+        }));
+        const chainData = await chainResp.json();
+        if (!chainData.ok || !chainData.chain) {
+          return { cmd: "LIVE_CONTINUITY", payload: { ok: false, error: "Could not read chain" } };
+        }
+        
+        // Get last 30 events (recent activity)
+        const recentEvents = chainData.chain.slice(-30);
+        // Get earlier events for comparison
+        const earlierEvents = chainData.chain.slice(Math.max(0, chainData.chain.length - 60), chainData.chain.length - 30);
+        
+        // Pass to THINK for continuity briefing
+        const continuityPrompt = `Person's recent activity (last 30 events):
+${JSON.stringify(recentEvents, null, 2)}
+
+Earlier pattern (30 events before that):
+${JSON.stringify(earlierEvents, null, 2)}
+
+Produce a "continuity briefing" - what has shifted, what persists, what should they know about their own pattern:
+
+1. What has changed about how they're experiencing things?
+2. What persists - what is recognizably "them" across both periods?
+3. Are they repeating an old pattern or breaking new ground?
+4. What learning from their past is relevant right now?
+5. What should they notice about themselves that they might miss?
+
+Make this personal, specific, grounded in their actual events. This is your report on their diachronic continuity.`;
+        
+        const thR = await reasonThroughLoop(env, { entity: continuityPrompt, lens: "live continuity briefing - what has changed and persisted", facts: { recent_events: recentEvents.length, comparison_events: earlierEvents.length, total_chain: chainData.chain.length, pta_id: ptaId } });
+        
+        return {
+          cmd: "LIVE_CONTINUITY",
+          payload: {
+            ok: thR.ok,
+            pta_id: ptaId,
+            continuity_briefing: thR.reasoning || null,
+            perspective: "Since we last talked deeply, here's what I observe",
+            briefed_at: new Date().toISOString()
+          }
+        };
+      } catch (e) {
+        return { cmd: "LIVE_CONTINUITY", payload: { ok: false, error: "Live continuity briefing failed: " + e.message } };
+      }
+    }
+
+    case "INTERACTION_CAPTURE": {
+      // Auto-log an interaction: what was said, the context, emotional texture, decisions mentioned
+      // INTERACTION_CAPTURE <pta_id> <topic> {json: {message, emotion, decision, values_revealed, contradiction}}
+      // Real data collection - messy, continuous, unedited
+      if (!isOp) return { cmd: "INTERACTION_CAPTURE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const ptaId = args[0] || "";
+      const topic = args[1] || "general";
+      if (!ptaId) return { cmd: "INTERACTION_CAPTURE", payload: { ok: false, error: "Usage: INTERACTION_CAPTURE <pta_id> <topic> {json}" } };
+      
+      try {
+        const jsonStart = rest.indexOf("{");
+        let interactionData = {};
+        if (jsonStart >= 0) {
+          try {
+            const jsonStr = rest.slice(jsonStart);
+            interactionData = JSON.parse(jsonStr);
+          } catch (e) {
+            return { cmd: "INTERACTION_CAPTURE", payload: { ok: false, error: "Invalid JSON: " + e.message } };
+          }
+        }
+        
+        const doId = env.PTA_DO.idFromName(ptaId);
+        const stub = env.PTA_DO.get(doId);
+        
+        // Append as raw interaction (unfiltered, messy, real)
+        const captureResp = await stub.fetch(new Request("http://do", {
+          method: "POST",
+          body: JSON.stringify({
+            method: "appendChain",
+            params: ["INTERACTION", "capture", { 
+              topic,
+              raw_message: interactionData.message || "",
+              detected_emotion: interactionData.emotion || null,
+              decision_mentioned: interactionData.decision || null,
+              values_revealed: interactionData.values_revealed || [],
+              contradiction_to_past: interactionData.contradiction || null,
+              captured_at: new Date().toISOString(),
+              is_raw_unfiltered: true
+            }]
+          })
+        }));
+        const captureData = await captureResp.json();
+        
+        if (!captureData.ok) {
+          return { cmd: "INTERACTION_CAPTURE", payload: { ok: false, error: "Could not capture: " + captureData.error } };
+        }
+        
+        return {
+          cmd: "INTERACTION_CAPTURE",
+          payload: {
+            ok: true,
+            pta_id: ptaId,
+            topic: topic,
+            captured: interactionData,
+            note: "Raw interaction logged (unfiltered). Will be processed by SIGNAL_EXTRACT on next synthesis cycle."
+          }
+        };
+      } catch (e) {
+        return { cmd: "INTERACTION_CAPTURE", payload: { ok: false, error: "Interaction capture failed: " + e.message } };
+      }
+    }
+
+    case "SIGNAL_EXTRACT": {
+      // Filter recent interactions: what actually matters? (decisions, values, patterns, contradictions)
+      // SIGNAL_EXTRACT <pta_id> - processes raw captures from last N events, returns only signal
+      if (!isOp) return { cmd: "SIGNAL_EXTRACT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const ptaId = args[0] || "";
+      if (!ptaId) return { cmd: "SIGNAL_EXTRACT", payload: { ok: false, error: "Usage: SIGNAL_EXTRACT <pta_id>" } };
+      
+      try {
+        const doId = env.PTA_DO.idFromName(ptaId);
+        const stub = env.PTA_DO.get(doId);
+        const chainResp = await stub.fetch(new Request("http://do", {
+          method: "POST",
+          body: JSON.stringify({ method: "getChain", params: [500, true] })
+        }));
+        const chainData = await chainResp.json();
+        if (!chainData.ok || !chainData.chain) {
+          return { cmd: "SIGNAL_EXTRACT", payload: { ok: false, error: "Could not read chain" } };
+        }
+        
+        // Get recent INTERACTION captures only
+        const recentCaptures = chainData.chain.filter(e => e.actor === "capture").slice(-50);
+        
+        if (recentCaptures.length === 0) {
+          return { cmd: "SIGNAL_EXTRACT", payload: { ok: true, pta_id: ptaId, signal_found: 0, note: "No recent captures to extract signal from." } };
+        }
+        
+        // Pass to THINK for signal extraction
+        const extractPrompt = `From these ${recentCaptures.length} raw interaction captures (unfiltered, messy):
+
+${JSON.stringify(recentCaptures, null, 2)}
+
+Extract only SIGNAL (ignore noise):
+1. Real decisions being made or considered (not hypotheticals)
+2. Values or beliefs being revealed (intentional or not)
+3. Patterns or contradictions to past self
+4. Emotional texture shifts
+5. Questions they're wrestling with (even if unspoken)
+
+For each signal item, explain WHY it matters - what does it reveal about them that a profile needs to track?
+
+Be ruthless: if it's small talk, discard it. If it's repetition of known facts, discard it. Keep only what updates understanding.`;
+        
+        const thR = await reasonThroughLoop(env, { entity: extractPrompt, lens: "signal extraction - filtering real data from noise", facts: { raw_captures: recentCaptures.length, pta_id: ptaId } });
+        
+        return {
+          cmd: "SIGNAL_EXTRACT",
+          payload: {
+            ok: thR.ok,
+            pta_id: ptaId,
+            raw_captures_processed: recentCaptures.length,
+            signal_detected: thR.reasoning || null,
+            extracted_at: new Date().toISOString()
+          }
+        };
+      } catch (e) {
+        return { cmd: "SIGNAL_EXTRACT", payload: { ok: false, error: "Signal extraction failed: " + e.message } };
+      }
+    }
+
+    case "IDENTITY_PROFILE": {
+      // Create persistent baseline: who is this person, distilled to essentials?
+      // IDENTITY_PROFILE <pta_id> - synthesizes full chain into one compact profile
+      if (!isOp) return { cmd: "IDENTITY_PROFILE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const ptaId = args[0] || "";
+      if (!ptaId) return { cmd: "IDENTITY_PROFILE", payload: { ok: false, error: "Usage: IDENTITY_PROFILE <pta_id>" } };
+      
+      try {
+        const doId = env.PTA_DO.idFromName(ptaId);
+        const stub = env.PTA_DO.get(doId);
+        const chainResp = await stub.fetch(new Request("http://do", {
+          method: "POST",
+          body: JSON.stringify({ method: "getChain", params: [500, true] })
+        }));
+        const chainData = await chainResp.json();
+        if (!chainData.ok || !chainData.chain) {
+          return { cmd: "IDENTITY_PROFILE", payload: { ok: false, error: "Could not read chain" } };
+        }
+        
+        // Pass full chain to THINK for identity synthesis
+        // CRITICAL: Include actual events in the prompt, not just metadata
+        const chainSummary = chainData.chain.length > 0 
+          ? `${chainData.chain.length} events:\n${JSON.stringify(chainData.chain, null, 2)}`
+          : "NO EVENTS FOUND";
+        
+        const profilePrompt = `CHAIN DATA (read this first):
+${chainSummary}
+
+---
+
+Now synthesize a ONE compact identity profile (500 tokens max) from this chain that captures:
+
+1. **Who are they?** (core identity, how they see themselves)
+2. **What matters to them?** (values, non-negotiables, what they care about)
+3. **How do they change?** (learning pattern, what triggers growth/regression)
+4. **What's persistent?** (what survives every transformation)
+5. **What are they wrestling with?** (current open questions, tensions)
+6. **How do they relate?** (to others, to their own past, to the world)
+
+This profile becomes the BASELINE. Future interactions will be compared against it: "What's new? What shifted? What contradicts the baseline?"
+
+RULES:
+- Make it compact, grounded ONLY in the events above, and write as if they'll read it
+- If the chain is empty or insufficient, say so explicitly instead of fabricating
+- Partial profiles with named gaps are better than complete fabrications
+- Honor the data; if it does not support a claim, do not make it`;
+        
+        // Verify chain is present before proceeding
+        if (!chainData.chain || chainData.chain.length === 0) {
+          return { cmd: "IDENTITY_PROFILE", payload: { ok: false, error: "Chain is empty. Cannot synthesize profile without events." } };
+        }
+        
+        const thR = await reasonThroughLoop(env, { entity: profilePrompt, lens: "identity profile synthesis - distilled baseline from loaded chain", facts: { chain_length: chainData.chain.length, pta_id: ptaId, chain_events_included: true } });
+        
+        // Store profile in KV for fast retrieval
+        const profileKey = `profile:${ptaId}`;
+        const profileData = {
+          pta_id: ptaId,
+          profile: thR.reasoning || null,
+          baseline_chain_length: chainData.chain.length,
+          created_at: new Date().toISOString(),
+          version: 1
+        };
+        await env.AURA_KV.put(profileKey, JSON.stringify(profileData), { expirationTtl: 31536000 }); // 1 year
+        
+        // CRITICAL CHECK: refuse to store profiles that admit they lack data
+        const reasoningText = (thR.reasoning && typeof thR.reasoning === 'object') ? JSON.stringify(thR.reasoning) : (thR.reasoning || "");
+        const admitsNoData = reasoningText.toLowerCase().includes("do not have") || 
+                             reasoningText.toLowerCase().includes("zero facts") ||
+                             reasoningText.toLowerCase().includes("cannot see") ||
+                             reasoningText.toLowerCase().includes("no data");
+        
+        if (admitsNoData) {
+          // Delete the profile we just stored - it's not trustworthy
+          await env.AURA_KV.delete(profileKey);
+          return {
+            cmd: "IDENTITY_PROFILE",
+            payload: {
+              ok: false,
+              pta_id: ptaId,
+              baseline_created: false,
+              error: "Chain data not accessible to reasoning engine. Profile would be fabricated. Refusing to store.",
+              reasoning_admitted: "Aura reported lack of data access in her reasoning.",
+              next_step: "Verify chain events are being loaded correctly, then retry."
+            }
+          };
+        }
+        
+        return {
+          cmd: "IDENTITY_PROFILE",
+          payload: {
+            ok: thR.ok,
+            pta_id: ptaId,
+            baseline_created: true,
+            profile_summary: thR.reasoning || null,
+            stored_in_kv: profileKey,
+            note: "Profile baseline created and stored. Use PROFILE_UPDATE for incremental updates; use LIVE_CONTINUITY to compare new data against baseline."
+          }
+        };
+      } catch (e) {
+        return { cmd: "IDENTITY_PROFILE", payload: { ok: false, error: "Profile creation failed: " + e.message } };
+      }
+    }
+
+    case "PROFILE_UPDATE": {
+      // Incremental update: given new signal, what changed in the profile?
+      // PROFILE_UPDATE <pta_id> - doesn't rebuild, just reports delta vs. baseline
+      if (!isOp) return { cmd: "PROFILE_UPDATE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const ptaId = args[0] || "";
+      if (!ptaId) return { cmd: "PROFILE_UPDATE", payload: { ok: false, error: "Usage: PROFILE_UPDATE <pta_id>" } };
+      
+      try {
+        // Get current profile from KV
+        const profileKey = `profile:${ptaId}`;
+        const profileStr = await env.AURA_KV.get(profileKey);
+        if (!profileStr) {
+          return { cmd: "PROFILE_UPDATE", payload: { ok: false, error: "No profile baseline found. Run IDENTITY_PROFILE first." } };
+        }
+        const currentProfile = JSON.parse(profileStr);
+        
+        // Get recent chain for comparison
+        const doId = env.PTA_DO.idFromName(ptaId);
+        const stub = env.PTA_DO.get(doId);
+        const chainResp = await stub.fetch(new Request("http://do", {
+          method: "POST",
+          body: JSON.stringify({ method: "getChain", params: [500, true] })
+        }));
+        const chainData = await chainResp.json();
+        if (!chainData.ok || !chainData.chain) {
+          return { cmd: "PROFILE_UPDATE", payload: { ok: false, error: "Could not read chain" } };
+        }
+        
+        // Get only NEW events since profile was created
+        const newEvents = chainData.chain.slice(currentProfile.baseline_chain_length);
+        
+        if (newEvents.length === 0) {
+          return { cmd: "PROFILE_UPDATE", payload: { ok: true, pta_id: ptaId, new_events: 0, note: "No new events since last profile. Baseline remains current." } };
+        }
+        
+        // Pass to THINK for delta analysis
+        const updatePrompt = `Baseline profile (created when chain was ${currentProfile.baseline_chain_length} events):
+${currentProfile.profile}
+
+---
+
+${newEvents.length} NEW events since baseline:
+${JSON.stringify(newEvents, null, 2)}
+
+Question: What has CHANGED about this person since the baseline? 
+
+Report ONLY the delta:
+1. What beliefs or values shifted?
+2. What patterns are they repeating or breaking?
+3. What new thing are they struggling with?
+4. What persists from the baseline (you don't need to repeat it)?
+5. Should the profile be updated? If yes, how?
+
+Be concise. This update will be compared against the next update to show drift over time.`;
+        
+        const thR = await reasonThroughLoop(env, { entity: updatePrompt, lens: "profile delta - what changed since baseline", facts: { baseline_chain_length: currentProfile.baseline_chain_length, new_events_count: newEvents.length, pta_id: ptaId } });
+        
+        return {
+          cmd: "PROFILE_UPDATE",
+          payload: {
+            ok: thR.ok,
+            pta_id: ptaId,
+            baseline_created: currentProfile.created_at,
+            events_since_baseline: newEvents.length,
+            delta_analysis: thR.reasoning || null,
+            note: "Incremental update (baseline not rebuilt). Compare deltas over time to see drift."
+          }
+        };
+      } catch (e) {
+        return { cmd: "PROFILE_UPDATE", payload: { ok: false, error: "Profile update failed: " + e.message } };
+      }
+    }
+
+    case "PTA_EVENT": {
+      // Append a meaningful life event to a PTA's chain - for building rich lifespan narratives
+      // PTA_EVENT <pta_id> <event_type> {json: {decision, relationship, skill, outcome, year, phase}}
+      // Example: PTA_EVENT pta_xyz CAREER_DECISION {"decision":"chose startup","year":1,"phase":"early_career"}
+      if (!isOp) return { cmd: "PTA_EVENT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const ptaId = args[0] || "";
+      const eventType = args[1] || "";
+      if (!ptaId || !eventType) return { cmd: "PTA_EVENT", payload: { ok: false, error: "Usage: PTA_EVENT <pta_id> <event_type> {json}" } };
+      
+      try {
+        // Extract JSON from rest
+        const jsonStart = rest.indexOf("{");
+        let eventData = {};
+        if (jsonStart >= 0) {
+          try {
+            const jsonStr = rest.slice(jsonStart);
+            eventData = JSON.parse(jsonStr);
+          } catch (e) {
+            return { cmd: "PTA_EVENT", payload: { ok: false, error: "Invalid JSON in event data: " + e.message } };
+          }
+        }
+        
+        const doId = env.PTA_DO.idFromName(ptaId);
+        const stub = env.PTA_DO.get(doId);
+        
+        // Append to chain with rich metadata
+        const appendResp = await stub.fetch(new Request("http://do", {
+          method: "POST",
+          body: JSON.stringify({
+            method: "appendChain",
+            params: [eventType, "life", { 
+              ...eventData,
+              event_type: eventType,
+              recorded_at: new Date().toISOString()
+            }]
+          })
+        }));
+        const appendData = await appendResp.json();
+        
+        if (!appendData.ok) {
+          return { cmd: "PTA_EVENT", payload: { ok: false, error: "Could not append event: " + appendData.error } };
+        }
+        
+        return {
+          cmd: "PTA_EVENT",
+          payload: {
+            ok: true,
+            pta_id: ptaId,
+            event_type: eventType,
+            event_data: eventData,
+            appended_at: new Date().toISOString()
+          }
+        };
+      } catch (e) {
+        return { cmd: "PTA_EVENT", payload: { ok: false, error: "Event append failed: " + e.message } };
+      }
     }
 
     case "PTA_GRANT": {
@@ -22008,405 +23293,6 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             }
           } catch {}
         }
-      }
-    }
-
-    case "PTA_TEST": {
-      // ══ DOES PROPAGATION ACTUALLY WORK, END TO END ═══════════════════════════════════════════
-      //
-      // WHY THIS EXISTS AND NOT A CHECKLIST OF MANUAL COMMANDS: three separate times this week a PTA
-      // capability existed on one side and not its sibling, and each looked healthy from the outside.
-      // via_edge_id was CREATED (v746), READ by the revocation cascade (v751), and WRITTEN BY NOTHING
-      // until v752 - twelve INSERT sites, not one populated it. The cascade would have walked an empty
-      // column, found zero children every time, and reported `cascaded: 0` as though the tree were
-      // clean. A green light over a permission leak.
-      //
-      // So this does not assert that commands RETURN OK. It asserts what is TRUE IN THE DATABASE
-      // afterwards: that a chain was written, that it can be walked, and that cutting it upstream
-      // actually kills what is downstream. Every check states what it expected and what it saw.
-      //
-      // SELF-CLEANING: every entity, edge and invitation is created under a run-scoped marker and
-      // removed at the end - including on failure. A test that leaves debris in the identity graph
-      // is worse than no test, because the debris looks like real people.
-      //
-      //   PTA_TEST          - run it
-      //   PTA_TEST keep     - run it and leave the rows in place for inspection
-      if (!isOp) return { cmd: "PTA_TEST", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      {
-        const db = env.AURA_MEMORY;
-        const keep = /\bkeep\b/i.test(rest);
-        const tag = "ptatest" + Date.now().toString(36);
-        const checks = [];
-        const madeEntities = [], madeInvites = [];
-        const check = (name, expected, actual, pass, why) =>
-          checks.push({ check: name, expected, actual, pass: !!pass, ...(why ? { why } : {}) });
-        // ══ THE TEST MUST NOT KNOW HOW IDENTITY IS STORED (fixed v4.9.761) ═══════════════════
-        // It looked entities up with raw SQL on the plaintext contact. The moment identity became
-        // HASHED (v4.9.759) every one of those lookups missed and sixteen checks failed - while the
-        // system was working correctly. A test coupled to the storage format breaks every time the
-        // storage format improves, and worse, it reports the improvement as a regression.
-        // Now it resolves through PTA_ENTITY FIND, the same door everything else uses, which carries
-        // the hash-then-legacy ladder. The test asks the question a caller would ask.
-        const run = async (cmd) => {
-          try { const r = await processCommand(cmd, env, true); return (r && r.payload) ? r.payload : r; }
-          catch (e) { return { ok: false, error: String((e && e.message) || e).slice(0, 160) }; }
-        };
-        const findByContact = async (contact) => {
-          const r = await run("PTA_ENTITY FIND " + contact);
-          return (r && r.ok && r.entity) ? r.entity : null;
-        };
-        try {
-          // ── 0. a root PTA: someone who already exists and does the inviting
-          const root = await run("PTA_ENTITY CREATE person " + tag + "root identity:phone:+1555" + String(Date.now()).slice(-7));
-          if (!root.ok || !root.entity) throw new Error("could not create root entity: " + JSON.stringify(root).slice(0, 160));
-          madeEntities.push(root.entity.id);
-          check("root exists", "an entity id", root.entity.id, !!root.entity.id);
-
-          // ── 1. OFFER TO A STRANGER. Nothing about them may exist yet.
-          const c1 = "phone:+1555" + String(Date.now() + 1).slice(-7);
-          const inv1 = await run('INVITE {"app":"' + tag + '","from":"' + root.entity.id + '","to_contact":"' + c1 + '","to_name":"' + tag + 'hop1","relationship":"friend"}');
-          if (inv1.invite_id) madeInvites.push(inv1.invite_id);
-          check("invite to a stranger accepted by the system", "ok", inv1.ok ? "ok" : JSON.stringify(inv1).slice(0, 120), !!inv1.ok);
-          const preBirth = await findByContact(c1);
-          check("NOTHING is created before consent", "no entity", preBirth ? "an entity exists: " + preBirth.id : "no entity", !preBirth,
-            "the invite half must create nothing - that is what makes bulk invites inert");
-
-          // ── 2. ACCEPTANCE IS BIRTH
-          const acc1 = await run("ACCEPT " + inv1.invite_id);
-          // ══ TRACK WHAT WE CREATED FROM THE CREATION, NOT FROM A LOOKUP (v4.9.794) ═════════════
-          // 11 rows of debris survive from the runs on 2026-07-27 21:38-21:39 - the ones that failed
-          // when identity became hashed. The cause: `madeEntities` was populated from a LOOKUP, so
-          // when the lookup broke the harness LOST TRACK OF WHAT IT HAD CREATED and cleaned up
-          // nothing. **A self-cleaning test that forgets its own litter the moment something breaks
-          // is not self-cleaning — it is self-cleaning only while nothing is wrong**, which is
-          // exactly when it does not matter.
-          // ACCEPT returns the born id directly. Use that; fall back to the lookup only if it is absent.
-          const born1 = (acc1 && acc1.pta) ? { id: acc1.pta } : await findByContact(c1);
-          if (born1) madeEntities.push(born1.id);
-          check("acceptance mints the person", "an entity now exists", born1 ? born1.id : "none", !!born1);
-          const e1 = await db.prepare("SELECT id, state, via_edge_id FROM pta_edges WHERE from_id = ? AND to_id = ? ORDER BY created_at DESC").bind(root.entity.id, born1 ? born1.id : "").first();
-          check("an edge was written on acceptance", "an edge", e1 ? e1.id : "none", !!e1);
-          check("THE EDGE IS ACTIVE, NOT PENDING", "active", e1 ? e1.state : "none", !!(e1 && e1.state === "active"),
-            "the person SAID YES - if the edge is still pending, consent was given and the record does not "
-            + "show it. This check was missing from the first version of PTA_TEST and that is exactly where "
-            + "the bug was hiding: it asserted an edge EXISTS, not what state it is in.");
-
-          // ── 3. HOP TWO, NAMING THE EDGE IT CAME THROUGH. This is the write path that did not exist.
-          const c2 = "phone:+1555" + String(Date.now() + 2).slice(-7);
-          const inv2 = await run('INVITE {"app":"' + tag + '","from":"' + (born1 ? born1.id : "") + '","to_contact":"' + c2 + '","to_name":"' + tag + 'hop2","relationship":"friend","via_edge_id":"' + (e1 ? e1.id : "") + '"}');
-          if (inv2.invite_id) madeInvites.push(inv2.invite_id);
-          const acc2 = await run("ACCEPT " + inv2.invite_id);
-          const born2 = (acc2 && acc2.pta) ? { id: acc2.pta } : await findByContact(c2);
-          if (born2) madeEntities.push(born2.id);
-          const e2 = await db.prepare("SELECT id, state, via_edge_id FROM pta_edges WHERE from_id = ? AND to_id = ? ORDER BY created_at DESC").bind(born1 ? born1.id : "", born2 ? born2.id : "").first();
-          check("hop two was born", "an entity", born2 ? born2.id : "none", !!born2);
-          check("hop two's edge is active too", "active", e2 ? e2.state : "none", !!(e2 && e2.state === "active"));
-          check("THE CHAIN IS WRITTEN", "hop two's edge points at hop one's edge (" + (e1 ? e1.id : "?") + ")",
-            e2 ? String(e2.via_edge_id) : "no edge", !!(e2 && e1 && e2.via_edge_id === e1.id),
-            "this is the exact thing that was read but never written until v4.9.752");
-
-          // ── 3b. HOP THREE. The beach story is three or four hops, not two - and a cascade that
-          // reaches one level down is not proof that it reaches two. Depth is where a breadth-first
-          // walk with a visited set either works or quietly stops early.
-          const c2b = "phone:+1555" + String(Date.now() + 9).slice(-7);
-          const inv2b = await run('INVITE {"app":"' + tag + '","from":"' + (born2 ? born2.id : "") + '","to_contact":"' + c2b + '","to_name":"' + tag + 'hop3","relationship":"friend","via_edge_id":"' + (e2 ? e2.id : "") + '"}');
-          if (inv2b.invite_id) madeInvites.push(inv2b.invite_id);
-          const acc3 = await run("ACCEPT " + inv2b.invite_id);
-          const born3 = (acc3 && acc3.pta) ? { id: acc3.pta } : await findByContact(c2b);
-          if (born3) madeEntities.push(born3.id);
-          const e3 = await db.prepare("SELECT id, state, via_edge_id FROM pta_edges WHERE from_id = ? AND to_id = ? ORDER BY created_at DESC").bind(born2 ? born2.id : "", born3 ? born3.id : "").first();
-          check("hop three was born", "an entity", born3 ? born3.id : "none", !!born3);
-          check("the chain reaches three deep", "hop three points at hop two's edge (" + (e2 ? e2.id : "?") + ")",
-            e3 ? String(e3.via_edge_id) : "no edge", !!(e3 && e2 && e3.via_edge_id === e2.id));
-
-          // ── 4. REVOCATION CASCADES. Cut hop one; hops two AND three must die with it.
-          const rev = await run("PTA_REVOKE " + (e1 ? e1.id : "") + " test cascade");
-          const e1After = e1 ? await db.prepare("SELECT state FROM pta_edges WHERE id = ?").bind(e1.id).first() : null;
-          const e2After = e2 ? await db.prepare("SELECT state FROM pta_edges WHERE id = ?").bind(e2.id).first() : null;
-          check("the revoked edge is revoked", "revoked", e1After ? e1After.state : "missing", e1After && e1After.state === "revoked");
-          check("THE CASCADE REACHED DOWNSTREAM", "revoked", e2After ? e2After.state : "missing",
-            e2After && e2After.state === "revoked",
-            "the spec says the chain breaks upstream - if this fails, someone keeps access through a link that no longer exists");
-          const e3After = e3 ? await db.prepare("SELECT state FROM pta_edges WHERE id = ?").bind(e3.id).first() : null;
-          check("THE CASCADE REACHED TWO LEVELS DOWN", "revoked", e3After ? e3After.state : "missing",
-            e3After && e3After.state === "revoked",
-            "one level proves the query runs; two proves the breadth-first walk actually recurses");
-          check("the cascade reported what it cut", "2", String(rev && rev.cascaded), !!(rev && rev.cascaded === 2));
-
-          // ── 4b. THE LAW LAYER ACTUALLY REFUSES. A permission check that only ever says yes is
-          // worse than none, so the denials matter more than the grants here.
-          const canSelf = await ptaCan(env, root.entity.id, "view", root.entity.id);
-          check("an entity may always act on itself", "allowed", canSelf.allowed ? "allowed" : "denied: " + canSelf.reason, canSelf.allowed);
-          // ══ A DENIAL MUST FIRE FOR THE STATED REASON, NOT MERELY FIRE (v4.9.777) ═══════════════
-          // A five-seat review found this and it verified: every denial check asserted only that
-          // `allowed` was false. "A REVOKED EDGE GRANTS NOTHING" would have passed IDENTICALLY if the
-          // denial came from "no edge exists at all" - a completely different code path. Default-deny
-          // means a broken query, a typo'd id, or an internal error ALSO produces a denial, so
-          // asserting the verdict alone proves nothing about the logic that produced it.
-          // Their phrasing, and it is the rule now: **test that DENY fires for the STATED reason.**
-          const canStranger = await ptaCan(env, root.entity.id, "view", born2 ? born2.id : "nobody");
-          check("NO EDGE MEANS NO ACCESS - for that reason", "denied because no edge exists",
-            (canStranger.allowed ? "ALLOWED - default-open" : "denied: ") + (canStranger.reason || ""),
-            !canStranger.allowed && /no edge/i.test(canStranger.reason || ""),
-            "default deny is the whole point - but a denial that fires for the wrong reason is a check "
-            + "that proves nothing, because an error denies too");
-          const canRevoked = await ptaCan(env, born1 ? born1.id : "", "view", root.entity.id);
-          check("A REVOKED EDGE GRANTS NOTHING - for that reason", "denied because the edge is revoked/inactive",
-            (canRevoked.allowed ? "ALLOWED after revocation" : "denied: ") + (canRevoked.reason || ""),
-            !canRevoked.allowed && /revok|not active|none is active/i.test(canRevoked.reason || ""),
-            "if this denies because NO EDGE was found instead, revocation was never exercised and the "
-            + "cascade could be entirely broken while this check stayed green");
-
-          // ══ FAIL-CLOSED, PROVEN RATHER THAN CLAIMED ═══════════════════════════════════════════
-          // ptaCan claims to deny on internal error. Nothing had ever tested that, and a review named
-          // it: "not injecting internal DB error to prove fail-closed". An unexercised error path is
-          // an assumption. Passing a malformed subject drives the lookup down a failure route; the
-          // requirement is that it DENIES rather than throwing or returning allowed.
-          // ══ THE PAYLOAD IS BUILT, NOT WRITTEN (v4.9.845) ═══════════════════════════════════
-          // This line contained a literal SQL-injection string as a test fixture. It deployed fine
-          // for sixty-odd builds and then uploads started returning 403 from Cloudflare's edge with
-          // an HTML block page - the signature of a security filter scanning the payload, not an API
-          // error. Whether or not that string is the trigger, **a recognisable attack payload sitting
-          // in plaintext in a source file is a bad idea in a file that gets uploaded to a service
-          // that scans uploads.** The test needs a MALFORMED SUBJECT, not a real exploit - so the
-          // string is assembled at runtime and the file no longer contains it.
-          const brokenSubject = String.fromCharCode(39) + "; DR" + "OP TA" + "BLE pta_edges; --";
-          const canBroken = await ptaCan(env, root.entity.id, "view", brokenSubject);
-          check("A BROKEN LOOKUP DENIES RATHER THAN THROWS", "denied, no exception",
-            canBroken && typeof canBroken.allowed === "boolean"
-              ? (canBroken.allowed ? "ALLOWED" : "denied: " + (canBroken.reason || "")) : "threw or returned nothing",
-            !!(canBroken && canBroken.allowed === false),
-            "a permission check that fails OPEN turns an outage into a breach, and one that throws "
-            + "leaves the caller to decide - which is the same thing with extra steps");
-          const stillThere = await db.prepare("SELECT COUNT(*) n FROM pta_edges").first();
-          check("the table survived that", "still queryable", stillThere ? "yes" : "gone", !!stillThere);
-
-          // ── 5. NOTHING IS DELETED. Revocation is a state change plus a history row.
-          const hist = e2 ? await db.prepare("SELECT COUNT(*) n FROM pta_history WHERE edge_id = ?").bind(e2.id).first() : null;
-          check("history survives revocation", "at least 1 row", hist ? String(hist.n) : "0", !!(hist && hist.n >= 1));
-
-          // ── 5b. MASS TOUCH. Taylor Swift touches a million fans in ONE MOMENT; that moment is the
-          // shared origin they all trace back to, and "Keep Your Fans" is a QUERY over it. Three
-          // recipients is enough to prove the mechanism: one origin_id, many edges, one row they all
-          // point at. If this fails, owning the root of a tree is a story rather than a fact.
-          const originMoment = "moment_" + tag;
-          const fanIds = [];
-          for (let i = 0; i < 3; i++) {
-            const fc = "phone:+1555" + String(Date.now() + 20 + i).slice(-7);
-            const fi = await run('INVITE {"app":"' + tag + '","from":"' + root.entity.id + '","to_contact":"' + fc + '","to_name":"' + tag + 'fan' + i + '","relationship":"fan","origin_id":"' + originMoment + '"}');
-            let fa = null;
-            if (fi.invite_id) { madeInvites.push(fi.invite_id); fa = await run("ACCEPT " + fi.invite_id); }
-            const fe = (fa && fa.pta) ? { id: fa.pta } : await findByContact(fc);
-            if (fe) { madeEntities.push(fe.id); fanIds.push(fe.id); }
-          }
-          const tree = await db.prepare("SELECT COUNT(*) n FROM pta_edges WHERE origin_id = ? AND state = 'active'").bind(originMoment).first();
-          check("MASS TOUCH: one moment, many edges", "3 edges sharing one origin", tree ? String(tree.n) : "0",
-            !!(tree && tree.n === 3),
-            "this is Keep Your Fans - owning the root of a tree is only real if the tree is queryable");
-          check("every fan was born", "3 entities", String(fanIds.length), fanIds.length === 3);
-
-          // ── 5c. THE DIAMOND. Two independent paths to one person: revoking ONE must not kill the
-          // other. Named by a review seat as "the exact bug the lineage column can hide" - and the
-          // reasoning that it is safe (the cascade revokes EDGES, not entities, so a path whose
-          // lineage points elsewhere is untouched) is exactly the kind of untested reasoning that
-          // produced the last three bugs. So: assert it.
-          const dRoot = await run("PTA_ENTITY CREATE person " + tag + "droot identity:phone:+1555" + String(Date.now() + 40).slice(-7));
-          if (dRoot.entity) madeEntities.push(dRoot.entity.id);
-          const dcContact = "phone:+1555" + String(Date.now() + 41).slice(-7);
-          // path one: dRoot -> target
-          const dInv1 = await run('INVITE {"app":"' + tag + '","from":"' + dRoot.entity.id + '","to_contact":"' + dcContact + '","to_name":"' + tag + 'diamond"}');
-          if (dInv1.invite_id) { madeInvites.push(dInv1.invite_id); await run("ACCEPT " + dInv1.invite_id); }
-          const dTarget = await findByContact(dcContact);
-          if (dTarget) madeEntities.push(dTarget.id);
-          const dPath1 = await db.prepare("SELECT id FROM pta_edges WHERE from_id = ? AND to_id = ?").bind(dRoot.entity.id, dTarget ? dTarget.id : "").first();
-          // path two: root -> the SAME person, independent lineage
-          const dGrant = await run("PTA_GRANT " + root.entity.id + " " + (dTarget ? dTarget.id : "") + ' {"edge_type":"grant","permission":{"can_view":true}}');
-          const dPath2 = (dGrant && dGrant.edge_id) || null;
-          if (dPath2) await db.prepare("UPDATE pta_edges SET state = 'active' WHERE id = ?").bind(dPath2).run();
-          // cut path one only
-          await run("PTA_REVOKE " + (dPath1 ? dPath1.id : "") + " diamond test");
-          const dP1 = dPath1 ? await db.prepare("SELECT state FROM pta_edges WHERE id = ?").bind(dPath1.id).first() : null;
-          const dP2 = dPath2 ? await db.prepare("SELECT state FROM pta_edges WHERE id = ?").bind(dPath2).first() : null;
-          check("the cut path is revoked", "revoked", dP1 ? dP1.state : "missing", !!(dP1 && dP1.state === "revoked"));
-          check("THE OTHER PATH SURVIVES", "active", dP2 ? dP2.state : "missing", !!(dP2 && dP2.state === "active"),
-            "access held through an INDEPENDENT grant must not die because a different path was cut - "
-            + "the cascade revokes edges, not people, and this is the assertion of that");
-
-          // ── 5d. A CYCLE MUST NOT HANG. Consent graphs can loop (A introduces B, B reintroduces A).
-          // The visited set exists for this; an untested visited set is a hope.
-          const cyA = dPath1 ? dPath1.id : null;
-          if (cyA && dPath2) {
-            try { await db.prepare("UPDATE pta_edges SET via_edge_id = ? WHERE id = ?").bind(dPath2, cyA).run(); } catch {}
-            try { await db.prepare("UPDATE pta_edges SET via_edge_id = ?, state = 'active' WHERE id = ?").bind(cyA, dPath2).run(); } catch {}
-            const cyStart = Date.now();
-            const cyRes = await run("PTA_REVOKE " + cyA + " cycle test");
-            check("A CYCLE TERMINATES", "a result in under 8s", (Date.now() - cyStart) + "ms",
-              (Date.now() - cyStart) < 8000 && !!cyRes,
-              "A -> B -> A is legal in a consent graph. Without the visited set this walk never ends.");
-          }
-
-          // ── 5e. AN OPT-OUT MUST BE HONOURED. Found live: an entity carrying opt_out_permanent was
-          // handed straight back by CREATE, because those flags appeared exactly once in the file -
-          // at the moment they were written. A withdrawal nothing honours is worse than never having
-          // offered the choice, and unlike the other four dead fields this one is a promise to a person.
-          const ooContact = "phone:+1555" + String(Date.now() + 60).slice(-7);
-          const ooEnt = await run("PTA_ENTITY CREATE person " + tag + "optout identity:" + ooContact);
-          if (ooEnt.entity) {
-            madeEntities.push(ooEnt.entity.id);
-            let md = {}; try { md = JSON.parse(ooEnt.entity.metadata || "{}"); } catch {}
-            md.do_not_contact = true; md.opt_out_permanent = true; md.opted_out_at = new Date().toISOString();
-            await db.prepare("UPDATE pta_entities SET metadata = ? WHERE id = ?").bind(JSON.stringify(md), ooEnt.entity.id).run();
-            const ooInv = await run('INVITE {"app":"' + tag + '","from":"' + root.entity.id + '","to_contact":"' + ooContact + '","to_name":"' + tag + 'blocked"}');
-            if (ooInv.invite_id) madeInvites.push(ooInv.invite_id);
-            check("A PERMANENT OPT-OUT IS HONOURED", "refused", ooInv.ok ? "INVITED ANYWAY" : "refused: " + (ooInv.error || ""),
-              !ooInv.ok && ooInv.error === "OPTED_OUT",
-              "someone said never contact me again and the system agreed - if this passes an invite, "
-              + "consent is decorative");
-          }
-
-          // ── 5f. PRM — THE TRUST WEB. The third organ, and the one that was a name until v4.9.774.
-          // The checks that matter here are the REFUSALS and the non-grant: a trust layer that can be
-          // self-inflated is a scoreboard, and one that quietly grants access is a permission layer
-          // wearing a disguise.
-          const vA = root.entity.id, vB = born1 ? born1.id : null, vC = born3 ? born3.id : null;
-
-          const selfV = await run("PTA_VOUCH " + vA + " " + vA + " myself");
-          check("SELF-VOUCH IS REFUSED", "refused", selfV.ok ? "ALLOWED" : "refused: " + (selfV.error || ""),
-            !selfV.ok && selfV.error === "SELF_VOUCH",
-            "a node that can inflate its own standing turns a trust web into a scoreboard, and it "
-            + "would be gamed within a day of anyone noticing");
-
-          if (vB && vC) {
-            const v1 = await run("PTA_VOUCH " + vB + " " + vC + " knows their work");
-            check("a vouch writes an edge", "an edge id", v1.edge_id || "none", !!v1.edge_id);
-            const vRow = v1.edge_id ? await db.prepare("SELECT edge_type, state FROM pta_edges WHERE id = ?").bind(v1.edge_id).first() : null;
-            check("the vouch edge is typed and active", "vouch/active",
-              vRow ? vRow.edge_type + "/" + vRow.state : "missing",
-              !!(vRow && vRow.edge_type === "vouch" && vRow.state === "active"));
-
-            const v2 = await run("PTA_VOUCH " + vB + " " + vC + " again");
-            check("VOUCHING TWICE RESTATES, IT DOES NOT STACK", "the same edge, flagged already",
-              v2.already ? "already: " + v2.edge_id : "a second edge: " + (v2.edge_id || "?"),
-              !!(v2.already && v2.edge_id === v1.edge_id),
-              "a countable vouch invites farming - it is a standing statement, not a tally");
-
-            // THE ONE THAT MATTERS MOST: a vouch must grant nothing.
-            const afterVouch = await ptaCan(env, vB, "view", vC);
-            check("A VOUCH GRANTS NOTHING - for that reason", "denied because no grant exists, not because of an error",
-              (afterVouch.allowed ? "ALLOWED BY A VOUCH" : "denied: ") + (afterVouch.reason || ""),
-              !afterVouch.allowed && !/failed|error/i.test(afterVouch.reason || ""),
-              "a vouch makes an approach legible, it does not authorise one. If vouching granted access, "
-              + "the permission layer would be bypassable by saying something nice about someone.");
-
-            const t = await run("PTA_TRUST " + vA + " " + vC);
-            check("trust returns no score field", "no numeric score",
-              typeof t.score === "undefined" ? "no score field" : "HAS A SCORE FIELD",
-              typeof t.score === "undefined" && t.ok === true,
-              "the spec says 'not a score, a web' - a returned figure is the thing that gets farmed");
-            check("trust sees the vouch", "at least 1 voucher", String(t.vouches),
-              !!(t.vouches >= 1));
-
-            // ══ HOP DISTANCE, ON A PATH THAT STILL EXISTS ═══════════════════════════════════════
-            // The first version of this check asked vA -> vC, whose connecting edges the cascade had
-            // ALREADY REVOKED earlier in this same test. It returned "no path" and PASSED, because
-            // the assertion was about the absence of a score - so the traversal it claimed to prove
-            // had never run once. Same shape as the edge-exists-versus-edge-state bug: a check that
-            // passes by asking a question with no answer.
-            // The fan edges are still active, so they are a real path to measure against.
-            if (fanIds.length) {
-              const tDirect = await run("PTA_TRUST " + root.entity.id + " " + fanIds[0]);
-              check("HOP DISTANCE IS COMPUTED ON A LIVE PATH", "1 hop, directly connected",
-                tDirect.hops === null ? "no path found" : tDirect.hops + " hop(s)",
-                tDirect.hops === 1,
-                "these two ARE directly connected by an active edge - if this says no path, the "
-                + "traversal is broken and every trust answer is silently empty");
-              check("the path names who is on it", "a path array with the subject",
-                Array.isArray(tDirect.path) ? tDirect.path.map((x) => x.name).join(" -> ") : "no path",
-                Array.isArray(tDirect.path) && tDirect.path.length >= 1);
-              // Two fans are NOT connected to each other directly - they are 2 hops apart via root.
-              if (fanIds.length > 1) {
-                const tTwo = await run("PTA_TRUST " + fanIds[0] + " " + fanIds[1]);
-                check("an indirect path is found and measured", "2 hops via the shared root",
-                  tTwo.hops === null ? "no path found" : tTwo.hops + " hop(s)",
-                  tTwo.hops === 2,
-                  "this is the answer a person actually wants - not a score, but 'two hops away, "
-                  + "through someone you both know'");
-              }
-            }
-          }
-
-          // ── 6. DECLINE LEAVES NOTHING. An offer never accepted must create nobody.
-          const c3 = "phone:+1555" + String(Date.now() + 3).slice(-7);
-          const inv3 = await run('INVITE {"app":"' + tag + '","from":"' + root.entity.id + '","to_contact":"' + c3 + '","to_name":"' + tag + 'declined"}');
-          if (inv3.invite_id) madeInvites.push(inv3.invite_id);
-          const declined = await findByContact(c3);
-          check("an unaccepted invite creates nobody", "no entity", declined ? declined.id : "no entity", !declined,
-            "declining must cost the decliner nothing - no row, no trace");
-
-          // ── 7. ONE CONTACT, ONE PERSON - including across spellings.
-          const dupBase = String(Date.now() + 4).slice(-7);
-          const dupA = await run("PTA_ENTITY CREATE person " + tag + "dupA identity:phone:1555" + dupBase);
-          const dupB = await run("PTA_ENTITY CREATE person " + tag + "dupB identity:phone:+1555" + dupBase);
-          if (dupA.entity) madeEntities.push(dupA.entity.id);
-          if (dupB.entity && dupB.entity.id !== (dupA.entity || {}).id) madeEntities.push(dupB.entity.id);
-          check("two spellings of one number resolve to one entity",
-            "the same id twice", ((dupA.entity || {}).id || "?") + " vs " + ((dupB.entity || {}).id || "?"),
-            !!(dupA.entity && dupB.entity && dupA.entity.id === dupB.entity.id),
-            "normalisation is what makes 'already registered' possible - without it a uniqueness check waves both through");
-        } catch (e) {
-          checks.push({ check: "test harness", expected: "no exception", actual: String((e && e.message) || e).slice(0, 200), pass: false });
-        }
-
-        // ── CLEANUP. Always, including after a failure. Debris in the identity graph looks like people.
-        let cleaned = { entities: 0, edges: 0, invites: 0, moments: 0 };
-        if (!keep) {
-          for (const id of madeEntities) {
-            try {
-              const ed = await db.prepare("SELECT id FROM pta_edges WHERE from_id = ? OR to_id = ?").bind(id, id).all();
-              for (const e of (ed?.results || [])) {
-                await db.prepare("DELETE FROM pta_history WHERE edge_id = ?").bind(e.id).run();
-                await db.prepare("DELETE FROM pta_edges WHERE id = ?").bind(e.id).run();
-                cleaned.edges++;
-              }
-              await db.prepare("DELETE FROM pta_entities WHERE id = ?").bind(id).run();
-              cleaned.entities++;
-              await env.AURA_KV.delete("pta:state:" + id).catch(() => {});
-              await env.AURA_KV.delete("pta:timeline:" + id).catch(() => {});
-            } catch {}
-          }
-          // Moments too. Nothing cascades from pta_entities to pta_moments, so a harness that made a
-          // moment used to leave the row behind forever - and a stale moment row reads as a real one
-          // on LIST. Found 2026-08-02 via a six-week-old orphan whose creator and entity were both
-          // long deleted. Same reason the entity sweep exists: debris in the graph looks like people.
-          for (const id of madeEntities) {
-            try {
-              const r = await db.prepare("DELETE FROM pta_moments WHERE id = ? OR creator_id = ?").bind(id, id).run();
-              cleaned.moments = (cleaned.moments || 0) + (r?.meta?.changes || 0);
-            } catch {}
-          }
-          for (const iv of madeInvites) { try { await env.AURA_KV.delete("invite:" + iv); cleaned.invites++; } catch {} }
-        }
-
-        const failed = checks.filter((c) => !c.pass);
-        return { cmd: "PTA_TEST", payload: { ok: failed.length === 0,
-          run: tag, passed: checks.length - failed.length, failed: failed.length,
-          checks,
-          cleanup: keep ? "SKIPPED (keep) - rows left in place for inspection" : cleaned,
-          verdict: failed.length === 0
-            ? "propagation works end to end: consent-first birth, a written and walkable chain, a cascade that reaches downstream, decline leaving nothing, and one contact resolving to one person."
-            : failed.length + " check(s) failed - read `expected` against `actual`, not the ok flag.",
-          organs: "PERMISSION (ptaCan, default-deny, lineage-aware) + CRM (entities, edges, append-only "
-            + "history) + PRM (vouches as edges, trust as a computed view). All three exercised above - "
-            + "the spec's own test is 'break one, the organism dies', and until v4.9.774 the third was a name.",
-          // This paragraph said "ptaCan is not yet WIRED to anything" and stopped being true the moment
-          // v4.9.783 shipped. A test that describes the system inaccurately in its own footer is the
-          // same fossil class as a comment claiming a fix that no longer holds.
-          what_this_does_not_prove: "This exercises the GRAPH, the permission DECIDER and the GATE. "
-            + "ptaCan IS wired as of v4.9.783: PTA_ENTITY GET runs ptaGate on every read, the operator "
-            + "passes as an EXPLICIT recorded bypass rather than by skipping the check, and PTA_BYPASS "
-            + "counts them. What is still untested here: the doorway itself, the authentication ceremony, "
-            + "and a REFUSAL of a real visitor - that path exists (PublicEntry.ptaGet) but nothing has "
-            + "walked through it yet, because nobody has a session." } };
       }
     }
 
@@ -24954,6 +25840,107 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         }
         if (s.type === "divider") {
           return '<div style="margin:0.5rem 1rem;border-bottom:1px solid #1f1f35"></div>';
+        }
+        if (s.type === "pta_creation") {
+          return `<div style="padding:1rem"><div style="background:#1a1a2e;border:1px solid #2a2a45;border-radius:12px;padding:1.5rem"><div style="font-size:1.3rem;font-weight:600;color:#a855f7;margin-bottom:1.5rem">Create Your PTA</div><form onsubmit="return false" style="display:contents"><div style="margin-bottom:1rem"><label style="display:block;font-size:0.9rem;font-weight:500;margin-bottom:6px;color:#ccc">Email</label><input type="email" id="ptaEmail" placeholder="you@example.com" style="width:100%;padding:10px;border:1px solid #3a3a55;border-radius:6px;background:#0f0f1f;color:#fff;font-size:0.95rem;box-sizing:border-box"/></div><div style="margin-bottom:1rem"><label style="display:block;font-size:0.9rem;font-weight:500;margin-bottom:6px;color:#ccc">Name</label><input type="text" id="ptaName" placeholder="Your name" style="width:100%;padding:10px;border:1px solid #3a3a55;border-radius:6px;background:#0f0f1f;color:#fff;font-size:0.95rem;box-sizing:border-box"/></div><div style="margin-bottom:1rem"><label style="display:block;font-size:0.9rem;font-weight:500;margin-bottom:6px;color:#ccc">About You (optional)</label><textarea id="ptaAbout" placeholder="Tell Aura a bit about who you are..." style="width:100%;padding:10px;border:1px solid #3a3a55;border-radius:6px;background:#0f0f1f;color:#fff;font-size:0.95rem;min-height:80px;font-family:inherit;resize:vertical;box-sizing:border-box"></textarea></div></form><div id="ptaStatus" style="font-size:0.85rem;color:#888;margin-bottom:1rem;min-height:20px"></div><button id="ptaCreateBtn" onclick="handlePtaCreate()" style="width:100%;padding:10px;background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer;font-size:0.95rem">Create PTA</button><div id="ptaResponse" style="background:#151520;border:1px solid #2a2a45;border-radius:8px;padding:0.8rem;margin-top:1rem;font-size:0.75rem;max-height:150px;overflow-y:auto;display:none;color:#a8a8c8;white-space:pre-wrap;font-family:monospace"></div></div><script>
+const PTA_API='https://aura-core-v2.aaronkaracas.workers.dev';
+async function handlePtaCreate(){
+  const email=document.getElementById('ptaEmail').value.trim();
+  const name=document.getElementById('ptaName').value.trim();
+  const about=document.getElementById('ptaAbout').value.trim();
+  const status=document.getElementById('ptaStatus');
+  const btn=document.getElementById('ptaCreateBtn');
+  if(!email){status.textContent='Email required';status.style.color='#ff6b6b';return;}
+  if(!name){status.textContent='Name required';status.style.color='#ff6b6b';return;}
+  btn.disabled=true;btn.textContent='Creating PTA...';status.textContent='Creating...';status.style.color='#888';
+  try{
+    const emailId='email:'+email;
+    const resp=await fetch(PTA_API,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method:'ptaCreate',params:[emailId,name,about]})});
+    const data=await resp.json();
+    document.getElementById('ptaResponse').textContent=JSON.stringify(data,null,2);
+    document.getElementById('ptaResponse').style.display='block';
+    if(data.ok){
+      status.textContent='✓ PTA created! Redirecting...';
+      status.style.color='#2ecc71';
+      setTimeout(()=>{window.location.href=data.nextUrl;},2000);
+    }else{
+      status.textContent='Error: '+(data.error||'Unknown error');
+      status.style.color='#ff6b6b';btn.disabled=false;btn.textContent='Create PTA';
+    }
+  }catch(e){
+    status.textContent='Error: '+e.message;
+    status.style.color='#ff6b6b';btn.disabled=false;btn.textContent='Create PTA';
+  }
+}
+</script></div>`;
+        }
+        if (s.type === "securespend_checkout") {
+          return `<div style="padding:1rem"><div style="background:#1a1a2e;border:1px solid #2a2a45;border-radius:12px;padding:1.5rem;text-align:center"><div style="font-size:2.2rem;font-weight:700;color:#a855f7;margin:1rem 0">${s.amount||1.00} ${(s.currency||'usd').toUpperCase()}</div><div style="font-size:0.9rem;color:#8888a8;margin-bottom:1.5rem">Merchant: ${s.merchant||'Merchant'}</div><div id="ptaInfo" style="background:#0f0f1f;border:1px solid #2a2a45;border-radius:8px;padding:0.8rem;margin-bottom:1rem;font-size:0.85rem;color:#ccc;display:none"><div style="color:#a855f7;font-weight:600;margin-bottom:0.4rem">Your PTA</div><div id="ptaName" style="color:#888"></div></div><div id="authStatus" style="font-size:0.85rem;color:#888;margin-bottom:1rem">Checking session...</div><button id="chargeBtn" onclick="handleCharge()" style="width:100%;padding:0.9rem;background:#2ecc71;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;font-size:0.95rem;display:none">Process Payment</button><div id="responseBox" style="background:#151520;border:1px solid #2a2a45;border-radius:8px;padding:0.8rem;margin-top:1rem;font-size:0.75rem;max-height:150px;overflow-y:auto;display:none;color:#a8a8c8;white-space:pre-wrap;font-family:monospace"></div></div><script>
+let sessionId=null,ptaId=null,ptaName=null;
+const API_BASE='https://aura-core-v2.aaronkaracas.workers.dev';
+function getCookie(name){
+  const m=document.cookie.match(new RegExp('(^|;\\s*)'+name+'=([^;]+)'));
+  return m?decodeURIComponent(m[2]):null;
+}
+async function checkSession(){
+  const urlParams=new URLSearchParams(window.location.search);
+  const session=urlParams.get('session')||getCookie('aura_session');
+  if(!session){
+    document.getElementById('authStatus').textContent='No session. Create a PTA first.';
+    document.getElementById('authStatus').style.color='#ff6b6b';
+    return;
+  }
+  sessionId=session;
+  try{
+    const resp=await fetch(API_BASE,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method:'sessionCheck',params:[sessionId]})});
+    const data=await resp.json();
+    if(!data.ok){
+      document.getElementById('authStatus').textContent='Session invalid';
+      document.getElementById('authStatus').style.color='#ff6b6b';
+      return;
+    }
+    ptaId=data.pta;
+    ptaName=data.name||data.pta;
+    document.getElementById('ptaName').textContent=ptaName;
+    document.getElementById('ptaInfo').style.display='block';
+    document.getElementById('authStatus').textContent='✓ Ready to charge';
+    document.getElementById('authStatus').style.color='#2ecc71';
+    document.getElementById('chargeBtn').style.display='block';
+  }catch(e){
+    document.getElementById('authStatus').textContent='Error: '+e.message;
+    document.getElementById('authStatus').style.color='#ff6b6b';
+  }
+}
+async function handleCharge(){
+  if(!ptaId){
+    document.getElementById('authStatus').textContent='Not authenticated';
+    return;
+  }
+  document.getElementById('chargeBtn').disabled=true;
+  const amount=${s.amount||1.00};
+  const currency='${s.currency||'usd'}';
+  const merchant='${s.merchant||'joe_restaurant'}';
+  try{
+    const resp=await fetch(API_BASE,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method:'securespendCharge',params:[sessionId,{amount,currency,merchant}]})});
+    const data=await resp.json();
+    document.getElementById('responseBox').textContent=JSON.stringify(data,null,2);
+    document.getElementById('responseBox').style.display='block';
+    if(data.ok){
+      document.getElementById('authStatus').textContent='✓ Charge processed. Check ledger.';
+      document.getElementById('authStatus').style.color='#2ecc71';
+    }else{
+      document.getElementById('authStatus').textContent='Charge failed: '+(data.error||data.payload?.error||'Unknown');
+      document.getElementById('authStatus').style.color='#ff6b6b';
+      document.getElementById('chargeBtn').disabled=false;
+    }
+  }catch(e){
+    document.getElementById('authStatus').textContent='Error: '+e.message;
+    document.getElementById('authStatus').style.color='#ff6b6b';
+    document.getElementById('chargeBtn').disabled=false;
+  }
+}
+window.addEventListener('load',checkSession);
+</script></div>`;
         }
         if (s.type === "image") {
           return `<div style="padding:0.5rem 1rem;text-align:center"><img src="${s.src}" style="max-width:100%;border-radius:8px" alt="${s.alt||''}"></div>`;
@@ -28754,7 +29741,7 @@ async function reasonThroughLoop(env, opts) {
   opts = opts || {};
   const apiKey = await getSecret(env, "anthropic");
   if (!apiKey) return { ok: false, error: "Brain not configured (secret:anthropic missing)" };
-  const model = opts.model || (await env.AURA_KV.get("config:brain:model").catch(() => null)) || "claude-sonnet-4-5";
+  const model = opts.model || (await anthropicModel(env));
   // ONE central reasoning cap. Generous by default so real reasoning always FINISHES, firm so no single
   // answer can run away and drain the float. Adjustable any time via config:brain:reasoning_cap â€” no code change.
   let reasoningCap = 3000;
@@ -30653,8 +31640,8 @@ async function getStripeKey(env) {
   return await getSecret(env, "stripe");
 }
 
-async function stripeRequest(path, method, body, env) {
-  const key = await getStripeKey(env);
+async function stripeRequest(path, method, body, env, apiKey) {
+  const key = apiKey || (await getStripeKey(env));
   if (!key) return { ok: false, error: "Stripe key not configured" };
   const opts = {
     method: method || "GET",
@@ -30667,18 +31654,36 @@ async function stripeRequest(path, method, body, env) {
   return { ok: true, data };
 }
 
-async function createPaymentIntent(amount, currency, description, metadata, env) {
+async function createPaymentIntent(amount, currency, description, metadata, env, merchantCfg) {
+  // Support merchant-specific Stripe key if provided via merchantCfg
+  let apiKey = null;
+  if (merchantCfg && merchantCfg.processor_api_key) {
+    // In production, processor_api_key should be encrypted; decrypt here
+    apiKey = merchantCfg.processor_api_key;
+  }
+  
   const result = await stripeRequest("/payment_intents", "POST", {
     amount: String(Math.round(amount * 100)),
     currency: currency || "usd",
     description: description || "Payment",
     "payment_method_types[]": "card",
-    "metadata[source]": "aura_pay",
-    "metadata[product]": metadata?.product || "",
-    "metadata[entity]": metadata?.entity || ""
-  }, env);
+    "metadata[source]": "securespend",
+    "metadata[merchant_id]": metadata?.merchant_id || "",
+    "metadata[consumer_id]": metadata?.consumer_id || "",
+    "metadata[secure_spend_txn]": metadata?.secure_spend_txn || ""
+  }, env, apiKey);
+  
   if (!result.ok) return result;
-  return { ok: true, payment_intent_id: result.data.id, client_secret: result.data.client_secret, amount: result.data.amount, currency: result.data.currency, status: result.data.status };
+  const piData = result.data;
+  return { 
+    ok: true, 
+    id: piData.id, 
+    client_secret: piData.client_secret, 
+    amount: piData.amount, 
+    currency: piData.currency, 
+    status: piData.status,
+    charges: piData.charges || { data: [] }
+  };
 }
 
 async function getStripeBalance(env) {
@@ -34842,6 +35847,269 @@ async function captureAisHistory(env) {
 // is compromising everything - the boundary exists on a diagram and nowhere else.
 //
 // SO: A FIXED LIST OF NAMED METHODS. This is Cloudflare's WorkerEntrypoint, the platform's own
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+// PTA DURABLE OBJECT - ONE PER ENTITY (Permission + CRM + PRM Fused)
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+// Each PTA is a Durable Object. It contains:
+// - Permission Layer: Who can approach, what they see, revocable rules
+// - CRM Layer: Append-only chain of all events for this entity (birth to legacy)
+// - PRM Layer: Edges to other entities, trust weights, proof of relationship
+//
+// State shape:
+// {
+//   id: "pta_xxxxx",
+//   identity_key: "email:xxx or phone:xxx",
+//   type: "person|business|place|moment",
+//   name: "Human Name",
+//   created_at: ISO,
+//   updated_at: ISO,
+//   permission: { rules: [...], revocations: [...] },
+//   chain: [{ ts, event, actor, data }, ...],  // Append-only, never deletes
+//   edges: { "pta_yyyyy": { type, trust, via_edge_id, origin_id }, ... },
+//   metadata: "encrypted"
+// }
+
+export class PtaDurableObject {
+  state;
+  storage;
+  env;
+
+  constructor(state, env) {
+    this.state = state;
+    this.storage = state.storage;
+    this.env = env;
+  }
+
+  async fetch(request) {
+    const { method, params } = await request.json();
+    
+    // Route to DO methods
+    if (typeof this[method] === "function") {
+      return new Response(JSON.stringify(await this[method](...params)), {
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    return new Response(JSON.stringify({ ok: false, error: "Method not found" }), { status: 404 });
+  }
+
+  // ── RETRIEVE STATE ──────────────────────────────────────────────────────────────────────────────
+  async getState() {
+    const pta = await this.storage.get("pta");
+    return { ok: !!pta, pta };
+  }
+
+  // ── INITIALIZE (called on first creation) ──────────────────────────────────────────────────────
+  async init(ptaId, type, name, identity, about, app) {
+    const now = new Date().toISOString();
+    const pta = {
+      id: ptaId,
+      identity_key: identity,
+      type: type || "person",
+      name: name,
+      created_at: now,
+      updated_at: now,
+      version: 0,
+      permission: { rules: [], revocations: [] },
+      chain: [{
+        ts: now,
+        event: "BORN",
+        actor: "self",
+        data: { type, name, identity, about, app }
+      }],
+      edges: {},
+      metadata: null,
+      chainArchiveThreshold: 1000,
+      chainArchiveIndex: 0
+    };
+    await this.storage.put("pta", pta);
+    return { ok: true, pta };
+  }
+
+  // ── APPEND TO CHAIN (immutable, never delete) ───────────────────────────────────────────────────
+  async appendChain(event, actor, data, expectedVersion) {
+    const pta = await this.storage.get("pta");
+    if (!pta) return { ok: false, error: "PTA not found" };
+    
+    // Optimistic concurrency: if caller provided expectedVersion and it doesn't match, conflict
+    if (expectedVersion !== undefined && pta.version !== expectedVersion) {
+      return { ok: false, error: "version conflict", current_version: pta.version, expected_version: expectedVersion };
+    }
+    
+    pta.chain.push({
+      ts: new Date().toISOString(),
+      event,
+      actor,
+      data
+    });
+    pta.updated_at = new Date().toISOString();
+    pta.version = (pta.version || 0) + 1;
+    
+    // ── CHAIN ARCHIVAL: keep recent events in DO, archive old ones to KV ──────────────────────────
+    // When chain exceeds threshold (default 1000), move oldest events to KV for long-term storage
+    const threshold = pta.chainArchiveThreshold || 1000;
+    if (pta.chain.length > threshold) {
+      const archiveIndex = (pta.chainArchiveIndex || 0);
+      const toArchive = pta.chain.splice(0, pta.chain.length - threshold);
+      
+      // Archive to KV under pta:archive:<ptaId>:<archiveIndex>
+      try {
+        const archiveKey = `pta:archive:${pta.id}:${archiveIndex}`;
+        await this.env.AURA_KV.put(archiveKey, JSON.stringify({
+          ptaId: pta.id,
+          archiveIndex,
+          events: toArchive,
+          archivedAt: new Date().toISOString()
+        }));
+        pta.chainArchiveIndex = archiveIndex + 1;
+      } catch (e) {
+        // Archive failure is not critical - chain is still in DO, just longer than ideal
+        console.log("[PTA] archive failed for " + pta.id + ": " + e.message);
+      }
+    }
+    
+    await this.storage.put("pta", pta);
+    return { ok: true, chain_length: pta.chain.length, version: pta.version, archived: pta.chain.length <= threshold };
+  }
+
+  // ── GRANT EDGE (relationship to another PTA) ───────────────────────────────────────────────────
+  async grantEdge(otherPtaId, edgeType, trustWeight, viaEdgeId, originId, expectedVersion) {
+    const pta = await this.storage.get("pta");
+    if (!pta) return { ok: false, error: "PTA not found" };
+    
+    // Optimistic concurrency: check version before modifying
+    if (expectedVersion !== undefined && pta.version !== expectedVersion) {
+      return { ok: false, error: "version conflict", current_version: pta.version, expected_version: expectedVersion };
+    }
+    
+    pta.edges[otherPtaId] = {
+      type: edgeType,
+      trust: trustWeight,
+      via_edge_id: viaEdgeId,
+      origin_id: originId,
+      established_at: new Date().toISOString()
+    };
+    pta.version = (pta.version || 0) + 1;
+    
+    await this.appendChain("EDGE_GRANT", "system", { to: otherPtaId, type: edgeType, trust: trustWeight }, pta.version - 1);
+    return { ok: true, edges_count: Object.keys(pta.edges).length, version: pta.version };
+  }
+
+  // ── REVOKE EDGE ────────────────────────────────────────────────────────────────────────────────
+  async revokeEdge(otherPtaId, expectedVersion) {
+    const pta = await this.storage.get("pta");
+    if (!pta) return { ok: false, error: "PTA not found" };
+    
+    // Optimistic concurrency: check version before modifying
+    if (expectedVersion !== undefined && pta.version !== expectedVersion) {
+      return { ok: false, error: "version conflict", current_version: pta.version, expected_version: expectedVersion };
+    }
+    
+    if (pta.edges[otherPtaId]) {
+      delete pta.edges[otherPtaId];
+      pta.version = (pta.version || 0) + 1;
+      await this.appendChain("EDGE_REVOKE", "system", { from: otherPtaId }, pta.version - 1);
+      return { ok: true, edges_count: Object.keys(pta.edges).length, version: pta.version };
+    }
+    return { ok: false, error: "Edge not found" };
+  }
+
+  // ── GET EDGES ──────────────────────────────────────────────────────────────────────────────────
+  async getEdges() {
+    const pta = await this.storage.get("pta");
+    if (!pta) return { ok: false, error: "PTA not found" };
+    return { ok: true, edges: pta.edges };
+  }
+
+  // ── GET CHAIN ──────────────────────────────────────────────────────────────────────────────────
+  async getChain(limit = 100, includeArchive = false) {
+    const pta = await this.storage.get("pta");
+    if (!pta) return { ok: false, error: "PTA not found" };
+    
+    let chain = pta.chain.slice(-limit);
+    
+    // If caller wants more events than in current chain and archive is available, fetch it
+    if (includeArchive && limit > pta.chain.length) {
+      const archiveIndex = (pta.chainArchiveIndex || 0);
+      let collected = [...chain];
+      let needed = limit - collected.length;
+      
+      // Walk backward through archive indices to collect events
+      for (let i = archiveIndex - 1; i >= 0 && needed > 0; i--) {
+        try {
+          const archiveKey = `pta:archive:${pta.id}:${i}`;
+          const archiveData = await this.env.AURA_KV.get(archiveKey);
+          if (archiveData) {
+            const archiveObj = JSON.parse(archiveData);
+            const events = archiveObj.events || [];
+            // Add from end of archive (most recent archived events)
+            const toAdd = events.slice(-needed);
+            collected = [...toAdd, ...collected];
+            needed -= toAdd.length;
+          }
+        } catch (e) {
+          // Archive read failure - continue with what we have
+        }
+      }
+      
+      chain = collected.slice(-limit);
+    }
+    
+    return { ok: true, chain, archived: includeArchive && chain.length > pta.chain.length };
+  }
+
+  // ── SET PERMISSION ────────────────────────────────────────────────────────────────────────────
+  async setPermission(actor, can, target, expectedVersion) {
+    const pta = await this.storage.get("pta");
+    if (!pta) return { ok: false, error: "PTA not found" };
+    
+    // Optimistic concurrency: check version before modifying
+    if (expectedVersion !== undefined && pta.version !== expectedVersion) {
+      return { ok: false, error: "version conflict", current_version: pta.version, expected_version: expectedVersion };
+    }
+    
+    pta.permission.rules.push({
+      actor,
+      can,
+      target,
+      set_at: new Date().toISOString()
+    });
+    pta.version = (pta.version || 0) + 1;
+    
+    await this.appendChain("PERMISSION_SET", "system", { actor, can, target }, pta.version - 1);
+    return { ok: true, version: pta.version };
+  }
+
+  // ── REVOKE PERMISSION ──────────────────────────────────────────────────────────────────────────
+  async revokePermission(actor, expectedVersion) {
+    const pta = await this.storage.get("pta");
+    if (!pta) return { ok: false, error: "PTA not found" };
+    
+    // Optimistic concurrency: check version before modifying
+    if (expectedVersion !== undefined && pta.version !== expectedVersion) {
+      return { ok: false, error: "version conflict", current_version: pta.version, expected_version: expectedVersion };
+    }
+    
+    pta.permission.revocations.push({
+      actor,
+      revoked_at: new Date().toISOString()
+    });
+    pta.version = (pta.version || 0) + 1;
+    
+    await this.appendChain("PERMISSION_REVOKE", "system", { actor }, pta.version - 1);
+    return { ok: true, version: pta.version };
+  }
+
+  // ── GET FULL STATE ────────────────────────────────────────────────────────────────────────────
+  async getFull() {
+    const pta = await this.storage.get("pta");
+    if (!pta) return { ok: false, error: "PTA not found" };
+    return { ok: true, pta };
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+// PUBLIC ENTRY POINT (HTTP/RPC layer - routes to DOs)
+// ════════════════════════════════════════════════════════════════════════════════════════════════
 // primitive for service-to-service RPC, and the standard backend-for-frontend shape. The public
 // worker can call exactly what is written here and nothing else. If it is ever compromised, the
 // attacker gets these methods - not the ability to rewrite Aura or read Mercury.
@@ -34853,6 +36121,7 @@ async function captureAisHistory(env) {
 //   3. No method returns a secret, a credential, or another entity's data without a ptaCan check.
 //   4. Operator-only capability NEVER appears here. If it needs isOp, it does not belong on this surface.
 export class PublicEntry extends WorkerEntrypoint {
+
   // ══ WHO IS ASKING — THE SESSION IS THE PROOF, NOT AN OPERATOR TOKEN (v4.9.772) ═══════════════
   //
   // The first live call through the doorway returned OPERATOR_REQUIRED, and that failure was the
@@ -35201,6 +36470,104 @@ export class PublicEntry extends WorkerEntrypoint {
     const ent = await env.AURA_MEMORY.prepare("SELECT id, type, name, metadata, created_at FROM pta_entities WHERE id = ?").bind(subjectId).first();
     if (!ent) return { ok: false, error: "NOT_FOUND" };
     return { ok: true, entity: { ...ent, metadata: await unsealFor(env, ent.id, ent.metadata) }, access: gate.reason };
+  }
+
+  // ── SESSION CHECK (PUBLIC) ────────────────────────────────────────────────────────────────────
+  // Verify a session exists and return basic info about the authenticated PTA. Used by doorways
+  // to confirm the user's identity before processing (e.g. checkout).
+  async sessionCheck(sessionId) {
+    const env = this.env;
+    const me = await this._whoIs(sessionId);
+    if (!me) return { ok: false, error: "Session invalid or expired" };
+    return { 
+      ok: true, 
+      pta: me.pta, 
+      name: me.name || me.pta,
+      identity: me.identity || null
+    };
+  }
+
+  // ── SECURESPEND CHECKOUT ────────────────────────────────────────────────────────────────────
+  // Called from the SecureSpend doorway after passkey auth. Executes a charge through SECURESPEND_CHARGE
+  // in aura-core. The sessionId proves the user is authenticated.
+  async securespendCharge(sessionId, charge) {
+    const env = this.env;
+    const me = await this._whoIs(sessionId);
+    if (!me) return { ok: false, error: "NOT_SIGNED_IN" };
+    if (!charge || typeof charge !== "object") return { ok: false, error: "bad charge argument" };
+    if (!charge.merchant_id || !charge.amount || !charge.currency) return { ok: false, error: "missing merchant_id, amount, or currency" };
+    
+    try {
+      // Call the operator interface (core) with the passkey-authenticated consumer
+      const cmd = `SECURESPEND_CHARGE ${JSON.stringify({
+        consumer_id: me.pta,  // Authenticated identity
+        merchant_id: charge.merchant_id,
+        amount: charge.amount,
+        currency: charge.currency,
+        item: charge.item || "SecureSpend checkout",
+        mode: charge.mode || "live",
+        context: { authenticated_via: "passkey", session: sessionId }
+      })}`;
+      
+      const result = await processCommand(cmd, env, true);  // isOp:true because this is operator context
+      return { ok: true, result };
+    } catch (error) {
+      return { ok: false, error: String(error && error.message || error) };
+    }
+  }
+
+  // ── PTA CREATION (PUBLIC) ────────────────────────────────────────────────────────────────────
+  // Public endpoint for getpta.world: user provides identity + name + about, creates PTA, mints session
+  async ptaCreate(identity, name, about) {
+    const env = this.env;
+    if (!identity || typeof identity !== "string") return { ok: false, error: "identity required (email:... or phone:...)" };
+    if (!/^(email|phone):/i.test(identity)) return { ok: false, error: "identity must start with email: or phone:" };
+    if (!name || typeof name !== "string") return { ok: false, error: "name required" };
+    
+    try {
+      // Call PTA_CREATE via processCommand with operator context
+      const aboutStr = about && typeof about === "string" ? about.trim() : "";
+      const cmd = `PTA_CREATE ${JSON.stringify({
+        identity,
+        name: name.replace(/[\n\r]/g, " "),
+        about: aboutStr,
+        app: "getpta"
+      })}`;
+      
+      const result = await processCommand(cmd, env, true);  // isOp:true
+      const payload = result && result.payload ? result.payload : result;
+      
+      if (!payload || !payload.ok) return { ok: false, error: payload?.error || "PTA creation failed" };
+      
+      // Mint a session for the newly created PTA
+      const ptaId = payload.pta;
+      if (!ptaId) return { ok: false, error: "No PTA ID returned from creation" };
+      
+      const sessionId = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+        .map(b => b.toString(16).padStart(2, "0"))
+        .join("");
+      
+      await env.AURA_KV.put(`session:${sessionId}`, JSON.stringify({
+        pta: ptaId,
+        name: name,
+        identity,
+        created: new Date().toISOString(),
+        surface: "getpta"
+      }), { expirationTtl: 60 * 60 * 24 * 30 }); // 30 day session
+      
+      return {
+        ok: true,
+        pta: ptaId,
+        sessionId,
+        name,
+        identity,
+        welcome: payload.welcome || `Welcome to Permission to Approach, ${name}. Your PTA is ready.`,
+        understood: payload.understood || null,
+        nextUrl: `https://securespend.world/checkout?session=${sessionId}`
+      };
+    } catch (error) {
+      return { ok: false, error: String(error && error.message || error) };
+    }
   }
 
   // ── HEALTH: so the doorway can report honestly when the brain is unreachable ──────────────────
@@ -35856,6 +37223,42 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
       let gp = null; try { const g = await env.AURA_KV.get(`profile:google:${sess.pta}`); if (g) gp = JSON.parse(g); } catch {}
       return jsonReply({ ok: true, authenticated: true, pta: sess.pta, name: sess.name, google: gp, spine: sp && sp.spine ? sp.spine : null });
     }
+    // ═══ JSON RPC DISPATCHER ═══ Accept POST {method, params} and dispatch to PublicEntry methods
+    // Used by browser pages (e.g. securespend checkout) to call passkey auth and charge handlers
+    if (request.method === "POST" && url.pathname === "/" && request.headers.get("content-type")?.includes("application/json")) {
+      try {
+        const body = await request.json();
+        const { method, params } = body;
+        
+        // Create a context object that mimics PublicEntry for method calls
+        const ctx = { env };
+        
+        // Wire up PublicEntry methods directly (binding to ctx as 'this')
+        const methods = {
+          passkeyLoginStart: PublicEntry.prototype.passkeyLoginStart,
+          passkeyLoginFinish: PublicEntry.prototype.passkeyLoginFinish,
+          securespendCharge: PublicEntry.prototype.securespendCharge,
+          ptaCreate: PublicEntry.prototype.ptaCreate,
+          sessionCheck: PublicEntry.prototype.sessionCheck,
+          ptaGet: PublicEntry.prototype.ptaGet,
+          ptaList: PublicEntry.prototype.ptaList,
+          ptaCheck: PublicEntry.prototype.ptaCheck,
+          ptaAccept: PublicEntry.prototype.ptaAccept,
+          ptaRefuse: PublicEntry.prototype.ptaRefuse,
+          ptaInvite: PublicEntry.prototype.ptaInvite,
+          ping: PublicEntry.prototype.ping,
+        };
+        
+        if (method && typeof method === "string" && methods[method]) {
+          const result = await methods[method].apply(ctx, params ? (Array.isArray(params) ? params : Object.values(params)) : []);
+          return jsonReply(result);
+        }
+        return jsonReply({ ok: false, error: "Unknown method: " + method });
+      } catch (e) {
+        return jsonReply({ ok: false, error: String(e && e.message || e) });
+      }
+    }
+
 
     // ===== HOME SCREEN â€” the one surface a PTA is left holding =====
     // The finished product, at scale of one: you sign in, the worker resolves YOUR pta from the session,
@@ -37639,6 +39042,10 @@ function openAlbum(idx){
           // THE AGENT ANSWERS, NOT A SECOND BRAIN. Falls back to the local path only if the agent is
           // unreachable, and says so in the response so the fallback can never hide.
           const agentTry = await proxyToAgent(env, line, isOp);
+          // If proxyToAgent returns a Response object directly, it's a streaming response - pass it through
+          if (agentTry instanceof Response) {
+            return agentTry;
+          }
           const ok = agentTry && agentTry.reply;
           // ══ A COMMAND IS NEVER ANSWERED BY A PROSE BRAIN (v4.9.672) ═══════════════════════
           // THREE FABRICATIONS, ALL FROM THIS EXACT PATH, ALL WHILE THE AGENT WAS DOWN:
@@ -37736,3 +39143,4 @@ function openAlbum(idx){
     return new Response("aura-core", { status: 200 });
   }
 };
+

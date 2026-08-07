@@ -1,0 +1,17 @@
+═══════════════════════════════════════════════════════════════════════════════
+EXTRACTED: LIFESPAN_TEST and LIFESPAN_ANALYZE commands
+Removed from index.mjs for cleanliness
+Original location: aura-core v4.9.* line ~20073-20223
+═══════════════════════════════════════════════════════════════════════════════
+
+LIFESPAN_TEST (69 lines, line 20073-20141):
+- Tests persistent identity across 20+ year synthetic lifespans with 498+ events
+- Generates test PTA with 5 phases, appends events, validates chain length
+- USAGE: RUN "LIFESPAN_TEST [pta_id]"
+
+LIFESPAN_ANALYZE (41 lines, line 20183-20223):
+- Analyzes lifespan chain for diachronic unity
+- Uses reasonThroughLoop to assess: "Is this the same person across 20 years?"
+- USAGE: RUN "LIFESPAN_ANALYZE <pta_id>"
+
+Both were test/diagnostic only. Restored to index.mjs if needed via archived copy.

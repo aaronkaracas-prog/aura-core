@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.954-2026-08-07-a-count-is-not-a-belief";
+const BUILD = "aura-core-v4.9.955-2026-08-07-an-argument-silently-ignored";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -27771,9 +27771,53 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       //   BELIEF_RECLASS           show what would change
       //   BELIEF_RECLASS CONFIRM   apply it
       if (!isOp) return { cmd: "BELIEF_RECLASS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      const brConfirm = args.some(a => String(a || "").toUpperCase() === "CONFIRM");
+      // SELECTIVE CONFIRM, and it is here because it was NOT and that cost a wrong write. I added a
+      // slug argument to BELIEF_MERGE for exactly this reason an hour earlier and did not carry it to
+      // its sibling - the same one-place-fixed-siblings-rot pattern this file has recorded seven times
+      // today. Worse, the command ACCEPTED the slug and ignored it: `BELIEF_RECLASS CONFIRM
+      // aura-capabilities` reclassified all three, including one that was a genuine behavioural fact.
+      // An argument that is silently discarded is worse than one that is rejected.
+      //
+      //   BELIEF_RECLASS                    propose
+      //   BELIEF_RECLASS CONFIRM            apply ALL proposed
+      //   BELIEF_RECLASS CONFIRM <slug>     apply only that slot
+      //   BELIEF_RECLASS UNDO <slug>        put a wrongly-reclassified slot back to fact
+      const brArgs = args.map(a => String(a || ""));
+      const brConfirm = brArgs.some(a => a.toUpperCase() === "CONFIRM");
+      const brUndo = brArgs.some(a => a.toUpperCase() === "UNDO");
+      const brOnly = (brConfirm || brUndo)
+        ? (brArgs.find(a => !["CONFIRM", "UNDO"].includes(a.toUpperCase()) && a.trim()) || "").replace(/^aura:belief:/, "").trim()
+        : "";
+      if (brUndo) {
+        // A reclassify is reversible BECAUSE the row was never destroyed - kind changed, lineage kept.
+        // This is that reversal, and it is why "reclassify, never delete" was the right call.
+        if (!brOnly) return { cmd: "BELIEF_RECLASS", payload: { ok: false, error: "UNDO needs a slot slug: BELIEF_RECLASS UNDO <slug>" } };
+        try {
+          const key = "aura:belief:" + brOnly;
+          const raw = await env.AURA_KV.get(key);
+          if (!raw) return { cmd: "BELIEF_RECLASS", payload: { ok: false, error: "no such belief slot: " + brOnly } };
+          const r = JSON.parse(raw);
+          if (r.kind !== "measurement") return { cmd: "BELIEF_RECLASS", payload: { ok: false, slot: brOnly, kind: r.kind, error: "that slot is not a measurement - nothing to undo" } };
+          r.kind = "fact";
+          delete r.observed_at;
+          r.lineage = Array.isArray(r.lineage) ? r.lineage : [];
+          r.lineage.push({ at: new Date().toISOString(), event: "reclass-undone", to: "fact", by: "BELIEF_RECLASS UNDO",
+            reason: "classified as a measurement by pattern, but it is a claim about behaviour rather than a derivable figure" });
+          if (r.lineage.length > 20) r.lineage = r.lineage.slice(-20);
+          await env.AURA_KV.put(key, JSON.stringify(r), { expirationTtl: 180 * 86400 });
+          return { cmd: "BELIEF_RECLASS", payload: { ok: true, mode: "undone", slot: brOnly, kind: "fact",
+            body: String(r.body).slice(0, 160), note: "Back to a fact and retrievable again. The lineage records both the reclassify and this reversal." } };
+        } catch (e) {
+          return { cmd: "BELIEF_RECLASS", payload: { ok: false, error: "Undo failed: " + (e && e.message ? e.message : String(e)) } };
+        }
+      }
       // Same pattern the writer uses, so the two can never disagree about what a measurement is.
-      const MEASURED = /\b(handler_count|command_count|build\b|v\d+\.\d+\.\d+|\$\d|\d{2,}\s*(commands?|handlers?|functions?|slots?|keys?|events?|lessons?|entities|domains|merchants)|spend|balance|total is|currently \d)/i;
+      // `build` ALONE WAS TOO GREEDY. It matched "nothing is taken from a payload, command name or
+      // build string" - a claim about how INTEREST: NOTE behaves, which merely MENTIONS build strings
+      // while describing what it ignores. Gating the word behind a figure or a possessive ("the build
+      // is", "build:") keeps the real case (a build id being recited) and drops the false one.
+      // A measurement is a claim that CARRIES a value, not one that talks about values.
+      const MEASURED = /\b(handler_count|command_count|(the |current )?build (is|=|:)|v\d+\.\d+\.\d+|\$\d|\d{2,}\s*(commands?|handlers?|functions?|slots?|keys?|events?|lessons?|entities|domains|merchants)|spend (is|today)|balance is|total is|currently \d)/i;
       try {
         const brList = await env.AURA_KV.list({ prefix: "aura:belief:" });
         const changes = [], applied = [];
@@ -27788,7 +27832,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
             if (!MEASURED.test(String(r.body))) continue;
             changes.push({ slot: k.name.replace("aura:belief:", ""), was: r.kind || "fact",
                            status: r.status, body: String(r.body).slice(0, 120) });
-            if (brConfirm) {
+            if (brConfirm && (!brOnly || k.name.replace("aura:belief:", "") === brOnly)) {
               r.kind = "measurement";
               r.observed_at = r.valid_from || new Date().toISOString();
               r.lineage = Array.isArray(r.lineage) ? r.lineage : [];
@@ -27804,7 +27848,8 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         return {
           cmd: "BELIEF_RECLASS",
           payload: {
-            ok: true, mode: brConfirm ? "applied" : "dry_run",
+            ok: true, mode: brConfirm ? (brOnly ? "applied_one" : "applied_all") : "dry_run",
+            only: brOnly || undefined,
             would_reclassify: changes.length, reclassified: applied.length, changes,
             note: brConfirm
               ? "Reclassified. These rows stay readable and keep their lineage; they no longer ride in her prompt, so she re-derives the figure instead of reciting a stale one."

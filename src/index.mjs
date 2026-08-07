@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.949-2026-08-07-show-what-is-actually-there";
+const BUILD = "aura-core-v4.9.950-2026-08-07-repair-what-the-batch-mislabelled";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -4811,16 +4811,37 @@ async function processCommand(line, env, isOp) {
         }
 
         // Query archive via aura-think's /archive/query endpoint
-        let queryUrl = "https://aura-think/archive/query?limit=20";
+        // ══ A BARE PATH NEVER REACHES THE AGENT (fixed 2026-08-07) ═══════════════════════════
+        // These three URLs asked for "https://aura-think/archive/query". The handler lives in
+        // AuraAgent.onRequest, and routeAgentRequest only routes /agents/<agent>/<instance>/...
+        // so a bare path falls through to the default export and returns the literal string
+        // "Not found" - which AURA_OBSERVE then handed to JSON.parse, producing
+        // `Unexpected token 'N', "Not found" is not valid JSON` instead of a usable error.
+        // THE SAME MISTAKE IS ALREADY DOCUMENTED IN THIS FILE at the /build call: "First cut asked
+        // for a bare https://aura-think/build. routeAgentRequest only routes paths..." Fixed there,
+        // left broken here. Third time today a defect was corrected in one place and its siblings
+        // kept the bug - the same shape as `const BUILD` and the nine self-read extractors.
+        const _thinkBase = "https://aura-think/agents/aura-agent/aura-solid";
+        let queryUrl = _thinkBase + "/archive/query?limit=20";
         if (mode === "SEARCH") {
-          queryUrl = `https://aura-think/archive/query?search=${encodeURIComponent(param)}&limit=30`;
+          queryUrl = _thinkBase + `/archive/query?search=${encodeURIComponent(param)}&limit=30`;
         } else if (mode && mode !== "" && mode !== "RECENT" && mode !== "DEFAULT") {
           // Treat as a tag filter (signal, synthesis, validated, etc)
-          queryUrl = `https://aura-think/archive/query?tag=${encodeURIComponent(mode)}&limit=30`;
+          queryUrl = _thinkBase + `/archive/query?tag=${encodeURIComponent(mode)}&limit=30`;
         }
 
         const archiveResp = await think.fetch(new Request(queryUrl));
-        const archiveData = await archiveResp.json();
+        // A NON-JSON BODY MUST NAME ITSELF. `.json()` on "Not found" threw a parse error that named
+        // the token and not the cause, so a routing bug read as a data bug for an hour.
+        const _rawArchive = await archiveResp.text();
+        let archiveData;
+        try { archiveData = JSON.parse(_rawArchive); }
+        catch {
+          return { cmd: "AURA_OBSERVE", payload: { ok: false, mode,
+            error: "archive query did not return JSON (HTTP " + archiveResp.status + ")",
+            url: queryUrl, body_start: _rawArchive.slice(0, 120),
+            hint: "aura-think serves /archive/query inside AuraAgent.onRequest; the URL must be /agents/aura-agent/<instance>/archive/query" } };
+        }
 
         if (archiveData.ok) {
           result.archive = {
@@ -27689,6 +27710,101 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         : (report.custom_domains?.length ? "CUSTOM_DOMAIN_LIKELY_OVERRIDING_ROUTES" : "MISMATCH_CAUSE_IN_ROUTES_OR_DNS"));
       return { cmd: "DOMAIN_DIAGNOSE", payload: { ok: true, ...report } };
     }
+    case "LESSON_REPAIR": {
+      // ══ NINE RECORDS WERE STAMPED WITH A BATCH'S ORIGIN, NOT THEIR OWN ═══════════════════════
+      // synthesizeSemanticLessons computed origin ONCE PER BATCH: if any candidate line came from a
+      // REFLECTION tag, every lesson extracted that turn was marked failure-origin and entered as a
+      // settled RULE. The archive always holds old reflections, so every batch tripped it. Result,
+      // measured: 9 usable lessons, 9 rules, 0 notes - and every one came from a successful
+      // self-inspection turn, not a turn that died.
+      // v1.4.9 fixed the writer. It cannot fix what was already written, and it cannot route around
+      // it either: every new lesson dedups INTO one of these nine, so the correct new records are
+      // absorbed by incorrect old ones and `notes` can never leave zero.
+      //
+      // WHY THIS IS A COMMAND AND NOT A MIGRATION SCRIPT: it is a judgement about content, made by
+      // reading each record. So it is DRY BY DEFAULT and prints every proposed change with the
+      // evidence behind it. CONFIRM writes. Counts and lineage are preserved - the observation
+      // history is real even though the label was wrong, and discarding it would throw away the only
+      // evidence the promotion ladder has.
+      //
+      //   LESSON_REPAIR           show what would change, write nothing
+      //   LESSON_REPAIR CONFIRM   apply it
+      if (!isOp) return { cmd: "LESSON_REPAIR", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const lrConfirm = args.some(a => String(a || "").toUpperCase() === "CONFIRM");
+      try {
+        const lrList = await env.AURA_KV.list({ prefix: "aura:semantic:learned:" });
+        const proposed = [], skipped = [], applied = [];
+        // A lesson is EPISODE-origin when its condition describes Aura inspecting or operating
+        // HERSELF - reading her own source, observing her own state, synthesising her own notes.
+        // Those are turns that RAN. A turn that DIED leaves language about the dying: timeout,
+        // error, failed, crash, refused, 401, exceeded. That distinction is what the writer now
+        // asks the model for per lesson; here it is recovered from the text, which is weaker, which
+        // is exactly why nothing is written without CONFIRM.
+        // Widened after the sanity pass: "times out" did not match `timed? ?out`, and "crashed" did
+        // not match `crash`. Both are exactly the phrasings a real failure record would carry, and
+        // both would have been misfiled as episodes. Verb endings are cheap to get wrong and the
+        // cost here is a genuine failure lesson demoted to a note - recoverable, but only if it
+        // recurs, and some failures are rare precisely because they are severe.
+        const FAILURE_LANG = /\b(time[sd]? ?out|timeout|error(s|ed)?|fail(s|ed|ure|ing)?|crash(ed|es|ing)?|reset|refus(e|ed|al)|denied|exceeded|abort(ed)?|401|403|429|5\d\d|unavailable|unreachable|die[sd]|broke(n)?)\b/i;
+        for (const k of (lrList?.keys || []).slice(0, 200)) {
+          try {
+            const raw = await env.AURA_KV.get(k.name);
+            if (!raw) continue;
+            const rec = JSON.parse(raw);
+            if (!rec.when_applies || !rec.insight) { skipped.push({ key: k.name, why: "malformed" }); continue; }
+            const text = String(rec.when_applies) + " " + String(rec.insight);
+            const looksFailure = FAILURE_LANG.test(text);
+            const shouldOrigin = looksFailure ? "failure" : "episode";
+            const shouldTier = shouldOrigin === "failure" ? "rule"
+              : ((rec.observation_count || 1) >= 3 || (rec.validation_count || 0) >= 3 ? "rule" : "note");
+            if (rec.origin === shouldOrigin && rec.tier === shouldTier) { skipped.push({ key: k.name, why: "already correct" }); continue; }
+            const change = {
+              key: k.name,
+              when_applies: String(rec.when_applies).slice(0, 90),
+              from: { tier: rec.tier, origin: rec.origin },
+              to: { tier: shouldTier, origin: shouldOrigin },
+              observation_count: rec.observation_count || 1,
+              evidence: looksFailure ? "failure language present in the record" : "no failure language - describes a turn that ran",
+              promoted_by_recurrence: shouldOrigin === "episode" && shouldTier === "rule"
+                ? "kept as rule: already recurred " + (rec.observation_count || 1) + " times" : null,
+            };
+            proposed.push(change);
+            if (lrConfirm) {
+              rec.tier = shouldTier;
+              rec.origin = shouldOrigin;
+              if (shouldOrigin === "episode" && shouldTier === "rule" && !rec.promoted_by) {
+                rec.promoted_by = "recurrence:observed:" + (rec.observation_count || 1);
+              }
+              if (shouldTier === "note") rec.promoted_by = null;
+              rec.lineage = Array.isArray(rec.lineage) ? rec.lineage : [];
+              rec.lineage.push({ at: new Date().toISOString(), event: "repaired",
+                from: change.from, to: change.to, by: "LESSON_REPAIR", reason: change.evidence });
+              if (rec.lineage.length > 20) rec.lineage = rec.lineage.slice(-20);
+              await env.AURA_KV.put(k.name, JSON.stringify(rec), { expirationTtl: 30 * 86400 });
+              applied.push(k.name);
+            }
+          } catch (e) { skipped.push({ key: k.name, why: "read/parse failed" }); }
+        }
+        return {
+          cmd: "LESSON_REPAIR",
+          payload: {
+            ok: true,
+            mode: lrConfirm ? "applied" : "dry_run",
+            examined: (lrList?.keys || []).length,
+            would_change: proposed.length,
+            changed: applied.length,
+            unchanged: skipped.length,
+            changes: proposed,
+            note: lrConfirm
+              ? "Written. Counts and lineage preserved; a 'repaired' entry records what moved and why."
+              : "NOTHING WAS WRITTEN. Read every proposed change above - this is a judgement about content, recovered from the text of each record rather than from how it was created. Run LESSON_REPAIR CONFIRM only if each classification looks right to you."
+          }
+        };
+      } catch (e) {
+        return { cmd: "LESSON_REPAIR", payload: { ok: false, error: "Repair failed: " + (e && e.message ? e.message : String(e)) } };
+      }
+    }
+
     case "BINDINGS": {
       // ══ WHERE ANSWERS "WHAT CAN I DO". THIS ANSWERS "WHAT AM I MADE OF". ═════════════════════
       // WHERE derives her commands, functions and builds from source. It says nothing about her BODY:

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.951-2026-08-07-dead-records-are-not-harmless";
+const BUILD = "aura-core-v4.9.952-2026-08-07-her-body-includes-the-private-parts";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -2411,11 +2411,58 @@ async function readOwnConfig(env, worker) {
       } catch (e) { tried.push(cand + "@" + br + ":threw"); }
     }
   }
+  // ══ THE RAW CDN CANNOT SEE A PRIVATE REPO. readOwnSource ALREADY KNEW THAT. (fixed 2026-08-07) ══
+  // MEASURED: `BINDINGS aura-think` returned six 404s - three filenames across two branches - and the
+  // named-gap message above correctly guessed why. It was right: aura-think is a PRIVATE repo, and the
+  // unauthenticated raw CDN returns 404 for private content rather than 403, so a permissions problem
+  // wears the costume of a missing file.
+  //
+  // readOwnSource solved this weeks ago and this function did not inherit it: raw CDN first, then the
+  // GitHub Contents API with `github_token`, which CAN read private repos. That is why she could read
+  // aura-think's SOURCE and not its BODY - two self-reads, one authenticated, one not.
+  // Sixth instance today of a fix that landed in one place and not in its sibling.
+  //
+  // Three of her workers are private, so without this she is blind to most of her own body while
+  // reporting a clean answer for the one public repo. A partial self-model that does not say it is
+  // partial is the failure this whole day has been about.
+  const ghTok = await getSecret(env, "github_token");
+  if (ghTok) {
+    for (const cand of ["wrangler.jsonc", "wrangler.json", "wrangler.toml"]) {
+      for (const br of [branch, branch === "main" ? "master" : "main"]) {
+        try {
+          const meta = await fetch("https://api.github.com/repos/aaronkaracas-prog/" + repo + "/contents/" + cand + "?ref=" + br,
+            { headers: { "User-Agent": "aura-self-read", "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github+json" } });
+          tried.push(cand + "@" + br + ":api:" + meta.status);
+          if (!meta.ok) continue;
+          const mj = await meta.json();
+          // The Contents API inlines base64 for small files and omits it for large ones, handing back
+          // a sha instead. A wrangler config is small, but the blob path costs one fetch and removes a
+          // size cliff that would only ever appear on someone else's machine.
+          let text = "";
+          if (mj && mj.content) {
+            text = atob(String(mj.content).replace(/\n/g, ""));
+          } else if (mj && mj.sha) {
+            const blob = await fetch("https://api.github.com/repos/aaronkaracas-prog/" + repo + "/git/blobs/" + mj.sha,
+              { headers: { "User-Agent": "aura-self-read", "Authorization": "Bearer " + ghTok, "Accept": "application/vnd.github+json" } });
+            if (blob.ok) { const bj = await blob.json(); if (bj && bj.content) text = atob(String(bj.content).replace(/\n/g, "")); }
+          }
+          if (text && text.length > 20) {
+            const out = { text, path: cand, branch: br, worker: _w, repo };
+            await env.AURA_KV.put(ck, JSON.stringify(out), { expirationTtl: 3600 }).catch(() => {});
+            return { ok: true, ...out, via: "github_api_private" };
+          }
+        } catch (e) { tried.push(cand + "@" + br + ":api:threw"); }
+      }
+    }
+  }
+
   // A named gap, never a guess - the same rule the world context block already states. If the config
   // cannot be read she must say she could not read it, not describe a body from memory.
   return { ok: false, worker: _w, repo, tried,
            error: "could not read a wrangler config for " + _w + " (tried " + tried.join(", ") + "). " +
-                  "If the repo is private the raw CDN will 404 - that is a permissions answer, not a missing file." };
+                  (ghTok
+                    ? "The authenticated GitHub API was tried too, so this is not a private-repo problem - the file may not exist at these names, or the token lacks access to this repo."
+                    : "No github_token secret is set, so private repos are unreadable here. Set it and this resolves.") };
 }
 
 // Extracts binding NAMES and KINDS from either format without a TOML or JSONC parser. Deliberately

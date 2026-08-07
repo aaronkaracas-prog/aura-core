@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.950-2026-08-07-repair-what-the-batch-mislabelled";
+const BUILD = "aura-core-v4.9.951-2026-08-07-dead-records-are-not-harmless";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -27710,6 +27710,77 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         : (report.custom_domains?.length ? "CUSTOM_DOMAIN_LIKELY_OVERRIDING_ROUTES" : "MISMATCH_CAUSE_IN_ROUTES_OR_DNS"));
       return { cmd: "DOMAIN_DIAGNOSE", payload: { ok: true, ...report } };
     }
+    case "LESSON_SWEEP": {
+      // ══ 27 RECORDS THAT ARE NOT LESSONS AND HAVE NEVER BEEN ═════════════════════════════════
+      // `aura:semantic:lessons:gap:unknown:*` - written by AUTONOMOUS_GAP_REMEDIATION_WORKFLOW, whose
+      // step 7 was "LEARN: store to semantic memory". That workflow's run() was later turned into a
+      // no-op returning {status:"stopped"}; the records it had already written stayed.
+      // They carry no when_applies and no insight, so getRelevantLessons skips every one - they can
+      // never be retrieved, never injected, never validated. Inert.
+      //
+      // WHY REMOVE THEM AT ALL, IF THEY ARE INERT: they are 27 of 37 keys in the namespace. Every
+      // list operation pages through them, every reading has to explain them, and for most of today
+      // AURA_OBSERVE counted them as lessons she had - which is how "10 lessons" meant "9 orphans and
+      // one real one" for hours. Dead records that a display can mistake for live ones are not
+      // harmless; they are a lie waiting for a reader who does not know the history.
+      //
+      // DELETION IS IRREVERSIBLE AND NOT MINE TO DECIDE. Dry by default, prints what it would remove,
+      // and refuses to touch anything that parses as a usable lesson even if the key pattern matches.
+      // The second guard is the one that matters: a key-pattern sweep that trusts its own pattern is
+      // how a cleanup deletes something real.
+      //
+      //   LESSON_SWEEP           show what would be removed, delete nothing
+      //   LESSON_SWEEP CONFIRM   remove them
+      if (!isOp) return { cmd: "LESSON_SWEEP", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const lsConfirm = args.some(a => String(a || "").toUpperCase() === "CONFIRM");
+      try {
+        const lsList = await env.AURA_KV.list({ prefix: "aura:semantic:" });
+        const toRemove = [], kept = [], refused = [];
+        for (const k of (lsList?.keys || []).slice(0, 500)) {
+          try {
+            const raw = await env.AURA_KV.get(k.name);
+            if (!raw) { toRemove.push({ key: k.name, why: "empty value" }); continue; }
+            let rec = null;
+            try { rec = JSON.parse(raw); } catch { toRemove.push({ key: k.name, why: "unparseable JSON" }); continue; }
+            // THE USABILITY TEST WINS OVER THE KEY PATTERN. Same test getRelevantLessons and
+            // AURA_OBSERVE apply, so a record any of them would use is never deleted here, whatever
+            // its key looks like.
+            if (rec && rec.when_applies && rec.insight) { kept.push(k.name); continue; }
+            if (k.name.startsWith("aura:semantic:learned:")) {
+              // A learned:* record that is unusable is a WRITER bug, not an orphan. Report it, do not
+              // quietly delete the evidence of a bug we may still need to find.
+              refused.push({ key: k.name, why: "malformed but written by the current writer - report, do not delete" });
+              continue;
+            }
+            toRemove.push({ key: k.name, why: "no when_applies/insight - retrieval can never use it", bytes: raw.length });
+          } catch (e) { refused.push({ key: k.name, why: "read failed - left alone" }); }
+        }
+        let removed = 0;
+        if (lsConfirm) {
+          for (const r of toRemove) { try { await env.AURA_KV.delete(r.key); removed++; } catch {} }
+        }
+        return {
+          cmd: "LESSON_SWEEP",
+          payload: {
+            ok: true,
+            mode: lsConfirm ? "applied" : "dry_run",
+            examined: (lsList?.keys || []).length,
+            usable_kept: kept.length,
+            would_remove: toRemove.length,
+            removed,
+            refused_count: refused.length,
+            refused,
+            sample: toRemove.slice(0, 8),
+            note: lsConfirm
+              ? "Deleted. Usable lessons were never touched; anything under learned:* was refused rather than removed."
+              : "NOTHING WAS DELETED. These records carry no when_applies/insight, so retrieval skips them and always has. Run LESSON_SWEEP CONFIRM to remove them. Deletion is irreversible and there is no undo."
+          }
+        };
+      } catch (e) {
+        return { cmd: "LESSON_SWEEP", payload: { ok: false, error: "Sweep failed: " + (e && e.message ? e.message : String(e)) } };
+      }
+    }
+
     case "LESSON_REPAIR": {
       // ══ NINE RECORDS WERE STAMPED WITH A BATCH'S ORIGIN, NOT THEIR OWN ═══════════════════════
       // synthesizeSemanticLessons computed origin ONCE PER BATCH: if any candidate line came from a

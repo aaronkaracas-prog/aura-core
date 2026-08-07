@@ -42,7 +42,52 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.940-2026-08-07-carry-over-and-honest-framing";
+const BUILD = "aura-core-v4.9.941-2026-08-07-source-not-bundle";
+
+// ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
+//
+// MEASURED 2026-08-07. `AURA_READ_SELF STAT` returned 80,451 lines / 3,775,777 bytes / `var BUILD`
+// against a 39,247-line, 3,087,111-byte source file. That is not her source - it is Cloudflare's
+// COMPILED SCRIPT, where the bundler rewrites `const` to `var` and strips every comment.
+//
+// Nine call sites searched for the literal text `const BUILD`. In the bundle that text survives in
+// exactly one place: inside the REGEX LITERALS of the handlers that go looking for it. So the search
+// found its own source code and reported the capture group as the answer - CAPABILITIES returned
+// `"build": "([^"` on a live read, and auraContextGate's self-proof compared that garbage against
+// BUILD, failed, and refused every non-operator self-edit. Nobody chose that; a bundler did.
+//
+// STAT was fixed on 2026-08-02 with exactly the pattern below - a DECLARATION matcher, anchored,
+// accepting const/let/var - and the fix was never carried to its eight siblings. Same disease this
+// file names everywhere else: one map corrected, the others left to rot. So it lives HERE now, once,
+// and every reader shares it. A comment can say anything about BUILD and will never match; a real
+// declaration always will, in source OR in bundle.
+const BUILD_DECL = /^\s*(?:export\s+)?(?:const|let|var)\s+BUILD\s*=/;
+
+// Returns the build STRING from any artifact, or null. Deliberately not a regex over the whole file:
+// it finds the DECLARATION LINE first, then takes the quoted value out of that line only. A whole-file
+// regex is what got fooled - it matched a regex literal 4,900 lines before it ever reached the real
+// declaration in the bundle's reordered output.
+function extractBuildString(src) {
+  if (typeof src !== "string" || !src) return null;
+  const line = src.split("\n").find(l => BUILD_DECL.test(l));
+  if (!line) return null;
+  const q = line.match(/["'`]([^"'`]+)["'`]/);
+  return q ? q[1] : null;
+}
+
+// TRUE when the text we are holding is the COMPILED WORKER, not the file in the repo. Two independent
+// tells, because either alone is defeatable: a bundler rewrite of the declaration keyword, and the
+// near-total absence of `//` comments in a file that is roughly 60% comment by line. Used to LABEL
+// what a read returned, never to reject it - a labelled compiled read beats no read at all, and the
+// whole failure this fixes was an unlabelled one.
+function looksCompiled(src) {
+  if (typeof src !== "string" || !src) return false;
+  if (/^\s*var\s+BUILD\s*=/m.test(src)) return true;
+  const lines = src.split("\n");
+  if (lines.length < 200) return false;
+  const comments = lines.reduce((n, l) => n + (/^\s*\/\//.test(l) ? 1 : 0), 0);
+  return (comments / lines.length) < 0.02;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 //  brainFetch — v4.9.564 — THE ONE BRAIN CALL. EVERY MODEL CALL IN THIS FILE GOES THROUGH IT.
@@ -1103,7 +1148,13 @@ async function auraContextGate(env, isOp) {
     try {
       const r = await readOwnSource(env);
       if (!r || !r.ok || !r.source) return { ok: false, why: "cannot read my own source" };
-      const b = (r.source.split("\n").find(l => l.includes("const BUILD")) || "").replace(/.*"(.*)".*/, "$1");
+      // Was `find(l => l.includes("const BUILD"))` + a greedy quote grab. In the compiled worker the
+      // declaration reads `var BUILD`, so that search found the only surviving occurrence of the
+      // literal text "const BUILD" - a REGEX LITERAL inside this file's own extractors - and compared
+      // its capture group against BUILD. It never matched, so this gate refused EVERY non-operator
+      // self-edit from the moment the Cloudflare read started succeeding. The autonomous self-edit
+      // path was dead for a reason nobody chose and no error ever named. (2026-08-07)
+      const b = extractBuildString(r.source);
       if (!b) return { ok: false, why: "read source but found no BUILD line - that is not my file" };
       if (b !== BUILD) return { ok: false, why: "source is " + b + " but I am running " + BUILD + " - I would be editing a file I am not" };
       return { ok: true, build: b };
@@ -2332,52 +2383,53 @@ async function readOwnSource(env, branch, worker, fresh) {
                      "cannot be stale for aura-core. Append `fresh` to force a live read." };
     }
   }
-  // ══ 0) CLOUDFLARE FIRST ── SHE SHOULD READ WHAT IS RUNNING, NOT WHAT WAS COMMITTED ═══════════
-  // Every self-read path in this file went to GitHub. GitHub holds what was COMMITTED; Cloudflare
-  // holds what is EXECUTING. VERIFY exists precisely because those diverge, and they did twice on
-  // 2026-07-26 - a failed deploy alongside a successful push left main ten minutes ahead of live,
-  // and a self-read would have described code that was not running.
-  // Aaron's read, and it is the correct one: GitHub is the backup and the diff target. The running
-  // script is the truth about herself.
+  // ══ GITHUB FIRST. THE COMPILED SCRIPT IS A FALLBACK, NOT THE FIRST WORD (fixed 2026-08-07) ═════
   //
-  // `GET /accounts/{id}/workers/scripts/{name}` returns the raw script (Cloudflare API: "Download
-  // Worker"), needing Workers Scripts Read, Workers Scripts Write, or Workers Tail Read.
+  // This block used to run BEFORE GitHub, on the argument that "the running script is the truth about
+  // herself." That argument is half right and the half it gets wrong cost more than the half it gets
+  // right. Cloudflare returns the COMPILED BUNDLE: `const` rewritten to `var`, and EVERY COMMENT
+  // STRIPPED. This file is roughly 60% comment by line - the design notes, the standing rules, the
+  // incident history, every lesson paid for in a bad session. Reading the bundle, she can see what she
+  // DOES and none of why. CAPABILITIES returned 389 of 390 descriptions empty on 2026-08-07 for exactly
+  // this reason, and reported nothing wrong.
   //
-  // THIS WILL OFTEN FAIL AND THAT IS HANDLED. The CF token has been missing Workers:Read for weeks -
-  // VERIFY reports a 403 on the deploy list and that failure is a recorded accepted baseline entry.
-  // So this tries, and falls through to GitHub when it cannot read. WHICH ONE ANSWERED IS REPORTED
-  // in `via`, because "she read herself" meaning two different things silently is how a self-model
-  // drifts from the thing it describes.
+  // It is also unpatchable. AURA_PROPOSE / VALIDATE / PROMOTE diff and edit the FILE IN THE REPO. A
+  // self-edit reasoned over a bundle is reasoned over an artifact that cannot be committed - and
+  // AURA_PROPOSE already knew this, because it bypasses this function and fetches GitHub raw directly.
+  // The answer was written down in one call site and nowhere else.
   //
-  // NOT ASSUMED: a module Worker can come back as multipart rather than plain source. looksComplete()
-  // already guards every path here and rejects anything that is not whole source, so a multipart body
-  // falls through to GitHub rather than being greped as if it were code. If `via` never reports
-  // cloudflare once the token has Workers Scripts Read, that is the multipart case and it needs a
-  // parser - not a retry.
-  // Script names are NOT repo names: this worker deploys as `aura-core-v2` (see wrangler.toml `name`).
-  try {
-    const _cfTok = await getSecret(env, "cf_api_token");
-    const _cfAcct = (await KV.get(env, "config:cf:account_id")) || "3db0de2c6fce92757e2c4e4f83d7eb16";
-    const CF_SCRIPT = { "aura-core": "aura-core-v2" };
-    const _script = CF_SCRIPT[_w] || _w;
-    if (_cfTok && _branch === "main") {   // a CANDIDATE read is about a branch, which Cloudflare has no notion of
+  // AND THE IDENTITY GATE WANTS SOURCE TOO. auraContextGate proves "I can read the file I am about to
+  // edit." The file it is about to edit is in the repo. The compiled script proves what is DEPLOYED,
+  // which is a different and useful question - but it is not the question that gate asks.
+  //
+  // The CF path is not deleted, because "GitHub is unreachable" must not mean "she is blind to
+  // herself." It runs LAST, and whatever answers is LABELLED, because the entire failure being fixed
+  // here was a read that silently changed artifact and told no one.
+  const _cfCompiledRead = async () => {
+    try {
+      const _cfTok = await getSecret(env, "cf_api_token");
+      const _cfAcct = (await KV.get(env, "config:cf:account_id")) || "3db0de2c6fce92757e2c4e4f83d7eb16";
+      const CF_SCRIPT = { "aura-core": "aura-core-v2" };
+      const _script = CF_SCRIPT[_w] || _w;
+      if (!_cfTok || _branch !== "main") return null;   // a CANDIDATE read is about a branch, which Cloudflare has no notion of
       const cr = await fetch("https://api.cloudflare.com/client/v4/accounts/" + _cfAcct +
                              "/workers/scripts/" + _script,
                              { headers: { "Authorization": "Bearer " + _cfTok, "User-Agent": "aura-self-read" } });
       if (cr.ok) {
         const ct = await cr.text();
-        if (looksComplete(ct)) { got = ct; via = "cloudflare:running"; }
-        else console.warn("[SELF-READ] Cloudflare returned " + ct.length + " bytes that are not whole source " +
-                          "(likely multipart) - falling through to GitHub");
-      } else {
-        console.warn("[SELF-READ] Cloudflare script read " + cr.status + " for " + _script +
-                     (cr.status === 403 ? " - the CF token lacks Workers Scripts Read" : "") + "; using GitHub");
+        if (looksComplete(ct)) return ct;
+        console.warn("[SELF-READ] Cloudflare returned " + ct.length + " bytes that are not whole source " +
+                     "(likely multipart) - falling through to GitHub");
+        return null;
       }
-    }
-  } catch (e) { try { console.warn("[SELF-READ] Cloudflare path threw: " + (e && e.message)); } catch {} }
+      console.warn("[SELF-READ] Cloudflare script read " + cr.status + " for " + _script +
+                   (cr.status === 403 ? " - the CF token lacks Workers Scripts Read" : "") + "; using GitHub");
+      return null;
+    } catch (e) { try { console.warn("[SELF-READ] Cloudflare path threw: " + (e && e.message)); } catch {} return null; }
+  };
 
-  // 1) raw CDN - no 1MB limit, returns the WHOLE file. NOW THE FALLBACK, not the first word: this is
-  //    what was committed, which is the right answer for a diff and the wrong one for "what am I".
+  // 1) raw CDN - no 1MB limit, returns the WHOLE file. THE FIRST WORD: this is what was committed,
+  //    which is the right answer for a diff, for a patch, and for reading her own reasoning.
   if (got == null) try {
     const sr = await fetch("https://raw.githubusercontent.com/aaronkaracas-prog/" + _repo + "/" + _branch + "/" + _path, { headers: { "User-Agent": "aura-self-read", "Cache-Control": "no-cache" } });
     if (sr.ok) { const t = await sr.text(); if (looksComplete(t)) { got = t; via = "raw_cdn"; } }
@@ -2462,18 +2514,46 @@ async function readOwnSource(env, branch, worker, fresh) {
   }
 
   const _ck = "self:source:" + _w;
+  // 4) THE COMPILED WORKER - only now, only if the repo could not be reached at all. It answers
+  //    "what is executing", never "what does my source say", and it is labelled so no caller can
+  //    mistake one for the other again.
+  if (got == null) {
+    const ct = await _cfCompiledRead();
+    if (ct) { got = ct; via = "cloudflare:running"; }
+  }
   if (got == null) {
     const cached = await env.AURA_KV.get(_ck).catch(() => null);
     if (cached && looksComplete(cached)) { got = cached; via = "kv_cache"; }
   }
+  // ══ NEVER LET A COMPILED READ POISON THE SOURCE CACHE (fixed 2026-08-07) ══════════════════════
+  // This is how the failure persisted after its cause was gone. One Cloudflare read wrote the bundle
+  // into self:src:aura-core:<BUILD> - the key EVERY later read prefers - so a single compiled fetch
+  // made every subsequent self-read compiled too, while `source` truthfully reported "kv_build_cache"
+  // and said nothing about which artifact that cache held. Measured live: 616ms, 80,451 lines, `var
+  // BUILD`, and a payload that looked entirely healthy.
+  // The compiled artifact gets its own key. A cache is allowed to hold either; it is not allowed to
+  // hold one under the other's name.
+  const _compiled = got != null && (via === "cloudflare:running" || looksCompiled(got));
   if (got != null && via !== "kv_cache") {
     // TWO WRITES, TWO DIFFERENT JOBS. The build-keyed entry is the fast path and expires with the
     // build. The unkeyed one is the disaster fallback: if GitHub is down AND the build has moved,
     // a stale copy of her source beats no source at all - she can still read herself and say so.
-    await env.AURA_KV.put(_bk, got, { expirationTtl: 6 * 3600 }).catch(() => {});
-    await env.AURA_KV.put(_ck, got).catch(() => {});
+    if (_compiled) {
+      await env.AURA_KV.put("self:compiled:" + _w + ":" + BUILD, got, { expirationTtl: 6 * 3600 }).catch(() => {});
+    } else {
+      await env.AURA_KV.put(_bk, got, { expirationTtl: 6 * 3600 }).catch(() => {});
+      await env.AURA_KV.put(_ck, got).catch(() => {});
+    }
   }
-  return got ? { ok: true, source: got, via, worker: _w, repo: _repo, path: _path, bytes: got.length }
+  return got ? { ok: true, source: got, via, worker: _w, repo: _repo, path: _path, bytes: got.length,
+                 // THE LABEL IS THE FIX. A caller that greps for a comment, diffs, or patches needs
+                 // "source"; a caller asking what is deployed can use "compiled". Silently swapping
+                 // them is what broke nine extractors at once and nobody noticed for a day.
+                 artifact: _compiled ? "compiled" : "source",
+                 build_seen: extractBuildString(got),
+                 artifact_note: _compiled
+                   ? "COMPILED WORKER, not repo source: comments are stripped and `const` is rewritten to `var`. Do not grep it for reasoning, do not diff it, do not patch from it."
+                   : "repo source as committed" }
              : { ok: false, worker: _w, repo: _repo, path: _path,
                  error: "cannot read " + _w + " (" + _repo + "/" + _path + "): raw cdn, github blob and per-worker cache all failed. If the repo or path is named differently, set config:repo:" + _w + ' to {"repo":"...","path":"..."}.' };
 }
@@ -4920,7 +5000,7 @@ const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-think": "src/server.
       }
       if (!src) return { cmd: "INDEX_AUDIT", payload: { ok: false, error: "Could not fetch self from GitHub (rate-limited?) and no cached copy yet. Retry in a minute - the first successful read seeds the cache." } };
       const lines = src.split("\n");
-      const buildMatch = src.match(/const BUILD = "([^"]+)"/);
+      const buildMatch = (() => { const b = extractBuildString(src); return b ? [null, b] : null; })();   // shared declaration matcher (2026-08-07) - const|let|var
       // Each check: a name, a per-line test, and whether matches in a *_FALLBACK / *_SAFETY / FB_ block are OK (allowed floor)
       const isAllowedFloor = (idx) => {
         // look back up to 8 lines for a fallback/safety marker that legitimizes an in-code default
@@ -4994,9 +5074,23 @@ const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-think": "src/server.
       if (!engineList.length) { try { const c = await env.AURA_KV.get("cache:self_source"); if (c) { const cj = JSON.parse(c); const m = cj.src.match(/case\s+"[A-Z_]+"\s*:/g) || []; engineList = [...new Set(m.map(s => (s.match(/"([A-Z_]+)"/) || [])[1]).filter(Boolean))]; srcStale = true; } } catch {} }
       // 2) READ THE CORRECTED IDENTITY CANON - the real hierarchy (ARK creates AIX; AIX synthesizes
       //    all intelligence; Aura is the flagship application ON AIX). This is who she is, as DATA.
-      const identityCanon = (null /* notes: retired */) || null;
-      const theMachine = (null /* notes: retired */) || null;
-      const opState = (null /* notes: retired */) || null;
+      // ══ THREE SECTIONS THAT COULD ONLY EVER BE null (fixed 2026-08-07) ═══════════════════════
+      // These read notes:canon:identity / notes:canon:the_machine / notes:STATE - all neutered to a
+      // hardcoded null in v4.9.664 when the notes namespace was retired, and the surrounding logic
+      // was left standing. So SELF has been emitting identity_canon:null, the_machine:null and
+      // operating_state:null on every call, under a payload note that promises "Any section reading
+      // `unavailable` means that door did not answer; it is never silently omitted."
+      // They did not read `unavailable`. They read `null`, which is exactly the silent omission the
+      // note swears cannot happen - and `i_am` still ends by pointing at notes:canon:the_machine, a
+      // key that no longer exists. A command that calls itself "the whole picture" was missing three
+      // pieces and saying nothing.
+      // The written canon now lives in the archive (see the memory door in HOW). Until a reader for
+      // it exists, these say what is true: retired, and where it went. Honest absence beats a null
+      // that reads as "nothing to say here".
+      const CANON_RETIRED = "RETIRED: this was notes:canon:* / notes:STATE, and the notes namespace was retired 2026-07 with all 207 keys backfilled into the archive. Nothing reads the archive for this section yet, so it is ABSENT BY DESIGN, not empty. The durable statement of identity is the `identity` block above, which is in source.";
+      const identityCanon = null;
+      const theMachine = null;
+      const opState = null;
       // 3) THE DATA ANSWER - assembled from truth, cannot refuse. This is the anchor.
       const identity = {
         i_am: "Aura - the first flagship application built on AIX (AI Intelligence Exchange). I am not AIX; I prove what AIX can build. I provide the experience; AIX provides the intelligence.",
@@ -5050,7 +5144,7 @@ const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-think": "src/server.
         }));
         for (const [k, v] of _res) _live[k] = v;
       } catch (e) { _live.error = "live composition failed: " + (e && e.message); }
-      return { cmd: "WHO_AM_I", payload: { ok: true, identity, capability_count: engineList.length, identity_canon: identityCanon, the_machine: theMachine, operating_state: opState, reasoning,
+      return { cmd: "WHO_AM_I", payload: { ok: true, identity, capability_count: engineList.length, identity_canon: identityCanon || CANON_RETIRED, the_machine: theMachine || CANON_RETIRED, operating_state: opState || CANON_RETIRED, reasoning,
         where_i_live: _live.where, canonical_doors: _live.doors, goals: _live.goals, open_items: _live.open, spend_today: _live.spend,
         note: "ONE COMMAND, WHOLE PICTURE. identity/the_machine are written text; where_i_live, canonical_doors, goals, open_items and spend_today are DERIVED LIVE from WHERE, HOW, NORTHSTAR, TODO and AIMARGIN at the moment you asked - nothing here is stored, so nothing here can be stale. No model call: this is free. Any section reading `unavailable` means that door did not answer; it is never silently omitted. Add ::: <question> for reasoning on a specific aspect." } };
     }
@@ -5215,7 +5309,7 @@ const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-think": "src/server.
           const mr = await fetch("https://raw.githubusercontent.com/" + GH_OWNER + "/" + GH_REPO + "/" + BASE_BRANCH + "/src/index.mjs", { headers: { "User-Agent": "aura-sync", "Cache-Control": "no-cache" } });
           if (mr.ok) mainSrc = await mr.text();
         } catch (e) { return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Could not read main (raw): " + (e && e.message || e) } }; }
-        if (!mainSrc || !mainSrc.includes("const BUILD")) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Read main but it did not look like index.mjs (no BUILD line) - refusing to sync a bad read" } };
+        if (!mainSrc || !mainSrc.split("\n").some(l => BUILD_DECL.test(l))) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Read main but it did not look like index.mjs (no BUILD line) - refusing to sync a bad read" } };
         const eb = await ensureBranch();
         if (!eb.ok) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: eb.error } };
         const b64 = btoa(unescape(encodeURIComponent(mainSrc)));
@@ -5250,7 +5344,7 @@ const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-think": "src/server.
         if (!b64) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Usage: AURA_PROPOSE INDEX <base64-of-full-index.mjs>" } };
         // sanity: decode and confirm it looks like the index (has the BUILD line and an export default)
         let decoded; try { decoded = decodeURIComponent(escape(atob(b64))); } catch { return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Content is not valid base64" } }; }
-        if (!decoded.includes("const BUILD") || !decoded.includes("export default")) {
+        if (!decoded.split("\n").some(l => BUILD_DECL.test(l)) || !decoded.includes("export default")) {
           return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Decoded content does not look like index.mjs (missing BUILD or export default) - refusing to write" } };
         }
         const eb = await ensureBranch();
@@ -5283,7 +5377,7 @@ const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-think": "src/server.
         let src;
         try { const _ros = await readOwnSource(env); if (!_ros.ok) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Could not read source: " + (_ros.error || "unknown") } }; src = _ros.source; }
         catch (e) { return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Could not read source: " + (e && e.message || e) } }; }
-        if (!src || !src.includes("const BUILD")) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Source read but did not look like index.mjs" } };
+        if (!src || !src.split("\n").some(l => BUILD_DECL.test(l))) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Source read but did not look like index.mjs" } };
         const srcLines = src.split("\n");
         const N = srcLines.length;
         if (a < 1 || a > N || b < 1 || b > N || b < a) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Line numbers out of range (file has " + N + " lines). Read AURA_READ_SELF SECTION to see current line numbers." } };
@@ -5368,7 +5462,7 @@ const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-think": "src/server.
           if (!rawR.ok) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Could not read main index (raw): HTTP " + rawR.status } };
           src = await rawR.text();
         } catch (e) { return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Could not read main source: " + (e && e.message || e) } }; }
-        if (!src || !src.includes("const BUILD")) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Main source read but did not look like index.mjs (no BUILD line) - refusing to patch a bad read" } };
+        if (!src || !src.split("\n").some(l => BUILD_DECL.test(l))) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Main source read but did not look like index.mjs (no BUILD line) - refusing to patch a bad read" } };
         // FROM..TO: resolve two unique anchors to the exact span between them (inclusive). Whitespace-tolerant
         // on each anchor. This lets her replace a whole region by naming its first and last line, no exact block.
         if (_fromTo) {
@@ -5435,7 +5529,7 @@ const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-think": "src/server.
         if (occurrences > 1) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "oldtext appears " + occurrences + " times - must be unique. Include more surrounding context to make it unique." } };
         const patched = src.replace(matchedOld, newText);
         if (patched === src) return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "NO-OP GUARD: the patch would not change the file (the matched text equals the replacement, or the match failed). Nothing was committed. Read your source with AURA_READ_SELF FIND to copy a real, unique anchor, and make sure newtext actually differs from oldtext." } };
-        if (!patched.includes("const BUILD") || !patched.includes("export default")) {
+        if (!patched.split("\n").some(l => BUILD_DECL.test(l)) || !patched.includes("export default")) {
           return { cmd: "AURA_PROPOSE", payload: { ok: false, error: "Patched result no longer looks like index.mjs (missing BUILD or export default) - refusing to write" } };
         }
         const b64 = btoa(unescape(encodeURIComponent(patched)));
@@ -5467,7 +5561,7 @@ const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-think": "src/server.
       let candidateBuild = null;
       try {
         const rc = await fetch(`https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${PROPOSE_BRANCH}/src/index.mjs`, { headers: { "User-Agent": "aura-validate", "Authorization": "Bearer " + ghTok } });
-        if (rc.ok) { const t = await rc.text(); candidateBuild = (t.split("\n").find(l => l.includes("const BUILD")) || "").trim(); }
+        if (rc.ok) { const t = await rc.text(); candidateBuild = (t.split("\n").find(l => BUILD_DECL.test(l)) || "").trim(); }
       } catch {}
       // latest Action run on the proposal branch
       const runs = await gh(`/repos/${GH_OWNER}/${GH_REPO}/actions/runs?branch=${PROPOSE_BRANCH}&per_page=1`);
@@ -5624,7 +5718,7 @@ const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-think": "src/server.
           let stgBuild = null;
           try { const pr = await fetch("https://aura-core-staging.aaronkaracas.workers.dev/health", { headers: { "Cache-Control": "no-cache" } }); const pj = await pr.json(); stgBuild = pj.build; } catch {}
           let candBuild = null;
-          try { const mr = await fetch("https://raw.githubusercontent.com/" + GH_OWNER + "/" + GH_REPO + "/aura-proposes/src/index.mjs", { headers: { "User-Agent": "aura", "Cache-Control": "no-cache" } }); const mt = await mr.text(); const bm = (mt.split("\n").find(l => l.includes("const BUILD")) || "").match(/aura-core-v[\d.]+-[\d-]+/); candBuild = bm ? bm[0] : null; } catch {}
+          try { const mr = await fetch("https://raw.githubusercontent.com/" + GH_OWNER + "/" + GH_REPO + "/aura-proposes/src/index.mjs", { headers: { "User-Agent": "aura", "Cache-Control": "no-cache" } }); const mt = await mr.text(); const bm = (mt.split("\n").find(l => BUILD_DECL.test(l)) || "").match(/aura-core-v[\d.]+-[\d-]+/); candBuild = bm ? bm[0] : null; } catch {}
           // ══ in_sync COMPARED A FULL BUILD STRING TO A TRUNCATED ONE (Aura caught this, 2026-08-03) ══
           // Her words: "STATUS compare strips the slug, so in_sync can lie exactly when you name
           // builds descriptively." Verified, and it is worse than a lie of omission - it is
@@ -5661,7 +5755,7 @@ const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-think": "src/server.
         let liveBuild = null;
         try { const pr = await fetch("https://aura-core-v2.aaronkaracas.workers.dev/health", { headers: { "Cache-Control": "no-cache" } }); const pj = await pr.json(); liveBuild = pj.build; } catch {}
         let mainBuild = null;
-        try { const mr = await fetch(`https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${BASE_BRANCH}/src/index.mjs`, { headers: { "User-Agent": "aura", "Cache-Control": "no-cache" } }); const mt = await mr.text(); const bm = (mt.split("\n").find(l => l.includes("const BUILD")) || "").match(/aura-core-v[\d.]+-[\d-]+/); mainBuild = bm ? bm[0] : null; } catch {}
+        try { const mr = await fetch(`https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${BASE_BRANCH}/src/index.mjs`, { headers: { "User-Agent": "aura", "Cache-Control": "no-cache" } }); const mt = await mr.text(); const bm = (mt.split("\n").find(l => BUILD_DECL.test(l)) || "").match(/aura-core-v[\d.]+-[\d-]+/); mainBuild = bm ? bm[0] : null; } catch {}
         return { cmd: "AURA_PROMOTE", payload: { ok: true, live_build: liveBuild, main_build: mainBuild, in_sync: !!(liveBuild && mainBuild && liveBuild === mainBuild), note: (liveBuild && mainBuild && liveBuild === mainBuild) ? "Live matches main - in sync." : "Live does NOT match main - the deploy has not landed (or is still running). This BUILD comparison is the only trustworthy signal a deploy worked." } };
       }
       const ghTok = await getSecret(env, "github_token");
@@ -15817,7 +15911,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const auSrcResult = await readOwnSource(env).catch(() => null);
       const auSrc = (auSrcResult && auSrcResult.ok && auSrcResult.source) ? auSrcResult.source : null;
       const auLines = auSrc ? auSrc.split("\n") : [];
-      const auBuild = (auLines.find(l => l.includes("const BUILD")) || "").replace(/.*"(.*)".*/, "$1") || "unknown";
+      const auBuild = extractBuildString(auSrc) || "unknown";   // shared declaration matcher (2026-08-07)
       const engineProbes = [
         { engine: "AI Exchange (fan across brains)", needle: 'case "FAN"' },
         { engine: "AI Exchange (fanReason synth)", needle: "async function fanReason" },
@@ -25165,7 +25259,7 @@ Be concise. This update will be compared against the next update to show drift o
       if (!capSrc) { try { const c = await env.AURA_KV.get("cache:self_source"); if (c) { const cj = JSON.parse(c); capSrc = cj.src; capAt = cj.at; capStale = true; } } catch {} }
       if (!capSrc) return { cmd: "CAPABILITIES", payload: { ok: false, error: "Could not fetch self from GitHub (rate-limited?) and no cached copy. Retry in a minute." } };
       const capLines = capSrc.split("\n");
-      const capBuild = (capSrc.match(/const BUILD = "([^"]+)"/) || [])[1] || null;
+      const capBuild = extractBuildString(capSrc);   // shared declaration matcher (2026-08-07) - returned "([^" on the compiled worker
       const cmds = [];
       const seen = new Set();
       for (let i = 0; i < capLines.length; i++) {
@@ -25175,10 +25269,22 @@ Be concise. This update will be compared against the next update to show drift o
         if (seen.has(name)) continue; // dedupe shared handlers (first wins)
         seen.add(name);
         // nearest description comment within the next 8 lines (commands document themselves with a leading // comment)
+        // ══ A DESCRIPTION THAT BELONGS TO A DIFFERENT COMMAND (fixed 2026-08-07) ═══════════════
+        // This scanned forward up to 8 lines for ANY `//` and took the first one. A handler with no
+        // comment of its own - PING is one line - fell straight through into the NEXT handler's block
+        // and took its comment. Measured on the live file: PING, SHOW_BUILD and AURA_OBSERVE all
+        // returned "LIVE SELF-OBSERVATION: Aura reads what she is DOING RIGHT NOW", which describes
+        // only the third. FIRE_QUERY returned "west,south,east,north", an argument list.
+        // A description attached to the wrong command is worse than no description: an empty field
+        // reads as "undocumented", a wrong one reads as fact. So the scan now STOPS at the next
+        // `case` - and stops at a `return`, because a one-line handler's body ends there and anything
+        // past it belongs to somebody else.
         let desc = "";
         for (let j = i + 1; j < Math.min(i + 9, capLines.length); j++) {
+          if (/^\s*case\s+"/.test(capLines[j])) break;
           const c = capLines[j].match(/^\s*\/\/\s*(.+)/);
           if (c) { desc = c[1].trim().replace(/[^\x20-\x7E]/g, "").replace(/\s+/g, " ").slice(0, 90); break; }
+          if (/^\s*return\b/.test(capLines[j])) break;
         }
         cmds.push({ name, desc });
       }
@@ -33446,7 +33552,7 @@ async function verifyAgainstReality(env) {
     // check in VERIFY - did the deploy actually land, or is GitHub ahead of Cloudflare - would have
     // been silently disabled by a performance fix. `fresh` forces the network read.
     const live = await readOwnSource(env, null, "aura-core", true);
-    const inSrc = live.ok && live.source ? (live.source.match(/const BUILD = "([^"]+)"/) || [])[1] : null;
+    const inSrc = live.ok && live.source ? extractBuildString(live.source) : null;   // shared declaration matcher (2026-08-07)
     add("build", inSrc || "(unreadable)", BUILD, inSrc === BUILD,
         inSrc === BUILD ? "source on GitHub matches the running worker"
                         : "GitHub source and the RUNNING worker disagree - a deploy or a push did not land");

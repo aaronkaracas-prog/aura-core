@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.942-2026-08-07-lag-is-not-a-wrong-file";
+const BUILD = "aura-core-v4.9.943-2026-08-07-a-repeat-is-not-a-re-record";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -1541,6 +1541,37 @@ const SHARD_COUNT = 8;
 function shardStub(env, entityId, shardIndex) {
   return entityStub(env, `${entityId}#shard${shardIndex}`);
 }
+// ══ A DEFAULT IDEMPOTENCY KEY, SO A CALLER DOES NOT HAVE TO REMEMBER ONE (2026-08-07) ══════════
+// appendChain now honours an idempotency key, but a guard nobody passes is not a guard - the same
+// lesson this file already paid for with ptaWakeGate, which had seven call sites and six of them were
+// its own tests. So the two commands that write life events derive one automatically from WHAT THEY
+// ARE RECORDING: the event type, the actor, and the payload.
+//
+// THE KEY IS CONTENT, DELIBERATELY NOT A TIMESTAMP OR A RANDOM ID. Those make every re-run unique,
+// which is exactly the behaviour being fixed. Content means a second identical PTA_EVENT is
+// recognised as the same act - and that is the right default for a SEEDED or SCRIPTED write, which is
+// where every duplicate in this system came from.
+//
+// THE HONEST LIMIT, stated rather than discovered later: a person genuinely doing the identical thing
+// twice - the same sentence, the same event type, the same payload, with nothing distinguishing them -
+// collapses to one record. For a life chain that is a real loss, and it is why the key can be
+// OVERRIDDEN by any caller who knows the two acts are distinct. Callers that record continuous lived
+// experience should pass their own key including a timestamp; callers that replay a script should not.
+function chainIdemKey(eventType, actor, data) {
+  let s = "";
+  try { s = String(eventType) + "|" + String(actor) + "|" + JSON.stringify(data || {}); } catch { return null; }
+  // FNV-1a, 32-bit, doubled over two offsets. Not cryptographic and does not need to be - this
+  // distinguishes a replay from a new act inside one chain, it does not defend against an adversary
+  // constructing a collision. Two passes because a single 32-bit hash collides too readily across the
+  // thousands of events a real lifespan accumulates.
+  const h = (seed) => {
+    let x = seed >>> 0;
+    for (let i = 0; i < s.length; i++) { x ^= s.charCodeAt(i); x = Math.imul(x, 16777619) >>> 0; }
+    return x.toString(36);
+  };
+  return "c" + h(2166136261) + h(0x811c9dc5 ^ s.length);
+}
+
 async function writeShardedEvent(env, entityId, event) {
   // Distribute by a random shard so concurrent writes spread across N single-threaded objects.
   const idx = Math.floor(Math.random() * SHARD_COUNT);
@@ -20290,7 +20321,7 @@ ${JSON.stringify(phenomenologyEvents, null, 2)}
 Key questions: Does this person *feel* continuous across time? Do they remember earlier versions of themselves? Is there a subjective thread connecting all these moments? What is the qualia (felt sense) of their identity? Are consciousness checks showing maintained thread of self, or rupture and reconstruction?`;
         
         const paKey = "state:session:" + ptaId;
-        const thR = await reasonThroughLoop(env, { entity: analysisPrompt, lens: "phenomenological analysis - consciousness and felt identity", stateKey: paKey, facts: { phenomenology_events: phenomenologyEvents, events_given: phenomenologyEvents.length, chain_total: chainData.chain.length, pta_id: ptaId } });
+        const thR = await reasonThroughLoop(env, { entity: analysisPrompt, lens: "phenomenological analysis - consciousness and felt identity", stateKey: paKey, facts: { phenomenology_events: phenomenologyEvents, events_given: phenomenologyEvents.length, chain_total: chainData.chain.length, chain_unique: chainDuplicateStats(chainData.chain).unique, chain_duplicates: chainDuplicateStats(chainData.chain).duplicates, pta_id: ptaId } });
         await sessionStateWrite(env, paKey, "PHENOMENOLOGY_ANALYZE", loopFinding(thR.reasoning));
         
         return {
@@ -20358,7 +20389,7 @@ The question: What is it LIKE to be this person? Based on their own reports of t
 Do not speculate beyond what they report. Work only from their actual qualia reports. Describe the structure of their subjective experience as THEY describe it.`;
         
         const qaKey = "state:session:" + ptaId;
-        const thR = await reasonThroughLoop(env, { entity: analysisPrompt, lens: "qualia analysis - first-person felt experience", stateKey: qaKey, facts: { qualia_events: qualiaEvents, events_given: qualiaEvents.length, chain_total: chainData.chain.length, pta_id: ptaId } });
+        const thR = await reasonThroughLoop(env, { entity: analysisPrompt, lens: "qualia analysis - first-person felt experience", stateKey: qaKey, facts: { qualia_events: qualiaEvents, events_given: qualiaEvents.length, chain_total: chainData.chain.length, chain_unique: chainDuplicateStats(chainData.chain).unique, chain_duplicates: chainDuplicateStats(chainData.chain).duplicates, pta_id: ptaId } });
         await sessionStateWrite(env, qaKey, "QUALIA_ANALYSIS", loopFinding(thR.reasoning));
         
         return {
@@ -20417,7 +20448,7 @@ Look for:
 Report patterns as observations, not judgments. Name the specific cycle and when it recurs.`;
         
         const opKey = "state:session:" + ptaId;
-        const thR = await reasonThroughLoop(env, { entity: patternPrompt, lens: "unrecorded behavioral pattern detection", stateKey: opKey, facts: { events_given: opEvents.length, chain_total: chainData.chain.length, pta_id: ptaId } });
+        const thR = await reasonThroughLoop(env, { entity: patternPrompt, lens: "unrecorded behavioral pattern detection", stateKey: opKey, facts: { events_given: opEvents.length, chain_total: chainData.chain.length, chain_unique: chainDuplicateStats(chainData.chain).unique, chain_duplicates: chainDuplicateStats(chainData.chain).duplicates, pta_id: ptaId } });
         await sessionStateWrite(env, opKey, "OBSERVE_PATTERN", loopFinding(thR.reasoning));
         
         return {
@@ -20473,7 +20504,7 @@ Produce a synthesis that would persist across sessions - a compact understanding
         // names every reasoning command now uses, because the model reads these labels and four
         // different names for "how much did you actually give me" is its own small fog. (v4.9.940)
         const spKey = "state:session:" + ptaId;
-        const thR = await reasonThroughLoop(env, { entity: synthesisPrompt, lens: "phenomenological synthesis - background curation of consciousness", stateKey: spKey, facts: { events_given: recentEvents.length, chain_total: chainData.chain.length, pta_id: ptaId } });
+        const thR = await reasonThroughLoop(env, { entity: synthesisPrompt, lens: "phenomenological synthesis - background curation of consciousness", stateKey: spKey, facts: { events_given: recentEvents.length, chain_total: chainData.chain.length, chain_unique: chainDuplicateStats(chainData.chain).unique, chain_duplicates: chainDuplicateStats(chainData.chain).duplicates, pta_id: ptaId } });
         await sessionStateWrite(env, spKey, "SYNTHESIZE_PHENOMENOLOGY", loopFinding(thR.reasoning));
         
         return {
@@ -20538,7 +20569,7 @@ Questions:
 Be direct. If they're rationalizing, say so. If their claim is new and true, say that.`;
         
         const vcKey = "state:session:" + ptaId;
-        const thR = await reasonThroughLoop(env, { entity: verificationPrompt, lens: "claim verification against observed reality", stateKey: vcKey, facts: { claim, events_given: vcEvents.length, chain_total: chainData.chain.length, pta_id: ptaId } });
+        const thR = await reasonThroughLoop(env, { entity: verificationPrompt, lens: "claim verification against observed reality", stateKey: vcKey, facts: { claim, events_given: vcEvents.length, chain_total: chainData.chain.length, chain_unique: chainDuplicateStats(chainData.chain).unique, chain_duplicates: chainDuplicateStats(chainData.chain).duplicates, pta_id: ptaId } });
         await sessionStateWrite(env, vcKey, "VERIFY_CLAIM", loopFinding(thR.reasoning));
         
         return {
@@ -20598,7 +20629,7 @@ Produce a "continuity briefing" - what has shifted, what persists, what should t
 Make this personal, specific, grounded in their actual events. This is your report on their diachronic continuity.`;
         
         const lcKey = "state:session:" + ptaId;
-        const thR = await reasonThroughLoop(env, { entity: continuityPrompt, lens: "live continuity briefing - what has changed and persisted", stateKey: lcKey, facts: { events_given: recentEvents.length + earlierEvents.length, recent_window: recentEvents.length, comparison_window: earlierEvents.length, chain_total: chainData.chain.length, pta_id: ptaId } });
+        const thR = await reasonThroughLoop(env, { entity: continuityPrompt, lens: "live continuity briefing - what has changed and persisted", stateKey: lcKey, facts: { events_given: recentEvents.length + earlierEvents.length, recent_window: recentEvents.length, comparison_window: earlierEvents.length, chain_total: chainData.chain.length, chain_unique: chainDuplicateStats(chainData.chain).unique, chain_duplicates: chainDuplicateStats(chainData.chain).duplicates, pta_id: ptaId } });
         await sessionStateWrite(env, lcKey, "LIVE_CONTINUITY", loopFinding(thR.reasoning));
         
         return {
@@ -20640,21 +20671,29 @@ Make this personal, specific, grounded in their actual events. This is your repo
         const doId = env.PTA_DO.idFromName(ptaId);
         const stub = env.PTA_DO.get(doId);
         
+        // Same key rule as PTA_EVENT, computed from the interaction ITSELF and not from captured_at.
+        // NOTE the tension this one carries and why the override exists: a person really can say the
+        // same thing twice, and for a continuous capture stream that repetition IS the signal. A
+        // caller recording genuine live interactions should pass its own `idem` (include a timestamp);
+        // this default protects the replayed/scripted case, which is where every duplicate so far
+        // came from.
+        const _icBody = {
+          topic,
+          raw_message: interactionData.message || "",
+          detected_emotion: interactionData.emotion || null,
+          decision_mentioned: interactionData.decision || null,
+          values_revealed: interactionData.values_revealed || [],
+          contradiction_to_past: interactionData.contradiction || null,
+          is_raw_unfiltered: true
+        };
+        const _icIdem = String(interactionData.idem || "").trim() || chainIdemKey("INTERACTION", "capture", _icBody);
+
         // Append as raw interaction (unfiltered, messy, real)
         const captureResp = await stub.fetch(new Request("http://do", {
           method: "POST",
           body: JSON.stringify({
             method: "appendChain",
-            params: ["INTERACTION", "capture", { 
-              topic,
-              raw_message: interactionData.message || "",
-              detected_emotion: interactionData.emotion || null,
-              decision_mentioned: interactionData.decision || null,
-              values_revealed: interactionData.values_revealed || [],
-              contradiction_to_past: interactionData.contradiction || null,
-              captured_at: new Date().toISOString(),
-              is_raw_unfiltered: true
-            }]
+            params: ["INTERACTION", "capture", { ..._icBody, captured_at: new Date().toISOString() }, undefined, _icIdem]
           })
         }));
         const captureData = await captureResp.json();
@@ -20670,7 +20709,11 @@ Make this personal, specific, grounded in their actual events. This is your repo
             pta_id: ptaId,
             topic: topic,
             captured: interactionData,
-            note: "Raw interaction logged (unfiltered). Will be processed by SIGNAL_EXTRACT on next synthesis cycle."
+            duplicate: !!captureData.duplicate,
+            idem: _icIdem,
+            note: captureData.duplicate
+              ? "ALREADY CAPTURED - identical interaction already in the chain, not appended again. If this really is a second occurrence, pass a distinct `idem` in the JSON."
+              : "Raw interaction logged (unfiltered). Will be processed by SIGNAL_EXTRACT on next synthesis cycle."
           }
         };
       } catch (e) {
@@ -20939,16 +20982,21 @@ Be concise. This update will be compared against the next update to show drift o
         const doId = env.PTA_DO.idFromName(ptaId);
         const stub = env.PTA_DO.get(doId);
         
+        // The payload the key is computed from EXCLUDES recorded_at, which is generated per call and
+        // would make every replay unique - defeating the whole point. The key describes the EVENT,
+        // not the moment it was written down.
+        const _evData = { ...eventData, event_type: eventType };
+        const _idem = String(eventData.idem || "").trim() || chainIdemKey(eventType, "life", _evData);
+
         // Append to chain with rich metadata
         const appendResp = await stub.fetch(new Request("http://do", {
           method: "POST",
           body: JSON.stringify({
             method: "appendChain",
             params: [eventType, "life", { 
-              ...eventData,
-              event_type: eventType,
+              ..._evData,
               recorded_at: new Date().toISOString()
-            }]
+            }, undefined, _idem]
           })
         }));
         const appendData = await appendResp.json();
@@ -20964,6 +21012,14 @@ Be concise. This update will be compared against the next update to show drift o
             pta_id: ptaId,
             event_type: eventType,
             event_data: eventData,
+            // Reported, never silent. A seeding script that runs twice should SAY it ran twice rather
+            // than look like it worked twice - that difference is the whole bug this closes.
+            duplicate: !!appendData.duplicate,
+            idem: _idem,
+            chain_length: appendData.chain_length,
+            note: appendData.duplicate
+              ? "ALREADY IN THE CHAIN - not appended again. Pass a distinct `idem` in the JSON if this is genuinely a second, separate occurrence rather than a re-run."
+              : undefined,
             appended_at: new Date().toISOString()
           }
         };
@@ -30014,6 +30070,33 @@ function loopFinding(reasoning) {
   return move.slice(0, 500) + " [confidence: " + String(reasoning.confidence || "unstated") + "]";
 }
 
+// ══ COUNT THE DUPLICATES, DO NOT DELETE THEM (2026-08-07) ══════════════════════════════════════
+// pta_215d1667640a166a carries 17 duplicate events from a seeding run that executed twice, and every
+// reasoning pass over it has been counting them as separate life events. The obvious fix - strip them
+// - is the wrong one and it is worth saying why in source so nobody "tidies" it later:
+// PTA history is APPEND-ONLY BY DOCTRINE. PTA_REVOKE never deletes. An entity's chain is the one
+// record that revocation, correction and disagreement all leave intact. Rewriting it to make a number
+// look right would be the first breach of that rule, spent on cosmetics.
+// So the duplicates stay and the READER is told about them. `chain_total` remains the literal length,
+// `unique_total` is what the timeline actually contains, and the gap between the two is visible in
+// FACTS instead of being something the model has to notice on its own - which OBSERVE_PATTERN did,
+// unprompted, and should not have had to.
+function chainDuplicateStats(chain) {
+  if (!Array.isArray(chain) || !chain.length) return { total: 0, unique: 0, duplicates: 0 };
+  const seen = new Set();
+  let dup = 0;
+  for (const e of chain) {
+    if (!e) continue;
+    // Prefer the declared key when the writer supplied one; fall back to content for the events
+    // written before idempotency existed, which is exactly the population being measured here.
+    let k = e.idem;
+    if (!k) { try { k = String(e.event) + "|" + String(e.actor) + "|" + JSON.stringify(e.data || {}); } catch { k = null; } }
+    if (!k) continue;
+    if (seen.has(k)) dup++; else seen.add(k);
+  }
+  return { total: chain.length, unique: chain.length - dup, duplicates: dup };
+}
+
 async function reasonThroughLoop(env, opts) {
   opts = opts || {};
   const apiKey = await getSecret(env, "anthropic");
@@ -36209,7 +36292,34 @@ export class PtaDurableObject {
   }
 
   // ── APPEND TO CHAIN (immutable, never delete) ───────────────────────────────────────────────────
-  async appendChain(event, actor, data, expectedVersion) {
+  // ══ AN APPEND-ONLY LOG CANNOT TELL A REPEAT FROM A RE-RECORD (fixed 2026-08-07) ═══════════════
+  //
+  // This was `pta.chain.push(...)` and nothing else. No idempotency, no content check, and PTA_EVENT
+  // calls it with expectedVersion undefined so even the optimistic-concurrency guard above is skipped.
+  // The code was correct: it appended exactly what it was told, twice, when told twice.
+  //
+  // MEASURED on pta_215d1667640a166a: events 19-31 are byte-identical repeats of events 4-17 from a
+  // seeding run that executed twice. OBSERVE_PATTERN found them and corrected the count itself -
+  // "chain_total 48 overstates unique events, real timeline is ~31."
+  //
+  // WHY THIS IS NOT COSMETIC, and it is the sharpest thing in this file: a duplicated life event does
+  // not add noise, it DOUBLES THE APPARENT FREQUENCY OF A PATTERN - and pattern frequency is the
+  // entire product of OBSERVE_PATTERN and VERIFY_CLAIM. The duplicated range happened to contain a
+  // cycle that already existed, so the finding survived. Had the seeding doubled the RECENT captures
+  // instead, the same machinery would have reported a third iteration that never occurred, at
+  // confidence:high, with every claim honestly tagged GIVEN_IN_FACTS. The provenance layer cannot
+  // catch a fact that is true twice. Only the writer can.
+  //
+  // IDEMPOTENT, NOT DEDUPLICATING. A caller declares "this is the same act I already recorded" with a
+  // key; identity is asserted by the caller, never guessed from content similarity. Two genuinely
+  // separate events that read alike - the same person saying the same thing twice, which for a life
+  // chain is real signal - must both survive. Refusing on resemblance would be a silent data-loss bug
+  // wearing a hygiene fix's clothes.
+  //
+  // A duplicate is NOT an error. It returns ok:true with duplicate:true, because the caller's intent
+  // - "this event should exist in the chain" - is satisfied. Failing a retry is how a retry storm
+  // becomes an outage.
+  async appendChain(event, actor, data, expectedVersion, idem) {
     const pta = await this.storage.get("pta");
     if (!pta) return { ok: false, error: "PTA not found" };
     
@@ -36217,12 +36327,26 @@ export class PtaDurableObject {
     if (expectedVersion !== undefined && pta.version !== expectedVersion) {
       return { ok: false, error: "version conflict", current_version: pta.version, expected_version: expectedVersion };
     }
+
+    // Scan a bounded window, not the whole chain: an idempotency key answers "did I just write this",
+    // and an unbounded scan would make every append O(chain) - the cost growing with the very history
+    // this layer exists to accumulate.
+    if (idem) {
+      const win = pta.chain.slice(-200);
+      const hit = win.find(e => e && e.idem === idem);
+      if (hit) {
+        return { ok: true, duplicate: true, chain_length: pta.chain.length, version: pta.version,
+                 note: "An event with this idempotency key is already in the chain - not appended again. " +
+                       "The chain is append-only and this is what keeps a re-run from doubling a life." };
+      }
+    }
     
     pta.chain.push({
       ts: new Date().toISOString(),
       event,
       actor,
-      data
+      data,
+      ...(idem ? { idem } : {})
     });
     pta.updated_at = new Date().toISOString();
     pta.version = (pta.version || 0) + 1;

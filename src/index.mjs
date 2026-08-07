@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.946-2026-08-07-inheritance-is-visible";
+const BUILD = "aura-core-v4.9.947-2026-08-07-doubt-travels-with-the-finding";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -30203,7 +30203,25 @@ async function sessionStateRead(env, key) {
     if (!raw) return "";
     const arr = JSON.parse(raw);
     if (!Array.isArray(arr) || !arr.length) return "";
-    return arr.map(e => "- [" + e.at + "] " + e.cmd + ": " + e.finding).join("\n").slice(0, 4000);
+    // ══ KEEP THE NEWEST, NOT THE FIRST 4000 CHARACTERS (fixed 2026-08-07) ═══════════════════════
+    // This was `.join("\n").slice(0, 4000)` - which keeps the OLDEST entries and silently drops the
+    // newest, the exact opposite of what a working note is for. It went unnoticed while findings were
+    // ~600 bytes and six of them fit. Findings now carry their unresolved doubt too and run ~1400
+    // bytes, so the cap became live the same hour it started mattering, and it would have cut the
+    // most recent pass - the one a later pass most needs - while looking like it was working.
+    // Walk backward and stop when the budget is spent, then restore chronological order.
+    const budget = 6000;
+    const kept = [];
+    let used = 0;
+    for (let i = arr.length - 1; i >= 0; i--) {
+      const e = arr[i];
+      if (!e) continue;
+      const line = "- [" + e.at + "] " + e.cmd + ": " + e.finding;
+      if (used + line.length > budget && kept.length) break;
+      kept.unshift(line);
+      used += line.length;
+    }
+    return kept.join("\n");
   } catch { return ""; }
 }
 
@@ -30216,21 +30234,76 @@ async function sessionStateWrite(env, key, cmd, finding) {
     const raw = await env.AURA_KV.get(key);
     if (raw) { try { arr = JSON.parse(raw) || []; } catch { arr = []; } }
     if (!Array.isArray(arr)) arr = [];
-    arr.push({ at: new Date().toISOString(), cmd: String(cmd).slice(0, 40), finding: String(finding).slice(0, 600) });
+    // 1800, not 600. A finding now carries the unresolved doubt from the pass that produced it, and
+    // that block sits at the END of the string - so the old cap would have chopped off precisely the
+    // part this was built to preserve, leaving a clean-looking conclusion with its caveats silently
+    // removed. That is worse than not carrying doubt at all: it manufactures false confidence and
+    // shows no sign of having done it.
+    arr.push({ at: new Date().toISOString(), cmd: String(cmd).slice(0, 40), finding: String(finding).slice(0, 1800) });
     if (arr.length > SESSION_STATE_MAX) arr = arr.slice(-SESSION_STATE_MAX);
     await env.AURA_KV.put(key, JSON.stringify(arr), { expirationTtl: SESSION_STATE_TTL });
   } catch {}
 }
 
-// Pulls the one line worth banking out of a Loop result. the_move is the DECISION; understood is the
+// Pulls what is worth banking out of a Loop result. the_move is the DECISION; understood is the
 // fallback because a turn that reached understanding but no decision still carried information
 // forward. Confidence rides along so a later pass can weigh a low-confidence finding as such rather
 // than inheriting it as settled - which is exactly how a hedge becomes a fact across turns.
+//
+// ══ AND THE DOUBT, WHICH THE FIRST VERSION THREW AWAY (fixed 2026-08-07) ══════════════════════
+//
+// This banked `the_move` and nothing else. Measured consequence, same day: three of four reasoning
+// passes on one chain independently challenged whether it was lived data or a retrospective written
+// in one sitting - and every one of them raised it in `assumptions_challenged`, `data_trust` or
+// `push_back`. NONE of them put it in `the_move`, because it was not the decision, it was the doubt
+// ABOUT the decision. The carry-over went live, the next two passes inherited the conclusions, and
+// the challenge disappeared. An inheritance-blind panel recovered it in one round.
+//
+// The easy reading was "frame inheritance suppressed a live epistemic check", and that is real. But
+// underneath it is something more embarrassing and more fixable: THE LATER PASSES NEVER RECEIVED THE
+// CHALLENGE AT ALL. It was not dropped by a model, it was discarded by this function. A carry-over
+// that transmits conclusions and deletes every open question does not merely fail to preserve doubt -
+// it manufactures false closure, because the next pass sees a record of what was decided with no
+// trace of what was still unsettled, and reasonably reads that silence as agreement.
+//
+// So an unresolved push_back or data_trust entry is banked BESIDE the finding and marked OPEN. A
+// question stays open until something answers it; inheriting silence is not an answer.
 function loopFinding(reasoning) {
   if (!reasoning || typeof reasoning !== "object") return "";
   const move = String(reasoning.the_move || reasoning.understood || "").trim();
   if (!move) return "";
-  return move.slice(0, 500) + " [confidence: " + String(reasoning.confidence || "unstated") + "]";
+  let out = move.slice(0, 500) + " [confidence: " + String(reasoning.confidence || "unstated") + "]";
+
+  const open = [];
+  const pb = String(reasoning.push_back || "").trim();
+  if (pb) open.push("push_back: " + pb.slice(0, 300));
+  if (Array.isArray(reasoning.data_trust)) {
+    for (const d of reasoning.data_trust.slice(0, 3)) {
+      if (!d) continue;
+      const f = String(d.fact || d).trim();
+      if (f) open.push("data_trust: " + f.slice(0, 200));
+    }
+  }
+  // Only assumptions the pass REFUSED TO GRANT or could not settle. Tested against the real payloads
+  // from 2026-08-07 and the first filter was too loose: it matched "Not necessary", which is a pass
+  // DISMISSING a methodological requirement ("this claim needs explicit statements to verify -> not
+  // necessary"). That is a closed question and constrains nobody. Carrying it buries the live ones,
+  // which is the over-guarding failure the constitutional key list already warns about - make every
+  // item a flag and the flag stops meaning anything.
+  // What must travel is narrower and sharper: A PREMISE A PRIOR PASS WOULD NOT GRANT. If pass one
+  // refused to accept that the record is a real life, pass two may not quietly re-grant it and build
+  // on top. That single case is the whole reason this exists.
+  if (Array.isArray(reasoning.assumptions_challenged)) {
+    for (const a of reasoning.assumptions_challenged.slice(0, 3)) {
+      if (!a || !a.verdict) continue;
+      const v = String(a.verdict);
+      if (/\b(false|contradicted|unclear|undecidable|unresolved|cannot|suspect)\b/i.test(v)) {
+        open.push("REFUSED premise: " + String(a.assumption || "").slice(0, 160) + " -> " + v.slice(0, 160));
+      }
+    }
+  }
+  if (open.length) out += "\n    OPEN (raised by that pass and NOT settled by it - a refused premise stays refused until something grants it): " + open.join(" | ");
+  return out;
 }
 
 // ══ COUNT THE DUPLICATES, DO NOT DELETE THEM (2026-08-07) ══════════════════════════════════════
@@ -30426,7 +30499,13 @@ async function reasonThroughLoop(env, opts) {
         "yourself reaching the same conclusion a prior pass already reached, say so and move PAST it rather " +
         "than restating it as new. (2) A BANKED FINDING IS NOT A FACT ABOUT THE WORLD - it is what an earlier " +
         "pass concluded, carrying the confidence it carried. If the evidence in front of you now CONTRADICTS " +
-        "one, say so explicitly and name which; a carry-over you cannot contradict is not memory, it is dogma.\n\n" +
+        "one, say so explicitly and name which; a carry-over you cannot contradict is not memory, it is dogma.\n" +
+        "AND A THIRD RULE, WHICH MATTERS MORE THAN BOTH: any line marked OPEN is a question a prior pass " +
+        "RAISED AND DID NOT SETTLE. It is still open now. Inheriting it in silence is not an answer to it. " +
+        "Either answer it from the evidence in front of you and say you have, or carry it forward explicitly " +
+        "as still unresolved. The failure this exists to prevent, measured on this system: passes challenged " +
+        "whether their source data was real, the challenge was not carried forward, and later passes went on " +
+        "to make confident claims resting on the exact assumption their predecessors had refused to grant.\n\n" +
         _st.slice(0, 6000);
     } else {
       projectState = "\n\nSESSION STATE: nothing is banked for this subject yet" +
@@ -30736,6 +30815,34 @@ async function fanReason(env, { task, brains, maxTokens = 700 } = {}) {
   const spread = results.map(r => `[${r.label}]\n${r.text}`).join("\n\n---\n\n");
   const synthKey = await getSecret(env, "anthropic");
   let synthesis = null, synthError = null;
+  // ══ THE SYNTHESIS RUNG IS NOW A DECISION, NOT A FALLBACK (2026-08-07) ═══════════════════════
+  // Traced 2026-08-07: this called anthropicModel(env), which reads config:model:anthropic (unset),
+  // then defaultModel() (config:brain:model = a non-Claude pin), fails its own /^claude/ test, and
+  // lands on a HARDCODED "claude-sonnet-4-5" at the end of the chain. So the model adjudicating
+  // across every fan was chosen by falling off the end of a resolver, not by anybody.
+  //
+  // NOT "ROUTE IT TO THE CHEAP RUNG" - and this is the part worth arguing rather than assuming. The
+  // two-lane doctrine this system runs on is explicit: the cheap rung governs commodity/outside-world
+  // traffic; CORE JUDGEMENT stays on the best model by separate policy. Reading four opinions and
+  // adjudicating across them is core judgement, and it is the one step where a weak model quietly
+  // flattens real disagreement into a bland average - destroying the only thing a panel produces.
+  // A cheap fan with a cheap synthesis is not a cheap council, it is a expensive way to get one
+  // opinion.
+  // So the DEFAULT IS UNCHANGED and this is deliberately not a behaviour change. What changes is that
+  // the rung is now readable and settable at config:model:fansynth, so moving it is a decision
+  // somebody makes on purpose with a reason, instead of a side effect of a resolver's last line.
+  let _synthModel = null;
+  try { _synthModel = (await env.AURA_KV.get("config:model:fansynth")) || null; } catch {}
+  if (_synthModel && !/^claude/i.test(_synthModel)) {
+    // callAnthropic REFUSES a non-Claude model by design (see _callAnthropicGuard) - this endpoint is
+    // api.anthropic.com and cannot serve one. Say so at the config, not as a parse error 200 lines
+    // later, which is exactly the failure that guard was built after.
+    console.warn("[FAN] config:model:fansynth is '" + _synthModel + "', which api.anthropic.com cannot serve - " +
+                 "ignoring it and using the Anthropic default. To route synthesis to another provider the call " +
+                 "must move from callAnthropic to callBrain; that is a real change, not a config flip.");
+    _synthModel = null;
+  }
+  if (!_synthModel) _synthModel = await anthropicModel(env);
   if (synthKey) {
     const answeredLabels = results.map(r => r.label).join(", ");
     const synthSys = "You are Aura, synthesizing across AI brains you consulted. CRITICAL ANTI-CONFABULATION RULE: " +
@@ -30745,12 +30852,12 @@ async function fanReason(env, { task, brains, maxTokens = 700 } = {}) {
       "votes, name the real disagreements, and if only one brain answered, say so plainly rather than manufacturing consensus."
     const synthUser = `TASK:\n${task}\n\nTHE BRAINS' ANSWERS:\n\n${spread}\n\nSynthesize across them as Aura.`;
     try {
-      const d = await callAnthropic(synthKey, { model: await anthropicModel(env), max_tokens: 1500, system: synthSys, messages: [{ role: "user", content: synthUser }] });
+      const d = await callAnthropic(synthKey, { model: _synthModel, max_tokens: 1500, system: synthSys, messages: [{ role: "user", content: synthUser }] });
       if (d && d.ok) { synthesis = (d.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim() || null; if (!synthesis) synthError = "synthesis returned empty text; stop_reason=" + (d.stop_reason || "?"); }
       else synthError = "synthesis call failed: " + ((d && d.error) || "unknown") + " status=" + ((d && d.status) || "?");
     } catch (e) { synthError = "synthesis threw: " + (e && e.message ? e.message : String(e)); }
   } else synthError = "no anthropic key for synthesis";
-  return { ok: true, task, brains_answered: results.map(r => r.brain), synthesis, synthError, spread: results.map(r => ({ brain: r.brain, label: r.label, text: r.text })) };
+  return { ok: true, task, brains_answered: results.map(r => r.brain), synthesis, synthError, synth_model: _synthModel, spread: results.map(r => ({ brain: r.brain, label: r.label, text: r.text })) };
 }
 
 // ══ THE FUNCTION REFUSES A MODEL IT CANNOT SERVE (v4.9.914) ══════════════════════════════════════

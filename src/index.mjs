@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.955-2026-08-07-an-argument-silently-ignored";
+const BUILD = "aura-core-v4.9.956-2026-08-08-the-count-is-identity-the-keys-are-noise";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -28309,11 +28309,25 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       await Promise.all(prefixes.map(async (p) => {
         try { const l = await env.AURA_KV.list({ prefix: p, limit: 1000 });
               const n = (l?.keys || []).length;
-              if (n) kv[p] = { keys: n + (l?.list_complete === false ? "+" : ""),
-                               sample: (l.keys || []).slice(0, 3).map((k) => k.name) }; } catch {}
+              // ══ THE COUNT IS IDENTITY. THE SAMPLE KEYS ARE NOISE. (2026-08-08) ══════════════
+              // MEASURED: WHERE is ~750 tokens of her cached prefix on every single call, and roughly
+              // 40% of it was three sample key NAMES per prefix -
+              // "vidcache:7a5eb09abc36a48a1964e4d1", "imgcache:0281b327be030f45b594cbe8",
+              // "balance:applied:anthropic:2026-07-18". Opaque hashes and dated rows, riding in her
+              // identity, on every question, forever. They tell her nothing she can act on: knowing
+              // there are 35 imgcache keys is her shape; knowing one of them is 0281b327 is a lookup
+              // she can do with LISTKV for free when she actually needs a key.
+              // Kept ONLY when WHERE was asked about a specific term, because then the matching key
+              // name IS the answer to what was asked.
+              if (n) kv[p] = wTerm
+                ? { keys: n + (l?.list_complete === false ? "+" : ""),
+                    sample: (l.keys || []).slice(0, 3).map((k) => k.name) }
+                : { keys: n + (l?.list_complete === false ? "+" : "") }; } catch {}
       }));
       const kvHit = wTerm ? Object.fromEntries(Object.entries(kv).filter(([p, v]) =>
         p.includes(wTerm) || (v.sample || []).some((k) => k.toLowerCase().includes(wTerm)))) : kv;
+      // NOTE: the filter above only runs when wTerm is set, which is the same branch that still
+      // carries `sample` - so dropping samples on the unfiltered path cannot break term search.
 
       if (!wTerm) {
         try {

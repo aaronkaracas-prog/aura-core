@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.957-2026-08-08-a-liveness-probe-must-not-invoke-a-model";
+const BUILD = "aura-core-v4.9.958-2026-08-08-both-halves-or-neither";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -20331,12 +20331,50 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             }));
             const doResult = await initResp.json();
             if (!doResult || !doResult.ok) {
-              // DO init failed, but D1 record exists. Log it but continue - entity is still usable via D1
-              console.warn(`[PTA_ENTITY] DO init failed for ${id}: ${doResult?.error || 'unknown error'}`);
+              throw new Error("DO init returned not-ok: " + (doResult?.error || "unknown error"));
             }
           } catch (e) {
-            // DO init network error, but D1 record exists. Log but continue.
-            console.warn(`[PTA_ENTITY] DO init error for ${id}: ${e.message}`);
+            // ══ BOTH, OR NEITHER. "STILL USABLE VIA D1" WAS THE BUG. (fixed 2026-08-08) ══════════
+            //
+            // This used to log and continue on DO init failure, with the comment "entity is still
+            // usable via D1". It is not usable - it is HALF CREATED, and the half that is missing is
+            // the one that holds the chain.
+            //
+            // MEASURED on live data today:
+            //   PTA_GET pta_215d1667640a166a  -> 49-event chain, DO alive        (made by PTA_CREATE, DO first)
+            //   PTA_GET pta_2efed02e1191ea04  -> "Failed to retrieve PTA state"  (made here, D1 only)
+            // FiveBallTattoo has a complete D1 row - name, address, phone, place_id - and NO DURABLE
+            // OBJECT AT ALL. Fourteen businesses are in that state. They can be found and cannot hold
+            // a single fact.
+            //
+            // Aura named this herself when asked for the largest architectural risk in the system:
+            // "two incompletely coupled authorities for the same person, written non-atomically, in
+            // opposite orders, with partial success treated as success." This line is the partial
+            // success being treated as success.
+            //
+            // AND IT BLOCKS THE ENTITY-WRITE PATH. PTA_EVENT writes to the DO. Appending a fact to an
+            // entity whose DO was never initialised creates a chain with no discoverable owner - the
+            // same bug from the other side. Nothing that learns about a merchant can be built on a
+            // layer where the two authorities disagree about whether the merchant exists.
+            //
+            // So the D1 row is rolled back and the create FAILS LOUDLY. A caller that sees an error
+            // retries or reports; a caller that sees success and got half an entity has no way to
+            // know. Half a record is worse than no record, because only one of them tells you.
+            console.warn(`[PTA_ENTITY] DO init failed for ${id} - rolling back the D1 row: ${e.message}`);
+            try {
+              await db.prepare("DELETE FROM pta_entities WHERE id = ?").bind(id).run();
+            } catch (delErr) {
+              // Rollback itself failed. Now there IS a D1-only row and the only honest thing is to
+              // say so in the error, with the id, so it can be repaired rather than discovered later.
+              return { cmd: "PTA_ENTITY", payload: { ok: false, error:
+                "DO init failed AND the D1 rollback failed - entity " + id + " exists in D1 with no " +
+                "Durable Object. This is the split-brain state. Repair or delete it explicitly.",
+                orphan_id: id, do_error: String(e?.message ?? e), rollback_error: String(delErr?.message ?? delErr) } };
+            }
+            return { cmd: "PTA_ENTITY", payload: { ok: false, error:
+              "Entity NOT created: the Durable Object failed to initialise, so the D1 row was rolled " +
+              "back. Both halves or neither - a D1 row with no DO can be found but cannot hold a chain.",
+              do_error: String(e?.message ?? e) } };
           }
         } catch (e) {
           // THE RACE, now caught instead of duplicating: another request inserted the same identity
@@ -27969,6 +28007,63 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         };
       } catch (e) {
         return { cmd: "BELIEF_MERGE", payload: { ok: false, error: "Merge failed: " + (e && e.message ? e.message : String(e)) } };
+      }
+    }
+
+    case "PTA_REPAIR": {
+      // ══ FOURTEEN LOOKUPS WITH NO BRAINS ══════════════════════════════════════════════════════
+      // PTA_ENTITY CREATE wrote D1 first and let DO init fail silently - "entity is still usable via
+      // D1". Fixed at the writer, but that cannot reach what was already written. MEASURED:
+      // FiveBallTattoo has a full D1 row and PTA_GET returns "Failed to retrieve PTA state".
+      // This initialises the missing Durable Object from the D1 row that already exists. It CREATES
+      // nothing new and consents to nothing new - the entity was already introduced when its row was
+      // written; only the half that holds the chain is missing.
+      //
+      //   PTA_REPAIR           show which entities have no Durable Object
+      //   PTA_REPAIR CONFIRM   initialise the missing ones
+      if (!isOp) return { cmd: "PTA_REPAIR", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const prConfirm = args.some(a => String(a || "").toUpperCase() === "CONFIRM");
+      try {
+        const db = env.AURA_MEMORY;
+        const rows = await db.prepare("SELECT id, type, name, identity_key FROM pta_entities LIMIT 500").all();
+        const broken = [], healthy = [], repaired = [], failed = [];
+        for (const e of (rows?.results || [])) {
+          let alive = false;
+          try {
+            const stub = env.PTA_DO.get(env.PTA_DO.idFromName(e.id));
+            const r = await stub.fetch(new Request("http://do", { method: "POST",
+              body: JSON.stringify({ method: "getState", params: [] }) }));
+            const j = await r.json();
+            alive = !!(j && j.ok);
+          } catch {}
+          if (alive) { healthy.push(e.id); continue; }
+          broken.push({ id: e.id, type: e.type, name: String(e.name || "").slice(0, 40) });
+          if (prConfirm) {
+            try {
+              const stub = env.PTA_DO.get(env.PTA_DO.idFromName(e.id));
+              const r = await stub.fetch(new Request("http://do", { method: "POST",
+                body: JSON.stringify({ method: "init",
+                  params: [e.id, e.type, e.name, e.identity_key || "", "", "pta"] }) }));
+              const j = await r.json();
+              if (j && j.ok) repaired.push(e.id); else failed.push({ id: e.id, error: j?.error || "init not ok" });
+            } catch (err) { failed.push({ id: e.id, error: String(err?.message ?? err) }); }
+          }
+        }
+        return {
+          cmd: "PTA_REPAIR",
+          payload: {
+            ok: true, mode: prConfirm ? "applied" : "dry_run",
+            examined: (rows?.results || []).length,
+            healthy: healthy.length, missing_do: broken.length,
+            repaired: repaired.length, failed,
+            entities: broken.slice(0, 25),
+            note: prConfirm
+              ? "Durable Objects initialised from the D1 rows that already existed. No entity was created and no consent was implied - the row was the introduction; this restores the half that holds the chain."
+              : "NOTHING CHANGED. These entities exist in D1 and have no Durable Object, so they can be found and cannot hold a single fact. PTA_REPAIR CONFIRM initialises them from their own D1 rows."
+          }
+        };
+      } catch (e) {
+        return { cmd: "PTA_REPAIR", payload: { ok: false, error: "Repair failed: " + (e && e.message ? e.message : String(e)) } };
       }
     }
 

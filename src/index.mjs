@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.956-2026-08-08-the-count-is-identity-the-keys-are-noise";
+const BUILD = "aura-core-v4.9.957-2026-08-08-a-liveness-probe-must-not-invoke-a-model";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -36953,12 +36953,41 @@ async function watchResources(env) {
       const td = await tr.json(); const bal = parseFloat(td.balance);
       if (!isNaN(bal) && bal < 10) concerns.push({ provider: "twilio", level: bal < 3 ? "critical" : "low", value: bal });
     } catch {}
-    // Anthropic (the brain) â€” a failed ping with credit-balance error is critical
+    // ══ A LIVENESS CHECK THAT RUNS THE MODEL (fixed 2026-08-08) ═════════════════════════════════
+    //
+    // This POSTed to /v1/messages with model claude-sonnet-4-5 - a REAL INFERENCE - to find out
+    // whether the key works. watchResources is throttled to 10 minutes and fires from the cron, so it
+    // ran SIX TIMES AN HOUR, 144 TIMES A DAY, whether Aaron was here or not. AIMARGIN showed it:
+    // `healthcheck: 77 calls` was the largest caller of the day, ahead of every real question, and
+    // `claude-sonnet-4-5: $0.007623` was spend on a day nothing was asked of Claude.
+    //
+    // IT NEVER NEEDED A MODEL CALL. Every other provider in this file is checked against the free
+    // list endpoint, and ANTHROPIC ALREADY IS, thirty lines up at the SERVICE_STATUS check:
+    //     GET https://api.anthropic.com/v1/models   with x-api-key
+    // A 401 means the key is dead; a 400/402 with a credit-balance message means the account is
+    // empty. Both are exactly what this was written to catch, and neither requires generating a
+    // token. The inference was doing the job the header already does.
+    //
+    // This is the shape Aaron kept naming and I kept missing: an idle system that costs money. Not
+    // the platform - a paid ping someone left on a timer, the same class as consolidation running on
+    // every turn. Being alive is free; INVOKING A MODEL is the only thing that costs, and a liveness
+    // probe is the one place that should never invoke one.
     try {
       const ak = await getSecret(env, "anthropic");
       if (ak) {
-        const r = await brainFetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": ak, "anthropic-version": "2023-06-01", "content-type": "application/json" }, body: JSON.stringify({ model: "claude-sonnet-4-5", max_tokens: 1, messages: [{ role: "user", content: "hi" }] }) }, env, "healthcheck");
-        if (!r.ok) { const e = await r.json().catch(()=>({})); const msg = e?.error?.message || ""; if (/credit balance/i.test(msg)) concerns.push({ provider: "anthropic", level: "critical", note: "brain credits low/empty" }); }
+        const r = await pfetch(env, "anthropic", "healthcheck", "https://api.anthropic.com/v1/models",
+          { headers: { "x-api-key": ak, "anthropic-version": "2023-06-01" } });
+        if (!r.ok) {
+          const e = await r.json().catch(() => ({}));
+          const msg = e?.error?.message || "";
+          // 401 = key revoked or wrong. A credit message on any status = account empty. Both critical,
+          // and both visible without asking the model to say a word.
+          if (/credit balance|insufficient|quota/i.test(msg) || r.status === 402) {
+            concerns.push({ provider: "anthropic", level: "critical", note: "brain credits low/empty" });
+          } else if (r.status === 401 || r.status === 403) {
+            concerns.push({ provider: "anthropic", level: "critical", note: "brain key rejected (" + r.status + ")" });
+          }
+        }
       }
     } catch {}
     // OpenAI key validity

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.991-2026-08-09-read-it-before-it-is-sealed";
+const BUILD = "aura-core-v4.9.992-2026-08-09-my-hours-are-not-my-tax-id";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -3875,6 +3875,30 @@ async function ptaWakeGate(env, opts) {
 // separate act with its own command, because "stop writing about me" and "delete what you wrote" are
 // different requests and a system that conflates them cannot honour either precisely.
 const PTA_CAP_REMEMBER = "remember";
+
+// ══ REMEMBERING MY HOURS IS NOT HOLDING MY TAX ID ═══════════════════════════════════════════════
+//
+// can_remember was one permission covering every fact about an entity, and that is fine while the
+// facts are hours, services and what somebody said on a call - public-shaped things a business tells
+// anyone. It is not fine for an EIN, a bank account or a corporate registration.
+//
+// A shop that grants "remember my hours" during onboarding has not granted "hold my tax ID", and a
+// permission model where those are the same word cannot tell the difference later - which means the
+// chain cannot answer "what did they actually agree to" for the one class of fact where the answer
+// matters most.
+//
+// SO A SECOND CAPABILITY, asked for separately. can_remember carries operational facts; can_hold
+// carries identifiers a business would not publish. The event TYPE decides which is required, so a
+// caller cannot get credentials in under the operational grant by mislabelling them - the check is
+// on what is being written, not on what the caller says it is.
+//
+// WHY NOT JUST SEAL THEM HARDER: sealing protects the value at rest and says nothing about consent.
+// The question here is not "can this be read" but "was this ever agreed to", and that is an edge,
+// not an encryption setting.
+const PTA_CAP_HOLD = "hold";
+const PTA_CREDENTIAL_TYPES = new Set([
+  "CREDENTIAL", "TAX", "EIN", "BANK", "PAYMENT", "REGISTRATION", "LICENSE", "INSURANCE", "SSN", "IDENTITY_DOC",
+]);
 
 async function ptaCan(env, actorId, capability, subjectId) {
   const cap = String(capability || "").toLowerCase().replace(/^can_/, "");
@@ -29058,12 +29082,24 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
               "must be FROM someone TO someone - an unattributed write is exactly what this gate exists " +
               "to prevent. Set config:aura:pta_id." } };
         }
-        const rmCan = await ptaCan(env, rmActor, PTA_CAP_REMEMBER, rmId);
+        // The event type decides which capability is required. A CREDENTIAL/TAX/BANK event needs
+        // can_hold; everything else needs can_remember. Checked against the TYPE rather than the
+        // caller's intent, so an EIN cannot arrive under the operational grant by being labelled HOURS
+        // - though nothing stops a caller putting one in the body of an HOURS event, which is why this
+        // is a consent boundary and not a security control.
+        const rmIsCredential = PTA_CREDENTIAL_TYPES.has(rmType);
+        const rmNeeded = rmIsCredential ? PTA_CAP_HOLD : PTA_CAP_REMEMBER;
+        const rmCan = await ptaCan(env, rmActor, rmNeeded, rmId);
         if (!rmCan || !rmCan.allowed) {
           return { cmd: "PTA_REMEMBER", payload: { ok: false, error: "NO_GRANT", entity: rmId,
-            actor: rmActor, reason: rmCan?.reason || "no can_remember edge",
-            what_to_do: "This entity has not granted can_remember. The fact stays in operator-scoped " +
-              "storage. Issue the grant with PTA_GRANT <them> <aura> {\"permission\":{\"can_remember\":true}} " +
+            actor: rmActor, required: "can_" + rmNeeded, event_type: rmType,
+            reason: rmCan?.reason || ("no can_" + rmNeeded + " edge"),
+            what_to_do: (rmIsCredential
+              ? "This is a CREDENTIAL-class event (" + rmType + ") and needs can_hold, which is a SEPARATE " +
+                "grant from can_remember - agreeing to have hours remembered is not agreeing to have a tax ID " +
+                "held. The fact stays in operator-scoped storage. "
+              : "This entity has not granted can_remember. The fact stays in operator-scoped storage. ") +
+              "Issue the grant with PTA_GRANT <them> <aura> {\"permission\":{\"can_" + rmNeeded + "\":true}} " +
               "when they have actually agreed to it - revoking it later stops further appends, and the " +
               "chain already written stays as the record of what was true." } };
         }

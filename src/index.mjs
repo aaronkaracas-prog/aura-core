@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.995-2026-08-09-the-line-between-find-and-onboard";
+const BUILD = "aura-core-v4.9.996-2026-08-09-the-third-mint-path";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -17651,8 +17651,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // trusting what this sweep happened to see. The name string is what it takes.
             const ob = await processCommand("ONBOARD " + r.name + ", " + String(r.address || swRaw).split(",").slice(-3).join(",").trim(), env, isOp);
             const op = (ob && ob.payload) ? ob.payload : ob;
-            if (op?.ok && op?.flow?.pta_minted) onboarded.push({ name: r.name, pta: op?.pta?.id || null, mode: op.mode });
-            else failed.push({ name: r.name, error: op?.error || "onboard did not mint a PTA", flow: op?.flow || null });
+            // ══ AN ID OR IT DID NOT HAPPEN ═══════════════════════════════════════════════════
+            // This trusted flow.pta_minted and reported onboarded: 1 with pta: null - a success count
+            // for an entity whose id nobody had. Same failure as every swallowed result today: the
+            // claim and the artifact came apart, and only the claim was read.
+            const _ptaId = op?.pta?.id || op?.pta?.pta_id || null;
+            if (op?.ok && _ptaId) onboarded.push({ name: r.name, pta: _ptaId, mode: op.mode, primary: op?.pta?.primary || null });
+            else failed.push({ name: r.name, error: op?.error || (op?.ok ? "onboard returned ok but no PTA id - nothing to point at" : "onboard failed"),
+                               pta_said: op?.pta || null, flow: op?.flow || null });
           } catch (e) { failed.push({ name: r.name, error: String(e?.message ?? e) }); }
         }
         return { cmd: "PTA_SWEEP", payload: { ok: true, mode: "applied", query: swRaw,
@@ -17899,12 +17905,36 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const obContact = obRead.contact || {};
       const obIdEmail = obContact.email && /@/.test(String(obContact.email)) ? ("email:" + String(obContact.email).trim()) : null;
       const obIdPhone = obContact.phone ? ("phone:" + String(obContact.phone).replace(/[^0-9+]/g, "")) : null;
-      const obIdentity = obIdEmail || obIdPhone;
+      // ══ THE THIRD MINT PATH (fixed 2026-08-09) ═══════════════════════════════════════════════
+      //
+      // This called PTA_CREATE with email-or-phone and ignored place_id entirely. MEASURED: PTA_SWEEP
+      // onboarded RISING DRAGON TATTOOS NYC, then reported already_known: 0 on the very next dry run -
+      // because the sweep looks a business up by place_id and this had keyed it on email. Re-running
+      // would have onboarded the same shop again at 88 seconds and real money per pass.
+      //
+      // Three mint paths existed: PTA_ENTITY CREATE, ingestBusiness, and this. The first two were
+      // reconciled hours ago - pickIdentity's ordering (place_id > phone > site > email) with every
+      // other contact registered as an alias. This one was not, so the one command that actually
+      // PRODUCES was the one still writing to its own keyspace.
+      //
+      // Now it goes through ingestBusiness like everything else. place_id comes from the Google Places
+      // discovery this command already did - it had the strongest identifier in hand and was throwing
+      // it away.
+      const obPlaceId = (discovered.places && discovered.places.place_id) ? String(discovered.places.place_id) : null;
+      const obIdentity = obPlaceId || obIdEmail || obIdPhone;
       if (obIdentity) {
         try {
-          const obAbout = ((obRead.what_it_is || "") + " Offerings: " + (Array.isArray(obRead.offerings) ? obRead.offerings.join(", ") : "") + ". Serves: " + (obRead.serves || "") + ".").slice(0, 900);
-          const obPcCmd = "PTA_CREATE " + JSON.stringify({ identity: obIdentity, name: obRead.business_name || obRaw, about: obAbout, app: "openforbusiness", email_welcome: false });
-          const pr = await processCommand(obPcCmd, env, isOp); obPta = (pr && pr.payload) ? pr.payload : pr;
+          const _obIng = await ingestBusiness(env, {
+            name: obRead.business_name || obRaw,
+            place_id: obPlaceId,
+            phone: obContact.phone || null,
+            website: obSiteUrl || (obContact.website || null),
+            email: obContact.email || null,
+          }, isOp);
+          obPta = _obIng && _obIng.ok
+            ? { ok: true, id: _obIng.id, pta_id: _obIng.id, mode: _obIng.mode, primary: _obIng.primary,
+                aliased: _obIng.aliased, alias_failed: _obIng.alias_failed }
+            : { ok: false, error: (_obIng && _obIng.error) || "ingestBusiness returned no id", detail: _obIng };
         } catch (e) { obPta = { ok: false, error: String(e.message) }; }
       }
       // 5b) INTO OPENFORBUSINESS â€” state machine (lead), QR doorway, archetype for their home screen

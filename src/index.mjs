@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.981-2026-08-09-the-note-must-match-the-protocol";
+const BUILD = "aura-core-v4.9.982-2026-08-09-one-shop-one-primary-key";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -3405,6 +3405,72 @@ async function grantState(env, subjectId, actorId, capability) {
 // config:aura:pta_id and nowhere else; anything needing it asks here. Returns null rather than a
 // guess - an unattributed write is exactly what the permission layer exists to prevent, and a
 // fallback id would manufacture an actor nobody granted anything to.
+// ══ ONE SHOP, ONE PRIMARY KEY — THE INGEST ORDERING (2026-08-09) ═════════════════════════════
+//
+// Aliases mean every contact ever seen resolves to one entity, whichever arrived first. That fixes
+// LOOKUP. It does not fix which key gets written as the PRIMARY when a shop is ingested with several
+// contacts at once, and "whichever the caller happened to pass" is how one parlor becomes two records
+// in a pull of ten thousand.
+//
+// THE ORDER, and the reason for it:
+//   1. place_id  Google's stable id. Survives a rename, a phone change, a move, a new website. It is
+//                the only field here that identifies the PLACE rather than a way to contact it.
+//   2. phone     Changes rarely, and a business that changes its number usually keeps everything else.
+//   3. website   Changes more often than a phone but less than an email.
+//   4. email     Most volatile - contact@ addresses get replaced with every web rebuild.
+//
+// EVERY OTHER CONTACT BECOMES AN ALIAS, so ordering decides which key is primary and NOTHING is lost.
+// A shop ingested by place_id today is still findable by the phone number in the same record.
+//
+// AND A BUSINESS WITH NO CONTACT AT ALL GETS NO KEY, deliberately: the onboarding path currently
+// creates `PTA_ENTITY CREATE business <name>` with no identity when no email is given, which mints an
+// entity that can never be found again by any contact and will be re-minted on the next sighting.
+// Returning null here makes that visible to the caller instead of silently producing an orphan.
+function pickIdentity(rec) {
+  const r = rec || {};
+  const clean = (v) => String(v ?? "").trim();
+  const cands = [
+    ["place_id", clean(r.place_id || r.placeId || r.google_place_id)],
+    ["phone",    clean(r.phone || r.formatted_phone_number || r.international_phone_number)],
+    ["site",     clean(r.website || r.site || r.url)],
+    ["email",    clean(r.email)],
+  ];
+  for (const [kind, val] of cands) {
+    if (!val) continue;
+    return { key: kind + ":" + val, kind, value: val,
+             aliases: cands.filter(([k, v]) => v && k !== kind).map(([k, v]) => k + ":" + v) };
+  }
+  return { key: null, kind: null, value: null, aliases: [],
+           why: "no place_id, phone, website or email - this business cannot be given a durable identity, " +
+                "and creating it without one mints a row nothing can ever find again." };
+}
+
+// Create a business from an ingested record: primary key by the ordering above, every other contact
+// attached as an alias so a later sighting through ANY of them resolves here.
+async function ingestBusiness(env, rec, isOp) {
+  const pick = pickIdentity(rec);
+  const name = String(rec?.name || "").trim();
+  if (!name) return { ok: false, error: "NO_NAME", what_to_do: "A business needs a name to be created." };
+  if (!pick.key) return { ok: false, error: "NO_DURABLE_IDENTITY", name, why: pick.why,
+    what_to_do: "Skip it or find a contact first. An entity with no identity key is re-minted on every " +
+      "future sighting, which is the split-brain this ordering exists to prevent." };
+  const created = await processCommand(
+    "PTA_ENTITY CREATE business " + JSON.stringify(name).replace(/^"|"$/g, "") + " identity:" + pick.key,
+    env, isOp);
+  const id = created?.payload?.entity?.id;
+  if (!id) return { ok: false, error: "CREATE_FAILED", detail: created?.payload };
+  const aliased = [];
+  for (const a of pick.aliases) {
+    try {
+      const r = await processCommand("PTA_ALIAS ADD " + id + " " + a, env, isOp);
+      if (r?.payload?.ok) aliased.push(a.split(":")[0]);
+    } catch {}
+  }
+  return { ok: true, id, name, mode: created?.payload?.mode, primary: pick.kind, aliased,
+           note: "Primary key is " + pick.kind + " by the ingest ordering (place_id > phone > site > email). " +
+                 "The other contacts are aliases, so a later sighting through any of them finds this entity." };
+}
+
 async function auraPtaId(env) {
   try {
     const v = await env.AURA_KV.get("config:aura:pta_id");
@@ -9654,9 +9720,25 @@ async function successionGate(env) {
         companyPtaId = pc && (pc.pta || pc.pta_id || pc.entity_id || (pc.entity && pc.entity.id)) || null;
         out.steps.pta = { id: companyPtaId, ok: !!(pc && pc.ok !== false) };
       } else {
-        const ent = await step(`PTA_ENTITY CREATE business ${JSON.stringify(ob.name).replace(/^"|"$/g, "")}`);
-        companyPtaId = ent && ent.entity ? ent.entity.id : null;
-        out.steps.pta = { id: companyPtaId, ok: !!companyPtaId, note: "no email identity given - created as business entity" };
+        // ══ A BUSINESS WITH NO IDENTITY KEY CANNOT BE FOUND AGAIN ═══════════════════════════
+        // This created `PTA_ENTITY CREATE business <name>` with NO identity when the caller gave no
+        // email or phone - an entity that no future contact can resolve to, so the next sighting mints
+        // a second one. Now it applies the ingest ordering (place_id > phone > site > email) against
+        // whatever the onboarding record actually carries, and attaches the rest as aliases.
+        const _ing = await ingestBusiness(env, { name: ob.name, place_id: ob.place_id, phone: ob.phone,
+          website: ob.website || ob.site, email: ob.email }, isOp);
+        if (_ing.ok) {
+          companyPtaId = _ing.id;
+          out.steps.pta = { id: companyPtaId, ok: true, primary: _ing.primary, aliased: _ing.aliased, note: _ing.note };
+        } else {
+          // Fall back to the old keyless create rather than failing onboarding outright - but SAY so,
+          // because this row will be re-minted on the next sighting and somebody needs to know.
+          const ent = await step(`PTA_ENTITY CREATE business ${JSON.stringify(ob.name).replace(/^"|"$/g, "")}`);
+          companyPtaId = ent && ent.entity ? ent.entity.id : null;
+          out.steps.pta = { id: companyPtaId, ok: !!companyPtaId, identity: null, warning:
+            "CREATED WITHOUT A DURABLE IDENTITY (" + (_ing.error || "no contact") + ") - nothing can resolve to " +
+            "this entity later, so a future sighting will create a SECOND one. Add a contact and PTA_ALIAS ADD it." };
+        }
       }
 
       // 2) AUTO-DISCOVER THE FLEET via VesselAPI search (by name/owner) - THE no-typing move
@@ -22808,6 +22890,38 @@ Be concise. This update will be compared against the next update to show drift o
               + "people's chains stay whole: what survives is that something happened, not what it was.",
           verify_with: "PTA_ENTITY GET " + id } };
       }
+    }
+
+    case "PTA_INGEST": {
+      // ══ THE INGEST DOOR — ORDERING APPLIED, ALIASES ATTACHED ═════════════════════════════════
+      // One shop, one primary key, every other contact an alias. This is what the scale pull calls
+      // instead of PTA_ENTITY CREATE, because CREATE takes whichever identity the caller happened to
+      // pass and that is how one parlor becomes two records in a run of ten thousand.
+      //
+      //   PTA_INGEST {"name":"Five Ball Tattoo","place_id":"ChIJ...","phone":"+13109631344","website":"..."}
+      //
+      // Dry by default so a pull can be inspected before it writes.
+      //   PTA_INGEST CONFIRM {...}   actually create
+      if (!isOp) return { cmd: "PTA_INGEST", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const inConfirm = /(^|\s)CONFIRM(\s|$)/i.test(rest);
+      const inJson = (rest.match(/\{[\s\S]*\}/) || [])[0];
+      if (!inJson) return { cmd: "PTA_INGEST", payload: { ok: false,
+        error: 'Usage: PTA_INGEST [CONFIRM] {"name":"...","place_id":"...","phone":"...","website":"..."}' } };
+      let inRec = null;
+      try { inRec = JSON.parse(inJson); } catch (e) {
+        return { cmd: "PTA_INGEST", payload: { ok: false, error: "Invalid JSON: " + (e?.message || String(e)) } };
+      }
+      const pick = pickIdentity(inRec);
+      if (!inConfirm) {
+        return { cmd: "PTA_INGEST", payload: { ok: true, mode: "dry_run", name: inRec?.name || null,
+          would_use_primary: pick.kind, primary_key: pick.key, would_alias: pick.aliases.map(a => a.split(":")[0]),
+          why: pick.why,
+          ordering: "place_id > phone > site > email - place_id identifies the PLACE; the rest identify a way to contact it",
+          note: "NOTHING CREATED. Re-run with CONFIRM. If would_use_primary is null this record has no durable " +
+            "identity and creating it would mint a row nothing can find again." } };
+      }
+      const res = await ingestBusiness(env, inRec, isOp);
+      return { cmd: "PTA_INGEST", payload: res };
     }
 
     case "PTA_FIXTURE": {

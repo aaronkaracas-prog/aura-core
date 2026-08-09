@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.965-2026-08-09-classify-by-structure-not-by-name";
+const BUILD = "aura-core-v4.9.966-2026-08-09-stop-inferring-use-the-named-list";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -28278,6 +28278,65 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         } };
       } catch (e) {
         return { cmd: "PTA_REMEMBER", payload: { ok: false, error: "Remember failed: " + (e && e.message ? e.message : String(e)) } };
+      }
+    }
+
+    case "PTA_DELETE_NAMED": {
+      // ══ A NAMED LIST, NOT A HEURISTIC (2026-08-09) ══════════════════════════════════════════
+      //
+      // Three classifiers were tried on this store and all three were wrong. "No relationships" kept
+      // the entire propagation test graph, because fan-out tests exist to create edges. "Ingested
+      // detail" would have DELETED FiveBallTattoo and OceanFrontTattoo - two real Venice parlors -
+      // because PTA_ENTITY LIST returns sealed metadata that only GET unseals, so the field I was
+      // reading was empty for reasons that had nothing to do with realness.
+      //
+      // Grok's ruling, and it is correct: STOP INFERRING. The population is seventeen businesses. A
+      // named list approved by the operator beats any rule I can write, and a wrong rule here deletes
+      // a real parlor.
+      //
+      // MATCHES BY EXACT NAME, reports every id it resolved, and refuses to touch anything it cannot
+      // match exactly. Names that resolve to nothing are reported, not skipped quietly - a delete list
+      // that silently misses half its targets is how you think a store is clean when it is not.
+      //
+      //   PTA_DELETE_NAMED <name> [<name> ...]           dry run
+      //   PTA_DELETE_NAMED CONFIRM <name> [<name> ...]   delete
+      if (!isOp) return { cmd: "PTA_DELETE_NAMED", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const dnConfirm = args.some(a => String(a || "").toUpperCase() === "CONFIRM");
+      const dnNames = args.filter(a => String(a || "").toUpperCase() !== "CONFIRM").map(a => String(a).trim()).filter(Boolean);
+      if (!dnNames.length) return { cmd: "PTA_DELETE_NAMED", payload: { ok: false,
+        error: "Usage: PTA_DELETE_NAMED [CONFIRM] <exact name> [<exact name> ...]",
+        note: "Exact names from PTA_ENTITY LIST. No patterns, no prefixes - this command deletes what you name and nothing else." } };
+      try {
+        const db = env.AURA_MEMORY;
+        const matched = [], unmatched = [], deleted = [], failed = [];
+        for (const nm of dnNames) {
+          const exact = await db.prepare("SELECT id, type, name FROM pta_entities WHERE name = ?").bind(nm).all();
+          const rows = exact?.results || [];
+          if (!rows.length) { unmatched.push(nm); continue; }
+          for (const r of rows) matched.push({ id: r.id, type: r.type, name: r.name });
+        }
+        if (dnConfirm) {
+          for (const m of matched) {
+            try {
+              await db.prepare("DELETE FROM pta_edges WHERE from_id = ? OR to_id = ?").bind(m.id, m.id).run();
+              await db.prepare("DELETE FROM pta_entities WHERE id = ?").bind(m.id).run();
+              deleted.push(m.id);
+            } catch (err) { failed.push({ id: m.id, name: m.name, error: String(err?.message ?? err) }); }
+          }
+        }
+        return {
+          cmd: "PTA_DELETE_NAMED",
+          payload: {
+            ok: true, mode: dnConfirm ? "applied" : "dry_run",
+            asked_for: dnNames.length, matched: matched.length, deleted: deleted.length,
+            unmatched, failed, entities: matched,
+            note: dnConfirm
+              ? "Deleted by exact name. Anything in `unmatched` was NOT found and NOT deleted - check the spelling against PTA_ENTITY LIST before assuming it is gone."
+              : "NOTHING DELETED. Every id above resolved from an exact name match. Re-run with CONFIRM as the first argument."
+          }
+        };
+      } catch (e) {
+        return { cmd: "PTA_DELETE_NAMED", payload: { ok: false, error: "Delete failed: " + (e && e.message ? e.message : String(e)) } };
       }
     }
 

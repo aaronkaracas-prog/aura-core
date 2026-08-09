@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.972-2026-08-09-i-built-a-door-that-already-existed";
+const BUILD = "aura-core-v4.9.973-2026-08-09-one-place-decides-if-a-grant-is-live";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -3341,6 +3341,78 @@ async function unsealFor(env, ptaId, stored) {
 // the person like any other. **The subject grants Aura initiative over their own continuity**, which
 // is the polarity the law already froze.
 // Idempotent: scheduling twice restates one grant rather than stacking two.
+// ══ A3 — ONE PLACE THAT DECIDES WHETHER A GRANT IS ACTIVE (2026-08-09) ═══════════════════════
+//
+// Grok: "One replayGrantAt / authorizeAt used by remember, accept path checks, revoke, GET." The
+// reason is measurable: five separate SELECTs in this file decide whether a grant is live, three are
+// near-identical, and TWO OF THEM HARDCODE 'pta_aura'. That id was correct until the store was wiped
+// an hour ago; she is pta_d544612652d8f46d now, and those two call sites are silently broken - they
+// will find no grant and report no permission, which reads exactly like a subject who never agreed.
+//
+// That is the whole argument for one resolver. Not elegance: a rule copied five times drifts, and the
+// copies that drift are the ones nobody looks at until they refuse something real.
+//
+// WHAT IT IS AND IS NOT. This is not event-sourced replay yet - the edge log is still a state column
+// in D1, and inventing a replay layer over a schema that does not have one would be building for a
+// design decision nobody has made. It is the SINGLE READ that every authorization goes through, with
+// the states named in one place. When the edge log becomes an append-only event stream, this function
+// is the only thing that changes.
+//
+// FOUR STATES, AND ONLY ONE AUTHORISES:
+//   none      nothing was ever offered
+//   pending   offered, not accepted. Offering is not consent.
+//   active    accepted and not withdrawn -> the only state that permits anything
+//   revoked   consent withdrawn. Never re-activated - a new consent is a new edge.
+async function grantState(env, subjectId, actorId, capability) {
+  const out = { state: "none", edge_id: null, permission: null, allowed: false, reason: "" };
+  if (!subjectId || !actorId) { out.reason = "subject and actor are both required"; return out; }
+  try {
+    const db = env.AURA_MEMORY;
+    const rows = await db.prepare(
+      "SELECT id, permission, state, updated_at FROM pta_edges " +
+      "WHERE from_id = ? AND to_id = ? AND edge_type = 'grant' ORDER BY updated_at DESC"
+    ).bind(subjectId, actorId).all();
+    const all = rows?.results || [];
+    if (!all.length) { out.reason = "no edge from the subject to the actor - nothing was ever granted"; return out; }
+    // An ACTIVE edge anywhere in the set authorises; otherwise report the most recent state, because
+    // "pending" and "revoked" are different answers and the caller needs to know which.
+    const live = all.find((e) => e.state === "active");
+    const chosen = live || all[0];
+    out.state = chosen.state; out.edge_id = chosen.id;
+    try { out.permission = JSON.parse(chosen.permission || "{}"); } catch { out.permission = {}; }
+    if (!live) {
+      out.reason = "an edge exists but none is active (" + chosen.state + ") - pending is not yet consent, " +
+        "revoked is consent withdrawn";
+      return out;
+    }
+    if (capability) {
+      const key = String(capability).replace(/^can_/, "");
+      if (out.permission["can_" + key] !== true) {
+        out.reason = "the grant is active but does not carry can_" + key;
+        return out;
+      }
+    }
+    out.allowed = true; out.reason = "active grant" + (capability ? " with can_" + String(capability).replace(/^can_/, "") : "");
+    return out;
+  } catch (e) {
+    out.reason = "grant lookup failed: " + (e?.message || String(e));
+    return out;
+  }
+}
+
+// ══ WHO AURA IS, ASKED ONCE ══════════════════════════════════════════════════════════════════
+// Two call sites hardcoded 'pta_aura' and broke the moment the store was wiped. Her id lives in
+// config:aura:pta_id and nowhere else; anything needing it asks here. Returns null rather than a
+// guess - an unattributed write is exactly what the permission layer exists to prevent, and a
+// fallback id would manufacture an actor nobody granted anything to.
+async function auraPtaId(env) {
+  try {
+    const v = await env.AURA_KV.get("config:aura:pta_id");
+    const id = String(v || "").trim();
+    return /^pta_/.test(id) ? id : null;
+  } catch { return null; }
+}
+
 async function ensureInitiativeGrant(env, subjectPta, actorPta, purpose) {
   if (!subjectPta || !actorPta || !purpose) return { ok: false, why: "need subject, actor and purpose" };
   try {
@@ -6273,7 +6345,10 @@ async function successionGate(env) {
                 "there is nobody to have granted it.",
         how: "SETKV config:owner:pta <pta_id> OVERRIDE_CONSTITUTIONAL" };
     }
-    const can = await ptaCan(env, "pta_aura", "evolve", owner);
+    // A3: a GRANT check needs her real entity, not the actor label. AURA_ACTOR_ID is deliberately a
+    // label for "Aura acting on her own account" (see its comment) - grants are FROM someone TO
+    // someone, and the someone is config:aura:pta_id.
+    const can = await ptaCan(env, (await auraPtaId(env)) || "__no_actor__", "evolve", owner);
     if (can?.allowed) {
       return { ok: true, owner, via_edge: can.via_edge || null,
         note: "Authorised by a live grant, not by a role. The owner can withdraw this by revoking that " +
@@ -6892,9 +6967,12 @@ async function successionGate(env) {
           const db = env.AURA_MEMORY;
           const now_ts = new Date().toISOString();
           let g;
-          const existing = await db.prepare(
-            "SELECT id, permission FROM pta_edges WHERE from_id = ? AND to_id = 'pta_aura' AND edge_type = 'grant' AND state = 'active' ORDER BY created_at DESC"
-          ).bind(owner).first().catch(() => null);
+          // A3: was hardcoded to 'pta_aura', which stopped existing when the store was wiped. Her id
+          // is config:aura:pta_id and this asks for it rather than assuming it.
+          const _auraId = await auraPtaId(env);
+          const existing = _auraId ? await db.prepare(
+            "SELECT id, permission FROM pta_edges WHERE from_id = ? AND to_id = ? AND edge_type = 'grant' AND state = 'active' ORDER BY created_at DESC"
+          ).bind(owner, _auraId).first().catch(() => null) : null;
           if (existing) {
             let perm = {}; try { perm = JSON.parse(existing.permission || "{}"); } catch {}
             const purposes = Array.isArray(perm.purposes) ? perm.purposes : [];
@@ -6932,9 +7010,15 @@ async function successionGate(env) {
         if (_sub === "REVOKE") {
           const db = env.AURA_MEMORY;
           const now = new Date().toISOString();
+          // A3: same hardcoded id, same breakage. A revoke that silently matches nothing is worse
+          // than one that errors - it reports success while the grant stays live.
+          const _auraId2 = await auraPtaId(env);
+          if (!_auraId2) return { cmd: "SELF_MOD", payload: { ok: false, error: "NO_ACTOR_IDENTITY",
+            what_to_do: "config:aura:pta_id is unset, so there is no actor whose grant could be revoked. " +
+              "Set it before relying on this path - a revoke that matches nothing would report success." } };
           const r = await db.prepare(
-            "UPDATE pta_edges SET state = 'revoked', updated_at = ? WHERE from_id = ? AND to_id = 'pta_aura' AND state = 'active'"
-          ).bind(now, owner).run().catch(() => null);
+            "UPDATE pta_edges SET state = 'revoked', updated_at = ? WHERE from_id = ? AND to_id = ? AND state = 'active'"
+          ).bind(now, owner, _auraId2).run().catch(() => null);
           const after = await successionGate(env);
           try { await processCommand("AUDIT_CHAIN WRITE " + owner + " revoked self-modification - " +
             (r?.meta?.changes ?? 0) + " edge(s)", env, true); } catch {}
@@ -16628,7 +16712,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
       let gate = null;
       try {
-        gate = await ptaWakeGate(env, { actor: "pta_aura", subject: cOwner, purpose: cPurpose });
+        gate = await ptaWakeGate(env, { actor: (await auraPtaId(env)) || "__no_actor__", subject: cOwner, purpose: cPurpose });
       } catch (e) {
         await noteSwallowed(env, "CARD:wake_gate", e);
         return { cmd: "CARD", payload: { ok: false, error: "GATE_UNAVAILABLE",
@@ -23024,7 +23108,7 @@ Be concise. This update will be compared against the next update to show drift o
               minted.ok ? (minted.minted ? "minted " + minted.edge : "reused " + minted.edge) : "FAILED: " + minted.why,
               !!minted.ok,
               "an intention whose actor was never granted anything is pre-dead the moment it is written");
-            const prodWake = await ptaWakeGate(env, { actor: "pta_aura", subject: pPerson.entity.id, purpose: "followup" });
+            const prodWake = await ptaWakeGate(env, { actor: (await auraPtaId(env)) || "__no_actor__", subject: pPerson.entity.id, purpose: "followup" });
             check("A PRODUCTION-SHAPED INTENTION IS ALLOWED", "allowed - the real path can pass",
               prodWake.allowed ? "allowed" : "REFUSED: " + (prodWake.code || prodWake.reason),
               prodWake.allowed,
@@ -23032,13 +23116,13 @@ Be concise. This update will be compared against the next update to show drift o
               + "production had no grant at all. If this refuses, the gate is perfect and the product "
               + "cannot use it");
             // And the same grant must NOT license a different purpose.
-            const prodOther = await ptaWakeGate(env, { actor: "pta_aura", subject: pPerson.entity.id, purpose: "marketing" });
+            const prodOther = await ptaWakeGate(env, { actor: (await auraPtaId(env)) || "__no_actor__", subject: pPerson.entity.id, purpose: "marketing" });
             check("that grant does not license a different purpose", "denied for purpose",
               prodOther.allowed ? "ALLOWED anything" : (prodOther.code || "denied"),
               !prodOther.allowed && prodOther.code === "PURPOSE_NOT_GRANTED",
               "minting a grant to unblock production must not mint a blanket one - that would trade a "
               + "broken product for an unscoped permission");
-            try { await db.prepare("DELETE FROM pta_edges WHERE to_id = 'pta_aura' AND from_id = ?").bind(pPerson.entity.id).run(); } catch {}
+            try { await db.prepare("DELETE FROM pta_edges WHERE to_id = ? AND from_id = ?").bind((await auraPtaId(env)) || "__no_actor__", pPerson.entity.id).run(); } catch {}
           }
 
           // ══ THROUGH THE REAL COMMAND, NOT THE HELPER (v4.9.837) ═════════════════════════════
@@ -23062,13 +23146,15 @@ Be concise. This update will be compared against the next update to show drift o
               + "entirely, so it stored undefined and every item was pre-dead. Only a test that runs "
               + "the actual command can see that");
             const spGrant = await db.prepare(
-              "SELECT permission FROM pta_edges WHERE from_id = ? AND to_id = 'pta_aura' AND state = 'active'"
-            ).bind(spPerson.entity.id).first();
+              // A3: her id comes from config, never a literal - see auraPtaId. "__no_actor__" can
+              // match nothing, which is the safe answer when the config key is unset.
+              "SELECT permission FROM pta_edges WHERE from_id = ? AND to_id = ? AND state = 'active'"
+            ).bind(spPerson.entity.id, (await auraPtaId(env)) || "__no_actor__").first();
             let spPerm = {}; try { spPerm = JSON.parse((spGrant && spGrant.permission) || "{}"); } catch {}
             check("and the command minted a live grant for it", "can_initiate with the scheduled purpose",
               spGrant ? JSON.stringify(spPerm).slice(0, 60) : "no grant edge at all",
               !!(spPerm.can_initiate && (spPerm.purposes || []).includes("scheduled")));
-            const spWake = await ptaWakeGate(env, { actor: "pta_aura", subject: spPerson.entity.id, purpose: "scheduled" });
+            const spWake = await ptaWakeGate(env, { actor: (await auraPtaId(env)) || "__no_actor__", subject: spPerson.entity.id, purpose: "scheduled" });
             check("SO THE ITEM THE REAL COMMAND WROTE CAN ACTUALLY FIRE", "allowed",
               spWake.allowed ? "allowed" : "REFUSED: " + (spWake.code || spWake.reason),
               spWake.allowed,
@@ -23076,7 +23162,7 @@ Be concise. This update will be compared against the next update to show drift o
               + "a gate that only its own tests can pass");
             try {
               await env.AURA_KV.delete("pta:schedule:" + spPerson.entity.id);
-              await db.prepare("DELETE FROM pta_edges WHERE from_id = ? AND to_id = 'pta_aura'").bind(spPerson.entity.id).run();
+              await db.prepare("DELETE FROM pta_edges WHERE from_id = ? AND to_id = ?").bind(spPerson.entity.id, (await auraPtaId(env)) || "__no_actor__").run();
             } catch {}
           }
 

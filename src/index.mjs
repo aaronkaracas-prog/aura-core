@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.978-2026-08-09-a-lineage-to-test-cascade-against";
+const BUILD = "aura-core-v4.9.979-2026-08-09-something-the-cascade-should-not-reach";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -22880,14 +22880,26 @@ Be concise. This update will be compared against the next update to show drift o
         const e2 = g2?.payload?.edge_id;
         if (!e2) return { cmd: "PTA_FIXTURE", payload: { ok: false, error: "derived grant failed", detail: g2?.payload } };
         await processCommand("ACCEPT " + e2, env, isOp);
-        const check = await db.prepare("SELECT id, via_edge_id, state FROM pta_edges WHERE id IN (?, ?)").bind(e1, e2).all();
+        // ══ AND A SIBLING THAT DEPENDS ON NOTHING ═══════════════════════════════════════════
+        // The dependent path alone cannot prove "independent grants untouched" - the only way to see
+        // that a cascade stops where it should is to have something it SHOULD NOT reach. This edge is
+        // between the same two parties as the derived one, carries no via_edge_id, and must survive a
+        // root revoke. If it does not, upstream_path_cut is cutting by proximity rather than by
+        // recorded dependency, and that is the difference between a cascade and a blast radius.
+        const g3 = await processCommand('PTA_GRANT ' + child.id + ' ' + grand.id + ' {"permission":{"can_view":true}}', env, isOp);
+        const e3 = g3?.payload?.edge_id;
+        if (e3) await processCommand("ACCEPT " + e3, env, isOp);
+
+        const check = await db.prepare("SELECT id, via_edge_id, state FROM pta_edges WHERE id IN (?, ?, ?)").bind(e1, e2, e3 || "").all();
         return { cmd: "PTA_FIXTURE", payload: { ok: true, mode: "built",
-          entities: made, root_edge: e1, derived_edge: e2,
+          entities: made, root_edge: e1, derived_edge: e2, independent_edge: e3 || null,
           edges: (check?.results || []).map(e => ({ edge_id: e.id, state: e.state, via_edge_id: e.via_edge_id })),
           via_recorded: (check?.results || []).some(e => e.id === e2 && e.via_edge_id === e1),
           note: "If via_recorded is false the dependency was NOT stored and every cascade test below would be " +
             "measuring nothing. Check it before trusting any protocol result.",
-          next: "PTA_REVOKE " + e1 + " - then see whether the derived edge follows." } };
+          next: "PTA_REVOKE " + e1 + " - the derived edge must follow; the independent one must NOT.",
+          the_test: "cascaded should be 1, not 2. If the independent edge is also cut, the walk is " +
+            "following the parties rather than the recorded dependency." } };
       } catch (e) {
         return { cmd: "PTA_FIXTURE", payload: { ok: false, error: "Fixture failed: " + (e && e.message ? e.message : String(e)) } };
       }

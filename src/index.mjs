@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.989-2026-08-09-quoted-names-at-every-door";
+const BUILD = "aura-core-v4.9.990-2026-08-09-read-the-braces-not-the-line-numbers";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -20636,6 +20636,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           if (existing) return { cmd: "PTA_ENTITY", payload: { ok: true, mode: "existing", entity: await _unsealEnt(existing) } };
         }
         const id = ptaId();
+        // ══ DECLARED OUTSIDE THE TRY, BECAUSE THE RETURN IS OUTSIDE THE TRY ══════════════════════
+        // Shipped `_aliasSelfWrite is not defined` TWICE. First inside the DO-init block; then I
+        // "hoisted" it into the enclosing try - whose catch sits between it and the return that reports
+        // it, so it still went out of scope before it was read. Both times the throw came AFTER the D1
+        // insert, so the entity was created while the command said it failed.
+        // A create that half-succeeds and reports failure is the same class as a revoke that matches
+        // nothing and reports success: the record and the reply disagree, and only one of them gets read.
+        // Fixed by reading the brace structure instead of moving the line up and hoping.
+        let _aliasSelfWrite = null;
         try {
           // The hint rides in metadata so a human can recognise a row without the table holding a
           // readable contact. `phone:...1234` is enough to identify, not enough to reconstruct.
@@ -20644,15 +20653,6 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             md.contact_hint = identityHint;
             metadata = JSON.stringify(md);
           }
-          // SEALED UNDER THIS ENTITY'S OWN KEY. Metadata is where the personal content lives - birth
-          // context, the place they were met, who introduced them, what they consented to. The
-          // skeleton around it stays clear so the graph still works.
-          // Declared HERE, not inside the DO-init block below, because the return that reports it is
-          // outside that block. I declared it inside and shipped `_aliasSelfWrite is not defined` -
-          // which threw AFTER the D1 insert, so the entity existed while the command reported failure.
-          // A create that half-succeeds and says it failed is the same class as a revoke that matches
-          // nothing and says it worked.
-          let _aliasSelfWrite = null;
           if (metadata) metadata = await sealFor(env, id, metadata);
           // ══ THE NAME IS DELIBERATELY *NOT* SEALED (corrected v4.9.780) ═══════════════════════
           // v4.9.779 sealed it, on the reasoning that forgetting should be pure key-destruction

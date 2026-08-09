@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.993-2026-08-09-an-offer-is-a-bigger-act-than-an-alias";
+const BUILD = "aura-core-v4.9.994-2026-08-09-confirm-must-not-land-inside-the-json";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -22042,7 +22042,15 @@ Be concise. This update will be compared against the next update to show drift o
       if (ctxRaw) {
         const jsonStart = ctxRaw.indexOf("{");
         if (jsonStart >= 0) {
-          const jsonCandidate = ctxRaw.slice(jsonStart);
+          // ══ CONFIRM MUST NOT LAND INSIDE THE JSON ═══════════════════════════════════════════
+          // The context is everything from the first "{" to the end of the line, so appending CONFIRM
+          // after the JSON produced `{"permission":{...}} CONFIRM` and the parse died. MEASURED: the
+          // fixture's three internal grants all failed with "Invalid context JSON" the moment
+          // PTA_GRANT became dry-by-default - and the dry run's own `to_proceed` hint emitted the same
+          // broken form, so following the instruction would have failed too. Twice in one change: the
+          // callers and the advice.
+          // Stripped here so CONFIRM can sit anywhere on the line and the JSON still parses.
+          const jsonCandidate = ctxRaw.slice(jsonStart).replace(/\s*\bCONFIRM\b\s*/gi, " ").trim();
           try { ctx = JSON.parse(jsonCandidate); }
           catch { return { cmd: "PTA_GRANT", payload: { ok: false, error: "Invalid context JSON. Received: " + jsonCandidate.slice(0, 200) } }; }
         }
@@ -22135,7 +22143,9 @@ Be concise. This update will be compared against the next update to show drift o
           edge_type: edgeType, permission: _permPreview, via_edge_id: viaEdge || null,
           note: "NOTHING CREATED. This would OFFER these permissions - the edge would be PENDING and " +
             "would still need ACCEPT before it authorises anything. Add CONFIRM to make the offer.",
-          to_proceed: "PTA_GRANT " + fromId + " " + toId + " " + (permission || "{}") + " CONFIRM" } };
+          // CONFIRM before the JSON, so a copied hint parses. It is stripped either way now, but the
+          // advice should model the form that cannot go wrong.
+          to_proceed: "PTA_GRANT " + fromId + " " + toId + " CONFIRM " + (permission || "{}") } };
       }
 
       const _histId = "hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
@@ -23114,13 +23124,13 @@ Be concise. This update will be compared against the next update to show drift o
           made.push({ name: nm, id: ent.id, mode: r?.payload?.mode });
         }
         const [root, child, grand] = made;
-        const g1 = await processCommand('PTA_GRANT ' + root.id + ' ' + child.id + ' {"permission":{"can_remember":true}} CONFIRM', env, isOp);
+        const g1 = await processCommand('PTA_GRANT ' + root.id + ' ' + child.id + ' CONFIRM {"permission":{"can_remember":true}}', env, isOp);
         const e1 = g1?.payload?.edge_id;
         if (!e1) return { cmd: "PTA_FIXTURE", payload: { ok: false, error: "root grant failed", detail: g1?.payload } };
         await processCommand("ACCEPT " + e1, env, isOp);
         // The derived edge NAMES its parent. Without via_edge_id there is no dependency to walk and
         // cascade is meaningless - this line is the entire reason the fixture exists.
-        const g2 = await processCommand('PTA_GRANT ' + child.id + ' ' + grand.id + ' {"permission":{"can_remember":true},"via_edge_id":"' + e1 + '"} CONFIRM', env, isOp);
+        const g2 = await processCommand('PTA_GRANT ' + child.id + ' ' + grand.id + ' CONFIRM {"permission":{"can_remember":true},"via_edge_id":"' + e1 + '"}', env, isOp);
         const e2 = g2?.payload?.edge_id;
         if (!e2) return { cmd: "PTA_FIXTURE", payload: { ok: false, error: "derived grant failed", detail: g2?.payload } };
         await processCommand("ACCEPT " + e2, env, isOp);
@@ -23130,7 +23140,7 @@ Be concise. This update will be compared against the next update to show drift o
         // between the same two parties as the derived one, carries no via_edge_id, and must survive a
         // root revoke. If it does not, upstream_path_cut is cutting by proximity rather than by
         // recorded dependency, and that is the difference between a cascade and a blast radius.
-        const g3 = await processCommand('PTA_GRANT ' + child.id + ' ' + grand.id + ' {"permission":{"can_view":true}} CONFIRM', env, isOp);
+        const g3 = await processCommand('PTA_GRANT ' + child.id + ' ' + grand.id + ' CONFIRM {"permission":{"can_view":true}}', env, isOp);
         const e3 = g3?.payload?.edge_id;
         if (e3) await processCommand("ACCEPT " + e3, env, isOp);
 

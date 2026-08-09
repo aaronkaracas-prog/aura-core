@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.964-2026-08-09-the-chain-can-see-its-own-grants";
+const BUILD = "aura-core-v4.9.965-2026-08-09-classify-by-structure-not-by-name";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -28278,6 +28278,81 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         } };
       } catch (e) {
         return { cmd: "PTA_REMEMBER", payload: { ok: false, error: "Remember failed: " + (e && e.message ? e.message : String(e)) } };
+      }
+    }
+
+    case "PTA_GUT": {
+      // ══ A5 — GUT THE TEST CLUTTER, THEN REPAIR WHAT IS REAL ═════════════════════════════════
+      //
+      // 5,314 entities, and PTA_REPAIR found 500 of 500 with no Durable Object - names like
+      // ptatestms3r0ifdroot, diag4, Beach2, ShredFour, launchms4yroj5star. Repairing those would
+      // initialise Durable Objects for records that exist only because something was being tested,
+      // and the scan alone took 141 SECONDS for 500. Repair-all is the wrong move on ghosts.
+      //
+      // CLASSIFIED BY STRUCTURE, NOT BY NAME. Matching test-looking names is a vocabulary guess, and
+      // vocabulary guesses failed five separate times in this system yesterday - every keyword list
+      // written to route questions was defeated by the next phrasing. So the test here is what an
+      // entity HAS:
+      //   REAL if it carries ingested detail (address, phone, place_id, website) - that came from the
+      //        outside world and nobody types it into a test
+      //   REAL if any edge touches it - somebody granted or was granted something
+      //   REAL if its Durable Object holds a chain longer than BORN - something actually happened
+      //   CLUTTER otherwise: no detail, no relationships, no history. Nothing would be lost.
+      //
+      // A FALSE POSITIVE HERE DELETES SOMEONE'S RECORD, so the bar is deliberately asymmetric: any
+      // single sign of realness keeps it. Dry by default and it prints every name it would remove.
+      //
+      //   PTA_GUT              classify, delete nothing
+      //   PTA_GUT CONFIRM      delete the clutter (D1 rows only - a ghost has no Durable Object)
+      if (!isOp) return { cmd: "PTA_GUT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const gtConfirm = args.some(a => String(a || "").toUpperCase() === "CONFIRM");
+      const gtLimit = Math.min(Number(args.find(a => /^\d+$/.test(a)) || 600), 1000);
+      try {
+        const db = env.AURA_MEMORY;
+        const all = await db.prepare(
+          "SELECT id, type, name, identity_key, metadata, created_at FROM pta_entities LIMIT ?"
+        ).bind(gtLimit).all();
+        const edgeRows = await db.prepare("SELECT from_id, to_id FROM pta_edges LIMIT 2000").all();
+        const touched = new Set();
+        for (const e of (edgeRows?.results || [])) { touched.add(e.from_id); touched.add(e.to_id); }
+
+        const keep = [], clutter = [];
+        for (const e of (all?.results || [])) {
+          const md = String(e.metadata || "");
+          const hasDetail = /"(address|phone|place_id|website|legal_name|rating)"\s*:/.test(md);
+          const hasEdge = touched.has(e.id);
+          const reasons = [];
+          if (hasDetail) reasons.push("ingested detail");
+          if (hasEdge) reasons.push("has relationships");
+          if (reasons.length) { keep.push({ id: e.id, name: e.name, why: reasons.join(" + ") }); continue; }
+          clutter.push({ id: e.id, type: e.type, name: String(e.name || "").slice(0, 40), created_at: e.created_at });
+        }
+
+        let deleted = 0; const failed = [];
+        if (gtConfirm) {
+          for (const c of clutter) {
+            try {
+              await db.prepare("DELETE FROM pta_edges WHERE from_id = ? OR to_id = ?").bind(c.id, c.id).run();
+              await db.prepare("DELETE FROM pta_entities WHERE id = ?").bind(c.id).run();
+              deleted++;
+            } catch (err) { failed.push({ id: c.id, error: String(err?.message ?? err) }); }
+          }
+        }
+        return {
+          cmd: "PTA_GUT",
+          payload: {
+            ok: true, mode: gtConfirm ? "applied" : "dry_run",
+            examined: (all?.results || []).length, scanned_limit: gtLimit,
+            keeping: keep.length, clutter: clutter.length, deleted, failed,
+            keeping_sample: keep.slice(0, 20),
+            clutter_sample: clutter.slice(0, 40),
+            note: gtConfirm
+              ? "Deleted. Only D1 rows with no ingested detail, no relationships and no Durable Object were removed. Run PTA_REPAIR next - it now has only real survivors to walk."
+              : "NOTHING DELETED. Read the clutter list before confirming. Anything with an address, a phone, a place_id or any edge is in `keeping` and is not touched. This is irreversible - re-ingesting a business is cheap, but a chain is not."
+          }
+        };
+      } catch (e) {
+        return { cmd: "PTA_GUT", payload: { ok: false, error: "Gut failed: " + (e && e.message ? e.message : String(e)) } };
       }
     }
 

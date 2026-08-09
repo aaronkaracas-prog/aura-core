@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.967-2026-08-09-repair-the-ones-that-matter";
+const BUILD = "aura-core-v4.9.968-2026-08-09-consent-is-written-before-it-is-granted";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -19263,51 +19263,59 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           error: "This edge is '" + eRow.state + "', not pending. A revoked grant is not re-accepted - the subject issues a new one." } };
         const acVia = /\bwitness/i.test(acHow) ? "witness" : (acHow ? "witness" : "self");
         const nowIso = new Date().toISOString();
-        let acAppendErr = null;
+        // ══ A4 — THE CHAIN EVENT COMES FIRST, SO ACTIVE ALWAYS HAS A RECORD ══════════════════
+        //
+        // The order used to be: flip the edge to active in D1, then append GRANT_ACCEPTED. When the
+        // append failed (v4.9.961 called a DO method that does not exist) the grant was REAL and the
+        // subject's chain had no record they ever agreed. PTA_CONSENT_REPAIR exists because of that,
+        // and reconstruction can never recover HOW the yes was given.
+        //
+        // D1 and a Durable Object cannot share a transaction, so "both or neither" is not available.
+        // What IS available is choosing which half fails safe. WRITE THE CONSENT FIRST:
+        //   chain write fails  -> edge stays pending. Nothing is authorised, nothing is claimed, and
+        //                         the operator can simply accept again. Recoverable.
+        //   activation fails   -> a GRANT_ACCEPTED sits on a chain whose edge is still pending. That
+        //                         is a record of consent with no permission attached - readable,
+        //                         honest, and it authorises nothing.
+        // The old order failed the other way: permission with no record. This one cannot produce an
+        // active grant that the subject's own chain does not attest to.
+        const stub = env.PTA_DO.get(env.PTA_DO.idFromName(eRow.from_id));
         try {
-          await env.AURA_MEMORY.prepare("UPDATE pta_edges SET state = 'active', updated_at = ? WHERE id = ? AND state = 'pending'")
-            .bind(nowIso, acId).run();
-        } catch (e) {
-          return { cmd: "ACCEPT", payload: { ok: false, edge_id: acId, error: "Activation failed: " + (e?.message || String(e)) } };
-        }
-        // The acceptance is an event on the SUBJECT's chain, because it is their consent and their
-        // record. Written through appendChain so it is idempotent and carries the same provenance as
-        // every other event.
-        try {
-          // ══ I INVENTED A METHOD NAME AND THEN REPORTED SUCCESS (fixed 2026-08-09) ═══════════
-          // The first version called method "append" with a single object. The DO's method is
-          // appendChain(eventType, actor, data, expectedVersion, idem) - POSITIONAL. So the call
-          // resolved, the DO returned not-ok, NOTHING WAS WRITTEN, and because the response was never
-          // read the catch never fired and the reply said "GRANT_ACCEPTED written to the subject's
-          // chain". MEASURED: Joe's chain shows BORN, SERVICE, CONTEXT and no GRANT_ACCEPTED, under a
-          // response that claimed it was there.
-          // That is worse than the silent catch it replaced. A swallowed error is invisible; this one
-          // asserted the opposite of the truth - about the single most load-bearing record in the
-          // system, a witnessed consent. accepted_via "witness" is the strongest claim here and it
-          // existed only in a command response nobody keeps.
-          // Same shape as PTA_EVENT, which demonstrably works, and the response is READ.
-          const stub = env.PTA_DO.get(env.PTA_DO.idFromName(eRow.from_id));
           const gaResp = await stub.fetch(new Request("http://do", { method: "POST", body: JSON.stringify({
             method: "appendChain",
             params: ["GRANT_ACCEPTED", "self", {
               edge_id: acId, to: eRow.to_id, permission: eRow.permission,
               accepted_via: acVia, how: acHow || "accepted directly",
               recorded_at: nowIso,
-            }, null, "grant-accepted:" + acId],   // idem keyed on the edge: accepting twice writes once
+            }, null, "grant-accepted:" + acId],
           }) }));
           const gaData = await gaResp.json();
           if (!gaData || !gaData.ok) throw new Error(gaData?.error || "appendChain returned not-ok");
-          acAppendErr = null;
         } catch (e) {
-          // NOT SWALLOWED. The grant is active either way - that lives in D1 - but a missing
-          // GRANT_ACCEPTED event means the subject's own chain has no record of their consent, and a
-          // consent you cannot show is not much better than one you never took. Reported, not hidden.
-          acAppendErr = String(e?.message ?? e);
-          console.warn("[ACCEPT] edge activated but GRANT_ACCEPTED did not reach the chain: " + acAppendErr);
+          return { cmd: "ACCEPT", payload: { ok: false, edge_id: acId, state: "pending",
+            error: "Consent could not be written to the subject's chain, so the grant was NOT activated: " +
+              (e?.message || String(e)),
+            what_to_do: "The edge is still pending and nothing was authorised. Accept again - this is " +
+              "recoverable, and it is the safe direction to fail: an active grant with no record of the " +
+              "yes is not." } };
         }
+        try {
+          await env.AURA_MEMORY.prepare("UPDATE pta_edges SET state = 'active', updated_at = ? WHERE id = ? AND state = 'pending'")
+            .bind(nowIso, acId).run();
+        } catch (e) {
+          return { cmd: "ACCEPT", payload: { ok: false, edge_id: acId, error: "Activation failed: " + (e?.message || String(e)),
+            chain_event: "GRANT_ACCEPTED WAS written - the chain records the consent, the edge is still pending, " +
+              "and nothing is authorised. Accept again; the append is idempotent by edge id." } };
+        }
+        // The acceptance is an event on the SUBJECT's chain, because it is their consent and their
+        // record. Written through appendChain so it is idempotent and carries the same provenance as
+        // every other event.
+        // (the GRANT_ACCEPTED append now happens BEFORE activation - see above)
         return { cmd: "ACCEPT", payload: { ok: true, edge_id: acId, from: eRow.from_id, to: eRow.to_id,
           state: "active", accepted_via: acVia, how: acHow || null,
-          chain_event: acAppendErr ? "FAILED TO WRITE: " + acAppendErr : "GRANT_ACCEPTED written to the subject's chain",
+          // Not conditional any more: reaching this line means the append succeeded, because the
+          // append happens BEFORE activation and a failure returns early with the edge still pending.
+          chain_event: "GRANT_ACCEPTED written to the subject's chain BEFORE the edge went active",
           note: acVia === "witness"
             ? "Recorded as WITNESSED - the operator recorded a yes given elsewhere. The chain says so permanently; it is not the same as the subject acting themselves."
             : "Accepted by the subject. The grant is now active and PTA_REMEMBER will append.",

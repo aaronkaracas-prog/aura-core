@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.975-2026-08-09-a-revoke-that-cuts-nothing-is-not-a-revoke";
+const BUILD = "aura-core-v4.9.976-2026-08-09-withdrawing-an-offer-is-not-ending-access";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -24482,7 +24482,16 @@ Be concise. This update will be compared against the next update to show drift o
       if (!edge) return { cmd: "PTA_REVOKE", payload: { ok: false, error: "Edge not found", saw: edgeId,
         what_to_do: "Give an edge id (edge_...), or revoke by pair: PTA_REVOKE <subject_id> <actor_id>. " +
           "Nothing was revoked - a revoke that matches nothing must never read as success." } };
-      if (edge.state === "revoked") return { cmd: "PTA_REVOKE", payload: { ok: true, note: "Already revoked", edge_id: edgeId } };
+      if (edge.state === "revoked") return { cmd: "PTA_REVOKE", payload: { ok: true, note: "Already revoked", edge_id: edge.id } };
+
+      // ══ AN OFFER CAN BE WITHDRAWN WITHOUT BEING ACCEPTED FIRST ═══════════════════════════════
+      // A pending edge is a standing invitation - Aura asked, they have not answered. Withdrawing it
+      // is a real act and it must not require accepting it first, which would mean manufacturing a
+      // consent in order to cancel one. The pair lookup above already finds pending edges (it filters
+      // state != 'revoked'), so this path is reachable; what was missing is that the RESULT says which
+      // it was. "Revoked" reads as "access ended" and for a pending edge nothing was ever granted -
+      // conflating the two would make an audit trail claim a permission existed when it never did.
+      const _wasPending = edge.state === "pending";
       // The reason follows the id(s). When the pair form was used, the second id is args[1] and must
       // not be read as the reason - a revocation labelled "pta_aura" helps nobody reading it later.
       const _afterId = rest.slice(rest.indexOf(edgeId) + edgeId.length).trim();
@@ -24590,6 +24599,8 @@ Be concise. This update will be compared against the next update to show drift o
       } catch {}
       return { cmd: "PTA_REVOKE", payload: { ok: true, edge_id: _rootEdgeId,
         resolved_from: _rootEdgeId === edgeId ? undefined : edgeId, state: "revoked", reason,
+        withdrew: _wasPending ? "a PENDING offer - it was never accepted, so no access ended and none ever existed" : undefined,
+        previous_state: edge.state,
         cascaded: cascaded.length, also_revoked: cascaded, truncated: truncated || undefined,
         walk: _walk,
         walk_note: "depth = how many levels the cascade descended · edges_scanned = rows examined · "

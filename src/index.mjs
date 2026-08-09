@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.963-2026-08-09-a-permission-is-not-a-consent";
+const BUILD = "aura-core-v4.9.964-2026-08-09-the-chain-can-see-its-own-grants";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -20656,7 +20656,57 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           return { cmd: "PTA_GET", payload: { ok: false, error: stateData.error || "Failed to retrieve PTA state" } };
         }
         
-        return { cmd: "PTA_GET", payload: { ok: true, pta: ptaId, state: stateData.state || stateData } };
+        // ══ A2 — THE CHAIN COULD NOT SEE ITS OWN GRANTS (2026-08-09) ═══════════════════════════
+        //
+        // MEASURED on JoesTattooParlor: an ACTIVE can_remember grant to pta_aura, five events in his
+        // chain written under it, and PTA_GET reporting `permission: {rules:[], revocations:[]}` and
+        // `edges: {}`. The Durable Object has no idea the edge exists - D1 holds it. So the record of
+        // what someone consented to was unreadable from the record of what was done to them.
+        //
+        // Anyone auditing that chain sees five events by actor "aura" and NOTHING saying she was
+        // allowed to write them. The GRANT_ACCEPTED event proves consent was given; only D1 knows
+        // whether it is still open. "Revoke must actually end it" is not checkable from the chain.
+        //
+        // MATERIALISED AT READ, NOT MIRRORED. The temptation is to write edges into the DO and keep
+        // them in sync - that is a second authority, and two authorities disagreeing is the exact bug
+        // this system has paid for repeatedly today (D1 vs DO on existence, PTA_ENTITY vs PTA_CREATE,
+        // two meters 80 points apart). D1 is the authority for edges; this READS it and composes.
+        // Nothing is stored twice, so nothing can drift.
+        //
+        // BOTH DIRECTIONS AND ALL STATES. Grants they gave and grants they hold, active AND revoked,
+        // because a revoked grant is the evidence that revocation happened - dropping it would make
+        // the audit trail lie by omission.
+        const _st = stateData.state || stateData;
+        try {
+          const db = env.AURA_MEMORY;
+          const eg = await db.prepare(
+            "SELECT id, from_id, to_id, edge_type, state, permission, created_at, updated_at " +
+            "FROM pta_edges WHERE from_id = ? OR to_id = ? ORDER BY updated_at DESC LIMIT 200"
+          ).bind(ptaId, ptaId).all();
+          const rows = (eg?.results || []).map((r) => {
+            let perm = r.permission;
+            try { perm = typeof perm === "string" ? JSON.parse(perm) : perm; } catch {}
+            return { edge_id: r.id, direction: r.from_id === ptaId ? "granted_by_them" : "granted_to_them",
+                     counterparty: r.from_id === ptaId ? r.to_id : r.from_id,
+                     edge_type: r.edge_type, state: r.state, permission: perm,
+                     created_at: r.created_at, updated_at: r.updated_at };
+          });
+          const active = rows.filter((r) => r.state === "active");
+          if (_st && _st.pta) {
+            _st.pta.edges_live = {
+              source: "D1 pta_edges, read at this moment - not a copy held in the Durable Object, so it cannot drift",
+              total: rows.length,
+              active: active.length,
+              can_remember_now: active.some((r) => r.direction === "granted_by_them" && r.permission?.can_remember === true),
+              edges: rows,
+            };
+          }
+        } catch (e) {
+          if (_st && _st.pta) _st.pta.edges_live = { error: "could not read edges from D1: " + (e?.message || String(e)),
+            note: "The chain below is real. Whether anyone currently holds a grant over it is UNKNOWN from this response - do not read the absence as 'no grants'." };
+        }
+
+        return { cmd: "PTA_GET", payload: { ok: true, pta: ptaId, state: _st } };
       } catch (e) {
         return { cmd: "PTA_GET", payload: { ok: false, error: "Could not fetch PTA state: " + e.message } };
       }

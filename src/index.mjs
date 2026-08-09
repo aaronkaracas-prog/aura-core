@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.983-2026-08-09-a-name-is-not-its-first-word";
+const BUILD = "aura-core-v4.9.984-2026-08-09-an-error-nobody-reads";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -3460,14 +3460,24 @@ async function ingestBusiness(env, rec, isOp) {
     env, isOp);
   const id = created?.payload?.entity?.id;
   if (!id) return { ok: false, error: "CREATE_FAILED", detail: created?.payload };
-  const aliased = [];
+  // ══ AND THE ALIAS LOOP SWALLOWED ITS OWN FAILURES TOO ═══════════════════════════════════════
+  // `aliased` counted only successes and the catch{} ate everything else, so an empty list meant
+  // either "no aliases to add" or "every add failed" with no way to tell. It was the second.
+  const aliased = [], alias_failed = [];
   for (const a of pick.aliases) {
     try {
       const r = await processCommand("PTA_ALIAS ADD " + id + " " + a, env, isOp);
       if (r?.payload?.ok) aliased.push(a.split(":")[0]);
-    } catch {}
+      else alias_failed.push({ kind: a.split(":")[0], error: r?.payload?.error || "no ok in response",
+                               detail: r?.payload?.what_to_do || null });
+    } catch (e) { alias_failed.push({ kind: a.split(":")[0], error: String(e?.message ?? e) }); }
   }
   return { ok: true, id, name, mode: created?.payload?.mode, primary: pick.kind, aliased,
+           alias_failed: alias_failed.length ? alias_failed : undefined,
+           alias_warning: alias_failed.length
+             ? "SOME CONTACTS WERE NOT REGISTERED. This shop is findable only by " + pick.kind +
+               " - a later sighting through one of the failed contacts will mint a SECOND record."
+             : undefined,
            note: "Primary key is " + pick.kind + " by the ingest ordering (place_id > phone > site > email). " +
                  "The other contacts are aliases, so a later sighting through any of them finds this entity." };
 }
@@ -20655,16 +20665,27 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             .bind(id, eType, identityKey, sealedName, metadata, now, now).run();
           
           // Initialize the Durable Object now that D1 record exists
+          let _aliasSelfWrite = null;
           try {
             // Register the primary key as an alias too, so a later contact of a DIFFERENT kind resolves
             // here instead of minting a second row. Without this write the lookup above has nothing to
             // find and the alias index stays the empty table it has been.
+            // ══ THIS WRITE FAILED SILENTLY AND I GUESSED AT IT FOUR TIMES ═══════════════════
+            // PTA_ALIAS LIST returned count:0 for a freshly ingested shop - not even the primary key.
+            // The write is an INSERT OR IGNORE that cannot conflict, wrapped in a bare catch{}, so
+            // whatever went wrong left no trace and I proposed four different causes for it. Same
+            // failure as the swallowed GRANT_ACCEPTED append this morning: an error nobody reads is an
+            // error nobody can fix.
             if (identityKey) {
               try {
                 await db.prepare("CREATE TABLE IF NOT EXISTS pta_identity_index (identity_key TEXT UNIQUE NOT NULL, pta_id TEXT NOT NULL, created_at TEXT)").run();
-                await db.prepare("INSERT OR IGNORE INTO pta_identity_index (identity_key, pta_id, created_at) VALUES (?, ?, ?)")
+                const _ar = await db.prepare("INSERT OR IGNORE INTO pta_identity_index (identity_key, pta_id, created_at) VALUES (?, ?, ?)")
                   .bind(identityKey, id, new Date().toISOString()).run();
-              } catch {}
+                _aliasSelfWrite = { ok: true, changes: Number(_ar?.meta?.changes ?? -1) };
+              } catch (e) {
+                _aliasSelfWrite = { ok: false, error: String(e?.message ?? e) };
+                console.warn("[PTA_ENTITY] primary key NOT registered as an alias for " + id + ": " + _aliasSelfWrite.error);
+              }
             }
             const doId = env.PTA_DO.idFromName(id);
             const stub = env.PTA_DO.get(doId);
@@ -20735,7 +20756,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           return { cmd: "PTA_ENTITY", payload: { ok: false, error: String((e && e.message) || e).slice(0, 200) } };
         }
         const created = await db.prepare("SELECT * FROM pta_entities WHERE id = ?").bind(id).first();
-        return { cmd: "PTA_ENTITY", payload: { ok: true, mode: "created", entity: await _unsealEnt(created) } };
+        // The alias self-write result rides in the RESPONSE, not only in a console warning - RUN goes to
+        // aura-core and nobody keeps a tail open on it. A silent failure here means the entity is
+        // findable by exactly one contact, and the next sighting through any other mints a duplicate.
+        return { cmd: "PTA_ENTITY", payload: { ok: true, mode: "created", entity: await _unsealEnt(created),
+          alias_self_write: _aliasSelfWrite,
+          alias_warning: (_aliasSelfWrite && _aliasSelfWrite.ok === false)
+            ? "The primary key was NOT registered in the alias index. This entity is findable by its " +
+              "identity_key column only, and PTA_ALIAS LIST will show nothing."
+            : undefined } };
       }
 
       if (sub === "COLLISIONS") {

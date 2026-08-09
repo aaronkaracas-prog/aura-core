@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.971-2026-08-09-a-store-you-cannot-characterise";
+const BUILD = "aura-core-v4.9.972-2026-08-09-i-built-a-door-that-already-existed";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -28289,66 +28289,13 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       }
     }
 
-    case "PTA_WIPE": {
-      // ══ EVERYTHING. NOT A CLEANUP - A RESET. ════════════════════════════════════════════════
-      //
-      // Aaron, 2026-08-09: "delete everything even those, those are all test. I would rather we test
-      // 100% clean and then even after our test we may delete, because when I start ingesting
-      // businesses we're going to do it properly and at scale."
-      //
-      // He is right, and the clinching evidence is his own record: PTA_GET pta_38906a5aca1b21b1 shows
-      // identity aaronkaracas@gmail.com created at 08:59:05 TODAY - minted minutes earlier by
-      // PTA_REPAIR, BORN only, no edges, no history. Even the operator's identity in this store is an
-      // artifact of testing. There is nothing here worth carrying forward, and carrying it forward
-      // means every future measurement is taken against a population nobody can vouch for.
-      //
-      // WHAT IT REMOVES: every row of pta_entities and pta_edges. Businesses with real scraped
-      // addresses go too - re-ingesting a business is cheap and deliberate; a store you cannot
-      // characterise is expensive forever.
-      //
-      // WHAT IT DOES NOT TOUCH: Durable Objects. They are addressed by name and become unreachable
-      // when their rows are gone - orphaned, not deleted, and harmless. Nothing points at them and
-      // nothing can, because every path starts from a D1 row.
-      //
-      // TWO-KEY: the word EVERYTHING must be typed in full, in addition to CONFIRM. There is no
-      // shorthand, no flag, and no dry-run default that could be mistaken for the real thing. This is
-      // the only command here that cannot be undone by re-running it differently.
-      //
-      //   PTA_WIPE                       count what would go
-      //   PTA_WIPE CONFIRM EVERYTHING    do it
-      if (!isOp) return { cmd: "PTA_WIPE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      const wpConfirm = args.some(a => String(a || "").toUpperCase() === "CONFIRM");
-      const wpWord = args.some(a => String(a || "").toUpperCase() === "EVERYTHING");
-      try {
-        const db = env.AURA_MEMORY;
-        const ec = await db.prepare("SELECT COUNT(*) AS n FROM pta_entities").first();
-        const gc = await db.prepare("SELECT COUNT(*) AS n FROM pta_edges").first();
-        const byType = await db.prepare("SELECT type, COUNT(*) AS n FROM pta_entities GROUP BY type").all();
-        if (!(wpConfirm && wpWord)) {
-          return { cmd: "PTA_WIPE", payload: { ok: true, mode: "dry_run",
-            entities: ec?.n ?? 0, edges: gc?.n ?? 0,
-            by_type: (byType?.results || []).map(r => r.type + "=" + r.n),
-            note: "NOTHING DELETED. This removes EVERY entity and EVERY edge - including the nine real " +
-              "businesses with scraped addresses. Durable Objects are left orphaned and unreachable, which " +
-              "is harmless because every path into them starts from a D1 row.",
-            to_proceed: "PTA_WIPE CONFIRM EVERYTHING - both words, and there is no shorthand." } };
-        }
-        const before = { entities: ec?.n ?? 0, edges: gc?.n ?? 0 };
-        await db.prepare("DELETE FROM pta_edges").run();
-        await db.prepare("DELETE FROM pta_entities").run();
-        try { await db.prepare("DELETE FROM pta_identity_index").run(); } catch {}
-        try { await db.prepare("DELETE FROM pta_history").run(); } catch {}
-        const after = await db.prepare("SELECT COUNT(*) AS n FROM pta_entities").first();
-        return { cmd: "PTA_WIPE", payload: { ok: true, mode: "applied",
-          deleted: before, remaining_entities: after?.n ?? 0,
-          note: "Wiped. The store is empty and every future row is one somebody meant to create. " +
-            "pta_aura is gone too - recreate it and set config:aura:pta_id before the first grant, " +
-            "because a grant is FROM someone TO someone and she needs an identity to be granted to." } };
-      } catch (e) {
-        return { cmd: "PTA_WIPE", payload: { ok: false, error: "Wipe failed: " + (e && e.message ? e.message : String(e)) } };
-      }
-    }
-
+    // ══ MY PTA_WIPE WAS DEAD CODE - THE REAL ONE IS ~5,600 LINES ABOVE ═══════════════════════
+    // I wrote a PTA_WIPE without checking whether one existed. It did, and it is better: it counts
+    // pta_history (10,444 rows my version never touched) and supports `CONFIRM KEEP <ids>`. Because
+    // switch cases match top-down, mine never ran - the wipe Aaron executed was the original, and my
+    // "CONFIRM EVERYTHING" two-key guard was never in the path at all.
+    // Two handlers for one command name is the same ambiguity this session keeps paying for, and the
+    // dead one is the one that goes. Check for the door before building a second one.
     case "PTA_GUT_PREFIX": {
       // ══ THE 500 GHOSTS, BY PREFIX AND NOTHING ELSE ══════════════════════════════════════════
       //

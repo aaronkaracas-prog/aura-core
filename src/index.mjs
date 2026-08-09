@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.977-2026-08-09-an-open-offer-is-the-same-offer";
+const BUILD = "aura-core-v4.9.978-2026-08-09-a-lineage-to-test-cascade-against";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -22807,6 +22807,89 @@ Be concise. This update will be compared against the next update to show drift o
               + "clear. The append-only HISTORY is untouched and their relationships remain, so other "
               + "people's chains stay whole: what survives is that something happened, not what it was.",
           verify_with: "PTA_ENTITY GET " + id } };
+      }
+    }
+
+    case "PTA_FIXTURE": {
+      // ══ A LINEAGE TO TEST CASCADE AGAINST ═══════════════════════════════════════════════════
+      //
+      // Grok: "Do not invent cascade against only direct grants. Worthless." He is right - every edge
+      // in this store is a direct business->Aura grant with via_edge_id null, so a cascade walk has
+      // nothing to descend and would report success having examined zero rows. That is how you ship a
+      // protocol that has never actually run.
+      //
+      // So: three disposable entities and a real chain. ROOT grants CHILD; CHILD grants GRANDCHILD
+      // with via_edge_id naming the first edge. The dependency is RECORDED, which is the whole point -
+      // cascade is for explicit derived edges, not a substitute for ptaCan walking lineage upward.
+      //
+      // DISPOSABLE ON PURPOSE. Named fixture_root/child/grandchild so PTA_DELETE_NAMED clears them,
+      // and no production parlor is a subject - a cascade bug during testing must not touch a real
+      // merchant's consent.
+      //
+      //   PTA_FIXTURE BUILD     create the three entities and the two-hop chain
+      //   PTA_FIXTURE SHOW      list the fixture edges and their via links
+      //   PTA_FIXTURE CLEAR     delete the three entities and their edges
+      if (!isOp) return { cmd: "PTA_FIXTURE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const fxSub = String(args[0] || "SHOW").toUpperCase();
+      const fxNames = ["fixture_root", "fixture_child", "fixture_grandchild"];
+      try {
+        const db = env.AURA_MEMORY;
+        if (fxSub === "CLEAR") {
+          const rows = await db.prepare("SELECT id, name FROM pta_entities WHERE name IN (?, ?, ?)").bind(...fxNames).all();
+          const ids = (rows?.results || []).map(r => r.id);
+          for (const id of ids) {
+            await db.prepare("DELETE FROM pta_edges WHERE from_id = ? OR to_id = ?").bind(id, id).run();
+            await db.prepare("DELETE FROM pta_entities WHERE id = ?").bind(id).run();
+            try { await db.prepare("DELETE FROM pta_identity_index WHERE pta_id = ?").bind(id).run(); } catch {}
+          }
+          return { cmd: "PTA_FIXTURE", payload: { ok: true, mode: "cleared", removed: ids.length, ids } };
+        }
+        if (fxSub === "SHOW") {
+          const rows = await db.prepare("SELECT id, name FROM pta_entities WHERE name IN (?, ?, ?)").bind(...fxNames).all();
+          const ids = (rows?.results || []).map(r => r.id);
+          if (!ids.length) return { cmd: "PTA_FIXTURE", payload: { ok: true, mode: "show", built: false,
+            note: "No fixture present. PTA_FIXTURE BUILD creates it." } };
+          const ph = ids.map(() => "?").join(",");
+          const eg = await db.prepare(
+            "SELECT id, from_id, to_id, state, permission, via_edge_id, created_at FROM pta_edges WHERE from_id IN (" + ph + ") OR to_id IN (" + ph + ")"
+          ).bind(...ids, ...ids).all();
+          return { cmd: "PTA_FIXTURE", payload: { ok: true, mode: "show", built: true,
+            entities: (rows?.results || []).map(r => ({ id: r.id, name: r.name })),
+            edges: (eg?.results || []).map(e => ({ edge_id: e.id, from: e.from_id, to: e.to_id, state: e.state,
+              via_edge_id: e.via_edge_id, permission: e.permission })),
+            note: "An edge with via_edge_id set is a DERIVED edge - it exists because its parent does. That link is what a cascade walks." } };
+        }
+        if (fxSub !== "BUILD") return { cmd: "PTA_FIXTURE", payload: { ok: false, error: "Usage: PTA_FIXTURE BUILD | SHOW | CLEAR" } };
+
+        // BUILD - three entities, then root->child, then child->grandchild carrying via.
+        const made = [];
+        for (const nm of fxNames) {
+          const r = await processCommand("PTA_ENTITY CREATE person " + nm + " identity:system:" + nm, env, isOp);
+          const ent = r?.payload?.entity;
+          if (!ent?.id) return { cmd: "PTA_FIXTURE", payload: { ok: false, error: "could not create " + nm, detail: r?.payload } };
+          made.push({ name: nm, id: ent.id, mode: r?.payload?.mode });
+        }
+        const [root, child, grand] = made;
+        const g1 = await processCommand('PTA_GRANT ' + root.id + ' ' + child.id + ' {"permission":{"can_remember":true}}', env, isOp);
+        const e1 = g1?.payload?.edge_id;
+        if (!e1) return { cmd: "PTA_FIXTURE", payload: { ok: false, error: "root grant failed", detail: g1?.payload } };
+        await processCommand("ACCEPT " + e1, env, isOp);
+        // The derived edge NAMES its parent. Without via_edge_id there is no dependency to walk and
+        // cascade is meaningless - this line is the entire reason the fixture exists.
+        const g2 = await processCommand('PTA_GRANT ' + child.id + ' ' + grand.id + ' {"permission":{"can_remember":true},"via_edge_id":"' + e1 + '"}', env, isOp);
+        const e2 = g2?.payload?.edge_id;
+        if (!e2) return { cmd: "PTA_FIXTURE", payload: { ok: false, error: "derived grant failed", detail: g2?.payload } };
+        await processCommand("ACCEPT " + e2, env, isOp);
+        const check = await db.prepare("SELECT id, via_edge_id, state FROM pta_edges WHERE id IN (?, ?)").bind(e1, e2).all();
+        return { cmd: "PTA_FIXTURE", payload: { ok: true, mode: "built",
+          entities: made, root_edge: e1, derived_edge: e2,
+          edges: (check?.results || []).map(e => ({ edge_id: e.id, state: e.state, via_edge_id: e.via_edge_id })),
+          via_recorded: (check?.results || []).some(e => e.id === e2 && e.via_edge_id === e1),
+          note: "If via_recorded is false the dependency was NOT stored and every cascade test below would be " +
+            "measuring nothing. Check it before trusting any protocol result.",
+          next: "PTA_REVOKE " + e1 + " - then see whether the derived edge follows." } };
+      } catch (e) {
+        return { cmd: "PTA_FIXTURE", payload: { ok: false, error: "Fixture failed: " + (e && e.message ? e.message : String(e)) } };
       }
     }
 

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.974-2026-08-09-one-shop-two-contacts-one-entity";
+const BUILD = "aura-core-v4.9.975-2026-08-09-a-revoke-that-cuts-nothing-is-not-a-revoke";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -24427,18 +24427,95 @@ Be concise. This update will be compared against the next update to show drift o
       const db = env.AURA_MEMORY;
       const edgeId = args[0] || "";
       if (!edgeId) return { cmd: "PTA_REVOKE", payload: { ok: false, error: "Usage: PTA_REVOKE <edge_id> [reason]" } };
-      const edge = await db.prepare("SELECT * FROM pta_edges WHERE id = ?").bind(edgeId).first();
-      if (!edge) return { cmd: "PTA_REVOKE", payload: { ok: false, error: "Edge not found" } };
+      // ══ PHASE B — REVOKE BY PAIR, AND NEVER REPORT SUCCESS ON NOTHING ═══════════════════════
+      //
+      // MEASURED today: `PTA_REVOKE pta_72fd... pta_aura` returned "Edge not found". The command takes
+      // an EDGE ID and I had written the pair form into the ACCEPT response's own `revoke_with` hint,
+      // so the hint was copied straight into a test, the revoke matched nothing, and PTA_REMEMBER kept
+      // appending afterwards. The gate was fine; the syntax was wrong and the error did not say how.
+      //
+      // A person asking to be forgotten thinks in PARTIES, not edge ids. "Stop Aura remembering things
+      // about me" is a pair. So the pair form is supported, and the ERROR NAMES THE OTHER FORM instead
+      // of a bare not-found that reads like a broken system.
+      //
+      // AMBIGUITY IS REFUSED, NOT GUESSED. Repeated PTA_GRANT calls leave several open edges for one
+      // pair (measured on A4Test: an active edge and a stale pending one). Revoking "the first" would
+      // silently leave a live grant behind, which is the failure this whole layer exists to prevent -
+      // so multiple matches list every candidate and cut nothing.
+      let edge = await db.prepare("SELECT * FROM pta_edges WHERE id = ?").bind(edgeId).first();
+      if (!edge && /^pta_|^ent_/.test(edgeId)) {
+        const toId = String(args[1] || "").trim();
+        if (!toId) {
+          return { cmd: "PTA_REVOKE", payload: { ok: false, error: "NEED_SECOND_PARTY",
+            saw: edgeId,
+            what_to_do: "That looks like an entity id, not an edge id. Revoke by pair needs both: " +
+              "PTA_REVOKE <subject_id> <actor_id>  - or give the edge id directly." } };
+        }
+        const open = await db.prepare(
+          "SELECT * FROM pta_edges WHERE from_id = ? AND to_id = ? AND state != 'revoked' ORDER BY updated_at DESC"
+        ).bind(edgeId, toId).all();
+        const rows = open?.results || [];
+        if (rows.length > 1) {
+          return { cmd: "PTA_REVOKE", payload: { ok: false, error: "AMBIGUOUS_PAIR",
+            from: edgeId, to: toId, open_edges: rows.map(r => ({ edge_id: r.id, state: r.state, edge_type: r.edge_type, updated_at: r.updated_at })),
+            what_to_do: "More than one edge is open between these two, so revoking by pair would cut one and " +
+              "leave the others live. Name the edge id - all of them if that is what you mean." } };
+        }
+        if (rows.length === 1) edge = rows[0];
+        else {
+          // Nothing OPEN. Say whether that is because it was already revoked or never existed - those
+          // are different answers and "not found" collapses them into one unhelpful word.
+          const any = await db.prepare(
+            "SELECT id, state FROM pta_edges WHERE from_id = ? AND to_id = ? ORDER BY updated_at DESC"
+          ).bind(edgeId, toId).all();
+          const had = any?.results || [];
+          return { cmd: "PTA_REVOKE", payload: { ok: false,
+            error: had.length ? "NOTHING_OPEN" : "NO_EDGE",
+            from: edgeId, to: toId,
+            history: had.map(r => ({ edge_id: r.id, state: r.state })),
+            what_to_do: had.length
+              ? "Every edge between these two is already revoked - nothing was live to cut, and nothing changed."
+              : "There has never been an edge between these two, so there is nothing to revoke. Note this is " +
+                "NOT the same as a successful revoke: no permission was removed because none existed." } };
+        }
+      }
+      if (!edge) return { cmd: "PTA_REVOKE", payload: { ok: false, error: "Edge not found", saw: edgeId,
+        what_to_do: "Give an edge id (edge_...), or revoke by pair: PTA_REVOKE <subject_id> <actor_id>. " +
+          "Nothing was revoked - a revoke that matches nothing must never read as success." } };
       if (edge.state === "revoked") return { cmd: "PTA_REVOKE", payload: { ok: true, note: "Already revoked", edge_id: edgeId } };
-      const reason = rest.slice(rest.indexOf(edgeId) + edgeId.length).trim() || null;
+      // The reason follows the id(s). When the pair form was used, the second id is args[1] and must
+      // not be read as the reason - a revocation labelled "pta_aura" helps nobody reading it later.
+      const _afterId = rest.slice(rest.indexOf(edgeId) + edgeId.length).trim();
+      const reason = (_afterId.startsWith(String(args[1] || "\u0000"))
+        ? _afterId.slice(String(args[1] || "").length).trim()
+        : _afterId) || null;
       const now = new Date().toISOString();
       const hid = () => "hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
+      // ══ A REVOKE THAT CHANGES NOTHING MUST NOT RETURN ok ═══════════════════════════════════
+      // This wrote the UPDATE and never read `changes`. Combined with the pair form below - where the
+      // resolved edge id is NOT the string the caller typed - a mismatch would update zero rows and
+      // still report state:"revoked". That is the same shape as the dead pta_aura reads killed an hour
+      // ago: a write that matches nothing, reported as success, while the grant stays live. It is the
+      // worst failure available here, because the person believes they have been forgotten.
       const revokeOne = async (id, prevState, detail) => {
-        await db.prepare("UPDATE pta_edges SET state = 'revoked', updated_at = ? WHERE id = ?").bind(now, id).run();
+        const r = await db.prepare("UPDATE pta_edges SET state = 'revoked', updated_at = ? WHERE id = ?").bind(now, id).run();
+        const changed = Number(r?.meta?.changes ?? 0);
+        if (!changed) throw new Error("REVOKE_MATCHED_NOTHING: edge " + id + " was not updated - no permission was removed");
         await db.prepare("INSERT INTO pta_history (id, edge_id, action, actor_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)")
           .bind(hid(), id, "revoked", null, JSON.stringify(detail), now).run();
+        return changed;
       };
-      await revokeOne(edgeId, edge.state, { reason, previous_state: edge.state, cascade_root: true });
+      // The RESOLVED edge, not the string that was typed - the pair form finds an id the caller never
+      // supplied, and revoking `edgeId` there would cut nothing.
+      const _rootEdgeId = edge.id;
+      try {
+        await revokeOne(_rootEdgeId, edge.state, { reason, previous_state: edge.state, cascade_root: true });
+      } catch (e) {
+        return { cmd: "PTA_REVOKE", payload: { ok: false, error: String(e?.message ?? e),
+          edge_id: _rootEdgeId, resolved_from: edgeId,
+          what_to_do: "Nothing was revoked and the grant is still live. Re-read the edge with PTA_GET on " +
+            "the subject before assuming access ended." } };
+      }
 
       // ══ REVOCATION CASCADES — THE SPEC SAID SO AND THE CODE DID NOT (v4.9.751) ════════════════
       //
@@ -24511,7 +24588,8 @@ Be concise. This update will be compared against the next update to show drift o
         st.push({ at: now, ..._walk }); if (st.length > 200) st = st.slice(-200);
         await KV.put(env, k, JSON.stringify(st));
       } catch {}
-      return { cmd: "PTA_REVOKE", payload: { ok: true, edge_id: edgeId, state: "revoked", reason,
+      return { cmd: "PTA_REVOKE", payload: { ok: true, edge_id: _rootEdgeId,
+        resolved_from: _rootEdgeId === edgeId ? undefined : edgeId, state: "revoked", reason,
         cascaded: cascaded.length, also_revoked: cascaded, truncated: truncated || undefined,
         walk: _walk,
         walk_note: "depth = how many levels the cascade descended · edges_scanned = rows examined · "

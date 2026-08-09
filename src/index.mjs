@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.962-2026-08-09-i-reported-a-write-that-never-happened";
+const BUILD = "aura-core-v4.9.963-2026-08-09-a-permission-is-not-a-consent";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -28228,6 +28228,87 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         } };
       } catch (e) {
         return { cmd: "PTA_REMEMBER", payload: { ok: false, error: "Remember failed: " + (e && e.message ? e.message : String(e)) } };
+      }
+    }
+
+    case "PTA_CONSENT_REPAIR": {
+      // ══ GRANTS THAT WENT ACTIVE WITH NO RECORD OF THE YES ═══════════════════════════════════
+      //
+      // Under v4.9.961 the ACCEPT handler called a DO method that does not exist ("append" instead of
+      // appendChain) and never read the response, so GRANT_ACCEPTED was never written while the reply
+      // said it was. MEASURED: JoesTattooParlor's grant is ACTIVE and his chain reads BORN, SERVICE,
+      // CONTEXT with no record that he ever agreed. His yes exists only in a terminal response.
+      //
+      // WHY THIS IS WORTH A COMMAND AND NOT A SHRUG: a witnessed consent is the strongest claim in
+      // this system - "the operator recorded a yes given elsewhere" - and it is exactly the claim an
+      // auditor would want to see standing on its own. An active edge in D1 says permission exists; it
+      // does not say the subject agreed, or how, or who witnessed it. That is the difference between a
+      // permission and a consent.
+      //
+      // WHAT IT RECONSTRUCTS AND WHAT IT WILL NOT INVENT. Everything written comes from the edge's own
+      // D1 row - the edge id, the grantee, the permission, and the timestamp the edge went active. The
+      // one thing that CANNOT be recovered is HOW the yes was given: the accept-time note lived only in
+      // the command that failed. So it is recorded as accepted_via "unknown" with the reason stated,
+      // NEVER as "self" and never as "witness". Guessing that would manufacture exactly the distinction
+      // the field exists to preserve.
+      //
+      //   PTA_CONSENT_REPAIR           show active grants with no GRANT_ACCEPTED in the chain
+      //   PTA_CONSENT_REPAIR CONFIRM   write the reconstructed event
+      if (!isOp) return { cmd: "PTA_CONSENT_REPAIR", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const crConfirm = args.some(a => String(a || "").toUpperCase() === "CONFIRM");
+      try {
+        const db = env.AURA_MEMORY;
+        const edges = await db.prepare(
+          "SELECT id, from_id, to_id, permission, updated_at FROM pta_edges WHERE edge_type = 'grant' AND state = 'active' LIMIT 300"
+        ).all();
+        const missing = [], fine = [], written = [], failed = [];
+        for (const e of (edges?.results || [])) {
+          let chain = [];
+          try {
+            const stub = env.PTA_DO.get(env.PTA_DO.idFromName(e.from_id));
+            const r = await stub.fetch(new Request("http://do", { method: "POST",
+              body: JSON.stringify({ method: "getState", params: [] }) }));
+            const j = await r.json();
+            chain = j?.pta?.chain || [];
+          } catch { continue; }   // no DO to read is a different problem - PTA_REPAIR owns that one
+          const has = chain.some((c) => c && c.event === "GRANT_ACCEPTED" &&
+            String(c.data?.edge_id || "") === e.id);
+          if (has) { fine.push(e.id); continue; }
+          missing.push({ edge_id: e.id, subject: e.from_id, grantee: e.to_id, active_since: e.updated_at });
+          if (crConfirm) {
+            try {
+              const stub = env.PTA_DO.get(env.PTA_DO.idFromName(e.from_id));
+              const wr = await stub.fetch(new Request("http://do", { method: "POST", body: JSON.stringify({
+                method: "appendChain",
+                params: ["GRANT_ACCEPTED", "self", {
+                  edge_id: e.id, to: e.to_id, permission: e.permission,
+                  accepted_via: "unknown",
+                  how: "RECONSTRUCTED from the active edge. The accept succeeded but the chain write failed " +
+                       "(v4.9.961 called a DO method that does not exist and did not read the response). The " +
+                       "grant is genuinely active; HOW the yes was given was not recoverable and is NOT guessed.",
+                  reconstructed_at: new Date().toISOString(),
+                  edge_active_since: e.updated_at,
+                }, null, "grant-accepted:" + e.id],
+              }) }));
+              const wj = await wr.json();
+              if (wj && wj.ok) written.push(e.id); else failed.push({ edge_id: e.id, error: wj?.error || "appendChain not ok" });
+            } catch (err) { failed.push({ edge_id: e.id, error: String(err?.message ?? err) }); }
+          }
+        }
+        return {
+          cmd: "PTA_CONSENT_REPAIR",
+          payload: {
+            ok: true, mode: crConfirm ? "applied" : "dry_run",
+            active_grants: (edges?.results || []).length,
+            already_recorded: fine.length, missing_consent_event: missing.length,
+            written: written.length, failed, entries: missing.slice(0, 25),
+            note: crConfirm
+              ? "Written. accepted_via is 'unknown' on every reconstructed event - the grant is real, the manner of the yes was not recoverable, and inventing 'self' or 'witness' would forge the exact distinction that field exists to keep."
+              : "NOTHING CHANGED. These grants are ACTIVE and their subjects' chains contain no record of the acceptance. The permission is real; the consent is undocumented."
+          }
+        };
+      } catch (e) {
+        return { cmd: "PTA_CONSENT_REPAIR", payload: { ok: false, error: "Consent repair failed: " + (e && e.message ? e.message : String(e)) } };
       }
     }
 

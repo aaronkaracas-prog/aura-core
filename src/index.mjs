@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.987-2026-08-09-one-mint-path-for-contacts";
+const BUILD = "aura-core-v4.9.988-2026-08-09-a-create-that-half-succeeded";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -20647,6 +20647,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // SEALED UNDER THIS ENTITY'S OWN KEY. Metadata is where the personal content lives - birth
           // context, the place they were met, who introduced them, what they consented to. The
           // skeleton around it stays clear so the graph still works.
+          // Declared HERE, not inside the DO-init block below, because the return that reports it is
+          // outside that block. I declared it inside and shipped `_aliasSelfWrite is not defined` -
+          // which threw AFTER the D1 insert, so the entity existed while the command reported failure.
+          // A create that half-succeeds and says it failed is the same class as a revoke that matches
+          // nothing and says it worked.
+          let _aliasSelfWrite = null;
           if (metadata) metadata = await sealFor(env, id, metadata);
           // ══ THE NAME IS DELIBERATELY *NOT* SEALED (corrected v4.9.780) ═══════════════════════
           // v4.9.779 sealed it, on the reasoning that forgetting should be pure key-destruction
@@ -20667,7 +20673,6 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             .bind(id, eType, identityKey, sealedName, metadata, now, now).run();
           
           // Initialize the Durable Object now that D1 record exists
-          let _aliasSelfWrite = null;
           try {
             // Register the primary key as an alias too, so a later contact of a DIFFERENT kind resolves
             // here instead of minting a second row. Without this write the lookup above has nothing to

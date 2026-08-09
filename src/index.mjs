@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.966-2026-08-09-stop-inferring-use-the-named-list";
+const BUILD = "aura-core-v4.9.967-2026-08-09-repair-the-ones-that-matter";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -28509,9 +28509,26 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       //   PTA_REPAIR CONFIRM   initialise the missing ones
       if (!isOp) return { cmd: "PTA_REPAIR", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const prConfirm = args.some(a => String(a || "").toUpperCase() === "CONFIRM");
+      // ══ REPAIR BY NAME, NOT BY WALKING EVERYTHING ═══════════════════════════════════════════
+      // The full scan probes every D1 entity's Durable Object one at a time: 141 seconds for 500, and
+      // it will not finish at 5,314. Worse, CONFIRM on that set would initialise Durable Objects for
+      // the very ghosts being cleaned out. Grok: "PTA_REPAIR CONFIRM on full 500 test rows is the
+      // wrong next move: slow, timeouts, re-animates clutter."
+      // So a name argument scopes it to the entities that matter - the real parlors - and the walk
+      // stays available for when the store is actually clean.
+      //   PTA_REPAIR                          scan (slow, and it will time out on a large store)
+      //   PTA_REPAIR FiveBallTattoo           just that one, dry
+      //   PTA_REPAIR CONFIRM FiveBallTattoo   just that one, applied
+      const prNames = args.filter(a => String(a || "").toUpperCase() !== "CONFIRM").map(a => String(a).trim()).filter(Boolean);
       try {
         const db = env.AURA_MEMORY;
-        const rows = await db.prepare("SELECT id, type, name, identity_key FROM pta_entities LIMIT 500").all();
+        let rows;
+        if (prNames.length) {
+          const ph = prNames.map(() => "?").join(",");
+          rows = await db.prepare("SELECT id, type, name, identity_key FROM pta_entities WHERE name IN (" + ph + ")").bind(...prNames).all();
+        } else {
+          rows = await db.prepare("SELECT id, type, name, identity_key FROM pta_entities LIMIT 500").all();
+        }
         const broken = [], healthy = [], repaired = [], failed = [];
         for (const e of (rows?.results || [])) {
           let alive = false;
@@ -28539,7 +28556,9 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           cmd: "PTA_REPAIR",
           payload: {
             ok: true, mode: prConfirm ? "applied" : "dry_run",
+            scope: prNames.length ? prNames : "first 500 (unscoped walk - slow, and it re-animates clutter if confirmed)",
             examined: (rows?.results || []).length,
+            not_found: prNames.filter(n => !(rows?.results || []).some(r => r.name === n)),
             healthy: healthy.length, missing_do: broken.length,
             repaired: repaired.length, failed,
             entities: broken.slice(0, 25),

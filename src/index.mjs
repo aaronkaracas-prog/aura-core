@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.961-2026-08-09-a-consent-you-cannot-show";
+const BUILD = "aura-core-v4.9.962-2026-08-09-i-reported-a-write-that-never-happened";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -19274,13 +19274,29 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // record. Written through appendChain so it is idempotent and carries the same provenance as
         // every other event.
         try {
+          // ══ I INVENTED A METHOD NAME AND THEN REPORTED SUCCESS (fixed 2026-08-09) ═══════════
+          // The first version called method "append" with a single object. The DO's method is
+          // appendChain(eventType, actor, data, expectedVersion, idem) - POSITIONAL. So the call
+          // resolved, the DO returned not-ok, NOTHING WAS WRITTEN, and because the response was never
+          // read the catch never fired and the reply said "GRANT_ACCEPTED written to the subject's
+          // chain". MEASURED: Joe's chain shows BORN, SERVICE, CONTEXT and no GRANT_ACCEPTED, under a
+          // response that claimed it was there.
+          // That is worse than the silent catch it replaced. A swallowed error is invisible; this one
+          // asserted the opposite of the truth - about the single most load-bearing record in the
+          // system, a witnessed consent. accepted_via "witness" is the strongest claim here and it
+          // existed only in a command response nobody keeps.
+          // Same shape as PTA_EVENT, which demonstrably works, and the response is READ.
           const stub = env.PTA_DO.get(env.PTA_DO.idFromName(eRow.from_id));
-          await stub.fetch(new Request("http://do", { method: "POST", body: JSON.stringify({
-            method: "append", params: [{
-              event: "GRANT_ACCEPTED", actor: eRow.from_id,
-              data: { edge_id: acId, to: eRow.to_id, permission: eRow.permission,
-                      accepted_via: acVia, how: acHow || "accepted directly", at: nowIso },
-            }] }) }));
+          const gaResp = await stub.fetch(new Request("http://do", { method: "POST", body: JSON.stringify({
+            method: "appendChain",
+            params: ["GRANT_ACCEPTED", "self", {
+              edge_id: acId, to: eRow.to_id, permission: eRow.permission,
+              accepted_via: acVia, how: acHow || "accepted directly",
+              recorded_at: nowIso,
+            }, null, "grant-accepted:" + acId],   // idem keyed on the edge: accepting twice writes once
+          }) }));
+          const gaData = await gaResp.json();
+          if (!gaData || !gaData.ok) throw new Error(gaData?.error || "appendChain returned not-ok");
           acAppendErr = null;
         } catch (e) {
           // NOT SWALLOWED. The grant is active either way - that lives in D1 - but a missing

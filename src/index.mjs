@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.976-2026-08-09-withdrawing-an-offer-is-not-ending-access";
+const BUILD = "aura-core-v4.9.977-2026-08-09-an-open-offer-is-the-same-offer";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -21894,6 +21894,38 @@ Be concise. This update will be compared against the next update to show drift o
       // batch() also wraps the statements in a transaction, so the edge and its history row now land
       // together or not at all - which they never did before. That is a correctness gain thrown in
       // free: an edge without its history entry was previously possible on a mid-write failure.
+      // ══ RE-OFFERING THE SAME THING MINTS A SECOND OFFER ══════════════════════════════════════
+      //
+      // MEASURED on FiveBallTattoo: THREE grant edges for one pair, all can_remember, because every
+      // PTA_GRANT call inserts a new row. Two got accepted and cut; one was a duplicate offer nobody
+      // asked for. On A4Test an active edge and a stale pending one coexisted, which is why the pair
+      // revoke needs an ambiguity guard at all.
+      //
+      // An offer that is already open is the SAME offer. Re-sending it should hand back the one that
+      // exists, not stack another - otherwise "do you accept?" becomes ambiguous to the person being
+      // asked, and every re-ask leaves litter that a revoke then has to disambiguate.
+      //
+      // ONLY when the permission MATCHES. Offering something different is a different offer and gets
+      // its own edge - a wider or narrower scope is not the same question. And only for PENDING: an
+      // ACTIVE grant means they already said yes, and a REVOKED one is withdrawn consent that must
+      // never be revived by re-sending the original ask.
+      try {
+        const _dupe = await db.prepare(
+          "SELECT id, permission, created_at FROM pta_edges WHERE from_id = ? AND to_id = ? AND edge_type = ? AND state = 'pending'"
+        ).bind(fromId, toId, edgeType).all();
+        for (const d of (_dupe?.results || [])) {
+          let same = false;
+          try { same = JSON.stringify(JSON.parse(d.permission || "{}")) === JSON.stringify(JSON.parse(permission || "{}")); } catch {}
+          if (same) {
+            return { cmd: "PTA_GRANT", payload: { ok: true, mode: "existing_offer", edge_id: d.id,
+              from: { id: fromId, name: fromEnt.name }, to: { id: toId, name: toEnt.name },
+              edge_type: edgeType, state: "pending", offered_at: d.created_at,
+              note: "This exact offer is already open and unanswered - returning it rather than making a " +
+                "second one. Accept it with ACCEPT " + d.id + ", or withdraw it with PTA_REVOKE " + d.id + "." } };
+          }
+        }
+      } catch {}
+
       const _histId = "hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
       await db.batch([
         db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, permission, relationship, impact, context, via_edge_id, origin_id, place, expires_at, act_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")

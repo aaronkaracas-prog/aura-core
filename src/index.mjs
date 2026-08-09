@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.979-2026-08-09-something-the-cascade-should-not-reach";
+const BUILD = "aura-core-v4.9.980-2026-08-09-four-protocols-one-default";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -24669,6 +24669,45 @@ Be concise. This update will be compared against the next update to show drift o
       // (A introduces B, B later reintroduces A) and an unbounded walk inside a request is how a
       // revocation becomes a timeout - which would leave the tree HALF revoked, the worst outcome of
       // the three. Bounded and honest beats unbounded and hopeful.
+      // ══ PHASE B — FOUR PROTOCOLS, ONE DEFAULT (2026-08-09) ═══════════════════════════════════
+      //
+      // upstream_path_cut is what this code already did and it is now proven on a fixture with a
+      // control: root revoked, derived (via_edge_id set) revoked, independent edge between the SAME
+      // two parties left active. Dependency, not proximity.
+      //
+      // It stays the DEFAULT because it is the safe one: a derived grant exists only because its
+      // parent does, and leaving it live after the parent is cut would be permission outliving its
+      // reason. The other three are narrower and must be asked for by name.
+      //
+      //   PTA_REVOKE <edge> cascade:none              root only. The walk does not run.
+      //   PTA_REVOKE <edge> cascade:dispute_upheld:edge_a,edge_b
+      //                                               only those ids. No BFS, no lineage.
+      //   PTA_REVOKE <edge> cascade:entity_terminate   every open edge FROM the subject, flat.
+      //
+      // none is not "safer" - it is narrower, and it leaves derived grants alive on purpose. It is for
+      // when the parent is being replaced rather than withdrawn.
+      const _cascadeArg = (rest.match(/cascade:([a-z_]+)(?::([^\s]+))?/i) || []);
+      const cascadeMode = (_cascadeArg[1] || "upstream_path_cut").toLowerCase();
+      const disputeIds = String(_cascadeArg[2] || "").split(",").map(x => x.trim()).filter(Boolean);
+      const VALID_CASCADE = ["none", "upstream_path_cut", "dispute_upheld", "entity_terminate"];
+      if (!VALID_CASCADE.includes(cascadeMode)) {
+        return { cmd: "PTA_REVOKE", payload: { ok: false, error: "UNKNOWN_CASCADE", saw: cascadeMode,
+          valid: VALID_CASCADE,
+          what_to_do: "The ROOT WAS ALREADY REVOKED before this check - re-run without the cascade argument " +
+            "to walk normally, or with a valid one. An unknown protocol is refused rather than silently " +
+            "falling back to the default, because 'I asked for none and got a full walk' is unrecoverable." } };
+      }
+
+      // ══ RUN KEY — THE SAME CASCADE TWICE IS ONE CASCADE ══════════════════════════════════════
+      // Grok: run key (root_revoke_event_id, protocol), checkpoint, resume, skip already_closed. The
+      // root revoke is already idempotent (revokeOne refuses a zero-change UPDATE and an already
+      // revoked edge returns early), so the risk is the WALK re-running and writing duplicate history
+      // rows for edges it already cut. Keyed on the root edge and the protocol, so re-revoking with a
+      // DIFFERENT protocol is a different run and legitimately proceeds.
+      const _runKey = "pta:cascade:run:" + _rootEdgeId + ":" + cascadeMode;
+      let _priorRun = null;
+      try { _priorRun = JSON.parse((await env.AURA_KV.get(_runKey)) || "null"); } catch {}
+
       const cascaded = [];
       let truncated = false;
       // ══ INSTRUMENT THE WALK (v4.9.757) ═══════════════════════════════════════════════════════
@@ -24688,6 +24727,35 @@ Be concise. This update will be compared against the next update to show drift o
         // low (2 levels, 100 edges) because it is optional: a big tree simply stays un-materialised
         // and is still correctly denied. Before v4.9.763 this loop WAS correctness, took 56 seconds
         // on 901 edges, and truncated - leaving 400 people with access and nothing recording who.
+        // ══ THE THREE NARROW PROTOCOLS ══════════════════════════════════════════════════════
+        if (cascadeMode === "none") {
+          frontier = [];   // the root is already revoked; nothing descends
+        } else if (cascadeMode === "dispute_upheld") {
+          // Only the ids named in the call. No BFS, no lineage - a dispute names its own scope, and
+          // inferring more would be deciding an outcome nobody asked for.
+          frontier = [];
+          for (const did of disputeIds) {
+            if (did === _rootEdgeId) continue;   // already cut
+            const de = await db.prepare("SELECT id, to_id, state FROM pta_edges WHERE id = ?").bind(did).first();
+            if (!de) { cascaded.push({ edge_id: did, skipped: "no such edge" }); continue; }
+            if (de.state === "revoked") { cascaded.push({ edge_id: did, skipped: "already_closed" }); continue; }
+            await revokeOne(de.id, de.state, { reason, previous_state: de.state, revoked_by: "dispute_upheld", root: _rootEdgeId });
+            cascaded.push({ edge_id: de.id, to: de.to_id, depth: 0, protocol: "dispute_upheld" });
+          }
+        } else if (cascadeMode === "entity_terminate") {
+          // Every open edge FROM the subject, flat. No lineage - terminating an entity ends everything
+          // it granted, whether or not those grants descended from this one.
+          frontier = [];
+          const own = await db.prepare(
+            "SELECT id, to_id, state FROM pta_edges WHERE from_id = ? AND state != 'revoked'"
+          ).bind(edge.from_id).all();
+          for (const oe of (own?.results || [])) {
+            if (oe.id === _rootEdgeId) continue;
+            if (cascaded.length >= 100) { truncated = true; break; }
+            await revokeOne(oe.id, oe.state, { reason, previous_state: oe.state, revoked_by: "entity_terminate", root: _rootEdgeId });
+            cascaded.push({ edge_id: oe.id, to: oe.to_id, depth: 0, protocol: "entity_terminate" });
+          }
+        }
         for (let depth = 0; depth < 2 && frontier.length; depth++) {
           const ph = frontier.map(() => "?").join(",");
           const kids = await db.prepare(
@@ -24700,7 +24768,12 @@ Be concise. This update will be compared against the next update to show drift o
             if (seen.has(k.id)) continue;
             seen.add(k.id);
             if (cascaded.length >= 100) { truncated = true; break; }
-            await revokeOne(k.id, k.state, { reason, previous_state: k.state, revoked_by_cascade_from: edgeId, depth: depth + 1 });
+            // Resume: an edge this run key already cut is skipped rather than re-revoked, so a repeat
+            // does not write a second history row claiming a second revocation happened.
+            if (_priorRun && Array.isArray(_priorRun.done) && _priorRun.done.includes(k.id)) {
+              cascaded.push({ edge_id: k.id, skipped: "already_closed_by_prior_run" }); continue;
+            }
+            await revokeOne(k.id, k.state, { reason, previous_state: k.state, revoked_by_cascade_from: _rootEdgeId, depth: depth + 1 });
             cascaded.push({ edge_id: k.id, to: k.to_id, depth: depth + 1 });
             next.push(k.id);
           }
@@ -24724,8 +24797,25 @@ Be concise. This update will be compared against the next update to show drift o
         st.push({ at: now, ..._walk }); if (st.length > 200) st = st.slice(-200);
         await KV.put(env, k, JSON.stringify(st));
       } catch {}
+      // The run record: what this key has already closed, so a repeat resumes instead of re-cutting.
+      // Written after the walk so a mid-walk failure leaves the PREVIOUS record standing rather than a
+      // half-truth claiming more was done than was.
+      try {
+        const doneIds = cascaded.filter(c => c.edge_id && !c.skipped).map(c => c.edge_id);
+        await env.AURA_KV.put(_runKey, JSON.stringify({
+          root: _rootEdgeId, protocol: cascadeMode, at: now,
+          done: [...new Set([...(( _priorRun && _priorRun.done) || []), ...doneIds])],
+          truncated, cursor: truncated ? "capped at 100 edges - re-run the same key to continue" : null,
+        }), { expirationTtl: 30 * 86400 });
+      } catch {}
+
       return { cmd: "PTA_REVOKE", payload: { ok: true, edge_id: _rootEdgeId,
         resolved_from: _rootEdgeId === edgeId ? undefined : edgeId, state: "revoked", reason,
+        cascade_protocol: cascadeMode,
+        cascade_default_note: cascadeMode === "upstream_path_cut"
+          ? "Default. Derived edges (via_edge_id set) follow the root; independent grants between the same parties do not. Pass cascade:none | cascade:dispute_upheld:<ids> | cascade:entity_terminate to change it."
+          : "Explicitly requested - the default is upstream_path_cut.",
+        run_key: _runKey, resumed: _priorRun ? true : undefined,
         withdrew: _wasPending ? "a PENDING offer - it was never accepted, so no access ended and none ever existed" : undefined,
         previous_state: edge.state,
         cascaded: cascaded.length, also_revoked: cascaded, truncated: truncated || undefined,

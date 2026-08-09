@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.994-2026-08-09-confirm-must-not-land-inside-the-json";
+const BUILD = "aura-core-v4.9.995-2026-08-09-the-line-between-find-and-onboard";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -17576,6 +17576,98 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           graph: { business_id: biz.id, customer_id: custId, transaction_id: txId, recipient_id: recipId,
             next_relationship: recipId ? (pu.buyer + " -> " + pu.recipient + " : the purchase became a new person in the graph") : null },
           ts: new Date().toISOString() } };
+      }
+    }
+
+    case "PTA_SWEEP": {
+      // ══ FETCH_PLACES FINDS THEM, ONBOARD DOES ONE, THIS IS THE LINE BETWEEN ═════════════════
+      //
+      // Everything here already existed: FETCH_PLACES returns up to 10 real businesses with place_id,
+      // phone and website; ONBOARD takes ONE and goes into the world - Google Places, scrapes the real
+      // site, pulls the web, perceives from only what it gathered, mints the PTA through
+      // ingestBusiness. The only missing piece was the loop.
+      //
+      // DELIBERATELY SMALL. Aaron's target is absorbing an industry, a state, a country - that version
+      // is a resumable job, not a loop, because a Worker gets seconds and a state has thousands of
+      // shops. This is the TEST version: one page of results, a hard cap, and it stops. Building the
+      // durable one before this one is proven would be building a queue for a pipeline nobody has
+      // watched work.
+      //
+      // COST IS THE REASON FOR THE CAP. Each ONBOARD is a site scrape plus a web pull plus model
+      // calls. Ten shops is ten discovery passes - minutes and real money - so LIMIT defaults to 3
+      // and dry_run does no ONBOARD at all, it just shows who was found and who is already known.
+      //
+      //   PTA_SWEEP tattoo parlors in New York NY              dry - who would be onboarded
+      //   PTA_SWEEP CONFIRM tattoo parlors in New York NY      onboard them (LIMIT 3)
+      //   PTA_SWEEP CONFIRM LIMIT 5 tattoo parlors in New York NY
+      if (!isOp) return { cmd: "PTA_SWEEP", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      let swRaw = (rest || "").trim();
+      const swConfirm = /(^|\s)CONFIRM(\s|$)/i.test(swRaw);
+      swRaw = swRaw.replace(/(^|\s)CONFIRM(\s|$)/i, " ").trim();
+      let swLimit = 3;
+      const lm = swRaw.match(/(^|\s)LIMIT\s+(\d+)(\s|$)/i);
+      if (lm) { swLimit = Math.min(Math.max(Number(lm[2]) || 3, 1), 10); swRaw = swRaw.replace(lm[0], " ").trim(); }
+      if (!swRaw) return { cmd: "PTA_SWEEP", payload: { ok: false,
+        error: "Usage: PTA_SWEEP [CONFIRM] [LIMIT n] <what> in <city>   e.g. PTA_SWEEP tattoo parlors in New York NY" } };
+      try {
+        const fp = await processCommand("FETCH_PLACES " + swRaw, env, isOp);
+        const pp = (fp && fp.payload) ? fp.payload : fp;
+        if (!pp || !pp.ok || !Array.isArray(pp.places) || !pp.places.length) {
+          return { cmd: "PTA_SWEEP", payload: { ok: false, error: "NO_PLACES", query: swRaw,
+            places_said: pp?.error || "no results",
+            what_to_do: "Nothing was found, so nothing was onboarded. Check the query or the Google Maps key." } };
+        }
+        // Which of these do we already hold? Resolved through the alias index, so a shop found today
+        // by place_id is recognised even if it was first seen by phone - the whole point of that work.
+        const db = env.AURA_MEMORY;
+        const rows = [];
+        for (const pl of pp.places) {
+          let known = null;
+          try {
+            const hk = await hashIdentity(env, normIdentity("place_id:" + pl.place_id));
+            const hit = await db.prepare("SELECT pta_id FROM pta_identity_index WHERE identity_key = ?").bind(hk.key).first();
+            if (hit?.pta_id) known = hit.pta_id;
+            if (!known) {
+              const e = await db.prepare("SELECT id FROM pta_entities WHERE identity_key = ?").bind(hk.key).first();
+              if (e?.id) known = e.id;
+            }
+          } catch {}
+          rows.push({ name: pl.name, place_id: pl.place_id, phone: pl.phone || null,
+                      website: pl.website || null, address: pl.address || null, already: known });
+        }
+        const fresh = rows.filter(r => !r.already);
+        if (!swConfirm) {
+          return { cmd: "PTA_SWEEP", payload: { ok: true, mode: "dry_run", query: swRaw,
+            found: rows.length, already_known: rows.length - fresh.length, would_onboard: Math.min(fresh.length, swLimit),
+            limit: swLimit, businesses: rows,
+            note: "NOTHING ONBOARDED. Each ONBOARD scrapes a site, pulls the web and mints a PTA - minutes " +
+              "and real cost per business. Re-run with CONFIRM to onboard the first " + swLimit + " unknown ones.",
+            to_proceed: "PTA_SWEEP CONFIRM LIMIT " + swLimit + " " + swRaw } };
+        }
+        const onboarded = [], failed = [];
+        for (const r of fresh.slice(0, swLimit)) {
+          try {
+            // ONBOARD by name + city, not by place_id - it re-discovers from the world rather than
+            // trusting what this sweep happened to see. The name string is what it takes.
+            const ob = await processCommand("ONBOARD " + r.name + ", " + String(r.address || swRaw).split(",").slice(-3).join(",").trim(), env, isOp);
+            const op = (ob && ob.payload) ? ob.payload : ob;
+            if (op?.ok && op?.flow?.pta_minted) onboarded.push({ name: r.name, pta: op?.pta?.id || null, mode: op.mode });
+            else failed.push({ name: r.name, error: op?.error || "onboard did not mint a PTA", flow: op?.flow || null });
+          } catch (e) { failed.push({ name: r.name, error: String(e?.message ?? e) }); }
+        }
+        return { cmd: "PTA_SWEEP", payload: { ok: true, mode: "applied", query: swRaw,
+          found: rows.length, already_known: rows.length - fresh.length,
+          onboarded: onboarded.length, failed, businesses: onboarded,
+          remaining_unknown: Math.max(0, fresh.length - swLimit),
+          note: onboarded.length
+            ? "Onboarded as LEADS - each has a PTA and no grant. Nothing was consented to; a grant is a " +
+              "separate act and PTA_REMEMBER will refuse until one is accepted."
+            : "Nothing was onboarded - read `failed`.",
+          next: (fresh.length > swLimit)
+            ? "Re-run the same command to take the next " + swLimit + " - the ones just done are now known and will be skipped."
+            : "Every business this query found is now known." } };
+      } catch (e) {
+        return { cmd: "PTA_SWEEP", payload: { ok: false, error: "Sweep failed: " + (e && e.message ? e.message : String(e)) } };
       }
     }
 

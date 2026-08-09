@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.984-2026-08-09-an-error-nobody-reads";
+const BUILD = "aura-core-v4.9.985-2026-08-09-an-orphan-alias-defends-nobody";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -23103,11 +23103,28 @@ Be concise. This update will be compared against the next update to show drift o
           const clash = await db.prepare("SELECT pta_id FROM pta_identity_index WHERE identity_key = ?").bind(h.key).first();
           if (clash && clash.pta_id !== alId) {
             const other = await db.prepare("SELECT name FROM pta_entities WHERE id = ?").bind(clash.pta_id).first();
+            // ══ AN ORPHANED ALIAS IS NOT A CONSENT BOUNDARY ═══════════════════════════════════
+            // "Already resolves to a different entity" is true and misleading when that entity has
+            // been deleted. MEASURED: re-ingesting Ocean Front Tattoo hit ALIAS_TAKEN against the row
+            // of an entity removed minutes earlier, so the index was defending nobody. Deletes now
+            // clear aliases, but rows written before that fix are still out there.
+            // A live owner is refused - repointing moves a boundary between two real parties. An
+            // orphan is RECLAIMED, because there is no party on the other side to protect.
+            if (!other) {
+              await db.prepare("UPDATE pta_identity_index SET pta_id = ?, created_at = ? WHERE identity_key = ?")
+                .bind(alId, new Date().toISOString(), h.key).run();
+              return { cmd: "PTA_ALIAS", payload: { ok: true, mode: "reclaimed_orphan",
+                pta_id: alId, name: ent.name, previously_pointed_to: clash.pta_id,
+                key_preview: String(h.key).slice(0, 24) + "...",
+                note: "That contact pointed at an entity that no longer exists - an orphaned index row, not a " +
+                  "consent boundary. Repointed to this entity. No living party lost anything." } };
+            }
             return { cmd: "PTA_ALIAS", payload: { ok: false, error: "ALIAS_TAKEN",
-              already_points_to: { id: clash.pta_id, name: other?.name || null }, asked_for: { id: alId, name: ent.name },
-              what_to_do: "This contact already resolves to a different entity. Repointing it would move a consent " +
-                "boundary from one party to another, which is not something to do silently. Decide which entity is " +
-                "real and delete the other deliberately." } };
+              already_points_to: { id: clash.pta_id, name: other.name || null }, asked_for: { id: alId, name: ent.name },
+              owner_exists: true,
+              what_to_do: "This contact already resolves to a DIFFERENT LIVE entity. Repointing it would move a " +
+                "consent boundary from one party to another, which is not something to do silently. Decide which " +
+                "entity is real and delete the other deliberately." } };
           }
           await db.prepare("INSERT OR IGNORE INTO pta_identity_index (identity_key, pta_id, created_at) VALUES (?, ?, ?)")
             .bind(h.key, alId, new Date().toISOString()).run();
@@ -29047,6 +29064,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           for (const c of safe) {
             try {
               await db.prepare("DELETE FROM pta_edges WHERE from_id = ? OR to_id = ?").bind(c.id, c.id).run();
+              await db.prepare("DELETE FROM pta_identity_index WHERE pta_id = ?").bind(c.id).run();   // aliases die with the entity
               await db.prepare("DELETE FROM pta_entities WHERE id = ?").bind(c.id).run();
               deleted.push(c.id);
             } catch (err) { failed.push({ id: c.id, name: c.name, error: String(err?.message ?? err) }); }
@@ -29111,7 +29129,13 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         if (dnConfirm) {
           for (const m of matched) {
             try {
+              // ══ AN ALIAS THAT OUTLIVES ITS ENTITY BLOCKS THE NEXT ONE ══════════════════════
+              // MEASURED: deleting "Ocean" left its phone alias in pta_identity_index, so re-ingesting
+              // the same shop hit ALIAS_TAKEN - the index was defending a consent boundary for an
+              // entity that no longer exists. PTA_FIXTURE CLEAR removes aliases; this did not. I wrote
+              // both and only one of them was complete.
               await db.prepare("DELETE FROM pta_edges WHERE from_id = ? OR to_id = ?").bind(m.id, m.id).run();
+              await db.prepare("DELETE FROM pta_identity_index WHERE pta_id = ?").bind(m.id).run();
               await db.prepare("DELETE FROM pta_entities WHERE id = ?").bind(m.id).run();
               deleted.push(m.id);
             } catch (err) { failed.push({ id: m.id, name: m.name, error: String(err?.message ?? err) }); }
@@ -29185,6 +29209,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           for (const c of clutter) {
             try {
               await db.prepare("DELETE FROM pta_edges WHERE from_id = ? OR to_id = ?").bind(c.id, c.id).run();
+              await db.prepare("DELETE FROM pta_identity_index WHERE pta_id = ?").bind(c.id).run();   // aliases die with the entity
               await db.prepare("DELETE FROM pta_entities WHERE id = ?").bind(c.id).run();
               deleted++;
             } catch (err) { failed.push({ id: c.id, error: String(err?.message ?? err) }); }

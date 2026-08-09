@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.973-2026-08-09-one-place-decides-if-a-grant-is-live";
+const BUILD = "aura-core-v4.9.974-2026-08-09-one-shop-two-contacts-one-entity";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -20494,6 +20494,34 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             }
             if (!existing) existing = await db.prepare("SELECT * FROM pta_entities WHERE identity_key = ?").bind(normed).first();
           }
+
+          // ══ ONE SHOP, TWO CONTACTS, TWO ROWS - THE ALIAS INDEX FIXES IT ═══════════════════════
+          //
+          // MEASURED: FiveBallTattoo was created twice today under different identity keys - once from
+          // an address-bearing ingest, once as identity:phone:+13109631344 - because each contact
+          // hashes to a different value and this dedup only ever looked at pta_entities.identity_key,
+          // the PRIMARY key. At a million businesses that is a split brain per shop found twice, with
+          // separate chains and separate grants, and it cannot be merged afterwards: the hash is
+          // one-way and the plaintext is deliberately not stored.
+          //
+          // pta_identity_index ALREADY EXISTS and is exactly the right shape - identity_key UNIQUE,
+          // pta_id, many keys to one entity. PTA_CREATE writes it; PTA_ENTITY CREATE never did, and
+          // nothing on this path ever read it. So the table that solves this has been sitting here
+          // unused. Check for the door before building one.
+          //
+          // NO CANONICAL-KEY CONTEST. "place_id wins" sounds right and fails the same way: a shop
+          // minted by phone today cannot be re-keyed by place_id tomorrow, because re-hashing needs
+          // plaintext that is gone. Aliases mean every contact ever seen resolves to the one entity,
+          // whichever arrived first.
+          if (!existing) {
+            try {
+              const aliasHit = await db.prepare("SELECT pta_id FROM pta_identity_index WHERE identity_key = ?")
+                .bind(identityKey).first();
+              if (aliasHit?.pta_id) {
+                existing = await db.prepare("SELECT * FROM pta_entities WHERE id = ?").bind(aliasHit.pta_id).first();
+              }
+            } catch {}
+          }
           if (existing) return { cmd: "PTA_ENTITY", payload: { ok: true, mode: "existing", entity: await _unsealEnt(existing) } };
         }
         const id = ptaId();
@@ -20529,6 +20557,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           
           // Initialize the Durable Object now that D1 record exists
           try {
+            // Register the primary key as an alias too, so a later contact of a DIFFERENT kind resolves
+            // here instead of minting a second row. Without this write the lookup above has nothing to
+            // find and the alias index stays the empty table it has been.
+            if (identityKey) {
+              try {
+                await db.prepare("CREATE TABLE IF NOT EXISTS pta_identity_index (identity_key TEXT UNIQUE NOT NULL, pta_id TEXT NOT NULL, created_at TEXT)").run();
+                await db.prepare("INSERT OR IGNORE INTO pta_identity_index (identity_key, pta_id, created_at) VALUES (?, ?, ?)")
+                  .bind(identityKey, id, new Date().toISOString()).run();
+              } catch {}
+            }
             const doId = env.PTA_DO.idFromName(id);
             const stub = env.PTA_DO.get(doId);
             const initResp = await stub.fetch(new Request("http://do", {
@@ -22737,6 +22775,62 @@ Be concise. This update will be compared against the next update to show drift o
               + "clear. The append-only HISTORY is untouched and their relationships remain, so other "
               + "people's chains stay whole: what survives is that something happened, not what it was.",
           verify_with: "PTA_ENTITY GET " + id } };
+      }
+    }
+
+    case "PTA_ALIAS": {
+      // ══ A SECOND CONTACT FOR A SHOP YOU ALREADY KNOW ═══════════════════════════════════════
+      //
+      // Ingest finds a parlor by place_id today and learns its phone next week. Without this the phone
+      // mints a second entity with its own chain and its own grants, and the two can never be merged -
+      // identity keys are one-way hashes and the plaintext is deliberately never stored.
+      //
+      //   PTA_ALIAS ADD <pta_id> <identity:key>     attach a contact to an existing entity
+      //   PTA_ALIAS LIST <pta_id>                   what resolves to this entity
+      //
+      // ADD IS NOT A MERGE. It attaches a contact to an entity that already exists. If the key is
+      // already registered to a DIFFERENT entity it refuses and names both - silently repointing an
+      // alias would move a consent boundary, which is the one thing this layer must never do quietly.
+      if (!isOp) return { cmd: "PTA_ALIAS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const alSub = String(args[0] || "").toUpperCase();
+      const alId = String(args[1] || "").trim();
+      try {
+        const db = env.AURA_MEMORY;
+        await db.prepare("CREATE TABLE IF NOT EXISTS pta_identity_index (identity_key TEXT UNIQUE NOT NULL, pta_id TEXT NOT NULL, created_at TEXT)").run();
+        if (alSub === "LIST") {
+          if (!alId) return { cmd: "PTA_ALIAS", payload: { ok: false, error: "Usage: PTA_ALIAS LIST <pta_id>" } };
+          const rows = await db.prepare("SELECT identity_key, created_at FROM pta_identity_index WHERE pta_id = ?").bind(alId).all();
+          return { cmd: "PTA_ALIAS", payload: { ok: true, pta_id: alId, count: (rows?.results || []).length,
+            aliases: (rows?.results || []).map(r => ({ key: String(r.identity_key).slice(0, 24) + "...", added: r.created_at })),
+            note: "Every key here resolves to this one entity. Keys are shown truncated - they are hashed contacts, not readable ones." } };
+        }
+        if (alSub === "ADD") {
+          const alRaw = args.slice(2).join(" ").trim();
+          if (!alId || !alRaw) return { cmd: "PTA_ALIAS", payload: { ok: false,
+            error: "Usage: PTA_ALIAS ADD <pta_id> <identity:key>  e.g. PTA_ALIAS ADD pta_754... phone:+13109631344" } };
+          const ent = await db.prepare("SELECT id, name FROM pta_entities WHERE id = ?").bind(alId).first();
+          if (!ent) return { cmd: "PTA_ALIAS", payload: { ok: false, error: "NO_SUCH_ENTITY", entity: alId,
+            what_to_do: "An alias attaches a contact to an entity that exists. Create the entity first - that is the consent event." } };
+          const normed = normIdentity(alRaw);
+          const h = await hashIdentity(env, normed);
+          const clash = await db.prepare("SELECT pta_id FROM pta_identity_index WHERE identity_key = ?").bind(h.key).first();
+          if (clash && clash.pta_id !== alId) {
+            const other = await db.prepare("SELECT name FROM pta_entities WHERE id = ?").bind(clash.pta_id).first();
+            return { cmd: "PTA_ALIAS", payload: { ok: false, error: "ALIAS_TAKEN",
+              already_points_to: { id: clash.pta_id, name: other?.name || null }, asked_for: { id: alId, name: ent.name },
+              what_to_do: "This contact already resolves to a different entity. Repointing it would move a consent " +
+                "boundary from one party to another, which is not something to do silently. Decide which entity is " +
+                "real and delete the other deliberately." } };
+          }
+          await db.prepare("INSERT OR IGNORE INTO pta_identity_index (identity_key, pta_id, created_at) VALUES (?, ?, ?)")
+            .bind(h.key, alId, new Date().toISOString()).run();
+          return { cmd: "PTA_ALIAS", payload: { ok: true, mode: clash ? "already_present" : "added",
+            pta_id: alId, name: ent.name, key_preview: String(h.key).slice(0, 24) + "...",
+            note: "This contact now resolves to that entity. A future PTA_ENTITY CREATE using it returns the existing entity instead of minting a second one." } };
+        }
+        return { cmd: "PTA_ALIAS", payload: { ok: false, error: "Usage: PTA_ALIAS ADD <pta_id> <identity:key> | PTA_ALIAS LIST <pta_id>" } };
+      } catch (e) {
+        return { cmd: "PTA_ALIAS", payload: { ok: false, error: "Alias failed: " + (e && e.message ? e.message : String(e)) } };
       }
     }
 

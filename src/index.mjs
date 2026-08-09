@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.988-2026-08-09-a-create-that-half-succeeded";
+const BUILD = "aura-core-v4.9.989-2026-08-09-quoted-names-at-every-door";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -29209,7 +29209,17 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       //   PTA_DELETE_NAMED CONFIRM <name> [<name> ...]   delete
       if (!isOp) return { cmd: "PTA_DELETE_NAMED", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const dnConfirm = args.some(a => String(a || "").toUpperCase() === "CONFIRM");
-      const dnNames = args.filter(a => String(a || "").toUpperCase() !== "CONFIRM").map(a => String(a).trim()).filter(Boolean);
+      // ══ QUOTED NAMES HERE TOO ═══════════════════════════════════════════════════════════════
+      // PTA_ENTITY CREATE learned quoted names an hour ago and this did not, so `PTA_DELETE_NAMED
+      // CONFIRM "Ink Alley"` split into ["Ink, Alley"] and matched nothing - the entity survived and
+      // the reply said 0 deleted, which was at least honest. Sixth time today a fix landed in one
+      // place and not its sibling; the pattern is the pattern.
+      // Quoted phrases first, then bare words that were not inside quotes.
+      const dnQuoted = [...rest.matchAll(/"([^"]+)"/g)].map(m => m[1].trim()).filter(Boolean);
+      const dnBare = rest.replace(/"[^"]*"/g, " ").split(/\s+/)
+        .map(a => String(a || "").trim())
+        .filter(a => a && a.toUpperCase() !== "CONFIRM" && a.toUpperCase() !== "PTA_DELETE_NAMED");
+      const dnNames = [...dnQuoted, ...dnBare];
       if (!dnNames.length) return { cmd: "PTA_DELETE_NAMED", payload: { ok: false,
         error: "Usage: PTA_DELETE_NAMED [CONFIRM] <exact name> [<exact name> ...]",
         note: "Exact names from PTA_ENTITY LIST. No patterns, no prefixes - this command deletes what you name and nothing else." } };

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.986-2026-08-09-a-wrong-alias-is-worse-than-a-missing-one";
+const BUILD = "aura-core-v4.9.987-2026-08-09-one-mint-path-for-contacts";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -3466,7 +3466,9 @@ async function ingestBusiness(env, rec, isOp) {
   const aliased = [], alias_failed = [];
   for (const a of pick.aliases) {
     try {
-      const r = await processCommand("PTA_ALIAS ADD " + id + " " + a, env, isOp);
+      // CONFIRM because ADD is now dry by default. Ingest is not a place to ask twice - PTA_INGEST
+      // already has its own dry run, and the operator confirmed there.
+      const r = await processCommand("PTA_ALIAS ADD " + id + " " + a + " CONFIRM", env, isOp);
       if (r?.payload?.ok) aliased.push(a.split(":")[0]);
       else alias_failed.push({ kind: a.split(":")[0], error: r?.payload?.error || "no ok in response",
                                detail: r?.payload?.what_to_do || null });
@@ -20681,7 +20683,33 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 await db.prepare("CREATE TABLE IF NOT EXISTS pta_identity_index (identity_key TEXT UNIQUE NOT NULL, pta_id TEXT NOT NULL, created_at TEXT)").run();
                 const _ar = await db.prepare("INSERT OR IGNORE INTO pta_identity_index (identity_key, pta_id, created_at) VALUES (?, ?, ?)")
                   .bind(identityKey, id, new Date().toISOString()).run();
-                _aliasSelfWrite = { ok: true, changes: Number(_ar?.meta?.changes ?? -1) };
+                _aliasSelfWrite = { ok: true, changes: Number(_ar?.meta?.changes ?? -1), extra: [] };
+                // ══ EVERY DURABLE CONTACT, NOT JUST THE ONE PASSED ═══════════════════════════
+                // Grok: "one mint path for contacts whether CREATE or INGEST." A direct CREATE took
+                // whichever identity the caller happened to supply and registered only that, which is
+                // how FiveBallTattoo ended up findable by phone alone until I attached its place_id by
+                // hand. Any other contact in meta: is registered here too, so a shop created directly
+                // is as findable as one that came through ingest.
+                try {
+                  const _md = metadata ? JSON.parse(metadata) : {};
+                  const _more = [
+                    ["place_id", _md.place_id || _md.placeId],
+                    ["phone",    _md.phone],
+                    ["site",     _md.website || _md.site],
+                    ["email",    _md.email],
+                  ];
+                  for (const [kind, val] of _more) {
+                    const v = String(val ?? "").trim();
+                    if (!v) continue;
+                    const hk = await hashIdentity(env, normIdentity(kind + ":" + v));
+                    if (hk.key === identityKey) continue;   // that is the primary, already written
+                    const taken = await db.prepare("SELECT pta_id FROM pta_identity_index WHERE identity_key = ?").bind(hk.key).first();
+                    if (taken && taken.pta_id !== id) { _aliasSelfWrite.extra.push({ kind, skipped: "belongs to " + taken.pta_id }); continue; }
+                    await db.prepare("INSERT OR IGNORE INTO pta_identity_index (identity_key, pta_id, created_at) VALUES (?, ?, ?)")
+                      .bind(hk.key, id, new Date().toISOString()).run();
+                    _aliasSelfWrite.extra.push({ kind, registered: true });
+                  }
+                } catch (e) { _aliasSelfWrite.extra_error = String(e?.message ?? e); }
               } catch (e) {
                 _aliasSelfWrite = { ok: false, error: String(e?.message ?? e) };
                 console.warn("[PTA_ENTITY] primary key NOT registered as an alias for " + id + ": " + _aliasSelfWrite.error);
@@ -23092,7 +23120,15 @@ Be concise. This update will be compared against the next update to show drift o
             note: "Every key here resolves to this one entity. Keys are shown truncated - they are hashed contacts, not readable ones." } };
         }
         if (alSub === "ADD") {
-          const alRaw = args.slice(2).join(" ").trim();
+          // ══ DRY BY DEFAULT — MIS-ATTACHING IS THE POINT OF FAILURE ═══════════════════════════
+          // GUT, DELETE_NAMED, INGEST, CONSENT_REPAIR and WIPE are all dry by default; ADD was not,
+          // and it silently rewrote a live mapping during a badly chosen test - Ocean Front's place_id
+          // landed on FiveBallTattoo. It reclaimed an orphan correctly, and the OUTCOME was wrong.
+          // A wrong alias returns the wrong entity for a real contact, which is this system's failure
+          // inverted: not "no record found" but "the confident wrong one".
+          // So it now shows what it would do first. CONFIRM applies.
+          const alConfirm = args.some(a => String(a || "").toUpperCase() === "CONFIRM");
+          const alRaw = args.slice(2).filter(a => String(a || "").toUpperCase() !== "CONFIRM").join(" ").trim();
           if (!alId || !alRaw) return { cmd: "PTA_ALIAS", payload: { ok: false,
             error: "Usage: PTA_ALIAS ADD <pta_id> <identity:key>  e.g. PTA_ALIAS ADD pta_754... phone:+13109631344" } };
           const ent = await db.prepare("SELECT id, name FROM pta_entities WHERE id = ?").bind(alId).first();
@@ -23111,6 +23147,13 @@ Be concise. This update will be compared against the next update to show drift o
             // A live owner is refused - repointing moves a boundary between two real parties. An
             // orphan is RECLAIMED, because there is no party on the other side to protect.
             if (!other) {
+              if (!alConfirm) {
+                return { cmd: "PTA_ALIAS", payload: { ok: true, mode: "dry_run_reclaim",
+                  would_attach: { pta_id: alId, name: ent.name },
+                  currently_points_to: clash.pta_id, owner_exists: false,
+                  note: "NOTHING CHANGED. That contact points at an entity that no longer exists, so this " +
+                    "would RECLAIM it. Add CONFIRM to apply." } };
+              }
               await db.prepare("UPDATE pta_identity_index SET pta_id = ?, created_at = ? WHERE identity_key = ?")
                 .bind(alId, new Date().toISOString(), h.key).run();
               return { cmd: "PTA_ALIAS", payload: { ok: true, mode: "reclaimed_orphan",
@@ -23125,6 +23168,14 @@ Be concise. This update will be compared against the next update to show drift o
               what_to_do: "This contact already resolves to a DIFFERENT LIVE entity. Repointing it would move a " +
                 "consent boundary from one party to another, which is not something to do silently. Decide which " +
                 "entity is real and delete the other deliberately." } };
+          }
+          if (!alConfirm) {
+            return { cmd: "PTA_ALIAS", payload: { ok: true, mode: "dry_run",
+              would_attach: { pta_id: alId, name: ent.name },
+              contact: alRaw, key_preview: String(h.key).slice(0, 24) + "...",
+              currently_resolves_to: clash ? clash.pta_id : null,
+              note: "NOTHING CHANGED. This contact would resolve to " + ent.name + " after PTA_ALIAS ADD " +
+                alId + " " + alRaw + " CONFIRM." } };
           }
           await db.prepare("INSERT OR IGNORE INTO pta_identity_index (identity_key, pta_id, created_at) VALUES (?, ?, ?)")
             .bind(h.key, alId, new Date().toISOString()).run();

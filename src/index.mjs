@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.969-2026-08-09-prefix-only-and-never-over-a-chain";
+const BUILD = "aura-core-v4.9.970-2026-08-09-fast-is-opt-in-and-never-silent";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -28311,7 +28311,17 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       //   PTA_GUT_PREFIX CONFIRM ptatest launchms diag   delete
       if (!isOp) return { cmd: "PTA_GUT_PREFIX", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const gpConfirm = args.some(a => String(a || "").toUpperCase() === "CONFIRM");
-      const gpPrefixes = args.filter(a => String(a || "").toUpperCase() !== "CONFIRM")
+      // ══ FAST — SKIP THE CHAIN PROBE, AND SAY SO IN THE RESPONSE ══════════════════════════════
+      // The probe has now examined 1,616 launchms/ptatest/diag rows and skipped ZERO. That is not a
+      // reason to trust prefixes in general; it is evidence about THESE prefixes, which came from one
+      // scale test that created entities and never wrote to them. At ~100 seconds a pass and thousands
+      // of rows left, the check is costing real time to re-prove the same thing.
+      // So FAST is opt-in, per invocation, and the response says `chain_check: "SKIPPED"` - never a
+      // default and never silent. A safety check that can be turned off invisibly is not a safety
+      // check, and the whole reason this command exists is that two heuristics nearly deleted real
+      // tattoo parlors today.
+      const gpFast = args.some(a => String(a || "").toUpperCase() === "FAST");
+      const gpPrefixes = args.filter(a => !["CONFIRM", "FAST"].includes(String(a || "").toUpperCase()))
         .map(a => String(a).trim()).filter(p => p.length >= 4);
       if (!gpPrefixes.length) return { cmd: "PTA_GUT_PREFIX", payload: { ok: false,
         error: "Usage: PTA_GUT_PREFIX [CONFIRM] <prefix> [<prefix> ...]",
@@ -28321,13 +28331,14 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         const candidates = [], skipped_has_chain = [], deleted = [], failed = [];
         for (const pre of gpPrefixes) {
           const rows = await db.prepare(
-            "SELECT id, type, name FROM pta_entities WHERE name LIKE ? LIMIT 400"
+            "SELECT id, type, name FROM pta_entities WHERE name LIKE ? LIMIT " + (gpFast ? 2000 : 400)
           ).bind(pre + "%").all();
           for (const e of (rows?.results || [])) candidates.push({ id: e.id, type: e.type, name: e.name, prefix: pre });
         }
         // A chain longer than BORN means something happened here. Name is not enough to delete that.
         const safe = [];
         for (const c of candidates) {
+          if (gpFast) { safe.push(c); continue; }   // probe skipped by explicit request - reported below
           let len = 0;
           try {
             const stub = env.PTA_DO.get(env.PTA_DO.idFromName(c.id));
@@ -28353,6 +28364,9 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           payload: {
             ok: true, mode: gpConfirm ? "applied" : "dry_run",
             prefixes: gpPrefixes,
+            chain_check: gpFast
+              ? "SKIPPED (FAST) - nothing was probed for existing history. Only ever use this on a prefix already proven empty by a normal pass."
+              : "every candidate probed; anything with a chain beyond BORN was left alone",
             matched: candidates.length, deletable: safe.length,
             skipped_has_chain: skipped_has_chain.length, skipped_sample: skipped_has_chain.slice(0, 10),
             deleted: deleted.length, failed,

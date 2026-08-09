@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.958-2026-08-08-both-halves-or-neither";
+const BUILD = "aura-core-v4.9.959-2026-08-08-context-about-them-goes-in-their-chain";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -3697,6 +3697,34 @@ async function ptaWakeGate(env, opts) {
 //   4. DEFAULT DENY. No edge, no permission, unparseable permission - all refuse. A permission layer
 //      that fails open is not a permission layer.
 // Returns WHY in every case: a refusal that cannot be explained gets worked around rather than fixed.
+// ══ can_remember ── WRITING TO SOMEONE'S CHAIN IS ITS OWN ACT (2026-08-08) ═══════════════════
+//
+// This file already separates knowing from surfacing - "can_view: being allowed to KNOW something is
+// not being allowed to BRING IT UP" - and separates both from can_initiate, which is reaching out
+// unprompted. Writing a fact INTO someone's chain is a fourth act and none of those three cover it.
+//
+// GROK'S RULING, after surveying Mem0, Zep/Graphiti and Cloudflare Agent Memory: auto-append only to
+// an EXISTING entity that already has an open grant for this kind of write; CREATE of a new entity
+// from conversation requires confirmation; facts about a named third party with no matching PTA stay
+// in operator-scoped storage until that happens. His reason, and it is the load-bearing one:
+//   "It is the only policy that keeps 'revoke must actually end it' true at a million entities.
+//    Automatic CREATE would mint chains for mishearings and for people who only appeared as topics
+//    of speech; those people never got a grant to revoke."
+// He also found that nothing in the field implements this - "that gap is yours to close deliberately
+// because your doctrine is stronger than theirs."
+//
+// MEASURED, the reason this is being built: Aaron onboarded a florist in five turns. She answered a
+// live customer question correctly BECAUSE a fact had changed, and it survived a restart - but the
+// facts landed in her shared searchable archive. aura:belief, notes:, PTA_ENTITY LIST business and
+// mem:core:current were all empty. Durable and retrievable, with no owner, no consent boundary and
+// no revocation. Right for one merchant. Wrong at a million, and a million is the target.
+//
+// WHAT REVOKE MEANS HERE, and why it is not just a flag: revoking can_remember stops further appends.
+// It does not erase the chain - the chain is the record of what was true and when. Erasure is a
+// separate act with its own command, because "stop writing about me" and "delete what you wrote" are
+// different requests and a system that conflates them cannot honour either precisely.
+const PTA_CAP_REMEMBER = "remember";
+
 async function ptaCan(env, actorId, capability, subjectId) {
   const cap = String(capability || "").toLowerCase().replace(/^can_/, "");
   const key = "can_" + cap;
@@ -28007,6 +28035,110 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         };
       } catch (e) {
         return { cmd: "BELIEF_MERGE", payload: { ok: false, error: "Merge failed: " + (e && e.message ? e.message : String(e)) } };
+      }
+    }
+
+    case "PTA_REMEMBER": {
+      // ══ CONTEXT ABOUT SOMEONE GOES INTO THEIR CHAIN, OR NOWHERE ═════════════════════════════
+      //
+      //   PTA_REMEMBER <entity_id> <TYPE> {json}
+      //
+      // The whole rule in one place: the entity must EXIST (both halves - D1 row and a live Durable
+      // Object) and must hold an open can_remember grant. Anything else REFUSES and says which of the
+      // two is missing, so the caller knows whether to introduce them or to ask for a grant.
+      //
+      // WHY REFUSAL IS THE FEATURE. The florist test proved she can learn a business and apply it to
+      // a live customer question. It also proved the facts went somewhere with no owner and no
+      // revocation. A write that lands in the wrong place is worse than a write that does not happen,
+      // because the second one tells you.
+      //
+      // NOT AN EDIT, EVER. A changed fact is a NEW event after the old one - "they stopped same-day
+      // delivery" does not overwrite "they do same-day delivery". The chain is the history of what was
+      // true and when it stopped being true, and overwriting destroys the only record of the change,
+      // which is usually the thing that mattered. Appends are idempotent by content hash, so restating
+      // something already held costs nothing and creates nothing.
+      if (!isOp) return { cmd: "PTA_REMEMBER", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const rmId = args[0] || "";
+      const rmType = (args[1] || "").toUpperCase();
+      if (!rmId || !rmType) {
+        return { cmd: "PTA_REMEMBER", payload: { ok: false,
+          error: "Usage: PTA_REMEMBER <entity_id> <TYPE> {json}",
+          types: "HOURS, SERVICE, CONTACT, CAPABILITY, PREFERENCE, CONTEXT, INTENT" } };
+      }
+      try {
+        // 1. BOTH HALVES OR IT DOES NOT EXIST. A D1 row with no Durable Object is the split-brain
+        //    state - findable, and unable to hold a single fact. Appending there would create a chain
+        //    with no discoverable owner, which is the same bug from the other side.
+        const rmDb = env.AURA_MEMORY;
+        const rmRow = await rmDb.prepare("SELECT id, type, name FROM pta_entities WHERE id = ?").bind(rmId).first();
+        let rmDoAlive = false;
+        try {
+          const stub = env.PTA_DO.get(env.PTA_DO.idFromName(rmId));
+          const r = await stub.fetch(new Request("http://do", { method: "POST",
+            body: JSON.stringify({ method: "getState", params: [] }) }));
+          const j = await r.json();
+          rmDoAlive = !!(j && j.ok);
+        } catch {}
+        if (!rmRow && !rmDoAlive) {
+          return { cmd: "PTA_REMEMBER", payload: { ok: false, error: "NO_SUCH_ENTITY", entity: rmId,
+            what_to_do: "This entity does not exist. Creating one is a CONSENT EVENT, not a side effect " +
+              "of learning something - it must be introduced deliberately. Until then the fact belongs " +
+              "in operator-scoped storage, not in a chain nobody owns." } };
+        }
+        if (!rmDoAlive) {
+          return { cmd: "PTA_REMEMBER", payload: { ok: false, error: "HALF_CREATED", entity: rmId,
+            d1_row: !!rmRow,
+            what_to_do: "The D1 row exists and the Durable Object does not, so there is nothing to append " +
+              "to. Run PTA_REPAIR to initialise it from the row that already exists - that restores the " +
+              "missing half and creates nothing new." } };
+        }
+
+        // 2. THE GRANT. Aura appending to someone's chain is an act they must have allowed. The actor
+        //    is her own PTA, never the subject - self-allow must not authorise this the way it does a
+        //    read, because writing about someone is not the same as them reading themselves.
+        const rmActor = (await getSecret(env, "aura_pta_id")) || (await env.AURA_KV.get("config:aura:pta_id")) || "";
+        if (!rmActor) {
+          return { cmd: "PTA_REMEMBER", payload: { ok: false, error: "NO_ACTOR_IDENTITY",
+            what_to_do: "Aura has no PTA id of her own, so there is no actor to hold a grant. A grant " +
+              "must be FROM someone TO someone - an unattributed write is exactly what this gate exists " +
+              "to prevent. Set config:aura:pta_id." } };
+        }
+        const rmCan = await ptaCan(env, rmActor, PTA_CAP_REMEMBER, rmId);
+        if (!rmCan || !rmCan.allowed) {
+          return { cmd: "PTA_REMEMBER", payload: { ok: false, error: "NO_GRANT", entity: rmId,
+            actor: rmActor, reason: rmCan?.reason || "no can_remember edge",
+            what_to_do: "This entity has not granted can_remember. The fact stays in operator-scoped " +
+              "storage. Issue the grant with PTA_GRANT <them> <aura> {\"permission\":{\"can_remember\":true}} " +
+              "when they have actually agreed to it - revoking it later stops further appends, and the " +
+              "chain already written stays as the record of what was true." } };
+        }
+
+        // 3. APPEND. Same idempotent path PTA_EVENT uses, so a restated fact costs nothing.
+        const rmJsonAt = rest.indexOf("{");
+        let rmData = {};
+        if (rmJsonAt >= 0) {
+          try { rmData = JSON.parse(rest.slice(rmJsonAt)); }
+          catch (e) { return { cmd: "PTA_REMEMBER", payload: { ok: false, error: "Invalid JSON: " + e.message } }; }
+        }
+        const rmEv = { ...rmData, event_type: rmType };
+        const rmIdem = String(rmData.idem || "").trim() || chainIdemKey(rmType, "aura", rmEv);
+        const stub2 = env.PTA_DO.get(env.PTA_DO.idFromName(rmId));
+        const appendResp = await stub2.fetch(new Request("http://do", { method: "POST",
+          body: JSON.stringify({ method: "appendChain", params: [rmType, "aura", rmEv, null, rmIdem] }) }));
+        const appended = await appendResp.json();
+        return { cmd: "PTA_REMEMBER", payload: {
+          ok: !!(appended && appended.ok), entity: rmId, name: rmRow?.name ?? null,
+          event_type: rmType, duplicate: !!appended?.duplicate, idem: rmIdem,
+          via_edge: rmCan.via_edge ?? null,
+          chain_length: appended?.chain_length ?? null,
+          note: appended?.duplicate
+            ? "Already in the chain - idempotent by content, so restating a known fact changed nothing."
+            : "Appended to their chain. Not stored in Aura's archive, not in her beliefs - it is theirs, " +
+              "it is revocable, and it sits under the grant that allowed it.",
+          error: appended?.ok ? undefined : (appended?.error || "append failed"),
+        } };
+      } catch (e) {
+        return { cmd: "PTA_REMEMBER", payload: { ok: false, error: "Remember failed: " + (e && e.message ? e.message : String(e)) } };
       }
     }
 

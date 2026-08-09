@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.985-2026-08-09-an-orphan-alias-defends-nobody";
+const BUILD = "aura-core-v4.9.986-2026-08-09-a-wrong-alias-is-worse-than-a-missing-one";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -23132,7 +23132,47 @@ Be concise. This update will be compared against the next update to show drift o
             pta_id: alId, name: ent.name, key_preview: String(h.key).slice(0, 24) + "...",
             note: "This contact now resolves to that entity. A future PTA_ENTITY CREATE using it returns the existing entity instead of minting a second one." } };
         }
-        return { cmd: "PTA_ALIAS", payload: { ok: false, error: "Usage: PTA_ALIAS ADD <pta_id> <identity:key> | PTA_ALIAS LIST <pta_id>" } };
+        if (alSub === "REMOVE") {
+          // ══ AN ALIAS COULD BE CREATED AND NEVER DELETED ═════════════════════════════════════
+          // ADD and LIST existed; REMOVE did not, so a mistaken attachment was permanent. MEASURED:
+          // a badly chosen test reclaimed Ocean Front's place_id onto FiveBallTattoo - correct
+          // behaviour on an orphaned row, wrong outcome, and no way to undo it. A wrong alias is worse
+          // than a missing one: it silently returns the wrong entity for a real contact.
+          //
+          // IT REFUSES TO REMOVE A PRIMARY. If the key equals the entity's own identity_key, deleting
+          // the index row would leave the entity findable by nothing through this path - the exact
+          // orphan state the ingest ordering exists to prevent. Detach a primary by deleting the
+          // entity, deliberately, not by removing its identity sideways.
+          const rmRaw = args.slice(2).join(" ").trim();
+          if (!alId || !rmRaw) return { cmd: "PTA_ALIAS", payload: { ok: false,
+            error: "Usage: PTA_ALIAS REMOVE <pta_id> <identity:key>" } };
+          const ent2 = await db.prepare("SELECT id, name, identity_key FROM pta_entities WHERE id = ?").bind(alId).first();
+          if (!ent2) return { cmd: "PTA_ALIAS", payload: { ok: false, error: "NO_SUCH_ENTITY", entity: alId } };
+          const hr = await hashIdentity(env, normIdentity(rmRaw));
+          if (ent2.identity_key && ent2.identity_key === hr.key) {
+            return { cmd: "PTA_ALIAS", payload: { ok: false, error: "IS_PRIMARY_KEY",
+              entity: alId, name: ent2.name,
+              what_to_do: "That contact is this entity's PRIMARY identity, not an alias. Removing it would " +
+                "leave the entity unfindable by any contact. Delete the entity if that is what you mean." } };
+          }
+          const cur = await db.prepare("SELECT pta_id FROM pta_identity_index WHERE identity_key = ?").bind(hr.key).first();
+          if (!cur) return { cmd: "PTA_ALIAS", payload: { ok: false, error: "NOT_REGISTERED",
+            entity: alId, note: "That contact does not resolve to anything - nothing was removed." } };
+          if (cur.pta_id !== alId) return { cmd: "PTA_ALIAS", payload: { ok: false, error: "NOT_THIS_ENTITY",
+            resolves_to: cur.pta_id, asked_for: alId,
+            what_to_do: "That contact belongs to a different entity. Removing it from here would report a " +
+              "change that did not happen - name the entity that actually holds it." } };
+          const rr = await db.prepare("DELETE FROM pta_identity_index WHERE identity_key = ? AND pta_id = ?")
+            .bind(hr.key, alId).run();
+          const changed = Number(rr?.meta?.changes ?? 0);
+          if (!changed) return { cmd: "PTA_ALIAS", payload: { ok: false, error: "REMOVE_MATCHED_NOTHING",
+            note: "The DELETE changed no rows, so the alias is still live. Nothing was removed - do not read this as success." } };
+          return { cmd: "PTA_ALIAS", payload: { ok: true, mode: "removed", pta_id: alId, name: ent2.name,
+            key_preview: String(hr.key).slice(0, 24) + "...",
+            note: "That contact no longer resolves to this entity. It resolves to nothing now, so a future " +
+              "sighting through it will mint a new record or can be attached deliberately." } };
+        }
+        return { cmd: "PTA_ALIAS", payload: { ok: false, error: "Usage: PTA_ALIAS ADD <pta_id> <identity:key> | PTA_ALIAS REMOVE <pta_id> <identity:key> | PTA_ALIAS LIST <pta_id>" } };
       } catch (e) {
         return { cmd: "PTA_ALIAS", payload: { ok: false, error: "Alias failed: " + (e && e.message ? e.message : String(e)) } };
       }

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.968-2026-08-09-consent-is-written-before-it-is-granted";
+const BUILD = "aura-core-v4.9.969-2026-08-09-prefix-only-and-never-over-a-chain";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -28286,6 +28286,84 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         } };
       } catch (e) {
         return { cmd: "PTA_REMEMBER", payload: { ok: false, error: "Remember failed: " + (e && e.message ? e.message : String(e)) } };
+      }
+    }
+
+    case "PTA_GUT_PREFIX": {
+      // ══ THE 500 GHOSTS, BY PREFIX AND NOTHING ELSE ══════════════════════════════════════════
+      //
+      // PTA_REPAIR reports 500 of 500 with no Durable Object, and the names are propagation-test
+      // artifacts: ptatestms3r0ifdroot, launchms4yroj5star, diag4. They exist because the graph was
+      // being load-tested, they hold no chain, and they are why the repair walk takes 69-141 seconds
+      // and why A3 cannot be verified against a real population.
+      //
+      // PREFIX ONLY. No structural inference, no "thin means clutter" - both of those were tried on
+      // this store and both were wrong, and the second one would have deleted two real Venice tattoo
+      // parlors because PTA_ENTITY LIST returns sealed metadata that only GET unseals. Grok's rule
+      // after that: "Do not invent new heuristics; prefix/name only."
+      //
+      // AND IT REFUSES TO TOUCH ANYTHING WITH A CHAIN. A prefix match is a strong signal, not proof.
+      // If an entity has a Durable Object holding more than its BORN event, something real happened
+      // to it and it is skipped and reported - whatever the name says. That check costs a probe per
+      // candidate, which is the reason this is slow and the reason it is safe.
+      //
+      //   PTA_GUT_PREFIX ptatest launchms diag           dry run
+      //   PTA_GUT_PREFIX CONFIRM ptatest launchms diag   delete
+      if (!isOp) return { cmd: "PTA_GUT_PREFIX", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const gpConfirm = args.some(a => String(a || "").toUpperCase() === "CONFIRM");
+      const gpPrefixes = args.filter(a => String(a || "").toUpperCase() !== "CONFIRM")
+        .map(a => String(a).trim()).filter(p => p.length >= 4);
+      if (!gpPrefixes.length) return { cmd: "PTA_GUT_PREFIX", payload: { ok: false,
+        error: "Usage: PTA_GUT_PREFIX [CONFIRM] <prefix> [<prefix> ...]",
+        note: "Prefixes must be at least 4 characters - a short one matches far more than intended, and this deletes." } };
+      try {
+        const db = env.AURA_MEMORY;
+        const candidates = [], skipped_has_chain = [], deleted = [], failed = [];
+        for (const pre of gpPrefixes) {
+          const rows = await db.prepare(
+            "SELECT id, type, name FROM pta_entities WHERE name LIKE ? LIMIT 400"
+          ).bind(pre + "%").all();
+          for (const e of (rows?.results || [])) candidates.push({ id: e.id, type: e.type, name: e.name, prefix: pre });
+        }
+        // A chain longer than BORN means something happened here. Name is not enough to delete that.
+        const safe = [];
+        for (const c of candidates) {
+          let len = 0;
+          try {
+            const stub = env.PTA_DO.get(env.PTA_DO.idFromName(c.id));
+            const r = await stub.fetch(new Request("http://do", { method: "POST",
+              body: JSON.stringify({ method: "getState", params: [] }) }));
+            const j = await r.json();
+            len = (j?.pta?.chain || []).length;
+          } catch { len = 0; }
+          if (len > 1) { skipped_has_chain.push({ ...c, chain_length: len }); continue; }
+          safe.push(c);
+        }
+        if (gpConfirm) {
+          for (const c of safe) {
+            try {
+              await db.prepare("DELETE FROM pta_edges WHERE from_id = ? OR to_id = ?").bind(c.id, c.id).run();
+              await db.prepare("DELETE FROM pta_entities WHERE id = ?").bind(c.id).run();
+              deleted.push(c.id);
+            } catch (err) { failed.push({ id: c.id, name: c.name, error: String(err?.message ?? err) }); }
+          }
+        }
+        return {
+          cmd: "PTA_GUT_PREFIX",
+          payload: {
+            ok: true, mode: gpConfirm ? "applied" : "dry_run",
+            prefixes: gpPrefixes,
+            matched: candidates.length, deletable: safe.length,
+            skipped_has_chain: skipped_has_chain.length, skipped_sample: skipped_has_chain.slice(0, 10),
+            deleted: deleted.length, failed,
+            sample: safe.slice(0, 40).map(c => c.name),
+            note: gpConfirm
+              ? "Deleted by name prefix. Anything holding a chain beyond BORN was skipped and is listed - a prefix is a strong signal and not proof, and something with history is not clutter whatever it is called."
+              : "NOTHING DELETED. Read `sample` before confirming. This matches on NAME PREFIX only - no structural inference, because two structural rules were tried on this store and one of them would have deleted real tattoo parlors."
+          }
+        };
+      } catch (e) {
+        return { cmd: "PTA_GUT_PREFIX", payload: { ok: false, error: "Prefix gut failed: " + (e && e.message ? e.message : String(e)) } };
       }
     }
 

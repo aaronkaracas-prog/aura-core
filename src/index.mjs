@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.982-2026-08-09-one-shop-one-primary-key";
+const BUILD = "aura-core-v4.9.983-2026-08-09-a-name-is-not-its-first-word";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -3454,8 +3454,9 @@ async function ingestBusiness(env, rec, isOp) {
   if (!pick.key) return { ok: false, error: "NO_DURABLE_IDENTITY", name, why: pick.why,
     what_to_do: "Skip it or find a contact first. An entity with no identity key is re-minted on every " +
       "future sighting, which is the split-brain this ordering exists to prevent." };
+  // Quoted, so "Ocean Front Tattoo" survives as three words instead of arriving as "Ocean".
   const created = await processCommand(
-    "PTA_ENTITY CREATE business " + JSON.stringify(name).replace(/^"|"$/g, "") + " identity:" + pick.key,
+    'PTA_ENTITY CREATE business "' + String(name).replace(/"/g, "") + '" identity:' + pick.key,
     env, isOp);
   const id = created?.payload?.entity?.id;
   if (!id) return { ok: false, error: "CREATE_FAILED", detail: created?.payload };
@@ -20507,8 +20508,24 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (sub === "CREATE") {
         const eType = (args[1] || "").toLowerCase();
         if (!eType) return { cmd: "PTA_ENTITY", payload: { ok: false, error: "Usage: PTA_ENTITY CREATE <type> <name> [identity:<key>] [meta:<json>]" } };
-        const eName = args[2] || "";
-        const restStr = rest.slice(rest.indexOf(eName) + eName.length).trim();
+        // ══ A MULTI-WORD NAME LOST EVERY WORD BUT THE FIRST (fixed 2026-08-09) ═══════════════
+        //
+        // args[2] is one whitespace-delimited token, so `PTA_ENTITY CREATE business Ocean Front Tattoo
+        // identity:...` created an entity called "Ocean". MEASURED just now via PTA_INGEST, and it is
+        // the same bug that littered the pre-wipe store with House, Black, Five, Ink and Lincoln -
+        // single tokens of real parlor names, each a separate entity. I reproduced it through the
+        // ingest path an hour after deleting its output.
+        //
+        // QUOTED NAMES. `CREATE business "Ocean Front Tattoo" identity:...` keeps the whole name; the
+        // bare form still works for single-word names, so nothing that called this before changes.
+        // Fixed at the DOOR rather than in ingestBusiness, because every caller building a command by
+        // string concatenation hits this, and there are more of those than there are ingest paths.
+        let eName = args[2] || "";
+        const _quoted = rest.match(/^\s*CREATE\s+\S+\s+"([^"]+)"/i);
+        if (_quoted) eName = _quoted[1];
+        const restStr = _quoted
+          ? rest.slice(rest.indexOf('"' + eName + '"') + eName.length + 2).trim()
+          : rest.slice(rest.indexOf(eName) + eName.length).trim();
         let identityKey = null, metadata = null;
         const idMatch = restStr.match(/identity:(\S+)/);
         // NORMALISE AT THE DOOR. Every write goes through the canonical form, so two spellings of the

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.960-2026-08-08-a-grant-offered-can-now-be-accepted";
+const BUILD = "aura-core-v4.9.961-2026-08-09-a-consent-you-cannot-show";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -19263,6 +19263,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           error: "This edge is '" + eRow.state + "', not pending. A revoked grant is not re-accepted - the subject issues a new one." } };
         const acVia = /\bwitness/i.test(acHow) ? "witness" : (acHow ? "witness" : "self");
         const nowIso = new Date().toISOString();
+        let acAppendErr = null;
         try {
           await env.AURA_MEMORY.prepare("UPDATE pta_edges SET state = 'active', updated_at = ? WHERE id = ? AND state = 'pending'")
             .bind(nowIso, acId).run();
@@ -19280,13 +19281,24 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               data: { edge_id: acId, to: eRow.to_id, permission: eRow.permission,
                       accepted_via: acVia, how: acHow || "accepted directly", at: nowIso },
             }] }) }));
-        } catch {}
+          acAppendErr = null;
+        } catch (e) {
+          // NOT SWALLOWED. The grant is active either way - that lives in D1 - but a missing
+          // GRANT_ACCEPTED event means the subject's own chain has no record of their consent, and a
+          // consent you cannot show is not much better than one you never took. Reported, not hidden.
+          acAppendErr = String(e?.message ?? e);
+          console.warn("[ACCEPT] edge activated but GRANT_ACCEPTED did not reach the chain: " + acAppendErr);
+        }
         return { cmd: "ACCEPT", payload: { ok: true, edge_id: acId, from: eRow.from_id, to: eRow.to_id,
           state: "active", accepted_via: acVia, how: acHow || null,
+          chain_event: acAppendErr ? "FAILED TO WRITE: " + acAppendErr : "GRANT_ACCEPTED written to the subject's chain",
           note: acVia === "witness"
             ? "Recorded as WITNESSED - the operator recorded a yes given elsewhere. The chain says so permanently; it is not the same as the subject acting themselves."
             : "Accepted by the subject. The grant is now active and PTA_REMEMBER will append.",
-          revoke_with: "PTA_REVOKE " + eRow.from_id + " " + eRow.to_id } };
+          // PTA_REVOKE takes the EDGE ID, not the two entity ids. The first version of this line said
+          // otherwise and was copied straight into a test, where the revoke silently found nothing and
+          // the writes kept going - the exact failure the gate exists to prevent, caused by its own hint.
+          revoke_with: "PTA_REVOKE " + acId } };
       }
 
       if (!invRaw) return { cmd: "ACCEPT", payload: { ok: false, error: "No invitation: " + acId } };

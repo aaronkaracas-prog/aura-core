@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.959-2026-08-08-context-about-them-goes-in-their-chain";
+const BUILD = "aura-core-v4.9.960-2026-08-08-a-grant-offered-can-now-be-accepted";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -19228,6 +19228,67 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (acPlaceMatch) { try { acPlace = JSON.parse(acPlaceMatch[1]); acId = acId.replace(/@\s*\{.*\}\s*$/, "").trim(); } catch {} }
       if (!acId) return { cmd: "ACCEPT", payload: { ok: false, error: "Usage: ACCEPT <invite_id> [::: how they arrived]" } };
       const invRaw = await env.AURA_KV.get(`invite:${acId}`).catch(() => null);
+
+      // ══ A GRANT OFFERED HAD NO WAY TO BE ACCEPTED (2026-08-08) ═══════════════════════════════
+      //
+      // MEASURED: PTA_GRANT creates the edge in state 'pending' - correctly, because offering is not
+      // consent. But ACCEPT only ever looked up an INVITATION, and PTA_REVOKE only targets ACTIVE
+      // edges. So a pending grant could not be accepted and could not be revoked. It was stuck, and
+      // PTA_REMEMBER refused forever with "an edge exists but none is active".
+      //
+      // A PARLOR COULD NOT SAY YES. Consent-first birth was enforced perfectly for invitations and
+      // had no door at all for the case the tattoo launch actually needs: Aura offers, they agree.
+      //
+      // SAME DOOR, because this is the same act - the receiver completing the offer - and HOW already
+      // says so: "BIRTH on acceptance -> ACCEPT". A separate command would mean two audit trails for
+      // one human moment.
+      //
+      // ══ WHO ACCEPTED, AND HOW, IS RECORDED - IT IS NEVER THE SAME THING ══════════════════════
+      // The identity door is explicit that acceptance "cannot be done FOR someone - it is the
+      // receiver completing the propagation." A verbal yes on a phone call is still a real yes, and
+      // refusing to record it would make onboarding impossible. So it is allowed AND it is marked:
+      //   accepted_via "self"     - they acted themselves. The strong form.
+      //   accepted_via "witness"  - the operator recorded a yes given elsewhere. Weaker, and it says
+      //                             so in the chain forever, with who witnessed it and how.
+      // An auditor can always tell the two apart. That is the difference between recording a consent
+      // and manufacturing one, and it is the whole reason this is not a boolean.
+      if (!invRaw && /^edge_/.test(acId)) {
+        const eRow = await env.AURA_MEMORY.prepare(
+          "SELECT id, from_id, to_id, edge_type, state, permission FROM pta_edges WHERE id = ?"
+        ).bind(acId).first().catch(() => null);
+        if (!eRow) return { cmd: "ACCEPT", payload: { ok: false, error: "No invitation and no edge: " + acId } };
+        if (eRow.state === "active") return { cmd: "ACCEPT", payload: { ok: true, already: true, edge_id: acId,
+          note: "Already active - accepting twice changes nothing." } };
+        if (eRow.state !== "pending") return { cmd: "ACCEPT", payload: { ok: false, edge_id: acId, state: eRow.state,
+          error: "This edge is '" + eRow.state + "', not pending. A revoked grant is not re-accepted - the subject issues a new one." } };
+        const acVia = /\bwitness/i.test(acHow) ? "witness" : (acHow ? "witness" : "self");
+        const nowIso = new Date().toISOString();
+        try {
+          await env.AURA_MEMORY.prepare("UPDATE pta_edges SET state = 'active', updated_at = ? WHERE id = ? AND state = 'pending'")
+            .bind(nowIso, acId).run();
+        } catch (e) {
+          return { cmd: "ACCEPT", payload: { ok: false, edge_id: acId, error: "Activation failed: " + (e?.message || String(e)) } };
+        }
+        // The acceptance is an event on the SUBJECT's chain, because it is their consent and their
+        // record. Written through appendChain so it is idempotent and carries the same provenance as
+        // every other event.
+        try {
+          const stub = env.PTA_DO.get(env.PTA_DO.idFromName(eRow.from_id));
+          await stub.fetch(new Request("http://do", { method: "POST", body: JSON.stringify({
+            method: "append", params: [{
+              event: "GRANT_ACCEPTED", actor: eRow.from_id,
+              data: { edge_id: acId, to: eRow.to_id, permission: eRow.permission,
+                      accepted_via: acVia, how: acHow || "accepted directly", at: nowIso },
+            }] }) }));
+        } catch {}
+        return { cmd: "ACCEPT", payload: { ok: true, edge_id: acId, from: eRow.from_id, to: eRow.to_id,
+          state: "active", accepted_via: acVia, how: acHow || null,
+          note: acVia === "witness"
+            ? "Recorded as WITNESSED - the operator recorded a yes given elsewhere. The chain says so permanently; it is not the same as the subject acting themselves."
+            : "Accepted by the subject. The grant is now active and PTA_REMEMBER will append.",
+          revoke_with: "PTA_REVOKE " + eRow.from_id + " " + eRow.to_id } };
+      }
+
       if (!invRaw) return { cmd: "ACCEPT", payload: { ok: false, error: "No invitation: " + acId } };
       let invite; try { invite = JSON.parse(invRaw); } catch { return { cmd: "ACCEPT", payload: { ok: false, error: "Corrupt invitation" } }; }
       if (invite.status === "accepted") return { cmd: "ACCEPT", payload: { ok: true, already: true, pta: invite.born_pta || null, note: "Already accepted." } };

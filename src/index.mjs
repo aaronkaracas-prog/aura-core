@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.990-2026-08-09-read-the-braces-not-the-line-numbers";
+const BUILD = "aura-core-v4.9.991-2026-08-09-read-it-before-it-is-sealed";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -20645,6 +20645,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // nothing and reports success: the record and the reply disagree, and only one of them gets read.
         // Fixed by reading the brace structure instead of moving the line up and hoping.
         let _aliasSelfWrite = null;
+        // ══ READ THE CONTACTS BEFORE THE SEAL, NOT AFTER ═══════════════════════════════════════
+        // The extras block below did JSON.parse(metadata) and got
+        //   "Unexpected token 'e', \"enc:v1:fQn\"... is not valid JSON"
+        // because sealFor() encrypts metadata a few lines down, before that code runs. So the primary
+        // key registered (changes: 1) and every other contact silently did not - the exact gap this
+        // was written to close, reintroduced by reading the wrong side of an encryption boundary.
+        // Captured here from the PLAINTEXT, while it is still plaintext.
+        let _plainContacts = null;
+        try { _plainContacts = metadata ? JSON.parse(metadata) : null; } catch { _plainContacts = null; }
         try {
           // The hint rides in metadata so a human can recognise a row without the table holding a
           // readable contact. `phone:...1234` is enough to identify, not enough to reconstruct.
@@ -20696,7 +20705,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 // hand. Any other contact in meta: is registered here too, so a shop created directly
                 // is as findable as one that came through ingest.
                 try {
-                  const _md = metadata ? JSON.parse(metadata) : {};
+                  const _md = _plainContacts || {};
                   const _more = [
                     ["place_id", _md.place_id || _md.placeId],
                     ["phone",    _md.phone],

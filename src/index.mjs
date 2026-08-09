@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.992-2026-08-09-my-hours-are-not-my-tax-id";
+const BUILD = "aura-core-v4.9.993-2026-08-09-an-offer-is-a-bigger-act-than-an-alias";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -22120,6 +22120,24 @@ Be concise. This update will be compared against the next update to show drift o
         }
       } catch {}
 
+      // ══ A GRANT IS A BIGGER ACT THAN AN ALIAS, SO IT GETS THE SAME GATE ══════════════════════
+      // ALIAS ADD became dry by default because a mis-attach silently returns the wrong entity. A
+      // GRANT is larger: it opens a permission over somebody's record, and offering the wrong scope to
+      // the wrong party is the mistake this whole layer exists to make impossible. Same discipline.
+      // Dry shows the exact offer that would be made - who, to whom, which permissions - and CONFIRM
+      // creates it. The edge is still PENDING afterwards, so this is a preview of an OFFER, not of a
+      // consent: two gates, and neither one is the other.
+      if (!/(^|\s)CONFIRM(\s|$)/i.test(rest)) {
+        let _permPreview = {};
+        try { _permPreview = JSON.parse(permission || "{}"); } catch {}
+        return { cmd: "PTA_GRANT", payload: { ok: true, mode: "dry_run",
+          from: { id: fromId, name: fromEnt.name }, to: { id: toId, name: toEnt.name },
+          edge_type: edgeType, permission: _permPreview, via_edge_id: viaEdge || null,
+          note: "NOTHING CREATED. This would OFFER these permissions - the edge would be PENDING and " +
+            "would still need ACCEPT before it authorises anything. Add CONFIRM to make the offer.",
+          to_proceed: "PTA_GRANT " + fromId + " " + toId + " " + (permission || "{}") + " CONFIRM" } };
+      }
+
       const _histId = "hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
       await db.batch([
         db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, permission, relationship, impact, context, via_edge_id, origin_id, place, expires_at, act_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
@@ -23096,13 +23114,13 @@ Be concise. This update will be compared against the next update to show drift o
           made.push({ name: nm, id: ent.id, mode: r?.payload?.mode });
         }
         const [root, child, grand] = made;
-        const g1 = await processCommand('PTA_GRANT ' + root.id + ' ' + child.id + ' {"permission":{"can_remember":true}}', env, isOp);
+        const g1 = await processCommand('PTA_GRANT ' + root.id + ' ' + child.id + ' {"permission":{"can_remember":true}} CONFIRM', env, isOp);
         const e1 = g1?.payload?.edge_id;
         if (!e1) return { cmd: "PTA_FIXTURE", payload: { ok: false, error: "root grant failed", detail: g1?.payload } };
         await processCommand("ACCEPT " + e1, env, isOp);
         // The derived edge NAMES its parent. Without via_edge_id there is no dependency to walk and
         // cascade is meaningless - this line is the entire reason the fixture exists.
-        const g2 = await processCommand('PTA_GRANT ' + child.id + ' ' + grand.id + ' {"permission":{"can_remember":true},"via_edge_id":"' + e1 + '"}', env, isOp);
+        const g2 = await processCommand('PTA_GRANT ' + child.id + ' ' + grand.id + ' {"permission":{"can_remember":true},"via_edge_id":"' + e1 + '"} CONFIRM', env, isOp);
         const e2 = g2?.payload?.edge_id;
         if (!e2) return { cmd: "PTA_FIXTURE", payload: { ok: false, error: "derived grant failed", detail: g2?.payload } };
         await processCommand("ACCEPT " + e2, env, isOp);
@@ -23112,7 +23130,7 @@ Be concise. This update will be compared against the next update to show drift o
         // between the same two parties as the derived one, carries no via_edge_id, and must survive a
         // root revoke. If it does not, upstream_path_cut is cutting by proximity rather than by
         // recorded dependency, and that is the difference between a cascade and a blast radius.
-        const g3 = await processCommand('PTA_GRANT ' + child.id + ' ' + grand.id + ' {"permission":{"can_view":true}}', env, isOp);
+        const g3 = await processCommand('PTA_GRANT ' + child.id + ' ' + grand.id + ' {"permission":{"can_view":true}} CONFIRM', env, isOp);
         const e3 = g3?.payload?.edge_id;
         if (e3) await processCommand("ACCEPT " + e3, env, isOp);
 
@@ -23281,6 +23299,19 @@ Be concise. This update will be compared against the next update to show drift o
       //   PTA_WIPE CONFIRM       - actually remove it
       //   PTA_WIPE CONFIRM KEEP <id> [<id>...]  - remove everything EXCEPT these
       if (!isOp) return { cmd: "PTA_WIPE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      // ══ BULK DELETE IS A TEST-STORE TOOL ═════════════════════════════════════════════════════
+      // This removed 43 entities, 49 edges and 10,444 history rows in one call. That was right for a
+      // store full of ghosts and is wrong the moment a real merchant's consent record is in there:
+      // "revoke never deletes" is the doctrine, and a command that deletes everything is its opposite.
+      // Gated rather than removed - a fresh test store still needs it - and OFF by default, so any
+      // store nobody has thought about refuses.
+      {
+        const _bulkOk = String((await env.AURA_KV.get("config:pta:allow_bulk_delete")) || "").trim() === "true";
+        if (!_bulkOk) return { cmd: "PTA_WIPE", payload: { ok: false, error: "BULK_DELETE_DISABLED",
+          what_to_do: "Off by default. On a store holding real consent records, deletion is the opposite of " +
+            "revocation - revoke ends access and keeps history, this ends both. Enable deliberately with " +
+            "SETKV config:pta:allow_bulk_delete true, and turn it off again afterwards." } };
+      }
       {
         const db = env.AURA_MEMORY;
         const up = rest.toUpperCase();
@@ -29332,6 +29363,23 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       //   PTA_GUT              classify, delete nothing
       //   PTA_GUT CONFIRM      delete the clutter (D1 rows only - a ghost has no Durable Object)
       if (!isOp) return { cmd: "PTA_GUT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      // ══ BULK DELETE IS A TEST-STORE TOOL ═════════════════════════════════════════════════════
+      // PTA_WIPE removed 43 entities, 49 edges and 10,444 history rows in one call, and PTA_GUT's
+      // structural heuristic would have deleted two real Venice parlors if the dry run had not been
+      // read. Both were right for a store full of ghosts. Neither is right once a real merchant's
+      // consent record is in there - "revoke never deletes" is the doctrine, and a command that
+      // deletes everything is the exact opposite of it.
+      // Gated rather than removed, because a fresh test store still needs them. OFF unless the key
+      // says otherwise, so the default on any store nobody has thought about is refusal.
+      //   SETKV config:pta:allow_bulk_delete true    to enable
+      {
+        const _bulkOk = String((await env.AURA_KV.get("config:pta:allow_bulk_delete")) || "").trim() === "true";
+        if (!_bulkOk) return { cmd: "PTA_GUT", payload: { ok: false, error: "BULK_DELETE_DISABLED",
+          what_to_do: "This command deletes entities in bulk and is off by default. It is a test-store tool: " +
+            "on a store holding real consent records, deletion is the opposite of revocation - revoke ends " +
+            "access and keeps history, this ends both. Enable deliberately with " +
+            "SETKV config:pta:allow_bulk_delete true, and turn it off again afterwards." } };
+      }
       const gtConfirm = args.some(a => String(a || "").toUpperCase() === "CONFIRM");
       const gtLimit = Math.min(Number(args.find(a => /^\d+$/.test(a)) || 600), 1000);
       try {

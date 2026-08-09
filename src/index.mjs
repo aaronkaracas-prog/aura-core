@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.980-2026-08-09-four-protocols-one-default";
+const BUILD = "aura-core-v4.9.981-2026-08-09-the-note-must-match-the-protocol";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -24609,7 +24609,23 @@ Be concise. This update will be compared against the next update to show drift o
       if (!edge) return { cmd: "PTA_REVOKE", payload: { ok: false, error: "Edge not found", saw: edgeId,
         what_to_do: "Give an edge id (edge_...), or revoke by pair: PTA_REVOKE <subject_id> <actor_id>. " +
           "Nothing was revoked - a revoke that matches nothing must never read as success." } };
-      if (edge.state === "revoked") return { cmd: "PTA_REVOKE", payload: { ok: true, note: "Already revoked", edge_id: edge.id } };
+      // ══ ALREADY CLOSED IS NOT NEW WORK ══════════════════════════════════════════════════════
+      // This returned a bare ok:true with "Already revoked", which reads identically to a revoke that
+      // just ended someone's access. The run record says what the earlier pass actually did, so the
+      // second call can report the truth: nothing changed, here is what the first one cut.
+      if (edge.state === "revoked") {
+        const _m = (rest.match(/cascade:([a-z_]+)/i) || [])[1];
+        const _pk = "pta:cascade:run:" + edge.id + ":" + String(_m || "upstream_path_cut").toLowerCase();
+        let prior = null;
+        try { prior = JSON.parse((await env.AURA_KV.get(_pk)) || "null"); } catch {}
+        return { cmd: "PTA_REVOKE", payload: { ok: true, already_closed: true, edge_id: edge.id,
+          note: "ALREADY REVOKED - nothing changed and no new access ended. This is not a second revocation.",
+          previous_run: prior ? { protocol: prior.protocol, at: prior.at, also_closed: prior.done || [],
+            truncated: !!prior.truncated } : null,
+          run_key: _pk,
+          why_this_matters: "A repeat must be distinguishable from the original, or an audit cannot tell " +
+            "how many times consent actually ended - it ended once." } };
+      }
 
       // ══ AN OFFER CAN BE WITHDRAWN WITHOUT BEING ACCEPTED FIRST ═══════════════════════════════
       // A pending edge is a standing invitation - Aura asked, they have not answered. Withdrawing it
@@ -24823,10 +24839,34 @@ Be concise. This update will be compared against the next update to show drift o
         walk_note: "depth = how many levels the cascade descended · edges_scanned = rows examined · "
           + "edges_revoked = rows actually cut. If scanned climbs far above revoked, the lineage graph "
           + "is wide and this query is the thing that will time out first. Last 200 runs in KV at pta:cascade:stats.",
-        cascade_note: cascaded.length
-          ? "Access granted THROUGH this edge was revoked too - the spec's 'the chain breaks upstream'. "
-            + "Nothing is deleted; every revocation is a row in pta_history."
-          : "no downstream edges came through this one",
+        // ══ THE NOTE MUST DESCRIBE WHAT ACTUALLY HAPPENED ═══════════════════════════════════
+        // This said "the chain breaks upstream" on ALL FOUR protocols, because it keyed on
+        // cascaded.length rather than on the protocol. Measured: dispute_upheld and entity_terminate
+        // both reported it while running NO lineage walk at all (edges_scanned: 0). The sentence was
+        // describing upstream_path_cut in every case, and only one of the four does that.
+        // Cosmetic in effect, doctrinal in kind: this text lands in the operator's transcript and in
+        // pta_history detail, and a record that says the wrong thing about how consent ended is the
+        // same failure as a meter reporting the wrong number - just slower to catch.
+        cascade_note: (() => {
+          if (!cascaded.length) {
+            return cascadeMode === "none"
+              ? "cascade:none - the lineage walk was skipped by request. Any derived edges are STILL LIVE."
+              : "no downstream edges came through this one";
+          }
+          if (cascadeMode === "upstream_path_cut") {
+            return "Access granted THROUGH this edge was revoked too - the spec's 'the chain breaks upstream'. " +
+              "Nothing is deleted; every revocation is a row in pta_history.";
+          }
+          if (cascadeMode === "dispute_upheld") {
+            return "Only the edge ids named in the call were revoked. NO lineage walk ran - derived edges " +
+              "hanging off this root are untouched and still live unless they were listed.";
+          }
+          if (cascadeMode === "entity_terminate") {
+            return "Every open edge FROM this entity was revoked, flat and without lineage. Edges granted TO " +
+              "this entity are untouched - terminating ends what it gave away, not what it was given.";
+          }
+          return "cascade ran under protocol " + cascadeMode;
+        })(),
         truncation_warning: truncated
           ? "The convenience walk stopped at its ceiling - the rest of the tree is NOT marked revoked in "
             + "the table. THIS IS NOT A PERMISSION PROBLEM: ptaCan checks lineage upward, so every "

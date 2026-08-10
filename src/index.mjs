@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.4.0-2026-08-10-the-enrichment-was-thin-because-the-read-was";
+const BUILD = "aura-core-v5.5.0-2026-08-10-a-chain-that-only-looks-backward-cannot-keep-a-promise";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -29737,6 +29737,78 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       }
     }
 
+    case "PTA_DUE": {
+      // ══ WHAT IS OWED, AND TO WHOM ═══════════════════════════════════════════════════════════
+      //
+      // Reads commitments forward off entity chains. A CONTEXT event carrying a `due` is a promise
+      // Aura made - "call back in a week" - and this is the thing that notices the week is up.
+      //
+      // IT READS THE CHAIN, NOT A SCHEDULER TABLE. That is the whole reason the due lives on the
+      // chain: a scheduler would not know the grant had been revoked and would keep calling somebody
+      // who asked to be left alone. Here, revocation ends the obligation because the obligation lives
+      // where the consent does. A commitment made under a grant that is now revoked is NOT due - it
+      // is void, and this says so rather than hiding it.
+      //
+      //   PTA_DUE                what is owed now, across every entity with a chain
+      //   PTA_DUE ALL            include commitments not yet due, so you can see what is coming
+      //   PTA_DUE <pta_id>       one entity
+      if (!isOp) return { cmd: "PTA_DUE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const duRaw = (rest || "").trim();
+      const duAll = /^ALL$/i.test(duRaw);
+      const duOne = /^pta_|^ent_/.test(duRaw) ? duRaw : null;
+      try {
+        const db = env.AURA_MEMORY;
+        const rows = duOne
+          ? [{ id: duOne }]
+          : (await db.prepare("SELECT id, name FROM pta_entities LIMIT 400").all())?.results || [];
+        const now = Date.now();
+        const due = [], upcoming = [], voided = [];
+        const auraId = await auraPtaId(env);
+        for (const e of rows) {
+          let chain = [];
+          try {
+            const stub = env.PTA_DO.get(env.PTA_DO.idFromName(e.id));
+            const r = await stub.fetch(new Request("http://do", { method: "POST",
+              body: JSON.stringify({ method: "getState", params: [] }) }));
+            const j = await r.json();
+            chain = j?.pta?.chain || [];
+          } catch { continue; }
+          const commitments = chain.filter(c => c && c.data && c.data.due);
+          if (!commitments.length) continue;
+          // Is the grant that authorised this still live? A promise under a withdrawn consent is void.
+          let live = false;
+          if (auraId) {
+            const gs = await grantState(env, e.id, auraId, "remember");
+            live = !!gs.allowed;
+          }
+          for (const c of commitments) {
+            const t = Date.parse(c.data.due);
+            if (isNaN(t)) continue;
+            // A later event on the same chain supersedes an earlier commitment - John saying "six
+            // hours" after "a week" means six hours. Only the most recent due per entity is owed.
+            const newer = commitments.some(o => Date.parse(o.ts) > Date.parse(c.ts));
+            if (newer) continue;
+            const item = { entity: e.id, name: e.name || null, due: c.data.due,
+                           said: c.data.said || c.data.due_said || null, recorded: c.ts };
+            if (!live) { voided.push({ ...item, why: "the grant that authorised this is not active - " +
+              "the commitment is void, not overdue. They withdrew; that ends what we owe them." }); continue; }
+            if (t <= now) due.push({ ...item, overdue_by_hours: Math.round((now - t) / 36e5) });
+            else if (duAll) upcoming.push({ ...item, in_hours: Math.round((t - now) / 36e5) });
+          }
+        }
+        due.sort((a, b) => Date.parse(a.due) - Date.parse(b.due));
+        return { cmd: "PTA_DUE", payload: { ok: true, scanned: rows.length,
+          due_now: due.length, due, upcoming: duAll ? upcoming : undefined,
+          voided_by_revocation: voided.length ? voided : undefined,
+          note: due.length
+            ? "These are promises whose time has come. The chain says what they actually said, so a " +
+              "follow-up can reference it rather than opening cold."
+            : "Nothing owed right now." + (duAll ? "" : " PTA_DUE ALL shows what is coming.") } };
+      } catch (e) {
+        return { cmd: "PTA_DUE", payload: { ok: false, error: "Due scan failed: " + (e && e.message ? e.message : String(e)) } };
+      }
+    }
+
     case "PTA_REMEMBER": {
       // ══ CONTEXT ABOUT SOMEONE GOES INTO THEIR CHAIN, OR NOWHERE ═════════════════════════════
       //
@@ -29831,7 +29903,54 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           try { rmData = JSON.parse(rest.slice(rmJsonAt)); }
           catch (e) { return { cmd: "PTA_REMEMBER", payload: { ok: false, error: "Invalid JSON: " + e.message } }; }
         }
-        const rmEv = { ...rmData, event_type: rmType };
+        // ══ A CHAIN THAT ONLY LOOKS BACKWARD CANNOT KEEP A PROMISE (2026-08-10) ═══════════════
+        //
+        // The field's answer to time in agent memory is BI-TEMPORAL: valid time (when a fact was true
+        // in the world) and transaction time (when the system learned it). Zep tracks four timestamps
+        // per edge for exactly this, and closes a fact's validity window rather than deleting it. This
+        // system already has that shape - beliefs carry valid_from/invalid_at, every chain event
+        // carries ts.
+        //
+        // BOTH OF THOSE TIMELINES POINT BACKWARD. They answer "when was this true". Nothing in the
+        // temporal-knowledge-graph literature schedules a future act, because those are memory systems
+        // and not agents with obligations.
+        //
+        // Aaron: John says "call me back in a week", then "call me back in six hours", then "a couple
+        // of days". Storing what he said is memory. ACTING on it is the relationship. A commitment is
+        // a third kind of thing next to a FACT (kid's birthday - true forever) and a STATE (waiting on
+        // $200 - true now, false later, nobody announces the change).
+        //
+        // IT LIVES ON THEIR CHAIN, not in a scheduler table. "Aura said she would call back in a week"
+        // is itself a true fact about the relationship and belongs with the rest. And the placement
+        // carries the doctrine for free: a separate scheduler would not know the grant was revoked and
+        // would keep calling someone who asked to be left alone. Here, revoke ends it because
+        // everything downstream reads the chain.
+        //
+        //   PTA_REMEMBER <id> CONTEXT {"said":"call me back in a week","due":"in 1 week"}
+        //   due accepts an ISO timestamp or a relative phrase - the same absolute/relative split the
+        //   Graphiti paper names as the hard part of temporal extraction.
+        let rmDue = null;
+        if (rmData.due) {
+          const raw = String(rmData.due).trim();
+          const iso = Date.parse(raw);
+          if (!isNaN(iso)) rmDue = new Date(iso).toISOString();
+          else {
+            const m = raw.match(/(\d+)\s*(minute|min|hour|hr|day|week|month|year)s?/i);
+            if (m) {
+              const n = Number(m[1]);
+              const unit = m[2].toLowerCase();
+              const ms = { minute: 6e4, min: 6e4, hour: 36e5, hr: 36e5, day: 864e5,
+                           week: 6048e5, month: 2592e6, year: 31536e6 }[unit];
+              if (ms) rmDue = new Date(Date.now() + n * ms).toISOString();
+            } else if (/tomorrow/i.test(raw)) rmDue = new Date(Date.now() + 864e5).toISOString();
+          }
+          if (!rmDue) return { cmd: "PTA_REMEMBER", payload: { ok: false, error: "DUE_NOT_UNDERSTOOD",
+            saw: raw,
+            what_to_do: "A due needs an ISO timestamp or a phrase like 'in 6 hours', 'in 2 days', " +
+              "'in 1 week'. Refused rather than stored unparsed - a commitment nobody can read forward " +
+              "is worse than no commitment, because the chain would claim one exists." } };
+        }
+        const rmEv = { ...rmData, event_type: rmType, ...(rmDue ? { due: rmDue, due_said: String(rmData.due) } : {}) };
         const rmIdem = String(rmData.idem || "").trim() || chainIdemKey(rmType, "aura", rmEv);
         const stub2 = env.PTA_DO.get(env.PTA_DO.idFromName(rmId));
         const appendResp = await stub2.fetch(new Request("http://do", { method: "POST",

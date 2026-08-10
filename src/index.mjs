@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.9.2-2026-08-10-kv-list-is-eventually-consistent";
+const BUILD = "aura-core-v5.10.0-2026-08-10-the-understanding-goes-on-their-chain";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18499,6 +18499,37 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const obSlug = (obRead.business_name || obRaw).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
       const obPtaId = (obPta && (obPta.pta_id || obPta.id || (typeof obPta.pta === "string" ? obPta.pta : (obPta.pta && obPta.pta.id)))) || null;
       let obState = null;
+      // ══ THE UNDERSTANDING GOES ON THEIR CHAIN, NOT BESIDE IT ═══════════════════════════════
+      //
+      // MEASURED: after a full enrichment, PTA_ENTITY GET on the business showed metadata of nothing
+      // but a contact_hint, updated_at still from the L1 mint. Everything ONBOARD learned - owner,
+      // artists, thirteen services, press mentions - went to the reality graph node (ent_...), while
+      // identity, consent, commitments and outcomes live on the PTA (pta_...). Two records per shop,
+      // and the chain that holds the consent knew nothing about the business.
+      //
+      // So the chain that carries their consent now carries what we understand about them. Written as
+      // an event under can_remember like anything else, which means it is revocable: a business that
+      // asks us to stop takes the understanding out of scope with everything else. Held in the graph
+      // and not on the chain, it would have survived their revocation - the understanding is the most
+      // valuable thing we hold about them and it was the one thing consent did not reach.
+      //
+      // THE GRAPH NODE STAYS. It is a secondary index for traversal, not a competing record. One
+      // authority - the chain - and a way in beside it, which is the same shape as the commitment
+      // index: the fast path never gets to disagree with the truth.
+      if (obPtaId && obRead && (obRead.what_it_is || obRead.offerings)) {
+        try {
+          const u = { what_it_is: obRead.what_it_is || null,
+                      offerings: Array.isArray(obRead.offerings) ? obRead.offerings.slice(0, 20) : null,
+                      business_type: obRead.business_type || null,
+                      serves: obRead.serves || null,
+                      highlights: Array.isArray(obRead.highlights) ? obRead.highlights.slice(0, 10) : null,
+                      source: "onboard discovery", learned_at: new Date().toISOString() };
+          const uw = await processCommand("PTA_REMEMBER " + obPtaId + " UNDERSTANDING " + JSON.stringify(u), env, isOp);
+          const up = (uw && uw.payload) ? uw.payload : uw;
+          if (!up?.ok) console.warn("[ONBOARD] understanding NOT written to the chain for " + obPtaId +
+            ": " + (up?.error || "unknown") + " - it exists in the graph node only, outside their consent");
+        } catch (e) { console.warn("[ONBOARD] understanding write threw: " + String(e?.message ?? e)); }
+      }
       if (obPtaId) { try { const bs = await processCommand("BUSINESS_STATE SET " + obPtaId + " lead", env, isOp); obState = (bs && bs.payload) ? bs.payload : bs; } catch (e) {} }
       const obType = String(obRead.business_type || "generic").toLowerCase().replace(/[^a-z0-9_-]/g, "") || "generic";
       const obDoorway = "https://openforbusiness.world/" + obSlug;

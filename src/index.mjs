@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.0.2-2026-08-10-twenty-and-an-error-is-not-a-finished-cell";
+const BUILD = "aura-core-v5.0.3-2026-08-10-the-token-was-never-url-encoded";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -17693,8 +17693,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           let got = [], token = null, pages = 0, pageErr = null;
           try {
             do {
+              // ══ THE TOKEN WAS NEVER URL-ENCODED (fixed 2026-08-10) ═══════════════════════════
+              // Four cells returned exactly 20 with INVALID_REQUEST and NEVER recovered - twelve
+              // retries across waits up to 7.5 seconds, zero successes. If it were the staging delay
+              // the docs describe, one of those twelve would have landed.
+              // next_page_token is a long base64-ish string that can contain +, / and = - every one of
+              // which breaks a raw query string. The request was MALFORMED, not early, and "wait
+              // longer" was treating a syntax error as a race. encodeURIComponent is the fix.
+              // location and radius ride along too: the docs say a pagetoken ignores other parameters,
+              // but the Google client library's own working example passes location with the token,
+              // and the field reports that the token is bound to the original query context.
               const u = token
-                ? `https://maps.googleapis.com/maps/api/place/nearbysearch/json?pagetoken=${token}&key=${gmKey}`
+                ? `https://maps.googleapis.com/maps/api/place/nearbysearch/json?pagetoken=${encodeURIComponent(token)}&location=${cell.lat},${cell.lng}&radius=${cell.radius}&key=${gmKey}`
                 : `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${cell.lat},${cell.lng}&radius=${cell.radius}&keyword=${encodeURIComponent(grVertical)}&key=${gmKey}`;
               let dd = null;
               for (let attempt = 0; attempt < 3; attempt++) {

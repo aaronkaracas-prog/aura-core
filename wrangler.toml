@@ -185,6 +185,27 @@ name = "SEND_EMAIL"
 [browser]
 binding = "BROWSER"
 
+# ══ THE CRAWL THAT OUTLIVES THE REQUEST (2026-08-10) ═══════════════════════════════════════════
+# GridCrawlWorkflow tiles a region, calls Google Places per tile, paginates to the 60-result ceiling,
+# subdivides any tile that saturates, and mints a PTA lead per business. No agent and no model touch
+# it - PTA_CRAWL reports brain_used: false and costs Google requests only.
+#
+# WHY A WORKFLOW AND NOT A LOOP. Google issues next_page_token a few seconds before it is usable.
+# Inside a Worker request that wait burns wall time and the request dies, which is why four builds of
+# workarounds appeared - cells-per-run caps, giving up after 15 seconds, finer tiles. Cloudflare's
+# own words: "unlike a delay in a regular Worker (which counts against wall time and keeps resources
+# allocated), a sleeping workflow consumes nothing." step.sleep hibernates. The wait stops being a
+# design problem and becomes a line of code.
+# And step.do persists per tile: a completed tile never re-runs, and a redeploy resumes at the last
+# good one instead of re-crawling the city.
+#
+# NO MIGRATION ENTRY. Workflows are not Durable Object classes - they need no [[migrations]] tag,
+# unlike EntityDO and the rest above.
+[[workflows]]
+name = "GRID_CRAWL_WORKFLOW"
+binding = "GRID_CRAWL_WORKFLOW"
+class_name = "GridCrawlWorkflow"
+
 # ── STAGING TWIN (deployed with `wrangler deploy --env staging`) ──
 # The standard Cloudflare way: one config, an [env.staging] section that overrides ONLY what differs.
 # Isolated data (its own KV/D1/Vectorize), no cron, no email. Everything else inherits.
@@ -261,6 +282,14 @@ class_name = "PtaDurableObject"
 
 [env.staging.browser]
 binding = "BROWSER"
+
+# The twin gets it for the same reason it gets AURA_THINK and the ledger: a crawl change proven on
+# staging must exercise the real workflow path. Staging has isolated KV and D1, so its ledger and its
+# minted entities stay separate from the live ones.
+[[env.staging.workflows]]
+name = "GRID_CRAWL_WORKFLOW"
+binding = "GRID_CRAWL_WORKFLOW"
+class_name = "GridCrawlWorkflow"
 
 # ══ NATIVE OBSERVABILITY ── THE PLATFORM ALREADY MEASURES THIS (2026-08-03) ═════════════════════
 # Cloudflare ships per-Worker request counts, error rates, CPU time, wall time and duration, viewable

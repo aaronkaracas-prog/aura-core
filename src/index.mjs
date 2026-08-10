@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.2.1-2026-08-10-one-example-is-a-default-not-an-illustration";
+const BUILD = "aura-core-v5.3.0-2026-08-10-cloudflare-already-built-the-site-crawler";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -17576,6 +17576,93 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           graph: { business_id: biz.id, customer_id: custId, transaction_id: txId, recipient_id: recipId,
             next_relationship: recipId ? (pu.buyer + " -> " + pu.recipient + " : the purchase became a new person in the graph") : null },
           ts: new Date().toISOString() } };
+      }
+    }
+
+    case "SITE_READ": {
+      // ══ CLOUDFLARE ALREADY BUILT THE SITE CRAWLER (2026-08-10) ═══════════════════════════════
+      //
+      // ONBOARD called Tavily Extract - a paid third party - to read a business's website, and got a
+      // page or two. HANDS_SEE reads ONE page through the browser binding. Neither reads a whole site,
+      // which is what makes the enrichment rich: Rising Dragon's homepage is 1,099 characters and has
+      // no About, no FAQ, no reviews.
+      //
+      // I was about to hand-roll sitemap discovery, bounded page fetch, HTML-to-markdown and
+      // boilerplate stripping. Browser Run's /crawl endpoint does all four: it discovers URLs from the
+      // starting page, then the sitemap, then page links; returns MARKDOWN per page; respects
+      // robots.txt and crawl-delay. Eighth time today the door already existed - first time it was
+      // caught before writing the thing.
+      //
+      // render:false IS THE DEFAULT HERE, deliberately. Cloudflare's own words: those crawls "run on
+      // Workers instead of a headless browser" and "during the beta, render:false crawls are not
+      // billed." A tattoo shop's site is server-rendered; JavaScript rendering costs browser hours to
+      // fetch the same words. RENDER is there for the sites that genuinely need it.
+      //
+      // ══ CONTENT SIGNALS — WE DECLARE WHAT WE ACTUALLY DO ═════════════════════════════════════
+      // A site can say ai-train=no in robots.txt, and /crawl declares all three purposes by default,
+      // so the request is REFUSED at initiation. We are not training on a tattoo shop's website: we
+      // read it to understand and represent them. So this declares search and ai-input and NOT
+      // ai-train - which is both true and gets us past sites that refuse training.
+      // The docs call Content Signals trust-based. A system whose whole doctrine is honest consent
+      // does not get to declare a purpose it does not have because it widens the crawl.
+      //
+      //   SITE_READ https://risingdragon.com
+      //   SITE_READ RENDER https://someshop.com     (JS-heavy - costs browser time)
+      //   SITE_READ STATUS <job_id>
+      if (!isOp) return { cmd: "SITE_READ", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const srAcct = env.CF_ACCOUNT_ID || (await env.AURA_KV.get("config:cf:account_id").catch(() => null)) || "3db0de2c6fce92757e2c4e4f83d7eb16";
+      const srTok = await getSecret(env, "cf_api_token") || await getSecret(env, "cloudflare");
+      if (!srTok) return { cmd: "SITE_READ", payload: { ok: false, error: "NO_CF_TOKEN",
+        what_to_do: "Needs a Cloudflare API token with Browser Rendering - Edit. Store it at secret:cf_api_token." } };
+      let srRaw = (rest || "").trim();
+      const srRender = /(^|\s)RENDER(\s|$)/i.test(srRaw);
+      srRaw = srRaw.replace(/(^|\s)RENDER(\s|$)/i, " ").trim();
+      const base = "https://api.cloudflare.com/client/v4/accounts/" + srAcct + "/browser-rendering/crawl";
+      try {
+        if (/^STATUS\s+/i.test(srRaw)) {
+          const jid = srRaw.replace(/^STATUS\s+/i, "").trim();
+          const r = await fetch(base + "/" + jid, { headers: { Authorization: "Bearer " + srTok } });
+          const d = await r.json();
+          const res = d?.result || {};
+          if (res.status === "running") return { cmd: "SITE_READ", payload: { ok: true, status: "running",
+            id: jid, finished: res.finished ?? 0, total: res.total ?? null,
+            note: "Still crawling. Poll again - jobs run asynchronously and results keep for 14 days." } };
+          // ONE DOCUMENT PER BUSINESS, not a bag of pages - that is what the perception step wants,
+          // and it is what gets hashed for an incremental re-read.
+          const recs = (res.records || []).filter(x => x && x.status === "completed" && x.markdown);
+          const doc = recs.map(x => "## " + (x.metadata?.title || x.url) + "\n" + x.markdown).join("\n\n---\n\n");
+          return { cmd: "SITE_READ", payload: { ok: true, status: res.status || "unknown", id: jid,
+            pages: recs.length, chars: doc.length, browser_seconds: res.browserSecondsUsed ?? 0,
+            skipped: (res.records || []).filter(x => x && x.status !== "completed").length,
+            markdown: doc.slice(0, 60000),
+            note: "One markdown document assembled from every page that returned content." } };
+        }
+        if (!/^https?:\/\//i.test(srRaw)) return { cmd: "SITE_READ", payload: { ok: false,
+          error: "Usage: SITE_READ [RENDER] <https url>   |   SITE_READ STATUS <job_id>" } };
+        const r = await fetch(base, { method: "POST",
+          headers: { Authorization: "Bearer " + srTok, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            url: srRaw,
+            limit: 12,                       // a small business is covered well under this
+            depth: 3,
+            formats: ["markdown"],
+            render: srRender,                // false unless asked - free during beta, no browser time
+            source: "all",                   // starting page, then sitemap, then links
+            crawlPurposes: ["search", "ai-input"],   // NOT ai-train. We do not train on their site.
+            options: { includeExternalLinks: false, includeSubdomains: false },
+          }) });
+        const d = await r.json();
+        if (!d?.success) return { cmd: "SITE_READ", payload: { ok: false, error: "crawl not accepted",
+          detail: d?.errors || d,
+          hint: "A 400 with 'Crawl purpose(s) completely disallowed' means the site's robots.txt refuses " +
+            "even search and ai-input. That is their answer and it is respected." } };
+        return { cmd: "SITE_READ", payload: { ok: true, started: true, id: d.result, url: srRaw,
+          render: srRender, limit: 12,
+          note: "Crawl started. It discovers the sitemap and follows links, returns markdown per page, " +
+            "and respects robots.txt and crawl-delay." + (srRender ? " RENDER on - this uses browser time." : " render:false - runs on Workers, not billed during beta."),
+          watch: "SITE_READ STATUS " + d.result } };
+      } catch (e) {
+        return { cmd: "SITE_READ", payload: { ok: false, error: "Site read failed: " + (e && e.message ? e.message : String(e)) } };
       }
     }
 

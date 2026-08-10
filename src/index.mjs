@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.8.0-2026-08-10-thin-but-non-zero-is-caution-not-death";
+const BUILD = "aura-core-v5.8.1-2026-08-10-a-lesson-lost-to-a-missing-brace";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -29810,7 +29810,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           "Return ONLY JSON: {\"lessons\":[{\"when_applies\":\"...\",\"insight\":\"...\",\"because\":\"...\"}]}. " +
           "State nothing the transcripts do not support. If the difference is not visible in the words, " +
           "say so in a lesson rather than inventing a pattern - a confident wrong lesson is worse than none.";
-        let out = null, _rawReply = "";
+        let out = null, _rawReply = "", _repaired = false;
         try {
           _rawReply = "";
           const rr = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
@@ -29838,9 +29838,36 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           };
           const t = pick(rr?.response) || pick(rr?.result?.response) || pick(rr?.result) || pick(rr);
           _rawReply = t;
+          // ══ A LESSON LOST TO A MISSING BRACE IS STILL A LOST LESSON (2026-08-10) ═════════════
+          // MEASURED: the reply came back 668 characters ending `...as an issue."}]` - two complete
+          // lessons and no closing brace. Not the token cap (668 chars is nowhere near 2000 tokens);
+          // something clips the response. Either way the CONTENT was whole and the parse threw it all
+          // away over one character.
+          // So: try it straight, and if that fails, close the open brackets and try again. Only the
+          // structure is repaired - not a word of content is invented, and if it still will not parse
+          // the raw reply is reported rather than a guess about what it meant.
           const a = t.indexOf("{"), b = t.lastIndexOf("}");
-          if (a < 0 || b <= a) throw new Error("no JSON object in the reply");
-          out = JSON.parse(t.slice(a, b + 1));
+          if (a < 0) throw new Error("no JSON object in the reply");
+          const body = b > a ? t.slice(a, b + 1) : t.slice(a);
+          try { out = JSON.parse(body); }
+          catch {
+            let fixed = body.replace(/,\s*$/, "");
+            // Count what is open and close it, innermost first.
+            const opens = [];
+            let inStr = false, esc = false;
+            for (const ch of fixed) {
+              if (esc) { esc = false; continue; }
+              if (ch === "\\") { esc = true; continue; }
+              if (ch === '"') { inStr = !inStr; continue; }
+              if (inStr) continue;
+              if (ch === "{" || ch === "[") opens.push(ch);
+              else if (ch === "}" || ch === "]") opens.pop();
+            }
+            if (inStr) fixed += '"';
+            while (opens.length) fixed += opens.pop() === "{" ? "}" : "]";
+            out = JSON.parse(fixed);
+            _repaired = true;
+          }
           _rawReply = t;
         } catch (e) {
           // ══ SHOW WHAT CAME BACK ═══════════════════════════════════════════════════════════
@@ -29898,6 +29925,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
               "teach her to stop deferring, and a deferral is often the right answer. Yours to read." } : undefined,
           by_outcome: labelled.reduce((a, x) => (a[x.outcome] = (a[x.outcome] || 0) + 1, a), {}),
           lessons, stored,
+          reply_repaired: _repaired ? "the model's reply was truncated mid-object and the brackets were closed to recover it - structure only, no content invented" : undefined,
           new_outcomes_since_last_learn: await (async () => {
             try {
               const n = await env.AURA_KV.get("pta:outcomes:since_learn");

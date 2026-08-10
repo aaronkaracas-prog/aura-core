@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.0.3-2026-08-10-the-token-was-never-url-encoded";
+const BUILD = "aura-core-v5.0.4-2026-08-10-read-the-error-message";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -17714,7 +17714,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 if (dd.status === "INVALID_REQUEST" && token) { await new Promise(r => setTimeout(r, 2500 * (attempt + 1))); continue; }
                 break;
               }
-              if (!dd || (dd.status !== "OK" && dd.status !== "ZERO_RESULTS")) { pageErr = dd?.status || "no response"; break; }
+              // ══ THE RESPONSE SAYS WHY AND I KEPT THROWING IT AWAY ═══════════════════════════
+              // Two theories about these four cells - staging delay, then URL encoding - and both
+              // were wrong, because I was reasoning about a failure whose own error_message I never
+              // read. Google returns one on INVALID_REQUEST and it names the malformed parameter.
+              // Same move as [WIRE] and alias_self_write: make the thing report instead of theorising
+              // at it. The token preview is here too - if it is empty or truncated, that is the answer
+              // and no amount of waiting or encoding would have found it.
+              if (!dd || (dd.status !== "OK" && dd.status !== "ZERO_RESULTS")) {
+                pageErr = (dd?.status || "no response") +
+                  (dd?.error_message ? " :: " + String(dd.error_message).slice(0, 200) : " :: (no error_message returned)") +
+                  (token ? " :: token_len=" + String(token).length + " head=" + String(token).slice(0, 12) : " :: first page");
+                break;
+              }
               for (const pl of (dd.results || [])) got.push(pl);
               token = dd.next_page_token || null;
               pages++;

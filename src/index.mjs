@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.5.0-2026-08-10-a-chain-that-only-looks-backward-cannot-keep-a-promise";
+const BUILD = "aura-core-v5.6.0-2026-08-10-nobody-should-ever-type-pta-revoke";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -29734,6 +29734,97 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         };
       } catch (e) {
         return { cmd: "BELIEF_MERGE", payload: { ok: false, error: "Merge failed: " + (e && e.message ? e.message : String(e)) } };
+      }
+    }
+
+    case "PTA_HEARD": {
+      // ══ NOBODY SHOULD EVER TYPE PTA_REVOKE ═══════════════════════════════════════════════════
+      //
+      // Aaron: "no one said revoke, it's context... if someone says hey stop calling me, Aura says got
+      // it and she knows don't call this guy anymore. It's not like a PTA is revoked - why wouldn't I
+      // just keep the PTA there with context of how it stopped?"
+      //
+      // He is right and the build had it backwards. PTA_GRANT, ACCEPT and PTA_REVOKE are LEVERS, and
+      // in a system that understands people there are no levers - there is what somebody said, and the
+      // state follows from it. Two acts where there should be one.
+      //
+      // So this is the door: give it what they actually said, and it writes the context to their chain
+      // AND moves the edge if that is what the words mean. One act. The chain is never torn up; a PTA
+      // is never deleted. What changes is only whether anything NEW may be written.
+      //
+      // "REVOKED" IS ALSO THE WRONG WORD and it stays only because it is the column value. Nothing is
+      // destroyed. Jane stopped talking to everyone in March - that is a fact on her chain, and if she
+      // comes back in a year the chain is still there with the gap in it. Someone asking what happened
+      // to Jane gets an answer, because the record survived the silence.
+      //
+      // WHY A MODEL BELONGS HERE AND NOWHERE ELSE IN THIS PIPELINE: deciding that "don't call me
+      // anymore" means stop, while "call me back in a week" means wait, is comprehension. The keyword
+      // pass below is a floor, not the answer - five word lists were defeated by phrasing in one day
+      // and a sixth would be too. When it is not sure, it says so and writes the context WITHOUT
+      // touching consent, because a wrong stop is silent and a wrong continue is a violation.
+      //
+      //   PTA_HEARD <pta_id> ::: stop calling me
+      //   PTA_HEARD <pta_id> ::: call me back in a week, waiting on 200 bucks
+      if (!isOp) return { cmd: "PTA_HEARD", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const hdParts = (rest || "").split(":::");
+      const hdId = (hdParts[0] || "").trim();
+      const hdSaid = hdParts.slice(1).join(":::").trim();
+      if (!hdId || !hdSaid) return { cmd: "PTA_HEARD", payload: { ok: false,
+        error: "Usage: PTA_HEARD <pta_id> ::: <what they actually said>" } };
+      try {
+        const said = hdSaid.toLowerCase();
+        // A floor, not a classifier. Unambiguous stop language only - anything softer is left to a
+        // human or a model, because getting this wrong in the permissive direction is a violation.
+        const STOP = /\b(stop (calling|contacting|emailing|messaging)|don'?t (call|contact|email|message) me|do not (call|contact)|take me off|unsubscribe|remove me|leave me alone|never contact)\b/;
+        const wantsStop = STOP.test(said);
+        // "in a week", "in 6 hours", "next month", "tomorrow" - the same relative forms PTA_REMEMBER
+        // already parses. Passed straight through rather than re-implemented.
+        const dm = said.match(/\b(?:in|after)\s+(?:a|an|\d+)\s*(minute|hour|day|week|month|year)s?\b/) ||
+                   said.match(/\b(tomorrow)\b/);
+        let dueSaid = null;
+        if (dm) {
+          if (dm[1] === "tomorrow") dueSaid = "tomorrow";
+          else {
+            const n = (said.match(/\b(?:in|after)\s+(\d+)/) || [])[1] || "1";
+            dueSaid = "in " + n + " " + dm[1];
+          }
+        }
+
+        const ev = { said: hdSaid, heard_at: new Date().toISOString(), ...(dueSaid ? { due: dueSaid } : {}) };
+        const wrote = await processCommand("PTA_REMEMBER " + hdId + " CONTEXT " + JSON.stringify(ev), env, isOp);
+        const wp = (wrote && wrote.payload) ? wrote.payload : wrote;
+
+        let stopped = null;
+        if (wantsStop) {
+          // THE CONTEXT IS WRITTEN FIRST, ALWAYS. If the edge closes and the reason does not land,
+          // the chain shows access ending for no stated cause - which is the same failure as a
+          // permission with no consent behind it, mirrored.
+          const auraId = await auraPtaId(env);
+          if (auraId) {
+            const gs = await grantState(env, hdId, auraId, null);
+            if (gs.state === "active" && gs.edge_id) {
+              const rv = await processCommand("PTA_REVOKE " + gs.edge_id + " they asked us to stop: " + hdSaid, env, isOp);
+              const rp = (rv && rv.payload) ? rv.payload : rv;
+              stopped = rp?.ok ? { edge_id: gs.edge_id, ended: true } : { error: rp?.error || "could not end it" };
+            } else stopped = { already: gs.state, note: "nothing active to end - they had not granted, or already asked before" };
+          }
+        }
+        return { cmd: "PTA_HEARD", payload: { ok: true, entity: hdId,
+          recorded: !!wp?.ok, chain_length: wp?.chain_length ?? null,
+          heard: { asked_to_stop: wantsStop, due: dueSaid || null },
+          stopped,
+          note: wantsStop
+            ? "Recorded on their chain AND further writing has ended. The PTA is untouched - everything " +
+              "already there stays, and if they come back the record is still theirs with the gap in it."
+            : (dueSaid
+                ? "Recorded with a commitment. PTA_DUE will surface it when the time comes, with their own words attached."
+                : "Recorded. No stop and no timing heard - if the words carry either and this missed it, " +
+                  "that is a comprehension gap and belongs to a model, not to this keyword floor."),
+          honest_limit: "This reads unambiguous phrasing only. Five keyword guards were defeated by " +
+            "rephrasing in a single day; a sixth will be too. It fails toward DOING NOTHING to consent, " +
+            "because a wrong stop is silent and a wrong continue is a violation." } };
+      } catch (e) {
+        return { cmd: "PTA_HEARD", payload: { ok: false, error: "Heard failed: " + (e && e.message ? e.message : String(e)) } };
       }
     }
 

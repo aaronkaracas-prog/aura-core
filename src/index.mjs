@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.11.0-2026-08-10-a-whole-conversation-in-one-call";
+const BUILD = "aura-core-v5.11.1-2026-08-10-nothing-terminates";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -30024,79 +30024,63 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       }
     }
 
-    case "PTA_SESSION": {
-      // ══ A WHOLE CONVERSATION IN ONE CALL ═════════════════════════════════════════════════════
+    case "PTA_TURNS": {
+      // ══ NOTHING TERMINATES ═══════════════════════════════════════════════════════════════════
       //
-      // Feeding labelled volume is the open item, and it currently costs six commands per business:
-      // grant, accept, two or three PTA_HEARDs, then PTA_OUTCOME. A hundred businesses is six hundred
-      // commands. That is not a capability problem, it is a typing problem, and it is the thing
-      // standing between "the loop works" and "the loop has enough signal to trust".
+      // This was PTA_SESSION: turns, then an outcome, then done. Aaron: "conversation, terminated -
+      // that's never done either. Someone just walks away and doesn't use it anymore. Even when
+      // someone says don't call me again that's just the last piece of context."
       //
-      // NOTHING NEW HAPPENS HERE. Every line routes through the commands that already exist, so every
-      // gate still applies: no grant means the writes refuse, a stop still closes every grant, the
-      // outcome still has to be one of the five. This composes; it does not bypass.
+      // He is right and the shape was wrong. A session has a beginning and an end; a relationship has
+      // neither. Alta Gama's chain has PAID at 14:53 and four more CONTEXT events after it - the model
+      // already worked this way and the COMMAND was arguing with it. Funnel words: session, outcome,
+      // terminated. None of them describe what a chain does.
       //
-      // THE GRANT IS STILL A SEPARATE ACT. If the entity has not granted can_remember, this records
-      // NOTHING and says so - it will not quietly mint consent to make a test convenient. That is the
-      // one shortcut that would make the whole substrate a lie.
+      // So this writes turns. That is all. An outcome is its own act whenever it arrives - today, in a
+      // year, twice, or never - and PTA_OUTCOME stays separate for exactly that reason.
       //
-      //   PTA_SESSION <pta_id> PAID ::: what she said ::: what they said ::: why it ended that way
+      // WHY IT EXISTS AT ALL: feeding labelled volume is the open item and it costs one command per
+      // turn. This is typing relief, not a concept. Every line routes through PTA_HEARD, so every gate
+      // still applies and nothing here can mint consent.
       //
-      // Every segment after the outcome is a turn, in order, except the last which is the reason.
-      if (!isOp) return { cmd: "PTA_SESSION", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      const seParts = (rest || "").split(":::").map(x => x.trim());
-      const seHead = (seParts[0] || "").split(/\s+/);
-      const seId = seHead[0] || "";
-      const seOutcome = String(seHead[1] || "").toUpperCase();
-      const seTurns = seParts.slice(1, -1).filter(Boolean);
-      const seWhy = seParts.length > 1 ? seParts[seParts.length - 1] : "";
-      const SE_OK = ["PAID", "DEFERRED", "NOT_NOW", "STOPPED", "OPEN"];
-      if (!seId || !SE_OK.includes(seOutcome) || !seTurns.length) {
-        return { cmd: "PTA_SESSION", payload: { ok: false,
-          error: "Usage: PTA_SESSION <pta_id> <" + SE_OK.join("|") + "> ::: turn ::: turn ::: why it ended",
-          note: "At least one turn and a reason. PAID is the only success." } };
-      }
+      //   PTA_TURNS <pta_id> ::: what she said ::: what they said ::: what she said
+      if (!isOp) return { cmd: "PTA_TURNS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const tuParts = (rest || "").split(":::").map(x => x.trim());
+      const tuId = (tuParts[0] || "").split(/\s+/)[0] || "";
+      const tuTurns = tuParts.slice(1).filter(Boolean);
+      if (!tuId || !tuTurns.length) return { cmd: "PTA_TURNS", payload: { ok: false,
+        error: "Usage: PTA_TURNS <pta_id> ::: turn ::: turn ::: turn",
+        note: "Turns only. An outcome is a separate act - PTA_OUTCOME - because it can arrive at any " +
+          "point on a chain that keeps going, or never." } };
       try {
-        // Consent first. A session against an entity that has not granted anything records nothing -
-        // the turns would be refused one by one anyway, and reporting a session that wrote nothing as
-        // ok would be the claim-versus-artifact split this file keeps paying for.
         const auraId = await auraPtaId(env);
-        const gs = auraId ? await grantState(env, seId, auraId, "remember") : { allowed: false, reason: "no actor identity" };
-        if (!gs.allowed) return { cmd: "PTA_SESSION", payload: { ok: false, error: "NO_GRANT", entity: seId,
+        const gs = auraId ? await grantState(env, tuId, auraId, "remember") : { allowed: false, reason: "no actor identity" };
+        if (!gs.allowed) return { cmd: "PTA_TURNS", payload: { ok: false, error: "NO_GRANT", entity: tuId,
           reason: gs.reason,
-          what_to_do: "Nothing was recorded. Grant and accept first - PTA_GRANT then ACCEPT. A session " +
-            "will not mint consent to make feeding volume convenient." } };
-
+          what_to_do: "Nothing was recorded. Grant and accept first. This will not mint consent to make " +
+            "feeding volume convenient." } };
         const wrote = [], failed = [];
-        for (const turn of seTurns) {
-          const r = await processCommand("PTA_HEARD " + seId + " ::: " + turn, env, isOp);
+        let stoppedAt = null;
+        for (const turn of tuTurns) {
+          const r = await processCommand("PTA_HEARD " + tuId + " ::: " + turn, env, isOp);
           const rp = (r && r.payload) ? r.payload : r;
-          if (rp?.ok) wrote.push({ said: turn.slice(0, 60), stopped: rp.stopped ? true : undefined,
-                                   due: rp.heard?.due || undefined });
-          else { failed.push({ said: turn.slice(0, 60), error: rp?.error || "refused" }); break; }
+          if (!rp?.ok) { failed.push({ said: turn.slice(0, 60), error: rp?.error || "refused" }); break; }
+          wrote.push({ said: turn.slice(0, 60), due: rp.heard?.due || undefined,
+                       closed_grants: rp.stopped?.ended || undefined });
+          // A stop is just the latest context - but everything after it would be refused anyway, so
+          // stop reading turns rather than writing a row of refusals.
+          if (rp.stopped) { stoppedAt = turn.slice(0, 60); break; }
         }
-        // If a turn was a stop, the grants are now closed and the outcome cannot be written. That is
-        // correct: they asked us to stop mid-conversation and the record ends where they ended it.
-        const saidStop = wrote.some(w => w.stopped);
-        let outcome = null;
-        if (!failed.length && !saidStop) {
-          const o = await processCommand("PTA_OUTCOME " + seId + " " + seOutcome + " ::: " + (seWhy || "no reason given"), env, isOp);
-          outcome = (o && o.payload) ? o.payload : o;
-        }
-        return { cmd: "PTA_SESSION", payload: {
-          ok: !failed.length, entity: seId,
-          turns_recorded: wrote.length, turns: wrote, failed: failed.length ? failed : undefined,
-          outcome: saidStop ? "NOT WRITTEN - they asked us to stop mid-conversation" : (outcome?.outcome || null),
-          outcome_recorded: saidStop ? false : !!outcome?.recorded,
-          stopped_mid_session: saidStop || undefined,
-          note: saidStop
-            ? "They asked us to stop partway through. Every grant closed at that turn and no outcome " +
-              "was recorded - the conversation ends where they ended it."
-            : (failed.length
-                ? "A turn was refused, so the session stopped there and no outcome was written."
-                : "Conversation and outcome on their chain. PTA_LEARN will read it with the rest.") } };
+        return { cmd: "PTA_TURNS", payload: { ok: !failed.length, entity: tuId,
+          recorded: wrote.length, of: tuTurns.length, turns: wrote,
+          failed: failed.length ? failed : undefined,
+          stopped_at: stoppedAt || undefined,
+          note: stoppedAt
+            ? "They asked us to stop at that turn, so the grants closed and the later turns were not " +
+              "written. Not an ending - the last context so far, and the chain stays theirs."
+            : "On their chain. An outcome, if there ever is one, is PTA_OUTCOME whenever it happens." } };
       } catch (e) {
-        return { cmd: "PTA_SESSION", payload: { ok: false, error: "Session failed: " + (e && e.message ? e.message : String(e)) } };
+        return { cmd: "PTA_TURNS", payload: { ok: false, error: "Turns failed: " + (e && e.message ? e.message : String(e)) } };
       }
     }
 

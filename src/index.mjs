@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.9.0-2026-08-10-the-queue-must-only-drain-on-evidence";
+const BUILD = "aura-core-v5.9.1-2026-08-10-the-index-said-closed-the-chain-said-owed";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -30282,6 +30282,17 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
             // hours" after "a week" means six hours. Only the most recent due per entity is owed.
             const newer = commitments.some(o => Date.parse(o.ts) > Date.parse(c.ts));
             if (newer) continue;
+            // ══ THE INDEX SAID CLOSED AND THE CHAIN SAID OWED (fixed 2026-08-10) ═══════════════
+            // PTA_KEPT deleted the index key and reported closed: true, and the very next PTA_DUE
+            // still showed the promise owed - because this reads the CHAIN, and the index only says
+            // which chains to open. The KEPT event was written and nothing connected it to the
+            // commitment it kept.
+            // Same split-brain shape as D1 versus the Durable Object this morning: a pointer and an
+            // authority disagreeing, with the pointer winning the report and the authority holding the
+            // truth. The chain is the authority, so the chain has to carry the closure.
+            const kept = chain.some(k => k && k.event === "KEPT" && k.data &&
+              (k.data.promised === c.data.due || Date.parse(k.ts) > Date.parse(c.ts)));
+            if (kept) continue;
             const item = { entity: e.id, name: e.name || null, due: c.data.due,
                            said: c.data.said || c.data.due_said || null, recorded: c.ts };
             if (!live) { voided.push({ ...item, why: "the grant that authorised this is not active - " +

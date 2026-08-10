@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.997-2026-08-10-identify-everyone-enrich-a-few";
+const BUILD = "aura-core-v4.9.998-2026-08-10-not-who-is-missing-but-who-is-thin";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -17706,8 +17706,34 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "grows past any single response. Add DEEP LIMIT n to enrich the ones you care about." } };
         }
 
+        // ══ L2 SELECTS ON DEPTH, NOT ON PRESENCE (fixed 2026-08-10) ═══════════════════════════
+        //
+        // The first version picked from `fresh` - businesses with no PTA. But L1 now runs first and
+        // mints one for everybody, so by the time L2 looked, `fresh` was always empty and DEEP could
+        // never enrich anything. MEASURED: "DEEP LIMIT 1" returned onboarded: 0, "Every business this
+        // query found is now known."
+        //
+        // That is the cost of making "known" mean "has a PTA" - which is right, and which means L2
+        // needs a different question. Not "who is missing" but "who is THIN": has an identity, has no
+        // idea what they actually are. ONBOARD writes what_it_is/offerings into metadata, so its
+        // absence is the honest test for un-enriched.
+        //
+        // Sealed metadata reads as ciphertext, so a shop whose metadata cannot be inspected is treated
+        // as thin. Enriching twice costs 75 seconds; skipping a shop that needed it costs the whole
+        // point of the pass.
+        const enrichable = [];
+        for (const r of rows) {
+          if (!r.already) continue;
+          try {
+            const er = await db.prepare("SELECT metadata FROM pta_entities WHERE id = ?").bind(r.already).first();
+            const md = String(er?.metadata || "");
+            const enriched = /"what_it_is"/.test(md) || /"offerings"/.test(md);
+            if (!enriched) enrichable.push(r);
+          } catch { enrichable.push(r); }
+        }
+
         const onboarded = [], failed = [];
-        for (const r of fresh.slice(0, swLimit)) {
+        for (const r of enrichable.slice(0, swLimit)) {
           try {
             // ONBOARD by name + city, not by place_id - it re-discovers from the world rather than
             // trusting what this sweep happened to see. The name string is what it takes.
@@ -17729,14 +17755,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           ledger: { key: swLedgerKey, unique_seen: ledger.seen.length,
                     with_pta: Object.keys(ledger.minted).length, runs: ledger.runs },
           onboarded: onboarded.length, failed, businesses: onboarded,
-          remaining_unknown: Math.max(0, fresh.length - swLimit),
+          thin: enrichable.length,
+          remaining_thin: Math.max(0, enrichable.length - swLimit),
           note: onboarded.length
             ? "Onboarded as LEADS - each has a PTA and no grant. Nothing was consented to; a grant is a " +
               "separate act and PTA_REMEMBER will refuse until one is accepted."
             : "Nothing was onboarded - read `failed`.",
-          next: (fresh.length > swLimit)
-            ? "Re-run the same command to take the next " + swLimit + " - the ones just done are now known and will be skipped."
-            : "Every business this query found is now known." } };
+          next: (enrichable.length > swLimit)
+            ? "Re-run to enrich the next " + swLimit + " - " + (enrichable.length - swLimit) + " still have an " +
+              "identity and no idea what they are."
+            : "Every business this query found has both a PTA and an enrichment." } };
       } catch (e) {
         return { cmd: "PTA_SWEEP", payload: { ok: false, error: "Sweep failed: " + (e && e.message ? e.message : String(e)) } };
       }

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.999-2026-08-10-the-mode-said-proposed-and-i-read-past-it";
+const BUILD = "aura-core-v5.0.0-2026-08-10-sixty-means-truncated-not-found";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -17576,6 +17576,150 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           graph: { business_id: biz.id, customer_id: custId, transaction_id: txId, recipient_id: recipId,
             next_relationship: recipId ? (pu.buyer + " -> " + pu.recipient + " : the purchase became a new person in the graph") : null },
           ts: new Date().toISOString() } };
+      }
+    }
+
+    case "PTA_GRID": {
+      // ══ SIXTY IS THE CEILING, SO THE ANSWER IS MORE QUERIES, NOT A BIGGER ONE ═══════════════
+      //
+      // Google returns at most 20 results per page and at most 3 pages - SIXTY per query, and no flag
+      // raises it. PTA_SWEEP was taking 10 of that 60 (Text Search, no pagination, slice(0,10)), and
+      // even a perfect 60 is nothing against every tattoo shop in New York.
+      //
+      // The industry answer is tiling: cut the region into cells, query each one, dedupe by place_id.
+      // And the part that makes it EXHAUSTIVE rather than hopeful - a cell that returns exactly 60 is
+      // saturated: it hit the ceiling, so there are certainly results you did not see. Subdivide it
+      // and query the children. That is a real coverage signal, unlike "Google returned ten and we
+      // knew all ten", which can be true while thousands are missing.
+      //
+      // COMPLETION, LOCKED: no pending cells, no saturated cell without finished children, every kept
+      // place_id has a PTA. Google's rotating sample is never the denominator.
+      //
+      // WHAT THIS IS NOT: the planet-scale answer. Every cell is a billable request and dense metros
+      // multiply cells; licensed POI bulk is the corpus play and Google is for live verify and enrich.
+      // This proves a vertical x city and gives real arithmetic to compare a license against.
+      //
+      //   PTA_GRID tattoo in New York NY                 plan the cells, fetch nothing
+      //   PTA_GRID CONFIRM tattoo in New York NY         crawl cells, L1 identify, checkpoint
+      //   PTA_GRID CONFIRM CELLS 4 tattoo in New York NY crawl at most 4 cells this run
+      if (!isOp) return { cmd: "PTA_GRID", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      let grRaw = (rest || "").trim();
+      const grConfirm = /(^|\s)CONFIRM(\s|$)/i.test(grRaw);
+      grRaw = grRaw.replace(/(^|\s)CONFIRM(\s|$)/i, " ").trim();
+      let grCells = 3;
+      const cm = grRaw.match(/(^|\s)CELLS\s+(\d+)(\s|$)/i);
+      if (cm) { grCells = Math.min(Math.max(Number(cm[2]) || 3, 1), 12); grRaw = grRaw.replace(cm[0], " ").trim(); }
+      const gm = grRaw.match(/^(.*?)\s+in\s+(.+)$/i);
+      if (!gm) return { cmd: "PTA_GRID", payload: { ok: false,
+        error: "Usage: PTA_GRID [CONFIRM] [CELLS n] <vertical> in <region>   e.g. PTA_GRID tattoo in New York NY" } };
+      const grVertical = gm[1].trim(), grRegion = gm[2].trim();
+      const grKey = "pta:grid:" + (grVertical + "-" + grRegion).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 90);
+      try {
+        const gmKey = await getSecret(env, "google_maps");
+        if (!gmKey) return { cmd: "PTA_GRID", payload: { ok: false, error: "No Google Maps key at secret:google_maps" } };
+
+        let plan = null;
+        try { plan = JSON.parse((await env.AURA_KV.get(grKey)) || "null"); } catch {}
+        if (!plan) {
+          // Anchor on the region's own centre, found through the existing places engine - no new
+          // geocoding dependency and no guessed coordinates.
+          const geo = await processCommand("FETCH_PLACES " + grRegion, env, true);
+          const gp = (geo && geo.payload) ? geo.payload : geo;
+          const c = (gp?.places || [])[0];
+          if (!c || typeof c.lat !== "number") return { cmd: "PTA_GRID", payload: { ok: false,
+            error: "Could not locate region: " + grRegion, places_said: gp?.error || null } };
+          // 0.05 deg is roughly 5.5km - inside the 50km cap and coarse enough that a dense core will
+          // saturate and subdivide rather than being crawled at fine resolution everywhere.
+          const step = 0.05, span = 2;
+          const cells = [];
+          for (let dy = -span; dy <= span; dy++) for (let dx = -span; dx <= span; dx++) {
+            cells.push({ id: "c" + (dy + span) + "_" + (dx + span), lat: c.lat + dy * step, lng: c.lng + dx * step,
+                         radius: 4000, state: "pending", depth: 0 });
+          }
+          plan = { vertical: grVertical, region: grRegion, center: { lat: c.lat, lng: c.lng },
+                   cells, seen: [], minted: {}, runs: 0, created_at: new Date().toISOString() };
+        }
+
+        const pending = plan.cells.filter(x => x.state === "pending");
+        if (!grConfirm) {
+          return { cmd: "PTA_GRID", payload: { ok: true, mode: "plan", key: grKey,
+            vertical: grVertical, region: grRegion, center: plan.center,
+            cells_total: plan.cells.length, cells_pending: pending.length,
+            cells_done: plan.cells.filter(x => x.state === "done").length,
+            cells_saturated: plan.cells.filter(x => x.saturated).length,
+            unique_seen: plan.seen.length, with_pta: Object.keys(plan.minted).length, runs: plan.runs,
+            complete: pending.length === 0,
+            note: "NOTHING FETCHED. Each cell is up to 3 billable Google requests. A cell returning " +
+              "exactly 60 is SATURATED and gets subdivided into 4 children - that is how coverage " +
+              "becomes provable rather than hopeful.",
+            to_proceed: "PTA_GRID CONFIRM CELLS " + grCells + " " + grVertical + " in " + grRegion } };
+        }
+
+        const worked = [], newIds = [];
+        for (const cell of pending.slice(0, grCells)) {
+          let got = [], token = null, pages = 0;
+          try {
+            do {
+              const u = token
+                ? `https://maps.googleapis.com/maps/api/place/nearbysearch/json?pagetoken=${token}&key=${gmKey}`
+                : `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${cell.lat},${cell.lng}&radius=${cell.radius}&keyword=${encodeURIComponent(grVertical)}&key=${gmKey}`;
+              const rr = await fetch(u);
+              const dd = await rr.json();
+              if (dd.status !== "OK" && dd.status !== "ZERO_RESULTS") { cell.error = dd.status; break; }
+              for (const pl of (dd.results || [])) got.push(pl);
+              token = dd.next_page_token || null;
+              pages++;
+              // The token is not valid immediately - Google issues it a second or two before it works.
+              if (token && pages < 3) await new Promise(r => setTimeout(r, 2000));
+            } while (token && pages < 3);
+          } catch (e) { cell.error = String(e?.message ?? e); }
+
+          cell.found = got.length;
+          cell.state = "done";
+          // SIXTY MEANS TRUNCATED. Not "we found sixty" - "we found the maximum, so there are more."
+          if (got.length >= 60 && cell.depth < 3) {
+            cell.saturated = true;
+            const h = cell.radius / 2, d = (h / 111000);
+            for (const [sy, sx] of [[-1,-1],[-1,1],[1,-1],[1,1]]) {
+              plan.cells.push({ id: cell.id + "." + (sy > 0 ? "s" : "n") + (sx > 0 ? "e" : "w"),
+                lat: cell.lat + sy * d, lng: cell.lng + sx * d, radius: h, state: "pending", depth: cell.depth + 1 });
+            }
+          }
+          for (const pl of got) {
+            if (!pl.place_id) continue;
+            if (!plan.seen.includes(pl.place_id)) { plan.seen.push(pl.place_id); newIds.push(pl); }
+          }
+          worked.push({ cell: cell.id, found: got.length, pages, saturated: !!cell.saturated, error: cell.error || null });
+        }
+
+        // L1 on anything new - from the Nearby fields alone, no scrape.
+        const minted = [], mint_failed = [];
+        for (const pl of newIds) {
+          if (plan.minted[pl.place_id]) continue;
+          try {
+            const ing = await ingestBusiness(env, { name: pl.name, place_id: pl.place_id,
+              phone: pl.formatted_phone_number || null, website: pl.website || null, email: null }, isOp);
+            if (ing?.ok && ing.id) { plan.minted[pl.place_id] = ing.id; minted.push({ name: pl.name, pta: ing.id }); }
+            else mint_failed.push({ name: pl.name, error: ing?.error || "no id" });
+          } catch (e) { mint_failed.push({ name: pl.name, error: String(e?.message ?? e) }); }
+        }
+
+        plan.runs += 1; plan.last_run_at = new Date().toISOString();
+        try { await env.AURA_KV.put(grKey, JSON.stringify(plan), { expirationTtl: 365 * 86400 }); } catch {}
+        const stillPending = plan.cells.filter(x => x.state === "pending").length;
+        return { cmd: "PTA_GRID", payload: { ok: true, mode: "crawled", key: grKey,
+          cells_worked: worked, cells_pending: stillPending, cells_total: plan.cells.length,
+          new_places: newIds.length, minted: minted.length, mint_failed,
+          unique_seen: plan.seen.length, with_pta: Object.keys(plan.minted).length, runs: plan.runs,
+          complete: stillPending === 0,
+          note: stillPending === 0
+            ? "Every cell is done and no saturated cell is left unsplit. THIS is complete - measured " +
+              "against the plan, not against whatever Google returned last."
+            : stillPending + " cells still pending. Re-run to continue - progress is in the ledger, so " +
+              "a timeout costs one run rather than the crawl.",
+          businesses: minted } };
+      } catch (e) {
+        return { cmd: "PTA_GRID", payload: { ok: false, error: "Grid failed: " + (e && e.message ? e.message : String(e)) } };
       }
     }
 

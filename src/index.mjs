@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.11.1-2026-08-10-nothing-terminates";
+const BUILD = "aura-core-v5.11.2-2026-08-10-count-what-landed-not-what-was-attempted";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -30139,13 +30139,17 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           // So this counts, and PTA_LEARN reports the count. Nothing runs on its own. When the number
           // gets tedious it becomes a prompt, still requiring a human to say go - and it stays that way
           // until the autonomy policy exists, which it does not.
-          new_since_learn: await (async () => {
+          // ══ COUNT WHAT LANDED, NOT WHAT WAS ATTEMPTED ═══════════════════════════════════════
+          // MEASURED: an outcome refused for NO_GRANT still incremented this, so the "N new outcomes
+          // since last learn" prompt would have counted failures as signal. Only a recorded outcome is
+          // new evidence - the whole point of the counter is knowing when there is enough to learn from.
+          new_since_learn: wp?.ok ? await (async () => {
             try {
               const n = Number(await env.AURA_KV.get("pta:outcomes:since_learn") || "0") + 1;
               await env.AURA_KV.put("pta:outcomes:since_learn", String(n));
               return n;
             } catch { return null; }
-          })(),
+          })() : undefined,
           note: ocKind === "PAID"
             ? "Gate One for this business. This is the first label the learning loop can actually learn " +
               "from - every conversation before a PAID was unlabelled."
@@ -30367,9 +30371,19 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           error: wp?.error || "could not write", reason: wp?.reason,
           what_to_do: "The commitment stays OPEN. Closing the index while the chain has no record of " +
             "it being kept would lose the promise silently - the queue must only drain on evidence." } };
-        try { await env.AURA_MEMORY.prepare("DELETE FROM pta_commitments WHERE entity = ?").bind(kpId).run(); } catch {}
+        // ══ IF THIS FAILS THE PROMISE LOOKS OWED FOREVER ═══════════════════════════════════════
+        // The chain now says KEPT, so PTA_DUE will not report it - but the index row stays and every
+        // scan opens that chain for nothing. Small, and silent is what makes it grow. Reported.
+        let kpIndexCleared = true, kpIndexError = null;
+        try { await env.AURA_MEMORY.prepare("DELETE FROM pta_commitments WHERE entity = ?").bind(kpId).run(); }
+        catch (e) { kpIndexCleared = false; kpIndexError = String(e?.message ?? e); }
         return { cmd: "PTA_KEPT", payload: { ok: true, entity: kpId, closed: true,
           was_promised: open.due, late_by_hours: ev.late_by_hours, chain_length: wp.chain_length,
+          index_cleared: kpIndexCleared ? undefined : false,
+          index_error: kpIndexError || undefined,
+          index_note: kpIndexCleared ? undefined
+            : "The chain records it kept, so nothing will report it owed - but the index row remains " +
+              "and every scan will open this chain for nothing until it is cleared.",
           note: "Written to their chain and removed from what is owed. Both halves stay in the record - " +
             "what was promised and what was done." } };
       } catch (e) {
@@ -30408,7 +30422,11 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
             await db.prepare("CREATE TABLE IF NOT EXISTS pta_commitments (entity TEXT PRIMARY KEY, due TEXT NOT NULL, said TEXT, set_at TEXT)").run();
             idx = await db.prepare("SELECT entity FROM pta_commitments").all();
           } catch {}
-          rows = (idx?.results || []).map(r => ({ id: r.entity }));
+          // The name comes along - a due that says "pta_1a2fe..." is owed makes an operator look up
+          // who that is before they can act on it.
+          const nameRows = await db.prepare("SELECT id, name FROM pta_entities").all().catch(() => null);
+          const nameById = new Map((nameRows?.results || []).map(r => [r.id, r.name]));
+          rows = (idx?.results || []).map(r => ({ id: r.entity, name: nameById.get(r.entity) || null }));
           if (!rows.length) return { cmd: "PTA_DUE", payload: { ok: true, scanned: 0, due_now: 0, due: [],
             note: "Nothing is owed - no entity has an open commitment." } };
         }

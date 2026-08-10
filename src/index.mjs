@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.7.0-2026-08-10-learn-from-people-without-keeping-them";
+const BUILD = "aura-core-v5.7.1-2026-08-10-show-what-came-back";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -29796,15 +29796,33 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           "Return ONLY JSON: {\"lessons\":[{\"when_applies\":\"...\",\"insight\":\"...\",\"because\":\"...\"}]}. " +
           "State nothing the transcripts do not support. If the difference is not visible in the words, " +
           "say so in a lesson rather than inventing a pattern - a confident wrong lesson is worse than none.";
-        let out = null;
+        let out = null, _rawReply = "";
         try {
+          _rawReply = "";
           const rr = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
             messages: [{ role: "system", content: sys }, { role: "user", content: corpus }],
-            max_tokens: 1200 });
+            max_tokens: 2000 });   // 1200 was cutting multi-lesson replies mid-object
           const t = String(rr?.response ?? rr?.result?.response ?? "");
-          out = JSON.parse(t.slice(t.indexOf("{"), t.lastIndexOf("}") + 1));
-        } catch (e) { return { cmd: "PTA_LEARN", payload: { ok: false, error: "learning pass failed: " + String(e?.message ?? e),
-          labelled: labelled.length, paid } }; }
+          _rawReply = t;
+          const a = t.indexOf("{"), b = t.lastIndexOf("}");
+          if (a < 0 || b <= a) throw new Error("no JSON object in the reply");
+          out = JSON.parse(t.slice(a, b + 1));
+          _rawReply = t;
+        } catch (e) {
+          // ══ SHOW WHAT CAME BACK ═══════════════════════════════════════════════════════════
+          // "Unexpected end of JSON input" says the parse died and nothing about why. It could be
+          // prose around the object, a truncated response at the token cap, or an empty reply - three
+          // different fixes. Reasoning about which one, twice, is exactly the loop this file has spent
+          // two days climbing out of. The reply itself is the answer.
+          return { cmd: "PTA_LEARN", payload: { ok: false, error: "learning pass failed: " + String(e?.message ?? e),
+            labelled: labelled.length, paid,
+            reply_length: (_rawReply || "").length,
+            reply_preview: String(_rawReply || "").slice(0, 600),
+            reply_tail: String(_rawReply || "").slice(-200),
+            what_to_look_for: "If the tail is cut mid-object the token cap is too low. If there is prose " +
+              "before the brace the model ignored the format instruction. If it is empty the call " +
+              "returned nothing at all." } };
+        }
 
         const lessons = (out?.lessons || []).filter(l => l && l.insight);
         let stored = 0;

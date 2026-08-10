@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.9.1-2026-08-10-the-index-said-closed-the-chain-said-owed";
+const BUILD = "aura-core-v5.9.2-2026-08-10-kv-list-is-eventually-consistent";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -30200,7 +30200,10 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         error: "Usage: PTA_KEPT <pta_id> ::: what happened when you did it" } };
       try {
         let open = null;
-        try { open = JSON.parse((await env.AURA_KV.get("pta:due:" + kpId)) || "null"); } catch {}
+        try {
+          const r = await env.AURA_MEMORY.prepare("SELECT entity, due, said FROM pta_commitments WHERE entity = ?").bind(kpId).first();
+          if (r) open = { entity: r.entity, due: r.due, said: r.said };
+        } catch {}
         if (!open) return { cmd: "PTA_KEPT", payload: { ok: false, error: "NOTHING_OWED", entity: kpId,
           what_to_do: "There is no open commitment to this entity. Nothing was closed - a kept promise " +
             "recorded against no promise would be a false entry in their record." } };
@@ -30213,7 +30216,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           error: wp?.error || "could not write", reason: wp?.reason,
           what_to_do: "The commitment stays OPEN. Closing the index while the chain has no record of " +
             "it being kept would lose the promise silently - the queue must only drain on evidence." } };
-        try { await env.AURA_KV.delete("pta:due:" + kpId); } catch {}
+        try { await env.AURA_MEMORY.prepare("DELETE FROM pta_commitments WHERE entity = ?").bind(kpId).run(); } catch {}
         return { cmd: "PTA_KEPT", payload: { ok: true, entity: kpId, closed: true,
           was_promised: open.due, late_by_hours: ev.late_by_hours, chain_length: wp.chain_length,
           note: "Written to their chain and removed from what is owed. Both halves stay in the record - " +
@@ -30249,9 +30252,12 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         let rows;
         if (duOne) rows = [{ id: duOne }];
         else {
-          const keys = await env.AURA_KV.list({ prefix: "pta:due:" });
-          const ids = (keys?.keys || []).map(k => k.name.slice("pta:due:".length));
-          rows = ids.map(id => ({ id }));
+          let idx = null;
+          try {
+            await db.prepare("CREATE TABLE IF NOT EXISTS pta_commitments (entity TEXT PRIMARY KEY, due TEXT NOT NULL, said TEXT, set_at TEXT)").run();
+            idx = await db.prepare("SELECT entity FROM pta_commitments").all();
+          } catch {}
+          rows = (idx?.results || []).map(r => ({ id: r.entity }));
           if (!rows.length) return { cmd: "PTA_DUE", payload: { ok: true, scanned: 0, due_now: 0, due: [],
             note: "Nothing is owed - no entity has an open commitment." } };
         }
@@ -30462,12 +30468,23 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         // goes in KV so the reader opens only the entities that owe something.
         // The chain stays the authority; this is a way in, not a second copy of the truth.
         if (rmDue) {
+          // ══ D1, NOT KV — LIST IS EVENTUALLY CONSISTENT (fixed 2026-08-10) ══════════════════
+          // The first index was a KV key per entity and PTA_DUE found it with list(). MEASURED: a
+          // commitment written one second earlier did not appear - scanned: 0 - while PTA_KEPT found
+          // the same key by get() and closed it. KV list operations are eventually consistent and a
+          // fresh key can take up to a minute to show.
+          // A promise that is invisible for a minute after being made is worse than the 40-second scan
+          // it replaced, because the slow version was at least correct. D1 is strongly consistent,
+          // indexed, and already bound.
           try {
-            await env.AURA_KV.put("pta:due:" + rmId, JSON.stringify({
-              entity: rmId, due: rmDue, said: String(rmData.said || rmData.due || ""),
-              set_at: new Date().toISOString(), state: "open" }),
-              { expirationTtl: 400 * 86400 });
-          } catch {}
+            await env.AURA_MEMORY.prepare(
+              "CREATE TABLE IF NOT EXISTS pta_commitments (entity TEXT PRIMARY KEY, due TEXT NOT NULL, said TEXT, set_at TEXT)"
+            ).run();
+            await env.AURA_MEMORY.prepare(
+              "INSERT INTO pta_commitments (entity, due, said, set_at) VALUES (?, ?, ?, ?) " +
+              "ON CONFLICT(entity) DO UPDATE SET due = excluded.due, said = excluded.said, set_at = excluded.set_at"
+            ).bind(rmId, rmDue, String(rmData.said || rmData.due || ""), new Date().toISOString()).run();
+          } catch (e) { console.warn("[PTA_REMEMBER] commitment index write failed: " + String(e?.message ?? e)); }
         }
         const rmIdem = String(rmData.idem || "").trim() || chainIdemKey(rmType, "aura", rmEv);
         const stub2 = env.PTA_DO.get(env.PTA_DO.idFromName(rmId));

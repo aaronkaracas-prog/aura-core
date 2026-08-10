@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.8.4-2026-08-10-fixed-one-of-a-pair-and-shipped-the-other";
+const BUILD = "aura-core-v5.9.0-2026-08-10-the-queue-must-only-drain-on-evidence";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -30103,6 +30103,22 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         const ev = { said: hdSaid, heard_at: new Date().toISOString(), ...(dueSaid ? { due: dueSaid } : {}) };
         const wrote = await processCommand("PTA_REMEMBER " + hdId + " CONTEXT " + JSON.stringify(ev), env, isOp);
         const wp = (wrote && wrote.payload) ? wrote.payload : wrote;
+        // ══ ok:true WITH recorded:false (fixed 2026-08-10) ═══════════════════════════════════
+        // This returned ok:true and recorded:false when the entity did not exist - "I heard you" for
+        // words that landed nowhere. The same claim-versus-artifact split as mode:stored with
+        // stored:0, and as a revoke that matches nothing reporting success.
+        // If the words were not written, this failed. And it must not go on to close grants either:
+        // ending someone's consent while the reason for it exists nowhere is the worst possible
+        // ordering, because the chain would show access stopping for no stated cause.
+        if (!wp?.ok) return { cmd: "PTA_HEARD", payload: { ok: false, entity: hdId,
+          error: wp?.error || "could not write what they said",
+          reason: wp?.reason, gate_said: wp?.what_to_do,
+          heard: { asked_to_stop: wantsStop, due: dueSaid || null },
+          nothing_changed: true,
+          what_to_do: wantsStop
+            ? "THEY ASKED US TO STOP AND NOTHING WAS RECORDED OR ENDED. Fix this before anything else " +
+              "runs - a stop that did not take is the one failure this layer exists to prevent."
+            : "Their words were not written and no state changed." } };
 
         let stopped = null;
         if (wantsStop) {
@@ -30164,6 +30180,49 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       }
     }
 
+    case "PTA_KEPT": {
+      // ══ NOTHING CLOSED A COMMITMENT, SO THE QUEUE ONLY GREW ══════════════════════════════════
+      //
+      // She calls John back and nothing records that she did. The due sat on the chain forever and
+      // PTA_DUE reported it again every run - a promise permanently overdue after it was kept, which
+      // is worse than not tracking it at all, because the record says she failed him.
+      //
+      // KEEPING IT IS AN EVENT LIKE ANY OTHER. It goes on their chain under their grant, so what was
+      // promised, what was said, and what was done are one story rather than a task list beside it.
+      // The index entry closes; the chain keeps both halves forever.
+      //
+      //   PTA_KEPT <pta_id> ::: called, he asked for another week
+      if (!isOp) return { cmd: "PTA_KEPT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const kpParts = (rest || "").split(":::");
+      const kpId = (kpParts[0] || "").trim();
+      const kpWhat = kpParts.slice(1).join(":::").trim();
+      if (!kpId) return { cmd: "PTA_KEPT", payload: { ok: false,
+        error: "Usage: PTA_KEPT <pta_id> ::: what happened when you did it" } };
+      try {
+        let open = null;
+        try { open = JSON.parse((await env.AURA_KV.get("pta:due:" + kpId)) || "null"); } catch {}
+        if (!open) return { cmd: "PTA_KEPT", payload: { ok: false, error: "NOTHING_OWED", entity: kpId,
+          what_to_do: "There is no open commitment to this entity. Nothing was closed - a kept promise " +
+            "recorded against no promise would be a false entry in their record." } };
+        const ev = { kept: true, promised: open.due, promised_said: open.said || null,
+                     what_happened: kpWhat || null, kept_at: new Date().toISOString(),
+                     late_by_hours: Math.max(0, Math.round((Date.now() - Date.parse(open.due)) / 36e5)) };
+        const w = await processCommand("PTA_REMEMBER " + kpId + " KEPT " + JSON.stringify(ev), env, isOp);
+        const wp = (w && w.payload) ? w.payload : w;
+        if (!wp?.ok) return { cmd: "PTA_KEPT", payload: { ok: false, entity: kpId,
+          error: wp?.error || "could not write", reason: wp?.reason,
+          what_to_do: "The commitment stays OPEN. Closing the index while the chain has no record of " +
+            "it being kept would lose the promise silently - the queue must only drain on evidence." } };
+        try { await env.AURA_KV.delete("pta:due:" + kpId); } catch {}
+        return { cmd: "PTA_KEPT", payload: { ok: true, entity: kpId, closed: true,
+          was_promised: open.due, late_by_hours: ev.late_by_hours, chain_length: wp.chain_length,
+          note: "Written to their chain and removed from what is owed. Both halves stay in the record - " +
+            "what was promised and what was done." } };
+      } catch (e) {
+        return { cmd: "PTA_KEPT", payload: { ok: false, error: "Kept failed: " + (e && e.message ? e.message : String(e)) } };
+      }
+    }
+
     case "PTA_DUE": {
       // ══ WHAT IS OWED, AND TO WHOM ═══════════════════════════════════════════════════════════
       //
@@ -30185,9 +30244,17 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       const duOne = /^pta_|^ent_/.test(duRaw) ? duRaw : null;
       try {
         const db = env.AURA_MEMORY;
-        const rows = duOne
-          ? [{ id: duOne }]
-          : (await db.prepare("SELECT id, name FROM pta_entities LIMIT 400").all())?.results || [];
+        // Only entities that owe something. A scan of 245 took 40 seconds; this opens as many chains
+        // as there are open commitments, which is the number that actually matters.
+        let rows;
+        if (duOne) rows = [{ id: duOne }];
+        else {
+          const keys = await env.AURA_KV.list({ prefix: "pta:due:" });
+          const ids = (keys?.keys || []).map(k => k.name.slice("pta:due:".length));
+          rows = ids.map(id => ({ id }));
+          if (!rows.length) return { cmd: "PTA_DUE", payload: { ok: true, scanned: 0, due_now: 0, due: [],
+            note: "Nothing is owed - no entity has an open commitment." } };
+        }
         const now = Date.now();
         const due = [], upcoming = [], voided = [];
         const auraId = await auraPtaId(env);
@@ -30378,6 +30445,19 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
               "is worse than no commitment, because the chain would claim one exists." } };
         }
         const rmEv = { ...rmData, event_type: rmType, ...(rmDue ? { due: rmDue, due_said: String(rmData.due) } : {}) };
+        // ══ AN INDEX, BECAUSE A SCAN IS NOT AN ANSWER AT SCALE ═══════════════════════════════
+        // PTA_DUE read 245 chains to find one commitment - 40 seconds, and impossible at a million.
+        // The commitment still LIVES on the chain (that is what makes revoke end it), but a pointer
+        // goes in KV so the reader opens only the entities that owe something.
+        // The chain stays the authority; this is a way in, not a second copy of the truth.
+        if (rmDue) {
+          try {
+            await env.AURA_KV.put("pta:due:" + rmId, JSON.stringify({
+              entity: rmId, due: rmDue, said: String(rmData.said || rmData.due || ""),
+              set_at: new Date().toISOString(), state: "open" }),
+              { expirationTtl: 400 * 86400 });
+          } catch {}
+        }
         const rmIdem = String(rmData.idem || "").trim() || chainIdemKey(rmType, "aura", rmEv);
         const stub2 = env.PTA_DO.get(env.PTA_DO.idFromName(rmId));
         const appendResp = await stub2.fetch(new Request("http://do", { method: "POST",

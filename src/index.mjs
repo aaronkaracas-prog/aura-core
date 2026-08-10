@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.10.1-2026-08-10-stop-is-about-them-not-about-us";
+const BUILD = "aura-core-v5.10.2-2026-08-10-structure-is-not-consent";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -30189,8 +30189,22 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
             // a grant from this entity, that shows in the response and is the operator's to see -
             // silently leaving it open because it was not granted to us would be the same bug wearing
             // a different justification.
+            // ══ GRANTS ONLY - AND I ALMOST SHIPPED THE OPPOSITE (corrected 2026-08-10) ═════════
+            //
+            // v5.10.1 widened this to EVERY open edge from the entity, on a diagnosis that was wrong.
+            // MEASURED: Alta Gama's three "still active" edges were works_at and has_identity with
+            // permission:null - two artists employed at the shop and its link to the graph node.
+            // STRUCTURE, NOT CONSENT. The one actual grant was already revoked and can_remember_now
+            // was false: the stop had worked correctly and ended:1 was right.
+            //
+            // The widened version would have severed the artists' employment edges because the shop
+            // asked not to be phoned. Ending a relationship nobody withdrew, in the name of consent.
+            //
+            // So: edge_type = 'grant' only, and every grantee rather than only the current actor -
+            // that half of the previous fix was sound, because a person saying stop is ending what
+            // they granted, not "what they granted to whichever identity we use today".
             const open = await env.AURA_MEMORY.prepare(
-              "SELECT id, state, permission, to_id FROM pta_edges WHERE from_id = ? AND state != 'revoked'"
+              "SELECT id, state, permission, to_id FROM pta_edges WHERE from_id = ? AND edge_type = 'grant' AND state != 'revoked'"
             ).bind(hdId).all().catch(() => null);
             const rows = open?.results || [];
             const ended = [], failed = [];
@@ -30204,8 +30218,10 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
             stopped = rows.length
               ? { ended: ended.length, edges: ended, failed: failed.length ? failed : undefined,
                   to_other_identities: ended.filter(x => !x.was_current_actor).length || undefined,
-                  note: "EVERY open grant FROM this entity was closed - active and pending, and " +
-                    "whoever it was granted to. Not scoped to whichever identity we are using today." }
+                  note: "Every open GRANT from this entity was closed - active and pending, whoever it " +
+                    "was granted to. Structural edges (works_at, has_identity) are untouched: they are " +
+                    "relationships nobody withdrew, and ending them in the name of consent would be its " +
+                    "own violation." }
               : { already: "nothing open", note: "they had not granted anything, or had already asked before" };
             if (failed.length) stopped.warning = "SOME GRANTS ARE STILL LIVE. They asked us to stop and " +
               "we did not fully stop - fix this before anything else runs.";

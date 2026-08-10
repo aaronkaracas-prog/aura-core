@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.8.2-2026-08-10-mode-stored-with-stored-zero";
+const BUILD = "aura-core-v5.8.3-2026-08-10-declared-after-the-thing-that-uses-it";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -29886,6 +29886,12 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         }
 
         const lessons = (out?.lessons || []).filter(l => l && l.insight);
+        // Declared HERE, before the store loop reads it. It was down in the return block, which runs
+        // AFTER this loop - so every write threw "Cannot access 'verticals' before initialization"
+        // and the bare catch ate it, which is how mode said stored while stored said 0. Same lesson as
+        // _aliasSelfWrite this morning: read where the declaration is relative to the use, do not
+        // assume that being earlier in the file means earlier in the scope.
+        const verticals = [...new Set(labelled.map(x => x.vertical).filter(Boolean))];
         let stored = 0; const storedKeys = [], storeFailed = [];
         if (lnConfirm) {
           for (const l of lessons) {
@@ -29912,7 +29918,6 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         // Grok's threshold: 20-25 labelled with 8-10 PAID before a lesson should be leaned on, and
         // deliberately NOT a hard refusal - "zero is epistemological death, thin but non-zero is
         // useful caution." So the candidate still surfaces, carrying how thin it is.
-        const verticals = [...new Set(labelled.map(x => x.vertical).filter(Boolean))];
         const confidence = (labelled.length >= 25 && paid >= 10 && verticals.length > 1) ? "reasonable"
           : (labelled.length >= 20 && paid >= 8) ? "thin - one vertical" : "very thin";
         // Repeated deferral is an OPERATOR SIGNAL, never a state change and never a negative label.

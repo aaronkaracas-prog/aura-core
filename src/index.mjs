@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.10.3-2026-08-10-i-read-the-number-instead-of-the-rows";
+const BUILD = "aura-core-v5.11.0-2026-08-10-a-whole-conversation-in-one-call";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -30021,6 +30021,82 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
               " other endings - read them before believing them at that sample size." } };
       } catch (e) {
         return { cmd: "PTA_LEARN", payload: { ok: false, error: "Learn failed: " + (e && e.message ? e.message : String(e)) } };
+      }
+    }
+
+    case "PTA_SESSION": {
+      // ══ A WHOLE CONVERSATION IN ONE CALL ═════════════════════════════════════════════════════
+      //
+      // Feeding labelled volume is the open item, and it currently costs six commands per business:
+      // grant, accept, two or three PTA_HEARDs, then PTA_OUTCOME. A hundred businesses is six hundred
+      // commands. That is not a capability problem, it is a typing problem, and it is the thing
+      // standing between "the loop works" and "the loop has enough signal to trust".
+      //
+      // NOTHING NEW HAPPENS HERE. Every line routes through the commands that already exist, so every
+      // gate still applies: no grant means the writes refuse, a stop still closes every grant, the
+      // outcome still has to be one of the five. This composes; it does not bypass.
+      //
+      // THE GRANT IS STILL A SEPARATE ACT. If the entity has not granted can_remember, this records
+      // NOTHING and says so - it will not quietly mint consent to make a test convenient. That is the
+      // one shortcut that would make the whole substrate a lie.
+      //
+      //   PTA_SESSION <pta_id> PAID ::: what she said ::: what they said ::: why it ended that way
+      //
+      // Every segment after the outcome is a turn, in order, except the last which is the reason.
+      if (!isOp) return { cmd: "PTA_SESSION", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const seParts = (rest || "").split(":::").map(x => x.trim());
+      const seHead = (seParts[0] || "").split(/\s+/);
+      const seId = seHead[0] || "";
+      const seOutcome = String(seHead[1] || "").toUpperCase();
+      const seTurns = seParts.slice(1, -1).filter(Boolean);
+      const seWhy = seParts.length > 1 ? seParts[seParts.length - 1] : "";
+      const SE_OK = ["PAID", "DEFERRED", "NOT_NOW", "STOPPED", "OPEN"];
+      if (!seId || !SE_OK.includes(seOutcome) || !seTurns.length) {
+        return { cmd: "PTA_SESSION", payload: { ok: false,
+          error: "Usage: PTA_SESSION <pta_id> <" + SE_OK.join("|") + "> ::: turn ::: turn ::: why it ended",
+          note: "At least one turn and a reason. PAID is the only success." } };
+      }
+      try {
+        // Consent first. A session against an entity that has not granted anything records nothing -
+        // the turns would be refused one by one anyway, and reporting a session that wrote nothing as
+        // ok would be the claim-versus-artifact split this file keeps paying for.
+        const auraId = await auraPtaId(env);
+        const gs = auraId ? await grantState(env, seId, auraId, "remember") : { allowed: false, reason: "no actor identity" };
+        if (!gs.allowed) return { cmd: "PTA_SESSION", payload: { ok: false, error: "NO_GRANT", entity: seId,
+          reason: gs.reason,
+          what_to_do: "Nothing was recorded. Grant and accept first - PTA_GRANT then ACCEPT. A session " +
+            "will not mint consent to make feeding volume convenient." } };
+
+        const wrote = [], failed = [];
+        for (const turn of seTurns) {
+          const r = await processCommand("PTA_HEARD " + seId + " ::: " + turn, env, isOp);
+          const rp = (r && r.payload) ? r.payload : r;
+          if (rp?.ok) wrote.push({ said: turn.slice(0, 60), stopped: rp.stopped ? true : undefined,
+                                   due: rp.heard?.due || undefined });
+          else { failed.push({ said: turn.slice(0, 60), error: rp?.error || "refused" }); break; }
+        }
+        // If a turn was a stop, the grants are now closed and the outcome cannot be written. That is
+        // correct: they asked us to stop mid-conversation and the record ends where they ended it.
+        const saidStop = wrote.some(w => w.stopped);
+        let outcome = null;
+        if (!failed.length && !saidStop) {
+          const o = await processCommand("PTA_OUTCOME " + seId + " " + seOutcome + " ::: " + (seWhy || "no reason given"), env, isOp);
+          outcome = (o && o.payload) ? o.payload : o;
+        }
+        return { cmd: "PTA_SESSION", payload: {
+          ok: !failed.length, entity: seId,
+          turns_recorded: wrote.length, turns: wrote, failed: failed.length ? failed : undefined,
+          outcome: saidStop ? "NOT WRITTEN - they asked us to stop mid-conversation" : (outcome?.outcome || null),
+          outcome_recorded: saidStop ? false : !!outcome?.recorded,
+          stopped_mid_session: saidStop || undefined,
+          note: saidStop
+            ? "They asked us to stop partway through. Every grant closed at that turn and no outcome " +
+              "was recorded - the conversation ends where they ended it."
+            : (failed.length
+                ? "A turn was refused, so the session stopped there and no outcome was written."
+                : "Conversation and outcome on their chain. PTA_LEARN will read it with the rest.") } };
+      } catch (e) {
+        return { cmd: "PTA_SESSION", payload: { ok: false, error: "Session failed: " + (e && e.message ? e.message : String(e)) } };
       }
     }
 

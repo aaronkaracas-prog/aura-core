@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.10.2-2026-08-10-structure-is-not-consent";
+const BUILD = "aura-core-v5.10.3-2026-08-10-i-read-the-number-instead-of-the-rows";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -21727,11 +21727,36 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           });
           const active = rows.filter((r) => r.state === "active");
           if (_st && _st.pta) {
+            // ══ A COUNT THAT INVITED THE MISTAKE (2026-08-10) ═══════════════════════════════════
+            //
+            // `active` counted every open edge of any type, so a shop with one revoked grant and two
+            // artists employed there read as "active: 3". I took that for three unclosed grants TWICE
+            // and shipped a build that would have severed the artists' works_at edges because the shop
+            // asked not to be phoned - ending relationships nobody withdrew, in the name of consent.
+            //
+            // The rows always carried edge_type and permission. I read the number instead of the rows.
+            // So the number now says what it means: grants are counted separately from structure, and
+            // `active` alone no longer exists to be misread.
+            const grants = rows.filter(r => r.edge_type === "grant");
+            const structural = rows.filter(r => r.edge_type !== "grant");
             _st.pta.edges_live = {
               source: "D1 pta_edges, read at this moment - not a copy held in the Durable Object, so it cannot drift",
               total: rows.length,
+              active_grants: grants.filter(r => r.state === "active").length,
+              open_offers: grants.filter(r => r.state === "pending").length,
+              revoked_grants: grants.filter(r => r.state === "revoked").length,
+              structural_edges: structural.length,
+              structural_note: structural.length
+                ? "works_at, has_identity and the like - relationships, not permissions. A stop does " +
+                  "not touch these: nobody withdrew them, and ending them would be its own violation."
+                : undefined,
               active: active.length,
-              can_remember_now: active.some((r) => r.direction === "granted_by_them" && r.permission?.can_remember === true),
+              active_means: "every open edge of ANY type. For consent, read active_grants - this number " +
+                "includes structural relationships and has been misread as unclosed grants before.",
+              // The one number that answers "may we write about them right now". Grant-scoped by
+              // construction - a works_at edge has permission:null and can never satisfy it.
+              can_remember_now: active.some((r) => r.edge_type === "grant" && r.direction === "granted_by_them" && r.permission?.can_remember === true),
+              can_hold_now: active.some((r) => r.edge_type === "grant" && r.direction === "granted_by_them" && r.permission?.can_hold === true),
               edges: rows,
             };
           }

@@ -30,7 +30,7 @@
 // selfmodel:*, so the boundary is unchanged in force and only renamed. Deny-by-default still holds.
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
-import { WorkerEntrypoint } from "cloudflare:workers";
+import { WorkerEntrypoint, WorkflowEntrypoint } from "cloudflare:workers";
 
 // The relying party ID is the DOMAIN a passkey is bound to, and it is why passkeys are phishing-proof:
 // a credential created for homescreen.world cannot be used on homescreen-login.com, no matter how
@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.0.4-2026-08-10-read-the-error-message";
+const BUILD = "aura-core-v5.2.0-2026-08-10-the-last-model-call-moves-to-workers-ai";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -17579,6 +17579,51 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
     }
 
+    case "PTA_CRAWL": {
+      // ══ THE BUTTON ═══════════════════════════════════════════════════════════════════════════
+      // Starts the grid crawl as a durable Workflow and returns immediately. No agent, no model, no
+      // tokens - RUN reaches aura-core directly and this whole path reports brain_used: false.
+      //
+      // The difference from PTA_GRID CONFIRM is only WHO WAITS. That runs tiles inside your request
+      // and stops when the request does. This hands the job to a Workflow that sleeps for free,
+      // resumes after a redeploy, and keeps going for hours with nobody watching.
+      //
+      //   PTA_CRAWL tattoo in New York NY
+      //   PTA_CRAWL CELLS 500 dog grooming in Los Angeles CA
+      //   PTA_CRAWL STATUS <id>
+      if (!isOp) return { cmd: "PTA_CRAWL", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      if (!env.GRID_CRAWL_WORKFLOW) return { cmd: "PTA_CRAWL", payload: { ok: false, error: "NO_WORKFLOW_BINDING",
+        what_to_do: "Add GRID_CRAWL_WORKFLOW to aura-core's wrangler config with class_name GridCrawlWorkflow, " +
+          "then redeploy. Until then PTA_GRID CONFIRM still works - it just cannot outlive the request." } };
+      let crRaw = (rest || "").trim();
+      if (/^STATUS\s+/i.test(crRaw)) {
+        const id = crRaw.replace(/^STATUS\s+/i, "").trim();
+        try {
+          const inst = await env.GRID_CRAWL_WORKFLOW.get(id);
+          const st = await inst.status();
+          return { cmd: "PTA_CRAWL", payload: { ok: true, id, status: st?.status ?? null, output: st?.output ?? null,
+            error: st?.error ?? null } };
+        } catch (e) { return { cmd: "PTA_CRAWL", payload: { ok: false, error: String(e?.message ?? e), id } }; }
+      }
+      let crCells = 300;
+      const ccm = crRaw.match(/(^|\s)CELLS\s+(\d+)(\s|$)/i);
+      if (ccm) { crCells = Math.min(Math.max(Number(ccm[2]) || 300, 1), 3000); crRaw = crRaw.replace(ccm[0], " ").trim(); }
+      const crm = crRaw.match(/^(.*?)\s+in\s+(.+)$/i);
+      if (!crm) return { cmd: "PTA_CRAWL", payload: { ok: false,
+        error: "Usage: PTA_CRAWL [CELLS n] <vertical> in <region>   |   PTA_CRAWL STATUS <id>" } };
+      try {
+        const inst = await env.GRID_CRAWL_WORKFLOW.create({
+          params: { vertical: crm[1].trim(), region: crm[2].trim(), max_cells: crCells } });
+        return { cmd: "PTA_CRAWL", payload: { ok: true, started: true, id: inst.id,
+          vertical: crm[1].trim(), region: crm[2].trim(), max_cells: crCells,
+          note: "Running in the background. It sleeps between tiles at no cost, survives redeploys, and " +
+            "resumes at the last finished tile. Every business lands as a LEAD with no grant.",
+          watch: "PTA_CRAWL STATUS " + inst.id + "   ·   PTA_GRID " + crm[1].trim() + " in " + crm[2].trim() } };
+      } catch (e) {
+        return { cmd: "PTA_CRAWL", payload: { ok: false, error: "Could not start: " + String(e?.message ?? e) } };
+      }
+    }
+
     case "PTA_GRID": {
       // ══ SIXTY IS THE CEILING, SO THE ANSWER IS MORE QUERIES, NOT A BIGGER ONE ═══════════════
       //
@@ -18170,8 +18215,48 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // defaultModel is right for callers that route by provider. It is wrong for a function whose
       // endpoint is hardcoded to one vendor. Anthropic pin first, then the generic default, and only
       // then a known-good literal - so this cannot break again the next time the brain moves.
+      // ══ THE LAST MODEL CALL IN THE PIPELINE, AND IT DOES NOT NEED A FRONTIER ONE ═══════════
+      //
+      // Everything else in this crawl is now free of AI: PTA_GRID tiles and calls Google, ingestBusiness
+      // mints, the Workflow paces itself - all brain_used: false. This is the one step that genuinely
+      // needs comprehension: read a tattoo shop's scraped website and work out that Darren Rosa has
+      // been there since 1992 with five artists. There is no non-AI way to get that.
+      //
+      // But it is SUMMARISATION OF TEXT WE ALREADY HAVE, which is exactly what an 8B model does well.
+      // The same move that took consolidation from grok to Workers AI yesterday: llama-3.1-8b on
+      // Cloudflare's own GPUs, 10,000 free Neurons a day and $0.011/1000 after, against a frontier
+      // model at ~1-3 cents per business. At a thousand shops that is the difference between $20 and
+      // roughly nothing.
+      //
+      // FALLS BACK, NEVER FAILS. If env.AI is missing or the output will not parse, it drops to the
+      // metered path. An enrichment that costs more is better than one that does not happen, because
+      // the whole 40-120 second scrape is wasted if nothing reads it.
       const obModel = await anthropicModel(env);
+      const _obAI = env.AI;
+      if (_obAI && typeof _obAI.run === "function") {
+        try {
+          const r = await _obAI.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
+            messages: [{ role: "system", content: obSys },
+                       { role: "user", content: "FACTS:\n" + obFactsStr }],
+            max_tokens: 2600,
+          });
+          const t = String(r?.response ?? r?.result?.response ?? "");
+          const j = t.slice(t.indexOf("{"), t.lastIndexOf("}") + 1);
+          const parsed = JSON.parse(j);
+          if (parsed && (parsed.what_it_is || parsed.business_name)) {
+            obRead = parsed;
+            console.log("[ONBOARD] perceived on Workers AI (llama-3.1-8b) - no frontier call");
+          }
+        } catch (e) {
+          console.warn("[ONBOARD] Workers AI perception failed (" + String(e?.message ?? e) + ") - falling back to the metered model");
+        }
+      }
+      // A guard, not a thrown sentinel - the catch below turns anything it sees into "Understanding
+      // pass failed", so throwing to skip would report a SUCCESS as a failure. That is the same
+      // claim-and-artifact split this file has spent two days removing.
+      const _obNeedsFrontier = !(obRead && (obRead.what_it_is || obRead.business_name));
       try {
+        if (_obNeedsFrontier) {
         const d = await callAnthropic(obApiKey, { model: obModel, max_tokens: 2600, system: obSys, messages: [{ role: "user", content: "FACTS:\n" + obFactsStr }] });
         // SAY WHAT ACTUALLY HAPPENED. A provider error is not a parse error, and reporting it as one
         // sent today's debugging at the input for two hours. If the call failed, name the call.
@@ -18182,6 +18267,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (!t) throw new Error("the model returned no text (model " + obModel + ") - nothing to parse, " +
           "which is a failed call and not malformed JSON");
         obRead = JSON.parse(t);
+        }
       } catch (e) { return { cmd: "ONBOARD", payload: { ok: false, error: "Understanding pass failed: " + String(e.message), model_used: obModel, discovered } }; }
       // 5) MINT THE BUSINESS PTA from the identity she found
       // ══ THE GROUNDING SPLIT SURVIVES INTO THE STORE (v4.9.908) ═══════════════════════════════
@@ -39645,6 +39731,69 @@ export class PtaDurableObject {
 //   2. Every method validates its own arguments. The caller is not trusted - it is the public.
 //   3. No method returns a secret, a credential, or another entity's data without a ptaCan check.
 //   4. Operator-only capability NEVER appears here. If it needs isOp, it does not belong on this surface.
+// ══ THE CRAWL IS PLUMBING, NOT A CONVERSATION ═════════════════════════════════════════════════
+//
+// Aaron, 2026-08-10: "this should just be a piece of my software, it should have nothing to do with
+// Aura... I'm not understanding what AI had to do with go out and grab a bunch of business
+// information." He is right, and I had it in the wrong worker.
+//
+// The first version extended ThinkWorkflow and lived in aura-think - the AGENT. That pulled Aura into
+// a job with no judgement in it: grid a city, call Google, write rows. Asking her to start it cost
+// three cents in model calls to interpret an English sentence, and the work itself needs no model at
+// all. PTA_GRID already reports brain_used: false.
+//
+// So it lives here, in aura-core, as a plain Cloudflare Workflow. No agent, no tokens, no prompt.
+// The only AI left anywhere in this pipeline is the ENRICHMENT step, where a model reads a shop's
+// website and works out what they are - that is comprehension, and there is no non-AI way to get it.
+// Everything before it is plumbing.
+//
+// WHAT A WORKFLOW BUYS THAT A REQUEST CANNOT: step.sleep costs nothing. Cloudflare's own words -
+// "unlike a delay in a regular Worker (which counts against wall time and keeps resources
+// allocated), a sleeping workflow consumes nothing." So waiting out Google's page-token delay stops
+// being a design problem. And each completed step persists: a redeploy resumes at the last finished
+// tile instead of re-crawling the city.
+export class GridCrawlWorkflow extends WorkflowEntrypoint {
+  async run(event, step) {
+    const vertical = String(event.payload?.vertical || "").trim();
+    const region = String(event.payload?.region || "").trim();
+    const maxCells = Math.min(Number(event.payload?.max_cells) || 300, 3000);
+    if (!vertical || !region) return { ok: false, error: "vertical and region are required" };
+
+    // Plan once. Durable - if a later step dies, the region is not re-geocoded.
+    const plan = await step.do("plan", async () => {
+      const r = await processCommand("PTA_GRID " + vertical + " in " + region, this.env, true);
+      return (r && r.payload) ? r.payload : r;
+    });
+    if (!plan || plan.ok === false) return { ok: false, error: "could not plan", detail: plan };
+
+    let crawled = 0, minted = 0, saturated = 0, found = 0;
+    for (let i = 0; i < maxCells; i++) {
+      // One tile per step. Names must be deterministic for replay to match a step to its stored
+      // result - "cell-0", not a timestamp.
+      const out = await step.do("cell-" + i, async () => {
+        const r = await processCommand("PTA_GRID CONFIRM CELLS 1 " + vertical + " in " + region, this.env, true);
+        return (r && r.payload) ? r.payload : r;
+      });
+      if (!out || out.ok === false) break;
+      const w = (out.cells_worked || [])[0] || {};
+      crawled++; found += Number(w.found || 0); minted += Number(out.minted || 0);
+      if (w.saturated) saturated++;
+      if (out.complete) {
+        return { ok: true, complete: true, cells: crawled, found, minted, saturated,
+                 unique_seen: out.unique_seen, with_pta: out.with_pta,
+                 note: "Every tile done and no saturated tile left unsplit. Complete against the PLAN - " +
+                   "the only denominator that means anything, since Google's sample of ten never was." };
+      }
+      // Free. The workflow hibernates here; it is not holding a request open. Long enough that
+      // Google's next_page_token has staged and its per-second quota is never the limiting factor.
+      await step.sleep("pace-" + i, "12 seconds");
+    }
+    return { ok: true, complete: false, cells: crawled, found, minted, saturated,
+             note: "Hit the cell budget for this instance. Start another to continue - the ledger holds " +
+               "the pending tiles, so nothing is re-crawled." };
+  }
+}
+
 export class PublicEntry extends WorkerEntrypoint {
 
   // ══ WHO IS ASKING — THE SESSION IS THE PROOF, NOT AN OPERATOR TOKEN (v4.9.772) ═══════════════

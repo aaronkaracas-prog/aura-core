@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.8.1-2026-08-10-a-lesson-lost-to-a-missing-brace";
+const BUILD = "aura-core-v5.8.2-2026-08-10-mode-stored-with-stored-zero";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -29886,7 +29886,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         }
 
         const lessons = (out?.lessons || []).filter(l => l && l.insight);
-        let stored = 0;
+        let stored = 0; const storedKeys = [], storeFailed = [];
         if (lnConfirm) {
           for (const l of lessons) {
             try {
@@ -29897,7 +29897,15 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
                 // somewhere else before it counts as more than a local pattern.
                 from_verticals: verticals, confidence }));
               stored++;
-            } catch {}
+              storedKeys.push(key);
+            } catch (e) {
+              // ══ mode:"stored" WITH stored:0 (fixed 2026-08-10) ═══════════════════════════════
+              // The reply said stored and the count said zero, because this catch was bare and ate
+              // whatever the KV write threw. A lesson the system believes it saved and did not is the
+              // same claim-versus-artifact split as a revoke that matches nothing reporting success -
+              // and I wrote it hours after removing the last one.
+              storeFailed.push({ insight: String(l.insight || "").slice(0, 60), error: String(e?.message ?? e) });
+            }
           }
         }
         // ══ THIN BUT NON-ZERO IS CAUTION, NOT DEATH ═══════════════════════════════════════════
@@ -29912,7 +29920,8 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         // at all - and deferring is often the right move.
         const oftenDeferred = labelled.filter(x => x.deferrals >= 3)
           .map(x => ({ entity: x.entity, name: x.name, times: x.deferrals }));
-        return { cmd: "PTA_LEARN", payload: { ok: true, mode: lnConfirm ? "stored" : "dry_run",
+        return { cmd: "PTA_LEARN", payload: { ok: true,
+          mode: !lnConfirm ? "dry_run" : (stored ? "stored" : "store_failed"),
           labelled: labelled.length, paid,
           confidence, verticals,
           sample_warning: confidence === "reasonable" ? undefined
@@ -29925,6 +29934,11 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
               "teach her to stop deferring, and a deferral is often the right answer. Yours to read." } : undefined,
           by_outcome: labelled.reduce((a, x) => (a[x.outcome] = (a[x.outcome] || 0) + 1, a), {}),
           lessons, stored,
+          stored_keys: storedKeys.length ? storedKeys : undefined,
+          store_failed: storeFailed.length ? storeFailed : undefined,
+          store_warning: (lnConfirm && !stored && lessons.length)
+            ? "NOTHING WAS SAVED despite mode:stored - read store_failed. The lesson exists in this " +
+              "response and nowhere else." : undefined,
           reply_repaired: _repaired ? "the model's reply was truncated mid-object and the brackets were closed to recover it - structure only, no content invented" : undefined,
           new_outcomes_since_last_learn: await (async () => {
             try {

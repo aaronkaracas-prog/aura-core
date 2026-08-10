@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.0.1-2026-08-10-requests-not-dollars";
+const BUILD = "aura-core-v5.0.2-2026-08-10-twenty-and-an-error-is-not-a-finished-cell";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -17646,6 +17646,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                    cells, seen: [], minted: {}, runs: 0, created_at: new Date().toISOString() };
         }
 
+        // ══ REOPEN CELLS THAT WERE CLOSED ON A LIE ═══════════════════════════════════════════
+        // Cells crawled before v5.0.2 were marked done even when pagination failed - c0_2 and c1_2 sit
+        // in the plan as finished with exactly 20 results and INVALID_REQUEST. The fix above cannot
+        // reach them because they are already done. Same shape as the cache purge this morning: fixing
+        // the producer does not reach what the producer already wrote.
+        // A cell with an error, a page-boundary count, and no gave_up flag goes back to pending once.
+        let _reopened = 0;
+        for (const c of plan.cells) {
+          if (c.state === "done" && c.error && !c.gave_up && (c.found % 20 === 0) && c.found > 0) {
+            c.state = "pending"; c.reopened = true; _reopened++;
+          }
+        }
+
         const pending = plan.cells.filter(x => x.state === "pending");
         if (!grConfirm) {
           return { cmd: "PTA_GRID", payload: { ok: true, mode: "plan", key: grKey,
@@ -17655,6 +17668,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             cells_saturated: plan.cells.filter(x => x.saturated).length,
             unique_seen: plan.seen.length, with_pta: Object.keys(plan.minted).length, runs: plan.runs,
             complete: pending.length === 0,
+            reopened_truncated: _reopened || undefined,
             note: "NOTHING FETCHED. Each cell is up to 3 billable Google requests. A cell returning " +
               "exactly 60 is SATURATED and gets subdivided into 4 children - that is how coverage " +
               "becomes provable rather than hopeful.",
@@ -17663,25 +17677,52 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
         const worked = [], newIds = [];
         for (const cell of pending.slice(0, grCells)) {
-          let got = [], token = null, pages = 0;
+          // ══ EXACTLY 20 PLUS INVALID_REQUEST IS A TRUNCATED CELL, NOT A FINISHED ONE ═════════
+          //
+          // MEASURED: cells c0_2 and c1_2 both returned "found: 20, pages: 1, error: INVALID_REQUEST"
+          // and were written down as done and not saturated. Both are wrong. Twenty is the page size,
+          // so those cells were CUT OFF at page one - the next_page_token was not valid yet when I
+          // asked, two seconds was not enough, and the failure was recorded as completion.
+          //
+          // Google issues the token a moment before it works, and the delay is not fixed. So: retry
+          // the same token with a longer wait instead of giving up on the first refusal.
+          //
+          // AND A CELL THAT ERRORED IS NEVER DONE. It goes back to pending. Marking it complete is the
+          // same failure as a revoke that matches nothing and reports success - the record says the
+          // work happened and it did not, and nothing downstream can tell.
+          let got = [], token = null, pages = 0, pageErr = null;
           try {
             do {
               const u = token
                 ? `https://maps.googleapis.com/maps/api/place/nearbysearch/json?pagetoken=${token}&key=${gmKey}`
                 : `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${cell.lat},${cell.lng}&radius=${cell.radius}&keyword=${encodeURIComponent(grVertical)}&key=${gmKey}`;
-              const rr = await fetch(u);
-              const dd = await rr.json();
-              if (dd.status !== "OK" && dd.status !== "ZERO_RESULTS") { cell.error = dd.status; break; }
+              let dd = null;
+              for (let attempt = 0; attempt < 3; attempt++) {
+                const rr = await fetch(u);
+                dd = await rr.json();
+                // INVALID_REQUEST on a pagetoken means "not ready yet", not "wrong". Wait longer.
+                if (dd.status === "INVALID_REQUEST" && token) { await new Promise(r => setTimeout(r, 2500 * (attempt + 1))); continue; }
+                break;
+              }
+              if (!dd || (dd.status !== "OK" && dd.status !== "ZERO_RESULTS")) { pageErr = dd?.status || "no response"; break; }
               for (const pl of (dd.results || [])) got.push(pl);
               token = dd.next_page_token || null;
               pages++;
-              // The token is not valid immediately - Google issues it a second or two before it works.
-              if (token && pages < 3) await new Promise(r => setTimeout(r, 2000));
+              if (token && pages < 3) await new Promise(r => setTimeout(r, 2500));
             } while (token && pages < 3);
-          } catch (e) { cell.error = String(e?.message ?? e); }
+          } catch (e) { pageErr = String(e?.message ?? e); }
 
           cell.found = got.length;
-          cell.state = "done";
+          cell.error = pageErr;
+          // A cell whose pagination failed is INCOMPLETE - back to pending so a later run finishes it.
+          // Only a clean crawl counts as done.
+          cell.state = pageErr ? "pending" : "done";
+          cell.attempts = (cell.attempts || 0) + 1;
+          if (pageErr && cell.attempts >= 3) {
+            // Three honest tries and it still will not paginate - stop burning requests on it, and say
+            // so in the plan rather than letting it look finished.
+            cell.state = "done"; cell.gave_up = true;
+          }
           // SIXTY MEANS TRUNCATED. Not "we found sixty" - "we found the maximum, so there are more."
           if (got.length >= 60 && cell.depth < 3) {
             cell.saturated = true;
@@ -17695,7 +17736,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             if (!pl.place_id) continue;
             if (!plan.seen.includes(pl.place_id)) { plan.seen.push(pl.place_id); newIds.push(pl); }
           }
-          worked.push({ cell: cell.id, found: got.length, pages, saturated: !!cell.saturated, error: cell.error || null });
+          worked.push({ cell: cell.id, found: got.length, pages, saturated: !!cell.saturated,
+            error: cell.error || null, state: cell.state, gave_up: cell.gave_up || undefined,
+            truncated: (pageErr && got.length >= 20) ? "cut off at a page boundary - this cell has more" : undefined });
         }
 
         // L1 on anything new - from the Nearby fields alone, no scrape.
@@ -17718,6 +17761,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           new_places: newIds.length, minted: minted.length, mint_failed,
           unique_seen: plan.seen.length, with_pta: Object.keys(plan.minted).length, runs: plan.runs,
           complete: stillPending === 0,
+          cells_gave_up: plan.cells.filter(x => x.gave_up).length,
+          reopened_truncated: _reopened || undefined,
           // Requests, not dollars - the same rule the token meter learned. A provider console rounds to
           // the cent and this whole crawl moves a fraction of one; the request count is exact and is
           // what their dashboard will agree with.

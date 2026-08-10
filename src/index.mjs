@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.0.0-2026-08-10-sixty-means-truncated-not-found";
+const BUILD = "aura-core-v5.0.1-2026-08-10-requests-not-dollars";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -17606,7 +17606,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       let grRaw = (rest || "").trim();
       const grConfirm = /(^|\s)CONFIRM(\s|$)/i.test(grRaw);
       grRaw = grRaw.replace(/(^|\s)CONFIRM(\s|$)/i, " ").trim();
-      let grCells = 3;
+      // ══ MEASURED COST, SO THE DEFAULT CAN BE HONEST ═══════════════════════════════════════
+      // First real crawl: 2 cells, 1 page each, 25 businesses, ~25 seconds. Neither saturated - 12
+      // and 17 against a ceiling of 60 - so those cells are genuinely exhausted rather than truncated.
+      // At Nearby Search rates a cell is well under a tenth of a cent, so the binding constraint is
+      // TIME not money: three pages plus two 2-second waits is ~8s worst case per cell, and a Worker
+      // request cannot run for minutes. Six is about 90 seconds worst case, which fits.
+      let grCells = 6;
       const cm = grRaw.match(/(^|\s)CELLS\s+(\d+)(\s|$)/i);
       if (cm) { grCells = Math.min(Math.max(Number(cm[2]) || 3, 1), 12); grRaw = grRaw.replace(cm[0], " ").trim(); }
       const gm = grRaw.match(/^(.*?)\s+in\s+(.+)$/i);
@@ -17712,6 +17718,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           new_places: newIds.length, minted: minted.length, mint_failed,
           unique_seen: plan.seen.length, with_pta: Object.keys(plan.minted).length, runs: plan.runs,
           complete: stillPending === 0,
+          // Requests, not dollars - the same rule the token meter learned. A provider console rounds to
+          // the cent and this whole crawl moves a fraction of one; the request count is exact and is
+          // what their dashboard will agree with.
+          google_requests_this_run: worked.reduce((n, w) => n + (w.pages || 0), 0),
           note: stillPending === 0
             ? "Every cell is done and no saturated cell is left unsplit. THIS is complete - measured " +
               "against the plan, not against whatever Google returned last."

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.8.3-2026-08-10-declared-after-the-thing-that-uses-it";
+const BUILD = "aura-core-v5.8.4-2026-08-10-fixed-one-of-a-pair-and-shipped-the-other";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -29891,7 +29891,14 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         // and the bare catch ate it, which is how mode said stored while stored said 0. Same lesson as
         // _aliasSelfWrite this morning: read where the declaration is relative to the use, do not
         // assume that being earlier in the file means earlier in the scope.
+        // ══ BOTH OF THEM, AND CHECKED THIS TIME ═════════════════════════════════════════════
+        // Moved `verticals` up and left `confidence` in the dead zone - fixed one of a pair and
+        // shipped the other, so the next run failed identically with a different name. Everything the
+        // store loop reads is declared here now, and it was verified by listing what the loop
+        // references rather than by fixing whichever one the error happened to name.
         const verticals = [...new Set(labelled.map(x => x.vertical).filter(Boolean))];
+        const confidence = (labelled.length >= 25 && paid >= 10 && verticals.length > 1) ? "reasonable"
+          : (labelled.length >= 20 && paid >= 8) ? "thin - one vertical" : "very thin";
         let stored = 0; const storedKeys = [], storeFailed = [];
         if (lnConfirm) {
           for (const l of lessons) {
@@ -29918,8 +29925,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         // Grok's threshold: 20-25 labelled with 8-10 PAID before a lesson should be leaned on, and
         // deliberately NOT a hard refusal - "zero is epistemological death, thin but non-zero is
         // useful caution." So the candidate still surfaces, carrying how thin it is.
-        const confidence = (labelled.length >= 25 && paid >= 10 && verticals.length > 1) ? "reasonable"
-          : (labelled.length >= 20 && paid >= 8) ? "thin - one vertical" : "very thin";
+
         // Repeated deferral is an OPERATOR SIGNAL, never a state change and never a negative label.
         // Auto-collapsing it into a no would teach her that patience is failure and stop her deferring
         // at all - and deferring is often the right move.

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.6.1-2026-08-10-stop-means-every-grant";
+const BUILD = "aura-core-v5.7.0-2026-08-10-learn-from-people-without-keeping-them";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -29735,6 +29735,166 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       } catch (e) {
         return { cmd: "BELIEF_MERGE", payload: { ok: false, error: "Merge failed: " + (e && e.message ? e.message : String(e)) } };
       }
+    }
+
+    case "PTA_LEARN": {
+      // ══ WHAT WORKED, ACROSS EVERYONE, WITH NOBODY'S NAME IN IT ═══════════════════════════════
+      //
+      // Reads every chain that carries an OUTCOME, pairs it with what was actually said on the way
+      // there, and hands the pile to a model with one question: what distinguishes the ones that paid?
+      //
+      // IDENTITY IS STRIPPED BEFORE THE MODEL SEES IT. Not tidiness - it is the only way learning can
+      // survive revocation. When a business asks us to stop, their conversation dies with the grant.
+      // A lesson that says "leading with the design hurdle converts better" has no owner and no
+      // subject, so it stays. Learn from people without keeping them.
+      //
+      // AND IT REFUSES TO GUESS FROM NOTHING. With no PAID outcomes there is no positive class, and a
+      // model asked to explain success without an example of success will invent one confidently. It
+      // says so instead. Gate One is not just a milestone here - it is the moment this loop can begin.
+      //
+      // WORKERS AI, so a learning pass over a hundred businesses costs nothing.
+      //
+      //   PTA_LEARN            what the labelled chains say
+      //   PTA_LEARN CONFIRM    same, and write the lessons into her store
+      if (!isOp) return { cmd: "PTA_LEARN", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const lnConfirm = /(^|\s)CONFIRM(\s|$)/i.test(rest || "");
+      try {
+        const db = env.AURA_MEMORY;
+        const ents = (await db.prepare("SELECT id, name FROM pta_entities LIMIT 400").all())?.results || [];
+        const labelled = [];
+        for (const e of ents) {
+          let chain = [];
+          try {
+            const stub = env.PTA_DO.get(env.PTA_DO.idFromName(e.id));
+            const r = await stub.fetch(new Request("http://do", { method: "POST",
+              body: JSON.stringify({ method: "getState", params: [] }) }));
+            const j = await r.json();
+            chain = j?.pta?.chain || [];
+          } catch { continue; }
+          const oc = [...chain].reverse().find(c => c && c.event === "OUTCOME");
+          if (!oc) continue;
+          // What was SAID on the way there - the conversation, not the machinery. No names, no ids,
+          // no addresses: only the words and the result.
+          const saidLines = chain.filter(c => c && c.data && c.data.said).map(c => String(c.data.said));
+          labelled.push({ outcome: oc.data?.outcome, why: oc.data?.why || null, said: saidLines });
+        }
+        const paid = labelled.filter(x => x.outcome === "PAID").length;
+        if (!labelled.length) return { cmd: "PTA_LEARN", payload: { ok: true, labelled: 0,
+          note: "No chain carries an OUTCOME yet, so there is nothing to learn from. Conversations " +
+            "without a label are transcripts, not training." } };
+        if (!paid) return { cmd: "PTA_LEARN", payload: { ok: true, labelled: labelled.length, paid: 0,
+          by_outcome: labelled.reduce((a, x) => (a[x.outcome] = (a[x.outcome] || 0) + 1, a), {}),
+          note: "There are labelled chains but NOT ONE PAID. Asked to explain what makes businesses " +
+            "convert with no example of conversion, a model will invent an answer and sound certain. " +
+            "Refusing instead. Gate One is where this loop starts." } };
+
+        const corpus = labelled.map(x => "[" + x.outcome + (x.why ? " - " + x.why : "") + "]\n" +
+          x.said.map(s => "  said: " + s).join("\n")).join("\n\n").slice(0, 20000);
+        const sys = "You are reading anonymised business conversations, each labelled with how it ended. " +
+          "PAID means they paid - the only success. DEFERRED, NOT_NOW and STOPPED are other endings. " +
+          "Find what actually DISTINGUISHES the PAID ones from the rest, in what was said. " +
+          "Return ONLY JSON: {\"lessons\":[{\"when_applies\":\"...\",\"insight\":\"...\",\"because\":\"...\"}]}. " +
+          "State nothing the transcripts do not support. If the difference is not visible in the words, " +
+          "say so in a lesson rather than inventing a pattern - a confident wrong lesson is worse than none.";
+        let out = null;
+        try {
+          const rr = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
+            messages: [{ role: "system", content: sys }, { role: "user", content: corpus }],
+            max_tokens: 1200 });
+          const t = String(rr?.response ?? rr?.result?.response ?? "");
+          out = JSON.parse(t.slice(t.indexOf("{"), t.lastIndexOf("}") + 1));
+        } catch (e) { return { cmd: "PTA_LEARN", payload: { ok: false, error: "learning pass failed: " + String(e?.message ?? e),
+          labelled: labelled.length, paid } }; }
+
+        const lessons = (out?.lessons || []).filter(l => l && l.insight);
+        let stored = 0;
+        if (lnConfirm) {
+          for (const l of lessons) {
+            try {
+              const key = "aura:semantic:learned:" + Date.now() + ":" + String(l.when_applies || "outcome").slice(0, 50).replace(/[^a-zA-Z0-9]+/g, "-");
+              await env.AURA_KV.put(key, JSON.stringify({ ...l, origin: "outcome", tier: "candidate",
+                learned_at: new Date().toISOString(), from_labelled: labelled.length, from_paid: paid }));
+              stored++;
+            } catch {}
+          }
+        }
+        return { cmd: "PTA_LEARN", payload: { ok: true, mode: lnConfirm ? "stored" : "dry_run",
+          labelled: labelled.length, paid,
+          by_outcome: labelled.reduce((a, x) => (a[x.outcome] = (a[x.outcome] || 0) + 1, a), {}),
+          lessons, stored,
+          note: lnConfirm
+            ? "Written as CANDIDATE lessons - they earn promotion by recurring, the same ladder every " +
+              "other lesson climbs. No business is named in any of them."
+            : "NOTHING STORED. These come from " + paid + " paid against " + (labelled.length - paid) +
+              " other endings - read them before believing them at that sample size." } };
+      } catch (e) {
+        return { cmd: "PTA_LEARN", payload: { ok: false, error: "Learn failed: " + (e && e.message ? e.message : String(e)) } };
+      }
+    }
+
+    case "PTA_OUTCOME": {
+      // ══ A THOUSAND CONVERSATIONS WITH NO LABEL TEACH NOTHING ═════════════════════════════════
+      //
+      // Aura can talk to a hundred businesses and learn nothing from it, because there is no signal
+      // saying which conversations worked. The consolidator already mines chains into lessons and runs
+      // free on Workers AI - it has been running all along with nothing to learn FROM.
+      //
+      // THE OUTCOME IS THE LABEL. And Aaron's doctrine already decided what counts: Gate One - one
+      // real arms-length customer pays real money for something delivered, with honest margin. Not
+      // "signed up", not "interested", not "a good call". Money moved.
+      //
+      // WHY THE OTHER STATES ARE NOT FAILURES. "Call me back in a week" scored as a loss would teach
+      // her to stop deferring, and deferring is often the right move - it is how a real relationship
+      // paces itself. "Said no" is an answer, not a defeat, and their PTA stays. Only PAID is success,
+      // and only STOPPED is terminal.
+      //
+      // AND IT GOES ON THEIR CHAIN, under their grant, like everything else. Which means a business
+      // that asks us to stop takes their outcome with them - the lesson learned from them survives
+      // because a lesson has no identity in it, but the record of what they did is theirs.
+      //
+      //   PTA_OUTCOME <pta_id> PAID ::: $99/mo, first invoice cleared
+      //   PTA_OUTCOME <pta_id> DEFERRED ::: wants to talk after the holidays
+      //   PTA_OUTCOME <pta_id> NOT_NOW ::: happy with their current setup
+      const OUTCOMES = { PAID: "the only success - money moved for something delivered",
+        DEFERRED: "open, not a loss - they asked for time and that is a real answer",
+        NOT_NOW: "they said no. Their PTA stays; a no today is not a no forever",
+        STOPPED: "they asked us to stop. Terminal, and the silence is the answer",
+        OPEN: "nobody has said anything yet - the default, recorded only to mark a conversation started" };
+      if (!isOp) return { cmd: "PTA_OUTCOME", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const ocParts = (rest || "").split(":::");
+      const ocHead = (ocParts[0] || "").trim().split(/\s+/);
+      const ocId = ocHead[0] || "";
+      const ocKind = String(ocHead[1] || "").toUpperCase();
+      const ocWhy = ocParts.slice(1).join(":::").trim();
+      if (!ocId || !OUTCOMES[ocKind]) return { cmd: "PTA_OUTCOME", payload: { ok: false,
+        error: "Usage: PTA_OUTCOME <pta_id> <" + Object.keys(OUTCOMES).join("|") + "> ::: why",
+        outcomes: OUTCOMES,
+        note: "PAID is the only success. Gate One: one real arms-length customer pays real money for " +
+          "something delivered, with honest margin. Everything else is a state, not a failure." } };
+      try {
+        const ev = { outcome: ocKind, why: ocWhy || null, meaning: OUTCOMES[ocKind],
+                     decided_at: new Date().toISOString() };
+        const w = await processCommand("PTA_OUTCOME_WRITE " + ocId + " " + JSON.stringify(ev), env, isOp);
+        const wp = (w && w.payload) ? w.payload : w;
+        return { cmd: "PTA_OUTCOME", payload: { ok: !!wp?.ok, entity: ocId, outcome: ocKind,
+          recorded: wp?.ok ? true : false, chain_length: wp?.chain_length ?? null,
+          error: wp?.ok ? undefined : (wp?.error || "could not write"),
+          reason: wp?.reason,
+          note: ocKind === "PAID"
+            ? "Gate One for this business. This is the first label the learning loop can actually learn " +
+              "from - every conversation before a PAID was unlabelled."
+            : OUTCOMES[ocKind] } };
+      } catch (e) {
+        return { cmd: "PTA_OUTCOME", payload: { ok: false, error: "Outcome failed: " + (e && e.message ? e.message : String(e)) } };
+      }
+    }
+
+    case "PTA_OUTCOME_WRITE": {
+      // Internal: PTA_REMEMBER with the OUTCOME type, so the consent gate is the same one. Separated
+      // only because the outcome JSON contains ::: -safe prose and must not be re-split.
+      const owId = (rest || "").trim().split(/\s+/)[0];
+      const owJson = (rest || "").trim().slice(owId.length).trim();
+      return await processCommand("PTA_REMEMBER " + owId + " OUTCOME " + owJson, env, isOp);
     }
 
     case "PTA_HEARD": {

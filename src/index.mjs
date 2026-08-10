@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.6.0-2026-08-10-nobody-should-ever-type-pta-revoke";
+const BUILD = "aura-core-v5.6.1-2026-08-10-stop-means-every-grant";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -29799,14 +29799,40 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           // THE CONTEXT IS WRITTEN FIRST, ALWAYS. If the edge closes and the reason does not land,
           // the chain shows access ending for no stated cause - which is the same failure as a
           // permission with no consent behind it, mirrored.
+          // ══ STOP MEANS EVERY GRANT, NOT THE FIRST ONE FOUND (fixed 2026-08-10) ═══════════════
+          //
+          // MEASURED, and it is the worst failure this system can have: PTA_HEARD "stop calling me"
+          // ended ONE edge, and PTA_REMEMBER wrote to the chain seconds later on a second one. Ink
+          // Alley had FOUR grants - two active can_remember and an active can_hold - because a grant
+          // was re-offered and accepted while an older identical one was still live. grantState
+          // returns the first active match, so the stop closed that and left the rest standing.
+          //
+          // A person who says stop does not mean "stop under one of the permissions I forgot I gave
+          // you". They mean stop. Every ACTIVE edge from them closes, including can_hold - if they no
+          // longer want to be contacted, holding their tax ID is not something they are still agreeing
+          // to either.
+          //
+          // PENDING OFFERS ARE WITHDRAWN TOO. An unanswered ask left open after someone said stop is a
+          // question they already answered.
           const auraId = await auraPtaId(env);
           if (auraId) {
-            const gs = await grantState(env, hdId, auraId, null);
-            if (gs.state === "active" && gs.edge_id) {
-              const rv = await processCommand("PTA_REVOKE " + gs.edge_id + " they asked us to stop: " + hdSaid, env, isOp);
+            const open = await env.AURA_MEMORY.prepare(
+              "SELECT id, state, permission FROM pta_edges WHERE from_id = ? AND to_id = ? AND state != 'revoked'"
+            ).bind(hdId, auraId).all().catch(() => null);
+            const rows = open?.results || [];
+            const ended = [], failed = [];
+            for (const g of rows) {
+              const rv = await processCommand("PTA_REVOKE " + g.id + " they asked us to stop: " + hdSaid, env, isOp);
               const rp = (rv && rv.payload) ? rv.payload : rv;
-              stopped = rp?.ok ? { edge_id: gs.edge_id, ended: true } : { error: rp?.error || "could not end it" };
-            } else stopped = { already: gs.state, note: "nothing active to end - they had not granted, or already asked before" };
+              if (rp?.ok) ended.push({ edge_id: g.id, was: g.state, permission: g.permission });
+              else failed.push({ edge_id: g.id, error: rp?.error || "could not end it" });
+            }
+            stopped = rows.length
+              ? { ended: ended.length, edges: ended, failed: failed.length ? failed : undefined,
+                  note: "EVERY grant they had given was closed, active and pending alike." }
+              : { already: "nothing open", note: "they had not granted anything, or had already asked before" };
+            if (failed.length) stopped.warning = "SOME GRANTS ARE STILL LIVE. They asked us to stop and " +
+              "we did not fully stop - fix this before anything else runs.";
           }
         }
         return { cmd: "PTA_HEARD", payload: { ok: true, entity: hdId,

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.998-2026-08-10-not-who-is-missing-but-who-is-thin";
+const BUILD = "aura-core-v4.9.999-2026-08-10-the-mode-said-proposed-and-i-read-past-it";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -17725,10 +17725,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         for (const r of rows) {
           if (!r.already) continue;
           try {
+            const mark = await env.AURA_KV.get("pta:enriched:" + r.already);
+            if (mark) continue;
+            // Fall back to the metadata sniff for entities enriched before the marker existed - it
+            // under-reports (sealed rows read as thin) but it never wrongly SKIPS one, and paying 75
+            // seconds twice is better than never enriching a shop that needed it.
             const er = await db.prepare("SELECT metadata FROM pta_entities WHERE id = ?").bind(r.already).first();
             const md = String(er?.metadata || "");
-            const enriched = /"what_it_is"/.test(md) || /"offerings"/.test(md);
-            if (!enriched) enrichable.push(r);
+            if (/"what_it_is"/.test(md) || /"offerings"/.test(md)) continue;
+            enrichable.push(r);
           } catch { enrichable.push(r); }
         }
 
@@ -17737,14 +17742,30 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           try {
             // ONBOARD by name + city, not by place_id - it re-discovers from the world rather than
             // trusting what this sweep happened to see. The name string is what it takes.
-            const ob = await processCommand("ONBOARD " + r.name + ", " + String(r.address || swRaw).split(",").slice(-3).join(",").trim(), env, isOp);
+            // ══ COMMIT, OR THE 75 SECONDS BOUGHT NOTHING (fixed 2026-08-10) ══════════════════
+            // ONBOARD takes COMMIT as a PREFIX and the sweep never passed it, so every enrichment ran
+            // in "proposed" mode. MEASURED: the same shop came back thin: 9 twice running, 37 and 61
+            // seconds each, because nothing durable was written either time. The mode was in the
+            // response - "mode":"proposed" - and I read past it twice.
+            const ob = await processCommand("ONBOARD COMMIT " + r.name + ", " + String(r.address || swRaw).split(",").slice(-3).join(",").trim(), env, isOp);
             const op = (ob && ob.payload) ? ob.payload : ob;
             // ══ AN ID OR IT DID NOT HAPPEN ═══════════════════════════════════════════════════
             // This trusted flow.pta_minted and reported onboarded: 1 with pta: null - a success count
             // for an entity whose id nobody had. Same failure as every swallowed result today: the
             // claim and the artifact came apart, and only the claim was read.
             const _ptaId = op?.pta?.id || op?.pta?.pta_id || null;
-            if (op?.ok && _ptaId) onboarded.push({ name: r.name, pta: _ptaId, mode: op.mode, primary: op?.pta?.primary || null });
+            if (op?.ok && _ptaId) {
+              // ══ RECORD THE ENRICHMENT, DO NOT INFER IT ═════════════════════════════════════
+              // The thin test read metadata for "what_it_is" and never dropped below 9, because that
+              // field may be sealed, may live in the reality graph rather than the entity row, and
+              // may not be written at all on a proposed onboard. Three assumptions where one recorded
+              // fact will do. A marker is written HERE, by the thing that did the work, so the queue
+              // drains on evidence rather than on a guess about someone else's schema.
+              try { await env.AURA_KV.put("pta:enriched:" + _ptaId,
+                JSON.stringify({ at: new Date().toISOString(), mode: op.mode, name: r.name, via: "PTA_SWEEP DEEP" }),
+                { expirationTtl: 365 * 86400 }); } catch {}
+              onboarded.push({ name: r.name, pta: _ptaId, mode: op.mode, primary: op?.pta?.primary || null });
+            }
             else failed.push({ name: r.name, error: op?.error || (op?.ok ? "onboard returned ok but no PTA id - nothing to point at" : "onboard failed"),
                                pta_said: op?.pta || null, flow: op?.flow || null });
           } catch (e) { failed.push({ name: r.name, error: String(e?.message ?? e) }); }

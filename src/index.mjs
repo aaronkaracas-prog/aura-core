@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.7.2-2026-08-10-the-reply-was-not-a-string";
+const BUILD = "aura-core-v5.8.0-2026-08-10-thin-but-non-zero-is-caution-not-death";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -29773,10 +29773,24 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           } catch { continue; }
           const oc = [...chain].reverse().find(c => c && c.event === "OUTCOME");
           if (!oc) continue;
+          // ══ WHICH VERTICAL, SO PROMOTION CAN ASK FOR MORE THAN REPETITION ═══════════════════
+          // Grok: recurrence inside one vertical is necessary and not sufficient - "a lesson that only
+          // repeats inside tattoo shops is still local pattern-matching." Tagging the vertical is what
+          // lets a later promotion pass require the same insight to hold across DIFFERENT cohorts
+          // instead of counting how often one cohort produced volume.
+          let vertical = null;
+          try {
+            const er = await db.prepare("SELECT metadata FROM pta_entities WHERE id = ?").bind(e.id).first();
+            const bm = String(er?.metadata || "").match(/"business_type"\s*:\s*"([a-z_]+)"/);
+            if (bm) vertical = bm[1];
+          } catch {}
           // What was SAID on the way there - the conversation, not the machinery. No names, no ids,
           // no addresses: only the words and the result.
           const saidLines = chain.filter(c => c && c.data && c.data.said).map(c => String(c.data.said));
-          labelled.push({ outcome: oc.data?.outcome, why: oc.data?.why || null, said: saidLines });
+          // How many times did this one defer? Surfaced to the operator, never collapsed into a no.
+          const deferrals = chain.filter(c => c && c.event === "OUTCOME" && c.data?.outcome === "DEFERRED").length;
+          labelled.push({ outcome: oc.data?.outcome, why: oc.data?.why || null, said: saidLines,
+                          vertical, entity: e.id, name: e.name || null, deferrals });
         }
         const paid = labelled.filter(x => x.outcome === "PAID").length;
         if (!labelled.length) return { cmd: "PTA_LEARN", payload: { ok: true, labelled: 0,
@@ -29851,15 +29865,46 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
             try {
               const key = "aura:semantic:learned:" + Date.now() + ":" + String(l.when_applies || "outcome").slice(0, 50).replace(/[^a-zA-Z0-9]+/g, "-");
               await env.AURA_KV.put(key, JSON.stringify({ ...l, origin: "outcome", tier: "candidate",
-                learned_at: new Date().toISOString(), from_labelled: labelled.length, from_paid: paid }));
+                learned_at: new Date().toISOString(), from_labelled: labelled.length, from_paid: paid,
+                // The verticals it came from, so a promotion pass can require the same insight to hold
+                // somewhere else before it counts as more than a local pattern.
+                from_verticals: verticals, confidence }));
               stored++;
             } catch {}
           }
         }
+        // ══ THIN BUT NON-ZERO IS CAUTION, NOT DEATH ═══════════════════════════════════════════
+        // Grok's threshold: 20-25 labelled with 8-10 PAID before a lesson should be leaned on, and
+        // deliberately NOT a hard refusal - "zero is epistemological death, thin but non-zero is
+        // useful caution." So the candidate still surfaces, carrying how thin it is.
+        const verticals = [...new Set(labelled.map(x => x.vertical).filter(Boolean))];
+        const confidence = (labelled.length >= 25 && paid >= 10 && verticals.length > 1) ? "reasonable"
+          : (labelled.length >= 20 && paid >= 8) ? "thin - one vertical" : "very thin";
+        // Repeated deferral is an OPERATOR SIGNAL, never a state change and never a negative label.
+        // Auto-collapsing it into a no would teach her that patience is failure and stop her deferring
+        // at all - and deferring is often the right move.
+        const oftenDeferred = labelled.filter(x => x.deferrals >= 3)
+          .map(x => ({ entity: x.entity, name: x.name, times: x.deferrals }));
         return { cmd: "PTA_LEARN", payload: { ok: true, mode: lnConfirm ? "stored" : "dry_run",
           labelled: labelled.length, paid,
+          confidence, verticals,
+          sample_warning: confidence === "reasonable" ? undefined
+            : "Below the bar a lesson from this loop should be leaned on: about 25 labelled with 10 " +
+              "paid, across more than one vertical. Surfaced anyway - thin evidence is still evidence, " +
+              "and only zero paid is refused outright.",
+          repeatedly_deferred: oftenDeferred.length ? {
+            entities: oftenDeferred,
+            note: "Deferred three or more times. Shown, NOT collapsed into a no - that inference would " +
+              "teach her to stop deferring, and a deferral is often the right answer. Yours to read." } : undefined,
           by_outcome: labelled.reduce((a, x) => (a[x.outcome] = (a[x.outcome] || 0) + 1, a), {}),
           lessons, stored,
+          new_outcomes_since_last_learn: await (async () => {
+            try {
+              const n = await env.AURA_KV.get("pta:outcomes:since_learn");
+              if (lnConfirm) await env.AURA_KV.put("pta:outcomes:since_learn", "0");
+              return Number(n || 0);
+            } catch { return null; }
+          })(),
           note: lnConfirm
             ? "Written as CANDIDATE lessons - they earn promotion by recurring, the same ladder every " +
               "other lesson climbs. No business is named in any of them."
@@ -29918,6 +29963,20 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           recorded: wp?.ok ? true : false, chain_length: wp?.chain_length ?? null,
           error: wp?.ok ? undefined : (wp?.error || "could not write"),
           reason: wp?.reason,
+          // ══ COUNT, DO NOT TRIGGER ═══════════════════════════════════════════════════════════
+          // Grok on what should start a learning pass: "the only correct trigger right now is operator
+          // act... a count-based or schedule-based trigger would be the system initiating learning and
+          // potentially writing candidates without an explicit human decision."
+          // So this counts, and PTA_LEARN reports the count. Nothing runs on its own. When the number
+          // gets tedious it becomes a prompt, still requiring a human to say go - and it stays that way
+          // until the autonomy policy exists, which it does not.
+          new_since_learn: await (async () => {
+            try {
+              const n = Number(await env.AURA_KV.get("pta:outcomes:since_learn") || "0") + 1;
+              await env.AURA_KV.put("pta:outcomes:since_learn", String(n));
+              return n;
+            } catch { return null; }
+          })(),
           note: ocKind === "PAID"
             ? "Gate One for this business. This is the first label the learning loop can actually learn " +
               "from - every conversation before a PAID was unlabelled."

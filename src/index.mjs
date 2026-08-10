@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v4.9.996-2026-08-09-the-third-mint-path";
+const BUILD = "aura-core-v4.9.997-2026-08-10-identify-everyone-enrich-a-few";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -17604,6 +17604,27 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       let swRaw = (rest || "").trim();
       const swConfirm = /(^|\s)CONFIRM(\s|$)/i.test(swRaw);
       swRaw = swRaw.replace(/(^|\s)CONFIRM(\s|$)/i, " ").trim();
+      // ══ L1 IS NOT L2 — IDENTIFY EVERYONE, ENRICH A FEW ══════════════════════════════════════
+      //
+      // MEASURED: a full ONBOARD is 75-88 seconds - Google Places, scrape the real site, pull the web,
+      // perceive, mint. Ten shops is twelve minutes; a city is hours; a state is days of continuous
+      // work in a runtime that gives you seconds per request. Absorbing an industry cannot mean doing
+      // that for every row.
+      //
+      // But everything IDENTITY needs is already in the Places response - place_id, phone, website,
+      // name - and ingestBusiness takes exactly those. So minting a lead costs about a second, and the
+      // 75 seconds buys ENRICHMENT: what the shop actually is, who runs it, what it offers.
+      //
+      // Those are different jobs with different costs, and collapsing them made coverage impossible.
+      // Now: CONFIRM does L1 for everything found. DEEP adds L2 for the first LIMIT of them.
+      //   PTA_SWEEP <q>                     dry - who is out there, who is known
+      //   PTA_SWEEP CONFIRM <q>             L1: mint a PTA + aliases for every unknown. Seconds.
+      //   PTA_SWEEP CONFIRM DEEP LIMIT 3 <q>  L1 for all, then ONBOARD the first 3. Minutes.
+      //
+      // A shop is KNOWN once it has a PTA. Never requiring a full onboard to mark it known is the
+      // whole reason this can ever finish.
+      const swDeep = /(^|\s)DEEP(\s|$)/i.test(swRaw);
+      swRaw = swRaw.replace(/(^|\s)DEEP(\s|$)/i, " ").trim();
       let swLimit = 3;
       const lm = swRaw.match(/(^|\s)LIMIT\s+(\d+)(\s|$)/i);
       if (lm) { swLimit = Math.min(Math.max(Number(lm[2]) || 3, 1), 10); swRaw = swRaw.replace(lm[0], " ").trim(); }
@@ -17644,6 +17665,47 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "and real cost per business. Re-run with CONFIRM to onboard the first " + swLimit + " unknown ones.",
             to_proceed: "PTA_SWEEP CONFIRM LIMIT " + swLimit + " " + swRaw } };
         }
+        // ── L1: identify everything found, from the Places fields alone ──
+        const identified = [], identify_failed = [];
+        for (const r of fresh) {
+          try {
+            const ing = await ingestBusiness(env, { name: r.name, place_id: r.place_id,
+              phone: r.phone, website: r.website, email: null }, isOp);
+            if (ing?.ok && ing.id) { identified.push({ name: r.name, pta: ing.id, primary: ing.primary, mode: ing.mode });
+                                     r.already = ing.id; }
+            else identify_failed.push({ name: r.name, error: ing?.error || "no id returned" });
+          } catch (e) { identify_failed.push({ name: r.name, error: String(e?.message ?? e) }); }
+        }
+
+        // ── the durable ledger: progress lives here, not in Google's sample of ten ──
+        // Text Search returns a DIFFERENT ten each call - measured, two calls minutes apart shared
+        // only five names - so "already_known == found" may never be true and is not a completion
+        // test. What we have seen is ours to remember.
+        const swLedgerKey = "pta:sweep:" + swRaw.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 80);
+        let ledger = null;
+        try { ledger = JSON.parse((await env.AURA_KV.get(swLedgerKey)) || "null"); } catch {}
+        ledger = ledger || { query: swRaw, seen: [], minted: {}, runs: 0, first_seen_at: new Date().toISOString() };
+        for (const r of rows) {
+          if (!ledger.seen.includes(r.place_id)) ledger.seen.push(r.place_id);
+          if (r.already) ledger.minted[r.place_id] = r.already;
+        }
+        ledger.runs += 1;
+        ledger.last_run_at = new Date().toISOString();
+        try { await env.AURA_KV.put(swLedgerKey, JSON.stringify(ledger), { expirationTtl: 180 * 86400 }); } catch {}
+
+        if (!swDeep) {
+          return { cmd: "PTA_SWEEP", payload: { ok: true, mode: "identified", query: swRaw,
+            found: rows.length, already_known: rows.length - fresh.length,
+            identified: identified.length, identify_failed, businesses: identified,
+            ledger: { key: swLedgerKey, unique_seen: ledger.seen.length,
+                      with_pta: Object.keys(ledger.minted).length, runs: ledger.runs },
+            note: "L1 only - each of these now has a PTA keyed on place_id, with phone and site as " +
+              "aliases. No site was scraped and no model was called. They are LEADS: no grant, so " +
+              "PTA_REMEMBER refuses until one is accepted.",
+            next: "Re-run to widen coverage - Text Search samples differently each call, so the ledger " +
+              "grows past any single response. Add DEEP LIMIT n to enrich the ones you care about." } };
+        }
+
         const onboarded = [], failed = [];
         for (const r of fresh.slice(0, swLimit)) {
           try {
@@ -17661,8 +17723,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                                pta_said: op?.pta || null, flow: op?.flow || null });
           } catch (e) { failed.push({ name: r.name, error: String(e?.message ?? e) }); }
         }
-        return { cmd: "PTA_SWEEP", payload: { ok: true, mode: "applied", query: swRaw,
+        return { cmd: "PTA_SWEEP", payload: { ok: true, mode: "identified+enriched", query: swRaw,
           found: rows.length, already_known: rows.length - fresh.length,
+          identified: identified.length, identify_failed,
+          ledger: { key: swLedgerKey, unique_seen: ledger.seen.length,
+                    with_pta: Object.keys(ledger.minted).length, runs: ledger.runs },
           onboarded: onboarded.length, failed, businesses: onboarded,
           remaining_unknown: Math.max(0, fresh.length - swLimit),
           note: onboarded.length

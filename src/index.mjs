@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.3.0-2026-08-10-cloudflare-already-built-the-site-crawler";
+const BUILD = "aura-core-v5.4.0-2026-08-10-the-enrichment-was-thin-because-the-read-was";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18208,7 +18208,41 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         (webSources[0] && webSources[0].url) ||
         null;
       let obScrape = "";
+      // ══ READ THE WHOLE SITE FIRST, TAVILY ONLY IF THAT FAILS (2026-08-10) ═══════════════════
+      //
+      // This called Tavily Extract - a paid third party - and got a page or two. MEASURED against the
+      // same shop: Rising Dragon's homepage alone is 1,099 characters and carries no About, no FAQ,
+      // no reviews. The enrichment was thin because the READ was thin.
+      //
+      // Browser Run's /crawl walks the sitemap and the links, returns markdown per page, respects
+      // robots.txt and crawl-delay, and with render:false runs on Workers rather than a browser -
+      // not billed during the beta. Twelve pages of a tattoo shop for nothing.
+      //
+      // SYNCHRONOUS WAIT, BOUNDED. The crawl is async by design and a full run takes 30-60 seconds.
+      // ONBOARD is already a 40-120 second command, so waiting here costs nothing new - but it is
+      // capped, and a slow crawl falls through to Tavily rather than hanging the whole onboard.
+      // When this moves inside the Workflow, the wait becomes step.sleep and stops being a wait at all.
       if (obSiteUrl) {
+        try {
+          const sr = await processCommand("SITE_READ " + obSiteUrl, env, true);
+          const sp = (sr && sr.payload) ? sr.payload : sr;
+          if (sp?.ok && sp.id) {
+            for (let poll = 0; poll < 12; poll++) {
+              await new Promise(r => setTimeout(r, 5000));
+              const st = await processCommand("SITE_READ STATUS " + sp.id, env, true);
+              const stp = (st && st.payload) ? st.payload : st;
+              if (stp?.status && stp.status !== "running") {
+                if (stp.markdown && stp.markdown.length > 500) {
+                  obScrape = stp.markdown;
+                  console.log("[ONBOARD] read " + stp.pages + " pages / " + stp.chars + " chars via Browser Run - no Tavily call");
+                }
+                break;
+              }
+            }
+          }
+        } catch (e) { console.warn("[ONBOARD] site read failed (" + String(e?.message ?? e) + ") - falling back to Tavily"); }
+      }
+      if (obSiteUrl && !obScrape) {
         try {
           const tk = await getSecret(env, "tavily");
           if (tk) {

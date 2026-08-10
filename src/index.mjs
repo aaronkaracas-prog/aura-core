@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.7.1-2026-08-10-show-what-came-back";
+const BUILD = "aura-core-v5.7.2-2026-08-10-the-reply-was-not-a-string";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -29802,7 +29802,27 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           const rr = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
             messages: [{ role: "system", content: sys }, { role: "user", content: corpus }],
             max_tokens: 2000 });   // 1200 was cutting multi-lesson replies mid-object
-          const t = String(rr?.response ?? rr?.result?.response ?? "");
+          // ══ THE REPLY WAS NOT A STRING (2026-08-10) ═════════════════════════════════════════
+          // reply_preview came back "[object Object]", length 15 - String() collapsing a structure.
+          // rr.response is not always text: Workers AI can return an object, and the consolidation
+          // path gets away with the same accessor because its model happens to answer in plain text.
+          // So: take the text wherever it actually is, and if it is an object with no text in it,
+          // serialise the whole thing rather than stringifying it into nothing. A parser that turns
+          // a real answer into "[object Object]" and then reports a JSON error is describing its own
+          // bug as the model's.
+          const pick = (v) => {
+            if (v == null) return "";
+            if (typeof v === "string") return v;
+            if (typeof v === "object") {
+              for (const k of ["response", "text", "output_text", "content", "result"]) {
+                if (typeof v[k] === "string" && v[k].trim()) return v[k];
+              }
+              if (Array.isArray(v)) return v.map(pick).filter(Boolean).join("\n");
+              return JSON.stringify(v);
+            }
+            return String(v);
+          };
+          const t = pick(rr?.response) || pick(rr?.result?.response) || pick(rr?.result) || pick(rr);
           _rawReply = t;
           const a = t.indexOf("{"), b = t.lastIndexOf("}");
           if (a < 0 || b <= a) throw new Error("no JSON object in the reply");

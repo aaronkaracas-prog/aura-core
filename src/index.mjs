@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.14.0-2026-08-11-nearby-first-then-search";
+const BUILD = "aura-core-v5.15.0-2026-08-11-one-business-everything-we-know";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -17797,6 +17797,53 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             : (!drOne ? "Every zone examined." : undefined) } };
       } catch (e) {
         return { cmd: "DOMAIN_ROUTE", payload: { ok: false, error: "Route survey failed: " + (e && e.message ? e.message : String(e)) } };
+      }
+    }
+
+    case "PLACE": {
+      // ══ ONE BUSINESS, EVERYTHING WE KNOW ═══════════════════════════════════════════════════
+      // Text Search returns name, rating and address. Hours, phone, website and reviews live behind
+      // Place Details - a separate endpoint on the same key, one request, only when somebody taps a
+      // card. A guide that lists a restaurant and cannot say whether it is open right now is a
+      // directory, not a guide.
+      // Cached a day: hours and phone numbers do not move, and it keeps a popular listing free.
+      const plId = (rest || "").trim();
+      if (!plId) return { cmd: "PLACE", payload: { ok: false, error: "Usage: PLACE <place_id>" } };
+      const plKey = "place:detail:" + plId;
+      try {
+        const hit = await env.AURA_KV.get(plKey);
+        if (hit) { const j = JSON.parse(hit); j.cached = true; return { cmd: "PLACE", payload: j }; }
+        const key = await getSecret(env, "google_maps");
+        if (!key) return { cmd: "PLACE", payload: { ok: false, error: "no google_maps key" } };
+        const fields = "name,formatted_address,formatted_phone_number,website,opening_hours,rating," +
+                       "user_ratings_total,price_level,geometry,photos,types,url,reviews,editorial_summary";
+        const r = await fetch("https://maps.googleapis.com/maps/api/place/details/json?place_id=" +
+          encodeURIComponent(plId) + "&fields=" + fields + "&key=" + key);
+        const d = await r.json();
+        if (d.status !== "OK" || !d.result) return { cmd: "PLACE", payload: { ok: false,
+          error: d.status || "no result", details: d.error_message || null } };
+        const g = d.result;
+        const out = { ok: true, place_id: plId, name: g.name || null,
+          address: g.formatted_address || null, phone: g.formatted_phone_number || null,
+          website: g.website || null, rating: g.rating ?? null, reviews_count: g.user_ratings_total ?? null,
+          price_level: g.price_level ?? null,
+          open_now: g.opening_hours ? !!g.opening_hours.open_now : null,
+          hours: (g.opening_hours && g.opening_hours.weekday_text) || null,
+          about: (g.editorial_summary && g.editorial_summary.overview) || null,
+          types: (g.types || []).slice(0, 6),
+          lat: g.geometry?.location?.lat ?? null, lng: g.geometry?.location?.lng ?? null,
+          maps_url: g.url || null,
+          photos: (g.photos || []).slice(0, 5).map(ph =>
+            "https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=" +
+            ph.photo_reference + "&key=" + key),
+          reviews: (g.reviews || []).slice(0, 3).map(rv => ({
+            author: rv.author_name || null, rating: rv.rating ?? null,
+            text: String(rv.text || "").slice(0, 400), when: rv.relative_time_description || null })),
+          cached: false };
+        try { await env.AURA_KV.put(plKey, JSON.stringify(out), { expirationTtl: 86400 }); } catch {}
+        return { cmd: "PLACE", payload: out };
+      } catch (e) {
+        return { cmd: "PLACE", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
       }
     }
 
@@ -41557,6 +41604,17 @@ export class PublicEntry extends WorkerEntrypoint {
   async nearby(lat, lng) {
     try {
       const r = await processCommand("CITY_NEAR " + Number(lat) + " " + Number(lng), this.env, false);
+      return (r && r.payload) ? r.payload : r;
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
+  // One business. aura-host calls this when a card is tapped - the shell for a place page uses
+  // data-source="place" and the segment is the place_id.
+  async place(id) {
+    try {
+      const r = await processCommand("PLACE " + String(id || "").trim(), this.env, false);
       return (r && r.payload) ? r.payload : r;
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };

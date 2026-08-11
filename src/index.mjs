@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.13.1-2026-08-11-www-is-a-route-too";
+const BUILD = "aura-core-v5.13.2-2026-08-11-it-kept-looking-at-the-same-fifty";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -17717,14 +17717,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const z = await cf("GET", "/zones?per_page=50&page=" + page);
             if (!z.ok) break;
             for (const x of (z.result || [])) zones.push({ id: x.id, name: x.name });
-            const tp = 1; if ((z.result || []).length < 50) break;
+            if ((z.result || []).length < 50) break;
           }
         }
 
+        // ══ IT KEPT LOOKING AT THE SAME FIFTY (fixed 2026-08-11) ═══════════════════════════
+        // The limit counted zones LOOKED AT, so once the first fifty were correct every run examined
+        // them again, found nothing to do, and reported success while 472 stayed broken. "Idempotent"
+        // and "makes progress" are different properties and I only built the first.
+        // Now the cap counts zones CHANGED. Correct ones cost one read and do not consume the budget,
+        // so each run walks further into the list until there is nothing left.
         const rows = [], fixed = [], failed = [];
-        let looked = 0;
+        let looked = 0, changed = 0;
         for (const z of zones) {
-          if (!drOne && looked >= drLimit) break;
+          if (!drOne && changed >= drLimit) break;
           looked++;
           const rt = await cf("GET", "/zones/" + z.id + "/workers/routes");
           if (!rt.ok) {
@@ -17763,6 +17769,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               error: (c.errors[0] && c.errors[0].message) || ("http " + c.status) });
           }
           if (made.length || wrong.length) {
+            changed++;
             fixed.push({ zone: z.name, added: made.length ? made : undefined,
               removed: wrong.length || undefined, now: "-> " + TARGET });
           }
@@ -17782,10 +17789,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "'Not open yet' honestly - that is the page server working, not a routing problem."
             : "NOTHING CHANGED. `rows` lists only the domains NOT already correct. Add CONFIRM to fix " +
               "them - and a number to cap how many zones this run touches.",
+          zones_changed: drConfirm && !drStatusOnly ? changed : undefined,
           next: !drOne && looked < zones.length
-            ? "Seen " + looked + " of " + zones.length + ". Re-run to continue - it is idempotent, a " +
-              "zone already correct is skipped."
-            : undefined } };
+            ? "Examined " + looked + " of " + zones.length + " and changed " + changed +
+              ". Re-run to continue - correct zones cost a read and do not use the budget, so each run " +
+              "reaches further."
+            : (!drOne ? "Every zone examined." : undefined) } };
       } catch (e) {
         return { cmd: "DOMAIN_ROUTE", payload: { ok: false, error: "Route survey failed: " + (e && e.message ? e.message : String(e)) } };
       }

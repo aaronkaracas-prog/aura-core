@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.11.2-2026-08-10-count-what-landed-not-what-was-attempted";
+const BUILD = "aura-core-v5.11.3-2026-08-11-a-wipe-that-leaves-a-table-behind";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -24083,6 +24083,14 @@ Be concise. This update will be compared against the next update to show drift o
             const h = await db.prepare("DELETE FROM pta_history").run(); hist = (h && h.meta && h.meta.changes) || 0;
             const e = await db.prepare("DELETE FROM pta_edges").run(); edges = (e && e.meta && e.meta.changes) || 0;
             const x = await db.prepare("DELETE FROM pta_entities").run(); ents = (x && x.meta && x.meta.changes) || 0;
+            // ══ A WIPE THAT LEAVES A TABLE BEHIND IS A TRAP FOR THE NEXT RESET ══════════════════
+            // MEASURED after the store was emptied: PTA_DUE still reported a commitment for Alta Gama,
+            // an entity that no longer existed. pta_commitments and pta_identity_index were added
+            // after this command was written, so it did not know about them - and PTA_KEPT correctly
+            // refused to clear the row, because there was no chain left to record the closure on.
+            // Correct behaviour, stranded data. Everything keyed to an entity goes when the entity does.
+            try { await db.prepare("DELETE FROM pta_commitments").run(); } catch {}
+            try { await db.prepare("DELETE FROM pta_identity_index").run(); } catch {}
           } else {
             // ══ COUNT ROWS, NOT STATEMENTS (fixed v4.9.762) ═══════════════════════════════════
             // The first version incremented once per DELETE EXECUTED, so it reported 192 history rows
@@ -24106,6 +24114,8 @@ Be concise. This update will be compared against the next update to show drift o
                 const e2 = await db.prepare("DELETE FROM pta_edges WHERE id IN (" + eph + ")").bind(...eb).run();
                 edges += (e2 && e2.meta && e2.meta.changes) || 0;
               }
+              try { await db.prepare("DELETE FROM pta_commitments WHERE entity IN (" + ph + ")").bind(...batch).run(); } catch {}
+              try { await db.prepare("DELETE FROM pta_identity_index WHERE pta_id IN (" + ph + ")").bind(...batch).run(); } catch {}
               const x = await db.prepare("DELETE FROM pta_entities WHERE id IN (" + ph + ")").bind(...batch).run();
               ents += (x && x.meta && x.meta.changes) || 0;
             }
@@ -30431,9 +30441,21 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
             note: "Nothing is owed - no entity has an open commitment." } };
         }
         const now = Date.now();
-        const due = [], upcoming = [], voided = [];
+        const due = [], upcoming = [], voided = [], orphaned = [];
         const auraId = await auraPtaId(env);
         for (const e of rows) {
+          // ══ A COMMITMENT TO SOMEBODY WHO NO LONGER EXISTS ═══════════════════════════════════
+          // MEASURED after a wipe: the index still held a due for a deleted entity, PTA_KEPT refused
+          // to close it (no chain to write the closure on - correct), and it would have been reported
+          // forever. An orphan is not owed and it is not void by revocation either: there is nobody
+          // there. Named as its own state and cleared, because the alternative is a queue with a row
+          // in it that no command can ever remove.
+          const entRow = await db.prepare("SELECT id FROM pta_entities WHERE id = ?").bind(e.id).first().catch(() => null);
+          if (!entRow) {
+            orphaned.push({ entity: e.id, why: "the entity no longer exists - not owed, not void, just gone" });
+            try { await db.prepare("DELETE FROM pta_commitments WHERE entity = ?").bind(e.id).run(); } catch {}
+            continue;
+          }
           let chain = [];
           try {
             const stub = env.PTA_DO.get(env.PTA_DO.idFromName(e.id));
@@ -30480,6 +30502,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         return { cmd: "PTA_DUE", payload: { ok: true, scanned: rows.length,
           due_now: due.length, due, upcoming: duAll ? upcoming : undefined,
           voided_by_revocation: voided.length ? voided : undefined,
+          orphaned_cleared: orphaned.length ? orphaned : undefined,
           note: due.length
             ? "These are promises whose time has come. The chain says what they actually said, so a " +
               "follow-up can reference it rather than opening cold."

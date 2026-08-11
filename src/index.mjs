@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.12.0-2026-08-11-one-document-for-a-planet-of-cities";
+const BUILD = "aura-core-v5.12.1-2026-08-11-the-city-over-rpc";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -41334,6 +41334,21 @@ export class PublicEntry extends WorkerEntrypoint {
   }
 
   // ── HEALTH: so the doorway can report honestly when the brain is unreachable ──────────────────
+  // ══ THE CITY, OVER RPC ══════════════════════════════════════════════════════════════════════
+  // aura-host serves the shell and knows nothing about Places, Tavily or caching - it asks here and
+  // injects the answer. A service binding keeps the call inside Cloudflare: internal, fast, free.
+  // Read-only by construction. A city page can be viewed a million times and mint nothing: a PTA
+  // begins with a CLAIM, not with being visible. That line is what keeps a consumer searching Tokyo
+  // from creating ten thousand identities nobody intends to contact.
+  async city(slug) {
+    try {
+      const r = await processCommand("CITY " + String(slug || "").trim(), this.env, false);
+      return (r && r.payload) ? r.payload : r;
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
   async ping() { return { ok: true, build: BUILD, surface: "public", ts: new Date().toISOString() }; }
 }
 

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.11.3-2026-08-11-a-wipe-that-leaves-a-table-behind";
+const BUILD = "aura-core-v5.12.0-2026-08-11-one-document-for-a-planet-of-cities";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -17663,6 +17663,113 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           watch: "SITE_READ STATUS " + d.result } };
       } catch (e) {
         return { cmd: "SITE_READ", payload: { ok: false, error: "Site read failed: " + (e && e.message ? e.message : String(e)) } };
+      }
+    }
+
+    case "CITY": {
+      // ══ ONE DOCUMENT FOR A PLANET OF CITIES ══════════════════════════════════════════════════
+      //
+      // A city guide cannot be pre-generated - there are tens of thousands of cities and the events
+      // change daily. It also cannot be rendered by the browser: Cloudflare's own writeup on this
+      // names why. Client-side fetch means "the user will either be presented with the static version
+      // first and witness the page update, or the rendering will be blocked", and on mobile "each
+      // additional API call risks never making it back to the client". A city guide is a phone product
+      // used by someone standing in the city. That is the exact case client rendering fails.
+      //
+      // So the answer is the third shape: ONE shell generated once by Aura, and the data injected at
+      // the EDGE as the bytes stream past. "Base HTML caches indefinitely; transformations apply
+      // per-request. Static performance, dynamic capability."
+      //
+      // THIS COMMAND IS THE DATA HALF. It answers "what is in this city right now" and nothing else -
+      // no HTML, no layout. aura-host holds the shell and does the injection, which keeps the page
+      // server a page server.
+      //
+      // NOBODY ENUMERATES CITIES. A slug arrives, Places resolves it, and the resolution is cached
+      // forever - "vegas" is Las Vegas from then on. The planet works from day one because cities
+      // arrive by being asked for rather than by being listed.
+      //
+      //   CITY las-vegas
+      //   CITY paris FRESH        skip the cache
+      const cyRaw = (rest || "").trim();
+      const cyFresh = /(^|\s)FRESH(\s|$)/i.test(cyRaw);
+      const cySlug = cyRaw.replace(/(^|\s)FRESH(\s|$)/i, " ").trim().toLowerCase();
+      if (!cySlug) return { cmd: "CITY", payload: { ok: false, error: "Usage: CITY <city-slug> [FRESH]" } };
+      const cyKey = "city:data:" + cySlug.replace(/[^a-z0-9]+/g, "-");
+      try {
+        if (!cyFresh) {
+          const hit = await env.AURA_KV.get(cyKey);
+          if (hit) { const j = JSON.parse(hit); j.cached = true; return { cmd: "CITY", payload: j }; }
+        }
+        // ── resolve the slug to a real place, once, forever ──
+        const rk = "city:resolved:" + cySlug.replace(/[^a-z0-9]+/g, "-");
+        let place = null;
+        try { place = JSON.parse((await env.AURA_KV.get(rk)) || "null"); } catch {}
+        if (!place) {
+          const q = cySlug.replace(/-/g, " ");
+          const fp = await processCommand("FETCH_PLACES " + q + " city", env, true);
+          const pp = (fp && fp.payload) ? fp.payload : fp;
+          const first = (pp?.places || [])[0];
+          if (!first || typeof first.lat !== "number") {
+            return { cmd: "CITY", payload: { ok: false, error: "UNKNOWN_CITY", slug: cySlug,
+              what_to_say: "We do not know that city yet.",
+              note: "Nothing is listed anywhere - a slug becomes a city by resolving through Places. " +
+                "If this is a real place spelled differently, try the fuller name." } };
+          }
+          place = { name: String(first.name || q), lat: first.lat, lng: first.lng,
+                    address: first.address || null, resolved_at: new Date().toISOString() };
+          try { await env.AURA_KV.put(rk, JSON.stringify(place)); } catch {}   // no TTL - a city does not move
+        }
+
+        // ── what is here: venues by category, from Places ──
+        const cats = [
+          ["dining", "restaurants in " + place.name],
+          ["nightlife", "nightlife and bars in " + place.name],
+          ["attractions", "attractions in " + place.name],
+          ["hotels", "hotels in " + place.name],
+        ];
+        const sections = {};
+        for (const [key, query] of cats) {
+          try {
+            const r = await processCommand("FETCH_PLACES " + query, env, true);
+            const rp2 = (r && r.payload) ? r.payload : r;
+            sections[key] = (rp2?.places || []).slice(0, 8).map(x => ({
+              name: x.name, rating: x.rating ?? null, address: x.address || null,
+              photo: x.photo || null, maps_url: x.maps_url || null, place_id: x.place_id }));
+          } catch { sections[key] = []; }
+        }
+
+        // ── what is HAPPENING: events are not in Places, they are in the world ──
+        // BRIEF already searches "today's/this week's events" around a business. Same source, same
+        // key, pointed at a city instead of a shop.
+        let events = [];
+        try {
+          const tk = await getSecret(env, "tavily");
+          if (tk) {
+            const er = await fetch("https://api.tavily.com/search", { method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ api_key: tk, query: "events concerts shows this week in " + place.name,
+                                     max_results: 8, search_depth: "basic" }) });
+            if (er.ok) {
+              const ed = await er.json();
+              events = (ed.results || []).slice(0, 8).map(x => ({
+                title: String(x.title || "").slice(0, 120), url: x.url || null,
+                snippet: String(x.content || "").slice(0, 180) }));
+            }
+          }
+        } catch {}
+
+        const out = { ok: true, slug: cySlug, city: place.name, lat: place.lat, lng: place.lng,
+          sections, events, cached: false, built_at: new Date().toISOString(),
+          counts: Object.fromEntries(Object.entries(sections).map(([k, v]) => [k, v.length])),
+          events_note: events.length ? undefined
+            : "No events found. Places has venues and never has events - that comes from search, and " +
+              "an empty list here means the search returned nothing, not that the city is quiet." };
+        // An hour: long enough that a busy city serves from cache, short enough that tonight's events
+        // are tonight's.
+        try { await env.AURA_KV.put(cyKey, JSON.stringify(out), { expirationTtl: 3600 }); } catch {}
+        return { cmd: "CITY", payload: out };
+      } catch (e) {
+        return { cmd: "CITY", payload: { ok: false, error: "City lookup failed: " + (e && e.message ? e.message : String(e)) } };
       }
     }
 

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.16.0-2026-08-11-a-claim-is-where-a-pta-begins";
+const BUILD = "aura-core-v5.17.0-2026-08-11-the-door-every-qr-opens";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -17800,6 +17800,68 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
     }
 
+    case "OFB": {
+      // ══ WHAT WE KNOW, AND WHETHER THEY OWN IT ═══════════════════════════════════════════════
+      //
+      // Two layers, and the second only exists if they claimed:
+      //   PUBLIC   name, hours, phone, photos - from Places, same as any listing
+      //   THEIRS   understanding, chain, whatever they have told us under a grant
+      //
+      // A scan always answers. An unclaimed business gets its public facts and an invitation; a
+      // claimed one gets its own page. Nothing in between, and nothing that reads as broken.
+      const obId = (rest || "").trim();
+      if (!obId) return { cmd: "OFB", payload: { ok: false, error: "Usage: OFB <place_id>" } };
+      try {
+        const det = await processCommand("PLACE " + obId, env, true);
+        const dp = (det && det.payload) ? det.payload : det;
+        if (!dp?.ok) return { cmd: "OFB", payload: { ok: false, error: "NO_SUCH_PLACE", place_id: obId,
+          what_to_say: "We could not find that business." } };
+
+        // Claimed? The alias index answers - a claim mints through ingestBusiness, so the place_id
+        // resolves to a PTA if and only if somebody verified.
+        let pta = null, understanding = null;
+        try {
+          const hk = await hashIdentity(env, normIdentity("place_id:" + obId));
+          const hit = await env.AURA_MEMORY.prepare(
+            "SELECT pta_id FROM pta_identity_index WHERE identity_key = ?").bind(hk.key).first();
+          pta = hit?.pta_id || null;
+          if (!pta) {
+            const e2 = await env.AURA_MEMORY.prepare(
+              "SELECT id FROM pta_entities WHERE identity_key = ?").bind(hk.key).first();
+            pta = e2?.id || null;
+          }
+        } catch {}
+        if (pta) {
+          // What they have said about themselves, if anything. Read from the chain - the authority -
+          // rather than from a copy.
+          try {
+            const stub = env.PTA_DO.get(env.PTA_DO.idFromName(pta));
+            const r = await stub.fetch(new Request("http://do", { method: "POST",
+              body: JSON.stringify({ method: "getState", params: [] }) }));
+            const j = await r.json();
+            const chain = j?.pta?.chain || [];
+            const u = [...chain].reverse().find(c => c && c.event === "UNDERSTANDING");
+            if (u) understanding = u.data || null;
+          } catch {}
+        }
+
+        return { cmd: "OFB", payload: { ok: true, place_id: obId, claimed: !!pta, pta,
+          name: dp.name, address: dp.address, phone: dp.phone, website: dp.website,
+          rating: dp.rating, reviews_count: dp.reviews_count, open_now: dp.open_now,
+          hours: dp.hours, photos: dp.photos, maps_url: dp.maps_url,
+          about: (understanding && understanding.what_it_is) || dp.about || null,
+          offerings: (understanding && understanding.offerings) || null,
+          serves: (understanding && understanding.serves) || null,
+          claim_url: pta ? null : "https://cityguide.world/claim/" + encodeURIComponent(obId),
+          note: pta
+            ? "This business has claimed its record."
+            : "Public information only. This business has not claimed its record yet - which is why " +
+              "there is an invitation here rather than a page they control." } };
+      } catch (e) {
+        return { cmd: "OFB", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
+      }
+    }
+
     case "CLAIM": {
       // ══ A CLAIM IS WHERE A PTA BEGINS ═══════════════════════════════════════════════════════
       //
@@ -17833,7 +17895,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const via = (clParts[2] || "").toLowerCase();
           // Only contacts Google already lists. A claimant who supplies their own is proving nothing.
           const options = [];
-          if (dp.phone) options.push({ kind: "phone", masked: dp.phone.replace(/\d(?=\d{4})/g, "\u2022") });
+          // Mask every digit but the last four. The old regex looked for a digit followed by four
+          // MORE DIGITS - and "(702) 735-4177" has brackets, spaces and a dash between them, so it
+          // masked nothing and printed the number in full. Count digits, not characters.
+          if (dp.phone) {
+            const digits = dp.phone.replace(/\D/g, "");
+            let seen = 0;
+            const masked = dp.phone.replace(/\d/g, function (d) {
+              seen++; return seen > digits.length - 4 ? d : "\u2022";
+            });
+            options.push({ kind: "phone", masked });
+          }
           if (dp.website) options.push({ kind: "website", masked: dp.website });
           if (!options.length) return { cmd: "CLAIM", payload: { ok: false, error: "NO_VERIFIABLE_CONTACT",
             business: dp.name,
@@ -41739,6 +41811,20 @@ export class PublicEntry extends WorkerEntrypoint {
     try {
       const r = await processCommand("CLAIM " + String(action || "").toUpperCase() + " " +
         String(id || "") + " " + String(arg || ""), this.env, true);
+      return (r && r.payload) ? r.payload : r;
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
+  // ══ THE DOOR EVERY QR OPENS ═════════════════════════════════════════════════════════════════
+  // openforbusiness.world/b/<place_id>. It has to work BEFORE a business is anything to us - a code
+  // in a window is scanned by strangers, and "not found" would make the business look broken rather
+  // than unclaimed. So: the public facts from Places always, plus whatever we hold if they have
+  // claimed and told us more. Thin or rich, it always answers.
+  async ofb(id) {
+    try {
+      const r = await processCommand("OFB " + String(id || "").trim(), this.env, false);
       return (r && r.payload) ? r.payload : r;
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };

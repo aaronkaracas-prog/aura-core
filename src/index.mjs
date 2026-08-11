@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.17.1-2026-08-11-a-claimed-business-does-not-need-google";
+const BUILD = "aura-core-v5.17.2-2026-08-11-the-direct-id-was-overwritten";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -17826,15 +17826,27 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         let pta = null, understanding = null, own = null;
         try {
           // The id may be a place_id OR a pta_ id - a QR points at whichever identifies the business.
-          if (/^pta_|^ent_/.test(obId)) pta = obId;
-          const hk = await hashIdentity(env, normIdentity("place_id:" + obId));
-          const hit = await env.AURA_MEMORY.prepare(
-            "SELECT pta_id FROM pta_identity_index WHERE identity_key = ?").bind(hk.key).first();
-          pta = hit?.pta_id || null;
-          if (!pta) {
-            const e2 = await env.AURA_MEMORY.prepare(
-              "SELECT id FROM pta_entities WHERE identity_key = ?").bind(hk.key).first();
-            pta = e2?.id || null;
+          // ══ THE DIRECT ID WAS OVERWRITTEN BY THE LOOKUP (fixed 2026-08-11) ═══════════════
+          // A pta_ id was set here and then the alias lookup below reset it to null - the index is
+          // keyed on place_id, so looking up "place_id:pta_65d5..." finds nothing and the assignment
+          // wiped the answer we already had. MEASURED: OFB on a real business with a nine-event chain
+          // returned "we could not find that business".
+          // A pta_ id IS the answer. Verify it exists rather than looking it up by a key it does not
+          // have; only fall through to the alias index when the id is a place_id.
+          if (/^pta_|^ent_/.test(obId)) {
+            const row = await env.AURA_MEMORY.prepare(
+              "SELECT id FROM pta_entities WHERE id = ?").bind(obId).first();
+            pta = row?.id || null;
+          } else {
+            const hk = await hashIdentity(env, normIdentity("place_id:" + obId));
+            const hit = await env.AURA_MEMORY.prepare(
+              "SELECT pta_id FROM pta_identity_index WHERE identity_key = ?").bind(hk.key).first();
+            pta = hit?.pta_id || null;
+            if (!pta) {
+              const e2 = await env.AURA_MEMORY.prepare(
+                "SELECT id FROM pta_entities WHERE identity_key = ?").bind(hk.key).first();
+              pta = e2?.id || null;
+            }
           }
         } catch {}
         if (pta) {

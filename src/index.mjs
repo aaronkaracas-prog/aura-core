@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.13.2-2026-08-11-it-kept-looking-at-the-same-fifty";
+const BUILD = "aura-core-v5.14.0-2026-08-11-nearby-first-then-search";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -17800,6 +17800,38 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
     }
 
+    case "CITY_NEAR": {
+      // Coordinates in, city slug out. Google's reverse geocode is the accurate way, but the Places
+      // text search already in this worker gets the city name from a lat/lng nearby search - one less
+      // API surface, one less permission, and it is the same key.
+      const nParts = (rest || "").trim().split(/\s+/);
+      const nLat = Number(nParts[0]), nLng = Number(nParts[1]);
+      if (!isFinite(nLat) || !isFinite(nLng)) return { cmd: "CITY_NEAR", payload: { ok: false,
+        error: "Usage: CITY_NEAR <lat> <lng>" } };
+      try {
+        const key = await getSecret(env, "google_maps");
+        if (!key) return { cmd: "CITY_NEAR", payload: { ok: false, error: "no google_maps key" } };
+        const u = "https://maps.googleapis.com/maps/api/geocode/json?latlng=" + nLat + "," + nLng +
+                  "&result_type=locality&key=" + key;
+        const r = await fetch(u);
+        const d = await r.json();
+        const first = (d.results || [])[0];
+        if (!first) return { cmd: "CITY_NEAR", payload: { ok: false, error: "NO_CITY_HERE",
+          what_to_say: "We could not work out which city that is.",
+          google_said: d.status || null,
+          hint: d.status === "REQUEST_DENIED"
+            ? "The Google Maps key needs the Geocoding API enabled - it is a separate API from Places " +
+              "on the same key."
+            : undefined } };
+        const name = String(first.address_components?.[0]?.long_name || "").trim();
+        return { cmd: "CITY_NEAR", payload: { ok: true, city: name,
+          slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
+          formatted: first.formatted_address || null } };
+      } catch (e) {
+        return { cmd: "CITY_NEAR", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
+      }
+    }
+
     case "CITY": {
       // ══ ONE DOCUMENT FOR A PLANET OF CITIES ══════════════════════════════════════════════════
       //
@@ -17826,9 +17858,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       //   CITY paris FRESH        skip the cache
       const cyRaw = (rest || "").trim();
       const cyFresh = /(^|\s)FRESH(\s|$)/i.test(cyRaw);
-      const cySlug = cyRaw.replace(/(^|\s)FRESH(\s|$)/i, " ").trim().toLowerCase();
-      if (!cySlug) return { cmd: "CITY", payload: { ok: false, error: "Usage: CITY <city-slug> [FRESH]" } };
-      const cyKey = "city:data:" + cySlug.replace(/[^a-z0-9]+/g, "-");
+      let cyBody = cyRaw.replace(/(^|\s)FRESH(\s|$)/i, " ").trim().toLowerCase();
+      // "las-vegas" or "las-vegas/drink" - the category rides on the path, so the shell can link
+      // straight to it and the browser does the navigating.
+      const cyParts = cyBody.split("/").filter(Boolean);
+      const cySlug = cyParts[0] || "";
+      const cyCat = cyParts[1] || null;
+      if (!cySlug) return { cmd: "CITY", payload: { ok: false, error: "Usage: CITY <city-slug>[/<category>] [FRESH]" } };
+      const cyKey = "city:data:" + cySlug.replace(/[^a-z0-9]+/g, "-") + (cyCat ? ":" + cyCat : "");
       try {
         if (!cyFresh) {
           const hit = await env.AURA_KV.get(cyKey);
@@ -17854,23 +17891,51 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           try { await env.AURA_KV.put(rk, JSON.stringify(place)); } catch {}   // no TTL - a city does not move
         }
 
-        // ── what is here: venues by category, from Places ──
-        const cats = [
-          ["dining", "restaurants in " + place.name],
-          ["nightlife", "nightlife and bars in " + place.name],
-          ["attractions", "attractions in " + place.name],
-          ["hotels", "hotels in " + place.name],
-        ];
+        // ══ THE CATEGORIES EVERY CITY GUIDE USES ═══════════════════════════════════════════
+        // Yelp, TripAdvisor and Google Explore all resolve to the same six: eat, drink, see, stay,
+        // shop, do. Not invented here - it is the stable set, and a visitor already knows it.
+        //
+        // ONE CATEGORY EAGERLY, THE REST ON DEMAND. Six categories is six billable Places calls, and
+        // most visitors look at food and leave. `CITY <slug>` fetches eat; `CITY <slug> <category>`
+        // fetches one more when somebody actually taps it. A city nobody explores costs one request.
+        const CATS = {
+          eat:   "restaurants in ",
+          drink: "bars and nightlife in ",
+          see:   "attractions and landmarks in ",
+          stay:  "hotels in ",
+          shop:  "shopping in ",
+          do:    "things to do in ",
+        };
+        const want = cyCat && CATS[cyCat] ? [cyCat] : ["eat"];
         const sections = {};
-        for (const [key, query] of cats) {
+        for (const key of want) {
           try {
-            const r = await processCommand("FETCH_PLACES " + query, env, true);
+            const r = await processCommand("FETCH_PLACES " + CATS[key] + place.name, env, true);
             const rp2 = (r && r.payload) ? r.payload : r;
-            sections[key] = (rp2?.places || []).slice(0, 8).map(x => ({
+            sections[key] = (rp2?.places || []).slice(0, 12).map(x => ({
               name: x.name, rating: x.rating ?? null, address: x.address || null,
               photo: x.photo || null, maps_url: x.maps_url || null, place_id: x.place_id }));
           } catch { sections[key] = []; }
         }
+
+        // ── the city profile: orientation before listings ──
+        // "Providing local weather, time zone and a brief overview is very welcoming - users will not
+        // have to wander to other apps to check that info." OpenWeather is already live and free.
+        let weather = null;
+        try {
+          const wk = await getSecret(env, "openweather");
+          if (wk) {
+            const wr = await fetch("https://api.openweathermap.org/data/2.5/weather?lat=" + place.lat +
+              "&lon=" + place.lng + "&units=imperial&appid=" + wk);
+            if (wr.ok) {
+              const wd = await wr.json();
+              weather = { temp_f: Math.round(wd?.main?.temp ?? 0),
+                          temp_c: Math.round(((wd?.main?.temp ?? 32) - 32) * 5 / 9),
+                          says: String(wd?.weather?.[0]?.description || ""),
+                          icon: wd?.weather?.[0]?.icon || null };
+            }
+          }
+        } catch {}
 
         // ── what is HAPPENING: events are not in Places, they are in the world ──
         // BRIEF already searches "today's/this week's events" around a business. Same source, same
@@ -17893,6 +17958,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         } catch {}
 
         const out = { ok: true, slug: cySlug, city: place.name, lat: place.lat, lng: place.lng,
+          category: cyCat || "eat", categories: Object.keys(CATS),
+          weather, local_time: new Date().toISOString(),
           sections, events, cached: false, built_at: new Date().toISOString(),
           counts: Object.fromEntries(Object.entries(sections).map(([k, v]) => [k, v.length])),
           events_note: events.length ? undefined
@@ -41477,6 +41544,19 @@ export class PublicEntry extends WorkerEntrypoint {
   async city(slug) {
     try {
       const r = await processCommand("CITY " + String(slug || "").trim(), this.env, false);
+      return (r && r.payload) ? r.payload : r;
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
+  // ══ WHERE AM I ═══════════════════════════════════════════════════════════════════════════════
+  // "Nearby restaurants" is the default of every serious city guide - Google Explore opens with it.
+  // The browser gives coordinates; this turns them into a city slug and the page redirects there.
+  // Read-only, no identity, nothing minted - same as city().
+  async nearby(lat, lng) {
+    try {
+      const r = await processCommand("CITY_NEAR " + Number(lat) + " " + Number(lng), this.env, false);
       return (r && r.payload) ? r.payload : r;
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };

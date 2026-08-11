@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.15.0-2026-08-11-one-business-everything-we-know";
+const BUILD = "aura-core-v5.16.0-2026-08-11-a-claim-is-where-a-pta-begins";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -17797,6 +17797,118 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             : (!drOne ? "Every zone examined." : undefined) } };
       } catch (e) {
         return { cmd: "DOMAIN_ROUTE", payload: { ok: false, error: "Route survey failed: " + (e && e.message ? e.message : String(e)) } };
+      }
+    }
+
+    case "CLAIM": {
+      // ══ A CLAIM IS WHERE A PTA BEGINS ═══════════════════════════════════════════════════════
+      //
+      // Nobody gets an identity by being visible. A city page can be viewed a million times and mint
+      // nothing - that is what keeps a consumer searching Tokyo from creating ten thousand PTAs
+      // nobody intends to contact. The claim is the ACT that creates one.
+      //
+      // VERIFICATION IS THE SAME SHAPE GOOGLE USES, and for the same reason: the contact must already
+      // be ON the listing. A code sent to the phone number Google has for this business proves the
+      // claimant answers that phone. Anyone can type an address; only the business answers its own
+      // line.
+      //
+      //   CLAIM START <place_id> <phone|email>     send a code to the contact ON THE LISTING
+      //   CLAIM FINISH <place_id> <code>           verify, then mint the PTA
+      //
+      // WHAT A CLAIM DOES NOT DO: it does not grant anything. The business exists, owns its chain and
+      // has a QR - and PTA_REMEMBER still refuses until they accept a grant. Claiming is identity;
+      // consent is separate and always will be.
+      const clParts = (rest || "").trim().split(/\s+/);
+      const clSub = String(clParts[0] || "").toUpperCase();
+      const clId = clParts[1] || "";
+      if (!clId) return { cmd: "CLAIM", payload: { ok: false,
+        error: "Usage: CLAIM START <place_id> <phone|email>  |  CLAIM FINISH <place_id> <code>" } };
+      const clKey = "claim:pending:" + clId;
+      try {
+        const det = await processCommand("PLACE " + clId, env, true);
+        const dp = (det && det.payload) ? det.payload : det;
+        if (!dp?.ok) return { cmd: "CLAIM", payload: { ok: false, error: "NO_SUCH_PLACE", place_id: clId } };
+
+        if (clSub === "START") {
+          const via = (clParts[2] || "").toLowerCase();
+          // Only contacts Google already lists. A claimant who supplies their own is proving nothing.
+          const options = [];
+          if (dp.phone) options.push({ kind: "phone", masked: dp.phone.replace(/\d(?=\d{4})/g, "\u2022") });
+          if (dp.website) options.push({ kind: "website", masked: dp.website });
+          if (!options.length) return { cmd: "CLAIM", payload: { ok: false, error: "NO_VERIFIABLE_CONTACT",
+            business: dp.name,
+            what_to_say: "We have no phone or site on file for this business, so there is nothing to " +
+              "verify against yet.",
+            note: "A claim has to be provable against a contact that was ALREADY on the listing - " +
+              "otherwise anyone could claim anything by typing an address." } };
+          if (!via) return { cmd: "CLAIM", payload: { ok: true, mode: "choose", business: dp.name,
+            place_id: clId, options,
+            note: "Pick a contact that is already on this listing. A code goes there." } };
+
+          const code = String(Math.floor(100000 + Math.random() * 900000));
+          await env.AURA_KV.put(clKey, JSON.stringify({ code, via, place_id: clId, name: dp.name,
+            phone: dp.phone || null, website: dp.website || null,
+            started_at: new Date().toISOString(), attempts: 0 }), { expirationTtl: 1800 });
+          let sent = false, how = null;
+          if (via === "phone" && dp.phone) {
+            try {
+              // TWILIO SEND, which is the real door - I wrote "SMS" from memory and there is no such
+              // command. Ninth time today the thing already existed under a different name.
+              const r = await processCommand("TWILIO SEND " + dp.phone.replace(/[^0-9+]/g, "") +
+                " Your cityguide.world verification code is " + code, env, true);
+              const rp3 = (r && r.payload) ? r.payload : r;
+              sent = !!(rp3 && rp3.ok);
+              how = sent ? "sms" : ((rp3 && rp3.error) || "twilio did not send");
+            } catch {}
+          }
+          return { cmd: "CLAIM", payload: { ok: true, mode: "sent", business: dp.name, place_id: clId,
+            via, sent, how,
+            what_to_say: sent
+              ? "We sent a six-digit code to the number on this listing."
+              : "We could not send the code automatically - the messaging line is not answering.",
+            expires_in: "30 minutes",
+            next: "CLAIM FINISH " + clId + " <code>" } };
+        }
+
+        if (clSub === "FINISH") {
+          const given = (clParts[2] || "").trim();
+          let pend = null;
+          try { pend = JSON.parse((await env.AURA_KV.get(clKey)) || "null"); } catch {}
+          if (!pend) return { cmd: "CLAIM", payload: { ok: false, error: "NOTHING_PENDING",
+            what_to_say: "That claim has expired or was never started. Begin again." } };
+          if (pend.attempts >= 5) return { cmd: "CLAIM", payload: { ok: false, error: "TOO_MANY_ATTEMPTS",
+            what_to_say: "Too many wrong codes. Start the claim again." } };
+          if (given !== pend.code) {
+            pend.attempts = (pend.attempts || 0) + 1;
+            try { await env.AURA_KV.put(clKey, JSON.stringify(pend), { expirationTtl: 1800 }); } catch {}
+            return { cmd: "CLAIM", payload: { ok: false, error: "WRONG_CODE",
+              attempts_left: 5 - pend.attempts } };
+          }
+
+          // Verified. NOW the PTA exists - keyed on place_id, phone and site as aliases, exactly the
+          // same mint path as every other business. The chain records that the claim was verified and
+          // how, because "who said this is theirs" is the first thing anyone will ask in a year.
+          const ing = await ingestBusiness(env, { name: pend.name, place_id: clId,
+            phone: pend.phone, website: pend.website, email: null }, true);
+          if (!ing?.ok || !ing.id) return { cmd: "CLAIM", payload: { ok: false, error: "COULD_NOT_MINT",
+            detail: ing } };
+          try {
+            await processCommand("PTA_REMEMBER " + ing.id + " CLAIMED " + JSON.stringify({
+              verified_via: pend.via, verified_at: new Date().toISOString(),
+              contact_used: pend.via === "phone" ? "the phone number on the listing" : pend.via,
+              event_type: "CLAIMED" }), env, true);
+          } catch {}
+          try { await env.AURA_KV.delete(clKey); } catch {}
+          return { cmd: "CLAIM", payload: { ok: true, mode: "claimed", business: pend.name,
+            pta: ing.id, place_id: clId,
+            qr: "https://openforbusiness.world/b/" + encodeURIComponent(clId),
+            what_to_say: "Verified. This business is yours.",
+            note: "A PTA now exists and the QR is live. Nothing has been consented to yet - remembering " +
+              "anything about this business still needs a grant, and that is a separate act." } };
+        }
+        return { cmd: "CLAIM", payload: { ok: false, error: "Usage: CLAIM START|FINISH <place_id> ..." } };
+      } catch (e) {
+        return { cmd: "CLAIM", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
       }
     }
 
@@ -41615,6 +41727,18 @@ export class PublicEntry extends WorkerEntrypoint {
   async place(id) {
     try {
       const r = await processCommand("PLACE " + String(id || "").trim(), this.env, false);
+      return (r && r.payload) ? r.payload : r;
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
+  // The claim flow, over RPC. Two steps: start sends a code to a contact already on the listing,
+  // finish verifies it and mints the PTA.
+  async claim(action, id, arg) {
+    try {
+      const r = await processCommand("CLAIM " + String(action || "").toUpperCase() + " " +
+        String(id || "") + " " + String(arg || ""), this.env, true);
       return (r && r.payload) ? r.payload : r;
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };

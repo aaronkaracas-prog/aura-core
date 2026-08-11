@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.12.1-2026-08-11-the-city-over-rpc";
+const BUILD = "aura-core-v5.13.0-2026-08-11-routing-is-a-command-not-a-dashboard";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -17663,6 +17663,121 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           watch: "SITE_READ STATUS " + d.result } };
       } catch (e) {
         return { cmd: "SITE_READ", payload: { ok: false, error: "Site read failed: " + (e && e.message ? e.message : String(e)) } };
+      }
+    }
+
+    case "DOMAIN_ROUTE": {
+      // ══ ROUTING IS A COMMAND, NOT A DASHBOARD ════════════════════════════════════════════════
+      //
+      // Aaron: "I'm definitely not going to start logging on to Cloudflare." He is right, and the
+      // inconsistency was mine - SPACESHIP_SYNC_ALL creates zones from a command, SETKV writes pages
+      // from a command, and then I sent him to a UI to point a domain at a worker.
+      //
+      // MEASURED: cityguide.world routed to aura-core, which fell through every handler and returned
+      // the bare string "aura-core". The shell was written, verified, and never read - because the
+      // request never reached the worker that serves pages.
+      //
+      // ONE SURVEY, ONE FIX, 500 DOMAINS. Dry by default like everything else that changes the world.
+      //
+      //   DOMAIN_ROUTE STATUS <domain>        what serves it right now
+      //   DOMAIN_ROUTE ALL                    survey every zone - what is pointed where
+      //   DOMAIN_ROUTE ALL CONFIRM [n]        point them at aura-host, n zones this run
+      //   DOMAIN_ROUTE <domain> CONFIRM       one domain
+      if (!isOp) return { cmd: "DOMAIN_ROUTE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const drTok = await getSecret(env, "cf_api_token") || await getSecret(env, "cloudflare");
+      if (!drTok) return { cmd: "DOMAIN_ROUTE", payload: { ok: false, error: "NO_CF_TOKEN" } };
+      const drAcct = env.CF_ACCOUNT_ID || (await env.AURA_KV.get("config:cf:account_id").catch(() => null)) || "3db0de2c6fce92757e2c4e4f83d7eb16";
+      const TARGET = "aura-host";   // the only public face; aura-core is an engine and serves nobody
+      const cf = async (method, path, body) => {
+        const r = await fetch("https://api.cloudflare.com/client/v4" + path, {
+          method, headers: { Authorization: "Bearer " + drTok, "Content-Type": "application/json" },
+          body: body ? JSON.stringify(body) : undefined });
+        const j = await r.json().catch(() => ({}));
+        return { status: r.status, ok: !!j.success, result: j.result, errors: j.errors || [] };
+      };
+      let drRaw = (rest || "").trim();
+      const drConfirm = /(^|\s)CONFIRM(\s|$)/i.test(drRaw);
+      drRaw = drRaw.replace(/(^|\s)CONFIRM(\s|$)/i, " ").trim();
+      const drLimitM = drRaw.match(/(^|\s)(\d+)(\s|$)/);
+      const drLimit = drLimitM ? Math.min(Number(drLimitM[2]) || 50, 200) : 50;
+      drRaw = drRaw.replace(/(^|\s)\d+(\s|$)/, " ").trim();
+      const drAll = /^ALL$/i.test(drRaw);
+      const drStatusOnly = /^STATUS\s+/i.test(drRaw);
+      const drOne = drStatusOnly ? drRaw.replace(/^STATUS\s+/i, "").trim() : (drAll ? null : drRaw);
+
+      try {
+        // ── the zones to look at ──
+        let zones = [];
+        if (drOne) {
+          const z = await cf("GET", "/zones?name=" + encodeURIComponent(drOne));
+          zones = (z.result || []).map(x => ({ id: x.id, name: x.name }));
+          if (!zones.length) return { cmd: "DOMAIN_ROUTE", payload: { ok: false, error: "NO_SUCH_ZONE", domain: drOne } };
+        } else {
+          for (let page = 1; page <= 20; page++) {
+            const z = await cf("GET", "/zones?per_page=50&page=" + page);
+            if (!z.ok) break;
+            for (const x of (z.result || [])) zones.push({ id: x.id, name: x.name });
+            const tp = 1; if ((z.result || []).length < 50) break;
+          }
+        }
+
+        const rows = [], fixed = [], failed = [];
+        let looked = 0;
+        for (const z of zones) {
+          if (!drOne && looked >= drLimit) break;
+          looked++;
+          const rt = await cf("GET", "/zones/" + z.id + "/workers/routes");
+          if (!rt.ok) {
+            // The token may lack Workers Routes. Say so once, plainly, rather than 500 times.
+            failed.push({ zone: z.name, error: (rt.errors[0] && rt.errors[0].message) || ("http " + rt.status),
+              hint: rt.status === 403
+                ? "The token needs Account > Workers Routes > Edit (or Zone > Workers Routes > Edit). " +
+                  "Everything else about it is fine - this is the one permission routing needs."
+                : undefined });
+            continue;
+          }
+          const routes = (rt.result || []).map(x => ({ id: x.id, pattern: x.pattern, script: x.script }));
+          const wrong = routes.filter(x => x.script && x.script !== TARGET);
+          const right = routes.some(x => x.script === TARGET && /\/\*$/.test(x.pattern));
+          rows.push({ zone: z.name, routes: routes.map(x => x.pattern + " -> " + (x.script || "(none)")),
+                      serves_correctly: right, wrong_target: wrong.length || undefined });
+
+          if (!drConfirm || drStatusOnly) continue;
+          // Remove routes pointing anywhere but the page server, then ensure the catch-all exists.
+          for (const w of wrong) {
+            const d = await cf("DELETE", "/zones/" + z.id + "/workers/routes/" + w.id);
+            if (!d.ok) failed.push({ zone: z.name, error: "could not remove " + w.pattern });
+          }
+          if (!right) {
+            const c = await cf("POST", "/zones/" + z.id + "/workers/routes",
+              { pattern: z.name + "/*", script: TARGET });
+            if (c.ok) fixed.push({ zone: z.name, now: z.name + "/* -> " + TARGET });
+            else failed.push({ zone: z.name, error: (c.errors[0] && c.errors[0].message) || ("http " + c.status) });
+          } else if (wrong.length) {
+            fixed.push({ zone: z.name, now: "removed " + wrong.length + " route(s) to another worker" });
+          }
+        }
+
+        return { cmd: "DOMAIN_ROUTE", payload: { ok: true,
+          mode: drConfirm && !drStatusOnly ? "applied" : "survey",
+          target: TARGET, zones_seen: looked, zones_total: zones.length,
+          serving_correctly: rows.filter(r => r.serves_correctly).length,
+          pointed_elsewhere: rows.filter(r => r.wrong_target).length,
+          no_route_at_all: rows.filter(r => !r.routes.length).length,
+          rows: drOne ? rows : rows.filter(r => !r.serves_correctly).slice(0, 40),
+          fixed: fixed.length ? fixed : undefined,
+          failed: failed.length ? failed.slice(0, 10) : undefined,
+          note: drConfirm && !drStatusOnly
+            ? "Routes now send these domains to " + TARGET + ". A domain with no page still says " +
+              "'Not open yet' honestly - that is the page server working, not a routing problem."
+            : "NOTHING CHANGED. `rows` lists only the domains NOT already correct. Add CONFIRM to fix " +
+              "them - and a number to cap how many zones this run touches.",
+          next: !drOne && looked < zones.length
+            ? "Seen " + looked + " of " + zones.length + ". Re-run to continue - it is idempotent, a " +
+              "zone already correct is skipped."
+            : undefined } };
+      } catch (e) {
+        return { cmd: "DOMAIN_ROUTE", payload: { ok: false, error: "Route survey failed: " + (e && e.message ? e.message : String(e)) } };
       }
     }
 

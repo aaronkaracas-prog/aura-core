@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.17.0-2026-08-11-the-door-every-qr-opens";
+const BUILD = "aura-core-v5.17.1-2026-08-11-a-claimed-business-does-not-need-google";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -17812,15 +17812,21 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const obId = (rest || "").trim();
       if (!obId) return { cmd: "OFB", payload: { ok: false, error: "Usage: OFB <place_id>" } };
       try {
+        // Google first, because for most businesses it is the only source. But a business that has
+        // claimed its record does NOT depend on Google knowing it - a shop with no Places listing, a
+        // new one, or one we were introduced to directly still owns a chain and still deserves a door.
+        // MEASURED as a gap while testing: OFB returned NO_SUCH_PLACE for any business Places had not
+        // heard of, which would have made a claimed business's own QR fail.
         const det = await processCommand("PLACE " + obId, env, true);
-        const dp = (det && det.payload) ? det.payload : det;
-        if (!dp?.ok) return { cmd: "OFB", payload: { ok: false, error: "NO_SUCH_PLACE", place_id: obId,
-          what_to_say: "We could not find that business." } };
+        let dp = (det && det.payload) ? det.payload : det;
+        if (!dp?.ok) dp = { ok: false };
 
         // Claimed? The alias index answers - a claim mints through ingestBusiness, so the place_id
         // resolves to a PTA if and only if somebody verified.
-        let pta = null, understanding = null;
+        let pta = null, understanding = null, own = null;
         try {
+          // The id may be a place_id OR a pta_ id - a QR points at whichever identifies the business.
+          if (/^pta_|^ent_/.test(obId)) pta = obId;
           const hk = await hashIdentity(env, normIdentity("place_id:" + obId));
           const hit = await env.AURA_MEMORY.prepare(
             "SELECT pta_id FROM pta_identity_index WHERE identity_key = ?").bind(hk.key).first();
@@ -17842,14 +17848,31 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const chain = j?.pta?.chain || [];
             const u = [...chain].reverse().find(c => c && c.event === "UNDERSTANDING");
             if (u) understanding = u.data || null;
+            // Their own facts, for a business Places cannot describe. HOURS, SERVICE, CONTACT - the
+            // events they or an operator put on the chain under a grant.
+            const pick = (ev) => [...chain].reverse().find(c => c && c.event === ev);
+            own = { name: j?.pta?.name || null,
+                    hours: pick("HOURS")?.data || null,
+                    contact: pick("CONTACT")?.data || null,
+                    service: pick("SERVICE")?.data || null };
           } catch {}
         }
+        if (!dp.ok && !pta) return { cmd: "OFB", payload: { ok: false, error: "NO_SUCH_BUSINESS",
+          id: obId,
+          what_to_say: "We could not find that business.",
+          note: "Neither Google nor our own records know this id. A QR that points here is either " +
+            "mistyped or belongs to a record that was removed." } };
 
         return { cmd: "OFB", payload: { ok: true, place_id: obId, claimed: !!pta, pta,
-          name: dp.name, address: dp.address, phone: dp.phone, website: dp.website,
+          source: dp.ok ? (pta ? "google + their own record" : "google") : "their own record",
+          name: dp.name || (own && own.name) || null,
+          address: dp.address || (own && own.contact && own.contact.address) || null,
+          phone: dp.phone || (own && own.contact && own.contact.phone) || null,
+          website: dp.website || (own && own.contact && own.contact.website) || null,
           rating: dp.rating, reviews_count: dp.reviews_count, open_now: dp.open_now,
           hours: dp.hours, photos: dp.photos, maps_url: dp.maps_url,
-          about: (understanding && understanding.what_it_is) || dp.about || null,
+          about: (understanding && understanding.what_it_is) || dp.about ||
+                 (own && own.service && own.service.offers) || null,
           offerings: (understanding && understanding.offerings) || null,
           serves: (understanding && understanding.serves) || null,
           claim_url: pta ? null : "https://cityguide.world/claim/" + encodeURIComponent(obId),

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.13.0-2026-08-11-routing-is-a-command-not-a-dashboard";
+const BUILD = "aura-core-v5.13.1-2026-08-11-www-is-a-route-too";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -17737,8 +17737,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             continue;
           }
           const routes = (rt.result || []).map(x => ({ id: x.id, pattern: x.pattern, script: x.script }));
+          // ══ www IS A ROUTE TOO, AND THE OLD ONES CAME IN PAIRS ═══════════════════════════
+          // Every misrouted zone in the survey had BOTH `domain/*` and `www.domain/*`. Removing both
+          // and creating only the apex would have taken www offline on hundreds of domains - fixing
+          // the world by half-breaking it. Both patterns are checked and both are created.
           const wrong = routes.filter(x => x.script && x.script !== TARGET);
-          const right = routes.some(x => x.script === TARGET && /\/\*$/.test(x.pattern));
+          const hasApex = routes.some(x => x.script === TARGET && x.pattern === z.name + "/*");
+          const hasWww = routes.some(x => x.script === TARGET && x.pattern === "www." + z.name + "/*");
+          const right = hasApex && hasWww;
           rows.push({ zone: z.name, routes: routes.map(x => x.pattern + " -> " + (x.script || "(none)")),
                       serves_correctly: right, wrong_target: wrong.length || undefined });
 
@@ -17748,13 +17754,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const d = await cf("DELETE", "/zones/" + z.id + "/workers/routes/" + w.id);
             if (!d.ok) failed.push({ zone: z.name, error: "could not remove " + w.pattern });
           }
-          if (!right) {
-            const c = await cf("POST", "/zones/" + z.id + "/workers/routes",
-              { pattern: z.name + "/*", script: TARGET });
-            if (c.ok) fixed.push({ zone: z.name, now: z.name + "/* -> " + TARGET });
-            else failed.push({ zone: z.name, error: (c.errors[0] && c.errors[0].message) || ("http " + c.status) });
-          } else if (wrong.length) {
-            fixed.push({ zone: z.name, now: "removed " + wrong.length + " route(s) to another worker" });
+          const made = [];
+          for (const [need, pattern] of [[!hasApex, z.name + "/*"], [!hasWww, "www." + z.name + "/*"]]) {
+            if (!need) continue;
+            const c = await cf("POST", "/zones/" + z.id + "/workers/routes", { pattern, script: TARGET });
+            if (c.ok) made.push(pattern);
+            else failed.push({ zone: z.name, pattern,
+              error: (c.errors[0] && c.errors[0].message) || ("http " + c.status) });
+          }
+          if (made.length || wrong.length) {
+            fixed.push({ zone: z.name, added: made.length ? made : undefined,
+              removed: wrong.length || undefined, now: "-> " + TARGET });
           }
         }
 

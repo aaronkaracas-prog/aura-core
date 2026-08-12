@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.22.2-2026-08-12-which-env-did-this-run-in";
+const BUILD = "aura-core-v5.23.0-2026-08-12-520-sending-domains-is-not-a-console-job";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -17723,6 +17723,101 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           watch: "SITE_READ STATUS " + d.result } };
       } catch (e) {
         return { cmd: "SITE_READ", payload: { ok: false, error: "Site read failed: " + (e && e.message ? e.message : String(e)) } };
+      }
+    }
+
+    case "EMAIL_DOMAINS": {
+      // ══ 520 SENDING DOMAINS IS NOT A CONSOLE JOB ═════════════════════════════════════════════
+      //
+      // MEASURED: Email Sending lists TWO onboarded domains - auras.guide and aiexchange.world. Every
+      // other property fails with "destination address is not a verified address", because an
+      // un-onboarded binding can only reach addresses already verified on the account. Aaron's Gmail
+      // is one, which is why the command line worked and a stranger's signup never could.
+      //
+      // Same shape as DOMAIN_ROUTE: survey first, fix in batches, idempotent, nothing by hand.
+      //
+      // A WORD ON DOING ALL OF THEM. Every onboarded domain is a reputation to keep. A domain that
+      // sends nothing for months and then sends a hundred cold emails is the textbook spam signature -
+      // no history, sudden volume, straight to junk. Onboarding is free and harmless; SENDING from a
+      // cold domain is what costs. This command makes them capable, not busy.
+      //
+      //   EMAIL_DOMAINS                    what is onboarded, what is not
+      //   EMAIL_DOMAINS CONFIRM 25         onboard the next 25
+      //   EMAIL_DOMAINS <domain> CONFIRM   one
+      if (!isOp) return { cmd: "EMAIL_DOMAINS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const edTok = await getSecret(env, "cf_api_token") || await getSecret(env, "cloudflare");
+      if (!edTok) return { cmd: "EMAIL_DOMAINS", payload: { ok: false, error: "NO_CF_TOKEN" } };
+      const edAcct = env.CF_ACCOUNT_ID || (await env.AURA_KV.get("config:cf:account_id").catch(() => null)) || "3db0de2c6fce92757e2c4e4f83d7eb16";
+      const ecf = async (method, path, body) => {
+        const r = await fetch("https://api.cloudflare.com/client/v4" + path, {
+          method, headers: { Authorization: "Bearer " + edTok, "Content-Type": "application/json" },
+          body: body ? JSON.stringify(body) : undefined });
+        const j = await r.json().catch(() => ({}));
+        return { status: r.status, ok: !!j.success, result: j.result, errors: j.errors || [] };
+      };
+      let edRaw = (rest || "").trim();
+      const edConfirm = /(^|\s)CONFIRM(\s|$)/i.test(edRaw);
+      edRaw = edRaw.replace(/(^|\s)CONFIRM(\s|$)/i, " ").trim();
+      const edLimM = edRaw.match(/(^|\s)(\d+)(\s|$)/);
+      const edLimit = edLimM ? Math.min(Math.max(Number(edLimM[2]) || 25, 1), 100) : 25;
+      edRaw = edRaw.replace(/(^|\s)\d+(\s|$)/, " ").trim();
+      const edOne = edRaw && edRaw.includes(".") ? edRaw.toLowerCase() : null;
+
+      try {
+        // ── what is already onboarded ──
+        const cur = await ecf("GET", "/accounts/" + edAcct + "/email/sending/domains?per_page=200");
+        if (!cur.ok) return { cmd: "EMAIL_DOMAINS", payload: { ok: false,
+          error: "could not read onboarded domains",
+          detail: (cur.errors[0] && cur.errors[0].message) || ("http " + cur.status),
+          hint: cur.status === 403 || cur.status === 404
+            ? "The token needs Account > Email Sending > Edit. Everything else on it is fine - this is " +
+              "the one permission this needs, and it is a different scope from Email Routing."
+            : undefined } };
+        const already = new Set((cur.result || []).map(d => String(d.name || d.domain || "").toLowerCase()));
+
+        // ── every zone on the account ──
+        let zones = [];
+        if (edOne) zones = [{ name: edOne }];
+        else {
+          for (let page = 1; page <= 20; page++) {
+            const z = await ecf("GET", "/zones?per_page=50&page=" + page);
+            if (!z.ok) break;
+            for (const x of (z.result || [])) zones.push({ id: x.id, name: x.name });
+            if ((z.result || []).length < 50) break;
+          }
+        }
+        const missing = zones.filter(z => !already.has(z.name.toLowerCase()));
+
+        if (!edConfirm) {
+          return { cmd: "EMAIL_DOMAINS", payload: { ok: true, mode: "survey",
+            zones_total: zones.length, onboarded: already.size, not_onboarded: missing.length,
+            already: [...already],
+            next_up: missing.slice(0, 20).map(z => z.name),
+            note: "NOTHING CHANGED. Onboarding adds SPF and DKIM records and costs nothing. A domain " +
+              "that is onboarded but never sends carries no risk - it is sending from a cold domain " +
+              "that lands in junk, not being capable of it.",
+            to_proceed: "EMAIL_DOMAINS CONFIRM " + edLimit } };
+        }
+
+        const done = [], failed = [];
+        for (const z of missing.slice(0, edLimit)) {
+          const r = await ecf("POST", "/accounts/" + edAcct + "/email/sending/domains", { name: z.name });
+          if (r.ok) done.push({ domain: z.name, dns: "SPF and DKIM added - verification is DNS and " +
+            "usually completes in 5-15 minutes on Cloudflare DNS" });
+          else failed.push({ domain: z.name,
+            error: (r.errors[0] && r.errors[0].message) || ("http " + r.status) });
+        }
+        return { cmd: "EMAIL_DOMAINS", payload: { ok: true, mode: "applied",
+          onboarded_now: done.length, failed: failed.length ? failed.slice(0, 10) : undefined,
+          domains: done,
+          remaining: Math.max(0, missing.length - edLimit),
+          note: "Records are written. Verification is DNS - a domain will not send until it shows " +
+            "Configured, which is usually minutes and can be up to 24 hours.",
+          next: missing.length > edLimit
+            ? "Re-run to continue - already-onboarded domains are skipped, so each run reaches further."
+            : "Every zone on the account is onboarded." } };
+      } catch (e) {
+        return { cmd: "EMAIL_DOMAINS", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
       }
     }
 

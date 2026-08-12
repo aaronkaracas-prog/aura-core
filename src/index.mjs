@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.21.1-2026-08-12-a-relationship-between-two-survivors";
+const BUILD = "aura-core-v5.22.0-2026-08-12-a-reply-is-what-they-wrote";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -42273,7 +42273,43 @@ export default {
           // Their words, on their chain, through the same door as anything else they say. PTA_HEARD
           // reads a stop and a due out of it too - "stop emailing me" in a reply has to mean what it
           // means on a phone call.
-          const said = String(body || "").replace(/^>.*$/gm, "").replace(/\s+/g, " ").trim().slice(0, 500);
+          // ══ A REPLY IS WHAT THEY WROTE, NOT WHAT THEY QUOTED ════════════════════════════
+          // MEASURED: "testing this" came back as "testing this On Wed, Aug 12, 2026 at 7:03=E2=80=AF
+          // AM Aura <noreply@auras.guide> wrote:" - the > stripper misses Gmail's attribution line
+          // because it has no > prefix, and quoted-printable was never decoded.
+          // This is not cosmetic. PTA_LEARN reads `said` to find what distinguishes a conversation,
+          // and PTA_HEARD scans it for stop language - a reply quoting an earlier "stop calling me"
+          // could fire on words nobody just said.
+          const said = (() => {
+            let t = String(body || "");
+            // quoted-printable: =XX bytes and soft line breaks
+            try {
+              t = t.replace(/=\r?\n/g, "")
+                   .replace(/=([0-9A-F]{2})/gi, (m, h) => String.fromCharCode(parseInt(h, 16)));
+            } catch {}
+            // Cut at the attribution line every client writes above the quote.
+            const cuts = [
+              /^\s*On .+ wrote:\s*$/m,                 // Gmail, Apple
+              /^\s*-----Original Message-----/m,        // Outlook
+              /^\s*From:\s.+$/m,                        // Outlook inline
+              /^\s*_{10,}\s*$/m,                        // Outlook divider
+              /^\s*Sent from my /m,
+            ];
+            let end = t.length;
+            for (const re of cuts) { const m = t.match(re); if (m && m.index < end) end = m.index; }
+            t = t.slice(0, end);
+            // Then drop any quoted lines that survived above the cut.
+            return t.replace(/^>.*$/gm, "").replace(/\s+/g, " ").trim().slice(0, 500);
+          })();
+          if (!said) {
+            // An empty reply is a real thing - an attachment, a thumbs-up, a blank line. Recording
+            // nothing beats recording a quote and calling it theirs.
+            rec.attached = false;
+            rec.attach_note = "nothing was said - the message was only quoted text";
+            await env.AURA_KV.put("email:inbox:" + id, JSON.stringify(rec),
+              { expirationTtl: 60 * 60 * 24 * 30 }).catch(() => {});
+            return;
+          }
           const r = await processCommand("PTA_HEARD " + who + " ::: " + (subject ? subject + " - " : "") + said,
             env, true);
           const rp = (r && r.payload) ? r.payload : r;

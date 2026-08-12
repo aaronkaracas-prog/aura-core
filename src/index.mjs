@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.17.2-2026-08-11-the-direct-id-was-overwritten";
+const BUILD = "aura-core-v5.18.1-2026-08-11-adding-a-business-is-not-proving-one";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -17882,7 +17882,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           phone: dp.phone || (own && own.contact && own.contact.phone) || null,
           website: dp.website || (own && own.contact && own.contact.website) || null,
           rating: dp.rating, reviews_count: dp.reviews_count, open_now: dp.open_now,
-          hours: dp.hours, photos: dp.photos, maps_url: dp.maps_url,
+          // Their own hours when Google has none - the chain is a source, not a fallback of last resort.
+          hours: dp.hours || (own && own.hours
+            ? (Array.isArray(own.hours) ? own.hours : [String(own.hours.open || own.hours.hours || JSON.stringify(own.hours))])
+            : null),
+          photos: dp.photos, maps_url: dp.maps_url,
           about: (understanding && understanding.what_it_is) || dp.about ||
                  (own && own.service && own.service.offers) || null,
           offerings: (understanding && understanding.offerings) || null,
@@ -17894,6 +17898,100 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "there is an invitation here rather than a page they control." } };
       } catch (e) {
         return { cmd: "OFB", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
+      }
+    }
+
+    case "ADD_BUSINESS": {
+      // ══ ADDING A BUSINESS IS NOT PROVING ONE ═══════════════════════════════════════════════
+      //
+      // The first version demanded a domain, which excludes exactly the businesses this is for - a
+      // brick-and-mortar shop with an address and no website. And verification at signup is friction
+      // in the one place friction kills the funnel: a tattoo parlor that has to wait a week for a
+      // postcard does not onboard.
+      //
+      // So: email confirmation and nothing else. They click a link, the business exists, it is listed.
+      // Nobody gains anything by adding a business they do not own, because nothing valuable happens
+      // until money moves - and money moving IS the strongest verification there is. Real proof
+      // (a listed phone, a postcard, a card at that address) gates the QR and the payout later, not
+      // the listing now.
+      //
+      // THE CHAIN SAYS SO. verified_via: "email_only" is on the record forever, so "how do we know
+      // this is theirs" has an honest answer rather than an implied one.
+      //
+      //   ADD_BUSINESS START <email> ::: <name> ::: <address> ::: <phone> ::: <what they do>
+      //   ADD_BUSINESS CONFIRM <token>
+      const abParts = (rest || "").split(":::").map(x => x.trim());
+      const abHead = (abParts[0] || "").split(/\s+/);
+      const abSub = String(abHead[0] || "").toUpperCase();
+
+      try {
+        if (abSub === "START") {
+          const email = (abHead[1] || "").trim().toLowerCase();
+          const name = abParts[1] || "";
+          const address = abParts[2] || "";
+          const phone = abParts[3] || "";
+          const about = abParts[4] || "";
+          if (!email.includes("@") || !name) return { cmd: "ADD_BUSINESS", payload: { ok: false,
+            error: "Usage: ADD_BUSINESS START <email> ::: <name> ::: <address> ::: <phone> ::: <what you do>" } };
+          const token = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+            .map(b => b.toString(16).padStart(2, "0")).join("");
+          await env.AURA_KV.put("addbiz:" + token, JSON.stringify({ email, name, address, phone, about,
+            started_at: new Date().toISOString() }), { expirationTtl: 7 * 86400 });
+          const link = "https://cityguide.world/confirm/" + token;
+          let sent = false, how = null;
+          try {
+            const er = await processCommand("EMAIL_SEND " + email + " Confirm your business on cityguide.world | " +
+              "You added " + name + " to cityguide.world.\n\nConfirm it here:\n" + link +
+              "\n\nIf this was not you, ignore this email and nothing will be listed.", env, true);
+            const ep = (er && er.payload) ? er.payload : er;
+            sent = !!(ep && ep.ok);
+            how = sent ? "email" : ((ep && ep.error) || "email did not send");
+          } catch (e) { how = String((e && e.message) || e).slice(0, 120); }
+          return { cmd: "ADD_BUSINESS", payload: { ok: true, mode: "confirm_sent", name, email, sent, how,
+            confirm_link: sent ? undefined : link,
+            what_to_say: sent
+              ? "Check your email and click the link to finish."
+              : "We could not send the email. Use the link below to confirm.",
+            expires_in: "7 days" } };
+        }
+
+        if (abSub === "CONFIRM") {
+          const token = (abHead[1] || "").trim();
+          let pend = null;
+          try { pend = JSON.parse((await env.AURA_KV.get("addbiz:" + token)) || "null"); } catch {}
+          if (!pend) return { cmd: "ADD_BUSINESS", payload: { ok: false, error: "LINK_EXPIRED",
+            what_to_say: "That link has expired or was already used. Add the business again." } };
+          const ing = await ingestBusiness(env, { name: pend.name, place_id: null,
+            phone: pend.phone || null, website: null, email: pend.email }, true);
+          if (!ing?.ok || !ing.id) return { cmd: "ADD_BUSINESS", payload: { ok: false,
+            error: "COULD_NOT_MINT", detail: ing,
+            what_to_say: "We could not create the record. Nothing was listed." } };
+          try {
+            await processCommand("PTA_REMEMBER " + ing.id + " CLAIMED " + JSON.stringify({
+              verified_via: "email_only", email: pend.email, confirmed_at: new Date().toISOString(),
+              strength: "they received mail at this address and clicked. It does not prove a shop " +
+                "exists or that they run it - stronger proof gates the QR and any payout, not the listing.",
+              event_type: "CLAIMED" }), env, true);
+            if (pend.address || pend.phone) {
+              await processCommand("PTA_REMEMBER " + ing.id + " CONTACT " + JSON.stringify({
+                address: pend.address || null, phone: pend.phone || null, email: pend.email }), env, true);
+            }
+            if (pend.about) {
+              await processCommand("PTA_REMEMBER " + ing.id + " SERVICE " + JSON.stringify({
+                offers: pend.about }), env, true);
+            }
+          } catch {}
+          try { await env.AURA_KV.delete("addbiz:" + token); } catch {}
+          return { cmd: "ADD_BUSINESS", payload: { ok: true, mode: "added", name: pend.name, pta: ing.id,
+            door: "https://openforbusiness.world/b/" + ing.id,
+            what_to_say: "Confirmed. Your business is listed.",
+            note: "Email only. Nothing has been consented to beyond what you typed - remembering " +
+              "anything more still needs a grant." } };
+        }
+        return { cmd: "ADD_BUSINESS", payload: { ok: false,
+          error: "Usage: ADD_BUSINESS START <email> ::: <name> ::: <address> ::: <phone> ::: <what you do>  |  ADD_BUSINESS CONFIRM <token>" } };
+      } catch (e) {
+        return { cmd: "ADD_BUSINESS", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
       }
     }
 
@@ -41860,6 +41958,18 @@ export class PublicEntry extends WorkerEntrypoint {
   async ofb(id) {
     try {
       const r = await processCommand("OFB " + String(id || "").trim(), this.env, false);
+      return (r && r.payload) ? r.payload : r;
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
+  // The public signup: add a business, confirm by email. No other verification - real proof gates the
+  // QR and the payout later, not the listing now.
+  async addbiz(action, payload) {
+    try {
+      const r = await processCommand("ADD_BUSINESS " + String(action || "").toUpperCase() + " " +
+        String(payload || ""), this.env, true);
       return (r && r.payload) ? r.payload : r;
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };

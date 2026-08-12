@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.23.1-2026-08-12-say-which-of-the-three-went-wrong";
+const BUILD = "aura-core-v5.24.0-2026-08-12-the-places-key-not-the-geocoding-one";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18350,11 +18350,27 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       try {
         const key = await getSecret(env, "google_maps");
         if (!key) return { cmd: "CITY_NEAR", payload: { ok: false, error: "no google_maps key" } };
-        const u = "https://maps.googleapis.com/maps/api/geocode/json?latlng=" + nLat + "," + nLng +
-                  "&result_type=locality&key=" + key;
+        // ══ THE PLACES KEY, NOT THE GEOCODING ONE (fixed 2026-08-12) ═══════════════════════════
+        // This called /maps/api/geocode/json - a SEPARATE API on the same key, and one that is not
+        // enabled. Aaron: "I've done location within a PTA before." He had: PTA_SPINE LOCATION SET
+        // geocodes through FETCH_PLACES, which works on the key that is already live. I read that
+        // code, said so, and then built the new path against a different API anyway.
+        //
+        // Nearby Search takes a lat/lng and returns what is AT those coordinates - the same endpoint
+        // PTA_GRID has been crawling cities with all day. A locality-typed result gives the city name
+        // without touching Geocoding at all.
+        const u = "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=" +
+                  nLat + "," + nLng + "&radius=8000&type=locality&key=" + key;
         const r = await fetch(u);
-        const d = await r.json();
-        const first = (d.results || [])[0];
+        let d = await r.json();
+        let first = (d.results || [])[0];
+        // No locality within 8km - widen once. Rural coordinates sit a long way from a town centre.
+        if (!first) {
+          const r2 = await fetch("https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=" +
+            nLat + "," + nLng + "&radius=50000&type=locality&key=" + key);
+          d = await r2.json();
+          first = (d.results || [])[0];
+        }
         if (!first) return { cmd: "CITY_NEAR", payload: { ok: false, error: "NO_CITY_HERE",
           what_to_say: d.status === "REQUEST_DENIED"
             ? "Location lookup is not switched on yet."
@@ -18365,15 +18381,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // does not have Geocoding enabled - a console toggle, not a location problem. The visitor
           // was told to check their GPS.
           hint: d.status === "REQUEST_DENIED"
-            ? "The Google Maps key needs the GEOCODING API enabled in the GCP console - it is a " +
-              "separate API from Places and they share one key."
+            ? "Places refused the key - the same key FETCH_PLACES and PTA_GRID use, so if those work " +
+              "this is a referrer or IP restriction on the key rather than a missing API."
             : (d.status === "ZERO_RESULTS"
               ? "Those coordinates are not inside any city Google recognises - open water, or somewhere remote."
               : undefined) } };
-        const name = String(first.address_components?.[0]?.long_name || "").trim();
+        // Nearby Search returns `name` and `vicinity`, not address_components.
+        const name = String(first.name || "").trim();
+        if (!name) return { cmd: "CITY_NEAR", payload: { ok: false, error: "NO_CITY_HERE",
+          what_to_say: "We could not work out which city that is." } };
         return { cmd: "CITY_NEAR", payload: { ok: true, city: name,
           slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
-          formatted: first.formatted_address || null } };
+          formatted: first.vicinity || first.formatted_address || null } };
       } catch (e) {
         return { cmd: "CITY_NEAR", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
       }

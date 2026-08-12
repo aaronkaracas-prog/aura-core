@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.20.0-2026-08-12-an-email-belongs-on-their-chain";
+const BUILD = "aura-core-v5.20.1-2026-08-12-a-person-is-not-the-company-they-run";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -22130,6 +22130,30 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 existing = await db.prepare("SELECT * FROM pta_entities WHERE id = ?").bind(aliasHit.pta_id).first();
               }
             } catch {}
+          }
+          // ══ A PERSON IS NOT THE COMPANY THEY RUN (fixed 2026-08-12) ═══════════════════════
+          //
+          // MEASURED: `PTA_ENTITY CREATE person Aaron identity:email:aaron@...` returned ARK SYSTEMS
+          // LLC - a BUSINESS - because that email was aliased to the company during a signup an hour
+          // earlier. The dedup matched the contact and ignored the type entirely, so asking for a
+          // person handed back a company with the wrong name.
+          //
+          // Sharing a contact detail is not being the same entity. An owner's email is on the
+          // company's record precisely BECAUSE they are two parties in a relationship - merging them
+          // destroys the distinction the whole graph exists to hold, and it does it silently.
+          //
+          // So: a match of a DIFFERENT type is refused rather than returned. The caller is told what
+          // that contact already belongs to and has to decide - a shared email between an owner and
+          // their business is normal and needs a deliberate answer, not a guess.
+          if (existing && String(existing.type || "") !== eType) {
+            return { cmd: "PTA_ENTITY", payload: { ok: false, error: "CONTACT_BELONGS_TO_ANOTHER_TYPE",
+              asked_for: { type: eType, name: eName },
+              already: { id: existing.id, type: existing.type, name: existing.name },
+              what_to_do: "That contact already identifies a " + existing.type + " called \"" +
+                (existing.name || "") + "\". A person and the business they run are two entities that " +
+                "share a contact, not one entity - and merging them silently would destroy exactly the " +
+                "relationship this graph exists to hold. Create this one with a contact of its own, or " +
+                "use the existing entity deliberately." } };
           }
           if (existing) return { cmd: "PTA_ENTITY", payload: { ok: true, mode: "existing", entity: await _unsealEnt(existing) } };
         }

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.19.3-2026-08-12-plain-strings-as-the-docs-show";
+const BUILD = "aura-core-v5.20.0-2026-08-12-an-email-belongs-on-their-chain";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -19433,10 +19433,34 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
       const emailFrom = await env.AURA_KV.get("config:email:from").catch(() => null) || "noreply@auras.guide";
       const sendResult = await sendEmail(env, emailTo, emailSubject, emailBody || emailSubject, { from: emailFrom });
+      // ══ WHAT SHE SAYS IS ALSO A TURN ═══════════════════════════════════════════════════════
+      // An outbound email to a known entity is her half of the conversation. Recorded on their chain
+      // so PTA_DUE and the learning loop see the whole exchange rather than only the replies - a
+      // conversation with one side missing teaches the wrong lesson.
+      if (sendResult.ok) {
+        try {
+          const hk2 = await hashIdentity(env, normIdentity("email:" + emailTo.trim().toLowerCase()));
+          const h2 = await env.AURA_MEMORY.prepare(
+            "SELECT pta_id FROM pta_identity_index WHERE identity_key = ?").bind(hk2.key).first().catch(() => null);
+          const who2 = h2?.pta_id || null;
+          if (who2) {
+            await processCommand("PTA_REMEMBER " + who2 + " SAID " + JSON.stringify({
+              said: (emailSubject ? emailSubject + " - " : "") + String(emailBody || "").slice(0, 500),
+              by: "aura", channel: "email", to: emailTo, at: new Date().toISOString() }), env, true);
+            sendResult.on_chain = who2;
+          }
+        } catch {}
+      }
       // Surface HOW it went out. Four 401s today were read as a token problem when the real cause was
       // a binding that could not send at all - the path taken is the thing that names it.
       if (sendResult.ok) {
-        return { cmd: "EMAIL_SEND", payload: { ok: true, to: emailTo, subject: emailSubject, message_id: sendResult.message_id, accepted: true } };
+        return { cmd: "EMAIL_SEND", payload: { ok: true, to: emailTo, subject: emailSubject,
+          message_id: sendResult.message_id, accepted: true, via: sendResult.via || null,
+          on_chain: sendResult.on_chain || undefined,
+          chain_note: sendResult.on_chain
+            ? "Recorded on their chain as something Aura said - her half of the conversation."
+            : "Not recorded anywhere. This address does not resolve to an entity, so there is no chain " +
+              "to put it on and nothing was minted to make one." } };
       }
       return { cmd: "EMAIL_SEND", payload: { ok: false, to: emailTo, subject: emailSubject,
         error: sendResult.error,
@@ -42137,6 +42161,49 @@ export default {
       await env.AURA_KV.put("email:inbox:" + id, JSON.stringify(rec), { expirationTtl: 60 * 60 * 24 * 30 }).catch(() => {});
       // pointer key for fast recent-listing (sortable by time)
       await env.AURA_KV.put("email:inbox:idx:" + Date.now() + ":" + id, id, { expirationTtl: 60 * 60 * 24 * 30 }).catch(() => {});
+
+      // ══ AN EMAIL FROM SOMEONE WE KNOW BELONGS ON THEIR CHAIN ═══════════════════════════════
+      //
+      // The inbox is a flat pile in KV - every message from everyone in one place, keyed by an id.
+      // So a reply from Joe and a phone call from Joe were two different memories in two different
+      // systems, and only one of them was consent-gated.
+      //
+      // An email address is an identity key exactly like a phone number or a place_id. If it resolves
+      // through the alias index, the sender IS a PTA and what they said belongs on their chain - next
+      // to the call, under the same grant, revocable together.
+      //
+      // AN UNKNOWN SENDER CREATES NOTHING. Someone writing to you is not a claim that they are yours
+      // to remember - it is less of one than a business merely existing, and that already mints
+      // nothing. Unknown mail stays in the flat inbox until somebody attaches it deliberately.
+      try {
+        const addr = String(from).match(/<([^>]+)>/) ? String(from).match(/<([^>]+)>/)[1] : String(from);
+        const hk = await hashIdentity(env, normIdentity("email:" + addr.trim().toLowerCase()));
+        let who = null;
+        const hit = await env.AURA_MEMORY.prepare(
+          "SELECT pta_id FROM pta_identity_index WHERE identity_key = ?").bind(hk.key).first().catch(() => null);
+        who = hit?.pta_id || null;
+        if (!who) {
+          const e2 = await env.AURA_MEMORY.prepare(
+            "SELECT id FROM pta_entities WHERE identity_key = ?").bind(hk.key).first().catch(() => null);
+          who = e2?.id || null;
+        }
+        if (who) {
+          // Their words, on their chain, through the same door as anything else they say. PTA_HEARD
+          // reads a stop and a due out of it too - "stop emailing me" in a reply has to mean what it
+          // means on a phone call.
+          const said = String(body || "").replace(/^>.*$/gm, "").replace(/\s+/g, " ").trim().slice(0, 500);
+          const r = await processCommand("PTA_HEARD " + who + " ::: " + (subject ? subject + " - " : "") + said,
+            env, true);
+          const rp = (r && r.payload) ? r.payload : r;
+          rec.pta = who;
+          rec.attached = !!(rp && rp.ok);
+          rec.attach_note = rp?.ok ? "recorded on their chain" : (rp?.error || "could not attach");
+          await env.AURA_KV.put("email:inbox:" + id, JSON.stringify(rec),
+            { expirationTtl: 60 * 60 * 24 * 30 }).catch(() => {});
+        }
+      } catch (e) {
+        console.warn("[EMAIL] could not attach inbound to a chain: " + String((e && e.message) || e));
+      }
     } catch (e) {
       try { await env.AURA_KV.put("email:inbox:error:" + Date.now(), String(e && e.message || e), { expirationTtl: 86400 }); } catch (e2) {}
     }

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.19.1-2026-08-12-email-routing-is-not-email-sending";
+const BUILD = "aura-core-v5.19.2-2026-08-12-a-null-name-is-not-a-name";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -4781,8 +4781,14 @@ async function sendEmail(env, to, subject, body, opts) {
     try {
       const bFrom = opts.from || (await KV.get(env, "config:email:from")) || "noreply@auras.guide";
       const bName = opts.fromName || (await KV.get(env, "config:email:from_name")) || "Aura";
-      const msg = { to: [{ email: to }], from: { email: bFrom, name: bName },
-                    subject: subject || "Message from Aura" };
+      // ══ A NULL NAME IS NOT A NAME (fixed 2026-08-12) ═══════════════════════════════════════
+      // binding_error said it outright: "Incorrect type for the 'name' field on 'EmailAddress'".
+      // bName comes from a KV lookup that can return null, and I passed it straight through - the
+      // binding wants a string or the field absent, not null. The binding was working the whole time
+      // and I spent four rounds blaming a token.
+      const msg = { to: [{ email: String(to) }],
+                    from: bName ? { email: String(bFrom), name: String(bName) } : { email: String(bFrom) },
+                    subject: String(subject || "Message from Aura") };
       if (opts.html) { msg.html = String(body || ""); msg.text = opts.text || String(body || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(); }
       else msg.text = body || subject || "";
       const sent = await env.SEND_EMAIL.send(msg);

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.22.0-2026-08-12-a-reply-is-what-they-wrote";
+const BUILD = "aura-core-v5.22.1-2026-08-12-one-line-because-the-parser-reads-one-line";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18000,14 +18000,24 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const link = "https://cityguide.world/confirm/" + token;
           let sent = false, how = null;
           try {
+            // ══ ONE LINE, BECAUSE THE PARSER READS ONE LINE ═══════════════════════════════
+            // EMAIL_SEND parses "<to> <subject> | <body>" off a single line. The body here carried
+            // \n\n around the link, which is very likely what broke it - a multi-line body reaching
+            // a single-line parser. Sending the body flat and letting the client wrap.
             const er = await processCommand("EMAIL_SEND " + email + " Confirm your business on cityguide.world | " +
-              "You added " + name + " to cityguide.world.\n\nConfirm it here:\n" + link +
-              "\n\nIf this was not you, ignore this email and nothing will be listed.", env, true);
+              "You added " + name + " to cityguide.world. Confirm it here: " + link +
+              "  --  If this was not you, ignore this email and nothing will be listed.", env, true);
             const ep = (er && er.payload) ? er.payload : er;
             sent = !!(ep && ep.ok);
             how = sent ? "email" : ((ep && ep.error) || "email did not send");
           } catch (e) { how = String((e && e.message) || e).slice(0, 120); }
-          return { cmd: "ADD_BUSINESS", payload: { ok: true, mode: "confirm_sent", name, email, sent, how,
+          // ══ THE REASON WAS CAUGHT AND NEVER SHOWN ═══════════════════════════════════════
+          // EMAIL_SEND works from the command line with this exact From, and the signup path does
+          // not. `how` has carried the reason the whole time and the page never displayed it, so the
+          // failure read as "email did not send" with no cause - the same claim-without-artifact
+          // shape as everything else this file has been fixing.
+          return { cmd: "ADD_BUSINESS", payload: { ok: true, mode: "confirm_sent", name, email, sent,
+            how, send_error: sent ? undefined : how,
             confirm_link: sent ? undefined : link,
             what_to_say: sent
               ? "Check your email and click the link to finish."

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.23.0-2026-08-12-520-sending-domains-is-not-a-console-job";
+const BUILD = "aura-core-v5.23.1-2026-08-12-say-which-of-the-three-went-wrong";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18356,12 +18356,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const d = await r.json();
         const first = (d.results || [])[0];
         if (!first) return { cmd: "CITY_NEAR", payload: { ok: false, error: "NO_CITY_HERE",
-          what_to_say: "We could not work out which city that is.",
+          what_to_say: d.status === "REQUEST_DENIED"
+            ? "Location lookup is not switched on yet."
+            : "We could not work out which city that is.",
           google_said: d.status || null,
+          google_detail: d.error_message || undefined,
+          // MEASURED on a phone: this returned "Could not work out your city" for a key that simply
+          // does not have Geocoding enabled - a console toggle, not a location problem. The visitor
+          // was told to check their GPS.
           hint: d.status === "REQUEST_DENIED"
-            ? "The Google Maps key needs the Geocoding API enabled - it is a separate API from Places " +
-              "on the same key."
-            : undefined } };
+            ? "The Google Maps key needs the GEOCODING API enabled in the GCP console - it is a " +
+              "separate API from Places and they share one key."
+            : (d.status === "ZERO_RESULTS"
+              ? "Those coordinates are not inside any city Google recognises - open water, or somewhere remote."
+              : undefined) } };
         const name = String(first.address_components?.[0]?.long_name || "").trim();
         return { cmd: "CITY_NEAR", payload: { ok: true, city: name,
           slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),

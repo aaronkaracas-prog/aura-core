@@ -148,8 +148,19 @@ bucket_name = "aura-knowledge-raw"
 binding = "AI_SEARCH"
 namespace = "aura"
 
+# ══ EMAIL SENDING, NOT EMAIL ROUTING (2026-08-12) ═══════════════════════════════════════════════
+# `[[send_email]] name = "SEND_EMAIL"` is the OLD Email Routing binding. It only replies to inbound
+# mail and only to addresses already verified as destinations on the account - it cannot originate a
+# message to a stranger's Gmail, which is what a signup confirmation is.
+# MEASURED: sendEmail fell through to the REST API and returned "http 401 Authentication error" four
+# times, and I read that as a token problem three of them. The token was never the issue; the code
+# was calling a send API this binding does not provide.
+# Cloudflare's Email Service binding is a different shape and needs `remote = true`. Their words on
+# why it is worth having: "send transactional emails directly from Workers with a native Workers
+# binding - no API keys, no secrets management." No permission to add, nothing to rotate, ever.
 [[send_email]]
 name = "SEND_EMAIL"
+remote = true
 
 # ══ TIER-0 CREDENTIALS OUT OF PLAINTEXT (2026-07-26) ════════════════════════════════════════════
 # 49 credentials live in KV as plaintext - the bank, the token that controls every domain and DNS

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.19.0-2026-08-12-the-binding-needs-no-token";
+const BUILD = "aura-core-v5.19.1-2026-08-12-email-routing-is-not-email-sending";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -4775,6 +4775,8 @@ async function sendEmail(env, to, subject, body, opts) {
   // Workers with a native Workers binding - no API keys, no secrets management." env.SEND_EMAIL is
   // already bound on this worker, so this needs no permission and no rotation, ever.
   // The REST path stays underneath for anywhere the binding is absent.
+  result.binding_present = !!env.SEND_EMAIL;
+  result.binding_callable = !!(env.SEND_EMAIL && typeof env.SEND_EMAIL.send === "function");
   if (env.SEND_EMAIL && typeof env.SEND_EMAIL.send === "function") {
     try {
       const bFrom = opts.from || (await KV.get(env, "config:email:from")) || "noreply@auras.guide";
@@ -4799,6 +4801,17 @@ async function sendEmail(env, to, subject, body, opts) {
       }
       // Anything else: fall through and try the REST path below.
     }
+  }
+  // If the binding is not callable the REST path is a dead end - it has 401'd every time today.
+  // Say which of the two failed rather than reporting an auth error for a binding problem.
+  if (!result.binding_callable) {
+    result.error = result.binding_present
+      ? "the SEND_EMAIL binding exists but has no .send() - it is the Email ROUTING binding, which " +
+        "only replies to inbound mail. Email Service needs `remote = true` in wrangler and a domain " +
+        "onboarded under Compute > Email Service > Email Sending."
+      : "no SEND_EMAIL binding on this worker at all.";
+    if (!cfToken) return result;
+    // fall through and try REST anyway - it may be configured even when the binding is not
   }
   if (!cfToken) { result.error = "no CF API token" + (result.binding_error ? " (binding also failed: " + result.binding_error + ")" : ""); return result; }
   // deliverability: a real From name (not bare noreply@) helps inbox placement
@@ -19406,10 +19419,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
       const emailFrom = await env.AURA_KV.get("config:email:from").catch(() => null) || "noreply@auras.guide";
       const sendResult = await sendEmail(env, emailTo, emailSubject, emailBody || emailSubject, { from: emailFrom });
+      // Surface HOW it went out. Four 401s today were read as a token problem when the real cause was
+      // a binding that could not send at all - the path taken is the thing that names it.
       if (sendResult.ok) {
         return { cmd: "EMAIL_SEND", payload: { ok: true, to: emailTo, subject: emailSubject, message_id: sendResult.message_id, accepted: true } };
       }
-      return { cmd: "EMAIL_SEND", payload: { ok: false, to: emailTo, subject: emailSubject, error: sendResult.error } };
+      return { cmd: "EMAIL_SEND", payload: { ok: false, to: emailTo, subject: emailSubject,
+        error: sendResult.error,
+        via: sendResult.via || null,
+        binding_present: sendResult.binding_present,
+        binding_callable: sendResult.binding_callable,
+        binding_error: sendResult.binding_error || undefined,
+        from: emailFrom } };
     }
 
     case "EMAIL_INBOX": {

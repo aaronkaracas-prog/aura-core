@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.24.1-2026-08-12-nearest-not-first";
+const BUILD = "aura-core-v5.25.0-2026-08-12-what-a-business-owner-sees";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -17955,6 +17955,62 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
     }
 
+    case "BUSINESS_OWNER": {
+      // ══ WHO OWNS THIS SHOP ═══════════════════════════════════════════════════════════════════
+      // The console asks "which business does this person own", and nothing was creating that edge.
+      // A CLAIM proves the business is theirs; this records WHO claimed it, so signing in later
+      // resolves to the right shop.
+      //
+      // It is a STRUCTURAL edge, not a grant. Owning a business is a relationship, not a permission -
+      // and a stop ("don't call me") must never sever it, which is exactly the distinction that was
+      // nearly lost when a widened revoke would have cut works_at edges.
+      //
+      //   BUSINESS_OWNER SET <person_pta> <business_pta>
+      //   BUSINESS_OWNER OF <person_pta>
+      if (!isOp) return { cmd: "BUSINESS_OWNER", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const boParts = (rest || "").trim().split(/\s+/);
+      const boSub = String(boParts[0] || "").toUpperCase();
+      const db = env.AURA_MEMORY;
+      try {
+        if (boSub === "OF") {
+          const who = boParts[1] || "";
+          const r = await db.prepare(
+            "SELECT e.to_id, x.name FROM pta_edges e LEFT JOIN pta_entities x ON x.id = e.to_id " +
+            "WHERE e.from_id = ? AND e.edge_type = 'owns' AND e.state = 'active'").bind(who).all();
+          return { cmd: "BUSINESS_OWNER", payload: { ok: true, person: who,
+            businesses: (r?.results || []).map(x => ({ id: x.to_id, name: x.name })) } };
+        }
+        if (boSub === "SET") {
+          const person = boParts[1] || "", biz = boParts[2] || "";
+          if (!person || !biz) return { cmd: "BUSINESS_OWNER", payload: { ok: false,
+            error: "Usage: BUSINESS_OWNER SET <person_pta> <business_pta>" } };
+          for (const [id, kind] of [[person, "person"], [biz, "business"]]) {
+            const e = await db.prepare("SELECT id FROM pta_entities WHERE id = ?").bind(id).first();
+            if (!e) return { cmd: "BUSINESS_OWNER", payload: { ok: false, error: "NO_SUCH_" + kind.toUpperCase(),
+              id, what_to_do: "Both parties have to exist before one can own the other." } };
+          }
+          const exists = await db.prepare(
+            "SELECT id FROM pta_edges WHERE from_id = ? AND to_id = ? AND edge_type = 'owns'")
+            .bind(person, biz).first();
+          if (exists) return { cmd: "BUSINESS_OWNER", payload: { ok: true, mode: "already",
+            edge_id: exists.id, note: "That ownership is already recorded." } };
+          const eid = "edge_" + Array.from(crypto.getRandomValues(new Uint8Array(8)))
+            .map(b => b.toString(16).padStart(2, "0")).join("");
+          const now2 = new Date().toISOString();
+          await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, created_at, updated_at) " +
+            "VALUES (?, ?, ?, 'owns', 'active', ?, ?)").bind(eid, person, biz, now2, now2).run();
+          return { cmd: "BUSINESS_OWNER", payload: { ok: true, mode: "recorded", edge_id: eid,
+            person, business: biz,
+            note: "Structural, not a grant. Signing in as this person now reaches this business - and " +
+              "asking us to stop contacting them will never sever it." } };
+        }
+        return { cmd: "BUSINESS_OWNER", payload: { ok: false,
+          error: "Usage: BUSINESS_OWNER SET <person> <business>  |  BUSINESS_OWNER OF <person>" } };
+      } catch (e) {
+        return { cmd: "BUSINESS_OWNER", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
+      }
+    }
+
     case "OFB": {
       // ══ WHAT WE KNOW, AND WHETHER THEY OWN IT ═══════════════════════════════════════════════
       //
@@ -18167,6 +18223,86 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           error: "Usage: ADD_BUSINESS START <email> ::: <name> ::: <address> ::: <phone> ::: <what you do>  |  ADD_BUSINESS CONFIRM <token>" } };
       } catch (e) {
         return { cmd: "ADD_BUSINESS", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
+      }
+    }
+
+    case "CONSOLE": {
+      // ══ WHAT A BUSINESS OWNER SEES ═══════════════════════════════════════════════════════════
+      //
+      // One shell, one nav, and the nav comes from the business TYPE rather than from code. A tattoo
+      // shop and a restaurant get different sections from the same document - RestaurantOS is a
+      // longer list in the same structure, and adding a vertical never touches the console.
+      //
+      // SCOPED BY OWNERSHIP, NOT BY URL. The caller passes their own PTA (from a session) and this
+      // finds what they own. An id in a URL is a request; an owns edge is a fact.
+      //
+      //   CONSOLE <owner_pta>              everything they own
+      //   CONSOLE <owner_pta> <biz_pta>    one business, in full
+      const coParts = (rest || "").trim().split(/\s+/);
+      const coOwner = coParts[0] || "";
+      const coBiz = coParts[1] || null;
+      if (!coOwner) return { cmd: "CONSOLE", payload: { ok: false, error: "Usage: CONSOLE <owner_pta> [business_pta]" } };
+      try {
+        const db = env.AURA_MEMORY;
+        // What they own. An owns/manages edge from the person to the business.
+        const owned = await db.prepare(
+          "SELECT e.to_id AS id, x.name, x.type, x.metadata FROM pta_edges e " +
+          "JOIN pta_entities x ON x.id = e.to_id " +
+          "WHERE e.from_id = ? AND e.edge_type IN ('owns','manages','works_at') AND e.state != 'revoked'"
+        ).bind(coOwner).all().catch(() => null);
+        let list = (owned?.results || []).map(r => ({ id: r.id, name: r.name, type: r.type }));
+
+        if (!list.length) return { cmd: "CONSOLE", payload: { ok: true, businesses: [],
+          what_to_say: "You do not have a business here yet.",
+          note: "A business appears once you claim it - the claim is what makes it yours, and it is " +
+            "the same act whether you found it on cityguide.world or added it by hand." } };
+
+        const pick = coBiz && list.find(b => b.id === coBiz) ? coBiz : list[0].id;
+        // The nav is data. Sections a tattoo shop needs; a restaurant's list is longer and lives in
+        // the same place. Nothing in the shell knows what a tattoo shop is.
+        const NAV = {
+          tattoo_shop: ["Today", "Appointments", "Artists", "Designs", "Customers", "Deposits", "Your page"],
+          restaurant:  ["Today", "Front of house", "Kitchen", "Menu", "Reservations", "Staff", "Your page"],
+          salon:       ["Today", "Appointments", "Stylists", "Customers", "Deposits", "Your page"],
+          _default:    ["Today", "Appointments", "Customers", "Your page"],
+        };
+        let type = null, understanding = null, chain = [];
+        try {
+          const stub = env.PTA_DO.get(env.PTA_DO.idFromName(pick));
+          const r = await stub.fetch(new Request("http://do", { method: "POST",
+            body: JSON.stringify({ method: "getState", params: [] }) }));
+          const j = await r.json();
+          chain = j?.pta?.chain || [];
+          const u = [...chain].reverse().find(c => c && c.event === "UNDERSTANDING");
+          understanding = u?.data || null;
+          type = understanding?.business_type || null;
+        } catch {}
+
+        const gs = await grantState(env, pick, await auraPtaId(env), "remember");
+        const commitments = chain.filter(c => c?.data?.due).slice(-5).reverse();
+        const outcome = [...chain].reverse().find(c => c?.event === "OUTCOME");
+        const said = chain.filter(c => c?.data?.said).slice(-8).reverse();
+
+        return { cmd: "CONSOLE", payload: { ok: true,
+          businesses: list, showing: pick,
+          name: list.find(b => b.id === pick)?.name || null,
+          business_type: type,
+          nav: NAV[type] || NAV._default,
+          about: understanding?.what_it_is || null,
+          offerings: understanding?.offerings || null,
+          // What Aura may do for them, in their words rather than as a flag.
+          aura_may: gs.allowed
+            ? "remember things about this business"
+            : "nothing yet - she has not been given permission to remember anything",
+          conversation: said.map(c => ({ said: c.data.said, at: c.ts,
+            by: c.actor === "aura" ? "aura" : "them" })),
+          owed: commitments.map(c => ({ said: c.data.said || null, due: c.data.due })),
+          outcome: outcome?.data?.outcome || null,
+          your_page: "https://openforbusiness.world/b/" + pick,
+          note: "Everything here is theirs. Aura holds it under a grant they gave and can be told to " +
+            "stop at any point, from this console or by saying so to her." } };
+      } catch (e) {
+        return { cmd: "CONSOLE", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
       }
     }
 
@@ -42307,6 +42443,47 @@ export class PublicEntry extends WorkerEntrypoint {
     try {
       const r = await processCommand("ADD_BUSINESS " + String(action || "").toUpperCase() + " " +
         String(payload || ""), this.env, true);
+      return (r && r.payload) ? r.payload : r;
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
+  // The business console. The SESSION decides which business - never the request, or anyone could
+  // read somebody else's shop by editing a URL.
+  async console(sessionId) {
+    try {
+      const me = await this._whoIs(sessionId);
+      if (!me) return { ok: false, error: "NOT_SIGNED_IN",
+        what_to_say: "Sign in to see your business." };
+      // Which businesses does this person own? An owner edge, not a guess.
+      const own = await this.env.AURA_MEMORY.prepare(
+        "SELECT to_id FROM pta_edges WHERE from_id = ? AND edge_type = 'owns' AND state = 'active'"
+      ).bind(me.pta).all().catch(() => null);
+      const ids = (own?.results || []).map(r => r.to_id);
+      if (!ids.length) return { ok: false, error: "NO_BUSINESS",
+        what_to_say: "This account is not connected to a business yet.",
+        pta: me.pta };
+      const r = await processCommand("CONSOLE " + ids[0], this.env, false);
+      const p = (r && r.payload) ? r.payload : r;
+      return { ...p, signed_in_as: me.name || me.pta, businesses: ids };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
+  // ══ THE BUSINESS CONSOLE ═══════════════════════════════════════════════════════════════════
+  // A session proves who is asking. This answers "what am I allowed to see, and what is here" for
+  // the businesses that person owns. Everything is scoped by an OWNS edge - a session for one person
+  // can never read another's business, because the query starts from their PTA rather than from an
+  // id in the URL.
+  async console_(sessionId, businessId) {
+    try {
+      const me = await this.sessionCheck(sessionId);
+      if (!me?.ok) return { ok: false, error: "NOT_SIGNED_IN",
+        what_to_say: "Sign in to see your business." };
+      const r = await processCommand("CONSOLE " + me.pta + (businessId ? " " + businessId : ""),
+        this.env, true);
       return (r && r.payload) ? r.payload : r;
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };

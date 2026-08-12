@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.22.1-2026-08-12-one-line-because-the-parser-reads-one-line";
+const BUILD = "aura-core-v5.22.2-2026-08-12-which-env-did-this-run-in";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18008,8 +18008,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "You added " + name + " to cityguide.world. Confirm it here: " + link +
               "  --  If this was not you, ignore this email and nothing will be listed.", env, true);
             const ep = (er && er.payload) ? er.payload : er;
+            // ══ WHICH ENV DID THIS RUN IN ══════════════════════════════════════════════════
+            // The command line sends via the binding; this path 401s on the REST fallback. Same code,
+            // so the difference is WHERE it runs - an RPC call lands on PublicEntry, and the env there
+            // may not carry the same bindings as the default export. The send already reports
+            // binding_present and binding_callable; carry them out so the page says which.
             sent = !!(ep && ep.ok);
             how = sent ? "email" : ((ep && ep.error) || "email did not send");
+            if (!sent && ep) {
+              how += " [binding_present=" + String(ep.binding_present) +
+                     " callable=" + String(ep.binding_callable) +
+                     (ep.binding_error ? " binding_error=" + String(ep.binding_error).slice(0, 90) : "") + "]";
+            }
           } catch (e) { how = String((e && e.message) || e).slice(0, 120); }
           // ══ THE REASON WAS CAUGHT AND NEVER SHOWN ═══════════════════════════════════════
           // EMAIL_SEND works from the command line with this exact From, and the signup path does

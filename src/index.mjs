@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.18.1-2026-08-11-adding-a-business-is-not-proving-one";
+const BUILD = "aura-core-v5.19.0-2026-08-12-the-binding-needs-no-token";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -4767,7 +4767,40 @@ async function sendEmail(env, to, subject, body, opts) {
     } catch {}
   }
   const cfToken = await getSecret(env, "cf_api_token");
-  if (!cfToken) { result.error = "no CF API token"; return result; }
+  // ══ THE BINDING FIRST, THE TOKEN AS FALLBACK (2026-08-12) ═══════════════════════════════════
+  // MEASURED: the REST path returned "http 401 Authentication error" - the fourth token problem in a
+  // day, because the aura-core token carries Zone, DNS, Workers Routes and Browser Run and nothing
+  // for email.
+  // Cloudflare's own words on why the binding is the answer: "send transactional emails directly from
+  // Workers with a native Workers binding - no API keys, no secrets management." env.SEND_EMAIL is
+  // already bound on this worker, so this needs no permission and no rotation, ever.
+  // The REST path stays underneath for anywhere the binding is absent.
+  if (env.SEND_EMAIL && typeof env.SEND_EMAIL.send === "function") {
+    try {
+      const bFrom = opts.from || (await KV.get(env, "config:email:from")) || "noreply@auras.guide";
+      const bName = opts.fromName || (await KV.get(env, "config:email:from_name")) || "Aura";
+      const msg = { to: [{ email: to }], from: { email: bFrom, name: bName },
+                    subject: subject || "Message from Aura" };
+      if (opts.html) { msg.html = String(body || ""); msg.text = opts.text || String(body || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(); }
+      else msg.text = body || subject || "";
+      const sent = await env.SEND_EMAIL.send(msg);
+      result.ok = true; result.accepted = true; result.via = "binding";
+      result.message_id = (sent && (sent.message_id || sent.id)) || null;
+      return result;
+    } catch (e) {
+      // Named error codes, not a generic failure - E_SENDER_NOT_VERIFIED means the DOMAIN was never
+      // onboarded, which is a dashboard step and not a code problem. Say which.
+      const msg = String((e && e.message) || e);
+      result.binding_error = msg.slice(0, 200);
+      if (/SENDER_NOT_VERIFIED/i.test(msg)) {
+        result.error = "sender not verified: the domain behind this From address has not been onboarded " +
+          "in Email Service. Cloudflare dashboard - Compute, Email Service, Email Sending, Onboard Domain.";
+        return result;
+      }
+      // Anything else: fall through and try the REST path below.
+    }
+  }
+  if (!cfToken) { result.error = "no CF API token" + (result.binding_error ? " (binding also failed: " + result.binding_error + ")" : ""); return result; }
   // deliverability: a real From name (not bare noreply@) helps inbox placement
   const fromAddr = opts.from || (await KV.get(env, "config:email:from")) || "noreply@auras.guide";
   const fromName = opts.fromName || (await KV.get(env, "config:email:from_name")) || "Aura";

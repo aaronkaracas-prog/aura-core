@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.24.0-2026-08-12-the-places-key-not-the-geocoding-one";
+const BUILD = "aura-core-v5.24.1-2026-08-12-nearest-not-first";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18359,18 +18359,37 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // Nearby Search takes a lat/lng and returns what is AT those coordinates - the same endpoint
         // PTA_GRID has been crawling cities with all day. A locality-typed result gives the city name
         // without touching Geocoding at all.
+        // ══ NEAREST, NOT FIRST (fixed 2026-08-12) ═══════════════════════════════════════════
+        // radius=8000 returned Los Angeles for coordinates in Malibu - a 8km circle catches the big
+        // city's centroid and Google ranks by prominence, so the larger locality wins. Somebody
+        // standing in Malibu is not in Los Angeles.
+        // rankby=distance drops the radius entirely and returns nearest-first, and the results carry
+        // geometry so the nearest can be picked rather than trusted.
         const u = "https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=" +
-                  nLat + "," + nLng + "&radius=8000&type=locality&key=" + key;
+                  nLat + "," + nLng + "&rankby=distance&type=locality&key=" + key;
         const r = await fetch(u);
         let d = await r.json();
-        let first = (d.results || [])[0];
-        // No locality within 8km - widen once. Rural coordinates sit a long way from a town centre.
-        if (!first) {
+        let cands = d.results || [];
+        if (!cands.length) {
+          // Nothing typed locality nearby - widen to any populated place rather than give up.
           const r2 = await fetch("https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=" +
             nLat + "," + nLng + "&radius=50000&type=locality&key=" + key);
           d = await r2.json();
-          first = (d.results || [])[0];
+          cands = d.results || [];
         }
+        // Pick by actual distance. rankby=distance usually orders correctly, but a result set that
+        // came from the radius fallback does not, and one wrong city is worse than a slower answer.
+        const hav = (a, b, c, e) => {
+          const R = 6371, t = (x) => x * Math.PI / 180;
+          const dLa = t(c - a), dLo = t(e - b);
+          const h = Math.sin(dLa / 2) ** 2 + Math.cos(t(a)) * Math.cos(t(c)) * Math.sin(dLo / 2) ** 2;
+          return 2 * R * Math.asin(Math.sqrt(h));
+        };
+        cands = cands.map(x => ({ x, km: (x.geometry?.location
+          ? hav(nLat, nLng, x.geometry.location.lat, x.geometry.location.lng) : 9999) }))
+          .sort((p, q) => p.km - q.km);
+        const first = cands.length ? cands[0].x : null;
+        const firstKm = cands.length ? Math.round(cands[0].km * 10) / 10 : null;
         if (!first) return { cmd: "CITY_NEAR", payload: { ok: false, error: "NO_CITY_HERE",
           what_to_say: d.status === "REQUEST_DENIED"
             ? "Location lookup is not switched on yet."
@@ -18392,7 +18411,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           what_to_say: "We could not work out which city that is." } };
         return { cmd: "CITY_NEAR", payload: { ok: true, city: name,
           slug: name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
-          formatted: first.vicinity || first.formatted_address || null } };
+          formatted: first.vicinity || first.formatted_address || null,
+          km_away: firstKm,
+          also_near: cands.slice(1, 4).map(c => ({ city: c.x.name, km: Math.round(c.km * 10) / 10 })) } };
       } catch (e) {
         return { cmd: "CITY_NEAR", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
       }

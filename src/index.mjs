@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.20.1-2026-08-12-a-person-is-not-the-company-they-run";
+const BUILD = "aura-core-v5.21.0-2026-08-12-two-records-the-wipe-must-not-take";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -24832,6 +24832,24 @@ Be concise. This update will be compared against the next update to show drift o
       //   PTA_WIPE CONFIRM       - actually remove it
       //   PTA_WIPE CONFIRM KEEP <id> [<id>...]  - remove everything EXCEPT these
       if (!isOp) return { cmd: "PTA_WIPE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      // ══ TWO RECORDS THE WIPE MUST NOT TAKE (2026-08-12) ══════════════════════════════════════
+      //
+      // Aaron's own PTA has been destroyed twice in two days - once by a wipe, once by test businesses
+      // consuming every contact he has. The one record the whole thesis rests on - Aura knowing HIM,
+      // forever, under his grant - is the only one that has never survived a day.
+      //
+      // And her own PTA is what businesses grant TO. Delete it and every grant in the store points at
+      // an actor that no longer exists, which is how seven hardcoded pta_aura reads died in August.
+      //
+      // Both are kept unless named explicitly. A wipe is for clearing test data, and neither of these
+      // is test data - they are the two parties everything else is a relationship BETWEEN.
+      const _keepAlways = [];
+      try {
+        const meId = await env.AURA_KV.get("config:aura:pta_id");
+        if (meId) _keepAlways.push(meId);
+        const opId = await env.AURA_KV.get("config:operator:pta_id");
+        if (opId) _keepAlways.push(opId);
+      } catch {}
       // ══ BULK DELETE IS A TEST-STORE TOOL ═════════════════════════════════════════════════════
       // This removed 43 entities, 49 edges and 10,444 history rows in one call. That was right for a
       // store full of ghosts and is wrong the moment a real merchant's consent record is in there:
@@ -24849,7 +24867,14 @@ Be concise. This update will be compared against the next update to show drift o
         const db = env.AURA_MEMORY;
         const up = rest.toUpperCase();
         const confirm = /\bCONFIRM\b/.test(up);
+        const _wipeAll = /\bEVERYTHING\b/.test(up);   // the only way to take the two protected records
+        // Explicit KEEPs, plus the two that are kept whether asked for or not. EVERYTHING is the one
+        // word that overrides the protection - so taking Aaron's own record is possible and can only
+        // ever be deliberate.
         const keepIds = (rest.match(/\b(pta_[a-f0-9]+|ent_[a-f0-9]+)\b/gi) || []).map((x) => x.toLowerCase());
+        if (!_wipeAll) for (const k of _keepAlways) {
+          if (k && !keepIds.includes(String(k).toLowerCase())) keepIds.push(String(k).toLowerCase());
+        }
         const all = await db.prepare("SELECT id, name, identity_key, created_at FROM pta_entities").all();
         const rows = (all?.results || []).filter((r) => !keepIds.includes(String(r.id).toLowerCase()));
         const edgeCount = await db.prepare("SELECT COUNT(*) n FROM pta_edges").first();
@@ -24858,6 +24883,14 @@ Be concise. This update will be compared against the next update to show drift o
           return { cmd: "PTA_WIPE", payload: { ok: true, dry_run: true,
             would_remove: { entities: rows.length, edges: (edgeCount && edgeCount.n) || 0, history: (histCount && histCount.n) || 0 },
             keeping: keepIds.length ? keepIds : "nothing - every entity would go",
+            protected: _wipeAll ? "NONE - EVERYTHING was given, so Aura's own record and the operator's go too"
+              : (_keepAlways.length ? _keepAlways : undefined),
+            protected_note: _wipeAll
+              ? "EVERYTHING overrides the protection. Every grant in the store points at Aura's id - " +
+                "removing it leaves them pointing at an actor that does not exist."
+              : (_keepAlways.length ? "Aura's own PTA and the operator's are kept automatically. They " +
+                "are the two parties everything else is a relationship BETWEEN, not test data. Add " +
+                "EVERYTHING to take them anyway." : undefined),
             sample: rows.slice(0, 12).map((r) => ({ id: r.id, name: r.name, created_at: r.created_at })),
             how: "PTA_WIPE CONFIRM   (or: PTA_WIPE CONFIRM KEEP pta_xxx pta_yyy)",
             warning: "Irreversible. Chains, edges and history are removed permanently - there is no "

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.21.0-2026-08-12-two-records-the-wipe-must-not-take";
+const BUILD = "aura-core-v5.21.1-2026-08-12-a-relationship-between-two-survivors";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -24877,8 +24877,26 @@ Be concise. This update will be compared against the next update to show drift o
         }
         const all = await db.prepare("SELECT id, name, identity_key, created_at FROM pta_entities").all();
         const rows = (all?.results || []).filter((r) => !keepIds.includes(String(r.id).toLowerCase()));
-        const edgeCount = await db.prepare("SELECT COUNT(*) n FROM pta_edges").first();
-        const histCount = await db.prepare("SELECT COUNT(*) n FROM pta_history").first();
+        // ══ A RELATIONSHIP BETWEEN TWO SURVIVORS IS NOT COLLATERAL (fixed 2026-08-12) ═══════
+        // MEASURED: with only Aaron and Aura left - both protected - the wipe still reported
+        // "entities: 0, edges: 1, history: 2". It would have kept both parties and destroyed the
+        // grant BETWEEN them, which is the one thing that makes them related at all. A consent that
+        // both parties still exist to honour is not test data.
+        // Counted the same way it is deleted: an edge survives when BOTH ends are kept.
+        const _kept = new Set(keepIds);
+        const _edgeRows = await db.prepare("SELECT id, from_id, to_id FROM pta_edges").all();
+        const _doomedEdges = (_edgeRows?.results || []).filter(e =>
+          !(_kept.has(String(e.from_id).toLowerCase()) && _kept.has(String(e.to_id).toLowerCase())));
+        const _doomedIds = _doomedEdges.map(e => e.id);
+        let _histN = 0;
+        if (_doomedIds.length) {
+          const ph = _doomedIds.map(() => "?").join(",");
+          const h = await db.prepare("SELECT COUNT(*) n FROM pta_history WHERE edge_id IN (" + ph + ")")
+            .bind(..._doomedIds).first().catch(() => null);
+          _histN = (h && h.n) || 0;
+        }
+        const edgeCount = { n: _doomedEdges.length };
+        const histCount = { n: _histN };
         if (!confirm) {
           return { cmd: "PTA_WIPE", payload: { ok: true, dry_run: true,
             would_remove: { entities: rows.length, edges: (edgeCount && edgeCount.n) || 0, history: (histCount && histCount.n) || 0 },
@@ -24901,8 +24919,15 @@ Be concise. This update will be compared against the next update to show drift o
           // History first, then edges, then entities - a child row orphaned by a failure halfway is
           // harder to reason about than one that simply has not been reached yet.
           if (!keepIds.length) {
-            const h = await db.prepare("DELETE FROM pta_history").run(); hist = (h && h.meta && h.meta.changes) || 0;
-            const e = await db.prepare("DELETE FROM pta_edges").run(); edges = (e && e.meta && e.meta.changes) || 0;
+            // Same rule at delete time as at count time: an edge between two kept entities stays,
+            // and so does its history. Anything else silently severs a live consent.
+            if (_doomedIds.length) {
+              const ph2 = _doomedIds.map(() => "?").join(",");
+              const h = await db.prepare("DELETE FROM pta_history WHERE edge_id IN (" + ph2 + ")").bind(..._doomedIds).run();
+              hist = (h && h.meta && h.meta.changes) || 0;
+              const e = await db.prepare("DELETE FROM pta_edges WHERE id IN (" + ph2 + ")").bind(..._doomedIds).run();
+              edges = (e && e.meta && e.meta.changes) || 0;
+            }
             const x = await db.prepare("DELETE FROM pta_entities").run(); ents = (x && x.meta && x.meta.changes) || 0;
             // ══ A WIPE THAT LEAVES A TABLE BEHIND IS A TRAP FOR THE NEXT RESET ══════════════════
             // MEASURED after the store was emptied: PTA_DUE still reported a commitment for Alta Gama,

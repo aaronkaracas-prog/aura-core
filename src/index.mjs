@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.19.2-2026-08-12-a-null-name-is-not-a-name";
+const BUILD = "aura-core-v5.19.3-2026-08-12-plain-strings-as-the-docs-show";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -4786,8 +4786,16 @@ async function sendEmail(env, to, subject, body, opts) {
       // bName comes from a KV lookup that can return null, and I passed it straight through - the
       // binding wants a string or the field absent, not null. The binding was working the whole time
       // and I spent four rounds blaming a token.
-      const msg = { to: [{ email: String(to) }],
-                    from: bName ? { email: String(bFrom), name: String(bName) } : { email: String(bFrom) },
+      // ══ PLAIN STRINGS, AS THE DOCS SHOW ═══════════════════════════════════════════════════
+      // I built {email, name} objects and got "Incorrect type for the 'name' field on 'EmailAddress'"
+      // twice - once before removing a null name and once after, which is what proved the object
+      // shape itself was the problem rather than the value in it.
+      // Cloudflare's own basic usage is strings: to: "a@b.com", from: "c@d.com". The interface accepts
+      // `string | EmailAddress`, and the string form has no name field to get wrong.
+      // A From display name is worth having, so it goes in the RFC form - "Aura <noreply@x>" - which
+      // is a string and cannot be mistyped.
+      const msg = { to: String(to),
+                    from: bName ? String(bName) + " <" + String(bFrom) + ">" : String(bFrom),
                     subject: String(subject || "Message from Aura") };
       if (opts.html) { msg.html = String(body || ""); msg.text = opts.text || String(body || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(); }
       else msg.text = body || subject || "";

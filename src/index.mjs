@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.26.2-2026-08-13-workers-ai-does-not-always-return-a-string";
+const BUILD = "aura-core-v5.26.3-2026-08-13-talking-and-filing-are-two-jobs";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18349,14 +18349,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "answered.\n\n"
             : "First work out what kind of business this is. Once you know, ask what somebody in " +
               "that trade would expect to be asked about how it runs.\n\n") +
-          "ONE QUESTION AT A TIME. Two sentences at most. No preamble, no enthusiasm. Never ask " +
-          "twice for the same thing.\n\n" +
-          "Reply as JSON and nothing else:\n" +
-          '{"say":"what you say","known":{"name":"","email":"","phone":"","address":"","website":"",' +
-          '"business_type":"","what_they_do":"","hours":"","operations":{}},"ready":false}\n\n' +
-          "`known` carries forward everything so far. `business_type` is a lowercase slug you choose. " +
-          "`operations` is what you learn about how they RUN - whatever matters for their trade. " +
-          "`ready` is true when you have a name, a way to reach them, and a real picture of the work.\n\n" +
+          "ONE QUESTION AT A TIME. Two sentences at most. No preamble, no enthusiasm, no 'great " +
+          "question'. Never ask twice for the same thing.\n\n" +
+          "Just talk. Say your reply and nothing else - no JSON, no formatting, no labels.\n\n" +
           "ALREADY KNOWN: " + JSON.stringify(st.known);
 
         const convo = st.turns.slice(-14).map(t => ({
@@ -18394,6 +18389,33 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           return { cmd: "ONBOARD_CHAT", payload: { ok: false,
             error: "could not think: " + String((e && e.message) || e).slice(0, 120),
             what_to_say: "Something went wrong on my end - say that again?" } };
+        }
+        // ══ TALKING AND FILING ARE TWO JOBS ═══════════════════════════════════════════════════
+        // MEASURED: she replied well - "a nice play on the name", then a real operations question -
+        // and it was PROSE. The prompt carries site text, a playbook and a JSON schema, and an 8B
+        // model asked to hold a format rule through all of that drops it.
+        // So: if the reply is prose, keep it. It is a good reply. Then ask a SECOND, tiny call to
+        // pull the facts out of the conversation - one job each, and a short prompt for the one that
+        // has to obey a format.
+        if (!out?.say && _ocRaw.trim()) {
+          out = { say: _ocRaw.trim(), known: {} };
+          try {
+            const ex = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
+              messages: [{ role: "system", content:
+                "Pull facts from this conversation. JSON only, no other text:\n" +
+                '{"name":"","email":"","phone":"","address":"","website":"","business_type":"",' +
+                '"what_they_do":"","hours":""}\n' +
+                "Empty string for anything not said. business_type is a lowercase slug." },
+                { role: "user", content: st.turns.slice(-8).map(t =>
+                  (t.by === "them" ? "THEM: " : "AURA: ") + t.said).join("\n") }],
+              max_tokens: 400 });
+            const et = aiText(ex);
+            const ea = et.indexOf("{"), eb = et.lastIndexOf("}");
+            if (ea >= 0 && eb > ea) {
+              const facts = JSON.parse(et.slice(ea, eb + 1));
+              out.known = Object.fromEntries(Object.entries(facts).filter(([, v]) => v && String(v).trim()));
+            }
+          } catch {}
         }
         if (!out?.say) return { cmd: "ONBOARD_CHAT", payload: { ok: false, error: "no reply produced",
           // Show what came back. "No reply produced" is true and useless - the model said something,

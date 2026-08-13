@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.31.0-2026-08-13-waiting-is-not-deafness";
+const BUILD = "aura-core-v5.32.0-2026-08-13-a-seat-is-a-person-attached-to-a-business";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18943,6 +18943,118 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           your_page: st.pta ? "https://openforbusiness.world/b/" + st.pta : null } };
       } catch (e) {
         return { cmd: "ONBOARD_CHAT", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
+      }
+    }
+
+    case "SEAT": {
+      // ══ A SEAT IS A PERSON ATTACHED TO A BUSINESS ═════════════════════════════════════════════
+      //
+      // Tattoo artists today, stylists and agents and cooks tomorrow. The mechanic is the same and
+      // the word is deliberately not "artist" - the day after tattoos comes dispensaries, and a
+      // command named for one trade is a command that gets rewritten for the next.
+      //
+      // A seat is a works_at EDGE from a person to the business. Structure, not consent: it says
+      // they work there, and it grants nothing. Aura still cannot remember a thing about that person
+      // without their own grant, which is exactly the distinction that stopped a stop from severing
+      // artists' employment in August.
+      //
+      // BILLING FOLLOWS THE SEATS. $299 covers the shop and one seat. Each seat after that is $99.
+      // This counts them; it does not charge - money is its own act and it happens somewhere else.
+      //
+      //   SEAT LIST <business>
+      //   SEAT ADD <business> <name> [email:x | phone:x]
+      //   SEAT REMOVE <business> <person_pta>
+      if (!isOp) return { cmd: "SEAT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const seParts = (rest || "").trim().split(/\s+/);
+      const seSub = String(seParts[0] || "").toUpperCase();
+      const seBiz = seParts[1] || "";
+      if (!seBiz) return { cmd: "SEAT", payload: { ok: false,
+        error: "Usage: SEAT LIST|ADD|REMOVE <business_pta> ..." } };
+      const db = env.AURA_MEMORY;
+      try {
+        const biz = await db.prepare("SELECT id, name, type FROM pta_entities WHERE id = ?")
+          .bind(seBiz).first();
+        if (!biz) return { cmd: "SEAT", payload: { ok: false, error: "NO_SUCH_BUSINESS", id: seBiz } };
+
+        const readSeats = async () => {
+          const r = await db.prepare(
+            "SELECT e.id AS edge_id, e.from_id AS person, e.created_at, x.name " +
+            "FROM pta_edges e JOIN pta_entities x ON x.id = e.from_id " +
+            "WHERE e.to_id = ? AND e.edge_type = 'works_at' AND e.state != 'revoked' " +
+            "ORDER BY e.created_at"
+          ).bind(seBiz).all().catch(() => null);
+          return (r?.results || []).map(x => ({ pta: x.person, name: x.name, edge_id: x.edge_id,
+            since: x.created_at }));
+        };
+        const bill = (n) => ({ seats: n, included: Math.min(n, 1),
+          extra: Math.max(0, n - 1),
+          monthly: "$" + (299 + Math.max(0, n - 1) * 99),
+          how: "$299 covers the shop and one seat. $99 for each seat after that." });
+
+        if (seSub === "LIST" || !seSub) {
+          const seats = await readSeats();
+          return { cmd: "SEAT", payload: { ok: true, business: biz.name, id: seBiz,
+            count: seats.length, seats, billing: bill(seats.length),
+            note: seats.length ? undefined
+              : "Nobody is seated yet. A seat says somebody works here - it grants nothing, and Aura " +
+                "still cannot remember anything about that person without their own consent." } };
+        }
+
+        if (seSub === "ADD") {
+          const tail = seParts.slice(2).join(" ").trim();
+          const contact = (tail.match(/\b(email|phone):\S+/i) || [])[0] || null;
+          const name = tail.replace(/\b(email|phone):\S+/ig, "").trim();
+          if (!name) return { cmd: "SEAT", payload: { ok: false,
+            error: "Usage: SEAT ADD <business_pta> <name> [email:someone@x.com | phone:+1...]" } };
+          // A person with no contact of their own gets an identity keyed to this business, because
+          // two artists called Chris in different shops are two people.
+          const identity = contact
+            ? contact.toLowerCase()
+            : "staff:" + seBiz + ":" + name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+          const pc = await processCommand("PTA_ENTITY CREATE person " + name + " identity:" + identity, env, true);
+          const pp = (pc && pc.payload) ? pc.payload : pc;
+          if (!pp?.ok || !pp.entity?.id) return { cmd: "SEAT", payload: { ok: false,
+            error: "COULD_NOT_CREATE_PERSON", detail: pp?.error || pp,
+            what_to_do: pp?.error === "CONTACT_BELONGS_TO_ANOTHER_TYPE"
+              ? "That contact already identifies something else - use a contact of their own."
+              : undefined } };
+          const person = pp.entity.id;
+          const existing = (await readSeats()).find(x => x.pta === person);
+          if (existing) return { cmd: "SEAT", payload: { ok: true, already_seated: true,
+            business: biz.name, person, name, edge_id: existing.edge_id,
+            billing: bill((await readSeats()).length),
+            note: "Already seated here - nothing changed and nothing was charged twice." } };
+          const edgeId = "edge_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+          await db.prepare(
+            "INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, created_at, updated_at) " +
+            "VALUES (?, ?, ?, 'works_at', 'active', ?, ?)"
+          ).bind(edgeId, person, seBiz, new Date().toISOString(), new Date().toISOString()).run();
+          const seats = await readSeats();
+          return { cmd: "SEAT", payload: { ok: true, business: biz.name, person, name,
+            edge_id: edgeId, count: seats.length, billing: bill(seats.length),
+            note: "Seated. This says they work here and nothing else - no grant, no permission to " +
+              "remember anything about them. That is theirs to give." } };
+        }
+
+        if (seSub === "REMOVE") {
+          const who = seParts[2] || "";
+          if (!who) return { cmd: "SEAT", payload: { ok: false, error: "Usage: SEAT REMOVE <business_pta> <person_pta>" } };
+          const seat = (await readSeats()).find(x => x.pta === who || x.edge_id === who);
+          if (!seat) return { cmd: "SEAT", payload: { ok: false, error: "NOT_SEATED_HERE", who,
+            what_to_do: "Nobody by that id works here. SEAT LIST shows who does." } };
+          // Revoked, never deleted - somebody who worked here in March still worked here in March,
+          // and a schedule from then has to still make sense.
+          await db.prepare("UPDATE pta_edges SET state = 'revoked', updated_at = ? WHERE id = ?")
+            .bind(new Date().toISOString(), seat.edge_id).run();
+          const seats = await readSeats();
+          return { cmd: "SEAT", payload: { ok: true, business: biz.name, removed: seat.name,
+            person: seat.pta, count: seats.length, billing: bill(seats.length),
+            note: "The edge is revoked, not deleted. They worked here until today and the record still " +
+              "says so - anything scheduled under their name still makes sense." } };
+        }
+        return { cmd: "SEAT", payload: { ok: false, error: "Usage: SEAT LIST|ADD|REMOVE <business_pta> ..." } };
+      } catch (e) {
+        return { cmd: "SEAT", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
       }
     }
 

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.34.0-2026-08-13-the-code-is-their-identity";
+const BUILD = "aura-core-v5.35.0-2026-08-13-the-owner-has-the-master-key";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18952,6 +18952,86 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
     }
 
+    case "SCHEDULE": {
+      // ══ THE OWNER HAS THE MASTER KEY, EVERYONE ELSE SEES THEIR OWN ════════════════════════════
+      //
+      // Aaron: "the shop owner will be able to see anything if he chooses to - everyone else is
+      // below them, and when the artist logs on they're only seeing their clients."
+      //
+      // So one command, and WHO IS ASKING decides what comes back. Not two endpoints where somebody
+      // eventually calls the wrong one - the answer is scoped at the source, the same way CONSOLE
+      // starts from the person rather than from an id in a URL.
+      //
+      //   SCHEDULE <person_pta> [business_pta]
+      //     owner    -> every booking at the shop, artist named on each
+      //     artist   -> only the ones with them
+      //     neither  -> nothing, and the reason
+      if (!isOp) return { cmd: "SCHEDULE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const scParts = (rest || "").trim().split(/\s+/);
+      const scWho = scParts[0] || "";
+      const scBiz = scParts[1] || null;
+      if (!scWho) return { cmd: "SCHEDULE", payload: { ok: false, error: "Usage: SCHEDULE <person_pta> [business_pta]" } };
+      const sdb = env.AURA_MEMORY;
+      try {
+        const owns = await sdb.prepare(
+          "SELECT to_id FROM pta_edges WHERE from_id = ? AND edge_type IN ('owns','manages') " +
+          "AND state != 'revoked'").bind(scWho).all().catch(() => null);
+        const worksAt = await sdb.prepare(
+          "SELECT to_id FROM pta_edges WHERE from_id = ? AND edge_type = 'works_at' " +
+          "AND state != 'revoked'").bind(scWho).all().catch(() => null);
+        const ownedIds = (owns?.results || []).map(r => r.to_id);
+        const seatIds = (worksAt?.results || []).map(r => r.to_id);
+        const target = scBiz || ownedIds[0] || seatIds[0];
+        if (!target) return { cmd: "SCHEDULE", payload: { ok: true, bookings: [],
+          what_to_say: "You are not attached to a business, so there is nothing to show." } };
+
+        const isOwner = ownedIds.includes(target);
+        const isSeated = seatIds.includes(target);
+        if (!isOwner && !isSeated) return { cmd: "SCHEDULE", payload: { ok: false, error: "NOT_YOURS",
+          business: target,
+          what_to_say: "You do not work at that business and you do not own it." } };
+
+        const rows = await sdb.prepare(
+          "SELECT e.id, e.from_id AS customer, e.context, x.name AS customer_name " +
+          "FROM pta_edges e LEFT JOIN pta_entities x ON x.id = e.from_id " +
+          "WHERE e.to_id = ? AND e.edge_type = 'books' AND e.state != 'revoked'"
+        ).bind(target).all().catch(() => null);
+
+        const all = (rows?.results || []).map(r => {
+          let c = {}; try { c = JSON.parse(r.context || "{}"); } catch {}
+          return { booking: r.id, customer: r.customer, customer_name: r.customer_name || null,
+            when: c.when || null, service: c.service || null, amount: c.amount ?? null,
+            state: c.booking_state || null, with: c.with || null };
+        }).sort((a, b) => String(a.when).localeCompare(String(b.when)));
+
+        // The whole point: the owner sees the shop, an artist sees their own. A booking with nobody
+        // named is shop-wide and everyone at the shop can see it - it was taken for the shop.
+        const mine = all.filter(b => !b.with || b.with === scWho);
+        const shown = isOwner ? all : mine;
+        // Names for the artists, so a schedule does not read as a wall of ids.
+        const ids = [...new Set(shown.map(b => b.with).filter(Boolean))];
+        let names = {};
+        if (ids.length) {
+          const ph = ids.map(() => "?").join(",");
+          const nr = await sdb.prepare("SELECT id, name FROM pta_entities WHERE id IN (" + ph + ")")
+            .bind(...ids).all().catch(() => null);
+          names = Object.fromEntries((nr?.results || []).map(r => [r.id, r.name]));
+        }
+        return { cmd: "SCHEDULE", payload: { ok: true, business: target,
+          seeing: isOwner ? "everything at this business" : "only bookings with you",
+          role: isOwner ? "owner" : "artist",
+          count: shown.length,
+          bookings: shown.map(b => ({ ...b, with_name: b.with ? (names[b.with] || null) : "the shop" })),
+          hidden_from_you: isOwner ? undefined : (all.length - shown.length) || undefined,
+          note: isOwner
+            ? "You own this, so you see every booking including the ones with your artists."
+            : "You see the bookings with you, and any the shop took without naming an artist. The " +
+              "rest belong to whoever they were booked with." } };
+      } catch (e) {
+        return { cmd: "SCHEDULE", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
+      }
+    }
+
     case "OWNER": {
       // ══ SOMEBODY HAS TO BE ABLE TO OPEN THE DOOR ══════════════════════════════════════════════
       //
@@ -23045,14 +23125,31 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const whenISO = pipeParts[0] || "";
         const service = pipeParts[1] || "Appointment";
         const amount = pipeParts[2] ? parseFloat(pipeParts[2]) : null;
-        const notes = pipeParts[3] || "";
+        const notes = (pipeParts[3] || "").replace(/\bwith:pta_[a-f0-9]+/i, "").trim();
         if (!whenISO) return { cmd: "BOOKING", payload: { ok: false, error: "When (ISO datetime) required before the first |" } };
         // verify both entities exist
         const biz = await db.prepare("SELECT * FROM pta_entities WHERE id = ?").bind(businessId).first();
         if (!biz) return { cmd: "BOOKING", payload: { ok: false, error: "Business not found: " + businessId } };
         // create the books edge (customer -books-> business), carrying the appointment context
         const eId = edgeId();
-        const ctx = JSON.stringify({ when: whenISO, service, amount, notes, booking_state: "requested" });
+        // ══ A BOOKING IS WITH SOMEBODY, NOT JUST SOMEWHERE ═══════════════════════════════════
+        // "Jason at 2pm" and "the shop at 2pm" are different appointments. Five artists sharing one
+        // calendar is the problem this exists to solve, and it cannot be solved by a booking that
+        // only names the shop. The artist rides in the context, so no schema changes and old
+        // bookings without one stay valid - they were shop-wide and still are.
+        // The pipe form takes it last: ... | <amount> | <notes> | with:<artist_pta>
+        const withArtist = (afterIds.match(/\bwith:(pta_[a-f0-9]+)/i) || [])[1] || null;
+        if (withArtist) {
+          const seated = await db.prepare(
+            "SELECT 1 FROM pta_edges WHERE from_id = ? AND to_id = ? AND edge_type = 'works_at' " +
+            "AND state != 'revoked'").bind(withArtist, businessId).first().catch(() => null);
+          if (!seated) return { cmd: "BOOKING", payload: { ok: false, error: "NOT_SEATED_HERE",
+            artist: withArtist, business: businessId,
+            what_to_do: "That person does not work at this business, so they cannot be booked here. " +
+              "SEAT LIST shows who does." } };
+        }
+        const ctx = JSON.stringify({ when: whenISO, service, amount, notes,
+          with: withArtist, booking_state: "requested" });
         await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, relationship, context, created_at, updated_at) VALUES (?, ?, ?, 'books', 'requested', 'customer', ?, ?, ?)")
           .bind(eId, customerId, businessId, ctx, bkNow, bkNow).run();
         // put the appointment on the BUSINESS schedule (the sixth dimension - their forward edge)

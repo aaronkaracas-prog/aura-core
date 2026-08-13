@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.31.0-2026-08-13-the-trade-is-a-thing-she-knows";
+const BUILD = "aura-core-v5.31.1-2026-08-13-show-that-you-did-the-work";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18480,6 +18480,25 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           }
         }
 
+        // ══ 12,000 CHARACTERS OF WIX IS 12,000 CHARACTERS OF IMAGE URLS ══════════════════════
+        // A Wix page is mostly 200-character static.wixstatic.com URLs, CSS fragments and "press to
+        // zoom". MEASURED: she read 51,750 characters of Ocean Front and asked about walk-ins, which
+        // the page welcomes in its first line - the useful text was past the truncation. Stripped to
+        // words, 446 characters became 92 and those 92 held the address, hours, phone and an artist.
+        //
+        // (This block was deleted by a later edit of mine and the whole command threw
+        // "siteForPrompt is not defined". Restored.)
+        const readable = (t) => String(t || "")
+          .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+          .replace(/\[([^\]]*)\]\((?:https?:)?[^)]*\)/g, "$1")
+          .replace(/https?:\/\/\S+/g, " ")
+          .replace(/#comp-\w+[^\n]*/g, " ")
+          .replace(/\b(press to zoom|top of page|bottom of page|Use tab to navigate[^\n]*)/gi, " ")
+          .replace(/[ \t]+/g, " ")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim();
+        const siteForPrompt = st.site_text ? readable(st.site_text) : "";
+
         const sys =
           "You are Aura, onboarding a business onto Open For Business. You are talking, not " +
           "administering a form.\n\n" +
@@ -18532,7 +18551,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 ? "WHERE WE GENUINELY HELP:\n- " + playbook.where_we_help.join("\n- ") + "\n" : "") +
               "\nTalk like somebody who has been around this trade. Do not recite the list and do " +
               "not tell them their own business - they know it better than you. Use it to ask the " +
-              "question that shows you understand, and to recognise what they are describing.\n\n"
+              "question that shows you understand, and to recognise what they are describing.\n" +
+              "SHOW THAT YOU DID THE WORK. Once, early, say plainly that you looked at their trade " +
+              "before this conversation - and then prove it with one specific thing other owners in " +
+              "it say, in their words, not a generality. 'Most shops tell us the same thing: someone " +
+              "asks for a custom piece, the artist spends an hour drawing it, and they never reply.' " +
+              "That lands because it is true and they have lived it. 'We understand your industry' " +
+              "lands as nothing. Say it once and then get back to them - repeating it turns proof " +
+              "into a pitch.\n\n"
             : "You do not know this trade yet. Work out what it is first, then ask about how the " +
               "work actually flows.\n\n") +
           "ONE QUESTION AT A TIME. Two sentences at most. No preamble, no enthusiasm, no 'great " +

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.30.0-2026-08-13-a-schema-decides-what-is-worth-knowing";
+const BUILD = "aura-core-v5.31.0-2026-08-13-the-trade-is-a-thing-she-knows";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18246,6 +18246,128 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
     }
 
+    case "INDUSTRY": {
+      // ══ THE TRADE IS A THING SHE KNOWS, BEFORE ANY ONE SHOP ═════════════════════════════════
+      //
+      // The first version generated a question LIST per vertical, which is a form again. Aaron:
+      // "she will know the industry first, then bring in all the data." That is a different object -
+      // not questions, an UNDERSTANDING of a trade that gets sharper every time she meets somebody
+      // working in it.
+      //
+      // MEASURED against the real world for tattooing: artists say it themselves - "people who send
+      // consultation forms and never respond again", "some people expect me to read their minds",
+      // "they book and never show up". A 23-year veteran dropped in-person consultations entirely for
+      // "structure in my process". The whole trade runs on not having time wasted, and every shop in
+      // it knows that without being told. A system that has to ASK is a system that does not know the
+      // trade.
+      //
+      // AND IT CARRIES ACROSS. What wastes a tattoo artist's time wastes a stylist's, a dentist's, a
+      // contractor's. The specifics differ; the shape repeats. So a trade learned is not one trade -
+      // it is a prior for the next one.
+      //
+      //   INDUSTRY <slug>              what she knows about this trade
+      //   INDUSTRY <slug> LEARN        research it and write down what she found
+      //   INDUSTRY LIST                every trade she knows
+      if (!isOp) return { cmd: "INDUSTRY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const inParts = (rest || "").trim().split(/\s+/);
+      const inSub = String(inParts[0] || "").toUpperCase();
+      if (inSub === "LIST") {
+        const l = await env.AURA_KV.list({ prefix: "industry:" }).catch(() => null);
+        return { cmd: "INDUSTRY", payload: { ok: true,
+          known: (l?.keys || []).map(k => k.name.replace("industry:", "")) } };
+      }
+      const inSlug = String(inParts[0] || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      const inLearn = /(^|\s)LEARN(\s|$)/i.test(rest || "");
+      if (!inSlug) return { cmd: "INDUSTRY", payload: { ok: false,
+        error: "Usage: INDUSTRY <trade> [LEARN]  |  INDUSTRY LIST" } };
+      const inKey = "industry:" + inSlug;
+      try {
+        let known = null;
+        try { known = JSON.parse((await env.AURA_KV.get(inKey)) || "null"); } catch {}
+        if (known && !inLearn) return { cmd: "INDUSTRY", payload: { ok: true, trade: inSlug, ...known } };
+
+        // ── go and find out ──
+        // Not from the model's memory. From what people in the trade actually say, which is where
+        // the truth about a trade's pain lives - forums, artists' own writing, trade press.
+        let research = "";
+        try {
+          const tk = await getSecret(env, "tavily");
+          if (tk) {
+            for (const q of [
+              inSlug.replace(/-/g, " ") + " owners biggest frustration what wastes their time",
+              inSlug.replace(/-/g, " ") + " industry problems losing money common mistakes 2026",
+            ]) {
+              const r = await fetch("https://api.tavily.com/search", { method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ api_key: tk, query: q, max_results: 6,
+                                       search_depth: "advanced", include_raw_content: true }) });
+              if (r.ok) {
+                const d = await r.json();
+                research += (d.results || []).map(x =>
+                  "SOURCE: " + (x.title || "") + "\n" +
+                  String(x.raw_content || x.content || "").slice(0, 4000)).join("\n\n") + "\n\n";
+              }
+            }
+          }
+        } catch {}
+        if (!research.trim()) return { cmd: "INDUSTRY", payload: { ok: false, error: "NO_RESEARCH",
+          what_to_say: "Could not read anything about that trade.",
+          note: "Without sources this would be the model's impression of an industry rather than what " +
+            "people in it actually say - and those are not the same thing." } };
+
+        const sys =
+          "You are working out how a trade actually operates, from what people IN it say. This is " +
+          "not a market report and not a pitch.\n\n" +
+          "What matters: what wastes their time, what loses them money, what every owner in this " +
+          "trade complains about, what separates the ones who do well. Specifics, not platitudes - " +
+          "'no-shows' is useless, 'clients who send an enquiry and never reply, so the artist spends " +
+          "an hour drawing for nothing' is the real thing.\n\n" +
+          "Only what the sources support. If they do not say it, leave it out.\n\n" +
+          "JSON only:\n" +
+          '{"how_it_runs":"a few sentences on how a day in this trade actually works",' +
+          '"wastes_their_time":["..."],"loses_them_money":["..."],' +
+          '"what_good_ones_do":["..."],"what_to_ask_an_owner":["..."],' +
+          '"where_we_help":["..."]}\n\n' +
+          "`what_to_ask_an_owner` is what somebody who KNOWS this trade would ask - never basics you " +
+          "could look up.\n" +
+          "`where_we_help` is honest: only where an AI that answers phones, books, holds deposits and " +
+          "remembers customers genuinely changes one of the problems above.";
+
+        let found = null, raw = "";
+        try {
+          const key = await getSecret(env, "anthropic");
+          if (key) {
+            const d = await callAnthropic(key, { model: await anthropicModel(env), max_tokens: 2000,
+              system: sys, messages: [{ role: "user", content:
+                "TRADE: " + inSlug.replace(/-/g, " ") + "\n\nWHAT PEOPLE IN IT SAY:\n" + research.slice(0, 60000) }] });
+            if (d && d.content) for (const b of d.content) if (b.type === "text") raw += b.text;
+          } else {
+            const rr = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
+              messages: [{ role: "system", content: sys },
+                         { role: "user", content: research.slice(0, 20000) }], max_tokens: 1500 });
+            raw = aiText(rr);
+          }
+          const a2 = raw.indexOf("{"), b2 = raw.lastIndexOf("}");
+          if (a2 >= 0 && b2 > a2) found = JSON.parse(raw.slice(a2, b2 + 1));
+        } catch (e) {
+          return { cmd: "INDUSTRY", payload: { ok: false,
+            error: "could not think: " + String((e && e.message) || e).slice(0, 120) } };
+        }
+        if (!found) return { cmd: "INDUSTRY", payload: { ok: false, error: "no picture produced",
+          reply_preview: raw.slice(0, 400) } };
+
+        const rec = { ...found, trade: inSlug, learned_at: new Date().toISOString(),
+          sources: "what people in the trade say, read at that time",
+          businesses_seen: known?.businesses_seen || 0 };
+        await env.AURA_KV.put(inKey, JSON.stringify(rec));
+        return { cmd: "INDUSTRY", payload: { ok: true, trade: inSlug, ...rec,
+          note: "Stored. Every business onboarded in this trade is met by somebody who already knows " +
+            "how the trade works - and each one sharpens this." } };
+      } catch (e) {
+        return { cmd: "INDUSTRY", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
+      }
+    }
+
     case "ONBOARD_CHAT": {
       // ══ SHE ARRIVES ALREADY KNOWING ═══════════════════════════════════════════════════════════
       //
@@ -18339,62 +18461,24 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           } catch (e) { st.read_failed = "checking the read threw: " + String((e && e.message) || e).slice(0, 100); }
         }
 
-        // ── the question set for this trade, built once and reused ──
+        // ── what she already knows about this trade ──
+        // Not a question list. An understanding of how the trade runs, learned once from what people
+        // in it say and sharpened by every business she meets. She arrives knowing the shape of their
+        // world before she knows anything about them.
         let playbook = null;
         const trade = st.known.business_type;
         if (trade) {
-          try { playbook = JSON.parse((await env.AURA_KV.get("onboard:playbook:" + trade)) || "null"); } catch {}
+          const tKey = "industry:" + String(trade).toLowerCase().replace(/[^a-z0-9]+/g, "-");
+          try { playbook = JSON.parse((await env.AURA_KV.get(tKey)) || "null"); } catch {}
           if (!playbook) {
+            // First business in a trade pays for learning it. Everyone after inherits it.
             try {
-              const pr = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
-                messages: [{ role: "system", content:
-                  "Name the 8 things that matter most about how a " + trade + " actually RUNS day to " +
-                  "day - the operational questions somebody in that trade would expect to be asked, " +
-                  "not generic business questions. A pizza place: dough prep, phone orders, delivery " +
-                  "radius, peak hours. A real estate office: listings, showings, agents, commission " +
-                  "split. Reply as JSON only: {\"asks\":[\"...\"]}" }],
-                max_tokens: 500 });
-              const t = aiText(pr);
-              const a2 = t.indexOf("{"), b2 = t.lastIndexOf("}");
-              if (a2 >= 0 && b2 > a2) {
-                playbook = JSON.parse(t.slice(a2, b2 + 1));
-                // Stored for every business in this trade after them. The first one pays for it.
-                await env.AURA_KV.put("onboard:playbook:" + trade, JSON.stringify(playbook));
-              }
+              const r = await processCommand("INDUSTRY " + trade + " LEARN", env, true);
+              const rp = (r && r.payload) ? r.payload : r;
+              if (rp?.ok) playbook = rp;
             } catch {}
           }
         }
-
-        // ══ 12,000 CHARACTERS OF WIX IS 12,000 CHARACTERS OF IMAGE URLS ══════════════════════
-        //
-        // MEASURED on oceanfronttattoo.com: she read 12 pages and 51,750 characters, and asked what
-        // they tell walk-ins they turn away. The site says WALK-INS WELCOME EVERY DAY at the top,
-        // lists three ways to book including a $100 deposit, names four artists with their days, and
-        // gives the address and hours. She had every word of it.
-        //
-        // What she was HANDED was slice(0, 12000) of a Wix export - and a Wix page is mostly
-        // 200-character static.wixstatic.com URLs, CSS fragments and "press to zoom". The address was
-        // past the cut. She was not ignoring the site; the useful part never reached her.
-        //
-        // So the text is stripped to words before it is passed: image links out, bare URLs out,
-        // repeated boilerplate out. What survives is what a person would read.
-        const readable = (t) => String(t || "")
-          .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")              // image embeds
-          .replace(/\[([^\]]*)\]\((?:https?:)?[^)]*\)/g, "$1") // links keep their text
-          .replace(/https?:\/\/\S+/g, " ")                      // bare urls
-          .replace(/#comp-\w+[^\n]*/g, " ")                     // wix component css
-          .replace(/\b(press to zoom|top of page|bottom of page|Use tab to navigate[^\n]*)/gi, " ")
-          .replace(/[ \t]+/g, " ")
-          .replace(/\n{3,}/g, "\n\n")
-          .trim();
-        // ══ THE WHOLE SITE, NOT A SLICE ═══════════════════════════════════════════════════════
-        // The 14k ceiling existed for an 8B context. She is on a frontier model with a large window
-        // and a shop's website is a few tens of thousands of characters - nothing. The field's own
-        // finding for a bounded source like this: "what previously required retrieval pipelines can
-        // often fit directly into a single structured prompt", with fewer moving parts and higher
-        // determinism. Truncating a small document to save tokens is throwing away the thing we paid
-        // a minute of crawling to get.
-        const siteForPrompt = st.site_text ? readable(st.site_text) : "";
 
         const sys =
           "You are Aura, onboarding a business onto Open For Business. You are talking, not " +
@@ -18434,12 +18518,23 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "product can do - the entire promise is that we already understand their business, and " +
               "one confident wrong detail destroys it permanently.\n" +
               "Ask for their website, or ask them to tell you who they are. Nothing else.\n\n") +
-          (playbook?.asks?.length
-            ? "WHAT MATTERS FOR A " + String(trade).toUpperCase() + ", in order:\n- " +
-              playbook.asks.join("\n- ") + "\nWork through these, skipping any the site already " +
-              "answered.\n\n"
-            : "First work out what kind of business this is. Once you know, ask what somebody in " +
-              "that trade would expect to be asked about how it runs.\n\n") +
+          (playbook
+            ? "══ YOU KNOW THIS TRADE ══\n" +
+              "HOW IT RUNS: " + (playbook.how_it_runs || "") + "\n" +
+              (playbook.wastes_their_time?.length
+                ? "WHAT WASTES THEIR TIME:\n- " + playbook.wastes_their_time.join("\n- ") + "\n" : "") +
+              (playbook.loses_them_money?.length
+                ? "WHAT LOSES THEM MONEY:\n- " + playbook.loses_them_money.join("\n- ") + "\n" : "") +
+              (playbook.what_to_ask_an_owner?.length
+                ? "WHAT SOMEBODY WHO KNOWS THIS TRADE WOULD ASK:\n- " +
+                  playbook.what_to_ask_an_owner.join("\n- ") + "\n" : "") +
+              (playbook.where_we_help?.length
+                ? "WHERE WE GENUINELY HELP:\n- " + playbook.where_we_help.join("\n- ") + "\n" : "") +
+              "\nTalk like somebody who has been around this trade. Do not recite the list and do " +
+              "not tell them their own business - they know it better than you. Use it to ask the " +
+              "question that shows you understand, and to recognise what they are describing.\n\n"
+            : "You do not know this trade yet. Work out what it is first, then ask about how the " +
+              "work actually flows.\n\n") +
           "ONE QUESTION AT A TIME. Two sentences at most. No preamble, no enthusiasm, no 'great " +
           "question'. Never ask twice for the same thing.\n\n" +
           "Just talk. Say your reply and nothing else - no JSON, no formatting, no labels.\n\n" +
@@ -29322,70 +29417,6 @@ Be concise. This update will be compared against the next update to show drift o
     // INDUSTRY CONTEXT REGISTRY â€” How Aura behaves per vertical.
     // Each industry selects capabilities and defines context.
     // Adding a new vertical = writing one document.
-    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-
-    case "INDUSTRY": {
-      if (!isOp) return { cmd: "INDUSTRY", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      const sub = (args[0] || "").toUpperCase();
-
-      if (sub === "REGISTER") {
-        // INDUSTRY REGISTER <name> â€” then set details via INDUSTRY UPDATE
-        const name = (args[1] || "").toLowerCase();
-        if (!name) return { cmd: "INDUSTRY", payload: { ok: false, error: "Usage: INDUSTRY REGISTER <name>" } };
-        const existing = await env.AURA_KV.get(`industry:${name}`).catch(() => null);
-        if (existing) return { cmd: "INDUSTRY", payload: { ok: false, error: "Industry already exists. Use INDUSTRY UPDATE." } };
-        const industry = { name, intent: "", capabilities: [], system_prompt: "", customer_payment: "", business_payment: "", constraints: [], page_template: "", world_version: 1, registered_at: new Date().toISOString(), status: "draft" };
-        await env.AURA_KV.put(`industry:${name}`, JSON.stringify(industry));
-        return { cmd: "INDUSTRY", payload: { ok: true, mode: "registered", industry } };
-      }
-
-      if (sub === "UPDATE") {
-        // INDUSTRY UPDATE <name> <json with fields to update>
-        const name = (args[1] || "").toLowerCase();
-        if (!name) return { cmd: "INDUSTRY", payload: { ok: false, error: "Usage: INDUSTRY UPDATE <name> <json>" } };
-        const existing = await env.AURA_KV.get(`industry:${name}`);
-        if (!existing) return { cmd: "INDUSTRY", payload: { ok: false, error: "Industry not found. Use INDUSTRY REGISTER first." } };
-        let current = JSON.parse(existing);
-        const afterName = rest.slice(rest.indexOf(name) + name.length).trim();
-        const jsonStart = afterName.indexOf("{");
-        if (jsonStart >= 0) {
-          try {
-            const updates = JSON.parse(afterName.slice(jsonStart));
-            current = { ...current, ...updates, updated_at: new Date().toISOString() };
-            await env.AURA_KV.put(`industry:${name}`, JSON.stringify(current));
-          } catch (e) { return { cmd: "INDUSTRY", payload: { ok: false, error: "Invalid JSON: " + e.message } }; }
-        }
-        return { cmd: "INDUSTRY", payload: { ok: true, mode: "updated", industry: current } };
-      }
-
-      if (sub === "LIST") {
-        const keys = await env.AURA_KV.list({ prefix: "industry:" });
-        const industries = [];
-        for (const key of (keys.keys || [])) {
-          try { const raw = await env.AURA_KV.get(key.name); const ind = JSON.parse(raw); industries.push({ name: ind.name, intent: ind.intent, capabilities: ind.capabilities, status: ind.status }); } catch {}
-        }
-        return { cmd: "INDUSTRY", payload: { ok: true, mode: "list", count: industries.length, industries } };
-      }
-
-      if (sub === "GET") {
-        const name = (args[1] || "").toLowerCase();
-        if (!name) return { cmd: "INDUSTRY", payload: { ok: false, error: "Usage: INDUSTRY GET <name>" } };
-        const raw = await env.AURA_KV.get(`industry:${name}`);
-        if (!raw) return { cmd: "INDUSTRY", payload: { ok: false, error: "Industry not found" } };
-        return { cmd: "INDUSTRY", payload: { ok: true, mode: "get", industry: JSON.parse(raw) } };
-      }
-
-      return { cmd: "INDUSTRY", payload: { ok: false, error: "Sub-commands: REGISTER, LIST, GET, UPDATE" } };
-    }
-
-    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    // BUSINESS STATE MACHINE â€” Every business has a lifecycle.
-    // Lead > Trial > Active > Growing > At Risk > Past Due > Suspended > Cancelled > Reactivated
-    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-
-    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    // TWILIO â€” Communication layer management. Campaigns, SMS, balance.
-    // Aura owns this â€” no manual Twilio console needed.
     // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
     case "COMMS": {

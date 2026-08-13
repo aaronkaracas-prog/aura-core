@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.33.0-2026-08-13-somebody-has-to-open-the-door";
+const BUILD = "aura-core-v5.33.1-2026-08-13-working-there-is-not-owning-it";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -19173,9 +19173,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const db = env.AURA_MEMORY;
         // What they own. An owns/manages edge from the person to the business.
         const owned = await db.prepare(
-          "SELECT e.to_id AS id, x.name, x.type, x.metadata FROM pta_edges e " +
+          "SELECT DISTINCT e.to_id AS id, x.name, x.type, x.metadata FROM pta_edges e " +
           "JOIN pta_entities x ON x.id = e.to_id " +
-          "WHERE e.from_id = ? AND e.edge_type IN ('owns','manages','works_at') AND e.state != 'revoked'"
+          // == WORKING THERE IS NOT OWNING IT (fixed 2026-08-13) =============================
+          // MEASURED: Jason, a seated artist with no owns edge, opened Rising Dragon's console -
+          // nav, customers, Deposits, everything. This clause was written before OWNER existed and
+          // never narrowed, so every seat in every shop could read that shop's money.
+          "WHERE e.from_id = ? AND e.edge_type IN ('owns','manages') AND e.state != 'revoked'"
         ).bind(coOwner).all().catch(() => null);
         let list = (owned?.results || []).map(r => ({ id: r.id, name: r.name, type: r.type }));
 
@@ -19186,6 +19190,21 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // existed because she made it while talking to them, and PAYING is what turns on the door.
         // The console asks one question: has this business paid? That is Gate One, and it is the only
         // gate that means anything.
+        if (!list.length) {
+          // "Nothing here" and "you work somewhere you cannot open" are different facts, and a
+          // seated artist asking why they see nothing deserves the real one.
+          const seated = await db.prepare(
+            "SELECT x.name FROM pta_edges e JOIN pta_entities x ON x.id = e.to_id " +
+            "WHERE e.from_id = ? AND e.edge_type = 'works_at' AND e.state != 'revoked' LIMIT 3"
+          ).bind(coOwner).all().catch(() => null);
+          const places = (seated?.results || []).map(r => r.name).filter(Boolean);
+          if (places.length) return { cmd: "CONSOLE", payload: { ok: true, businesses: [],
+            works_at: places,
+            what_to_say: "You work at " + places.join(", ") + ", but the console belongs to whoever " +
+              "owns it. Ask them to add you if you need it.",
+            note: "A seat says somebody works here. It does not open the books - otherwise every " +
+              "artist in every shop could read that shop's money." } };
+        }
         if (!list.length) return { cmd: "CONSOLE", payload: { ok: true, businesses: [],
           what_to_say: "There is no business here for you yet.",
           note: "A console appears when a business you are attached to has paid. Nothing to sign up " +

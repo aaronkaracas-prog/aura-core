@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.36.0-2026-08-13-the-first-session-is-the-only-hard-one";
+const BUILD = "aura-core-v5.37.0-2026-08-13-what-she-read-is-the-understanding";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18925,10 +18925,44 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // The understanding carries what she FOUND, whatever shape it took. This is what the
           // console gets built from, so a shop whose model is walk-in volume with a deposit gate has
           // that written down - not squeezed into a field called what_they_do.
+          // ══ WHAT SHE READ IS THE UNDERSTANDING, NOT JUST WHAT THEY SAID ═══════════════════
+          // MEASURED: she crawled 15,087 characters of Rising Dragon - five artists by name, the
+          // address, thirty years, the styles - and CONSOLE opened with about:null and offerings:
+          // null. Only `found` was written, and `found` comes from the conversation. The most
+          // valuable thing she learns is the thing she reads, and it was being thrown away when the
+          // chat session expired.
           const foundCount = Object.keys(k.found || {}).length;
+          if (st.site_text && !st.wrote_site) {
+            // One model call, once, when there is finally somebody to write it to. Structure from
+            // the crawl - not a transcript, and nothing invented: whatever the site did not say
+            // comes back null.
+            try {
+              const ur = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
+                messages: [{ role: "system", content:
+                  "Read this business's website and describe what they are. Reply as JSON only:\n" +
+                  '{"what_it_is":"one or two sentences","offerings":["..."],"people":["..."],' +
+                  '"where":"","hours":"","since":"","notable":["..."]}\n' +
+                  "Use ONLY what is on the page. Anything the site does not say is null or an empty " +
+                  "array - never a guess. Names go in `people` exactly as written." },
+                  { role: "user", content: st.site_text.slice(0, 14000) }],
+                max_tokens: 800 });
+              const ut = aiText(ur);
+              const ua = ut.indexOf("{"), ub = ut.lastIndexOf("}");
+              if (ua >= 0 && ub > ua) {
+                const u = JSON.parse(ut.slice(ua, ub + 1));
+                await w("UNDERSTANDING", { ...u, business_type: k.business_type || null,
+                  source: "read " + (st.read?.site || "their site") + " - " +
+                    (st.read?.chars || 0) + " characters across " + (st.read?.pages || 0) + " pages",
+                  learned_at: new Date().toISOString() });
+                st.wrote_site = true;
+              }
+            } catch (e) { st.write_errors.push("site understanding: " + String((e && e.message) || e).slice(0, 80)); }
+          }
           if (k.business_type && foundCount && foundCount !== st.wrote_found) {
+            // What the CONVERSATION added, kept separate from what the site said - two sources, and
+            // in a year it should be obvious which is which.
             await w("UNDERSTANDING", { business_type: k.business_type, found: k.found,
-              source: st.read ? "read their site, then asked" : "they told us",
+              source: "they told us in conversation",
               learned_at: new Date().toISOString() });
             st.wrote_found = foundCount;
           }
@@ -19413,8 +19447,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             body: JSON.stringify({ method: "getState", params: [] }) }));
           const j = await r.json();
           chain = j?.pta?.chain || [];
-          const u = [...chain].reverse().find(c => c && c.event === "UNDERSTANDING");
-          understanding = u?.data || null;
+          // Every UNDERSTANDING, oldest first, later facts winning - so the site read and the
+          // conversation both survive instead of the last one erasing the other.
+          const us = chain.filter(c => c && c.event === "UNDERSTANDING").map(c => c.data || {});
+          understanding = us.length ? us.reduce((a, b) => ({ ...a, ...Object.fromEntries(
+            Object.entries(b).filter(([, v]) => v != null && !(Array.isArray(v) && !v.length))) }), {}) : null;
           type = understanding?.business_type || null;
         } catch {}
 
@@ -19428,8 +19465,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           name: list.find(b => b.id === pick)?.name || null,
           business_type: type,
           nav: NAV[type] || NAV._default,
+          // ══ THE CONSOLE OPENS WITH WHAT SHE KNOWS ═════════════════════════════════════════
+          // Two understandings land on a chain: one from reading the site, one from the conversation.
+          // Taking only the latest meant a shop whose last event was a conversational note lost
+          // everything the crawl found. Merge them, site first, conversation over the top.
           about: understanding?.what_it_is || null,
           offerings: understanding?.offerings || null,
+          people: understanding?.people || null,
+          where: understanding?.where || null,
+          since: understanding?.since || null,
+          notable: understanding?.notable || null,
+          learned: understanding?.found || null,
+          knows_because: understanding?.source || null,
           // What Aura may do for them, in their words rather than as a flag.
           aura_may: gs.allowed
             ? "remember things about this business"

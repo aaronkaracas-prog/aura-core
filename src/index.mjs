@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.28.0-2026-08-13-you-have-read-nothing-you-know-nothing";
+const BUILD = "aura-core-v5.29.0-2026-08-13-never-make-them-wait-for-a-crawl";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18283,39 +18283,60 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
         // ── if they named a site and we have not read it, read it before answering ──
         // A minute of crawling buys every question we would otherwise have to ask.
+        // ══ NEVER MAKE THEM WAIT FOR A CRAWL ═══════════════════════════════════════════════════
+        //
+        // The first version polled for 90 seconds inside the turn, so saying "hello" took a hundred
+        // seconds and a business owner would have left. Worse, when it timed out she had nothing and
+        // the earlier prompt let her invent three artists and a city.
+        //
+        // A crawl is not a question. Start it, say something true, and pick it up on the NEXT turn -
+        // by which time they have typed a sentence and it has finished. Conversation stays instant.
+        //
+        // AND EMPTY IS NOT THE SAME AS FAILED. MEASURED on inkalleytattoo.com: status "completed",
+        // pages 0, chars 0, skipped 1. The crawl worked; the SITE was JavaScript, and render:false
+        // returns an empty shell. Most small businesses are on Wix or Squarespace, so this is the
+        // common case, not the edge - a shop with a modern site is exactly who we most want to read.
+        // So an empty result retries once WITH rendering, which costs browser time and is worth it.
         const urlIn = (ocSaid.match(/\b((?:https?:\/\/)?[a-z0-9][a-z0-9-]*\.[a-z]{2,}(?:\.[a-z]{2,})?)\b/i) || [])[1];
-        if (urlIn && !st.read && !/\.(png|jpg|pdf)$/i.test(urlIn) && !/@/.test(ocSaid.split(urlIn)[0].slice(-1))) {
+        if (urlIn && !st.read && !st.crawl && !/\.(png|jpg|pdf)$/i.test(urlIn)
+            && !/@/.test(ocSaid.split(urlIn)[0].slice(-1))) {
           const site = urlIn.replace(/^https?:\/\//i, "").replace(/\/.*$/, "");
           try {
             const sr = await processCommand("SITE_READ https://" + site, env, true);
             const sp = (sr && sr.payload) ? sr.payload : sr;
-            let done = false;
             if (sp?.ok && sp.id) {
-              // 18 polls at 5s. MEASURED: a 12-poll ceiling gave up at 60 seconds on a site that
-              // needed 70, silently, and she filled the gap by inventing three artists and a city.
-              for (let poll = 0; poll < 18; poll++) {
-                await new Promise(r => setTimeout(r, 5000));
-                const stt = await processCommand("SITE_READ STATUS " + sp.id, env, true);
-                const stp = (stt && stt.payload) ? stt.payload : stt;
-                if (stp?.status && stp.status !== "running") {
-                  if (stp.markdown && stp.markdown.length > 400) {
-                    st.read = { site, chars: stp.chars, pages: stp.pages };
-                    st.site_text = String(stp.markdown).slice(0, 30000);
-                    st.known.website = "https://" + site;
-                  } else {
-                    st.read_failed = "the crawl finished but returned " +
-                      ((stp.markdown || "").length) + " characters";
-                  }
-                  done = true; break;
-                }
+              st.crawl = { id: sp.id, site, rendered: false, started: Date.now() };
+              st.known.website = "https://" + site;
+            } else st.read_failed = "could not start reading their site: " + (sp?.error || "unknown");
+          } catch (e) { st.read_failed = "reading threw: " + String((e && e.message) || e).slice(0, 100); }
+        }
+        // ── collect a crawl started on an earlier turn ──
+        if (st.crawl && !st.read) {
+          try {
+            const stt = await processCommand("SITE_READ STATUS " + st.crawl.id, env, true);
+            const stp = (stt && stt.payload) ? stt.payload : stt;
+            if (stp?.status && stp.status !== "running") {
+              if (stp.markdown && stp.markdown.length > 400) {
+                st.read = { site: st.crawl.site, chars: stp.chars, pages: stp.pages,
+                            rendered: st.crawl.rendered };
+                st.site_text = String(stp.markdown).slice(0, 30000);
+                st.crawl = null;
+              } else if (!st.crawl.rendered) {
+                // Empty. Their site needs a browser - try once more with one.
+                const r2 = await processCommand("SITE_READ RENDER https://" + st.crawl.site, env, true);
+                const p2 = (r2 && r2.payload) ? r2.payload : r2;
+                if (p2?.ok && p2.id) st.crawl = { id: p2.id, site: st.crawl.site, rendered: true, started: Date.now() };
+                else { st.read_failed = "their site returned nothing and a rendered read would not start"; st.crawl = null; }
+              } else {
+                st.read_failed = "their site returned no readable text even with a browser - it may " +
+                  "block crawlers, or it may be a single image or a login";
+                st.crawl = null;
               }
-              if (!done) st.read_failed = "the crawl was still running after 90 seconds";
-            } else {
-              st.read_failed = "the crawl would not start: " + (sp?.error || "unknown");
+            } else if (Date.now() - st.crawl.started > 240000) {
+              st.read_failed = "their site took more than four minutes to read";
+              st.crawl = null;
             }
-          } catch (e) {
-            st.read_failed = "the crawl threw: " + String((e && e.message) || e).slice(0, 100);
-          }
+          } catch (e) { st.read_failed = "checking the read threw: " + String((e && e.message) || e).slice(0, 100); }
         }
 
         // ── the question set for this trade, built once and reused ──
@@ -18359,7 +18380,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "vendor. The signals are obvious once you look: many locations, sign-up pages aimed " +
               "at businesses, a network, no single address.\n\nTHE SITE:\n" +
               st.site_text.slice(0, 12000) + "\n\n"
-            : "══ YOU HAVE READ NOTHING. YOU KNOW NOTHING ABOUT THIS BUSINESS. ══\n" +
+            : (st.crawl
+              ? "YOU ARE READING THEIR SITE RIGHT NOW - it takes a minute and you do not have it yet. " +
+                "Tell them you are looking at it, and ask them something useful in the meantime: who " +
+                "they are, or what they want help with. DO NOT describe their business, name staff, " +
+                "name a city or list services - you have not seen the page.\n\n"
+              : "") +
+              "══ YOU HAVE READ NOTHING. YOU KNOW NOTHING ABOUT THIS BUSINESS. ══\n" +
               (st.read_failed
                 ? "A read was attempted and failed - " + st.read_failed + ". Say plainly that you " +
                   "could not reach their site and ask them to tell you instead.\n"
@@ -18595,6 +18622,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           say: out.say, known: st.known, pta: st.pta, created,
           read_their_site: st.read || undefined,
           read_failed: st.read_failed || undefined,
+          reading: st.crawl ? st.crawl.site + (st.crawl.rendered ? " (with a browser)" : "") : undefined,
           playbook_for: trade && playbook ? trade : undefined,
           ready: !!out.ready && !!st.pta,
           extract_note: st.extract_note || undefined,

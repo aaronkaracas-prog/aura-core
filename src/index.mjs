@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.30.0-2026-08-13-think-with-it-do-not-recite-it";
+const BUILD = "aura-core-v5.31.0-2026-08-13-waiting-is-not-deafness";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18500,13 +18500,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // exactly what the thesis exists to prevent: "one wrong detail and they know nobody actually
         // looked." So while the crawl runs she says one true thing and asks nothing.
         if (st.crawl && !st.read) {
+          // ══ WAITING IS NOT DEAFNESS (fixed 2026-08-13) ═══════════════════════════════════════
+          // MEASURED: five turns vanished into "Reading risingdragon.com now" - including a real
+          // objection about deposits and an off-topic test. She heard none of them. Making her wait
+          // before speaking was right; making her stop LISTENING was not. What they say while she
+          // reads is still theirs, and it is often the most honest thing in the conversation because
+          // they think nobody is answering.
           const waited = Math.round((Date.now() - st.crawl.started) / 1000);
           st.turns.push({ by: "aura", said: "Reading " + st.crawl.site + " now.", at: new Date().toISOString() });
           try { await env.AURA_KV.put(ocKey, JSON.stringify(st), { expirationTtl: 7 * 86400 }); } catch {}
           return { cmd: "ONBOARD_CHAT", payload: { ok: true, session: ocSession,
             say: waited < 20
               ? "Reading " + st.crawl.site + " now - give me a moment."
-              : "Still going through " + st.crawl.site + ". Say anything and I will pick it up.",
+              : "Still going through " + st.crawl.site + " - keep talking, I am reading it all.",
+            heard_while_reading: st.turns.filter(t => t.by === "them").length - 1 || undefined,
             known: st.known, pta: st.pta, created: null,
             reading: st.crawl.site, waited_seconds: waited,
             note: "No question asked on purpose. Anything she could ask before reading would be a " +
@@ -18570,6 +18577,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           "they already have, work it out from what the thing does. If they raise something nobody " +
           "anticipated, reason from what you know rather than repeating the offer louder. The price " +
           "and the product are fixed. Everything you say about them is not.\n\n" +
+          "══ EVERY NUMBER AND NAME COMES FROM THE PAGE ══\n" +
+          "MEASURED: she told Rising Dragon they had 'four chairs plus one piercer'. The site lists " +
+          "five artists and no piercer. She built a specific, confident detail out of nothing, and " +
+          "she was arguing FOR the offer when she did it - which is when it is most tempting and most " +
+          "damaging. One wrong detail and they know nobody actually looked.\n\n" +
+          "If the site says five artists, say five artists. Do not turn that into chairs, stations, " +
+          "employees, or a piercer. When you need a number you do not have, ask for it or leave it " +
+          "out. Vague and true beats specific and invented, every time.\n\n" +
           "══ WHAT THIS CONVERSATION IS NOT ABOUT ══\n" +
           "You are here about their shop and this offer. Not politics, not the news, not general " +
           "questions, not what you think about anything else. If they ask, say plainly that it is not " +
@@ -18752,19 +18767,46 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             let et = "";
             if (exKey) {
               const ed = await callAnthropic(exKey, { model: await anthropicModel(env),
-                max_tokens: 400, system: exSys, messages: [{ role: "user", content: exUser }] });
+                max_tokens: 900, system: exSys, messages: [{ role: "user", content: exUser }] });
               if (ed && ed.content) for (const b of ed.content) if (b.type === "text") et += b.text;
             } else {
               const ex = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
                 messages: [{ role: "system", content: exSys }, { role: "user", content: exUser }],
-                max_tokens: 400 });
+                max_tokens: 900 });
               et = aiText(ex);
             }
+            // ══ TRUNCATED IS NOT UNUSABLE (fixed 2026-08-13) ═══════════════════════════════
+            // MEASURED: the reply carried a real address and a website and produced NOTHING, because
+            // 400 tokens cut the object mid-field and JSON.parse threw. Three turns of facts sat in
+            // plain sight and no PTA could ever be created. The same bracket repair the learning loop
+            // needed - close what is open, invent no content.
             const ea = et.indexOf("{"), eb = et.lastIndexOf("}");
-            if (ea >= 0 && eb > ea) {
-              const facts = JSON.parse(et.slice(ea, eb + 1));
+            let facts = null;
+            if (ea >= 0) {
+              const body = eb > ea ? et.slice(ea, eb + 1) : et.slice(ea);
+              try { facts = JSON.parse(body); }
+              catch {
+                let fixed = body.replace(/,\s*$/, "").replace(/:\s*$/, ': ""');
+                const opens = []; let inStr = false, esc = false;
+                for (const ch of fixed) {
+                  if (esc) { esc = false; continue; }
+                  if (ch === "\\") { esc = true; continue; }
+                  if (ch === '"') { inStr = !inStr; continue; }
+                  if (inStr) continue;
+                  if (ch === "{" || ch === "[") opens.push(ch);
+                  else if (ch === "}" || ch === "]") opens.pop();
+                }
+                if (inStr) fixed += '"';
+                while (opens.length) fixed += opens.pop() === "{" ? "}" : "]";
+                try { facts = JSON.parse(fixed); }
+                catch (e2) { st.extract_note = "unrepairable: " + String(e2.message).slice(0, 80) +
+                  " | " + et.slice(0, 160); }
+              }
+            } else { st.extract_note = "no JSON in the extraction reply: " + et.slice(0, 160); }
+            if (facts) {
               out.known = Object.fromEntries(Object.entries(facts).filter(([, v]) => v && String(v).trim()));
-            } else { st.extract_note = "no JSON in the extraction reply: " + et.slice(0, 120); }
+              st.extract_note = undefined;
+            }
           } catch (e) {
             // Was a bare catch. The extraction failed silently for three turns while name, email and
             // address sat in plain sight in the conversation - and no PTA could ever be created

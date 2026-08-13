@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.27.2-2026-08-13-saying-how-should-not-weaken-the-record";
+const BUILD = "aura-core-v5.28.0-2026-08-13-you-have-read-nothing-you-know-nothing";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18289,8 +18289,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           try {
             const sr = await processCommand("SITE_READ https://" + site, env, true);
             const sp = (sr && sr.payload) ? sr.payload : sr;
+            let done = false;
             if (sp?.ok && sp.id) {
-              for (let poll = 0; poll < 12; poll++) {
+              // 18 polls at 5s. MEASURED: a 12-poll ceiling gave up at 60 seconds on a site that
+              // needed 70, silently, and she filled the gap by inventing three artists and a city.
+              for (let poll = 0; poll < 18; poll++) {
                 await new Promise(r => setTimeout(r, 5000));
                 const stt = await processCommand("SITE_READ STATUS " + sp.id, env, true);
                 const stp = (stt && stt.payload) ? stt.payload : stt;
@@ -18299,12 +18302,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                     st.read = { site, chars: stp.chars, pages: stp.pages };
                     st.site_text = String(stp.markdown).slice(0, 30000);
                     st.known.website = "https://" + site;
+                  } else {
+                    st.read_failed = "the crawl finished but returned " +
+                      ((stp.markdown || "").length) + " characters";
                   }
-                  break;
+                  done = true; break;
                 }
               }
+              if (!done) st.read_failed = "the crawl was still running after 90 seconds";
+            } else {
+              st.read_failed = "the crawl would not start: " + (sp?.error || "unknown");
             }
-          } catch {}
+          } catch (e) {
+            st.read_failed = "the crawl threw: " + String((e && e.message) || e).slice(0, 100);
+          }
         }
 
         // ── the question set for this trade, built once and reused ──
@@ -18348,8 +18359,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "vendor. The signals are obvious once you look: many locations, sign-up pages aimed " +
               "at businesses, a network, no single address.\n\nTHE SITE:\n" +
               st.site_text.slice(0, 12000) + "\n\n"
-            : "You have not read their site yet. If they have one, ask for it early - a minute of " +
-              "reading saves them ten questions.\n\n") +
+            : "══ YOU HAVE READ NOTHING. YOU KNOW NOTHING ABOUT THIS BUSINESS. ══\n" +
+              (st.read_failed
+                ? "A read was attempted and failed - " + st.read_failed + ". Say plainly that you " +
+                  "could not reach their site and ask them to tell you instead.\n"
+                : "") +
+              "DO NOT describe their business, name their staff, name their city, list their " +
+              "services, or say what you 'can see'. You cannot see anything. Anything you produce " +
+              "about them right now is invented, and a business owner reading invented details about " +
+              "their own shop knows instantly that this is a machine guessing.\n" +
+              "MEASURED: with a softer version of this instruction you invented three artists and a " +
+              "city for a shop whose site had not loaded. That is the single worst thing this " +
+              "product can do - the entire promise is that we already understand their business, and " +
+              "one confident wrong detail destroys it permanently.\n" +
+              "Ask for their website, or ask them to tell you who they are. Nothing else.\n\n") +
           (playbook?.asks?.length
             ? "WHAT MATTERS FOR A " + String(trade).toUpperCase() + ", in order:\n- " +
               playbook.asks.join("\n- ") + "\nWork through these, skipping any the site already " +
@@ -18571,6 +18594,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         return { cmd: "ONBOARD_CHAT", payload: { ok: true, session: ocSession,
           say: out.say, known: st.known, pta: st.pta, created,
           read_their_site: st.read || undefined,
+          read_failed: st.read_failed || undefined,
           playbook_for: trade && playbook ? trade : undefined,
           ready: !!out.ready && !!st.pta,
           extract_note: st.extract_note || undefined,

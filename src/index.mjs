@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.26.0-2026-08-12-she-arrives-already-knowing";
+const BUILD = "aura-core-v5.26.1-2026-08-13-show-what-came-back";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18342,19 +18342,48 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const convo = st.turns.slice(-14).map(t => ({
           role: t.by === "them" ? "user" : "assistant", content: t.said }));
 
-        let out = null;
+        let out = null, _ocRaw = "";
         try {
           const rr = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
             messages: [{ role: "system", content: sys }, ...convo], max_tokens: 900 });
           const t = String(rr?.response ?? rr?.result?.response ?? "");
+          _ocRaw = t;
           const a3 = t.indexOf("{"), b3 = t.lastIndexOf("}");
-          if (a3 >= 0 && b3 > a3) out = JSON.parse(t.slice(a3, b3 + 1));
+          if (a3 >= 0 && b3 > a3) {
+            const body = t.slice(a3, b3 + 1);
+            try { out = JSON.parse(body); }
+            catch {
+              // Same bracket repair the learning loop needed - a truncated object still carries a
+              // usable reply, and losing it to one missing brace is losing the whole turn.
+              let fixed = body.replace(/,\s*$/, "");
+              const opens = []; let inStr = false, esc = false;
+              for (const ch of fixed) {
+                if (esc) { esc = false; continue; }
+                if (ch === "\\") { esc = true; continue; }
+                if (ch === '"') { inStr = !inStr; continue; }
+                if (inStr) continue;
+                if (ch === "{" || ch === "[") opens.push(ch);
+                else if (ch === "}" || ch === "]") opens.pop();
+              }
+              if (inStr) fixed += '"';
+              while (opens.length) fixed += opens.pop() === "{" ? "}" : "]";
+              out = JSON.parse(fixed);
+            }
+          }
         } catch (e) {
           return { cmd: "ONBOARD_CHAT", payload: { ok: false,
             error: "could not think: " + String((e && e.message) || e).slice(0, 120),
             what_to_say: "Something went wrong on my end - say that again?" } };
         }
-        if (!out?.say) return { cmd: "ONBOARD_CHAT", payload: { ok: false, error: "no reply produced" } };
+        if (!out?.say) return { cmd: "ONBOARD_CHAT", payload: { ok: false, error: "no reply produced",
+          // Show what came back. "No reply produced" is true and useless - the model said something,
+          // it just was not JSON I could read, and the reply itself is the only thing that says why.
+          reply_preview: String(_ocRaw || "").slice(0, 500),
+          reply_length: (_ocRaw || "").length,
+          parsed: out ? JSON.stringify(out).slice(0, 200) : null,
+          what_to_look_for: "Empty means the call returned nothing. Prose before the brace means the " +
+            "format instruction was ignored - usually because the system prompt is too long for an 8B " +
+            "model to follow to the letter." } };
 
         st.known = { ...st.known, ...(out.known || {}),
           operations: { ...(st.known.operations || {}), ...((out.known || {}).operations || {}) } };

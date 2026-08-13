@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.39.0-2026-08-13-the-address-a-business-lives-at";
+const BUILD = "aura-core-v5.39.1-2026-08-13-the-column-has-to-exist-first";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -19226,6 +19226,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         "cdn","static","assets","img","images","media","blog","help","support","status","docs","dev",
         "staging","test","beta","console","dashboard","login","signin","signup","auth","account",
         "billing","pay","checkout","secure","my","me","aura","openforbusiness","cityguide"]);
+      // ══ THE COLUMN HAS TO EXIST BEFORE ANYTHING READS IT ═══════════════════════════════════
+      // MEASURED: every SLUG call returned NO_SUCH_BUSINESS for businesses that plainly exist. The
+      // SELECT names `slug`, the column did not exist yet, D1 threw, and .catch(() => null) turned a
+      // schema error into "no such business". The ALTER ran later in the same block - after the reads
+      // that needed it. Once, at the top, before any query mentions it.
+      try { await env.AURA_MEMORY.prepare("ALTER TABLE pta_entities ADD COLUMN slug TEXT").run(); } catch {}
       const norm = (v) => String(v || "").toLowerCase().trim()
         .replace(/^https?:\/\//, "").replace(/\..*$/, "")
         .replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
@@ -19259,8 +19265,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (slSub === "SET") {
           const id = slParts[1] || "";
           let sl = norm(slParts[2]);
-          const ent = await env.AURA_MEMORY.prepare("SELECT id, name, slug FROM pta_entities WHERE id = ?")
-            .bind(id).first().catch(() => null);
+          let ent = null, entErr = null;
+          try { ent = await env.AURA_MEMORY.prepare("SELECT id, name, slug FROM pta_entities WHERE id = ?").bind(id).first(); }
+          catch (e) { entErr = String((e && e.message) || e).slice(0, 140); }
+          if (entErr) return { cmd: "SLUG", payload: { ok: false, error: "QUERY_FAILED", detail: entErr,
+            note: "Not the same as the business being missing - the read itself failed." } };
           if (!ent) return { cmd: "SLUG", payload: { ok: false, error: "NO_SUCH_BUSINESS", id } };
           if (!sl) sl = norm(ent.name);
           if (!sl) return { cmd: "SLUG", payload: { ok: false, error: "NO_USABLE_SLUG",
@@ -19275,9 +19284,6 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             slug: sl, belongs_to: taken.name,
             what_to_do: "Another business is already at that address. Try a longer one - the city, or " +
               "the full name." } };
-          try {
-            await env.AURA_MEMORY.prepare("ALTER TABLE pta_entities ADD COLUMN slug TEXT").run();
-          } catch {}   // already there on every run after the first
           await env.AURA_MEMORY.prepare("UPDATE pta_entities SET slug = ? WHERE id = ?").bind(sl, id).run();
           if (ent.slug && ent.slug !== sl) { try { await env.AURA_KV.delete("slug:" + ent.slug); } catch {} }
           try { await env.AURA_KV.put("slug:" + sl, id, { expirationTtl: 300 }); } catch {}

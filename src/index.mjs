@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.37.0-2026-08-13-what-she-read-is-the-understanding";
+const BUILD = "aura-core-v5.38.0-2026-08-13-they-take-their-people-with-them";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -19110,20 +19110,33 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const owns = await sdb.prepare(
           "SELECT to_id FROM pta_edges WHERE from_id = ? AND edge_type IN ('owns','manages') " +
           "AND state != 'revoked'").bind(scWho).all().catch(() => null);
+        // Where they work now AND where they used to - a departed artist still has clients booked
+        // with them, and those did not stop existing when the edge was revoked.
         const worksAt = await sdb.prepare(
           "SELECT to_id FROM pta_edges WHERE from_id = ? AND edge_type = 'works_at' " +
           "AND state != 'revoked'").bind(scWho).all().catch(() => null);
+        const worked = await sdb.prepare(
+          "SELECT to_id, updated_at FROM pta_edges WHERE from_id = ? AND edge_type = 'works_at' " +
+          "AND state = 'revoked'").bind(scWho).all().catch(() => null);
+        const leftMap = Object.fromEntries((worked?.results || []).map(r => [r.to_id, r.updated_at]));
         const ownedIds = (owns?.results || []).map(r => r.to_id);
         const seatIds = (worksAt?.results || []).map(r => r.to_id);
-        const target = scBiz || ownedIds[0] || seatIds[0];
+        const target = scBiz || ownedIds[0] || seatIds[0] || Object.keys(leftMap)[0];
         if (!target) return { cmd: "SCHEDULE", payload: { ok: true, bookings: [],
           what_to_say: "You are not attached to a business, so there is nothing to show." } };
 
         const isOwner = ownedIds.includes(target);
         const isSeated = seatIds.includes(target);
-        if (!isOwner && !isSeated) return { cmd: "SCHEDULE", payload: { ok: false, error: "NOT_YOURS",
+        const leftOn = leftMap[target] || null;   // they used to work here
+        if (!isOwner && !isSeated && !leftOn) return { cmd: "SCHEDULE", payload: { ok: false, error: "NOT_YOURS",
           business: target,
           what_to_say: "You do not work at that business and you do not own it." } };
+
+        // Every artist who has left this shop, and when - so the owner's view can stop at each line.
+        const leavers = await sdb.prepare(
+          "SELECT from_id, updated_at FROM pta_edges WHERE to_id = ? AND edge_type = 'works_at' " +
+          "AND state = 'revoked'").bind(target).all().catch(() => null);
+        const leftMapForBiz = Object.fromEntries((leavers?.results || []).map(r => [r.from_id, r.updated_at]));
 
         const rows = await sdb.prepare(
           "SELECT e.id, e.from_id AS customer, e.context, x.name AS customer_name " +
@@ -19140,8 +19153,25 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
         // The whole point: the owner sees the shop, an artist sees their own. A booking with nobody
         // named is shop-wide and everyone at the shop can see it - it was taken for the shop.
-        const mine = all.filter(b => !b.with || b.with === scWho);
-        const shown = isOwner ? all : mine;
+        // ══ THE DEPARTURE DATE IS THE LINE, AND BOTH SIDES READ THE SAME ONE ═══════════════
+        // The shop keeps what happened while they were here. The artist keeps what is ahead of the
+        // day they left, because those clients came for them. One boundary, no overlap, nothing
+        // deleted from either side of it.
+        let mine = all.filter(b => !b.with || b.with === scWho);
+        let shown = isOwner ? all : mine;
+        let after_they_left = 0;
+        if (isOwner) {
+          const before = all.filter(b => {
+            if (!b.with) return true;                       // shop-wide, always the shop's
+            const l = leftMapForBiz[b.with];
+            return !l || String(b.when || "") <= l;         // still here, or it happened before they went
+          });
+          after_they_left = all.length - before.length;
+          shown = before;
+        } else if (leftOn && !isSeated) {
+          // They left. What is still ahead of that date is theirs; the rest belongs to the shop.
+          shown = mine.filter(b => b.with === scWho && String(b.when || "") > leftOn);
+        }
         // Names for the artists, so a schedule does not read as a wall of ids.
         const ids = [...new Set(shown.map(b => b.with).filter(Boolean))];
         let names = {};
@@ -19157,7 +19187,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           count: shown.length,
           bookings: shown.map(b => ({ ...b, with_name: b.with ? (names[b.with] || null) : "the shop" })),
           hidden_from_you: isOwner ? undefined : (all.length - shown.length) || undefined,
-          note: isOwner
+          went_with_a_departed_artist: isOwner ? (after_they_left || undefined) : undefined,
+          you_left_on: leftOn || undefined,
+          note: leftOn && !isSeated
+            ? "You do not work here any more. What you see is the clients booked with you after you " +
+              "left - they came for you. Everything from before stays on the shop's books, because it " +
+              "happened here."
+            : isOwner
             ? "You own this, so you see every booking including the ones with your artists."
             : "You see the bookings with you, and any the shop took without naming an artist. The " +
               "rest belong to whoever they were booked with." } };
@@ -19359,13 +19395,42 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             what_to_do: "Nobody by that id works here. SEAT LIST shows who does." } };
           // Revoked, never deleted - somebody who worked here in March still worked here in March,
           // and a schedule from then has to still make sense.
+          // ══ THEY TAKE THEIR PEOPLE WITH THEM ═══════════════════════════════════════════════
+          //
+          // An artist's identity was never the shop's - Jason has his own PTA and always did. What
+          // was missing is what happens to the WORK when he goes: the shop kept seeing every booking
+          // that was his, including next Tuesday's, and Jason saw nothing at all because SCHEDULE
+          // needs an active works_at.
+          //
+          // Both wrong. The past happened at this shop and stays visible - a booking in March was a
+          // booking in March and the shop's books have to still make sense. Everything from today
+          // forward goes with him, because those clients came for HIM.
+          //
+          // The line is the departure date. Not a deletion, not a transfer of history - a boundary
+          // written on the edge, and both sides read from the same one.
+          const leftAt = new Date().toISOString();
           await db.prepare("UPDATE pta_edges SET state = 'revoked', updated_at = ? WHERE id = ?")
-            .bind(new Date().toISOString(), seat.edge_id).run();
+            .bind(leftAt, seat.edge_id).run();
+          // What is still ahead of them, so the answer is a number rather than a shrug.
+          let carried = 0;
+          try {
+            const fwd = await db.prepare(
+              "SELECT context FROM pta_edges WHERE to_id = ? AND edge_type = 'books' AND state != 'revoked'"
+            ).bind(seBiz).all();
+            for (const r of (fwd?.results || [])) {
+              let c = {}; try { c = JSON.parse(r.context || "{}"); } catch {}
+              if (c.with === seat.pta && String(c.when || "") > leftAt) carried++;
+            }
+          } catch {}
           const seats = await readSeats();
           return { cmd: "SEAT", payload: { ok: true, business: biz.name, removed: seat.name,
-            person: seat.pta, count: seats.length, billing: bill(seats.length),
-            note: "The edge is revoked, not deleted. They worked here until today and the record still " +
-              "says so - anything scheduled under their name still makes sense." } };
+            person: seat.pta, left_at: leftAt, count: seats.length, billing: bill(seats.length),
+            bookings_going_with_them: carried || undefined,
+            note: "The edge is revoked, not deleted. They worked here until " + leftAt.slice(0, 10) +
+              " and the record still says so - the bookings from before that stay on your books, " +
+              "because they happened here." +
+              (carried ? " The " + carried + " still ahead of that date go with " + seat.name +
+                " - those clients came for them." : "") } };
         }
         return { cmd: "SEAT", payload: { ok: false, error: "Usage: SEAT LIST|ADD|REMOVE <business_pta> ..." } };
       } catch (e) {

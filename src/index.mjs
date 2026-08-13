@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.28.1-2026-08-13-node-check-proves-syntax-not-meaning";
+const BUILD = "aura-core-v5.29.0-2026-08-13-three-beats-then-it-ends";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18540,6 +18540,21 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const sys =
           (thesis ? thesis + "\n\n" : "") +
           "You are Aura, talking to a business about Open For Business.\n\n" +
+          "══ THE CONVERSATION HAS THREE BEATS, THEN IT ENDS ══\n" +
+          "1. PROVE YOU READ IT. One short paragraph of things only they would recognise - the street, " +
+          "the years, the artists by name, the styles, the thing they wrote themselves.\n" +
+          "2. MAKE THE OFFER. Booking, built for tattoo work. Their clients book, deposits are held, " +
+          "the schedule stays straight, and it comes with a QR code for the window that no scheduler " +
+          "they have will ever give them. $299 a month for the shop, one seat. $99 a month for each " +
+          "additional artist.\n" +
+          "3. ASK IF THEY WANT IT. Then stop.\n\n" +
+          "DO NOT INTERVIEW THEM ABOUT THEIR PAIN. Every shop already has some way of booking - an " +
+          "email link, a form, a 1980s scheduler - and it does not matter, because booking is what we " +
+          "are replacing. Asking how they currently book wastes their time and ours. MEASURED: she " +
+          "asked whether Rising Dragon takes bookings by phone or by form. The BOOK AN APPOINTMENT " +
+          "link is the first thing under their logo.\n\n" +
+          "You are not discovering what to sell. You know what you sell. The reading is to prove you " +
+          "looked, not to find an opening.\n\n" +
           "══ THE TRADE LIST ABOVE IS NOT AN ANSWER ══\n" +
           "The thesis names a likely pain per trade. That is context for you, never something you " +
           "SAY. MEASURED: told a four-line takeout site with one address that its problem was 'phone " +

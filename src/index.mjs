@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.39.1-2026-08-13-the-column-has-to-exist-first";
+const BUILD = "aura-core-v5.40.0-2026-08-13-aura-inside-the-console";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -43835,6 +43835,29 @@ export class PublicEntry extends WorkerEntrypoint {
     try {
       const r = await processCommand("SLUG GET " + String(name || ""), this.env, true);
       return (r && r.payload) ? r.payload : r;
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
+  // Aura, inside a business console. The session says who is asking and the slug says which shop -
+  // she answers with that business's chain in front of her, and only if this person may see it.
+  async talk(sessionId, slug, said) {
+    try {
+      const me = await this.sessionCheck(sessionId);
+      if (!me?.ok) return { ok: false, error: "NOT_SIGNED_IN" };
+      const view = await this.console_(sessionId, slug);
+      if (!view?.ok || !view.showing) return { ok: false, error: "NOT_YOURS",
+        say: "That is not a business you can see." };
+      // PTA_TALK takes JSON, not positional arguments - and the entity is the BUSINESS, because the
+      // console is the shop's, not the owner's personal one.
+      const r = await processCommand("PTA_TALK " + JSON.stringify({
+        pta_entity: view.showing, message: String(said || ""), app: "openforbusiness",
+        mode: "home", console_url: "https://" + String(slug || "") + ".openforbusiness.world",
+      }), this.env, true);
+      const rp = (r && r.payload) ? r.payload : r;
+      return rp?.ok ? rp : { ok: false, error: rp?.error || "no reply",
+        say: rp?.what_to_say || "Something went wrong on my end - say that again?" };
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
     }

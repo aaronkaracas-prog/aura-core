@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.26.1-2026-08-13-show-what-came-back";
+const BUILD = "aura-core-v5.26.2-2026-08-13-workers-ai-does-not-always-return-a-string";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -3874,6 +3874,26 @@ async function ptaWakeGate(env, opts) {
 // It does not erase the chain - the chain is the record of what was true and when. Erasure is a
 // separate act with its own command, because "stop writing about me" and "delete what you wrote" are
 // different requests and a system that conflates them cannot honour either precisely.
+// ══ WORKERS AI DOES NOT ALWAYS RETURN A STRING ═════════════════════════════════════════════════
+// Written three times now - in the learning loop, in perception, and in onboarding - because each
+// time I reached for String(rr.response) and got "[object Object]", fifteen characters, and an error
+// that blamed the model for my own flattening. Defined once so the fourth caller inherits the fix.
+function aiText(rr) {
+  const pick = (v) => {
+    if (v == null) return "";
+    if (typeof v === "string") return v;
+    if (typeof v === "object") {
+      for (const k of ["response", "text", "output_text", "content", "result"]) {
+        if (typeof v[k] === "string" && v[k].trim()) return v[k];
+      }
+      if (Array.isArray(v)) return v.map(pick).filter(Boolean).join("\n");
+      try { return JSON.stringify(v); } catch { return ""; }
+    }
+    return String(v);
+  };
+  return pick(rr?.response) || pick(rr?.result?.response) || pick(rr?.result) || pick(rr);
+}
+
 const PTA_CAP_REMEMBER = "remember";
 
 // ══ REMEMBERING MY HOURS IS NOT HOLDING MY TAX ID ═══════════════════════════════════════════════
@@ -18302,7 +18322,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                   "radius, peak hours. A real estate office: listings, showings, agents, commission " +
                   "split. Reply as JSON only: {\"asks\":[\"...\"]}" }],
                 max_tokens: 500 });
-              const t = String(pr?.response ?? pr?.result?.response ?? "");
+              const t = aiText(pr);
               const a2 = t.indexOf("{"), b2 = t.lastIndexOf("}");
               if (a2 >= 0 && b2 > a2) {
                 playbook = JSON.parse(t.slice(a2, b2 + 1));
@@ -18346,7 +18366,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         try {
           const rr = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
             messages: [{ role: "system", content: sys }, ...convo], max_tokens: 900 });
-          const t = String(rr?.response ?? rr?.result?.response ?? "");
+          const t = aiText(rr);
           _ocRaw = t;
           const a3 = t.indexOf("{"), b3 = t.lastIndexOf("}");
           if (a3 >= 0 && b3 > a3) {

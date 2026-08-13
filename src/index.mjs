@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.41.0-2026-08-13-the-console-is-not-a-recap";
+const BUILD = "aura-core-v5.41.1-2026-08-13-say-which-step-refused";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -43945,11 +43945,20 @@ export class PublicEntry extends WorkerEntrypoint {
   // she answers with that business's chain in front of her, and only if this person may see it.
   async talk(sessionId, slug, said) {
     try {
+      // ══ SAY WHICH STEP REFUSED ═══════════════════════════════════════════════════════════════
+      // MEASURED: /_console renders with a session and /_talk returns NOT_SIGNED_IN with the same
+      // cookie. One of these two calls is failing and a single shared error code cannot say which -
+      // the same claim-without-artifact shape this file has been paying for all session.
       const me = await this.sessionCheck(sessionId);
-      if (!me?.ok) return { ok: false, error: "NOT_SIGNED_IN" };
+      if (!me?.ok) return { ok: false, error: "NOT_SIGNED_IN", at: "sessionCheck",
+        detail: me?.error || null, had_session: !!sessionId,
+        say: "You are not signed in - reload and sign in again." };
       const view = await this.console_(sessionId, slug);
-      if (!view?.ok || !view.showing) return { ok: false, error: "NOT_YOURS",
-        say: "That is not a business you can see." };
+      if (!view?.ok) return { ok: false, error: view?.error || "NOT_YOURS", at: "console",
+        slug: slug || null, detail: view?.what_to_say || null,
+        say: view?.what_to_say || "I cannot see that business from here." };
+      if (!view.showing) return { ok: false, error: "NO_BUSINESS", at: "console",
+        say: "There is no business here for you." };
       // PTA_TALK takes JSON, not positional arguments - and the entity is the BUSINESS, because the
       // console is the shop's, not the owner's personal one.
       const r = await processCommand("PTA_TALK " + JSON.stringify({

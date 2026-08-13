@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.29.0-2026-08-13-never-make-them-wait-for-a-crawl";
+const BUILD = "aura-core-v5.29.1-2026-08-13-twelve-thousand-characters-of-wix";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18365,6 +18365,30 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           }
         }
 
+        // ══ 12,000 CHARACTERS OF WIX IS 12,000 CHARACTERS OF IMAGE URLS ══════════════════════
+        //
+        // MEASURED on oceanfronttattoo.com: she read 12 pages and 51,750 characters, and asked what
+        // they tell walk-ins they turn away. The site says WALK-INS WELCOME EVERY DAY at the top,
+        // lists three ways to book including a $100 deposit, names four artists with their days, and
+        // gives the address and hours. She had every word of it.
+        //
+        // What she was HANDED was slice(0, 12000) of a Wix export - and a Wix page is mostly
+        // 200-character static.wixstatic.com URLs, CSS fragments and "press to zoom". The address was
+        // past the cut. She was not ignoring the site; the useful part never reached her.
+        //
+        // So the text is stripped to words before it is passed: image links out, bare URLs out,
+        // repeated boilerplate out. What survives is what a person would read.
+        const readable = (t) => String(t || "")
+          .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")              // image embeds
+          .replace(/\[([^\]]*)\]\((?:https?:)?[^)]*\)/g, "$1") // links keep their text
+          .replace(/https?:\/\/\S+/g, " ")                      // bare urls
+          .replace(/#comp-\w+[^\n]*/g, " ")                     // wix component css
+          .replace(/\b(press to zoom|top of page|bottom of page|Use tab to navigate[^\n]*)/gi, " ")
+          .replace(/[ \t]+/g, " ")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim();
+        const siteForPrompt = st.site_text ? readable(st.site_text).slice(0, 14000) : "";
+
         const sys =
           "You are Aura, onboarding a business onto Open For Business. You are talking, not " +
           "administering a form.\n\n" +
@@ -18379,7 +18403,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "and ask whether they have their own site. Do not interview somebody about their " +
               "vendor. The signals are obvious once you look: many locations, sign-up pages aimed " +
               "at businesses, a network, no single address.\n\nTHE SITE:\n" +
-              st.site_text.slice(0, 12000) + "\n\n"
+              siteForPrompt + "\n\n" +
+              "USE THIS. If it names their address, hours, staff or how they take bookings, you KNOW " +
+              "those things - say them back. Asking about something the page states plainly is the " +
+              "one thing that tells a business owner you did not really look.\n\n"
             : (st.crawl
               ? "YOU ARE READING THEIR SITE RIGHT NOW - it takes a minute and you do not have it yet. " +
                 "Tell them you are looking at it, and ask them something useful in the meantime: who " +

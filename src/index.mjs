@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.40.1-2026-08-13-the-relying-party-is-where-they-stand";
+const BUILD = "aura-core-v5.40.2-2026-08-13-the-link-that-becomes-a-passkey";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -43881,6 +43881,17 @@ export class PublicEntry extends WorkerEntrypoint {
       const rp = (r && r.payload) ? r.payload : r;
       return rp?.ok ? rp : { ok: false, error: rp?.error || "no reply",
         say: rp?.what_to_say || "Something went wrong on my end - say that again?" };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
+  // The invite link, over RPC. Spends the token, mints the first session. Everything after this is
+  // a passkey and nothing is ever typed again.
+  async joinAccept(token) {
+    try {
+      const r = await processCommand("INVITE_SEAT ACCEPT " + String(token || ""), this.env, true);
+      return (r && r.payload) ? r.payload : r;
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
     }

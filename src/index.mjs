@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.44.0-2026-08-13-claimed-should-add-not-replace";
+const BUILD = "aura-core-v5.44.1-2026-08-13-the-column-before-the-read-again";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18083,6 +18083,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // it. So a business with no place_id gets looked up by name and address once, and the id is
         // kept on the entity - next time it is a direct read.
         if (!dp.ok && /^pta_|^ent_/.test(obId)) {
+          // The column before the read that names it. I did this exact thing in SLUG four hours ago:
+          // SELECT a column that does not exist, D1 throws, the catch eats it, and the whole lookup
+          // is skipped in silence while the ALTER sits further down where it can never run.
+          try { await env.AURA_MEMORY.prepare("ALTER TABLE pta_entities ADD COLUMN place_id TEXT").run(); } catch {}
           try {
             const ent = await env.AURA_MEMORY.prepare(
               "SELECT id, name, place_id FROM pta_entities WHERE id = ?").bind(obId).first();
@@ -18099,12 +18103,23 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 const c0 = [...ch0].reverse().find(x => x?.data?.address || x?.data?.where);
                 addr = c0?.data?.address || c0?.data?.where || "";
               } catch {}
-              const fr = await processCommand("FETCH_PLACES " + ent.name + (addr ? " " + addr : ""), env, true);
+              // A street with no city finds nothing. Their own site and their listing both carry the
+              // city; falling back to the website's own words beats searching for half an address.
+              let city = "";
+              try {
+                const stub1 = env.PTA_DO.get(env.PTA_DO.idFromName(obId));
+                const r1 = await stub1.fetch(new Request("http://do", { method: "POST",
+                  body: JSON.stringify({ method: "getState", params: [] }) }));
+                const j1 = await r1.json();
+                const u1 = [...(j1?.pta?.chain || [])].reverse().find(x => x?.event === "UNDERSTANDING");
+                city = u1?.data?.where || u1?.data?.city || "";
+              } catch {}
+              const q = ent.name + (addr ? " " + addr : "") + (city && !String(addr).includes(city) ? " " + city : "");
+              const fr = await processCommand("FETCH_PLACES " + q, env, true);
               const fp = (fr && fr.payload) ? fr.payload : fr;
               const hit = (fp?.places || [])[0];
               if (hit?.place_id) {
                 pid = hit.place_id;
-                try { await env.AURA_MEMORY.prepare("ALTER TABLE pta_entities ADD COLUMN place_id TEXT").run(); } catch {}
                 try { await env.AURA_MEMORY.prepare("UPDATE pta_entities SET place_id = ? WHERE id = ?")
                   .bind(pid, obId).run(); } catch {}
               }
@@ -18114,7 +18129,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               const dp2 = (d2 && d2.payload) ? d2.payload : d2;
               if (dp2?.ok) { dp = dp2; dp.matched_by = ent?.place_id ? "stored place_id" : "name and address"; }
             }
-          } catch {}
+          } catch (e) { dp.lookup_error = String((e && e.message) || e).slice(0, 140); }
         }
 
         // Claimed? The alias index answers - a claim mints through ingestBusiness, so the place_id

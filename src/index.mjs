@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.43.0-2026-08-13-there-is-only-ever-one-code";
+const BUILD = "aura-core-v5.44.0-2026-08-13-claimed-should-add-not-replace";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18074,6 +18074,48 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const det = await processCommand("PLACE " + obId, env, true);
         let dp = (det && det.payload) ? det.payload : det;
         if (!dp?.ok) dp = { ok: false };
+
+        // ══ A CLAIMED BUSINESS STILL GETS EVERYTHING GOOGLE HAS ══════════════════════════════
+        // MEASURED: Rising Dragon's page showed a description and nothing else - no hours, no
+        // photos, an address with no city. It was created from a conversation, so it has no
+        // place_id, so PLACE found nothing and only the chain was left.
+        // That is backwards. Being claimed should ADD to what the world already knows, not replace
+        // it. So a business with no place_id gets looked up by name and address once, and the id is
+        // kept on the entity - next time it is a direct read.
+        if (!dp.ok && /^pta_|^ent_/.test(obId)) {
+          try {
+            const ent = await env.AURA_MEMORY.prepare(
+              "SELECT id, name, place_id FROM pta_entities WHERE id = ?").bind(obId).first();
+            let pid = ent?.place_id || null;
+            if (!pid && ent?.name) {
+              // Their own address makes the search precise - two shops share a name, not a street.
+              let addr = "";
+              try {
+                const stub0 = env.PTA_DO.get(env.PTA_DO.idFromName(obId));
+                const r0 = await stub0.fetch(new Request("http://do", { method: "POST",
+                  body: JSON.stringify({ method: "getState", params: [] }) }));
+                const j0 = await r0.json();
+                const ch0 = j0?.pta?.chain || [];
+                const c0 = [...ch0].reverse().find(x => x?.data?.address || x?.data?.where);
+                addr = c0?.data?.address || c0?.data?.where || "";
+              } catch {}
+              const fr = await processCommand("FETCH_PLACES " + ent.name + (addr ? " " + addr : ""), env, true);
+              const fp = (fr && fr.payload) ? fr.payload : fr;
+              const hit = (fp?.places || [])[0];
+              if (hit?.place_id) {
+                pid = hit.place_id;
+                try { await env.AURA_MEMORY.prepare("ALTER TABLE pta_entities ADD COLUMN place_id TEXT").run(); } catch {}
+                try { await env.AURA_MEMORY.prepare("UPDATE pta_entities SET place_id = ? WHERE id = ?")
+                  .bind(pid, obId).run(); } catch {}
+              }
+            }
+            if (pid) {
+              const d2 = await processCommand("PLACE " + pid, env, true);
+              const dp2 = (d2 && d2.payload) ? d2.payload : d2;
+              if (dp2?.ok) { dp = dp2; dp.matched_by = ent?.place_id ? "stored place_id" : "name and address"; }
+            }
+          } catch {}
+        }
 
         // Claimed? The alias index answers - a claim mints through ingestBusiness, so the place_id
         // resolves to a PTA if and only if somebody verified.

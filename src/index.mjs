@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.28.0-2026-08-13-she-does-not-speak-until-she-has-read";
+const BUILD = "aura-core-v5.28.1-2026-08-13-node-check-proves-syntax-not-meaning";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18549,7 +18549,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           "Everything you say about THEM must come from their site or their own words. If you have " +
           "not read it yet, say so and ask nothing. If you have, lead with something specific enough " +
           "that only they would recognise it - the street, the hours, the thing they are known for, " +
-          "the detail they buried on page four. Never open with a pain you assumed.\n\n"
+          "the detail they buried on page four. Never open with a pain you assumed.\n\n" +
           (st.site_text
             ? "YOU HAVE ALREADY READ A WEBSITE THEY NAMED. Everything below came off it. Lead with " +
               "what you know - tell them what you understood and ask about what the site did NOT " +

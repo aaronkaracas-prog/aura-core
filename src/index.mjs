@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.41.2-2026-08-13-a-shadowed-label-never-registered";
+const BUILD = "aura-core-v5.41.3-2026-08-13-asked-for-preferred-demanded-required";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -43587,8 +43587,19 @@ export class PublicEntry extends WorkerEntrypoint {
       if (!raw) return { ok: false, error: "CHALLENGE_EXPIRED", why: "challenges last five minutes and are single-use" };
       const { c: expectedChallenge, label } = JSON.parse(raw);
       await env.AURA_KV.delete("passkey:chal:" + me.pta);   // single use, always, even on failure below
+      // ══ ASK FOR PREFERRED, THEN DEMAND REQUIRED (fixed 2026-08-13) ═══════════════════════════
+      // MEASURED, from the page once it stopped redirecting off its own error: "User verification
+      // was required, but user could not be verified." The options say userVerification: preferred,
+      // and verifyRegistrationResponse defaults requireUserVerification to TRUE - so a phone acting
+      // as the authenticator returned a perfectly good credential and the verifier threw it away.
+      // Two ends of the same handshake disagreeing, and the browser saved a key the server refused
+      // three times over.
+      // Matched to what was actually asked for. The credential is still device-bound and still
+      // phishing-resistant; user verification is a second factor on top of that, and demanding one
+      // that was never requested does not add security, it just loses the key.
       const v = await verifyRegistrationResponse({
         response, expectedChallenge, expectedOrigin: _rp.origin, expectedRPID: _rp.rpID,
+        requireUserVerification: false,
       });
       if (!v.verified || !v.registrationInfo) return { ok: false, error: "NOT_VERIFIED" };
       const cred = v.registrationInfo.credential;
@@ -43637,6 +43648,7 @@ export class PublicEntry extends WorkerEntrypoint {
       const chalKey = "passkey:auth:" + (response.expectedChallenge || "");
       const v = await verifyAuthenticationResponse({
         response, expectedChallenge: (c) => !!c, expectedOrigin: _rp.origin, expectedRPID: _rp.rpID,
+        requireUserVerification: false,   // same handshake, same expectation - see registration above
         credential: { id: cred.id, publicKey: new Uint8Array(cred.publicKey), counter: cred.counter, transports: cred.transports },
       });
       if (!v.verified) return { ok: false, error: "NOT_VERIFIED" };

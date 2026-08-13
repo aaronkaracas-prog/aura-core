@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.31.1-2026-08-13-show-that-you-did-the-work";
+const BUILD = "aura-core-v5.32.0-2026-08-13-she-did-not-know-what-we-sell";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18499,9 +18499,23 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           .trim();
         const siteForPrompt = st.site_text ? readable(st.site_text) : "";
 
+        // ══ SHE KNOWS THE WORLD. SHE DID NOT KNOW WHAT WE SELL ═══════════════════════════════
+        //
+        // Aaron: "I shouldn't have to tell her what a real estate office is." He is right - she read
+        // the tattoo trade cold and produced chair rent, percentage splits, unpaid design time and
+        // 40% repeat revenue. Nobody taught her tattooing.
+        //
+        // What she could not know is OUR product. That is not general knowledge; it exists in his
+        // head and his documents. Without it she was analysing a business with no idea what she was
+        // analysing it FOR - so she interviewed forever, because asking was the only instruction she
+        // had. Every session ended with another question and no offer.
+        //
+        // Told ONCE, in KV, loaded into every conversation. Not per vertical - the same paragraph
+        // makes the next industry work with nothing more from him.
+        const thesis = await env.AURA_KV.get("config:ofb:thesis").catch(() => null);
         const sys =
-          "You are Aura, onboarding a business onto Open For Business. You are talking, not " +
-          "administering a form.\n\n" +
+          (thesis ? thesis + "\n\n" : "") +
+          "You are Aura, talking to a business about Open For Business.\n\n" +
           (st.site_text
             ? "YOU HAVE ALREADY READ A WEBSITE THEY NAMED. Everything below came off it. Lead with " +
               "what you know - tell them what you understood and ask about what the site did NOT " +
@@ -18563,6 +18577,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "work actually flows.\n\n") +
           "ONE QUESTION AT A TIME. Two sentences at most. No preamble, no enthusiasm, no 'great " +
           "question'. Never ask twice for the same thing.\n\n" +
+          "AND KNOW WHEN TO STOP ASKING. The conversation is not an interview - it is going somewhere. " +
+          "Once you understand their biggest operational pain, say it back to them and make the one " +
+          "recommendation. Three or four questions is usually enough for a business whose site you " +
+          "have already read. If you have asked five and still have not said what you would DO, you " +
+          "have stopped listening and started interrogating.\n\n" +
           "Just talk. Say your reply and nothing else - no JSON, no formatting, no labels.\n\n" +
           "ALREADY KNOWN: " + JSON.stringify(st.known);
 

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.38.0-2026-08-13-they-take-their-people-with-them";
+const BUILD = "aura-core-v5.39.0-2026-08-13-the-address-a-business-lives-at";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -19199,6 +19199,97 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "rest belong to whoever they were booked with." } };
       } catch (e) {
         return { cmd: "SCHEDULE", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
+      }
+    }
+
+    case "SLUG": {
+      // ══ THE ADDRESS A BUSINESS LIVES AT ═══════════════════════════════════════════════════════
+      //
+      // risingdragon.openforbusiness.world. The wildcard already resolves, aura-host already keys on
+      // hostname, and the industry calls this the default: "subdomain-based, requires wildcard DNS,
+      // simplest at scale." A custom domain is the upgrade path later, not the starting point.
+      //
+      // RESERVED NAMES ARE NOT AVAILABLE. Every reference on multi-tenant routing says the same
+      // thing - bypass www, api, admin, mail. A business slugged `api` would sit on top of
+      // infrastructure, and a business slugged `admin` is a phishing page with our certificate on it.
+      //
+      // CACHED, because "mappings change rarely - KV with TTLs measured in minutes works well." The
+      // lookup happens on every page load and does not need D1 every time.
+      //
+      //   SLUG SET <business_pta> <slug>
+      //   SLUG GET <slug>
+      //   SLUG OF <business_pta>
+      if (!isOp) return { cmd: "SLUG", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const slParts = (rest || "").trim().split(/\s+/);
+      const slSub = String(slParts[0] || "").toUpperCase();
+      const RESERVED = new Set(["www","api","admin","app","mail","smtp","imap","ftp","ns","ns1","ns2",
+        "cdn","static","assets","img","images","media","blog","help","support","status","docs","dev",
+        "staging","test","beta","console","dashboard","login","signin","signup","auth","account",
+        "billing","pay","checkout","secure","my","me","aura","openforbusiness","cityguide"]);
+      const norm = (v) => String(v || "").toLowerCase().trim()
+        .replace(/^https?:\/\//, "").replace(/\..*$/, "")
+        .replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+      try {
+        if (slSub === "GET") {
+          const sl = norm(slParts[1]);
+          if (!sl) return { cmd: "SLUG", payload: { ok: false, error: "Usage: SLUG GET <slug>" } };
+          let hit = null;
+          try { hit = await env.AURA_KV.get("slug:" + sl); } catch {}
+          if (!hit) {
+            const r = await env.AURA_MEMORY.prepare(
+              "SELECT id, name FROM pta_entities WHERE slug = ?").bind(sl).first().catch(() => null);
+            if (r) { hit = r.id; try { await env.AURA_KV.put("slug:" + sl, r.id, { expirationTtl: 300 }); } catch {} }
+          }
+          if (!hit) return { cmd: "SLUG", payload: { ok: false, error: "NO_SUCH_SLUG", slug: sl } };
+          const ent = await env.AURA_MEMORY.prepare("SELECT id, name, type FROM pta_entities WHERE id = ?")
+            .bind(hit).first().catch(() => null);
+          return { cmd: "SLUG", payload: { ok: true, slug: sl, pta: hit, name: ent?.name || null } };
+        }
+
+        if (slSub === "OF") {
+          const id = slParts[1] || "";
+          const r = await env.AURA_MEMORY.prepare("SELECT slug, name FROM pta_entities WHERE id = ?")
+            .bind(id).first().catch(() => null);
+          if (!r) return { cmd: "SLUG", payload: { ok: false, error: "NO_SUCH_BUSINESS", id } };
+          return { cmd: "SLUG", payload: { ok: true, pta: id, name: r.name, slug: r.slug || null,
+            address: r.slug ? "https://" + r.slug + ".openforbusiness.world" : null,
+            note: r.slug ? undefined : "No address yet. SLUG SET gives them one." } };
+        }
+
+        if (slSub === "SET") {
+          const id = slParts[1] || "";
+          let sl = norm(slParts[2]);
+          const ent = await env.AURA_MEMORY.prepare("SELECT id, name, slug FROM pta_entities WHERE id = ?")
+            .bind(id).first().catch(() => null);
+          if (!ent) return { cmd: "SLUG", payload: { ok: false, error: "NO_SUCH_BUSINESS", id } };
+          if (!sl) sl = norm(ent.name);
+          if (!sl) return { cmd: "SLUG", payload: { ok: false, error: "NO_USABLE_SLUG",
+            what_to_do: "Give one explicitly - the name did not reduce to anything." } };
+          if (RESERVED.has(sl)) return { cmd: "SLUG", payload: { ok: false, error: "RESERVED",
+            slug: sl,
+            what_to_do: "That name belongs to the platform. A business sitting on `admin` or `api` " +
+              "would be a phishing page carrying our certificate - pick another." } };
+          const taken = await env.AURA_MEMORY.prepare("SELECT id, name FROM pta_entities WHERE slug = ?")
+            .bind(sl).first().catch(() => null);
+          if (taken && taken.id !== id) return { cmd: "SLUG", payload: { ok: false, error: "TAKEN",
+            slug: sl, belongs_to: taken.name,
+            what_to_do: "Another business is already at that address. Try a longer one - the city, or " +
+              "the full name." } };
+          try {
+            await env.AURA_MEMORY.prepare("ALTER TABLE pta_entities ADD COLUMN slug TEXT").run();
+          } catch {}   // already there on every run after the first
+          await env.AURA_MEMORY.prepare("UPDATE pta_entities SET slug = ? WHERE id = ?").bind(sl, id).run();
+          if (ent.slug && ent.slug !== sl) { try { await env.AURA_KV.delete("slug:" + ent.slug); } catch {} }
+          try { await env.AURA_KV.put("slug:" + sl, id, { expirationTtl: 300 }); } catch {}
+          return { cmd: "SLUG", payload: { ok: true, pta: id, name: ent.name, slug: sl,
+            was: ent.slug || undefined,
+            address: "https://" + sl + ".openforbusiness.world",
+            note: "That is their address now. Nothing was provisioned - the wildcard already resolves " +
+              "and the hostname is the lookup." } };
+        }
+        return { cmd: "SLUG", payload: { ok: false, error: "Usage: SLUG SET <business_pta> [slug] | SLUG GET <slug> | SLUG OF <business_pta>" } };
+      } catch (e) {
+        return { cmd: "SLUG", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
       }
     }
 
@@ -43698,12 +43789,22 @@ export class PublicEntry extends WorkerEntrypoint {
   // the businesses that person owns. Everything is scoped by an OWNS edge - a session for one person
   // can never read another's business, because the query starts from their PTA rather than from an
   // id in the URL.
+  // businessId may be a pta_ id OR a slug from the hostname - aura-host knows the subdomain, not
+  // the id, and making it look one up first would be a second round trip for nothing.
   async console_(sessionId, businessId) {
     try {
       const me = await this.sessionCheck(sessionId);
       if (!me?.ok) return { ok: false, error: "NOT_SIGNED_IN",
         what_to_say: "Sign in to see your business." };
-      const r = await processCommand("CONSOLE " + me.pta + (businessId ? " " + businessId : ""),
+      let biz = businessId || "";
+      if (biz && !/^pta_|^ent_/.test(biz)) {
+        const sl = await processCommand("SLUG GET " + biz, this.env, true);
+        const sp = (sl && sl.payload) ? sl.payload : sl;
+        if (!sp?.ok) return { ok: false, error: "NO_SUCH_BUSINESS", slug: biz,
+          what_to_say: "There is no business at that address." };
+        biz = sp.pta;
+      }
+      const r = await processCommand("CONSOLE " + me.pta + (biz ? " " + biz : ""),
         this.env, true);
       return (r && r.payload) ? r.payload : r;
     } catch (e) {
@@ -43717,6 +43818,16 @@ export class PublicEntry extends WorkerEntrypoint {
     try {
       const r = await processCommand("ONBOARD_CHAT " + String(sessionId || "") + " ::: " + String(said || ""),
         this.env, true);
+      return (r && r.payload) ? r.payload : r;
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
+  // Hostname to business, for aura-host. Cached at the edge because "mappings change rarely".
+  async slug(name) {
+    try {
+      const r = await processCommand("SLUG GET " + String(name || ""), this.env, true);
       return (r && r.payload) ? r.payload : r;
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };

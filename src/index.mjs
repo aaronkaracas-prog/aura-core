@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.26.3-2026-08-13-talking-and-filing-are-two-jobs";
+const BUILD = "aura-core-v5.27.0-2026-08-13-where-judgement-is-the-product";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18337,9 +18337,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           "You are Aura, onboarding a business onto Open For Business. You are talking, not " +
           "administering a form.\n\n" +
           (st.site_text
-            ? "YOU HAVE ALREADY READ THEIR WEBSITE. Everything below came off it. Lead with what you " +
-              "know - tell them what you understood and ask about what the site did NOT say. Never " +
-              "ask for something that is on the page in front of you.\n\nTHEIR SITE:\n" +
+            ? "YOU HAVE ALREADY READ A WEBSITE THEY NAMED. Everything below came off it. Lead with " +
+              "what you know - tell them what you understood and ask about what the site did NOT " +
+              "say. Never ask for something that is on the page in front of you.\n\n" +
+              "BUT CHECK WHOSE SITE IT IS FIRST. A business may name a platform they sell through " +
+              "rather than their own site - a national ordering service, a marketplace, a booking " +
+              "portal, a franchise head office. If what you read describes a company serving many " +
+              "businesses rather than ONE place with an address and its own hours, say so plainly " +
+              "and ask whether they have their own site. Do not interview somebody about their " +
+              "vendor. The signals are obvious once you look: many locations, sign-up pages aimed " +
+              "at businesses, a network, no single address.\n\nTHE SITE:\n" +
               st.site_text.slice(0, 12000) + "\n\n"
             : "You have not read their site yet. If they have one, ask for it early - a minute of " +
               "reading saves them ten questions.\n\n") +
@@ -18357,12 +18364,33 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const convo = st.turns.slice(-14).map(t => ({
           role: t.by === "them" ? "user" : "assistant", content: t.said }));
 
+        // ══ THIS IS WHERE JUDGEMENT IS THE PRODUCT (2026-08-13) ═══════════════════════════════
+        //
+        // Every AI call in this pipeline was on llama-3.1-8b because it is free, and I chose that
+        // without asking. MEASURED what it costs: she read slicelife.com - a national ordering
+        // platform - and started interviewing the caller about their VENDOR, because a small model
+        // cannot tell a shop's own site from a platform it uses. No prompt fixes that; it is
+        // judgement, and an 8B model does not have it.
+        //
+        // Aaron's rule: her own world is free, the outside world is worth paying for. Onboarding is
+        // the outside world and it is the first impression of the entire company. A business worth
+        // $100 a month is worth twenty cents to understand properly.
+        //
+        // The 8B stays where being wrong is cheap - bulk enrichment, consolidation. Not here.
         let out = null, _ocRaw = "";
         try {
-          const rr = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
-            messages: [{ role: "system", content: sys }, ...convo], max_tokens: 900 });
-          const t = aiText(rr);
-          _ocRaw = t;
+          const key = await getSecret(env, "anthropic");
+          if (key) {
+            const d = await callAnthropic(key, { model: await anthropicModel(env), max_tokens: 900,
+              system: sys, messages: convo });
+            let t = ""; if (d && d.content) for (const b of d.content) if (b.type === "text") t += b.text;
+            _ocRaw = t;
+          } else {
+            const rr = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
+              messages: [{ role: "system", content: sys }, ...convo], max_tokens: 900 });
+            _ocRaw = aiText(rr);
+          }
+          const t = _ocRaw;
           const a3 = t.indexOf("{"), b3 = t.lastIndexOf("}");
           if (a3 >= 0 && b3 > a3) {
             const body = t.slice(a3, b3 + 1);
@@ -18400,22 +18428,39 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (!out?.say && _ocRaw.trim()) {
           out = { say: _ocRaw.trim(), known: {} };
           try {
-            const ex = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
-              messages: [{ role: "system", content:
+            const exKey = await getSecret(env, "anthropic");
+            const exSys =
                 "Pull facts from this conversation. JSON only, no other text:\n" +
                 '{"name":"","email":"","phone":"","address":"","website":"","business_type":"",' +
                 '"what_they_do":"","hours":""}\n' +
-                "Empty string for anything not said. business_type is a lowercase slug." },
-                { role: "user", content: st.turns.slice(-8).map(t =>
-                  (t.by === "them" ? "THEM: " : "AURA: ") + t.said).join("\n") }],
-              max_tokens: 400 });
-            const et = aiText(ex);
+                "Empty string for anything not said. business_type is a lowercase slug - and if a " +
+                "type is already known, KEEP IT rather than inventing a synonym: pizzeria and " +
+                "pizza-place are the same trade and a drifting slug rebuilds the playbook every turn.\n" +
+                "ALREADY KNOWN: " + JSON.stringify(st.known);
+            const exUser = st.turns.slice(-8).map(t =>
+              (t.by === "them" ? "THEM: " : "AURA: ") + t.said).join("\n");
+            let et = "";
+            if (exKey) {
+              const ed = await callAnthropic(exKey, { model: await anthropicModel(env),
+                max_tokens: 400, system: exSys, messages: [{ role: "user", content: exUser }] });
+              if (ed && ed.content) for (const b of ed.content) if (b.type === "text") et += b.text;
+            } else {
+              const ex = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
+                messages: [{ role: "system", content: exSys }, { role: "user", content: exUser }],
+                max_tokens: 400 });
+              et = aiText(ex);
+            }
             const ea = et.indexOf("{"), eb = et.lastIndexOf("}");
             if (ea >= 0 && eb > ea) {
               const facts = JSON.parse(et.slice(ea, eb + 1));
               out.known = Object.fromEntries(Object.entries(facts).filter(([, v]) => v && String(v).trim()));
-            }
-          } catch {}
+            } else { st.extract_note = "no JSON in the extraction reply: " + et.slice(0, 120); }
+          } catch (e) {
+            // Was a bare catch. The extraction failed silently for three turns while name, email and
+            // address sat in plain sight in the conversation - and no PTA could ever be created
+            // because nothing was ever extracted. Silence is what made that invisible.
+            st.extract_note = "extraction threw: " + String((e && e.message) || e).slice(0, 120);
+          }
         }
         if (!out?.say) return { cmd: "ONBOARD_CHAT", payload: { ok: false, error: "no reply produced",
           // Show what came back. "No reply produced" is true and useless - the model said something,
@@ -18427,6 +18472,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             "format instruction was ignored - usually because the system prompt is too long for an 8B " +
             "model to follow to the letter." } };
 
+        // A trade has ONE slug. It drifted pizza-place -> pizzeria and rebuilt the playbook each
+        // turn, which is both wasteful and means two businesses in the same trade get different
+        // question sets.
+        if (st.known.business_type && out.known) delete out.known.business_type;
         st.known = { ...st.known, ...(out.known || {}),
           operations: { ...(st.known.operations || {}), ...((out.known || {}).operations || {}) } };
         st.turns.push({ by: "aura", said: out.say, at: new Date().toISOString() });
@@ -18481,6 +18530,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           read_their_site: st.read || undefined,
           playbook_for: trade && playbook ? trade : undefined,
           ready: !!out.ready && !!st.pta,
+          extract_note: st.extract_note || undefined,
           your_page: st.pta ? "https://openforbusiness.world/b/" + st.pta : null } };
       } catch (e) {
         return { cmd: "ONBOARD_CHAT", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };

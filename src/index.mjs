@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.45.0-2026-08-13-one-address-two-views";
+const BUILD = "aura-core-v5.45.1-2026-08-13-a-slug-is-a-name-too";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18063,8 +18063,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       //
       // A scan always answers. An unclaimed business gets its public facts and an invitation; a
       // claimed one gets its own page. Nothing in between, and nothing that reads as broken.
-      const obId = (rest || "").trim();
-      if (!obId) return { cmd: "OFB", payload: { ok: false, error: "Usage: OFB <place_id>" } };
+      let obId = (rest || "").trim();
+      if (!obId) return { cmd: "OFB", payload: { ok: false, error: "Usage: OFB <place_id|pta_id|slug>" } };
+      // A slug is a legitimate way to name a business - it is what the hostname carries. Resolving it
+      // in the RPC wrapper only meant RUN "OFB rising-dragon-tattoos" failed while the page worked,
+      // which makes the command untestable from the terminal.
+      if (!/^pta_|^ent_|^ChIJ|^[A-Za-z0-9_-]{22,}$/.test(obId)) {
+        const sl = await processCommand("SLUG GET " + obId, env, true);
+        const sp = (sl && sl.payload) ? sl.payload : sl;
+        if (sp?.ok && sp.pta) obId = sp.pta;
+      }
       try {
         // Google first, because for most businesses it is the only source. But a business that has
         // claimed its record does NOT depend on Google knowing it - a shop with no Places listing, a

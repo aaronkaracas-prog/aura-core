@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.44.1-2026-08-13-the-column-before-the-read-again";
+const BUILD = "aura-core-v5.45.0-2026-08-13-one-address-two-views";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18203,6 +18203,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           offerings: (understanding && understanding.offerings) || null,
           serves: (understanding && understanding.serves) || null,
           claim_url: pta ? null : "https://cityguide.world/claim/" + encodeURIComponent(obId),
+          address_here: await (async () => {
+            try {
+              const r = await env.AURA_MEMORY.prepare("SELECT slug FROM pta_entities WHERE id = ?")
+                .bind(pta || obId).first();
+              return r?.slug ? "https://" + r.slug + ".openforbusiness.world" : null;
+            } catch { return null; }
+          })(),
           note: pta
             ? "This business has claimed its record."
             : "Public information only. This business has not claimed its record yet - which is why " +
@@ -19092,8 +19099,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const b = await env.AURA_MEMORY.prepare("SELECT id, name FROM pta_entities WHERE id = ?")
           .bind(scBizId).first();
         if (!b) return { cmd: "SEND_CODE", payload: { ok: false, error: "NO_SUCH_BUSINESS", id: scBizId } };
-        // The same address the QR encodes. Nothing generated, nothing stored, nothing to expire.
-        const url = "https://openforbusiness.world/b/" + encodeURIComponent(scBizId);
+        // The same address the QR encodes: their subdomain. One address, and what somebody sees
+        // there depends on whether they are the owner - a scan gets the shop, the owner gets the
+        // console. A second URL for the same business would be a second thing to keep in step.
+        const scSlug = await env.AURA_MEMORY.prepare("SELECT slug FROM pta_entities WHERE id = ?")
+          .bind(scBizId).first().catch(() => null);
+        const url = scSlug?.slug
+          ? "https://" + scSlug.slug + ".openforbusiness.world"
+          : "https://openforbusiness.world/b/" + encodeURIComponent(scBizId);
         let sent = false, how = null;
         if (scTo.includes("@")) {
           try {
@@ -44036,7 +44049,14 @@ export class PublicEntry extends WorkerEntrypoint {
   // claimed and told us more. Thin or rich, it always answers.
   async ofb(id) {
     try {
-      const r = await processCommand("OFB " + String(id || "").trim(), this.env, false);
+      // The hostname is the slug, so this takes either. aura-host knows the subdomain, not the id.
+      let key = String(id || "").trim();
+      if (key && !/^pta_|^ent_|^ChIJ|^[A-Za-z0-9_-]{20,}$/.test(key)) {
+        const sl = await processCommand("SLUG GET " + key, this.env, true);
+        const sp = (sl && sl.payload) ? sl.payload : sl;
+        if (sp?.ok && sp.pta) key = sp.pta;
+      }
+      const r = await processCommand("OFB " + key, this.env, false);
       return (r && r.payload) ? r.payload : r;
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };

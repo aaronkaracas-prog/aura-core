@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.42.0-2026-08-13-declared-660-lines-after-its-use";
+const BUILD = "aura-core-v5.43.0-2026-08-13-there-is-only-ever-one-code";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -19009,6 +19009,54 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
     }
 
+    case "SEND_CODE": {
+      // ══ THERE IS ONLY EVER ONE CODE ═══════════════════════════════════════════════════════════
+      //
+      // I built INVITE_CLIENT first: a unique token per client, a link of their own, a PTA minted on
+      // acceptance. Aaron stopped it - "they wouldn't send them a link with their own PTA, they would
+      // send them the business QR code. That is the whole chain."
+      //
+      // He is right, and the reason matters. The QR is DERIVED from the business - same input, same
+      // code, forever. A per-client token would be a second address for the same shop, which means
+      // two things to keep in step, two ways to arrive, and a code in a window that means something
+      // different from a code in an email. There is one code. It goes on the window, on a card, in a
+      // signature, in a text to somebody who wants a tattoo, and it opens the same page every time.
+      //
+      // What happens NEXT is on that page: book, design, ask a question. Not in the link.
+      //
+      //   SEND_CODE <business_pta> <email> [::: a line to them]
+      if (!isOp) return { cmd: "SEND_CODE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const scP = (rest || "").split(":::");
+      const scH = (scP[0] || "").trim().split(/\s+/);
+      const scBizId = scH[0] || "", scTo = (scH[1] || "").trim(), scNote = (scP[1] || "").trim();
+      if (!scBizId || !scTo) return { cmd: "SEND_CODE", payload: { ok: false,
+        error: "Usage: SEND_CODE <business_pta> <email> [::: a line to them]" } };
+      try {
+        const b = await env.AURA_MEMORY.prepare("SELECT id, name FROM pta_entities WHERE id = ?")
+          .bind(scBizId).first();
+        if (!b) return { cmd: "SEND_CODE", payload: { ok: false, error: "NO_SUCH_BUSINESS", id: scBizId } };
+        // The same address the QR encodes. Nothing generated, nothing stored, nothing to expire.
+        const url = "https://openforbusiness.world/b/" + encodeURIComponent(scBizId);
+        let sent = false, how = null;
+        if (scTo.includes("@")) {
+          try {
+            const er = await processCommand("EMAIL_SEND " + scTo + " " + b.name + " | " +
+              (scNote ? scNote + "  --  " : "") + url, env, true);
+            const ep = (er && er.payload) ? er.payload : er;
+            sent = !!(ep && ep.ok);
+            how = sent ? "email" : ((ep && ep.error) || "did not send");
+          } catch (e) { how = String((e && e.message) || e).slice(0, 100); }
+        } else { how = "not an email address"; }
+        return { cmd: "SEND_CODE", payload: { ok: true, business: b.name, to: scTo, sent, how,
+          code: url,
+          qr: "https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=" + encodeURIComponent(url),
+          note: "The same code that is on their window. It does not expire and it is the same for " +
+            "everyone - what somebody does next happens on that page." } };
+      } catch (e) {
+        return { cmd: "SEND_CODE", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
+      }
+    }
+
     case "INVITE_SEAT": {
       // ══ THE FIRST SESSION IS THE ONLY HARD ONE ════════════════════════════════════════════════
       //
@@ -23599,6 +23647,59 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // A booking still happened - the edge is real - but if the schedule entry was skipped the
           // caller must be told, rather than reading ok:true and assuming a reminder exists.
           schedule_entry: bkGrantFailed ? "NOT WRITTEN: " + bkGrantFailed : "written", booking: eId, customer: customerId, business: businessId, when: whenISO, service, amount, state: "requested" } };
+      }
+
+      if (bkSub === "MOVE" || bkSub === "ASSIGN") {
+        // ══ AN APPOINTMENT THAT CANNOT MOVE IS A LIST, NOT A CALENDAR ═══════════════════════
+        // Every shop reschedules. Somebody is late, an artist is ill, a piece needs two sittings.
+        // STATE already handles cancel and confirm; what was missing is the two things that actually
+        // happen on a busy day - a different time, or a different chair.
+        // The old time and the old artist stay in the context. A client who asks "when was I
+        // originally booked" has to have an answer, and a shop arguing about a no-show needs the
+        // history rather than the current row.
+        const mvId = (args[1] || "").trim();
+        const mvArg = rest.split(/\s+/).slice(2).join(" ").trim();
+        if (!mvId || !mvArg) return { cmd: "BOOKING", payload: { ok: false,
+          error: bkSub === "MOVE" ? "Usage: BOOKING MOVE <booking_edge> <new time>"
+                                  : "Usage: BOOKING ASSIGN <booking_edge> <artist_pta>" } };
+        const row = await db.prepare("SELECT id, from_id, to_id, context FROM pta_edges WHERE id = ? AND edge_type = 'books'")
+          .bind(mvId).first().catch(() => null);
+        if (!row) return { cmd: "BOOKING", payload: { ok: false, error: "NO_SUCH_BOOKING", id: mvId } };
+        let c = {}; try { c = JSON.parse(row.context || "{}"); } catch {}
+        const history = Array.isArray(c.changes) ? c.changes : [];
+
+        if (bkSub === "MOVE") {
+          const when = new Date(mvArg);
+          if (isNaN(when)) return { cmd: "BOOKING", payload: { ok: false, error: "BAD_TIME", given: mvArg,
+            what_to_do: "Give a time I can read - 2026-08-20T14:00:00Z, or 'Aug 20 2pm'." } };
+          history.push({ moved_from: c.when || null, to: when.toISOString(), at: new Date().toISOString() });
+          c.when = when.toISOString(); c.changes = history;
+        } else {
+          const artist = mvArg.match(/pta_[a-f0-9]+/)?.[0];
+          if (!artist) return { cmd: "BOOKING", payload: { ok: false, error: "NO_ARTIST_GIVEN" } };
+          const seated = await db.prepare(
+            "SELECT 1 FROM pta_edges WHERE from_id = ? AND to_id = ? AND edge_type = 'works_at' AND state != 'revoked'"
+          ).bind(artist, row.to_id).first().catch(() => null);
+          if (!seated) return { cmd: "BOOKING", payload: { ok: false, error: "NOT_SEATED_HERE",
+            artist, what_to_do: "That person does not work here. SEAT LIST shows who does." } };
+          history.push({ reassigned_from: c.with || null, to: artist, at: new Date().toISOString() });
+          c.with = artist; c.changes = history;
+        }
+        await db.prepare("UPDATE pta_edges SET context = ?, updated_at = ? WHERE id = ?")
+          .bind(JSON.stringify(c), new Date().toISOString(), mvId).run();
+        // Both sides of the appointment should know it changed - it is their time either way.
+        for (const who of [row.from_id, row.to_id]) {
+          try {
+            await processCommand("PTA_REMEMBER " + who + " BOOKING_CHANGED " + JSON.stringify({
+              booking: mvId, what: bkSub === "MOVE" ? "moved" : "reassigned",
+              now: bkSub === "MOVE" ? c.when : c.with, at: new Date().toISOString() }), env, true);
+          } catch {}
+        }
+        return { cmd: "BOOKING", payload: { ok: true, booking: mvId,
+          when: c.when, with: c.with || null, changes: history.length,
+          note: bkSub === "MOVE"
+            ? "Moved. The previous time is kept - somebody asking when they were originally booked has an answer."
+            : "Reassigned. The previous artist is kept in the history." } };
       }
 
       if (bkSub === "STATE") {

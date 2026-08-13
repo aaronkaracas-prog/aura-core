@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.32.0-2026-08-13-a-seat-is-a-person-attached-to-a-business";
+const BUILD = "aura-core-v5.33.0-2026-08-13-somebody-has-to-open-the-door";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18943,6 +18943,101 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           your_page: st.pta ? "https://openforbusiness.world/b/" + st.pta : null } };
       } catch (e) {
         return { cmd: "ONBOARD_CHAT", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
+      }
+    }
+
+    case "OWNER": {
+      // ══ SOMEBODY HAS TO BE ABLE TO OPEN THE DOOR ══════════════════════════════════════════════
+      //
+      // CONSOLE scopes on an owns edge - the query starts from the person and finds what is theirs,
+      // so a session for one owner can never read another's shop. Without that edge nobody can open
+      // anything, which is why this exists before the console page does.
+      //
+      // OWNING IS NOT WORKING THERE. Darren owns Rising Dragon and also tattoos in it - two edges,
+      // two facts. A manager might own the console and never pick up a machine; an artist works
+      // there and sees only their own schedule. Conflating them would mean every seat could read
+      // the shop's money.
+      //
+      // AND OWNING IS NOT CONSENT. The owner can open the console because the console shows the
+      // BUSINESS. What Aura may remember about Darren the person is still Darren's to grant.
+      //
+      //   OWNER LIST <business>
+      //   OWNER ADD <business> <person_pta>
+      //   OWNER REMOVE <business> <person_pta>
+      if (!isOp) return { cmd: "OWNER", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const owParts = (rest || "").trim().split(/\s+/);
+      const owSub = String(owParts[0] || "").toUpperCase();
+      const owBiz = owParts[1] || "";
+      if (!owBiz) return { cmd: "OWNER", payload: { ok: false,
+        error: "Usage: OWNER LIST|ADD|REMOVE <business_pta> [person_pta]" } };
+      const odb = env.AURA_MEMORY;
+      try {
+        const biz = await odb.prepare("SELECT id, name FROM pta_entities WHERE id = ?").bind(owBiz).first();
+        if (!biz) return { cmd: "OWNER", payload: { ok: false, error: "NO_SUCH_BUSINESS", id: owBiz } };
+        const readOwners = async () => {
+          const r = await odb.prepare(
+            "SELECT e.id AS edge_id, e.from_id AS person, e.created_at, x.name " +
+            "FROM pta_edges e JOIN pta_entities x ON x.id = e.from_id " +
+            "WHERE e.to_id = ? AND e.edge_type = 'owns' AND e.state != 'revoked' ORDER BY e.created_at"
+          ).bind(owBiz).all().catch(() => null);
+          return (r?.results || []).map(x => ({ pta: x.person, name: x.name, edge_id: x.edge_id,
+            since: x.created_at }));
+        };
+
+        if (owSub === "LIST" || !owSub) {
+          const owners = await readOwners();
+          return { cmd: "OWNER", payload: { ok: true, business: biz.name, id: owBiz,
+            count: owners.length, owners,
+            console: owners.length ? "https://openforbusiness.world/console" : null,
+            note: owners.length ? undefined
+              : "Nobody owns this yet, so nobody can open its console. That is the gate working - an " +
+                "id in a URL is a request, an owns edge is a fact." } };
+        }
+
+        if (owSub === "ADD") {
+          const who = owParts[2] || "";
+          if (!who) return { cmd: "OWNER", payload: { ok: false,
+            error: "Usage: OWNER ADD <business_pta> <person_pta>",
+            note: "The person must already exist. SEAT ADD creates one, or PTA_ENTITY CREATE person." } };
+          const p = await odb.prepare("SELECT id, name, type FROM pta_entities WHERE id = ?").bind(who).first();
+          if (!p) return { cmd: "OWNER", payload: { ok: false, error: "NO_SUCH_PERSON", id: who } };
+          if (p.type !== "person") return { cmd: "OWNER", payload: { ok: false, error: "NOT_A_PERSON",
+            id: who, type: p.type,
+            what_to_do: "A business cannot own a console seat as itself - a PERSON opens it. If a " +
+              "company owns this shop, seat the human who actually signs in." } };
+          const already = (await readOwners()).find(x => x.pta === who);
+          if (already) return { cmd: "OWNER", payload: { ok: true, already_owner: true,
+            business: biz.name, person: who, name: p.name, edge_id: already.edge_id } };
+          const edgeId = "edge_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+          const now = new Date().toISOString();
+          await odb.prepare(
+            "INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, created_at, updated_at) " +
+            "VALUES (?, ?, ?, 'owns', 'active', ?, ?)"
+          ).bind(edgeId, who, owBiz, now, now).run();
+          return { cmd: "OWNER", payload: { ok: true, business: biz.name, person: who, name: p.name,
+            edge_id: edgeId, count: (await readOwners()).length,
+            console: "https://openforbusiness.world/console",
+            note: "They can open this business's console now. That is all this grants - what Aura may " +
+              "remember about " + (p.name || "them") + " as a person is still theirs to give." } };
+        }
+
+        if (owSub === "REMOVE") {
+          const who = owParts[2] || "";
+          const owner = (await readOwners()).find(x => x.pta === who || x.edge_id === who);
+          if (!owner) return { cmd: "OWNER", payload: { ok: false, error: "NOT_AN_OWNER", who } };
+          const left = (await readOwners()).length - 1;
+          if (left < 1) return { cmd: "OWNER", payload: { ok: false, error: "LAST_OWNER",
+            what_to_do: "That is the only owner. Removing them locks everybody out of this business " +
+              "with no way back in - add another owner first." } };
+          await odb.prepare("UPDATE pta_edges SET state = 'revoked', updated_at = ? WHERE id = ?")
+            .bind(new Date().toISOString(), owner.edge_id).run();
+          return { cmd: "OWNER", payload: { ok: true, business: biz.name, removed: owner.name,
+            person: owner.pta, count: left,
+            note: "Revoked, not deleted. They owned it until today and the record still says so." } };
+        }
+        return { cmd: "OWNER", payload: { ok: false, error: "Usage: OWNER LIST|ADD|REMOVE <business_pta> [person_pta]" } };
+      } catch (e) {
+        return { cmd: "OWNER", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
       }
     }
 

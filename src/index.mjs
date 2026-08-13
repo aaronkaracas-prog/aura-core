@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.27.1-2026-08-13-arriving-by-choice-is-consent";
+const BUILD = "aura-core-v5.27.2-2026-08-13-saying-how-should-not-weaken-the-record";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -21606,7 +21606,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           note: "Already active - accepting twice changes nothing." } };
         if (eRow.state !== "pending") return { cmd: "ACCEPT", payload: { ok: false, edge_id: acId, state: eRow.state,
           error: "This edge is '" + eRow.state + "', not pending. A revoked grant is not re-accepted - the subject issues a new one." } };
-        const acVia = /\bwitness/i.test(acHow) ? "witness" : (acHow ? "witness" : "self");
+        // ══ SAYING HOW SHOULD NOT WEAKEN THE RECORD (fixed 2026-08-13) ═══════════════════════
+        // This read: any reason at all means witness. So "they came to Open For Business themselves
+        // and told us this" - a description of somebody acting for THEMSELVES - was filed as an
+        // operator recording a yes given elsewhere. The more honestly the act was described, the
+        // weaker the record of it became, and the only way to get "self" was to say nothing.
+        //
+        // Witness means SOMEBODY ELSE reported the yes. That is what the word is for, and it is what
+        // the text says when it is true. A reason that describes the subject acting is still self,
+        // and it keeps its description - "self" with how they arrived is a stronger record than
+        // "self" with silence.
+        const acSelfSaid = /\b(themsel|himself|herself|myself|on their own|came here|signed up|arriv|their own choice|directly|self[-_ ]?signup)/i.test(acHow);
+        const acWitnessSaid = /\b(witness|on behalf|reported|relayed|told (me|us) (by )?phone|over the phone|verbal|operator|i spoke)/i.test(acHow);
+        const acVia = acWitnessSaid ? "witness" : (acSelfSaid || !acHow ? "self" : "witness");
         const nowIso = new Date().toISOString();
         // ══ A4 — THE CHAIN EVENT COMES FIRST, SO ACTIVE ALWAYS HAS A RECORD ══════════════════
         //

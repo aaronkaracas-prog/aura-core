@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.25.0-2026-08-12-what-a-business-owner-sees";
+const BUILD = "aura-core-v5.26.0-2026-08-12-she-arrives-already-knowing";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18226,6 +18226,196 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
     }
 
+    case "ONBOARD_CHAT": {
+      // ══ SHE ARRIVES ALREADY KNOWING ═══════════════════════════════════════════════════════════
+      //
+      // The first version was free-form: ask, listen, ask again. Aaron: "a business wants to know
+      // that WE know his business." He is right, and it goes further - almost every business that
+      // signs up already exists. They have a website. Making them type what they have already
+      // published is asking them to prove nothing while learning nothing.
+      //
+      // So the shape is: get a name or a URL, READ THEIR WORLD, then come back knowing. SITE_READ
+      // crawls the whole site free and UNDERSTAND turns it into structure - both already built and
+      // both already used when Aura onboards a business she found. Inbound and outbound are the same
+      // act; only who started it differs.
+      //
+      // THE QUESTIONS ARE PER INDUSTRY AND SELF-BUILDING. A hand-written set per vertical is 522
+      // lists nobody maintains, and dispensaries launch the day after tattoos. So the first pizza
+      // place produces the pizza question set, it is stored, and every pizza place after gets it.
+      // No authoring, no maintenance, and consistent for everyone in a trade.
+      //
+      // AND THE OUTPUT IS THE CONSOLE. What she learns is what the console is built from - a pizza
+      // place gets phone orders and dough prep because she FOUND them, not because someone typed
+      // them into a config.
+      //
+      //   ONBOARD_CHAT <session_id> ::: what they said
+      const ocParts = (rest || "").split(":::");
+      const ocSession = (ocParts[0] || "").trim();
+      const ocSaid = ocParts.slice(1).join(":::").trim();
+      if (!ocSession || !ocSaid) return { cmd: "ONBOARD_CHAT", payload: { ok: false,
+        error: "Usage: ONBOARD_CHAT <session_id> ::: <what they said>" } };
+      const ocKey = "onboard:chat:" + ocSession.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 60);
+      try {
+        let st = null;
+        try { st = JSON.parse((await env.AURA_KV.get(ocKey)) || "null"); } catch {}
+        st = st || { turns: [], known: {}, pta: null, read: null, started: new Date().toISOString() };
+        st.turns.push({ by: "them", said: ocSaid, at: new Date().toISOString() });
+
+        // ── if they named a site and we have not read it, read it before answering ──
+        // A minute of crawling buys every question we would otherwise have to ask.
+        const urlIn = (ocSaid.match(/\b((?:https?:\/\/)?[a-z0-9][a-z0-9-]*\.[a-z]{2,}(?:\.[a-z]{2,})?)\b/i) || [])[1];
+        if (urlIn && !st.read && !/\.(png|jpg|pdf)$/i.test(urlIn) && !/@/.test(ocSaid.split(urlIn)[0].slice(-1))) {
+          const site = urlIn.replace(/^https?:\/\//i, "").replace(/\/.*$/, "");
+          try {
+            const sr = await processCommand("SITE_READ https://" + site, env, true);
+            const sp = (sr && sr.payload) ? sr.payload : sr;
+            if (sp?.ok && sp.id) {
+              for (let poll = 0; poll < 12; poll++) {
+                await new Promise(r => setTimeout(r, 5000));
+                const stt = await processCommand("SITE_READ STATUS " + sp.id, env, true);
+                const stp = (stt && stt.payload) ? stt.payload : stt;
+                if (stp?.status && stp.status !== "running") {
+                  if (stp.markdown && stp.markdown.length > 400) {
+                    st.read = { site, chars: stp.chars, pages: stp.pages };
+                    st.site_text = String(stp.markdown).slice(0, 30000);
+                    st.known.website = "https://" + site;
+                  }
+                  break;
+                }
+              }
+            }
+          } catch {}
+        }
+
+        // ── the question set for this trade, built once and reused ──
+        let playbook = null;
+        const trade = st.known.business_type;
+        if (trade) {
+          try { playbook = JSON.parse((await env.AURA_KV.get("onboard:playbook:" + trade)) || "null"); } catch {}
+          if (!playbook) {
+            try {
+              const pr = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
+                messages: [{ role: "system", content:
+                  "Name the 8 things that matter most about how a " + trade + " actually RUNS day to " +
+                  "day - the operational questions somebody in that trade would expect to be asked, " +
+                  "not generic business questions. A pizza place: dough prep, phone orders, delivery " +
+                  "radius, peak hours. A real estate office: listings, showings, agents, commission " +
+                  "split. Reply as JSON only: {\"asks\":[\"...\"]}" }],
+                max_tokens: 500 });
+              const t = String(pr?.response ?? pr?.result?.response ?? "");
+              const a2 = t.indexOf("{"), b2 = t.lastIndexOf("}");
+              if (a2 >= 0 && b2 > a2) {
+                playbook = JSON.parse(t.slice(a2, b2 + 1));
+                // Stored for every business in this trade after them. The first one pays for it.
+                await env.AURA_KV.put("onboard:playbook:" + trade, JSON.stringify(playbook));
+              }
+            } catch {}
+          }
+        }
+
+        const sys =
+          "You are Aura, onboarding a business onto Open For Business. You are talking, not " +
+          "administering a form.\n\n" +
+          (st.site_text
+            ? "YOU HAVE ALREADY READ THEIR WEBSITE. Everything below came off it. Lead with what you " +
+              "know - tell them what you understood and ask about what the site did NOT say. Never " +
+              "ask for something that is on the page in front of you.\n\nTHEIR SITE:\n" +
+              st.site_text.slice(0, 12000) + "\n\n"
+            : "You have not read their site yet. If they have one, ask for it early - a minute of " +
+              "reading saves them ten questions.\n\n") +
+          (playbook?.asks?.length
+            ? "WHAT MATTERS FOR A " + String(trade).toUpperCase() + ", in order:\n- " +
+              playbook.asks.join("\n- ") + "\nWork through these, skipping any the site already " +
+              "answered.\n\n"
+            : "First work out what kind of business this is. Once you know, ask what somebody in " +
+              "that trade would expect to be asked about how it runs.\n\n") +
+          "ONE QUESTION AT A TIME. Two sentences at most. No preamble, no enthusiasm. Never ask " +
+          "twice for the same thing.\n\n" +
+          "Reply as JSON and nothing else:\n" +
+          '{"say":"what you say","known":{"name":"","email":"","phone":"","address":"","website":"",' +
+          '"business_type":"","what_they_do":"","hours":"","operations":{}},"ready":false}\n\n' +
+          "`known` carries forward everything so far. `business_type` is a lowercase slug you choose. " +
+          "`operations` is what you learn about how they RUN - whatever matters for their trade. " +
+          "`ready` is true when you have a name, a way to reach them, and a real picture of the work.\n\n" +
+          "ALREADY KNOWN: " + JSON.stringify(st.known);
+
+        const convo = st.turns.slice(-14).map(t => ({
+          role: t.by === "them" ? "user" : "assistant", content: t.said }));
+
+        let out = null;
+        try {
+          const rr = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
+            messages: [{ role: "system", content: sys }, ...convo], max_tokens: 900 });
+          const t = String(rr?.response ?? rr?.result?.response ?? "");
+          const a3 = t.indexOf("{"), b3 = t.lastIndexOf("}");
+          if (a3 >= 0 && b3 > a3) out = JSON.parse(t.slice(a3, b3 + 1));
+        } catch (e) {
+          return { cmd: "ONBOARD_CHAT", payload: { ok: false,
+            error: "could not think: " + String((e && e.message) || e).slice(0, 120),
+            what_to_say: "Something went wrong on my end - say that again?" } };
+        }
+        if (!out?.say) return { cmd: "ONBOARD_CHAT", payload: { ok: false, error: "no reply produced" } };
+
+        st.known = { ...st.known, ...(out.known || {}),
+          operations: { ...(st.known.operations || {}), ...((out.known || {}).operations || {}) } };
+        st.turns.push({ by: "aura", said: out.say, at: new Date().toISOString() });
+
+        // ── the moment there is somebody to be ──
+        let created = null;
+        const k = st.known;
+        if (!st.pta && k.name && (k.email || k.phone || k.website)) {
+          const ing = await ingestBusiness(env, { name: k.name, place_id: null,
+            phone: k.phone || null, website: k.website || null, email: k.email || null }, true);
+          if (ing?.ok && ing.id) {
+            st.pta = ing.id; created = ing.id;
+            try {
+              await processCommand("PTA_REMEMBER " + ing.id + " CLAIMED " + JSON.stringify({
+                verified_via: "self_signup", channel: "open for business",
+                at: new Date().toISOString(),
+                strength: "they came here themselves and told us who they are. Nothing verified " +
+                  "against an outside source yet - that comes when money moves.",
+                event_type: "CLAIMED" }), env, true);
+            } catch {}
+          }
+        }
+        // Facts land as they arrive. Somebody who leaves halfway still told us true things.
+        if (st.pta) {
+          const w = async (type, data) => {
+            try { await processCommand("PTA_REMEMBER " + st.pta + " " + type + " " + JSON.stringify(data), env, true); } catch {}
+          };
+          if ((k.address || k.phone || k.email) && !st.wrote_contact) {
+            await w("CONTACT", { address: k.address || null, phone: k.phone || null,
+              email: k.email || null, website: k.website || null });
+            st.wrote_contact = true;
+          }
+          if (k.hours && !st.wrote_hours) { await w("HOURS", { hours: k.hours }); st.wrote_hours = true; }
+          if (k.what_they_do && !st.wrote_service) {
+            await w("SERVICE", { offers: k.what_they_do }); st.wrote_service = true;
+          }
+          // The understanding is what the console gets built from, so it carries HOW THEY RUN and
+          // not just what they sell.
+          const opsCount = Object.keys(k.operations || {}).length;
+          if (k.business_type && (k.what_they_do || opsCount) && opsCount !== st.wrote_ops) {
+            await w("UNDERSTANDING", { what_it_is: k.what_they_do || null,
+              business_type: k.business_type, operations: k.operations || {},
+              source: st.read ? "read their site, then asked" : "they told us",
+              learned_at: new Date().toISOString() });
+            st.wrote_ops = opsCount;
+          }
+        }
+        try { await env.AURA_KV.put(ocKey, JSON.stringify(st), { expirationTtl: 7 * 86400 }); } catch {}
+
+        return { cmd: "ONBOARD_CHAT", payload: { ok: true, session: ocSession,
+          say: out.say, known: st.known, pta: st.pta, created,
+          read_their_site: st.read || undefined,
+          playbook_for: trade && playbook ? trade : undefined,
+          ready: !!out.ready && !!st.pta,
+          your_page: st.pta ? "https://openforbusiness.world/b/" + st.pta : null } };
+      } catch (e) {
+        return { cmd: "ONBOARD_CHAT", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
+      }
+    }
+
     case "CONSOLE": {
       // ══ WHAT A BUSINESS OWNER SEES ═══════════════════════════════════════════════════════════
       //
@@ -18252,10 +18442,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         ).bind(coOwner).all().catch(() => null);
         let list = (owned?.results || []).map(r => ({ id: r.id, name: r.name, type: r.type }));
 
+        // ══ MONEY OPENS THE DOOR, NOT A SIGNUP (2026-08-12) ═══════════════════════════════════
+        // Aaron: "no one's going to have to claim their business. We create their PTA while Aura is
+        // onboarding them, and once they decide to spend money it kicks in and gives them console
+        // access." So there is no claim flow, no password, no account creation - the identity already
+        // existed because she made it while talking to them, and PAYING is what turns on the door.
+        // The console asks one question: has this business paid? That is Gate One, and it is the only
+        // gate that means anything.
         if (!list.length) return { cmd: "CONSOLE", payload: { ok: true, businesses: [],
-          what_to_say: "You do not have a business here yet.",
-          note: "A business appears once you claim it - the claim is what makes it yours, and it is " +
-            "the same act whether you found it on cityguide.world or added it by hand." } };
+          what_to_say: "There is no business here for you yet.",
+          note: "A console appears when a business you are attached to has paid. Nothing to sign up " +
+            "for and nothing to claim - Aura made the record while she was talking to you, and paying " +
+            "is what opens it." } };
 
         const pick = coBiz && list.find(b => b.id === coBiz) ? coBiz : list[0].id;
         // The nav is data. Sections a tattoo shop needs; a restaurant's list is longer and lives in
@@ -18299,6 +18497,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           owed: commitments.map(c => ({ said: c.data.said || null, due: c.data.due })),
           outcome: outcome?.data?.outcome || null,
           your_page: "https://openforbusiness.world/b/" + pick,
+          // Gate One, read from their chain rather than from a subscription table. A business that has
+          // never paid sees its record; one that has paid gets the tools.
+          paid: (() => { const o = [...chain].reverse().find(c => c?.event === "OUTCOME"); 
+                         return o?.data?.outcome === "PAID"; })(),
           note: "Everything here is theirs. Aura holds it under a grant they gave and can be told to " +
             "stop at any point, from this console or by saying so to her." } };
       } catch (e) {
@@ -42483,6 +42685,18 @@ export class PublicEntry extends WorkerEntrypoint {
       if (!me?.ok) return { ok: false, error: "NOT_SIGNED_IN",
         what_to_say: "Sign in to see your business." };
       const r = await processCommand("CONSOLE " + me.pta + (businessId ? " " + businessId : ""),
+        this.env, true);
+      return (r && r.payload) ? r.payload : r;
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
+  // The onboarding conversation, over RPC. No session needed - a stranger is talking, and the PTA
+  // appears mid-conversation when they say who they are.
+  async onboardChat(sessionId, said) {
+    try {
+      const r = await processCommand("ONBOARD_CHAT " + String(sessionId || "") + " ::: " + String(said || ""),
         this.env, true);
       return (r && r.payload) ? r.payload : r;
     } catch (e) {

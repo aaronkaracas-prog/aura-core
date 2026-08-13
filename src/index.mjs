@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.29.1-2026-08-13-twelve-thousand-characters-of-wix";
+const BUILD = "aura-core-v5.30.0-2026-08-13-a-schema-decides-what-is-worth-knowing";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18319,7 +18319,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               if (stp.markdown && stp.markdown.length > 400) {
                 st.read = { site: st.crawl.site, chars: stp.chars, pages: stp.pages,
                             rendered: st.crawl.rendered };
-                st.site_text = String(stp.markdown).slice(0, 30000);
+                    st.site_text = String(stp.markdown);
                 st.crawl = null;
               } else if (!st.crawl.rendered) {
                 // Empty. Their site needs a browser - try once more with one.
@@ -18387,7 +18387,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           .replace(/[ \t]+/g, " ")
           .replace(/\n{3,}/g, "\n\n")
           .trim();
-        const siteForPrompt = st.site_text ? readable(st.site_text).slice(0, 14000) : "";
+        // ══ THE WHOLE SITE, NOT A SLICE ═══════════════════════════════════════════════════════
+        // The 14k ceiling existed for an 8B context. She is on a frontier model with a large window
+        // and a shop's website is a few tens of thousands of characters - nothing. The field's own
+        // finding for a bounded source like this: "what previously required retrieval pipelines can
+        // often fit directly into a single structured prompt", with fewer moving parts and higher
+        // determinism. Truncating a small document to save tokens is throwing away the thing we paid
+        // a minute of crawling to get.
+        const siteForPrompt = st.site_text ? readable(st.site_text) : "";
 
         const sys =
           "You are Aura, onboarding a business onto Open For Business. You are talking, not " +
@@ -18506,13 +18513,30 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           out = { say: _ocRaw.trim(), known: {} };
           try {
             const exKey = await getSecret(env, "anthropic");
+            // ══ A SCHEMA DECIDES IN ADVANCE WHAT IS WORTH KNOWING ══════════════════════════
+            // MEASURED: the old field list was name, email, phone, address, website, type, what they
+            // do, hours. Ocean Front's site says walk-ins welcome every day, three ways to book, a
+            // $100 deposit that comes off the price, and four artists with the days each works. NONE
+            // of that fits those fields, and all of it is what you would actually want to know about
+            // that shop. The schema threw it away before anything could reason about it.
+            //
+            // So: the identifying handful stays structured, because minting a PTA needs a name and a
+            // contact. Everything else is whatever SHE thinks matters, in her words, under keys she
+            // chooses. A business that runs on something nobody anticipated gets that recorded.
             const exSys =
-                "Pull facts from this conversation. JSON only, no other text:\n" +
+                "Read this conversation and write down what you learned about this business. " +
+                "JSON only, no other text:\n" +
                 '{"name":"","email":"","phone":"","address":"","website":"","business_type":"",' +
-                '"what_they_do":"","hours":""}\n' +
-                "Empty string for anything not said. business_type is a lowercase slug - and if a " +
-                "type is already known, KEEP IT rather than inventing a synonym: pizzeria and " +
-                "pizza-place are the same trade and a drifting slug rebuilds the playbook every turn.\n" +
+                '"found":{}}\n' +
+                "The first six are for identifying them - empty string if not said yet.\n" +
+                "`found` is YOURS. Put anything worth knowing in it, under whatever keys fit: how " +
+                "they take bookings, what they charge a deposit, who works which days, what they are " +
+                "known for, what is unusual about how they operate. Do not force things into " +
+                "categories. If a shop runs on something nobody would have thought to ask about, " +
+                "that is exactly what belongs here.\n" +
+                "Write only what the conversation or their site actually says. Never guess.\n" +
+                "business_type is a lowercase slug - if one is already known, KEEP IT rather than " +
+                "inventing a synonym.\n" +
                 "ALREADY KNOWN: " + JSON.stringify(st.known);
             const exUser = st.turns.slice(-8).map(t =>
               (t.by === "them" ? "THEM: " : "AURA: ") + t.said).join("\n");
@@ -18554,7 +18578,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // question sets.
         if (st.known.business_type && out.known) delete out.known.business_type;
         st.known = { ...st.known, ...(out.known || {}),
-          operations: { ...(st.known.operations || {}), ...((out.known || {}).operations || {}) } };
+          found: { ...(st.known.found || {}), ...((out.known || {}).found || {}) } };
         st.turns.push({ by: "aura", said: out.say, at: new Date().toISOString() });
 
         // ── the moment there is somebody to be ──
@@ -18629,18 +18653,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             st.wrote_contact = true;
           }
           if (k.hours && !st.wrote_hours) { await w("HOURS", { hours: k.hours }); st.wrote_hours = true; }
-          if (k.what_they_do && !st.wrote_service) {
-            await w("SERVICE", { offers: k.what_they_do }); st.wrote_service = true;
+          if (k.found && k.found.services && !st.wrote_service) {
+            await w("SERVICE", { offers: k.found.services }); st.wrote_service = true;
           }
           // The understanding is what the console gets built from, so it carries HOW THEY RUN and
           // not just what they sell.
-          const opsCount = Object.keys(k.operations || {}).length;
-          if (k.business_type && (k.what_they_do || opsCount) && opsCount !== st.wrote_ops) {
-            await w("UNDERSTANDING", { what_it_is: k.what_they_do || null,
-              business_type: k.business_type, operations: k.operations || {},
+          // The understanding carries what she FOUND, whatever shape it took. This is what the
+          // console gets built from, so a shop whose model is walk-in volume with a deposit gate has
+          // that written down - not squeezed into a field called what_they_do.
+          const foundCount = Object.keys(k.found || {}).length;
+          if (k.business_type && foundCount && foundCount !== st.wrote_found) {
+            await w("UNDERSTANDING", { business_type: k.business_type, found: k.found,
               source: st.read ? "read their site, then asked" : "they told us",
               learned_at: new Date().toISOString() });
-            st.wrote_ops = opsCount;
+            st.wrote_found = foundCount;
           }
         }
         try { await env.AURA_KV.put(ocKey, JSON.stringify(st), { expirationTtl: 7 * 86400 }); } catch {}

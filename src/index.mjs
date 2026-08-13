@@ -61,7 +61,8 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.41.3-2026-08-13-asked-for-preferred-demanded-required";
+const BUILD = "aura-core-v5.42.0-2026-08-13-declared-660-lines-after-its-use";
+const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -5230,7 +5231,10 @@ async function processCommand(line, env, isOp) {
 // by nothing at all.
 // Declared once. A worker added here is watched, health-checked and probed by everything that reads
 // it - which is the only way a roster stops drifting from the account.
-const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
+// Declared at the top of the file, not 660 lines below its first use. It was a `const` at 5233 and
+// runHealthChecks reads it at 4570 - a temporal dead zone, so the minute cron has been throwing
+// "AURA_WORKERS is not defined" on every single run, silently, for as long as it has existed.
+// Found in wrangler tail while chasing something else entirely.
 
 const KNOWN_WORKERS = { "aura-core": "src/index.mjs", "aura-think": "src/server.ts", "aura-comms": "src/index.mjs", "aura-host": "src/index.mjs", "aura-media": "src/index.mjs", "aura-ops": "src/index.mjs", "aura-stream": "src/index.mjs" };
       let worker = "aura-core";
@@ -19038,9 +19042,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const sess = await pe._mintSession(inv.person, "seat invite from " + inv.business_name);
           if (!sess?.ok) return { cmd: "INVITE_SEAT", payload: { ok: false, error: "COULD_NOT_SIGN_IN",
             detail: sess?.error } };
+          // Where to send them afterwards. The link is on the apex, which has no page - so without
+          // this they finish setting up and land on "Not open yet", which is what happened.
+          let goSlug = null;
+          try {
+            const r2 = await env.AURA_MEMORY.prepare("SELECT slug FROM pta_entities WHERE id = ?")
+              .bind(inv.business).first();
+            goSlug = r2?.slug || null;
+          } catch {}
           return { cmd: "INVITE_SEAT", payload: { ok: true, signed_in: true,
             session: sess.session_id || sess.sid || sess.session, person: inv.person, name: inv.name,
             business: inv.business_name,
+            go: goSlug ? "https://" + goSlug + ".openforbusiness.world" : null,
             next: "Register a passkey now - after that this device, and any device signed into the " +
               "same Apple or Google account, needs nothing typed ever again.",
             note: "The link is spent. It worked once, which is what makes it safe to email." } };

@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.40.2-2026-08-13-the-link-that-becomes-a-passkey";
+const BUILD = "aura-core-v5.41.0-2026-08-13-the-console-is-not-a-recap";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -19666,6 +19666,84 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             by: c.actor === "aura" ? "aura" : "them" })),
           owed: commitments.map(c => ({ said: c.data.said || null, due: c.data.due })),
           outcome: outcome?.data?.outcome || null,
+          // ══ THE CONSOLE IS NOT A RECAP ═══════════════════════════════════════════════════════
+          // "What Aura knows" is onboarding proof - it exists to make somebody think "how do they
+          // already know my shop?" Once they have paid, showing it back is a summary of a
+          // conversation they were in. The understanding stays on the chain and stays hers to use
+          // when answering; it stops being the front page.
+          // What belongs there is what needs them TODAY.
+          today: await (async () => {
+            const t = { greeting: null, needs_you: [], nothing_pending: false };
+            const owner = await db.prepare("SELECT name FROM pta_entities WHERE id = ?")
+              .bind(coOwner).first().catch(() => null);
+            const hour = new Date().getUTCHours();
+            t.greeting = (owner?.name ? owner.name + ", " : "") +
+              (hour < 11 ? "morning" : hour < 17 ? "afternoon" : "evening") + ".";
+            // Bookings ahead, deposits not yet taken, promises with a time on them.
+            try {
+              const bk = await db.prepare(
+                "SELECT e.id, e.context, x.name AS who FROM pta_edges e " +
+                "LEFT JOIN pta_entities x ON x.id = e.from_id " +
+                "WHERE e.to_id = ? AND e.edge_type = 'books' AND e.state != 'revoked'"
+              ).bind(pick).all();
+              const now = new Date().toISOString();
+              const soon = [];
+              for (const r of (bk?.results || [])) {
+                let c = {}; try { c = JSON.parse(r.context || "{}"); } catch {}
+                if (c.when && c.when > now) soon.push({ when: c.when, who: r.who || null,
+                  service: c.service || null, amount: c.amount ?? null,
+                  deposit_held: c.deposit_held ?? false });
+              }
+              soon.sort((a, b) => String(a.when).localeCompare(String(b.when)));
+              if (soon.length) t.needs_you.push({ kind: "booked",
+                headline: soon.length + (soon.length === 1 ? " booking ahead" : " bookings ahead"),
+                next: soon[0], all: soon.slice(0, 6) });
+              const unpaid = soon.filter(b => b.amount && !b.deposit_held);
+              if (unpaid.length) t.needs_you.push({ kind: "deposits",
+                headline: unpaid.length + " without a deposit held" });
+            } catch {}
+            const owedNow = chain.filter(c => c?.data?.due && c.data.due <= new Date().toISOString());
+            if (owedNow.length) t.needs_you.push({ kind: "owed",
+              headline: owedNow.length + " promise" + (owedNow.length === 1 ? "" : "s") + " due",
+              said: owedNow.slice(-3).map(c => c.data.said).filter(Boolean) });
+            t.nothing_pending = !t.needs_you.length;
+            return t;
+          })(),
+          // ── the nav sections, filled from what already exists ──────────────────────────────
+          // Appointments is SCHEDULE, Artists is SEAT, Customers is who has booked, Deposits is the
+          // money side of the same bookings. None of this is new data - the console simply was not
+          // asking for it, so every section said "ask Aura below".
+          sections: await (async () => {
+            const out = {};
+            try {
+              const sc = await processCommand("SCHEDULE " + coOwner + " " + pick, env, true);
+              const sp = (sc && sc.payload) ? sc.payload : sc;
+              out.appointments = sp?.ok ? { count: sp.count, seeing: sp.seeing, list: sp.bookings } : null;
+              if (sp?.ok) {
+                const money = (sp.bookings || []).filter(b => b.amount);
+                out.deposits = { count: money.length,
+                  total: money.reduce((n, b) => n + (Number(b.amount) || 0), 0),
+                  list: money.map(b => ({ who: b.customer_name, when: b.when, amount: b.amount,
+                    held: b.deposit_held || false })) };
+                const seen = new Map();
+                for (const b of (sp.bookings || [])) {
+                  if (!b.customer) continue;
+                  const c = seen.get(b.customer) || { pta: b.customer, name: b.customer_name, visits: 0, last: null };
+                  c.visits++; if (!c.last || String(b.when) > c.last) c.last = b.when;
+                  seen.set(b.customer, c);
+                }
+                out.customers = { count: seen.size, list: [...seen.values()] };
+              }
+            } catch {}
+            try {
+              const se = await processCommand("SEAT LIST " + pick, env, true);
+              const sep = (se && se.payload) ? se.payload : se;
+              out.artists = sep?.ok ? { count: sep.count, list: sep.seats, billing: sep.billing } : null;
+            } catch {}
+            return out;
+          })(),
+          // What she read and what they told her - kept, moved out of the way.
+          understanding: understanding || null,
           your_page: "https://openforbusiness.world/b/" + pick,
           // Gate One, read from their chain rather than from a subscription table. A business that has
           // never paid sees its record; one that has paid gets the tools.

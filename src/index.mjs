@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.35.0-2026-08-13-the-owner-has-the-master-key";
+const BUILD = "aura-core-v5.36.0-2026-08-13-the-first-session-is-the-only-hard-one";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18949,6 +18949,106 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           your_page: st.pta ? "https://openforbusiness.world/b/" + st.pta : null } };
       } catch (e) {
         return { cmd: "ONBOARD_CHAT", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
+      }
+    }
+
+    case "INVITE_SEAT": {
+      // ══ THE FIRST SESSION IS THE ONLY HARD ONE ════════════════════════════════════════════════
+      //
+      // Passkeys solve every login after the first: the credential syncs through iCloud or Google,
+      // login is discoverable so the device says who it is, and nobody types anything ever again.
+      // But passkeyRegisterStart needs a session, and a seated artist has none - that is the
+      // chicken and egg.
+      //
+      // So: one link, one use, short-lived. It mints a session, they register a passkey on whatever
+      // device they opened it on, and from then on the problem is solved by the industry rather than
+      // by us.
+      //
+      // ONLY AN OWNER CAN SEND ONE, and only for somebody already seated. An invite that could be
+      // issued for anyone would be an account-creation hole wearing a friendly name.
+      //
+      //   INVITE_SEAT <business_pta> <person_pta>
+      //   INVITE_SEAT ACCEPT <token>
+      if (!isOp) return { cmd: "INVITE_SEAT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const ivParts = (rest || "").trim().split(/\s+/);
+      const idb = env.AURA_MEMORY;
+      try {
+        if (String(ivParts[0] || "").toUpperCase() === "ACCEPT") {
+          const tok = (ivParts[1] || "").replace(/[^a-f0-9]/g, "");
+          let inv = null;
+          try { inv = JSON.parse((await env.AURA_KV.get("invite:seat:" + tok)) || "null"); } catch {}
+          if (!inv) return { cmd: "INVITE_SEAT", payload: { ok: false, error: "LINK_EXPIRED",
+            what_to_say: "That link has expired or was already used. Ask them to send another." } };
+          // Burned on use. A link that works twice is a link somebody forwarded.
+          try { await env.AURA_KV.delete("invite:seat:" + tok); } catch {}
+          const pe = new PublicEntry({}, env);
+          const sess = await pe._mintSession(inv.person, "seat invite from " + inv.business_name);
+          if (!sess?.ok) return { cmd: "INVITE_SEAT", payload: { ok: false, error: "COULD_NOT_SIGN_IN",
+            detail: sess?.error } };
+          return { cmd: "INVITE_SEAT", payload: { ok: true, signed_in: true,
+            session: sess.session_id || sess.sid || sess.session, person: inv.person, name: inv.name,
+            business: inv.business_name,
+            next: "Register a passkey now - after that this device, and any device signed into the " +
+              "same Apple or Google account, needs nothing typed ever again.",
+            note: "The link is spent. It worked once, which is what makes it safe to email." } };
+        }
+
+        const ivBiz = ivParts[0] || "", ivWho = ivParts[1] || "";
+        if (!ivBiz || !ivWho) return { cmd: "INVITE_SEAT", payload: { ok: false,
+          error: "Usage: INVITE_SEAT <business_pta> <person_pta>  |  INVITE_SEAT ACCEPT <token>" } };
+        const seated = await idb.prepare(
+          "SELECT 1 FROM pta_edges WHERE from_id = ? AND to_id = ? AND edge_type = 'works_at' " +
+          "AND state != 'revoked'").bind(ivWho, ivBiz).first().catch(() => null);
+        if (!seated) return { cmd: "INVITE_SEAT", payload: { ok: false, error: "NOT_SEATED_HERE",
+          what_to_do: "Seat them first. An invite for somebody who does not work here would be a way " +
+            "to hand out accounts, not a way to let staff in." } };
+        const biz = await idb.prepare("SELECT name FROM pta_entities WHERE id = ?").bind(ivBiz).first();
+        const per = await idb.prepare("SELECT name, metadata FROM pta_entities WHERE id = ?").bind(ivWho).first();
+
+        // Where to send it. Their own contact if they have one; otherwise the owner passes the link on.
+        let to = null;
+        const em = (ivParts.slice(2).join(" ").match(/[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+/) || [])[0];
+        if (em) to = em;
+        if (!to) {
+          try {
+            const stub = env.PTA_DO.get(env.PTA_DO.idFromName(ivWho));
+            const r = await stub.fetch(new Request("http://do", { method: "POST",
+              body: JSON.stringify({ method: "getState", params: [] }) }));
+            const j = await r.json();
+            const c = [...(j?.pta?.chain || [])].reverse().find(x => x?.data?.email);
+            to = c?.data?.email || null;
+          } catch {}
+        }
+
+        const tok = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+          .map(b => b.toString(16).padStart(2, "0")).join("");
+        await env.AURA_KV.put("invite:seat:" + tok, JSON.stringify({ person: ivWho,
+          name: per?.name || null, business: ivBiz, business_name: biz?.name || null,
+          created: Date.now() }), { expirationTtl: 7 * 86400 });
+        const link = "https://openforbusiness.world/join/" + tok;
+
+        let sent = false, how = null;
+        if (to) {
+          try {
+            const er = await processCommand("EMAIL_SEND " + to + " Your seat at " + (biz?.name || "the shop") +
+              " | " + (per?.name || "You") + " has a seat at " + (biz?.name || "the shop") +
+              ". Open this to sign in and set up your device: " + link +
+              "  --  The link works once and expires in seven days.", env, true);
+            const ep = (er && er.payload) ? er.payload : er;
+            sent = !!(ep && ep.ok);
+            how = sent ? "email" : ((ep && ep.error) || "did not send");
+          } catch (e) { how = String((e && e.message) || e).slice(0, 100); }
+        }
+        return { cmd: "INVITE_SEAT", payload: { ok: true, person: ivWho, name: per?.name || null,
+          business: biz?.name || null, sent_to: to, sent, how,
+          link: sent ? undefined : link,
+          what_to_say: sent
+            ? "Sent. One tap and they are in - after that their passkey handles every device."
+            : (to ? "Could not send the email - pass this link on yourself."
+                  : "No email on file for them, so nothing was sent. Give them this link directly."),
+          expires_in: "7 days, and it works once" } };
+      } catch (e) {
+        return { cmd: "INVITE_SEAT", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
       }
     }
 

@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.33.1-2026-08-13-working-there-is-not-owning-it";
+const BUILD = "aura-core-v5.34.0-2026-08-13-the-code-is-their-identity";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18564,14 +18564,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           "form. The BOOK AN APPOINTMENT link is the first thing under their logo.\n\n" +
           "══ WHAT YOU ARE ACTUALLY SELLING, AND WHY IT IS WORTH IT ══\n" +
           "Booking built for tattoo work. Clients book, deposits are held, the schedule stays straight " +
-          "across every chair, and there is a QR code for the window.\n\n" +
+          "across every chair, and a QR code that is the shop's identity.\n\n" +
+          "THE CODE IS NOT A WINDOW STICKER. It is who they are - it goes on business cards, in an " +
+          "email signature, in an Instagram bio, on a receipt, on the window if they want. Every " +
+          "artist gets their own the same way. Wherever it is scanned it opens them, and it does not " +
+          "change or expire. Describing it as a thing for foot traffic sells it short and gets the " +
+          "point wrong: it is their identity, and the window is one place they might put it.\n\n" +
           "$299 a month for the shop, one seat. $99 a month for each additional artist.\n\n" +
           "The reasoning behind that, so you can defend it when somebody pushes: a tattoo booking is " +
           "not a restaurant reservation. Hours of design work happen before anybody sits down, and a " +
           "no-show costs the artist a day, not a table. A held deposit is the difference. Five chairs " +
-          "sharing one calendar is a different problem from one person with a diary. And the QR in the " +
-          "window turns every person who walks past into somebody who can book - which no form on a " +
-          "website does, because they have to find the website first.\n\n" +
+          "sharing one calendar is a different problem from one person with a diary. And the code " +
+          "means a client who already has it can book from anywhere without hunting for " +
+          "a website first - from a card in a wallet, a signature at the bottom of an email, a bio. " +
+          "That is what a form on a site cannot do, because a form has to be found.\n\n" +
           "THINK WITH THAT, DO NOT RECITE IT. If they say they already take deposits, they have a " +
           "real objection and you know why yours is different. If they ask what happens to bookings " +
           "they already have, work it out from what the thing does. If they raise something nobody " +

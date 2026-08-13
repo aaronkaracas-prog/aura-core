@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.41.1-2026-08-13-say-which-step-refused";
+const BUILD = "aura-core-v5.41.2-2026-08-13-a-shadowed-label-never-registered";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -43572,7 +43572,11 @@ export class PublicEntry extends WorkerEntrypoint {
     }
   }
 
-  async passkeyRegisterFinish(sessionId, response, label, origin) {
+  // The label comes back out of KV with the challenge - it was stored at register_start. Taking it
+  // as a parameter too shadowed it and redeclared it in the same scope, which is a SyntaxError the
+  // moment this runs: registration never executed, the browser saved a passkey the server never
+  // stored, and the next sign-in said UNKNOWN_CREDENTIAL. I introduced it threading `origin` through.
+  async passkeyRegisterFinish(sessionId, response, _label, origin) {
     const _rp = rpFrom(origin);
     const env = this.env;
     const me = await this._whoIs(sessionId);

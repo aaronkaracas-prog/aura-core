@@ -42,7 +42,7 @@ let _identityIndexEnsured = false;
 const PASSKEY_RP_ID = "homescreen.world";
 const PASSKEY_ORIGIN = "https://homescreen.world";
 
-const BUILD = "aura-core-v5.27.0-2026-08-13-where-judgement-is-the-product";
+const BUILD = "aura-core-v5.27.1-2026-08-13-arriving-by-choice-is-consent";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -18488,6 +18488,37 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             phone: k.phone || null, website: k.website || null, email: k.email || null }, true);
           if (ing?.ok && ing.id) {
             st.pta = ing.id; created = ing.id;
+            // ══ ARRIVING BY CHOICE IS CONSENT ═══════════════════════════════════════════════
+            //
+            // MEASURED: Rising Dragon's chain had BORN and nothing else. She had gathered the name,
+            // the email, the trade and what they do - and every write was refused for NO_GRANT,
+            // silently, inside a bare catch. A business volunteered its details and the system threw
+            // them away without a word.
+            //
+            // ingestBusiness mints a LEAD, which is right for somebody Aura went and found - nobody
+            // asked to be in the store. But this person came HERE and is telling us these things
+            // unprompted. PTA_CREATE already says it: "born ACTIVE - arriving by their own choice IS
+            // consent." Refusing to remember what somebody is actively telling you is not caution,
+            // it is a failure to listen.
+            //
+            // So the grant is issued and accepted in the same breath, and the chain records HOW -
+            // self_signup, not a witness, not an operator. Revoking it later works exactly as it does
+            // for every other grant.
+            try {
+              const g = await processCommand("PTA_GRANT " + ing.id + " " + (await auraPtaId(env)) +
+                ' CONFIRM {"permission":{"can_remember":true}}', env, true);
+              const gp = (g && g.payload) ? g.payload : g;
+              if (gp?.edge_id) {
+                await processCommand("ACCEPT " + gp.edge_id +
+                  " ::: they came to Open For Business themselves and told us this", env, true);
+                st.granted = gp.edge_id;
+              } else {
+                st.grant_note = "no grant created: " + (gp?.error || "unknown") +
+                  " - nothing she learns can be written to their chain";
+              }
+            } catch (e) {
+              st.grant_note = "grant threw: " + String((e && e.message) || e).slice(0, 120);
+            }
             try {
               await processCommand("PTA_REMEMBER " + ing.id + " CLAIMED " + JSON.stringify({
                 verified_via: "self_signup", channel: "open for business",
@@ -18500,8 +18531,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         }
         // Facts land as they arrive. Somebody who leaves halfway still told us true things.
         if (st.pta) {
+          // Every one of these was a bare catch. Four events were refused in silence while the
+          // response reported ok:true and a fresh PTA - a claim with no artifact behind it, which is
+          // the exact shape this file keeps paying for.
+          st.write_errors = st.write_errors || [];
           const w = async (type, data) => {
-            try { await processCommand("PTA_REMEMBER " + st.pta + " " + type + " " + JSON.stringify(data), env, true); } catch {}
+            try {
+              const r = await processCommand("PTA_REMEMBER " + st.pta + " " + type + " " + JSON.stringify(data), env, true);
+              const rp = (r && r.payload) ? r.payload : r;
+              if (!rp?.ok) st.write_errors.push(type + ": " + (rp?.error || "refused"));
+              return !!rp?.ok;
+            } catch (e) {
+              st.write_errors.push(type + " threw: " + String((e && e.message) || e).slice(0, 80));
+              return false;
+            }
           };
           if ((k.address || k.phone || k.email) && !st.wrote_contact) {
             await w("CONTACT", { address: k.address || null, phone: k.phone || null,
@@ -18531,6 +18574,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           playbook_for: trade && playbook ? trade : undefined,
           ready: !!out.ready && !!st.pta,
           extract_note: st.extract_note || undefined,
+          grant: st.granted || undefined,
+          grant_note: st.grant_note || undefined,
+          not_written: (st.write_errors && st.write_errors.length) ? st.write_errors.slice(-4) : undefined,
           your_page: st.pta ? "https://openforbusiness.world/b/" + st.pta : null } };
       } catch (e) {
         return { cmd: "ONBOARD_CHAT", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };

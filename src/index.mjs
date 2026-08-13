@@ -39,10 +39,29 @@ import { WorkerEntrypoint, WorkflowEntrypoint } from "cloudflare:workers";
 // Set once per isolate after the identity uniqueness index is confirmed - see PTA_ENTITY CREATE.
 let _identityIndexEnsured = false;
 
-const PASSKEY_RP_ID = "homescreen.world";
+// ══ THE RELYING PARTY IS WHERE THEY ARE STANDING ═══════════════════════════════════════════════
+// MEASURED, from the browser itself: "the relying party ID is not a registrable domain suffix of,
+// nor equal to the current domain." These were fixed at homescreen.world, from when the console was
+// going to live there - and businesses moved to openforbusiness.world this session.
+//
+// It cannot be one value. WebAuthn requires the RP ID to equal the domain or be a parent of it, and
+// this serves 522 domains plus a subdomain per business. So it is derived from the request: the
+// registrable parent, so a key registered at rising-dragon-tattoos.openforbusiness.world works at
+// openforbusiness.world and at every other business the same person is attached to.
+const PASSKEY_RP_ID = "homescreen.world";        // fallback only, when there is no request to read
 const PASSKEY_ORIGIN = "https://homescreen.world";
+function rpFrom(origin) {
+  try {
+    const host = new URL(origin).hostname.toLowerCase();
+    const parts = host.split(".");
+    // Two labels for a normal TLD. Everything the platform owns is name.tld, so this is enough -
+    // and a co.uk style suffix would need the public suffix list, which nothing here uses.
+    const rp = parts.length > 2 ? parts.slice(-2).join(".") : host;
+    return { rpID: rp, origin: "https://" + host };
+  } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
+}
 
-const BUILD = "aura-core-v5.40.0-2026-08-13-aura-inside-the-console";
+const BUILD = "aura-core-v5.40.1-2026-08-13-the-relying-party-is-where-they-stand";
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
 //
@@ -43447,7 +43466,8 @@ export class PublicEntry extends WorkerEntrypoint {
   // WHERE THIS SITS IN THE LADDER: passkey_verified is rank 5, above google_verified and the email
   // OTP fallback. Passkeys are phishing-resistant BY CONSTRUCTION - the credential is bound to the
   // origin, so a lookalike domain cannot harvest it the way it harvests a password or a code.
-  async passkeyRegisterStart(sessionId, label) {
+  async passkeyRegisterStart(sessionId, label, origin) {
+    const _rp = rpFrom(origin);
     const env = this.env;
     const me = await this._whoIs(sessionId);
     if (!me) return { ok: false, error: "NOT_SIGNED_IN",
@@ -43456,7 +43476,7 @@ export class PublicEntry extends WorkerEntrypoint {
       const { generateRegistrationOptions } = await import("@simplewebauthn/server");
       const existing = await this._passkeysFor(me.pta);
       const options = await generateRegistrationOptions({
-        rpName: "Aura", rpID: PASSKEY_RP_ID,
+        rpName: "Aura", rpID: _rp.rpID,
         userName: me.identity || me.pta, userDisplayName: me.name || "Aura",
         // The user handle is the PTA. It is what ties a device credential to a chain, and it is
         // deliberately an opaque id rather than a phone number - a credential should not carry PII.
@@ -43474,7 +43494,8 @@ export class PublicEntry extends WorkerEntrypoint {
     }
   }
 
-  async passkeyRegisterFinish(sessionId, response) {
+  async passkeyRegisterFinish(sessionId, response, label, origin) {
+    const _rp = rpFrom(origin);
     const env = this.env;
     const me = await this._whoIs(sessionId);
     if (!me) return { ok: false, error: "NOT_SIGNED_IN" };
@@ -43485,7 +43506,7 @@ export class PublicEntry extends WorkerEntrypoint {
       const { c: expectedChallenge, label } = JSON.parse(raw);
       await env.AURA_KV.delete("passkey:chal:" + me.pta);   // single use, always, even on failure below
       const v = await verifyRegistrationResponse({
-        response, expectedChallenge, expectedOrigin: PASSKEY_ORIGIN, expectedRPID: PASSKEY_RP_ID,
+        response, expectedChallenge, expectedOrigin: _rp.origin, expectedRPID: _rp.rpID,
       });
       if (!v.verified || !v.registrationInfo) return { ok: false, error: "NOT_VERIFIED" };
       const cred = v.registrationInfo.credential;
@@ -43504,11 +43525,12 @@ export class PublicEntry extends WorkerEntrypoint {
     }
   }
 
-  async passkeyLoginStart(identityHint) {
+  async passkeyLoginStart(identityHint, origin) {
+    const _rp = rpFrom(origin);
     const env = this.env;
     try {
       const { generateAuthenticationOptions } = await import("@simplewebauthn/server");
-      const options = await generateAuthenticationOptions({ rpID: PASSKEY_RP_ID, userVerification: "preferred" });
+      const options = await generateAuthenticationOptions({ rpID: _rp.rpID, userVerification: "preferred" });
       // Keyed by the challenge itself, not by a user - because with a discoverable credential we do
       // not yet know WHO is signing in. That is the point of a resident key: the device tells us.
       await env.AURA_KV.put("passkey:auth:" + options.challenge, JSON.stringify({ at: Date.now() }), { expirationTtl: 300 });
@@ -43518,7 +43540,8 @@ export class PublicEntry extends WorkerEntrypoint {
     }
   }
 
-  async passkeyLoginFinish(response) {
+  async passkeyLoginFinish(response, origin) {
+    const _rp = rpFrom(origin);
     const env = this.env;
     try {
       const { verifyAuthenticationResponse } = await import("@simplewebauthn/server");
@@ -43531,7 +43554,7 @@ export class PublicEntry extends WorkerEntrypoint {
       if (!cred) return { ok: false, error: "UNKNOWN_CREDENTIAL" };
       const chalKey = "passkey:auth:" + (response.expectedChallenge || "");
       const v = await verifyAuthenticationResponse({
-        response, expectedChallenge: (c) => !!c, expectedOrigin: PASSKEY_ORIGIN, expectedRPID: PASSKEY_RP_ID,
+        response, expectedChallenge: (c) => !!c, expectedOrigin: _rp.origin, expectedRPID: _rp.rpID,
         credential: { id: cred.id, publicKey: new Uint8Array(cred.publicKey), counter: cred.counter, transports: cred.transports },
       });
       if (!v.verified) return { ok: false, error: "NOT_VERIFIED" };

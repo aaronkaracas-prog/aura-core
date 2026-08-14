@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.46.1-2026-08-13-a-shops-hours-are-in-its-own-time";
+const BUILD = "aura-core-v5.47.0-2026-08-13-pick-a-time";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -44361,6 +44361,54 @@ export class PublicEntry extends WorkerEntrypoint {
       const r = await processCommand("AVAILABILITY " + String(slug || "") +
         (artist ? " with:" + artist : "") + " days:" + (Number(days) || 14), this.env, true);
       return (r && r.payload) ? r.payload : r;
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
+  // A customer booking themselves in. No session - they are a stranger standing outside the shop,
+  // and requiring an account before they can ask for a time is how booking pages lose people.
+  // Nothing is minted until they give a name and a way to be reached.
+  async book(slug, form) {
+    try {
+      const f = form || {};
+      const sl = await processCommand("SLUG GET " + String(slug || ""), this.env, true);
+      const sp = (sl && sl.payload) ? sl.payload : sl;
+      if (!sp?.ok || !sp.pta) return { ok: false, error: "NO_SUCH_BUSINESS",
+        say: "There is no business at that address." };
+      const biz = sp.pta;
+      const name = String(f.name || "").trim().slice(0, 80);
+      const contact = String(f.contact || "").trim().slice(0, 120);
+      const when = String(f.when || "").trim();
+      if (!name || !contact || !when) return { ok: false, error: "INCOMPLETE",
+        say: "I need a name, a way to reach you, and a time." };
+
+      // Them, as an entity of their own - keyed on their contact, so booking twice is one person.
+      const who = await processCommand("PTA_ENTITY CREATE person " + name + " identity:" +
+        (contact.includes("@") ? contact.toLowerCase() : "phone:" + contact.replace(/[^0-9+]/g, "")),
+        this.env, true);
+      const wp = (who && who.payload) ? who.payload : who;
+      if (!wp?.ok || !wp.entity?.id) return { ok: false, error: "COULD_NOT_IDENTIFY",
+        detail: wp?.error || null,
+        say: wp?.error === "CONTACT_BELONGS_TO_ANOTHER_TYPE"
+          ? "That contact already belongs to a business here - use a personal one."
+          : "Something went wrong taking your details." };
+
+      const pipe = [when, String(f.service || "").slice(0, 120), String(f.deposit || ""), ""]
+        .join(" | ") + (f.with ? " | with:" + f.with : "");
+      const r = await processCommand("BOOKING CREATE " + wp.entity.id + " " + biz + " " + pipe,
+        this.env, true);
+      const rp = (r && r.payload) ? r.payload : r;
+      if (!rp?.ok) return { ok: false, error: rp?.error || "COULD_NOT_BOOK",
+        say: rp?.what_to_do || "That time is no longer free - pick another." };
+      // What they said they want, in their words, on their own chain.
+      if (f.notes) {
+        try { await processCommand("PTA_HEARD " + wp.entity.id + " ::: " + String(f.notes).slice(0, 500),
+          this.env, true); } catch {}
+      }
+      return { ok: true, booking: rp.booking, when: rp.when, pta: wp.entity.id,
+        say: "Booked. They will confirm shortly.",
+        note: "This is yours as much as theirs - the record follows you, not the shop." };
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
     }

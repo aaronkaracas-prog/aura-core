@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.47.0-2026-08-13-pick-a-time";
+const BUILD = "aura-core-v5.47.1-2026-08-14-a-client-can-pick-their-artist";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -44402,13 +44402,43 @@ export class PublicEntry extends WorkerEntrypoint {
       if (!rp?.ok) return { ok: false, error: rp?.error || "COULD_NOT_BOOK",
         say: rp?.what_to_do || "That time is no longer free - pick another." };
       // What they said they want, in their words, on their own chain.
+      let notes_kept = null;
       if (f.notes) {
-        try { await processCommand("PTA_HEARD " + wp.entity.id + " ::: " + String(f.notes).slice(0, 500),
-          this.env, true); } catch {}
+        // What they want is the most useful thing on this page and it was inside a bare catch - a
+        // failure would have thrown away the only sentence the shop actually needs.
+        try {
+          const hr = await processCommand("PTA_HEARD " + wp.entity.id + " ::: " + String(f.notes).slice(0, 500),
+            this.env, true);
+          const hp = (hr && hr.payload) ? hr.payload : hr;
+          notes_kept = hp?.ok ? true : (hp?.error || "not recorded");
+        } catch (e) { notes_kept = String((e && e.message) || e).slice(0, 100); }
       }
       return { ok: true, booking: rp.booking, when: rp.when, pta: wp.entity.id,
+        notes_kept,
         say: "Booked. They will confirm shortly.",
         note: "This is yours as much as theirs - the record follows you, not the shop." };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
+  // Who works here, for the booking page. Public on purpose: a client choosing their artist is not
+  // signed in to anything, and the fact that somebody tattoos at a shop is on the shop's own wall.
+  // Names only - no contact details, nothing from their own chain.
+  async artists(slug) {
+    try {
+      let biz = String(slug || "");
+      if (biz && !/^pta_|^ent_/.test(biz)) {
+        const sl = await processCommand("SLUG GET " + biz, this.env, true);
+        const sp = (sl && sl.payload) ? sl.payload : sl;
+        if (!sp?.ok) return { ok: false, error: "NO_SUCH_BUSINESS" };
+        biz = sp.pta;
+      }
+      const r = await processCommand("SEAT LIST " + biz, this.env, true);
+      const rp = (r && r.payload) ? r.payload : r;
+      if (!rp?.ok) return { ok: false, error: rp?.error || "unavailable" };
+      return { ok: true, business: rp.business,
+        artists: (rp.seats || []).map(x => ({ pta: x.pta, name: x.name })) };
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
     }

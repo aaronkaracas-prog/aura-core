@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.46.0-2026-08-13-what-is-actually-free";
+const BUILD = "aura-core-v5.46.1-2026-08-13-a-shops-hours-are-in-its-own-time";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18202,6 +18202,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           website: dp.website || (own && own.contact && own.contact.website) || null,
           rating: dp.rating, reviews_count: dp.reviews_count, open_now: dp.open_now,
           // Their own hours when Google has none - the chain is a source, not a fallback of last resort.
+          utc_offset_minutes: dp.utc_offset_minutes ?? null,
           hours: dp.hours || (own && own.hours
             ? (Array.isArray(own.hours) ? own.hours : [String(own.hours.open || own.hours.hours || JSON.stringify(own.hours))])
             : null),
@@ -19285,25 +19286,44 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const h = [...ch].reverse().find(c => c?.event === "HOURS" || c?.data?.hours);
           if (h) weekly = h.data?.hours || h.data;
         } catch {}
-        if (!weekly) {
+        let tzMin = null;   // minutes east of UTC, from Google
+        {
           const o = await processCommand("OFB " + avBiz, env, true);
           const op = (o && o.payload) ? o.payload : o;
-          if (op?.hours) weekly = op.hours;
+          if (!weekly && op?.hours) weekly = op.hours;
+          if (typeof op?.utc_offset_minutes === "number") tzMin = op.utc_offset_minutes;
         }
+        // ══ A SHOP'S HOURS ARE IN ITS OWN TIME ═══════════════════════════════════════════════
+        // MEASURED: every slot came back four hours out. "1:00 PM" was treated as 13:00 UTC, which
+        // is 9am in New York - so a client would have been offered a time the shop was shut. Hours
+        // are always local; the offset turns them into instants.
+        // No offset means we do not know, and offering the wrong hour is worse than offering none.
+        if (tzMin == null) return { cmd: "AVAILABILITY", payload: { ok: false, error: "NO_TIMEZONE",
+          business: biz.name,
+          what_to_say: "We know their hours but not their time zone, so we cannot say which hour that " +
+            "is anywhere else.",
+          what_to_do: "The offset comes from their Google listing - a business with no listing needs " +
+            "its time zone recorded before it can take bookings." } };
         // "Monday: 1:00 - 8:00 PM" is what Google gives and what people write. Parse it into
         // open/close minutes per weekday; anything unparseable becomes a closed day rather than a
         // guess that books somebody at 3am.
         const DAY = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
         const open = {};
-        const toMin = (t) => {
+        // "1:00 - 8:00 PM" carries ONE meridiem for two times, and it belongs to the end. MEASURED:
+        // this read the open time as 1am and offered slots from 1am, because the start had no am/pm
+        // of its own. When the start has none, take the end's - and if that makes the shop open
+        // before it closes, it was a morning start.
+        const toMin = (t, borrow) => {
           const m = String(t).match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
           if (!m) return null;
-          let h = Number(m[1]) % 12; const mm = Number(m[2] || 0);
-          const ap = (m[3] || "").toLowerCase();
+          const raw = Number(m[1]); const mm = Number(m[2] || 0);
+          let ap = (m[3] || "").toLowerCase() || borrow || "";
+          let h = raw % 12;
           if (ap === "pm") h += 12;
-          if (!ap && Number(m[1]) >= 13) h = Number(m[1]);
+          if (!ap && raw >= 13) h = raw;
           return h * 60 + mm;
         };
+        const meridiem = (t) => (String(t).match(/(am|pm)/i) || [])[1]?.toLowerCase() || null;
         const lines = Array.isArray(weekly) ? weekly
           : (typeof weekly === "string" ? [weekly]
             : Object.entries(weekly || {}).map(([k, v]) => k + ": " + v));
@@ -19314,8 +19334,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           if (/closed/i.test(span)) continue;
           const parts = span.split(/[-\u2013\u2014]/);
           if (parts.length < 2) continue;
-          const a = toMin(parts[0]), b = toMin(parts[1]);
+          const endAp = meridiem(parts[1]);
+          let a = toMin(parts[0], meridiem(parts[0]) ? null : endAp);
+          const b = toMin(parts[1], null);
           if (a == null || b == null) continue;
+          // Borrowed the end's PM and ended up opening after closing - it was an AM start.
+          if (a >= b) a = toMin(parts[0], "am");
+          if (a == null || a >= b) continue;
           if (d >= 0) open[d] = { from: a, to: b };
           else for (let i = 0; i < 7; i++) if (!open[i]) open[i] = { from: a, to: b };
         }
@@ -19341,18 +19366,22 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
         const out = [], now = Date.now();
         for (let d = 0; d < avDays; d++) {
-          const day = new Date(now + d * 86400000);
+          // Their day, not ours - a shop in Tokyo is already on tomorrow.
+          const day = new Date(now + d * 86400000 + tzMin * 60000);
           const wd = day.getUTCDay();
           const o = open[wd];
           if (!o) continue;
           const slots = [];
           for (let m = o.from; m + avSlot <= o.to; m += avSlot) {
+            // Local minutes -> the actual instant. m is in the shop's clock; tzMin shifts it.
             const t = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(),
-              Math.floor(m / 60), m % 60));
+              0, m - tzMin));
             if (t.getTime() < now + 3600000) continue;   // not in the next hour
             const clash = taken.some(x => t.getTime() < x.at + x.mins * 60000 &&
                                           x.at < t.getTime() + avSlot * 60000);
-            if (!clash) slots.push(t.toISOString());
+            if (!clash) slots.push({ at: t.toISOString(),
+              local: String(Math.floor(m / 60) % 12 || 12) + ":" + String(m % 60).padStart(2, "0") +
+                     (m >= 720 ? "pm" : "am") });
           }
           if (slots.length) out.push({ date: day.toISOString().slice(0, 10), slots });
         }
@@ -20154,7 +20183,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const key = await getSecret(env, "google_maps");
         if (!key) return { cmd: "PLACE", payload: { ok: false, error: "no google_maps key" } };
         const fields = "name,formatted_address,formatted_phone_number,website,opening_hours,rating," +
-                       "user_ratings_total,price_level,geometry,photos,types,url,reviews,editorial_summary";
+                       "user_ratings_total,price_level,geometry,photos,types,url,reviews," +
+                       "editorial_summary,utc_offset";
         const r = await fetch("https://maps.googleapis.com/maps/api/place/details/json?place_id=" +
           encodeURIComponent(plId) + "&fields=" + fields + "&key=" + key);
         const d = await r.json();
@@ -20170,6 +20200,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           about: (g.editorial_summary && g.editorial_summary.overview) || null,
           types: (g.types || []).slice(0, 6),
           lat: g.geometry?.location?.lat ?? null, lng: g.geometry?.location?.lng ?? null,
+          // Minutes east of UTC. Hours are local everywhere on earth; without this an availability
+          // calendar offers a New York shop's 1pm as 9am and books somebody at a closed door.
+          utc_offset_minutes: (typeof g.utc_offset_minutes === "number" ? g.utc_offset_minutes
+            : (typeof g.utc_offset === "number" ? g.utc_offset : null)),
           maps_url: g.url || null,
           photos: (g.photos || []).slice(0, 5).map(ph =>
             "https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=" +

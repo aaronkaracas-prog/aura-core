@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.48.0-2026-08-14-what-an-owner-can-do";
+const BUILD = "aura-core-v5.49.0-2026-08-14-the-standard-already-exists";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -19391,6 +19391,239 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                        : "Shop-wide. Ask for an artist and it narrows to theirs." } };
       } catch (e) {
         return { cmd: "AVAILABILITY", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
+      }
+    }
+
+    case "APPOINTMENT": {
+      // ══ THE STANDARD ALREADY EXISTS: RFC 5545 ═════════════════════════════════════════════════
+      //
+      // Aaron: "isn't there just a standard appointment protocol we can insert here?" There is, and
+      // it has been the standard since 2009 - iCalendar VEVENT, which Google Calendar, Outlook and
+      // Apple all speak. Our booking had a start and no end, a homemade state string, and no way to
+      // say which version of a changed appointment is current.
+      //
+      // What the standard gives us that we did not have:
+      //   DTEND      an end. An artist blocking a chair needs to know for how long.
+      //   STATUS     TENTATIVE -> CONFIRMED -> CANCELLED. Three words everyone already knows.
+      //   SEQUENCE   increments on every change, so nobody argues about which version is current.
+      //   PARTSTAT   per attendee: NEEDS-ACTION, ACCEPTED, DECLINED. The client accepting and the
+      //              artist accepting are different facts.
+      //   UID        stable across every change, which is what makes an update an update.
+      //
+      // And it exports: an appointment in this shape is a .ics file that drops into a phone.
+      //
+      //   APPOINTMENT NEW <business> ::: {json}
+      //   APPOINTMENT <uid>                    read it
+      //   APPOINTMENT SET <uid> <field> <value>   start|end|status|artist|summary|description
+      //   APPOINTMENT REPLY <uid> <who> <ACCEPTED|DECLINED|TENTATIVE>
+      //   APPOINTMENT ICS <uid>                the file
+      //   APPOINTMENT LIST <business> [from] [to]
+      if (!isOp) return { cmd: "APPOINTMENT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const apP = (rest || "").split(":::");
+      const apH = (apP[0] || "").trim().split(/\s+/);
+      const apSub = String(apH[0] || "").toUpperCase();
+      const apBody = (apP[1] || "").trim();
+      const db = env.AURA_MEMORY;
+      const readAp = async (uid) => {
+        const r = await db.prepare("SELECT id, from_id, to_id, context, state FROM pta_edges WHERE id = ?")
+          .bind(uid).first().catch(() => null);
+        if (!r) return null;
+        let c = {}; try { c = JSON.parse(r.context || "{}"); } catch {}
+        return { uid: r.id, customer: r.from_id, business: r.to_id, edge_state: r.state, v: c };
+      };
+      const saveAp = async (uid, c) => {
+        c.sequence = (Number(c.sequence) || 0) + 1;
+        c.last_modified = new Date().toISOString();
+        await db.prepare("UPDATE pta_edges SET context = ?, updated_at = ? WHERE id = ?")
+          .bind(JSON.stringify(c), c.last_modified, uid).run();
+        return c;
+      };
+      const STATUS = new Set(["TENTATIVE", "CONFIRMED", "CANCELLED"]);
+      const PARTSTAT = new Set(["NEEDS-ACTION", "ACCEPTED", "DECLINED", "TENTATIVE"]);
+      try {
+        if (apSub === "NEW") {
+          let biz = apH[1] || "";
+          if (!/^pta_|^ent_/.test(biz)) {
+            const sl = await processCommand("SLUG GET " + biz, env, true);
+            const sp = (sl && sl.payload) ? sl.payload : sl;
+            if (sp?.ok) biz = sp.pta;
+          }
+          let f = {}; try { f = JSON.parse(apBody || "{}"); } catch {
+            return { cmd: "APPOINTMENT", payload: { ok: false, error: "BAD_JSON",
+              what_to_do: 'APPOINTMENT NEW <business> ::: {"customer":"pta_...","start":"...","minutes":120}' } };
+          }
+          if (!f.customer || !f.start) return { cmd: "APPOINTMENT", payload: { ok: false,
+            error: "NEED_CUSTOMER_AND_START" } };
+          const start = new Date(f.start);
+          if (isNaN(start)) return { cmd: "APPOINTMENT", payload: { ok: false, error: "BAD_START", given: f.start } };
+          const mins = Math.min(Math.max(Number(f.minutes) || 120, 15), 720);
+          const end = new Date(start.getTime() + mins * 60000);
+          if (f.artist) {
+            const ok = await db.prepare("SELECT 1 FROM pta_edges WHERE from_id = ? AND to_id = ? " +
+              "AND edge_type = 'works_at' AND state != 'revoked'").bind(f.artist, biz).first().catch(() => null);
+            if (!ok) return { cmd: "APPOINTMENT", payload: { ok: false, error: "NOT_SEATED_HERE", artist: f.artist } };
+          }
+          // Two appointments cannot hold the same chair. The check is on the artist when one is
+          // named, on the shop when nobody is - which is what a walk-in actually blocks.
+          const clash = await (async () => {
+            const rows = await db.prepare("SELECT id, context FROM pta_edges WHERE to_id = ? " +
+              "AND edge_type = 'books' AND state != 'revoked'").bind(biz).all().catch(() => null);
+            for (const r of (rows?.results || [])) {
+              let c = {}; try { c = JSON.parse(r.context || "{}"); } catch {}
+              if (c.status === "CANCELLED") continue;
+              if (f.artist && c.artist && c.artist !== f.artist) continue;
+              const s2 = new Date(c.start || c.when).getTime();
+              const e2 = s2 + (Number(c.minutes) || 120) * 60000;
+              if (start.getTime() < e2 && s2 < end.getTime()) return r.id;
+            }
+            return null;
+          })();
+          if (clash) return { cmd: "APPOINTMENT", payload: { ok: false, error: "TIME_TAKEN",
+            clashes_with: clash, what_to_do: "Pick another time - that chair is held." } };
+          const uid = edgeId();
+          const now = new Date().toISOString();
+          const ctx = {
+            uid, sequence: 0, dtstamp: now, created: now, last_modified: now,
+            start: start.toISOString(), end: end.toISOString(), minutes: mins,
+            status: "TENTATIVE",                       // asked for, not agreed
+            summary: String(f.summary || f.service || "Appointment").slice(0, 120),
+            description: String(f.description || f.notes || "").slice(0, 800),
+            organizer: biz, artist: f.artist || null,
+            attendees: { [f.customer]: "NEEDS-ACTION", ...(f.artist ? { [f.artist]: "NEEDS-ACTION" } : {}) },
+            deposit: f.deposit != null ? Number(f.deposit) : null, deposit_held: false,
+            // the old field, so nothing that reads `when` breaks while both shapes exist
+            when: start.toISOString(), booking_state: "requested",
+          };
+          await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, relationship, context, created_at, updated_at) " +
+            "VALUES (?, ?, ?, 'books', 'requested', 'appointment', ?, ?, ?)")
+            .bind(uid, f.customer, biz, JSON.stringify(ctx), now, now).run();
+          return { cmd: "APPOINTMENT", payload: { ok: true, uid, status: "TENTATIVE",
+            start: ctx.start, end: ctx.end, minutes: mins, artist: ctx.artist,
+            note: "TENTATIVE until somebody confirms - asked for is not agreed, and the standard has " +
+              "a word for the difference." } };
+        }
+
+        if (apSub === "SET") {
+          const uid = apH[1] || "", field = String(apH[2] || "").toLowerCase();
+          const val = apH.slice(3).join(" ").trim() || apBody;
+          const ap = await readAp(uid);
+          if (!ap) return { cmd: "APPOINTMENT", payload: { ok: false, error: "NO_SUCH_APPOINTMENT", uid } };
+          const c = ap.v;
+          if (field === "start" || field === "when") {
+            const d = new Date(val);
+            if (isNaN(d)) return { cmd: "APPOINTMENT", payload: { ok: false, error: "BAD_TIME", given: val } };
+            c.moved_from = c.start; c.start = d.toISOString(); c.when = c.start;
+            c.end = new Date(d.getTime() + (Number(c.minutes) || 120) * 60000).toISOString();
+          } else if (field === "minutes") {
+            c.minutes = Math.min(Math.max(Number(val) || 120, 15), 720);
+            c.end = new Date(new Date(c.start).getTime() + c.minutes * 60000).toISOString();
+          } else if (field === "status") {
+            const st = String(val).toUpperCase();
+            if (!STATUS.has(st)) return { cmd: "APPOINTMENT", payload: { ok: false, error: "BAD_STATUS",
+              allowed: [...STATUS] } };
+            c.status = st; c.booking_state = st.toLowerCase();
+          } else if (field === "artist") {
+            const ok = await db.prepare("SELECT 1 FROM pta_edges WHERE from_id = ? AND to_id = ? " +
+              "AND edge_type = 'works_at' AND state != 'revoked'").bind(val, ap.business).first().catch(() => null);
+            if (!ok) return { cmd: "APPOINTMENT", payload: { ok: false, error: "NOT_SEATED_HERE", artist: val } };
+            c.reassigned_from = c.artist; c.artist = val; c.with = val;
+            c.attendees = { ...(c.attendees || {}), [val]: "NEEDS-ACTION" };
+          } else if (field === "summary" || field === "description") {
+            c[field] = String(val).slice(0, 800);
+          } else {
+            return { cmd: "APPOINTMENT", payload: { ok: false, error: "UNKNOWN_FIELD", field,
+              allowed: ["start", "minutes", "status", "artist", "summary", "description"] } };
+          }
+          const saved = await saveAp(uid, c);
+          // Everybody on it hears about it. A change nobody is told about is a change that surprises
+          // somebody at the door.
+          for (const who of [ap.customer, c.artist, ap.business].filter(Boolean)) {
+            try {
+              await processCommand("PTA_REMEMBER " + who + " APPOINTMENT_CHANGED " + JSON.stringify({
+                uid, field, now: c[field] ?? val, sequence: saved.sequence }), env, true);
+            } catch {}
+          }
+          return { cmd: "APPOINTMENT", payload: { ok: true, uid, field, value: c[field] ?? val,
+            sequence: saved.sequence, status: c.status,
+            note: "Sequence " + saved.sequence + " - every change increments it, so there is never a " +
+              "question about which version is current." } };
+        }
+
+        if (apSub === "REPLY") {
+          const uid = apH[1] || "", who = apH[2] || "", ps = String(apH[3] || "").toUpperCase();
+          if (!PARTSTAT.has(ps)) return { cmd: "APPOINTMENT", payload: { ok: false, error: "BAD_PARTSTAT",
+            allowed: [...PARTSTAT] } };
+          const ap = await readAp(uid);
+          if (!ap) return { cmd: "APPOINTMENT", payload: { ok: false, error: "NO_SUCH_APPOINTMENT", uid } };
+          const c = ap.v;
+          c.attendees = { ...(c.attendees || {}), [who]: ps };
+          // The client accepting and the artist accepting are different facts, and the appointment is
+          // only really on when nobody is still deciding.
+          const all = Object.values(c.attendees);
+          if (ps === "DECLINED") c.status = "CANCELLED";
+          else if (all.length && all.every(x => x === "ACCEPTED")) c.status = "CONFIRMED";
+          c.booking_state = String(c.status).toLowerCase();
+          const saved = await saveAp(uid, c);
+          return { cmd: "APPOINTMENT", payload: { ok: true, uid, who, partstat: ps,
+            status: c.status, attendees: c.attendees, sequence: saved.sequence } };
+        }
+
+        if (apSub === "ICS") {
+          const ap = await readAp(apH[1] || "");
+          if (!ap) return { cmd: "APPOINTMENT", payload: { ok: false, error: "NO_SUCH_APPOINTMENT" } };
+          const c = ap.v;
+          const z = (t) => String(t || "").replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+          const biz = await db.prepare("SELECT name FROM pta_entities WHERE id = ?").bind(ap.business).first();
+          const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Aura//Open For Business//EN",
+            "CALSCALE:GREGORIAN", "METHOD:REQUEST", "BEGIN:VEVENT",
+            "UID:" + c.uid + "@openforbusiness.world",
+            "DTSTAMP:" + z(c.dtstamp), "DTSTART:" + z(c.start), "DTEND:" + z(c.end),
+            "SEQUENCE:" + (c.sequence || 0), "STATUS:" + (c.status || "TENTATIVE"),
+            "SUMMARY:" + String(c.summary || "Appointment").replace(/[\r\n,;]/g, " "),
+            ...(c.description ? ["DESCRIPTION:" + String(c.description).replace(/[\r\n]/g, "\\n").replace(/[,;]/g, " ")] : []),
+            ...(biz?.name ? ["LOCATION:" + String(biz.name).replace(/[,;]/g, " ")] : []),
+            "ORGANIZER;CN=" + (biz?.name || "the shop") + ":mailto:noreply@openforbusiness.world",
+            ...Object.entries(c.attendees || {}).map(([k, v]) =>
+              "ATTENDEE;PARTSTAT=" + v + ":urn:pta:" + k),
+            "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+          return { cmd: "APPOINTMENT", payload: { ok: true, uid: c.uid, ics,
+            filename: "appointment-" + String(c.uid).slice(0, 12) + ".ics",
+            note: "Drops into any calendar - Google, Apple, Outlook. It is the same event, not a copy." } };
+        }
+
+        if (apSub === "LIST") {
+          let biz = apH[1] || "";
+          if (!/^pta_|^ent_/.test(biz)) {
+            const sl = await processCommand("SLUG GET " + biz, env, true);
+            const sp = (sl && sl.payload) ? sl.payload : sl;
+            if (sp?.ok) biz = sp.pta;
+          }
+          const rows = await db.prepare(
+            "SELECT e.id, e.from_id, e.context, x.name FROM pta_edges e " +
+            "LEFT JOIN pta_entities x ON x.id = e.from_id " +
+            "WHERE e.to_id = ? AND e.edge_type = 'books' AND e.state != 'revoked'").bind(biz).all();
+          const out = (rows?.results || []).map(r => {
+            let c = {}; try { c = JSON.parse(r.context || "{}"); } catch {}
+            return { uid: r.id, who: r.name || r.from_id, start: c.start || c.when || null,
+              end: c.end || null, minutes: c.minutes || null,
+              status: c.status || (c.booking_state || "").toUpperCase() || "TENTATIVE",
+              summary: c.summary || c.service || "Appointment",
+              description: c.description || c.notes || null,
+              artist: c.artist || c.with || null, sequence: c.sequence ?? 0,
+              attendees: c.attendees || null };
+          }).sort((a, b) => String(a.start).localeCompare(String(b.start)));
+          return { cmd: "APPOINTMENT", payload: { ok: true, business: biz, count: out.length,
+            appointments: out } };
+        }
+
+        // bare uid
+        const ap = await readAp(apSub.toLowerCase() === apSub ? apH[0] : apH[0]);
+        if (!ap) return { cmd: "APPOINTMENT", payload: { ok: false,
+          error: "Usage: APPOINTMENT NEW|SET|REPLY|ICS|LIST ..." } };
+        return { cmd: "APPOINTMENT", payload: { ok: true, ...ap.v, uid: ap.uid,
+          customer: ap.customer, business: ap.business } };
+      } catch (e) {
+        return { cmd: "APPOINTMENT", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
       }
     }
 

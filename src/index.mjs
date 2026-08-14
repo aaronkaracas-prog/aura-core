@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.50.1-2026-08-14-uploads-go-in-a-post";
+const BUILD = "aura-core-v5.51.0-2026-08-14-the-console-speaks-the-standard";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -20397,9 +20397,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           sections: await (async () => {
             const out = {};
             try {
+              // APPOINTMENT LIST rather than SCHEDULE: the console needs end times, sequence and who
+              // has accepted, and SCHEDULE predates all three.
+              const ap = await processCommand("APPOINTMENT LIST " + pick, env, true);
+              const app = (ap && ap.payload) ? ap.payload : ap;
               const sc = await processCommand("SCHEDULE " + coOwner + " " + pick, env, true);
               const sp = (sc && sc.payload) ? sc.payload : sc;
-              out.appointments = sp?.ok ? { count: sp.count, seeing: sp.seeing, list: sp.bookings } : null;
+              // An artist sees only their own; the owner sees the shop. The role comes from SCHEDULE,
+              // the detail from APPOINTMENT.
+              const mine = sp?.ok && sp.role === "artist"
+                ? new Set((sp.bookings || []).map(b => b.booking)) : null;
+              out.appointments = app?.ok ? { count: app.count, seeing: sp?.seeing || null,
+                role: sp?.role || null,
+                list: (app.appointments || []).filter(x => !mine || mine.has(x.uid)) } : null;
               if (sp?.ok) {
                 const money = (sp.bookings || []).filter(b => b.amount);
                 out.deposits = { count: money.length,
@@ -44897,12 +44907,33 @@ export class PublicEntry extends WorkerEntrypoint {
         return (r && r.payload) ? r.payload : r;
       };
       switch (String(what || "").toLowerCase()) {
-        case "move":     return await run("BOOKING MOVE " + a.booking + " " + a.when);
-        case "assign":   return await run("BOOKING ASSIGN " + a.booking + " " + a.artist);
-        case "state":    return await run("BOOKING STATE " + a.booking + " " + a.state);
-        case "book":     return await run("BOOKING CREATE " + a.customer + " " + biz + " " +
-                                [a.when, a.service || "Appointment", a.deposit || "", a.notes || ""].join(" | ") +
-                                (a.artist ? " | with:" + a.artist : ""));
+        // ══ THE CONSOLE SPEAKS THE STANDARD NOW ═══════════════════════════════════════════════
+        // These called BOOKING MOVE/ASSIGN/STATE - the shape APPOINTMENT replaced. Every button in
+        // the console was calling a command that no longer knows about end times, sequence numbers
+        // or who has accepted, which is why none of them worked.
+        case "move":     return await run("APPOINTMENT SET " + a.booking + " start " + a.when);
+        case "minutes":  return await run("APPOINTMENT SET " + a.booking + " minutes " + a.minutes);
+        case "assign":   return await run("APPOINTMENT SET " + a.booking + " artist " + a.artist);
+        case "state":    return await run("APPOINTMENT SET " + a.booking + " status " +
+                                String(a.state || "").toUpperCase());
+        case "reply":    return await run("APPOINTMENT REPLY " + a.booking + " " + a.who + " " +
+                                String(a.partstat || "").toUpperCase());
+        case "ics":      return await run("APPOINTMENT ICS " + a.booking);
+        case "book":     return await run("APPOINTMENT NEW " + biz + " ::: " + JSON.stringify({
+                                customer: a.customer, start: a.when, minutes: a.minutes || 120,
+                                artist: a.artist || null, summary: a.service || "Appointment",
+                                description: a.notes || "", deposit: a.deposit || null }));
+        case "slots":    return await run("AVAILABILITY " + biz + (a.artist ? " with:" + a.artist : "") +
+                                " days:" + (a.days || 21) + (a.minutes ? " slot:" + a.minutes : ""));
+        // A customer who is not in the system yet - booking somebody in over the phone is the most
+        // common thing an owner does, and it cannot require the person to exist first.
+        case "find_or_make": {
+          const c = String(a.contact || "").trim();
+          if (!a.name) return { ok: false, error: "NEED_NAME" };
+          const id = c ? (c.includes("@") ? c.toLowerCase() : "phone:" + c.replace(/[^0-9+]/g, ""))
+                       : "walkin:" + biz + ":" + String(a.name).toLowerCase().replace(/[^a-z0-9]+/g, "-");
+          return await run("PTA_ENTITY CREATE person " + a.name + " identity:" + id);
+        }
         case "seat_add":    return await run("SEAT ADD " + biz + " " + a.name +
                                 (a.contact ? " " + (a.contact.includes("@") ? "email:" : "phone:") + a.contact : ""));
         case "seat_remove": return await run("SEAT REMOVE " + biz + " " + a.person);

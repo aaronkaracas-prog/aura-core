@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.47.1-2026-08-14-a-client-can-pick-their-artist";
+const BUILD = "aura-core-v5.48.0-2026-08-14-what-an-owner-can-do";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -19394,6 +19394,51 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
     }
 
+    case "BUSINESS_EDIT": {
+      // ══ THEIR PAGE IS THEIRS TO CHANGE ════════════════════════════════════════════════════════
+      //
+      // The console showed them "source: read their site, then asked", "learned_at", "event_type:
+      // UNDERSTANDING" - my plumbing, printed at a business owner. None of that is theirs and none
+      // of it is editable. What they want is the words on their own page and a way to fix them.
+      //
+      // Written to the chain like everything else, so a correction is an event rather than an
+      // overwrite - what the site said in August is still what the site said in August.
+      //
+      //   BUSINESS_EDIT <business> <field> ::: <value>
+      //   fields: about, hours, services, phone, email, address
+      if (!isOp) return { cmd: "BUSINESS_EDIT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const beP = (rest || "").split(":::");
+      const beH = (beP[0] || "").trim().split(/\s+/);
+      let beBiz = beH[0] || "";
+      const beField = String(beH[1] || "").toLowerCase();
+      const beVal = (beP[1] || "").trim();
+      const FIELDS = { about: "SERVICE", hours: "HOURS", services: "SERVICE",
+                       phone: "CONTACT", email: "CONTACT", address: "CONTACT" };
+      if (!beBiz || !FIELDS[beField]) return { cmd: "BUSINESS_EDIT", payload: { ok: false,
+        error: "Usage: BUSINESS_EDIT <business> <about|hours|services|phone|email|address> ::: <value>" } };
+      if (!/^pta_|^ent_/.test(beBiz)) {
+        const sl = await processCommand("SLUG GET " + beBiz, env, true);
+        const sp = (sl && sl.payload) ? sl.payload : sl;
+        if (sp?.ok && sp.pta) beBiz = sp.pta;
+      }
+      try {
+        const data = beField === "about" || beField === "services" ? { offers: beVal }
+          : beField === "hours" ? { hours: beVal }
+          : { [beField]: beVal };
+        const r = await processCommand("PTA_REMEMBER " + beBiz + " " + FIELDS[beField] + " " +
+          JSON.stringify({ ...data, edited_by: "the owner", at: new Date().toISOString() }), env, true);
+        const rp = (r && r.payload) ? r.payload : r;
+        if (!rp?.ok) return { cmd: "BUSINESS_EDIT", payload: { ok: false, error: rp?.error || "refused",
+          what_to_do: rp?.what_to_do || null } };
+        return { cmd: "BUSINESS_EDIT", payload: { ok: true, business: beBiz, field: beField,
+          value: beVal,
+          note: "Changed on your page. The old wording is still on the chain - a correction is an " +
+            "event, not an erasure." } };
+      } catch (e) {
+        return { cmd: "BUSINESS_EDIT", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
+      }
+    }
+
     case "SCHEDULE": {
       // ══ THE OWNER HAS THE MASTER KEY, EVERYONE ELSE SEES THEIR OWN ════════════════════════════
       //
@@ -19456,7 +19501,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           let c = {}; try { c = JSON.parse(r.context || "{}"); } catch {}
           return { booking: r.id, customer: r.customer, customer_name: r.customer_name || null,
             when: c.when || null, service: c.service || null, amount: c.amount ?? null,
-            state: c.booking_state || null, with: c.with || null };
+            state: c.booking_state || null, with: c.with || null,
+            // What the client actually asked for. Without this the artist reads "Appointment" and
+            // finds out what they are tattooing when the person sits down.
+            wants: c.notes || null, contact: c.contact || null,
+            moved: (c.changes || []).length || undefined };
         }).sort((a, b) => String(a.when).localeCompare(String(b.when)));
 
         // The whole point: the owner sees the shop, an artist sees their own. A booking with nobody
@@ -44394,8 +44443,13 @@ export class PublicEntry extends WorkerEntrypoint {
           ? "That contact already belongs to a business here - use a personal one."
           : "Something went wrong taking your details." };
 
-      const pipe = [when, String(f.service || "").slice(0, 120), String(f.deposit || ""), ""]
-        .join(" | ") + (f.with ? " | with:" + f.with : "");
+      // ══ WHAT THEY WANT IS THE BOOKING ════════════════════════════════════════════════════════
+      // "I want a sleeve, a dragon, half a day" went to the client's own chain and nowhere else, so
+      // the shop's calendar said "Appointment" and the one thing the artist needs to prepare for was
+      // invisible to them. It goes in the booking too - the client keeps their copy, the shop can
+      // read the appointment they are being asked for.
+      const pipe = [when, String(f.service || f.notes || "").slice(0, 200), String(f.deposit || ""),
+        String(f.notes || "").slice(0, 500)].join(" | ") + (f.with ? " | with:" + f.with : "");
       const r = await processCommand("BOOKING CREATE " + wp.entity.id + " " + biz + " " + pipe,
         this.env, true);
       const rp = (r && r.payload) ? r.payload : r;
@@ -44413,8 +44467,38 @@ export class PublicEntry extends WorkerEntrypoint {
           notes_kept = hp?.ok ? true : (hp?.error || "not recorded");
         } catch (e) { notes_kept = String((e && e.message) || e).slice(0, 100); }
       }
+      // ══ A BOOKING NOBODY HEARS ABOUT IS A ROW IN A TABLE ═════════════════════════════════════
+      // The shop finds out because somebody walks in. Both sides get an email the moment it is asked
+      // for - the client so they have it in writing, the shop so nobody has to refresh a screen.
+      let told = { client: null, shop: null };
+      const localWhen = (() => {
+        try { return new Date(rp.when).toUTCString().replace(" GMT", ""); } catch { return rp.when; }
+      })();
+      if (contact.includes("@")) {
+        try {
+          const e1 = await processCommand("EMAIL_SEND " + contact + " Your appointment at " + sp.name +
+            " | " + localWhen + (f.notes ? "  --  You asked for: " + String(f.notes).slice(0, 200) : "") +
+            "  --  They will confirm shortly. Nothing has been charged.", this.env, true);
+          told.client = ((e1 && e1.payload) ? e1.payload.ok : false) || false;
+        } catch {}
+      }
+      try {
+        // Whoever owns the shop. An artist named on the booking is told too - it is their day.
+        const owners = await this.env.AURA_MEMORY.prepare(
+          "SELECT e.from_id FROM pta_edges e WHERE e.to_id = ? AND e.edge_type IN ('owns','manages') " +
+          "AND e.state != 'revoked'").bind(biz).all();
+        const ids = [...new Set([...(owners?.results || []).map(r => r.from_id), f.with].filter(Boolean))];
+        for (const who of ids) {
+          try {
+            await processCommand("PTA_REMEMBER " + who + " BOOKING_ASKED " + JSON.stringify({
+              booking: rp.booking, when: rp.when, who: name, contact,
+              wants: String(f.notes || "").slice(0, 300) || null }), this.env, true);
+          } catch {}
+        }
+        told.shop = ids.length;
+      } catch {}
       return { ok: true, booking: rp.booking, when: rp.when, pta: wp.entity.id,
-        notes_kept,
+        notes_kept, told,
         say: "Booked. They will confirm shortly.",
         note: "This is yours as much as theirs - the record follows you, not the shop." };
     } catch (e) {
@@ -44439,6 +44523,41 @@ export class PublicEntry extends WorkerEntrypoint {
       if (!rp?.ok) return { ok: false, error: rp?.error || "unavailable" };
       return { ok: true, business: rp.business,
         artists: (rp.seats || []).map(x => ({ pta: x.pta, name: x.name })) };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
+  // ══ WHAT AN OWNER CAN DO FROM THEIR CONSOLE ═══════════════════════════════════════════════════
+  // One door, and the session decides. Every action checks that this person owns this business
+  // before it runs - the console is a view, not an authority, and a request from it is still a
+  // request from a stranger until the edge says otherwise.
+  async act(sessionId, slug, what, args) {
+    try {
+      const view = await this.console_(sessionId, slug);
+      if (!view?.ok || !view.showing) return { ok: false, error: "NOT_YOURS",
+        say: "That is not a business you can change." };
+      const biz = view.showing;
+      const a = args || {};
+      const run = async (cmd) => {
+        const r = await processCommand(cmd, this.env, true);
+        return (r && r.payload) ? r.payload : r;
+      };
+      switch (String(what || "").toLowerCase()) {
+        case "move":     return await run("BOOKING MOVE " + a.booking + " " + a.when);
+        case "assign":   return await run("BOOKING ASSIGN " + a.booking + " " + a.artist);
+        case "state":    return await run("BOOKING STATE " + a.booking + " " + a.state);
+        case "book":     return await run("BOOKING CREATE " + a.customer + " " + biz + " " +
+                                [a.when, a.service || "Appointment", a.deposit || "", a.notes || ""].join(" | ") +
+                                (a.artist ? " | with:" + a.artist : ""));
+        case "seat_add":    return await run("SEAT ADD " + biz + " " + a.name +
+                                (a.contact ? " " + (a.contact.includes("@") ? "email:" : "phone:") + a.contact : ""));
+        case "seat_remove": return await run("SEAT REMOVE " + biz + " " + a.person);
+        case "invite":      return await run("INVITE_SEAT " + biz + " " + a.person + (a.email ? " " + a.email : ""));
+        case "edit":        return await run("BUSINESS_EDIT " + biz + " " + a.field + " ::: " + (a.value || ""));
+        case "send_code":   return await run("SEND_CODE " + biz + " " + a.to + (a.note ? " ::: " + a.note : ""));
+        default: return { ok: false, error: "UNKNOWN_ACTION", what };
+      }
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
     }

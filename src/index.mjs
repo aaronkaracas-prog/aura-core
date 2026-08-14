@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.54.0-2026-08-14-the-fact-store-has-a-front-door";
+const BUILD = "aura-core-v5.55.0-2026-08-14-she-knows-what-is-closed";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -17221,6 +17221,145 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         note: "Only what is true NOW. Superseded values are excluded by default and are in FACT HISTORY.",
         scope: "This is SEMANTIC memory - what is true. The archive holds EPISODIC memory - what " +
                "happened - and stays append-only, because an event does not stop having occurred." } };
+    }
+
+    case "DECIDE": {
+      // ══ THE ONE BLOCK SHE CANNOT DERIVE ═══════════════════════════════════════════════════════
+      //
+      // Six of her seven self-knowledge blocks compute themselves from live sources: `world` from
+      // WHERE, `body` from the bindings, `facts` from semantic_facts, `lessons` from the consolidator,
+      // `mission` from NORTHSTAR, `beliefs` from her own reasoning. Nothing computes "Aaron chose
+      // Grok over Workers AI for the core lane." That is not a fact about the system - it is a fact
+      // about HIM, and no amount of reading source will produce it.
+      //
+      // MEASURED 2026-08-14: eight separate times in one session Claude rebuilt or redesigned
+      // something that already existed - agentTool, Session.withContext, the FACT store, GRAPH_STATS,
+      // OUTCOME_LOG, the distill FACT writer, the belief store, the trace config. Every one cost
+      // time and at least one wrong design. The cause was never missing documentation; this codebase
+      // is heavily commented. The cause is that a DECISION lived only in a conversation.
+      //
+      // THE STORE ALREADY EXISTS AND THIS IS A DOOR ONTO IT, NOT A SECOND ONE. aura:belief:* in
+      // shared KV already carries topic_key / body / kind / status / valid_from / invalid_at /
+      // superseded_by / lineage - an architecture decision record, field for field - and aura-think
+      // already renders the current rows into her prompt through .withContext("beliefs"). A parallel
+      // decision store would be a second version of currency, which is the exact failure that cost
+      // three days in July.
+      //
+      // THREE THINGS DIFFER FROM A BELIEF SHE FORMED, and each is deliberate:
+      //   1. status is "current" ON WRITE. recordBelief opens everything as `candidate` and promotes
+      //      only when SHE restates it. Correct for an inference; wrong for a ratification. A
+      //      decision the operator made is not a candidate awaiting her agreement.
+      //   2. NO expirationTtl. Her beliefs carry 180 days because an inference can go stale. A
+      //      decision does not expire - it is superseded by another decision or it stands. An
+      //      expiring doctrine is doctrine that quietly stops being true.
+      //   3. kind "decision", so the block labels it [current|decision] rather than [current|fact],
+      //      and the 45-day staleness flag in aura-think - which only fires on kind "fact" - never
+      //      touches it. NO CHANGE TO aura-think IS NEEDED: getBeliefs filters only `measurement`
+      //      and `:was:`, so a decision written here renders on the next turn.
+      //
+      //   DECIDE <topic words> ::: <the decision, and the proof that closed it>
+      //   DECIDE LIST                  - every decision that stands right now
+      //   DECIDE HISTORY <topic>       - including what it superseded and when
+      if (!isOp) return { cmd: "DECIDE", payload: { ok: false, error: "OPERATOR_REQUIRED",
+        note: "A decision is a human act. She may form beliefs; she may not ratify one." } };
+      // Same key algorithm as aura-think's _beliefKey, character for character. If these two ever
+      // disagree the door writes to a slot the block does not read, which is the one-way wire this
+      // system has now paid for three times.
+      const _decKey = (t) => "aura:belief:" + String(t || "").toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+      const decVerb = (args[0] || "").toUpperCase();
+
+      if (decVerb === "LIST" || !rest.trim()) {
+        const list = await env.AURA_KV.list({ prefix: "aura:belief:" }).catch(() => null);
+        const rows = [];
+        for (const k of ((list && list.keys) || []).slice(0, 300)) {
+          if (k.name.includes(":was:")) continue;
+          try {
+            const raw = await env.AURA_KV.get(k.name);
+            if (!raw) continue;
+            const r = JSON.parse(raw);
+            if (r && r.kind === "decision" && r.invalid_at == null) {
+              rows.push({ topic: r.topic, body: r.body, since: r.valid_from,
+                supersedes: r.superseded ? r.superseded.body : null });
+            }
+          } catch {}
+        }
+        rows.sort((a, b) => String(a.topic).localeCompare(String(b.topic)));
+        return { cmd: "DECIDE", payload: { ok: true, decisions: rows, count: rows.length,
+          note: rows.length
+            ? "Every decision that stands right now. These ride in her prompt every turn through the beliefs block - she knows what is closed."
+            : "No decisions ratified yet. DECIDE <topic> ::: <the decision and its proof>.",
+          usage: "DECIDE <topic> ::: <decision> | DECIDE LIST | DECIDE HISTORY <topic>" } };
+      }
+
+      if (decVerb === "HISTORY") {
+        const hTopic = rest.trim().slice(7).trim();
+        if (!hTopic) return { cmd: "DECIDE", payload: { ok: false, error: "Usage: DECIDE HISTORY <topic>" } };
+        const hKey = _decKey(hTopic);
+        const versions = [];
+        try {
+          const cur = await env.AURA_KV.get(hKey);
+          if (cur) { const c = JSON.parse(cur); versions.push({ body: c.body, from: c.valid_from, until: null, current: true }); }
+          const was = await env.AURA_KV.list({ prefix: hKey + ":was:" });
+          for (const k of ((was && was.keys) || [])) {
+            const raw = await env.AURA_KV.get(k.name);
+            if (!raw) continue;
+            const w = JSON.parse(raw);
+            versions.push({ body: w.body, from: w.valid_from, until: w.invalid_at, current: false });
+          }
+        } catch (e) { return { cmd: "DECIDE", payload: { ok: false, error: String(e && e.message || e) } }; }
+        versions.sort((a, b) => String(a.from).localeCompare(String(b.from)));
+        return { cmd: "DECIDE", payload: { ok: true, topic: hTopic, topic_key: hKey,
+          versions: versions.length, history: versions,
+          note: "Nothing here was deleted. A decision that changed was closed and points at what replaced it." } };
+      }
+
+      // RATIFY. Everything before ::: is the topic; everything after is the decision and its proof.
+      const decIx = rest.indexOf(":::");
+      if (decIx < 0) return { cmd: "DECIDE", payload: { ok: false,
+        error: "Usage: DECIDE <topic> ::: <the decision, and the proof that closed it>",
+        why: "The proof is the part that stops it being reopened. 'We built the facts block' is a claim " +
+             "and invites a rebuild; 'system prompt went 3981 -> 6161 tokens, ASK returned Thursday not " +
+             "Tuesday, core v5.54.0 + think v1.34.0' is a measurement and does not." } };
+      const decTopic = rest.slice(0, decIx).trim();
+      const decBody = rest.slice(decIx + 3).trim();
+      if (!decTopic || !decBody) return { cmd: "DECIDE", payload: { ok: false,
+        error: "Both a topic and a decision are required." } };
+      const dKey = _decKey(decTopic);
+      const dNow = new Date().toISOString();
+      let superseded = null;
+      try {
+        const priorRaw = await env.AURA_KV.get(dKey);
+        if (priorRaw) {
+          const prior = JSON.parse(priorRaw);
+          if (prior && prior.invalid_at == null) {
+            prior.invalid_at = dNow;
+            prior.superseded_by = dKey;
+            prior.lineage = Array.isArray(prior.lineage) ? prior.lineage : [];
+            prior.lineage.push({ at: dNow, event: "superseded", by: "DECIDE (operator)" });
+            // NO TTL on the closed row either. "What did we used to decide, and when did that stop
+            // being true" is the question an append-only log exists to answer, and a 180-day expiry
+            // would answer it for six months and then lie.
+            await env.AURA_KV.put(dKey + ":was:" + Date.now(), JSON.stringify(prior));
+            superseded = { at: dNow, body: String(prior.body).slice(0, 300) };
+          }
+        }
+      } catch {}
+      const dRec = {
+        topic_key: dKey, topic: decTopic, body: decBody.slice(0, 700),
+        kind: "decision", status: "current",
+        valid_from: dNow, invalid_at: null, last_seen: dNow,
+        ratified_by: "operator", restated: 0, sources: ["DECIDE"], promoted_by: "operator ratification",
+        superseded,
+        lineage: [{ at: dNow, event: "ratified", kind: "decision",
+          from: superseded ? "supersedes a prior decision" : "new slot" }],
+      };
+      await env.AURA_KV.put(dKey, JSON.stringify(dRec));
+      return { cmd: "DECIDE", payload: { ok: true, topic: decTopic, topic_key: dKey,
+        action: superseded ? "superseded" : "ratified", superseded,
+        note: "Ratified and permanent - no expiry, unlike a belief she formed. It rides in her prompt " +
+              "on the next turn through the beliefs block, labelled [current|decision]. She now knows " +
+              "this is closed." } };
     }
 
     case "SWALLOWED": {

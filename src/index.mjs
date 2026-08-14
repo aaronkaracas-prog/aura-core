@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.49.0-2026-08-14-the-standard-already-exists";
+const BUILD = "aura-core-v5.49.1-2026-08-14-a-time-that-is-not-a-time";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -19480,7 +19480,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           })();
           if (clash) return { cmd: "APPOINTMENT", payload: { ok: false, error: "TIME_TAKEN",
             clashes_with: clash, what_to_do: "Pick another time - that chair is held." } };
-          const uid = edgeId();
+          // edgeId is a local variable in three other blocks, not a helper - I called it like one.
+          const uid = "edge_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
           const now = new Date().toISOString();
           const ctx = {
             uid, sequence: 0, dtstamp: now, created: now, last_modified: now,
@@ -24104,7 +24105,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (!customerId || !businessId) return { cmd: "BOOKING", payload: { ok: false, error: "Usage: BOOKING CREATE <customer_pta> <business_pta> <when ISO> | <service> | [amount] | [notes]" } };
         const afterIds = rest.slice(rest.indexOf(businessId) + businessId.length).trim();
         const pipeParts = afterIds.split("|").map(s => s.trim());
-        const whenISO = pipeParts[0] || "";
+        // ══ A TIME THAT IS NOT A TIME ═══════════════════════════════════════════════════════════
+        // MEASURED: two appointments in Rising Dragon's calendar have start: "2 pm". This took the
+        // string and stored it, so those bookings have no real time, cannot clash-check, cannot
+        // sort, and cannot be told to anybody. A booking whose time nobody can read is not a booking.
+        const whenRaw = pipeParts[0] || "";
+        const whenDate = new Date(whenRaw);
+        if (!whenRaw || isNaN(whenDate)) return { cmd: "BOOKING", payload: { ok: false,
+          error: "BAD_TIME", given: whenRaw,
+          what_to_do: "Give a time that can be read - 2026-08-20T14:00:00Z. '2 pm' has no day and no " +
+            "time zone, so it is not a moment." } };
+        const whenISO = whenDate.toISOString();
         const service = pipeParts[1] || "Appointment";
         const amount = pipeParts[2] ? parseFloat(pipeParts[2]) : null;
         const notes = (pipeParts[3] || "").replace(/\bwith:pta_[a-f0-9]+/i, "").trim();

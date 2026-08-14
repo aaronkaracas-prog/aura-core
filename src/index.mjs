@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.53.0-2026-08-14-onboard-chat-reports-its-own-time";
+const BUILD = "aura-core-v5.54.0-2026-08-14-the-fact-store-has-a-front-door";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -16980,7 +16980,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
       try {
         factRows = (await env.AURA_MEMORY.prepare(
-          "SELECT predicate, value, valid_from FROM semantic_facts WHERE valid_until IS NULL ORDER BY valid_from DESC LIMIT 5"
+          // `subject` was missing from this projection, so the card rendered "busiest_day = Thursday"
+          // with nothing to attach it to. A predicate without its subject is true of nobody.
+          "SELECT subject, predicate, value, valid_from FROM semantic_facts WHERE valid_until IS NULL ORDER BY valid_from DESC LIMIT 5"
         ).all())?.results || [];
       } catch (e) { await noteSwallowed(env, "CARD:fact_read", e); }
 
@@ -17179,7 +17181,37 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // default: GET - what is true NOW
       const subject = fArgs[0] || (fSub === "GET" ? null : args[0]);
       const predicate = fArgs[1] || null;
-      if (!subject) return { cmd: "FACT", payload: { ok: false, error: "Usage: FACT GET <subject> [predicate]" } };
+      // ══ THE STORE COULD ONLY BE ASKED ABOUT A SUBJECT YOU ALREADY KNEW ═══════════════════════
+      // MEASURED 2026-08-14: three facts were written about an invented business, superseded
+      // correctly, and returned perfectly by FACT GET. Then `ASK "who runs Vance Kiln Works"` came
+      // back "I have no information in my current memory." The facts were here; the reasoner had no
+      // way to reach them.
+      // The cause was not the store. aura-think's `distill` has been WRITING here since 2026-07-30
+      // (this.core("FACT SET ...")) and there was no read path back - the same one-way shape the
+      // archive had, where she "was filling a memory she could not open."
+      // A context block cannot ask about a subject it has not heard of yet. It needs the CURRENT SET.
+      // The query already existed inside CARD; it just had no door. So a bare FACT, or FACT GET with
+      // no subject, now returns what is true across every subject - and it CARRIES THE SUBJECT, which
+      // CARD's copy of this query drops. A predicate without its subject is not a fact: "busiest_day
+      // is Thursday" is true of nobody.
+      if (!subject) {
+        const allRows = (await fDb.prepare(
+          "SELECT subject, predicate, value, valid_from FROM semantic_facts WHERE valid_until IS NULL " +
+          "ORDER BY subject ASC, predicate ASC LIMIT 300").all())?.results || [];
+        const bySubject = {};
+        for (const r of allRows) {
+          (bySubject[r.subject] = bySubject[r.subject] || []).push(
+            { predicate: r.predicate, value: r.value, since: r.valid_from });
+        }
+        return { cmd: "FACT", payload: { ok: true, all: true,
+          subjects: Object.keys(bySubject).length, count: allRows.length,
+          facts: bySubject,
+          truncated: allRows.length >= 300,
+          note: "Everything true NOW, across every subject, newest supersession already applied. " +
+                "Ask FACT GET <subject> for one, FACT HISTORY <subject> <predicate> for how it changed.",
+          usage: "FACT SET <subject> <predicate> <value> | FACT GET [subject] [predicate] | " +
+                 "FACT HISTORY <subject> [predicate] | FACT FORGET <subject> <predicate>" } };
+      }
       const rows = predicate
         ? (await fDb.prepare("SELECT * FROM semantic_facts WHERE subject=? AND predicate=? AND valid_until IS NULL").bind(subject, predicate).all())?.results
         : (await fDb.prepare("SELECT * FROM semantic_facts WHERE subject=? AND valid_until IS NULL ORDER BY predicate ASC").bind(subject).all())?.results;

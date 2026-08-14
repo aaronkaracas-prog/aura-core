@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.50.0-2026-08-14-an-artists-work-is-theirs";
+const BUILD = "aura-core-v5.50.1-2026-08-14-uploads-go-in-a-post";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -44921,6 +44921,47 @@ export class PublicEntry extends WorkerEntrypoint {
     try {
       const r = await processCommand("PORTFOLIO GET " + String(who || "") + " " + String(id || ""),
         this.env, true);
+      return (r && r.payload) ? r.payload : r;
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
+  // ══ AN ARTIST UPLOADS FROM A PHONE, NOT A TERMINAL ═══════════════════════════════════════════
+  // RUN builds a GET url and a base64 image is longer than a url is allowed to be - "Invalid URI:
+  // the Uri string is too long." That is not a bug to work around, it is the wrong door: pictures
+  // go up in a POST body, which is what a file input does anyway.
+  // The session decides whose portfolio this is. Somebody can add to their OWN work, and an owner
+  // can add to anyone seated at their shop - a shop photographs the day's pieces on one phone.
+  async upload(sessionId, slug, body) {
+    try {
+      const me = await this.sessionCheck(sessionId);
+      if (!me?.ok) return { ok: false, error: "NOT_SIGNED_IN", say: "Sign in first." };
+      const f = body || {};
+      let who = f.artist || me.pta;
+      if (who !== me.pta) {
+        const view = await this.console_(sessionId, slug);
+        if (!view?.ok || !view.showing) return { ok: false, error: "NOT_YOURS",
+          say: "You can only add to your own work." };
+        const seated = await this.env.AURA_MEMORY.prepare(
+          "SELECT 1 FROM pta_edges WHERE from_id = ? AND to_id = ? AND edge_type = 'works_at' " +
+          "AND state != 'revoked'").bind(who, view.showing).first().catch(() => null);
+        if (!seated) return { ok: false, error: "NOT_SEATED_HERE",
+          say: "That person does not work here." };
+        f.shop = view.showing;
+      }
+      const r = await processCommand("PORTFOLIO ADD " + who + " ::: " + JSON.stringify({
+        data: f.data, type: f.type, caption: f.caption, shop: f.shop || null }), this.env, true);
+      return (r && r.payload) ? r.payload : r;
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
+  // Somebody's work, public. It is meant to be seen - that is what a portfolio is for.
+  async portfolio(who) {
+    try {
+      const r = await processCommand("PORTFOLIO LIST " + String(who || ""), this.env, true);
       return (r && r.payload) ? r.payload : r;
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };

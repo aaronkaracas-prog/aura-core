@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.45.1-2026-08-13-a-slug-is-a-name-too";
+const BUILD = "aura-core-v5.46.0-2026-08-13-what-is-actually-free";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -19241,6 +19241,127 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           expires_in: "7 days, and it works once" } };
       } catch (e) {
         return { cmd: "INVITE_SEAT", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
+      }
+    }
+
+    case "AVAILABILITY": {
+      // ══ WHAT IS ACTUALLY FREE ═════════════════════════════════════════════════════════════════
+      //
+      // A calendar that shows every hour of every day is a form. This reads their real hours off the
+      // chain - or off Google if that is all there is - subtracts what is already booked, and returns
+      // the slots that are genuinely open.
+      //
+      // PER ARTIST WHEN ASKED. Five chairs is five calendars that happen to share an address, so a
+      // client picking Jason should see Jason's gaps, not the shop's.
+      //
+      //   AVAILABILITY <business> [with:<artist_pta>] [days:14] [slot:120]
+      const avParts = (rest || "").trim().split(/\s+/);
+      const avBizRaw = avParts[0] || "";
+      if (!avBizRaw) return { cmd: "AVAILABILITY", payload: { ok: false,
+        error: "Usage: AVAILABILITY <business> [with:<artist_pta>] [days:14] [slot:120]" } };
+      let avBiz = avBizRaw;
+      if (!/^pta_|^ent_/.test(avBiz)) {
+        const sl = await processCommand("SLUG GET " + avBiz, env, true);
+        const sp = (sl && sl.payload) ? sl.payload : sl;
+        if (sp?.ok && sp.pta) avBiz = sp.pta;
+      }
+      const avWith = (rest.match(/\bwith:(pta_[a-f0-9]+)/i) || [])[1] || null;
+      const avDays = Math.min(Math.max(Number((rest.match(/\bdays:(\d+)/i) || [])[1]) || 14, 1), 60);
+      const avSlot = Math.min(Math.max(Number((rest.match(/\bslot:(\d+)/i) || [])[1]) || 120, 15), 480);
+      try {
+        const db = env.AURA_MEMORY;
+        const biz = await db.prepare("SELECT id, name FROM pta_entities WHERE id = ?").bind(avBiz).first();
+        if (!biz) return { cmd: "AVAILABILITY", payload: { ok: false, error: "NO_SUCH_BUSINESS", id: avBiz } };
+
+        // Their hours. What they told us first, what Google says second - a shop that corrected its
+        // hours in conversation should not be contradicted by a listing.
+        let weekly = null;
+        try {
+          const stub = env.PTA_DO.get(env.PTA_DO.idFromName(avBiz));
+          const r = await stub.fetch(new Request("http://do", { method: "POST",
+            body: JSON.stringify({ method: "getState", params: [] }) }));
+          const j = await r.json();
+          const ch = j?.pta?.chain || [];
+          const h = [...ch].reverse().find(c => c?.event === "HOURS" || c?.data?.hours);
+          if (h) weekly = h.data?.hours || h.data;
+        } catch {}
+        if (!weekly) {
+          const o = await processCommand("OFB " + avBiz, env, true);
+          const op = (o && o.payload) ? o.payload : o;
+          if (op?.hours) weekly = op.hours;
+        }
+        // "Monday: 1:00 - 8:00 PM" is what Google gives and what people write. Parse it into
+        // open/close minutes per weekday; anything unparseable becomes a closed day rather than a
+        // guess that books somebody at 3am.
+        const DAY = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+        const open = {};
+        const toMin = (t) => {
+          const m = String(t).match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+          if (!m) return null;
+          let h = Number(m[1]) % 12; const mm = Number(m[2] || 0);
+          const ap = (m[3] || "").toLowerCase();
+          if (ap === "pm") h += 12;
+          if (!ap && Number(m[1]) >= 13) h = Number(m[1]);
+          return h * 60 + mm;
+        };
+        const lines = Array.isArray(weekly) ? weekly
+          : (typeof weekly === "string" ? [weekly]
+            : Object.entries(weekly || {}).map(([k, v]) => k + ": " + v));
+        for (const raw of lines) {
+          const line = String(raw);
+          const d = DAY.findIndex(x => line.toLowerCase().startsWith(x));
+          const span = line.split(":").slice(1).join(":");
+          if (/closed/i.test(span)) continue;
+          const parts = span.split(/[-\u2013\u2014]/);
+          if (parts.length < 2) continue;
+          const a = toMin(parts[0]), b = toMin(parts[1]);
+          if (a == null || b == null) continue;
+          if (d >= 0) open[d] = { from: a, to: b };
+          else for (let i = 0; i < 7; i++) if (!open[i]) open[i] = { from: a, to: b };
+        }
+        if (!Object.keys(open).length) {
+          return { cmd: "AVAILABILITY", payload: { ok: false, error: "NO_HOURS",
+            business: biz.name,
+            what_to_say: "We do not know when this shop is open, so we cannot say what is free.",
+            what_to_do: "Tell Aura the opening hours and this fills in immediately." } };
+        }
+
+        // What is taken. A booking with nobody named blocks the shop; one with an artist blocks only
+        // them - two artists can tattoo at the same time and usually do.
+        const taken = [];
+        const bk = await db.prepare(
+          "SELECT context FROM pta_edges WHERE to_id = ? AND edge_type = 'books' AND state != 'revoked'"
+        ).bind(avBiz).all().catch(() => null);
+        for (const r of (bk?.results || [])) {
+          let c = {}; try { c = JSON.parse(r.context || "{}"); } catch {}
+          if (!c.when) continue;
+          if (avWith && c.with && c.with !== avWith) continue;
+          taken.push({ at: new Date(c.when).getTime(), mins: Number(c.minutes) || avSlot });
+        }
+
+        const out = [], now = Date.now();
+        for (let d = 0; d < avDays; d++) {
+          const day = new Date(now + d * 86400000);
+          const wd = day.getUTCDay();
+          const o = open[wd];
+          if (!o) continue;
+          const slots = [];
+          for (let m = o.from; m + avSlot <= o.to; m += avSlot) {
+            const t = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(),
+              Math.floor(m / 60), m % 60));
+            if (t.getTime() < now + 3600000) continue;   // not in the next hour
+            const clash = taken.some(x => t.getTime() < x.at + x.mins * 60000 &&
+                                          x.at < t.getTime() + avSlot * 60000);
+            if (!clash) slots.push(t.toISOString());
+          }
+          if (slots.length) out.push({ date: day.toISOString().slice(0, 10), slots });
+        }
+        return { cmd: "AVAILABILITY", payload: { ok: true, business: biz.name, id: avBiz,
+          with: avWith, slot_minutes: avSlot, days: out.length, open_days: out,
+          note: avWith ? "Only this artist's gaps - the others can be working at the same time."
+                       : "Shop-wide. Ask for an artist and it narrows to theirs." } };
+      } catch (e) {
+        return { cmd: "AVAILABILITY", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
       }
     }
 
@@ -44193,6 +44314,18 @@ export class PublicEntry extends WorkerEntrypoint {
   async joinAccept(token) {
     try {
       const r = await processCommand("INVITE_SEAT ACCEPT " + String(token || ""), this.env, true);
+      return (r && r.payload) ? r.payload : r;
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
+  // Open slots, for the booking page. No session needed - a customer looking at times is not
+  // signed in to anything, and what is free is not private.
+  async availability(slug, artist, days) {
+    try {
+      const r = await processCommand("AVAILABILITY " + String(slug || "") +
+        (artist ? " with:" + artist : "") + " days:" + (Number(days) || 14), this.env, true);
       return (r && r.payload) ? r.payload : r;
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };

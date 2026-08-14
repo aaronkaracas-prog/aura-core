@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.52.0-2026-08-14-customer-surfaces-honour-the-policy";
+const BUILD = "aura-core-v5.53.0-2026-08-14-onboard-chat-reports-its-own-time";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18512,9 +18512,23 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (!ocSession || !ocSaid) return { cmd: "ONBOARD_CHAT", payload: { ok: false,
         error: "Usage: ONBOARD_CHAT <session_id> ::: <what they said>" } };
       const ocKey = "onboard:chat:" + ocSession.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 60);
+      // ══ WHERE DO THE FORTY-FIVE SECONDS GO (instrumented 2026-08-14) ══════════════════════════
+      // MEASURED: this handler answers in ~1,700-3,900ms warm and 45,366ms after ten minutes idle.
+      // Identical prompt, identical provider, identical model. Every await between here and the
+      // model call is a KV read or a secret - none of which is forty seconds on its face - and the
+      // one real suspect (INDUSTRY <trade> LEARN, itself a 3,000-token model call) only fires on a
+      // playbook cache miss.
+      // Every wrong guess at this class of problem in this codebase was settled in ONE RUN the
+      // moment the code reported instead of being reasoned about. So it reports. `timings` is
+      // cumulative milliseconds from the top of the handler, and it rides on every reply until the
+      // cause is named and fixed.
+      const _ocT0 = Date.now();
+      const _ocT = {};
+      const _ocMark = (label) => { try { _ocT[label] = Date.now() - _ocT0; } catch {} return _ocT; };
       try {
         let st = null;
         try { st = JSON.parse((await env.AURA_KV.get(ocKey)) || "null"); } catch {}
+        _ocMark("session_loaded");
         st = st || { turns: [], known: {}, pta: null, read: null, started: new Date().toISOString() };
         st.turns.push({ by: "them", said: ocSaid, at: new Date().toISOString() });
 
@@ -18585,10 +18599,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (trade) {
           const tKey = "industry:" + String(trade).toLowerCase().replace(/[^a-z0-9]+/g, "-");
           try { playbook = JSON.parse((await env.AURA_KV.get(tKey)) || "null"); } catch {}
+          _ocMark(playbook ? "playbook_cache_HIT" : "playbook_cache_MISS");
           if (!playbook) {
             // First business in a trade pays for learning it. Everyone after inherits it.
             try {
               const r = await processCommand("INDUSTRY " + trade + " LEARN", env, true);
+              _ocMark("industry_LEARN_done");   // a MODEL CALL, not a lookup
               const rp = (r && r.payload) ? r.payload : r;
               if (rp?.ok) playbook = rp;
             } catch {}
@@ -18624,7 +18640,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const waited = Math.round((Date.now() - st.crawl.started) / 1000);
           st.turns.push({ by: "aura", said: "Reading " + st.crawl.site + " now.", at: new Date().toISOString() });
           try { await env.AURA_KV.put(ocKey, JSON.stringify(st), { expirationTtl: 7 * 86400 }); } catch {}
-          return { cmd: "ONBOARD_CHAT", payload: { ok: true, session: ocSession,
+          return { cmd: "ONBOARD_CHAT", payload: { ok: true, timings: _ocMark("returned"), session: ocSession,
             say: waited < 20
               ? "Reading " + st.crawl.site + " now - give me a moment."
               : "Still going through " + st.crawl.site + " - keep talking, I am reading it all.",
@@ -18659,6 +18675,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // Told ONCE, in KV, loaded into every conversation. Not per vertical - the same paragraph
         // makes the next industry work with nothing more from him.
         const thesis = await env.AURA_KV.get("config:ofb:thesis").catch(() => null);
+        _ocMark("thesis_loaded");
         const sys =
           (thesis ? thesis + "\n\n" : "") +
           "You are Aura, talking to a business about Open For Business.\n\n" +
@@ -18810,9 +18827,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         try {
           const key = await getSecret(env, "anthropic");
           if (key) {
+            _ocMark("model_call_start");
             const d = await callAnthropic(key, { model: await anthropicModel(env), max_tokens: 900,
               route: "policy",   // the onboarding conversation is a CUSTOMER surface - policy decides the model
               system: sys, messages: convo });
+            _ocMark("model_call_done");
             let t = ""; if (d && d.content) for (const b of d.content) if (b.type === "text") t += b.text;
             _ocRaw = t;
           } else {
@@ -18888,8 +18907,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               (t.by === "them" ? "THEM: " : "AURA: ") + t.said).join("\n");
             let et = "";
             if (exKey) {
+              _ocMark("extract_call_start");
               const ed = await callAnthropic(exKey, { model: await anthropicModel(env), route: "policy",
                 max_tokens: 900, system: exSys, messages: [{ role: "user", content: exUser }] });
+              _ocMark("extract_call_done");
               if (ed && ed.content) for (const b of ed.content) if (b.type === "text") et += b.text;
             } else {
               const ex = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
@@ -19085,7 +19106,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         }
         try { await env.AURA_KV.put(ocKey, JSON.stringify(st), { expirationTtl: 7 * 86400 }); } catch {}
 
-        return { cmd: "ONBOARD_CHAT", payload: { ok: true, session: ocSession,
+        return { cmd: "ONBOARD_CHAT", payload: { ok: true, timings: _ocMark("returned"), session: ocSession,
           say: out.say, known: st.known, pta: st.pta, created,
           read_their_site: st.read || undefined,
           read_failed: st.read_failed || undefined,

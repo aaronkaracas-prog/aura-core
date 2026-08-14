@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.51.0-2026-08-14-the-console-speaks-the-standard";
+const BUILD = "aura-core-v5.52.0-2026-08-14-customer-surfaces-honour-the-policy";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -203,7 +203,11 @@ async function _brainRoute(env, override) {
 }
 
 // Each provider gets its REAL request/response shape - no translation layer pretending they are the same.
-async function callBrain({ system, user, max_tokens = 2000, model = null, temperature }, env) {
+// `messages` is optional and takes precedence over `user` when present. It exists because the callers
+// being routed here from callAnthropic carry real MULTI-TURN conversations - ONBOARD_CHAT is a dialogue
+// with a shop owner - and flattening a conversation into one user string throws away who said what.
+// A router that silently degrades the thing it routes is worse than no router.
+async function callBrain({ system, user, messages = null, max_tokens = 2000, model = null, temperature }, env) {
   env = env || _BRAIN_ENV;
   const route = await _brainRoute(env, model);
   const cap = Math.max(16, Math.min(16000, parseInt(max_tokens, 10) || 2000));
@@ -215,7 +219,9 @@ async function callBrain({ system, user, max_tokens = 2000, model = null, temper
       method: "POST",
       headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
       body: JSON.stringify({ model: route.model, max_tokens: cap, ...(system ? { system } : {}),
-                             messages: [{ role: "user", content: String(user || "") }] }),
+                             messages: (Array.isArray(messages) && messages.length)
+                               ? messages
+                               : [{ role: "user", content: String(user || "") }] }),
     }, env);
     const d = await r.json().catch(() => ({}));
     if (!r.ok) return { ok: false, error: (d?.error?.message || ("http " + r.status)), provider: route.provider, model: route.model };
@@ -252,7 +258,20 @@ async function callBrain({ system, user, max_tokens = 2000, model = null, temper
   }
   const msgs = [];
   if (system) msgs.push({ role: "system", content: String(system) });
-  msgs.push({ role: "user", content: String(user || "") });
+  if (Array.isArray(messages) && messages.length) {
+    // Carry the conversation through as-is. Anthropic and the OpenAI-compatible providers both take
+    // {role, content}, and content is normalised to a string because Anthropic also permits an array
+    // of blocks and none of these providers do.
+    for (const m of messages) {
+      if (!m || !m.role) continue;
+      const c = typeof m.content === "string" ? m.content
+        : Array.isArray(m.content) ? m.content.map((b) => (b && b.text) || "").join("")
+        : String(m.content ?? "");
+      msgs.push({ role: m.role === "assistant" ? "assistant" : "user", content: c });
+    }
+  } else {
+    msgs.push({ role: "user", content: String(user || "") });
+  }
   // ══ THIS WAS A RAW fetch() AND THEREFORE UNMETERED (found + fixed 2026-08-01) ═════════════════
   // The Anthropic branch above goes through brainFetch -> pfetch and lands in egress:<day>. This
   // branch called fetch() directly, so every Grok/OpenAI/Gemini/Meta call made through callBrain was
@@ -18792,6 +18811,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const key = await getSecret(env, "anthropic");
           if (key) {
             const d = await callAnthropic(key, { model: await anthropicModel(env), max_tokens: 900,
+              route: "policy",   // the onboarding conversation is a CUSTOMER surface - policy decides the model
               system: sys, messages: convo });
             let t = ""; if (d && d.content) for (const b of d.content) if (b.type === "text") t += b.text;
             _ocRaw = t;
@@ -18868,7 +18888,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               (t.by === "them" ? "THEM: " : "AURA: ") + t.said).join("\n");
             let et = "";
             if (exKey) {
-              const ed = await callAnthropic(exKey, { model: await anthropicModel(env),
+              const ed = await callAnthropic(exKey, { model: await anthropicModel(env), route: "policy",
                 max_tokens: 900, system: exSys, messages: [{ role: "user", content: exUser }] });
               if (ed && ed.content) for (const b of ed.content) if (b.type === "text") et += b.text;
             } else {
@@ -22218,7 +22238,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const model = await anthropicModel(env);
           const sys = await loadPrompt(env, "meet_new_person", "You are Aura, meeting a new person who just told you who they are in their own words. Understand them warmly and accurately. Return ONLY a JSON object, no prose or fences, with exactly these keys: identity_summary (one warm sentence capturing who they are), roles (array of what they are/do), interests (array), traits (array of character qualities you can fairly infer), what_matters_to_them (array, only if they signal it - else empty), how_to_address_them (a short note on tone that would suit them), confidence (high|medium|low), unknowns (array of what you would want to learn next). Be human, never glib. Infer only what is fair from their words. Output JSON only.");
           try {
-            const d = await callAnthropic(apiKey, { model, max_tokens: 1000, system: sys, messages: [{ role: "user", content: pc.about }] });
+            const d = await callAnthropic(apiKey, { model, route: "policy", max_tokens: 1000, system: sys, messages: [{ role: "user", content: pc.about }] });
             let t = ""; if (d && d.content) { for (const b of d.content) { if (b.type === "text") t += b.text; } }
             t = t.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
             try { understood = JSON.parse(t); } catch {}
@@ -22552,7 +22572,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
       let tReplyObj = null;
       try {
-        const tData = await callAnthropic(tApiKey, { model: tModel, max_tokens: 8000, system: tSys, messages: [{ role: "user", content: tUser }] });
+        const tData = await callAnthropic(tApiKey, { model: tModel, route: "policy", max_tokens: 8000, system: tSys, messages: [{ role: "user", content: tUser }] });
         let tText = ""; if (tData && tData.content) { for (const b of tData.content) { if (b.type === "text") tText += b.text; } }
         tText = tText.trim().replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
         try { tReplyObj = JSON.parse(tText); } catch {}
@@ -38025,7 +38045,65 @@ async function _callAnthropicGuard(body) {
 }
 
 async function callAnthropic(apiKey, payload) {
-  { const _wrong = await _callAnthropicGuard(arguments[1] || {}); if (_wrong) return _wrong; }
+  // ══ THE PROVIDER SWITCH EXISTS AND 51 SITES WENT AROUND IT (2026-08-14) ══════════════════════
+  //
+  // MEASURED: `AIMARGIN` reported policy `cheapest` with SIX KV pins all naming Grok - and 100% of the
+  // day's spend was claude-sonnet-4-5, with xAI showing zero requests. Not a misconfiguration.
+  // `callBrain()` - the router that reads config:policy:text and honours the pins - had TWO call sites.
+  // This function, hardwired to api.anthropic.com, had FIFTY-ONE. Every conversational surface a
+  // customer touches (ONBOARD_CHAT, PTA_TALK, PTA_CREATE, llmReply) was going around the switch.
+  //
+  // THE FIX IS HERE AND NOT AT THE CALL SITES, for the same reason the governance injection and the
+  // prompt caching below are here: fifty-one callers means flagging them individually guarantees one
+  // gets missed. Everything a routed call still needs - the provenance funnel, the source tag, the
+  // metering - happens in this one function and keeps happening.
+  //
+  // IT IS OPT-IN (`route: "policy"`) RATHER THAN AUTOMATIC, deliberately. Some callers here genuinely
+  // require Anthropic: llmReply's main loop passes `tools` and reads `stop_reason` and `tool_use`
+  // blocks, and callBrain speaks plain text only. Flipping every site at once would have silently
+  // broken the tool loop, which is exactly the class of change this file keeps paying for. Sites move
+  // over as each is checked; anything not yet marked behaves exactly as it did before.
+  //
+  // ROUTED CALLS IGNORE THE CALLER'S `model`. It is a Claude id chosen by anthropicModel() and the
+  // whole point is that the policy decides. If the policy resolves BACK to Anthropic, this falls
+  // through to the normal path below and nothing changes.
+  if (payload && payload.route === "policy") {
+    const { route: _r, ...routedPayload } = payload;
+    try {
+      const _env = _BRAIN_ENV;
+      const _dest = await _brainRoute(_env, null);
+      if (_dest && _dest.provider !== "anthropic") {
+        let _sys = routedPayload.system;
+        if (typeof _sys === "string" && routedPayload.governance !== false
+            && (routedPayload.max_tokens == null || routedPayload.max_tokens >= 800)
+            && !/Output JSON only|Return ONLY a JSON|JSON only, no prose/i.test(_sys)
+            && !_sys.includes("HOW YOU KNOW WHAT YOU SAY")) {
+          _sys = _sys + _FUNNEL_PROVENANCE + _FUNNEL_PROPORTION;
+        }
+        const _out = await callBrain({
+          system: typeof _sys === "string" ? _sys : undefined,
+          messages: Array.isArray(routedPayload.messages) ? routedPayload.messages : null,
+          max_tokens: routedPayload.max_tokens,
+        }, _env);
+        // Adapted back into the shape all fifty-one callers already read, so routing a site is a
+        // one-word change and never a rewrite of how its answer is parsed.
+        if (_out && _out.ok) {
+          return { ok: true, status: 200, content: [{ type: "text", text: String(_out.text || "") }],
+                   stop_reason: "end_turn", provider: _out.provider, model: _out.model,
+                   usage: { input_tokens: _out.usage?.in || 0, output_tokens: _out.usage?.out || 0 } };
+        }
+        // A routed call that fails falls through to Anthropic rather than returning an error. The
+        // customer is mid-conversation; a provider being down is not their problem.
+        try { console.warn("[ROUTE] policy provider " + _dest.provider + " failed (" +
+          String(_out && _out.error).slice(0, 120) + ") - falling back to Anthropic"); } catch {}
+      }
+    } catch (e) {
+      try { console.warn("[ROUTE] policy routing threw, falling back to Anthropic: " +
+        String(e && e.message || e).slice(0, 120)); } catch {}
+    }
+    payload = routedPayload;
+  }
+  { const _wrong = await _callAnthropicGuard(payload || {}); if (_wrong) return _wrong; }
   // Funnel governance (v4.9.507): govern by DEFAULT, not opt-in. Manually flagging ~35 callers is itself
   // scatter-prone - one missed caller = one ungoverned honesty path. So instead: auto-inject the provenance
   // discipline into ANY substantive call (has a real system prompt AND enough output room to make factual

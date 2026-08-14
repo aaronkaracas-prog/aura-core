@@ -317,6 +317,16 @@ enabled = true
 [observability.logs]
 head_sampling_rate = 1
 
+# SAMPLING RAISED 0.1 -> 1 (2026-08-14). The note above says "traces at 10% - enough to see shape,
+# not enough to pay for." That was written before tracing was free in beta and before a day spent
+# hand-building an instrument to answer a question a trace already answers.
+# The argument the logs line makes applies here with more force: the traces worth having are the
+# RARE ones. A 45-second cold ONBOARD_CHAT, a 1101, a turn that answered wrong - at 10% we keep one
+# in ten of exactly the events we are looking for, and the nine we drop are indistinguishable from
+# never having happened. Shape is not what this is for; incidents are.
+# Free tier is 200,000 events/day and this worker is nowhere near it. CHECK THE REAL NUMBER after a
+# day - every span counts, including Worker-level spans, and the 1-minute cron produces spans with
+# nobody asking. Lower it again if the count says so, not because a default said 0.1.
 [observability.traces]
 enabled = true
-head_sampling_rate = 0.1
+head_sampling_rate = 1

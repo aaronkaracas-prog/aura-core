@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.49.1-2026-08-14-a-time-that-is-not-a-time";
+const BUILD = "aura-core-v5.50.0-2026-08-14-an-artists-work-is-theirs";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -19625,6 +19625,115 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           customer: ap.customer, business: ap.business } };
       } catch (e) {
         return { cmd: "APPOINTMENT", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
+      }
+    }
+
+    case "PORTFOLIO": {
+      // ══ AN ARTIST'S WORK IS THEIRS ════════════════════════════════════════════════════════════
+      //
+      // The images belong to the ARTIST, not the shop. Jason's sleeves are Jason's whether he is at
+      // Rising Dragon or somewhere else next year - same rule as his clients, and the same reason:
+      // people came for the work, and the work is his.
+      //
+      // Bytes in R2, metadata on the chain. R2 because an image is not a fact and a chain is not a
+      // disk; the chain records that a piece exists, what it is, when it was added, and the shop it
+      // was made at - which is history and stays true even after he leaves.
+      //
+      //   PORTFOLIO LIST <person>
+      //   PORTFOLIO ADD <person> ::: {"data":"<base64>","type":"image/jpeg","caption":"...","shop":"pta_..."}
+      //   PORTFOLIO GET <person> <piece_id>
+      //   PORTFOLIO REMOVE <person> <piece_id>
+      if (!isOp) return { cmd: "PORTFOLIO", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const poP = (rest || "").split(":::");
+      const poH = (poP[0] || "").trim().split(/\s+/);
+      const poSub = String(poH[0] || "").toUpperCase();
+      const poWho = poH[1] || "";
+      if (!poWho) return { cmd: "PORTFOLIO", payload: { ok: false,
+        error: "Usage: PORTFOLIO LIST|ADD|GET|REMOVE <person_pta> ..." } };
+      const idxKey = "portfolio:" + poWho;
+      try {
+        const ent = await env.AURA_MEMORY.prepare("SELECT id, name FROM pta_entities WHERE id = ?")
+          .bind(poWho).first();
+        if (!ent) return { cmd: "PORTFOLIO", payload: { ok: false, error: "NO_SUCH_PERSON", id: poWho } };
+        const readIdx = async () => {
+          try { return JSON.parse((await env.AURA_KV.get(idxKey)) || "[]"); } catch { return []; }
+        };
+
+        if (poSub === "LIST" || !poSub) {
+          const idx = await readIdx();
+          return { cmd: "PORTFOLIO", payload: { ok: true, artist: ent.name, count: idx.length,
+            pieces: idx.map(x => ({ id: x.id, caption: x.caption || null, added: x.added,
+              shop: x.shop || null, type: x.type,
+              url: "https://openforbusiness.world/w/" + poWho + "/" + x.id })) } };
+        }
+
+        if (poSub === "ADD") {
+          let f = {}; try { f = JSON.parse(poP[1] || "{}"); } catch {
+            return { cmd: "PORTFOLIO", payload: { ok: false, error: "BAD_JSON" } };
+          }
+          if (!f.data) return { cmd: "PORTFOLIO", payload: { ok: false, error: "NO_IMAGE" } };
+          const type = String(f.type || "image/jpeg");
+          if (!/^image\//.test(type)) return { cmd: "PORTFOLIO", payload: { ok: false,
+            error: "NOT_AN_IMAGE", type } };
+          let bytes;
+          try {
+            const b64 = String(f.data).replace(/^data:[^,]+,/, "");
+            const bin = atob(b64);
+            bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          } catch { return { cmd: "PORTFOLIO", payload: { ok: false, error: "BAD_BASE64" } }; }
+          if (bytes.length > 6 * 1024 * 1024) return { cmd: "PORTFOLIO", payload: { ok: false,
+            error: "TOO_BIG", bytes: bytes.length,
+            what_to_do: "Six megabytes is the limit - a phone photo is usually well under it." } };
+          const id = "p" + crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+          const key = "portfolio/" + poWho + "/" + id;
+          await env.AURA_KNOWLEDGE.put(key, bytes, { httpMetadata: { contentType: type } });
+          const idx = await readIdx();
+          const piece = { id, key, type, bytes: bytes.length,
+            caption: String(f.caption || "").slice(0, 200) || null,
+            shop: f.shop || null, added: new Date().toISOString() };
+          idx.push(piece);
+          await env.AURA_KV.put(idxKey, JSON.stringify(idx));
+          // On their chain, because a piece of work is something that happened.
+          try {
+            await processCommand("PTA_REMEMBER " + poWho + " WORK " + JSON.stringify({
+              piece: id, caption: piece.caption, at_shop: piece.shop, added: piece.added }), env, true);
+          } catch {}
+          return { cmd: "PORTFOLIO", payload: { ok: true, artist: ent.name, piece: id,
+            url: "https://openforbusiness.world/w/" + poWho + "/" + id,
+            count: idx.length,
+            note: "Theirs. If they move shops it goes with them - the shop it was made at stays on " +
+              "the record, because that is history rather than ownership." } };
+        }
+
+        if (poSub === "GET") {
+          const idx = await readIdx();
+          const piece = idx.find(x => x.id === (poH[2] || ""));
+          if (!piece) return { cmd: "PORTFOLIO", payload: { ok: false, error: "NO_SUCH_PIECE" } };
+          const obj = await env.AURA_KNOWLEDGE.get(piece.key);
+          if (!obj) return { cmd: "PORTFOLIO", payload: { ok: false, error: "GONE_FROM_STORAGE",
+            piece: piece.id, note: "The record says it exists and the bytes are not there." } };
+          const buf = await obj.arrayBuffer();
+          let bin = ""; const u8 = new Uint8Array(buf);
+          for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
+          return { cmd: "PORTFOLIO", payload: { ok: true, id: piece.id, type: piece.type,
+            caption: piece.caption, data: btoa(bin) } };
+        }
+
+        if (poSub === "REMOVE") {
+          const idx = await readIdx();
+          const piece = idx.find(x => x.id === (poH[2] || ""));
+          if (!piece) return { cmd: "PORTFOLIO", payload: { ok: false, error: "NO_SUCH_PIECE" } };
+          try { await env.AURA_KNOWLEDGE.delete(piece.key); } catch {}
+          await env.AURA_KV.put(idxKey, JSON.stringify(idx.filter(x => x.id !== piece.id)));
+          return { cmd: "PORTFOLIO", payload: { ok: true, removed: piece.id,
+            count: idx.length - 1,
+            note: "Gone, bytes and all. They asked for it removed - a soft delete would be us keeping " +
+              "their work after they said no." } };
+        }
+        return { cmd: "PORTFOLIO", payload: { ok: false, error: "Usage: PORTFOLIO LIST|ADD|GET|REMOVE" } };
+      } catch (e) {
+        return { cmd: "PORTFOLIO", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
       }
     }
 
@@ -44802,6 +44911,17 @@ export class PublicEntry extends WorkerEntrypoint {
         case "send_code":   return await run("SEND_CODE " + biz + " " + a.to + (a.note ? " ::: " + a.note : ""));
         default: return { ok: false, error: "UNKNOWN_ACTION", what };
       }
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
+  // One portfolio piece, as bytes. Public - an artist's work is meant to be seen.
+  async piece(who, id) {
+    try {
+      const r = await processCommand("PORTFOLIO GET " + String(who || "") + " " + String(id || ""),
+        this.env, true);
+      return (r && r.payload) ? r.payload : r;
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
     }

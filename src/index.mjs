@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.57.0-2026-08-15-a-minted-pta-reaches-the-directory";
+const BUILD = "aura-core-v5.58.0-2026-08-15-the-cohort-was-on-the-chain";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -26393,6 +26393,26 @@ Be concise. This update will be compared against the next update to show drift o
       const now = new Date().toISOString();
       const edgeId = "edge_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
       const edgeType = ctx.edge_type || "grant";
+      // ══ FAIL CLOSED ON THE SHAPE (Grok, 2026-08-15) ══════════════════════════════════════════
+      // His words: "silent defaulting is how wrong grants become active. Fail closed on the shape."
+      // A caller who passes {"can_remember":true} at the top level plainly MEANT a permission. The old
+      // code could not see it there, quietly substituted {can_contact, can_view}, and reported success -
+      // so the operator got an active grant carrying permissions they never asked for, and the one they
+      // did ask for was missing. Refusing is the only honest answer: a grant is the thing this system
+      // exists to get right, and a default that overrides an explicit request is not a default.
+      // The bare-object case is REFUSED WITH THE CORRECTION, not silently promoted - guessing what a
+      // permission payload meant is the same class of mistake one layer up.
+      if (!ctx.permission) {
+        const _looksLikePerm = Object.keys(ctx).some(k => /^can_/.test(k));
+        if (_looksLikePerm) return { cmd: "PTA_GRANT", payload: { ok: false,
+          error: "PERMISSION_NOT_WRAPPED",
+          saw: Object.keys(ctx).filter(k => /^can_/.test(k)),
+          why: "can_* keys were passed at the top level, where this handler does not read them. It would " +
+               "have granted the default {can_contact, can_view} instead of what you asked for, and said ok.",
+          use: "PTA_GRANT " + (args[0] || "<from>") + " " + (args[1] || "<to>") + " CONFIRM " +
+               JSON.stringify({ edge_type: ctx.edge_type || "grant", permission: Object.fromEntries(
+                 Object.entries(ctx).filter(([k]) => /^can_/.test(k))) }) } };
+      }
       const permission = ctx.permission ? JSON.stringify(ctx.permission) : JSON.stringify({ can_contact: true, can_view: true });
       const relationship = ctx.relationship ? JSON.stringify(ctx.relationship) : null;
       const impact = ctx.impact ? JSON.stringify(ctx.impact) : null;
@@ -26480,7 +26500,17 @@ Be concise. This update will be compared against the next update to show drift o
             "would still need ACCEPT before it authorises anything. Add CONFIRM to make the offer.",
           // CONFIRM before the JSON, so a copied hint parses. It is stripped either way now, but the
           // advice should model the form that cannot go wrong.
-          to_proceed: "PTA_GRANT " + fromId + " " + toId + " CONFIRM " + (permission || "{}") } };
+          // ══ THE HINT HANDED OUT A GRANT THAT LOOKED RIGHT AND WAS NOT (fixed 2026-08-15) ═════
+          // MEASURED: the dry run echoed permission {can_remember:true} correctly, then printed
+          // `PTA_GRANT <a> <b> CONFIRM {"can_remember":true}` - the INNER object. The parser reads
+          // `ctx.permission`, so that bare form has no permission key, silently fell through to the
+          // default {can_contact, can_view}, and the edge went ACTIVE carrying the wrong permission.
+          // PTA_TURNS then refused with "the grant is active but does not carry can_remember" and the
+          // grant looked fine from every angle except the one that mattered. Three rounds lost to a
+          // helper printing a command that does not do what the helper just described.
+          // Now it emits the exact string that reproduces THIS dry run.
+          to_proceed: "PTA_GRANT " + fromId + " " + toId + " CONFIRM " +
+            JSON.stringify({ edge_type: edgeType, permission: ctx.permission || { can_contact: true, can_view: true } }) } };
       }
 
       const _histId = "hist_" + Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, "0")).join("");
@@ -33438,11 +33468,30 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           // repeats inside tattoo shops is still local pattern-matching." Tagging the vertical is what
           // lets a later promotion pass require the same insight to hold across DIFFERENT cohorts
           // instead of counting how often one cohort produced volume.
+          // ══ THE COHORT WAS ON THE CHAIN THE WHOLE TIME (fixed 2026-08-15) ═══════════════════
+          // MEASURED: every PTA_LEARN run reported `verticals: []`, so the cross-cohort rule above -
+          // Grok's, and the whole reason a vertical is tagged - could never fire no matter how many
+          // outcomes landed. Bookbinding sat in an undifferentiated pile with five tattoo shops.
+          // CAUSE: this read `pta_entities.metadata` and NOTHING WRITES business_type there.
+          // ONBOARD_CHAT knows the trade and writes it where it belongs - onto the entity's own chain,
+          // as `PTA_REMEMBER <id> UNDERSTANDING {business_type, found, source}` - and deliberately
+          // twice, from the site read and from what they said, "two sources, and in a year it should
+          // be obvious which is which."
+          // So read the chain, which is ALREADY IN MEMORY three lines up. This removes a D1 query per
+          // entity instead of adding a write path, needs no backfill for the 232 just relisted, and
+          // follows the rule the rest of this file lives by: derive it, do not keep a second copy that
+          // can go stale. Metadata stays as a fallback for anything written there by another door.
           let vertical = null;
           try {
-            const er = await db.prepare("SELECT metadata FROM pta_entities WHERE id = ?").bind(e.id).first();
-            const bm = String(er?.metadata || "").match(/"business_type"\s*:\s*"([a-z_]+)"/);
-            if (bm) vertical = bm[1];
+            for (let i = chain.length - 1; i >= 0 && !vertical; i--) {
+              const bt = chain[i]?.data?.business_type;
+              if (bt && String(bt).trim()) vertical = String(bt).trim().toLowerCase();
+            }
+            if (!vertical) {
+              const er = await db.prepare("SELECT metadata FROM pta_entities WHERE id = ?").bind(e.id).first();
+              const bm = String(er?.metadata || "").match(/"business_type"\s*:\s*"([a-z_]+)"/);
+              if (bm) vertical = bm[1];
+            }
           } catch {}
           // What was SAID on the way there - the conversation, not the machinery. No names, no ids,
           // no addresses: only the words and the result.
@@ -33557,8 +33606,16 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         // store loop reads is declared here now, and it was verified by listing what the loop
         // references rather than by fixing whichever one the error happened to name.
         const verticals = [...new Set(labelled.map(x => x.vertical).filter(Boolean))];
-        const confidence = (labelled.length >= 25 && paid >= 10 && verticals.length > 1) ? "reasonable"
-          : (labelled.length >= 20 && paid >= 8) ? "thin - one vertical" : "very thin";
+        // ══ AN UNLABELLED CHAIN IS CONTRAST, NEVER PROMOTION EVIDENCE (Grok, 2026-08-15) ═════════
+        // His call, asked directly and answered directly: "including them as 'unknown' recreates
+        // exactly the local pattern-matching we are trying to prevent, only now wearing a fake cohort
+        // label." So confidence is computed from the chains that CARRY a cohort, while the corpus
+        // still shows everything - a conversation with no trade on it can still be the thing a paid
+        // one is contrasted against, it just cannot help a lesson clear the bar.
+        const cohorted = labelled.filter(x => x.vertical);
+        const cohortedPaid = cohorted.filter(x => x.outcome === "PAID").length;
+        const confidence = (cohorted.length >= 25 && cohortedPaid >= 10 && verticals.length > 1) ? "reasonable"
+          : (cohorted.length >= 20 && cohortedPaid >= 8) ? "thin - one vertical" : "very thin";
         let stored = 0; const storedKeys = [], storeFailed = [];
         if (lnConfirm) {
           for (const l of lessons) {
@@ -33595,6 +33652,12 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           mode: !lnConfirm ? "dry_run" : (stored ? "stored" : "store_failed"),
           labelled: labelled.length, paid,
           confidence, verticals,
+          cohorted: cohorted.length, cohorted_paid: cohortedPaid,
+          uncohorted: labelled.length - cohorted.length,
+          cohort_note: (labelled.length - cohorted.length)
+            ? (labelled.length - cohorted.length) + " labelled chain(s) carry no trade, so they count as " +
+              "CONTRAST and never toward the bar. A lesson that only holds inside one cohort is a local " +
+              "pattern; an unknown cohort cannot prove otherwise." : undefined,
           sample_warning: confidence === "reasonable" ? undefined
             : "Below the bar a lesson from this loop should be leaned on: about 25 labelled with 10 " +
               "paid, across more than one vertical. Surfaced anyway - thin evidence is still evidence, " +

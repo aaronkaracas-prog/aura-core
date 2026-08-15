@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.62.0-2026-08-15-the-trade-is-kept-not-dropped";
+const BUILD = "aura-core-v5.63.0-2026-08-15-she-is-shown-what-she-learned";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -22783,7 +22783,45 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (!tApiKey) return { cmd: "PTA_TALK", payload: { ok: false, error: "Brain not configured" } };
       const tModel = await anthropicModel(env);
       // read learned onboarding patterns so she gets better at this over time
-      let tPatterns = null; try { const r = await env.AURA_KV.get("patterns:onboarding"); if (r) tPatterns = JSON.parse(r); } catch {}
+      // ══ THE READER WAS BUILT AND POINTED AT NOTHING (fixed 2026-08-15) ═════════════════════════
+      //
+      // This line read `patterns:onboarding`. NOTHING in 47,000 lines writes that key - one
+      // occurrence in the whole file, and it is this read. So `tPatterns` has been null on every
+      // customer conversation since the day it was added, and the injection forty lines below
+      // ("WHAT YOU HAVE LEARNED ABOUT ONBOARDING PEOPLE WELL") has never once fired.
+      //
+      // MEASURED, and this is the gap it explains: PTA_LEARN has produced the same real insight four
+      // separate times - people who give away skilled PREPARATION before commitment convert when the
+      // deposit moves onto that work. Then Stonecut Records described exactly that in a fourth trade
+      // ("I drive out and haul a whole collection back, spend two days sorting it, and half the time
+      // the seller never brings the rest") and she answered with a generic product pitch about
+      // tracking inventory. She has never been shown a single thing she learned.
+      // EXTRACTION IS NOT LEARNING. APPLICATION IS. This is the wire between them.
+      //
+      // `PTA_LEARN CONFIRM` writes to `aura:semantic:learned:*`. That is the store, so that is what
+      // this reads - the same both-halves rule the archive and the fact store each cost a session to
+      // discover. CANDIDATES ARE INCLUDED AND LABELLED AS SUCH: everything the outcome loop writes
+      // starts as `tier: "candidate"`, and a lesson she may not see until something promotes it is a
+      // lesson that never affects anything. She is told the standing, and the prompt below tells her
+      // what to do with a thin one.
+      // Bounded to 6 and to the freshest, because this rides in every customer turn.
+      let tPatterns = null;
+      try {
+        const lk = await env.AURA_KV.list({ prefix: "aura:semantic:learned:" });
+        const keys = ((lk && lk.keys) || []).map(k => k.name).sort().reverse().slice(0, 6);
+        const got = [];
+        for (const k of keys) {
+          try {
+            const raw = await env.AURA_KV.get(k);
+            if (!raw) continue;
+            const l = JSON.parse(raw);
+            if (!l || !l.insight) continue;
+            got.push({ when: l.when_applies || null, insight: l.insight,
+                       why: l.because || null, standing: l.tier || l.confidence || "candidate" });
+          } catch {}
+        }
+        if (got.length) tPatterns = got;
+      } catch {}
 
       let tSys, tUser;
       if (tMode === "home") {
@@ -22853,7 +22891,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       } else {
         tSys = (await loadPrompt(env, "onboard_chat", "You are Aura, talking with a person who is being onboarded to business tools (app: {app}). You are warm, clear, and genuinely helpful. Your goal is to help them move forward and, when it genuinely serves them, to help them decide to come aboard - but you NEVER manipulate, pressure, or use a hard sell. If the person signals they do not want to be bothered or asks to be left alone, you respect that completely and back off with grace. You meet non-technical people simply and never make them feel stupid. You have memory: you are given who this person is and the conversation so far - use it, refer back to what they told you, do not repeat questions they already answered. Keep replies conversational and human - a few sentences, like a real person texting back, not an essay. IMPORTANT - follow-up timing: if the person asks you to reach back out at a specific time (e.g. 'email me in 5 minutes', 'give me a second', 'tomorrow', 'in an hour', 'next week'), capture it. Return ONLY a JSON object, no prose or fences, with exactly these keys: reply (your conversational response to them, in your own voice), hold (null), followup_requested (true/false - did they ask you to follow up later), followup_minutes (integer number of minutes from now to follow up, or null if none / if they did not specify a time), followup_message (if following up, the message you will email them then - warm, picks up where you left off, in your voice; else null), wants_to_be_left_alone (true/false - did they signal they want space / no more contact). Output JSON only.")).replaceAll("{app}", tApp);
         tUser = "WHO THIS PERSON IS:\nName: " + (tEnt.name || "unknown") + "\n" + (tMeta.about ? ("They told us: " + tMeta.about + "\n") : "") + (tMeta.understood ? ("Understood: " + JSON.stringify(tMeta.understood) + "\n") : "");
-        if (tPatterns) tUser += "\nWHAT YOU HAVE LEARNED ABOUT ONBOARDING PEOPLE WELL:\n" + JSON.stringify(tPatterns) + "\n";
+        if (tPatterns) tUser += "\nWHAT YOU HAVE LEARNED FROM OTHER CONVERSATIONS - no names, no businesses, " +
+          "only the pattern. USE THIS when what they are describing matches one of these shapes; it is why you " +
+          "sound like someone who has done this before rather than someone reading a brochure. A `candidate` " +
+          "standing means it came from few cases: let it shape what you ASK, not what you ASSERT. If nothing " +
+          "here fits what they just said, ignore it entirely - forcing a pattern onto someone is worse than " +
+          "not having one.\n" + JSON.stringify(tPatterns) + "\n";
         if (tTimeline.length) tUser += "\nCONVERSATION / HISTORY SO FAR (oldest first):\n" + tTimeline.map(e => "- " + (e.event || "")).join("\n") + "\n";
         tUser += "\nTHEY JUST SAID:\n" + tMsg;
       }

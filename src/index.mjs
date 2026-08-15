@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.60.0-2026-08-15-consent-before-the-trade-write";
+const BUILD = "aura-core-v5.61.0-2026-08-15-the-chat-lands-on-the-chain";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -22852,6 +22852,45 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (tMode === "home" && tReplyObj.hold) evs.push({ ts, event: "Aura is holding: " + String(tReplyObj.hold).slice(0, 240), kind: "held" });
         await env.AURA_KV.put(`pta:timeline:${tId}`, JSON.stringify(evs)).catch(() => {});
       } catch {}
+
+      // ══ THE CONVERSATION WAS NEVER ON THE CHAIN (2026-08-15) ═══════════════════════════════════
+      //
+      // This handler wrote the round to `pta:timeline:<id>` in KV and nowhere else.
+      //
+      // So a LIVE conversation could never teach anything. PTA_LEARN pairs an outcome with what was
+      // said by reading the CHAIN - `chain.filter(c => c.data && c.data.said)`. Everything proven on
+      // 2026-08-15 reached it through PTA_TURNS, which writes there. The path a real shop owner
+      // actually travels did not, so no number of labelled outcomes could have produced a lesson from
+      // a real chat.
+      //
+      // And the simpler reason, which is the one that matters: THE CONVERSATION IS THEIR RECORD. A
+      // chain is sealed, append-only and theirs. A KV key is a cache. What someone said to Aura
+      // belongs in the first place, not the second.
+      //
+      // ON THE CHAIN, UNDER THE SAME GATE AS EVERYTHING ELSE. Written through PTA_REMEMBER so the
+      // can_remember check, the sealing, the idempotency key and the append-only guarantee are the
+      // ones already in force - not a second write path with its own rules. NO GRANT MEANS NO RECORD,
+      // silently and correctly: a business that has not agreed to be remembered gets a conversation
+      // that happens and is not kept. The KV timeline stays as the fast per-turn buffer.
+      //
+      // NOT waitUntil. `processCommand(line, env, isOp)` HAS NO ctx - the first draft of this block
+      // referenced one and would have thrown a ReferenceError on every PTA_TALK turn, taking the live
+      // chat surface down. node --check cannot see that; it is a scope error, not a syntax error.
+      // Two PTA_REMEMBER calls against a Durable Object already open for this turn is a few hundred
+      // milliseconds, so it runs inline and each one swallows its own failure: a chain write that
+      // fails must never cost the person their reply.
+      try {
+        for (const [who, text] of [["them", tMsg], ["aura", tReplyObj.reply || ""]]) {
+          const said = String(text || "").trim();
+          if (!said) continue;
+          try {
+            await processCommand("PTA_REMEMBER " + tId + " CONTEXT " + JSON.stringify({
+              said: said.slice(0, 600), who, channel: "chat", mode: tMode || "onboarding", at: ts,
+            }), env, true);
+          } catch {}
+        }
+      } catch {}
+
       // HOME mode: persist the exchange to the REAL continuity layer (D1 events tied to the PTA) -
       // the same place a billion people's continuity lives. KV timeline above is the fast cache;
       // D1 is the durable truth. Create-if-not-exists so a fresh DB never fails.

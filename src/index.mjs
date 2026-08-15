@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.59.0-2026-08-15-a-test-with-an-answer-key";
+const BUILD = "aura-core-v5.60.0-2026-08-15-consent-before-the-trade-write";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -27558,18 +27558,32 @@ Be concise. This update will be compared against the next update to show drift o
             if (!crp?.ok || !crp.pta) { problems.push({ ...step, at: "create", error: crp?.error || "no pta" }); continue; }
             step.pta = crp.pta; step.listed = crp.listed;
 
-            // The trade goes on the CHAIN, the same door ONBOARD_CHAT uses, because that is where
-            // PTA_LEARN now reads the cohort from.
-            const un = await processCommand("PTA_REMEMBER " + crp.pta + " UNDERSTANDING " +
-              JSON.stringify({ business_type: t.trade, source: "testbed", learned_at: new Date().toISOString() }), env, true);
-            step.understanding = !!((un?.payload) || un)?.ok;
-
             const gr = await processCommand("PTA_GRANT " + crp.pta + " " + auraId + " CONFIRM " +
               JSON.stringify({ edge_type: "grant", permission: { can_remember: true } }), env, true);
             const grp = (gr && gr.payload) ? gr.payload : gr;
             if (!grp?.ok || !grp.edge_id) { problems.push({ ...step, at: "grant", error: grp?.error || "no edge" }); continue; }
             const ac = await processCommand("PTA_ACCEPT " + grp.edge_id, env, true);
-            step.granted = !!((ac?.payload) || ac)?.ok;
+            const acp = (ac && ac.payload) ? ac.payload : ac;
+            step.granted = !!acp?.ok;
+            if (!acp?.ok) { problems.push({ ...step, at: "accept", error: acp?.error || "refused" }); continue; }
+
+            // ══ THE TRADE WRITE CAME BEFORE THE CONSENT (fixed 2026-08-15, same day it was written) ══
+            // MEASURED: the first BUILD reported all six complete and PTA_LEARN still said
+            // `verticals: ["tattoo_shop"], cohorted: 2, uncohorted: 13` - none of the six carried a
+            // trade. PTA_REMEMBER requires an open can_remember grant, and this ran BEFORE PTA_GRANT,
+            // so all six UNDERSTANDING writes were refused NO_GRANT. Exactly right of the gate, and a
+            // test that asked the system to record something about a business that had not yet agreed
+            // to anything. The consent model caught the test.
+            // AND IT LOOKED FINE, which is the worse half: `!!((un?.payload) || un)?.ok` reads .ok off
+            // whichever side of the `||` wins, so a refusal with ok:false on the payload still came
+            // back truthy. A check that cannot fail is not a check - the same defect this file keeps
+            // finding elsewhere, written into the harness meant to find it.
+            // Now: after ACCEPT, and the result is read the same way every other step reads it.
+            const un = await processCommand("PTA_REMEMBER " + crp.pta + " UNDERSTANDING " +
+              JSON.stringify({ business_type: t.trade, source: "testbed", learned_at: new Date().toISOString() }), env, true);
+            const unp = (un && un.payload) ? un.payload : un;
+            step.understanding = !!unp?.ok;
+            if (!unp?.ok) problems.push({ ...step, at: "understanding", error: unp?.error || "refused" });
 
             const tu = await processCommand("PTA_TURNS " + crp.pta + " ::: " + t.turns.join(" ::: "), env, true);
             const tup = (tu && tu.payload) ? tu.payload : tu;
@@ -27589,7 +27603,8 @@ Be concise. This update will be compared against the next update to show drift o
         return { cmd: "PTA_TESTBED", payload: { ok: true, mode: "built",
           created: built.length, complete: complete.length, problems,
           entities: built.map(b => ({ pta: b.pta, name: b.name, trade: b.trade, outcome: b.outcome,
-            turns: b.turns, labelled: !!b.labelled })),
+            turns: b.turns, cohorted: !!b.understanding, labelled: !!b.labelled })),
+          cohorted: built.filter(b => b.understanding).length,
           verticals: [...new Set(built.map(b => b.trade))],
           answer_key: "the ones who convert give away skilled PREPARATION before commitment; the ones who " +
             "decline already charge for it - true in bookbinding AND upholstery, and stated nowhere in any transcript",

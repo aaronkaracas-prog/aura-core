@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.61.0-2026-08-15-the-chat-lands-on-the-chain";
+const BUILD = "aura-core-v5.62.0-2026-08-15-the-trade-is-kept-not-dropped";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -22469,6 +22469,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       let entityRow = false, entityRowError = null;
       try {
         const _now = new Date().toISOString();
+        // `understood` is computed further down, so the row is written first and the trade is patched
+        // onto it once the model has answered - see the metadata update after the UNDERSTOOD append.
         const _meta = JSON.stringify({ app: pcApp, about: (pc.about || "").slice(0, 600), born: "self_arrival" });
         await env.AURA_MEMORY.prepare(
           "INSERT INTO pta_entities (id, type, identity_key, name, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
@@ -22484,7 +22486,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const apiKey = await getSecret(env, "anthropic");
         if (apiKey) {
           const model = await anthropicModel(env);
-          const sys = await loadPrompt(env, "meet_new_person", "You are Aura, meeting a new person who just told you who they are in their own words. Understand them warmly and accurately. Return ONLY a JSON object, no prose or fences, with exactly these keys: identity_summary (one warm sentence capturing who they are), roles (array of what they are/do), interests (array), traits (array of character qualities you can fairly infer), what_matters_to_them (array, only if they signal it - else empty), how_to_address_them (a short note on tone that would suit them), confidence (high|medium|low), unknowns (array of what you would want to learn next). Be human, never glib. Infer only what is fair from their words. Output JSON only.");
+          const sys = await loadPrompt(env, "meet_new_person", "You are Aura, meeting a new person who just told you who they are in their own words. Understand them warmly and accurately. Return ONLY a JSON object, no prose or fences, with exactly these keys: identity_summary (one warm sentence capturing who they are), roles (array of what they are/do), business_type (ONE lowercase_underscore slug for their TRADE if they are a business - tattoo_shop, bookbinding, upholstery, barbershop, bakery - or null if they are a private individual or you cannot tell from their words; never guess a trade to fill the field), interests (array), traits (array of character qualities you can fairly infer), what_matters_to_them (array, only if they signal it - else empty), how_to_address_them (a short note on tone that would suit them), confidence (high|medium|low), unknowns (array of what you would want to learn next). Be human, never glib. Infer only what is fair from their words. Output JSON only.");
           try {
             const d = await callAnthropic(apiKey, { model, route: "policy", max_tokens: 1000, system: sys, messages: [{ role: "user", content: pc.about }] });
             let t = ""; if (d && d.content) { for (const b of d.content) { if (b.type === "text") t += b.text; } }
@@ -22494,7 +22496,37 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         }
       }
       
+      // ══ THE TRADE WAS DERIVED AND THROWN AWAY (2026-08-15) ═══════════════════════════════════
+      //
+      // MEASURED: a live PTA_TALK conversation reached the chain and the learning loop (proven with
+      // Harborlight Barbers), and still counted only as CONTRAST - `uncohorted` went 7 to 8 - because
+      // PTA_LEARN needs a `business_type` and nothing on the live path produces one. Grok's
+      // cross-cohort rule can never see a real conversation, only fixtures.
+      //
+      // AND IT WAS ALREADY BEING WORKED OUT. This model call returns `roles` - ["barbershop owner",
+      // "barber", "manager"] for Harborlight, ["bookbinding and restoration shop owner"] for Northgate.
+      // The trade was inferred at the door on every single creation and then dropped on the floor.
+      // So: ONE MORE FIELD on a call that already runs. No new model call, no new write path, no
+      // second source of truth, and nothing for a later pass to backfill.
+      //
+      // The prompt says null rather than a guess, deliberately. A private individual has no trade, and
+      // a fabricated one is worse than an absent one - it would put a person in a cohort and let a
+      // lesson claim to hold across trades that were never there.
+      // NOT gated on can_remember: this rides the existing UNDERSTOOD append, which goes straight to
+      // appendChain at creation, before any grant can exist. That is what makes it work on the live
+      // path where a chain-gated write cannot.
       // Append understood metadata to the PTA's chain
+      if (understood) {
+        try {
+          const _bt = understood.business_type;
+          if (_bt && typeof _bt === "string" && /^[a-z][a-z0-9_]{1,40}$/.test(_bt)) {
+            const _m2 = JSON.stringify({ app: pcApp, about: (pc.about || "").slice(0, 600),
+              born: "self_arrival", business_type: _bt });
+            await env.AURA_MEMORY.prepare("UPDATE pta_entities SET metadata = ?, updated_at = ? WHERE id = ?")
+              .bind(_m2, new Date().toISOString(), ptaId).run();
+          }
+        } catch {}
+      }
       if (understood) {
         try {
           const doId = env.PTA_DO.idFromName(ptaId);

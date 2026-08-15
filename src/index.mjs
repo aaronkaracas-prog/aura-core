@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.56.0-2026-08-14-a-fact-reaches-her-without-a-deploy";
+const BUILD = "aura-core-v5.57.0-2026-08-15-a-minted-pta-reaches-the-directory";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -22442,6 +22442,42 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         return { cmd: "PTA_CREATE", payload: { ok: false, error: "Could not store identity index in D1" } };
       }
 
+      // ══ MINTED, REAL, AND NOT IN THE DIRECTORY (fixed 2026-08-15) ═══════════════════════════════
+      //
+      // MEASURED: `PTA_CREATE {...Northgate Bindery...}` returned ok:true with pta_1d5cd045383b353b,
+      // a live Durable Object, a sealed chain and a full UNDERSTOOD block. The very next command,
+      // `PTA_GRANT pta_1d5cd045383b353b ...`, answered "From entity not found". Then PTA_TURNS and
+      // PTA_OUTCOME both refused NO_GRANT, because the grant could never be made.
+      //
+      // THE PTA WAS NEVER MISSING. Touch minted it and it holds everything. What was missing is the
+      // ROW: this handler wrote the Durable Object and `pta_identity_index`, and never wrote
+      // `pta_entities` - the table PTA_GRANT, PTA_LEARN, PTA_AUDIT and a dozen others scan. Findable
+      // by identity, invisible to every command that walks the directory. PTA_LEARN's
+      // `SELECT id, name FROM pta_entities LIMIT 400` can never reach a self-arrived person, so the
+      // fourth birth path could not feed the learning loop at all.
+      //
+      // THE COMMENT ON PTA_REMEMBER ALREADY NAMED THE SHAPE, one direction only: "BOTH HALVES OR IT
+      // DOES NOT EXIST. A D1 row with no Durable Object is the split-brain state - findable, and
+      // unable to hold a single fact." This is the mirror: holds every fact, and not findable. The
+      // check was built for one side.
+      //
+      // Written with the same columns and the same type ("person") the DO was initialised with, so a
+      // self-arrived person is listed exactly like one who arrived through a tap or an invite. The
+      // insert is guarded and non-fatal on its own - the PTA is already real by this point, and
+      // failing the whole creation because the directory write missed would be the worse outcome -
+      // but it REPORTS, because a silent half-write is what produced this.
+      let entityRow = false, entityRowError = null;
+      try {
+        const _now = new Date().toISOString();
+        const _meta = JSON.stringify({ app: pcApp, about: (pc.about || "").slice(0, 600), born: "self_arrival" });
+        await env.AURA_MEMORY.prepare(
+          "INSERT INTO pta_entities (id, type, identity_key, name, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+          .bind(ptaId, "person", pc.identity, safeName, _meta, _now, _now).run();
+        entityRow = true;
+      } catch (e) {
+        entityRowError = String((e && e.message) || e).slice(0, 160);
+      }
+
       // BRAIN UNDERSTANDS who they are from their own words (SEE -> UNDERSTAND applied to a person)
       let understood = null;
       if (pc.about && pc.about.trim()) {
@@ -22492,7 +22528,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         } catch (e) { emailResult = { ok: false, error: String(e.message) }; }
       }
 
-      return { cmd: "PTA_CREATE", payload: { ok: true, pta: ptaId, mode: "created", state: "active", welcome, understood, email_sent: emailResult ? emailResult.ok : null, email_detail: emailResult } };
+      // `listed` says whether the directory row landed. It was absent before 2026-08-15 and the reply
+      // said ok:true regardless - so a PTA that no other command could reach looked identical to one
+      // that worked. A half-write that reports itself is recoverable; a silent one is not.
+      return { cmd: "PTA_CREATE", payload: { ok: true, pta: ptaId, mode: "created", state: "active",
+        listed: entityRow, listing_error: entityRowError || undefined,
+        listing_note: entityRow ? undefined : "The PTA exists and holds its chain, but it is NOT in pta_entities - " +
+          "PTA_GRANT, PTA_LEARN and PTA_AUDIT walk that table and will not see it. Run PTA_RELIST to repair.",
+        welcome, understood, email_sent: emailResult ? emailResult.ok : null, email_detail: emailResult } };
     }
 
     case "PTA_LOCATE": {
@@ -34515,6 +34558,75 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         };
       } catch (e) {
         return { cmd: "PTA_GUT", payload: { ok: false, error: "Gut failed: " + (e && e.message ? e.message : String(e)) } };
+      }
+    }
+
+    case "PTA_RELIST": {
+      // ══ THE ONES ALREADY MINTED AND NOT LISTED ══════════════════════════════════════════════
+      //
+      // PTA_CREATE wrote the Durable Object and `pta_identity_index` and never wrote `pta_entities`.
+      // Every person who arrived through the self-arrival door before 2026-08-15 is real, holds a
+      // sealed chain, and is invisible to every command that walks the directory.
+      //
+      // AND THE AUDIT COULD NOT SEE IT. PTA_AUDIT and PTA_ENTITY COLLISIONS both scan pta_entities -
+      // the very table with the missing rows - so both reported 9 entities, all sealed, verdict clean,
+      // while pta_1d5cd045383b353b sat there holding an encrypted chain and was in neither count. An
+      // instrument that reads the incomplete side cannot report the incompleteness. This command
+      // compares the two tables instead of trusting either.
+      //
+      //   PTA_RELIST            who is minted and not listed
+      //   PTA_RELIST CONFIRM    write the missing directory rows
+      if (!isOp) return { cmd: "PTA_RELIST", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const rlConfirm = /(^|\s)CONFIRM(\s|$)/i.test(rest || "");
+      try {
+        const rlDb = env.AURA_MEMORY;
+        const idx = (await rlDb.prepare("SELECT identity_key, pta_id, created_at FROM pta_identity_index").all())?.results || [];
+        const missing = [];
+        for (const row of idx) {
+          const have = await rlDb.prepare("SELECT id FROM pta_entities WHERE id = ?").bind(row.pta_id).first();
+          if (have) continue;
+          // The PTA itself is the authority on whether it is real - ask it, do not assume.
+          let alive = false, nm = null;
+          try {
+            const stub = env.PTA_DO.get(env.PTA_DO.idFromName(row.pta_id));
+            const r = await stub.fetch(new Request("http://do", { method: "POST",
+              body: JSON.stringify({ method: "getState", params: [] }) }));
+            const j = await r.json();
+            alive = !!(j && j.ok);
+            nm = j?.pta?.name || null;
+          } catch {}
+          missing.push({ pta: row.pta_id, identity: row.identity_key, name: nm, do_alive: alive,
+                         created_at: row.created_at || null });
+        }
+        const repairable = missing.filter(m => m.do_alive);
+        if (!rlConfirm) {
+          return { cmd: "PTA_RELIST", payload: { ok: true, mode: "dry_run",
+            indexed: idx.length, missing_rows: missing.length, repairable: repairable.length,
+            detail: missing.slice(0, 40),
+            note: missing.length
+              ? "These PTAs exist and hold their chains; they are absent from pta_entities, so PTA_GRANT, " +
+                "PTA_LEARN and PTA_AUDIT cannot see them. PTA_RELIST CONFIRM writes the rows. Nothing else changes - " +
+                "no chain is touched, no consent is minted, no grant is created."
+              : "Every indexed identity has a directory row. Nothing stranded." } };
+        }
+        const wrote = [], failed = [];
+        for (const m of repairable) {
+          try {
+            const _now = new Date().toISOString();
+            await rlDb.prepare("INSERT INTO pta_entities (id, type, identity_key, name, metadata, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+              .bind(m.pta, "person", m.identity, m.name || "(unnamed)",
+                JSON.stringify({ born: "self_arrival", relisted_at: _now }),
+                m.created_at || _now, _now).run();
+            wrote.push(m.pta);
+          } catch (e) { failed.push({ pta: m.pta, error: String((e && e.message) || e).slice(0, 120) }); }
+        }
+        return { cmd: "PTA_RELIST", payload: { ok: true, mode: "confirmed",
+          relisted: wrote.length, listed: wrote, failed,
+          skipped_no_do: missing.length - repairable.length,
+          note: "Directory rows written. A relisted PTA still holds no grant - being findable is not " +
+                "being consented to, and PTA_GRANT remains a separate act by the person." } };
+      } catch (e) {
+        return { cmd: "PTA_RELIST", payload: { ok: false, error: String((e && e.message) || e).slice(0, 200) } };
       }
     }
 

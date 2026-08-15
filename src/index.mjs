@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.63.0-2026-08-15-she-is-shown-what-she-learned";
+const BUILD = "aura-core-v5.64.0-2026-08-15-quote-the-evidence-or-drop-it";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -33813,12 +33813,49 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
 
         const corpus = labelled.map(x => "[" + x.outcome + (x.why ? " - " + x.why : "") + "]\n" +
           x.said.map(s => "  said: " + s).join("\n")).join("\n\n").slice(0, 20000);
+        // ══ THE PROMPT ASKED FOR A DIFFERENCE AND GOT A PLATITUDE (rewritten 2026-08-15) ═════════
+        //
+        // MEASURED across four runs on the same growing corpus. At 8 PAID it produced the real thing:
+        // "giving away hours of skilled work before anyone commits... charging a deposit for the
+        // quote." At 9 PAID it produced EIGHT lessons every one of which carried the IDENTICAL
+        // when_applies - "When discussing potential solutions with customers" - plus a truncation.
+        // More evidence, worse output.
+        //
+        // The cause is what was asked. "Find what distinguishes the PAID ones" with no cap, no demand
+        // for a mechanism and no bar against repeating itself lets an 8B model pad: eight rewordings
+        // of "understand their pain points" satisfy that instruction completely. Nothing in the old
+        // prompt made a vague answer non-compliant, so vagueness was free and length was rewarded.
+        //
+        // FOUR CHANGES, each aimed at a failure that was actually observed:
+        //   AT MOST 3, FEWER IS BETTER - removes the incentive to pad, and takes the truncation
+        //     pressure off. One sharp lesson beat eight mushy ones in every run we have.
+        //   QUOTE THE EVIDENCE - each lesson must carry a short phrase FROM a transcript. A platitude
+        //     cannot produce one, so this is the bar that vagueness fails.
+        //   MECHANISM AND REMEDY - "identify pain points" is advice about selling; "they gave away
+        //     preparation before commitment, so move the deposit onto that work" is a fact about
+        //     these businesses and something to DO. Only the second changes a conversation, which is
+        //     the measured difference between the Stonecut turn and the Kestrel turn.
+        //   NO TWO ALIKE - the observed failure was one observation cut into eight pieces. Said
+        //     plainly, because it happened.
+        // The permission to report no visible difference is KEPT and strengthened - with the count
+        // capped, "I could not find one" has to stay cheaper than inventing three.
         const sys = "You are reading anonymised business conversations, each labelled with how it ended. " +
           "PAID means they paid - the only success. DEFERRED, NOT_NOW and STOPPED are other endings. " +
           "Find what actually DISTINGUISHES the PAID ones from the rest, in what was said. " +
-          "Return ONLY JSON: {\"lessons\":[{\"when_applies\":\"...\",\"insight\":\"...\",\"because\":\"...\"}]}. " +
+          "Return ONLY JSON: {\"lessons\":[{\"when_applies\":\"...\",\"insight\":\"...\",\"because\":\"...\",\"evidence\":\"...\"}]}. " +
+          "AT MOST THREE LESSONS AND FEWER IS BETTER - one sharp lesson is worth more than three vague " +
+          "ones, and padding the list is a failure, not thoroughness. " +
+          "EVERY lesson must carry `evidence`: a short phrase quoted from one of the transcripts that " +
+          "shows the pattern. If you cannot quote something, you have not found a pattern - drop it. " +
+          "EVERY `insight` must name a CONCRETE MECHANISM these businesses share and, where the " +
+          "transcripts show one, WHAT TO DO about it. 'Identify the customer's pain points' is advice " +
+          "about selling and is worthless here; 'they do skilled preparation before anyone commits, so " +
+          "the deposit belongs on that work' is a fact about these businesses and can be acted on. " +
+          "NO TWO LESSONS MAY SHARE A `when_applies` - if two would, they are one lesson and you should " +
+          "return the one. " +
           "State nothing the transcripts do not support. If the difference is not visible in the words, " +
-          "say so in a lesson rather than inventing a pattern - a confident wrong lesson is worse than none.";
+          "return a single lesson saying exactly that - a confident wrong lesson is worse than none, and " +
+          "an honest empty answer is better than three invented ones.";
         let out = null, _rawReply = "", _repaired = false;
         try {
           _rawReply = "";

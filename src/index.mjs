@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.58.0-2026-08-15-the-cohort-was-on-the-chain";
+const BUILD = "aura-core-v5.59.0-2026-08-15-a-test-with-an-answer-key";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -27427,6 +27427,177 @@ Be concise. This update will be compared against the next update to show drift o
       }
       const res = await ingestBusiness(env, inRec, isOp);
       return { cmd: "PTA_INGEST", payload: res };
+    }
+
+    case "PTA_TESTBED": {
+      // ══ A TEST WITH AN ANSWER KEY (built 2026-08-15) ══════════════════════════════════════════
+      //
+      // PTA_LEARN works and keeps producing sales-101 ("acknowledging a problem increases the
+      // likelihood of a sale"). Two explanations fit that equally well and they need different fixes:
+      // the evidence is too thin and uncohorted for any model to find a pattern, OR llama-3.1-8b
+      // cannot find one however good the evidence is. Nothing measured so far separates them.
+      //
+      // So: six disposable businesses across TWO trades, with a signal PLANTED and known in advance.
+      //   PAID (3)     - bookbinding, upholstery, upholstery. Every one gives away skilled
+      //                  PREPARATION work before anyone commits, and says yes when the deposit is
+      //                  moved onto that work.
+      //   NOT_NOW (3)  - bookbinding, bookbinding, upholstery. Every one ALREADY charges for
+      //                  preparation, so there is nothing for us to fix.
+      //
+      // THE ANSWER KEY: "the ones who convert give away skilled preparation before commitment; the
+      // ones who decline already charge for it." It holds in BOTH trades, so it is not a tattoo-shop
+      // quirk wearing a cohort label - which is the exact thing Grok's cross-cohort rule exists to
+      // demand. Nothing in any transcript says "deposit converts"; the pattern has to be inferred
+      // from the contrast.
+      //
+      // WHAT EACH RESULT MEANS, decided BEFORE running it so the outcome cannot be rationalised:
+      //   finds it              -> the loop learns. Thin evidence was the whole problem.
+      //   sales-101 again       -> the 8B synthesis model is the ceiling. Grok's conditions (a) cohort
+      //                            populated and (b) sample present are then both met, and moving that
+      //                            ONE call up a tier becomes a decision worth taking to him.
+      //   names a business      -> identity stripping is broken. Stop everything.
+      //
+      // DISPOSABLE AND SELF-CONTAINED. Every name starts "testbed_" and CLEAR removes the entities,
+      // their edges and their identity rows. No real merchant is a subject, and no old PTA is touched.
+      // Runs through the REAL doors - PTA_CREATE, PTA_REMEMBER, PTA_GRANT, PTA_ACCEPT, PTA_TURNS,
+      // PTA_OUTCOME - so it tests the path a shop actually travels, not a shortcut into the tables.
+      //
+      //   PTA_TESTBED BUILD    create the six, converse, grant, accept, label
+      //   PTA_TESTBED CLEAR    remove them entirely
+      if (!isOp) return { cmd: "PTA_TESTBED", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const tbSub = String(args[0] || "SHOW").toUpperCase();
+      const TB = [
+        { key: "testbed_quill", name: "testbed_Quill and Board Bindery", trade: "bookbinding",
+          outcome: "PAID", why: "299/mo, first invoice cleared",
+          turns: ["What does a job start with for you?",
+                  "I take the book apart, measure the boards and match leather. Couple of hours before I can even price it.",
+                  "And do people book after that?",
+                  "Maybe one in four. The rest take my number and go somewhere cheaper.",
+                  "So three out of four times you have done two hours of skilled work for nothing.",
+                  "That is exactly it. If the estimate itself carried a deposit I would sleep better."] },
+        { key: "testbed_horsehair", name: "testbed_Horsehair and Twine Upholstery", trade: "upholstery",
+          outcome: "PAID", why: "299/mo, first invoice cleared",
+          turns: ["Walk me through a new customer.",
+                  "They send a photo, I go out and look at the frame, strip a corner to see what is under there.",
+                  "That is a site visit before any money changes hands.",
+                  "Half a day sometimes. Then they say they will think about it.",
+                  "What if the visit was the thing they paid for, and it came off the job if they book?",
+                  "I would have done that years ago if I knew how to ask."] },
+        { key: "testbed_sailmaker", name: "testbed_Sailmaker Row Upholstery", trade: "upholstery",
+          outcome: "PAID", why: "299/mo, first invoice cleared",
+          turns: ["How do quotes work here?",
+                  "I draw the pattern first. Cannot price a curved bench without drawing it.",
+                  "How long is that?",
+                  "Three hours on a hard one. I have a drawer full of drawings nobody paid for.",
+                  "So the drawing is the product before the product.",
+                  "Never thought of it that way but yes. I would charge for the drawing if it did not scare people off."] },
+        { key: "testbed_marbled", name: "testbed_Marbled Edge Books", trade: "bookbinding",
+          outcome: "NOT_NOW", why: "already charges a bench fee up front",
+          turns: ["What does a job start with?",
+                  "Bench fee, eighty dollars, before I open the book. Been doing it fifteen years.",
+                  "Does anyone push back on that?",
+                  "The ones who push back are the ones who were never going to pay anyway.",
+                  "So the estimate is already paid work for you.",
+                  "Always has been. I am fine, thanks."] },
+        { key: "testbed_foredge", name: "testbed_Foredge Restoration", trade: "bookbinding",
+          outcome: "NOT_NOW", why: "assessment already billed hourly",
+          turns: ["How do you handle an assessment?",
+                  "Billed hourly like anything else. The clock starts when I pick the book up.",
+                  "And people accept that?",
+                  "It is a restoration trade. Nobody expects a free appraisal.",
+                  "So nothing is going out the door unpaid.",
+                  "Not here. We are set up fine."] },
+        { key: "testbed_ticking", name: "testbed_Ticking Stripe Upholstery", trade: "upholstery",
+          outcome: "NOT_NOW", why: "consultation is a paid product already",
+          turns: ["What happens before a job?",
+                  "Paid consultation, one twenty five, credited against the work if they go ahead.",
+                  "How long have you done that?",
+                  "Since the second year. Free estimates nearly closed us.",
+                  "So the estimate already pays for itself.",
+                  "It does. Appreciate the call though."] },
+      ];
+      try {
+        const db = env.AURA_MEMORY;
+        if (tbSub === "CLEAR") {
+          const rows = await db.prepare(
+            "SELECT id, name FROM pta_entities WHERE name LIKE 'testbed_%'").all();
+          const ids = ((rows?.results) || []).map(r => r.id);
+          for (const id of ids) {
+            try { await db.prepare("DELETE FROM pta_edges WHERE from_id = ? OR to_id = ?").bind(id, id).run(); } catch {}
+            try { await db.prepare("DELETE FROM pta_entities WHERE id = ?").bind(id).run(); } catch {}
+            try { await db.prepare("DELETE FROM pta_identity_index WHERE pta_id = ?").bind(id).run(); } catch {}
+          }
+          return { cmd: "PTA_TESTBED", payload: { ok: true, mode: "cleared", removed: ids.length, ids,
+            note: "Entities, edges and identity rows gone. The Durable Objects remain but are unreachable " +
+              "from the directory, which is the same state anything deleted here is in." } };
+        }
+        if (tbSub === "SHOW") {
+          const rows = await db.prepare(
+            "SELECT id, name FROM pta_entities WHERE name LIKE 'testbed_%'").all();
+          return { cmd: "PTA_TESTBED", payload: { ok: true, mode: "show",
+            existing: ((rows?.results) || []).length, entities: (rows?.results) || [],
+            planned: TB.map(t => ({ name: t.name, trade: t.trade, outcome: t.outcome })),
+            answer_key: "the ones who convert give away skilled PREPARATION before commitment; the ones " +
+              "who decline already charge for it - and it holds in bookbinding AND upholstery",
+            usage: "PTA_TESTBED BUILD | PTA_TESTBED CLEAR" } };
+        }
+        if (tbSub !== "BUILD") return { cmd: "PTA_TESTBED", payload: { ok: false,
+          error: "Usage: PTA_TESTBED BUILD | SHOW | CLEAR" } };
+
+        const auraId = await auraPtaId(env);
+        if (!auraId) return { cmd: "PTA_TESTBED", payload: { ok: false,
+          error: "config:aura:pta_id is not set - there is no actor to grant to" } };
+        const built = [], problems = [];
+        for (const t of TB) {
+          const step = { name: t.name, trade: t.trade, outcome: t.outcome };
+          try {
+            const cr = await processCommand("PTA_CREATE " + JSON.stringify({
+              identity: "email:" + t.key + "@testbed.invalid", name: t.name,
+              about: t.name + " - " + t.trade, app: "openforbusiness" }), env, true);
+            const crp = (cr && cr.payload) ? cr.payload : cr;
+            if (!crp?.ok || !crp.pta) { problems.push({ ...step, at: "create", error: crp?.error || "no pta" }); continue; }
+            step.pta = crp.pta; step.listed = crp.listed;
+
+            // The trade goes on the CHAIN, the same door ONBOARD_CHAT uses, because that is where
+            // PTA_LEARN now reads the cohort from.
+            const un = await processCommand("PTA_REMEMBER " + crp.pta + " UNDERSTANDING " +
+              JSON.stringify({ business_type: t.trade, source: "testbed", learned_at: new Date().toISOString() }), env, true);
+            step.understanding = !!((un?.payload) || un)?.ok;
+
+            const gr = await processCommand("PTA_GRANT " + crp.pta + " " + auraId + " CONFIRM " +
+              JSON.stringify({ edge_type: "grant", permission: { can_remember: true } }), env, true);
+            const grp = (gr && gr.payload) ? gr.payload : gr;
+            if (!grp?.ok || !grp.edge_id) { problems.push({ ...step, at: "grant", error: grp?.error || "no edge" }); continue; }
+            const ac = await processCommand("PTA_ACCEPT " + grp.edge_id, env, true);
+            step.granted = !!((ac?.payload) || ac)?.ok;
+
+            const tu = await processCommand("PTA_TURNS " + crp.pta + " ::: " + t.turns.join(" ::: "), env, true);
+            const tup = (tu && tu.payload) ? tu.payload : tu;
+            step.turns = tup?.recorded ?? 0;
+            if (!tup?.ok) { problems.push({ ...step, at: "turns", error: tup?.error || "refused" }); continue; }
+
+            const oc = await processCommand("PTA_OUTCOME " + crp.pta + " " + t.outcome + " ::: " + t.why, env, true);
+            const ocp = (oc && oc.payload) ? oc.payload : oc;
+            step.labelled = !!ocp?.ok;
+            if (!ocp?.ok) problems.push({ ...step, at: "outcome", error: ocp?.error || "refused" });
+            built.push(step);
+          } catch (e) {
+            problems.push({ ...step, at: "exception", error: String((e && e.message) || e).slice(0, 140) });
+          }
+        }
+        const complete = built.filter(b => b.labelled);
+        return { cmd: "PTA_TESTBED", payload: { ok: true, mode: "built",
+          created: built.length, complete: complete.length, problems,
+          entities: built.map(b => ({ pta: b.pta, name: b.name, trade: b.trade, outcome: b.outcome,
+            turns: b.turns, labelled: !!b.labelled })),
+          verticals: [...new Set(built.map(b => b.trade))],
+          answer_key: "the ones who convert give away skilled PREPARATION before commitment; the ones who " +
+            "decline already charge for it - true in bookbinding AND upholstery, and stated nowhere in any transcript",
+          next: "RUN \"PTA_LEARN\" - then judge it against the answer key, not against whether it sounds clever",
+          cleanup: "PTA_TESTBED CLEAR" } };
+      } catch (e) {
+        return { cmd: "PTA_TESTBED", payload: { ok: false, error: String((e && e.message) || e).slice(0, 200) } };
+      }
     }
 
     case "PTA_FIXTURE": {

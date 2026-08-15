@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.55.0-2026-08-14-she-knows-what-is-closed";
+const BUILD = "aura-core-v5.56.0-2026-08-14-a-fact-reaches-her-without-a-deploy";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -17147,6 +17147,21 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         }
         await fDb.prepare("INSERT INTO semantic_facts (id, subject, predicate, value, valid_from, valid_until, superseded_by, source) " +
           "VALUES (?, ?, ?, ?, ?, NULL, NULL, ?)").bind(id, subject, predicate, value, now, "operator").run();
+        // ══ A FACT SHE CANNOT SEE UNTIL THE NEXT DEPLOY IS NOT A FACT (2026-08-14) ══════════════
+        // MEASURED: nine facts were written about two invented businesses, FACT GET and FACT HISTORY
+        // returned them perfectly, and every ASK answered "I have no information on Brackwater Forge."
+        // The same turn answered a question about vance_kiln_works correctly at L3 - facts written
+        // BEFORE the previous deploy. The block was real; the prompt holding it was frozen.
+        // aura-think's withCachedPrompt() re-renders only when soulFingerprint changes, and that
+        // hashes BUILD + SOUL + north star + identity. A fact is in none of them, so every successful
+        // fact read all day had a deploy sitting between the write and the read - including the test
+        // that "proved" the facts block.
+        // THE STAMP, NOT THE CONTENT. aura-think folds this one value into its fingerprint instead of
+        // hashing the whole fact set: one KV read per turn rather than a service call, and no repeat
+        // of the 2026-08-08 defect where a live COUNT in the fingerprint re-rendered her prompt on
+        // nearly every turn and cost a cold step each time. This moves only when knowledge actually
+        // changes, which is exactly when one cold turn is the right price.
+        await env.AURA_KV.put("state:knowledge:rev", String(Date.now())).catch(() => {});
         await auraRemember(env, "A fact changed: " + subject + " " + predicate + " is now \"" + value.slice(0, 120) +
           "\"" + (prior ? " (was \"" + String(prior.value).slice(0, 80) + "\")" : " (first recorded)"), "fact");
         return { cmd: "FACT", payload: { ok: true, id, subject, predicate, value, valid_from: now,
@@ -17160,6 +17175,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (!subject || !predicate) return { cmd: "FACT", payload: { ok: false, error: "Usage: FACT FORGET <subject> <predicate>" } };
         const r = await fDb.prepare("UPDATE semantic_facts SET valid_until=? WHERE subject=? AND predicate=? AND valid_until IS NULL")
           .bind(now, subject, predicate).run();
+        // Closing a fact changes what is true just as much as asserting one.
+        await env.AURA_KV.put("state:knowledge:rev", String(Date.now())).catch(() => {});
         return { cmd: "FACT", payload: { ok: true, subject, predicate, closed: r?.meta?.changes ?? 0, at: now,
           note: "The fact is no longer current. It is NOT asserted false and it is NOT deleted - " +
                 "'we no longer know this' and 'this is untrue' are different claims." } };
@@ -17355,6 +17372,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           from: superseded ? "supersedes a prior decision" : "new slot" }],
       };
       await env.AURA_KV.put(dKey, JSON.stringify(dRec));
+      // Same stamp as FACT SET - a ratified decision she cannot see until the next deploy is worth
+      // nothing, and the decisions block is frozen into the same cached prompt.
+      await env.AURA_KV.put("state:knowledge:rev", String(Date.now())).catch(() => {});
       return { cmd: "DECIDE", payload: { ok: true, topic: decTopic, topic_key: dKey,
         action: superseded ? "superseded" : "ratified", superseded,
         note: "Ratified and permanent - no expiry, unlike a belief she formed. It rides in her prompt " +

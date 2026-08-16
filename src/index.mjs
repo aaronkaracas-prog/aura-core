@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.71.0-2026-08-16-the-cap-cut-the-answer-in-half";
+const BUILD = "aura-core-v5.72.0-2026-08-16-what-they-book-with";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18008,6 +18008,64 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const socials = [...new Set((md.match(/https?:\/\/(?:www\.)?(?:instagram|facebook|tiktok|twitter|youtube)\.com\/[\w./@-]+/gi) || [])
           .map(u => u.replace(/[).,]+$/, "")))].slice(0, 8);
 
+        // ══ WHAT THEY BOOK WITH, AND WHY IT IS THE MOST VALUABLE FIELD HERE (2026-08-16) ═══════
+        //
+        // Aaron's reason, and it is not a talking point: "I need to make it seamless now and
+        // integrate the calendars, I need THEIRS to come into MINE." A shop will not run two systems.
+        // So the platform name is not colour on a lead - it is WHICH CONNECTOR HAS TO EXIST before
+        // that shop can move without losing a booking.
+        //
+        // DETERMINISTIC, NOT INFERRED. A link to book.squareup.com IS Square. The model's
+        // `booking_method` said "phone, email, in-person" for Bang Bang - a fair summary and useless
+        // for building a connector. A domain in an href cannot be hallucinated.
+        //
+        // ICS IS THE ONE THAT MATTERS MOST. Nearly every platform below publishes a read-only .ics
+        // feed, and `APPOINTMENT` already speaks RFC 5545 VEVENT. A feed URL is a link the shop pastes
+        // ONCE - no API deal, no partnership, no permission beyond their own consent. That is the
+        // seamless path; per-platform APIs are what gets built later to write BACK into their calendar.
+        //
+        // AND `none` IS A FINDING, NOT A GAP. A shop with no platform - "DM us to book" - has nothing
+        // to migrate and is the easiest customer in the file. Absence gets recorded, not skipped.
+        const BOOKERS = [
+          ["square",          /book\.squareup\.com|squareup\.com\/(?:appointments|book)|squarespace-scheduling/i],
+          ["acuity",          /acuityscheduling\.com/i],
+          ["vagaro",          /vagaro\.com/i],
+          ["booksy",          /booksy\.com/i],
+          ["fresha",          /fresha\.com/i],
+          ["calendly",        /calendly\.com/i],
+          ["google_calendar", /calendar\.google\.com|calendar\.app\.goo\.gl|calendar\.app\.google/i],
+          ["setmore",         /setmore\.com/i],
+          ["schedulicity",    /schedulicity\.com/i],
+          ["glossgenius",     /glossgenius\.com/i],
+          ["mangomint",       /mangomint\.com/i],
+          ["mindbody",        /mindbodyonline\.com|mindbody\.io/i],
+          ["timely",          /gettimely\.com/i],
+          ["resova",          /resova\.com/i],
+          ["tattoo_specific", /inkbooking|tattoostudiopro|porter\.io|inkredible|tattooshopbooking/i],
+          ["shopify",         /shopify\.com\/.*booking|sesami\.co/i],
+          ["typeform",        /typeform\.com/i],
+          ["jotform",         /jotform\.com/i],
+          ["formstack",       /formstack\.com/i],
+        ];
+        const booking = BOOKERS.filter(([, re]) => re.test(md)).map(([n]) => n);
+        // Their own booking page. MATCHED ON THE LINK TEXT AS WELL AS THE PATH, because Bang Bang's
+        // button says "MAKE AN APPOINTMENT" and points at /contact - a path-only rule reported "no
+        // booking page" for a shop that plainly has one. What the button SAYS is as much evidence as
+        // where it goes.
+        const ownBooking = [...new Set([
+          ...(md.match(/https?:\/\/[^\s)"']*\/(?:book|booking|appointments?|schedule|request|inquir)[^\s)"']*/gi) || []),
+          ...[...md.matchAll(/\[([^\]]{0,60})\]\((https?:\/\/[^)]{0,200})\)/g)]
+              .filter(m => /book|appointment|schedul|inquir|request a quote|get started/i.test(m[1]))
+              .map(m => m[2]),
+        ].filter(u => !BOOKERS.some(([, re]) => re.test(u)))
+         .map(u => u.replace(/[).,]+$/, "")))].slice(0, 6);
+        // The universal way in. Any of these is a subscribe-once feed into APPOINTMENT.
+        const icsFeeds = [...new Set((md.match(/https?:\/\/[^\s)"']*\.ics\b/gi) || [])
+          .map(u => u.replace(/[).,]+$/, "")))].slice(0, 4);
+        // Deposit language, straight from their own words - the pitch either applies or it does not.
+        const depositSaid = /\bdeposit(s)?\b/i.test(md);
+        const walkInSaid = /\bwalk[-\s]?ins?\b/i.test(md);
+
         // ── SEMANTIC PASS, ON NEURONS, ON A TRIMMED SLICE ─────────────────────────────────────
         // NOT the whole document. Bang Bang is 120,741 chars and the answer lives in the roster and
         // the FAQ. Sending 120k to a model to learn eight facts is the shape this codebase keeps
@@ -18119,7 +18177,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // are redirects to the page already fetched. The http://www. URL returned `pages: 6,
           // skipped: 6` and LOST the FAQ. What matters is whether the fields came back, so that is
           // what gets reported next to them.
+          booking: { platforms: booking, own_booking_urls: ownBooking, ics_feeds: icsFeeds,
+            deposit_mentioned: depositSaid, walkins_mentioned: walkInSaid,
+            verdict: booking.length ? "on " + booking.join(" + ")
+                   : ownBooking.length ? "own booking page, no third-party platform detected"
+                   : "NO PLATFORM FOUND - nothing to migrate, easiest to move" },
           extracted: { emails: ranked.length, phones: phones.length, socials: socials.length,
+            booking_platforms: booking.length, ics: icsFeeds.length,
             artists: understanding?.artists?.length || 0, styles: understanding?.styles?.length || 0,
             answered: ["walk_ins","consultations","deposit_required","piercing","booking_method"]
               .filter(k => understanding && understanding[k] !== null && understanding[k] !== undefined).length },
@@ -18166,7 +18230,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           .bind(new Date().toISOString(),
                 ranked.length ? ranked.map(x => x.email).join("|") : null,
                 phones.length ? phones.join("|") : null,
-                understanding ? JSON.stringify(understanding).slice(0, 8000) : null,
+                // Booking rides INSIDE understanding - it is industry-shaped like artists and styles,
+                // and a column per platform is the mistake this file already refused once.
+                (understanding || booking.length || icsFeeds.length)
+                  ? JSON.stringify({ ...(understanding || {}), booking_platforms: booking,
+                      ics_feeds: icsFeeds, own_booking_urls: ownBooking,
+                      deposit_mentioned: depositSaid }).slice(0, 8000)
+                  : null,
                 "crawl/" + row.id + "/" + new Date().toISOString().slice(0, 10) + ".md",
                 row.id).run();
         return out;

@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.86.0-2026-08-16-five-fields-one-call";
+const BUILD = "aura-core-v5.87.0-2026-08-16-the-window-follows-the-names";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18122,8 +18122,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const bestEmail = ranked[0]?.email || null;   // a hint for REACH_OUT, not the only one kept
         // Separator REQUIRED - see the CDN-timestamp note above.
         const phones = [...new Set(md.match(/(?:\+1[\s.-]?)?\(\d{3}\)[\s.-]?\d{3}[\s.-]?\d{4}|(?:\+1[\s.-]?)?\b\d{3}[.\s-]\d{3}[.\s-]\d{4}\b/g) || [])];
+        // A POST IS NOT A PROFILE. Bang Bang's page embeds six individual Instagram posts
+        // (/p/BjThtBIDV3l/) and they came back as "socials" alongside the actual account - so the
+        // listing would offer a stranger six links to single photographs instead of the shop's feed.
         const socials = [...new Set((md.match(/https?:\/\/(?:www\.)?(?:instagram|facebook|tiktok|twitter|youtube)\.com\/[\w./@-]+/gi) || [])
-          .map(u => u.replace(/[).,]+$/, "")))].slice(0, 8);
+          .map(u => u.replace(/[).,]+$/, ""))
+          .filter(u => !/\/(p|reel|reels|tv|stories|posts|photo|videos|watch|share)\//i.test(u))
+          .filter(u => !/\/(sharer|dialog|plugins|intent)/i.test(u)))].slice(0, 8);
 
         // ══ WHAT THEY BOOK WITH, AND WHY IT IS THE MOST VALUABLE FIELD HERE (2026-08-16) ═══════
         //
@@ -18345,11 +18350,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           "floral", "botanical", "anime", "cartoon", "horror", "nature", "animal", "flash",
           "custom", "freehand", "white ink", "uv", "scar cover", "restoration", "touch-up"
         ];
+        // Aliases fold onto one canonical name - "neo traditional" and "neo-traditional" are one
+        // style, not two, and a listing that shows both looks careless to the shop that wrote it.
+        const STYLE_CANON = { "neo traditional": "neo-traditional", "american traditional": "traditional",
+          "black & grey": "black and grey", "black and gray": "black and grey", "irezumi": "japanese",
+          "watercolour": "watercolor", "cover up": "cover-up", "minimalism": "minimalist",
+          "hyperrealism": "photorealism", "stippling": "dotwork", "lettering": "script",
+          "polynesian": "tribal", "maori": "tribal", "mandala": "sacred geometry",
+          "botanical": "floral", "old school": "traditional" };
         const styleHits = [...new Set(STYLE_LIST.filter(st => {
           // Word-bounded so "custom" does not match "customer" and "micro" does not match "microblading".
           const re = new RegExp("(^|[^a-z])" + st.replace(/[-\s]/g, "[-\\s]") + "([^a-z]|$)", "i");
           return re.test(md);
-        }))].slice(0, 15);
+        }).map(st => STYLE_CANON[st] || st))].slice(0, 15);
 
         // The four booleans, from their own words. No model, no invention, no contamination.
         const walkIns = /\bwalk[-\s]?ins?\s+(welcome|accepted|available)|we\s+(take|accept|welcome)\s+walk[-\s]?ins?/i.test(md)
@@ -18388,7 +18401,23 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           } else if (!env.AI) {
             aiWhy = "env.AI is not bound";
           } else {
-            const rosterMd = rosterPages.map(p => p.body).join("\n\n---\n\n").slice(0, 20000);
+            // ══ TWO COPIES OF ONE PAGE ATE THE ROSTER BUDGET (fixed 2026-08-16) ═══════════════
+            // Bang Bang serves `/` and `/home` as the SAME document. Both typed as a roster (41
+            // person headings each), both got joined, and the 20,000-character slice was filled with
+            // the top of that page twice - nav, hero, opening copy - before a single artist name.
+            // The gate opened correctly and the model was handed the wrong 20k.
+            // Deduped by content, and the window follows the NAMES: start at the first person-shaped
+            // heading rather than at byte zero, so the budget is spent on the roster itself.
+            const seenBody = new Set();
+            const uniqRoster = rosterPages.filter(pg => {
+              const k = pg.body.length + ":" + pg.body.slice(0, 200);
+              if (seenBody.has(k)) return false; seenBody.add(k); return true;
+            });
+            let rosterMd = uniqRoster.map(p => {
+              const b = p.body;
+              const firstName = b.search(/^#{2,3}\s+[^\n]{1,24}$/m);
+              return firstName > 0 ? b.slice(firstName) : b;
+            }).join("\n\n---\n\n").slice(0, 45000);
             const r = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
               max_tokens: 700,
               messages: [

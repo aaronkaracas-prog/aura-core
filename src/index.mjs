@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.82.0-2026-08-16-competitors-are-not-staff";
+const BUILD = "aura-core-v5.83.0-2026-08-16-only-read-what-can-answer";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -17984,6 +17984,43 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           business: row.name, what_to_do: "SITE_READ STATUS " + sp.id + " - the job keeps for 14 days." } };
         let md = String(res.markdown || "");
 
+        // ══ ONLY READ PAGES THAT CAN ANSWER WHAT WE ASKED (2026-08-16) ════════════════════════
+        //
+        // Aaron: "we have to stop going out of what our real requirements are... junk information is
+        // worse than less information." He is right and every extraction bug today traces to one
+        // habit: twelve pages concatenated into a 67,000-character blob and one model asked one
+        // question about all of it.
+        //
+        // NOBODY DOES IT THAT WAY. Firecrawl, Diffbot and the rest classify each page first and ask
+        // it only what its TYPE can answer. A team page is asked who works here; a blog page is asked
+        // nothing. We already have the page boundaries and now the URLs - we were discarding both.
+        //
+        // MEASURED COST OF NOT DOING THIS, all from one shop's SEO blog page about Fort Worth
+        // studios: "the artists at Black Dagger Tattoo" and "Voodoo Tattoo" returned as THIS shop's
+        // roster, 605 "styles" including "communication", "fort worth" and "texas", truncation from
+        // the volume, and the real artist Kelly outvoted and lost.
+        //
+        // The field list for a tattoo parlor is finite and obvious - name, address, phone, email,
+        // socials, artists, their work, styles, booking, deposit, walk-ins, consultations, piercing,
+        // hours. So the pages that can answer it are finite too. Everything else is not "extra data",
+        // it is noise that outvotes the signal.
+        // `(\/|$|\?)` missed /privacy-policy because the keyword is followed by a hyphen, not a
+        // boundary. Matching the SEGMENT START instead catches privacy-policy, terms-of-service,
+        // blog-posts and every other hyphenated variant a site invents.
+        const DENY = /\/(blog|news|article|post|press|privacy|terms|tos|legal|accessibility|cookie|cart|checkout|shop|store|merch|product|careers|jobs|apply|sitemap|search|tag|category|author|feed|rss)([\/\-_]|$|\?)/i;
+        const pageBlocks = md.split(/\n\n---\n\n/).map(b => {
+          const m = b.match(/^<!--PAGE\s+(\S*)\s*-->/);
+          return { url: m ? m[1] : "", body: b.replace(/^<!--PAGE[^>]*-->\n?/, "") };
+        });
+        const kept_pages = [], dropped_pages = [];
+        for (const pg of pageBlocks) {
+          if (pg.url && DENY.test(pg.url)) { dropped_pages.push(pg.url); continue; }
+          kept_pages.push(pg);
+        }
+        // Everything downstream - contacts, images, the model pass - now sees only pages that could
+        // hold an answer. A blog page contributes nothing, not even an image.
+        if (kept_pages.length) md = kept_pages.map(p => p.body).join("\n\n---\n\n");
+
         // ── THE SECOND PASS, ONLY WHEN THERE IS A ROSTER ─────────────────────────────────────
         // Bang Bang's homepage carries one photo per artist, each linked to that artist's own page,
         // and the TATTOOS live on those pages. The first pass sees 31 portraits and no work. Rather
@@ -18356,6 +18393,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const out = { cmd: "CG_ENRICH", payload: { ok: true, mode: ceDry ? "dry_run" : "written",
           business: row.name, where: [row.locality, row.region].filter(Boolean).join(", "),
           site, pages: res.pages, skipped: res.skipped, chars: md.length,
+          pages_read: kept_pages.length, pages_ignored: dropped_pages.length,
+          ignored: dropped_pages.slice(0, 6).map(u => u.replace(/^https?:\/\/[^/]+/, "")),
           second_pass: deeper || undefined,
           browser_seconds: res.browser_seconds,
           // PAGE COUNT IS THE WRONG METRIC AND IT MISLED US ONCE. The canonical https URL returned
@@ -18421,7 +18460,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             .filter(Boolean)
             // "the artists at X" is a competitor, not a person. Belt and braces against the SEO page.
             .filter(x => !/^(the |our )?(artists?|team|staff|crew)\b/i.test(x))
-            .filter(x => !/\b(tattoo|studio|parlor|parlour|company|co\.|ink)\b/i.test(x) || x.split(/\s+/).length <= 2)
+            // A BUSINESS NAME IS NOT A PERSON, even when it is two words. "Voodoo Tattoo" and "The
+            // Inked Rose" came back as this shop's artists after the "the artists at X" guard caught
+            // the longer form - the model simply dropped the prefix. Anything carrying a trade word
+            // is a business; a tattooist called "Ink Seeker" is a stage name we lose, and losing one
+            // nickname beats crediting a competitor's shop as staff.
+            .filter(x => !/\b(tattoo|tattoos|studio|studios|parlor|parlour|company|collective|gallery|lounge|shop|ink)\b/i.test(x))
+            .filter(x => !/^the\s/i.test(x))
             .filter(x => x.length > 1 && x.length < 40))].slice(0, 20);
         }
         // A FAILED SEMANTIC PASS MUST NOT ERASE A GOOD ONE. The contacts and the raw key are always
@@ -18559,7 +18604,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // A record that carries markdown is usable whatever its status label says. Filtering on
           // the label alone is what threw 44 pages away.
           const recs = allRecs.filter(x => x && x.markdown);
-          const doc = recs.map(x => "## " + (x.metadata?.title || x.url) + "\n" + x.markdown).join("\n\n---\n\n");
+          // THE URL RIDES WITH THE PAGE. Concatenating title+markdown threw away the one thing that
+          // says what a page IS - a reader downstream cannot tell /blog/ from /artists without it.
+          const doc = recs.map(x => "<!--PAGE " + (x.url || "") + " -->\n## " +
+            (x.metadata?.title || x.url) + "\n" + x.markdown).join("\n\n---\n\n");
           return { cmd: "SITE_READ", payload: { ok: true, status: res.status || "unknown", id: jid,
             pages: recs.length, chars: doc.length, browser_seconds: res.browserSecondsUsed ?? 0,
             skipped: (res.records || []).filter(x => x && x.status !== "completed").length,

@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.95.0-2026-08-16-the-last-key-wins";
+const BUILD = "aura-core-v5.96.0-2026-08-16-the-src-was-empty";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18338,7 +18338,21 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           if (seg && !/^(https?:|www\.)/i.test(seg) && seg.length > 1 && !seg.includes("."))
             linkedImg.set(u, seg.replace(/[-_]+/g, " ").trim().slice(0, 60));
         }
-        const imgAll = [...md.matchAll(/!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g)];
+        // ══ THE PORTFOLIO IMAGES HAVE AN EMPTY src (found 2026-08-16) ═══════════════════════
+        // ZEE's page - and every artist page on this site - writes its gallery like this:
+        //     [View fullsize ![Z6.jpeg]()](https://images.squarespace-cdn.com/.../Z6.jpeg)
+        // The `![]()` carries the FILENAME AS ALT TEXT AND NO SOURCE; the real URL is on the
+        // WRAPPING LINK. A scan that reads the image's own parentheses finds an empty string and
+        // moves on, which is why 34 images came back from the homepage and not one tattoo from the
+        // twelve artist pages we had finally managed to fetch.
+        // The homepage uses the ordinary form, so both shapes are read now: a normal image, and a
+        // lightbox link whose alt text names an image file.
+        const imgAll = [
+          ...md.matchAll(/!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g),
+          // [anything ![name.jpg]()](URL) - alt names a file, href IS the file
+          ...[...md.matchAll(/\[[^\]]*!\[([^\]]*)\]\(\s*\)\]\((https?:\/\/[^)\s]+)\)/g)]
+              .filter(m => /\.(jpe?g|png|webp|gif|avif)(\?|$)/i.test(m[2])),
+        ];
         // Section = the nearest heading above the image, so an artist's work stays attached to them.
         const headAt = [];
         { let cur = null;

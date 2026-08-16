@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.67.0-2026-08-16-gather-everything-decide-later";
+const BUILD = "aura-core-v5.68.0-2026-08-16-the-crawl-is-the-asset";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -17967,6 +17967,25 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           business: row.name, what_to_do: "SITE_READ STATUS " + sp.id + " - the job keeps for 14 days." } };
         const md = String(res.markdown || "");
 
+        // ══ THE CRAWL IS THE ASSET, NOT THE BY-PRODUCT (2026-08-16) ═══════════════════════════
+        // The first version extracted eight fields from 29,443 characters and threw the rest away.
+        // That is right for a contact list and wrong for what this is: Aaron is doing tattoo first
+        // and then real estate, automotive, every industry, to see what a whole planet is doing.
+        // RE-EXTRACTION IS FREE. RE-CRAWLING IS NOT, and the site will have changed by then. A
+        // better model in six months, or a question nobody has thought of yet - "which shops mention
+        // aftercare", "how does pricing language differ by state" - is answerable only if the source
+        // text still exists as it was on the day we looked.
+        // R2 because it is object storage: cheap per GB, no row limit, and it never competes with D1
+        // for the query budget. Keyed by the CityGuide id so a row and its source find each other.
+        try {
+          if (env.AURA_KNOWLEDGE_RAW) {
+            await env.AURA_KNOWLEDGE_RAW.put("crawl/" + row.id + "/" + new Date().toISOString().slice(0, 10) + ".md", md, {
+              httpMetadata: { contentType: "text/markdown" },
+              customMetadata: { cg_id: row.id, name: String(row.name || "").slice(0, 120), site,
+                                industry: "tattoo", pages: String(res.pages ?? ""), chars: String(md.length) } });
+          }
+        } catch (e) { /* the extraction still stands if the archive write fails */ }
+
         // ── DETERMINISTIC PASS ────────────────────────────────────────────────────────────────
         const emails = [...new Set((md.match(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi) || []).map(x => x.toLowerCase()))]
           .filter(e => !/\.(png|jpg|jpeg|gif|webp|svg)$/i.test(e));
@@ -18024,6 +18043,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           business: row.name, where: [row.locality, row.region].filter(Boolean).join(", "),
           site, pages: res.pages, skipped: res.skipped, chars: res.chars,
           browser_seconds: res.browser_seconds,
+          // PAGE COUNT IS THE WRONG METRIC AND IT MISLED US ONCE. The canonical https URL returned
+          // `pages: 1, skipped: 11` and gave COMPLETE data - 31 artists, 19 styles, deposit_required
+          // true - because the site serves the whole thing as one document and the eleven "skipped"
+          // are redirects to the page already fetched. The http://www. URL returned `pages: 6,
+          // skipped: 6` and LOST the FAQ. What matters is whether the fields came back, so that is
+          // what gets reported next to them.
+          extracted: { emails: ranked.length, phones: phones.length, socials: socials.length,
+            artists: understanding?.artists?.length || 0, styles: understanding?.styles?.length || 0,
+            answered: ["walk_ins","consultations","deposit_required","piercing","booking_method"]
+              .filter(k => understanding && understanding[k] !== null && understanding[k] !== undefined).length },
           had_email_before: !!row.email, had_phone_before: !!row.phone,
           emails_found: ranked, best_email: bestEmail,
           phones_found: phones, socials_found: socials,
@@ -18031,17 +18060,33 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           note: "browser_seconds 0 means render:false did it - unbilled during the beta." } };
         if (ceDry) return out;
 
+        // ══ INDUSTRY-SHAPED FIELDS DO NOT GET COLUMNS (2026-08-16) ════════════════════════════
+        // `artists` and `styles` were columns. That is fine for tattoo and wrong for the next twelve
+        // industries: real estate has agents and listing counts, auto repair has certifications and
+        // brands serviced, a restaurant has cuisines and seating. A column per industry-specific
+        // field means a table that is mostly NULL and a schema migration every time a market opens.
+        // Overture holds 75 MILLION places across every category on ONE schema by keeping the
+        // type-specific detail inside a structured property, and that is the pattern to copy.
+        // So: cg_business stays UNIVERSAL - identity, location, contacts, provenance, state - and
+        // everything industry-shaped lives in `understanding`, whose keys the industry decides.
+        // The two columns stay in the table as dead weight rather than being dropped: a DROP COLUMN
+        // on a live 33,694-row table to remove two nulls is a risk with no payoff.
+        if (understanding && Array.isArray(understanding.styles)) {
+          understanding.styles = [...new Set(understanding.styles.map(x => String(x).toLowerCase().trim()).filter(Boolean))];
+        }
+        if (understanding && Array.isArray(understanding.artists)) {
+          understanding.artists = [...new Set(understanding.artists.map(x => String(x).trim()).filter(Boolean))];
+        }
         await db.prepare(
-          "UPDATE cg_business SET crawled_at = ?, email_found = ?, phone_found = ?, artists = ?, " +
-          "styles = ?, understanding = ? WHERE id = ?")
+          "UPDATE cg_business SET crawled_at = ?, email_found = ?, phone_found = ?, " +
+          "understanding = ?, raw_key = ? WHERE id = ?")
           // PIPE-JOINED, ALL OF THEM. Storing one and dropping four is throwing away the thing the
           // crawl was run to get. Same shape the Overture columns already use.
           .bind(new Date().toISOString(),
                 ranked.length ? ranked.map(x => x.email).join("|") : null,
                 phones.length ? phones.join("|") : null,
-                understanding?.artists?.length ? understanding.artists.join("|") : null,
-                understanding?.styles?.length ? [...new Set(understanding.styles.map(x => String(x).toLowerCase().trim()))].join("|") : null,
-                understanding ? JSON.stringify(understanding).slice(0, 4000) : null,
+                understanding ? JSON.stringify(understanding).slice(0, 8000) : null,
+                "crawl/" + row.id + "/" + new Date().toISOString().slice(0, 10) + ".md",
                 row.id).run();
         return out;
       } catch (e) {

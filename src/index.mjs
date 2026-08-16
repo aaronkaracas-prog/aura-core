@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.96.0-2026-08-16-the-src-was-empty";
+const BUILD = "aura-core-v5.97.0-2026-08-16-the-work-outranks-the-merch";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18358,7 +18358,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         { let cur = null;
           for (const line of md.split("\n")) {
             const h = line.match(/^#{1,3}\s+(.+)$/);
-            if (h) cur = h[1].replace(/[*_`\[\]]/g, "").trim().slice(0, 60);
+            // `<Br>BANG BANG APPAREL<Br> DROP 1` rendered on the page verbatim. Markdown carries raw
+            // HTML through, and a heading is shown to a shop owner - it has to be clean text.
+            if (h) cur = h[1].replace(/<[^>]*>/g, " ").replace(/&[a-z]+;/gi, " ")
+                             .replace(/[*_`\[\]]/g, "").replace(/\s+/g, " ").trim().slice(0, 60);
             headAt.push(cur); } }
         const lineOf = (idx) => md.slice(0, idx).split("\n").length - 1;
         const imgs = []; const seenUrl = new Set(); const seenFile = new Set();
@@ -18387,6 +18390,27 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const work = imgs.filter(i => !i.chrome);
         // Cap PER SECTION, not per shop - one artist with 200 pieces must not crowd out the rest of
         // the roster. Enough to build a real page; the full list is kept so more can be pulled later.
+        // ══ THE MERCH DROP OUTRANKED THE TATTOOS (fixed 2026-08-16) ══════════════════════════
+        // The lead page came back showing a book cover, four hoodie shots from an apparel drop, and
+        // celebrity press photos - Rihanna, Bieber, magazine covers - and NOT ONE TATTOO. The
+        // extraction was right; the QUEUE was wrong. Homepage sections fill the 60-image budget in
+        // document order, and the artist pages sort last, so ZEE's portfolio never got a slot.
+        //
+        // We already know who the artists are - the roster was read from the site's own links. So an
+        // image whose subject IS an artist goes first. That needs no new rule about merch or press:
+        // the work wins because it belongs to a person who works there, and everything else fills
+        // whatever is left.
+        const artistKey = new Set(artistsForRank.map(a => a.toLowerCase().replace(/[^a-z0-9]/g, "")));
+        const isArtistWork = (i) => {
+          const k = String(i.subject || "").toLowerCase().replace(/^artist[\s-]*/, "").replace(/[^a-z0-9]/g, "");
+          return k && artistKey.has(k);
+        };
+        // Merch, press and product sections are pushed BEHIND everything else rather than dropped -
+        // a shop that sells shirts may still want them, but never ahead of the tattoos.
+        const LOW = /apparel|drop\s*\d|merch|shop|store|book|press|magazine|vogue|gq|collab/i;
+        // `rank` is already the email ranker in this scope - node --check caught the collision.
+        const imgRank = (i) => isArtistWork(i) ? 0 : (LOW.test(i.subject || "") ? 2 : 1);
+        work.sort((a, b) => imgRank(a) - imgRank(b));
         const bySection = {}; const kept = [];
         for (const i of work) {
           const k = i.subject || "(unsectioned)";
@@ -18472,7 +18496,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           ? true : (depositSaid ? null : false);
 
         let understanding = null, aiError = null, aiRaw = null, aiWhy = null;
-        let rosterNote = null, pageTypes = null, rosterSeen = null;
+        let rosterNote = null, pageTypes = null, rosterSeen = null, artistsForRank = [];
         let artists = [];
         try {
           const COMPARE = /\b(best|top\s*\d|vs\.?|versus|compared|guide to (choosing|finding)|near you)\b/i;
@@ -18524,6 +18548,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // Title-case the slug the site gave us: "jay shin" -> "Jay Shin".
             .map(x => x.replace(/\b[a-z]/g, c => c.toUpperCase())))];
 
+          artistsForRank = fromLinks.slice();
           const rosterPages = pool.filter(p => p._roster);
           if (fromLinks.length >= 3) {
             artists = fromLinks.slice(0, 40);

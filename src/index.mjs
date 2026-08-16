@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.89.0-2026-08-16-the-roster-was-already-extracted";
+const BUILD = "aura-core-v5.90.0-2026-08-16-completed-with-an-empty-building";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -17961,6 +17961,40 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // So: 12 pages, which covers a five-page shop completely and is what the default was always
         // sized for. A ROSTER SHOP EARNS A SECOND PASS - and the signal is already in hand, because
         // the wrapped links that name each artist also name their page. Most shops never trigger it.
+        // ══ "COMPLETED" WITH AN EMPTY BUILDING (found 2026-08-16, Tattoo Boogaloo) ═══════════
+        //
+        // MEASURED: `by_status: {completed: 12}` - every page succeeded - `chars: 6,597`, and every
+        // page's markdown was NOTHING BUT THE METADATA BLOCK. Title, description, og tags, no body.
+        // The site is JavaScript-rendered, so render:false fetched the HTML shell and there was
+        // nothing in it. No error, no skip, no disallowed - a clean success returning an empty shop.
+        //
+        // THIS IS THE FAILURE MODE THAT WOULD HAVE RUINED THE BATCH. Twenty thousand shops, some
+        // fraction of them JS-rendered, each recorded as "crawled, found nothing" - indistinguishable
+        // from a shop that genuinely has no email and no artists. We would have believed the number.
+        //
+        // So: crawl cheap, MEASURE, and escalate only the ones that came back hollow. render:true
+        // costs browser time and is not free, which is exactly why it must be a fallback rather than
+        // the default - most tattoo shops are static and render:false covers them for nothing.
+        const crawlOnce = async (flags) => {
+          const st = await processCommand("SITE_READ " + flags + site, env, true);
+          const sp0 = (st && st.payload) ? st.payload : st;
+          if (!sp0?.ok || !sp0.id) return { start: sp0, res: null };
+          for (let i = 0; i < 16; i++) {
+            await new Promise(r => setTimeout(r, 3000));
+            const s1 = await processCommand("SITE_READ STATUS " + sp0.id, env, true);
+            const p1 = (s1 && s1.payload) ? s1.payload : s1;
+            if (p1?.status && p1.status !== "running") return { start: sp0, res: p1 };
+          }
+          return { start: sp0, res: null };
+        };
+        // A page that is only front-matter has a `---` meta block and almost nothing after it.
+        const isHollow = (doc, pages) => {
+          if (!doc) return true;
+          const body = doc.replace(/^---[\s\S]*?^---$/gm, "").replace(/<!--PAGE[^>]*-->/g, "")
+                          .replace(/^#{1,6}\s+.*$/gm, "").replace(/\s+/g, " ").trim();
+          // Under ~200 real characters per page is a shell, not a website.
+          return body.length < Math.max(400, (pages || 1) * 200);
+        };
         const started = await processCommand("SITE_READ " + site, env, true);
         const sp = (started && started.payload) ? started.payload : started;
         // SITE_READ returns the API's own `errors` array as `detail`; forwarding only `error` threw
@@ -17983,6 +18017,23 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (!res) return { cmd: "CG_ENRICH", payload: { ok: false, error: "CRAWL_TIMEOUT", job: sp.id,
           business: row.name, what_to_do: "SITE_READ STATUS " + sp.id + " - the job keeps for 14 days." } };
         let md = String(res.markdown || "");
+        let renderedFallback = null;
+        if (isHollow(md, res.pages)) {
+          // The cheap read came back as metadata only. Pay for a browser once rather than record an
+          // empty shop as a fact.
+          const again = await crawlOnce("RENDER ");
+          if (again.res?.markdown && again.res.markdown.length > md.length) {
+            renderedFallback = { reason: "render:false returned metadata only - the site is " +
+                "JavaScript-rendered", cheap_chars: md.length, rendered_chars: again.res.markdown.length,
+                browser_seconds: again.res.browser_seconds ?? null };
+            md = String(again.res.markdown);
+            res.pages = again.res.pages; res.skipped = again.res.skipped;
+          } else {
+            renderedFallback = { reason: "render:false returned metadata only and render:true did not " +
+                "improve it - this site does not yield to crawling", cheap_chars: md.length,
+                rendered_chars: again.res?.markdown?.length ?? 0 };
+          }
+        }
 
         // ══ ONLY READ PAGES THAT CAN ANSWER WHAT WE ASKED (2026-08-16) ════════════════════════
         //
@@ -18507,6 +18558,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           pages_read: kept_pages.length, pages_ignored: dropped_pages.length,
           ignored: dropped_pages.slice(0, 6).map(u => u.replace(/^https?:\/\/[^/]+/, "")),
           second_pass: deeper || undefined,
+          rendered_fallback: renderedFallback || undefined,
           browser_seconds: res.browser_seconds,
           // PAGE COUNT IS THE WRONG METRIC AND IT MISLED US ONCE. The canonical https URL returned
           // `pages: 1, skipped: 11` and gave COMPLETE data - 31 artists, 19 styles, deposit_required

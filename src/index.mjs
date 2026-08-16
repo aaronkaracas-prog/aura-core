@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.80.0-2026-08-16-follow-the-cursor";
+const BUILD = "aura-core-v5.81.0-2026-08-16-a-mangled-address-is-worse-than-none";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18038,8 +18038,22 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         } catch (e) { /* the extraction still stands if the archive write fails */ }
 
         // ── DETERMINISTIC PASS ────────────────────────────────────────────────────────────────
+        // ══ MARKDOWN ATE THE UNDERSCORES IN AN EMAIL ADDRESS (fixed 2026-08-16) ═══════════════
+        // MEASURED at In Depth Tattoo Studio: the real address is In_Depth_Tattoo@aol.com and the
+        // extractor returned BOTH `in_depth_tattoo@aol.com` and `_tattoo@aol.com` - because
+        // HTML-to-markdown treats _underscores_ as emphasis, so the middle of the local part became
+        // italic markers and a fragment survived as its own "address". Both scored 92, the broken one
+        // sorted first, and it would have been the address we emailed.
+        // THE FIRST FIX WAS WORSE THAN THE BUG. Stripping emphasis markers before matching turned
+        // In_Depth_Tattoo@aol.com into indepthtattoo@aol.com - a DIFFERENT address that does not
+        // exist. **Underscores are legal in an email local part**; removing them invents mail that
+        // bounces. The full address was already being extracted correctly all along.
+        // So nothing is rewritten. Only the FRAGMENT is dropped: an address whose local part starts
+        // with a separator is emphasis debris, never a real mailbox.
         const emails = [...new Set((md.match(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi) || []).map(x => x.toLowerCase()))]
-          .filter(e => !/\.(png|jpg|jpeg|gif|webp|svg)$/i.test(e));
+          .filter(e => !/\.(png|jpg|jpeg|gif|webp|svg)$/i.test(e))
+          .filter(e => !/^[._+-]/.test(e.split("@")[0]))
+          .filter(e => e.split("@")[0].length > 1);
         // WHICH email REACH_OUT should use. press@ and jobs@ reach the wrong human; appts@ and
         // info@ reach the shop. Ranked, not first-found.
         // ORDERING, NOT FILTERING. `appt@` is likelier to reach the person who books than `press@`,
@@ -18169,6 +18183,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // /pawel - and that href was correct on every single one. **The site says who it belongs to;
         // reading it beats inferring from layout.** Heading survives only as a fallback for images
         // that are not wrapped, and both are recorded so a wrong guess is visible rather than silent.
+        // STOCK PHOTOGRAPHY IS NOT THEIR WORK. In Depth's site decorates with Unsplash - a lead page
+        // showing a stranger's stock photo as this shop's tattoo is worse than showing nothing, and
+        // it is the one thing a shop owner would notice instantly.
+        const STOCK = /images\.unsplash\.com|pexels\.com|pixabay\.com|shutterstock|istockphoto|gettyimages|stock\.adobe/i;
         const CHROME = /logo|icon|sprite|favicon|badge|banner|arrow|button|placeholder|avatar-default|spacer/i;
         const linkedImg = new Map();
         for (const m of md.matchAll(/\[!\[([^\]]*)\]\(([^)\s]+)[^)]*\)\]\(([^)\s]+)\)/g)) {
@@ -18187,7 +18205,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             if (h) cur = h[1].replace(/[*_`\[\]]/g, "").trim().slice(0, 60);
             headAt.push(cur); } }
         const lineOf = (idx) => md.slice(0, idx).split("\n").length - 1;
-        const imgs = []; const seenUrl = new Set();
+        const imgs = []; const seenUrl = new Set(); const seenFile = new Set();
         for (const m of imgAll) {
           const url = m[2].replace(/[).,]+$/, "");
           if (!/^https?:\/\//i.test(url)) continue;
@@ -18195,6 +18213,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           seenUrl.add(url);
           const file = (url.split("/").pop() || "").split("?")[0];
           const alt = (m[1] || "").trim();
+          // ONE IMAGE, NOT FOUR. Zyro and most CDNs serve the same asset at several widths -
+          // d1dc1470-....jpg came back at w=768 and w=375 and each counted separately, so a
+          // twelve-image gallery reported as thirty-two. Dedupe on the FILE, keeping the first
+          // (largest requested) URL seen.
+          if (seenFile.has(file)) continue;
+          seenFile.add(file);
+          if (STOCK.test(url)) continue;
           const linked = linkedImg.get(url) || null;
           const heading = headAt[lineOf(m.index)] || null;
           imgs.push({ url, alt: alt.slice(0, 80), file: file.slice(0, 60),

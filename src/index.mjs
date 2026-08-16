@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.65.0-2026-08-15-no-test-fixtures-in-the-worker";
+const BUILD = "aura-core-v5.66.0-2026-08-16-the-crawl-beats-the-dataset";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -17889,6 +17889,135 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           graph: { business_id: biz.id, customer_id: custId, transaction_id: txId, recipient_id: recipId,
             next_relationship: recipId ? (pu.buyer + " -> " + pu.recipient + " : the purchase became a new person in the graph") : null },
           ts: new Date().toISOString() } };
+      }
+    }
+
+    case "CG_ENRICH": {
+      // ══ THE CRAWL BEATS THE DATASET, TWICE OUT OF TWO (built 2026-08-16) ═══════════════════════
+      //
+      // cg_business holds 33,694 US tattoo businesses from Overture: 24,068 with an email, 31,741
+      // with a phone. That leaves ~9,600 with no email and 2,839 of those DO have a website. This is
+      // the command that closes that gap, and the two live tests say it closes more than the gap:
+      //   In Depth Tattoo Studio - Overture had NO email. Crawl found In_Depth_Tattoo@aol.com and
+      //     (682) 703-1350. 12 pages, 0 skipped, 0 browser seconds.
+      //   Bang Bang NYC - Overture had NO email. Crawl found SIX routed addresses (appts@, press@,
+      //     jobs@, events@, privatetattoos@), two phones, both socials, the address, the hours, and
+      //     THIRTY NAMED ARTISTS each on their own page. 120,741 chars, 0 skipped, 0 browser seconds.
+      //
+      // NORMAL CODE BEFORE AI - Aaron's rule, and the data proved it both ways. Regex nails emails,
+      // phones and socials deterministically for free. Regex on ARTIST NAMES does not: pulling the
+      // page headings out of Bang Bang gave 29 real artists AND "62 Grand Street NYC", "Text us!" and
+      // "TEST - BANG BANG". Names are a judgement, so the roster goes to Neurons on a trimmed slice.
+      //
+      // THE PHONE REGEX HAD TO BE TIGHTENED AGAINST REAL OUTPUT. A loose ten-digit match returned 26
+      // "numbers" from Bang Bang, twenty of which were Squarespace CDN timestamps inside image URLs
+      // (1438115623, 1526610920...). Requiring a separator or parentheses drops it to the 6 real ones.
+      // A rule tested against a live crawl beats one that looks right.
+      //
+      //   CG_ENRICH <cg_id|website>          crawl, extract, write back
+      //   CG_ENRICH <...> DRY                extract and report, write nothing
+      if (!isOp) return { cmd: "CG_ENRICH", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const ceRaw = String(rest || "").trim();
+      const ceDry = /(^|\s)DRY(\s|$)/i.test(ceRaw);
+      const ceKey = ceRaw.replace(/(^|\s)DRY(\s|$)/i, " ").trim();
+      if (!ceKey) return { cmd: "CG_ENRICH", payload: { ok: false, error: "Usage: CG_ENRICH <cg_id|website> [DRY]" } };
+      try {
+        const db = env.AURA_MEMORY;
+        const row = await db.prepare(
+          "SELECT id, name, website, email, phone, locality, region FROM cg_business WHERE id = ? OR website LIKE ? LIMIT 1")
+          .bind(ceKey, "%" + ceKey + "%").first();
+        if (!row) return { cmd: "CG_ENRICH", payload: { ok: false, error: "NOT_IN_CG_BUSINESS",
+          what_to_do: "Pass a cg_business id, or a website string that appears in one." } };
+        const site = String(row.website || "").split("|")[0].trim();
+        if (!site) return { cmd: "CG_ENRICH", payload: { ok: false, error: "NO_WEBSITE",
+          business: row.name, note: "Nothing to crawl. This shop is phone/social only." } };
+
+        // Reuse SITE_READ rather than a second crawl path - one door, one set of rules about
+        // robots.txt, crawlPurposes and render:false.
+        const started = await processCommand("SITE_READ " + site, env, true);
+        const sp = (started && started.payload) ? started.payload : started;
+        if (!sp?.ok || !sp.id) return { cmd: "CG_ENRICH", payload: { ok: false, error: "CRAWL_NOT_STARTED",
+          detail: sp?.error || null, business: row.name } };
+
+        // Poll. Bang Bang took ~20s for 12 pages, In Depth ~10s. Bounded so this can never hang a turn.
+        let res = null;
+        for (let i = 0; i < 10; i++) {
+          await new Promise(r => setTimeout(r, 3000));
+          const st = await processCommand("SITE_READ STATUS " + sp.id, env, true);
+          const stp = (st && st.payload) ? st.payload : st;
+          if (stp?.status && stp.status !== "running") { res = stp; break; }
+        }
+        if (!res) return { cmd: "CG_ENRICH", payload: { ok: false, error: "CRAWL_TIMEOUT", job: sp.id,
+          business: row.name, what_to_do: "SITE_READ STATUS " + sp.id + " - the job keeps for 14 days." } };
+        const md = String(res.markdown || "");
+
+        // ── DETERMINISTIC PASS ────────────────────────────────────────────────────────────────
+        const emails = [...new Set((md.match(/[\w.+-]+@[\w.-]+\.[a-z]{2,}/gi) || []).map(x => x.toLowerCase()))]
+          .filter(e => !/\.(png|jpg|jpeg|gif|webp|svg)$/i.test(e));
+        // WHICH email REACH_OUT should use. press@ and jobs@ reach the wrong human; appts@ and
+        // info@ reach the shop. Ranked, not first-found.
+        const GOOD = ["appt", "booking", "book", "info", "hello", "contact", "studio", "shop", "tattoo"];
+        const BAD  = ["press", "jobs", "career", "media", "legal", "privacy", "noreply", "no-reply", "abuse", "webmaster", "dmca"];
+        const rank = (e) => { const lp = e.split("@")[0];
+          if (BAD.some(w => lp.includes(w))) return -1;
+          const i = GOOD.findIndex(w => lp.includes(w)); return i >= 0 ? 100 - i : 10; };
+        const ranked = emails.map(e => ({ email: e, score: rank(e) })).sort((a, b) => b.score - a.score);
+        const bestEmail = ranked.find(x => x.score > 0)?.email || null;
+        // Separator REQUIRED - see the CDN-timestamp note above.
+        const phones = [...new Set(md.match(/(?:\+1[\s.-]?)?\(\d{3}\)[\s.-]?\d{3}[\s.-]?\d{4}|(?:\+1[\s.-]?)?\b\d{3}[.\s-]\d{3}[.\s-]\d{4}\b/g) || [])];
+        const socials = [...new Set((md.match(/https?:\/\/(?:www\.)?(?:instagram|facebook|tiktok|twitter|youtube)\.com\/[\w./@-]+/gi) || [])
+          .map(u => u.replace(/[).,]+$/, "")))].slice(0, 8);
+
+        // ── SEMANTIC PASS, ON NEURONS, ON A TRIMMED SLICE ─────────────────────────────────────
+        // NOT the whole document. Bang Bang is 120,741 chars and the answer lives in the roster and
+        // the FAQ. Sending 120k to a model to learn eight facts is the shape this codebase keeps
+        // paying for. 12,000 chars is generous and bounded.
+        let understanding = null, aiError = null;
+        try {
+          const ai = env.AI;
+          if (ai) {
+            const r = await ai.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
+              max_tokens: 700,
+              messages: [
+                { role: "system", content:
+                  "You are reading one tattoo shop's own website, converted to markdown. Return ONLY JSON: " +
+                  '{"artists":[],"styles":[],"walk_ins":null,"consultations":null,"deposit_required":null,' +
+                  '"piercing":null,"booking_method":null,"notable":null}. ' +
+                  "artists: names of tattoo artists who work there - PEOPLE ONLY, never a street address, " +
+                  "a section heading or a button label. styles: tattoo styles they name. walk_ins, " +
+                  "consultations, deposit_required, piercing: true, false or null. booking_method: how a " +
+                  "client actually books, in a few words. notable: one short line a stranger would only know " +
+                  "from reading this site. USE null WHERE THE SITE DOES NOT SAY. Never invent a name." },
+                { role: "user", content: md.slice(0, 12000) }
+              ] });
+            const txt = String(r?.response || "").replace(/```json|```/g, "").trim();
+            const m = txt.match(/\{[\s\S]*\}/);
+            if (m) understanding = JSON.parse(m[0]);
+          }
+        } catch (e) { aiError = String(e?.message ?? e).slice(0, 140); }
+
+        const out = { cmd: "CG_ENRICH", payload: { ok: true, mode: ceDry ? "dry_run" : "written",
+          business: row.name, where: [row.locality, row.region].filter(Boolean).join(", "),
+          site, pages: res.pages, skipped: res.skipped, chars: res.chars,
+          browser_seconds: res.browser_seconds,
+          had_email_before: !!row.email, had_phone_before: !!row.phone,
+          emails_found: ranked, best_email: bestEmail,
+          phones_found: phones, socials_found: socials,
+          understanding, ai_error: aiError || undefined,
+          note: "browser_seconds 0 means render:false did it - unbilled during the beta." } };
+        if (ceDry) return out;
+
+        await db.prepare(
+          "UPDATE cg_business SET crawled_at = ?, email_found = ?, phone_found = ?, artists = ?, " +
+          "styles = ?, understanding = ? WHERE id = ?")
+          .bind(new Date().toISOString(), bestEmail, phones[0] || null,
+                understanding?.artists?.length ? understanding.artists.join("|") : null,
+                understanding?.styles?.length ? understanding.styles.join("|") : null,
+                understanding ? JSON.stringify(understanding).slice(0, 4000) : null,
+                row.id).run();
+        return out;
+      } catch (e) {
+        return { cmd: "CG_ENRICH", payload: { ok: false, error: String(e?.message ?? e).slice(0, 200) } };
       }
     }
 

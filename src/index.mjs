@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.93.0-2026-08-16-excludePatterns-not-exclude";
+const BUILD = "aura-core-v5.94.0-2026-08-16-www-is-a-subdomain";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18843,13 +18843,24 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // after the fact; this is about which doors to open with a limited budget, which is
             // what the crawler's own exclude parameter exists for. Nothing here decides what a page
             // MEANS - a product page that does get fetched is still read normally.
-            // The parameter is `excludePatterns`, not `exclude` - Cloudflare rejected the invented
-            // name outright and the v5.91 diagnostic printed it back verbatim: `Unrecognized key:
-            // "exclude"`. Second time today that reading the API's own complaint beat guessing.
-            // Docs: "excludePatterns has strictly higher priority. If a URL matches an exclude rule,
-            // it is skipped, regardless of whether it matches an include rule."
-            excludePatterns: ["*/product/*", "*/products/*", "*/shop/*", "*/store/*", "*/cart*",
-                              "*/checkout*", "*/merch*", "*/collections/*", "*/privacy*", "*/terms*"],
+            // ══ `options`, AND THE SUBDOMAIN DEFAULT THAT HID EVERY ARTIST PAGE ══════════════
+            //
+            // Two wrong guesses at a parameter name (`exclude`, then top-level `excludePatterns`)
+            // before reading the actual schema. It is NESTED: options.excludePatterns, and the
+            // wildcard form is `https://site.com/path/**`.
+            //
+            // AND THE SCHEMA ANSWERED A QUESTION THAT COST HALF A DAY. `skipped` is documented as
+            // "URLs that were skipped due to include/exclude/SUBDOMAIN filters", and
+            // `includeSubdomains` DEFAULTS TO FALSE. We crawl `https://bangbangforever.com`; the site
+            // links to `https://WWW.bangbangforever.com/jay-shin`. www is a subdomain, so every
+            // artist page was skipped as off-domain - `pages: 1, skipped: 11`, run after run, while
+            // we theorised about rate limits and page caps. The portfolios were never fetched because
+            // we never asked for them.
+            options: {
+              includeSubdomains: true,
+              excludePatterns: ["**/product/**", "**/products/**", "**/shop/**", "**/store/**",
+                                "**/cart**", "**/checkout**", "**/merch**", "**/collections/**",
+                                "**/privacy**", "**/terms**"] },
             options: { includeExternalLinks: false, includeSubdomains: false },
           }) });
         const d = await r.json();

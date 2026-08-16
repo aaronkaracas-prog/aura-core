@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.94.0-2026-08-16-www-is-a-subdomain";
+const BUILD = "aura-core-v5.95.0-2026-08-16-the-last-key-wins";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18856,12 +18856,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // artist page was skipped as off-domain - `pages: 1, skipped: 11`, run after run, while
             // we theorised about rate limits and page caps. The portfolios were never fetched because
             // we never asked for them.
+            // ONE `options` KEY. The new block was added directly above a pre-existing
+            // `options: { includeExternalLinks: false, includeSubdomains: false }` - two keys of the
+            // same name in one object literal, and JavaScript keeps the LAST one. So the fix was
+            // overwritten by the exact setting it was meant to change, on the next line, silently.
+            // node --check cannot see a duplicate key; only reading the object could.
             options: {
-              includeSubdomains: true,
+              includeExternalLinks: false,   // still no other people's sites
+              includeSubdomains: true,       // but www.theirsite.com IS their site
               excludePatterns: ["**/product/**", "**/products/**", "**/shop/**", "**/store/**",
                                 "**/cart**", "**/checkout**", "**/merch**", "**/collections/**",
                                 "**/privacy**", "**/terms**"] },
-            options: { includeExternalLinks: false, includeSubdomains: false },
           }) });
         const d = await r.json();
         if (!d?.success) return { cmd: "SITE_READ", payload: { ok: false, error: "crawl not accepted",

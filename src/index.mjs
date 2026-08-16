@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.91.0-2026-08-16-a-timeout-is-not-a-verdict";
+const BUILD = "aura-core-v5.92.0-2026-08-16-not-in-their-gift-shop";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18325,6 +18325,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // showing a stranger's stock photo as this shop's tattoo is worse than showing nothing, and
         // it is the one thing a shop owner would notice instantly.
         const STOCK = /images\.unsplash\.com|pexels\.com|pixabay\.com|shutterstock|istockphoto|gettyimages|stock\.adobe/i;
+        // A PAYMENT ICON IS NOT A TATTOO. The cart page returned visa.svg, applepay.svg, cashapp.svg
+        // and googlepay.svg as this shop's "work". SVG is never a photograph, and /static/icons/ is
+        // never a portfolio - both are structural facts, not guesses about a filename.
+        const NOT_WORK = /\.svg(\?|$)|\/static\/|\/icons?\/|\/assets\/icons|payment-methods|\/flags?\//i;
         const CHROME = /logo|icon|sprite|favicon|badge|banner|arrow|button|placeholder|avatar-default|spacer/i;
         const linkedImg = new Map();
         for (const m of md.matchAll(/\[!\[([^\]]*)\]\(([^)\s]+)[^)]*\)\]\(([^)\s]+)\)/g)) {
@@ -18357,7 +18361,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // (largest requested) URL seen.
           if (seenFile.has(file)) continue;
           seenFile.add(file);
-          if (STOCK.test(url)) continue;
+          if (STOCK.test(url) || NOT_WORK.test(url)) continue;
           const linked = linkedImg.get(url) || null;
           const heading = headAt[lineOf(m.index)] || null;
           imgs.push({ url, alt: alt.slice(0, 80), file: file.slice(0, 60),
@@ -18830,6 +18834,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             render: srRender,                // false unless asked - free during beta, no browser time
             source: "all",                   // starting page, then sitemap, then links
             crawlPurposes: ["search", "ai-input"],   // NOT ai-train. We do not train on their site.
+            // ══ DO NOT SPEND THE PAGE BUDGET IN THEIR GIFT SHOP (2026-08-16) ══════════════════
+            // MEASURED at Tattoo Boogaloo: the rendered crawl worked - 545 -> 7,157 chars - and
+            // then spent SEVEN pages on four t-shirt product listings, the merch shop and a blog
+            // post. Not the artists page. Not contact. A twelve-page budget is a real constraint
+            // and a store will happily fill it with SKUs.
+            // This is NOT the page-typing Aaron rejected. That was about judging CONTENT by URL
+            // after the fact; this is about which doors to open with a limited budget, which is
+            // what the crawler's own exclude parameter exists for. Nothing here decides what a page
+            // MEANS - a product page that does get fetched is still read normally.
+            exclude: ["*/product/*", "*/products/*", "*/shop/*", "*/store/*", "*/cart*",
+                      "*/checkout*", "*/merch*", "*/collections/*", "*/privacy*", "*/terms*"],
             options: { includeExternalLinks: false, includeSubdomains: false },
           }) });
         const d = await r.json();

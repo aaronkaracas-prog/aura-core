@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.79.0-2026-08-16-skipped-must-say-why";
+const BUILD = "aura-core-v5.80.0-2026-08-16-follow-the-cursor";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -17950,10 +17950,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
         // Reuse SITE_READ rather than a second crawl path - one door, one set of rules about
         // robots.txt, crawlPurposes and render:false.
-        // 45, not 12: a shop with 31 artists needs the homepage plus a page each, and the pages
-        // are cheap - render:false runs on Workers and is unbilled during the beta. The cost of a
-        // higher limit is seconds, and the cost of a lower one is a portfolio nobody sees.
-        const started = await processCommand("SITE_READ " + site + " LIMIT 45", env, true);
+        // ══ 12 FIRST, DEEPER ONLY IF THE SITE EARNS IT (2026-08-16) ═══════════════════════════
+        // Asking for 45 up front got 44 pages CANCELLED. The cause was ours: Cloudflare enforces a
+        // PER-DOMAIN rate limit and jobs against the same domain share it - we had crawled
+        // bangbangforever.com about ten times in an hour. The canonical crawler design says the same
+        // thing from the other side: the frontier partitions by domain precisely so a single host
+        // sees at most a request or so per second while thousands of DIFFERENT hosts run at once.
+        // A batch across 20,994 distinct domains is exactly that shape; hammering one is not.
+        //
+        // So: 12 pages, which covers a five-page shop completely and is what the default was always
+        // sized for. A ROSTER SHOP EARNS A SECOND PASS - and the signal is already in hand, because
+        // the wrapped links that name each artist also name their page. Most shops never trigger it.
+        const started = await processCommand("SITE_READ " + site, env, true);
         const sp = (started && started.payload) ? started.payload : started;
         // SITE_READ returns the API's own `errors` array as `detail`; forwarding only `error` threw
         // away the one thing that says WHY. Same defect as the null-with-no-reason two versions ago:
@@ -17974,7 +17982,41 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         }
         if (!res) return { cmd: "CG_ENRICH", payload: { ok: false, error: "CRAWL_TIMEOUT", job: sp.id,
           business: row.name, what_to_do: "SITE_READ STATUS " + sp.id + " - the job keeps for 14 days." } };
-        const md = String(res.markdown || "");
+        let md = String(res.markdown || "");
+
+        // ── THE SECOND PASS, ONLY WHEN THERE IS A ROSTER ─────────────────────────────────────
+        // Bang Bang's homepage carries one photo per artist, each linked to that artist's own page,
+        // and the TATTOOS live on those pages. The first pass sees 31 portraits and no work. Rather
+        // than crawl deeper on every shop, follow the links this specific site actually published.
+        // Bounded hard: 6 pages, one job, and only above a threshold that a normal shop never meets.
+        let deeper = null;
+        try {
+          const subj = [...new Set([...md.matchAll(/\[!\[[^\]]*\]\([^)\s]+[^)]*\)\]\((https?:\/\/[^)\s]+)\)/g)]
+            .map(m => m[1].replace(/[).,]+$/, ""))
+            .filter(u => { try { return new URL(u).hostname.replace(/^www\./, "") === new URL(site).hostname.replace(/^www\./, ""); } catch { return false; } })
+            .filter(u => !/\/(privacy|terms|accessibility|legal|cookie)/i.test(u)))];
+          if (subj.length >= 8) {
+            // One job per domain, still - seeded at the deepest subject page so the crawler walks
+            // siblings from there rather than re-walking the homepage we already have.
+            const d2 = await processCommand("SITE_READ " + subj[0] + " LIMIT 12", env, true);
+            const d2p = (d2 && d2.payload) ? d2.payload : d2;
+            if (d2p?.ok && d2p.id) {
+              for (let i = 0; i < 8; i++) {
+                await new Promise(r => setTimeout(r, 3000));
+                const st2 = await processCommand("SITE_READ STATUS " + d2p.id, env, true);
+                const s2 = (st2 && st2.payload) ? st2.payload : st2;
+                if (s2?.status && s2.status !== "running") {
+                  if (s2.markdown) { md += "\n\n---\n\n" + s2.markdown; }
+                  deeper = { seeded_from: subj[0], subject_links: subj.length,
+                             pages: s2.pages, added_chars: (s2.markdown || "").length };
+                  break;
+                }
+              }
+            }
+          } else if (subj.length) {
+            deeper = { subject_links: subj.length, skipped: "under the roster threshold - one pass is enough" };
+          }
+        } catch (e) { deeper = { error: String(e?.message ?? e).slice(0, 120) }; }
 
         // ══ THE CRAWL IS THE ASSET, NOT THE BY-PRODUCT (2026-08-16) ═══════════════════════════
         // The first version extracted eight fields from 29,443 characters and threw the rest away.
@@ -18274,7 +18316,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
         const out = { cmd: "CG_ENRICH", payload: { ok: true, mode: ceDry ? "dry_run" : "written",
           business: row.name, where: [row.locality, row.region].filter(Boolean).join(", "),
-          site, pages: res.pages, skipped: res.skipped, chars: res.chars,
+          site, pages: res.pages, skipped: res.skipped, chars: md.length,
+          second_pass: deeper || undefined,
           browser_seconds: res.browser_seconds,
           // PAGE COUNT IS THE WRONG METRIC AND IT MISLED US ONCE. The canonical https URL returned
           // `pages: 1, skipped: 11` and gave COMPLETE data - 31 artists, 19 styles, deposit_required
@@ -18418,9 +18461,30 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       try {
         if (/^STATUS\s+/i.test(srRaw)) {
           const jid = srRaw.replace(/^STATUS\s+/i, "").trim();
-          const r = await fetch(base + "/" + jid, { headers: { Authorization: "Bearer " + srTok } });
+          // ══ `records` IS PAGINATED AND THIS READ ONE PAGE (fixed 2026-08-16) ══════════════════
+          // Cloudflare's GET /crawl/{job_id} takes `cursor` and `limit` and returns `cursor` for the
+          // next page. This fetched once and used whatever came back, so a large crawl was silently
+          // partial - and "silently partial" is indistinguishable from "the site had less on it",
+          // which is exactly the confusion that has cost several deploys today.
+          // Follows the cursor to the end, bounded at 10 pages so a runaway cursor cannot loop.
+          let r = await fetch(base + "/" + jid, { headers: { Authorization: "Bearer " + srTok } });
           const d = await r.json();
           const res = d?.result || {};
+          if (d?.success && res && Array.isArray(res.records)) {
+            let cur = res.cursor, guard = 0;
+            while (cur && guard++ < 10) {
+              try {
+                const rn = await fetch(base + "/" + jid + "?cursor=" + encodeURIComponent(cur),
+                  { headers: { Authorization: "Bearer " + srTok } });
+                const dn = await rn.json();
+                const pageRecs = dn?.result?.records;
+                if (!dn?.success || !Array.isArray(pageRecs) || !pageRecs.length) break;
+                res.records = res.records.concat(pageRecs);
+                cur = dn.result.cursor;
+              } catch { break; }
+            }
+            res.pages_of_records = guard + 1;
+          }
           if (res.status === "running") return { cmd: "SITE_READ", payload: { ok: true, status: "running",
             id: jid, finished: res.finished ?? 0, total: res.total ?? null,
             note: "Still crawling. Poll again - jobs run asynchronously and results keep for 14 days." } };
@@ -18460,6 +18524,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             truncated: doc.length > 400000,
             by_status: byStatus,
             with_markdown: recs.length,
+            record_pages_read: res.pages_of_records || 1,
+            records_total: allRecs.length,
             sample_skipped: allRecs.filter(x => x && !x.markdown).slice(0, 5)
               .map(x => ({ url: String(x?.url || "").slice(0, 90), status: x?.status || null,
                            error: String(x?.error || x?.reason || "").slice(0, 80) || undefined })),

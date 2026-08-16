@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.66.0-2026-08-16-the-crawl-beats-the-dataset";
+const BUILD = "aura-core-v5.67.0-2026-08-16-gather-everything-decide-later";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -17900,9 +17900,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // the command that closes that gap, and the two live tests say it closes more than the gap:
       //   In Depth Tattoo Studio - Overture had NO email. Crawl found In_Depth_Tattoo@aol.com and
       //     (682) 703-1350. 12 pages, 0 skipped, 0 browser seconds.
-      //   Bang Bang NYC - Overture had NO email. Crawl found SIX routed addresses (appts@, press@,
-      //     jobs@, events@, privatetattoos@), two phones, both socials, the address, the hours, and
-      //     THIRTY NAMED ARTISTS each on their own page. 120,741 chars, 0 skipped, 0 browser seconds.
+      //   Bang Bang NYC - Overture DID already have appts@ (an earlier comment here said it did not;
+      //     that was wrong and is corrected). The crawl still added FIVE more addresses, a second
+      //     phone, both socials, and the roster. 0 skipped, 0 browser seconds on the canonical URL.
+      //
+      // GATHER EVERYTHING, DECIDE LATER - Aaron's correction, and the first version got it wrong.
+      // It SCORED press@ and jobs@ at -1 and returned a single `best_email`, so a shop whose only
+      // published address is press@ would have come back with best_email:null and looked like it had
+      // no email at all. His words: "they're all important because I'm reaching out to them, it's
+      // probably all going to the same person anyway... my best option is the most information, I'll
+      // figure out what to do with it after I have it." So EVERY address and EVERY number is kept.
+      // The ranking survives ONLY as a hint on the way out - it orders the list, it never drops a row.
       //
       // NORMAL CODE BEFORE AI - Aaron's rule, and the data proved it both ways. Regex nails emails,
       // phones and socials deterministically for free. Regex on ARTIST NAMES does not: pulling the
@@ -17928,9 +17936,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           .bind(ceKey, "%" + ceKey + "%").first();
         if (!row) return { cmd: "CG_ENRICH", payload: { ok: false, error: "NOT_IN_CG_BUSINESS",
           what_to_do: "Pass a cg_business id, or a website string that appears in one." } };
-        const site = String(row.website || "").split("|")[0].trim();
-        if (!site) return { cmd: "CG_ENRICH", payload: { ok: false, error: "NO_WEBSITE",
+        const stored = String(row.website || "").split("|")[0].trim();
+        if (!stored) return { cmd: "CG_ENRICH", payload: { ok: false, error: "NO_WEBSITE",
           business: row.name, note: "Nothing to crawl. This shop is phone/social only." } };
+        // ══ THE STORED URL IS NOT THE CANONICAL ONE, AND IT COSTS PAGES ═══════════════════════
+        // MEASURED on Bang Bang: `https://bangbangforever.com/` returned 12 pages, 0 skipped.
+        // The URL Overture stores - `http://www.bangbangforever.com` - returned 6 pages, 6 SKIPPED,
+        // and the six lost included the FAQ page that literally asks "Do I need to leave a deposit".
+        // That is why walk_ins, deposit_required and piercing all came back null: not a model
+        // failure, a redirect chain the crawler did not follow. Overture stores what a source
+        // recorded years ago; https and no-www is what the site actually serves today.
+        const site = stored.replace(/^http:\/\//i, "https://").replace(/^(https:\/\/)www\./i, "$1");
 
         // Reuse SITE_READ rather than a second crawl path - one door, one set of rules about
         // robots.txt, crawlPurposes and render:false.
@@ -17956,13 +17972,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           .filter(e => !/\.(png|jpg|jpeg|gif|webp|svg)$/i.test(e));
         // WHICH email REACH_OUT should use. press@ and jobs@ reach the wrong human; appts@ and
         // info@ reach the shop. Ranked, not first-found.
-        const GOOD = ["appt", "booking", "book", "info", "hello", "contact", "studio", "shop", "tattoo"];
-        const BAD  = ["press", "jobs", "career", "media", "legal", "privacy", "noreply", "no-reply", "abuse", "webmaster", "dmca"];
+        // ORDERING, NOT FILTERING. `appt@` is likelier to reach the person who books than `press@`,
+        // so it sorts first - but press@ is still an address at this shop and it is still stored.
+        // Nothing here can return fewer emails than the site published.
+        const LIKELY = ["appt", "booking", "book", "info", "hello", "contact", "studio", "shop", "tattoo"];
+        const LATER  = ["press", "jobs", "career", "media", "legal", "privacy", "noreply", "no-reply", "abuse", "webmaster", "dmca"];
         const rank = (e) => { const lp = e.split("@")[0];
-          if (BAD.some(w => lp.includes(w))) return -1;
-          const i = GOOD.findIndex(w => lp.includes(w)); return i >= 0 ? 100 - i : 10; };
+          const i = LIKELY.findIndex(w => lp.includes(w));
+          if (i >= 0) return 100 - i;
+          if (LATER.some(w => lp.includes(w))) return 1;   // last in the list, never excluded
+          return 10; };
         const ranked = emails.map(e => ({ email: e, score: rank(e) })).sort((a, b) => b.score - a.score);
-        const bestEmail = ranked.find(x => x.score > 0)?.email || null;
+        const bestEmail = ranked[0]?.email || null;   // a hint for REACH_OUT, not the only one kept
         // Separator REQUIRED - see the CDN-timestamp note above.
         const phones = [...new Set(md.match(/(?:\+1[\s.-]?)?\(\d{3}\)[\s.-]?\d{3}[\s.-]?\d{4}|(?:\+1[\s.-]?)?\b\d{3}[.\s-]\d{3}[.\s-]\d{4}\b/g) || [])];
         const socials = [...new Set((md.match(/https?:\/\/(?:www\.)?(?:instagram|facebook|tiktok|twitter|youtube)\.com\/[\w./@-]+/gi) || [])
@@ -17977,7 +17998,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const ai = env.AI;
           if (ai) {
             const r = await ai.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
-              max_tokens: 700,
+              max_tokens: 900,
               messages: [
                 { role: "system", content:
                   "You are reading one tattoo shop's own website, converted to markdown. Return ONLY JSON: " +
@@ -17988,7 +18009,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                   "consultations, deposit_required, piercing: true, false or null. booking_method: how a " +
                   "client actually books, in a few words. notable: one short line a stranger would only know " +
                   "from reading this site. USE null WHERE THE SITE DOES NOT SAY. Never invent a name." },
-                { role: "user", content: md.slice(0, 12000) }
+                // 12,000 was too small: Bang Bang has ~30 artists across 78,927 chars and the pass
+                // returned 18 - it ran out of document, not out of ability. It DID find Keith "Bang
+                // Bang" McCurdy, who is not a page heading anywhere, which is why this half is not regex.
+                { role: "user", content: md.slice(0, 40000) }
               ] });
             const txt = String(r?.response || "").replace(/```json|```/g, "").trim();
             const m = txt.match(/\{[\s\S]*\}/);
@@ -18010,9 +18034,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         await db.prepare(
           "UPDATE cg_business SET crawled_at = ?, email_found = ?, phone_found = ?, artists = ?, " +
           "styles = ?, understanding = ? WHERE id = ?")
-          .bind(new Date().toISOString(), bestEmail, phones[0] || null,
+          // PIPE-JOINED, ALL OF THEM. Storing one and dropping four is throwing away the thing the
+          // crawl was run to get. Same shape the Overture columns already use.
+          .bind(new Date().toISOString(),
+                ranked.length ? ranked.map(x => x.email).join("|") : null,
+                phones.length ? phones.join("|") : null,
                 understanding?.artists?.length ? understanding.artists.join("|") : null,
-                understanding?.styles?.length ? understanding.styles.join("|") : null,
+                understanding?.styles?.length ? [...new Set(understanding.styles.map(x => String(x).toLowerCase().trim()))].join("|") : null,
                 understanding ? JSON.stringify(understanding).slice(0, 4000) : null,
                 row.id).run();
         return out;

@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.92.0-2026-08-16-not-in-their-gift-shop";
+const BUILD = "aura-core-v5.93.0-2026-08-16-excludePatterns-not-exclude";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18843,8 +18843,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // after the fact; this is about which doors to open with a limited budget, which is
             // what the crawler's own exclude parameter exists for. Nothing here decides what a page
             // MEANS - a product page that does get fetched is still read normally.
-            exclude: ["*/product/*", "*/products/*", "*/shop/*", "*/store/*", "*/cart*",
-                      "*/checkout*", "*/merch*", "*/collections/*", "*/privacy*", "*/terms*"],
+            // The parameter is `excludePatterns`, not `exclude` - Cloudflare rejected the invented
+            // name outright and the v5.91 diagnostic printed it back verbatim: `Unrecognized key:
+            // "exclude"`. Second time today that reading the API's own complaint beat guessing.
+            // Docs: "excludePatterns has strictly higher priority. If a URL matches an exclude rule,
+            // it is skipped, regardless of whether it matches an include rule."
+            excludePatterns: ["*/product/*", "*/products/*", "*/shop/*", "*/store/*", "*/cart*",
+                              "*/checkout*", "*/merch*", "*/collections/*", "*/privacy*", "*/terms*"],
             options: { includeExternalLinks: false, includeSubdomains: false },
           }) });
         const d = await r.json();

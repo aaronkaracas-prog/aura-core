@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.78.0-2026-08-16-a-parsed-flag-must-be-stripped";
+const BUILD = "aura-core-v5.79.0-2026-08-16-skipped-must-say-why";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18426,7 +18426,23 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             note: "Still crawling. Poll again - jobs run asynchronously and results keep for 14 days." } };
           // ONE DOCUMENT PER BUSINESS, not a bag of pages - that is what the perception step wants,
           // and it is what gets hashed for an incremental re-read.
-          const recs = (res.records || []).filter(x => x && x.status === "completed" && x.markdown);
+          // ══ "SKIPPED" IS A COUNT WITH NO CAUSE, AND IT HAS MISLED US FOUR TIMES ═══════════════
+          // Same URL across five runs: 12/0, 6/6, 1/11, 5/7, and now 1 completed / 44 SKIPPED with
+          // the artist pages among them. Every theory so far - redirects, robots, page caps - was a
+          // guess, and each one cost a deploy. The API returns a status per record and this filtered
+          // to "completed" and discarded the rest WITHOUT EVER SAYING WHAT THEY WERE.
+          // Cloudflare's /crawl supports incremental crawling via modifiedSince/maxAge and keeps
+          // results for 14 days, so "already fetched recently" is a live hypothesis - but it stays a
+          // hypothesis until the statuses are read.
+          const allRecs = (res.records || []);
+          const byStatus = {};
+          for (const x of allRecs) {
+            const k = String(x?.status || "no_status");
+            byStatus[k] = (byStatus[k] || 0) + 1;
+          }
+          // A record that carries markdown is usable whatever its status label says. Filtering on
+          // the label alone is what threw 44 pages away.
+          const recs = allRecs.filter(x => x && x.markdown);
           const doc = recs.map(x => "## " + (x.metadata?.title || x.url) + "\n" + x.markdown).join("\n\n---\n\n");
           return { cmd: "SITE_READ", payload: { ok: true, status: res.status || "unknown", id: jid,
             pages: recs.length, chars: doc.length, browser_seconds: res.browserSecondsUsed ?? 0,
@@ -18442,6 +18458,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             markdown: doc.slice(0, 400000),
             full_chars: doc.length,
             truncated: doc.length > 400000,
+            by_status: byStatus,
+            with_markdown: recs.length,
+            sample_skipped: allRecs.filter(x => x && !x.markdown).slice(0, 5)
+              .map(x => ({ url: String(x?.url || "").slice(0, 90), status: x?.status || null,
+                           error: String(x?.error || x?.reason || "").slice(0, 80) || undefined })),
             note: "One markdown document assembled from every page that returned content." } };
         }
         if (!/^https?:\/\//i.test(srRaw)) return { cmd: "SITE_READ", payload: { ok: false,

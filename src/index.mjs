@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.88.0-2026-08-16-the-pages-were-not-in-the-room";
+const BUILD = "aura-core-v5.89.0-2026-08-16-the-roster-was-already-extracted";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18406,8 +18406,43 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             if (isRoster) pg._roster = true;
           }
           pageTypes = typed;
+
+          // ══ THE ROSTER WAS ALREADY EXTRACTED, STRUCTURALLY (2026-08-16) ══════════════════════
+          //
+          // Three empty runs, and `roster_input.head` finally showed why: the window opened on the
+          // page's YAML metadata block. But the fix is not a better window - it is noticing that the
+          // names were never missing.
+          //
+          // 28 of Bang Bang's images are attributed BY LINK: the site wraps each photo in an href to
+          // that person's own page - /jay-shin, /zee, /pawel, /solar - and those subjects are
+          // already parsed, already correct, and already in `imgs`. We have been asking an 8B model
+          // to find names the SITE ITSELF publishes as URLs.
+          //
+          // A link-attributed subject is the strongest evidence there is: the shop wrote that link.
+          // It is not inference, it cannot hallucinate, and it costs nothing.
+          //
+          // AND IT SELF-LIMITS CORRECTLY. In Depth has by_link:0 - no per-person links, so no names,
+          // which is the true answer for a shop that does not publish a team. The same rule gives 28
+          // on a site with a roster and 0 on a site without, with no model and no threshold.
+          //
+          // The model stays as a FALLBACK only - for a site that names its people in prose without
+          // linking them. Structure first, judgement only where structure is silent.
+          const NOT_A_PERSON = /^(artist|artists|team|home|index|gallery|shop|store|contact|about|book|booking|gift|faq|blog|news|privacy|terms|press|jobs|careers|studio|tattoo|tattoos|portfolio|work|works|services|piercing|piercings|aftercare|new|under construction)$/i;
+          const fromLinks = [...new Set(imgs
+            .filter(i => !i.chrome && i.from === "link" && i.subject)
+            .map(i => String(i.subject).trim())
+            .map(x => x.replace(/^artist[\s-]+/i, "").trim())   // "artist bang" -> "bang"
+            .filter(x => x && !NOT_A_PERSON.test(x))
+            .filter(x => x.split(/\s+/).length <= 3 && x.length <= 30)
+            // Title-case the slug the site gave us: "jay shin" -> "Jay Shin".
+            .map(x => x.replace(/\b[a-z]/g, c => c.toUpperCase())))];
+
           const rosterPages = pool.filter(p => p._roster);
-          if (!rosterPages.length) {
+          if (fromLinks.length >= 3) {
+            artists = fromLinks.slice(0, 40);
+            rosterNote = "roster read from the site's OWN per-person links (" + fromLinks.length +
+                         ") - structural, no model involved";
+          } else if (!rosterPages.length) {
             rosterNote = "no page on this site is shaped like a roster - empty is the correct answer " +
                          "for a shop that does not publish its team";
           } else if (!env.AI) {

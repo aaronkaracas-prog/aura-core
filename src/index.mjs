@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.87.0-2026-08-16-the-window-follows-the-names";
+const BUILD = "aura-core-v5.88.0-2026-08-16-the-pages-were-not-in-the-room";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18023,15 +18023,27 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // Contacts, socials, booking and images were always field-driven and were right on every
         // site; artists was the one field asked loosely enough to be fooled.
         const DENY = /\/(privacy|terms|tos|legal|accessibility|cookie|cart|checkout|basket|sitemap|feed|rss)([\/\-_]|$|\?)/i;
-        const pageBlocks = md.split(/\n\n---\n\n/).map(b => {
+        const buildPool = (doc) => doc.split(/\n\n---\n\n/).map(b => {
           const m = b.match(/^<!--PAGE\s+(\S*)\s*-->/);
           return { url: m ? m[1] : "", body: b.replace(/^<!--PAGE[^>]*-->\n?/, "") };
         });
-        const kept_pages = [], dropped_pages = [];
-        for (const pg of pageBlocks) {
-          if (pg.url && DENY.test(pg.url)) { dropped_pages.push(pg.url); continue; }
-          kept_pages.push(pg);
-        }
+        // ══ THE POOL WAS BUILT BEFORE THE PAGES ARRIVED (fixed 2026-08-16) ═══════════════════
+        // MEASURED: Bang Bang's second pass added TWELVE artist pages and 95,277 characters - the
+        // actual roster - and `page_types` reported exactly one page. The pool was computed from the
+        // first crawl and the second pass appended to `md` afterwards, so the roster call read the
+        // homepage and nothing else. The gate opened, the window aimed correctly, and the pages it
+        // was aiming at were not in the room.
+        // Built as a function and called AFTER `md` is final, so whatever the second pass fetched is
+        // in the pool it is judged from.
+        let kept_pages = [], dropped_pages = [];
+        const refreshPool = () => {
+          kept_pages = []; dropped_pages = [];
+          for (const pg of buildPool(md)) {
+            if (pg.url && DENY.test(pg.url)) { dropped_pages.push(pg.url); continue; }
+            kept_pages.push(pg);
+          }
+        };
+        refreshPool();
         // Everything downstream - contacts, images, the model pass - now sees only pages that could
         // hold an answer. A blog page contributes nothing, not even an image.
         if (kept_pages.length) md = kept_pages.map(p => p.body).join("\n\n---\n\n");
@@ -18058,7 +18070,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 const st2 = await processCommand("SITE_READ STATUS " + d2p.id, env, true);
                 const s2 = (st2 && st2.payload) ? st2.payload : st2;
                 if (s2?.status && s2.status !== "running") {
-                  if (s2.markdown) { md += "\n\n---\n\n" + s2.markdown; }
+                  if (s2.markdown) { md += "\n\n---\n\n" + s2.markdown; refreshPool(); }
                   deeper = { seeded_from: subj[0], subject_links: subj.length,
                              pages: s2.pages, added_chars: (s2.markdown || "").length };
                   break;
@@ -18373,7 +18385,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           ? true : (depositSaid ? null : false);
 
         let understanding = null, aiError = null, aiRaw = null, aiWhy = null;
-        let rosterNote = null, pageTypes = null;
+        let rosterNote = null, pageTypes = null, rosterSeen = null;
         let artists = [];
         try {
           const COMPARE = /\b(best|top\s*\d|vs\.?|versus|compared|guide to (choosing|finding)|near you)\b/i;
@@ -18418,6 +18430,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               const firstName = b.search(/^#{2,3}\s+[^\n]{1,24}$/m);
               return firstName > 0 ? b.slice(firstName) : b;
             }).join("\n\n---\n\n").slice(0, 45000);
+            // PROMISED AND OVERDUE: when a roster page is read and names nobody, the next step is
+            // not another rule - it is seeing what actually reached the model. Two empty runs were
+            // spent inferring; this ends that.
+            rosterSeen = { pages: uniqRoster.length, chars: rosterMd.length,
+              urls: uniqRoster.map(p => (p.url || "").replace(/^https?:\/\/[^/]+/, "")).slice(0, 8),
+              head: rosterMd.slice(0, 300) };
             const r = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
               max_tokens: 700,
               messages: [
@@ -18486,6 +18504,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // "artists: []" plus the reason is the CORRECT product answer, and it must not look like a
           // failure to whoever reads it next.
           roster_note: rosterNote || undefined,
+          roster_input: rosterSeen || undefined,
           page_types: pageTypes || undefined,
           ai_error: aiError || undefined,
           // aiWhy SURVIVES A SUCCESSFUL REPAIR on purpose - a recovered roster may be short at the

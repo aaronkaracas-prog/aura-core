@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.81.0-2026-08-16-a-mangled-address-is-worse-than-none";
+const BUILD = "aura-core-v5.82.0-2026-08-16-competitors-are-not-staff";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18268,8 +18268,22 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                   "You are reading one tattoo shop's own website, converted to markdown. Return ONLY JSON: " +
                   '{"artists":[],"styles":[],"walk_ins":null,"consultations":null,"deposit_required":null,' +
                   '"piercing":null,"booking_method":null,"notable":null}. ' +
-                  "artists: names of tattoo artists who work there - PEOPLE ONLY, never a street address, " +
-                  "a section heading or a button label. styles: tattoo styles they name. walk_ins, " +
+                  // ══ AN SEO PAGE MADE THE MODEL LIST COMPETITORS AS STAFF (fixed 2026-08-16) ═══
+                  // MEASURED at In Depth Tattoo Studio: their site carries a blog page about Fort
+                  // Worth tattoo studios, and the pass returned "the artists at Black Dagger Tattoo",
+                  // "the artists at Voodoo Tattoo" - RIVAL SHOPS - as this shop's roster, plus 605
+                  // "styles" including "communication", "expectations", "fort worth" and "texas".
+                  // Then it truncated on the volume and lost walk_ins, consultations and
+                  // deposit_required, which had all been answered on the previous run.
+                  // Counts are stated because an unbounded list invites one, and the exclusions are
+                  // named because the model had no way to know a blog page was not the staff page.
+                  "artists: AT MOST 20 names of tattoo artists who WORK AT THIS SHOP - PEOPLE ONLY, " +
+                  "never a street address, a section heading or a button label, and NEVER another " +
+                  "business or its staff. If the page lists other studios in the city, those are " +
+                  "COMPETITORS and belong in no field here. A phrase like 'the artists at X' is not " +
+                  "a name - leave it out. styles: AT MOST 15 tattoo styles they name, and a style is " +
+                  "a way of tattooing (traditional, fine line, realism) - not a city, a value, a " +
+                  "service word or anything you would find in a keyword list. walk_ins, " +
                   "consultations, deposit_required, piercing: true, false or null. booking_method: how a " +
                   "client actually books, in a few words. notable: one short line a stranger would only know " +
                   "from reading this site. USE null WHERE THE SITE DOES NOT SAY. Never invent a name." },
@@ -18391,11 +18405,24 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // everything industry-shaped lives in `understanding`, whose keys the industry decides.
         // The two columns stay in the table as dead weight rather than being dropped: a DROP COLUMN
         // on a live 33,694-row table to remove two nulls is a risk with no payoff.
+        // ══ THE PROMPT ASKS; THE CODE ENFORCES ═══════════════════════════════════════════════
+        // A cap stated in a prompt is a request. 605 styles came back from a model that had been
+        // told to name the styles they use, so the ceiling is applied here as well - the same rule
+        // this codebase keeps arriving at: what must ALWAYS happen happens in code, not by judgement.
         if (understanding && Array.isArray(understanding.styles)) {
-          understanding.styles = [...new Set(understanding.styles.map(x => String(x).toLowerCase().trim()).filter(Boolean))];
+          understanding.styles = [...new Set(understanding.styles
+            .map(x => String(x).toLowerCase().trim())
+            .filter(Boolean)
+            .filter(x => x.length > 2 && x.length < 45))].slice(0, 15);
         }
         if (understanding && Array.isArray(understanding.artists)) {
-          understanding.artists = [...new Set(understanding.artists.map(x => String(x).trim()).filter(Boolean))];
+          understanding.artists = [...new Set(understanding.artists
+            .map(x => String(x).trim())
+            .filter(Boolean)
+            // "the artists at X" is a competitor, not a person. Belt and braces against the SEO page.
+            .filter(x => !/^(the |our )?(artists?|team|staff|crew)\b/i.test(x))
+            .filter(x => !/\b(tattoo|studio|parlor|parlour|company|co\.|ink)\b/i.test(x) || x.split(/\s+/).length <= 2)
+            .filter(x => x.length > 1 && x.length < 40))].slice(0, 20);
         }
         // A FAILED SEMANTIC PASS MUST NOT ERASE A GOOD ONE. The contacts and the raw key are always
         // written - they came from regex and R2 and cannot fail halfway. `understanding` is only

@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.72.0-2026-08-16-what-they-book-with";
+const BUILD = "aura-core-v5.73.0-2026-08-16-their-images-not-googles";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18066,6 +18066,77 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const depositSaid = /\bdeposit(s)?\b/i.test(md);
         const walkInSaid = /\bwalk[-\s]?ins?\b/i.test(md);
 
+        // ══ THEIR IMAGES, NOT GOOGLE'S (2026-08-16) ═══════════════════════════════════════════
+        //
+        // Aaron, comparing the Open For Business page against the shop's real site: "these images
+        // are coming from Google... my product would be more powerful if I can link to the images
+        // already on the site we're crawling... almost a mirror of what they have but built inside
+        // my world." Google's photos are years old and generic; the shop's own site has this week's
+        // portfolio work, and on Shamrock's site every artist has their own page of it.
+        //
+        // THE URLS WERE ALREADY IN THE CRAWL AND WE WERE THROWING THEM AWAY. Cloudflare's docs say
+        // /crawl does "no image extraction" - true, it never fetches the bytes - but HTML-to-markdown
+        // preserves <img src> as ![alt](url). 85 image references came back from Bang Bang for free.
+        //
+        // POSITION IS CAPTURED, SHAPE IS NOT IMPOSED. Bang Bang happens to put one heading per
+        // artist; other shops use a flat gallery, or group by style, or a page per piece. So each
+        // image records the heading above it and the order it appeared, and the STRUCTURE EMERGES:
+        // if the headings are people you get a roster, if it is "Gallery" you get a gallery. No
+        // special-casing per site, which is what has to be true across 20,994 of them.
+        //
+        // ══ WHY FILENAME AND NOT REPETITION ═══════════════════════════════════════════════════
+        // The obvious rule - "an image on most pages is a logo" - was TESTED FIRST AND FAILED
+        // COMPLETELY. The crawl returns the same page more than once, so every image looked like it
+        // appeared on multiple pages: 42 flagged as chrome, 0 as work. Shipping that would have
+        // deleted every photograph on every shop. Pages are deduped by hash before the rule is
+        // allowed to speak, and it only speaks when there are 3+ genuinely distinct pages.
+        // What DOES separate them on real data is the filename: BANG_Logo_White_1000px.png and
+        // gq-magazine-logo_white.png against JAY232.jpg, pawel.jpg, DSC00456.JPG, IMG_4930.JPG -
+        // camera originals and artist names. That is the primary signal; repetition supports it.
+        //
+        // FACES ARE LABELLED, NEVER DROPPED. A headshot beside an artist's name is what makes the
+        // page feel like theirs, and a tattoo photograph IS a person's body - filtering people would
+        // delete the product. The heading above an image already says whether it is a person or a
+        // piece, so it is recorded as context rather than used as a filter.
+        //
+        // CAPTURED NOW, SERVED AT CLAIM. Nothing here fetches bytes: these are URLs on the shop's own
+        // CDN. A lead page HOTLINKS them - always current, nothing of theirs on our infrastructure,
+        // and if they object one row goes away and it is genuinely gone. Copying to R2 happens when
+        // they CLAIM, because that is when they have consented and when they need to crop, reorder
+        // and replace inside their own dashboard. The URL list is captured today so that copy never
+        // needs a re-crawl of a site that may have moved by then - Shamrock already proved it moves.
+        const CHROME = /logo|icon|sprite|favicon|badge|banner|arrow|button|placeholder|avatar-default|spacer/i;
+        const imgAll = [...md.matchAll(/!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g)];
+        // Section = the nearest heading above the image, so an artist's work stays attached to them.
+        const headAt = [];
+        { let cur = null;
+          for (const line of md.split("\n")) {
+            const h = line.match(/^#{1,3}\s+(.+)$/);
+            if (h) cur = h[1].replace(/[*_`\[\]]/g, "").trim().slice(0, 60);
+            headAt.push(cur); } }
+        const lineOf = (idx) => md.slice(0, idx).split("\n").length - 1;
+        const imgs = []; const seenUrl = new Set();
+        for (const m of imgAll) {
+          const url = m[2].replace(/[).,]+$/, "");
+          if (!/^https?:\/\//i.test(url)) continue;
+          if (seenUrl.has(url)) continue;
+          seenUrl.add(url);
+          const file = (url.split("/").pop() || "").split("?")[0];
+          const alt = (m[1] || "").trim();
+          imgs.push({ url, alt: alt.slice(0, 80), file: file.slice(0, 60),
+            section: headAt[lineOf(m.index)] || null,
+            chrome: CHROME.test(file) || CHROME.test(alt) });
+        }
+        const work = imgs.filter(i => !i.chrome);
+        // Cap PER SECTION, not per shop - one artist with 200 pieces must not crowd out the rest of
+        // the roster. Enough to build a real page; the full list is kept so more can be pulled later.
+        const bySection = {}; const kept = [];
+        for (const i of work) {
+          const k = i.section || "(unsectioned)";
+          bySection[k] = (bySection[k] || 0) + 1;
+          if (bySection[k] <= 12 && kept.length < 60) kept.push(i);
+        }
+
         // ── SEMANTIC PASS, ON NEURONS, ON A TRIMMED SLICE ─────────────────────────────────────
         // NOT the whole document. Bang Bang is 120,741 chars and the answer lives in the roster and
         // the FAQ. Sending 120k to a model to learn eight facts is the shape this codebase keeps
@@ -18177,6 +18248,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // are redirects to the page already fetched. The http://www. URL returned `pages: 6,
           // skipped: 6` and LOST the FAQ. What matters is whether the fields came back, so that is
           // what gets reported next to them.
+          images: { found: imgs.length, chrome_filtered: imgs.length - work.length,
+            kept: kept.length, sections: Object.keys(bySection).length,
+            sample: kept.slice(0, 5).map(i => ({ section: i.section, file: i.file, url: i.url })),
+            note: "URLs only - no bytes fetched. A lead page hotlinks these; R2 copies happen at claim." },
           booking: { platforms: booking, own_booking_urls: ownBooking, ics_feeds: icsFeeds,
             deposit_mentioned: depositSaid, walkins_mentioned: walkInSaid,
             verdict: booking.length ? "on " + booking.join(" + ")
@@ -18235,7 +18310,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 (understanding || booking.length || icsFeeds.length)
                   ? JSON.stringify({ ...(understanding || {}), booking_platforms: booking,
                       ics_feeds: icsFeeds, own_booking_urls: ownBooking,
-                      deposit_mentioned: depositSaid }).slice(0, 8000)
+                      deposit_mentioned: depositSaid,
+                      images: kept.map(i => ({ u: i.url, s: i.section, a: i.alt })) }).slice(0, 24000)
                   : null,
                 "crawl/" + row.id + "/" + new Date().toISOString().slice(0, 10) + ".md",
                 row.id).run();

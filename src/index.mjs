@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.68.0-2026-08-16-the-crawl-is-the-asset";
+const BUILD = "aura-core-v5.69.0-2026-08-16-a-null-names-its-reason";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18012,7 +18012,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // NOT the whole document. Bang Bang is 120,741 chars and the answer lives in the roster and
         // the FAQ. Sending 120k to a model to learn eight facts is the shape this codebase keeps
         // paying for. 12,000 chars is generous and bounded.
-        let understanding = null, aiError = null;
+        // ══ A NULL WITH NO REASON IS THE DEFECT, NOT THE NULL (2026-08-16) ═══════════════════
+        // MEASURED: v5.67.0 returned 31 artists and 19 styles on this exact site. v5.68.0 returned
+        // `understanding: null` on identical input with NO ai_error - because the only path that
+        // sets aiError is a THROW, and a model that answers with prose instead of JSON does not
+        // throw. The regex found no {...}, understanding stayed null, and the command reported
+        // ok:true. Same class as the prune counting the request instead of the result: silence
+        // where a reason belongs.
+        // Now every non-answer names itself and carries the first 300 characters of what actually
+        // came back, so the next person reads the cause instead of re-running it blind.
+        let understanding = null, aiError = null, aiRaw = null, aiWhy = null;
         try {
           const ai = env.AI;
           if (ai) {
@@ -18034,10 +18043,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 { role: "user", content: md.slice(0, 40000) }
               ] });
             const txt = String(r?.response || "").replace(/```json|```/g, "").trim();
-            const m = txt.match(/\{[\s\S]*\}/);
-            if (m) understanding = JSON.parse(m[0]);
-          }
-        } catch (e) { aiError = String(e?.message ?? e).slice(0, 140); }
+            aiRaw = txt.slice(0, 300);
+            if (!txt) { aiWhy = "model returned an empty response"; }
+            else {
+              const m = txt.match(/\{[\s\S]*\}/);
+              if (!m) { aiWhy = "no JSON object in the reply - the model answered in prose"; }
+              else {
+                try { understanding = JSON.parse(m[0]); }
+                catch (pe) { aiWhy = "JSON found but would not parse: " + String(pe?.message ?? pe).slice(0, 80); }
+              }
+            }
+          } else { aiWhy = "env.AI is not bound"; }
+        } catch (e) { aiError = String(e?.message ?? e).slice(0, 200); }
 
         const out = { cmd: "CG_ENRICH", payload: { ok: true, mode: ceDry ? "dry_run" : "written",
           business: row.name, where: [row.locality, row.region].filter(Boolean).join(", "),
@@ -18056,7 +18073,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           had_email_before: !!row.email, had_phone_before: !!row.phone,
           emails_found: ranked, best_email: bestEmail,
           phones_found: phones, socials_found: socials,
-          understanding, ai_error: aiError || undefined,
+          understanding,
+          ai_error: aiError || undefined,
+          ai_why: understanding ? undefined : (aiWhy || undefined),
+          ai_raw: understanding ? undefined : (aiRaw || undefined),
+          ai_input_chars: Math.min(md.length, 40000),
           note: "browser_seconds 0 means render:false did it - unbilled during the beta." } };
         if (ceDry) return out;
 
@@ -18077,9 +18098,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (understanding && Array.isArray(understanding.artists)) {
           understanding.artists = [...new Set(understanding.artists.map(x => String(x).trim()).filter(Boolean))];
         }
+        // A FAILED SEMANTIC PASS MUST NOT ERASE A GOOD ONE. The contacts and the raw key are always
+        // written - they came from regex and R2 and cannot fail halfway. `understanding` is only
+        // written when this run actually produced one, so a transient model failure on a re-crawl
+        // leaves last week's roster intact instead of blanking it. COALESCE does that in one column
+        // without a read-then-write race.
         await db.prepare(
           "UPDATE cg_business SET crawled_at = ?, email_found = ?, phone_found = ?, " +
-          "understanding = ?, raw_key = ? WHERE id = ?")
+          "understanding = COALESCE(?, understanding), raw_key = ? WHERE id = ?")
           // PIPE-JOINED, ALL OF THEM. Storing one and dropping four is throwing away the thing the
           // crawl was run to get. Same shape the Overture columns already use.
           .bind(new Date().toISOString(),

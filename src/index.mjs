@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.70.0-2026-08-16-response-is-not-always-a-string";
+const BUILD = "aura-core-v5.71.0-2026-08-16-the-cap-cut-the-answer-in-half";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18026,7 +18026,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const ai = env.AI;
           if (ai) {
             const r = await ai.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
-              max_tokens: 900,
+              // ══ 900 CUT THE ANSWER IN HALF (fixed 2026-08-16) ═══════════════════════════════
+              // ai_raw showed valid JSON - `{"artists":["BANG BANG","JAY SHIN","ZEE",...` - all 31
+              // names, correct, and no closing brace. The model was never wrong; the cap stopped it
+              // mid-array and the greedy regex needed a `}` that truncation guarantees is missing.
+              // 31 artists plus 19 styles plus the rest is well past 900 tokens. 3,000 fits a roster
+              // this size with room, and the repair below covers whatever still overruns.
+              max_tokens: 3000,
               messages: [
                 { role: "system", content:
                   "You are reading one tattoo shop's own website, converted to markdown. Return ONLY JSON: " +
@@ -18060,11 +18066,39 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               aiRaw = txt.slice(0, 300);
               if (!txt) { aiWhy = "model returned an empty response"; }
               else {
-                const m = txt.match(/\{[\s\S]*\}/);
-                if (!m) { aiWhy = "no JSON object in the reply - the model answered in prose"; }
+                // A TRUNCATED REPLY HAS NO CLOSING BRACE, so match from the first `{` to the end
+                // rather than requiring a `}` the model never got to send.
+                const i0 = txt.indexOf("{");
+                if (i0 < 0) { aiWhy = "no JSON object in the reply - the model answered in prose"; }
                 else {
-                  try { understanding = JSON.parse(m[0]); }
-                  catch (pe) { aiWhy = "JSON found but would not parse: " + String(pe?.message ?? pe).slice(0, 80); }
+                  const body = txt.slice(i0);
+                  try { understanding = JSON.parse(body); }
+                  catch {
+                    // ══ THE REPAIR ALREADY EXISTED IN THIS FILE ═══════════════════════════════
+                    // PTA_LEARN hit the same truncation and solved it: count what is open, close it
+                    // innermost first, and SAY SO. Structure only - no content is invented, so a
+                    // cut-off roster comes back short rather than made up. Copied rather than
+                    // re-derived, which is the rule this codebase keeps having to relearn.
+                    try {
+                      let fixed = body.replace(/,\s*$/, "");
+                      const opens = []; let inStr = false, esc = false;
+                      for (const ch of fixed) {
+                        if (esc) { esc = false; continue; }
+                        if (ch === "\\") { esc = true; continue; }
+                        if (ch === '"') { inStr = !inStr; continue; }
+                        if (inStr) continue;
+                        if (ch === "{" || ch === "[") opens.push(ch);
+                        else if (ch === "}" || ch === "]") opens.pop();
+                      }
+                      if (inStr) fixed += '"';
+                      while (opens.length) fixed += opens.pop() === "{" ? "}" : "]";
+                      understanding = JSON.parse(fixed);
+                      aiWhy = "reply was truncated mid-object and the brackets were closed to recover it - " +
+                              "structure only, no content invented. Entries at the very end may be missing.";
+                    } catch (pe) {
+                      aiWhy = "JSON found but would not parse even after repair: " + String(pe?.message ?? pe).slice(0, 80);
+                    }
+                  }
                 }
               }
             } else {
@@ -18094,7 +18128,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           phones_found: phones, socials_found: socials,
           understanding,
           ai_error: aiError || undefined,
-          ai_why: understanding ? undefined : (aiWhy || undefined),
+          // aiWhy SURVIVES A SUCCESSFUL REPAIR on purpose - a recovered roster may be short at the
+          // end, and the reader should know that rather than trust a truncated list as complete.
+          ai_why: aiWhy || undefined,
           ai_raw: understanding ? undefined : (aiRaw || undefined),
           ai_input_chars: Math.min(md.length, 40000),
           note: "browser_seconds 0 means render:false did it - unbilled during the beta." } };

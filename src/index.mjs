@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.74.0-2026-08-16-the-link-names-the-subject";
+const BUILD = "aura-core-v5.75.0-2026-08-16-the-lead-page";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -45673,6 +45673,60 @@ export class PublicEntry extends WorkerEntrypoint {
     try {
       const r = await processCommand("PLACE " + String(id || "").trim(), this.env, false);
       return (r && r.payload) ? r.payload : r;
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
+  // ══ THE LEAD PAGE — WHAT WE BUILT FOR THEM, BEFORE WE ASK FOR ANYTHING (2026-08-16) ═══════
+  //
+  // openforbusiness.world/lead/<cg_id>. This is the page the outbound email points at: "we already
+  // assembled your presence and understand your shop - here is what we built."
+  //
+  // IT RENDERS FROM `cg_business`, NOT FROM A PTA, AND THAT IS THE POINT. All 33,694 rows carry
+  // `pta: NULL` deliberately - a record is not an entity, and minting 33,694 PTAs so a page could
+  // render would break the rule that a PTA comes from an ACT. The lead page therefore mints nothing,
+  // records nothing about the visitor, and needs no consent: it is public data arranged usefully.
+  // The PTA arrives when they TAP, which is the existing REACH_OUT path.
+  //
+  // IMAGES ARE HOTLINKED FROM THEIR OWN CDN. Nothing of theirs is stored or served by us at this
+  // stage - if they object, one row goes away and it is genuinely gone. Copies to R2 happen at
+  // CLAIM, when they have consented and need to crop and reorder inside their own dashboard.
+  async lead(cgId) {
+    try {
+      const db = this.env.AURA_MEMORY;
+      const key = String(cgId || "").trim();
+      const row = await db.prepare(
+        "SELECT * FROM cg_business WHERE id = ? OR website LIKE ? LIMIT 1")
+        .bind(key, "%" + key + "%").first();
+      if (!row) return { ok: false, error: "NOT_FOUND" };
+      let u = {}; try { u = row.understanding ? JSON.parse(row.understanding) : {}; } catch {}
+      // Images grouped by SUBJECT, so an artist's work stays with their name - the whole reason the
+      // wrapping link is read instead of the nearest heading.
+      const groups = {};
+      for (const im of (u.images || [])) {
+        const k = (im.s || "gallery").toString();
+        (groups[k] = groups[k] || []).push(im.u);
+      }
+      return { ok: true,
+        id: row.id, name: row.name, industry: row.industry,
+        where: [row.locality, row.region].filter(Boolean).join(", "),
+        street: row.street, postcode: row.postcode,
+        // BOTH sources, never merged into one field: `email` is what the open dataset said,
+        // `email_found` is what their own site says. A disagreement is a fact worth seeing.
+        emails: String(row.email_found || row.email || "").split("|").filter(Boolean),
+        phones: String(row.phone_found || row.phone || "").split("|").filter(Boolean),
+        socials: String(row.social || "").split("|").filter(Boolean),
+        website: String(row.website || "").split("|")[0] || null,
+        artists: u.artists || [], styles: u.styles || [],
+        walk_ins: u.walk_ins ?? null, consultations: u.consultations ?? null,
+        deposit_required: u.deposit_required ?? null, booking_method: u.booking_method || null,
+        booking_platforms: u.booking_platforms || [], own_booking_urls: u.own_booking_urls || [],
+        notable: u.notable || null,
+        image_groups: Object.entries(groups).map(([subject, urls]) => ({ subject, urls: urls.slice(0, 12) })),
+        image_count: (u.images || []).length,
+        crawled_at: row.crawled_at, source: row.src, license: row.license,
+        claimed: !!row.claimed_at, pta: row.pta || null };
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
     }

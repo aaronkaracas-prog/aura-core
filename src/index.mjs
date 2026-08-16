@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.75.0-2026-08-16-the-lead-page";
+const BUILD = "aura-core-v5.76.0-2026-08-16-walk-through-the-doors-you-found";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -17950,7 +17950,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
         // Reuse SITE_READ rather than a second crawl path - one door, one set of rules about
         // robots.txt, crawlPurposes and render:false.
-        const started = await processCommand("SITE_READ " + site, env, true);
+        // 45, not 12: a shop with 31 artists needs the homepage plus a page each, and the pages
+        // are cheap - render:false runs on Workers and is unbilled during the beta. The cost of a
+        // higher limit is seconds, and the cost of a lower one is a portfolio nobody sees.
+        const started = await processCommand("SITE_READ " + site + " LIMIT 45", env, true);
         const sp = (started && started.payload) ? started.payload : started;
         if (!sp?.ok || !sp.id) return { cmd: "CG_ENRICH", payload: { ok: false, error: "CRAWL_NOT_STARTED",
           detail: sp?.error || null, business: row.name } };
@@ -18200,7 +18203,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 // 12,000 was too small: Bang Bang has ~30 artists across 78,927 chars and the pass
                 // returned 18 - it ran out of document, not out of ability. It DID find Keith "Bang
                 // Bang" McCurdy, who is not a page heading anywhere, which is why this half is not regex.
-                { role: "user", content: md.slice(0, 40000) }
+                { role: "user", content: md.slice(0, 40000) }   // model context, not the image scan
               ] });
             // ══ `response` IS NOT ALWAYS A STRING (found 2026-08-16, by the diagnostic) ═════════
             // The reason field said "the model answered in prose" and ai_raw said "[object Object]".
@@ -18386,6 +18389,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         what_to_do: "Needs a Cloudflare API token with Browser Rendering - Edit. Store it at secret:cf_api_token." } };
       let srRaw = (rest || "").trim();
       const srRender = /(^|\s)RENDER(\s|$)/i.test(srRaw);
+      // ══ 12 PAGES COVERS A SMALL SHOP AND MISSES THE PORTFOLIO (2026-08-16) ══════════════════
+      // MEASURED on Bang Bang: the homepage carries ONE PHOTO PER ARTIST, each wrapped in a link to
+      // that artist's OWN page - /jay-shin, /zee, /pawel - and the tattoos live on those pages. At
+      // limit 12 the crawl fetched the homepage and stopped, so the lead page showed 31 PORTRAITS
+      // and not one piece of work. The images were correct and the roster complete; the crawl simply
+      // never walked through the doors it had already found.
+      // Settable now, defaulting to the old 12 so nothing that called this changes behaviour.
+      // CG_ENRICH asks for more because a roster shop is exactly the case 12 was wrong for.
+      const srLimitM = srRaw.match(/(^|\s)LIMIT\s+(\d{1,3})(\s|$)/i);
+      const srLimit = srLimitM ? Math.min(100, Math.max(1, parseInt(srLimitM[2], 10))) : 12;
       srRaw = srRaw.replace(/(^|\s)RENDER(\s|$)/i, " ").trim();
       const base = "https://api.cloudflare.com/client/v4/accounts/" + srAcct + "/browser-rendering/crawl";
       try {
@@ -18404,7 +18417,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           return { cmd: "SITE_READ", payload: { ok: true, status: res.status || "unknown", id: jid,
             pages: recs.length, chars: doc.length, browser_seconds: res.browserSecondsUsed ?? 0,
             skipped: (res.records || []).filter(x => x && x.status !== "completed").length,
-            markdown: doc.slice(0, 60000),
+            // ══ 60,000 WAS SIZED FOR A 12-PAGE CRAWL (raised 2026-08-16) ═══════════════════════
+            // Bang Bang alone came back at 120,741 chars on a good run and was cut by half. With
+            // the page limit now settable up to 100, a roster shop assembles far more than that,
+            // and everything past the cap is invisible to the image scan - which is exactly where
+            // the portfolios live, on the artist pages that sort last.
+            // 400,000 is generous and still bounded; this crosses an RPC boundary inside Cloudflare,
+            // not the open internet. `truncated` says plainly whether anything was lost, because a
+            // silent cut is what made the first version look like the artists had no work.
+            markdown: doc.slice(0, 400000),
+            full_chars: doc.length,
+            truncated: doc.length > 400000,
             note: "One markdown document assembled from every page that returned content." } };
         }
         if (!/^https?:\/\//i.test(srRaw)) return { cmd: "SITE_READ", payload: { ok: false,
@@ -18413,7 +18436,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           headers: { Authorization: "Bearer " + srTok, "Content-Type": "application/json" },
           body: JSON.stringify({
             url: srRaw,
-            limit: 12,                       // a small business is covered well under this
+            limit: srLimit,
             depth: 3,
             formats: ["markdown"],
             render: srRender,                // false unless asked - free during beta, no browser time
@@ -18427,7 +18450,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           hint: "A 400 with 'Crawl purpose(s) completely disallowed' means the site's robots.txt refuses " +
             "even search and ai-input. That is their answer and it is respected." } };
         return { cmd: "SITE_READ", payload: { ok: true, started: true, id: d.result, url: srRaw,
-          render: srRender, limit: 12,
+          render: srRender, limit: srLimit,
           note: "Crawl started. It discovers the sitemap and follows links, returns markdown per page, " +
             "and respects robots.txt and crawl-delay." + (srRender ? " RENDER on - this uses browser time." : " render:false - runs on Workers, not billed during beta."),
           watch: "SITE_READ STATUS " + d.result } };

@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.97.0-2026-08-16-the-work-outranks-the-merch";
+const BUILD = "aura-core-v5.99.0-2026-08-16-rank-after-the-roster";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18400,23 +18400,43 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // image whose subject IS an artist goes first. That needs no new rule about merch or press:
         // the work wins because it belongs to a person who works there, and everything else fills
         // whatever is left.
-        const artistKey = new Set(artistsForRank.map(a => a.toLowerCase().replace(/[^a-z0-9]/g, "")));
-        const isArtistWork = (i) => {
+        // ══ RANKING CANNOT RUN BEFORE THE ROSTER EXISTS (fixed 2026-08-16) ═══════════════════
+        // `Cannot access 'artistsForRank' before initialization` - the image sort was placed here,
+        // ~100 lines above the block that reads the roster from the site's links. A `let` in the
+        // temporal dead zone, invisible to node --check because it is an ORDERING error, not syntax.
+        // The images are collected here and RANKED LATER, once the roster is known. Same lesson as
+        // the page pool: a thing that depends on later work has to happen after it.
+        const isArtistWork = (i, key) => {
           const k = String(i.subject || "").toLowerCase().replace(/^artist[\s-]*/, "").replace(/[^a-z0-9]/g, "");
-          return k && artistKey.has(k);
+          return !!(k && key.has(k));
         };
         // Merch, press and product sections are pushed BEHIND everything else rather than dropped -
         // a shop that sells shirts may still want them, but never ahead of the tattoos.
         const LOW = /apparel|drop\s*\d|merch|shop|store|book|press|magazine|vogue|gq|collab/i;
+        // Grok's tier 2, which the first pass missed: an image sitting on an ARTIST PAGE or under a
+        // portfolio heading is still their work even when it attributes by heading rather than by
+        // link. ZEE's gallery is exactly this - the lightbox href is the image file, so there is no
+        // per-person link to read, and those tattoos would otherwise queue behind the apparel drop.
+        const WORKISH = /portfolio|gallery|tattoo|work|flash|healed|recent/i;
         // `rank` is already the email ranker in this scope - node --check caught the collision.
-        const imgRank = (i) => isArtistWork(i) ? 0 : (LOW.test(i.subject || "") ? 2 : 1);
-        work.sort((a, b) => imgRank(a) - imgRank(b));
-        const bySection = {}; const kept = [];
-        for (const i of work) {
-          const k = i.subject || "(unsectioned)";
-          bySection[k] = (bySection[k] || 0) + 1;
-          if (bySection[k] <= 12 && kept.length < 60) kept.push(i);
-        }
+        const imgRank = (i, key) =>
+          isArtistWork(i, key) ? 0
+          : LOW.test(i.subject || "") ? 3
+          : WORKISH.test(i.subject || "") ? 1
+          : 2;
+        // Filled after the roster is read - see `rankImages()` below.
+        let bySection = {}, kept = [];
+        const rankImages = (roster) => {
+          const key = new Set((roster || []).map(a => a.toLowerCase().replace(/[^a-z0-9]/g, "")));
+          work.sort((a, b) => imgRank(a, key) - imgRank(b, key));
+          bySection = {}; kept = [];
+          for (const i of work) {
+            const k = i.subject || "(unsectioned)";
+            bySection[k] = (bySection[k] || 0) + 1;
+            if (bySection[k] <= 12 && kept.length < 60) kept.push(i);
+          }
+        };
+        rankImages([]);   // provisional, so anything reading `kept` early still sees images
 
         // ── SEMANTIC PASS, ON NEURONS, ON A TRIMMED SLICE ─────────────────────────────────────
         // NOT the whole document. Bang Bang is 120,741 chars and the answer lives in the roster and
@@ -18548,7 +18568,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // Title-case the slug the site gave us: "jay shin" -> "Jay Shin".
             .map(x => x.replace(/\b[a-z]/g, c => c.toUpperCase())))];
 
+          // NOW the roster is known, so the images can be ordered by it.
           artistsForRank = fromLinks.slice();
+          rankImages(fromLinks);
           const rosterPages = pool.filter(p => p._roster);
           if (fromLinks.length >= 3) {
             artists = fromLinks.slice(0, 40);

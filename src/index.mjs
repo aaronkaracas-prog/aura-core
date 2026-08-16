@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.83.0-2026-08-16-only-read-what-can-answer";
+const BUILD = "aura-core-v5.84.0-2026-08-16-defend-the-field-not-the-page";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18004,10 +18004,25 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // socials, artists, their work, styles, booking, deposit, walk-ins, consultations, piercing,
         // hours. So the pages that can answer it are finite too. Everything else is not "extra data",
         // it is noise that outvotes the signal.
-        // `(\/|$|\?)` missed /privacy-policy because the keyword is followed by a hyphen, not a
-        // boundary. Matching the SEGMENT START instead catches privacy-policy, terms-of-service,
-        // blog-posts and every other hyphenated variant a site invents.
-        const DENY = /\/(blog|news|article|post|press|privacy|terms|tos|legal|accessibility|cookie|cart|checkout|shop|store|merch|product|careers|jobs|apply|sitemap|search|tag|category|author|feed|rss)([\/\-_]|$|\?)/i;
+        // ══ DEFEND THE FIELD, NOT THE PAGE (corrected 2026-08-16) ═════════════════════════════
+        //
+        // The first version of this denied by URL and it worked on ONE site because that site named
+        // its pages /blog-post3. The next one uses /articles/, /2026/03/title or /p/12345 and the
+        // same list reads it and harvests competitors again. Aaron: "we still got to scroll the site
+        // and only grab what we want to grab." Judging a page by its path is guessing at a naming
+        // convention; the field is what we actually care about.
+        //
+        // AND IT COST REAL ACCURACY. Denying ten of twelve pages took the document from 67,765 chars
+        // to 8,967 and the artist changed from "Kelly" to "Craig" between two reads of the SAME shop.
+        // One of those is wrong and the extractor cannot say which - that is a worse failure than the
+        // noise it was meant to remove.
+        //
+        // So the list keeps ONLY what can never hold a field we want - a cart, a privacy policy, a
+        // terms page. Editorial pages are READ again, and the defence moves into the question:
+        // artists are people who tattoo AT THIS SHOP, and text comparing local studios names none.
+        // Contacts, socials, booking and images were always field-driven and were right on every
+        // site; artists was the one field asked loosely enough to be fooled.
+        const DENY = /\/(privacy|terms|tos|legal|accessibility|cookie|cart|checkout|basket|sitemap|feed|rss)([\/\-_]|$|\?)/i;
         const pageBlocks = md.split(/\n\n---\n\n/).map(b => {
           const m = b.match(/^<!--PAGE\s+(\S*)\s*-->/);
           return { url: m ? m[1] : "", body: b.replace(/^<!--PAGE[^>]*-->\n?/, "") };
@@ -18314,11 +18329,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                   // deposit_required, which had all been answered on the previous run.
                   // Counts are stated because an unbounded list invites one, and the exclusions are
                   // named because the model had no way to know a blog page was not the staff page.
-                  "artists: AT MOST 20 names of tattoo artists who WORK AT THIS SHOP - PEOPLE ONLY, " +
-                  "never a street address, a section heading or a button label, and NEVER another " +
-                  "business or its staff. If the page lists other studios in the city, those are " +
-                  "COMPETITORS and belong in no field here. A phrase like 'the artists at X' is not " +
-                  "a name - leave it out. styles: AT MOST 15 tattoo styles they name, and a style is " +
+                  "artists: AT MOST 20 names of people who TATTOO AT THIS SHOP. The test is simple - " +
+                  "would this person be standing in this building tomorrow. A name only counts if the " +
+                  "text presents them as part of THIS business: on a team or artist page, introduced " +
+                  "as 'our artist', bio'd, or credited with work here. " +
+                  "SOME OF WHAT YOU ARE READING IS NOT ABOUT THIS SHOP. Sites carry articles " +
+                  "comparing local studios, lists of nearby shops, guest-spot announcements and " +
+                  "customer stories. Any name from that kind of text is a COMPETITOR OR A STRANGER " +
+                  "and belongs nowhere in your answer. If a passage is comparing or listing " +
+                  "businesses rather than introducing staff, it names no artists at all - return " +
+                  "nothing from it rather than guessing. 'The artists at X', a shop name, or a name " +
+                  "you only saw once in a sentence about another studio: all excluded. " +
+                  "AN EMPTY LIST IS A CORRECT ANSWER. Returning a competitor is not. " +
+                  "styles: AT MOST 15 tattoo styles they name, and a style is " +
                   "a way of tattooing (traditional, fine line, realism) - not a city, a value, a " +
                   "service word or anything you would find in a keyword list. walk_ins, " +
                   "consultations, deposit_required, piercing: true, false or null. booking_method: how a " +

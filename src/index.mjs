@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.76.0-2026-08-16-walk-through-the-doors-you-found";
+const BUILD = "aura-core-v5.78.0-2026-08-16-a-parsed-flag-must-be-stripped";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -17955,8 +17955,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // higher limit is seconds, and the cost of a lower one is a portfolio nobody sees.
         const started = await processCommand("SITE_READ " + site + " LIMIT 45", env, true);
         const sp = (started && started.payload) ? started.payload : started;
+        // SITE_READ returns the API's own `errors` array as `detail`; forwarding only `error` threw
+        // away the one thing that says WHY. Same defect as the null-with-no-reason two versions ago:
+        // the reason existed upstream and this dropped it.
         if (!sp?.ok || !sp.id) return { cmd: "CG_ENRICH", payload: { ok: false, error: "CRAWL_NOT_STARTED",
-          detail: sp?.error || null, business: row.name } };
+          reason: sp?.error || null,
+          api_said: sp?.detail ? JSON.stringify(sp.detail).slice(0, 400) : null,
+          asked_for: { url: site, limit: 45 },
+          business: row.name } };
 
         // Poll. Bang Bang took ~20s for 12 pages, In Depth ~10s. Bounded so this can never hang a turn.
         let res = null;
@@ -18400,6 +18406,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const srLimitM = srRaw.match(/(^|\s)LIMIT\s+(\d{1,3})(\s|$)/i);
       const srLimit = srLimitM ? Math.min(100, Math.max(1, parseInt(srLimitM[2], 10))) : 12;
       srRaw = srRaw.replace(/(^|\s)RENDER(\s|$)/i, " ").trim();
+      // ══ A FLAG THAT IS PARSED MUST ALSO BE REMOVED (fixed 2026-08-16) ══════════════════════
+      // `LIMIT 45` was read into srLimit and LEFT IN THE STRING, so the URL sent to Cloudflare was
+      // "https://bangbangforever.com/ LIMIT 45" and the API refused it. The reply even printed the
+      // malformed URL back - `"url": "https://bangbangforever.com/ LIMIT 45"` - and it took reading
+      // that line rather than theorising about page caps.
+      // RENDER on the line above has always been stripped here; adding a second flag without the
+      // matching strip is the whole bug. Any flag added later goes in this block too.
+      srRaw = srRaw.replace(/(^|\s)LIMIT\s+\d{1,3}(\s|$)/i, " ").trim();
       const base = "https://api.cloudflare.com/client/v4/accounts/" + srAcct + "/browser-rendering/crawl";
       try {
         if (/^STATUS\s+/i.test(srRaw)) {

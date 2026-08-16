@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.73.0-2026-08-16-their-images-not-googles";
+const BUILD = "aura-core-v5.74.0-2026-08-16-the-link-names-the-subject";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18105,7 +18105,28 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // they CLAIM, because that is when they have consented and when they need to crop, reorder
         // and replace inside their own dashboard. The URL list is captured today so that copy never
         // needs a re-crawl of a site that may have moved by then - Shamrock already proved it moves.
+        // ══ THE LINK NAMES THE SUBJECT; THE HEADING LIES (fixed 2026-08-16) ═══════════════════
+        // First version used "nearest heading ABOVE the image" and was WRONG ON EVERY ROW, because
+        // this layout puts the photo first and the name under it:
+        //     [![](.../JAY232.jpg)](https://www.bangbangforever.com/jay-shin)
+        //     [VIEW GALLERY](https://www.bangbangforever.com/jay-shin)
+        //     ## JAY SHIN
+        // So `pawel.jpg` filed under ZEE, Jay's photo under BANG BANG - every artist's work
+        // attributed to the person above them. On a product whose whole point is "we already know
+        // your shop", crediting the wrong artist is worse than having no images.
+        // 77 of 85 images here are WRAPPED IN A LINK to the subject's own page - /jay-shin, /zee,
+        // /pawel - and that href was correct on every single one. **The site says who it belongs to;
+        // reading it beats inferring from layout.** Heading survives only as a fallback for images
+        // that are not wrapped, and both are recorded so a wrong guess is visible rather than silent.
         const CHROME = /logo|icon|sprite|favicon|badge|banner|arrow|button|placeholder|avatar-default|spacer/i;
+        const linkedImg = new Map();
+        for (const m of md.matchAll(/\[!\[([^\]]*)\]\(([^)\s]+)[^)]*\)\]\(([^)\s]+)\)/g)) {
+          const u = m[2].replace(/[).,]+$/, "");
+          const seg = (m[3].split("?")[0].split("#")[0].split("/").filter(Boolean).pop() || "");
+          // A slug is only a subject if it looks like one - not "", not the bare domain.
+          if (seg && !/^(https?:|www\.)/i.test(seg) && seg.length > 1 && !seg.includes("."))
+            linkedImg.set(u, seg.replace(/[-_]+/g, " ").trim().slice(0, 60));
+        }
         const imgAll = [...md.matchAll(/!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g)];
         // Section = the nearest heading above the image, so an artist's work stays attached to them.
         const headAt = [];
@@ -18123,8 +18144,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           seenUrl.add(url);
           const file = (url.split("/").pop() || "").split("?")[0];
           const alt = (m[1] || "").trim();
+          const linked = linkedImg.get(url) || null;
+          const heading = headAt[lineOf(m.index)] || null;
           imgs.push({ url, alt: alt.slice(0, 80), file: file.slice(0, 60),
-            section: headAt[lineOf(m.index)] || null,
+            // `subject` is what the page says this image is OF. `heading` is kept beside it so a
+            // disagreement is inspectable instead of being quietly resolved one way.
+            subject: linked || heading, from: linked ? "link" : "heading", heading,
             chrome: CHROME.test(file) || CHROME.test(alt) });
         }
         const work = imgs.filter(i => !i.chrome);
@@ -18132,7 +18157,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // the roster. Enough to build a real page; the full list is kept so more can be pulled later.
         const bySection = {}; const kept = [];
         for (const i of work) {
-          const k = i.section || "(unsectioned)";
+          const k = i.subject || "(unsectioned)";
           bySection[k] = (bySection[k] || 0) + 1;
           if (bySection[k] <= 12 && kept.length < 60) kept.push(i);
         }
@@ -18250,7 +18275,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // what gets reported next to them.
           images: { found: imgs.length, chrome_filtered: imgs.length - work.length,
             kept: kept.length, sections: Object.keys(bySection).length,
-            sample: kept.slice(0, 5).map(i => ({ section: i.section, file: i.file, url: i.url })),
+            by_link: kept.filter(i => i.from === "link").length,
+            by_heading: kept.filter(i => i.from === "heading").length,
+            sample: kept.slice(0, 6).map(i => ({ subject: i.subject, from: i.from,
+              heading_said: i.heading, file: i.file, url: i.url })),
             note: "URLs only - no bytes fetched. A lead page hotlinks these; R2 copies happen at claim." },
           booking: { platforms: booking, own_booking_urls: ownBooking, ics_feeds: icsFeeds,
             deposit_mentioned: depositSaid, walkins_mentioned: walkInSaid,
@@ -18311,7 +18339,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                   ? JSON.stringify({ ...(understanding || {}), booking_platforms: booking,
                       ics_feeds: icsFeeds, own_booking_urls: ownBooking,
                       deposit_mentioned: depositSaid,
-                      images: kept.map(i => ({ u: i.url, s: i.section, a: i.alt })) }).slice(0, 24000)
+                      images: kept.map(i => ({ u: i.url, s: i.subject, src: i.from, a: i.alt })) }).slice(0, 24000)
                   : null,
                 "crawl/" + row.id + "/" + new Date().toISOString().slice(0, 10) + ".md",
                 row.id).run();

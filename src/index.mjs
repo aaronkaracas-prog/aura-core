@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.85.0-2026-08-16-three-questions-not-one";
+const BUILD = "aura-core-v5.86.0-2026-08-16-five-fields-one-call";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18303,133 +18303,120 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // where a reason belongs.
         // Now every non-answer names itself and carries the first 300 characters of what actually
         // came back, so the next person reads the cause instead of re-running it blind.
-        // ══ THREE QUESTIONS, NOT ONE — AND A ROSTER ONLY FROM A ROSTER PAGE ══════════════════
+        // ══ FIVE FIELDS. ONE MODEL CALL. (2026-08-16, agreed with Grok) ══════════════════════
         //
-        // FIVE RUNS OF THE SAME SHOP GAVE FIVE ANSWERS: ["Kelly"] · Kelly + ten competitor shops
-        // with 605 "styles" · ["Voodoo Tattoo","The Inked Rose"] · ["Craig"] · [] with every other
-        // field nulled too. Grok then LOOKED AT THE SITE and settled it: In Depth publishes no
-        // roster at all, and reviews name Rar, Emerson and Malachi. **Kelly and Craig were both
-        // invented** from SEO text comparing Fort Worth studios. Empty was always the right answer.
+        // Aaron: "there's only like five fields... I could look at 4 pages, that's all the
+        // information I want. Why am I the only one that sees the simplicity of this?" He was right
+        // and the whole day's churn came from one habit: feeding 67,000 characters of shop pages AND
+        // twelve blog posts to a model, then writing rules to clean up what came back.
         //
-        // TWO STRUCTURAL FAULTS CAUSED ALL FIVE:
-        //   1. ONE PROMPT FOR EVERY FIELD. The hedge written to protect `artists` silenced `styles`,
-        //      `walk_ins` and `booking_method` as well - fields with nothing to do with the
-        //      ambiguity. Grok: "a warning aimed at artists must not be allowed to null the rest."
-        //   2. THE WHOLE SITE AS ONE BLOB. Competitor names sit in the same document as the shop's
-        //      own copy, so no instruction can separate them - by the time the model reads, the
-        //      contamination is already in the context.
+        // THE FIVE FIELDS: contact · artists · their work · how they book · what they do.
+        // FOUR OF THEM NEVER NEEDED A MODEL, and were never once wrong:
+        //   contact + socials  regex, correct on every site tested
+        //   booking            domain match against known platforms + their own book link. Named
+        //                      as a PLATFORM because that is what the OS has to merge with later -
+        //                      "they take bookings" is useless, "they are on Square" is a connector.
+        //   images             parsed and attributed by the site's own links. 40/40 on Bang Bang.
+        //   styles             A CLOSED LIST. There are about forty tattoo styles in the world. Ask
+        //                      a model and you get 605 including "communication", "fort worth" and
+        //                      "texas"; match the words and that is impossible.
         //
-        // SO: THREE CALLS ON DIFFERENT INPUTS.
-        //   A · facts    - booking, walk-ins, consultations, deposit, piercing, notable.
-        //                  Tolerant, whole document, cannot be poisoned by a name.
-        //   B · roster   - artists. ONLY from pages CONTENT-TYPED as a roster. No roster page, no
-        //                  call, and `artists: []` with a reason rather than a guess.
-        //   C · styles   - tolerant, bounded, whole document.
+        // ALSO DELETED, not fixed: walk_ins, consultations, deposit_required and piercing were model
+        // fields and are plain word matches on the shop's own copy. And `notable` is the field that
+        // returned "traditional tattoos in ARLINGTON, Texas" for a FORT WORTH shop - lifted from a
+        // blog post. It was decoration and it was the last place contamination could land, so it is
+        // gone rather than guarded.
         //
-        // TYPED BY CONTENT, NOT BY PATH. A URL denylist worked on one site's /blog-post3 naming and
-        // would miss /articles/, /2026/03/slug and /p/12345 on the next. What travels is the page's
-        // own shape: a roster page introduces PEOPLE ("our artists", "meet the team", several short
-        // person-shaped headings); a comparison page ranks BUSINESSES ("best studios in", "top 10").
+        // ONE JUDGEMENT REMAINS: who works here. Asked only of pages SHAPED like a roster - short
+        // person-shaped headings, a photo or link each. Bang Bang has one and gave 31 correct names;
+        // In Depth has none and the true answer is empty. Grok confirmed by reading the actual site:
+        // it publishes no roster, and "Kelly" and "Craig" were both invented.
+        //
+        // A blog page now contributes NOTHING without anyone excluding it: no phone, no booking
+        // platform, no closed-list style, no roster shape. The denylist stopped being load-bearing.
+        const STYLE_LIST = [
+          "traditional", "neo-traditional", "neo traditional", "american traditional", "japanese",
+          "irezumi", "blackwork", "black and grey", "black & grey", "black and gray", "fine line",
+          "single needle", "realism", "photorealism", "hyperrealism", "portrait", "watercolor",
+          "watercolour", "tribal", "polynesian", "maori", "geometric", "dotwork", "stippling",
+          "script", "lettering", "calligraphy", "cover-up", "cover up", "new school", "old school",
+          "illustrative", "ornamental", "biomechanical", "surrealism", "abstract", "minimalist",
+          "minimalism", "micro", "sketch", "trash polka", "chicano", "sacred geometry", "mandala",
+          "floral", "botanical", "anime", "cartoon", "horror", "nature", "animal", "flash",
+          "custom", "freehand", "white ink", "uv", "scar cover", "restoration", "touch-up"
+        ];
+        const styleHits = [...new Set(STYLE_LIST.filter(st => {
+          // Word-bounded so "custom" does not match "customer" and "micro" does not match "microblading".
+          const re = new RegExp("(^|[^a-z])" + st.replace(/[-\s]/g, "[-\\s]") + "([^a-z]|$)", "i");
+          return re.test(md);
+        }))].slice(0, 15);
+
+        // The four booleans, from their own words. No model, no invention, no contamination.
+        const walkIns = /\bwalk[-\s]?ins?\s+(welcome|accepted|available)|we\s+(take|accept|welcome)\s+walk[-\s]?ins?/i.test(md)
+          ? true : (walkInSaid ? null : false);
+        const consults = /\bconsultations?\b/i.test(md) ? true : null;
+        const piercing = /\bpiercing/i.test(md) ? true : null;
+        const depositReq = /\bdeposit\s+(is\s+)?(required|due|needed)|require\s+a\s+deposit|non[-\s]?refundable\s+deposit/i.test(md)
+          ? true : (depositSaid ? null : false);
+
         let understanding = null, aiError = null, aiRaw = null, aiWhy = null;
         let rosterNote = null, pageTypes = null;
+        let artists = [];
         try {
-          const ai = env.AI;
-          if (!ai) { aiWhy = "env.AI is not bound"; }
-          else {
-            const ask = async (sys, user, maxTok) => {
-              const r = await ai.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
-                max_tokens: maxTok,
-                messages: [{ role: "system", content: sys }, { role: "user", content: user }] });
-              const resp = r?.response;
-              if (resp && typeof resp === "object" && !Array.isArray(resp)) return resp;
-              const txt = typeof resp === "string" ? resp.replace(/```json|```/g, "").trim() : "";
-              if (!txt) return null;
-              const i0 = txt.indexOf("{");
-              if (i0 < 0) return null;
-              const body = txt.slice(i0);
-              try { return JSON.parse(body); } catch {}
-              // The bracket repair PTA_LEARN already proved. Structure only, nothing invented.
-              try {
-                let f = body.replace(/,\s*$/, ""); const op = []; let inS = false, esc = false;
-                for (const ch of f) {
-                  if (esc) { esc = false; continue; }
-                  if (ch === "\\") { esc = true; continue; }
-                  if (ch === '"') { inS = !inS; continue; }
-                  if (inS) continue;
-                  if (ch === "{" || ch === "[") op.push(ch); else if (ch === "}" || ch === "]") op.pop();
-                }
-                if (inS) f += '"';
-                while (op.length) f += op.pop() === "{" ? "}" : "]";
-                return JSON.parse(f);
-              } catch { return null; }
-            };
-
-            // ── A · FACTS. Whole document, tolerant, no names asked for. ──────────────────────
-            const facts = await ask(
-              "You are reading one tattoo shop's own website as markdown. Return ONLY JSON: " +
-              '{"walk_ins":null,"consultations":null,"deposit_required":null,"piercing":null,' +
-              '"booking_method":null,"notable":null}. ' +
-              "true/false/null for the first four - null where the site does not say. " +
-              "booking_method: how a client actually books, a few words. " +
-              "notable: one short line a stranger would only know from reading this site. " +
-              "Do not name any person. Do not list anything.",
-              md.slice(0, 30000), 500) || {};
-
-            // ── B · ROSTER, only if a page is SHAPED like one ─────────────────────────────────
-            const COMPARE = /\b(best|top\s*\d|vs\.?|versus|compared|which\s+\w+\s+should|guide to (choosing|finding)|studios? in\b.*\b(city|area|town)|near you)\b/i;
-            const ROSTER  = /\b(our (artists?|team|crew|staff)|meet (the|our)|artists?\b|team\b|tattooers|resident)\b/i;
-            const typed = [];
-            for (const pg of (kept_pages.length ? kept_pages : [{ url: site, body: md }])) {
-              const head = (pg.body.match(/^#{1,3}\s+(.+)$/m) || [])[1] || "";
-              const heads = (pg.body.match(/^#{2,3}\s+.+$/gm) || []).map(h => h.replace(/^#+\s+/, "").trim());
-              // Several SHORT headings that are not sentences is what a roster looks like.
-              const personish = heads.filter(h => h.length <= 24 && !/[?.!]/.test(h) && h.split(/\s+/).length <= 3).length;
-              const isCompare = COMPARE.test(head) || COMPARE.test(pg.body.slice(0, 1500));
-              const isRoster  = !isCompare && (ROSTER.test(head) || personish >= 4);
-              typed.push({ url: (pg.url || "").replace(/^https?:\/\/[^/]+/, "") || "/",
-                           type: isCompare ? "comparison" : isRoster ? "roster" : "general",
-                           person_headings: personish });
-              if (isRoster) pg._roster = true;
-            }
-            pageTypes = typed;
-            const rosterPages = (kept_pages.length ? kept_pages : []).filter(p => p._roster);
-            let artists = [];
-            if (!rosterPages.length) {
-              rosterNote = "no page on this site is shaped like a roster - artists left empty rather " +
-                           "than guessed from general copy. This is the correct answer for a shop that " +
-                           "does not publish its team.";
-            } else {
-              const rosterMd = rosterPages.map(p => p.body).join("\n\n---\n\n").slice(0, 20000);
-              const got = await ask(
-                "You are reading the part of a tattoo shop's website that introduces its own people. " +
-                'Return ONLY JSON: {"artists":[]}. ' +
-                "List the names of people who TATTOO AT THIS SHOP - the test is whether they would be " +
-                "standing in this building tomorrow. A name counts only if the text presents them as " +
-                "part of THIS business: bio'd, introduced as 'our artist', or credited with work here. " +
-                "NEVER a business name, a shop, a street, a heading or a button. If the text is " +
-                "comparing or listing other studios, it names NO artists - return an empty array. " +
-                "An empty array is a correct and common answer.",
-                rosterMd, 700);
-              artists = Array.isArray(got?.artists) ? got.artists : [];
-              if (!artists.length) rosterNote = "a roster-shaped page was read and named nobody usable";
-            }
-
-            // ── C · STYLES. Tolerant, bounded, cannot be nulled by the roster rules. ──────────
-            const st = await ask(
-              "You are reading one tattoo shop's own website. Return ONLY JSON: {\"styles\":[]}. " +
-              "AT MOST 15 tattoo styles this shop says it does. A style is a way of tattooing - " +
-              "traditional, fine line, black and grey, realism, blackwork, watercolor. " +
-              "NOT a city, a value, a service word, a feeling or anything that reads like a keyword " +
-              "list. Fewer and correct beats more.",
-              md.slice(0, 30000), 400) || {};
-
-            understanding = { artists,
-              styles: Array.isArray(st.styles) ? st.styles : [],
-              walk_ins: facts.walk_ins ?? null, consultations: facts.consultations ?? null,
-              deposit_required: facts.deposit_required ?? null, piercing: facts.piercing ?? null,
-              booking_method: facts.booking_method || null, notable: facts.notable || null };
-            aiRaw = JSON.stringify(understanding).slice(0, 300);
+          const COMPARE = /\b(best|top\s*\d|vs\.?|versus|compared|guide to (choosing|finding)|near you)\b/i;
+          const ROSTER  = /\b(our (artists?|team|crew|staff)|meet (the|our)|the (artists?|team)|tattooers|resident artists?)\b/i;
+          const typed = [];
+          const pool = kept_pages.length ? kept_pages : [{ url: site, body: md }];
+          for (const pg of pool) {
+            const head = (pg.body.match(/^#{1,3}\s+(.+)$/m) || [])[1] || "";
+            const heads = (pg.body.match(/^#{2,3}\s+.+$/gm) || []).map(h => h.replace(/^#+\s+/, "").trim());
+            const personish = heads.filter(h => h.length <= 24 && !/[?.!,]/.test(h) && h.split(/\s+/).length <= 3).length;
+            const isCompare = COMPARE.test(head);
+            // `/blog-list` typed as a roster because a bare `artists?` matched its heading. A roster
+            // needs POSSESSION ("our artists") or the SHAPE - four or more short person headings.
+            const isRoster = !isCompare && (ROSTER.test(head) || personish >= 4);
+            typed.push({ url: (pg.url || "").replace(/^https?:\/\/[^/]+/, "") || "/",
+                         type: isCompare ? "comparison" : isRoster ? "roster" : "general",
+                         person_headings: personish });
+            if (isRoster) pg._roster = true;
           }
+          pageTypes = typed;
+          const rosterPages = pool.filter(p => p._roster);
+          if (!rosterPages.length) {
+            rosterNote = "no page on this site is shaped like a roster - empty is the correct answer " +
+                         "for a shop that does not publish its team";
+          } else if (!env.AI) {
+            aiWhy = "env.AI is not bound";
+          } else {
+            const rosterMd = rosterPages.map(p => p.body).join("\n\n---\n\n").slice(0, 20000);
+            const r = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
+              max_tokens: 700,
+              messages: [
+                { role: "system", content:
+                  "You are reading the part of a tattoo shop's website that introduces its own people. " +
+                  'Return ONLY JSON: {"artists":[]}. ' +
+                  "List the names of people who TATTOO AT THIS SHOP - the test is whether they would be " +
+                  "standing in this building tomorrow. NEVER a business name, a shop, a street, a " +
+                  "heading or a button. If the text compares or lists other studios, it names NO " +
+                  "artists. An empty array is a correct and common answer." },
+                { role: "user", content: rosterMd }
+              ] });
+            const resp = r?.response;
+            let got = null;
+            if (resp && typeof resp === "object" && !Array.isArray(resp)) got = resp;
+            else if (typeof resp === "string") {
+              const t = resp.replace(/```json|```/g, "").trim();
+              aiRaw = t.slice(0, 200);
+              const i0 = t.indexOf("{");
+              if (i0 >= 0) { try { got = JSON.parse(t.slice(i0)); } catch { aiWhy = "roster reply would not parse"; } }
+              else aiWhy = "roster reply carried no JSON";
+            }
+            artists = Array.isArray(got?.artists) ? got.artists : [];
+            if (!artists.length && !aiWhy) rosterNote = "a roster-shaped page was read and named nobody usable";
+          }
+          understanding = { artists, styles: styleHits, walk_ins: walkIns,
+            consultations: consults, deposit_required: depositReq, piercing,
+            booking_platforms: booking, booking_page: ownBooking[0] || null };
         } catch (e) { aiError = String(e?.message ?? e).slice(0, 200); }
 
         const out = { cmd: "CG_ENRICH", payload: { ok: true, mode: ceDry ? "dry_run" : "written",

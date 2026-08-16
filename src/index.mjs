@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.90.0-2026-08-16-completed-with-an-empty-building";
+const BUILD = "aura-core-v5.91.0-2026-08-16-a-timeout-is-not-a-verdict";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18023,15 +18023,33 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // empty shop as a fact.
           const again = await crawlOnce("RENDER ");
           if (again.res?.markdown && again.res.markdown.length > md.length) {
-            renderedFallback = { reason: "render:false returned metadata only - the site is " +
-                "JavaScript-rendered", cheap_chars: md.length, rendered_chars: again.res.markdown.length,
+            renderedFallback = { state: "rendered", reason: "render:false returned metadata only - the " +
+                "site is JavaScript-rendered and a rendered crawl recovered it",
+                job: again.start?.id || null,
+                cheap_chars: md.length, rendered_chars: again.res.markdown.length,
                 browser_seconds: again.res.browser_seconds ?? null };
             md = String(again.res.markdown);
             res.pages = again.res.pages; res.skipped = again.res.skipped;
+          } else if (again.start?.id && !again.res) {
+            // ══ A TIMEOUT IS NOT A VERDICT (fixed 2026-08-16) ══════════════════════════════════
+            // This branch said "this site does not yield to crawling" and that was FALSE. The render
+            // job had not finished inside the poll budget - `browser_seconds: 0` proves no browser
+            // ever ran to completion, and the whole command took 72s, which is the poll giving up,
+            // not a site refusing. Declaring a shop uncrawlable on a timeout would have written a
+            // permanent wrong fact about a real business.
+            // A headless crawl of a JS site takes MINUTES. The job survives 14 days, so the id is the
+            // valuable thing and discarding it made the work unrecoverable. It is returned now.
+            renderedFallback = { state: "render_job_running",
+              reason: "render:false returned metadata only, so a rendered crawl was started - it had " +
+                "not finished inside the poll budget. This is NOT a failure and NOT a verdict on the site.",
+              job: again.start.id, cheap_chars: md.length,
+              what_to_do: "SITE_READ STATUS " + again.start.id + " - the job keeps for 14 days. " +
+                "The long-running case belongs in a Workflow step, not in a synchronous command." };
           } else {
-            renderedFallback = { reason: "render:false returned metadata only and render:true did not " +
-                "improve it - this site does not yield to crawling", cheap_chars: md.length,
-                rendered_chars: again.res?.markdown?.length ?? 0 };
+            renderedFallback = { state: "render_returned_nothing",
+              reason: "a rendered crawl COMPLETED and still carried no more content than the cheap one",
+              job: again.start?.id || null, cheap_chars: md.length,
+              rendered_chars: again.res?.markdown?.length ?? 0 };
           }
         }
 

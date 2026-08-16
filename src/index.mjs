@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.69.0-2026-08-16-a-null-names-its-reason";
+const BUILD = "aura-core-v5.70.0-2026-08-16-response-is-not-always-a-string";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18042,16 +18042,35 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 // Bang" McCurdy, who is not a page heading anywhere, which is why this half is not regex.
                 { role: "user", content: md.slice(0, 40000) }
               ] });
-            const txt = String(r?.response || "").replace(/```json|```/g, "").trim();
-            aiRaw = txt.slice(0, 300);
-            if (!txt) { aiWhy = "model returned an empty response"; }
-            else {
-              const m = txt.match(/\{[\s\S]*\}/);
-              if (!m) { aiWhy = "no JSON object in the reply - the model answered in prose"; }
+            // ══ `response` IS NOT ALWAYS A STRING (found 2026-08-16, by the diagnostic) ═════════
+            // The reason field said "the model answered in prose" and ai_raw said "[object Object]".
+            // It had not answered in prose at all - `r.response` came back as an OBJECT and
+            // `String()` turned a correct answer into that literal, after which no regex could ever
+            // find a brace. The pass was working and the reader was broken.
+            // This is exactly what the diagnostic was added for one version earlier: a null that
+            // names its reason turned a guess about context windows into a five-character answer.
+            // Both shapes are handled now, and anything else reports its actual type rather than
+            // being coerced into a string that hides it.
+            const resp = r?.response;
+            if (resp && typeof resp === "object" && !Array.isArray(resp)) {
+              understanding = resp;                       // already parsed by the platform
+              aiRaw = JSON.stringify(resp).slice(0, 300);
+            } else if (typeof resp === "string") {
+              const txt = resp.replace(/```json|```/g, "").trim();
+              aiRaw = txt.slice(0, 300);
+              if (!txt) { aiWhy = "model returned an empty response"; }
               else {
-                try { understanding = JSON.parse(m[0]); }
-                catch (pe) { aiWhy = "JSON found but would not parse: " + String(pe?.message ?? pe).slice(0, 80); }
+                const m = txt.match(/\{[\s\S]*\}/);
+                if (!m) { aiWhy = "no JSON object in the reply - the model answered in prose"; }
+                else {
+                  try { understanding = JSON.parse(m[0]); }
+                  catch (pe) { aiWhy = "JSON found but would not parse: " + String(pe?.message ?? pe).slice(0, 80); }
+                }
               }
+            } else {
+              aiWhy = "response was neither string nor object - typeof " + typeof resp +
+                      ", top-level keys: " + Object.keys(r || {}).join(",");
+              aiRaw = JSON.stringify(r || null).slice(0, 300);
             }
           } else { aiWhy = "env.AI is not bound"; }
         } catch (e) { aiError = String(e?.message ?? e).slice(0, 200); }

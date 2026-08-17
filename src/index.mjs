@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.8.0-2026-08-17-every-qr-is-ours";
+const BUILD = "aura-core-v6.9.0-2026-08-17-the-claim-is-the-join";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -21959,8 +21959,46 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               event_type: "CLAIMED" }), env, true);
           } catch {}
           try { await env.AURA_KV.delete(clKey); } catch {}
+
+          // ══ THE CLAIM BRIDGE — WHERE A RECORD BECOMES AN ENTITY (2026-08-17) ══════════════
+          //
+          // 33,694 tattoo businesses sit in `cg_business` with `pta` NULL on every row, deliberately:
+          // a record is not an entity, and minting 33,694 PTAs so a listing could render would break
+          // that rule. THE CLAIM IS THE JOIN. Until this write existed, the lead page read
+          // `cg_business` and the console read a PTA and NOTHING CONNECTED THEM - so a shop could
+          // verify, get a PTA, and still find their own listing unchanged and uneditable.
+          //
+          // Matched on the phone or the website, not the name: two shops are called "Ink" in every
+          // city, and Overture's name and Google's rarely agree character for character. A phone
+          // number is the same ten digits in both.
+          //
+          // NOTHING IS COPIED HERE. The images stay hotlinked from their own CDN until they act on
+          // the page - claiming proves who they are, it does not mean "take my photographs". The R2
+          // copy happens when they first edit, which is consent to us holding them.
+          let bridged = null;
+          try {
+            const digits = String(pend.phone || "").replace(/\D/g, "").slice(-10);
+            const host = String(pend.website || "").replace(/^https?:\/\//i, "")
+              .replace(/^www\./i, "").split("/")[0].toLowerCase();
+            const row = await env.AURA_MEMORY.prepare(
+              "SELECT id, name FROM cg_business WHERE pta IS NULL AND (" +
+              (digits ? "replace(replace(replace(replace(phone,'(',''),')',''),'-',''),' ','') LIKE ?" : "0") +
+              (host ? " OR lower(website) LIKE ?" : "") + ") LIMIT 1")
+              .bind(...[...(digits ? ["%" + digits] : []), ...(host ? ["%" + host + "%"] : [])]).first();
+            if (row) {
+              await env.AURA_MEMORY.prepare(
+                "UPDATE cg_business SET pta = ?, claimed_at = ? WHERE id = ?")
+                .bind(ing.id, new Date().toISOString(), row.id).run();
+              bridged = { cg_id: row.id, listing: "https://tattooparlors.world/b/" + row.id,
+                matched_on: digits && host ? "phone and website" : digits ? "phone" : "website" };
+            }
+          } catch (e) { bridged = { error: String(e?.message ?? e).slice(0, 120) }; }
+
           return { cmd: "CLAIM", payload: { ok: true, mode: "claimed", business: pend.name,
             pta: ing.id, place_id: clId,
+            // Present when their public listing was found and is now theirs. Absent is not a failure:
+            // a shop that claimed through some other door may simply not be in this vertical's table.
+            listing: bridged || undefined,
             qr: "https://openforbusiness.world/b/" + encodeURIComponent(clId),
             what_to_say: "Verified. This business is yours.",
             note: "A PTA now exists and the QR is live. Nothing has been consented to yet - remembering " +
@@ -46482,6 +46520,45 @@ export class PublicEntry extends WorkerEntrypoint {
         color: "#000000", background: "#ffffff", ecl: "M" });
       return { ok: true, svg: qr.svg(), content };
     } catch (e) { return { ok: false, error: String((e && e.message) || e).slice(0, 160) }; }
+  }
+
+  // ══ THE OTHER DIRECTION: A CLAIM THAT STARTS AT THE LISTING ═══════════════════════════════
+  // `CLAIM` starts from a Google place_id, which is right for openforbusiness.world. A shop that
+  // scans the QR on their OWN tattooparlors listing arrives holding a cg_id and nothing else, so
+  // this is the door for them: it reads the contacts already on their listing and hands the normal
+  // claim flow something it can verify against. Same verification, same mint - only the entry differs.
+  async leadClaim(cgId, step, arg) {
+    try {
+      const row = await this.env.AURA_MEMORY.prepare(
+        "SELECT id, name, phone, phone_found, email, email_found, website, pta, claimed_at " +
+        "FROM cg_business WHERE id = ? LIMIT 1").bind(String(cgId || "").trim()).first();
+      if (!row) return { ok: false, error: "NOT_FOUND" };
+      if (row.pta) return { ok: false, error: "ALREADY_CLAIMED",
+        what_to_say: "This shop has already been claimed. If that was not you, get in touch." };
+
+      const phones = String(row.phone_found || row.phone || "").split("|").filter(Boolean);
+      const emails = String(row.email_found || row.email || "").split("|").filter(Boolean);
+      const mask = (v) => v.includes("@")
+        ? v.replace(/^(.).*(.)@/, "$1***$2@")
+        : "***-***-" + v.replace(/\D/g, "").slice(-4);
+
+      if (String(step || "").toUpperCase() !== "SEND") {
+        // WE ONLY EVER SEND TO A CONTACT ALREADY ON THE LISTING, and we show it masked. That is the
+        // whole proof: only the shop can read a message sent to their own published number.
+        return { ok: true, mode: "choose", business: row.name,
+          options: [...phones.map(p => ({ kind: "phone", masked: mask(p) })),
+                    ...emails.map(e => ({ kind: "email", masked: mask(e) }))],
+          what_to_say: phones.length || emails.length
+            ? "We will send a code to a contact already published on your own site."
+            : "We have no contact on file for this shop yet, so we cannot verify it this way." };
+      }
+      // Hand off to the existing CLAIM machinery rather than building a second verifier - one code
+      // path, one set of rules about attempts and expiry.
+      const target = (arg && String(arg)) || phones[0] || emails[0];
+      if (!target) return { ok: false, error: "NO_CONTACT_ON_FILE" };
+      const r = await processCommand("CLAIM START " + row.id + " " + target, this.env, true);
+      return (r && r.payload) ? r.payload : r;
+    } catch (e) { return { ok: false, error: String((e && e.message) || e).slice(0, 200) }; }
   }
 
   async lead(cgId) {

@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v5.99.0-2026-08-16-rank-after-the-roster";
+const BUILD = "aura-core-v6.0.0-2026-08-16-start-and-collect";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -17892,6 +17892,47 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
     }
 
+    case "CG_ENRICH_COLLECT": {
+      // ══ FINISH WHAT THE CRAWLS STARTED ═══════════════════════════════════════════════════════
+      // The other half of the split. `CG_ENRICH` starts a crawl and parks the job id on the row when
+      // it is still running; this walks the parked jobs, and for each one that has finished, re-runs
+      // the extraction by calling CG_ENRICH again - by then SITE_READ STATUS returns instantly from
+      // the completed job, so the whole pipeline runs inside one fast turn.
+      // This is the shape the batch needs: start work, record state, collect later. Nothing sits and
+      // polls for minutes, and a finished crawl is never thrown away.
+      if (!isOp) return { cmd: "CG_ENRICH_COLLECT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      try {
+        const db = env.AURA_MEMORY;
+        const rows = (await db.prepare(
+          "SELECT id, name, crawl_job FROM cg_business WHERE crawl_job IS NOT NULL LIMIT 25").all())?.results || [];
+        if (!rows.length) return { cmd: "CG_ENRICH_COLLECT", payload: { ok: true, parked: 0,
+          note: "No crawl is waiting to be collected." } };
+        const done = [], waiting = [], failed = [];
+        for (const r of rows) {
+          try {
+            const st = await processCommand("SITE_READ STATUS " + r.crawl_job, env, true);
+            const sp = (st && st.payload) ? st.payload : st;
+            if (sp?.status === "running") { waiting.push({ business: r.name, job: r.crawl_job }); continue; }
+            // Finished - clear the park FIRST so a failure here cannot loop forever, then extract.
+            await db.prepare("UPDATE cg_business SET crawl_job = NULL WHERE id = ?").bind(r.id).run();
+            const again = await processCommand("CG_ENRICH " + r.id, env, true);
+            const ap = (again && again.payload) ? again.payload : again;
+            if (ap?.ok && ap.mode === "written") {
+              done.push({ business: r.name, emails: ap.extracted?.emails ?? 0,
+                          artists: ap.extracted?.artists ?? 0, images: ap.images?.kept ?? 0 });
+            } else {
+              failed.push({ business: r.name, error: ap?.error || ap?.state || "unknown" });
+            }
+          } catch (e) { failed.push({ business: r.name, error: String(e?.message ?? e).slice(0, 120) }); }
+        }
+        return { cmd: "CG_ENRICH_COLLECT", payload: { ok: true, parked: rows.length,
+          collected: done.length, still_running: waiting.length, failed: failed.length,
+          done, waiting, failed } };
+      } catch (e) {
+        return { cmd: "CG_ENRICH_COLLECT", payload: { ok: false, error: String(e?.message ?? e).slice(0, 200) } };
+      }
+    }
+
     case "CG_ENRICH": {
       // ══ THE CRAWL BEATS THE DATASET, TWICE OUT OF TWO (built 2026-08-16) ═══════════════════════
       //
@@ -17926,6 +17967,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       //   CG_ENRICH <...> DRY                extract and report, write nothing
       if (!isOp) return { cmd: "CG_ENRICH", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const ceRaw = String(rest || "").trim();
+      // `RUN "CG_ENRICH COLLECT"` parses as command CG_ENRICH with argument COLLECT, so it would
+      // never reach a `case "CG_ENRICH_COLLECT"`. Routed here instead - the operator types what reads
+      // naturally and the dispatcher does not need to know about it.
+      if (/^COLLECT\b/i.test(ceRaw)) return await processCommand("CG_ENRICH_COLLECT", env, isOp);
       const ceDry = /(^|\s)DRY(\s|$)/i.test(ceRaw);
       const ceKey = ceRaw.replace(/(^|\s)DRY(\s|$)/i, " ").trim();
       if (!ceKey) return { cmd: "CG_ENRICH", payload: { ok: false, error: "Usage: CG_ENRICH <cg_id|website> [DRY]" } };
@@ -18014,8 +18059,26 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const stp = (st && st.payload) ? st.payload : st;
           if (stp?.status && stp.status !== "running") { res = stp; break; }
         }
-        if (!res) return { cmd: "CG_ENRICH", payload: { ok: false, error: "CRAWL_TIMEOUT", job: sp.id,
-          business: row.name, what_to_do: "SITE_READ STATUS " + sp.id + " - the job keeps for 14 days." } };
+        // ══ A TIMEOUT MUST NOT THROW AWAY A GOOD CRAWL (fixed 2026-08-16) ═══════════════════
+        // MEASURED at Ageless Arts: `CRAWL_TIMEOUT` at 45s, and the job had in fact COMPLETED - 12
+        // pages, 0 skipped, 85,541 chars, the best crawl of the day. It took longer than the poll
+        // precisely BECAUSE it was doing real work; Bang Bang answered instantly only because it was
+        // throttled to a single page.
+        // So every healthy fresh domain will out-run a synchronous poll, and at batch scale each one
+        // would discard a finished crawl. The job id is now PARKED ON THE ROW instead of being
+        // returned as an error, and `CG_ENRICH COLLECT` picks it up later. Nothing is ever re-crawled
+        // to recover work that already succeeded.
+        if (!res) {
+          try {
+            await db.prepare("UPDATE cg_business SET crawl_job = ?, crawl_started = ? WHERE id = ?")
+              .bind(sp.id, new Date().toISOString(), row.id).run();
+          } catch {}
+          return { cmd: "CG_ENRICH", payload: { ok: true, state: "crawl_running", job: sp.id,
+            business: row.name, site,
+            note: "The crawl is still running - that is normal for a site with real content, and the " +
+              "job keeps for 14 days. It is parked on the row; nothing is lost.",
+            what_to_do: "RUN \"CG_ENRICH COLLECT\" in a minute or two to finish every parked job." } };
+        }
         let md = String(res.markdown || "");
         let renderedFallback = null;
         if (isHollow(md, res.pages)) {

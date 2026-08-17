@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.18.0-2026-08-17-the-shop-is-an-owner-too";
+const BUILD = "aura-core-v6.19.0-2026-08-17-the-shop-is-in-the-right-list";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -21907,7 +21907,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             try {
               const se = await processCommand("SEAT LIST " + pick, env, true);
               const sep = (se && se.payload) ? se.payload : se;
-              out.artists = sep?.ok ? { count: sep.count, list: sep.seats, billing: sep.billing } : null;
+              // ══ THE SHOP IS AN OWNER TOO (2026-08-17) ═════════════════════════════════════
+              // The Designs picker is built from this list, and it held only SEATS. But an ADOPTED
+              // gallery belongs to the SHOP's PTA - the fifteen images Lady Luck now owns are the
+              // shop's, not any one artist's - so with seats alone her own pictures were
+              // unreachable from her own console. Listed FIRST because the shop's front page is the
+              // usual thing an owner edits, and marked so the UI can say what it is.
+              // Deliberately NOT added to the public booking list: a client books a person.
+              out.artists = sep?.ok ? { count: sep.count,
+                list: [{ pta: pick, name: "The shop", is_shop: true }, ...(sep.seats || [])],
+                billing: sep.billing } : { count: 0,
+                list: [{ pta: pick, name: "The shop", is_shop: true }] };
             } catch {}
             return out;
           })(),
@@ -47106,14 +47116,11 @@ export class PublicEntry extends WorkerEntrypoint {
       const r = await processCommand("SEAT LIST " + biz, this.env, true);
       const rp = (r && r.payload) ? r.payload : r;
       if (!rp?.ok) return { ok: false, error: rp?.error || "unavailable" };
-      // ══ THE SHOP IS AN OWNER TOO (2026-08-17) ═══════════════════════════════════════════════
-      // This listed only SEATS, and the Designs picker is built from it. But an ADOPTED gallery
-      // belongs to the SHOP's PTA - the fifteen images Lady Luck now owns are hers, not any one
-      // artist's - so with seats alone her own pictures were unreachable from her own console.
-      // Listed first and marked, because it is the shop's front page and the usual thing to edit.
-      return { ok: true, business: rp.business, business_pta: biz,
-        artists: [{ pta: biz, name: "The shop", is_shop: true },
-                  ...(rp.seats || []).map(x => ({ pta: x.pta, name: x.name }))] };
+      // NOTE: this method serves the PUBLIC booking page - "who do you want your tattoo with".
+      // The shop deliberately does NOT appear here; a client books a person. The Designs picker in
+      // the console is a different list and is built in the CONSOLE command.
+      return { ok: true, business: rp.business,
+        artists: (rp.seats || []).map(x => ({ pta: x.pta, name: x.name })) };
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
     }

@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.5.0-2026-08-16-a-junk-name-is-not-a-caption";
+const BUILD = "aura-core-v6.6.0-2026-08-17-tattooparlors-world";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -46317,6 +46317,73 @@ export class PublicEntry extends WorkerEntrypoint {
   // Read-only by construction. A city page can be viewed a million times and mint nothing: a PTA
   // begins with a CLAIM, not with being visible. That line is what keeps a consumer searching Tokyo
   // from creating ten thousand identities nobody intends to contact.
+  // ══ tattooparlors.world — THE SAME ENGINE, A DIFFERENT SOURCE (2026-08-17) ═══════════════════
+  //
+  // Aaron: "it's literally the identical template with a different name on top of it." Verified -
+  // the name appears on six lines across the cityguide templates. The REAL difference is here:
+  // `city()` and `place()` reach for Google Places on demand, and this vertical must not. 33,694
+  // tattoo businesses are already in `cg_business` with lat/lng, provenance and enrichment, so
+  // "near me" is a bounding-box query and Google never enters it. That is the $60 lesson holding.
+  //
+  // ALL 33,694 ARE LISTED, not only the enriched ones - a real directory on day one. And EVERY ONE
+  // HAS A QR FROM LAUNCH, before any payment: the code is DERIVED from the business, never issued.
+  // Paying does not create it, it changes what the code opens and who controls it.
+  async tattooNear(lat, lng, radiusKm) {
+    try {
+      const la = Number(lat), ln = Number(lng);
+      if (!isFinite(la) || !isFinite(ln)) return { ok: false, error: "need lat and lng" };
+      const r = Math.min(200, Math.max(1, Number(radiusKm) || 40));
+      // Degrees, not trigonometry: 1 deg latitude is ~111km everywhere, and longitude narrows by
+      // cos(lat). Good enough to bound a query, and the exact distance is computed per row after.
+      const dLat = r / 111;
+      const dLng = r / (111 * Math.max(0.15, Math.cos(la * Math.PI / 180)));
+      const rows = (await this.env.AURA_MEMORY.prepare(
+        "SELECT id, name, street, locality, region, lat, lng, website, phone, phone_found, " +
+        "email, email_found, understanding, claimed_at FROM cg_business " +
+        "WHERE industry = 'tattoo' AND lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? LIMIT 300")
+        .bind(la - dLat, la + dLat, ln - dLng, ln + dLng).all())?.results || [];
+      const out = rows.map(x => {
+        let u = {}; try { u = x.understanding ? JSON.parse(x.understanding) : {}; } catch {}
+        const dy = (x.lat - la) * 111, dx = (x.lng - ln) * 111 * Math.cos(la * Math.PI / 180);
+        return { id: x.id, name: x.name,
+          where: [x.locality, x.region].filter(Boolean).join(", "), street: x.street,
+          km: Math.round(Math.sqrt(dx * dx + dy * dy) * 10) / 10,
+          artists: (u.artists || []).length, styles: (u.styles || []).slice(0, 3),
+          walk_ins: u.walk_ins === true, claimed: !!x.claimed_at,
+          image: (u.images || [])[0]?.u || null };
+      }).sort((a, b) => a.km - b.km).slice(0, 60);
+      return { ok: true, count: out.length, lat: la, lng: ln, radius_km: r, places: out };
+    } catch (e) { return { ok: false, error: String((e && e.message) || e).slice(0, 200) }; }
+  }
+
+  // A named place: "portland-or", "brooklyn-ny", or a bare city. Matched on the stored locality,
+  // which is Overture's own value - no geocoder, no third-party lookup.
+  async tattooCity(slug) {
+    try {
+      const raw = String(slug || "").trim().toLowerCase();
+      if (!raw) return { ok: false, error: "need a city" };
+      const parts = raw.split("-");
+      const st = parts.length > 1 && parts[parts.length - 1].length === 2 ? parts.pop().toUpperCase() : null;
+      const city = parts.join(" ");
+      const rows = (await this.env.AURA_MEMORY.prepare(
+        "SELECT id, name, street, locality, region, website, understanding, claimed_at " +
+        "FROM cg_business WHERE industry = 'tattoo' AND lower(locality) = ?" +
+        (st ? " AND region = ?" : "") + " ORDER BY name LIMIT 200")
+        .bind(...(st ? [city, st] : [city])).all())?.results || [];
+      const places = rows.map(x => {
+        let u = {}; try { u = x.understanding ? JSON.parse(x.understanding) : {}; } catch {}
+        return { id: x.id, name: x.name, street: x.street,
+          where: [x.locality, x.region].filter(Boolean).join(", "),
+          artists: (u.artists || []).length, styles: (u.styles || []).slice(0, 3),
+          walk_ins: u.walk_ins === true, claimed: !!x.claimed_at,
+          image: (u.images || [])[0]?.u || null };
+      });
+      return { ok: true, city: rows[0]?.locality || city, region: rows[0]?.region || st,
+        count: places.length, places,
+        note: places.length ? undefined : "No tattoo shop is on file for that city yet." };
+    } catch (e) { return { ok: false, error: String((e && e.message) || e).slice(0, 200) }; }
+  }
+
   async city(slug) {
     try {
       const r = await processCommand("CITY " + String(slug || "").trim(), this.env, false);

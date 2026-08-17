@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.7.0-2026-08-17-our-own-qr-codes";
+const BUILD = "aura-core-v6.8.0-2026-08-17-every-qr-is-ours";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -20529,7 +20529,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         } else { how = "not an email address"; }
         return { cmd: "SEND_CODE", payload: { ok: true, business: b.name, to: scTo, sent, how,
           code: url,
-          qr: "https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=" + encodeURIComponent(url),
+          // OURS. `/qr.svg?d=` is served by aura-host from the generator in this worker - a code
+          // on a shop's window cannot depend on a third party's uptime or their URL format.
+          qr: "/qr.svg?d=" + encodeURIComponent(url),
           note: "The same code that is on their window. It does not expire and it is the same for " +
             "everyone - what somebody does next happens on that page." } };
       } catch (e) {
@@ -23111,7 +23113,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (obPtaId) { try { const bs = await processCommand("BUSINESS_STATE SET " + obPtaId + " lead", env, isOp); obState = (bs && bs.payload) ? bs.payload : bs; } catch (e) {} }
       const obType = String(obRead.business_type || "generic").toLowerCase().replace(/[^a-z0-9_-]/g, "") || "generic";
       const obDoorway = "https://openforbusiness.world/" + obSlug;
-      const obQr = "https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=" + encodeURIComponent(obDoorway);
+      const obQr = "/qr.svg?d=" + encodeURIComponent(obDoorway);
       await env.AURA_KV.put("onboard:" + obSlug, JSON.stringify({ subject: obRaw, slug: obSlug, read: obRead, pta_id: obPtaId, identity: obIdentity || null, business_type: obType, doorway: obDoorway, qr: obQr, state: (obState && obState.ok) ? "lead" : null, ts: obTs })).catch(() => {});
       // 6a) PRODUCT OFFER inferred from context (v4.9.442) - the flow picks WHAT Aura offers this
       // business from its type. News/media -> SituationTracker + WeatherTracker; shipping -> maritime
@@ -33231,7 +33233,7 @@ Be concise. This update will be compared against the next update to show drift o
           return `<div style="padding:0.5rem 1rem"><h3 style="font-size:0.9rem;font-weight:700;color:#a855f7;margin-bottom:0.4rem">${s.label||'Your Link'}</h3><div style="background:#1a1a2e;border:1px solid #2a2a45;border-radius:8px;padding:0.8rem;display:flex;align-items:center;gap:0.5rem"><span id="studioLink" style="flex:1;font-size:0.85rem;color:#a855f7;word-break:break-all"></span><button onclick="navigator.clipboard.writeText(document.getElementById('studioLink').textContent).then(()=>alert('Copied!'))" style="background:#2a2a45;border:1px solid #3a3a55;border-radius:6px;padding:0.4rem 0.8rem;color:#e8e4f0;font-size:0.8rem;cursor:pointer">Copy</button></div><script>!function(){const p=new URLSearchParams(location.search);document.getElementById('studioLink').textContent=(p.get('${s.paramName}')||'yourshop')+'.${s.domain}/'+(p.get('${s.artistParam}')||'artist')}()</script></div>`;
         }
         if (s.type === "qrcode") {
-          return `<div style="padding:0.5rem 1rem;text-align:center"><h3 style="font-size:0.9rem;font-weight:700;color:#a855f7;margin-bottom:0.4rem;text-align:left">Your QR Code</h3><img id="qrImg" style="border-radius:8px;background:#fff;padding:8px" width="200" height="200"><br><button onclick="window.print()" style="margin-top:0.5rem;background:#2a2a45;border:1px solid #3a3a55;border-radius:6px;padding:0.4rem 1rem;color:#e8e4f0;font-size:0.8rem;cursor:pointer">Print</button><script>!function(){const p=new URLSearchParams(location.search);const u='https://'+(p.get('${s.paramName}')||'yourshop')+'.${s.domain}/'+(p.get('${s.artistParam}')||'artist');document.getElementById('qrImg').src='https://api.qrserver.com/v1/create-qr-code/?data='+encodeURIComponent(u)+'&size=200x200'}()</script></div>`;
+          return `<div style="padding:0.5rem 1rem;text-align:center"><h3 style="font-size:0.9rem;font-weight:700;color:#a855f7;margin-bottom:0.4rem;text-align:left">Your QR Code</h3><img id="qrImg" style="border-radius:8px;background:#fff;padding:8px" width="200" height="200"><br><button onclick="window.print()" style="margin-top:0.5rem;background:#2a2a45;border:1px solid #3a3a55;border-radius:6px;padding:0.4rem 1rem;color:#e8e4f0;font-size:0.8rem;cursor:pointer">Print</button><script>!function(){const p=new URLSearchParams(location.search);const u='https://'+(p.get('${s.paramName}')||'yourshop')+'.${s.domain}/'+(p.get('${s.artistParam}')||'artist');document.getElementById('qrImg').src='/qr.svg?d='+encodeURIComponent(u)}()</script></div>`;
         }
         if (s.type === "divider") {
           return '<div style="margin:0.5rem 1rem;border-bottom:1px solid #1f1f35"></div>';

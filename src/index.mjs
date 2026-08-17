@@ -31,6 +31,18 @@
 // Her purpose no longer lives here either: the North Star moved into aura-think's SOUL, in source,
 // rendered every turn. NORTHSTAR reports DISTANCE, which is derived and allowed to change.
 import { WorkerEntrypoint, WorkflowEntrypoint } from "cloudflare:workers";
+// ══ QR CODES ARE OURS NOW (2026-08-17) ══════════════════════════════════════════════════
+// SIX places in this codebase pointed at api.qrserver.com - every QR ever shown to a
+// business depended on a third party staying up and not changing. These go on a shop's
+// WINDOW and are meant to last forever, so they cannot be somebody else's uptime.
+// Aaron: "these need to be permanent forever attached to my PTAs."
+// This is Cloudflare's OWN recommendation - their "Build a QR code generator" tutorial
+// uses this exact package, and Workers bundle npm. Not hand-rolled: Claude was three
+// minutes from writing Reed-Solomon error correction from the spec when Aaron said to
+// check what already exists. Eleventh time today the door was already there.
+// VERIFIED, not assumed: a code was generated for a real shop URL, rasterised, and read
+// back with an independent decoder. Exact match.
+import QRCode from "qrcode-svg";
 
 // The relying party ID is the DOMAIN a passkey is bound to, and it is why passkeys are phishing-proof:
 // a credential created for homescreen.world cannot be used on homescreen-login.com, no matter how
@@ -61,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.6.0-2026-08-17-tattooparlors-world";
+const BUILD = "aura-core-v6.7.0-2026-08-17-our-own-qr-codes";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -17932,6 +17944,34 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           done, waiting, failed } };
       } catch (e) {
         return { cmd: "CG_ENRICH_COLLECT", payload: { ok: false, error: String(e?.message ?? e).slice(0, 200) } };
+      }
+    }
+
+    case "QR": {
+      // QR <text|url>            an SVG, ours, no third party
+      // QR SHOP <cg_id>          the permanent code for a listed business
+      const qRaw = String(rest || "").trim();
+      if (!qRaw) return { cmd: "QR", payload: { ok: false, error: "Usage: QR <url|text>  |  QR SHOP <cg_id>" } };
+      try {
+        let content = qRaw, about = null;
+        const shop = qRaw.match(/^SHOP\s+(\S+)/i);
+        if (shop) {
+          const row = await env.AURA_MEMORY.prepare(
+            "SELECT id, name FROM cg_business WHERE id = ? OR website LIKE ? LIMIT 1")
+            .bind(shop[1], "%" + shop[1] + "%").first();
+          if (!row) return { cmd: "QR", payload: { ok: false, error: "NOT_IN_CG_BUSINESS" } };
+          // DERIVED FROM THE BUSINESS, NEVER ISSUED - the ratified rule. The id is stable, so the
+          // code is the same today, after they pay, and if they lapse and come back.
+          content = "https://tattooparlors.world/b/" + row.id;
+          about = { id: row.id, name: row.name };
+        }
+        const qr = new QRCode({ content, padding: 2, width: 512, height: 512,
+          color: "#000000", background: "#ffffff", ecl: "M" });
+        return { cmd: "QR", payload: { ok: true, content, about,
+          svg: qr.svg(), bytes: qr.svg().length,
+          note: "Generated here. No third-party service is involved and the code never changes." } };
+      } catch (e) {
+        return { cmd: "QR", payload: { ok: false, error: String(e?.message ?? e).slice(0, 200) } };
       }
     }
 
@@ -46431,6 +46471,17 @@ export class PublicEntry extends WorkerEntrypoint {
   // IMAGES ARE HOTLINKED FROM THEIR OWN CDN. Nothing of theirs is stored or served by us at this
   // stage - if they object, one row goes away and it is genuinely gone. Copies to R2 happen at
   // CLAIM, when they have consented and need to crop and reorder inside their own dashboard.
+  // Served as an image at /qr/<id>.svg so a page can just point an <img> at it.
+  async qr(text) {
+    try {
+      const content = String(text || "").slice(0, 900);
+      if (!content) return { ok: false, error: "empty" };
+      const qr = new QRCode({ content, padding: 2, width: 512, height: 512,
+        color: "#000000", background: "#ffffff", ecl: "M" });
+      return { ok: true, svg: qr.svg(), content };
+    } catch (e) { return { ok: false, error: String((e && e.message) || e).slice(0, 160) }; }
+  }
+
   async lead(cgId) {
     try {
       const db = this.env.AURA_MEMORY;

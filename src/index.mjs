@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.3.0-2026-08-16-a-page-for-a-person";
+const BUILD = "aura-core-v6.4.0-2026-08-16-nobody-shows-a-tattoo-at-34-pixels";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18402,6 +18402,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // and googlepay.svg as this shop's "work". SVG is never a photograph, and /static/icons/ is
         // never a portfolio - both are structural facts, not guesses about a filename.
         const NOT_WORK = /\.svg(\?|$)|\/static\/|\/icons?\/|\/assets\/icons|payment-methods|\/flags?\//i;
+        // ══ SIZE IS THE TELL, NOT THE FILENAME (fixed 2026-08-16) ═══════════════════════════
+        // MEASURED at Lady Luck: `chrome_filtered: 0`, and the grid filled with Instagram.png,
+        // Facebook.png and Google%20Places.png. The word "icon" appears in none of those filenames,
+        // so a name-based rule cannot see them.
+        // But the CDN writes the RENDERED SIZE INTO THE URL - `w_34,h_34`, `w_30,h_30`, `w_48,h_48`.
+        // Nobody displays a tattoo at 34 pixels. That is structural, works on Wix, Squarespace,
+        // Zyro and any CDN that resizes by query, and needs no list of brand names.
+        // The brand words are kept as a second signal for CDNs that do not size in the URL.
+        const TINY = /[?&/](?:w|width)[_=](\d{1,3})(?:[,&/]|$)/i;
+        const isTiny = (u) => { const m = u.match(TINY); return !!(m && parseInt(m[1], 10) < 200); };
+        const BRAND = /\b(instagram|facebook|twitter|tiktok|youtube|yelp|google[%\s_-]*places|google[%\s_-]*maps|pinterest|snapchat|linkedin|whatsapp|tripadvisor)\b/i;
         const CHROME = /logo|icon|sprite|favicon|badge|banner|arrow|button|placeholder|avatar-default|spacer/i;
         const linkedImg = new Map();
         for (const m of md.matchAll(/\[!\[([^\]]*)\]\(([^)\s]+)[^)]*\)\]\(([^)\s]+)\)/g)) {
@@ -18458,7 +18469,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // `subject` is what the page says this image is OF. `heading` is kept beside it so a
             // disagreement is inspectable instead of being quietly resolved one way.
             subject: linked || heading, from: linked ? "link" : "heading", heading,
-            chrome: CHROME.test(file) || CHROME.test(alt) });
+            chrome: CHROME.test(file) || CHROME.test(alt) || BRAND.test(file) || isTiny(url) });
         }
         const work = imgs.filter(i => !i.chrome);
         // Cap PER SECTION, not per shop - one artist with 200 pieces must not crowd out the rest of
@@ -18492,8 +18503,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // per-person link to read, and those tattoos would otherwise queue behind the apparel drop.
         const WORKISH = /portfolio|gallery|tattoo|work|flash|healed|recent/i;
         // `rank` is already the email ranker in this scope - node --check caught the collision.
+        // An image whose only subject is the page/site title tells us nothing about whose work it
+        // is - "Home | Lady Luck Tattoo" is a <title>, not a section. Ranked behind anything with a
+        // real subject rather than dropped, in case a small shop has nothing else.
+        const TITLEISH = (x) => /\s[|\u2013\u2014-]\s/.test(String(x || "")) || /^home\b/i.test(String(x || ""));
         const imgRank = (i, key) =>
           isArtistWork(i, key) ? 0
+          : TITLEISH(i.subject) ? 4
           : LOW.test(i.subject || "") ? 3
           : WORKISH.test(i.subject || "") ? 1
           : 2;

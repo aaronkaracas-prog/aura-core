@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.9.0-2026-08-17-the-claim-is-the-join";
+const BUILD = "aura-core-v6.10.0-2026-08-17-fuse-before-you-mint";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -21948,10 +21948,46 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // Verified. NOW the PTA exists - keyed on place_id, phone and site as aliases, exactly the
           // same mint path as every other business. The chain records that the claim was verified and
           // how, because "who said this is theirs" is the first thing anyone will ask in a year.
-          const ing = await ingestBusiness(env, { name: pend.name, place_id: clId,
-            phone: pend.phone, website: pend.website, email: null }, true);
-          if (!ing?.ok || !ing.id) return { cmd: "CLAIM", payload: { ok: false, error: "COULD_NOT_MINT",
-            detail: ing } };
+          // ══ FUSE BEFORE YOU MINT (2026-08-17, Grok's rule and he is right) ══════════════════
+          //
+          // The first version of this bridge called ingestBusiness unconditionally, which MINTS. A
+          // shop that already had a PTA from another door - the openforbusiness claim, a REACH_OUT
+          // lead, an old test - would get a SECOND identity for the same business, and then two
+          // records both believe they are that shop. That is the hardest kind of mess to unpick later.
+          //
+          // Order is phone, then email, then domain. Strongest evidence first: a phone number is the
+          // same ten digits everywhere, an email is exact, a domain can be shared by a franchise.
+          // MATCHING ON NAME REMAINS FORBIDDEN - two shops are called "Ink" in every city.
+          //
+          // AND THE VERIFICATION STILL HAPPENS EVERY TIME. Finding an existing PTA is not permission
+          // to bind this listing to it - the contact may have been granted through a different door,
+          // a different vertical, or a test. The code we just checked is what says "this is really
+          // you", and it is cheap. Never fuse silently.
+          let fused = null, ptaId = null;
+          try {
+            const cands = [];
+            const dg = String(pend.phone || "").replace(/\D/g, "");
+            if (dg.length >= 10) cands.push({ how: "phone", raw: "phone:" + dg.slice(-10) });
+            if (pend.email) cands.push({ how: "email", raw: "email:" + String(pend.email).toLowerCase().trim() });
+            const hs = String(pend.website || "").replace(/^https?:\/\//i, "").replace(/^www\./i, "").split("/")[0].toLowerCase();
+            if (hs) cands.push({ how: "domain", raw: "domain:" + hs });
+            for (const c of cands) {
+              const hk = await hashIdentity(env, normIdentity(c.raw));
+              const hit = await env.AURA_MEMORY.prepare(
+                "SELECT pta_id FROM pta_identity_index WHERE identity_key = ?").bind(hk.key).first();
+              if (hit?.pta_id) { ptaId = hit.pta_id; fused = { matched_on: c.how }; break; }
+            }
+          } catch {}
+
+          let ing;
+          if (ptaId) {
+            ing = { ok: true, id: ptaId };
+          } else {
+            ing = await ingestBusiness(env, { name: pend.name, place_id: clId,
+              phone: pend.phone, website: pend.website, email: null }, true);
+            if (!ing?.ok || !ing.id) return { cmd: "CLAIM", payload: { ok: false, error: "COULD_NOT_MINT",
+              detail: ing } };
+          }
           try {
             await processCommand("PTA_REMEMBER " + ing.id + " CLAIMED " + JSON.stringify({
               verified_via: pend.via, verified_at: new Date().toISOString(),
@@ -21999,6 +22035,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // Present when their public listing was found and is now theirs. Absent is not a failure:
             // a shop that claimed through some other door may simply not be in this vertical's table.
             listing: bridged || undefined,
+            // Says plainly which happened, because "did this create a second identity" is the first
+            // question anyone will ask when two records disagree in a year.
+            identity: fused ? { action: "fused", ...fused,
+                                note: "An existing PTA already held this contact - it was reused, not duplicated." }
+                            : { action: "minted", note: "No PTA held this contact, so one was created." },
             qr: "https://openforbusiness.world/b/" + encodeURIComponent(clId),
             what_to_say: "Verified. This business is yours.",
             note: "A PTA now exists and the QR is live. Nothing has been consented to yet - remembering " +

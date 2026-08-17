@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.17.0-2026-08-17-the-console-can-edit-the-gallery";
+const BUILD = "aura-core-v6.18.0-2026-08-17-the-shop-is-an-owner-too";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -47106,8 +47106,14 @@ export class PublicEntry extends WorkerEntrypoint {
       const r = await processCommand("SEAT LIST " + biz, this.env, true);
       const rp = (r && r.payload) ? r.payload : r;
       if (!rp?.ok) return { ok: false, error: rp?.error || "unavailable" };
-      return { ok: true, business: rp.business,
-        artists: (rp.seats || []).map(x => ({ pta: x.pta, name: x.name })) };
+      // ══ THE SHOP IS AN OWNER TOO (2026-08-17) ═══════════════════════════════════════════════
+      // This listed only SEATS, and the Designs picker is built from it. But an ADOPTED gallery
+      // belongs to the SHOP's PTA - the fifteen images Lady Luck now owns are hers, not any one
+      // artist's - so with seats alone her own pictures were unreachable from her own console.
+      // Listed first and marked, because it is the shop's front page and the usual thing to edit.
+      return { ok: true, business: rp.business, business_pta: biz,
+        artists: [{ pta: biz, name: "The shop", is_shop: true },
+                  ...(rp.seats || []).map(x => ({ pta: x.pta, name: x.name }))] };
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
     }

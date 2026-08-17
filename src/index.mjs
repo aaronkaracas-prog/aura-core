@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.15.0-2026-08-17-the-first-edit-is-the-consent";
+const BUILD = "aura-core-v6.16.0-2026-08-17-a-claimed-shop-shows-its-own-images";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -46767,10 +46767,35 @@ export class PublicEntry extends WorkerEntrypoint {
       let u = {}; try { u = row.understanding ? JSON.parse(row.understanding) : {}; } catch {}
       // Images grouped by SUBJECT, so an artist's work stays with their name - the whole reason the
       // wrapping link is read instead of the nearest heading.
+      //
+      // ══ A CLAIMED SHOP SHOWS ITS OWN IMAGES, NOT ITS OLD ONES (2026-08-17) ══════════════════
+      // Two states, and until now they did not actually diverge: a shop could claim, adopt fifteen
+      // images into R2, own them outright - and their page still pointed at Wix, because this read
+      // `understanding.images` unconditionally. "Claimed" was a flag rather than a difference.
+      // Now: if they hold a portfolio, THAT is the page. Their order, their deletions, their
+      // additions - the console's work is what a visitor sees. If the portfolio is empty (claimed
+      // but never edited) it falls back to the crawl, so claiming never blanks a good page.
       const groups = {};
-      for (const im of (u.images || [])) {
-        const k = (im.s || "gallery").toString();
-        (groups[k] = groups[k] || []).push(im.u);
+      let source = "their website";
+      let owned = [];
+      if (row.pta) {
+        try {
+          const raw = await this.env.AURA_KV.get("portfolio:" + row.pta);
+          owned = raw ? JSON.parse(raw) : [];
+        } catch {}
+      }
+      if (owned.length) {
+        source = "their own gallery";
+        for (const pc of owned) {
+          const k = (pc.caption || "gallery").toString();
+          (groups[k] = groups[k] || []).push(
+            "https://openforbusiness.world/w/" + row.pta + "/" + pc.id);
+        }
+      } else {
+        for (const im of (u.images || [])) {
+          const k = (im.s || "gallery").toString();
+          (groups[k] = groups[k] || []).push(im.u);
+        }
       }
       return { ok: true,
         id: row.id, name: row.name, industry: row.industry,
@@ -46787,8 +46812,14 @@ export class PublicEntry extends WorkerEntrypoint {
         deposit_required: u.deposit_required ?? null, booking_method: u.booking_method || null,
         booking_platforms: u.booking_platforms || [], own_booking_urls: u.own_booking_urls || [],
         notable: u.notable || null,
+        // ORDER IS PRESERVED FOR AN OWNED GALLERY. The hero-picking rules on the page reorder by
+        // group size, which is right for a crawl nobody curated - but a shop that dragged their
+        // photos into an order meant it, and second-guessing them would be the product telling an
+        // owner they arranged their own work wrong.
         image_groups: Object.entries(groups).map(([subject, urls]) => ({ subject, urls: urls.slice(0, 12) })),
-        image_count: (u.images || []).length,
+        image_count: owned.length || (u.images || []).length,
+        image_source: source,
+        curated: owned.length > 0,
         crawled_at: row.crawled_at, source: row.src, license: row.license,
         claimed: !!row.claimed_at, pta: row.pta || null };
     } catch (e) {

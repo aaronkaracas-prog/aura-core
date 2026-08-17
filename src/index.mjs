@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.10.0-2026-08-17-fuse-before-you-mint";
+const BUILD = "aura-core-v6.11.0-2026-08-17-a-test-must-not-text-a-stranger";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -21910,7 +21910,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             phone: dp.phone || null, website: dp.website || null,
             started_at: new Date().toISOString(), attempts: 0 }), { expirationTtl: 1800 });
           let sent = false, how = null;
-          if (via === "phone" && dp.phone) {
+          // DRY RUN SHORT-CIRCUITS THE SEND. The pending record is still written, so the code is
+          // real and the verifier behaves identically - only the delivery is skipped.
+          let clDry = false;
+          try { clDry = (await env.AURA_KV.get("config:claim:dryrun")) === clId; } catch {}
+          if (clDry) { how = "dry_run - nothing sent"; }
+          else if (via === "phone" && dp.phone) {
             try {
               // TWILIO SEND, which is the real door - I wrote "SMS" from memory and there is no such
               // command. Ninth time today the thing already existed under a different name.
@@ -46568,6 +46573,26 @@ export class PublicEntry extends WorkerEntrypoint {
   // scans the QR on their OWN tattooparlors listing arrives holding a cg_id and nothing else, so
   // this is the door for them: it reads the contacts already on their listing and hands the normal
   // claim flow something it can verify against. Same verification, same mint - only the entry differs.
+  // ══ A TEST MUST NOT TEXT A REAL TATTOO SHOP (2026-08-17) ═════════════════════════════════
+  //
+  // The claim path cannot be driven end to end in a browser without a code arriving somewhere, and
+  // every contact in `cg_business` belongs to a REAL BUSINESS that never asked to hear from us.
+  // Pushing the button on Made Grey would send a verification code to a shop in Thousand Oaks.
+  // That is not a test, it is cold-contacting a stranger.
+  //
+  // So: ONE listing at a time can be put in dry-run. For that id and no other, nothing is sent and
+  // the code comes back in the response. It is a command to turn on and a command to turn off:
+  //   RUN "SETKV config:claim:dryrun <cg_id>"     enable, one shop
+  //   RUN "DELKV config:claim:dryrun"             off
+  // Exact-id match, so it cannot leak to a shop somebody forgot about, and the reply says loudly
+  // that it is in dry-run so a green test is never mistaken for a delivered message.
+  async _claimDryRun(cgId) {
+    try {
+      const on = await this.env.AURA_KV.get("config:claim:dryrun");
+      return !!(on && String(on).trim() === String(cgId).trim());
+    } catch { return false; }
+  }
+
   async leadClaim(cgId, step, arg) {
     try {
       const row = await this.env.AURA_MEMORY.prepare(
@@ -46587,18 +46612,41 @@ export class PublicEntry extends WorkerEntrypoint {
         // WE ONLY EVER SEND TO A CONTACT ALREADY ON THE LISTING, and we show it masked. That is the
         // whole proof: only the shop can read a message sent to their own published number.
         return { ok: true, mode: "choose", business: row.name,
-          options: [...phones.map(p => ({ kind: "phone", masked: mask(p) })),
-                    ...emails.map(e => ({ kind: "email", masked: mask(e) }))],
+          // `raw` travels so the button the shop TAPS is the contact we send to. Without it every
+          // option sent to the first contact and the choice was decorative.
+          options: [...phones.map(p => ({ kind: "phone", masked: mask(p), raw: p })),
+                    ...emails.map(e => ({ kind: "email", masked: mask(e), raw: e }))],
           what_to_say: phones.length || emails.length
             ? "We will send a code to a contact already published on your own site."
             : "We have no contact on file for this shop yet, so we cannot verify it this way." };
       }
+      const dry = await this._claimDryRun(row.id);
+
+      if (String(step).toUpperCase() === "VERIFY") {
+        // Same verifier as every other door - CLAIM FINISH mints or fuses and writes the join.
+        const v = await processCommand("CLAIM FINISH " + row.id + " " + String(arg || "").trim(), this.env, true);
+        const vp = (v && v.payload) ? v.payload : v;
+        if (vp?.ok) return { ...vp, listing_url: "https://tattooparlors.world/b/" + row.id };
+        return vp;
+      }
+
       // Hand off to the existing CLAIM machinery rather than building a second verifier - one code
       // path, one set of rules about attempts and expiry.
       const target = (arg && String(arg)) || phones[0] || emails[0];
       if (!target) return { ok: false, error: "NO_CONTACT_ON_FILE" };
       const r = await processCommand("CLAIM START " + row.id + " " + target, this.env, true);
-      return (r && r.payload) ? r.payload : r;
+      const rp = (r && r.payload) ? r.payload : r;
+      if (dry) {
+        // Read the code back out of the pending record rather than regenerating one - the thing
+        // being tested must be the code the verifier will actually accept.
+        try {
+          const pend = JSON.parse(await this.env.AURA_KV.get("claim:pending:" + row.id) || "{}");
+          return { ...rp, dry_run: true, code: pend.code || null,
+            what_to_say: "DRY RUN - nothing was sent to this business. Code: " + (pend.code || "?"),
+            note: "This listing is in dry-run (config:claim:dryrun). No SMS or email left the system." };
+        } catch {}
+      }
+      return rp;
     } catch (e) { return { ok: false, error: String((e && e.message) || e).slice(0, 200) }; }
   }
 

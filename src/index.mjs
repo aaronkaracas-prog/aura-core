@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.20.0-2026-08-17-a-claimed-shop-knows-what-it-is";
+const BUILD = "aura-core-v6.21.0-2026-08-17-a-shop-does-not-work-at-itself";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -47205,7 +47205,12 @@ export class PublicEntry extends WorkerEntrypoint {
           // any signed-in seat reorder or delete any gallery in the system by editing one field in
           // a form. The owner has to be THIS business or someone seated at it - a session is bound
           // to a business and that is the boundary the command must respect.
-          const seats = new Set(((view.artists) || []).map(x => x.pta).filter(Boolean));
+          // `console_` returns artists as {count, list, billing} - NOT a bare array. Reading it as
+          // an array gave an empty seat set, so every move and delete was refused, including the
+          // shop's own. Same shape mistake that hid the Designs picker an hour ago.
+          const seatList = Array.isArray(view.artists) ? view.artists
+                         : ((view.artists && view.artists.list) || []);
+          const seats = new Set(seatList.map(x => x.pta).filter(Boolean));
           const who = a.who || biz;
           if (who !== biz && !seats.has(who)) {
             return { ok: false, error: "NOT_YOURS",
@@ -47254,11 +47259,18 @@ export class PublicEntry extends WorkerEntrypoint {
         const view = await this.console_(sessionId, slug);
         if (!view?.ok || !view.showing) return { ok: false, error: "NOT_YOURS",
           say: "You can only add to your own work." };
-        const seated = await this.env.AURA_MEMORY.prepare(
-          "SELECT 1 FROM pta_edges WHERE from_id = ? AND to_id = ? AND edge_type = 'works_at' " +
-          "AND state != 'revoked'").bind(who, view.showing).first().catch(() => null);
-        if (!seated) return { ok: false, error: "NOT_SEATED_HERE",
-          say: "That person does not work here." };
+        // ══ A SHOP DOES NOT WORK AT ITSELF (fixed 2026-08-17) ═══════════════════════════════
+        // This required a `works_at` edge, which is right for an artist and impossible for the
+        // business: uploading to "The shop" was refused with "that person does not work here."
+        // The rule predates the shop being a gallery owner at all. Shop-level images - the front
+        // page, the studio, the fifteen adopted from their own site - belong to the business PTA.
+        if (who !== view.showing) {
+          const seated = await this.env.AURA_MEMORY.prepare(
+            "SELECT 1 FROM pta_edges WHERE from_id = ? AND to_id = ? AND edge_type = 'works_at' " +
+            "AND state != 'revoked'").bind(who, view.showing).first().catch(() => null);
+          if (!seated) return { ok: false, error: "NOT_SEATED_HERE",
+            say: "That person does not work here." };
+        }
         f.shop = view.showing;
       }
       const r = await processCommand("PORTFOLIO ADD " + who + " ::: " + JSON.stringify({

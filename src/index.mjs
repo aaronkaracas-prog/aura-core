@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.16.0-2026-08-17-a-claimed-shop-shows-its-own-images";
+const BUILD = "aura-core-v6.17.0-2026-08-17-the-console-can-edit-the-gallery";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -47159,6 +47159,34 @@ export class PublicEntry extends WorkerEntrypoint {
         case "seat_add":    return await run("SEAT ADD " + biz + " " + a.name +
                                 (a.contact ? " " + (a.contact.includes("@") ? "email:" : "phone:") + a.contact : ""));
         case "seat_remove": return await run("SEAT REMOVE " + biz + " " + a.person);
+
+        // ══ IMAGE MANAGEMENT, SCOPED BY WHO OWNS THE PIECE (2026-08-17) ══════════════════════
+        // PORTFOLIO already stores bytes in R2 against a PERSON's PTA and already carries the rule:
+        // "the images belong to the ARTIST, not the shop... they leave, their work goes with them."
+        // So the console does not need a new store or a new permission model - it needs to pass the
+        // right owner. `a.who` is the artist; it falls back to the shop for shop-level images.
+        //
+        // THE SCOPE IS ENFORCED HERE, NOT IN THE UI. A console session is already bound to a
+        // business, and an artist's session must not be able to reorder another artist's gallery by
+        // editing a field in a form. `PORTFOLIO` is per-PTA, so passing `a.who` unchecked would let
+        // any signed-in seat address any PTA in the system.
+        case "piece_move": case "piece_remove": case "pieces": case "adopt": {
+          // ENFORCED HERE, NOT IN THE UI. `PORTFOLIO` is per-PTA, so an unchecked `who` would let
+          // any signed-in seat reorder or delete any gallery in the system by editing one field in
+          // a form. The owner has to be THIS business or someone seated at it - a session is bound
+          // to a business and that is the boundary the command must respect.
+          const seats = new Set(((view.artists) || []).map(x => x.pta).filter(Boolean));
+          const who = a.who || biz;
+          if (who !== biz && !seats.has(who)) {
+            return { ok: false, error: "NOT_YOURS",
+              say: "That portfolio belongs to somebody who does not work here." };
+          }
+          if (what === "pieces")       return await run("PORTFOLIO LIST " + who);
+          if (what === "piece_move")   return await run("PORTFOLIO MOVE " + who + " " + a.piece + " " + a.to);
+          if (what === "piece_remove") return await run("PORTFOLIO REMOVE " + who + " " + a.piece);
+          // The first edit is the consent - this is what turns hotlinks into images they hold.
+          return await run("PORTFOLIO ADOPT " + who + " " + a.cg);
+        }
         case "invite":      return await run("INVITE_SEAT " + biz + " " + a.person + (a.email ? " " + a.email : ""));
         case "edit":        return await run("BUSINESS_EDIT " + biz + " " + a.field + " ::: " + (a.value || ""));
         case "send_code":   return await run("SEND_CODE " + biz + " " + a.to + (a.note ? " ::: " + a.note : ""));

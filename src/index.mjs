@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.4.0-2026-08-16-nobody-shows-a-tattoo-at-34-pixels";
+const BUILD = "aura-core-v6.5.0-2026-08-16-a-junk-name-is-not-a-caption";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18710,6 +18710,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
           // NOW the roster is known, so the images can be ordered by it.
           artistsForRank = fromLinks.slice();
+          // ══ THE SAME GUARD BELONGS ON THE CAPTION (fixed 2026-08-16) ═══════════════════════
+          // `looksLikeAPerson` cleaned the ROSTER - blank page, down for maintenance and copy of
+          // chelsea are correctly absent from `artists` - but the IMAGES kept those same strings as
+          // their subject, so the grid would show real portraits captioned "blank page". A builder
+          // default is not a person's name in one field and a valid caption in another.
+          // Relabelled rather than dropped: the photograph is real, only the label was junk.
+          for (const im of imgs) {
+            if (im.from === "link" && im.subject) {
+              const cleaned = String(im.subject).replace(/^artist[\s-]+/i, "").trim();
+              if (!looksLikeAPerson(cleaned)) { im.subject = im.heading || null; im.from = "heading"; }
+            }
+          }
           rankImages(fromLinks);
           const rosterPages = pool.filter(p => p._roster);
           // ONE IS ENOUGH. The old floor of three was arbitrary, and after the builder-default

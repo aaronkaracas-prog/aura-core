@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.12.0-2026-08-17-a-claim-id-is-not-always-a-place";
+const BUILD = "aura-core-v6.13.0-2026-08-17-verify-was-unreachable";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -46631,7 +46631,15 @@ export class PublicEntry extends WorkerEntrypoint {
         ? v.replace(/^(.).*(.)@/, "$1***$2@")
         : "***-***-" + v.replace(/\D/g, "").slice(-4);
 
-      if (String(step || "").toUpperCase() !== "SEND") {
+      // ══ AN EARLY RETURN SWALLOWED THE VERIFY STEP (fixed 2026-08-17) ═════════════════════
+      // This read `!== "SEND"`, so step=VERIFY fell into the CHOOSE branch and was handed the
+      // "pick a contact" payload - which carries ok:true. The backend test reported
+      // `VERIFY ok=True identity= pta=` and D1 still showed pta NULL: a green result for work that
+      // never happened, and the VERIFY branch below was unreachable code.
+      // Named explicitly now. Anything unrecognised falls to CHOOSE, which is the safe default -
+      // but SEND and VERIFY have to be asked for by name.
+      const ceStep = String(step || "").toUpperCase();
+      if (ceStep !== "SEND" && ceStep !== "VERIFY") {
         // WE ONLY EVER SEND TO A CONTACT ALREADY ON THE LISTING, and we show it masked. That is the
         // whole proof: only the shop can read a message sent to their own published number.
         return { ok: true, mode: "choose", business: row.name,
@@ -46645,7 +46653,7 @@ export class PublicEntry extends WorkerEntrypoint {
       }
       const dry = await this._claimDryRun(row.id);
 
-      if (String(step).toUpperCase() === "VERIFY") {
+      if (ceStep === "VERIFY") {
         // Same verifier as every other door - CLAIM FINISH mints or fuses and writes the join.
         const v = await processCommand("CLAIM FINISH " + row.id + " " + String(arg || "").trim(), this.env, true);
         const vp = (v && v.payload) ? v.payload : v;

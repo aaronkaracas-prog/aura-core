@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.19.0-2026-08-17-the-shop-is-in-the-right-list";
+const BUILD = "aura-core-v6.20.0-2026-08-17-a-claimed-shop-knows-what-it-is";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -22130,7 +22130,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const host = String(pend.website || "").replace(/^https?:\/\//i, "")
               .replace(/^www\./i, "").split("/")[0].toLowerCase();
             const row = await env.AURA_MEMORY.prepare(
-              "SELECT id, name FROM cg_business WHERE pta IS NULL AND (" +
+              "SELECT id, name, industry FROM cg_business WHERE pta IS NULL AND (" +
               (digits ? "replace(replace(replace(replace(phone,'(',''),')',''),'-',''),' ','') LIKE ?" : "0") +
               (host ? " OR lower(website) LIKE ?" : "") + ") LIMIT 1")
               .bind(...[...(digits ? ["%" + digits] : []), ...(host ? ["%" + host + "%"] : [])]).first();
@@ -22140,6 +22140,23 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 .bind(ing.id, new Date().toISOString(), row.id).run();
               bridged = { cg_id: row.id, listing: "https://tattooparlors.world/b/" + row.id,
                 matched_on: digits && host ? "phone and website" : digits ? "phone" : "website" };
+              // ══ A CLAIMED SHOP HAS TO KNOW WHAT KIND OF SHOP IT IS (2026-08-17) ═══════════════
+              // MEASURED: Lady Luck claimed successfully, owned her images, and opened a console
+              // with NO DESIGNS TAB - because the console nav is `NAV[business_type]` and the claim
+              // path minted a business without ever recording a type, so she fell to `_default`
+              // (Today / Appointments / Customers / Your page). She owned fifteen pictures and had
+              // nowhere to manage them.
+              // `cg_business.industry` has known the answer since the day the row was imported, and
+              // the console reads `understanding.business_type` off the PTA - so write it across.
+              // Every vertical after tattoo gets this free: the industry column IS the console nav.
+              try {
+                const TYPE = { tattoo: "tattoo_shop", salon: "salon", restaurant: "restaurant" };
+                const bt = TYPE[String(row.industry || "").toLowerCase()] || null;
+                if (bt) {
+                  await processCommand("PTA_REMEMBER " + ing.id + " UNDERSTANDING " +
+                    JSON.stringify({ business_type: bt, source: "claim", event_type: "UNDERSTANDING" }), env, true);
+                }
+              } catch {}
             }
           } catch (e) { bridged = { error: String(e?.message ?? e).slice(0, 120) }; }
 

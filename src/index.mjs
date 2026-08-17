@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.11.0-2026-08-17-a-test-must-not-text-a-stranger";
+const BUILD = "aura-core-v6.12.0-2026-08-17-a-claim-id-is-not-always-a-place";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -21875,8 +21875,31 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         error: "Usage: CLAIM START <place_id> <phone|email>  |  CLAIM FINISH <place_id> <code>" } };
       const clKey = "claim:pending:" + clId;
       try {
-        const det = await processCommand("PLACE " + clId, env, true);
-        const dp = (det && det.payload) ? det.payload : det;
+        // ══ A CLAIM ID IS NOT ALWAYS A GOOGLE PLACE (fixed 2026-08-17) ═══════════════════════
+        // `PLACE <id>` is a Google lookup. It is right for openforbusiness.world, where the id came
+        // from Google in the first place - but a shop arriving from tattooparlors.world holds an
+        // OVERTURE UUID from `cg_business`, and that will never resolve there. It returned
+        // NO_SUCH_PLACE and the whole claim path died at the send step.
+        // So: try Google, then fall back to our own table. ONE verifier, two kinds of id - the
+        // alternative was a second claim flow, and two verifiers is how the rules drift apart.
+        let det = await processCommand("PLACE " + clId, env, true);
+        let dp = (det && det.payload) ? det.payload : det;
+        if (!dp?.ok) {
+          try {
+            const cgRow = await env.AURA_MEMORY.prepare(
+              "SELECT id, name, phone, phone_found, email, email_found, website FROM cg_business " +
+              "WHERE id = ? LIMIT 1").bind(clId).first();
+            if (cgRow) {
+              // Shaped like a PLACE reply so everything downstream is unchanged. `phone_found` is
+              // what the shop's OWN SITE published and outranks the dataset's copy.
+              dp = { ok: true, name: cgRow.name,
+                phone: String(cgRow.phone_found || cgRow.phone || "").split("|")[0] || null,
+                email: String(cgRow.email_found || cgRow.email || "").split("|")[0] || null,
+                website: String(cgRow.website || "").split("|")[0] || null,
+                from: "cg_business" };
+            }
+          } catch {}
+        }
         if (!dp?.ok) return { cmd: "CLAIM", payload: { ok: false, error: "NO_SUCH_PLACE", place_id: clId } };
 
         if (clSub === "START") {

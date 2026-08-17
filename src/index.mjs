@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.1.0-2026-08-16-a-link-is-not-always-a-person";
+const BUILD = "aura-core-v6.2.0-2026-08-16-builder-defaults-are-not-people";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18320,12 +18320,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // button says "MAKE AN APPOINTMENT" and points at /contact - a path-only rule reported "no
         // booking page" for a shop that plainly has one. What the button SAYS is as much evidence as
         // where it goes.
+        // ══ A BOOKING PAGE IS A PAGE, NOT A PNG (fixed 2026-08-16) ═══════════════════════════
+        // MEASURED at Lady Luck: `booking_page` came back as a Facebook icon on wixstatic - the
+        // link-text rule matched an IMAGE whose filename contained "Facebook". Sending a shop owner
+        // a lead page that says "your booking page: <a 48x48 png>" is worse than saying nothing.
+        // Platform detection was right (jotform); only the own-page URL needed the guard. An asset
+        // extension or an image CDN is never a page anyone books through.
+        const NOT_A_PAGE = /\.(png|jpe?g|gif|webp|svg|ico|css|js|pdf|mp4|woff2?)(\?|$)|static\.wixstatic\.com|images\.squarespace-cdn|assets\.zyrosite|\/wp-content\/uploads\//i;
         const ownBooking = [...new Set([
           ...(md.match(/https?:\/\/[^\s)"']*\/(?:book|booking|appointments?|schedule|request|inquir)[^\s)"']*/gi) || []),
           ...[...md.matchAll(/\[([^\]]{0,60})\]\((https?:\/\/[^)]{0,200})\)/g)]
               .filter(m => /book|appointment|schedul|inquir|request a quote|get started/i.test(m[1]))
               .map(m => m[2]),
         ].filter(u => !BOOKERS.some(([, re]) => re.test(u)))
+         .filter(u => !NOT_A_PAGE.test(u))
          .map(u => u.replace(/[).,]+$/, "")))].slice(0, 6);
         // The universal way in. Any of these is a subscribe-once feed into APPOINTMENT.
         const icsFeeds = [...new Set((md.match(/https?:\/\/[^\s)"']*\.ics\b/gi) || [])
@@ -18637,9 +18645,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // guard. FIFTH time a plural has defeated a word boundary in this file, and the standing
           // rule written here after the third one says exactly this. Applied without exception.
           const PROMO = /\b(coupon|special|sale|deal|discount|flash|weekend|event|guest|day|month|week|holiday|christmas|halloween|friday|monday|walk|open|closed|hour|price|pricing|jewelry|merch|apparel|drop|giveaway|contest|winner|announcement|update|news|promo|offer|gift|card|voucher)s?\b/i;
+          // ══ SITE BUILDERS SHIP PAGES THAT LOOK LIKE NAMES (fixed 2026-08-16) ═══════════════
+          // MEASURED at Lady Luck (Wix): the roster came back as Jeanine, Blank Page, Aj, Down For
+          // Maintenance, Copy Of Chelsea - while /lindy and /erika, both real artists, missed out.
+          // The person-shape rule is necessary and not sufficient: "Blank Page" is two short tokens
+          // with no digits and no promo words, so it passes every structural test a name would.
+          // These are BUILDER DEFAULTS - Wix, Squarespace, WordPress and Weebly all emit them - so
+          // this is a closed set of template titles, not a denylist for one shop. "Copy of X" is the
+          // duplicate-page convention on every builder there is.
+          const CMS_DEFAULT = /^(blank[\s-]?page|new[\s-]?page|untitled|page[\s-]?\d*|home|default|placeholder|coming[\s-]?soon|under[\s-]?construction|down[\s-]?for[\s-]?maintenance|maintenance|test[\s-]?page|test|sample|demo|template|landing|main|welcome|copy[\s-]?of[\s-].*|.*[\s-]copy)$/i;
           const looksLikeAPerson = (x) => {
             const t = x.trim();
             if (!t || NOT_A_PERSON.test(t)) return false;
+            if (CMS_DEFAULT.test(t)) return false;
             if (/\d/.test(t)) return false;                 // dates and post ids are never names
             if (PROMO.test(t)) return false;                 // promo vocabulary is never a name
             const w = t.split(/\s+/);

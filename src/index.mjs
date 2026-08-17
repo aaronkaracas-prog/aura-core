@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.0.0-2026-08-16-start-and-collect";
+const BUILD = "aura-core-v6.1.0-2026-08-16-a-link-is-not-always-a-person";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -17926,7 +17926,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           } catch (e) { failed.push({ business: r.name, error: String(e?.message ?? e).slice(0, 120) }); }
         }
         return { cmd: "CG_ENRICH_COLLECT", payload: { ok: true, parked: rows.length,
-          collected: done.length, still_running: waiting.length, failed: failed.length,
+          // `failed` appeared twice in this literal - wrangler warned, node --check did not. Second
+          // duplicate-key bug today; the first silently reversed a subdomain setting.
+          collected: done.length, still_running: waiting.length, failed_count: failed.length,
           done, waiting, failed } };
       } catch (e) {
         return { cmd: "CG_ENRICH_COLLECT", payload: { ok: false, error: String(e?.message ?? e).slice(0, 200) } };
@@ -18621,13 +18623,33 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           //
           // The model stays as a FALLBACK only - for a site that names its people in prose without
           // linking them. Structure first, judgement only where structure is silent.
+          // ══ A WRAPPING LINK IS NOT ALWAYS A PERSON (fixed 2026-08-16) ═══════════════════════
+          // Bang Bang wraps each portrait in /jay-shin, /zee, /pawel - person-shaped slugs, and the
+          // rule read them perfectly. Ageless Arts is WordPress: every promo image is wrapped in a
+          // link to its own post, so the same rule returned "coupons", "3 day flash weekend friday
+          // the 13th mexican independence day" and "guest piercer jaime getman 9 09 9 10" as this
+          // shop's artists.
+          // The guard is the SHAPE OF A NAME, not a list of one site's paths: one to three short
+          // tokens, no digits, no date, no promo vocabulary. That travels to any CMS - a person is
+          // called "Jay Shin" everywhere, and no one is called "3 day flash weekend".
           const NOT_A_PERSON = /^(artist|artists|team|home|index|gallery|shop|store|contact|about|book|booking|gift|faq|blog|news|privacy|terms|press|jobs|careers|studio|tattoo|tattoos|portfolio|work|works|services|piercing|piercings|aftercare|new|under construction)$/i;
+          // `)s?\b`, not `)\b` - "coupons" and "specials" walked straight through a `\bcoupon\b`
+          // guard. FIFTH time a plural has defeated a word boundary in this file, and the standing
+          // rule written here after the third one says exactly this. Applied without exception.
+          const PROMO = /\b(coupon|special|sale|deal|discount|flash|weekend|event|guest|day|month|week|holiday|christmas|halloween|friday|monday|walk|open|closed|hour|price|pricing|jewelry|merch|apparel|drop|giveaway|contest|winner|announcement|update|news|promo|offer|gift|card|voucher)s?\b/i;
+          const looksLikeAPerson = (x) => {
+            const t = x.trim();
+            if (!t || NOT_A_PERSON.test(t)) return false;
+            if (/\d/.test(t)) return false;                 // dates and post ids are never names
+            if (PROMO.test(t)) return false;                 // promo vocabulary is never a name
+            const w = t.split(/\s+/);
+            return w.length <= 3 && t.length <= 30 && w.every(p => p.length <= 18);
+          };
           const fromLinks = [...new Set(imgs
             .filter(i => !i.chrome && i.from === "link" && i.subject)
             .map(i => String(i.subject).trim())
             .map(x => x.replace(/^artist[\s-]+/i, "").trim())   // "artist bang" -> "bang"
-            .filter(x => x && !NOT_A_PERSON.test(x))
-            .filter(x => x.split(/\s+/).length <= 3 && x.length <= 30)
+            .filter(looksLikeAPerson)
             // Title-case the slug the site gave us: "jay shin" -> "Jay Shin".
             .map(x => x.replace(/\b[a-z]/g, c => c.toUpperCase())))];
 
@@ -18988,9 +19010,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             options: {
               includeExternalLinks: false,   // still no other people's sites
               includeSubdomains: true,       // but www.theirsite.com IS their site
+              // GENERIC PATTERNS ONLY. Grok suggested preferring "/artist-galleries",
+              // "/artist-galleries-2" and "/guest-tattoo-artists" - those are ONE SHOP'S paths and
+              // fitting the crawler to them would break on the next site. What generalises is the
+              // SHAPE of a low-value URL: dated archives, promo and news sections, and a store.
+              // Every CMS on earth produces /2024/, /news, /events, /coupons.
               excludePatterns: ["**/product/**", "**/products/**", "**/shop/**", "**/store/**",
                                 "**/cart**", "**/checkout**", "**/merch**", "**/collections/**",
-                                "**/privacy**", "**/terms**"] },
+                                "**/privacy**", "**/terms**",
+                                "**/20[0-9][0-9]/**", "**/news**", "**/events**", "**/coupon**",
+                                "**/specials**", "**/category/**", "**/tag/**", "**/author/**"] },
           }) });
         const d = await r.json();
         if (!d?.success) return { cmd: "SITE_READ", payload: { ok: false, error: "crawl not accepted",

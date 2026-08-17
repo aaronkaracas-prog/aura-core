@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.21.0-2026-08-17-a-shop-does-not-work-at-itself";
+const BUILD = "aura-core-v6.23.0-2026-08-17-the-build-key-opens-every-door";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -21732,7 +21732,22 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       try {
         const db = env.AURA_MEMORY;
         // What they own. An owns/manages edge from the person to the business.
-        const owned = await db.prepare(
+        // ══ THE BUILD KEY OPENS EVERY BUSINESS (2026-08-17) ═════════════════════════════════
+        // A session was only half the lock. THIS is the other half: the console shows what the
+        // caller has an OWNS EDGE to, so the build key alone still meant `OWNER ADD` on every shop
+        // one at a time - 33,694 of them. Aaron: "I need to be able to access any of them, just
+        // open it up, we'll lock it down later."
+        // With the key armed, the owns filter is skipped and any business is reachable by slug or
+        // PTA. Without it nothing changes - an owns edge is still the only way in.
+        // ARMED BY COMMAND, OFF BY DEFAULT, AND IT SAYS SO IN THE TAIL ON EVERY USE.
+        let coKeyOpen = false;
+        try { coKeyOpen = !!(await env.AURA_KV.get("config:build:key")); } catch {}
+        const owned = coKeyOpen
+          ? await db.prepare(
+              "SELECT id, name, type, metadata FROM pta_entities WHERE type = 'business' " +
+              (coBiz ? "AND id = ? " : "") + "ORDER BY rowid DESC LIMIT 40")
+              .bind(...(coBiz ? [coBiz] : [])).all().catch(() => null)
+          : await db.prepare(
           "SELECT DISTINCT e.to_id AS id, x.name, x.type, x.metadata FROM pta_edges e " +
           "JOIN pta_entities x ON x.id = e.to_id " +
           // == WORKING THERE IS NOT OWNING IT (fixed 2026-08-13) =============================
@@ -46109,8 +46124,43 @@ export class PublicEntry extends WorkerEntrypoint {
   // their session names.** Passing a `from` that is not your own PTA is refused - otherwise anyone
   // could invite the world on anyone's behalf, and the consent model would be theatre.
   async _whoIs(sessionId) {
-    if (typeof sessionId !== "string" || !/^[a-f0-9]{8,128}$/i.test(sessionId)) return null;
+    if (typeof sessionId !== "string" || !sessionId) return null;
     try {
+      // ══ THE BUILD KEY — ONE DOOR, ARMED BY COMMAND, OFF BY DEFAULT (2026-08-17) ═══════════
+      //
+      // Aaron: "I don't want to fight credentials right now, we're going to have this conversation
+      // 50 times." He is right. Passkeys across a laptop, a phone and an outside reviewer is a real
+      // fight and it is not the fight that matters while the product is being built. There are no
+      // customers yet - it is him, Claude and Grok.
+      //
+      // SO: ONE key, checked in the ONE place a session becomes a person. Ten call sites resolve
+      // identity through `_whoIs`, so putting it anywhere else would mean ten holes instead of one,
+      // and one of them would be missed when this comes out.
+      //   RUN 'SETKV config:build:key <a-long-random-string>'   arm
+      //   RUN "DELKV config:build:key"                          disarm - and it is genuinely off
+      // Then any surface signs in as anyone with  ?s=<key>.<pta_id>  or the same as a cookie.
+      //
+      // WHY IT IS SAFE ENOUGH TO EXIST AND STILL DANGEROUS:
+      //  - There is no key by default. An absent KV value means this block cannot fire at all.
+      //  - It is exact-match on a secret Aaron chooses, not a magic string in source.
+      //  - It LOGS EVERY USE with the PTA it impersonated, so the console tail shows exactly what
+      //    was done under it - a bypass nobody can audit is how this kind of door gets forgotten.
+      //  - `signed_in_via: "build key"` travels on the session so any surface CAN say so.
+      // THIS MUST BE DELETED BEFORE A REAL SHOP OWNER SIGNS IN. It is the whole authentication
+      // system in one string, and the fact that it is one command to remove is the point.
+      const buildKey = await this.env.AURA_KV.get("config:build:key").catch(() => null);
+      if (buildKey && sessionId.length > buildKey.length && sessionId.startsWith(buildKey)) {
+        const asPta = sessionId.slice(buildKey.length).replace(/^[._-]/, "");
+        if (/^pta_[a-f0-9]{6,}$/i.test(asPta)) {
+          console.warn("[BUILD KEY] session opened as " + asPta +
+            " - authentication was BYPASSED. Remove config:build:key before real owners sign in.");
+          return { pta: asPta, name: null, signed_in_via: "build key" };
+        }
+      }
+      // The real session format check, moved BELOW the build key - it is hex-only, and a key with a
+      // dot or a dash in it was being rejected before the bypass could ever be considered. Caught by
+      // re-reading rather than by the test, which had not included this line.
+      if (!/^[a-f0-9]{8,128}$/i.test(sessionId)) return null;
       const raw = await this.env.AURA_KV.get("session:" + sessionId);
       if (!raw) return null;
       const sess = JSON.parse(raw);
@@ -46922,13 +46972,6 @@ export class PublicEntry extends WorkerEntrypoint {
     }
   }
 
-  // ══ THE BUSINESS CONSOLE ═══════════════════════════════════════════════════════════════════
-  // A session proves who is asking. This answers "what am I allowed to see, and what is here" for
-  // the businesses that person owns. Everything is scoped by an OWNS edge - a session for one person
-  // can never read another's business, because the query starts from their PTA rather than from an
-  // id in the URL.
-  // businessId may be a pta_ id OR a slug from the hostname - aura-host knows the subdomain, not
-  // the id, and making it look one up first would be a second round trip for nothing.
   async console_(sessionId, businessId) {
     try {
       const me = await this.sessionCheck(sessionId);

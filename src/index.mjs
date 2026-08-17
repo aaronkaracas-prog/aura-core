@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.13.0-2026-08-17-verify-was-unreachable";
+const BUILD = "aura-core-v6.15.0-2026-08-17-the-first-edit-is-the-consent";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -21121,6 +21121,81 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
           return { cmd: "PORTFOLIO", payload: { ok: true, id: piece.id, type: piece.type,
             caption: piece.caption, data: btoa(bin) } };
+        }
+
+        // ══ MOVE — THE ONLY VERB THAT WAS MISSING (2026-08-17) ═══════════════════════════════
+        // LIST, ADD, GET and REMOVE already existed and store bytes in R2 against a person's PTA.
+        // Order is ALREADY array position in the KV index, so reordering needs no new storage
+        // concept and no `sort` column - it is a splice. Aaron: "this is already proven, let's not
+        // rewrite something that's already there."
+        //   PORTFOLIO MOVE <person> <piece_id> <0-based position>
+        // Phone-app behaviour: drag a photo, it lands where you dropped it, everything else shuffles.
+        // ══ ADOPT — WHERE HOTLINKS BECOME THEIRS (2026-08-17) ════════════════════════════════
+        // Doctrine: claiming proves who they are; it does not mean "take my photographs". So an
+        // unclaimed listing HOTLINKS the shop's own CDN and stores nothing. The moment they want to
+        // reorder or delete, the images have to be OURS to hold - you cannot move somebody else's
+        // hotlink. That first edit IS the consent, and this is the step that acts on it.
+        //   PORTFOLIO ADOPT <person_pta> <cg_id>
+        // Fetches each image the crawl found, stores the bytes in R2, and writes pieces against the
+        // owner's PTA. Idempotent by source URL, so running it twice does not duplicate a shop's
+        // gallery. A failed fetch is skipped and counted, never silently dropped - a shop that ends
+        // up with nine of twelve images should be told which three did not come.
+        if (poSub === "ADOPT") {
+          const cgId = String(poH[2] || "").trim();
+          if (!cgId) return { cmd: "PORTFOLIO", payload: { ok: false,
+            error: "Usage: PORTFOLIO ADOPT <person_pta> <cg_id>" } };
+          const row = await env.AURA_MEMORY.prepare(
+            "SELECT id, name, pta, understanding FROM cg_business WHERE id = ? LIMIT 1").bind(cgId).first();
+          if (!row) return { cmd: "PORTFOLIO", payload: { ok: false, error: "NOT_IN_CG_BUSINESS" } };
+          if (!row.pta) return { cmd: "PORTFOLIO", payload: { ok: false, error: "NOT_CLAIMED",
+            note: "Images become theirs to hold only after the shop has been claimed." } };
+          let u = {}; try { u = row.understanding ? JSON.parse(row.understanding) : {}; } catch {}
+          const want = (u.images || []).slice(0, 60);
+          if (!want.length) return { cmd: "PORTFOLIO", payload: { ok: true, adopted: 0,
+            note: "Nothing was found on their site to adopt." } };
+          const idx = await readIdx();
+          const already = new Set(idx.map(x => x.source).filter(Boolean));
+          let adopted = 0; const failed = [];
+          for (const im of want) {
+            if (!im?.u || already.has(im.u)) continue;
+            try {
+              const r = await fetch(im.u);
+              if (!r.ok) { failed.push({ url: im.u.slice(0, 90), status: r.status }); continue; }
+              const buf = await r.arrayBuffer();
+              if (!buf.byteLength) { failed.push({ url: im.u.slice(0, 90), status: "empty" }); continue; }
+              const id = "pc_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+              const key = "portfolio/" + poWho + "/" + id;
+              await env.AURA_KNOWLEDGE.put(key, buf, {
+                httpMetadata: { contentType: r.headers.get("content-type") || "image/jpeg" } });
+              idx.push({ id, key, type: r.headers.get("content-type") || "image/jpeg",
+                caption: im.s || null, shop: row.pta, source: im.u,
+                added: new Date().toISOString() });
+              adopted++;
+            } catch (e) { failed.push({ url: String(im.u).slice(0, 90), status: String(e?.message ?? e).slice(0, 60) }); }
+          }
+          await env.AURA_KV.put(idxKey, JSON.stringify(idx));
+          return { cmd: "PORTFOLIO", payload: { ok: true, business: row.name, owner: poWho,
+            adopted, skipped_already_held: want.length - adopted - failed.length,
+            failed: failed.length, failures: failed.slice(0, 6), total_now: idx.length,
+            note: "Copied from the shop's own site into R2. They can now move, delete and add." } };
+        }
+
+        if (poSub === "MOVE") {
+          const idx = await readIdx();
+          const from = idx.findIndex(x => x.id === (poH[2] || ""));
+          if (from < 0) return { cmd: "PORTFOLIO", payload: { ok: false, error: "NO_SUCH_PIECE" } };
+          const want = parseInt(poH[3], 10);
+          if (!isFinite(want)) return { cmd: "PORTFOLIO", payload: { ok: false,
+            error: "Usage: PORTFOLIO MOVE <person> <piece_id> <position>" } };
+          // Clamped rather than rejected - dropping past the end means "last", which is what the
+          // gesture meant, and an error there would be pedantry.
+          const to = Math.max(0, Math.min(idx.length - 1, want));
+          const [moved] = idx.splice(from, 1);
+          idx.splice(to, 0, moved);
+          await env.AURA_KV.put(idxKey, JSON.stringify(idx));
+          return { cmd: "PORTFOLIO", payload: { ok: true, moved: moved.id, from, to,
+            order: idx.map(x => x.id),
+            note: "Order is the index array itself - no sort column, nothing to drift out of sync." } };
         }
 
         if (poSub === "REMOVE") {

@@ -61,7 +61,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.2.0-2026-08-16-builder-defaults-are-not-people";
+const BUILD = "aura-core-v6.3.0-2026-08-16-a-page-for-a-person";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18663,19 +18663,45 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const w = t.split(/\s+/);
             return w.length <= 3 && t.length <= 30 && w.every(p => p.length <= 18);
           };
-          const fromLinks = [...new Set(imgs
-            .filter(i => !i.chrome && i.from === "link" && i.subject)
-            .map(i => String(i.subject).trim())
-            .map(x => x.replace(/^artist[\s-]+/i, "").trim())   // "artist bang" -> "bang"
-            .filter(looksLikeAPerson)
+          // ══ A PAGE FOR A PERSON IS ALSO A ROSTER SIGNAL (added 2026-08-16) ══════════════════
+          // MEASURED at Lady Luck: /lindy and /erika were CRAWLED - they are right there in
+          // page_types - and never reached the roster, because neither has a wrapped image on the
+          // homepage and link-attribution was the only path in. Meanwhile /jeanine and /aj did.
+          // The shop made a page for a person; that is the same evidence as a link naming one, and
+          // it is what /jay-shin, /zee and /pawel are too. Structural, no model, and it generalises
+          // to every builder - Wix, Squarespace and WordPress all mint /firstname for a staff page.
+          // Builder defaults are already excluded by looksLikeAPerson, which is what makes this safe:
+          // /blank-page, /down-for-maintenance and /copy-of-chelsea were crawled here as well.
+          const slugPeople = (kept_pages || [])
+            .map(pg => {
+              try { return decodeURIComponent(new URL(pg.url).pathname); } catch { return ""; }
+            })
+            .map(path => (path.split("/").filter(Boolean).pop() || ""))
+            .filter(Boolean)
+            .map(seg => seg.replace(/[-_]+/g, " ").trim())
+            .filter(looksLikeAPerson);
+
+          const fromLinks = [...new Set([
+            ...imgs
+              .filter(i => !i.chrome && i.from === "link" && i.subject)
+              .map(i => String(i.subject).trim())
+              .map(x => x.replace(/^artist[\s-]+/i, "").trim())   // "artist bang" -> "bang"
+              .filter(looksLikeAPerson),
+            ...slugPeople,
+          ].map(x => x.toLowerCase()))]
             // Title-case the slug the site gave us: "jay shin" -> "Jay Shin".
-            .map(x => x.replace(/\b[a-z]/g, c => c.toUpperCase())))];
+            .map(x => x.replace(/\b[a-z]/g, c => c.toUpperCase()));
 
           // NOW the roster is known, so the images can be ordered by it.
           artistsForRank = fromLinks.slice();
           rankImages(fromLinks);
           const rosterPages = pool.filter(p => p._roster);
-          if (fromLinks.length >= 3) {
+          // ONE IS ENOUGH. The old floor of three was arbitrary, and after the builder-default
+          // filter it actively destroyed good data: Lady Luck's five link-subjects became two clean
+          // names - Jeanine and AJ - which fell under the threshold, so the roster came back EMPTY
+          // when two correct names were in hand. Anything surviving looksLikeAPerson is already
+          // structural evidence the shop published; a count does not make it more or less true.
+          if (fromLinks.length >= 1) {
             artists = fromLinks.slice(0, 40);
             rosterNote = "roster read from the site's OWN per-person links (" + fromLinks.length +
                          ") - structural, no model involved";

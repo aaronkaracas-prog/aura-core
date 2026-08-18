@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.23.0-2026-08-17-the-build-key-opens-every-door";
+const BUILD = "aura-core-v6.24.0-2026-08-18-a-stale-cookie-must-not-win";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -46149,6 +46149,11 @@ export class PublicEntry extends WorkerEntrypoint {
       // THIS MUST BE DELETED BEFORE A REAL SHOP OWNER SIGNS IN. It is the whole authentication
       // system in one string, and the fact that it is one command to remove is the point.
       const buildKey = await this.env.AURA_KV.get("config:build:key").catch(() => null);
+      // Used from three places below, so it is named once.
+      const bkIdentity = () => {
+        console.warn("[BUILD KEY] identity granted with no valid session - authentication is OFF.");
+        return { pta: "pta_0000000000000bad", name: null, signed_in_via: "build key" };
+      };
       if (buildKey && sessionId.length > buildKey.length && sessionId.startsWith(buildKey)) {
         const asPta = sessionId.slice(buildKey.length).replace(/^[._-]/, "");
         if (/^pta_[a-f0-9]{6,}$/i.test(asPta)) {
@@ -46160,11 +46165,19 @@ export class PublicEntry extends WorkerEntrypoint {
       // The real session format check, moved BELOW the build key - it is hex-only, and a key with a
       // dot or a dash in it was being rejected before the bypass could ever be considered. Caught by
       // re-reading rather than by the test, which had not included this line.
-      if (!/^[a-f0-9]{8,128}$/i.test(sessionId)) return null;
+      if (!/^[a-f0-9]{8,128}$/i.test(sessionId)) return buildKey ? bkIdentity() : null;
       const raw = await this.env.AURA_KV.get("session:" + sessionId);
-      if (!raw) return null;
+      // ══ A STALE COOKIE MUST NOT BEAT THE BUILD KEY (fixed 2026-08-18) ═══════════════════
+      // Aaron's phone carried a cookie from an earlier half-finished sign-in. Every reader prefers
+      // a cookie over the fallback, so the dead cookie won and the key never fired - the console
+      // rendered and Aura answered "you are not signed in". Meanwhile a clean curl with NO cookie
+      // worked. The difference was never the device.
+      // While the key is armed, a session that does not resolve is not a refusal - it is an old
+      // cookie, and the answer is the same open door.
+      if (!raw) return buildKey ? bkIdentity() : null;
       const sess = JSON.parse(raw);
-      return sess && sess.pta ? sess : null;
+      if (!(sess && sess.pta)) return buildKey ? bkIdentity() : null;
+      return sess;
     } catch { return null; }
   }
 

@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.50.0-2026-08-18-business-is-on-the-wrapper";
+const BUILD = "aura-core-v6.51.0-2026-08-18-rfc5545-says-escape";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -21028,6 +21028,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const apSub = String(apH[0] || "").toUpperCase();
       const apBody = (apP[1] || "").trim();
       const db = env.AURA_MEMORY;
+      // RFC 5545 3.3.11: backslash, then semicolon and comma, then newline as a literal \n.
+      // Order matters - escaping the backslash last would mangle every escape added before it.
+      const icsText = (v) => String(v == null ? "" : v)
+        .replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,")
+        .replace(/\r\n|\r|\n/g, "\\n");
       const readAp = async (uid) => {
         const r = await db.prepare("SELECT id, from_id, to_id, context, state FROM pta_edges WHERE id = ?")
           .bind(uid).first().catch(() => null);
@@ -21233,9 +21238,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             "UID:" + c.uid + "@openforbusiness.world",
             "DTSTAMP:" + z(c.dtstamp), "DTSTART:" + z(c.start), "DTEND:" + z(c.end),
             "SEQUENCE:" + (c.sequence || 0), "STATUS:" + (c.status || "TENTATIVE"),
-            "SUMMARY:" + String(c.summary || "Appointment").replace(/[\r\n,;]/g, " "),
-            ...(c.description ? ["DESCRIPTION:" + String(c.description).replace(/[\r\n]/g, "\\n").replace(/[,;]/g, " ")] : []),
-            ...(biz?.name ? ["LOCATION:" + String(biz.name).replace(/[,;]/g, " ")] : []),
+            // ══ RFC 5545 SAYS ESCAPE, NOT DELETE (fixed 2026-08-18) ══════════════════════════
+            // All three fields stripped commas and semicolons to spaces, so "koi, half sleeve"
+            // arrived in the shop's calendar as "koi half sleeve" and an address lost its commas.
+            // The spec (3.3.11 TEXT) escapes them: backslash first so it does not double-escape the
+            // escapes it is about to add, then ; , and newline. One function, all three fields, so
+            // they cannot drift apart again.
+            "SUMMARY:" + icsText(c.summary || "Appointment"),
+            ...(c.description ? ["DESCRIPTION:" + icsText(c.description)] : []),
+            ...(biz?.name ? ["LOCATION:" + icsText(biz.name)] : []),
             "ORGANIZER;CN=" + (biz?.name || "the shop") + ":mailto:noreply@openforbusiness.world",
             ...Object.entries(c.attendees || {}).map(([k, v]) =>
               "ATTENDEE;PARTSTAT=" + v + ":urn:pta:" + k),

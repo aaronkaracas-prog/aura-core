@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.58.0-2026-08-18-the-answer-describes-the-question";
+const BUILD = "aura-core-v6.59.0-2026-08-18-a-timezone-is-a-place";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -20896,13 +20896,45 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const h = [...ch].reverse().find(c => c?.event === "HOURS" || c?.data?.hours);
           if (h) weekly = h.data?.hours || h.data;
         } catch {}
-        let tzMin = null;   // minutes east of UTC, from Google
+        // ══ THE ONE DECODE PATH (2026-08-18) ═══════════════════════════════════════════════
+        // Grok: "If three doors each interpret TZ, you will ship three DST bugs." AVAILABILITY is
+        // the only reader of a business's zone in the whole codebase and it stays that way.
+        // The ZONE is the stored fact; the OFFSET is derived per instant, so a booking in November
+        // gets November's offset and DST is simply not our problem.
+        // `zoneOffsetMin` asks the runtime what the offset is AT A GIVEN MOMENT - the same answer
+        // Google would give, without needing Google.
+        const zoneOffsetMin = (zone, at) => {
+          try {
+            const dtf = new Intl.DateTimeFormat("en-US", { timeZone: zone, timeZoneName: "longOffset" });
+            const part = dtf.formatToParts(at).find(x => x.type === "timeZoneName")?.value || "";
+            const m = part.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
+            if (!m) return 0;                                    // GMT with no offset is GMT
+            const sign = m[1] === "-" ? -1 : 1;
+            return sign * (Number(m[2]) * 60 + Number(m[3] || 0));
+          } catch { return null; }
+        };
+        let tzName = null;  // IANA, theirs, the thing we persist
+        let tzMin = null;   // minutes east of UTC, DERIVED for this moment
         {
           const o = await processCommand("OFB " + avBiz, env, true);
           const op = (o && o.payload) ? o.payload : o;
           if (!weekly && op?.hours) weekly = op.hours;
+          // Google's offset is only a SUGGESTION and only if they have no zone of their own.
           if (typeof op?.utc_offset_minutes === "number") tzMin = op.utc_offset_minutes;
         }
+        // Their own zone wins over anything Google said - "we do not set their conditions."
+        try {
+          const stub = env.PTA_DO.get(env.PTA_DO.idFromName(avBiz));
+          const r = await stub.fetch(new Request("http://do", { method: "POST",
+            body: JSON.stringify({ method: "getState", params: [] }) }));
+          const j = await r.json();
+          const tzEv = [...(j?.pta?.chain || [])].reverse().find(c => c?.data?.timezone);
+          if (tzEv?.data?.timezone) {
+            tzName = String(tzEv.data.timezone);
+            const derived = zoneOffsetMin(tzName, new Date());
+            if (derived != null) tzMin = derived;
+          }
+        } catch {}
         // ══ A SHOP'S HOURS ARE IN ITS OWN TIME ═══════════════════════════════════════════════
         // MEASURED: every slot came back four hours out. "1:00 PM" was treated as 13:00 UTC, which
         // is 9am in New York - so a client would have been offered a time the shop was shut. Hours
@@ -20912,8 +20944,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           business: biz.name,
           what_to_say: "We know their hours but not their time zone, so we cannot say which hour that " +
             "is anywhere else.",
-          what_to_do: "The offset comes from their Google listing - a business with no listing needs " +
-            "its time zone recorded before it can take bookings." } };
+          what_to_do: "Set it once and it is theirs: BUSINESS_EDIT " + avBiz +
+            " timezone ::: America/Los_Angeles  (any IANA name). Google can suggest one later, " +
+            "but nobody needs a Google listing to take a booking." } };
         // "Monday: 1:00 - 8:00 PM" is what Google gives and what people write. Parse it into
         // open/close minutes per weekday; anything unparseable becomes a closed day rather than a
         // guess that books somebody at 3am.
@@ -21071,6 +21104,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const winTo = new Date(now + (avDays - 1) * 86400000 + tzMin * 60000).toISOString().slice(0, 10);
         return { cmd: "AVAILABILITY", payload: { ok: true, business: biz.name, id: avBiz,
           with: avWith, slot_minutes: avSlot,
+          timezone: tzName || null,
+          timezone_source: tzName ? "theirs" : "google listing",
           window: { from: winFrom, to: winTo, days: avDays },
           open_day_count: out.length,
           days: avDays,                       // the WINDOW - what was asked for
@@ -21666,10 +21701,29 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       let beBiz = beH[0] || "";
       const beField = String(beH[1] || "").toLowerCase();
       const beVal = (beP[1] || "").trim();
+      // ══ TIMEZONE IS A PLACE, NOT AN OFFSET (2026-08-18) ══════════════════════════════════
+      // MEASURED: a salon signed up, typed its hours, seated staff, set per-person hours - and
+      // could not take a single booking. `NO_TIMEZONE`, because the offset only ever arrived from a
+      // Google listing. **Every business signing up through the front door had an unusable
+      // calendar**, and since Google data is now bought AFTER payment, that is every new business
+      // at exactly the moment they are trying it out. The tattoo test shops hid it by inheriting
+      // from Google.
+      // Grok: "Store the IANA name. America/Los_Angeles, not -420. Offset is a snapshot; DST flips
+      // it. Square, Calendly, Google and Apple all speak IANA - do not invent a fifth."
+      // A shop that signs up in August at -420 is WRONG on November 1st and every appointment after
+      // it is an hour out. The zone is the fact; the offset is derived per instant.
       const FIELDS = { about: "SERVICE", hours: "HOURS", services: "SERVICE",
-                       phone: "CONTACT", email: "CONTACT", address: "CONTACT" };
+                       phone: "CONTACT", email: "CONTACT", address: "CONTACT",
+                       timezone: "TIMEZONE" };
+      if (beField === "timezone") {
+        // Validated by asking the runtime to use it - the only honest test of an IANA name.
+        try { new Intl.DateTimeFormat("en-US", { timeZone: beVal }).format(new Date()); }
+        catch { return { cmd: "BUSINESS_EDIT", payload: { ok: false, error: "NOT_A_TIME_ZONE",
+          given: beVal,
+          what_to_do: "Use an IANA name like America/Los_Angeles, America/New_York or Europe/London." } }; }
+      }
       if (!beBiz || !FIELDS[beField]) return { cmd: "BUSINESS_EDIT", payload: { ok: false,
-        error: "Usage: BUSINESS_EDIT <business> <about|hours|services|phone|email|address> ::: <value>" } };
+        error: "Usage: BUSINESS_EDIT <business> <about|hours|services|phone|email|address|timezone> ::: <value>" } };
       if (!/^pta_|^ent_/.test(beBiz)) {
         const sl = await processCommand("SLUG GET " + beBiz, env, true);
         const sp = (sl && sl.payload) ? sl.payload : sl;
@@ -21677,6 +21731,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
       try {
         const data = beField === "about" || beField === "services" ? { offers: beVal }
+          : beField === "timezone" ? { timezone: beVal }
           : beField === "hours" ? { hours: beVal }
           : { [beField]: beVal };
         const r = await processCommand("PTA_REMEMBER " + beBiz + " " + FIELDS[beField] + " " +

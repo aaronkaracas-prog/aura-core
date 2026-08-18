@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.57.0-2026-08-18-say-the-actual-reason";
+const BUILD = "aura-core-v6.58.0-2026-08-18-the-answer-describes-the-question";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -21060,10 +21060,25 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           }
           if (slots.length) out.push({ date: day.toISOString().slice(0, 10), slots });
         }
+        // ══ THE ANSWER MUST DESCRIBE THE QUESTION (fixed 2026-08-18) ═════════════════════════
+        // `days` reported the number of OPEN days FOUND, not the window asked for - `days:20` came
+        // back saying `days: 11`. Grok: "Returning '11 open days' as if it were the window is a
+        // CONTRACT BUG - fix the contract, not another caller."
+        // It was not cosmetic. `APPOINTMENT SET` read "this date is not in the list" as "they are
+        // closed" and refused a perfectly good slot six weeks out, because the list simply stopped
+        // before it. The window is now stated explicitly and separately from what was found.
+        const winFrom = new Date(now + tzMin * 60000).toISOString().slice(0, 10);
+        const winTo = new Date(now + (avDays - 1) * 86400000 + tzMin * 60000).toISOString().slice(0, 10);
         return { cmd: "AVAILABILITY", payload: { ok: true, business: biz.name, id: avBiz,
-          with: avWith, slot_minutes: avSlot, days: out.length, open_days: out,
-          note: avWith ? "Only this artist's gaps - the others can be working at the same time."
-                       : "Shop-wide. Ask for an artist and it narrows to theirs." } };
+          with: avWith, slot_minutes: avSlot,
+          window: { from: winFrom, to: winTo, days: avDays },
+          open_day_count: out.length,
+          days: avDays,                       // the WINDOW - what was asked for
+          open_days: out,
+          note: (avWith ? "Only this artist's gaps - the others can be working at the same time."
+                        : "Shop-wide. Ask for an artist and it narrows to theirs.") +
+            " Dates outside " + winFrom + " to " + winTo + " were not looked at - that is not the " +
+            "same as being closed." } };
       } catch (e) {
         return { cmd: "AVAILABILITY", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
       }
@@ -21157,8 +21172,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           Math.min(Math.max(need, 1), 60), env, true);
         const avp = (av && av.payload) ? av.payload : av;
         if (!avp?.ok) return { ok: false, why: "HOURS_UNKNOWN", detail: avp?.error || null };
-        const day = (avp.open_days || []).find(x => x.date === target.toISOString().slice(0, 10));
-        // A slot the shop is not open for, or one already held - AVAILABILITY returns only free ones.
+        // OUTSIDE THE WINDOW IS NOT CLOSED. Now that AVAILABILITY states the window it actually
+        // examined, this can tell "they are shut" from "nobody looked" instead of guessing.
+        const wantDate = target.toISOString().slice(0, 10);
+        const win = avp.window;
+        if (win && (wantDate < win.from || wantDate > win.to)) {
+          return { ok: true, unchecked: "outside the window that was examined (" + win.from + " to " + win.to + ")" };
+        }
+        const day = (avp.open_days || []).find(x => x.date === wantDate);
+        // A slot the business is not open for, or one already held - only free slots are returned.
         const fits = day && (day.slots || []).some(sl => sl.at === target.toISOString());
         return fits ? { ok: true } : { ok: false, why: "SHOP_IS_SHUT" };
       };

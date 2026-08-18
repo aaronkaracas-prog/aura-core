@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.24.0-2026-08-18-a-stale-cookie-must-not-win";
+const BUILD = "aura-core-v6.25.0-2026-08-18-a-shop-owns-one-page";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -21789,8 +21789,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const pick = coBiz && list.find(b => b.id === coBiz) ? coBiz : list[0].id;
         // The nav is data. Sections a tattoo shop needs; a restaurant's list is longer and lives in
         // the same place. Nothing in the shell knows what a tattoo shop is.
+        // ══ A SHOP OWNS ONE PAGE, NOT A RECORD PLUS A GALLERY (2026-08-18) ═══════════════════
+        // "Designs" and "Your page" were two tabs for one object. Aaron: "it's just their business
+        // page - they change it, move images around, add a phone number." Grok found the same split
+        // independently. A shop should never edit a RECORD in one place and its PICTURES in
+        // another; it edits ITS PAGE, and everything on the page is editable in place.
+        // Designs is gone from every nav. The gallery lives inside Your page.
         const NAV = {
-          tattoo_shop: ["Today", "Appointments", "Artists", "Designs", "Customers", "Deposits", "Your page"],
+          tattoo_shop: ["Today", "Appointments", "Artists", "Customers", "Deposits", "Your page"],
           restaurant:  ["Today", "Front of house", "Kitchen", "Menu", "Reservations", "Staff", "Your page"],
           salon:       ["Today", "Appointments", "Stylists", "Customers", "Deposits", "Your page"],
           _default:    ["Today", "Appointments", "Customers", "Your page"],

@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.59.0-2026-08-18-a-timezone-is-a-place";
+const BUILD = "aura-core-v6.60.0-2026-08-18-one-hours-shape-clicked-not-typed";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -5013,6 +5013,48 @@ async function webSearch(query, env) {
 // blocks, so they were out of scope and SEAT HOURS would have thrown at runtime. Sixth ordering
 // bug of the day, caught before deploying this one because the line numbers got read first.
 const DAY_NAMES = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+const DAY_KEYS = ["sun","mon","tue","wed","thu","fri","sat"];
+
+// ══ ONE HOURS SHAPE, FOR A BUSINESS AND FOR A PERSON (2026-08-18) ═══════════════════════════
+// Grok, after Aaron stopped a build that assumed somebody would TYPE their hours:
+//   "Nobody types hours. Google, Microsoft, Square, Calendly - a day and two pickers. If the work
+//    is not 'grid -> slots -> occupy one', it is the wrong work."
+//   weekly: { mon: null, tue: [[600, 1080]], ... }   minutes from midnight, LOCAL
+//   null = closed that day · an ARRAY of ranges, not one range
+// THE ARRAY IS THE POINT, and it is why this is not a rewrite later: a shop that shuts for lunch
+// is `[[600,840],[900,1080]]` on the day it happens, with no new model. One range would have meant
+// a third rewrite the first time somebody said "we close 2 to 3".
+// SAME SHAPE FOR BOTH, so one control in the UI sets a business or a person.
+const normWeekly = (w) => {
+  if (!w || typeof w !== "object" || Array.isArray(w)) return null;
+  const out = {};
+  for (const [k, v] of Object.entries(w)) {
+    const key = String(k).toLowerCase().slice(0, 3);
+    if (!DAY_KEYS.includes(key)) continue;
+    if (v == null) { out[key] = null; continue; }              // said closed - meaningful
+    const ranges = (Array.isArray(v) && Array.isArray(v[0])) ? v
+      : (Array.isArray(v) && v.length === 2 && typeof v[0] === "number") ? [v]
+      : (v && typeof v === "object" && v.from != null) ? [[v.from, v.to]]
+      : null;
+    if (!ranges) continue;
+    const clean = ranges
+      .map(r => [Math.max(0, Math.min(1440, Number(r[0]))), Math.max(0, Math.min(1440, Number(r[1])))])
+      .filter(r => isFinite(r[0]) && isFinite(r[1]) && r[1] > r[0])
+      .sort((a, b) => a[0] - b[0]);
+    out[key] = clean.length ? clean : null;
+  }
+  return Object.keys(out).length ? out : null;
+};
+// Where two weeklies meet. A person is never open when the business is shut.
+const intersectDay = (a, b) => {
+  if (!a || !b) return null;
+  const out = [];
+  for (const x of a) for (const y of b) {
+    const from = Math.max(x[0], y[0]), to = Math.min(x[1], y[1]);
+    if (to > from) out.push([from, to]);
+  }
+  return out.length ? out : null;
+};
 const parseDayRange = (v) => {
   const t = String(v == null ? "" : v).trim();
   if (!t || /^(closed|off|no|none)$/i.test(t)) return null;
@@ -20894,7 +20936,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const j = await r.json();
           const ch = j?.pta?.chain || [];
           const h = [...ch].reverse().find(c => c?.event === "HOURS" || c?.data?.hours);
-          if (h) weekly = h.data?.hours || h.data;
+          // Structured beats prose. A business that clicked its hours has an OBJECT on the chain;
+          // only an ingested website or Google listing leaves a sentence behind.
+          if (h) weekly = h.data?.weekly || h.data?.hours || h.data;
         } catch {}
         // ══ THE ONE DECODE PATH (2026-08-18) ═══════════════════════════════════════════════
         // Grok: "If three doors each interpret TZ, you will ship three DST bugs." AVAILABILITY is
@@ -20967,13 +21011,35 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           return h * 60 + mm;
         };
         const meridiem = (t) => (String(t).match(/(am|pm)/i) || [])[1]?.toLowerCase() || null;
-        const lines = Array.isArray(weekly) ? weekly
+        // ══ PEOPLE TYPE HOURS ON ONE LINE (fixed 2026-08-18) ═══════════════════════════════
+        // MEASURED: a salon set "Tuesday 10:00-18:00, Wednesday 10:00-18:00, ..." and got ONE open
+        // day, starting at MIDNIGHT. A string became `[weekly]` - a single entry - so the whole
+        // sentence was read as one day: it matched "Tuesday", then split on ":" across the entire
+        // string and produced nonsense, and the other four days did not exist.
+        // A business types a sentence, not a text file. Split on commas and semicolons as well as
+        // newlines, and only where a DAY NAME follows - so "Tuesday 10:00-18:00, Wednesday ..."
+        // becomes two entries while "10:00-18:00, closed for lunch 1-2" stays one.
+        // ══ STRUCTURED FIRST, PROSE ONLY AS INGEST (2026-08-18) ═════════════════════════════
+        // Grok: "Do not make the parser smarter. Do not accept '9 to 5' from the console."
+        // Claude spent an hour teaching this parser to read sentences after inventing a text box
+        // nobody will ever see. The parser has exactly one job now - turning a CRAWLED SITE or a
+        // GOOGLE LISTING into the weekly object, once. A business clicks a grid; that arrives here
+        // already structured and is used as-is, with no parsing at all.
+        const structured = normWeekly(weekly);
+        const lines = structured ? [] : (Array.isArray(weekly) ? weekly
           : (typeof weekly === "string" ? [weekly]
-            : Object.entries(weekly || {}).map(([k, v]) => k + ": " + v));
+            : Object.entries(weekly || {}).map(([k, v]) => k + ": " + v)));
         for (const raw of lines) {
           const line = String(raw);
           const d = DAY.findIndex(x => line.toLowerCase().startsWith(x));
-          const span = line.split(":").slice(1).join(":");
+          // ══ STRIP THE DAY BY NAME, NOT BY PUNCTUATION (fixed 2026-08-18) ═════════════════
+          // `split(":").slice(1)` assumed "Tuesday: 10:00-18:00". Written the ordinary way -
+          // "Tuesday 10:00-18:00" - the first colon is INSIDE THE TIME, so the span became
+          // "00-18:00" and the day opened at midnight. That is the 12:00am slot the salon saw.
+          // Remove the day word and any separator after it; whatever remains is the times.
+          const span = d >= 0
+            ? line.replace(new RegExp("^" + DAY[d] + "[a-z]*\\s*[:\\-\u2013]?\\s*", "i"), "")
+            : line.split(":").slice(1).join(":");
           if (/closed/i.test(span)) continue;
           const parts = span.split(/[-\u2013\u2014]/);
           if (parts.length < 2) continue;
@@ -20984,7 +21050,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // Borrowed the end's PM and ended up opening after closing - it was an AM start.
           if (a >= b) a = toMin(parts[0], "am");
           if (a == null || a >= b) continue;
-          if (d >= 0) open[d] = { from: a, to: b };
+          if (d >= 0) open[d] = [[a, b]];        // one range, in the shared shape
           else for (let i = 0; i < 7; i++) if (!open[i]) open[i] = { from: a, to: b };
         }
         if (!Object.keys(open).length) {
@@ -21040,7 +21106,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "SELECT context FROM pta_edges WHERE from_id = ? AND to_id = ? " +
               "AND edge_type = 'works_at' AND state != 'revoked' LIMIT 1").bind(avWith, avBiz).first();
             let pc = {}; try { pc = pe?.context ? JSON.parse(pe.context) : {}; } catch {}
-            if (pc.hours) {
+            // The person's grid, same shape as the business's.
+            const pw = normWeekly(pc.weekly || pc.hours);
+            if (pw) {
+              personOpen = {}; personSaid = new Set();
+              for (const [k, v] of Object.entries(pw)) {
+                const di = DAY_KEYS.indexOf(k);
+                if (di < 0) continue;
+                personSaid.add(di);
+                if (v) personOpen[di] = v;          // null stays out: they said they are off
+              }
+            } else if (pc.hours) {
               // ══ SET-BUT-OFF vs NEVER-MENTIONED (fixed 2026-08-18) ══════════════════════════
               // MEASURED: Mira was given tuesday and thursday only, and 10 days of availability
               // came back with ONE. `personOpen[wd]` was undefined for every unmentioned day and
@@ -21066,21 +21142,23 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // Their day, not ours - a shop in Tokyo is already on tomorrow.
           const day = new Date(now + d * 86400000 + tzMin * 60000);
           const wd = day.getUTCDay();
-          let o = open[wd];
-          if (!o) continue;
+          // `open` is now RANGES per weekday - structured if they clicked it, parsed if it came
+          // from a site or a listing. Either way the loop below only sees ranges.
+          let o = structured ? (structured[DAY_KEYS[wd]] || null) : open[wd];
+          if (!o || !o.length) continue;
           // THE INTERSECTION. The business says when the doors are open; the person says when they
           // are there. Bookable is where both are true - never wider than the business's hours.
           if (personOpen && personSaid?.has(wd)) {
             const po = personOpen[wd];
             if (!po) continue;                       // they SAID they are off today
-            const from = Math.max(o.from, po.from), to = Math.min(o.to, po.to);
-            if (!(to > from)) continue;              // their hours fall outside the business's
-            o = { from, to };
+            o = intersectDay(o, po);                 // never wider than the business
+            if (!o) continue;
           }
           // A day they never mentioned inherits the business's hours - which is what the command
           // promises, and what it now actually does.
           const slots = [];
-          for (let m = o.from; m + avSlot <= o.to; m += avSlot) {
+          // Every range on the day - so a business that shuts for lunch simply has two.
+          for (const range of o) for (let m = range[0]; m + avSlot <= range[1]; m += avSlot) {
             // Local minutes -> the actual instant. m is in the shop's clock; tzMin shifts it.
             const t = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(),
               0, m - tzMin));
@@ -21730,9 +21808,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (sp?.ok && sp.pta) beBiz = sp.pta;
       }
       try {
+        // ══ HOURS ARRIVE CLICKED (2026-08-18) ══════════════════════════════════════════════
+        //   BUSINESS_EDIT <biz> hours ::: {"mon":null,"tue":[[600,1080]],"wed":[[600,840],[900,1080]]}
+        // Minutes from midnight, local, an array of ranges per day, null for closed - the SAME
+        // shape a person's hours use, so one UI control sets either.
+        // A prose string is still accepted here because INGEST uses this door, but it is not the
+        // product path and nothing in the console should ever send one.
+        let beWeekly = null;
+        if (beField === "hours") {
+          try { beWeekly = normWeekly(JSON.parse(beVal)); } catch { beWeekly = null; }
+        }
         const data = beField === "about" || beField === "services" ? { offers: beVal }
           : beField === "timezone" ? { timezone: beVal }
-          : beField === "hours" ? { hours: beVal }
+          : beField === "hours" ? (beWeekly ? { weekly: beWeekly } : { hours: beVal })
           : { [beField]: beVal };
         const r = await processCommand("PTA_REMEMBER " + beBiz + " " + FIELDS[beField] + " " +
           JSON.stringify({ ...data, edited_by: "the owner", at: new Date().toISOString() }), env, true);
@@ -22240,8 +22328,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const body = (String(rest || "").split(":::")[1] || "").trim();
           if (!body) {
             return { cmd: "SEAT", payload: { ok: true, business: seBiz, person: who,
-              hours: ectx.hours || null,
-              note: ectx.hours ? "Days not listed follow the business's hours."
+              // `weekly` is what the writer stores now; `hours` is read too so a seat set before
+              // today still answers. Reader and writer agreeing is not optional - that mismatch has
+              // cost six diagnoses in one session.
+              hours: ectx.weekly || ectx.hours || null,
+              note: (ectx.weekly || ectx.hours) ? "Days not listed follow the business's hours."
                 : "No hours of their own - they work whenever the business is open." } };
           }
           if (/^CLEAR$/i.test(body)) {
@@ -22255,21 +22346,29 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           try { want = JSON.parse(body); } catch {
             return { cmd: "SEAT", payload: { ok: false, error: "BAD_JSON",
               what_to_do: "SEAT HOURS <business> <person> ::: {\"monday\":\"12:00-18:00\",\"thursday\":\"closed\"}" } }; }
-          const hours = {}, unreadable = [];
-          for (const [k, v] of Object.entries(want)) {
-            const key = String(k).toLowerCase();
-            if (!DAY_NAMES.includes(key)) { unreadable.push(k); continue; }
-            const r = parseDayRange(v);
-            hours[key] = r;                                  // null is meaningful: off that day
-            if (r === null && v != null && !/^(closed|off|no|none|)$/i.test(String(v).trim())) unreadable.push(k + ": " + v);
+          // ══ THE SAME CLICKED SHAPE AS A BUSINESS ═══════════════════════════════════════
+          //   SEAT HOURS <biz> <person> ::: {"wed":[[600,840]],"fri":null}
+          // A string per day is still read, because operator glue is allowed to be lazy - but the
+          // structured form is what a UI sends and what gets stored.
+          let weekly = normWeekly(want), unreadable = [];
+          if (!weekly) {
+            weekly = {};
+            for (const [k, v] of Object.entries(want)) {
+              const key = String(k).toLowerCase().slice(0, 3);
+              if (!DAY_KEYS.includes(key)) { unreadable.push(k); continue; }
+              const r = parseDayRange(v);
+              weekly[key] = r ? [[r.from, r.to]] : null;     // null is meaningful: off that day
+              if (r === null && v != null && !/^(closed|off|no|none|)$/i.test(String(v).trim())) unreadable.push(k + ": " + v);
+            }
           }
-          ectx.hours = hours;
+          const hours = weekly;
+          ectx.weekly = weekly; delete ectx.hours;
           await db.prepare("UPDATE pta_edges SET context = ?, updated_at = ? WHERE id = ?")
             .bind(JSON.stringify(ectx), new Date().toISOString(), edge.id).run();
           const fmt = (n) => String(Math.floor(n / 60)).padStart(2, "0") + ":" + String(n % 60).padStart(2, "0");
           return { cmd: "SEAT", payload: { ok: true, business: seBiz, person: who, hours,
             reads_as: Object.fromEntries(Object.entries(hours).map(([k, v]) =>
-              [k, v ? fmt(v.from) + "-" + fmt(v.to) : "off"])),
+              [k, v ? v.map(r => fmt(r[0]) + "-" + fmt(r[1])).join(", ") : "off"])),
             unreadable: unreadable.length ? unreadable : undefined,
             note: "Days not listed follow the business's hours. These are intersected with them, " +
               "so they can never be wider." } };

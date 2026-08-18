@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.46.0-2026-08-18-declared-outside-the-try";
+const BUILD = "aura-core-v6.47.0-2026-08-18-the-address-lives-on-the-edge";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -19818,7 +19818,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               const owp = (ow && ow.payload) ? ow.payload : ow;
               if (owp?.ok && owp.entity?.id) {
                 ownerPta = owp.entity.id;
-                await processCommand("OWNER ADD " + ing.id + " " + ownerPta, env, true);
+                // The address they signed up with, carried onto the owns edge - the only place it
+                // can live without a grant from them as a person.
+                await processCommand("OWNER ADD " + ing.id + " " + ownerPta + " " + pend.email, env, true);
                 // ══ AN IDENTITY IS HASHED - A CONTACT IS NOT (2026-08-18) ═══════════════════
                 // MEASURED: the owner entity stores `contact_hint: "email:···orld"` and hashes the
                 // real value. That is the privacy model working exactly as intended - an identity
@@ -21732,6 +21734,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const owParts = (rest || "").trim().split(/\s+/);
       const owSub = String(owParts[0] || "").toUpperCase();
       const owBiz = owParts[1] || "";
+      // OWNER ADD <business> <person> [email:x | phone:x | a bare address]
+      // Optional and unchanged if absent - an owner added by hand still works exactly as before.
+      const owTail = owParts.slice(3).join(" ").replace(/\b(email|phone):/ig, "");
+      const owContact = (owTail.match(/[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+/) || [])[0]
+        || (owTail.match(/\+?[\d][\d\s().-]{6,}/) || [])[0] || null;
       if (!owBiz) return { cmd: "OWNER", payload: { ok: false,
         error: "Usage: OWNER LIST|ADD|REMOVE <business_pta> [person_pta]" } };
       const odb = env.AURA_MEMORY;
@@ -21775,9 +21782,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const edgeId = "edge_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
           const now = new Date().toISOString();
           await odb.prepare(
-            "INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, created_at, updated_at) " +
-            "VALUES (?, ?, ?, 'owns', 'active', ?, ?)"
-          ).bind(edgeId, who, owBiz, now, now).run();
+            // ══ THE ADDRESS BELONGS ON THE EDGE (2026-08-18) ═════════════════════════════
+            // MEASURED four times: an owner's chain holds ONE `BORN` event, `can_remember_now:
+            // false`, and every attempt to write a CONTACT there failed silently because
+            // PTA_REMEMBER needs a grant the PERSON never gave. That is the consent model working,
+            // not a bug to code around.
+            // An owner gave an address SO THE BUSINESS COULD REACH THEM. That is a property of the
+            // working relationship, not a fact about the human - so it lives on the `owns` edge,
+            // where `context` has existed all along and `GRAPH_LINK` already writes it. Revoke the
+            // edge and the address goes with it, which is exactly right.
+            "INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, context, created_at, updated_at) " +
+            "VALUES (?, ?, ?, 'owns', 'active', ?, ?, ?)"
+          ).bind(edgeId, who, owBiz, owContact ? JSON.stringify({ reach: owContact }) : null,
+            now, now).run();
           return { cmd: "OWNER", payload: { ok: true, business: biz.name, person: who, name: p.name,
             edge_id: edgeId, count: (await readOwners()).length,
             console: "https://openforbusiness.world/console",
@@ -21885,9 +21902,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             note: "Already seated here - nothing changed and nothing was charged twice." } };
           const edgeId = "edge_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
           await db.prepare(
-            "INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, created_at, updated_at) " +
-            "VALUES (?, ?, ?, 'works_at', 'active', ?, ?)"
-          ).bind(edgeId, person, seBiz, new Date().toISOString(), new Date().toISOString()).run();
+            // Same as the owns edge: the shop told us how to reach their artist about this shop.
+            // A fact about the relationship, needing no grant from the artist as a person.
+            "INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, context, created_at, updated_at) " +
+            "VALUES (?, ?, ?, 'works_at', 'active', ?, ?, ?)"
+          ).bind(edgeId, person, seBiz,
+            contact ? JSON.stringify({ reach: contact.replace(/^(email|phone):/i, "") }) : null,
+            new Date().toISOString(), new Date().toISOString()).run();
           // ══ A SEAT SHOULD TELL THE PERSON (2026-08-18) ══════════════════════════════════
           // `can_reach_them: true` only ever meant we COULD reach them. Nina was seated with an
           // email on file and never told - she had a seat, a PTA and no idea. Aaron: "when an
@@ -47491,6 +47512,20 @@ export class PublicEntry extends WorkerEntrypoint {
               let md = {}; try { md = row?.metadata ? JSON.parse(row.metadata) : {}; } catch {}
               addr = md.email || md.contact_email || null;
             } catch {}
+            // ══ THE EDGE KNOWS HOW TO REACH THEM ABOUT THIS BUSINESS (2026-08-18) ═══════════
+            // Read before the chain, because this is the address that was given FOR this
+            // relationship. A person's chain needs a grant they never gave; the edge needs none,
+            // because it is a fact about the relationship rather than about them.
+            if (!addr) {
+              try {
+                const er = await this.env.AURA_MEMORY.prepare(
+                  "SELECT context FROM pta_edges WHERE from_id = ? AND to_id = ? " +
+                  "AND edge_type IN ('owns','works_at') AND state != 'revoked' " +
+                  "AND context IS NOT NULL LIMIT 1").bind(who, biz).first();
+                let ec = {}; try { ec = er?.context ? JSON.parse(er.context) : {}; } catch {}
+                if (ec.reach && String(ec.reach).includes("@")) addr = ec.reach;
+              } catch {}
+            }
             if (!addr) {
               // ══ USE THE DOOR THAT ALREADY WORKS (fixed 2026-08-18) ══════════════════════════
               // `INVITE_SEAT` has resolved a person's address this way for months, and it is

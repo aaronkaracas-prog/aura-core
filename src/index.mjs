@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.44.0-2026-08-18-money-moved-is-the-label";
+const BUILD = "aura-core-v6.45.0-2026-08-18-two-facts-not-one";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -47607,11 +47607,22 @@ export class PublicEntry extends WorkerEntrypoint {
         // The shop takes it however they take money today; we record that it happened. That is the
         // whole SecureSpend-at-launch decision, and it costs us nothing to be honest about.
         case "deposit_taken": {
-          const dt = await run("PTA_OUTCOME " + biz + " PAID ::: deposit for " +
-            (a.what || "an appointment") + (a.amount ? " - " + a.amount : ""));
+          // ══ TWO FACTS, NOT ONE (2026-08-18) ═══════════════════════════════════════════════
+          // PROVEN: `PTA_OUTCOME PAID` alone left `PTA_DUE ALL` still showing the $150 owed. A
+          // shop would see one deposit both taken AND outstanding, and `PTA_KEPT`'s own comment
+          // names exactly that: "a promise permanently overdue after it was kept, which is worse
+          // than not tracking it at all, because the record says she failed him."
+          // MONEY MOVED and THE PROMISE IS DISCHARGED are different facts - a promise can be kept
+          // without money, and money can move without discharging anything - so they stay separate
+          // commands. From the shop's side it is one act, so the one button fires both.
+          const what = (a.what || "an appointment") + (a.amount ? " - " + a.amount : "");
+          const paid = await run("PTA_OUTCOME " + biz + " PAID ::: deposit for " + what);
+          const kept = await run("PTA_KEPT " + biz + " ::: deposit taken, " + what);
           // On the booking too, so the console's "N without a deposit held" stops counting it.
           if (a.booking) await run("BOOKING STATE " + a.booking + " confirmed deposit held");
-          return dt;
+          return { ok: !!(paid?.ok), money_recorded: !!(paid?.ok), promise_closed: !!(kept?.ok),
+            say: paid?.ok ? "Recorded. The deposit is taken and the promise is closed."
+                          : (paid?.error || "Could not record it.") };
         }
         // "Stop texting me" is context, not a lever. PTA_HEARD: "nobody should ever type
         // PTA_REVOKE... why wouldn't I just keep the PTA there with context of how it stopped?"

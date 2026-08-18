@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.55.0-2026-08-18-unmentioned-means-inherit";
+const BUILD = "aura-core-v6.56.0-2026-08-18-a-block-is-occupancy";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -21190,8 +21190,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             return { cmd: "APPOINTMENT", payload: { ok: false, error: "BAD_JSON",
               what_to_do: 'APPOINTMENT NEW <business> ::: {"customer":"pta_...","start":"...","minutes":120}' } };
           }
-          if (!f.customer || !f.start) return { cmd: "APPOINTMENT", payload: { ok: false,
+          // ══ A BLOCK IS THIS SAME ROW WITH NOBODY IN THE CHAIR (2026-08-18) ═══════════════
+          // Grok's rule, and it is what stops a third rewrite: "one-off changes are OCCUPANCY, not
+          // a second calendar." Closed next Tuesday, opening late, four hours held for a big piece,
+          // a dentist blocking Friday afternoon - all the same thing: that time is not available.
+          // So it is the SAME table, the SAME writer, the SAME clash check. No exceptions model,
+          // no RRULE, no EXDATE. `kind:"block"` and no customer.
+          //   APPOINTMENT NEW <business> ::: {"kind":"block","start":"...","minutes":240,
+          //                                   "artist":"pta_...","summary":"held for a sleeve"}
+          // With an artist it blocks only them; without one it blocks the whole business.
+          const isBlock = String(f.kind || "").toLowerCase() === "block";
+          if (!isBlock && (!f.customer || !f.start)) return { cmd: "APPOINTMENT", payload: { ok: false,
             error: "NEED_CUSTOMER_AND_START" } };
+          if (isBlock && !f.start) return { cmd: "APPOINTMENT", payload: { ok: false,
+            error: "NEED_START", what_to_do: "A block needs a start and how long it runs." } };
           const start = new Date(f.start);
           if (isNaN(start)) return { cmd: "APPOINTMENT", payload: { ok: false, error: "BAD_START", given: f.start } };
           const mins = Math.min(Math.max(Number(f.minutes) || 120, 15), 720);
@@ -21233,20 +21245,26 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const now = new Date().toISOString();
           const ctx = {
             uid, sequence: 0, dtstamp: now, created: now, last_modified: now,
+            kind: isBlock ? "block" : "booking",
             start: start.toISOString(), end: end.toISOString(), minutes: mins,
-            status: "TENTATIVE",                       // asked for, not agreed
-            summary: String(f.summary || f.service || "Appointment").slice(0, 120),
+            // A block is not "asked for" - the business held it, so it is already true.
+            status: isBlock ? "CONFIRMED" : "TENTATIVE",
+            summary: String(f.summary || f.service || (isBlock ? "Not available" : "Appointment")).slice(0, 120),
             description: String(f.description || f.notes || "").slice(0, 800),
             organizer: biz, artist: f.artist || null,
-            attendees: { [f.customer]: "NEEDS-ACTION", ...(f.artist ? { [f.artist]: "NEEDS-ACTION" } : {}) },
-            deposit: f.deposit != null ? Number(f.deposit) : null, deposit_held: false,
+            attendees: isBlock ? {} : { [f.customer]: "NEEDS-ACTION", ...(f.artist ? { [f.artist]: "NEEDS-ACTION" } : {}) },
+            deposit: !isBlock && f.deposit != null ? Number(f.deposit) : null, deposit_held: false,
             // the old field, so nothing that reads `when` breaks while both shapes exist
-            when: start.toISOString(), booking_state: "requested",
+            when: start.toISOString(), booking_state: isBlock ? "blocked" : "requested",
           };
+          // Nobody is in the chair for a block, so the row belongs to the BUSINESS on both sides -
+          // there is no customer to hang it from and inventing one would put a person in the graph
+          // who never touched anything.
           await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, relationship, context, created_at, updated_at) " +
-            "VALUES (?, ?, ?, 'books', 'requested', 'appointment', ?, ?, ?)")
-            .bind(uid, f.customer, biz, JSON.stringify(ctx), now, now).run();
-          return { cmd: "APPOINTMENT", payload: { ok: true, uid, status: "TENTATIVE",
+            "VALUES (?, ?, ?, 'books', 'requested', ?, ?, ?, ?)")
+            .bind(uid, isBlock ? (f.artist || biz) : f.customer, biz,
+              isBlock ? "block" : "appointment", JSON.stringify(ctx), now, now).run();
+          return { cmd: "APPOINTMENT", payload: { ok: true, uid, kind: ctx.kind, status: ctx.status,
             start: ctx.start, end: ctx.end, minutes: mins, artist: ctx.artist,
             note: "TENTATIVE until somebody confirms - asked for is not agreed, and the standard has " +
               "a word for the difference." } };

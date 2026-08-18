@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.27.0-2026-08-18-an-email-is-a-person-not-a-shop";
+const BUILD = "aura-core-v6.28.0-2026-08-18-a-signup-is-consent";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -19712,6 +19712,45 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           if (!ing?.ok || !ing.id) return { cmd: "ADD_BUSINESS", payload: { ok: false,
             error: "COULD_NOT_MINT", detail: ing,
             what_to_say: "We could not create the record. Nothing was listed." } };
+          // ══ A SIGNUP IS CONSENT, AND IT HAS TO GRANT (2026-08-18) ═══════════════════════════
+          //
+          // MEASURED on a full front-door signup: `business_type: null`, nav = Today / Appointments
+          // / Customers / Your page. NO ARTISTS TAB, NO DEPOSITS. A shop that signs up through our
+          // own front door cannot add an artist - which is most of what the $299 buys. And
+          // `aura_may: "nothing yet - she has not been given permission to remember anything"`.
+          //
+          // Two causes: ADD_BUSINESS never asks what KIND of business it is, and writing the type
+          // needs `can_remember`, which a signup never issued. The grant is three steps - offer,
+          // CONFIRM, ACCEPT - and nothing was doing any of them.
+          //
+          // THE SIGNUP IS THE CONSENT. They typed their own details and clicked a link in their own
+          // email; that is a stronger signal than the claim path has. It is recorded on the chain
+          // and revocable from the console at any time, which is what makes it a grant rather than
+          // an assumption.
+          try {
+            // The grantee is whatever `PTA_REMEMBER` will CHECK against - read the same way it
+            // reads it, rather than hardcoding an id. `AURA_PTA` does not exist; Aura deliberately
+            // carries no PTA of her own (line ~1006), and this actor id lives in a secret.
+            const auraActor = (await getSecret(env, "aura_pta_id"))
+              || (await env.AURA_KV.get("config:aura:pta_id")) || "";
+            const gr = auraActor ? await processCommand("PTA_GRANT " + ing.id + " " + auraActor +
+              ' CONFIRM {"edge_type":"grant","permission":{"can_remember":true}}', env, true) : null;
+            const gp = (gr && gr.payload) ? gr.payload : gr;
+            if (gp?.ok && gp.edge_id) await processCommand("PTA_ACCEPT " + gp.edge_id, env, true);
+            // ══ AND WHAT KIND OF SHOP IT IS ═══════════════════════════════════════════════════
+            // The console nav is NAV[business_type]. ADD_BUSINESS never asked, so a front-door
+            // signup landed with `business_type: null` and a nav of Today / Appointments /
+            // Customers / Your page - NO ARTISTS, NO DEPOSITS. They could not add the artist whose
+            // seat they are paying for.
+            // The SITE they signed up on already says what they are. Same trick as
+            // `cg_business.industry` on the claim path, and every future vertical gets it free.
+            // Inside the grant's try on purpose: without can_remember this write cannot land, and
+            // running it anyway is how the silent failure happened the first time.
+            const SITE_TYPE = { "tattooparlors.world": "tattoo_shop" };
+            const bt = SITE_TYPE[abBrand] || null;
+            if (bt) await processCommand("PTA_REMEMBER " + ing.id + " UNDERSTANDING " +
+              JSON.stringify({ business_type: bt, source: "signup", event_type: "UNDERSTANDING" }), env, true);
+          } catch {}
           try {
             await processCommand("PTA_REMEMBER " + ing.id + " CLAIMED " + JSON.stringify({
               verified_via: "email_only", email: pend.email, confirmed_at: new Date().toISOString(),

@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.61.0-2026-08-18-the-guard-tests-what-is-used";
+const BUILD = "aura-core-v6.62.0-2026-08-18-shut-and-taken-are-different";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -21068,8 +21068,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
         // What is taken. A booking with nobody named blocks the shop; one with an artist blocks only
         // them - two artists can tattoo at the same time and usually do.
+        // `open_only:1` answers "are they open then", ignoring who is already booked. Used by the
+        // hours check to tell a closed day from a full one - two different sentences to a client.
+        const avOpenOnly = /\bopen_only:\s*1\b/i.test(rest);
         const taken = [];
-        const bk = await db.prepare(
+        const bk = avOpenOnly ? null : await db.prepare(
           "SELECT context FROM pta_edges WHERE to_id = ? AND edge_type = 'books' AND state != 'revoked'"
         ).bind(avBiz).all().catch(() => null);
         for (const r of (bk?.results || [])) {
@@ -21281,13 +21284,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // out simply is not in the answer, and SET read "not in the list" as "shut" and refused a
       // perfectly good slot. **Beyond the horizon is NOT closed** - it is unknown, and the honest
       // move is to widen the window to reach the date rather than to guess.
-      const hoursSay = async (bizId, when, mins) => {
+      // ══ THE CHECK HAS TO ASK ABOUT THE RIGHT PERSON (fixed 2026-08-18) ═══════════════════
+      // MEASURED on Grok's six: Robin is off Fridays and a Friday booking WAS ACCEPTED, while a
+      // duplicate booking said SHOP_IS_SHUT instead of TIME_TAKEN. One cause - `hoursSay` asked
+      // SHOP-WIDE availability and never passed the artist, so it could not see her Friday at all,
+      // and a slot already taken by somebody looked like the shop being closed.
+      // `with:` narrows to that person, which is what makes the person layer real at the door
+      // rather than only in the listing.
+      const hoursSay = async (bizId, when, mins, who) => {
         const target = new Date(when);
         if (isNaN(target)) return { ok: false, why: "BAD_TIME" };
         // Ask far enough ahead to actually contain the date. 60 is the command's own ceiling.
         const need = Math.ceil((target.getTime() - Date.now()) / 86400000) + 1;
         if (need > 60) return { ok: true, unchecked: "beyond the 60-day window this can see" };
-        const av = await processCommand("AVAILABILITY " + bizId + " days:" +
+        const av = await processCommand("AVAILABILITY " + bizId + (who ? " with:" + who : "") + " days:" +
           Math.min(Math.max(need, 1), 60), env, true);
         const avp = (av && av.payload) ? av.payload : av;
         if (!avp?.ok) return { ok: false, why: "HOURS_UNKNOWN", detail: avp?.error || null };
@@ -21299,9 +21309,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           return { ok: true, unchecked: "outside the window that was examined (" + win.from + " to " + win.to + ")" };
         }
         const day = (avp.open_days || []).find(x => x.date === wantDate);
-        // A slot the business is not open for, or one already held - only free slots are returned.
+        // ══ SHUT AND TAKEN ARE DIFFERENT ANSWERS ═══════════════════════════════════════════
+        // AVAILABILITY returns only FREE slots, so a missing slot means EITHER closed OR already
+        // booked - and this reported both as SHOP_IS_SHUT. A client told "they are not open then"
+        // about a time the business is plainly open goes away confused.
+        // `open_only` re-asks WITHOUT occupancy: if the slot exists there, they ARE open and the
+        // reason is that somebody has it. The clash check then names who.
         const fits = day && (day.slots || []).some(sl => sl.at === target.toISOString());
-        return fits ? { ok: true } : { ok: false, why: "SHOP_IS_SHUT" };
+        if (fits) return { ok: true };
+        const openAv = await processCommand("AVAILABILITY " + bizId + (who ? " with:" + who : "") +
+          " days:" + Math.min(Math.max(need, 1), 60) + " open_only:1", env, true);
+        const oap = (openAv && openAv.payload) ? openAv.payload : openAv;
+        const oDay = (oap?.open_days || []).find(x => x.date === wantDate);
+        const openThen = oDay && (oDay.slots || []).some(sl => sl.at === target.toISOString());
+        return { ok: false, why: openThen ? "TIME_TAKEN" : "SHOP_IS_SHUT" };
       };
       const readAp = async (uid) => {
         const r = await db.prepare("SELECT id, from_id, to_id, context, state FROM pta_edges WHERE id = ?")
@@ -21355,7 +21376,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             if (!ok) return { cmd: "APPOINTMENT", payload: { ok: false, error: "NOT_SEATED_HERE", artist: f.artist } };
           }
           // NEW must obey the hours too. It did not, and a 4am appointment proved it.
-          const hs = await hoursSay(biz, start, mins);
+          const hs = await hoursSay(biz, start, mins, f.artist || null);
           if (!hs.ok) return { cmd: "APPOINTMENT", payload: { ok: false, error: hs.why,
             asked_for: new Date(start).toISOString(), business: biz, detail: hs.detail || undefined,
             what_to_do: hs.why === "SHOP_IS_SHUT"
@@ -21439,7 +21460,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const mvBiz = ap.business || c.business;
             const mvEnd = new Date(d.getTime() + (Number(c.minutes) || 120) * 60000);
             // Same function NEW uses, so the two doors cannot drift apart again.
-            const mhs = await hoursSay(mvBiz, d, Number(c.minutes) || 120);
+            const mhs = await hoursSay(mvBiz, d, Number(c.minutes) || 120, c.artist || null);
             if (!mhs.ok) return { cmd: "APPOINTMENT", payload: { ok: false, error: mhs.why,
               asked_for: d.toISOString(), business: mvBiz, detail: mhs.detail || undefined,
               what_to_do: mhs.why === "SHOP_IS_SHUT"

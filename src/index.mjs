@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.60.0-2026-08-18-one-hours-shape-clicked-not-typed";
+const BUILD = "aura-core-v6.61.0-2026-08-18-the-guard-tests-what-is-used";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -21051,9 +21051,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           if (a >= b) a = toMin(parts[0], "am");
           if (a == null || a >= b) continue;
           if (d >= 0) open[d] = [[a, b]];        // one range, in the shared shape
-          else for (let i = 0; i < 7; i++) if (!open[i]) open[i] = { from: a, to: b };
+          else for (let i = 0; i < 7; i++) if (!open[i]) open[i] = [[a, b]];   // shared shape
         }
-        if (!Object.keys(open).length) {
+        // ══ THE GUARD MUST TEST WHAT IS ACTUALLY USED (fixed 2026-08-18) ═══════════════════
+        // MEASURED: the chain held a perfect `weekly` object and this returned NO_HOURS. The guard
+        // tested `open` - the map the PARSER fills - and structured hours skip the parser entirely,
+        // so it was empty by design and read as "they never told us".
+        // EIGHTH reader/writer mismatch in one session, and the same shape as all of them: a check
+        // pointed at yesterday's storage. It must test whichever source the day loop will use.
+        if (!structured && !Object.keys(open).length) {
           return { cmd: "AVAILABILITY", payload: { ok: false, error: "NO_HOURS",
             business: biz.name,
             what_to_say: "We do not know when this shop is open, so we cannot say what is free.",

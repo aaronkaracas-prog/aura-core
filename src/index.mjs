@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.29.0-2026-08-18-the-site-survives-the-email";
+const BUILD = "aura-core-v6.30.0-2026-08-18-defined-before-it-is-used";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -19642,6 +19642,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             error: "Usage: ADD_BUSINESS START <email> ::: <name> ::: <address> ::: <phone> ::: <what you do>" } };
           const token = Array.from(crypto.getRandomValues(new Uint8Array(16)))
             .map(b => b.toString(16).padStart(2, "0")).join("");
+          // ══ DEFINED BEFORE IT IS USED (fixed 2026-08-18) ═════════════════════════════════
+          // `site: abBrand` was written into the pending record TEN LINES ABOVE where abBrand was
+          // declared - "Cannot access 'abBrand' before initialization", and nothing was created.
+          // It failed loudly this time, which is better than the silent version an hour ago.
+          const abSite = (abParts.find(x => /^SITE\s/i.test(String(x || "").trim())) || "")
+            .replace(/^\s*SITE\s+/i, "").trim().replace(/[^a-z0-9.-]/gi, "") || "cityguide.world";
+          const abBrand = abSite.replace(/^www\./, "");
           await env.AURA_KV.put("addbiz:" + token, JSON.stringify({ email, name, address, phone, about,
             website: abParts[5] || "", hours: abParts[6] || "",
             // ══ THE SITE HAS TO SURVIVE THE EMAIL (fixed 2026-08-18) ══════════════════════════
@@ -19653,15 +19660,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // The pending record is the only thing that crosses the gap, so the site rides in it.
             site: abBrand,
             started_at: new Date().toISOString() }), { expirationTtl: 7 * 86400 });
-          // ══ THE PRODUCT THEY SIGNED UP FOR IS THE ONE THAT EMAILS THEM (2026-08-18) ═══════
-          // MEASURED, on a real signup: the form said tattooparlors, and then the email said
-          // "You added Aarons test shop to cityguide.world", the confirm link was a cityguide URL,
-          // and the page afterwards was cityguide branded. Four leaks from one hardcoded host.
-          // Whatever site they used is where they go back to. Falls back to cityguide only when
-          // nothing was passed, so an old caller still works.
-          const abSite = (abParts.find(x => /^SITE\s/i.test(String(x || "").trim())) || "")
-            .replace(/^\s*SITE\s+/i, "").trim().replace(/[^a-z0-9.-]/gi, "") || "cityguide.world";
-          const abBrand = abSite.replace(/^www\./, "");
+          // THE PRODUCT THEY SIGNED UP FOR IS THE ONE THAT EMAILS THEM: the form said
+          // tattooparlors and the email said cityguide, the confirm link was a cityguide URL, and
+          // the page afterwards was cityguide branded. Four leaks from one hardcoded host.
+          // `abBrand` is now declared above, beside the pending record it also has to travel in.
           const link = "https://" + abBrand + "/confirm/" + token;
           let sent = false, how = null;
           try {

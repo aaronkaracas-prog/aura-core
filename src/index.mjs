@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.40.0-2026-08-18-an-identity-is-not-a-contact";
+const BUILD = "aura-core-v6.42.0-2026-08-18-pta-already-does-this";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -19854,10 +19854,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 // to email, and the notifier looking for one was never going to find it.
                 // The address a person GAVE US to be reached at is a different fact, and it goes
                 // on their chain where a grant governs it.
+                // ══ ROLE IS PTA_ROLE, NOT A FIELD ON AN EVENT (2026-08-18) ═══════════════
+                // Claude wrote `role: "owner"` into a made-up CONTACT event. `PTA_ROLE` has stored
+                // exactly this for months and is what role-based access reads. The chain event now
+                // carries only the ADDRESS - which is what `INVITE_SEAT` looks for and the only
+                // part that was genuinely missing.
+                try { await processCommand("PTA_ROLE ADD " + ownerPta + " owner", env, true); } catch {}
                 try {
-                  await processCommand("PTA_REMEMBER " + ownerPta + " CONTACT " + JSON.stringify({
-                    email: pend.email, source: "signup", role: "owner",
-                    event_type: "CONTACT" }), env, true);
+                  await processCommand("PTA_REMEMBER " + ownerPta + " CONTEXT " + JSON.stringify({
+                    email: pend.email, said: "gave this address at signup",
+                    event_type: "CONTEXT" }), env, true);
                 } catch {}
               }
             } catch {}
@@ -19870,8 +19876,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // is where we reach a human. One owner can have five shops and one address.
             // Written under the same grant the signup just issued.
             try {
-              await processCommand("PTA_REMEMBER " + ing.id + " CONTACT " + JSON.stringify({
-                email: pend.email, source: "signup", role: "owner", event_type: "CONTACT" }), env, true);
+              // NOTE: the ORIGINAL ADD_BUSINESS already writes a `CONTACT` event a few lines below
+              // carrying address, phone and email. So CONTACT was a real event type here all along
+              // and Claude added three more writers without checking - the same failure as
+              // DEPOSIT_RULES, one scale smaller. This one exists purely so the address is findable
+              // by the resolver INVITE_SEAT uses, which looks for ANY chain event with an email.
+              await processCommand("PTA_REMEMBER " + ing.id + " CONTEXT " + JSON.stringify({
+                email: pend.email, said: "the address this shop signed up with",
+                event_type: "CONTEXT" }), env, true);
             } catch {}
             const SITE_TYPE = { "tattooparlors.world": "tattoo_shop" };
             const bt = SITE_TYPE[String(pend.site || "").trim()] || null;
@@ -20988,71 +21000,29 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
     }
 
-    case "DEPOSIT_RULES": {
-      // ══ THE SHOP WRITES ITS OWN RULES (2026-08-18) ═══════════════════════════════════════════
-      // Aaron: "the shop needs to be able to create its rules on deposits... most people are
-      // reserving time with dollars because that's the biggest pain in the tattoo industry."
-      // A deposit is not a fee, it is how a chair stops being free to hold. So the rules belong to
-      // the SHOP, not to us - we do not decide what a no-show costs anybody.
-      //   DEPOSIT_RULES <business>                                  read them
-      //   DEPOSIT_RULES <business> SET ::: {json}
-      //     { amount, currency, required, refund_hours, on_late_change, on_no_show, terms }
-      //   refund_hours   change or cancel with more notice than this and it comes back
-      //   on_late_change "keep" | "return" | "credit"   inside that window
-      //   on_no_show     "keep" | "return" | "credit"
-      // NOTHING IS CHARGED HERE. This says what WOULD happen; SecureSpend is the gate that moves
-      // money, and it logs rather than authorises. Written to the shop's own chain so it is theirs
-      // and revocable, not a row in a table we own.
-      if (!isOp) return { cmd: "DEPOSIT_RULES", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      const drParts = String(rest || "").split(":::").map(x => x.trim());
-      const drHead = (drParts[0] || "").split(/\s+/);
-      const drBiz = drHead[0] || "";
-      if (!drBiz) return { cmd: "DEPOSIT_RULES", payload: { ok: false,
-        error: "Usage: DEPOSIT_RULES <business> [SET ::: {json}]" } };
-      const drKey = "rules:deposit:" + drBiz;
-      try {
-        if (String(drHead[1] || "").toUpperCase() === "SET") {
-          let f = {};
-          try { f = JSON.parse(drParts[1] || "{}"); } catch {
-            return { cmd: "DEPOSIT_RULES", payload: { ok: false, error: "BAD_JSON" } }; }
-          const WHAT = new Set(["keep", "return", "credit"]);
-          const rules = {
-            amount: Math.max(0, Number(f.amount) || 0),
-            currency: String(f.currency || "USD").toUpperCase().slice(0, 3),
-            required: f.required !== false,
-            refund_hours: Math.max(0, Number(f.refund_hours ?? 48)),
-            on_late_change: WHAT.has(String(f.on_late_change)) ? f.on_late_change : "credit",
-            on_no_show: WHAT.has(String(f.on_no_show)) ? f.on_no_show : "keep",
-            terms: String(f.terms || "").slice(0, 600) || null,
-            set_at: new Date().toISOString() };
-          await env.AURA_KV.put(drKey, JSON.stringify(rules));
-          // On their chain too, so the rules are theirs and the history shows when they changed.
-          try { await processCommand("PTA_REMEMBER " + drBiz + " DEPOSIT_RULES " +
-            JSON.stringify({ ...rules, event_type: "DEPOSIT_RULES" }), env, true); } catch {}
-          return { cmd: "DEPOSIT_RULES", payload: { ok: true, business: drBiz, rules,
-            plain: rules.amount
-              ? rules.currency + " " + rules.amount + " to hold the time. Change or cancel more than " +
-                rules.refund_hours + "h ahead and it comes back; inside that we " +
-                rules.on_late_change + " it. No-show: " + rules.on_no_show + "."
-              : "No deposit asked for.",
-            note: "Nothing is charged by this. It says what would happen - SecureSpend is the gate " +
-              "that moves money." } };
-        }
-        const raw = await env.AURA_KV.get(drKey);
-        if (!raw) return { cmd: "DEPOSIT_RULES", payload: { ok: true, business: drBiz, rules: null,
-          plain: "This shop has not set deposit rules, so no deposit is asked for.",
-          what_to_do: "DEPOSIT_RULES " + drBiz + " SET ::: {\"amount\":100,\"refund_hours\":48}" } };
-        const rules = JSON.parse(raw);
-        return { cmd: "DEPOSIT_RULES", payload: { ok: true, business: drBiz, rules,
-          plain: rules.amount
-            ? rules.currency + " " + rules.amount + " to hold the time. Change or cancel more than " +
-              rules.refund_hours + "h ahead and it comes back; inside that we " +
-              rules.on_late_change + " it. No-show: " + rules.on_no_show + "."
-            : "No deposit asked for." } };
-      } catch (e) {
-        return { cmd: "DEPOSIT_RULES", payload: { ok: false, error: String(e?.message ?? e).slice(0, 200) } };
-      }
-    }
+    // ══ DEPOSIT_RULES WAS DELETED — `PTA_DUE` ALREADY DOES THIS (2026-08-18) ═════════════════
+    //
+    // Claude built a `DEPOSIT_RULES` command writing to `rules:deposit:<pta>` in KV. It lasted one
+    // day. `PTA_DUE` has read commitments off entity chains for months, and its own comment names
+    // exactly the mistake that was made:
+    //   "IT READS THE CHAIN, NOT A SCHEDULER TABLE. That is the whole reason the due lives on the
+    //    chain: a scheduler would not know the grant had been revoked and would keep calling
+    //    somebody who asked to be left alone. A commitment made under a grant that is now revoked
+    //    is NOT due - it is void, and this says so rather than hiding it."
+    // A KV key keeps saying $150 is owed after a shop revokes. The chain does not.
+    //
+    // SO A DEPOSIT IS A CHAIN EVENT, not a new subsystem:
+    //   PTA_REMEMBER <business> CONTEXT {"due":"<iso>","amount":150,"currency":"USD",
+    //     "refund_hours":48,"on_late_change":"credit","on_no_show":"keep","said":"..."}
+    // `PTA_DUE` reads it, a later event supersedes an earlier one, revocation voids it, and
+    // `PTA_OUTCOME <pta> PAID ::: ...` records the money actually moving - which is also the only
+    // label that may promote a lesson.
+    //
+    // THE WIDER LESSON, and it cost most of this session: the tattoo product is not an application
+    // that calls PTA occasionally. It IS PTA in one vertical. Ninety-seven PTA commands already
+    // exist. Before building anything that touches a person, a promise, a role or an outcome, find
+    // the command that already does it. Claude built a fifth birth path in July and had to remove
+    // it; this is the same error with a different name.
 
     case "APPOINTMENT": {
       // ══ THE STANDARD ALREADY EXISTS: RFC 5545 ═════════════════════════════════════════════════
@@ -21958,9 +21928,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           if (contact) {
             try {
               const raw = contact.replace(/^(email|phone):/i, "");
-              await processCommand("PTA_REMEMBER " + person + " CONTACT " + JSON.stringify({
+              await processCommand("PTA_ROLE ADD " + person + " artist", env, true);
+              await processCommand("PTA_REMEMBER " + person + " CONTEXT " + JSON.stringify({
                 [/^phone:/i.test(contact) ? "phone" : "email"]: raw,
-                source: "seated", role: "artist", event_type: "CONTACT" }), env, true);
+                said: "given when they were seated", event_type: "CONTEXT" }), env, true);
             } catch {}
           }
           let inviteSent = null;
@@ -47525,15 +47496,18 @@ export class PublicEntry extends WorkerEntrypoint {
               addr = md.email || md.contact_email || null;
             } catch {}
             if (!addr) {
-              // The Durable Object's own state, exactly as CONSOLE reads it. `PTA_CHAIN` is not a
-              // command - Claude invented the name; this is the real door.
+              // ══ USE THE DOOR THAT ALREADY WORKS (fixed 2026-08-18) ══════════════════════════
+              // `INVITE_SEAT` has resolved a person's address this way for months, and it is
+              // LOOSER than what Claude wrote: ANY chain event carrying an email, not only a
+              // `CONTACT` one. A booking, an invite, a signup - the address is the address.
+              // `identity_key` is the ANCHOR and is hashed for MATCHING; it was never readable and
+              // was never meant to be. This is the readable half, and it already existed.
               try {
                 const stub = this.env.PTA_DO.get(this.env.PTA_DO.idFromName(who));
                 const r2 = await stub.fetch(new Request("http://do", { method: "POST",
                   body: JSON.stringify({ method: "getState", params: [] }) }));
                 const j2 = await r2.json();
-                const hit = [...((j2?.pta?.chain) || [])].reverse()
-                  .find(x => x?.event === "CONTACT" && x?.data?.email);
+                const hit = [...((j2?.pta?.chain) || [])].reverse().find(x => x?.data?.email);
                 addr = hit?.data?.email || null;
               } catch {}
             }

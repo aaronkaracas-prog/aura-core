@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.37.0-2026-08-18-the-shop-writes-its-own-rules";
+const BUILD = "aura-core-v6.38.0-2026-08-18-look-where-the-address-is";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -19825,6 +19825,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // `cg_business.industry` on the claim path, and every future vertical gets it free.
             // Inside the grant's try on purpose: without can_remember this write cannot land, and
             // running it anyway is how the silent failure happened the first time.
+            // ══ THE SHOP NEEDS AN ADDRESS TO BE REACHED AT (fixed 2026-08-18) ══════════════
+            // MEASURED on a live booking: `told: {shop: 1, shop_emailed: 0, shop_unreachable: 1}`.
+            // The shop was booked and NOBODY TOLD THEM - the business entity had no email, because
+            // we correctly stopped using the signup address as its IDENTITY and never put it back
+            // as a CONTACT. Those are different things: identity is what makes it findable, contact
+            // is where we reach a human. One owner can have five shops and one address.
+            // Written under the same grant the signup just issued.
+            try {
+              await processCommand("PTA_REMEMBER " + ing.id + " CONTACT " + JSON.stringify({
+                email: pend.email, source: "signup", role: "owner", event_type: "CONTACT" }), env, true);
+            } catch {}
             const SITE_TYPE = { "tattooparlors.world": "tattoo_shop" };
             const bt = SITE_TYPE[String(pend.site || "").trim()] || null;
             if (bt) await processCommand("PTA_REMEMBER " + ing.id + " UNDERSTANDING " +
@@ -47450,10 +47461,32 @@ export class PublicEntry extends WorkerEntrypoint {
           // Their address, from their own entity - we do not have one for everybody, and a person
           // with no contact simply is not emailed rather than being silently counted as told.
           try {
-            const row = await this.env.AURA_MEMORY.prepare(
-              "SELECT metadata FROM pta_entities WHERE id = ? LIMIT 1").bind(who).first();
-            let md = {}; try { md = row?.metadata ? JSON.parse(row.metadata) : {}; } catch {}
-            const addr = md.email || md.contact_email || null;
+            // ══ LOOK WHERE THE ADDRESS ACTUALLY IS (fixed 2026-08-18) ═══════════════════════
+            // This read `pta_entities.metadata` and the signup writes the contact to the CHAIN.
+            // Two different places, so the lookup found nothing and the shop went untold - the
+            // reader and the writer disagreeing, which is the same shape as `artists` being an
+            // object where the console expected an array.
+            // Metadata first (a Google-ingested business carries it there), then the chain.
+            let addr = null;
+            try {
+              const row = await this.env.AURA_MEMORY.prepare(
+                "SELECT metadata FROM pta_entities WHERE id = ? LIMIT 1").bind(who).first();
+              let md = {}; try { md = row?.metadata ? JSON.parse(row.metadata) : {}; } catch {}
+              addr = md.email || md.contact_email || null;
+            } catch {}
+            if (!addr) {
+              // The Durable Object's own state, exactly as CONSOLE reads it. `PTA_CHAIN` is not a
+              // command - Claude invented the name; this is the real door.
+              try {
+                const stub = this.env.PTA_DO.get(this.env.PTA_DO.idFromName(who));
+                const r2 = await stub.fetch(new Request("http://do", { method: "POST",
+                  body: JSON.stringify({ method: "getState", params: [] }) }));
+                const j2 = await r2.json();
+                const hit = [...((j2?.pta?.chain) || [])].reverse()
+                  .find(x => x?.event === "CONTACT" && x?.data?.email);
+                addr = hit?.data?.email || null;
+              } catch {}
+            }
             if (!addr) continue;
             const er = await processCommand("EMAIL_SEND " + addr + " New booking at " + sp.name +
               " | " + name + " asked for " + new Date(rp.when).toUTCString() +

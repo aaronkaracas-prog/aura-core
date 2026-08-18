@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.56.0-2026-08-18-a-block-is-occupancy";
+const BUILD = "aura-core-v6.57.0-2026-08-18-say-the-actual-reason";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -21266,7 +21266,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               isBlock ? "block" : "appointment", JSON.stringify(ctx), now, now).run();
           return { cmd: "APPOINTMENT", payload: { ok: true, uid, kind: ctx.kind, status: ctx.status,
             start: ctx.start, end: ctx.end, minutes: mins, artist: ctx.artist,
-            note: "TENTATIVE until somebody confirms - asked for is not agreed, and the standard has " +
+            note: isBlock
+              ? "Held. Nobody is in that chair and nobody can book it until this is removed."
+              : "TENTATIVE until somebody confirms - asked for is not agreed, and the standard has " +
               "a word for the difference." } };
         }
 
@@ -47719,7 +47721,15 @@ export class PublicEntry extends WorkerEntrypoint {
         this.env, true);
       const rp = (r && r.payload) ? r.payload : r;
       if (!rp?.ok) return { ok: false, error: rp?.error || "COULD_NOT_BOOK",
-        say: rp?.what_to_do || "That time is no longer free - pick another." };
+        // ══ SAY THE ACTUAL REASON (fixed 2026-08-18) ══════════════════════════════════════
+        // This overwrote core's reason with one fixed sentence whenever `what_to_do` was absent, so
+        // a `SHOP_IS_SHUT` refusal told the client "that time is no longer free" - which is a
+        // different fact and sends them looking for another slot on a day the business is closed.
+        say: rp?.what_to_do
+          || (rp?.error === "SHOP_IS_SHUT" ? "They are not open then - pick a time they are."
+            : rp?.error === "TIME_TAKEN" ? "That time is no longer free - pick another."
+            : rp?.error === "HOURS_UNKNOWN" ? "We could not check their hours, so this was not booked."
+            : "That could not be booked.") };
       // What they said they want, in their words, on their own chain.
       let notes_kept = null;
       if (f.notes) {

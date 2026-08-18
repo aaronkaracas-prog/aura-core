@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.49.0-2026-08-18-the-console-and-pta-due-agree";
+const BUILD = "aura-core-v6.50.0-2026-08-18-business-is-on-the-wrapper";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -21123,22 +21123,37 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // Aaron: "of course it respects shop hours and it respects openings."
             // The same `AVAILABILITY` that the booking page uses is the authority, so a move and a
             // booking can never disagree about what is open.
+            // ══ `business` IS ON THE WRAPPER, NOT ON THE CONTEXT (fixed 2026-08-18) ═════════
+            // `readAp` returns `{uid, customer, business, edge_state, v}` and this code does
+            // `c = ap.v`, so `c.business` was UNDEFINED. `AVAILABILITY undefined` failed, `avp.ok`
+            // was false, and the whole hours check skipped SILENTLY inside `if (avp?.ok)` - an
+            // appointment moved to 04:00 at a shop open noon-to-eight and the ICS went out saying so.
+            // MEASURED: AVAILABILITY for this shop lists 12:00/2:00/4:00/6:00pm on that date and no
+            // 04:00Z slot on any day, so the data was right and only the lookup was wrong.
+            // Same shape as every other reader/writer mismatch today, and the bare `if` hid it.
+            const mvBiz = ap.business || c.business;
             const mvEnd = new Date(d.getTime() + (Number(c.minutes) || 120) * 60000);
-            const av = await processCommand("AVAILABILITY " + c.business + " days:60", env, true);
+            const av = await processCommand("AVAILABILITY " + mvBiz + " days:60", env, true);
             const avp = (av && av.payload) ? av.payload : av;
-            if (avp?.ok) {
+            // A shop whose hours we cannot read is NOT a shop with no hours. Say so rather than
+            // letting a move through unexamined.
+            if (!avp?.ok) return { cmd: "APPOINTMENT", payload: { ok: false, error: "HOURS_UNKNOWN",
+              business: mvBiz || null, detail: avp?.error || null,
+              what_to_do: "Their hours could not be read, so this move was not checked against them. " +
+                "Fix that before moving the appointment." } };
+            {
               const day = (avp.open_days || []).find(x => x.date === d.toISOString().slice(0, 10));
               const fits = day && (day.slots || []).some(sl => sl.at === d.toISOString());
               if (!fits) return { cmd: "APPOINTMENT", payload: { ok: false, error: "SHOP_IS_SHUT",
                 asked_for: d.toISOString(), business: c.business,
                 what_to_do: "That is outside their hours or already taken. AVAILABILITY " +
-                  c.business + " lists what is open." } };
+                  mvBiz + " lists what is open." } };
             }
             // And nobody else's chair. Same artist, overlapping window, excluding this appointment.
             try {
               const others = await env.AURA_MEMORY.prepare(
                 "SELECT id, context FROM pta_edges WHERE to_id = ? AND edge_type = 'booking' " +
-                "AND state != 'revoked' AND id != ?").bind(c.business, uid).all();
+                "AND state != 'revoked' AND id != ?").bind(mvBiz, uid).all();
               for (const o of (others?.results || [])) {
                 let oc = {}; try { oc = JSON.parse(o.context || "{}"); } catch {}
                 if (oc.status === "CANCELLED") continue;

@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.45.0-2026-08-18-two-facts-not-one";
+const BUILD = "aura-core-v6.46.0-2026-08-18-declared-outside-the-try";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -19773,6 +19773,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // email; that is a stronger signal than the claim path has. It is recorded on the chain
           // and revocable from the console at any time, which is what makes it a grant rather than
           // an assumption.
+          // ══ DECLARED OUTSIDE THE TRY THAT SETS IT (fixed 2026-08-18) ═══════════════════════
+          // `ownerPta` was declared INSIDE this try and read in the return below it - "ownerPta is
+          // not defined", and no business was created. FOURTH ordering bug of the day, same family
+          // as `abBrand`, `site: abBrand` and `artistsForRank`. `node --check` cannot see any of
+          // them; only reading where the braces close does.
+          let ownerPta = null;
           try {
             // The grantee is whatever `PTA_REMEMBER` will CHECK against - read the same way it
             // reads it, rather than hardcoding an id. `AURA_PTA` does not exist; Aura deliberately
@@ -19805,7 +19811,6 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // The person who confirmed the email is the owner - they proved they hold that address.
             // Minted the same way a booking mints a client: keyed on their contact, so signing up a
             // second shop is the same person rather than a second one.
-            let ownerPta = null;
             try {
               const ow = await processCommand("PTA_ENTITY CREATE person " +
                 (pend.email.split("@")[0] || "owner") + " identity:" + pend.email.toLowerCase(),

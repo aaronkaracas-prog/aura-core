@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.26.0-2026-08-18-the-product-that-emails-them";
+const BUILD = "aura-core-v6.27.0-2026-08-18-an-email-is-a-person-not-a-shop";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -19591,6 +19591,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           offerings: (understanding && understanding.offerings) || null,
           serves: (understanding && understanding.serves) || null,
           claim_url: pta ? null : "https://tattooparlors.world/b/" + encodeURIComponent(obId),
+          // A tattoo shop's public page is on the consumer doorway, never on the business layer.
           address_here: await (async () => {
             try {
               const r = await env.AURA_MEMORY.prepare("SELECT slug FROM pta_entities WHERE id = ?")
@@ -19642,6 +19643,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const token = Array.from(crypto.getRandomValues(new Uint8Array(16)))
             .map(b => b.toString(16).padStart(2, "0")).join("");
           await env.AURA_KV.put("addbiz:" + token, JSON.stringify({ email, name, address, phone, about,
+            website: abParts[5] || "", hours: abParts[6] || "",
             started_at: new Date().toISOString() }), { expirationTtl: 7 * 86400 });
           // ══ THE PRODUCT THEY SIGNED UP FOR IS THE ONE THAT EMAILS THEM (2026-08-18) ═══════
           // MEASURED, on a real signup: the form said tattooparlors, and then the email said
@@ -19696,8 +19698,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           try { pend = JSON.parse((await env.AURA_KV.get("addbiz:" + token)) || "null"); } catch {}
           if (!pend) return { cmd: "ADD_BUSINESS", payload: { ok: false, error: "LINK_EXPIRED",
             what_to_say: "That link has expired or was already used. Add the business again." } };
+          // ══ THE SIGNER-UP'S EMAIL IS NOT THE BUSINESS'S IDENTITY (fixed 2026-08-18) ═══════
+          // MEASURED on a real signup: Aaron added "QuickLight" and got back a DIFFERENT shop's
+          // address, phone, website and Google CID. Nothing searched Google - `pickIdentity` fell
+          // through place_id -> phone -> site -> EMAIL, landed on his own signup address, and that
+          // key already belonged to an old QuickLight test entity. It fused.
+          // A person's email identifies a PERSON. One owner can have five businesses, and with this
+          // ordering all five would be the same entity. So the signup email is passed as the
+          // OWNER's contact, never as the business's identity - the business is identified by its
+          // own phone or its own website, and if it has neither we say so rather than inventing one.
           const ing = await ingestBusiness(env, { name: pend.name, place_id: null,
-            phone: pend.phone || null, website: null, email: pend.email }, true);
+            phone: pend.phone || null, website: pend.website || null, email: null }, true);
           if (!ing?.ok || !ing.id) return { cmd: "ADD_BUSINESS", payload: { ok: false,
             error: "COULD_NOT_MINT", detail: ing,
             what_to_say: "We could not create the record. Nothing was listed." } };

@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.38.0-2026-08-18-look-where-the-address-is";
+const BUILD = "aura-core-v6.39.0-2026-08-18-a-signup-creates-an-owner";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -19825,6 +19825,31 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // `cg_business.industry` on the claim path, and every future vertical gets it free.
             // Inside the grant's try on purpose: without can_remember this write cannot land, and
             // running it anyway is how the silent failure happened the first time.
+            // ══ A SIGNUP HAS TO CREATE AN OWNER (fixed 2026-08-18) ═══════════════════════════
+            //
+            // MEASURED: `OWNER LIST` on a shop that had signed up, been typed, seated three artists
+            // and taken three bookings returned **count: 0**. Nobody owned it. Every business
+            // created through the front door was ownerless, and **with the build key armed nobody
+            // noticed, because the ownership check is skipped entirely.** Turn the key off and not
+            // one shop can open its own console.
+            // It also explains the email: `told.shop = 1` was NINA, the artist named on the
+            // booking. There were never any owners to tell.
+            //
+            // The person who confirmed the email is the owner - they proved they hold that address.
+            // Minted the same way a booking mints a client: keyed on their contact, so signing up a
+            // second shop is the same person rather than a second one.
+            let ownerPta = null;
+            try {
+              const ow = await processCommand("PTA_ENTITY CREATE person " +
+                (pend.email.split("@")[0] || "owner") + " identity:" + pend.email.toLowerCase(),
+                env, true);
+              const owp = (ow && ow.payload) ? ow.payload : ow;
+              if (owp?.ok && owp.entity?.id) {
+                ownerPta = owp.entity.id;
+                await processCommand("OWNER ADD " + ing.id + " " + ownerPta, env, true);
+              }
+            } catch {}
+
             // ══ THE SHOP NEEDS AN ADDRESS TO BE REACHED AT (fixed 2026-08-18) ══════════════
             // MEASURED on a live booking: `told: {shop: 1, shop_emailed: 0, shop_unreachable: 1}`.
             // The shop was booked and NOBODY TOLD THEM - the business entity had no email, because
@@ -19857,7 +19882,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             }
           } catch {}
           try { await env.AURA_KV.delete("addbiz:" + token); } catch {}
-          return { cmd: "ADD_BUSINESS", payload: { ok: true, mode: "added", name: pend.name, pta: ing.id,
+          return { cmd: "ADD_BUSINESS", payload: { ok: true, mode: "added", name: pend.name,
+            owner: ownerPta || null,
+            owner_note: ownerPta ? undefined
+              : "NOBODY OWNS THIS - the owner could not be created, so no one can open its console.", pta: ing.id,
             door: "https://openforbusiness.world/b/" + ing.id,
             what_to_say: "Confirmed. Your business is listed.",
             note: "Email only. Nothing has been consented to beyond what you typed - remembering " +

@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.47.0-2026-08-18-the-address-lives-on-the-edge";
+const BUILD = "aura-core-v6.48.0-2026-08-18-already-an-owner-still-records-it";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -21777,8 +21777,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             what_to_do: "A business cannot own a console seat as itself - a PERSON opens it. If a " +
               "company owns this shop, seat the human who actually signs in." } };
           const already = (await readOwners()).find(x => x.pta === who);
-          if (already) return { cmd: "OWNER", payload: { ok: true, already_owner: true,
-            business: biz.name, person: who, name: p.name, edge_id: already.edge_id } };
+          if (already) {
+            // ══ ALREADY AN OWNER STILL MEANS RECORD THE CONTACT (2026-08-18) ═══════════════
+            // The early return skipped the insert entirely, so passing an address to an existing
+            // owner silently did nothing - `already_owner: true` and no context written. An owner
+            // giving us a way to reach them later is the normal case, not an error.
+            if (owContact) {
+              await odb.prepare("UPDATE pta_edges SET context = ?, updated_at = ? WHERE id = ?")
+                .bind(JSON.stringify({ reach: owContact }), new Date().toISOString(), already.edge_id)
+                .run().catch(() => null);
+            }
+            return { cmd: "OWNER", payload: { ok: true, already_owner: true,
+              business: biz.name, person: who, name: p.name, edge_id: already.edge_id,
+              reach_recorded: owContact || undefined } };
+          }
           const edgeId = "edge_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
           const now = new Date().toISOString();
           await odb.prepare(

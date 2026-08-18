@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.30.0-2026-08-18-defined-before-it-is-used";
+const BUILD = "aura-core-v6.33.0-2026-08-18-say-when-it-is-half-done";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -19631,6 +19631,75 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const abHead = (abParts[0] || "").split(/\s+/);
       const abSub = String(abHead[0] || "").toUpperCase();
 
+      // ══ A TYPO'D ADDRESS MUST NOT BE A DEAD END (2026-08-18) ═════════════════════════════
+      // MEASURED, on Aaron's own signup: he typed `gmial.com`, the mail was sent, it went nowhere,
+      // and the reply said "check your email" with NO WAY FORWARD. No resend, no correction, no
+      // hint the domain does not exist. A real shop would simply leave, and we would never know.
+      //   ADD_BUSINESS RESEND <email>    same pending record, same token, sent again
+      // The token is NOT regenerated - a shop that finds the first mail later must still be able to
+      // use it, and rotating it would break the link they already have.
+      // ══ AND A WRONG ADDRESS MUST BE CORRECTABLE ═════════════════════════════════════════
+      // Resending to `gmial.com` forever helps nobody. A shop that mistyped needs to say "it is
+      // actually this".
+      //   ADD_BUSINESS FIXEMAIL <wrong@address> <right@address>
+      if (abSub === "FIXEMAIL") {
+        const badEmail = (abHead[1] || "").trim().toLowerCase();
+        const goodEmail = (abHead[2] || "").trim().toLowerCase();
+        if (!badEmail.includes("@") || !goodEmail.includes("@")) return { cmd: "ADD_BUSINESS",
+          payload: { ok: false, error: "Usage: ADD_BUSINESS FIXEMAIL <wrong> <right>" } };
+        const fxKeys = await env.AURA_KV.list({ prefix: "addbiz:" });
+        for (const k of (fxKeys?.keys || [])) {
+          let rec = null;
+          try { rec = JSON.parse((await env.AURA_KV.get(k.name)) || "null"); } catch {}
+          if (!rec || String(rec.email || "").toLowerCase() !== badEmail) continue;
+          rec.email = goodEmail;
+          // Same token, and what remains of the ORIGINAL week - fixing a typo should not buy
+          // another seven days, and should not shorten what is left either.
+          const elapsed = Math.floor((Date.now() - Date.parse(rec.started_at || "")) / 1000);
+          const left = isFinite(elapsed) ? Math.max(300, 7 * 86400 - elapsed) : 7 * 86400;
+          await env.AURA_KV.put(k.name, JSON.stringify(rec), { expirationTtl: left });
+          const fxBrand = String(rec.site || "cityguide.world");
+          const fxLink = "https://" + fxBrand + "/confirm/" + k.name.replace(/^addbiz:/, "");
+          const fr = await processCommand("EMAIL_SEND " + goodEmail + " Confirm your shop on " + fxBrand +
+            " | You added " + rec.name + " to " + fxBrand + ". Confirm it here: " + fxLink +
+            "  --  If this was not you, ignore this email and nothing will be listed.", env, true);
+          const fp = (fr && fr.payload) ? fr.payload : fr;
+          return { cmd: "ADD_BUSINESS", payload: { ok: true, mode: "email_fixed", name: rec.name,
+            was: badEmail, now: goodEmail, sent: !!fp?.ok,
+            confirm_link: fp?.ok ? undefined : fxLink,
+            what_to_say: fp?.ok ? "Fixed - check " + goodEmail + "."
+              : "Address updated but the mail did not send. Use this link." } };
+        }
+        return { cmd: "ADD_BUSINESS", payload: { ok: false, error: "NOTHING_PENDING",
+          what_to_say: "Nothing is waiting for that address." } };
+      }
+
+      if (abSub === "RESEND") {
+        const reEmail = (abHead[1] || "").trim().toLowerCase();
+        if (!reEmail.includes("@")) return { cmd: "ADD_BUSINESS", payload: { ok: false,
+          error: "Usage: ADD_BUSINESS RESEND <email>" } };
+        const keys = await env.AURA_KV.list({ prefix: "addbiz:" });
+        for (const k of (keys?.keys || [])) {
+          let rec = null;
+          try { rec = JSON.parse((await env.AURA_KV.get(k.name)) || "null"); } catch {}
+          if (!rec || String(rec.email || "").toLowerCase() !== reEmail) continue;
+          const reBrand = String(rec.site || "cityguide.world");
+          const reLink = "https://" + reBrand + "/confirm/" + k.name.replace(/^addbiz:/, "");
+          const rr = await processCommand("EMAIL_SEND " + reEmail + " Confirm your shop on " + reBrand +
+            " | You added " + rec.name + " to " + reBrand + ". Confirm it here: " + reLink +
+            "  --  If this was not you, ignore this email and nothing will be listed.", env, true);
+          const rp2 = (rr && rr.payload) ? rr.payload : rr;
+          return { cmd: "ADD_BUSINESS", payload: { ok: true, mode: "resent", name: rec.name,
+            email: reEmail, sent: !!rp2?.ok,
+            confirm_link: rp2?.ok ? undefined : reLink,
+            what_to_say: rp2?.ok ? "Sent again - check your email."
+              : "We could not send it. Use this link instead." } };
+        }
+        return { cmd: "ADD_BUSINESS", payload: { ok: false, error: "NOTHING_PENDING",
+          what_to_say: "Nothing is waiting for that address. It may have been confirmed already, or " +
+            "the address it was sent to was different - add the shop again." } };
+      }
+
       try {
         if (abSub === "START") {
           const email = (abHead[1] || "").trim().toLowerCase();
@@ -19784,7 +19853,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "anything more still needs a grant." } };
         }
         return { cmd: "ADD_BUSINESS", payload: { ok: false,
-          error: "Usage: ADD_BUSINESS START <email> ::: <name> ::: <address> ::: <phone> ::: <what you do>  |  ADD_BUSINESS CONFIRM <token>" } };
+          error: "Usage: ADD_BUSINESS START <email> ::: <name> ::: <address> ::: <phone> ::: <what you do>" +
+            "  |  ADD_BUSINESS CONFIRM <token>  |  ADD_BUSINESS RESEND <email>" +
+            "  |  ADD_BUSINESS FIXEMAIL <wrong> <right>" } };
       } catch (e) {
         return { cmd: "ADD_BUSINESS", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
       }
@@ -21727,6 +21798,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const seats = await readSeats();
           return { cmd: "SEAT", payload: { ok: true, business: biz.name, person, name,
             edge_id: edgeId, count: seats.length, billing: bill(seats.length),
+            // ══ A SEAT WITH NO CONTACT IS SOMEBODY NOBODY CAN REACH (2026-08-18) ════════════
+            // MEASURED on the first full signup: `SEAT ADD <shop> Maria` minted a PTA, billed a
+            // seat, and left an artist who cannot sign in and has never been told she works there.
+            // The capability was never missing - `SEAT ADD` takes `email:` or `phone:`, and
+            // INVITE_SEAT exists - but SAYING NOTHING made a half-finished thing look complete.
+            // The reply names the next step now, rather than leaving a shop to find out in a month.
+            can_reach_them: !!contact,
+            what_to_do: contact ? undefined
+              : "They hold a seat but no way in: nobody has told them and they cannot open a " +
+                "console. Add a contact - SEAT ADD " + seBiz + " " + name + " email:<address> - " +
+                "or send them a door with INVITE_SEAT.",
             note: "Seated. This says they work here and nothing else - no grant, no permission to " +
               "remember anything about them. That is theirs to give." } };
         }

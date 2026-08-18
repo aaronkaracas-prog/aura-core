@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.42.0-2026-08-18-pta-already-does-this";
+const BUILD = "aura-core-v6.43.0-2026-08-18-enrichment-is-a-workflow-mode";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -17904,74 +17904,38 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
     }
 
-    case "CG_ENRICH_COLLECT": {
-      // ══ FINISH WHAT THE CRAWLS STARTED ═══════════════════════════════════════════════════════
-      // The other half of the split. `CG_ENRICH` starts a crawl and parks the job id on the row when
-      // it is still running; this walks the parked jobs, and for each one that has finished, re-runs
-      // the extraction by calling CG_ENRICH again - by then SITE_READ STATUS returns instantly from
-      // the completed job, so the whole pipeline runs inside one fast turn.
-      // This is the shape the batch needs: start work, record state, collect later. Nothing sits and
-      // polls for minutes, and a finished crawl is never thrown away.
-      if (!isOp) return { cmd: "CG_ENRICH_COLLECT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+    case "CG_ENRICH_BATCH": {
+      // ══ THE DURABLE DOOR — REPLACES THE START/COLLECT WORKAROUND (2026-08-18) ════════════════
+      // `CG_ENRICH_COLLECT` was deleted. It existed because CG_ENRICH polled a crawl synchronously,
+      // timed out on every healthy domain, and parked the job id so a second command could finish
+      // it. That is a Workflow with extra steps, and `GRID_CRAWL_WORKFLOW` has been the durable
+      // door all along - it "sleeps for free, resumes after a redeploy, and keeps going for hours
+      // with nobody watching."
+      //   CG_ENRICH_BATCH <cg_id> <cg_id> ...      enrich these, durably
+      //   CG_ENRICH_BATCH CITY <city> [n]          everything unenriched in a city
+      // One step per shop, deterministic step names so a replay matches, three seconds between
+      // shops because one job per domain is what the rate limit expects.
+      if (!isOp) return { cmd: "CG_ENRICH_BATCH", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       try {
-        const db = env.AURA_MEMORY;
-        const rows = (await db.prepare(
-          "SELECT id, name, crawl_job FROM cg_business WHERE crawl_job IS NOT NULL LIMIT 25").all())?.results || [];
-        if (!rows.length) return { cmd: "CG_ENRICH_COLLECT", payload: { ok: true, parked: 0,
-          note: "No crawl is waiting to be collected." } };
-        const done = [], waiting = [], failed = [];
-        for (const r of rows) {
-          try {
-            const st = await processCommand("SITE_READ STATUS " + r.crawl_job, env, true);
-            const sp = (st && st.payload) ? st.payload : st;
-            if (sp?.status === "running") { waiting.push({ business: r.name, job: r.crawl_job }); continue; }
-            // Finished - clear the park FIRST so a failure here cannot loop forever, then extract.
-            await db.prepare("UPDATE cg_business SET crawl_job = NULL WHERE id = ?").bind(r.id).run();
-            const again = await processCommand("CG_ENRICH " + r.id, env, true);
-            const ap = (again && again.payload) ? again.payload : again;
-            if (ap?.ok && ap.mode === "written") {
-              done.push({ business: r.name, emails: ap.extracted?.emails ?? 0,
-                          artists: ap.extracted?.artists ?? 0, images: ap.images?.kept ?? 0 });
-            } else {
-              failed.push({ business: r.name, error: ap?.error || ap?.state || "unknown" });
-            }
-          } catch (e) { failed.push({ business: r.name, error: String(e?.message ?? e).slice(0, 120) }); }
-        }
-        return { cmd: "CG_ENRICH_COLLECT", payload: { ok: true, parked: rows.length,
-          // `failed` appeared twice in this literal - wrangler warned, node --check did not. Second
-          // duplicate-key bug today; the first silently reversed a subdomain setting.
-          collected: done.length, still_running: waiting.length, failed_count: failed.length,
-          done, waiting, failed } };
+        const beArgs = String(rest || "").trim().split(/\s+/).filter(Boolean);
+        let ids = [];
+        if ((beArgs[0] || "").toUpperCase() === "CITY") {
+          const city = beArgs.slice(1, -1).join(" ") || beArgs[1] || "";
+          const lim = Math.min(Number(beArgs[beArgs.length - 1]) || 50, 500);
+          const rows = (await env.AURA_MEMORY.prepare(
+            "SELECT id FROM cg_business WHERE industry = 'tattoo' AND lower(locality) = ? " +
+            "AND website IS NOT NULL AND website != '' AND (understanding IS NULL) LIMIT ?")
+            .bind(String(city).toLowerCase(), lim).all())?.results || [];
+          ids = rows.map(r => r.id);
+        } else ids = beArgs;
+        if (!ids.length) return { cmd: "CG_ENRICH_BATCH", payload: { ok: true, shops: 0,
+          note: "Nothing to enrich - either none named, or that city has no unenriched shops with a website." } };
+        const inst = await env.GRID_CRAWL_WORKFLOW.create({ params: { mode: "enrich", ids } });
+        return { cmd: "CG_ENRICH_BATCH", payload: { ok: true, started: inst.id, shops: ids.length,
+          watch: "PTA_CRAWL STATUS " + inst.id,
+          note: "Running as a Workflow. It survives a redeploy and nobody has to wait." } };
       } catch (e) {
-        return { cmd: "CG_ENRICH_COLLECT", payload: { ok: false, error: String(e?.message ?? e).slice(0, 200) } };
-      }
-    }
-
-    case "QR": {
-      // QR <text|url>            an SVG, ours, no third party
-      // QR SHOP <cg_id>          the permanent code for a listed business
-      const qRaw = String(rest || "").trim();
-      if (!qRaw) return { cmd: "QR", payload: { ok: false, error: "Usage: QR <url|text>  |  QR SHOP <cg_id>" } };
-      try {
-        let content = qRaw, about = null;
-        const shop = qRaw.match(/^SHOP\s+(\S+)/i);
-        if (shop) {
-          const row = await env.AURA_MEMORY.prepare(
-            "SELECT id, name FROM cg_business WHERE id = ? OR website LIKE ? LIMIT 1")
-            .bind(shop[1], "%" + shop[1] + "%").first();
-          if (!row) return { cmd: "QR", payload: { ok: false, error: "NOT_IN_CG_BUSINESS" } };
-          // DERIVED FROM THE BUSINESS, NEVER ISSUED - the ratified rule. The id is stable, so the
-          // code is the same today, after they pay, and if they lapse and come back.
-          content = "https://tattooparlors.world/b/" + row.id;
-          about = { id: row.id, name: row.name };
-        }
-        const qr = new QRCode({ content, padding: 2, width: 512, height: 512,
-          color: "#000000", background: "#ffffff", ecl: "M" });
-        return { cmd: "QR", payload: { ok: true, content, about,
-          svg: qr.svg(), bytes: qr.svg().length,
-          note: "Generated here. No third-party service is involved and the code never changes." } };
-      } catch (e) {
-        return { cmd: "QR", payload: { ok: false, error: String(e?.message ?? e).slice(0, 200) } };
+        return { cmd: "CG_ENRICH_BATCH", payload: { ok: false, error: String(e?.message ?? e).slice(0, 200) } };
       }
     }
 
@@ -18009,10 +17973,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       //   CG_ENRICH <...> DRY                extract and report, write nothing
       if (!isOp) return { cmd: "CG_ENRICH", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const ceRaw = String(rest || "").trim();
-      // `RUN "CG_ENRICH COLLECT"` parses as command CG_ENRICH with argument COLLECT, so it would
-      // never reach a `case "CG_ENRICH_COLLECT"`. Routed here instead - the operator types what reads
+      // `RUN "CG_ENRICH BATCH ..."` parses as command CG_ENRICH with argument BATCH, so it would
+      // never reach `case "CG_ENRICH_BATCH"`. Routed here instead - the operator types what reads
       // naturally and the dispatcher does not need to know about it.
-      if (/^COLLECT\b/i.test(ceRaw)) return await processCommand("CG_ENRICH_COLLECT", env, isOp);
+      if (/^BATCH\b/i.test(ceRaw)) return await processCommand("CG_ENRICH_BATCH " +
+        ceRaw.replace(/^BATCH\s*/i, ""), env, isOp);
       const ceDry = /(^|\s)DRY(\s|$)/i.test(ceRaw);
       const ceKey = ceRaw.replace(/(^|\s)DRY(\s|$)/i, " ").trim();
       if (!ceKey) return { cmd: "CG_ENRICH", payload: { ok: false, error: "Usage: CG_ENRICH <cg_id|website> [DRY]" } };
@@ -18111,15 +18076,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // returned as an error, and `CG_ENRICH COLLECT` picks it up later. Nothing is ever re-crawled
         // to recover work that already succeeded.
         if (!res) {
+          // Still parked, because a crawl that finished after we stopped waiting is worth keeping -
+          // but the answer to a slow crawl is now CG_ENRICH_BATCH, which never waits at all.
           try {
             await db.prepare("UPDATE cg_business SET crawl_job = ?, crawl_started = ? WHERE id = ?")
               .bind(sp.id, new Date().toISOString(), row.id).run();
           } catch {}
           return { cmd: "CG_ENRICH", payload: { ok: true, state: "crawl_running", job: sp.id,
             business: row.name, site,
-            note: "The crawl is still running - that is normal for a site with real content, and the " +
-              "job keeps for 14 days. It is parked on the row; nothing is lost.",
-            what_to_do: "RUN \"CG_ENRICH COLLECT\" in a minute or two to finish every parked job." } };
+            note: "Still running - normal for a site with real content. The job keeps for 14 days.",
+            what_to_do: "For more than one shop use CG_ENRICH_BATCH, which runs as a Workflow and " +
+              "does not wait." } };
         }
         let md = String(res.markdown || "");
         let renderedFallback = null;
@@ -46372,6 +46339,30 @@ export class PtaDurableObject {
 // tile instead of re-crawling the city.
 export class GridCrawlWorkflow extends WorkflowEntrypoint {
   async run(event, step) {
+    // ══ ENRICHMENT IS A MODE OF THIS WORKFLOW, NOT A SECOND ONE (2026-08-18) ═══════════════════
+    // Claude spent a day building synchronous polling inside CG_ENRICH, hit CRAWL_TIMEOUT on every
+    // healthy domain, then designed a "start and collect" split to solve it. THIS ALREADY EXISTED:
+    // `PTA_CRAWL` hands work to this Workflow, which per its own comment "sleeps for free, resumes
+    // after a redeploy, and keeps going for hours with nobody watching."
+    // The grid crawl DISCOVERS businesses across map cells; enrichment READS one shop's own site.
+    // Different jobs, same durability problem, same solution - so it is a mode here rather than a
+    // parallel piece of machinery. One step per shop, deterministic names, replay-safe.
+    if (String(event.payload?.mode || "") === "enrich") {
+      const ids = (event.payload?.ids || []).slice(0, 2000);
+      let done = 0, failed = 0; const trouble = [];
+      for (let i = 0; i < ids.length; i++) {
+        const r = await step.do("shop-" + i, async () => {
+          const x = await processCommand("CG_ENRICH " + ids[i], this.env, true);
+          return (x && x.payload) ? x.payload : x;
+        });
+        if (r?.ok) done++; else { failed++; if (trouble.length < 20) trouble.push({ id: ids[i], why: r?.error || "unknown" }); }
+        // One job per domain is the rule the rate limit enforces; a pause between shops keeps a
+        // long run from looking like a flood to anybody's server.
+        await step.sleep("gap-" + i, "3 seconds");
+      }
+      return { ok: true, mode: "enrich", shops: ids.length, enriched: done, failed, trouble };
+    }
+
     const vertical = String(event.payload?.vertical || "").trim();
     const region = String(event.payload?.region || "").trim();
     const maxCells = Math.min(Number(event.payload?.max_cells) || 300, 3000);

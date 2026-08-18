@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.54.0-2026-08-18-the-person-has-hours-too";
+const BUILD = "aura-core-v6.55.0-2026-08-18-unmentioned-means-inherit";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -21000,7 +21000,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // businesses. Hours on their chain would be one set for both; hours on the edge are
         // correctly per-business, and when they leave, the hours leave with the edge.
         // UNSET MEANS INHERIT - a person with no hours of their own works the business's hours.
-        let personOpen = null;
+        let personOpen = null, personSaid = null;
         if (avWith) {
           try {
             const pe = await db.prepare(
@@ -21008,15 +21008,23 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "AND edge_type = 'works_at' AND state != 'revoked' LIMIT 1").bind(avWith, avBiz).first();
             let pc = {}; try { pc = pe?.context ? JSON.parse(pe.context) : {}; } catch {}
             if (pc.hours) {
-              personOpen = {};
+              // ══ SET-BUT-OFF vs NEVER-MENTIONED (fixed 2026-08-18) ══════════════════════════
+              // MEASURED: Mira was given tuesday and thursday only, and 10 days of availability
+              // came back with ONE. `personOpen[wd]` was undefined for every unmentioned day and
+              // the code read undefined as "off" - so the command's own note ("days not listed
+              // follow the business's hours") was a lie the code did not keep.
+              // Two different facts need two different answers, so the days they SPOKE ABOUT are
+              // tracked separately from the hours themselves.
+              personOpen = {}; personSaid = new Set();
               for (const [k, v] of Object.entries(pc.hours)) {
                 const di = DAY.indexOf(String(k).toLowerCase());
                 if (di < 0) continue;
+                personSaid.add(di);
                 // Same shape the business uses once parsed: {from, to} in local minutes.
                 if (v && typeof v === "object" && v.from != null && v.to != null) {
                   personOpen[di] = { from: Number(v.from), to: Number(v.to) };
                 }
-                // An empty array or null is the point of the whole feature: they are off that day.
+                // null means they SAID they are off that day - the point of the whole feature.
               }
             }
           } catch {}
@@ -21029,13 +21037,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           if (!o) continue;
           // THE INTERSECTION. The business says when the doors are open; the person says when they
           // are there. Bookable is where both are true - never wider than the business's hours.
-          if (personOpen) {
+          if (personOpen && personSaid?.has(wd)) {
             const po = personOpen[wd];
-            if (!po) continue;                       // they are off today
+            if (!po) continue;                       // they SAID they are off today
             const from = Math.max(o.from, po.from), to = Math.min(o.to, po.to);
-            if (!(to > from)) continue;              // their hours fall outside the shop's
+            if (!(to > from)) continue;              // their hours fall outside the business's
             o = { from, to };
           }
+          // A day they never mentioned inherits the business's hours - which is what the command
+          // promises, and what it now actually does.
           const slots = [];
           for (let m = o.from; m + avSlot <= o.to; m += avSlot) {
             // Local minutes -> the actual instant. m is in the shop's clock; tzMin shifts it.

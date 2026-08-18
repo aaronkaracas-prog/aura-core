@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.39.0-2026-08-18-a-signup-creates-an-owner";
+const BUILD = "aura-core-v6.40.0-2026-08-18-an-identity-is-not-a-contact";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -19847,6 +19847,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               if (owp?.ok && owp.entity?.id) {
                 ownerPta = owp.entity.id;
                 await processCommand("OWNER ADD " + ing.id + " " + ownerPta, env, true);
+                // ══ AN IDENTITY IS HASHED - A CONTACT IS NOT (2026-08-18) ═══════════════════
+                // MEASURED: the owner entity stores `contact_hint: "email:···orld"` and hashes the
+                // real value. That is the privacy model working exactly as intended - an identity
+                // key is for MATCHING, not for reading back. So there is no address on the entity
+                // to email, and the notifier looking for one was never going to find it.
+                // The address a person GAVE US to be reached at is a different fact, and it goes
+                // on their chain where a grant governs it.
+                try {
+                  await processCommand("PTA_REMEMBER " + ownerPta + " CONTACT " + JSON.stringify({
+                    email: pend.email, source: "signup", role: "owner",
+                    event_type: "CONTACT" }), env, true);
+                } catch {}
               }
             } catch {}
 
@@ -21941,6 +21953,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // INVITE_SEAT already mints the one-use link that solves the first-session problem; it
           // just was not being called. Only fires when there IS a contact - a seat with no address
           // still says plainly that nobody has been told.
+          // Same as the owner: the identity is hashed for MATCHING, so the address they gave us to
+          // be reached at has to live on their chain or nothing can ever email them.
+          if (contact) {
+            try {
+              const raw = contact.replace(/^(email|phone):/i, "");
+              await processCommand("PTA_REMEMBER " + person + " CONTACT " + JSON.stringify({
+                [/^phone:/i.test(contact) ? "phone" : "email"]: raw,
+                source: "seated", role: "artist", event_type: "CONTACT" }), env, true);
+            } catch {}
+          }
           let inviteSent = null;
           if (contact) {
             try {

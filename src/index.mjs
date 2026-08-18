@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.33.0-2026-08-18-say-when-it-is-half-done";
+const BUILD = "aura-core-v6.34.0-2026-08-18-a-seat-tells-the-person";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -21795,6 +21795,22 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             "INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, created_at, updated_at) " +
             "VALUES (?, ?, ?, 'works_at', 'active', ?, ?)"
           ).bind(edgeId, person, seBiz, new Date().toISOString(), new Date().toISOString()).run();
+          // ══ A SEAT SHOULD TELL THE PERSON (2026-08-18) ══════════════════════════════════
+          // `can_reach_them: true` only ever meant we COULD reach them. Nina was seated with an
+          // email on file and never told - she had a seat, a PTA and no idea. Aaron: "when an
+          // artist becomes seated they obviously need an invite email."
+          // INVITE_SEAT already mints the one-use link that solves the first-session problem; it
+          // just was not being called. Only fires when there IS a contact - a seat with no address
+          // still says plainly that nobody has been told.
+          let inviteSent = null;
+          if (contact) {
+            try {
+              const iv = await processCommand("INVITE_SEAT " + seBiz + " " + person, env, true);
+              const ivp = (iv && iv.payload) ? iv.payload : iv;
+              inviteSent = ivp?.ok ? { sent: true, to: contact.replace(/^(email|phone):/i, "") }
+                                   : { sent: false, why: ivp?.error || "invite did not send" };
+            } catch (e) { inviteSent = { sent: false, why: String(e?.message ?? e).slice(0, 90) }; }
+          }
           const seats = await readSeats();
           return { cmd: "SEAT", payload: { ok: true, business: biz.name, person, name,
             edge_id: edgeId, count: seats.length, billing: bill(seats.length),
@@ -21805,6 +21821,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // INVITE_SEAT exists - but SAYING NOTHING made a half-finished thing look complete.
             // The reply names the next step now, rather than leaving a shop to find out in a month.
             can_reach_them: !!contact,
+            invited: inviteSent || undefined,
             what_to_do: contact ? undefined
               : "They hold a seat but no way in: nobody has told them and they cannot open a " +
                 "console. Add a contact - SEAT ADD " + seBiz + " " + name + " email:<address> - " +

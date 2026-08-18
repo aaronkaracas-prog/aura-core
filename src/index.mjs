@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.51.0-2026-08-18-rfc5545-says-escape";
+const BUILD = "aura-core-v6.52.0-2026-08-18-both-doors-one-rule";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -21033,6 +21033,32 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const icsText = (v) => String(v == null ? "" : v)
         .replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,")
         .replace(/\r\n|\r|\n/g, "\\n");
+      // ══ ONE HOURS CHECK, USED BY BOTH DOORS (2026-08-18) ═══════════════════════════════════
+      // MEASURED on a full run: `APPOINTMENT NEW` created a 04:00 appointment at a shop open
+      // noon-to-eight. NEW checked CLASHES and never checked HOURS at all, while SET checked both -
+      // so Claude's own comment claiming "a move and a booking can never disagree" was false when
+      // it was written. Two doors, two rules, and only one of them was ever tested.
+      //
+      // SECOND FAULT, same run: `AVAILABILITY days:20` answered with ELEVEN days, because its reply
+      // field `days` is the count of OPEN days found, not the window asked for. So a date six weeks
+      // out simply is not in the answer, and SET read "not in the list" as "shut" and refused a
+      // perfectly good slot. **Beyond the horizon is NOT closed** - it is unknown, and the honest
+      // move is to widen the window to reach the date rather than to guess.
+      const hoursSay = async (bizId, when, mins) => {
+        const target = new Date(when);
+        if (isNaN(target)) return { ok: false, why: "BAD_TIME" };
+        // Ask far enough ahead to actually contain the date. 60 is the command's own ceiling.
+        const need = Math.ceil((target.getTime() - Date.now()) / 86400000) + 1;
+        if (need > 60) return { ok: true, unchecked: "beyond the 60-day window this can see" };
+        const av = await processCommand("AVAILABILITY " + bizId + " days:" +
+          Math.min(Math.max(need, 1), 60), env, true);
+        const avp = (av && av.payload) ? av.payload : av;
+        if (!avp?.ok) return { ok: false, why: "HOURS_UNKNOWN", detail: avp?.error || null };
+        const day = (avp.open_days || []).find(x => x.date === target.toISOString().slice(0, 10));
+        // A slot the shop is not open for, or one already held - AVAILABILITY returns only free ones.
+        const fits = day && (day.slots || []).some(sl => sl.at === target.toISOString());
+        return fits ? { ok: true } : { ok: false, why: "SHOP_IS_SHUT" };
+      };
       const readAp = async (uid) => {
         const r = await db.prepare("SELECT id, from_id, to_id, context, state FROM pta_edges WHERE id = ?")
           .bind(uid).first().catch(() => null);
@@ -21072,6 +21098,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "AND edge_type = 'works_at' AND state != 'revoked'").bind(f.artist, biz).first().catch(() => null);
             if (!ok) return { cmd: "APPOINTMENT", payload: { ok: false, error: "NOT_SEATED_HERE", artist: f.artist } };
           }
+          // NEW must obey the hours too. It did not, and a 4am appointment proved it.
+          const hs = await hoursSay(biz, start, mins);
+          if (!hs.ok) return { cmd: "APPOINTMENT", payload: { ok: false, error: hs.why,
+            asked_for: new Date(start).toISOString(), business: biz, detail: hs.detail || undefined,
+            what_to_do: hs.why === "SHOP_IS_SHUT"
+              ? "That is outside their hours or already taken. AVAILABILITY " + biz + " lists what is open."
+              : "Their hours could not be read, so this was not checked against them." } };
           // Two appointments cannot hold the same chair. The check is on the artist when one is
           // named, on the shop when nobody is - which is what a walk-in actually blocks.
           const clash = await (async () => {
@@ -21138,22 +21171,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // Same shape as every other reader/writer mismatch today, and the bare `if` hid it.
             const mvBiz = ap.business || c.business;
             const mvEnd = new Date(d.getTime() + (Number(c.minutes) || 120) * 60000);
-            const av = await processCommand("AVAILABILITY " + mvBiz + " days:60", env, true);
-            const avp = (av && av.payload) ? av.payload : av;
-            // A shop whose hours we cannot read is NOT a shop with no hours. Say so rather than
-            // letting a move through unexamined.
-            if (!avp?.ok) return { cmd: "APPOINTMENT", payload: { ok: false, error: "HOURS_UNKNOWN",
-              business: mvBiz || null, detail: avp?.error || null,
-              what_to_do: "Their hours could not be read, so this move was not checked against them. " +
-                "Fix that before moving the appointment." } };
-            {
-              const day = (avp.open_days || []).find(x => x.date === d.toISOString().slice(0, 10));
-              const fits = day && (day.slots || []).some(sl => sl.at === d.toISOString());
-              if (!fits) return { cmd: "APPOINTMENT", payload: { ok: false, error: "SHOP_IS_SHUT",
-                asked_for: d.toISOString(), business: c.business,
-                what_to_do: "That is outside their hours or already taken. AVAILABILITY " +
-                  mvBiz + " lists what is open." } };
-            }
+            // Same function NEW uses, so the two doors cannot drift apart again.
+            const mhs = await hoursSay(mvBiz, d, Number(c.minutes) || 120);
+            if (!mhs.ok) return { cmd: "APPOINTMENT", payload: { ok: false, error: mhs.why,
+              asked_for: d.toISOString(), business: mvBiz, detail: mhs.detail || undefined,
+              what_to_do: mhs.why === "SHOP_IS_SHUT"
+                ? "That is outside their hours or already taken. AVAILABILITY " + mvBiz + " lists what is open."
+                : "Their hours could not be read, so this move was not checked against them." } };
             // And nobody else's chair. Same artist, overlapping window, excluding this appointment.
             try {
               const others = await env.AURA_MEMORY.prepare(

@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.34.0-2026-08-18-a-seat-tells-the-person";
+const BUILD = "aura-core-v6.37.0-2026-08-18-the-shop-writes-its-own-rules";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -20937,6 +20937,72 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
     }
 
+    case "DEPOSIT_RULES": {
+      // ══ THE SHOP WRITES ITS OWN RULES (2026-08-18) ═══════════════════════════════════════════
+      // Aaron: "the shop needs to be able to create its rules on deposits... most people are
+      // reserving time with dollars because that's the biggest pain in the tattoo industry."
+      // A deposit is not a fee, it is how a chair stops being free to hold. So the rules belong to
+      // the SHOP, not to us - we do not decide what a no-show costs anybody.
+      //   DEPOSIT_RULES <business>                                  read them
+      //   DEPOSIT_RULES <business> SET ::: {json}
+      //     { amount, currency, required, refund_hours, on_late_change, on_no_show, terms }
+      //   refund_hours   change or cancel with more notice than this and it comes back
+      //   on_late_change "keep" | "return" | "credit"   inside that window
+      //   on_no_show     "keep" | "return" | "credit"
+      // NOTHING IS CHARGED HERE. This says what WOULD happen; SecureSpend is the gate that moves
+      // money, and it logs rather than authorises. Written to the shop's own chain so it is theirs
+      // and revocable, not a row in a table we own.
+      if (!isOp) return { cmd: "DEPOSIT_RULES", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const drParts = String(rest || "").split(":::").map(x => x.trim());
+      const drHead = (drParts[0] || "").split(/\s+/);
+      const drBiz = drHead[0] || "";
+      if (!drBiz) return { cmd: "DEPOSIT_RULES", payload: { ok: false,
+        error: "Usage: DEPOSIT_RULES <business> [SET ::: {json}]" } };
+      const drKey = "rules:deposit:" + drBiz;
+      try {
+        if (String(drHead[1] || "").toUpperCase() === "SET") {
+          let f = {};
+          try { f = JSON.parse(drParts[1] || "{}"); } catch {
+            return { cmd: "DEPOSIT_RULES", payload: { ok: false, error: "BAD_JSON" } }; }
+          const WHAT = new Set(["keep", "return", "credit"]);
+          const rules = {
+            amount: Math.max(0, Number(f.amount) || 0),
+            currency: String(f.currency || "USD").toUpperCase().slice(0, 3),
+            required: f.required !== false,
+            refund_hours: Math.max(0, Number(f.refund_hours ?? 48)),
+            on_late_change: WHAT.has(String(f.on_late_change)) ? f.on_late_change : "credit",
+            on_no_show: WHAT.has(String(f.on_no_show)) ? f.on_no_show : "keep",
+            terms: String(f.terms || "").slice(0, 600) || null,
+            set_at: new Date().toISOString() };
+          await env.AURA_KV.put(drKey, JSON.stringify(rules));
+          // On their chain too, so the rules are theirs and the history shows when they changed.
+          try { await processCommand("PTA_REMEMBER " + drBiz + " DEPOSIT_RULES " +
+            JSON.stringify({ ...rules, event_type: "DEPOSIT_RULES" }), env, true); } catch {}
+          return { cmd: "DEPOSIT_RULES", payload: { ok: true, business: drBiz, rules,
+            plain: rules.amount
+              ? rules.currency + " " + rules.amount + " to hold the time. Change or cancel more than " +
+                rules.refund_hours + "h ahead and it comes back; inside that we " +
+                rules.on_late_change + " it. No-show: " + rules.on_no_show + "."
+              : "No deposit asked for.",
+            note: "Nothing is charged by this. It says what would happen - SecureSpend is the gate " +
+              "that moves money." } };
+        }
+        const raw = await env.AURA_KV.get(drKey);
+        if (!raw) return { cmd: "DEPOSIT_RULES", payload: { ok: true, business: drBiz, rules: null,
+          plain: "This shop has not set deposit rules, so no deposit is asked for.",
+          what_to_do: "DEPOSIT_RULES " + drBiz + " SET ::: {\"amount\":100,\"refund_hours\":48}" } };
+        const rules = JSON.parse(raw);
+        return { cmd: "DEPOSIT_RULES", payload: { ok: true, business: drBiz, rules,
+          plain: rules.amount
+            ? rules.currency + " " + rules.amount + " to hold the time. Change or cancel more than " +
+              rules.refund_hours + "h ahead and it comes back; inside that we " +
+              rules.on_late_change + " it. No-show: " + rules.on_no_show + "."
+            : "No deposit asked for." } };
+      } catch (e) {
+        return { cmd: "DEPOSIT_RULES", payload: { ok: false, error: String(e?.message ?? e).slice(0, 200) } };
+      }
+    }
+
     case "APPOINTMENT": {
       // ══ THE STANDARD ALREADY EXISTS: RFC 5545 ═════════════════════════════════════════════════
       //
@@ -21056,8 +21122,42 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           if (field === "start" || field === "when") {
             const d = new Date(val);
             if (isNaN(d)) return { cmd: "APPOINTMENT", payload: { ok: false, error: "BAD_TIME", given: val } };
+            // ══ A MOVE OBEYS THE SAME RULES AS A BOOKING (2026-08-18) ═══════════════════════
+            // MEASURED: an appointment was moved to 22:00 at a shop open noon-to-eight and nothing
+            // objected - SET checked neither the hours nor other appointments, only NEW did.
+            // Aaron: "of course it respects shop hours and it respects openings."
+            // The same `AVAILABILITY` that the booking page uses is the authority, so a move and a
+            // booking can never disagree about what is open.
+            const mvEnd = new Date(d.getTime() + (Number(c.minutes) || 120) * 60000);
+            const av = await processCommand("AVAILABILITY " + c.business + " days:60", env, true);
+            const avp = (av && av.payload) ? av.payload : av;
+            if (avp?.ok) {
+              const day = (avp.open_days || []).find(x => x.date === d.toISOString().slice(0, 10));
+              const fits = day && (day.slots || []).some(sl => sl.at === d.toISOString());
+              if (!fits) return { cmd: "APPOINTMENT", payload: { ok: false, error: "SHOP_IS_SHUT",
+                asked_for: d.toISOString(), business: c.business,
+                what_to_do: "That is outside their hours or already taken. AVAILABILITY " +
+                  c.business + " lists what is open." } };
+            }
+            // And nobody else's chair. Same artist, overlapping window, excluding this appointment.
+            try {
+              const others = await env.AURA_MEMORY.prepare(
+                "SELECT id, context FROM pta_edges WHERE to_id = ? AND edge_type = 'booking' " +
+                "AND state != 'revoked' AND id != ?").bind(c.business, uid).all();
+              for (const o of (others?.results || [])) {
+                let oc = {}; try { oc = JSON.parse(o.context || "{}"); } catch {}
+                if (oc.status === "CANCELLED") continue;
+                if (c.artist && oc.artist && oc.artist !== c.artist) continue;
+                const os = Date.parse(oc.start || oc.when || ""), oe = Date.parse(oc.end || "") ||
+                  (os + (Number(oc.minutes) || 120) * 60000);
+                if (isFinite(os) && d.getTime() < oe && mvEnd.getTime() > os) {
+                  return { cmd: "APPOINTMENT", payload: { ok: false, error: "TIME_TAKEN",
+                    clashes_with: o.id, what_to_do: "Pick another time - that chair is held." } };
+                }
+              }
+            } catch {}
             c.moved_from = c.start; c.start = d.toISOString(); c.when = c.start;
-            c.end = new Date(d.getTime() + (Number(c.minutes) || 120) * 60000).toISOString();
+            c.end = mvEnd.toISOString();
           } else if (field === "minutes") {
             c.minutes = Math.min(Math.max(Number(val) || 120, 15), 720);
             c.end = new Date(new Date(c.start).getTime() + c.minutes * 60000).toISOString();
@@ -47332,14 +47432,43 @@ export class PublicEntry extends WorkerEntrypoint {
           "SELECT e.from_id FROM pta_edges e WHERE e.to_id = ? AND e.edge_type IN ('owns','manages') " +
           "AND e.state != 'revoked'").bind(biz).all();
         const ids = [...new Set([...(owners?.results || []).map(r => r.from_id), f.with].filter(Boolean))];
+        // ══ A CHAIN EVENT IS A RECORD, NOT A MESSAGE (fixed 2026-08-18) ═══════════════════════
+        // This loop wrote `BOOKING_ASKED` to each owner's chain and called it "told". Nobody's
+        // phone ever buzzed. `told.shop` counted people we had written a NOTE ABOUT, not people we
+        // had reached - and the whole thing sat in a bare catch, so a missing grant made it fail
+        // silently while still reporting a count.
+        // Aaron: "of course when there's a booking the shop gets told, and the artist that gets
+        // booked... everyone involved gets notified."
+        // The chain write STAYS - it is the record - and an actual email goes out beside it.
+        let reached = 0;
         for (const who of ids) {
           try {
             await processCommand("PTA_REMEMBER " + who + " BOOKING_ASKED " + JSON.stringify({
               booking: rp.booking, when: rp.when, who: name, contact,
               wants: String(f.notes || "").slice(0, 300) || null }), this.env, true);
           } catch {}
+          // Their address, from their own entity - we do not have one for everybody, and a person
+          // with no contact simply is not emailed rather than being silently counted as told.
+          try {
+            const row = await this.env.AURA_MEMORY.prepare(
+              "SELECT metadata FROM pta_entities WHERE id = ? LIMIT 1").bind(who).first();
+            let md = {}; try { md = row?.metadata ? JSON.parse(row.metadata) : {}; } catch {}
+            const addr = md.email || md.contact_email || null;
+            if (!addr) continue;
+            const er = await processCommand("EMAIL_SEND " + addr + " New booking at " + sp.name +
+              " | " + name + " asked for " + new Date(rp.when).toUTCString() +
+              (f.with ? " with an artist" : "") +
+              (f.notes ? "  --  They said: " + String(f.notes).slice(0, 200) : "") +
+              "  --  Nothing is confirmed until you say so.", this.env, true);
+            const ep = (er && er.payload) ? er.payload : er;
+            if (ep?.ok) reached++;
+          } catch {}
         }
+        // Two different numbers on purpose: how many we recorded it for, and how many we actually
+        // reached. They are not the same thing and pretending they are is how this stayed broken.
         told.shop = ids.length;
+        told.shop_emailed = reached;
+        told.shop_unreachable = ids.length - reached;
       } catch {}
       return { ok: true, booking: rp.booking, when: rp.when, pta: wp.entity.id,
         notes_kept, told,

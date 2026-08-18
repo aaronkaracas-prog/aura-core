@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.28.0-2026-08-18-a-signup-is-consent";
+const BUILD = "aura-core-v6.29.0-2026-08-18-the-site-survives-the-email";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -19644,6 +19644,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             .map(b => b.toString(16).padStart(2, "0")).join("");
           await env.AURA_KV.put("addbiz:" + token, JSON.stringify({ email, name, address, phone, about,
             website: abParts[5] || "", hours: abParts[6] || "",
+            // ══ THE SITE HAS TO SURVIVE THE EMAIL (fixed 2026-08-18) ══════════════════════════
+            // START and CONFIRM are two separate invocations, minutes or days apart. `abBrand` is
+            // computed in START, so reading it in CONFIRM threw ReferenceError - inside a try, so
+            // it failed SILENTLY and the business type never got written. MEASURED: the grant
+            // landed (`aura_may` changed) and the nav stayed generic, which is what told us the
+            // second half of that same block never ran.
+            // The pending record is the only thing that crosses the gap, so the site rides in it.
+            site: abBrand,
             started_at: new Date().toISOString() }), { expirationTtl: 7 * 86400 });
           // ══ THE PRODUCT THEY SIGNED UP FOR IS THE ONE THAT EMAILS THEM (2026-08-18) ═══════
           // MEASURED, on a real signup: the form said tattooparlors, and then the email said
@@ -19747,7 +19755,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // Inside the grant's try on purpose: without can_remember this write cannot land, and
             // running it anyway is how the silent failure happened the first time.
             const SITE_TYPE = { "tattooparlors.world": "tattoo_shop" };
-            const bt = SITE_TYPE[abBrand] || null;
+            const bt = SITE_TYPE[String(pend.site || "").trim()] || null;
             if (bt) await processCommand("PTA_REMEMBER " + ing.id + " UNDERSTANDING " +
               JSON.stringify({ business_type: bt, source: "signup", event_type: "UNDERSTANDING" }), env, true);
           } catch {}

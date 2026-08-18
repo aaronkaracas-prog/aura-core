@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.52.0-2026-08-18-both-doors-one-rule";
+const BUILD = "aura-core-v6.53.0-2026-08-18-one-writer";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -21123,7 +21123,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           if (clash) return { cmd: "APPOINTMENT", payload: { ok: false, error: "TIME_TAKEN",
             clashes_with: clash, what_to_do: "Pick another time - that chair is held." } };
           // edgeId is a local variable in three other blocks, not a helper - I called it like one.
-          const uid = "edge_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+          // A caller may supply the id - the public booking door already minted one and returns it
+          // to the client, so both must be the same row. Validated, never trusted raw.
+          const uid = (typeof f.uid === "string" && /^edge_[a-f0-9]{8,32}$/i.test(f.uid))
+            ? f.uid : "edge_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
           const now = new Date().toISOString();
           const ctx = {
             uid, sequence: 0, dtstamp: now, created: now, last_modified: now,
@@ -26416,10 +26419,30 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             what_to_do: "That person does not work at this business, so they cannot be booked here. " +
               "SEAT LIST shows who does." } };
         }
-        const ctx = JSON.stringify({ when: whenISO, service, amount, notes,
-          with: withArtist, booking_state: "requested" });
-        await db.prepare("INSERT INTO pta_edges (id, from_id, to_id, edge_type, state, relationship, context, created_at, updated_at) VALUES (?, ?, ?, 'books', 'requested', 'customer', ?, ?, ?)")
-          .bind(eId, customerId, businessId, ctx, bkNow, bkNow).run();
+        // ══ ONE WRITER (2026-08-18) ══════════════════════════════════════════════════════════
+        // This wrote its OWN `books` row with its own shape - `when/service/amount/notes`, no
+        // `end`, no `status`, no `artist` field, `relationship:'customer'` where APPOINTMENT wrote
+        // `'appointment'`. Same table, same edge type, two vocabularies.
+        // Grok, asked for a second opinion: "Request vs agreement is a STATUS, not a second object.
+        // Four end:null rows next to one RFC row is the proof. Delete BOOKING's create path. Keep
+        // BOOKING as HTTP glue: parse the form, mint/find the client PTA, call APPOINTMENT."
+        // That is what this now does. Every clash check, hours check and duration rule runs ONCE,
+        // in one place, because there is one place. Four bugs in one day were the cost of two.
+        const apr = await processCommand("APPOINTMENT NEW " + businessId + " ::: " + JSON.stringify({
+          customer: customerId, start: whenISO, artist: withArtist || undefined,
+          summary: service || "Appointment", description: notes || undefined,
+          deposit: amount != null && !isNaN(amount) ? amount : undefined,
+          uid: eId,
+        }), env, true);
+        const app = (apr && apr.payload) ? apr.payload : apr;
+        // A refusal is a refusal - the public door must not be more permissive than the console.
+        if (!app?.ok) return { cmd: "BOOKING", payload: { ok: false, error: app?.error || "COULD_NOT_BOOK",
+          asked_for: whenISO, business: businessId, detail: app?.what_to_do || null,
+          what_to_say: app?.error === "TIME_TAKEN" ? "That time was just taken - pick another."
+            : app?.error === "SHOP_IS_SHUT" ? "They are not open then."
+            : "That could not be booked." } };
+        // The row APPOINTMENT actually wrote, so the id this returns is the id that exists.
+        const bookedUid = app.uid || eId;
         // put the appointment on the BUSINESS schedule (the sixth dimension - their forward edge)
         let bkGrantFailed = null;
         try {

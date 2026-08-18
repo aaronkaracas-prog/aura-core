@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.53.0-2026-08-18-one-writer";
+const BUILD = "aura-core-v6.54.0-2026-08-18-the-person-has-hours-too";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -5007,6 +5007,36 @@ async function webSearch(query, env) {
     return { ok: false, error: `unknown search provider: ${provider}` };
   } catch (e) { return { ok: false, error: String(e.message) }; }
 }
+
+// ══ SHARED BY APPOINTMENT AND SEAT — MODULE SCOPE ON PURPOSE (2026-08-18) ══════════════════
+// These were declared inside the APPOINTMENT case and used from the SEAT case - two different
+// blocks, so they were out of scope and SEAT HOURS would have thrown at runtime. Sixth ordering
+// bug of the day, caught before deploying this one because the line numbers got read first.
+const DAY_NAMES = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+const parseDayRange = (v) => {
+  const t = String(v == null ? "" : v).trim();
+  if (!t || /^(closed|off|no|none)$/i.test(t)) return null;
+  // `[-to]+` is a CHARACTER CLASS - it matches the letters t and o, not the word "to", and
+  // "9 to 5" fell through it. Alternation, and the dash forms listed explicitly.
+  const m = t.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:[-–—]+|\bto\b|\buntil\b)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+  if (!m) return null;
+  const mer = (x) => x ? x.toLowerCase() : null;
+  const toM = (h, mi, ap) => {
+    let H = Number(h); const M = Number(mi || 0);
+    if (ap === "pm" && H < 12) H += 12;
+    if (ap === "am" && H === 12) H = 0;
+    return H * 60 + M;
+  };
+  // One meridiem for two times belongs to the END - "1:00 - 8:00 PM" opens at 13:00, not 01:00.
+  const endAp = mer(m[6]), startAp = mer(m[3]) || endAp;
+  let from = toM(m[1], m[2], startAp), to = toM(m[4], m[5], endAp);
+  // "9 to 5" carries no meridiem at all. Nobody means 9am to 5am, so when the end is a small
+  // hour and the range would run backwards, read the END as pm - the same real-world reading
+  // a person would apply. If it still runs backwards it is not a range we understand.
+  if (to <= from && !endAp && !mer(m[3]) && Number(m[4]) <= 12) { to = toM(m[4], m[5], "pm"); }
+  if (to <= from && startAp === endAp && !mer(m[3])) { from = toM(m[1], m[2], "am"); }
+  return to > from ? { from, to } : null;
+};
 
 async function processCommand(line, env, isOp) {
   _BRAIN_ENV = env;   // so brainFetch can reach KV for the L1 answer cache (see note above)
@@ -20939,18 +20969,73 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         ).bind(avBiz).all().catch(() => null);
         for (const r of (bk?.results || [])) {
           let c = {}; try { c = JSON.parse(r.context || "{}"); } catch {}
-          if (!c.when) continue;
-          if (avWith && c.with && c.with !== avWith) continue;
-          taken.push({ at: new Date(c.when).getTime(), mins: Number(c.minutes) || avSlot });
+          // ══ OCCUPANCY READS ONE SHAPE (fixed 2026-08-18) ═══════════════════════════════════
+          // This read `c.when` and `c.with` - the OLD BOOKING shape. `APPOINTMENT` writes `start`
+          // and `artist`, so a console-made appointment was INVISIBLE to the artist filter: `c.with`
+          // was undefined, the mismatch test never fired, and it counted against everybody.
+          // A CANCELLED appointment also still blocked the chair, because nothing skipped it.
+          // Now that there is one writer there is one shape, with the old keys read only as a
+          // fallback for rows written before today.
+          const at = Date.parse(c.start || c.when || "");
+          if (!isFinite(at)) continue;
+          if (c.status === "CANCELLED") continue;              // a cancelled chair is a free chair
+          const who = c.artist || c.with || null;
+          if (avWith && who && who !== avWith) continue;
+          const endMs = Date.parse(c.end || "");
+          const mins = isFinite(endMs) && endMs > at
+            ? Math.round((endMs - at) / 60000)
+            : (Number(c.minutes) || avSlot);
+          taken.push({ at, mins, kind: c.kind || "booking" });
         }
 
         const out = [], now = Date.now();
+        // ══ THE PERSON'S OWN HOURS, ON THE EDGE (2026-08-18) ═══════════════════════════════
+        // The layer the model actually needs: "this stylist does not work Thursdays" had nowhere
+        // to live. AVAILABILITY read hours from the BUSINESS only, and asking for a person narrowed
+        // by their BOOKINGS.
+        // MEASURED before building: a seated person's chain holds ONE `BORN` event and
+        // `can_remember_now: false` - so `PTA_REMEMBER … HOURS` on THEM would have failed silently,
+        // the sixth time today. Their hours live on the `works_at` EDGE, same as their contact.
+        // AND THAT IS BETTER THAN THE CHAIN FOR A REASON WORTH KEEPING: somebody can work at two
+        // businesses. Hours on their chain would be one set for both; hours on the edge are
+        // correctly per-business, and when they leave, the hours leave with the edge.
+        // UNSET MEANS INHERIT - a person with no hours of their own works the business's hours.
+        let personOpen = null;
+        if (avWith) {
+          try {
+            const pe = await db.prepare(
+              "SELECT context FROM pta_edges WHERE from_id = ? AND to_id = ? " +
+              "AND edge_type = 'works_at' AND state != 'revoked' LIMIT 1").bind(avWith, avBiz).first();
+            let pc = {}; try { pc = pe?.context ? JSON.parse(pe.context) : {}; } catch {}
+            if (pc.hours) {
+              personOpen = {};
+              for (const [k, v] of Object.entries(pc.hours)) {
+                const di = DAY.indexOf(String(k).toLowerCase());
+                if (di < 0) continue;
+                // Same shape the business uses once parsed: {from, to} in local minutes.
+                if (v && typeof v === "object" && v.from != null && v.to != null) {
+                  personOpen[di] = { from: Number(v.from), to: Number(v.to) };
+                }
+                // An empty array or null is the point of the whole feature: they are off that day.
+              }
+            }
+          } catch {}
+        }
         for (let d = 0; d < avDays; d++) {
           // Their day, not ours - a shop in Tokyo is already on tomorrow.
           const day = new Date(now + d * 86400000 + tzMin * 60000);
           const wd = day.getUTCDay();
-          const o = open[wd];
+          let o = open[wd];
           if (!o) continue;
+          // THE INTERSECTION. The business says when the doors are open; the person says when they
+          // are there. Bookable is where both are true - never wider than the business's hours.
+          if (personOpen) {
+            const po = personOpen[wd];
+            if (!po) continue;                       // they are off today
+            const from = Math.max(o.from, po.from), to = Math.min(o.to, po.to);
+            if (!(to > from)) continue;              // their hours fall outside the shop's
+            o = { from, to };
+          }
           const slots = [];
           for (let m = o.from; m + avSlot <= o.to; m += avSlot) {
             // Local minutes -> the actual instant. m is in the shop's clock; tzMin shifts it.
@@ -21033,6 +21118,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const icsText = (v) => String(v == null ? "" : v)
         .replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,")
         .replace(/\r\n|\r|\n/g, "\\n");
+      // ══ SETTING A PERSON'S HOURS (2026-08-18) ═════════════════════════════════════════════
+      // Written onto the `works_at` edge, beside their contact - not onto their chain, which needs
+      // a grant they never gave, and not as a second calendar.
+      //   SEAT HOURS <business> <person> ::: {"monday":"12:00-18:00","thursday":null, ...}
+      // A day set to null, "" or "closed" means they are OFF that day - which is the entire point.
+      // Anything not mentioned inherits the business's hours for that day.
+      // A ONE-OFF ("closed next Tuesday", "hold four hours") is NOT this - that is a BLOCK, the
+      // same table with kind:block. Do not grow this into an exceptions model.
       // ══ ONE HOURS CHECK, USED BY BOTH DOORS (2026-08-18) ═══════════════════════════════════
       // MEASURED on a full run: `APPOINTMENT NEW` created a 04:00 appointment at a shop open
       // noon-to-eight. NEW checked CLASHES and never checked HOURS at all, while SET checked both -
@@ -22018,6 +22111,61 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 "or send them a door with INVITE_SEAT.",
             note: "Seated. This says they work here and nothing else - no grant, no permission to " +
               "remember anything about them. That is theirs to give." } };
+        }
+
+        // ══ SEAT HOURS — WHEN THIS PERSON IS HERE ═══════════════════════════════════════════
+        //   SEAT HOURS <business> <person> ::: {"monday":"12:00-18:00","thursday":"closed"}
+        //   SEAT HOURS <business> <person>                          read them back
+        //   SEAT HOURS <business> <person> ::: CLEAR                back to the business's hours
+        // Days not mentioned INHERIT the business. A day set closed means they are off. Their hours
+        // are intersected with the business's and can never be wider - the doors have to be open.
+        if (seSub === "HOURS") {
+          const who = seParts[2] || "";
+          if (!who) return { cmd: "SEAT", payload: { ok: false,
+            error: "Usage: SEAT HOURS <business_pta> <person_pta> [::: {\"monday\":\"12:00-18:00\"}]" } };
+          const edge = await db.prepare(
+            "SELECT id, context FROM pta_edges WHERE from_id = ? AND to_id = ? " +
+            "AND edge_type = 'works_at' AND state != 'revoked' LIMIT 1").bind(who, seBiz).first();
+          if (!edge) return { cmd: "SEAT", payload: { ok: false, error: "NOT_SEATED_HERE",
+            person: who, business: seBiz,
+            what_to_do: "They do not work here, so they have no hours here. SEAT ADD first." } };
+          let ectx = {}; try { ectx = edge.context ? JSON.parse(edge.context) : {}; } catch {}
+          const body = (String(rest || "").split(":::")[1] || "").trim();
+          if (!body) {
+            return { cmd: "SEAT", payload: { ok: true, business: seBiz, person: who,
+              hours: ectx.hours || null,
+              note: ectx.hours ? "Days not listed follow the business's hours."
+                : "No hours of their own - they work whenever the business is open." } };
+          }
+          if (/^CLEAR$/i.test(body)) {
+            delete ectx.hours;
+            await db.prepare("UPDATE pta_edges SET context = ?, updated_at = ? WHERE id = ?")
+              .bind(JSON.stringify(ectx), new Date().toISOString(), edge.id).run();
+            return { cmd: "SEAT", payload: { ok: true, business: seBiz, person: who, hours: null,
+              note: "Cleared. They follow the business's hours again." } };
+          }
+          let want = {};
+          try { want = JSON.parse(body); } catch {
+            return { cmd: "SEAT", payload: { ok: false, error: "BAD_JSON",
+              what_to_do: "SEAT HOURS <business> <person> ::: {\"monday\":\"12:00-18:00\",\"thursday\":\"closed\"}" } }; }
+          const hours = {}, unreadable = [];
+          for (const [k, v] of Object.entries(want)) {
+            const key = String(k).toLowerCase();
+            if (!DAY_NAMES.includes(key)) { unreadable.push(k); continue; }
+            const r = parseDayRange(v);
+            hours[key] = r;                                  // null is meaningful: off that day
+            if (r === null && v != null && !/^(closed|off|no|none|)$/i.test(String(v).trim())) unreadable.push(k + ": " + v);
+          }
+          ectx.hours = hours;
+          await db.prepare("UPDATE pta_edges SET context = ?, updated_at = ? WHERE id = ?")
+            .bind(JSON.stringify(ectx), new Date().toISOString(), edge.id).run();
+          const fmt = (n) => String(Math.floor(n / 60)).padStart(2, "0") + ":" + String(n % 60).padStart(2, "0");
+          return { cmd: "SEAT", payload: { ok: true, business: seBiz, person: who, hours,
+            reads_as: Object.fromEntries(Object.entries(hours).map(([k, v]) =>
+              [k, v ? fmt(v.from) + "-" + fmt(v.to) : "off"])),
+            unreadable: unreadable.length ? unreadable : undefined,
+            note: "Days not listed follow the business's hours. These are intersected with them, " +
+              "so they can never be wider." } };
         }
 
         if (seSub === "REMOVE") {

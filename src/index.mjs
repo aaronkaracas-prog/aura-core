@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.43.0-2026-08-18-enrichment-is-a-workflow-mode";
+const BUILD = "aura-core-v6.44.0-2026-08-18-money-moved-is-the-label";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -47598,6 +47598,24 @@ export class PublicEntry extends WorkerEntrypoint {
         case "seat_add":    return await run("SEAT ADD " + biz + " " + a.name +
                                 (a.contact ? " " + (a.contact.includes("@") ? "email:" : "phone:") + a.contact : ""));
         case "seat_remove": return await run("SEAT REMOVE " + biz + " " + a.person);
+
+        // ══ MONEY MOVED IS THE LABEL (2026-08-18) ═══════════════════════════════════════════
+        // `PTA_OUTCOME`'s own comment: "a thousand conversations with no label teach nothing... the
+        // consolidator has been running all along with nothing to learn FROM." Aaron's Gate One is
+        // money moved, not a signup. A shop marking a deposit taken IS money moved, so it is the
+        // outcome - and Claude had built it as a boolean on a row instead.
+        // The shop takes it however they take money today; we record that it happened. That is the
+        // whole SecureSpend-at-launch decision, and it costs us nothing to be honest about.
+        case "deposit_taken": {
+          const dt = await run("PTA_OUTCOME " + biz + " PAID ::: deposit for " +
+            (a.what || "an appointment") + (a.amount ? " - " + a.amount : ""));
+          // On the booking too, so the console's "N without a deposit held" stops counting it.
+          if (a.booking) await run("BOOKING STATE " + a.booking + " confirmed deposit held");
+          return dt;
+        }
+        // "Stop texting me" is context, not a lever. PTA_HEARD: "nobody should ever type
+        // PTA_REVOKE... why wouldn't I just keep the PTA there with context of how it stopped?"
+        case "heard": return await run("PTA_HEARD " + (a.who || biz) + " ::: " + String(a.said || ""));
 
         // ══ IMAGE MANAGEMENT, SCOPED BY WHO OWNS THE PIECE (2026-08-17) ══════════════════════
         // PORTFOLIO already stores bytes in R2 against a PERSON's PTA and already carries the rule:

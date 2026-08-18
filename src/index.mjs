@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.48.0-2026-08-18-already-an-owner-still-records-it";
+const BUILD = "aura-core-v6.49.0-2026-08-18-the-console-and-pta-due-agree";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -22122,7 +22122,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         } catch {}
 
         const gs = await grantState(env, pick, await auraPtaId(env), "remember");
-        const commitments = chain.filter(c => c?.data?.due).slice(-5).reverse();
+        // ══ THE CONSOLE AND PTA_DUE MUST AGREE (fixed 2026-08-18) ═══════════════════════════
+        // MEASURED: `PTA_DUE ALL` said "Nothing is owed" and the console's `owed` still showed the
+        // $200 in the same minute. This filtered on `data.due` alone and never asked whether a
+        // KEPT event had closed it - so a shop would see a deposit they had already taken still
+        // listed as outstanding.
+        // Same closure test PTA_DUE uses, verbatim, rather than a second opinion about the same
+        // chain: a KEPT that names this promise, or any KEPT recorded after it.
+        const commitments = chain.filter(c => {
+          if (!c?.data?.due) return false;
+          return !chain.some(k => k && k.event === "KEPT" && k.data &&
+            (k.data.promised === c.data.due || Date.parse(k.ts) > Date.parse(c.ts)));
+        }).slice(-5).reverse();
         const outcome = [...chain].reverse().find(c => c?.event === "OUTCOME");
         const said = chain.filter(c => c?.data?.said).slice(-8).reverse();
 

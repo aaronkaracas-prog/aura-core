@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.25.0-2026-08-18-a-shop-owns-one-page";
+const BUILD = "aura-core-v6.26.0-2026-08-18-the-product-that-emails-them";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -19590,7 +19590,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                  (own && own.service && own.service.offers) || null,
           offerings: (understanding && understanding.offerings) || null,
           serves: (understanding && understanding.serves) || null,
-          claim_url: pta ? null : "https://cityguide.world/claim/" + encodeURIComponent(obId),
+          claim_url: pta ? null : "https://tattooparlors.world/b/" + encodeURIComponent(obId),
           address_here: await (async () => {
             try {
               const r = await env.AURA_MEMORY.prepare("SELECT slug FROM pta_entities WHERE id = ?")
@@ -19643,15 +19643,24 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             .map(b => b.toString(16).padStart(2, "0")).join("");
           await env.AURA_KV.put("addbiz:" + token, JSON.stringify({ email, name, address, phone, about,
             started_at: new Date().toISOString() }), { expirationTtl: 7 * 86400 });
-          const link = "https://cityguide.world/confirm/" + token;
+          // ══ THE PRODUCT THEY SIGNED UP FOR IS THE ONE THAT EMAILS THEM (2026-08-18) ═══════
+          // MEASURED, on a real signup: the form said tattooparlors, and then the email said
+          // "You added Aarons test shop to cityguide.world", the confirm link was a cityguide URL,
+          // and the page afterwards was cityguide branded. Four leaks from one hardcoded host.
+          // Whatever site they used is where they go back to. Falls back to cityguide only when
+          // nothing was passed, so an old caller still works.
+          const abSite = (abParts.find(x => /^SITE\s/i.test(String(x || "").trim())) || "")
+            .replace(/^\s*SITE\s+/i, "").trim().replace(/[^a-z0-9.-]/gi, "") || "cityguide.world";
+          const abBrand = abSite.replace(/^www\./, "");
+          const link = "https://" + abBrand + "/confirm/" + token;
           let sent = false, how = null;
           try {
             // ══ ONE LINE, BECAUSE THE PARSER READS ONE LINE ═══════════════════════════════
             // EMAIL_SEND parses "<to> <subject> | <body>" off a single line. The body here carried
             // \n\n around the link, which is very likely what broke it - a multi-line body reaching
             // a single-line parser. Sending the body flat and letting the client wrap.
-            const er = await processCommand("EMAIL_SEND " + email + " Confirm your business on cityguide.world | " +
-              "You added " + name + " to cityguide.world. Confirm it here: " + link +
+            const er = await processCommand("EMAIL_SEND " + email + " Confirm your shop on " + abBrand + " | " +
+              "You added " + name + " to " + abBrand + ". Confirm it here: " + link +
               "  --  If this was not you, ignore this email and nothing will be listed.", env, true);
             const ep = (er && er.payload) ? er.payload : er;
             // ══ WHICH ENV DID THIS RUN IN ══════════════════════════════════════════════════
@@ -46958,10 +46967,12 @@ export class PublicEntry extends WorkerEntrypoint {
 
   // The public signup: add a business, confirm by email. No other verification - real proof gates the
   // QR and the payout later, not the listing now.
-  async addbiz(action, payload) {
+  // `site` is the hostname they actually signed up on. Without it, every email, link and landing
+  // page said cityguide no matter which door they came through.
+  async addbiz(action, payload, site) {
     try {
       const r = await processCommand("ADD_BUSINESS " + String(action || "").toUpperCase() + " " +
-        String(payload || ""), this.env, true);
+        String(payload || "") + (site ? " ::: SITE " + String(site) : ""), this.env, true);
       return (r && r.payload) ? r.payload : r;
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };

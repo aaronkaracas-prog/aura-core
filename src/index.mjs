@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.68.0-2026-08-19-the-links-are-images";
+const BUILD = "aura-core-v6.69.0-2026-08-19-one-reader-both-passes";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18421,71 +18421,60 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // TWO PASSES ON PURPOSE. The first finds the roster page and reads who it links to; the
         // second files every page, and by then it knows which paths are people. One pass cannot -
         // it would have to file /stephaniemarie before learning the roster pointed at it.
+        // ══ ONE READER, BOTH PASSES (fixed 2026-08-19) ═════════════════════════════════════
+        // Pass 1 collected EVERY non-chrome link on the roster page, so `/tattooguide` - which
+        // /artists links to - became a "person path", and its ARTICLE links then became people:
+        // "Your first tattoo…", "Tattoo Healing Stages…". Two passes, two different rules, and the
+        // looser one won.
+        // A person is a link WITH A NAME BESIDE IT. That test already existed in pass 2; now both
+        // passes call the same function, so they cannot disagree again.
+        const readRoster = (pg) => {
+          const out = [];
+          let m; linkRe.lastIndex = 0;
+          while ((m = linkRe.exec(pg.body || ""))) {
+            const label = String(m[1]).trim();
+            const href = String(m[2]);
+            const path = href.replace(/^https?:\/\/[^/]+/, "").replace(/\/$/, "");
+            if (!path || path === "/") continue;
+            // Off their domain, or a page that files as something other than a person.
+            if (/^https?:\/\//i.test(href) && site) {
+              try { if (!href.includes(new URL(site).hostname)) continue; } catch {}
+            }
+            if (BUCKET_PATH.some(([b, re]) => b !== "people" && re.test(path))) continue;
+            // The name: the page's own visible text, on its own line after the link. An image label
+            // is alt text, a slug label is a path - neither is what a customer reads.
+            const after = String(pg.body || "").slice(m.index + m[0].length, m.index + m[0].length + 140);
+            const nextText = (after.match(/^[\s>*_#-]*([A-Za-z][A-Za-z.'\u2019-]*(?:[ \t]+[A-Za-z][A-Za-z.'\u2019-]*){0,2})\s*$/m) || [])[1] || "";
+            const looksSlug = /^\/|^https?:|^!?\[/i.test(label);
+            let name = (!looksSlug && label) || nextText;
+            if (!name) continue;
+            name = name.replace(/[_-]+/g, " ").trim();
+            if (name.split(/\s+/).length > 4 || name.length > 40 || /\d/.test(name)) continue;
+            if (/^(read more|learn more|click here|book|view|more|home|back|next|previous|menu)$/i.test(name)) continue;
+            // A NAME, not a sentence. An article title trails off or runs long; a person does not.
+            if (/[.…!?:]$/.test(name)) continue;
+            if (name === name.toUpperCase() || !/[A-Z]/.test(name)) {
+              name = name.toLowerCase().replace(/\b([a-z])/g, (c) => c.toUpperCase());
+            }
+            out.push({ name, href, path });
+          }
+          return out;
+        };
+        // Pass 1: which paths are people, from the roster page only.
         const personPaths = new Set();
         for (const pg of kept_pages) {
           if (!BUCKET_PATH.some(([b, re]) => b === "people" && re.test(String(pg.url || "")))) continue;
-          let m0; linkRe.lastIndex = 0;
-          while ((m0 = linkRe.exec(pg.body || ""))) {
-            const h0 = String(m0[2]).replace(/^https?:\/\/[^/]+/, "").replace(/\/$/, "");
-            if (!h0 || h0 === "/") continue;
-            if (BUCKET_PATH.some(([b, re]) => b !== "people" && re.test(h0))) continue;
-            if (chrome.has(normLink(m0[1], m0[2])) &&
-                BUCKET_PATH.some(([b, re]) => b !== "people" && re.test(h0))) continue;
-            personPaths.add(h0);
-          }
+          for (const r of readRoster(pg)) personPaths.add(r.path);
         }
         const filed = {};
         const peopleFound = [];
         for (const pg of kept_pages) {
           const f = filePage(pg, personPaths);
           (filed[f.bucket] ||= []).push({ url: pg.url, why: f.why });
-          if (f.bucket !== "people") continue;
-          // Whatever this roster page links to, minus the menu, is the roster.
-          let m; linkRe.lastIndex = 0;
-          while ((m = linkRe.exec(pg.body || ""))) {
-            const label = String(m[1]).trim();
-            const href = String(m[2]);
-            // ══ THE ROSTER PAGE'S OWN LINKS BEAT THE FREQUENCY TEST (fixed 2026-08-19) ═════
-            // MEASURED on Kinetic: `people_from_roster: []` on a page whose six artists I had read
-            // with my own eyes. The shop repeats its ARTIST list in the footer of all 24 pages, so
-            // frequency called the artists chrome and stripped them.
-            // Grok warned about exactly this - "artist names in the FOOTER repeat on every page;
-            // footer is a placement, not a type" - and I built the detector anyway.
-            // So: chrome removes NAVIGATION, but on a page whose PATH says roster, its links are
-            // content whatever their frequency. A link is only dropped here if it is chrome AND it
-            // files as some other bucket - the menu items do, a person's page does not.
-            const isChrome = chrome.has(normLink(label, href));
-            const filesElsewhere = BUCKET_PATH.some(([b, re]) => b !== "people" && re.test(href));
-            if (isChrome && filesElsewhere) continue;                 // the menu
-            if (isChrome && f.why !== "path") continue;               // trust only a real roster path
-            if (/^https?:\/\//i.test(href) && site && !href.includes(new URL(site).hostname)) continue;  // off their domain
-            if (BUCKET_PATH.some(([b, re]) => b !== "people" && re.test(href))) continue;  // a product, not a person
-            if (!label || /^\d+$/.test(label) || label.length > 40) continue;
-            if (/^(read more|learn more|click here|book|view|more|home|back|next|previous)$/i.test(label)) continue;
-            // An image used as the link carries alt text, not a name - "A tattoo artist wearing
-            // black gloves..." is a description. Names are short.
-            if (label.split(/\s+/).length > 4) continue;
-            // ══ A SLUG IS NOT A NAME (2026-08-19) ═══════════════════════════════════════════
-            // MEASURED on the real page: the link LABEL is often the path itself - "/stephaniemarie"
-            // - with the name sitting beside it as text: "STEPHANIE MARIE". And where the label is
-            // an image, it is alt text describing the photo, not a person.
-            // So: prefer the visible text right after the link; fall back to the label; last resort
-            // un-slug the href. Whatever we show has to be what a customer would read on the page.
-            // The name is on its own line after the image link, past the blank lines.
-            const after = String(pg.body || "").slice(m.index + m[0].length, m.index + m[0].length + 140);
-            const nextText = (after.match(/^[\s>*_#-]*([A-Za-z][A-Za-z.'\u2019-]*(?:[ \t]+[A-Za-z][A-Za-z.'\u2019-]*){0,2})\s*$/m) || [])[1] || "";
-            // A label that is an image, a slug or a URL is not a name.
-            const looksSlug = /^\/|^https?:|^!?\[/i.test(label);
-            let name = (!looksSlug && label) || nextText ||
-              decodeURIComponent(href.split("?")[0].replace(/\/$/, "").split("/").pop() || "");
-            name = String(name).replace(/[_-]+/g, " ").trim();
-            if (!name || name.split(/\s+/).length > 4 || name.length > 40) continue;
-            // Title case a slug-derived name; leave a page's own capitalisation alone.
-            if (!/[A-Z]/.test(name) || name === name.toUpperCase()) {
-              name = name.toLowerCase().replace(/\b([a-z])/g, (c) => c.toUpperCase());
-            }
-            peopleFound.push({ name, href });
-          }
+          // Only a page that CALLS ITSELF a roster contributes names - a person's own page is
+          // filed as people too, and reading its links would sweep in whatever it happens to link.
+          if (f.bucket !== "people" || f.why !== "path") continue;
+          for (const r of readRoster(pg)) peopleFound.push(r);
         }
         // Same name twice on a roster page is one person.
         const peopleClean = [];

@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.77.0-2026-08-19-select-never-invent";
+const BUILD = "aura-core-v6.78.0-2026-08-19-no-roster-page-means-empty";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -19175,12 +19175,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             artists = peopleClean.map(x => x.name).slice(0, 40);
             rosterNote = "read from the page that calls itself a roster (" + peopleClean.length +
                          "), name taken from the site's own visible text - no model involved";
-          } else if (fromLinks.length >= 1 && !rosterPages.length) {
-            // No roster page anywhere, but per-person links exist. Weaker evidence, still structural.
-            artists = fromLinks.slice(0, 40);
-            rosterNote = "no roster page on this site - these came from per-person links (" +
-                         fromLinks.length + "), which is weaker evidence and the owner should correct it";
           } else if (!rosterPages.length) {
+            // ══ STEP 4 OF THE STANDARD: NO ROSTER PAGE MEANS EMPTY (2026-08-19) ══════════════
+            // A "weaker evidence" fallback lived here and produced EVERY remaining bad listing:
+            //   Our Lady    -> Moms Team Wear, Index.Php, Crossfit Gear   (DB has the wrong website)
+            //   Assassin    -> Make Appointment, Deposit, Fine Line       (CTA buttons)
+            //   Touch of Gray -> Art, Dali, Love Pit, Doggles Spray Paint (gallery titles)
+            //   Nemesis     -> Info
+            // Four shops out of twelve, and every one of them would have shown a real business a
+            // roster of its own furniture. MEASURED: removing this takes published precision from
+            // 67% to ~100% and costs us nothing true - none of those sixteen names was a person.
+            // Grok: "No roster page -> []." Aaron: bad information is worse than none.
+            // The owner adds their people at claim. That is a finished card, not a miss.
             rosterNote = "no page on this site is shaped like a roster - empty is the correct answer " +
                          "for a shop that does not publish its team";
           } else if (!env.AI) {

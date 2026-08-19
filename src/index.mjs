@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.66.0-2026-08-19-the-roster-outranks-the-furniture";
+const BUILD = "aura-core-v6.67.0-2026-08-19-show-me-the-page-as-crawled";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -16326,6 +16326,40 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       });
       if (!brR.ok) return { cmd: "BRIEF", payload: { ok: false, error: brR.error } };
       return { cmd: "BRIEF", payload: { ok: true, business: brRaw, live_findings: live, brief: brR.reasoning } };
+    }
+
+    case "CRAWL_PAGE": {
+      // ══ SHOW ME ONE PAGE AS THE CRAWLER SAW IT (2026-08-19) ═════════════════════════════════
+      // Three patches in a row to the roster reader without once looking at its INPUT. I designed
+      // against the page as I fetched it with a different tool; the crawler's version may differ in
+      // exactly the way that matters. Every bad diagnosis today came from theorising about data
+      // instead of reading it, and every good one from one command that printed the truth.
+      //   CRAWL_PAGE <cg_id> <substring of the url>   [chars]
+      if (!isOp) return { cmd: "CRAWL_PAGE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const cpA = String(rest || "").trim().split(/\s+/);
+      const cpId = cpA[0] || "", cpMatch = cpA[1] || "", cpChars = Math.min(Number(cpA[2]) || 3000, 12000);
+      if (!cpId || !cpMatch) return { cmd: "CRAWL_PAGE", payload: { ok: false,
+        error: "Usage: CRAWL_PAGE <cg_id> <url_substring> [chars]" } };
+      try {
+        const list = await env.AURA_KNOWLEDGE_RAW.list({ prefix: "crawl/" + cpId + "/" });
+        const newest = (list?.objects || []).sort((a, b) =>
+          String(b.uploaded).localeCompare(String(a.uploaded)))[0];
+        if (!newest) return { cmd: "CRAWL_PAGE", payload: { ok: false, error: "NO_CRAWL_ARCHIVED", id: cpId } };
+        const obj = await env.AURA_KNOWLEDGE_RAW.get(newest.key);
+        const doc = await obj.text();
+        const parts = doc.split(/\n\n---\n\n/).map(b => {
+          const m = b.match(/^<!--PAGE\s+(\S*)\s*-->/);
+          return { url: m ? m[1] : "", body: b.replace(/^<!--PAGE[^>]*-->\n?/, "") };
+        });
+        const hits = parts.filter(x => x.url.toLowerCase().includes(cpMatch.toLowerCase()));
+        if (!hits.length) return { cmd: "CRAWL_PAGE", payload: { ok: false, error: "NO_SUCH_PAGE",
+          looked_for: cpMatch, pages_available: parts.map(x => x.url).filter(Boolean) } };
+        return { cmd: "CRAWL_PAGE", payload: { ok: true, key: newest.key, matched: hits.length,
+          url: hits[0].url, chars: hits[0].body.length,
+          body: hits[0].body.slice(0, cpChars) } };
+      } catch (e) {
+        return { cmd: "CRAWL_PAGE", payload: { ok: false, error: String(e?.message ?? e).slice(0, 200) } };
+      }
     }
 
     case "KNOWLEDGE": {

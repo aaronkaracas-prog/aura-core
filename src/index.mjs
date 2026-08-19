@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.79.0-2026-08-19-images-follow-the-same-standard";
+const BUILD = "aura-core-v6.80.0-2026-08-19-the-chrome-cut";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18849,6 +18849,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const isTiny = (u) => { const m = u.match(TINY); return !!(m && parseInt(m[1], 10) < 200); };
         const BRAND = /\b(instagram|facebook|twitter|tiktok|youtube|yelp|google[%\s_-]*places|google[%\s_-]*maps|pinterest|snapchat|linkedin|whatsapp|tripadvisor)\b/i;
         const CHROME = /logo|icon|sprite|favicon|badge|banner|arrow|button|placeholder|avatar-default|spacer/i;
+        // ══ THE CHROME CUT — GROK'S STEP A (2026-08-19) ═══════════════════════════════════════
+        // MEASURED on the live listings: Skin Illustration published a Google "G", tattoo-machine
+        // CLIPART and two more line drawings under "their work". Copper Fox published a porcelain
+        // doll and a framed print from a Squarespace demo set.
+        // These are structural and free. They do not touch a photograph - a doll and a sleeve are
+        // both photographs, and no filename rule separates them. That is step D's problem, not this.
+        //   NOT A PHOTO AT ALL: .svg is a drawing, a data: URI is inline artwork, a .ico is an icon.
+        //   TEMPLATE FURNITURE: site builders ship demo images on recognisable CDN paths.
+        const NOT_A_PHOTO = /\.svg(\?|$)|^data:|\.ico(\?|$)|\.gif(\?|$)/i;
+        const TEMPLATE_ASSET = /\/(demo|sample|dummy|stock|template|theme|assets\/img\/default)[-_\/]/i;
+        // Squarespace, Wix and Shopify all serve builder placeholder sets from paths that say so.
+        const BUILDER_STOCK = /(images\.squarespace-cdn\.com\/content\/[^/]*\/demo|static\.wixstatic\.com\/media\/[a-f0-9]{6}_[a-f0-9]{32}~mv2|cdn\.shopify\.com\/s\/files\/[^/]*\/placeholder|unsplash\.com|pexels\.com|pixabay\.com)/i;
         const linkedImg = new Map();
         for (const m of md.matchAll(/\[!\[([^\]]*)\]\(([^)\s]+)[^)]*\)\]\(([^)\s]+)\)/g)) {
           const u = m[2].replace(/[).,]+$/, "");
@@ -18921,7 +18933,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // template placeholders. Rebel showed a chair and a lamp. Skin showed a Google logo.
             // Same defect the roster had, one field over.
             page: pageOfIndex(m.index),
-            chrome: CHROME.test(file) || CHROME.test(alt) || BRAND.test(file) || isTiny(url) });
+            chrome: CHROME.test(file) || CHROME.test(alt) || BRAND.test(file) || isTiny(url)
+              || NOT_A_PHOTO.test(url) || TEMPLATE_ASSET.test(url) || BUILDER_STOCK.test(url) });
         }
         // ══ THE ROSTER STANDARD, APPLIED TO IMAGES (2026-08-19) ═════════════════════════════
         // Same four steps, no new shapes:
@@ -18943,8 +18956,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const isTheirWork = (i) => {
           const path = String(i.page || "").replace(/^https?:\/\/[^/]+/, "").replace(/\/$/, "");
           if (workPaths.has(path)) return true;
-          // No portfolio page anywhere - the front page is all they have, so allow it. A shop WITH
-          // a work page does not get its homepage decoration published as portfolio.
+          // ══ THE HOMEPAGE IS A LAST RESORT, NOT A SOURCE (2026-08-19) ═════════════════════
+          // Some small shops genuinely put their only portfolio on the front page, so this stays.
+          // But MEASURED: Copper Fox has no work page, so its homepage was allowed, and its
+          // homepage is a Squarespace DEMO SET - a porcelain doll and a framed print published
+          // under "their work". The chrome cut above now removes builder stock before this runs,
+          // which is the right order: **a homepage counts only if it is all they have AND what is
+          // on it survived the cut.** If nothing survives, they publish no gallery, and that is a
+          // finished card rather than a lie about a real business.
           if (noWorkPage && (path === "" || path === "/home")) return true;
           return false;
         };

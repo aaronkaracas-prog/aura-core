@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.65.0-2026-08-19-strip-the-chrome-file-the-rest";
+const BUILD = "aura-core-v6.66.0-2026-08-19-the-roster-outranks-the-furniture";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18338,8 +18338,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           ["practical", /\b(hours|location|directions|parking|find us|visit|walk-?ins?)\b/i],
           ["about",     /\b(about|our story|history|press|mission)\b/i],
         ];
-        const filePage = (pg) => {
+        const filePage = (pg, personPaths) => {
           const path = String(pg.url || "");
+          // A page the roster linked to IS a person's page, whatever its own headings say.
+          // MEASURED: /stephaniemarie, /samadame, /shelbycarion and /codymark all filed as BOOKING,
+          // because the first heading on an artist's page is "Book now". Their own furniture beat
+          // their identity. What the roster called them outranks what their page shouts.
+          if (personPaths && personPaths.has(path.replace(/^https?:\/\/[^/]+/, "").replace(/\/$/, "")))
+            return { bucket: "people", why: "linked from the roster" };
           for (const [b, re] of BUCKET_PATH) if (re.test(path)) return { bucket: b, why: "path" };
           // The first real heading on the page - what it calls itself.
           const h = (String(pg.body || "").match(/^#{1,3}\s+(.{2,80})$/m) || [])[1] || "";
@@ -18367,10 +18373,26 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // A name is only a person if a page that CALLS ITSELF a roster links to it. No roster page,
         // no people - and that is a finished re-file, not a miss.
         const chrome = findChrome(kept_pages);
+        // TWO PASSES ON PURPOSE. The first finds the roster page and reads who it links to; the
+        // second files every page, and by then it knows which paths are people. One pass cannot -
+        // it would have to file /stephaniemarie before learning the roster pointed at it.
+        const personPaths = new Set();
+        for (const pg of kept_pages) {
+          if (!BUCKET_PATH.some(([b, re]) => b === "people" && re.test(String(pg.url || "")))) continue;
+          let m0; linkRe.lastIndex = 0;
+          while ((m0 = linkRe.exec(pg.body || ""))) {
+            const h0 = String(m0[2]).replace(/^https?:\/\/[^/]+/, "").replace(/\/$/, "");
+            if (!h0 || h0 === "/") continue;
+            if (BUCKET_PATH.some(([b, re]) => b !== "people" && re.test(h0))) continue;
+            if (chrome.has(normLink(m0[1], m0[2])) &&
+                BUCKET_PATH.some(([b, re]) => b !== "people" && re.test(h0))) continue;
+            personPaths.add(h0);
+          }
+        }
         const filed = {};
         const peopleFound = [];
         for (const pg of kept_pages) {
-          const f = filePage(pg);
+          const f = filePage(pg, personPaths);
           (filed[f.bucket] ||= []).push({ url: pg.url, why: f.why });
           if (f.bucket !== "people") continue;
           // Whatever this roster page links to, minus the menu, is the roster.
@@ -18378,7 +18400,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           while ((m = linkRe.exec(pg.body || ""))) {
             const label = String(m[1]).trim();
             const href = String(m[2]);
-            if (chrome.has(normLink(label, href))) continue;          // the menu
+            // ══ THE ROSTER PAGE'S OWN LINKS BEAT THE FREQUENCY TEST (fixed 2026-08-19) ═════
+            // MEASURED on Kinetic: `people_from_roster: []` on a page whose six artists I had read
+            // with my own eyes. The shop repeats its ARTIST list in the footer of all 24 pages, so
+            // frequency called the artists chrome and stripped them.
+            // Grok warned about exactly this - "artist names in the FOOTER repeat on every page;
+            // footer is a placement, not a type" - and I built the detector anyway.
+            // So: chrome removes NAVIGATION, but on a page whose PATH says roster, its links are
+            // content whatever their frequency. A link is only dropped here if it is chrome AND it
+            // files as some other bucket - the menu items do, a person's page does not.
+            const isChrome = chrome.has(normLink(label, href));
+            const filesElsewhere = BUCKET_PATH.some(([b, re]) => b !== "people" && re.test(href));
+            if (isChrome && filesElsewhere) continue;                 // the menu
+            if (isChrome && f.why !== "path") continue;               // trust only a real roster path
             if (/^https?:\/\//i.test(href) && site && !href.includes(new URL(site).hostname)) continue;  // off their domain
             if (BUCKET_PATH.some(([b, re]) => b !== "people" && re.test(href))) continue;  // a product, not a person
             if (!label || /^\d+$/.test(label) || label.length > 40) continue;

@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.69.0-2026-08-19-one-reader-both-passes";
+const BUILD = "aura-core-v6.70.0-2026-08-19-ask-the-path-not-the-verdict";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -16354,6 +16354,32 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const hits = parts.filter(x => x.url.toLowerCase().includes(cpMatch.toLowerCase()));
         if (!hits.length) return { cmd: "CRAWL_PAGE", payload: { ok: false, error: "NO_SUCH_PAGE",
           looked_for: cpMatch, pages_available: parts.map(x => x.url).filter(Boolean) } };
+        // ROSTER mode: show the decision for every link on that page instead of the raw text.
+        // Grok: "print the roster read - each href, label, following lines, keep/drop and why.
+        // One page. Don't re-enrich 24 pages to debug a regex."
+        if (/^ROSTER$/i.test(cpA[2] || "")) {
+          const lr = /\[(!?\[[^\]]*\][^\]]*|[^\[\]]{0,80})\]\((https?:\/\/[^)\s]+|\/[^)\s]*)\)/g;
+          const NOT_PERSON = /\/(faq|contact|appoint|polic|guide|aftercare|home|cart|book)/i;
+          const body = hits[0].body;
+          const seen = [];
+          let mm; lr.lastIndex = 0;
+          while ((mm = lr.exec(body))) {
+            const label = String(mm[1]).trim();
+            const href = String(mm[2]);
+            const path = href.replace(/^https?:\/\/[^/]+/, "").replace(/\/$/, "");
+            const after = body.slice(mm.index + mm[0].length, mm.index + mm[0].length + 140);
+            const below = (after.match(/^[\s>*_#-]*([A-Za-z][A-Za-z.'\u2019-]*(?:[ \t]+[A-Za-z][A-Za-z.'\u2019-]*){0,2})\s*$/m) || [])[1] || "";
+            const isImg = /^!?\[/.test(label);
+            let drop = null;
+            if (!path || path === "/") drop = "no path";
+            else if (NOT_PERSON.test(path)) drop = "path says not a person";
+            else if (!below && isImg) drop = "image label and no name below";
+            seen.push({ path, label: label.slice(0, 40), name_below: below || null,
+              verdict: drop ? "DROP - " + drop : "KEEP" });
+          }
+          return { cmd: "CRAWL_PAGE", payload: { ok: true, url: hits[0].url, mode: "roster",
+            links: seen.length, kept: seen.filter(x => x.verdict === "KEEP").length, decisions: seen } };
+        }
         return { cmd: "CRAWL_PAGE", payload: { ok: true, key: newest.key, matched: hits.length,
           url: hits[0].url, chars: hits[0].body.length,
           body: hits[0].body.slice(0, cpChars) } };
@@ -18473,7 +18499,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           (filed[f.bucket] ||= []).push({ url: pg.url, why: f.why });
           // Only a page that CALLS ITSELF a roster contributes names - a person's own page is
           // filed as people too, and reading its links would sweep in whatever it happens to link.
-          if (f.bucket !== "people" || f.why !== "path") continue;
+          // ══ THE ROSTER PAGE MUST STAY ELIGIBLE TO BE THE ROSTER (fixed 2026-08-19) ═════════
+          // Pass 2 required `why === "path"`, but by then /artists was filed as "linked from the
+          // roster" - pass 1 had added it to personPaths and filePage checks that FIRST. I made the
+          // roster page ineligible to be read as a roster, and people_from_roster went empty while
+          // the five artist pages sat correctly filed beside it.
+          // Ask the PATH directly. It cannot be changed by anything we computed.
+          if (f.bucket !== "people") continue;
+          if (!BUCKET_PATH.some(([b, re]) => b === "people" && re.test(String(pg.url || "")))) continue;
           for (const r of readRoster(pg)) peopleFound.push(r);
         }
         // Same name twice on a roster page is one person.

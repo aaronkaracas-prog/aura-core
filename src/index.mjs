@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.74.0-2026-08-19-the-name-and-the-path-agree";
+const BUILD = "aura-core-v6.75.0-2026-08-19-a-model-may-answer-in-any-shape";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -19214,7 +19214,26 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               if (i0 >= 0) { try { got = JSON.parse(t.slice(i0)); } catch { aiWhy = "roster reply would not parse"; } }
               else aiWhy = "roster reply carried no JSON";
             }
-            artists = Array.isArray(got?.artists) ? got.artists : [];
+            // ══ A MODEL MAY ANSWER IN ANY SHAPE (fixed 2026-08-19) ═════════════════════════
+            // MEASURED: Rivertown had six good names and came back as ["[object Object]"], and so
+            // did Cody Reed. `got.artists` was taken AS-IS - so when the model answered
+            // [{"name":"Mariah Jeffery"}, …] instead of ["Mariah Jeffery", …], every entry
+            // stringified to [object Object] and a real roster was destroyed.
+            // THIS IS THE CLASS, NOT THE SITE: any shop that falls through to the model can be hit,
+            // and we cannot make a model promise a shape. Coerce at the boundary, accept the common
+            // keys, and DROP anything that is not a usable string rather than writing its type name.
+            const asName = (x) => {
+              if (typeof x === "string") return x.trim();
+              if (x && typeof x === "object") {
+                for (const k of ["name", "artist", "title", "label", "value", "text"]) {
+                  if (typeof x[k] === "string" && x[k].trim()) return x[k].trim();
+                }
+              }
+              return "";
+            };
+            artists = (Array.isArray(got?.artists) ? got.artists : [])
+              .map(asName)
+              .filter(n => n && n.length <= 40 && !/^\[object/i.test(n));
             if (!artists.length && !aiWhy) rosterNote = "a roster-shaped page was read and named nobody usable";
           }
           understanding = { artists, styles: styleHits, walk_ins: walkIns,

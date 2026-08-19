@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.70.0-2026-08-19-ask-the-path-not-the-verdict";
+const BUILD = "aura-core-v6.71.0-2026-08-19-a-person-has-a-name-below-the-link";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18415,8 +18415,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // MEASURED: /stephaniemarie, /samadame, /shelbycarion and /codymark all filed as BOOKING,
           // because the first heading on an artist's page is "Book now". Their own furniture beat
           // their identity. What the roster called them outranks what their page shouts.
+          // A person's page is a PAGE. Filing it as "people" is what made the roster page
+          // ineligible to be read as a roster on the previous attempt - the bucket changed the
+          // identity. `people` is a derived LIST now, not a location, so this only stops a person's
+          // page being mis-filed as booking by its own "Book now" heading.
           if (personPaths && personPaths.has(path.replace(/^https?:\/\/[^/]+/, "").replace(/\/$/, "")))
-            return { bucket: "people", why: "linked from the roster" };
+            return { bucket: "person_page", why: "the roster linked to it" };
           for (const [b, re] of BUCKET_PATH) if (re.test(path)) return { bucket: b, why: "path" };
           // The first real heading on the page - what it calls itself.
           const h = (String(pg.body || "").match(/^#{1,3}\s+(.{2,80})$/m) || [])[1] || "";
@@ -18454,31 +18458,69 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // looser one won.
         // A person is a link WITH A NAME BESIDE IT. That test already existed in pass 2; now both
         // passes call the same function, so they cannot disagree again.
+        // ══ THE ROSTER IS IDENTIFIED ONCE, BEFORE ANYTHING IS FILED (2026-08-19) ═══════════
+        //
+        // FOUR ATTEMPTS on one page. The last one failed because I gated the reader on "a page
+        // filed as people BY ITS PATH" - and by then /artists was filed as "linked from the roster",
+        // because pass 1 had added it to personPaths and filePage checks that first.
+        // I MADE THE ROSTER PAGE INELIGIBLE TO BE READ AS A ROSTER. The check changed the thing it
+        // was checking.
+        //
+        // Grok: "Fix the identity, not another why=. Person pages are PAGES, not a people bucket."
+        // So `rosterPages` is computed FIRST, from path or heading, and NOTHING can change it.
+        // `people` stops being a location and becomes a DERIVED LIST.
+        //
+        // MEASURED with CRAWL_PAGE … ROSTER on the archived page - all six artists KEEP, and the
+        // one condition that separates them from all nine false positives:
+        //     /stephaniemarie   name_below: STEPHANIE MARIE   <- person
+        //     /artists          name_below: null              <- navigation
+        //     /tattooguide      name_below: null              <- navigation
+        //     /kineticinktattoo name_below: null              <- their Instagram
+        // A PERSON HAS A NAME BELOW THE LINK. Navigation does not. No kill list, no vocabulary.
+        const ROSTER_PATH = /\/(artists?|our-?team|team|staff|crew|tattooers?|stylists?|collectives?)\b/i;
+        const ROSTER_HEADING = /\b(meet the (artists?|team)|our (artists?|team|staff|crew)|the team|tattoo artists?)\b/i;
+        const NOT_A_PERSON_PATH = /\/(faq|contact|appoint|polic|guide|aftercare|home|cart|book|shop|store|product|gallery|portfolio|about|hours|location|price|service)/i;
+        const rosterPages = kept_pages.filter((pg) => {
+          const path = String(pg.url || "").replace(/^https?:\/\/[^/]+/, "");
+          if (ROSTER_PATH.test(path)) return true;
+          const h = (String(pg.body || "").match(/^#{1,3}\s+(.{2,80})$/m) || [])[1] || "";
+          return ROSTER_HEADING.test(h);
+        });
+
         const readRoster = (pg) => {
           const out = [];
           let m; linkRe.lastIndex = 0;
           while ((m = linkRe.exec(pg.body || ""))) {
             const label = String(m[1]).trim();
             const href = String(m[2]);
-            const path = href.replace(/^https?:\/\/[^/]+/, "").replace(/\/$/, "");
-            if (!path || path === "/") continue;
-            // Off their domain, or a page that files as something other than a person.
-            if (/^https?:\/\//i.test(href) && site) {
-              try { if (!href.includes(new URL(site).hostname)) continue; } catch {}
+            // Only their own site. An absolute link elsewhere had its host stripped and looked
+            // like a local path - that is how instagram.com/kineticinktattoo became a candidate.
+            let path = href;
+            if (/^https?:\/\//i.test(href)) {
+              try {
+                const u = new URL(href);
+                const mine = site ? new URL(site).hostname.replace(/^www\./, "") : "";
+                if (!mine || u.hostname.replace(/^www\./, "") !== mine) continue;
+                path = u.pathname;
+              } catch { continue; }
             }
-            if (BUCKET_PATH.some(([b, re]) => b !== "people" && re.test(path))) continue;
-            // The name: the page's own visible text, on its own line after the link. An image label
-            // is alt text, a slug label is a path - neither is what a customer reads.
+            path = path.replace(/\/$/, "");
+            if (!path || path === "/") continue;
+            if (/\.(png|jpe?g|gif|webp|svg|pdf)$/i.test(path)) continue;   // an image is not a person
+            if (NOT_A_PERSON_PATH.test(path)) continue;
+            if (chrome.has(normLink(label, href))) continue;
+            // THE NAME, and it is required. Their own visible text on the line below the link -
+            // which is where it sits when the link is an image, and images are the common case.
             const after = String(pg.body || "").slice(m.index + m[0].length, m.index + m[0].length + 140);
-            const nextText = (after.match(/^[\s>*_#-]*([A-Za-z][A-Za-z.'\u2019-]*(?:[ \t]+[A-Za-z][A-Za-z.'\u2019-]*){0,2})\s*$/m) || [])[1] || "";
-            const looksSlug = /^\/|^https?:|^!?\[/i.test(label);
-            let name = (!looksSlug && label) || nextText;
-            if (!name) continue;
+            const below = (after.match(/^[\s>*_#-]*([A-Za-z][A-Za-z.'\u2019-]*(?:[ \t]+[A-Za-z][A-Za-z.'\u2019-]*){0,2})\s*$/m) || [])[1] || "";
+            const isImg = /^!?\[/.test(label);
+            const isSlug = /^\/|^https?:/i.test(label);
+            let name = below || ((!isImg && !isSlug) ? label : "");
+            if (!name) continue;                                  // no name, not a person
             name = name.replace(/[_-]+/g, " ").trim();
             if (name.split(/\s+/).length > 4 || name.length > 40 || /\d/.test(name)) continue;
-            if (/^(read more|learn more|click here|book|view|more|home|back|next|previous|menu)$/i.test(name)) continue;
-            // A NAME, not a sentence. An article title trails off or runs long; a person does not.
-            if (/[.…!?:]$/.test(name)) continue;
+            if (/[.\u2026!?:]$/.test(name)) continue;               // a sentence, not a name
+            if (/^(read more|learn more|click here|book now|book|view|more|home|back|next|previous|menu|meet the artists)$/i.test(name)) continue;
             if (name === name.toUpperCase() || !/[A-Z]/.test(name)) {
               name = name.toLowerCase().replace(/\b([a-z])/g, (c) => c.toUpperCase());
             }
@@ -18486,28 +18528,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           }
           return out;
         };
-        // Pass 1: which paths are people, from the roster page only.
-        const personPaths = new Set();
-        for (const pg of kept_pages) {
-          if (!BUCKET_PATH.some(([b, re]) => b === "people" && re.test(String(pg.url || "")))) continue;
-          for (const r of readRoster(pg)) personPaths.add(r.path);
-        }
-        const filed = {};
+
+        // Read every roster page ONCE. This is the only source of people, and person pages are
+        // never harvested - that is what pulled in "Tattoo Healing Stages".
         const peopleFound = [];
+        for (const pg of rosterPages) for (const r of readRoster(pg)) peopleFound.push(r);
+        const personPaths = new Set(peopleFound.map((x) => x.path));
+
+        // Now file every page. `people` is NOT a destination - a person's page is just a page, and
+        // its own heading ("Book now") no longer decides anything.
+        const filed = {};
         for (const pg of kept_pages) {
           const f = filePage(pg, personPaths);
           (filed[f.bucket] ||= []).push({ url: pg.url, why: f.why });
-          // Only a page that CALLS ITSELF a roster contributes names - a person's own page is
-          // filed as people too, and reading its links would sweep in whatever it happens to link.
-          // ══ THE ROSTER PAGE MUST STAY ELIGIBLE TO BE THE ROSTER (fixed 2026-08-19) ═════════
-          // Pass 2 required `why === "path"`, but by then /artists was filed as "linked from the
-          // roster" - pass 1 had added it to personPaths and filePage checks that FIRST. I made the
-          // roster page ineligible to be read as a roster, and people_from_roster went empty while
-          // the five artist pages sat correctly filed beside it.
-          // Ask the PATH directly. It cannot be changed by anything we computed.
-          if (f.bucket !== "people") continue;
-          if (!BUCKET_PATH.some(([b, re]) => b === "people" && re.test(String(pg.url || "")))) continue;
-          for (const r of readRoster(pg)) peopleFound.push(r);
         }
         // Same name twice on a roster page is one person.
         const peopleClean = [];
@@ -19068,10 +19101,22 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // names - Jeanine and AJ - which fell under the threshold, so the roster came back EMPTY
           // when two correct names were in hand. Anything surviving looksLikeAPerson is already
           // structural evidence the shop published; a count does not make it more or less true.
-          if (fromLinks.length >= 1) {
+          // ══ ONE WRITER FOR THE ROSTER (2026-08-19) ══════════════════════════════════════
+          // `fromLinks` is the OLD scraper - every per-person-SHAPED link anywhere on the site.
+          // MEASURED on Kinetic it produced 12 entries: six real people plus Policies, Tattooguide,
+          // Appointments, Contactus, Yourfirsttattoo - all slugs, none of them names.
+          // The re-file reads only a page that CALLS ITSELF a roster, and requires a NAME beside
+          // the link. Grok: "Dirty or empty - not both lists." So the clean list wins outright and
+          // the old one is only a fallback for a site with no roster page at all.
+          if (peopleClean.length) {
+            artists = peopleClean.map(x => x.name).slice(0, 40);
+            rosterNote = "read from the page that calls itself a roster (" + peopleClean.length +
+                         "), name taken from the site's own visible text - no model involved";
+          } else if (fromLinks.length >= 1 && !rosterPages.length) {
+            // No roster page anywhere, but per-person links exist. Weaker evidence, still structural.
             artists = fromLinks.slice(0, 40);
-            rosterNote = "roster read from the site's OWN per-person links (" + fromLinks.length +
-                         ") - structural, no model involved";
+            rosterNote = "no roster page on this site - these came from per-person links (" +
+                         fromLinks.length + "), which is weaker evidence and the owner should correct it";
           } else if (!rosterPages.length) {
             rosterNote = "no page on this site is shaped like a roster - empty is the correct answer " +
                          "for a shop that does not publish its team";
@@ -19178,6 +19223,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           filed_detail: filed,
           chrome_links: chrome.size,
           people_from_roster: peopleClean.length ? peopleClean.map(x => x.name) : [],
+          people_paths: peopleClean.length ? peopleClean.map(x => x.path) : undefined,
           people_note: peopleClean.length
             ? "from the page that calls itself a roster, after the site menu was stripped"
             : (filed.people?.length ? "a roster page exists but linked to nobody"

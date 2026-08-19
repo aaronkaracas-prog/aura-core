@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.64.0-2026-08-18-the-first-result-is-not-a-match";
+const BUILD = "aura-core-v6.65.0-2026-08-19-strip-the-chrome-file-the-rest";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18265,6 +18265,45 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const m = b.match(/^<!--PAGE\s+(\S*)\s*-->/);
           return { url: m ? m[1] : "", body: b.replace(/^<!--PAGE[^>]*-->\n?/, "") };
         });
+
+        // ══ STRIP THE CHROME, THEN FILE WHAT IS LEFT (2026-08-19) ══════════════════════════════
+        //
+        // MEASURED on 20 random shops: 62 names extracted, 23 were people. 37%. "Policies",
+        // "Parking Guide", "Make Appointment", "Contact Us" and "Moms Team Wear" would have
+        // rendered as tattoo artists on a real business's listing.
+        //
+        // THEN I FETCHED THE PAGE THAT PRODUCED IT. kineticinktattoo.com/artists is CLEAN: a
+        // heading MEET THE ARTISTS, six artists with their own slugs, plus address, phone, socials
+        // and hours - AND THE SITE NAV REPEATED THREE TIMES on that one page. The extractor read
+        // every link and could not tell the MENU from the CONTENT.
+        // NOTHING WAS MISSING. EVERYTHING WAS MISFILED.
+        //
+        // Aaron: "Why am I excluding anything? If they sell merchandise, let's list that. They have
+        // parking, let's organise parking." Open For Business takes a business's whole site and
+        // RE-FILES it, so their domain can eventually become a pointer. A four-field extractor with
+        // a growing blocklist was the wrong shape - it is one site behind forever.
+        //
+        // GROK'S CORRECTION, which I would have got wrong: FREQUENCY IS A NAV DETECTOR, NOT A
+        // PERSON DETECTOR. Artist names in a FOOTER repeat on every page - "footer is a placement,
+        // not a type." So frequency only ever REMOVES CHROME. What survives is judged on its own.
+        const linkRe = /\[([^\]]{1,80})\]\((https?:\/\/[^)\s]+|\/[^)\s]*)\)/g;
+        const normLink = (label, href) => (String(label).trim().toLowerCase() + " -> " +
+          String(href).replace(/^https?:\/\/[^/]+/, "").replace(/\/$/, "").toLowerCase());
+        // A link on most pages is the menu. On a one-page site there is no frequency signal at all,
+        // so nothing is stripped and the heading/path tests carry it alone.
+        const findChrome = (pages) => {
+          const seen = new Map();
+          for (const pg of pages) {
+            const here = new Set();
+            let m; linkRe.lastIndex = 0;
+            while ((m = linkRe.exec(pg.body || ""))) here.add(normLink(m[1], m[2]));
+            for (const k of here) seen.set(k, (seen.get(k) || 0) + 1);
+          }
+          const threshold = pages.length >= 3 ? Math.ceil(pages.length * 0.6) : Infinity;
+          const chrome = new Set();
+          for (const [k, n] of seen) if (n >= threshold) chrome.add(k);
+          return chrome;
+        };
         // ══ THE POOL WAS BUILT BEFORE THE PAGES ARRIVED (fixed 2026-08-16) ═══════════════════
         // MEASURED: Bang Bang's second pass added TWELVE artist pages and 95,277 characters - the
         // actual roster - and `page_types` reported exactly one page. The pool was computed from the
@@ -18273,6 +18312,44 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // was aiming at were not in the room.
         // Built as a function and called AFTER `md` is final, so whatever the second pass fetched is
         // in the pool it is judged from.
+        // ══ THE BUCKETS — ANY APPOINTMENT BUSINESS, NOT TATTOO-SHAPED (2026-08-19) ═══════════
+        // A salon, a mechanic and a dentist file the same way. Tattoo words like "flash" or "guest
+        // artist" are LABELS INSIDE people/work, never their own bucket.
+        // Judged on PATH first, then HEADING - both structural, no model, no vocabulary blocklist.
+        // Nothing is discarded: what cannot be filed goes to `other`, which the OWNER sorts at
+        // claim and which never appears on the public listing.
+        const BUCKET_PATH = [
+          ["people",    /\/(artists?|our-?team|team|staff|crew|tattooers?|stylists?|technicians?|meet|people|bios?)\b/i],
+          ["work",      /\/(portfolio|gallery|galleries|work|works|flash|projects?|before-?after)\b/i],
+          ["products",  /\/(shop|store|product|products|product-page|merch|cart|checkout|collections?|gift-?cards?)\b/i],
+          ["services",  /\/(services?|pricing|prices|rates|menu|treatments?|piercing|removal)\b/i],
+          ["policies",  /\/(polic|deposit|cancel|terms|aftercare|after-?care|faq|waiver|consent|age)/i],
+          ["booking",   /\/(book|booking|appointments?|schedule|consult|inquiry|request)/i],
+          ["practical", /\/(hours|location|directions|parking|visit|find-?us|accessib|contact)/i],
+          ["about",     /\/(about|story|history|press|community|values|mission)\b/i],
+        ];
+        const BUCKET_HEADING = [
+          ["people",    /\b(meet the (artists?|team)|our (artists?|team|staff|crew)|the team|artists?)\b/i],
+          ["work",      /\b(portfolio|gallery|our work|recent work|flash)\b/i],
+          ["products",  /\b(shop|store|merch|apparel|gift card)\b/i],
+          ["services",  /\b(services?|pricing|price list|rates|what we do)\b/i],
+          ["policies",  /\b(polic|deposit|cancellation|aftercare|faq|frequently asked|waiver)\b/i],
+          ["booking",   /\b(book|booking|appointment|schedule|consultation)\b/i],
+          ["practical", /\b(hours|location|directions|parking|find us|visit|walk-?ins?)\b/i],
+          ["about",     /\b(about|our story|history|press|mission)\b/i],
+        ];
+        const filePage = (pg) => {
+          const path = String(pg.url || "");
+          for (const [b, re] of BUCKET_PATH) if (re.test(path)) return { bucket: b, why: "path" };
+          // The first real heading on the page - what it calls itself.
+          const h = (String(pg.body || "").match(/^#{1,3}\s+(.{2,80})$/m) || [])[1] || "";
+          for (const [b, re] of BUCKET_HEADING) if (re.test(h)) return { bucket: b, why: "heading" };
+          if (/^\/?$/.test(path.replace(/^https?:\/\/[^/]+/, ""))) return { bucket: "about", why: "homepage" };
+          // Structure is silent. This is the ONE place a model call would earn its cost - one call,
+          // one page, once, asking only which bucket. Not built yet; `other` is the honest answer.
+          return { bucket: "other", why: "could not tell" };
+        };
+
         let kept_pages = [], dropped_pages = [];
         const refreshPool = () => {
           kept_pages = []; dropped_pages = [];
@@ -18282,6 +18359,61 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           }
         };
         refreshPool();
+
+        // ══ THE RE-FILE (2026-08-19) ═══════════════════════════════════════════════════════════
+        // Every page placed in a bucket, chrome removed first. Names come from what a PEOPLE page
+        // links to once the menu is gone - which is exactly how Kinetic's six artists sit under
+        // MEET THE ARTISTS while Home / FAQ / Contact Us repeat on all twelve pages.
+        // A name is only a person if a page that CALLS ITSELF a roster links to it. No roster page,
+        // no people - and that is a finished re-file, not a miss.
+        const chrome = findChrome(kept_pages);
+        const filed = {};
+        const peopleFound = [];
+        for (const pg of kept_pages) {
+          const f = filePage(pg);
+          (filed[f.bucket] ||= []).push({ url: pg.url, why: f.why });
+          if (f.bucket !== "people") continue;
+          // Whatever this roster page links to, minus the menu, is the roster.
+          let m; linkRe.lastIndex = 0;
+          while ((m = linkRe.exec(pg.body || ""))) {
+            const label = String(m[1]).trim();
+            const href = String(m[2]);
+            if (chrome.has(normLink(label, href))) continue;          // the menu
+            if (/^https?:\/\//i.test(href) && site && !href.includes(new URL(site).hostname)) continue;  // off their domain
+            if (BUCKET_PATH.some(([b, re]) => b !== "people" && re.test(href))) continue;  // a product, not a person
+            if (!label || /^\d+$/.test(label) || label.length > 40) continue;
+            if (/^(read more|learn more|click here|book|view|more|home|back|next|previous)$/i.test(label)) continue;
+            // An image used as the link carries alt text, not a name - "A tattoo artist wearing
+            // black gloves..." is a description. Names are short.
+            if (label.split(/\s+/).length > 4) continue;
+            // ══ A SLUG IS NOT A NAME (2026-08-19) ═══════════════════════════════════════════
+            // MEASURED on the real page: the link LABEL is often the path itself - "/stephaniemarie"
+            // - with the name sitting beside it as text: "STEPHANIE MARIE". And where the label is
+            // an image, it is alt text describing the photo, not a person.
+            // So: prefer the visible text right after the link; fall back to the label; last resort
+            // un-slug the href. Whatever we show has to be what a customer would read on the page.
+            const after = String(pg.body || "").slice(m.index + m[0].length, m.index + m[0].length + 90);
+            const nextText = (after.match(/^[\s>*_-]*([A-Za-z][A-Za-z.'\u2019-]*(?:\s+[A-Za-z][A-Za-z.'\u2019-]*){0,2})/) || [])[1] || "";
+            const looksSlug = /^\/|^https?:/i.test(label);
+            let name = (!looksSlug && label) || nextText ||
+              decodeURIComponent(href.split("?")[0].replace(/\/$/, "").split("/").pop() || "");
+            name = String(name).replace(/[_-]+/g, " ").trim();
+            if (!name || name.split(/\s+/).length > 4 || name.length > 40) continue;
+            // Title case a slug-derived name; leave a page's own capitalisation alone.
+            if (!/[A-Z]/.test(name) || name === name.toUpperCase()) {
+              name = name.toLowerCase().replace(/\b([a-z])/g, (c) => c.toUpperCase());
+            }
+            peopleFound.push({ name, href });
+          }
+        }
+        // Same name twice on a roster page is one person.
+        const peopleClean = [];
+        { const seenN = new Set();
+          for (const p2 of peopleFound) {
+            const k = p2.name.toLowerCase().replace(/[^a-z0-9]+/g, "");
+            if (!k || seenN.has(k)) continue;
+            seenN.add(k); peopleClean.push(p2);
+          } }
         // Everything downstream - contacts, images, the model pass - now sees only pages that could
         // hold an answer. A blog page contributes nothing, not even an image.
         if (kept_pages.length) md = kept_pages.map(p => p.body).join("\n\n---\n\n");
@@ -18936,6 +19068,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // failure to whoever reads it next.
           roster_note: rosterNote || undefined,
           roster_input: rosterSeen || undefined,
+          // ══ THE RE-FILE, REPORTED ═══════════════════════════════════════════════════════════
+          // Every page placed, nothing thrown away. `other` is what structure could not name - it
+          // goes to the OWNER at claim and never onto the public listing.
+          filed: Object.fromEntries(Object.entries(filed).map(([b, ps]) => [b, ps.length])),
+          filed_detail: filed,
+          chrome_links: chrome.size,
+          people_from_roster: peopleClean.length ? peopleClean.map(x => x.name) : [],
+          people_note: peopleClean.length
+            ? "from the page that calls itself a roster, after the site menu was stripped"
+            : (filed.people?.length ? "a roster page exists but linked to nobody"
+                                    : "no roster published - they add their people at claim"),
           page_types: pageTypes || undefined,
           ai_error: aiError || undefined,
           // aiWhy SURVIVES A SUCCESSFUL REPAIR on purpose - a recovered roster may be short at the

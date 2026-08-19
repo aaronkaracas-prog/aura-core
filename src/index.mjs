@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.67.0-2026-08-19-show-me-the-page-as-crawled";
+const BUILD = "aura-core-v6.68.0-2026-08-19-the-links-are-images";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18320,7 +18320,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // GROK'S CORRECTION, which I would have got wrong: FREQUENCY IS A NAV DETECTOR, NOT A
         // PERSON DETECTOR. Artist names in a FOOTER repeat on every page - "footer is a placement,
         // not a type." So frequency only ever REMOVES CHROME. What survives is judged on its own.
-        const linkRe = /\[([^\]]{1,80})\]\((https?:\/\/[^)\s]+|\/[^)\s]*)\)/g;
+        // ══ THE LINKS ARE IMAGES (fixed 2026-08-19, by reading the crawl) ═══════════════════
+        // Three patches failed before I ran CRAWL_PAGE and looked at the stored markdown. Every
+        // artist link is an IMAGE wrapped in a link:
+        //     [![](https://…/8ED04653….jpg)](https://…/stephaniemarie)
+        //
+        //     STEPHANIE MARIE
+        //
+        // `\[([^\]]{1,80})\]` cannot match that - the label CONTAINS BRACKETS - so every artist was
+        // invisible and only the plain-text MENU matched. That is why a page I had read with my own
+        // eyes reported "linked to nobody". And the name sits TWO BLANK LINES BELOW, not beside it.
+        // `[^\]]` becomes a balanced-ish scan: an optional inner ![...] plus whatever follows.
+        const linkRe = /\[(!?\[[^\]]*\][^\]]*|[^\[\]]{0,80})\]\((https?:\/\/[^)\s]+|\/[^)\s]*)\)/g;
         const normLink = (label, href) => (String(label).trim().toLowerCase() + " -> " +
           String(href).replace(/^https?:\/\/[^/]+/, "").replace(/\/$/, "").toLowerCase());
         // A link on most pages is the menu. On a one-page site there is no frequency signal at all,
@@ -18460,9 +18471,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // an image, it is alt text describing the photo, not a person.
             // So: prefer the visible text right after the link; fall back to the label; last resort
             // un-slug the href. Whatever we show has to be what a customer would read on the page.
-            const after = String(pg.body || "").slice(m.index + m[0].length, m.index + m[0].length + 90);
-            const nextText = (after.match(/^[\s>*_-]*([A-Za-z][A-Za-z.'\u2019-]*(?:\s+[A-Za-z][A-Za-z.'\u2019-]*){0,2})/) || [])[1] || "";
-            const looksSlug = /^\/|^https?:/i.test(label);
+            // The name is on its own line after the image link, past the blank lines.
+            const after = String(pg.body || "").slice(m.index + m[0].length, m.index + m[0].length + 140);
+            const nextText = (after.match(/^[\s>*_#-]*([A-Za-z][A-Za-z.'\u2019-]*(?:[ \t]+[A-Za-z][A-Za-z.'\u2019-]*){0,2})\s*$/m) || [])[1] || "";
+            // A label that is an image, a slug or a URL is not a name.
+            const looksSlug = /^\/|^https?:|^!?\[/i.test(label);
             let name = (!looksSlug && label) || nextText ||
               decodeURIComponent(href.split("?")[0].replace(/\/$/, "").split("/").pop() || "");
             name = String(name).replace(/[_-]+/g, " ").trim();

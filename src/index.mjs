@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.71.0-2026-08-19-a-person-has-a-name-below-the-link";
+const BUILD = "aura-core-v6.72.0-2026-08-19-show-the-head-of-the-archive";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -16353,7 +16353,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         });
         const hits = parts.filter(x => x.url.toLowerCase().includes(cpMatch.toLowerCase()));
         if (!hits.length) return { cmd: "CRAWL_PAGE", payload: { ok: false, error: "NO_SUCH_PAGE",
-          looked_for: cpMatch, pages_available: parts.map(x => x.url).filter(Boolean) } };
+          looked_for: cpMatch, pages_available: parts.map(x => x.url).filter(Boolean),
+          // MEASURED: an archive with NO page markers returns an empty list and tells us nothing
+          // about why. Show the head of the file - one look beats another inference.
+          blocks: parts.length, total_chars: doc.length,
+          has_page_markers: /<!--PAGE/.test(doc),
+          head: doc.slice(0, 400) } };
         // ROSTER mode: show the decision for every link on that page instead of the raw text.
         // Grok: "print the roster read - each href, label, following lines, keep/drop and why.
         // One page. Don't re-enrich 24 pages to debug a regex."

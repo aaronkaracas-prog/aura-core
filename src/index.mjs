@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.63.0-2026-08-18-the-signup-stores-what-it-collects";
+const BUILD = "aura-core-v6.64.0-2026-08-18-the-first-result-is-not-a-match";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -19566,9 +19566,31 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 city = u1?.data?.where || u1?.data?.city || "";
               } catch {}
               const q = ent.name + (addr ? " " + addr : "") + (city && !String(addr).includes(city) ? " " + city : "");
-              const fr = await processCommand("FETCH_PLACES " + q, env, true);
+              // Same switch as PLACE - this is the OTHER door to Google and it was not covered.
+              const fpOff = await env.AURA_KV.get("config:places:off").catch(() => null);
+              const fr = fpOff ? { payload: { ok: false, error: "PLACES_OFF" } }
+                : await processCommand("FETCH_PLACES " + q, env, true);
               const fp = (fr && fr.payload) ? fr.payload : fr;
-              const hit = (fp?.places || [])[0];
+              // ══ THE FIRST RESULT IS NOT A MATCH (fixed 2026-08-18) ═══════════════════════
+              // MEASURED: "Eighth Street Tattoo" at a Venice address returned HEIST, a real
+              // boutique at that address - and this took `[0]` with no name check, rendered their
+              // name, photos and rating on the tattoo shop's page, AND SAVED THEIR place_id onto it
+              // permanently. An address match is not an identity match; buildings change hands and
+              // share doors.
+              // The name has to agree too. If it does not, we have no match and say so - a business
+              // showing nothing is recoverable, a business showing SOMEBODY ELSE is not.
+              const wantName = String(biz?.name || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+              const hit = (fp?.places || []).find(pl => {
+                const got = String(pl?.name || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+                if (!wantName || !got) return false;
+                if (got === wantName) return true;
+                // A real shop writes itself slightly differently on Google. Share a distinctive word
+                // and it is the same place; share nothing and it is a stranger at the same address.
+                const stop = new Set(["the","and","tattoo","tattoos","studio","shop","salon","co","inc","llc"]);
+                const a = wantName.split(" ").filter(w => w.length > 2 && !stop.has(w));
+                const b = new Set(got.split(" ").filter(w => w.length > 2 && !stop.has(w)));
+                return a.length > 0 && a.some(w => b.has(w));
+              });
               if (hit?.place_id) {
                 pid = hit.place_id;
                 try { await env.AURA_MEMORY.prepare("UPDATE pta_entities SET place_id = ? WHERE id = ?")
@@ -23005,10 +23027,28 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // Cached a day: hours and phone numbers do not move, and it keeps a popular listing free.
       const plId = (rest || "").trim();
       if (!plId) return { cmd: "PLACE", payload: { ok: false, error: "Usage: PLACE <place_id>" } };
+      // ══ ONE SWITCH FOR EVERY GOOGLE CALL (2026-08-18) ═══════════════════════════════════════
+      // MEASURED on a real bill: $82.88 of Places in nineteen days, ~2,400 paid lookups, none of
+      // them deliberate. `OFB` looked a business up on EVERY PAGE VIEW - and matched "Eighth Street
+      // Tattoo" to a REAL BOUTIQUE at the address, then rendered that boutique's name, photos and
+      // rating on a tattoo shop's page and saved the wrong place_id onto it.
+      // Aaron's decision, made earlier today: **Google is pulled WHEN THEY PAY, not before.** The
+      // 33,694 rows we already own are the start point; Google enriches a paying business ONCE.
+      // `SETKV config:places:off 1` stops every caller - OFB, CLAIM, the RPC - because they all
+      // come through here. Cached details still serve, so nothing that was already paid for is lost.
+      //   RUN "SETKV config:places:off 1"    stop calling out
+      //   RUN "DELKV config:places:off"      allow it again, deliberately, at payment
       const plKey = "place:detail:" + plId;
       try {
         const hit = await env.AURA_KV.get(plKey);
         if (hit) { const j = JSON.parse(hit); j.cached = true; return { cmd: "PLACE", payload: j }; }
+        // The switch sits AFTER the cache on purpose: something already paid for still answers.
+        // Only a NEW call is refused, and it says why rather than looking like a broken lookup.
+        const plOff = await env.AURA_KV.get("config:places:off").catch(() => null);
+        if (plOff) return { cmd: "PLACE", payload: { ok: false, error: "PLACES_OFF", id: plId,
+          what_to_say: "We are not looking anything up on Google right now.",
+          what_to_do: "Google is pulled when a business pays, not on a page view. " +
+            "DELKV config:places:off allows it again - deliberately, and for a reason." } };
         const key = await getSecret(env, "google_maps");
         if (!key) return { cmd: "PLACE", payload: { ok: false, error: "no google_maps key" } };
         const fields = "name,formatted_address,formatted_phone_number,website,opening_hours,rating," +

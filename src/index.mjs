@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.76.0-2026-08-19-twelve-empty-pages-is-hollow";
+const BUILD = "aura-core-v6.77.0-2026-08-19-select-never-invent";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -19248,9 +19248,24 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               }
               return "";
             };
-            artists = (Array.isArray(got?.artists) ? got.artists : [])
+            // ══ THE MODEL MAY SELECT, NEVER INVENT (2026-08-19) ════════════════════════════
+            // Grok's guard, and it is what makes a model call acceptable under "bad data is worse
+            // than none": EVERY NAME MUST APPEAR VERBATIM IN THE PAGE'S OWN TEXT. A name that is
+            // not on the page is a hallucination however plausible it reads. Fail a name, drop it.
+            // Fail most of the set - CTA buttons, gallery titles - and the whole list is [].
+            const pageText = rosterMd.toLowerCase();
+            const proposed = (Array.isArray(got?.artists) ? got.artists : [])
               .map(asName)
               .filter(n => n && n.length <= 40 && !/^\[object/i.test(n));
+            const verbatim = proposed.filter(n => pageText.includes(n.toLowerCase()));
+            const invented = proposed.filter(n => !pageText.includes(n.toLowerCase()));
+            // If it made up more than it found, nothing it said can be trusted on this page.
+            artists = (invented.length > verbatim.length) ? [] : verbatim;
+            if (invented.length) {
+              rosterNote = "the model named " + invented.length + " person(s) not present on the page - " +
+                (artists.length ? "dropped, kept only what the page actually says"
+                                : "the whole list was discarded");
+            }
             if (!artists.length && !aiWhy) rosterNote = "a roster-shaped page was read and named nobody usable";
           }
           understanding = { artists, styles: styleHits, walk_ins: walkIns,

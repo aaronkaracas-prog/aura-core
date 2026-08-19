@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.80.0-2026-08-19-the-chrome-cut";
+const BUILD = "aura-core-v6.81.0-2026-08-19-print-the-image-verdicts";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -16362,6 +16362,35 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // ROSTER mode: show the decision for every link on that page instead of the raw text.
         // Grok: "print the roster read - each href, label, following lines, keep/drop and why.
         // One page. Don't re-enrich 24 pages to debug a regex."
+        // IMAGES mode: every image on the page, KEPT or CUT, and which rule decided.
+        // Grok: "Print the six image URLs + why each was KEPT. One command. Then stop."
+        if (/^IMAGES$/i.test(cpA[2] || "")) {
+          const CH = /logo|icon|sprite|favicon|badge|banner|arrow|button|placeholder|avatar-default|spacer/i;
+          const BR = /\b(instagram|facebook|twitter|tiktok|youtube|yelp|google[%\s_-]*places|google[%\s_-]*maps|pinterest)\b/i;
+          const NP = /\.svg(\?|$)|^data:|\.ico(\?|$)|\.gif(\?|$)/i;
+          const TA = /\/(demo|sample|dummy|stock|template|theme|assets\/img\/default)[-_\/]/i;
+          const BS = /(images\.squarespace-cdn\.com\/content\/[^/]*\/demo|static\.wixstatic\.com\/media\/[a-f0-9]{6}_[a-f0-9]{32}~mv2|unsplash\.com|pexels\.com|pixabay\.com)/i;
+          const TN = /[-_](\d{2,4})x(\d{2,4})\.|\/(\d{2,4})x(\d{2,4})\//;
+          const out = [];
+          for (const pg of hits) {
+            for (const im of String(pg.body || "").matchAll(/!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g)) {
+              const alt = im[1] || "", u = im[2].replace(/[).,]+$/, "");
+              const file = (u.split("?")[0].split("/").pop() || "");
+              const why = CH.test(file) ? "CUT chrome word in filename"
+                : CH.test(alt) ? "CUT chrome word in alt"
+                : BR.test(file) ? "CUT brand name"
+                : NP.test(u) ? "CUT not a photograph"
+                : TA.test(u) ? "CUT template asset path"
+                : BS.test(u) ? "CUT builder stock"
+                : TN.test(u) ? "CUT/keep depends on dimensions in the name"
+                : "KEPT no rule matched";
+              out.push({ page: pg.url.replace(/^https?:\/\/[^/]+/, ""), file: file.slice(0, 60),
+                alt: alt.slice(0, 40) || null, verdict: why, url: u.slice(0, 140) });
+            }
+          }
+          return { cmd: "CRAWL_PAGE", payload: { ok: true, mode: "images", pages: hits.length,
+            images: out.length, kept: out.filter(x => x.verdict.startsWith("KEPT")).length, decisions: out } };
+        }
         if (/^ROSTER$/i.test(cpA[2] || "")) {
           const lr = /\[(!?\[[^\]]*\][^\]]*|[^\[\]]{0,80})\]\((https?:\/\/[^)\s]+|\/[^)\s]*)\)/g;
           const NOT_PERSON = /\/(faq|contact|appoint|polic|guide|aftercare|home|cart|book)/i;

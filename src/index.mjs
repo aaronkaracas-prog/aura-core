@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.72.0-2026-08-19-show-the-head-of-the-archive";
+const BUILD = "aura-core-v6.73.0-2026-08-19-the-url-rides-with-the-page";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18557,7 +18557,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           } }
         // Everything downstream - contacts, images, the model pass - now sees only pages that could
         // hold an answer. A blog page contributes nothing, not even an image.
-        if (kept_pages.length) md = kept_pages.map(p => p.body).join("\n\n---\n\n");
+        // ══ THE URL RIDES WITH THE PAGE, INCLUDING INTO THE ARCHIVE (fixed 2026-08-19) ═══════
+        // MEASURED with CRAWL_PAGE: Rebel & Rose's archive holds 13 blocks and NO page markers -
+        // `has_page_markers: false`, head starting at the title. This line rebuilt `md` from
+        // `p.body`, which has the marker stripped, and the archive is written from `md` afterwards.
+        // So every re-crawled shop lost its URLs, `rosterPages` could not be identified, and only
+        // the OLD scraper ran. That is why the 20-shop re-measure mixed two systems and why Kinetic
+        // was the sole clean result - its second pass happened to reassign `md` after the strip.
+        // Keep the marker. Everything downstream splits on it anyway.
+        if (kept_pages.length) md = kept_pages
+          .map(p => (p.url ? "<!--PAGE " + p.url + " -->\n" : "") + p.body)
+          .join("\n\n---\n\n");
 
         // ── THE SECOND PASS, ONLY WHEN THERE IS A ROSTER ─────────────────────────────────────
         // Bang Bang's homepage carries one photo per artist, each linked to that artist's own page,

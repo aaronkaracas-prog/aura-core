@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.78.0-2026-08-19-no-roster-page-means-empty";
+const BUILD = "aura-core-v6.79.0-2026-08-19-images-follow-the-same-standard";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18883,6 +18883,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                              .replace(/[*_`\[\]]/g, "").replace(/\s+/g, " ").trim().slice(0, 60);
             headAt.push(cur); } }
         const lineOf = (idx) => md.slice(0, idx).split("\n").length - 1;
+        // Which page an offset falls in. The <!--PAGE --> marker survives the rebuild now, so this
+        // is a lookup rather than a guess.
+        const pageStarts = [];
+        { const rePg = /<!--PAGE\s+(\S*)\s*-->/g; let mp;
+          while ((mp = rePg.exec(md))) pageStarts.push({ at: mp.index, url: mp[1] }); }
+        const pageOfIndex = (idx) => {
+          let url = "";
+          for (const ps of pageStarts) { if (ps.at <= idx) url = ps.url; else break; }
+          return url;
+        };
         const imgs = []; const seenUrl = new Set(); const seenFile = new Set();
         for (const m of imgAll) {
           const url = m[2].replace(/[).,]+$/, "");
@@ -18904,9 +18914,41 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // `subject` is what the page says this image is OF. `heading` is kept beside it so a
             // disagreement is inspectable instead of being quietly resolved one way.
             subject: linked || heading, from: linked ? "link" : "heading", heading,
+            // ══ AN IMAGE BELONGS TO A PAGE (2026-08-19) ═══════════════════════════════════════
+            // The scan runs over the WHOLE document, so a homepage's stock photos and an artist's
+            // portfolio were indistinguishable. MEASURED on the live listings: Copper Fox showed
+            // sunglasses, a tote bag, a jumper and a BABY under "more of their work" - Squarespace
+            // template placeholders. Rebel showed a chair and a lamp. Skin showed a Google logo.
+            // Same defect the roster had, one field over.
+            page: pageOfIndex(m.index),
             chrome: CHROME.test(file) || CHROME.test(alt) || BRAND.test(file) || isTiny(url) });
         }
-        const work = imgs.filter(i => !i.chrome);
+        // ══ THE ROSTER STANDARD, APPLIED TO IMAGES (2026-08-19) ═════════════════════════════
+        // Same four steps, no new shapes:
+        //   1. a page filed as `work` or `person_page` is where their work lives
+        //   2. images from those pages are theirs
+        //   3. the homepage counts ONLY if the shop has no work page at all - some small shops put
+        //      their portfolio on the front and nowhere else
+        //   4. everything else is not their work
+        // MEASURED on the live listings: Copper Fox showed sunglasses, a tote bag, a jumper and a
+        // BABY under "more of their work" - Squarespace template placeholders on a page that is not
+        // a portfolio. Rebel showed a chair and a lamp. Skin showed a Google logo. Aaron's rule
+        // holds one field over: showing bad information is worse than showing less.
+        const workPaths = new Set();
+        for (const [bucket, pages] of Object.entries(filed)) {
+          if (bucket !== "work" && bucket !== "person_page") continue;
+          for (const pg of pages) workPaths.add(String(pg.url || "").replace(/^https?:\/\/[^/]+/, "").replace(/\/$/, ""));
+        }
+        const noWorkPage = workPaths.size === 0;
+        const isTheirWork = (i) => {
+          const path = String(i.page || "").replace(/^https?:\/\/[^/]+/, "").replace(/\/$/, "");
+          if (workPaths.has(path)) return true;
+          // No portfolio page anywhere - the front page is all they have, so allow it. A shop WITH
+          // a work page does not get its homepage decoration published as portfolio.
+          if (noWorkPage && (path === "" || path === "/home")) return true;
+          return false;
+        };
+        const work = imgs.filter(i => !i.chrome && isTheirWork(i));
         // Cap PER SECTION, not per shop - one artist with 200 pieces must not crowd out the rest of
         // the roster. Enough to build a real page; the full list is kept so more can be pulled later.
         // ══ THE MERCH DROP OUTRANKED THE TATTOOS (fixed 2026-08-16) ══════════════════════════

@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.62.0-2026-08-18-shut-and-taken-are-different";
+const BUILD = "aura-core-v6.63.0-2026-08-18-the-signup-stores-what-it-collects";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -5014,6 +5014,31 @@ async function webSearch(query, env) {
 // bug of the day, caught before deploying this one because the line numbers got read first.
 const DAY_NAMES = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
 const DAY_KEYS = ["sun","mon","tue","wed","thu","fri","sat"];
+
+// ══ A STATE CAN SUGGEST A ZONE. AN ADDRESS CANNOT. (2026-08-18) ═════════════════════════════
+// Grok: "Infer only from a real city/state - never from '500 Test St', never from IP."
+// A SUGGESTION, never a decision: the business can change it in one command and theirs always
+// wins. States that straddle two zones are deliberately ABSENT - a wrong guess in Florida or
+// Tennessee is worse than no guess, because nobody checks a value that looks filled in.
+const STATE_ZONE = {
+  AL:"America/Chicago", AR:"America/Chicago", IL:"America/Chicago", IA:"America/Chicago",
+  LA:"America/Chicago", MN:"America/Chicago", MS:"America/Chicago", MO:"America/Chicago",
+  OK:"America/Chicago", WI:"America/Chicago",
+  CT:"America/New_York", DE:"America/New_York", DC:"America/New_York", GA:"America/New_York",
+  ME:"America/New_York", MD:"America/New_York", MA:"America/New_York", NH:"America/New_York",
+  NJ:"America/New_York", NY:"America/New_York", NC:"America/New_York", OH:"America/New_York",
+  PA:"America/New_York", RI:"America/New_York", SC:"America/New_York", VT:"America/New_York",
+  VA:"America/New_York", WV:"America/New_York",
+  CO:"America/Denver", MT:"America/Denver", NM:"America/Denver", UT:"America/Denver",
+  WY:"America/Denver", AZ:"America/Phoenix",
+  CA:"America/Los_Angeles", WA:"America/Los_Angeles", NV:"America/Los_Angeles",
+  HI:"Pacific/Honolulu", AK:"America/Anchorage",
+  // ABSENT ON PURPOSE - split states: FL ID IN KS KY MI ND NE OR SD TN TX
+};
+const zoneFromAddress = (addr) => {
+  const m = String(addr || "").toUpperCase().match(/\b([A-Z]{2})\b(?:\s+\d{5}(?:-\d{4})?)?\s*(?:,\s*USA?)?\s*$/);
+  return m && STATE_ZONE[m[1]] ? STATE_ZONE[m[1]] : null;
+};
 
 // ══ ONE HOURS SHAPE, FOR A BUSINESS AND FOR A PERSON (2026-08-18) ═══════════════════════════
 // Grok, after Aaron stopped a build that assumed somebody would TYPE their hours:
@@ -19949,6 +19974,25 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             if (pend.about) {
               await processCommand("PTA_REMEMBER " + ing.id + " SERVICE " + JSON.stringify({
                 offers: pend.about }), env, true);
+            }
+            // ══ THE SIGNUP COLLECTS HOURS AND NEVER STORED THEM (fixed 2026-08-18) ═══════════
+            // MEASURED: a salon signed up, typed its hours into the form, and could not take a
+            // single booking - the calendar never saw them, and without a zone it could not have
+            // used them anyway. That was EVERY business coming through the front door.
+            // The form's hours are PROSE (it is the one place a sentence legitimately arrives -
+            // from a person filling in a field we have not yet turned into a grid), so they are
+            // stored as written and the ingest parser reads them until the business clicks a grid.
+            if (pend.hours) {
+              await processCommand("PTA_REMEMBER " + ing.id + " HOURS " + JSON.stringify({
+                hours: pend.hours, source: "signup" }), env, true);
+            }
+            // A zone SUGGESTED by their state, so a business can book on day one. They can change
+            // it whenever they like and theirs wins - we do not set their conditions.
+            const guessZone = zoneFromAddress(pend.address);
+            if (guessZone) {
+              await processCommand("PTA_REMEMBER " + ing.id + " TIMEZONE " + JSON.stringify({
+                timezone: guessZone, source: "suggested from the state in their address",
+                event_type: "TIMEZONE" }), env, true);
             }
           } catch {}
           try { await env.AURA_KV.delete("addbiz:" + token); } catch {}

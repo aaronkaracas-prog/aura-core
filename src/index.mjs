@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.75.0-2026-08-19-a-model-may-answer-in-any-shape";
+const BUILD = "aura-core-v6.76.0-2026-08-19-twelve-empty-pages-is-hollow";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18209,6 +18209,21 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // Under ~200 real characters per page is a shell, not a website.
           return body.length < Math.max(400, (pages || 1) * 200);
         };
+        // ══ MOST OF THE SITE COMING BACK EMPTY IS ALSO HOLLOW (2026-08-19) ═══════════════════
+        // MEASURED on Rivertown: `pages: 1, skipped: 12`, and the homepage was 842 characters of
+        // "ClockClockInstagramInstagramPlusPlus…" - icon labels with no text between them, because
+        // the content is rendered by JavaScript after load.
+        // `isHollow` passed it: the TOTAL was 18,569 characters, and with `pages: 1` the threshold
+        // was 400. THE TWELVE EMPTY PAGES NEVER ENTERED THE SUM. A site where one page has some
+        // text and twelve have none looks healthy by total and is a shell in fact.
+        // The skip count was in the reply all along and nothing read it. This is the class - any
+        // JS-rendered site in the 33,694 fails the same way - and `render:true` is the answer we
+        // already have.
+        const mostlySkipped = (r) => {
+          const got = Number(r?.pages || 0), skipped = Number(r?.skipped || 0);
+          const seen = got + skipped;
+          return seen >= 4 && got <= Math.ceil(seen * 0.34);   // two thirds or more came back empty
+        };
         const started = await processCommand("SITE_READ " + site, env, true);
         const sp = (started && started.payload) ? started.payload : started;
         // SITE_READ returns the API's own `errors` array as `detail`; forwarding only `error` threw
@@ -18252,9 +18267,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         }
         let md = String(res.markdown || "");
         let renderedFallback = null;
-        if (isHollow(md, res.pages)) {
-          // The cheap read came back as metadata only. Pay for a browser once rather than record an
-          // empty shop as a fact.
+        if (isHollow(md, res.pages) || mostlySkipped(res)) {
+          // The cheap read came back as metadata only, OR most of the site came back empty. Pay for
+          // a browser once rather than record a JavaScript-rendered shop as an empty one.
+          // The RENDER path was built and correct - it just never fired, because the length test
+          // could not see twelve empty pages hiding behind one page's worth of text.
           const again = await crawlOnce("RENDER ");
           if (again.res?.markdown && again.res.markdown.length > md.length) {
             renderedFallback = { state: "rendered", reason: "render:false returned metadata only - the " +

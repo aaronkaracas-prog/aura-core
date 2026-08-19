@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.73.0-2026-08-19-the-url-rides-with-the-page";
+const BUILD = "aura-core-v6.74.0-2026-08-19-the-name-and-the-path-agree";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18492,6 +18492,34 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           return ROSTER_HEADING.test(h);
         });
 
+        // ══ THE NAME AND THE PATH HAVE TO AGREE (2026-08-19) ═══════════════════════════════
+        // MEASURED by printing every link on two real roster pages. The people all share one shape
+        // and nothing else does:
+        //     Amanda Mas           -> /team/amanda-mas            (Rebel & Rose)
+        //     STEPHANIE MARIE      -> /stephaniemarie             (Kinetic)
+        // THE LABEL AND THE LAST PATH SEGMENT ARE THE SAME WORDS. Navigation never does that:
+        //     Tattoo Appointment   -> /tattoo-artists
+        //     Gift Cards           -> /gift/MLNKQNEMQXG4M/order
+        //     Folder: Team         -> /team-nav
+        //     Instagram            -> /rebelandrosetattoo
+        // A slug match alone is not enough - a tidy site slugs EVERY page, so /shop, /gallery and
+        // /parking-guide match their own labels too. It needs a second signal, and the two sites
+        // supply different ones:
+        //     REBEL   the person's page lives UNDER the roster path  (/team/amanda-mas)
+        //     KINETIC the name is not in the label at all - the label is an IMAGE and the name sits
+        //             in the page text below it
+        // Either is strong. Requiring both breaks Kinetic, whose artist pages are flat. So: the
+        // name must match the slug, AND it must either live under the roster or have come from the
+        // page's own text. No word list, no language assumption.
+        const slugOf = (x) => String(x).toLowerCase().replace(/[^a-z0-9]+/g, "");
+        const looksLikeTheirPage = (name, fromBelow, path, rosterPath) => {
+          const clean = String(path).split("?")[0].split("#")[0].replace(/\/$/, "");
+          const last = clean.split("/").pop() || "";
+          if (!last) return false;
+          if (slugOf(name) !== slugOf(last)) return false;
+          const under = rosterPath && clean.toLowerCase().startsWith(rosterPath.toLowerCase() + "/");
+          return !!(under || fromBelow);
+        };
         const readRoster = (pg) => {
           const out = [];
           let m; linkRe.lastIndex = 0;
@@ -18522,6 +18550,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const isSlug = /^\/|^https?:/i.test(label);
             let name = below || ((!isImg && !isSlug) ? label : "");
             if (!name) continue;                                  // no name, not a person
+            // The decisive test. Everything below it is only tidying.
+            const rosterPath = String(pg.url || "").replace(/^https?:\/\/[^/]+/, "").replace(/\/$/, "");
+            if (!looksLikeTheirPage(name, !!below, path, rosterPath)) continue;
             name = name.replace(/[_-]+/g, " ").trim();
             if (name.split(/\s+/).length > 4 || name.length > 40 || /\d/.test(name)) continue;
             if (/[.\u2026!?:]$/.test(name)) continue;               // a sentence, not a name

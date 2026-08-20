@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.85.0-2026-08-20-expose-the-tools-own-parameters";
+const BUILD = "aura-core-v6.86.0-2026-08-20-print-every-proposal";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -19894,13 +19894,21 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // Same discipline as CRAWL_PAGE: build the instrument, do not infer the input.
             record_keys: allRecs.length ? Object.keys(allRecs[0]) : [],
             json_pages: allRecs.filter(x => x && (x.json ?? x.extracted ?? x.data) != null).length,
+            // ══ THE INSTRUMENT WAS CAPPED BELOW THE EVIDENCE (raised 2026-08-20) ═══════════
+            // First cut printed the FIRST FOUR records. Inkus returned 27, and the four that
+            // decide the question - /artists and the three artist pages - sort later. So the
+            // command built to answer "what did the model propose" could not reach the pages
+            // the answer lives on. Same shape as capping the crawl at 12 pages and then
+            // building a second pass to recover what the cap excluded.
+            // 30 matches the job limit, and the per-page slice is tightened so a full print
+            // still fits in one reply.
             json_sample: allRecs
               .filter(x => x && (x.json ?? x.extracted ?? x.data) != null)
-              .slice(0, 4)
+              .slice(0, 30)
               .map(x => { const j = x.json ?? x.extracted ?? x.data;
-                return { url: String(x.url || "").slice(0, 90),
-                         proposal: typeof j === "string" ? j.slice(0, 1500)
-                                 : JSON.stringify(j).slice(0, 1500) }; }),
+                return { url: String(x.url || "").replace(/^https?:\/\/[^/]+/, "") || "/",
+                         proposal: typeof j === "string" ? j.slice(0, 900)
+                                 : JSON.stringify(j).slice(0, 900) }; }),
             unusable_sample: errorRecs.slice(0, 3).map(x => ({
               url: String(x?.url || "").slice(0, 90),
               said: String(x?.markdown || x?.error || "").trim().slice(0, 60) || null })),

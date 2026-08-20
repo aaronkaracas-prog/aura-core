@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.83.0-2026-08-20-unreachable-is-not-empty";
+const BUILD = "aura-core-v6.84.0-2026-08-20-resume-the-parked-crawl";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18175,7 +18175,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       try {
         const db = env.AURA_MEMORY;
         const row = await db.prepare(
-          "SELECT id, name, website, email, phone, locality, region FROM cg_business WHERE id = ? OR website LIKE ? LIMIT 1")
+          "SELECT id, name, website, email, phone, locality, region, crawl_job, crawl_started " +
+          "FROM cg_business WHERE id = ? OR website LIKE ? LIMIT 1")
           .bind(ceKey, "%" + ceKey + "%").first();
         if (!row) return { cmd: "CG_ENRICH", payload: { ok: false, error: "NOT_IN_CG_BUSINESS",
           what_to_do: "Pass a cg_business id, or a website string that appears in one." } };
@@ -18253,7 +18254,35 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const seen = got + skipped;
           return seen >= 4 && got <= Math.ceil(seen * 0.34);   // two thirds or more came back empty
         };
-        const started = await processCommand("SITE_READ " + site, env, true);
+        // ══ THE PARKED JOB WAS WRITTEN AND READ BY NOTHING (fixed 2026-08-20) ═══════════════
+        // `crawl_job` appeared ONCE in 51,000 lines and it was the write. `CG_ENRICH_COLLECT`
+        // was deleted as a duplicate of the Workflow - correctly - and nothing took over the
+        // read side, so a crawl that outlived the 30-second poll was parked on the row and
+        // never picked up by anything.
+        // MEASURED on Granite City: THREE separate jobs started against one domain in an hour,
+        // every one of them finished, every one abandoned - and the third was still reported as
+        // "still running". Cloudflare rate-limits PER DOMAIN, so re-crawling to recover work
+        // that already succeeded is the one thing guaranteed to make it worse.
+        // AND IT BLOCKED THE FIX: the scheme retry and the verdict both live below the poll, so
+        // an unreachable site could never reach the code written for unreachable sites. Failing
+        // is SLOW - the crawler waits out the TLS handshake - so the shops most likely to be
+        // unreachable are the ones most likely to outlive the poll.
+        // Results keep for 14 days; anything older is not trusted and a fresh crawl is started.
+        let resumed = null;
+        if (row.crawl_job) {
+          const startedAt = Date.parse(row.crawl_started || "") || 0;
+          const ageDays = startedAt ? (Date.now() - startedAt) / 86400000 : 999;
+          if (ageDays < 13) {
+            try {
+              const rs = await processCommand("SITE_READ STATUS " + row.crawl_job, env, true);
+              const rsp = (rs && rs.payload) ? rs.payload : rs;
+              if (rsp?.ok && rsp.status && rsp.status !== "running") resumed = rsp;
+            } catch {}
+          }
+        }
+        const started = resumed
+          ? { payload: { ok: true, id: row.crawl_job, resumed: true } }
+          : await processCommand("SITE_READ " + site, env, true);
         const sp = (started && started.payload) ? started.payload : started;
         // SITE_READ returns the API's own `errors` array as `detail`; forwarding only `error` threw
         // away the one thing that says WHY. Same defect as the null-with-no-reason two versions ago:
@@ -18284,8 +18313,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           business: row.name } };
 
         // Poll. Bang Bang took ~20s for 12 pages, In Depth ~10s. Bounded so this can never hang a turn.
-        let res = null;
-        for (let i = 0; i < 10; i++) {
+        let res = resumed || null;
+        for (let i = 0; !res && i < 10; i++) {
           await new Promise(r => setTimeout(r, 3000));
           const st = await processCommand("SITE_READ STATUS " + sp.id, env, true);
           const stp = (st && st.payload) ? st.payload : st;
@@ -19552,6 +19581,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // skipped: 6` and LOST the FAQ. What matters is whether the fields came back, so that is
           // what gets reported next to them.
           crawl_verdict: crawlVerdict,
+          resumed_parked_job: resumed ? row.crawl_job : undefined,
           scheme_retry: schemeRetry || undefined,
           unusable_records: res?.unusable_errors || undefined,
           unusable_sample: res?.unusable_sample?.length ? res.unusable_sample : undefined,
@@ -19652,7 +19682,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           : ((understanding || booking.length || icsFeeds.length) ? "yes" : null);
         await db.prepare(
           "UPDATE cg_business SET crawled_at = ?, email_found = ?, phone_found = ?, " +
-          "understanding = COALESCE(?, understanding), raw_key = ?, crawl_verdict = ? WHERE id = ?")
+          "understanding = COALESCE(?, understanding), raw_key = ?, crawl_verdict = ?, " +
+          "crawl_job = NULL WHERE id = ?")
           // PIPE-JOINED, ALL OF THEM. Storing one and dropping four is throwing away the thing the
           // crawl was run to get. Same shape the Overture columns already use.
           .bind(new Date().toISOString(),

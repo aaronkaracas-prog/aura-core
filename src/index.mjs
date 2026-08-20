@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.00.0-2026-08-20-look-at-the-picture";
+const BUILD = "aura-core-v7.01.0-2026-08-20-junk-out-then-she-looks";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -95,7 +95,17 @@ const BUILD = "aura-core-v7.00.0-2026-08-20-look-at-the-picture";
 // copy is the two-writers disease that has already cost this codebase a calendar rewrite, a roster
 // rewrite and eight reader/writer disagreements in one day. Moved verbatim - not rewritten.
 const TINY = /[?&/](?:w|width)[_=](\d{1,3})(?:[,&/]|$)/i;
-const isTiny = (u) => { const m = u.match(TINY); return !!(m && parseInt(m[1], 10) < 200); };
+// A CDN writes the rendered size as `w_34`. A FILE writes it as `fb_32x32.png`. The second form
+// was missed, so six social icons at `/icons/fcsq1/{em,fb,li,yt,ig,yp}_32x32.png` reached a live
+// listing AND then got fetched and shown to a vision model, which dutifully replied "a Facebook
+// logo". Aaron: "we already took the junk out, so keep the junk out and don't have Aura analyse
+// junk." Nobody displays work at 32 pixels. Same rule, second way of writing it.
+const TINY_FILE = /[_\-\/.](\d{2,4})x(\d{2,4})\.(?:jpe?g|png|gif|webp|avif)(?:\?|$)/i;
+const isTiny = (u) => {
+  const m = u.match(TINY); if (m && parseInt(m[1], 10) < 200) return true;
+  const f = u.match(TINY_FILE);
+  return !!(f && parseInt(f[1], 10) < 200 && parseInt(f[2], 10) < 200);
+};
 const BRAND = /\b(instagram|facebook|twitter|tiktok|youtube|yelp|google[%\s_-]*places|google[%\s_-]*maps|pinterest|snapchat|linkedin|whatsapp|tripadvisor)\b/i;
 const CHROME = /logo|icon|sprite|favicon|badge|banner|arrow|button|placeholder|avatar-default|spacer/i;
 const NOT_A_PHOTO = /\.svg(\?|$)|^data:|\.ico(\?|$)|\.gif(\?|$)/i;
@@ -16707,58 +16717,94 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                    text: top.map(pth => "### PAGE " + pth + "\n" +
                           String(bodyOf[pth] || "").slice(0, 6000)).join("\n\n") };
         });
+        // ══ SHE LOOKS AT WHAT SURVIVED, AND HER VERDICT DECIDES ═══════════════════════
+        // TWO STEPS, and they are not competing:
+        //   1. The filename rule removes what is CERTAINLY junk - icons, logos, 32x32, stock.
+        //      Free, and it means no fetch is ever spent on a Facebook tile.
+        //   2. She LOOKS at what is left. That is the only thing that can tell a tattoo from a
+        //      headshot from a flyer, because from a filename they are identical.
+        // MEASURED ON INKUS: 18 of 18 correct - "a tattoo on a man's back", "a tattoo of a bee
+        // on a woman's neck" - and Jennifer's two came back "a woman with earrings", never once
+        // called a tattoo. On Nikki's she named the headshot ("a woman with blonde hair") and
+        // the lip work ("a woman with lipstick on her lips").
+        // NOT A KEYWORD MATCH ON HER ANSWER. She replied with the bare word "Tattoo" for two
+        // promotional graphics - she was READING THE WORD PRINTED ON THE FLYER. So the question
+        // asked is what the picture SHOWS, and a one-word answer that merely repeats the
+        // business's trade is refused. Describing beats labelling.
         let card = [], cardWhy = null;
         try {
-          const cr = await callBrain({
-            system:
-              "You are choosing the few photographs that will represent a business on a public " +
-              "page about them. They have not paid us or agreed to anything, and something wrong " +
-              "costs them more than showing less.\n\n" +
-              "Below are sections of their own website, each with the text of its pages.\n\n" +
-              'Return ONLY JSON: {"sections":[{"name":"","images":["url", ...]}]}\n\n' +
-              "For each section, choose up to 4 image URLs that are EXAMPLES OF THE WORK THIS " +
-              "BUSINESS DOES - the thing a customer is paying for and would want to see.\n" +
-              "Not their logo, not social media icons, not navigation, not buttons, not " +
-              "promotional graphics with words across them, not the shopfront, not a price list.\n" +
-              "Choose the best of what is there. Fewer than 4 is fine. An empty list is fine.\n" +
-              "Every URL must be copied EXACTLY from the text above. Never invent one.",
-            user: cardInput.map(c => "## SECTION: " + c.name + "\n" + c.text).join("\n\n"),
-            max_tokens: 1200 }, env);
-          if (!cr?.ok) { cardWhy = cr?.error || "card call failed"; }
-          else {
-            let cj = cr.text;
-            if (typeof cj === "string") { try { cj = JSON.parse(cj); } catch { cj = repairJson(cj); } }
-            cj = unwrapSchema(cj);
-            const asked = Array.isArray(cj?.sections) ? cj.sections : [];
-            const seenUrl = new Set();
-            card = asked.map(sec => {
-              const mine = cardSections.find(x =>
-                String(x.name).toLowerCase() === String(sec?.name || "").toLowerCase());
-              if (!mine) return null;
-              // SAME GUARD AS EVERYWHERE ELSE: the url must be present, whole, in the text of a
-              // page in THIS section. Not a prefix, not a near miss, not invented.
-              const onPages = {};
-              for (const pth of mine.pages)
-                for (const mm of String(bodyOf[pth] || "").matchAll(IMG_RE))
-                  if (!(mm[0] in onPages)) onPages[mm[0]] = pth;
-              const picked = [];
-              for (const raw of (Array.isArray(sec?.images) ? sec.images : [])) {
-                if (picked.length >= 4) break;
-                const u = String(raw || "").trim();
-                if (!u || seenUrl.has(u)) continue;
-                let hit = onPages[u] ? u : Object.keys(onPages)
-                  .find(k => k.split("?")[0] === u.split("?")[0]);
-                if (!hit) continue;                       // not on the page - dropped
-                if (isChromeUrl(hit, "")) continue;       // chrome is still chrome
-                seenUrl.add(u);
-                picked.push({ u: hit, p: onPages[hit] });
+          const shortlist = [];
+          for (const sec of cardSections) {
+            let n = 0;
+            for (const pth of sec.pages) {
+              for (const mm of String(bodyOf[pth] || "").matchAll(IMG_RE)) {
+                if (n >= 8 || shortlist.length >= 28) break;
+                const u = mm[0];
+                if (isChromeUrl(u, "") || shortlist.some(c => c.u === u)) continue;
+                shortlist.push({ u, page: pth, section: sec.name }); n++;
               }
-              return picked.length ? { name: mine.name, images: picked } : null;
-            }).filter(Boolean);
-            cardWhy = { model: cr.model, provider: cr.provider, usage: cr.usage,
-                        sections_offered: cardInput.length, sections_returned: asked.length };
+              if (n >= 8 || shortlist.length >= 28) break;
+            }
           }
-        } catch (e) { cardWhy = String(e?.message ?? e).slice(0, 200); }
+          const t1 = Date.now();
+          let bytes = 0, failed = 0;
+          const verdicts = [];
+          for (const c of shortlist) {
+            try {
+              const ir = await fetch(c.u, { cf: { cacheTtl: 3600 } });
+              if (!ir.ok) { failed++; continue; }
+              const buf = await ir.arrayBuffer();
+              bytes += buf.byteLength;
+              if (buf.byteLength > 4_000_000) { failed++; continue; }
+              const vr = await env.AI.run(srdVis, {
+                image: [...new Uint8Array(buf)],
+                prompt: "Describe what this photograph shows, in one short sentence.",
+                max_tokens: 60 });
+              const saw = String(vr?.description || vr?.response || "").trim();
+              verdicts.push({ ...c, saw });
+            } catch { failed++; }
+          }
+          // WHAT THE WORK LOOKS LIKE IS THE BUSINESS'S OWN QUESTION, so she answers it about
+          // her own descriptions rather than us matching words. One text call, no images.
+          let keep = new Set();
+          if (verdicts.length) {
+            const kr = await callBrain({
+              system:
+                "Someone looked at each photograph on a business's website and wrote down what " +
+                "it shows. Below are those descriptions, numbered.\n\n" +
+                'Return ONLY JSON: {"keep":[numbers]}\n\n' +
+                "Keep the numbers of photographs that are EXAMPLES OF THE WORK THIS BUSINESS " +
+                "DOES - the thing a customer pays for and would want to see before booking.\n" +
+                "Leave out anything that is not an example of the work: a logo, a sign, a " +
+                "storefront, a poster or flyer, a portrait of a staff member, a screenshot.\n" +
+                "A description that is only the name of the trade, with nothing described, is " +
+                "words printed on a graphic - do not keep it.\n" +
+                "Fewer is better than wrong. An empty list is a correct answer.",
+              user: "Business: " + (out?.business || row.name) + "\n\n" +
+                verdicts.map((v, i) => (i + 1) + ". [" + v.section + "] " + v.saw).join("\n"),
+              max_tokens: 400 }, env);
+            if (kr?.ok) {
+              let kj = kr.text;
+              if (typeof kj === "string") { try { kj = JSON.parse(kj); } catch { kj = repairJson(kj); } }
+              kj = unwrapSchema(kj);
+              for (const n of (Array.isArray(kj?.keep) ? kj.keep : []))
+                if (Number.isInteger(n) && n >= 1 && n <= verdicts.length) keep.add(n - 1);
+              cardWhy = { eyes: srdVis, looked: verdicts.length, failed,
+                          megabytes: Math.round(bytes / 10485.76) / 100,
+                          seconds: Math.round((Date.now() - t1) / 100) / 10,
+                          chose: keep.size, judge: kr.model, usage: kr.usage,
+                          saw: verdicts.map((v, i) => ((keep.has(i) ? "KEEP " : "drop ") + v.saw.slice(0, 90))) };
+            } else cardWhy = { error: kr?.error || "judge failed", looked: verdicts.length };
+          } else cardWhy = { looked: 0, failed, note: "nothing survived the filename filter" };
+
+          const bySec = {};
+          verdicts.forEach((v, i) => {
+            if (!keep.has(i)) return;
+            (bySec[v.section] = bySec[v.section] || []).push({ u: v.u, p: v.page });
+          });
+          card = cardSections.filter(sec => (bySec[sec.name] || []).length)
+            .map(sec => ({ name: sec.name, images: bySec[sec.name].slice(0, 4) }));
+        } catch (e) { cardWhy = { error: String(e?.message ?? e).slice(0, 200) }; }
 
         // ══ LOOK AT THE PICTURE (2026-08-20) ═══════════════════════════════════════════
         // The one question nobody has answered: IS THIS A TATTOO. `IMG_2167.jpg` on a page

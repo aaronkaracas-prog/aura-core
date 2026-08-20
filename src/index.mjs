@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.99.0-2026-08-20-she-picks-the-pictures";
+const BUILD = "aura-core-v7.00.0-2026-08-20-look-at-the-picture";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -16465,6 +16465,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // day has been about. Without it nothing is written, exactly as before.
       const srdWrite = /(^|\s)WRITE(\s|$)/i.test(srdRaw);
       srdRaw = srdRaw.replace(/(^|\s)WRITE(\s|$)/i, " ").trim();
+      // LOOK actually downloads the pictures and shows them to a vision model. Nothing in this
+      // system has ever done that - nine deploys, every one asking a question about a FILENAME.
+      // Aaron, at the start of the day and again at the end: "she's AI, she can see what images
+      // are in a second... I could put this in front of a three year old."
+      const srdLook = /(^|\s)LOOK(\s|$)/i.test(srdRaw);
+      srdRaw = srdRaw.replace(/(^|\s)LOOK(\s|$)/i, " ").trim();
+      const srdVisM = srdRaw.match(/(^|\s)EYES\s+(\S+)/i);
+      const srdVis = srdVisM ? srdVisM[2] : "@cf/llava-hf/llava-1.5-7b-hf";
+      srdRaw = srdRaw.replace(/(^|\s)EYES\s+\S+/i, " ").trim();
       const srdModelM = srdRaw.match(/(^|\s)MODEL\s+(\S+)/i);
       // ══ THE POLICY SAID NEURONS FIRST, THEN GROK. NEURONS ARE NOW MEASURED ════════════
       // FOUR passes on Workers AI, same task, failing the same way each time: the 70B echoes the
@@ -16751,6 +16760,60 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           }
         } catch (e) { cardWhy = String(e?.message ?? e).slice(0, 200); }
 
+        // ══ LOOK AT THE PICTURE (2026-08-20) ═══════════════════════════════════════════
+        // The one question nobody has answered: IS THIS A TATTOO. `IMG_2167.jpg` on a page
+        // headed "Mel" is a tattoo; `IMG_1946.jpg` on a page headed "About Nikki" is her face;
+        // `20230710_170514.jpg` could be either. From text those are indistinguishable, so every
+        // version of this - regex, 8B, 70B, Sonnet - has been a better guess at the same
+        // insufficient evidence. That is the shuffle.
+        // FIRST TIME BYTES ARE FETCHED. Everything until now passed URLs around; the listing
+        // hotlinks and the page says so. This downloads each candidate once and shows it to a
+        // vision model on the binding she already uses.
+        // READ-ONLY and BOUNDED: at most 20 images, one shop, prints what she saw. It does not
+        // decide anything yet - the map narrowed 452 images to ~20, which is what makes looking
+        // affordable at all.
+        let looked = null;
+        if (srdLook) {
+          const cands = [];
+          for (const sec of cardSections) {
+            let n = 0;
+            for (const pth of sec.pages) {
+              for (const mm of String(bodyOf[pth] || "").matchAll(IMG_RE)) {
+                if (n >= 6 || cands.length >= 20) break;
+                const u = mm[0];
+                if (isChromeUrl(u, "") || cands.some(c => c.u === u)) continue;
+                cands.push({ u, page: pth, section: sec.name }); n++;
+              }
+              if (n >= 6 || cands.length >= 20) break;
+            }
+          }
+          const t1 = Date.now();
+          let bytesTotal = 0, failed = 0;
+          const seen = [];
+          for (const c of cands) {
+            try {
+              const ir = await fetch(c.u, { cf: { cacheTtl: 3600 } });
+              if (!ir.ok) { failed++; seen.push({ ...c, saw: "FETCH " + ir.status }); continue; }
+              const buf = await ir.arrayBuffer();
+              bytesTotal += buf.byteLength;
+              // 4MB is well past anything a shop puts on a page; a surprise 40MB TIFF should
+              // not take the whole run down with it.
+              if (buf.byteLength > 4_000_000) { failed++; seen.push({ ...c, saw: "TOO BIG" }); continue; }
+              const vr = await env.AI.run(srdVis, {
+                image: [...new Uint8Array(buf)],
+                prompt: "What is the main subject of this photograph? Answer in one short " +
+                        "sentence. If it shows a tattoo on skin, say so plainly.",
+                max_tokens: 60 });
+              seen.push({ ...c, u: c.u.slice(-60),
+                          saw: String(vr?.description || vr?.response || "").trim().slice(0, 200) });
+            } catch (e) { failed++; seen.push({ ...c, u: c.u.slice(-60),
+                          saw: "ERR " + String(e?.message ?? e).slice(0, 80) }); }
+          }
+          looked = { model: srdVis, images: cands.length, failed,
+                     megabytes: Math.round(bytesTotal / 10485.76) / 100,
+                     seconds: Math.round((Date.now() - t1) / 100) / 10, saw: seen };
+        }
+
         let wrote = null;
         if (srdWrite && card.length) {
           try {
@@ -16776,7 +16839,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         }
 
         return { cmd: "SITE_READING", payload: { ok: true, business: row.name, id: srdId,
-          card, card_why: cardWhy || undefined, wrote: wrote || undefined,
+          card, card_why: cardWhy || undefined, looked: looked || undefined, wrote: wrote || undefined,
           written: srdWrite ? undefined : "read-only - add WRITE to publish this card",
           // What the ROUTER actually used, not what was asked for - a pin that silently
           // falls back to policy is exactly the kind of thing that goes unnoticed for days.

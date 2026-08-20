@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.92.0-2026-08-20-count-the-people-first";
+const BUILD = "aura-core-v6.93.0-2026-08-20-tell-her-what-she-is-for";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -16472,50 +16472,42 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           " | " + p2.images + " images").join("\n");
 
         const t0 = Date.now();
+        // ══ TELL HER WHAT SHE IS FOR, NOT WHAT TO DO (rewritten 2026-08-20) ═════════════
+        // Every version before this was PROCEDURE wearing English: count the people, then use
+        // this grouping, then that one. That is the path regex again, moved into a prompt - me
+        // deciding, with a model typing. And it did not even work: told twice, in rules, that a
+        // sole owner must not be one section, the 70B returned "Nikki: 24 pages" both times.
+        // Arguing with a model's instinct loses. Removing the wrong question wins.
+        // Aaron: "we're grabbing someone's site and rebuilding it on our end. Don't box her in,
+        // but she needs to know exactly what her goal is."
+        // So: no artists, no counting, no scheme selection, no mention of what our page happens
+        // to have fields for. What the job IS, what it costs to get wrong, and the whole site.
         const rr = await env.AI.run(srdModel, {
-          max_tokens: 1200,
+          max_tokens: 1400,
           messages: [
             { role: "system", content:
-              "You are looking at every page of ONE business's own website at once. Each line is: " +
-              "path | page title | headings | how many images that page has.\n" +
-              'Return ONLY JSON: {"business":"","people":[],"sections":[{"name":"","pages":[]}],"not_work":[]}\n' +
-              "business: one short sentence on what this business actually does.\n" +
-              "people: the names of people who DO THE WORK here. Only names that appear in the " +
-              "lines above. Never a business name, a street, a page title or a button. An empty " +
-              "array is a correct and common answer.\n" +
-              // ══ ONE PERSON IS NOT ONE SECTION (fixed 2026-08-20) ═══════════════════════
-              // MEASURED on Nikki's: the 70B returned ONE section named "Nikki" holding 23
-              // pages and 640 images. Not an error - the instruction said group by person when
-              // people have their own pages, and there is one person, so it obeyed. But a
-              // single bucket cannot answer "show me four good tattoos" on a shop that also
-              // does microneedling, permanent makeup and paramedical work.
-              // COUNT THE PEOPLE FIRST, then choose the scheme. That removes the ambiguity
-              // rather than adding a rule about tattoos.
-              "sections: how their WORK should be grouped for someone browsing.\n" +
-              "  COUNT THE PEOPLE FIRST.\n" +
-              "  If TWO OR MORE people have their own pages: one section per person, named for " +
-              "that person.\n" +
-              "  If ONE person does everything: IGNORE the person entirely and make one section " +
-              "per KIND OF WORK, named for that kind of work. A sole owner must NEVER be a " +
-              "single section holding every page - that is not a grouping.\n" +
-              "  Different kinds of work are different services a customer would book " +
-              "separately, and each usually has several pages of its own.\n" +
-              "`pages` must be paths copied EXACTLY from the lines above.\n" +
-              "not_work: paths that are not examples of their work - price lists, merchandise, " +
-              "aftercare, reviews, contact, policies, explainers.\n" +
-              "Copy paths character for character. Never invent a path or a name.\n" +
-              "HARD RULES:\n" +
-              "- Every path appears in EXACTLY ONE place: one section, or not_work. Never both, " +
-              "never two sections.\n" +
-              "- One person is ONE name. If the site calls the same person two ways, choose the " +
-              "fuller form and use it once.\n" +
-              "- A page belongs to the person NAMED IN ITS OWN TITLE. Never put a page titled " +
-              "for one person into another person's section.\n" +
-              "- Testimonials, reviews, price lists, aftercare and contact are never work.\n" +
-              "- Group by PERSON when people have their own pages, or by KIND OF WORK when one " +
-              "person does it all. Do not mix the two schemes in one answer." },
-            { role: "user", content: "Business: " + row.name + " in " + (row.locality || "") +
-              ", " + (row.region || "") + "\nWebsite: " + (row.website || "") + "\n\n" + sitemap }
+              "You are rebuilding a real business's presence from their own website.\n\n" +
+              "This becomes a public page about them, which a stranger may judge them by, and " +
+              "they have not paid us or agreed to anything. Showing something wrong costs them " +
+              "more than showing less. The page's whole purpose is to prove we understand their " +
+              "business - so understand it the way the owner would describe it, not the way a " +
+              "directory would file it.\n\n" +
+              "Below is every page of their site: path | page title | headings | image count.\n\n" +
+              'Return ONLY JSON: {"business":"","people":[],"sections":[{"name":"","pages":[]}],"not_work":[]}\n\n' +
+              "business - one plain sentence: what they actually do.\n" +
+              "people - anyone this site presents as doing the work here, named as the site " +
+              "names them. Empty is fine and common.\n" +
+              "sections - how THEIR work should be laid out for someone browsing. You decide " +
+              "what the sections are and what they are called; the right answer comes from how " +
+              "this particular business is built, and it is different for different businesses. " +
+              "A section is something a visitor would click expecting to see examples of work.\n" +
+              "not_work - pages that are not examples of their work: prices, policies, contact, " +
+              "reviews, merchandise, explainers, the front door.\n\n" +
+              "Every path appears exactly once, in one section or in not_work. Copy paths " +
+              "character for character. Never invent a path or a name." },
+            { role: "user", content:
+              row.name + (row.locality ? " - " + row.locality : "") +
+              (row.region ? ", " + row.region : "") + "\n" + (row.website || "") + "\n\n" + sitemap }
           ] });
         const ms = Date.now() - t0;
         let out = rr?.response;

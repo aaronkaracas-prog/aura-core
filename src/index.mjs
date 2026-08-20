@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.88.0-2026-08-20-repair-the-proposal";
+const BUILD = "aura-core-v6.89.0-2026-08-20-a-prefix-is-not-a-match";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -19703,6 +19703,25 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 }
               }
               // ── PICTURES ─────────────────────────────────────────────────────────────────
+              // ══ A PREFIX IS NOT A MATCH (fixed 2026-08-20) ════════════════════════════════
+              // The evidence guard was `body.includes(url)`, which was meant to say "this url is
+              // on the page" and actually says "this text appears on the page". A TRUNCATED url
+              // is a PREFIX of the real one, so it passes.
+              // The bracket-repair shipped an hour earlier produces exactly that shape - a url
+              // cut mid-string and closed with a quote. MEASURED on the live listings:
+              // `https://nikkistattoostudio.com/zir` and `https://images.squares` were published
+              // and rendered as broken tiles on two real businesses.
+              // So the page's OWN image urls are extracted once, whole, and a proposal has to be
+              // one of them exactly. Not a new rule about what an image is - the same rule,
+              // finally checking what it always claimed to.
+              const urlsOnPage = {};
+              for (const pg of kept_pages) {
+                const set = new Set();
+                for (const m3 of String(pg.body || "")
+                    .matchAll(/https?:\/\/[^\s"'()<>\]]+\.(?:jpe?g|png|gif|webp|avif)(?:\?[^\s"'()<>\]]*)?/gi))
+                  set.add(m3[0]);
+                urlsOnPage[String(pg.url || "")] = set;
+              }
               const urlSeen = new Set(); const picked = []; let cutChrome = 0, cutUnseen = 0;
               for (const pr of props) {
                 const body = pageText[pr.url] || "";
@@ -19715,7 +19734,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                   const u = String((item && typeof item === "object" ? item.url : item) || "").trim();
                   if (!u || !/^https?:\/\//i.test(u) || urlSeen.has(u)) continue;
                   const file = (u.split("?")[0].split("/").pop() || "");
-                  if (!body.includes(u) && !(file && body.includes(file))) { cutUnseen++; continue; }
+                  // Exact membership in the page's own set of image urls. A query string the
+                  // model dropped is allowed - the same file with and without `?bd=53` is one
+                  // image - but a chopped path is not.
+                  const onPage = urlsOnPage[pr.url] || new Set();
+                  const bare = u.split("?")[0];
+                  let exact = onPage.has(u);
+                  if (!exact) for (const cand of onPage) { if (cand.split("?")[0] === bare) { exact = true; break; } }
+                  if (!exact) { cutUnseen++; continue; }
                   if (isChromeUrl(u, (item && item.alt) || "")) { cutChrome++; continue; }
                   urlSeen.add(u);
                   picked.push({ url: u, subject: who || null, from: "proposal",

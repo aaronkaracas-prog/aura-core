@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.91.0-2026-08-20-model-is-a-flag";
+const BUILD = "aura-core-v6.92.0-2026-08-20-count-the-people-first";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -16483,9 +16483,23 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "people: the names of people who DO THE WORK here. Only names that appear in the " +
               "lines above. Never a business name, a street, a page title or a button. An empty " +
               "array is a correct and common answer.\n" +
-              "sections: how their WORK should be grouped for someone browsing. If several people " +
-              "each have their own page, one section per person, named for that person. If ONE " +
-              "person does several different kinds of work, one section per kind of work. " +
+              // ══ ONE PERSON IS NOT ONE SECTION (fixed 2026-08-20) ═══════════════════════
+              // MEASURED on Nikki's: the 70B returned ONE section named "Nikki" holding 23
+              // pages and 640 images. Not an error - the instruction said group by person when
+              // people have their own pages, and there is one person, so it obeyed. But a
+              // single bucket cannot answer "show me four good tattoos" on a shop that also
+              // does microneedling, permanent makeup and paramedical work.
+              // COUNT THE PEOPLE FIRST, then choose the scheme. That removes the ambiguity
+              // rather than adding a rule about tattoos.
+              "sections: how their WORK should be grouped for someone browsing.\n" +
+              "  COUNT THE PEOPLE FIRST.\n" +
+              "  If TWO OR MORE people have their own pages: one section per person, named for " +
+              "that person.\n" +
+              "  If ONE person does everything: IGNORE the person entirely and make one section " +
+              "per KIND OF WORK, named for that kind of work. A sole owner must NEVER be a " +
+              "single section holding every page - that is not a grouping.\n" +
+              "  Different kinds of work are different services a customer would book " +
+              "separately, and each usually has several pages of its own.\n" +
               "`pages` must be paths copied EXACTLY from the lines above.\n" +
               "not_work: paths that are not examples of their work - price lists, merchandise, " +
               "aftercare, reviews, contact, policies, explainers.\n" +

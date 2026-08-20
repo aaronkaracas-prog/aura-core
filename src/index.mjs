@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.90.0-2026-08-20-let-her-read-the-whole-site";
+const BUILD = "aura-core-v6.91.0-2026-08-20-model-is-a-flag";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -16424,9 +16424,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // it can be checked against the site before anything is wired to it.
       //   SITE_READING <cg_id>
       if (!isOp) return { cmd: "SITE_READING", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      const srdId = String(rest || "").trim().split(/\s+/)[0] || "";
+      // ══ THE MODEL IS A FLAG, NOT A CONSTANT (2026-08-20) ═══════════════════════════════════
+      // Cloudflare ships Workers AI models weekly and RETIRES OLDER ONES WITHOUT NOTICE - their
+      // own docs tell agents not to name @cf/ ids from memory. Hardcoding one means a deploy to
+      // compare two, and a silent failure the week it is withdrawn.
+      //   SITE_READING <cg_id> [MODEL @cf/...]
+      let srdRaw = String(rest || "").trim();
+      const srdModelM = srdRaw.match(/(^|\s)MODEL\s+(\S+)/i);
+      const srdModel = srdModelM ? srdModelM[2] : "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+      srdRaw = srdRaw.replace(/(^|\s)MODEL\s+\S+/i, " ").trim();
+      const srdId = srdRaw.split(/\s+/)[0] || "";
       if (!srdId) return { cmd: "SITE_READING", payload: { ok: false,
-        error: "Usage: SITE_READING <cg_id>" } };
+        error: "Usage: SITE_READING <cg_id> [MODEL @cf/...]" } };
       try {
         const row = await env.AURA_MEMORY.prepare(
           "SELECT id, name, locality, region, website FROM cg_business WHERE id = ? LIMIT 1")
@@ -16463,8 +16472,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           " | " + p2.images + " images").join("\n");
 
         const t0 = Date.now();
-        const rr = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
-          max_tokens: 900,
+        const rr = await env.AI.run(srdModel, {
+          max_tokens: 1200,
           messages: [
             { role: "system", content:
               "You are looking at every page of ONE business's own website at once. Each line is: " +
@@ -16480,7 +16489,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "`pages` must be paths copied EXACTLY from the lines above.\n" +
               "not_work: paths that are not examples of their work - price lists, merchandise, " +
               "aftercare, reviews, contact, policies, explainers.\n" +
-              "Copy paths character for character. Never invent a path or a name." },
+              "Copy paths character for character. Never invent a path or a name.\n" +
+              "HARD RULES:\n" +
+              "- Every path appears in EXACTLY ONE place: one section, or not_work. Never both, " +
+              "never two sections.\n" +
+              "- One person is ONE name. If the site calls the same person two ways, choose the " +
+              "fuller form and use it once.\n" +
+              "- A page belongs to the person NAMED IN ITS OWN TITLE. Never put a page titled " +
+              "for one person into another person's section.\n" +
+              "- Testimonials, reviews, price lists, aftercare and contact are never work.\n" +
+              "- Group by PERSON when people have their own pages, or by KIND OF WORK when one " +
+              "person does it all. Do not mix the two schemes in one answer." },
             { role: "user", content: "Business: " + row.name + " in " + (row.locality || "") +
               ", " + (row.region || "") + "\nWebsite: " + (row.website || "") + "\n\n" + sitemap }
           ] });
@@ -16507,12 +16526,44 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           name: String(n), on_site: lowerDoc.includes(String(n).toLowerCase()) }));
 
         return { cmd: "SITE_READING", payload: { ok: true, business: row.name, id: srdId,
-          archive: newest.key, pages_in_archive: pages.length, ms,
+          model: srdModel, archive: newest.key, pages_in_archive: pages.length, ms,
           she_says: { business: out?.business || null, people: peopleReport,
                       sections: secReport,
                       not_work: (Array.isArray(out?.not_work) ? out.not_work : []).filter(x => known.has(String(x))) },
+          // ══ CONTRADICTION CHECKS (added 2026-08-20 after the first run) ═══════════════
+          // The first answer put /reviews-1 in "Joey's Work" AND in not_work, filed a page
+          // titled "Mel Trust the Process" under Rodney, and split one person into two
+          // sections. NONE of that was invented - every path was real - so the original
+          // checks passed it clean. An assignment error is the failure mode here, and it is
+          // just as checkable as an invented path once you look for it.
           checks: { people_not_on_site: peopleReport.filter(p3 => !p3.on_site).map(p3 => p3.name),
                     invented_paths: secReport.flatMap(x => x.invented_paths || []),
+                    in_two_sections: (() => {
+                      const seen = {}, dup = [];
+                      for (const sec of secReport) for (const pth of sec.pages) {
+                        if (seen[pth]) { if (!dup.some(d => d.path === pth)) dup.push({ path: pth, sections: [seen[pth], sec.name] }); }
+                        else seen[pth] = sec.name;
+                      }
+                      return dup;
+                    })(),
+                    work_and_not_work: secReport.flatMap(sec => sec.pages
+                      .filter(pth => (Array.isArray(out?.not_work) ? out.not_work : []).includes(pth))
+                      .map(pth => ({ path: pth, section: sec.name }))),
+                    // A section named for a person holding a page whose TITLE names someone else.
+                    title_names_someone_else: secReport.flatMap(sec => {
+                      const who = String(sec.name || "").split(/[^A-Za-z]+/).filter(w => w.length > 2);
+                      const others = peopleReport.map(p3 => p3.name)
+                        .filter(n => !who.some(w => n.toLowerCase().includes(w.toLowerCase())));
+                      return sec.pages.filter(pth => {
+                        const pg = pages.find(p4 => p4.path === pth);
+                        const t = ((pg && pg.title) || "").toLowerCase();
+                        if (!t) return false;
+                        const mine = who.some(w => t.includes(w.toLowerCase()));
+                        const theirs = others.find(n => t.includes(n.toLowerCase()));
+                        return !mine && !!theirs;
+                      }).map(pth => ({ path: pth, section: sec.name,
+                                       title: (pages.find(p4 => p4.path === pth) || {}).title }));
+                    }),
                     pages_unaccounted: pages.map(p3 => p3.path).filter(p3 =>
                       !secReport.some(x => x.pages.includes(p3)) &&
                       !(Array.isArray(out?.not_work) ? out.not_work : []).includes(p3)) },
@@ -16521,7 +16572,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 "a wrong grouping here looks like a fact, so every path and name is verified " +
                 "against the archive rather than trusted." } };
       } catch (e) {
-        return { cmd: "SITE_READING", payload: { ok: false, error: String(e?.message ?? e).slice(0, 300) } };
+        // A model id that was retired this week fails HERE. Say which one, so the answer is
+        // "that model is gone" and not "SITE_READING is broken".
+        return { cmd: "SITE_READING", payload: { ok: false, model: srdModel,
+          error: String(e?.message ?? e).slice(0, 300),
+          what_to_do: "If the model id was rejected, try another: SITE_READING " + srdId +
+                      " MODEL @cf/qwen/qwen3.8-27b" } };
       }
     }
 

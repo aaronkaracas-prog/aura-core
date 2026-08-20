@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.89.0-2026-08-20-a-prefix-is-not-a-match";
+const BUILD = "aura-core-v6.90.0-2026-08-20-let-her-read-the-whole-site";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -16403,6 +16403,126 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       });
       if (!brR.ok) return { cmd: "BRIEF", payload: { ok: false, error: brR.error } };
       return { cmd: "BRIEF", payload: { ok: true, business: brRaw, live_findings: live, brief: brR.reasoning } };
+    }
+
+    case "SITE_READING": {
+      // ══ LET HER READ THE WHOLE SITE AT ONCE (2026-08-20) ════════════════════════════════════
+      // Everything before this reads ONE PAGE, answers, forgets, reads the next. So nothing has
+      // ever seen the site as a whole - and every judgement about what matters OVERALL has been
+      // made by me in code: 12 per section, 60 total, thumbnails last, richer pages first. I
+      // picked every one of those numbers, and that is the same disease as the path regex - my
+      // vocabulary deciding a stranger's shop.
+      //
+      // MEASURED, and it is why this exists: Nikki's listing showed 24 images. kept 24, sections
+      // 2, cap 12 = 24 exactly. THE CAP WAS DOING THE CHOOSING, not relevance. She is a solo
+      // artist, so there was nobody to crowd out, and the rule throttled her whole portfolio -
+      // then my sort filled those twelve from PMU pages while /large_scale_tattoos ("WORK BY
+      // NIKKI THOMPSON") and /color_tattoos_ lost.
+      //
+      // READ-ONLY, ON PURPOSE. It writes nothing, touches no listing, and cannot break a shop.
+      // It reads the archive already in R2 - no crawl, no browser - and prints what she says so
+      // it can be checked against the site before anything is wired to it.
+      //   SITE_READING <cg_id>
+      if (!isOp) return { cmd: "SITE_READING", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const srdId = String(rest || "").trim().split(/\s+/)[0] || "";
+      if (!srdId) return { cmd: "SITE_READING", payload: { ok: false,
+        error: "Usage: SITE_READING <cg_id>" } };
+      try {
+        const row = await env.AURA_MEMORY.prepare(
+          "SELECT id, name, locality, region, website FROM cg_business WHERE id = ? LIMIT 1")
+          .bind(srdId).first();
+        if (!row) return { cmd: "SITE_READING", payload: { ok: false, error: "NO_SUCH_BUSINESS", id: srdId } };
+        const list = await env.AURA_KNOWLEDGE_RAW.list({ prefix: "crawl/" + srdId + "/" });
+        const newest = (list?.objects || []).sort((a, b) =>
+          String(b.uploaded).localeCompare(String(a.uploaded)))[0];
+        if (!newest) return { cmd: "SITE_READING", payload: { ok: false, error: "NO_CRAWL_ARCHIVED",
+          id: srdId, what_to_do: "CG_ENRICH " + srdId + " first - this reads the archive, it does not crawl." } };
+        const doc = await (await env.AURA_KNOWLEDGE_RAW.get(newest.key)).text();
+        const parts = doc.split(/\n\n---\n\n/).map(b => {
+          const m = b.match(/^<!--PAGE\s+(\S*)\s*-->/);
+          return { url: m ? m[1] : "", body: b.replace(/^<!--PAGE[^>]*-->\n?/, "") };
+        }).filter(x => x.url);
+
+        // ══ WHAT SHE IS HANDED ══════════════════════════════════════════════════════════════
+        // NOT 400,000 characters of markdown. The SHAPE of the site: every page's path, its
+        // title, its first few headings, and how many images it carries. That is what a person
+        // scanning a sitemap sees, and it is a few thousand tokens instead of a hundred thousand.
+        const IMG_RE = /https?:\/\/[^\s"'()<>\]]+\.(?:jpe?g|png|gif|webp|avif)(?:\?[^\s"'()<>\]]*)?/gi;
+        const pages = parts.map(pg => {
+          const path = String(pg.url).replace(/^https?:\/\/[^/]+/, "") || "/";
+          const title = (pg.body.match(/^##\s+(.{2,120})$/m) || [])[1]
+                     || (pg.body.match(/"og:title"\s*:\s*"([^"]{2,120})"/) || [])[1] || "";
+          const heads = [...pg.body.matchAll(/^#{1,4}\s+(.{2,80})$/gm)]
+            .map(m => m[1].trim()).filter(h => h && h !== title).slice(0, 6);
+          const imgs = new Set([...pg.body.matchAll(IMG_RE)].map(m => m[0]));
+          return { path, title: title.replace(/\s*&mdash;.*$/, "").trim(), heads, images: imgs.size };
+        });
+        const sitemap = pages.map(p2 =>
+          p2.path + " | " + (p2.title || "(no title)") +
+          (p2.heads.length ? " | " + p2.heads.join(" / ") : "") +
+          " | " + p2.images + " images").join("\n");
+
+        const t0 = Date.now();
+        const rr = await env.AI.run("@cf/meta/llama-3.1-8b-instruct-fp8-fast", {
+          max_tokens: 900,
+          messages: [
+            { role: "system", content:
+              "You are looking at every page of ONE business's own website at once. Each line is: " +
+              "path | page title | headings | how many images that page has.\n" +
+              'Return ONLY JSON: {"business":"","people":[],"sections":[{"name":"","pages":[]}],"not_work":[]}\n' +
+              "business: one short sentence on what this business actually does.\n" +
+              "people: the names of people who DO THE WORK here. Only names that appear in the " +
+              "lines above. Never a business name, a street, a page title or a button. An empty " +
+              "array is a correct and common answer.\n" +
+              "sections: how their WORK should be grouped for someone browsing. If several people " +
+              "each have their own page, one section per person, named for that person. If ONE " +
+              "person does several different kinds of work, one section per kind of work. " +
+              "`pages` must be paths copied EXACTLY from the lines above.\n" +
+              "not_work: paths that are not examples of their work - price lists, merchandise, " +
+              "aftercare, reviews, contact, policies, explainers.\n" +
+              "Copy paths character for character. Never invent a path or a name." },
+            { role: "user", content: "Business: " + row.name + " in " + (row.locality || "") +
+              ", " + (row.region || "") + "\nWebsite: " + (row.website || "") + "\n\n" + sitemap }
+          ] });
+        const ms = Date.now() - t0;
+        let out = rr?.response;
+        if (typeof out === "string") { try { out = JSON.parse(out); } catch { out = repairJson(out); } }
+        out = unwrapSchema(out);
+
+        // ══ THE CHECK - A CONFIDENT WRONG GROUPING IS THE FAILURE MODE ══════════════════════
+        // A wrong regex looked wrong. A wrong answer here looks like a fact. So every path she
+        // names is checked against the pages that actually exist, and every person against the
+        // text of the site. Nothing is corrected - it is REPORTED, so it can be judged.
+        const known = new Set(pages.map(p2 => p2.path));
+        const lowerDoc = doc.toLowerCase();
+        const secReport = (Array.isArray(out?.sections) ? out.sections : []).map(sec => {
+          const list2 = Array.isArray(sec?.pages) ? sec.pages.map(String) : [];
+          const real = list2.filter(x => known.has(x));
+          const invented = list2.filter(x => !known.has(x));
+          return { name: String(sec?.name || ""), pages: real,
+                   images: real.reduce((n, x) => n + ((pages.find(p3 => p3.path === x) || {}).images || 0), 0),
+                   invented_paths: invented.length ? invented : undefined };
+        });
+        const peopleReport = (Array.isArray(out?.people) ? out.people : []).map(n => ({
+          name: String(n), on_site: lowerDoc.includes(String(n).toLowerCase()) }));
+
+        return { cmd: "SITE_READING", payload: { ok: true, business: row.name, id: srdId,
+          archive: newest.key, pages_in_archive: pages.length, ms,
+          she_says: { business: out?.business || null, people: peopleReport,
+                      sections: secReport,
+                      not_work: (Array.isArray(out?.not_work) ? out.not_work : []).filter(x => known.has(String(x))) },
+          checks: { people_not_on_site: peopleReport.filter(p3 => !p3.on_site).map(p3 => p3.name),
+                    invented_paths: secReport.flatMap(x => x.invented_paths || []),
+                    pages_unaccounted: pages.map(p3 => p3.path).filter(p3 =>
+                      !secReport.some(x => x.pages.includes(p3)) &&
+                      !(Array.isArray(out?.not_work) ? out.not_work : []).includes(p3)) },
+          sitemap_given: sitemap.length > 6000 ? sitemap.slice(0, 6000) + " …" : sitemap,
+          note: "Read-only. Nothing was written and no listing changed. `checks` is the point - " +
+                "a wrong grouping here looks like a fact, so every path and name is verified " +
+                "against the archive rather than trusted." } };
+      } catch (e) {
+        return { cmd: "SITE_READING", payload: { ok: false, error: String(e?.message ?? e).slice(0, 300) } };
+      }
     }
 
     case "CRAWL_PAGE": {

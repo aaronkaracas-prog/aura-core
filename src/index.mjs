@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.94.0-2026-08-20-what-the-visitor-chooses-between";
+const BUILD = "aura-core-v6.96.0-2026-08-20-escalate-past-neurons";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -16431,7 +16431,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       //   SITE_READING <cg_id> [MODEL @cf/...]
       let srdRaw = String(rest || "").trim();
       const srdModelM = srdRaw.match(/(^|\s)MODEL\s+(\S+)/i);
-      const srdModel = srdModelM ? srdModelM[2] : "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+      // ══ THE POLICY SAID NEURONS FIRST, THEN GROK. NEURONS ARE NOW MEASURED ════════════
+      // FOUR passes on Workers AI, same task, failing the same way each time: the 70B echoes the
+      // site's own menu word "Artists" and returns four people in one bucket. The 8B invented
+      // assignments outright. Qwen's reasoning model spent 31 seconds thinking and returned
+      // nothing at all. That is the measured reason to escalate the policy waits for - not a
+      // hunch, and not a cost question. Aaron: "I don't care what model we use."
+      // Any id starting @cf/ still goes to the binding, so a comparison is one command. Anything
+      // else goes through callBrain - the router that ALREADY EXISTS, with its keys, gateway and
+      // per-provider request shapes. Not a second path around it.
+      const srdModel = srdModelM ? srdModelM[2] : "claude-sonnet-4-5-20250929";
+      const srdIsCf = /^@cf\//.test(srdModel);
       srdRaw = srdRaw.replace(/(^|\s)MODEL\s+\S+/i, " ").trim();
       const srdId = srdRaw.split(/\s+/)[0] || "";
       if (!srdId) return { cmd: "SITE_READING", payload: { ok: false,
@@ -16482,10 +16492,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // but she needs to know exactly what her goal is."
         // So: no artists, no counting, no scheme selection, no mention of what our page happens
         // to have fields for. What the job IS, what it costs to get wrong, and the whole site.
-        const rr = await env.AI.run(srdModel, {
-          max_tokens: 1400,
-          messages: [
-            { role: "system", content:
+        const SYS =
               "You are rebuilding a real business's presence from their own website.\n\n" +
               "This becomes a public page about them, which a stranger may judge them by, and " +
               "they have not paid us or agreed to anything. Showing something wrong costs them " +
@@ -16520,11 +16527,24 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "not_work - pages that are not examples of their work: prices, policies, contact, " +
               "reviews, merchandise, explainers, the front door.\n\n" +
               "Every path appears exactly once, in one section or in not_work. Copy paths " +
-              "character for character. Never invent a path or a name." },
-            { role: "user", content:
-              row.name + (row.locality ? " - " + row.locality : "") +
-              (row.region ? ", " + row.region : "") + "\n" + (row.website || "") + "\n\n" + sitemap }
-          ] });
+              "character for character. Never invent a path or a name.";
+        const USR = row.name + (row.locality ? " - " + row.locality : "") +
+              (row.region ? ", " + row.region : "") + "\n" + (row.website || "") + "\n\n" + sitemap;
+
+        let rr = null, brainUsage = null, brainProvider = "workers-ai";
+        if (srdIsCf) {
+          rr = await env.AI.run(srdModel, { max_tokens: 1400,
+            messages: [{ role: "system", content: SYS }, { role: "user", content: USR }] });
+        } else {
+          const cb = await callBrain({ system: SYS, user: USR, max_tokens: 1400, model: srdModel }, env);
+          if (!cb?.ok) return { cmd: "SITE_READING", payload: { ok: false, model: srdModel,
+            provider: cb?.provider || null, error: cb?.error || "brain call failed",
+            what_to_do: "Or use the binding: SITE_READING " + srdId +
+                        " MODEL @cf/meta/llama-3.3-70b-instruct-fp8-fast" } };
+          rr = { response: cb.text };
+          brainUsage = cb.usage || null;   // the token line Workers AI never returned all day
+          brainProvider = cb.provider || null;
+        }
         const ms = Date.now() - t0;
         let out = rr?.response;
         if (typeof out === "string") { try { out = JSON.parse(out); } catch { out = repairJson(out); } }
@@ -16536,7 +16556,56 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // text of the site. Nothing is corrected - it is REPORTED, so it can be judged.
         const known = new Set(pages.map(p2 => p2.path));
         const lowerDoc = doc.toLowerCase();
-        const secReport = (Array.isArray(out?.sections) ? out.sections : []).map(sec => {
+
+        // ══ SPLIT A LUMP IN CODE, STOP REWRITING THE PROMPT (2026-08-20) ═══════════════════
+        // FOUR prompt passes tried to make her give Mel, Joey and Rodney their own sections.
+        // Score: the wording moved Nikki's twice and moved Inkus ZERO times. She keeps returning
+        // one section called "Artists" holding all four people.
+        // WHY, and the site is not confused: `/artists` exists and is titled "Meet the Artists".
+        // That word is the most available thing in the input, and echoing the site's own menu
+        // beats an instruction not to - exactly as "one person -> one section named Nikki" beat
+        // two explicit rules until the question was removed.
+        // This is NOT another vocabulary rule. `people_lumped_together` already DETECTS the
+        // fault deterministically - several people's own pages inside one section. Splitting it
+        // needs no judgement: one section per page, named for the person that page's title
+        // already names. Same move as the Nikki/Nikki Thompson collapse - code fixes a
+        // contradiction the answer contains, it does not decide what the answer should be.
+        // Grok said name the section from the page title. Raw titles are "Mel Portfolio - Inkus
+        // Tattoos" and "Meet Our Piercer - Inkus Tattoos", so the chip would read "Meet Our
+        // Piercer". The PERSON is already in `people` and verified on the site, and the title is
+        // what matched them - so the person's name wins, and the cleaned title is the fallback.
+        const rawSections = Array.isArray(out?.sections) ? out.sections : [];
+        const peopleNames = (Array.isArray(out?.people) ? out.people : []).map(String);
+        // Title AND headings. Jennifer's page is titled "Meet Our Piercer" - her name is not in
+        // it - but its first heading is "Jennifer's Portfolio". Without the headings she stays
+        // stranded in a section still called "Artists", which is the thing being fixed.
+        // Both are already in the sitemap handed to the model, so nothing new is being read.
+        const titleOf = (pth) => {
+          const pg = pages.find(p2 => p2.path === pth) || {};
+          return [pg.title || "", ...(pg.heads || [])].join(" ");
+        };
+        const whoseTitle = (pth) => {
+          const t = titleOf(pth).toLowerCase();
+          if (!t) return null;
+          // Longest match first, so "Nikki Thompson" beats "Nikki".
+          return [...peopleNames].sort((a, b) => b.length - a.length)
+            .find(n => n.length > 2 && t.includes(n.toLowerCase())) || null;
+        };
+        let splitLog = [];
+        const sections = rawSections.flatMap(sec => {
+          const list0 = (Array.isArray(sec?.pages) ? sec.pages.map(String) : []).filter(x => known.has(x));
+          const owners = [...new Set(list0.map(whoseTitle).filter(Boolean))];
+          if (owners.length < 2) return [sec];
+          // Only the pages that name somebody get their own section. Anything else in the lump
+          // stays together under the original name rather than being guessed at.
+          const rest = list0.filter(x => !whoseTitle(x));
+          const made = owners.map(n => ({ name: n, pages: list0.filter(x => whoseTitle(x) === n) }));
+          splitLog.push({ was: String(sec?.name || ""), became: owners,
+                          left_together: rest.length ? rest : undefined });
+          return made.concat(rest.length ? [{ name: String(sec?.name || ""), pages: rest }] : []);
+        });
+
+        const secReport = sections.map(sec => {
           const list2 = Array.isArray(sec?.pages) ? sec.pages.map(String) : [];
           const real = list2.filter(x => known.has(x));
           const invented = list2.filter(x => !known.has(x));
@@ -16548,7 +16617,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           name: String(n), on_site: lowerDoc.includes(String(n).toLowerCase()) }));
 
         return { cmd: "SITE_READING", payload: { ok: true, business: row.name, id: srdId,
-          model: srdModel, archive: newest.key, pages_in_archive: pages.length, ms,
+          model: srdModel, provider: brainProvider, usage: brainUsage || undefined,
+          archive: newest.key, pages_in_archive: pages.length, ms,
+          split: splitLog.length ? splitLog : undefined,
           she_says: { business: out?.business || null, people: peopleReport,
                       sections: secReport,
                       not_work: (Array.isArray(out?.not_work) ? out.not_work : []).filter(x => known.has(String(x))) },
@@ -16597,10 +16668,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                     // Nothing was invented and nothing contradicted - it was simply not a
                     // grouping. If several people have their own pages and they all landed in
                     // one section, say so.
+                    // Runs on what SHE returned, never on the split output - otherwise the
+                    // repair would hide the fault it exists to expose, and we would stop
+                    // knowing whether the model ever learned to do this itself.
                     people_lumped_together: (() => {
                       const names = peopleReport.map(p3 => p3.name);
                       if (names.length < 2) return [];
-                      return secReport.filter(sec => {
+                      return rawSections.map(sec => ({ name: String(sec?.name || ""),
+                        pages: (Array.isArray(sec?.pages) ? sec.pages.map(String) : [])
+                          .filter(x => known.has(x)) })).filter(sec => {
                         const named = names.filter(n => sec.pages.some(pth => {
                           const t = ((pages.find(p4 => p4.path === pth) || {}).title || "").toLowerCase();
                           return t.includes(n.toLowerCase());

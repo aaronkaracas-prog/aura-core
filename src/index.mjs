@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.82.0-2026-08-20-one-definition-of-who-works-here";
+const BUILD = "aura-core-v6.83.0-2026-08-20-unreachable-is-not-empty";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18218,8 +18218,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // So: crawl cheap, MEASURE, and escalate only the ones that came back hollow. render:true
         // costs browser time and is not free, which is exactly why it must be a fallback rather than
         // the default - most tattoo shops are static and render:false covers them for nothing.
-        const crawlOnce = async (flags) => {
-          const st = await processCommand("SITE_READ " + flags + site, env, true);
+        const crawlOnce = async (flags, url) => {
+          const st = await processCommand("SITE_READ " + flags + (url || site), env, true);
           const sp0 = (st && st.payload) ? st.payload : st;
           if (!sp0?.ok || !sp0.id) return { start: sp0, res: null };
           for (let i = 0; i < 16; i++) {
@@ -18258,6 +18258,25 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // SITE_READ returns the API's own `errors` array as `detail`; forwarding only `error` threw
         // away the one thing that says WHY. Same defect as the null-with-no-reason two versions ago:
         // the reason existed upstream and this dropped it.
+        // ══ A SHOP WE COULD NOT READ IS NOT A SHOP WITH NOTHING ON ITS SITE ═════════════
+        // TWO OF FIVE shops in one random sample produced this lie. Sunsuite Tattoo no longer
+        // resolves at all; Granite City has no valid certificate. Both were written with a
+        // crawled_at timestamp, null understanding, null contacts - the exact same row shape as
+        // a real shop that simply publishes no team and no email. Nobody would ever go back and
+        // check, and "we failed" would live in the database as "they have nothing" forever.
+        // The verdict is the fact. `understanding` stays UNWRITTEN unless we actually read them.
+        const setVerdict = async (v) => {
+          try {
+            await db.prepare("UPDATE cg_business SET crawl_verdict = ?, crawled_at = ? WHERE id = ?")
+              .bind(v, new Date().toISOString(), row.id).run();
+          } catch {}
+        };
+        if (!sp?.ok || !sp.id) {
+          // Robots refusing every declared purpose is THEIR ANSWER and it is respected - but it
+          // is `refused`, which is a different fact from `empty`.
+          if (!ceDry) await setVerdict(/disallow|robots|purpose/i.test(
+            JSON.stringify(sp?.detail || sp?.error || "")) ? "refused" : "unreachable");
+        }
         if (!sp?.ok || !sp.id) return { cmd: "CG_ENRICH", payload: { ok: false, error: "CRAWL_NOT_STARTED",
           reason: sp?.error || null,
           api_said: sp?.detail ? JSON.stringify(sp.detail).slice(0, 400) : null,
@@ -18295,8 +18314,36 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "does not wait." } };
         }
         let md = String(res.markdown || "");
+        // ══ WE ASKED FOR A SCHEME THIS SERVER DOES NOT SPEAK (fixed 2026-08-20) ═══════════
+        // `site` rewrites every stored http:// to https://. MEASURED as a WIN on Bang Bang -
+        // the http-www form returned 6 pages with 6 skipped and lost the FAQ page, the
+        // https-no-www form returned 12 clean. So the rewrite is not wrong; it was validated
+        // on one site and applied to all of them.
+        // Granite City serves NO valid certificate: https redirects to http and the crawl came
+        // back `error code: 526` on every record. The shop is alive - the homepage carries real
+        // tattoo work - and we recorded it as a business with nothing on its website.
+        // ONE retry, only after https produced nothing, only when the STORED url was http, and
+        // it is NOT rewritten back to https. No www-discovery, no second tree.
+        // This must come BEFORE the render escalation: a headless browser hits the same TLS
+        // wall, so rendering an unreachable host spends browser time to learn nothing.
+        let schemeRetry = null;
+        const unreachable = (r) => !Number(r?.pages || 0) && Number(r?.unusable_errors || 0) > 0;
+        if (unreachable(res) && /^http:\/\//i.test(stored)) {
+          const plainUrl = stored.trim().replace(/\s+$/, "");
+          const again = await crawlOnce("", plainUrl);
+          if (again.res && Number(again.res.pages || 0) > 0) {
+            schemeRetry = { state: "read_over_http", reason: "https returned only error records " +
+              "(no valid certificate at the origin); the stored http url was readable",
+              job: again.start?.id || null, url: plainUrl, pages: again.res.pages };
+            res = again.res; md = String(res.markdown || "");
+          } else {
+            schemeRetry = { state: "unreachable_either_way", url: plainUrl,
+              job: again.start?.id || null,
+              said: res?.unusable_sample?.[0]?.said || null };
+          }
+        }
         let renderedFallback = null;
-        if (isHollow(md, res.pages) || mostlySkipped(res)) {
+        if (!unreachable(res) && (isHollow(md, res.pages) || mostlySkipped(res))) {
           // The cheap read came back as metadata only, OR most of the site came back empty. Pay for
           // a browser once rather than record a JavaScript-rendered shop as an empty one.
           // The RENDER path was built and correct - it just never fired, because the length test
@@ -19478,6 +19525,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             booking_platforms: booking, booking_page: ownBooking[0] || null };
         } catch (e) { aiError = String(e?.message ?? e).slice(0, 200); }
 
+        // ══ DECLARED HERE, NOT AT THE WRITE (fixed before deploy, 2026-08-20) ═══════════
+        // First draft put this beside the UPDATE, ~100 lines BELOW the reply object that reads
+        // it - a `const` in the temporal dead zone. `node --check` passes and every CG_ENRICH
+        // call throws ReferenceError at runtime. Seventh time this exact shape has appeared in
+        // this file; only reading the line numbers finds it.
+        // It sits here because `res` is settled by now - after the scheme retry AND after the
+        // render escalation, either of which can change the page count.
+        // ok          - we read usable pages off their site
+        // unreachable - TLS / DNS / connection; we never saw the site (Granite, Sunsuite)
+        // empty       - we REACHED it and there was genuinely nothing usable there
+        const crawlVerdict = Number(res?.pages || 0) > 0 ? "ok"
+                           : unreachable(res) ? "unreachable" : "empty";
         const out = { cmd: "CG_ENRICH", payload: { ok: true, mode: ceDry ? "dry_run" : "written",
           business: row.name, where: [row.locality, row.region].filter(Boolean).join(", "),
           site, pages: res.pages, skipped: res.skipped, chars: md.length,
@@ -19492,6 +19551,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // are redirects to the page already fetched. The http://www. URL returned `pages: 6,
           // skipped: 6` and LOST the FAQ. What matters is whether the fields came back, so that is
           // what gets reported next to them.
+          crawl_verdict: crawlVerdict,
+          scheme_retry: schemeRetry || undefined,
+          unusable_records: res?.unusable_errors || undefined,
+          unusable_sample: res?.unusable_sample?.length ? res.unusable_sample : undefined,
           image_person_pages: personPagesFromModel.length ? personPagesFromModel : undefined,
           image_second_pass_error: imageSecondPass || undefined,
           images: { found: imgs.length, chrome_filtered: imgs.length - work.length,
@@ -19583,9 +19646,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // written when this run actually produced one, so a transient model failure on a re-crawl
         // leaves last week's roster intact instead of blanking it. COALESCE does that in one column
         // without a read-then-write race.
+        // On unreachable, `understanding` is forced to null so COALESCE keeps whatever was
+        // there before rather than overwriting a good earlier read with a failure.
+        const understandingToWrite = (crawlVerdict === "unreachable") ? null
+          : ((understanding || booking.length || icsFeeds.length) ? "yes" : null);
         await db.prepare(
           "UPDATE cg_business SET crawled_at = ?, email_found = ?, phone_found = ?, " +
-          "understanding = COALESCE(?, understanding), raw_key = ? WHERE id = ?")
+          "understanding = COALESCE(?, understanding), raw_key = ?, crawl_verdict = ? WHERE id = ?")
           // PIPE-JOINED, ALL OF THEM. Storing one and dropping four is throwing away the thing the
           // crawl was run to get. Same shape the Overture columns already use.
           .bind(new Date().toISOString(),
@@ -19593,7 +19660,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 phones.length ? phones.join("|") : null,
                 // Booking rides INSIDE understanding - it is industry-shaped like artists and styles,
                 // and a column per platform is the mistake this file already refused once.
-                (understanding || booking.length || icsFeeds.length)
+                (understandingToWrite && (understanding || booking.length || icsFeeds.length))
                   ? JSON.stringify({ ...(understanding || {}), booking_platforms: booking,
                       ics_feeds: icsFeeds, own_booking_urls: ownBooking,
                       deposit_mentioned: depositSaid,
@@ -19608,6 +19675,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                                                p: i.page || null })) }).slice(0, 24000)
                   : null,
                 "crawl/" + row.id + "/" + new Date().toISOString().slice(0, 10) + ".md",
+                crawlVerdict,
                 row.id).run();
         return out;
       } catch (e) {
@@ -19720,7 +19788,31 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           }
           // A record that carries markdown is usable whatever its status label says. Filtering on
           // the label alone is what threw 44 pages away.
-          const recs = allRecs.filter(x => x && x.markdown);
+          // ══ "error code: 526" IS NOT A PAGE (fixed 2026-08-20) ═══════════════════════════
+          // MEASURED on Granite City Tattoo: the whole crawl failed at TLS and this reported
+          // `pages: 1, chars: 87, with_markdown: 1` - because the filter is "has markdown" and
+          // the string "error code: 526" is markdown by that test. A total failure presented
+          // itself as a successful one-page crawl, `isHollow` never fired, and the row was
+          // written as a shop with nothing on its website.
+          // The "has markdown" test was the RIGHT fix when it landed - filtering on
+          // `status === "completed"` was throwing away 44 good pages. It simply never
+          // anticipated a body that IS the error.
+          // 526 = Cloudflare could not validate the origin certificate. A Worker's external
+          // fetch is always Full (strict), so this class of site can never be read over https,
+          // however many times it is retried.
+          const ERROR_BODY = /^\s*error code:\s*\d+\s*$/i;
+          const usableRec = (x) => {
+            if (!x || !x.markdown) return false;
+            if (String(x.status || "").toLowerCase() === "errored") return false;
+            const body = String(x.markdown).trim();
+            if (ERROR_BODY.test(body)) return false;
+            if (body.length < 60 && /error code:\s*\d+/i.test(body)) return false;
+            return true;
+          };
+          const errorRecs = allRecs.filter(x => x && !usableRec(x) &&
+            (String(x?.status || "").toLowerCase() === "errored" ||
+             /error code:\s*\d+/i.test(String(x?.markdown || ""))));
+          const recs = allRecs.filter(usableRec);
           // THE URL RIDES WITH THE PAGE. Concatenating title+markdown threw away the one thing that
           // says what a page IS - a reader downstream cannot tell /blog/ from /artists without it.
           const doc = recs.map(x => "<!--PAGE " + (x.url || "") + " -->\n## " +
@@ -19741,6 +19833,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             truncated: doc.length > 400000,
             by_status: byStatus,
             with_markdown: recs.length,
+            // Zero usable pages with error records present means UNREACHABLE, not empty. The
+            // caller needs those apart, because they are different facts about the business.
+            unusable_errors: errorRecs.length,
+            unusable_sample: errorRecs.slice(0, 3).map(x => ({
+              url: String(x?.url || "").slice(0, 90),
+              said: String(x?.markdown || x?.error || "").trim().slice(0, 60) || null })),
             record_pages_read: res.pages_of_records || 1,
             records_total: allRecs.length,
             sample_skipped: allRecs.filter(x => x && !x.markdown).slice(0, 5)
@@ -47540,18 +47638,31 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
     // parallel piece of machinery. One step per shop, deterministic names, replay-safe.
     if (String(event.payload?.mode || "") === "enrich") {
       const ids = (event.payload?.ids || []).slice(0, 2000);
-      let done = 0, failed = 0; const trouble = [];
+      let done = 0, failed = 0, unreached = 0; const trouble = [];
       for (let i = 0; i < ids.length; i++) {
         const r = await step.do("shop-" + i, async () => {
           const x = await processCommand("CG_ENRICH " + ids[i], this.env, true);
           return (x && x.payload) ? x.payload : x;
         });
-        if (r?.ok) done++; else { failed++; if (trouble.length < 20) trouble.push({ id: ids[i], why: r?.error || "unknown" }); }
+        // ══ `enriched: 1` ON A SHOP WE NEVER REACHED (fixed 2026-08-20) ═════════════════
+        // MEASURED twice in one sample: Sunsuite (dead domain) and Granite City (no valid
+        // certificate) both returned `enriched: 1, failed: 0`. The Workflow counted ok:true,
+        // and ok:true only ever meant "the command did not throw". At batch scale that is the
+        // number somebody reads to decide a run went well.
+        // Unreachable is not a failure of ours and not a success either - it gets its own
+        // count rather than being folded into one of them.
+        const verdict = r?.crawl_verdict || null;
+        if (r?.ok && (verdict === "unreachable" || verdict === "refused")) {
+          unreached++;
+          if (trouble.length < 20) trouble.push({ id: ids[i], why: verdict });
+        } else if (r?.ok) done++;
+        else { failed++; if (trouble.length < 20) trouble.push({ id: ids[i], why: r?.error || "unknown" }); }
         // One job per domain is the rule the rate limit enforces; a pause between shops keeps a
         // long run from looking like a flood to anybody's server.
         await step.sleep("gap-" + i, "3 seconds");
       }
-      return { ok: true, mode: "enrich", shops: ids.length, enriched: done, failed, trouble };
+      return { ok: true, mode: "enrich", shops: ids.length, enriched: done, failed,
+               unreachable: unreached, trouble };
     }
 
     const vertical = String(event.payload?.vertical || "").trim();

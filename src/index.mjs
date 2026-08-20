@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.93.0-2026-08-20-tell-her-what-she-is-for";
+const BUILD = "aura-core-v6.94.0-2026-08-20-what-the-visitor-chooses-between";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -16497,10 +16497,26 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "business - one plain sentence: what they actually do.\n" +
               "people - anyone this site presents as doing the work here, named as the site " +
               "names them. Empty is fine and common.\n" +
+              // ══ A SECTION IS WHAT A VISITOR WANTS, NOT HOW THE SITE IS FILED ═══════════
+              // MEASURED: freed of instruction she nailed Nikki's - Tattoos / Permanent Makeup
+              // / Microneedling / Paramedical, four services, every page correct. But Inkus came
+              // back as ONE section called "Artists' Portfolios" holding all four people. Both
+              // answers describe how the SITE IS ORGANISED. For Nikki that happens to be what a
+              // visitor wants; for Inkus it is not - nobody clicks "artists' portfolios", they
+              // click MEL.
+              // So the sentence names the goal more precisely. It still does not say people or
+              // services, and it still does not say which this business is.
               "sections - how THEIR work should be laid out for someone browsing. You decide " +
-              "what the sections are and what they are called; the right answer comes from how " +
-              "this particular business is built, and it is different for different businesses. " +
-              "A section is something a visitor would click expecting to see examples of work.\n" +
+              "what the sections are and what they are called.\n" +
+              "  A section is ONE THING A VISITOR WOULD CHOOSE BETWEEN, not a heading the site " +
+              "happens to use. Ask what a customer is actually deciding when they arrive: which " +
+              "of these people do I want, or which of these services do I want. Name the " +
+              "sections after those choices.\n" +
+              "  Never one section that holds everything, and never a section that merely " +
+              "restates the site's own menu - if the answer would be a single group, or a group " +
+              "named for the site's navigation, you have not found the choice the visitor is " +
+              "making.\n" +
+              "  A page whose title names one person belongs in that person's own section.\n" +
               "not_work - pages that are not examples of their work: prices, policies, contact, " +
               "reviews, merchandise, explainers, the front door.\n\n" +
               "Every path appears exactly once, in one section or in not_work. Copy paths " +
@@ -16556,7 +16572,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                       .filter(pth => (Array.isArray(out?.not_work) ? out.not_work : []).includes(pth))
                       .map(pth => ({ path: pth, section: sec.name }))),
                     // A section named for a person holding a page whose TITLE names someone else.
+                    // ONLY meaningful when the section IS named for a person. It fired on
+                    // "/tattoo_portfolio in section Tattoos" because the page title contains
+                    // "Nikki Thompson" - a true statement and a useless one. A check that cries
+                    // wolf gets ignored, which is worse than not having it.
                     title_names_someone_else: secReport.flatMap(sec => {
+                      const secIsAPerson = peopleReport.some(p3 =>
+                        String(sec.name || "").toLowerCase().includes(p3.name.toLowerCase()));
+                      if (!secIsAPerson) return [];
                       const who = String(sec.name || "").split(/[^A-Za-z]+/).filter(w => w.length > 2);
                       const others = peopleReport.map(p3 => p3.name)
                         .filter(n => !who.some(w => n.toLowerCase().includes(w.toLowerCase())));
@@ -16570,6 +16593,24 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                       }).map(pth => ({ path: pth, section: sec.name,
                                        title: (pages.find(p4 => p4.path === pth) || {}).title }));
                     }),
+                    // Inkus returned ONE section holding four different people's portfolios.
+                    // Nothing was invented and nothing contradicted - it was simply not a
+                    // grouping. If several people have their own pages and they all landed in
+                    // one section, say so.
+                    people_lumped_together: (() => {
+                      const names = peopleReport.map(p3 => p3.name);
+                      if (names.length < 2) return [];
+                      return secReport.filter(sec => {
+                        const named = names.filter(n => sec.pages.some(pth => {
+                          const t = ((pages.find(p4 => p4.path === pth) || {}).title || "").toLowerCase();
+                          return t.includes(n.toLowerCase());
+                        }));
+                        return named.length > 1;
+                      }).map(sec => ({ section: sec.name, holds: names.filter(n => sec.pages.some(pth => {
+                        const t = ((pages.find(p4 => p4.path === pth) || {}).title || "").toLowerCase();
+                        return t.includes(n.toLowerCase());
+                      })) }));
+                    })(),
                     pages_unaccounted: pages.map(p3 => p3.path).filter(p3 =>
                       !secReport.some(x => x.pages.includes(p3)) &&
                       !(Array.isArray(out?.not_work) ? out.not_work : []).includes(p3)) },

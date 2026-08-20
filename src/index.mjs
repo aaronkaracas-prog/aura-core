@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.01.0-2026-08-20-junk-out-then-she-looks";
+const BUILD = "aura-core-v7.02.0-2026-08-20-one-trade-per-listing";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -16507,7 +16507,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         error: "Usage: SITE_READING <cg_id> [MODEL @cf/...]" } };
       try {
         const row = await env.AURA_MEMORY.prepare(
-          "SELECT id, name, locality, region, website FROM cg_business WHERE id = ? LIMIT 1")
+          "SELECT id, name, locality, region, website, industry FROM cg_business WHERE id = ? LIMIT 1")
           .bind(srdId).first();
         if (!row) return { cmd: "SITE_READING", payload: { ok: false, error: "NO_SUCH_BUSINESS", id: srdId } };
         const list = await env.AURA_KNOWLEDGE_RAW.list({ prefix: "crawl/" + srdId + "/" });
@@ -16766,6 +16766,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           }
           // WHAT THE WORK LOOKS LIKE IS THE BUSINESS'S OWN QUESTION, so she answers it about
           // her own descriptions rather than us matching words. One text call, no images.
+          // Her own descriptions, grouped by section - so the section-picker sees what each
+          // section actually CONTAINS rather than judging a name. "Microneedling" and "Tattoos"
+          // are both plausible on a tattoo site until you read what is in them.
+          const bySecAll = {};
+          for (const v of verdicts) (bySecAll[v.section] = bySecAll[v.section] || []).push(v.saw);
           let keep = new Set();
           if (verdicts.length) {
             const kr = await callBrain({
@@ -16797,13 +16802,56 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             } else cardWhy = { error: kr?.error || "judge failed", looked: verdicts.length };
           } else cardWhy = { looked: 0, failed, note: "nothing survived the filename filter" };
 
+          // ══ THE LISTING IS FOR ONE TRADE (2026-08-20) ═════════════════════════════════
+          // Nikki does tattoos AND microneedling AND permanent makeup AND paramedical work. On
+          // tattooparlors.world her card led with a "Scar Repair" graphic, an eyebrow close-up
+          // and clinical before-and-afters. Every one correctly identified and correctly hers -
+          // and a visitor came for tattoos.
+          // GROK'S FIX WAS A LIST: on this hostname keep "Tattoos", drop "Microneedling". That
+          // works tonight and needs a new list on dentists.world and bakeries.world - 280
+          // doorways, 280 lists. SHE ALREADY NAMED THE SECTIONS AND SAW THE PICTURES, so she is
+          // asked instead. Same answer here, nothing hardcoded, any vertical.
+          // `cg_business.industry` has carried the trade since the row was imported.
+          const trade = String(row.industry || "").trim();
+          let vertical = null;
+          const secNames = cardSections.map(x => x.name);
+          if (trade && secNames.length > 1) {
+            try {
+              const vr2 = await callBrain({
+                system:
+                  "A business does several different kinds of work. Their page is going on a " +
+                  "listing site for ONE trade, and a visitor arrived looking for that trade.\n\n" +
+                  'Return ONLY JSON: {"show":["section name", ...]}\n\n' +
+                  "Name the sections whose work is what that visitor came for. Copy the names " +
+                  "EXACTLY. Usually one. Never all of them unless every section really is that " +
+                  "trade. The rest of their work is not deleted - it is simply not this listing.",
+                user: "Listing site is for: " + trade + " businesses\n\nBusiness: " +
+                      (out?.business || row.name) + "\n\nTheir sections:\n" +
+                      cardSections.map(x => "- " + x.name + " (" +
+                        (bySecAll[x.name] || []).slice(0, 3).join("; ").slice(0, 160) + ")").join("\n"),
+                max_tokens: 300 }, env);
+              if (vr2?.ok) {
+                let vj = vr2.text;
+                if (typeof vj === "string") { try { vj = JSON.parse(vj); } catch { vj = repairJson(vj); } }
+                vj = unwrapSchema(vj);
+                const want = (Array.isArray(vj?.show) ? vj.show : []).map(x => String(x).toLowerCase());
+                const matched = secNames.filter(n => want.includes(n.toLowerCase()));
+                if (matched.length) vertical = { trade, show: matched,
+                  not_this_listing: secNames.filter(n => !matched.includes(n)) };
+              }
+            } catch {}
+          }
+
           const bySec = {};
           verdicts.forEach((v, i) => {
             if (!keep.has(i)) return;
             (bySec[v.section] = bySec[v.section] || []).push({ u: v.u, p: v.page });
           });
-          card = cardSections.filter(sec => (bySec[sec.name] || []).length)
+          card = cardSections
+            .filter(sec => (bySec[sec.name] || []).length)
+            .filter(sec => !vertical || vertical.show.includes(sec.name))
             .map(sec => ({ name: sec.name, images: bySec[sec.name].slice(0, 4) }));
+          if (cardWhy && vertical) cardWhy.vertical = vertical;
         } catch (e) { cardWhy = { error: String(e?.message ?? e).slice(0, 200) }; }
 
         // ══ LOOK AT THE PICTURE (2026-08-20) ═══════════════════════════════════════════
@@ -16873,7 +16921,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // showed "Tattoos / Permanent Makeup / Microneedling" - her SERVICES listed as
             // people. Right for a shop whose sections happen to be people, nonsense for a solo
             // owner. `people` is the verified list; use it.
-            u0.artists = peopleReport.filter(x => x.on_site).map(x => x.name).slice(0, 20);
+            // ARTIST CHIPS FOLLOW THE SAME RULE AS THE PICTURES. Jennifer is real, her page is
+            // her portfolio, and her work is piercing - so on a TATTOO listing she is not a chip.
+            // Not a keyword: her section simply is not one the visitor came for. When a shop's
+            // sections are not people (Nikki's are services), `people` is used as before.
+            const shown = new Set(card.map(c => String(c.name).toLowerCase()));
+            const peeps = peopleReport.filter(x => x.on_site).map(x => x.name);
+            const peepSections = peeps.filter(n => cardSections
+              .some(sec => String(sec.name).toLowerCase() === n.toLowerCase()));
+            u0.artists = (peepSections.length
+              ? peeps.filter(n => shown.has(n.toLowerCase()))
+              : peeps).slice(0, 20);
             u0.images = card.flatMap(c => c.images.map(i => ({ u: i.u, s: c.name,
                                                                src: "card", a: null, p: i.p })));
             u0.sections = card.map(c => ({ name: c.name, images: c.images.length }));

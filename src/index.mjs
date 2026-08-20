@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.86.0-2026-08-20-print-every-proposal";
+const BUILD = "aura-core-v6.87.0-2026-08-20-one-writer-for-the-listing";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18280,9 +18280,23 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             } catch {}
           }
         }
+        // ══ ASK THE TOOL FOR THE ANSWER, NOT JUST THE TEXT (2026-08-20) ═══════════════════
+        // MEASURED on Nikki's Tattoo Studio, and it is the whole reason for this change.
+        // Her site was fetched completely - 30 pages, 16 read, 405,347 characters, verdict ok.
+        // Then `filed` came back {about:4, services:3, other:9}: NOT ONE PAGE filed as work.
+        // The path rule wants the keyword straight after a slash - `\/(portfolio|gallery|work
+        // |flash)\b` - and her builder writes /tattoo_portfolio, /tattoos_by_nikki,
+        // /color_tattoos_, /cover_ups, /large_scale_tattoos. Underscore, keyword second.
+        // So workPaths was empty, noWorkPage fired, the homepage became the last resort, and a
+        // REAL BUSINESS PUBLISHED A FACEBOOK TILE AND AN INSTAGRAM TILE AS HER PORTFOLIO.
+        // The same crawl, asked for json, returned "Nikki Thompson" and 87 work images across
+        // those same 16 pages - every one of them present in the page text.
+        // WE WERE SORTING 33,694 BUSINESSES BY HOW A WEBMASTER SPELLED A URL. Fixing the
+        // underscore buys one builder; the next one writes ?gallery=1 or #work.
+        const srFlags = "JSON DEPTH 5 LIMIT 30 ";
         const started = resumed
           ? { payload: { ok: true, id: row.crawl_job, resumed: true } }
-          : await processCommand("SITE_READ " + site, env, true);
+          : await processCommand("SITE_READ " + srFlags + site, env, true);
         const sp = (started && started.payload) ? started.payload : started;
         // SITE_READ returns the API's own `errors` array as `detail`; forwarding only `error` threw
         // away the one thing that says WHY. Same defect as the null-with-no-reason two versions ago:
@@ -18313,8 +18327,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           business: row.name } };
 
         // Poll. Bang Bang took ~20s for 12 pages, In Depth ~10s. Bounded so this can never hang a turn.
+        // A rendered 30-page crawl runs 90-120s; the old budget was 30. A crawl that outlives
+        // the poll is PARKED and resumed on the next run (v6.84.0), so this is not a correctness
+        // gate - but parking every shop makes a batch need two passes for no reason.
         let res = resumed || null;
-        for (let i = 0; !res && i < 10; i++) {
+        for (let i = 0; !res && i < 45; i++) {
           await new Promise(r => setTimeout(r, 3000));
           const st = await processCommand("SITE_READ STATUS " + sp.id, env, true);
           const stp = (st && st.payload) ? st.payload : st;
@@ -18966,6 +18983,28 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const TEMPLATE_ASSET = /\/(demo|sample|dummy|stock|template|theme|assets\/img\/default)[-_\/]/i;
         // Squarespace, Wix and Shopify all serve builder placeholder sets from paths that say so.
         const BUILDER_STOCK = /(images\.squarespace-cdn\.com\/content\/[^/]*\/demo|static\.wixstatic\.com\/media\/[a-f0-9]{6}_[a-f0-9]{32}~mv2|cdn\.shopify\.com\/s\/files\/[^/]*\/placeholder|unsplash\.com|pexels\.com|pixabay\.com)/i;
+        // ══ ONE CHROME TEST, TWO CALLERS (2026-08-20) ══════════════════════════════════════
+        // The same seven conditions now judge an image found by the regex scan AND an image
+        // proposed by the model. Two copies of this would be the two-writers disease again -
+        // it has cost this codebase a calendar rewrite and a roster rewrite already.
+        const isChromeUrl = (url, alt) => {
+          const u = String(url || "");
+          const file = (u.split("?")[0].split("/").pop() || "");
+          // ══ THE SEPARATOR ATE THE WORD BOUNDARY (fixed 2026-08-20, before deploy) ════════
+          // `Nikkis_Tattoo_Studio_Instagram_Business_Page.png` PASSED the brand test, and it is
+          // one of the six files on her live listing right now. BRAND is `\b(instagram|...)\b`
+          // and in `_Instagram_` both neighbours are word characters, so there is no boundary
+          // and the match never fires. Underscores, plus signs and camelCase all hide the word.
+          // THE SAME CHARACTER that made /tattoo_portfolio invisible to the path rule.
+          // So the filename is normalised to spaces before the words are looked for. This adds
+          // no vocabulary and no new rule - it lets the rule we already have see its own word.
+          const words = file.replace(/[_+.\-]+/g, " ")
+                            .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+                            .replace(/%[0-9a-f]{2}/gi, " ");
+          const a = String(alt || "");
+          return CHROME.test(words) || CHROME.test(a) || BRAND.test(words) || isTiny(u)
+              || NOT_A_PHOTO.test(u) || TEMPLATE_ASSET.test(u) || BUILDER_STOCK.test(u);
+        };
         const linkedImg = new Map();
         for (const m of md.matchAll(/\[!\[([^\]]*)\]\(([^)\s]+)[^)]*\)\]\(([^)\s]+)\)/g)) {
           const u = m[2].replace(/[).,]+$/, "");
@@ -19038,8 +19077,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // template placeholders. Rebel showed a chair and a lamp. Skin showed a Google logo.
             // Same defect the roster had, one field over.
             page: pageOfIndex(m.index),
-            chrome: CHROME.test(file) || CHROME.test(alt) || BRAND.test(file) || isTiny(url)
-              || NOT_A_PHOTO.test(url) || TEMPLATE_ASSET.test(url) || BUILDER_STOCK.test(url) });
+            chrome: isChromeUrl(url, alt) });
         }
         // ══ THE ROSTER STANDARD, APPLIED TO IMAGES (2026-08-19) ═════════════════════════════
         // Same four steps, no new shapes:
@@ -19248,7 +19286,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // Carried OUT of the try so the reply can show it. If the images still come back wrong,
         // the next question is "which pages did it decide were person pages" - and that answer
         // has to be printable without another run.
-        let imageSecondPass = null, personPagesFromModel = [];
+        let imageSecondPass = null, personPagesFromModel = [], proposalUsed = null;
         let artists = [];
         try {
           const COMPARE = /\b(best|top\s*\d|vs\.?|versus|compared|guide to (choosing|finding)|near you)\b/i;
@@ -19549,6 +19587,82 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               rankImages(artists || []);
             }
           } catch (e) { imageSecondPass = String(e?.message ?? e).slice(0, 160); }
+          // ══ ONE WRITER FOR THE LISTING (2026-08-20) ════════════════════════════════════
+          // Grok: "Until that writer is one path, the next parlor will not display the same way.
+          // The data is not the bottleneck. Display is still the old brain."
+          //
+          // THE PROPOSAL WINS WHERE IT EXISTS. Not because a model is trustworthy - it is not -
+          // but because it passes TWO FILTERS THAT WERE ALREADY HERE AND WERE ALREADY THE
+          // STANDARD, and the path rule passes neither of them:
+          //   1. SELECT, NEVER INVENT. Every name and every image url must appear VERBATIM in
+          //      the text of the page it was proposed from. Measured across Inkus and Nikki's:
+          //      100 of 100 proposed image urls present. Zero invented.
+          //   2. CHROME IS STILL CHROME. The same isChromeUrl the regex scan uses. A logo, a
+          //      social glyph, a 50-pixel thumbnail and builder stock stay out however
+          //      confidently a model offers them.
+          // If a page proposes nothing, that page contributes nothing. Empty stays correct.
+          try {
+            const props = Array.isArray(res?.proposals) ? res.proposals : [];
+            if (props.length) {
+              const pageText = {};
+              for (const pg of kept_pages) pageText[String(pg.url || "")] = String(pg.body || "");
+              const wholeSite = md.toLowerCase();
+              // ── NAMES ────────────────────────────────────────────────────────────────────
+              const nameSeen = new Set(); const namesOk = []; const namesDropped = [];
+              for (const pr of props) {
+                const body = (pageText[pr.url] || "").toLowerCase();
+                for (const raw of (Array.isArray(pr.json.artists) ? pr.json.artists : [])) {
+                  const n = String(raw || "").trim();
+                  if (!n || n.length < 2 || n.length > 40) continue;
+                  const k = n.toLowerCase().replace(/[^a-z0-9]+/g, "");
+                  if (!k || nameSeen.has(k)) continue;
+                  // Its own page first, then anywhere on the site - a solo owner is named on
+                  // every page and the roster page is not always where she is introduced.
+                  if (!body.includes(n.toLowerCase()) && !wholeSite.includes(n.toLowerCase())) {
+                    namesDropped.push(n); continue;
+                  }
+                  nameSeen.add(k); namesOk.push(n);
+                }
+              }
+              // ── PICTURES ─────────────────────────────────────────────────────────────────
+              const urlSeen = new Set(); const picked = []; let cutChrome = 0, cutUnseen = 0;
+              for (const pr of props) {
+                const body = pageText[pr.url] || "";
+                // The page's own proposed artist becomes the section, so an artist's work still
+                // sits under their name on the listing - the reason the wrapping link was ever
+                // read instead of the nearest heading.
+                const who = (Array.isArray(pr.json.artists) && pr.json.artists.length === 1)
+                  ? String(pr.json.artists[0]).trim() : null;
+                for (const item of (Array.isArray(pr.json.work_images) ? pr.json.work_images : [])) {
+                  const u = String((item && typeof item === "object" ? item.url : item) || "").trim();
+                  if (!u || !/^https?:\/\//i.test(u) || urlSeen.has(u)) continue;
+                  const file = (u.split("?")[0].split("/").pop() || "");
+                  if (!body.includes(u) && !(file && body.includes(file))) { cutUnseen++; continue; }
+                  if (isChromeUrl(u, (item && item.alt) || "")) { cutChrome++; continue; }
+                  urlSeen.add(u);
+                  picked.push({ url: u, subject: who || null, from: "proposal",
+                                alt: (item && item.alt) || null, page: pr.url, file });
+                }
+              }
+              // Same caps as the scan: 12 per section so one artist cannot crowd out the roster,
+              // 60 overall so the row stays well inside the 24,000-character understanding cap.
+              const perSection = {}; const keptProp = [];
+              for (const i2 of picked) {
+                const k = i2.subject || "(unsectioned)";
+                perSection[k] = (perSection[k] || 0) + 1;
+                if (perSection[k] <= 12 && keptProp.length < 60) keptProp.push(i2);
+              }
+              proposalUsed = { pages: props.length, names: namesOk.length,
+                names_dropped: namesDropped.slice(0, 6),
+                images_proposed: picked.length + cutChrome + cutUnseen,
+                images_kept: keptProp.length,
+                cut_not_on_page: cutUnseen, cut_chrome: cutChrome,
+                sections: Object.keys(perSection).length };
+              if (namesOk.length) { artists = namesOk.slice(0, 20);
+                rosterNote = "named on the shop's own pages and verified present in that page's text"; }
+              if (keptProp.length) { kept = keptProp; bySection = perSection; }
+            }
+          } catch (e) { proposalUsed = { error: String(e?.message ?? e).slice(0, 160) }; }
           understanding = { artists, styles: styleHits, walk_ins: walkIns,
             consultations: consults, deposit_required: depositReq, piercing,
             booking_platforms: booking, booking_page: ownBooking[0] || null };
@@ -19581,6 +19695,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // skipped: 6` and LOST the FAQ. What matters is whether the fields came back, so that is
           // what gets reported next to them.
           crawl_verdict: crawlVerdict,
+          proposal: proposalUsed || undefined,
           resumed_parked_job: resumed ? row.crawl_job : undefined,
           scheme_retry: schemeRetry || undefined,
           unusable_records: res?.unusable_errors || undefined,
@@ -19893,6 +20008,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // then whatever the json-ish key holds.
             // Same discipline as CRAWL_PAGE: build the instrument, do not infer the input.
             record_keys: allRecs.length ? Object.keys(allRecs[0]) : [],
+            // ══ THE PROPOSAL, WHOLE, FOR A CALLER RATHER THAN A READER (2026-08-20) ═════════
+            // `json_sample` is trimmed to 900 characters a page so a human can read all of it in
+            // one reply. A page with forty tattoos does not fit in 900 characters, so a consumer
+            // reading json_sample would silently lose most of an artist's work - the same silent
+            // cut that made the first 60,000-char markdown cap look like the artists had no work.
+            // So the caller gets the untruncated set and the human gets the readable one.
+            proposals: allRecs
+              .filter(x => x && (x.json ?? x.extracted ?? x.data) != null)
+              .map(x => { const j = x.json ?? x.extracted ?? x.data;
+                let parsed = j;
+                if (typeof j === "string") { try { parsed = JSON.parse(j); } catch { parsed = null; } }
+                return { url: String(x.url || ""), json: parsed }; })
+              .filter(x => x.json && typeof x.json === "object"),
             json_pages: allRecs.filter(x => x && (x.json ?? x.extracted ?? x.data) != null).length,
             // ══ THE INSTRUMENT WAS CAPPED BELOW THE EVIDENCE (raised 2026-08-20) ═══════════
             // First cut printed the FIRST FOUR records. Inkus returned 27, and the four that

@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.81.0-2026-08-19-print-the-image-verdicts";
+const BUILD = "aura-core-v6.82.0-2026-08-20-one-definition-of-who-works-here";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -18981,10 +18981,29 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           if (bucket !== "work" && bucket !== "person_page") continue;
           for (const pg of pages) workPaths.add(String(pg.url || "").replace(/^https?:\/\/[^/]+/, "").replace(/\/$/, ""));
         }
-        const noWorkPage = workPaths.size === 0;
-        const isTheirWork = (i) => {
+        // ══ THE ROSTER CAME FROM THE MODEL, SO NOBODY WAS A PERSON (fixed 2026-08-20) ═══════
+        // MEASURED on Inkus Tattoos, Dalton GA: 452 images found, 440 survived every content
+        // rule, and ONE was stored - the homepage graphic. ~200 real tattoos on
+        // /meet-the-artist-mel, -joey and -rodney-1 were all cut.
+        //
+        // THE WIRE: `workPaths` reads `filed`, `filed` reads `personPaths`, and `personPaths` is
+        // built ONLY from `peopleClean` - the STRUCTURAL roster. Inkus's names came from the
+        // model (its roster page labels every link "Portfolio", so name-and-path could not agree
+        // and structure correctly refused it). So `peopleClean` was empty, nothing was filed
+        // `person_page`, `workPaths.size === 0`, `noWorkPage` flipped true, and the homepage
+        // became the only permitted source.
+        // TWO DEFINITIONS OF WHO WORKS HERE, AND THEY DISAGREED - the same disease as the two
+        // calendar writers. The roster rule and the image rule have to mean the same thing.
+        //
+        // NOT a new shape and NOT a re-file: `rosterPages`, `peopleClean` and `filed` are all
+        // untouched. The extra paths are unioned into `workPaths` on a SECOND call, exactly the
+        // pattern `rankImages` already uses - compute provisionally, recompute once the roster
+        // is known. An empty extra set produces byte-identical output to before.
+        const isTheirWork = (i, extra) => {
           const path = String(i.page || "").replace(/^https?:\/\/[^/]+/, "").replace(/\/$/, "");
+          const noWorkPage = workPaths.size === 0 && !(extra && extra.size);
           if (workPaths.has(path)) return true;
+          if (extra && extra.has(path)) return true;
           // ══ THE HOMEPAGE IS A LAST RESORT, NOT A SOURCE (2026-08-19) ═════════════════════
           // Some small shops genuinely put their only portfolio on the front page, so this stays.
           // But MEASURED: Copper Fox has no work page, so its homepage was allowed, and its
@@ -18996,7 +19015,26 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           if (noWorkPage && (path === "" || path === "/home")) return true;
           return false;
         };
-        const work = imgs.filter(i => !i.chrome && isTheirWork(i));
+        // ══ SQUARESPACE PUBLISHES EVERY GALLERY IMAGE TWICE (2026-08-20) ═══════════════════
+        // MEASURED on Inkus: Mel's portfolio lists IMG_2167 … IMG_2053 and then lists the same
+        // files again - the grid and the lightbox are both in the markdown. Without a dedupe the
+        // 60-slot budget and the 12-per-section cap fill with duplicates, so a fix that lets the
+        // portfolio through would still publish about half as many distinct tattoos as it found.
+        // Exact URL only. Two different files that happen to look alike are two images.
+        let work = [];
+        const applyWorkFilter = (extra) => {
+          const seenUrl = new Set();
+          work = [];
+          for (const i of imgs) {
+            if (i.chrome) continue;
+            if (!isTheirWork(i, extra)) continue;
+            const u = String(i.url || "");
+            if (!u || seenUrl.has(u)) continue;
+            seenUrl.add(u);
+            work.push(i);
+          }
+        };
+        applyWorkFilter(null);
         // Cap PER SECTION, not per shop - one artist with 200 pieces must not crowd out the rest of
         // the roster. Enough to build a real page; the full list is kept so more can be pulled later.
         // ══ THE MERCH DROP OUTRANKED THE TATTOOS (fixed 2026-08-16) ══════════════════════════
@@ -19131,6 +19169,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
         let understanding = null, aiError = null, aiRaw = null, aiWhy = null;
         let rosterNote = null, pageTypes = null, rosterSeen = null, artistsForRank = [];
+        // Carried OUT of the try so the reply can show it. If the images still come back wrong,
+        // the next question is "which pages did it decide were person pages" - and that answer
+        // has to be printable without another run.
+        let imageSecondPass = null, personPagesFromModel = [];
         let artists = [];
         try {
           const COMPARE = /\b(best|top\s*\d|vs\.?|versus|compared|guide to (choosing|finding)|near you)\b/i;
@@ -19364,6 +19406,73 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             }
             if (!artists.length && !aiWhy) rosterNote = "a roster-shaped page was read and named nobody usable";
           }
+          // ══ NOW THAT WE KNOW WHO THEY ARE, ASK THE IMAGES AGAIN (2026-08-20) ═══════════
+          // The image filter ran ~350 lines above this, before the model had answered, so on a
+          // model-roster shop it decided "whose work is this" while the answer was still empty.
+          // Everything below uses ONLY what the site already published and the crawler already
+          // fetched. No new URL is constructed, nothing is re-crawled, no page is re-filed.
+          //
+          // THE TEST, and it is the rule already in this file one field over - THE NAME AND THE
+          // PATH AGREE:
+          //   the link is on a page already identified as a roster
+          //   it points at this same host
+          //   that page is already in the crawl
+          //   the LAST path segment contains the published name as whole word-tokens
+          //
+          // GROK SPECIFIED "last segment slug EQUALS the name slug" and that is too tight for
+          // this site: Kinetic's /stephaniemarie equals, but Inkus's /meet-the-artist-mel does
+          // not. Plain `endsWith` is too loose - "enamel" ends with "mel". So the segment is
+          // split on non-alphanumerics and the name must equal a CONTIGUOUS RUN of those tokens:
+          //   meet-the-artist-mel -> [meet,the,artist,mel]  -> "mel"        MATCH
+          //   team/amanda-mas     -> [amanda,mas]           -> "amandamas"  MATCH
+          //   enamel              -> [enamel]                              NO MATCH
+          // Names under 3 characters are refused outright - too small to be evidence.
+          const extraPersonPaths = new Set();
+          try {
+            const nameSlugs = [...new Set((artists || []).map(n => slugOf(n)))].filter(x => x.length >= 3);
+            if (nameSlugs.length && rosterPages.length) {
+              const crawledPaths = new Set(kept_pages.map(pg =>
+                String(pg.url || "").replace(/^https?:\/\/[^/]+/, "").replace(/\/$/, "")));
+              const mineHost = (() => { try { return new URL(site).hostname.replace(/^www\./, ""); }
+                                        catch { return ""; } })();
+              const segHoldsName = (seg, slug) => {
+                const toks = String(seg).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+                for (let a = 0; a < toks.length; a++) {
+                  let acc = "";
+                  for (let b = a; b < toks.length; b++) {
+                    acc += toks[b];
+                    if (acc === slug) return true;
+                    if (acc.length > slug.length) break;
+                  }
+                }
+                return false;
+              };
+              for (const pg of rosterPages) {
+                let mm; linkRe.lastIndex = 0;
+                while ((mm = linkRe.exec(pg.body || ""))) {
+                  let path = String(mm[2] || "");
+                  if (/^https?:\/\//i.test(path)) {
+                    try {
+                      const u = new URL(path);
+                      if (!mineHost || u.hostname.replace(/^www\./, "") !== mineHost) continue;
+                      path = u.pathname;
+                    } catch { continue; }
+                  }
+                  path = path.split("?")[0].split("#")[0].replace(/\/$/, "");
+                  if (!path || path === "/") continue;
+                  if (!crawledPaths.has(path)) continue;          // never a page we did not fetch
+                  const last = path.split("/").pop() || "";
+                  if (!last) continue;
+                  if (nameSlugs.some(sl => segHoldsName(last, sl))) extraPersonPaths.add(path);
+                }
+              }
+            }
+            personPagesFromModel = [...extraPersonPaths];
+            if (extraPersonPaths.size) {
+              applyWorkFilter(extraPersonPaths);
+              rankImages(artists || []);
+            }
+          } catch (e) { imageSecondPass = String(e?.message ?? e).slice(0, 160); }
           understanding = { artists, styles: styleHits, walk_ins: walkIns,
             consultations: consults, deposit_required: depositReq, piercing,
             booking_platforms: booking, booking_page: ownBooking[0] || null };
@@ -19383,6 +19492,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // are redirects to the page already fetched. The http://www. URL returned `pages: 6,
           // skipped: 6` and LOST the FAQ. What matters is whether the fields came back, so that is
           // what gets reported next to them.
+          image_person_pages: personPagesFromModel.length ? personPagesFromModel : undefined,
+          image_second_pass_error: imageSecondPass || undefined,
           images: { found: imgs.length, chrome_filtered: imgs.length - work.length,
             kept: kept.length, sections: Object.keys(bySection).length,
             by_link: kept.filter(i => i.from === "link").length,
@@ -19486,7 +19597,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                   ? JSON.stringify({ ...(understanding || {}), booking_platforms: booking,
                       ics_feeds: icsFeeds, own_booking_urls: ownBooking,
                       deposit_mentioned: depositSaid,
-                      images: kept.map(i => ({ u: i.url, s: i.subject, src: i.from, a: i.alt })) }).slice(0, 24000)
+                      // `p` IS THE PAGE THE IMAGE CAME FROM (added 2026-08-20). It was attached to
+                      // every image at scan time and then dropped at the write, so the one field
+                      // that makes an image auditable never survived - a stored image could not
+                      // be traced to the page that justified it without re-reading the archive.
+                      // Sixty images at ~15 characters each; the 24,000 cap is nowhere near.
+                      // It is also the provenance the display pass will want when Aura decides
+                      // what to show.
+                      images: kept.map(i => ({ u: i.url, s: i.subject, src: i.from, a: i.alt,
+                                               p: i.page || null })) }).slice(0, 24000)
                   : null,
                 "crawl/" + row.id + "/" + new Date().toISOString().slice(0, 10) + ".md",
                 row.id).run();

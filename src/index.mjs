@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.84.0-2026-08-20-resume-the-parked-crawl";
+const BUILD = "aura-core-v6.85.0-2026-08-20-expose-the-tools-own-parameters";
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -19770,6 +19770,25 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // RENDER on the line above has always been stripped here; adding a second flag without the
       // matching strip is the whole bug. Any flag added later goes in this block too.
       srRaw = srRaw.replace(/(^|\s)LIMIT\s+\d{1,3}(\s|$)/i, " ").trim();
+      // ══ THE TOOL'S OWN PARAMETERS, EXPOSED RATHER THAN WORKED AROUND (2026-08-20) ═══════
+      // Cloudflare's documented defaults: depth 100,000 · limit 10 · render TRUE.
+      // We were sending depth 3, limit 12, render FALSE - and then built a "second pass" in
+      // CG_ENRICH to re-crawl the artist pages the depth cap had excluded. THE WORKAROUND
+      // EXISTED BECAUSE OF A CAP WE SET OURSELVES.
+      // Nothing here interprets a page. These are the endpoint's own knobs, passed through.
+      //   SITE_READ JSON DEPTH 5 LIMIT 30 <url>
+      const srDepthM = srRaw.match(/(^|\s)DEPTH\s+(\d{1,3})(\s|$)/i);
+      const srDepth = srDepthM ? Math.min(100, Math.max(1, parseInt(srDepthM[2], 10))) : 3;
+      srRaw = srRaw.replace(/(^|\s)DEPTH\s+\d{1,3}(\s|$)/i, " ").trim();
+      // ══ JSON IS A PROPOSAL, NOT A LISTING (Grok's line, and it is the guard) ═══════════
+      // `formats: ["json"]` runs Workers AI per page against a schema. Cloudflare's own docs
+      // say it can return null or empty and tell you to tighten the prompt. So a wrong answer
+      // here LOOKS LIKE A FACT, which is worse than a wrong regex, not better.
+      // It is therefore requested ALONGSIDE markdown, never instead of it: markdown stays the
+      // archive and the evidence, json is a claim to be checked against it. Nothing in this
+      // command writes anything - it prints.
+      const srJson = /(^|\s)JSON(\s|$)/i.test(srRaw);
+      srRaw = srRaw.replace(/(^|\s)JSON(\s|$)/i, " ").trim();
       const base = "https://api.cloudflare.com/client/v4/accounts/" + srAcct + "/browser-rendering/crawl";
       try {
         if (/^STATUS\s+/i.test(srRaw)) {
@@ -19867,6 +19886,21 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // Zero usable pages with error records present means UNREACHABLE, not empty. The
             // caller needs those apart, because they are different facts about the business.
             unusable_errors: errorRecs.length,
+            // ══ PRINT WHAT THE PROPOSAL ACTUALLY SAID (2026-08-20) ══════════════════════════
+            // The docs show a record with `markdown` and `metadata`; they do not show the field
+            // name used for the json format. Rather than guess it and report a confident null,
+            // this prints the KEYS PRESENT on the first record so the shape is visible once, and
+            // then whatever the json-ish key holds.
+            // Same discipline as CRAWL_PAGE: build the instrument, do not infer the input.
+            record_keys: allRecs.length ? Object.keys(allRecs[0]) : [],
+            json_pages: allRecs.filter(x => x && (x.json ?? x.extracted ?? x.data) != null).length,
+            json_sample: allRecs
+              .filter(x => x && (x.json ?? x.extracted ?? x.data) != null)
+              .slice(0, 4)
+              .map(x => { const j = x.json ?? x.extracted ?? x.data;
+                return { url: String(x.url || "").slice(0, 90),
+                         proposal: typeof j === "string" ? j.slice(0, 1500)
+                                 : JSON.stringify(j).slice(0, 1500) }; }),
             unusable_sample: errorRecs.slice(0, 3).map(x => ({
               url: String(x?.url || "").slice(0, 90),
               said: String(x?.markdown || x?.error || "").trim().slice(0, 60) || null })),
@@ -19884,9 +19918,41 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           body: JSON.stringify({
             url: srRaw,
             limit: srLimit,
-            depth: 3,
-            formats: ["markdown"],
-            render: srRender,                // false unless asked - free during beta, no browser time
+            depth: srDepth,
+            formats: srJson ? ["markdown", "json"] : ["markdown"],
+            // JSON extraction needs the rendered DOM to be worth asking about, so JSON implies
+            // RENDER. Otherwise unchanged: false by default, free during the beta.
+            render: srJson ? true : srRender,
+            ...(srJson ? {
+              // Only meaningful with render:true. `networkidle2` waits for the page to stop
+              // fetching, which is how a gallery that builds in the browser becomes visible.
+              gotoOptions: { waitUntil: "networkidle2", timeout: 60000 },
+              maxAge: 86400,
+              jsonOptions: {
+                prompt: "You are reading one page of a tattoo shop's own website. " +
+                  "Extract ONLY what is literally visible on this page. Never infer, never " +
+                  "invent, never complete a partial list. If something is not on this page, " +
+                  "omit it - an empty array is a correct and common answer. " +
+                  "artists: people who tattoo AT THIS SHOP, never a business, street or button. " +
+                  "work_images: photographs of finished tattoos on skin. NOT logos, icons, " +
+                  "social media glyphs, navigation arrows, stock photography or staff portraits. " +
+                  "Every url must appear on this page exactly as written.",
+                response_format: {
+                  type: "json_schema",
+                  json_schema: {
+                    name: "shop_page",
+                    properties: {
+                      artists: "string[]",
+                      work_images: "object[]",
+                      hours: "string",
+                      booking: "string",
+                      phones: "string[]",
+                      emails: "string[]"
+                    }
+                  }
+                }
+              }
+            } : {}),
             source: "all",                   // starting page, then sitemap, then links
             crawlPurposes: ["search", "ai-input"],   // NOT ai-train. We do not train on their site.
             // ══ DO NOT SPEND THE PAGE BUDGET IN THEIR GIFT SHOP (2026-08-16) ══════════════════
@@ -19936,7 +20002,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           hint: "A 400 with 'Crawl purpose(s) completely disallowed' means the site's robots.txt refuses " +
             "even search and ai-input. That is their answer and it is respected." } };
         return { cmd: "SITE_READ", payload: { ok: true, started: true, id: d.result, url: srRaw,
-          render: srRender, limit: srLimit,
+          render: srJson ? true : srRender, limit: srLimit, depth: srDepth,
+          formats: srJson ? ["markdown", "json"] : ["markdown"],
           note: "Crawl started. It discovers the sitemap and follows links, returns markdown per page, " +
             "and respects robots.txt and crawl-delay." + (srRender ? " RENDER on - this uses browser time." : " render:false - runs on Workers, not billed during beta."),
           watch: "SITE_READ STATUS " + d.result } };

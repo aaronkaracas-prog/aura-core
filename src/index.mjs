@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.97.0-2026-08-20-model-from-kv-prompt-stripped";
+const BUILD = "aura-core-v6.98.0-2026-08-20-the-card";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -90,6 +90,36 @@ const BUILD = "aura-core-v6.97.0-2026-08-20-model-from-kv-prompt-stripped";
 //      instead of the object the schema describes.
 // Neither is a reason to throw the page away. A repaired proposal is NOT trusted more than a
 // clean one: the evidence and chrome guards run on it exactly the same.
+// ══ THE CHROME TEST, HOISTED SO THERE IS ONE OF IT (2026-08-20) ═════════════════════════════
+// It lived inside CG_ENRICH with its six regexes. The card needs the same judgement, and a second
+// copy is the two-writers disease that has already cost this codebase a calendar rewrite, a roster
+// rewrite and eight reader/writer disagreements in one day. Moved verbatim - not rewritten.
+const TINY = /[?&/](?:w|width)[_=](\d{1,3})(?:[,&/]|$)/i;
+const isTiny = (u) => { const m = u.match(TINY); return !!(m && parseInt(m[1], 10) < 200); };
+const BRAND = /\b(instagram|facebook|twitter|tiktok|youtube|yelp|google[%\s_-]*places|google[%\s_-]*maps|pinterest|snapchat|linkedin|whatsapp|tripadvisor)\b/i;
+const CHROME = /logo|icon|sprite|favicon|badge|banner|arrow|button|placeholder|avatar-default|spacer/i;
+const NOT_A_PHOTO = /\.svg(\?|$)|^data:|\.ico(\?|$)|\.gif(\?|$)/i;
+const TEMPLATE_ASSET = /\/(demo|sample|dummy|stock|template|theme|assets\/img\/default)[-_\/]/i;
+const BUILDER_STOCK = /(images\.squarespace-cdn\.com\/content\/[^/]*\/demo|static\.wixstatic\.com\/media\/[a-f0-9]{6}_[a-f0-9]{32}~mv2|cdn\.shopify\.com\/s\/files\/[^/]*\/placeholder|unsplash\.com|pexels\.com|pixabay\.com)/i;
+const isChromeUrl = (url, alt) => {
+  const u = String(url || "");
+  const file = (u.split("?")[0].split("/").pop() || "");
+  // ══ THE SEPARATOR ATE THE WORD BOUNDARY (fixed 2026-08-20, before deploy) ════════
+  // `Nikkis_Tattoo_Studio_Instagram_Business_Page.png` PASSED the brand test, and it is
+  // one of the six files on her live listing right now. BRAND is `\b(instagram|...)\b`
+  // and in `_Instagram_` both neighbours are word characters, so there is no boundary
+  // and the match never fires. Underscores, plus signs and camelCase all hide the word.
+  // THE SAME CHARACTER that made /tattoo_portfolio invisible to the path rule.
+  // So the filename is normalised to spaces before the words are looked for. This adds
+  // no vocabulary and no new rule - it lets the rule we already have see its own word.
+  const words = file.replace(/[_+.\-]+/g, " ")
+                    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+                    .replace(/%[0-9a-f]{2}/gi, " ");
+  const a = String(alt || "");
+  return CHROME.test(words) || CHROME.test(a) || BRAND.test(words) || isTiny(u)
+      || NOT_A_PHOTO.test(u) || TEMPLATE_ASSET.test(u) || BUILDER_STOCK.test(u);
+};
+
 function repairJson(text) {
   let t = String(text || "").trim()
     .replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
@@ -16430,6 +16460,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // compare two, and a silent failure the week it is withdrawn.
       //   SITE_READING <cg_id> [MODEL @cf/...]
       let srdRaw = String(rest || "").trim();
+      // WRITE turns the read into the writer. Same code path, one writer - a second command
+      // would mean two programs deciding what goes on a page, which is the disease this whole
+      // day has been about. Without it nothing is written, exactly as before.
+      const srdWrite = /(^|\s)WRITE(\s|$)/i.test(srdRaw);
+      srdRaw = srdRaw.replace(/(^|\s)WRITE(\s|$)/i, " ").trim();
       const srdModelM = srdRaw.match(/(^|\s)MODEL\s+(\S+)/i);
       // ══ THE POLICY SAID NEURONS FIRST, THEN GROK. NEURONS ARE NOW MEASURED ════════════
       // FOUR passes on Workers AI, same task, failing the same way each time: the 70B echoes the
@@ -16616,7 +16651,74 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const peopleReport = (Array.isArray(out?.people) ? out.people : []).map(n => ({
           name: String(n), on_site: lowerDoc.includes(String(n).toLowerCase()) }));
 
+        // ══ THE CARD (2026-08-20) ═══════════════════════════════════════════════════════
+        // Four mechanical steps on top of her map. No vocabulary, no path list, nothing that
+        // knows what a tattoo is - so it works the same on a bakery.
+        //   1. MERGE BY NAME. Grok's answer returns Mel twice (35 images, then 2) and Rodney
+        //      twice. Two chips for one person, and two separate grabs of four.
+        //   2. DROP A SECTION WHOSE PAGES ALL CARRY ONE IMAGE OR NONE. Grok wanted "drop
+        //      anything under /body-art" and "skip /flash_for_sale" - those are one shop's
+        //      paths each. This covers both without naming either: a video stub and a merch
+        //      page both fail it, on any site.
+        //   3. FOUR EVIDENCED IMAGES PER SECTION, BIGGEST PAGE FIRST. Aaron: "4 from each
+        //      artist that were good images... less is better than wrong."
+        //   4. The two guards that already exist: the URL must be on that page, chrome cuts.
+        // JENNIFER STAYS. She is a piercer, not a tattooer, and Grok argued for dropping her
+        // by keyword. Aaron: "she's part of the business she stays." A list that drops
+        // "piercer" drops the apprentice and the receptionist next. ZERO vocabulary here.
+        const byName = {};
+        for (const sec of secReport) {
+          const k = String(sec.name || "").trim().toLowerCase();
+          if (!k) continue;
+          if (!byName[k]) byName[k] = { name: String(sec.name).trim(), pages: [] };
+          for (const pth of sec.pages) if (!byName[k].pages.includes(pth)) byName[k].pages.push(pth);
+        }
+        const imgsOn = (pth) => ((pages.find(p3 => p3.path === pth) || {}).images || 0);
+        const cardSections = Object.values(byName)
+          .map(sec => ({ name: sec.name,
+                         pages: [...sec.pages].sort((a, b) => imgsOn(b) - imgsOn(a)) }))
+          .filter(sec => sec.pages.some(pth => imgsOn(pth) > 1));
+
+        const bodyOf = {};
+        for (const pt of parts) bodyOf[String(pt.url).replace(/^https?:\/\/[^/]+/, "") || "/"] = pt.body;
+        const seenUrl = new Set();
+        const card = cardSections.map(sec => {
+          const picked = [];
+          for (const pth of sec.pages) {
+            if (picked.length >= 4) break;
+            for (const mm of String(bodyOf[pth] || "").matchAll(IMG_RE)) {
+              if (picked.length >= 4) break;
+              const u = mm[0];
+              if (seenUrl.has(u) || isChromeUrl(u, "")) continue;
+              seenUrl.add(u);
+              picked.push({ u, p: pth });
+            }
+          }
+          return { name: sec.name, images: picked };
+        }).filter(sec => sec.images.length);
+
+        let wrote = null;
+        if (srdWrite && card.length) {
+          try {
+            const prev = await env.AURA_MEMORY.prepare(
+              "SELECT understanding FROM cg_business WHERE id = ? LIMIT 1").bind(srdId).first();
+            let u0 = {}; try { u0 = JSON.parse(prev?.understanding || "{}") || {}; } catch {}
+            // Only what the card owns is replaced. Styles, booking, hours and everything else
+            // the crawl learned stay exactly as they were.
+            u0.artists = card.map(c => c.name).slice(0, 20);
+            u0.images = card.flatMap(c => c.images.map(i => ({ u: i.u, s: c.name,
+                                                               src: "card", a: null, p: i.p })));
+            u0.sections = card.map(c => ({ name: c.name, images: c.images.length }));
+            await env.AURA_MEMORY.prepare(
+              "UPDATE cg_business SET understanding = ? WHERE id = ?")
+              .bind(JSON.stringify(u0).slice(0, 24000), srdId).run();
+            wrote = { artists: u0.artists, images: u0.images.length, sections: u0.sections };
+          } catch (e) { wrote = { error: String(e?.message ?? e).slice(0, 200) }; }
+        }
+
         return { cmd: "SITE_READING", payload: { ok: true, business: row.name, id: srdId,
+          card, wrote: wrote || undefined,
+          written: srdWrite ? undefined : "read-only - add WRITE to publish this card",
           // What the ROUTER actually used, not what was asked for - a pin that silently
           // falls back to policy is exactly the kind of thing that goes unnoticed for days.
           model: brainModel || srdModel, model_asked: srdModel || "(from KV)",
@@ -19346,10 +19448,6 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // Nobody displays a tattoo at 34 pixels. That is structural, works on Wix, Squarespace,
         // Zyro and any CDN that resizes by query, and needs no list of brand names.
         // The brand words are kept as a second signal for CDNs that do not size in the URL.
-        const TINY = /[?&/](?:w|width)[_=](\d{1,3})(?:[,&/]|$)/i;
-        const isTiny = (u) => { const m = u.match(TINY); return !!(m && parseInt(m[1], 10) < 200); };
-        const BRAND = /\b(instagram|facebook|twitter|tiktok|youtube|yelp|google[%\s_-]*places|google[%\s_-]*maps|pinterest|snapchat|linkedin|whatsapp|tripadvisor)\b/i;
-        const CHROME = /logo|icon|sprite|favicon|badge|banner|arrow|button|placeholder|avatar-default|spacer/i;
         // ══ THE CHROME CUT — GROK'S STEP A (2026-08-19) ═══════════════════════════════════════
         // MEASURED on the live listings: Skin Illustration published a Google "G", tattoo-machine
         // CLIPART and two more line drawings under "their work". Copper Fox published a porcelain
@@ -19358,32 +19456,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // both photographs, and no filename rule separates them. That is step D's problem, not this.
         //   NOT A PHOTO AT ALL: .svg is a drawing, a data: URI is inline artwork, a .ico is an icon.
         //   TEMPLATE FURNITURE: site builders ship demo images on recognisable CDN paths.
-        const NOT_A_PHOTO = /\.svg(\?|$)|^data:|\.ico(\?|$)|\.gif(\?|$)/i;
-        const TEMPLATE_ASSET = /\/(demo|sample|dummy|stock|template|theme|assets\/img\/default)[-_\/]/i;
         // Squarespace, Wix and Shopify all serve builder placeholder sets from paths that say so.
-        const BUILDER_STOCK = /(images\.squarespace-cdn\.com\/content\/[^/]*\/demo|static\.wixstatic\.com\/media\/[a-f0-9]{6}_[a-f0-9]{32}~mv2|cdn\.shopify\.com\/s\/files\/[^/]*\/placeholder|unsplash\.com|pexels\.com|pixabay\.com)/i;
         // ══ ONE CHROME TEST, TWO CALLERS (2026-08-20) ══════════════════════════════════════
         // The same seven conditions now judge an image found by the regex scan AND an image
         // proposed by the model. Two copies of this would be the two-writers disease again -
         // it has cost this codebase a calendar rewrite and a roster rewrite already.
-        const isChromeUrl = (url, alt) => {
-          const u = String(url || "");
-          const file = (u.split("?")[0].split("/").pop() || "");
-          // ══ THE SEPARATOR ATE THE WORD BOUNDARY (fixed 2026-08-20, before deploy) ════════
-          // `Nikkis_Tattoo_Studio_Instagram_Business_Page.png` PASSED the brand test, and it is
-          // one of the six files on her live listing right now. BRAND is `\b(instagram|...)\b`
-          // and in `_Instagram_` both neighbours are word characters, so there is no boundary
-          // and the match never fires. Underscores, plus signs and camelCase all hide the word.
-          // THE SAME CHARACTER that made /tattoo_portfolio invisible to the path rule.
-          // So the filename is normalised to spaces before the words are looked for. This adds
-          // no vocabulary and no new rule - it lets the rule we already have see its own word.
-          const words = file.replace(/[_+.\-]+/g, " ")
-                            .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-                            .replace(/%[0-9a-f]{2}/gi, " ");
-          const a = String(alt || "");
-          return CHROME.test(words) || CHROME.test(a) || BRAND.test(words) || isTiny(u)
-              || NOT_A_PHOTO.test(u) || TEMPLATE_ASSET.test(u) || BUILDER_STOCK.test(u);
-        };
         const linkedImg = new Map();
         for (const m of md.matchAll(/\[!\[([^\]]*)\]\(([^)\s]+)[^)]*\)\]\(([^)\s]+)\)/g)) {
           const u = m[2].replace(/[).,]+$/, "");

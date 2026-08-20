@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.98.0-2026-08-20-the-card";
+const BUILD = "aura-core-v6.99.0-2026-08-20-she-picks-the-pictures";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -16681,21 +16681,75 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
         const bodyOf = {};
         for (const pt of parts) bodyOf[String(pt.url).replace(/^https?:\/\/[^/]+/, "") || "/"] = pt.body;
-        const seenUrl = new Set();
-        const card = cardSections.map(sec => {
-          const picked = [];
-          for (const pth of sec.pages) {
-            if (picked.length >= 4) break;
-            for (const mm of String(bodyOf[pth] || "").matchAll(IMG_RE)) {
-              if (picked.length >= 4) break;
-              const u = mm[0];
-              if (seenUrl.has(u) || isChromeUrl(u, "")) continue;
-              seenUrl.add(u);
-              picked.push({ u, p: pth });
-            }
+        // ══ ASK HER WHICH PICTURES ARE THE WORK (fixed 2026-08-20) ══════════════════════
+        // The first card GREPPED every image url off the chosen pages and filtered on chrome
+        // alone. That is a regex deciding what a picture is - the exact thing this whole day
+        // removed - and it put `fb_32x32.png` and LinkedIn back on a real business's page,
+        // because the tiny test reads CDN widths (`w_32`) and not `32x32` in a filename.
+        // SHE ALREADY ANSWERS THIS QUESTION WELL: the per-page crawl json returned 87 work
+        // images on Nikki's and 13 on Inkus, every one present in the page text, none invented.
+        // The card threw that away. So the card asks it the same way, off the same markdown -
+        // one call for the whole shop, reading each chosen page's own text, where the alt text,
+        // the heading above the image and the surrounding words are what make a filename
+        // meaningful. A filename alone cannot tell a tattoo from a shopfront.
+        const cardInput = cardSections.slice(0, 6).map(sec => {
+          const top = sec.pages.slice(0, 2);
+          return { name: sec.name,
+                   text: top.map(pth => "### PAGE " + pth + "\n" +
+                          String(bodyOf[pth] || "").slice(0, 6000)).join("\n\n") };
+        });
+        let card = [], cardWhy = null;
+        try {
+          const cr = await callBrain({
+            system:
+              "You are choosing the few photographs that will represent a business on a public " +
+              "page about them. They have not paid us or agreed to anything, and something wrong " +
+              "costs them more than showing less.\n\n" +
+              "Below are sections of their own website, each with the text of its pages.\n\n" +
+              'Return ONLY JSON: {"sections":[{"name":"","images":["url", ...]}]}\n\n' +
+              "For each section, choose up to 4 image URLs that are EXAMPLES OF THE WORK THIS " +
+              "BUSINESS DOES - the thing a customer is paying for and would want to see.\n" +
+              "Not their logo, not social media icons, not navigation, not buttons, not " +
+              "promotional graphics with words across them, not the shopfront, not a price list.\n" +
+              "Choose the best of what is there. Fewer than 4 is fine. An empty list is fine.\n" +
+              "Every URL must be copied EXACTLY from the text above. Never invent one.",
+            user: cardInput.map(c => "## SECTION: " + c.name + "\n" + c.text).join("\n\n"),
+            max_tokens: 1200 }, env);
+          if (!cr?.ok) { cardWhy = cr?.error || "card call failed"; }
+          else {
+            let cj = cr.text;
+            if (typeof cj === "string") { try { cj = JSON.parse(cj); } catch { cj = repairJson(cj); } }
+            cj = unwrapSchema(cj);
+            const asked = Array.isArray(cj?.sections) ? cj.sections : [];
+            const seenUrl = new Set();
+            card = asked.map(sec => {
+              const mine = cardSections.find(x =>
+                String(x.name).toLowerCase() === String(sec?.name || "").toLowerCase());
+              if (!mine) return null;
+              // SAME GUARD AS EVERYWHERE ELSE: the url must be present, whole, in the text of a
+              // page in THIS section. Not a prefix, not a near miss, not invented.
+              const onPages = {};
+              for (const pth of mine.pages)
+                for (const mm of String(bodyOf[pth] || "").matchAll(IMG_RE))
+                  if (!(mm[0] in onPages)) onPages[mm[0]] = pth;
+              const picked = [];
+              for (const raw of (Array.isArray(sec?.images) ? sec.images : [])) {
+                if (picked.length >= 4) break;
+                const u = String(raw || "").trim();
+                if (!u || seenUrl.has(u)) continue;
+                let hit = onPages[u] ? u : Object.keys(onPages)
+                  .find(k => k.split("?")[0] === u.split("?")[0]);
+                if (!hit) continue;                       // not on the page - dropped
+                if (isChromeUrl(hit, "")) continue;       // chrome is still chrome
+                seenUrl.add(u);
+                picked.push({ u: hit, p: onPages[hit] });
+              }
+              return picked.length ? { name: mine.name, images: picked } : null;
+            }).filter(Boolean);
+            cardWhy = { model: cr.model, provider: cr.provider, usage: cr.usage,
+                        sections_offered: cardInput.length, sections_returned: asked.length };
           }
-          return { name: sec.name, images: picked };
-        }).filter(sec => sec.images.length);
+        } catch (e) { cardWhy = String(e?.message ?? e).slice(0, 200); }
 
         let wrote = null;
         if (srdWrite && card.length) {
@@ -16705,7 +16759,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             let u0 = {}; try { u0 = JSON.parse(prev?.understanding || "{}") || {}; } catch {}
             // Only what the card owns is replaced. Styles, booking, hours and everything else
             // the crawl learned stay exactly as they were.
-            u0.artists = card.map(c => c.name).slice(0, 20);
+            // ARTIST CHIPS ARE PEOPLE, NOT SECTION NAMES. The first card wrote section names
+            // into `artists`, so Inkus showed a chip reading "Piercing Portfolio" and Nikki's
+            // showed "Tattoos / Permanent Makeup / Microneedling" - her SERVICES listed as
+            // people. Right for a shop whose sections happen to be people, nonsense for a solo
+            // owner. `people` is the verified list; use it.
+            u0.artists = peopleReport.filter(x => x.on_site).map(x => x.name).slice(0, 20);
             u0.images = card.flatMap(c => c.images.map(i => ({ u: i.u, s: c.name,
                                                                src: "card", a: null, p: i.p })));
             u0.sections = card.map(c => ({ name: c.name, images: c.images.length }));
@@ -16717,7 +16776,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         }
 
         return { cmd: "SITE_READING", payload: { ok: true, business: row.name, id: srdId,
-          card, wrote: wrote || undefined,
+          card, card_why: cardWhy || undefined, wrote: wrote || undefined,
           written: srdWrite ? undefined : "read-only - add WRITE to publish this card",
           // What the ROUTER actually used, not what was asked for - a pin that silently
           // falls back to policy is exactly the kind of thing that goes unnoticed for days.

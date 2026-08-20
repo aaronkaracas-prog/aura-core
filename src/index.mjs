@@ -73,7 +73,84 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.87.0-2026-08-20-one-writer-for-the-listing";
+const BUILD = "aura-core-v6.88.0-2026-08-20-repair-the-proposal";
+// ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
+// The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
+// roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
+// the two-writers disease has already cost this codebase a calendar rewrite and a roster rewrite.
+// STILL OWED: point those three at this. Not in this pass - unrelated blast radius.
+//
+// WHY IT IS NEEDED HERE. MEASURED on Nikki's: `json_pages: 30` (a json field came back on every
+// page) against `proposal.pages: 11` (JSON.parse succeeded on eleven). NINETEEN PROPOSALS WERE
+// SILENTLY DROPPED, and they were the pages with the sleeves and the colour work. The three that
+// survived were short explainer pages. That is the entire 3-vs-87 gap - not a new kind of shop.
+// Two failure shapes, both from the model rather than the transport:
+//   1. TRUNCATED - a long list of image urls cut mid-array.
+//   2. THE SCHEMA WRAPPER - it echoes {type:"json_schema", json_schema:{properties:{...}}}
+//      instead of the object the schema describes.
+// Neither is a reason to throw the page away. A repaired proposal is NOT trusted more than a
+// clean one: the evidence and chrome guards run on it exactly the same.
+function repairJson(text) {
+  let t = String(text || "").trim()
+    .replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+  const first = t.search(/[{[]/);
+  if (first > 0) t = t.slice(first);
+  try { return JSON.parse(t); } catch {}
+  // ══ CLOSE IN THE ORDER THEY OPENED (fixed 2026-08-20, caught in test) ═══════════════════
+  // The inline copies count braces and brackets separately and append all `]` then all `}`.
+  // A list truncated mid-object needs `}` FIRST: `[{"url":"htt` closes as `"}]`, not `"]}`.
+  // Counting cannot know the order; a stack does. This is the shape that actually occurs -
+  // a long array of image urls cut off partway through one of its objects.
+  try {
+    let r = t;
+    const stack = [];
+    let inStr = false, esc = false;
+    for (const ch of r) {
+      if (esc) { esc = false; continue; }
+      if (ch === "\\") { esc = true; continue; }
+      if (ch === '"') { inStr = !inStr; continue; }
+      if (inStr) continue;
+      if (ch === "{" || ch === "[") stack.push(ch);
+      else if (ch === "}" || ch === "]") stack.pop();
+    }
+    if (inStr) r += '"';                        // close a dangling string
+    r = r.replace(/,\s*$/, "");                 // drop a trailing comma
+    // A truncated key with no value cannot be closed into valid JSON, in either of the two
+    // shapes it arrives in: `...},{"url":` (a new object started) and `..."url":` (mid-object).
+    // The stack is rebuilt after the trim, because dropping `{` changes what is still open.
+    r = r.replace(/,\s*\{?\s*"[^"]*"\s*:\s*$/, "");
+    r = r.replace(/\{\s*$/, "");
+    r = r.replace(/,\s*$/, "");
+    { const st2 = []; let q = false, e2 = false;
+      for (const ch of r) {
+        if (e2) { e2 = false; continue; }
+        if (ch === "\\") { e2 = true; continue; }
+        if (ch === '"') { q = !q; continue; }
+        if (q) continue;
+        if (ch === "{" || ch === "[") st2.push(ch);
+        else if (ch === "}" || ch === "]") st2.pop();
+      }
+      stack.length = 0; for (const c of st2) stack.push(c);
+      if (q) r += '"';
+    }
+    while (stack.length) r += (stack.pop() === "{" ? "}" : "]");
+    return JSON.parse(r);
+  } catch {}
+  return null;
+}
+// A model handed a json_schema will sometimes hand it back. If the only useful object is nested
+// under the schema envelope, that envelope is unwrapped rather than the page being discarded.
+function unwrapSchema(o) {
+  if (!o || typeof o !== "object") return o;
+  if (o.json_schema && typeof o.json_schema === "object") {
+    const inner = o.json_schema.properties || o.json_schema;
+    if (inner && typeof inner === "object") return inner;
+  }
+  if (o.properties && typeof o.properties === "object" && !Array.isArray(o.properties)
+      && (o.type === "json_schema" || o.type === "object")) return o.properties;
+  return o;
+}
+
 const AURA_WORKERS = ["aura-think", "aura-ops", "aura-comms", "aura-host", "aura-media", "aura-stream"];
 
 // ══ ONE WAY TO FIND THE BUILD LINE ── NINE PLACES LOOKED FOR A STRING THAT MOVED ═══════════════
@@ -19602,7 +19679,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           //      confidently a model offers them.
           // If a page proposes nothing, that page contributes nothing. Empty stays correct.
           try {
-            const props = Array.isArray(res?.proposals) ? res.proposals : [];
+            const props = (Array.isArray(res?.proposals) ? res.proposals : [])
+              .filter(x => x && x.json && typeof x.json === "object");
             if (props.length) {
               const pageText = {};
               for (const pg of kept_pages) pageText[String(pg.url || "")] = String(pg.body || "");
@@ -19646,6 +19724,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               }
               // Same caps as the scan: 12 per section so one artist cannot crowd out the roster,
               // 60 overall so the row stays well inside the 24,000-character understanding cap.
+              // ══ SELECT, DO NOT DUMP (2026-08-20) ══════════════════════════════════════
+              // After repair a shop offers far more than 60 images, so the 60 that survive have
+              // to be the right ones. Two orderings, both from what the SITE said, not from a
+              // vocabulary: a page that published a whole portfolio outranks a page carrying one
+              // illustrative photo, and a file the site itself named `thumbnail_*` is by its own
+              // admission a small stand-in - kept, but last.
+              const perPageCount = {};
+              for (const i2 of picked) perPageCount[i2.page] = (perPageCount[i2.page] || 0) + 1;
+              const isThumb = (f) => /^thumbnail[-_.]/i.test(String(f || ""));
+              picked.sort((a, b) => (isThumb(a.file) ? 1 : 0) - (isThumb(b.file) ? 1 : 0)
+                                 || (perPageCount[b.page] || 0) - (perPageCount[a.page] || 0));
               const perSection = {}; const keptProp = [];
               for (const i2 of picked) {
                 const k = i2.subject || "(unsectioned)";
@@ -19653,12 +19742,26 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 if (perSection[k] <= 12 && keptProp.length < 60) keptProp.push(i2);
               }
               proposalUsed = { pages: props.length, names: namesOk.length,
+                parse_log: res?.parse_log || undefined,
                 names_dropped: namesDropped.slice(0, 6),
                 images_proposed: picked.length + cutChrome + cutUnseen,
                 images_kept: keptProp.length,
                 cut_not_on_page: cutUnseen, cut_chrome: cutChrome,
                 sections: Object.keys(perSection).length };
-              if (namesOk.length) { artists = namesOk.slice(0, 20);
+              // ══ ONE PERSON, ONE CHIP (2026-08-20) ═════════════════════════════════════
+              // The listing showed "Nikki" and "Nikki Thompson" as two artists. Dedupe was by
+              // exact slug, so a short form and a full name are two people to it. A solo owner
+              // is introduced both ways across her own site, so this is the common case, not
+              // an edge one. Keep the LONGER form when one is contained in the other.
+              const collapsed = namesOk.filter(n => {
+                const k = n.toLowerCase().replace(/[^a-z0-9]+/g, "");
+                return !namesOk.some(other => {
+                  if (other === n) return false;
+                  const ok2 = other.toLowerCase().replace(/[^a-z0-9]+/g, "");
+                  return ok2.length > k.length && (ok2.startsWith(k) || ok2.endsWith(k));
+                });
+              });
+              if (collapsed.length) { artists = collapsed.slice(0, 20);
                 rosterNote = "named on the shop's own pages and verified present in that page's text"; }
               if (keptProp.length) { kept = keptProp; bySection = perSection; }
             }
@@ -20014,14 +20117,49 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // reading json_sample would silently lose most of an artist's work - the same silent
             // cut that made the first 60,000-char markdown cap look like the artists had no work.
             // So the caller gets the untruncated set and the human gets the readable one.
-            proposals: allRecs
-              .filter(x => x && (x.json ?? x.extracted ?? x.data) != null)
-              .map(x => { const j = x.json ?? x.extracted ?? x.data;
-                let parsed = j;
-                if (typeof j === "string") { try { parsed = JSON.parse(j); } catch { parsed = null; } }
-                return { url: String(x.url || ""), json: parsed }; })
-              .filter(x => x.json && typeof x.json === "object"),
+            // Parse, then REPAIR, then UNWRAP - and say per page which of those happened, because
+            // "19 pages vanished" was invisible until the two counts were put side by side.
+            proposals: (() => {
+              const out = [];
+              for (const x of allRecs) {
+                const j = x && (x.json ?? x.extracted ?? x.data);
+                if (j == null) continue;
+                const url = String(x.url || "");
+                let o = null, how = "parsed";
+                if (typeof j === "object") o = j;
+                else { try { o = JSON.parse(String(j)); }
+                       catch { o = repairJson(j); how = o ? "repaired" : "still_dead"; } }
+                if (!o || typeof o !== "object") {
+                  out.push({ url, json: null, how: "still_dead",
+                             reason: String(j).slice(0, 120) });
+                  continue;
+                }
+                const before = o;
+                o = unwrapSchema(o);
+                if (o !== before && how === "parsed") how = "unwrapped";
+                out.push({ url, json: o, how });
+              }
+              return out;
+            })(),
             json_pages: allRecs.filter(x => x && (x.json ?? x.extracted ?? x.data) != null).length,
+            // json_pages counts records that CAME BACK with json. parse_log says how many the
+            // reader could actually USE. Those two numbers disagreeing by 19 is the whole story.
+            parse_log: (() => {
+              const t = { parsed: 0, repaired: 0, unwrapped: 0, still_dead: 0, dead_urls: [] };
+              for (const x of allRecs) {
+                const j = x && (x.json ?? x.extracted ?? x.data);
+                if (j == null) continue;
+                if (typeof j === "object") { t.parsed++; continue; }
+                let o = null; try { o = JSON.parse(String(j)); t.parsed++; }
+                catch { o = repairJson(j); if (o) t.repaired++; else {
+                  t.still_dead++;
+                  if (t.dead_urls.length < 5) t.dead_urls.push({
+                    url: String(x.url || "").replace(/^https?:\/\/[^/]+/, ""),
+                    said: String(j).slice(0, 100) }); } }
+                if (o && unwrapSchema(o) !== o) t.unwrapped++;
+              }
+              return t;
+            })(),
             // ══ THE INSTRUMENT WAS CAPPED BELOW THE EVIDENCE (raised 2026-08-20) ═══════════
             // First cut printed the FIRST FOUR records. Inkus returned 27, and the four that
             // decide the question - /artists and the three artist pages - sort later. So the

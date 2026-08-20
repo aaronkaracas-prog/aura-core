@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v6.96.0-2026-08-20-escalate-past-neurons";
+const BUILD = "aura-core-v6.97.0-2026-08-20-model-from-kv-prompt-stripped";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -16440,8 +16440,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // Any id starting @cf/ still goes to the binding, so a comparison is one command. Anything
       // else goes through callBrain - the router that ALREADY EXISTS, with its keys, gateway and
       // per-provider request shapes. Not a second path around it.
-      const srdModel = srdModelM ? srdModelM[2] : "claude-sonnet-4-5-20250929";
-      const srdIsCf = /^@cf\//.test(srdModel);
+      // ══ THE MODEL LIVES IN KV, NOT IN THIS FILE (corrected 2026-08-20) ════════════════
+      // First cut hardcoded a Sonnet id here. `_brainRoute` ALREADY reads `config:brain:model`
+      // from KV and lets an explicit pin beat policy - so naming a model in source is a second
+      // switch for a dial that exists, and it means a deploy to change providers.
+      // null means: let the router decide. MODEL <id> still overrides for one run.
+      const srdModel = srdModelM ? srdModelM[2] : null;
+      const srdIsCf = !!srdModel && /^@cf\//.test(srdModel);
       srdRaw = srdRaw.replace(/(^|\s)MODEL\s+\S+/i, " ").trim();
       const srdId = srdRaw.split(/\s+/)[0] || "";
       if (!srdId) return { cmd: "SITE_READING", payload: { ok: false,
@@ -16492,6 +16497,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // but she needs to know exactly what her goal is."
         // So: no artists, no counting, no scheme selection, no mention of what our page happens
         // to have fields for. What the job IS, what it costs to get wrong, and the whole site.
+        // ══ WRITTEN FOR A MODEL THAT CAN READ (stripped 2026-08-20) ═════════════════════
+        // Everything cut from here was scaffolding for the 70B: "count the people first", "a
+        // sole owner must never be a single section", "never a section that merely restates the
+        // site's own menu". Four passes of that, and it still returned one bucket called
+        // "Artists" because /artists is in the menu.
+        // Sonnet got both shops right, first try, with these rules absent - Mel/Joey/Rodney with
+        // their video pages attached to the correct person, Jennifer separate, and Nikki's four
+        // service lines. 1,945 tokens in, 387 out.
+        // The instructions that survive are about the JOB and the STAKES, plus the two things
+        // that are not judgement: every path used once, nothing invented.
         const SYS =
               "You are rebuilding a real business's presence from their own website.\n\n" +
               "This becomes a public page about them, which a stranger may judge them by, and " +
@@ -16504,26 +16519,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               "business - one plain sentence: what they actually do.\n" +
               "people - anyone this site presents as doing the work here, named as the site " +
               "names them. Empty is fine and common.\n" +
-              // ══ A SECTION IS WHAT A VISITOR WANTS, NOT HOW THE SITE IS FILED ═══════════
-              // MEASURED: freed of instruction she nailed Nikki's - Tattoos / Permanent Makeup
-              // / Microneedling / Paramedical, four services, every page correct. But Inkus came
-              // back as ONE section called "Artists' Portfolios" holding all four people. Both
-              // answers describe how the SITE IS ORGANISED. For Nikki that happens to be what a
-              // visitor wants; for Inkus it is not - nobody clicks "artists' portfolios", they
-              // click MEL.
-              // So the sentence names the goal more precisely. It still does not say people or
-              // services, and it still does not say which this business is.
               "sections - how THEIR work should be laid out for someone browsing. You decide " +
-              "what the sections are and what they are called.\n" +
-              "  A section is ONE THING A VISITOR WOULD CHOOSE BETWEEN, not a heading the site " +
-              "happens to use. Ask what a customer is actually deciding when they arrive: which " +
-              "of these people do I want, or which of these services do I want. Name the " +
-              "sections after those choices.\n" +
-              "  Never one section that holds everything, and never a section that merely " +
-              "restates the site's own menu - if the answer would be a single group, or a group " +
-              "named for the site's navigation, you have not found the choice the visitor is " +
-              "making.\n" +
-              "  A page whose title names one person belongs in that person's own section.\n" +
+              "what the sections are and what they are called, and what is right differs from " +
+              "one business to the next.\n" +
               "not_work - pages that are not examples of their work: prices, policies, contact, " +
               "reviews, merchandise, explainers, the front door.\n\n" +
               "Every path appears exactly once, in one section or in not_work. Copy paths " +
@@ -16531,7 +16529,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const USR = row.name + (row.locality ? " - " + row.locality : "") +
               (row.region ? ", " + row.region : "") + "\n" + (row.website || "") + "\n\n" + sitemap;
 
-        let rr = null, brainUsage = null, brainProvider = "workers-ai";
+        let rr = null, brainUsage = null, brainProvider = "workers-ai", brainModel = null;
         if (srdIsCf) {
           rr = await env.AI.run(srdModel, { max_tokens: 1400,
             messages: [{ role: "system", content: SYS }, { role: "user", content: USR }] });
@@ -16539,11 +16537,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const cb = await callBrain({ system: SYS, user: USR, max_tokens: 1400, model: srdModel }, env);
           if (!cb?.ok) return { cmd: "SITE_READING", payload: { ok: false, model: srdModel,
             provider: cb?.provider || null, error: cb?.error || "brain call failed",
-            what_to_do: "Or use the binding: SITE_READING " + srdId +
+            what_to_do: "The model comes from KV `config:brain:model` unless MODEL is passed. " +
+                        "Check that pin, or use the binding for one run: SITE_READING " + srdId +
                         " MODEL @cf/meta/llama-3.3-70b-instruct-fp8-fast" } };
           rr = { response: cb.text };
           brainUsage = cb.usage || null;   // the token line Workers AI never returned all day
           brainProvider = cb.provider || null;
+          brainModel = cb.model || null;
         }
         const ms = Date.now() - t0;
         let out = rr?.response;
@@ -16617,7 +16617,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           name: String(n), on_site: lowerDoc.includes(String(n).toLowerCase()) }));
 
         return { cmd: "SITE_READING", payload: { ok: true, business: row.name, id: srdId,
-          model: srdModel, provider: brainProvider, usage: brainUsage || undefined,
+          // What the ROUTER actually used, not what was asked for - a pin that silently
+          // falls back to policy is exactly the kind of thing that goes unnoticed for days.
+          model: brainModel || srdModel, model_asked: srdModel || "(from KV)",
+          provider: brainProvider, usage: brainUsage || undefined,
           archive: newest.key, pages_in_archive: pages.length, ms,
           split: splitLog.length ? splitLog : undefined,
           she_says: { business: out?.business || null, people: peopleReport,

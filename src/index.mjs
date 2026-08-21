@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.05.0-2026-08-21-a-revoked-seat-cannot-answer";
+const BUILD = "aura-core-v7.06.0-2026-08-21-say-which-check-refused";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23122,9 +23122,25 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const sap = (shopAv && shopAv.payload) ? shopAv.payload : shopAv;
           const sDay = (sap?.open_days || []).find(x => x.date === wantDate);
           if (sDay && (sDay.slots || []).some(sl => sl.at === target.toISOString()))
-            return { ok: false, why: "ARTIST_NOT_WORKING", who };
+            return { ok: false, why: "ARTIST_NOT_WORKING", who,
+                     detail: "the shop has that slot; this artist does not" };
         }
-        return { ok: false, why: "SHOP_IS_SHUT" };
+        // ══ SAY WHICH CHECK REFUSED (added 2026-08-21) ═════════════════════════════════════
+        // EVERY test above compares against SLOT BOUNDARIES, and slots are a grid - two hours
+        // from opening. So 18:00 on a day running 14:00-22:00 is INSIDE the hours and is NOT a
+        // slot start, and every check said no. That reads as "the artist is not working" when
+        // he plainly is, and it cost four bad test designs in a row - each one written from a
+        // reply that named the wrong cause.
+        // The answer is not to loosen a check. It is to say which one refused, so the next
+        // question is asked of the right thing. A refusal that misnames its reason sends
+        // somebody to edit hours that were never wrong.
+        const gridStarts = (oDay?.slots || day?.slots || []).map(sl => sl.at);
+        const detail = gridStarts.length
+          ? "that day is open but bookings start on the hour grid - nearest starts are " +
+            gridStarts.slice(0, 4).join(", ")
+          : "nothing is open that day at all";
+        return { ok: false, why: "SHOP_IS_SHUT", detail,
+                 grid_starts: gridStarts.length ? gridStarts.slice(0, 8) : undefined };
       };
       const readAp = async (uid) => {
         const r = await db.prepare("SELECT id, from_id, to_id, context, state FROM pta_edges WHERE id = ?")
@@ -23185,6 +23201,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // answered "their hours could not be read" - a leftover from a different failure -
             // on a shop whose hours had just been read correctly to reach this line.
             artist: hs.who || undefined,
+            grid_starts: hs.grid_starts || undefined,
             what_to_do:
               hs.why === "ARTIST_NOT_WORKING"
                 ? "The shop is open then, but that artist is not working. AVAILABILITY " + biz +

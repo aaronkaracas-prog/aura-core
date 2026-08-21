@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.02.0-2026-08-20-one-trade-per-listing";
+const BUILD = "aura-core-v7.03.0-2026-08-21-trade-before-split";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -16645,6 +16645,55 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           return [...peopleNames].sort((a, b) => b.length - a.length)
             .find(n => n.length > 2 && t.includes(n.toLowerCase())) || null;
         };
+        // ══ ASK THE TRADE QUESTION BEFORE THE SPLIT (fixed 2026-08-21) ═══════════════════
+        // GATE 1, Ironclad Tattoo Co., caught this on the first shop neither of us had seen:
+        // `card: []`. A page would have published with NO GALLERY while 26 of 28 images had
+        // been correctly identified as tattoos.
+        // WHY: the split ran first, so the trade question was asked of THIRTEEN SECTIONS NAMED
+        // FOR PEOPLE. "Which of these is tattoo work - Ryan Lientz, Chloe White, Tattoo
+        // Artists?" A person's name carries no trade, so the leftover roster stub called
+        // "Tattoo Artists" won, and every real artist was filed as not-this-listing.
+        // HER OWN sections were `Tattoo Artists` and `Piercers` - a question that can actually
+        // be answered. So it is asked there, and the split happens after.
+        let vertical = null;
+        {
+          const trade = String(row.industry || "").trim();
+          const rawNames = rawSections.map(x => String(x?.name || "")).filter(Boolean);
+          if (trade && rawNames.length > 1) {
+            try {
+              const vr2 = await callBrain({
+                system:
+                  "A business does several kinds of work. Their page is going on a listing site " +
+                  "for ONE trade, and a visitor arrived looking for that trade.\n\n" +
+                  'Return ONLY JSON: {"show":["section name", ...]}\n\n' +
+                  "Name the sections whose work is what that visitor came for. Copy the names " +
+                  "EXACTLY. The people who do other work still work there - this only decides " +
+                  "which WORK is shown, never who exists.",
+                user: "Listing site is for: " + trade + " businesses\n\nBusiness: " +
+                      (out?.business || row.name) + "\n\nTheir sections:\n" +
+                      rawSections.map(x => "- " + String(x?.name || "") + " (" +
+                        (Array.isArray(x?.pages) ? x.pages.length : 0) + " pages)").join("\n"),
+                max_tokens: 300 }, env);
+              if (vr2?.ok) {
+                let vj = vr2.text;
+                if (typeof vj === "string") { try { vj = JSON.parse(vj); } catch { vj = repairJson(vj); } }
+                vj = unwrapSchema(vj);
+                const want = (Array.isArray(vj?.show) ? vj.show : []).map(x => String(x).toLowerCase());
+                const matched = rawNames.filter(n => want.includes(n.toLowerCase()));
+                if (matched.length && matched.length < rawNames.length)
+                  vertical = { trade, show: matched,
+                               not_this_listing: rawNames.filter(n => !matched.includes(n)) };
+              }
+            } catch {}
+          }
+        }
+        // The pages of the sections that matched - carried through the split, which renames
+        // sections after people and would otherwise lose the trade entirely.
+        const verticalPages = new Set();
+        if (vertical) for (const sec of rawSections)
+          if (vertical.show.includes(String(sec?.name || "")))
+            for (const pth of (Array.isArray(sec?.pages) ? sec.pages : [])) verticalPages.add(String(pth));
+
         let splitLog = [];
         const sections = rawSections.flatMap(sec => {
           const list0 = (Array.isArray(sec?.pages) ? sec.pages.map(String) : []).filter(x => known.has(x));
@@ -16656,7 +16705,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const made = owners.map(n => ({ name: n, pages: list0.filter(x => whoseTitle(x) === n) }));
           splitLog.push({ was: String(sec?.name || ""), became: owners,
                           left_together: rest.length ? rest : undefined });
-          return made.concat(rest.length ? [{ name: String(sec?.name || ""), pages: rest }] : []);
+          // The leftover is the ROSTER INDEX - `/tattoo-artists`, the page that links to
+          // everybody and belongs to nobody. It survived the split as a section called "Tattoo
+          // Artists" and then won the trade vote on its name alone. It is not somebody's work.
+          return made;
         });
 
         const secReport = sections.map(sec => {
@@ -16802,45 +16854,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             } else cardWhy = { error: kr?.error || "judge failed", looked: verdicts.length };
           } else cardWhy = { looked: 0, failed, note: "nothing survived the filename filter" };
 
-          // ══ THE LISTING IS FOR ONE TRADE (2026-08-20) ═════════════════════════════════
-          // Nikki does tattoos AND microneedling AND permanent makeup AND paramedical work. On
-          // tattooparlors.world her card led with a "Scar Repair" graphic, an eyebrow close-up
-          // and clinical before-and-afters. Every one correctly identified and correctly hers -
-          // and a visitor came for tattoos.
-          // GROK'S FIX WAS A LIST: on this hostname keep "Tattoos", drop "Microneedling". That
-          // works tonight and needs a new list on dentists.world and bakeries.world - 280
-          // doorways, 280 lists. SHE ALREADY NAMED THE SECTIONS AND SAW THE PICTURES, so she is
-          // asked instead. Same answer here, nothing hardcoded, any vertical.
-          // `cg_business.industry` has carried the trade since the row was imported.
-          const trade = String(row.industry || "").trim();
-          let vertical = null;
-          const secNames = cardSections.map(x => x.name);
-          if (trade && secNames.length > 1) {
-            try {
-              const vr2 = await callBrain({
-                system:
-                  "A business does several different kinds of work. Their page is going on a " +
-                  "listing site for ONE trade, and a visitor arrived looking for that trade.\n\n" +
-                  'Return ONLY JSON: {"show":["section name", ...]}\n\n' +
-                  "Name the sections whose work is what that visitor came for. Copy the names " +
-                  "EXACTLY. Usually one. Never all of them unless every section really is that " +
-                  "trade. The rest of their work is not deleted - it is simply not this listing.",
-                user: "Listing site is for: " + trade + " businesses\n\nBusiness: " +
-                      (out?.business || row.name) + "\n\nTheir sections:\n" +
-                      cardSections.map(x => "- " + x.name + " (" +
-                        (bySecAll[x.name] || []).slice(0, 3).join("; ").slice(0, 160) + ")").join("\n"),
-                max_tokens: 300 }, env);
-              if (vr2?.ok) {
-                let vj = vr2.text;
-                if (typeof vj === "string") { try { vj = JSON.parse(vj); } catch { vj = repairJson(vj); } }
-                vj = unwrapSchema(vj);
-                const want = (Array.isArray(vj?.show) ? vj.show : []).map(x => String(x).toLowerCase());
-                const matched = secNames.filter(n => want.includes(n.toLowerCase()));
-                if (matched.length) vertical = { trade, show: matched,
-                  not_this_listing: secNames.filter(n => !matched.includes(n)) };
-              }
-            } catch {}
-          }
+          // The trade question was asked and answered BEFORE the split - see above.
 
           const bySec = {};
           verdicts.forEach((v, i) => {
@@ -16849,7 +16863,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           });
           card = cardSections
             .filter(sec => (bySec[sec.name] || []).length)
-            .filter(sec => !vertical || vertical.show.includes(sec.name))
+            // By PAGE, not by section name: after the split a section is called "Ryan Lientz",
+            // and the trade was decided about the pages he sits under.
+            .filter(sec => !vertical || sec.pages.some(pth => verticalPages.has(pth)))
             .map(sec => ({ name: sec.name, images: bySec[sec.name].slice(0, 4) }));
           if (cardWhy && vertical) cardWhy.vertical = vertical;
         } catch (e) { cardWhy = { error: String(e?.message ?? e).slice(0, 200) }; }
@@ -16925,13 +16941,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // her portfolio, and her work is piercing - so on a TATTOO listing she is not a chip.
             // Not a keyword: her section simply is not one the visitor came for. When a shop's
             // sections are not people (Nikki's are services), `people` is used as before.
-            const shown = new Set(card.map(c => String(c.name).toLowerCase()));
-            const peeps = peopleReport.filter(x => x.on_site).map(x => x.name);
-            const peepSections = peeps.filter(n => cardSections
-              .some(sec => String(sec.name).toLowerCase() === n.toLowerCase()));
-            u0.artists = (peepSections.length
-              ? peeps.filter(n => shown.has(n.toLowerCase()))
-              : peeps).slice(0, 20);
+            // ══ EVERYONE WHO WORKS THERE IS A CHIP (corrected 2026-08-21) ═══════════════
+            // I dropped Jennifer from Inkus last night because piercing is not this vertical.
+            // THAT WAS WRONG. She works at that shop, and a page claiming to represent the
+            // business should say so. The trade decides which PICTURES fill the grid, never
+            // who exists. A piercer with no tattoo photos gets a chip and no images.
+            u0.artists = peopleReport.filter(x => x.on_site).map(x => x.name).slice(0, 20);
             u0.images = card.flatMap(c => c.images.map(i => ({ u: i.u, s: c.name,
                                                                src: "card", a: null, p: i.p })));
             u0.sections = card.map(c => ({ name: c.name, images: c.images.length }));

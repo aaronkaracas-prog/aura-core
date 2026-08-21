@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.09.0-2026-08-21-the-customer-owns-their-booking";
+const BUILD = "aura-core-v7.11.0-2026-08-21-hours-a-customer-can-read";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -129,6 +129,39 @@ const isChromeUrl = (url, alt) => {
   return CHROME.test(words) || CHROME.test(a) || BRAND.test(words) || isTiny(u)
       || NOT_A_PHOTO.test(u) || TEMPLATE_ASSET.test(u) || BUILDER_STOCK.test(u);
 };
+
+// ══ HOURS A CUSTOMER CAN READ (2026-08-21) ══════════════════════════════════════════════════
+// The public page printed the stored object verbatim:
+//   {"weekly":{"mon":null,"tue":[[660,1140]],...},"edited_by":"the owner","at":"2026-08-21T..."}
+// on the page a customer lands on. Grok: "a customer cannot use that."
+// `SEAT HOURS` already answers this correctly with `reads_as`, so the expression that built it
+// becomes a function instead of a second copy - the two-writers disease has cost this codebase a
+// calendar rewrite, a roster rewrite and an empty Customers tab already.
+// Minutes-from-midnight in, "11:00-19:00" out, "off" for a day they are shut.
+const DAY_NAME = { mon: "Monday", tue: "Tuesday", wed: "Wednesday", thu: "Thursday",
+                   fri: "Friday", sat: "Saturday", sun: "Sunday" };
+function clockOf(n) {
+  return String(Math.floor(n / 60)).padStart(2, "0") + ":" + String(n % 60).padStart(2, "0");
+}
+function hoursReadAs(weekly) {
+  if (!weekly || typeof weekly !== "object") return null;
+  const w = weekly.weekly && typeof weekly.weekly === "object" ? weekly.weekly : weekly;
+  const out = {};
+  for (const k of ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]) {
+    if (!(k in w)) continue;
+    const v = w[k];
+    out[k] = Array.isArray(v) && v.length
+      ? v.map(r => clockOf(r[0]) + "-" + clockOf(r[1])).join(", ")
+      : "closed";
+  }
+  return Object.keys(out).length ? out : null;
+}
+// One line per day, in the order a week runs - what a shop would write on its own door.
+function hoursLines(weekly) {
+  const r = hoursReadAs(weekly);
+  if (!r) return null;
+  return Object.entries(r).map(([k, v]) => (DAY_NAME[k] || k) + " " + v);
+}
 
 function repairJson(text) {
   let t = String(text || "").trim()
@@ -21367,8 +21400,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // Their own facts, for a business Places cannot describe. HOURS, SERVICE, CONTACT - the
             // events they or an operator put on the chain under a grant.
             const pick = (ev) => [...chain].reverse().find(c => c && c.event === ev);
+            const hraw = pick("HOURS")?.data || null;
             own = { name: j?.pta?.name || null,
-                    hours: pick("HOURS")?.data || null,
+                    // The raw object stays for anything that needs the numbers; the page gets
+                    // something a person can read.
+                    hours: hraw,
+                    hours_read: hoursReadAs(hraw),
+                    hours_lines: hoursLines(hraw),
                     contact: pick("CONTACT")?.data || null,
                     service: pick("SERVICE")?.data || null };
           } catch {}
@@ -24317,10 +24355,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           ectx.weekly = weekly; delete ectx.hours;
           await db.prepare("UPDATE pta_edges SET context = ?, updated_at = ? WHERE id = ?")
             .bind(JSON.stringify(ectx), new Date().toISOString(), edge.id).run();
-          const fmt = (n) => String(Math.floor(n / 60)).padStart(2, "0") + ":" + String(n % 60).padStart(2, "0");
           return { cmd: "SEAT", payload: { ok: true, business: seBiz, person: who, hours,
-            reads_as: Object.fromEntries(Object.entries(hours).map(([k, v]) =>
-              [k, v ? v.map(r => fmt(r[0]) + "-" + fmt(r[1])).join(", ") : "off"])),
+            reads_as: hoursReadAs(hours),
             unreadable: unreadable.length ? unreadable : undefined,
             note: "Days not listed follow the business's hours. These are intersected with them, " +
               "so they can never be wider." } };
@@ -24496,6 +24532,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const outcome = [...chain].reverse().find(c => c?.event === "OUTCOME");
         const said = chain.filter(c => c?.data?.said).slice(-8).reverse();
 
+        // ══ ONE READ OF THE BOOKINGS, NOT TWO (2026-08-21) ═══════════════════════════════
+        // Today and Appointments read the booking EDGES. Customers and Deposits read SCHEDULE.
+        // Two readers of the same thing, and the SCHEDULE one returns no customer - so the
+        // Customers tab said "Nobody yet" while the shop had two customers and five bookings.
+        // Same disease as the two calendar writers and the two definitions of "who works here":
+        // whichever one is wrong is invisible until somebody looks at the screen.
+        // The edge query in `today` already has from_id AND the customer's name. These carry it
+        // out so every tab answers from the same rows.
+        let coBookings = [];
+        const coNames = new Map(), coSeated = new Set(), coLeft = new Set();
         return { cmd: "CONSOLE", payload: { ok: true,
           businesses: list, showing: pick,
           name: list.find(b => b.id === pick)?.name || null,
@@ -24537,10 +24583,34 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // Bookings ahead, deposits not yet taken, promises with a time on them.
             try {
               const bk = await db.prepare(
-                "SELECT e.id, e.context, x.name AS who FROM pta_edges e " +
+                "SELECT e.id, e.from_id, e.context, x.name AS who FROM pta_edges e " +
                 "LEFT JOIN pta_entities x ON x.id = e.from_id " +
                 "WHERE e.to_id = ? AND e.edge_type = 'books' AND e.state != 'revoked'"
               ).bind(pick).all();
+              coBookings = bk?.results || [];
+              // ══ WHO IS ACTUALLY DOING IT (2026-08-21) ════════════════════════════════
+              // Today listed "Sun, Aug 23 - Desmond" and nothing else. It never named the
+              // ARTIST, so a shop looked at their day and could not see WHO was working it -
+              // and could not see that the artist had LEFT. June quit and her Sunday booking
+              // sat on the front page with no warning, offering Confirm on a chair that does
+              // not exist.
+              // The seats are already known here; the departed ones are exactly the artists
+              // NOT in that set. Nothing new is read.
+              const seatRows = await db.prepare(
+                "SELECT from_id, state FROM pta_edges WHERE to_id = ? AND edge_type = 'works_at'")
+                .bind(pick).all().catch(() => null);
+              for (const r of (seatRows?.results || [])) {
+                if (String(r.state || "") !== "revoked") coSeated.add(r.from_id);
+                else coLeft.add(r.from_id);
+              }
+              const ids = [...new Set((bk?.results || []).map(r => {
+                let c = {}; try { c = JSON.parse(r.context || "{}"); } catch {}
+                return c.artist; }).filter(Boolean))];
+              for (const id of ids) {
+                const n = await db.prepare("SELECT name FROM pta_entities WHERE id = ?")
+                  .bind(id).first().catch(() => null);
+                if (n?.name) coNames.set(id, n.name);
+              }
               const now = new Date().toISOString();
               const soon = [];
               for (const r of (bk?.results || [])) {
@@ -24550,8 +24620,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 // plans a day around five. Cancelled stays in LIST on purpose - it happened -
                 // but it is not something coming.
                 if (String(c.status || "").toUpperCase() === "CANCELLED") continue;
-                if (c.when && c.when > now) soon.push({ when: c.when, who: r.who || null,
-                  service: c.service || null, amount: c.amount ?? null,
+                if (c.when && c.when > now) soon.push({ uid: r.id, when: c.when, who: r.who || null,
+                  customer: r.from_id || null,
+                  artist: c.artist || null,
+                  artist_name: c.artist ? (coNames.get(c.artist) || null) : null,
+                  // The one thing a shop needs to see before they need to act on it.
+                  artist_left: !!(c.artist && coLeft.has(c.artist)),
+                  status: c.status || null,
+                  service: c.service || c.summary || null, amount: c.amount ?? null,
                   deposit_held: c.deposit_held ?? false });
               }
               soon.sort((a, b) => String(a.when).localeCompare(String(b.when)));
@@ -24564,6 +24640,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               const unpaid = soon.filter(b => b.amount && !b.deposit_held);
               if (unpaid.length) t.needs_you.push({ kind: "deposits",
                 headline: unpaid.length + " without a deposit held" });
+              // A booking whose artist has left needs a decision, not a note. It is first
+              // because it is the only thing here that a customer will notice going wrong.
+              const orphan = soon.filter(b => b.artist_left);
+              if (orphan.length) t.needs_you.unshift({ kind: "artist_left",
+                headline: orphan.length === 1
+                  ? (orphan[0].artist_name || "An artist") + " has left and still has a booking"
+                  : orphan.length + " bookings are with artists who have left",
+                what_to_do: "Move them to somebody else, or cancel and tell the customer.",
+                all: orphan });
             } catch {}
             const owedNow = chain.filter(c => c?.data?.due && c.data.due <= new Date().toISOString());
             if (owedNow.length) t.needs_you.push({ kind: "owed",
@@ -24592,21 +24677,42 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               out.appointments = app?.ok ? { count: app.count, seeing: sp?.seeing || null,
                 role: sp?.role || null,
                 list: (app.appointments || []).filter(x => !mine || mine.has(x.uid)) } : null;
-              if (sp?.ok) {
-                const money = (sp.bookings || []).filter(b => b.amount);
-                out.deposits = { count: money.length,
-                  total: money.reduce((n, b) => n + (Number(b.amount) || 0), 0),
-                  list: money.map(b => ({ who: b.customer_name, when: b.when, amount: b.amount,
-                    held: b.deposit_held || false })) };
-                const seen = new Map();
-                for (const b of (sp.bookings || [])) {
-                  if (!b.customer) continue;
-                  const c = seen.get(b.customer) || { pta: b.customer, name: b.customer_name, visits: 0, last: null };
-                  c.visits++; if (!c.last || String(b.when) > c.last) c.last = b.when;
-                  seen.set(b.customer, c);
+              // Built from the booking edges - the same rows Today and Appointments use.
+              const seen = new Map(); const money = []; const nowIso = new Date().toISOString();
+              for (const r of coBookings) {
+                let c = {}; try { c = JSON.parse(r.context || "{}"); } catch {}
+                if (c.kind === "block") continue;          // a hold has no customer
+                const cancelled = String(c.status || "").toUpperCase() === "CANCELLED";
+                if (r.from_id) {
+                  const e = seen.get(r.from_id) ||
+                    { pta: r.from_id, name: r.who || null, visits: 0, upcoming: 0, last: null };
+                  e.visits++;
+                  if (!cancelled && c.when > nowIso) e.upcoming++;
+                  if (!e.last || String(c.when) > e.last) e.last = c.when;
+                  seen.set(r.from_id, e);
                 }
-                out.customers = { count: seen.size, list: [...seen.values()] };
+                // Money is on the appointment once PTA_KEPT stamps it, and on the chain before
+                // that. Both are shown - held is a fact, promised is a promise.
+                if (!cancelled && (c.amount != null || c.deposit_held))
+                  money.push({ uid: r.id, who: r.who || null, when: c.when,
+                    amount: c.amount ?? null, held: !!c.deposit_held });
               }
+              // Anything still owed on the chain, so the tab is not empty when the money has
+              // only ever been a promise - which is the normal case before somebody pays.
+              for (const c of chain) {
+                if (!c?.data?.due || c.data.amount == null) continue;
+                const closed = chain.some(k => k?.event === "KEPT" && k.data &&
+                  (k.data.promised ? k.data.promised === c.data.due
+                                   : Date.parse(k.ts) > Date.parse(c.ts)));
+                if (!closed) money.push({ who: null, when: c.data.due, amount: c.data.amount,
+                  held: false, what: c.data.what || null, from: "promised" });
+              }
+              out.customers = { count: seen.size, list: [...seen.values()]
+                .sort((a, b) => String(b.last).localeCompare(String(a.last))) };
+              out.deposits = { count: money.length,
+                held_total: money.filter(m => m.held).reduce((n, m) => n + (Number(m.amount) || 0), 0),
+                open_total: money.filter(m => !m.held).reduce((n, m) => n + (Number(m.amount) || 0), 0),
+                list: money.sort((a, b) => String(a.when).localeCompare(String(b.when))) };
             } catch {}
             try {
               const se = await processCommand("SEAT LIST " + pick, env, true);
@@ -24618,8 +24724,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               // unreachable from her own console. Listed FIRST because the shop's front page is the
               // usual thing an owner edits, and marked so the UI can say what it is.
               // Deliberately NOT added to the public booking list: a client books a person.
-              out.artists = sep?.ok ? { count: sep.count,
-                list: [{ pta: pick, name: "The shop", is_shop: true }, ...(sep.seats || [])],
+              // `count` said 2 while the list had 3 rows, because the shop row is not a seat.
+              // Say how many rows there are as well, so a screen can show either without
+              // a human doing arithmetic on a mismatch.
+              out.artists = sep?.ok ? { count: sep.count, rows: (sep.seats || []).length + 1,
+                list: [{ pta: pick, name: "The shop", is_shop: true, removable: false },
+                       ...(sep.seats || []).map(x => ({ ...x, removable: true }))],
                 billing: sep.billing } : { count: 0,
                 list: [{ pta: pick, name: "The shop", is_shop: true }] };
             } catch {}

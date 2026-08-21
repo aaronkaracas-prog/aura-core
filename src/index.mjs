@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.07.0-2026-08-21-the-deposit-stamps-the-booking";
+const BUILD = "aura-core-v7.08.0-2026-08-21-from-the-service-they-signed-up-on";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -21546,10 +21546,22 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // EMAIL_SEND parses "<to> <subject> | <body>" off a single line. The body here carried
             // \n\n around the link, which is very likely what broke it - a multi-line body reaching
             // a single-line parser. Sending the body flat and letting the client wrap.
-            const er = await processCommand("EMAIL_SEND " + email + " Confirm your shop on " + abBrand + " | " +
+            // From the service they signed up on, not a global default. If that domain is not
+            // onboarded in Cloudflare Email the send fails, so it retries on the default rather
+            // than losing a signup - and says which one carried it.
+            const abMail = "Confirm your shop on " + abBrand + " | " +
               "You added " + name + " to " + abBrand + ". Confirm it here: " + link +
-              "  --  If this was not you, ignore this email and nothing will be listed.", env, true);
-            const ep = (er && er.payload) ? er.payload : er;
+              "  --  If this was not you, ignore this email and nothing will be listed.";
+            let er = await processCommand("EMAIL_SEND " + email + " FROM noreply@" + abBrand +
+              " " + abMail, env, true);
+            let ep = (er && er.payload) ? er.payload : er;
+            let abSentFrom = "noreply@" + abBrand;
+            if (!ep?.ok) {
+              er = await processCommand("EMAIL_SEND " + email + " " + abMail, env, true);
+              ep = (er && er.payload) ? er.payload : er;
+              abSentFrom = ep?.ok ? "the default sender - noreply@" + abBrand +
+                " is not onboarded in Cloudflare Email" : abSentFrom;
+            }
             // ══ WHICH ENV DID THIS RUN IN ══════════════════════════════════════════════════
             // The command line sends via the binding; this path 401s on the REST fallback. Same code,
             // so the difference is WHERE it runs - an RPC call lands on PublicEntry, and the env there
@@ -21569,6 +21581,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // failure read as "email did not send" with no cause - the same claim-without-artifact
           // shape as everything else this file has been fixing.
           return { cmd: "ADD_BUSINESS", payload: { ok: true, mode: "confirm_sent", name, email, sent,
+            sent_from: abSentFrom,
             how, send_error: sent ? undefined : how,
             confirm_link: sent ? undefined : link,
             what_to_say: sent
@@ -24477,6 +24490,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               const soon = [];
               for (const r of (bk?.results || [])) {
                 let c = {}; try { c = JSON.parse(r.context || "{}"); } catch {}
+                // ══ CANCELLED IS NOT AHEAD (fixed 2026-08-21) ════════════════════════════
+                // "7 bookings ahead" counted two CANCELLED appointments. A shop reading that
+                // plans a day around five. Cancelled stays in LIST on purpose - it happened -
+                // but it is not something coming.
+                if (String(c.status || "").toUpperCase() === "CANCELLED") continue;
                 if (c.when && c.when > now) soon.push({ when: c.when, who: r.who || null,
                   service: c.service || null, amount: c.amount ?? null,
                   deposit_held: c.deposit_held ?? false });
@@ -24484,7 +24502,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               soon.sort((a, b) => String(a.when).localeCompare(String(b.when)));
               if (soon.length) t.needs_you.push({ kind: "booked",
                 headline: soon.length + (soon.length === 1 ? " booking ahead" : " bookings ahead"),
-                next: soon[0], all: soon.slice(0, 6) });
+                // The headline said seven and the list showed six - the slice was invisible.
+                // Say when there are more rather than quietly dropping one.
+                next: soon[0], all: soon.slice(0, 6),
+                more: soon.length > 6 ? soon.length - 6 : undefined });
               const unpaid = soon.filter(b => b.amount && !b.deposit_held);
               if (unpaid.length) t.needs_you.push({ kind: "deposits",
                 headline: unpaid.length + " without a deposit held" });
@@ -26124,7 +26145,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const emailRest = rest.trim();
       const emailTo = (args[0] || "").trim();
       if (!emailTo || !emailTo.includes("@")) return { cmd: "EMAIL_SEND", payload: { ok: false, error: "Usage: EMAIL_SEND <to@email.com> <subject> | <body text>" } };
-      const emailAfterTo = emailRest.slice(emailTo.length).trim();
+      // ══ THE EMAIL COMES FROM THE SERVICE THEY SIGNED UP ON (2026-08-21) ═══════════════
+      // Aaron: "the email always needs to come from the service." A shop that signed up on
+      // tattooparlors.world got mail from `noreply@mytattoo.world` - the CONSUMER domain - because
+      // the sender was ONE global KV key shared by every vertical. Reply to it and nobody is there.
+      // The signup already knows: `SITE` travels in the pending record so START and CONFIRM agree.
+      //   EMAIL_SEND <to> FROM <addr> <subject> | <body>
+      // THE DOMAIN MUST BE ONBOARDED IN CLOUDFLARE EMAIL FIRST - by hand, in the dashboard, per
+      // domain. Sending from one that is not onboarded fails, so the caller falls back rather than
+      // losing the message.
+      let emailAfterTo = emailRest.slice(emailTo.length).trim();
+      let emailFromAddr = null;
+      const fromM = emailAfterTo.match(/^FROM\s+(\S+@\S+)\s+/i);
+      if (fromM) { emailFromAddr = fromM[1]; emailAfterTo = emailAfterTo.slice(fromM[0].length).trim(); }
       const pipeIdx = emailAfterTo.indexOf("|");
       let emailSubject, emailBody;
       if (pipeIdx >= 0) {
@@ -26135,7 +26168,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         emailBody = "";
       }
       const emailFrom = await env.AURA_KV.get("config:email:from").catch(() => null) || "noreply@auras.guide";
-      const sendResult = await sendEmail(env, emailTo, emailSubject, emailBody || emailSubject, { from: emailFrom });
+      // An explicit FROM wins; the KV default is the fallback for callers that do not name one.
+      const sendResult = await sendEmail(env, emailTo, emailSubject, emailBody || emailSubject,
+        { from: emailFromAddr || emailFrom });
       // ══ WHAT SHE SAYS IS ALSO A TURN ═══════════════════════════════════════════════════════
       // An outbound email to a known entity is her half of the conversation. Recorded on their chain
       // so PTA_DUE and the learning loop see the whole exchange rather than only the replies - a
@@ -38383,8 +38418,23 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
             // Same split-brain shape as D1 versus the Durable Object this morning: a pointer and an
             // authority disagreeing, with the pointer winning the report and the authority holding the
             // truth. The chain is the authority, so the chain has to carry the closure.
-            const kept = chain.some(k => k && k.event === "KEPT" && k.data &&
-              (k.data.promised === c.data.due || Date.parse(k.ts) > Date.parse(c.ts)));
+            // ══ ONE KEPT CLOSED EVERY PROMISE THAT CAME AFTER IT (fixed 2026-08-21) ═════════
+            // The old second clause was `Date.parse(k.ts) > Date.parse(c.ts)` - ANY kept event
+            // recorded later than this promise was written counted as closing it.
+            // MEASURED on Harbor & Bone: one deposit closed, then a SECOND deposit was written
+            // and PTA_DUE returned `scanned: 1, upcoming: []`. The promise existed, carried $200,
+            // and was invisible - because a KEPT from ten minutes earlier had a later timestamp
+            // than the new commitment's own record.
+            // **A shop that closes one deposit stops being told about every deposit after it.**
+            // The intent was to catch a KEPT that did not echo the due date back. So: still match
+            // on the due date, and still allow a later KEPT to close it - but only one that does
+            // not name a DIFFERENT promise. A KEPT carrying somebody else's due date closes that
+            // one, not this one.
+            const kept = chain.some(k => {
+              if (!k || k.event !== "KEPT" || !k.data) return false;
+              if (k.data.promised) return k.data.promised === c.data.due;
+              return Date.parse(k.ts) > Date.parse(c.ts);
+            });
             if (kept) continue;
             // ══ A SHOP ASKING WHAT IT IS OWED WAS HANDED A TIMESTAMP (fixed 2026-08-21) ══════
             // MEASURED: `{"due":"...","amount":150,"what":"Deposit - Priya Raman..."}` went onto

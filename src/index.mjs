@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.15.0-2026-08-21-a-week-you-can-type";
+const BUILD = "aura-core-v7.17.0-2026-08-21-the-slider-is-the-value";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23592,7 +23592,16 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             "WHERE e.to_id = ? AND e.edge_type = 'books' AND e.state != 'revoked'").bind(biz).all();
           const out = (rows?.results || []).map(r => {
             let c = {}; try { c = JSON.parse(r.context || "{}"); } catch {}
-            return { uid: r.id, who: r.name || r.from_id, start: c.start || c.when || null,
+            // ══ A NAME IS NOT AN IDENTITY (2026-08-21) ═══════════════════════════════════
+            // `who` is a display name and it was the ONLY thing about the customer that left
+            // this command - so the console's Customers tab had nothing else to match on and
+            // filtered with `b.who === x.name`. Two clients called Dave and each one's row
+            // opens the other's appointments.
+            // `from_id` is the customer of record and it is already in the query above. It is
+            // the same field `readAp` returns as `ap.customer`, so both doors now name the
+            // person the same way.
+            return { uid: r.id, customer: r.from_id || null,
+              who: r.name || r.from_id, start: c.start || c.when || null,
               end: c.end || null, minutes: c.minutes || null,
               status: c.status || (c.booking_state || "").toUpperCase() || "TENTATIVE",
               summary: c.summary || c.service || "Appointment",
@@ -24374,7 +24383,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 : "No hours of their own - they work whenever the business is open." } };
           }
           if (/^CLEAR$/i.test(body)) {
-            delete ectx.hours;
+            // ══ CLEAR DELETED THE KEY NOTHING WRITES (fixed 2026-08-21) ═══════════════════
+            // This removed `ectx.hours` only. The writer forty lines below stores `ectx.weekly`
+            // and deletes `ectx.hours`, and EVERY reader prefers `weekly` - the read above, and
+            // AVAILABILITY's `normWeekly(pc.weekly || pc.hours)`. So for any artist whose hours
+            // were set since the weekly shape landed, CLEAR reported success and changed nothing:
+            // they kept the exact week they were trying to get rid of.
+            // Reader and writer disagreeing about which key holds the fact - the same shape as
+            // the two calendar writers and the two definitions of who works here. Both go.
+            delete ectx.weekly; delete ectx.hours;
             await db.prepare("UPDATE pta_edges SET context = ?, updated_at = ? WHERE id = ?")
               .bind(JSON.stringify(ectx), new Date().toISOString(), edge.id).run();
             return { cmd: "SEAT", payload: { ok: true, business: seBiz, person: who, hours: null,
@@ -24820,6 +24837,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           hours_read: (() => {
             const h = [...chain].reverse().find(c => c?.event === "HOURS");
             return h ? hoursReadAs(h.data) : null;
+          })(),
+          // ══ THE SLIDER NEEDS THE VALUE, NOT THE READING (2026-08-21) ═══════════════════════
+          // `hours_read` is "11:00-19:00" - built for a human to read, and it was also what the
+          // seven text boxes prefilled from. The sheet that replaces them is a two-handle slider
+          // whose position IS minutes from midnight, so seeding it from that string would mean
+          // parsing our own output back on the other side: a SECOND reader of the week, in the
+          // one place we just removed the first one.
+          // The stored object is already right here. Send it. `hours_read` stays for display.
+          hours_weekly: (() => {
+            const h = [...chain].reverse().find(c => c?.event === "HOURS");
+            const w = h && h.data ? h.data.weekly : null;
+            return w && typeof w === "object" && !Array.isArray(w) ? w : null;
           })(),
           your_page: "https://openforbusiness.world/b/" + pick,
           // Gate One, read from their chain rather than from a subscription table. A business that has
@@ -50371,15 +50400,45 @@ export class PublicEntry extends WorkerEntrypoint {
         // whole SecureSpend-at-launch decision, and it costs us nothing to be honest about.
         case "set_hours": {
           // One door for both, because a shop's week and an artist's week are the same shape.
-          // `days` is {mon:"11-7", tue:"closed", ...} - what the seven rows on the screen hold.
-          // Converted here, so nothing above this line has to know about minutes.
+          //
+          // ══ THE SLIDER IS THE VALUE (2026-08-21) ══════════════════════════════════════════
+          // This used to take {mon:"11-7"} and run it through `hoursFromText`, because the screen
+          // held seven TEXT BOXES. It does not any more: a day is a row you tap and the sheet
+          // that opens is a two-handle slider, which already knows minutes.
+          // Grok, and he is right: "text parsing is how Tuesday disappeared." A parser can refuse
+          // a week; a slider cannot produce something to refuse. So the SHEET sends
+          //   {mon: [[660,1140]], tue: null, ...}
+          // and this passes it through untouched. `normWeekly` on the other side of both writers
+          // has always accepted exactly that shape - nothing below this line changes.
+          //
+          // A STRING IS STILL READ, and that is deliberate: `RUN` is an operator door and
+          // operator glue is allowed to be lazy - `set_hours {"days":{"mon":"11-7"}}` still works.
+          // It is simply no longer what the product path sends. `hoursFromText` keeps its one
+          // remaining caller rather than becoming dead code with a comment explaining itself.
           const days = a.days && typeof a.days === "object" ? a.days : null;
           if (!days) return { ok: false, error: "NO_DAYS" };
           const weekly = {};
           const unreadable = [];
           for (const k of ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]) {
             if (!(k in days)) continue;
-            const v = String(days[k] ?? "").trim();
+            const raw = days[k];
+            // null / undefined is a day they said they are CLOSED - meaningful, not missing.
+            if (raw == null) { weekly[k] = null; continue; }
+            // The sheet's shape: an array of [from,to] minute pairs. `[]` is closed too - that is
+            // what removing the only range leaves behind, and it must not read as "never said".
+            if (Array.isArray(raw)) {
+              const clean = (Array.isArray(raw[0]) ? raw : [raw])
+                .map(p => [Number(p && p[0]), Number(p && p[1])])
+                .filter(p => isFinite(p[0]) && isFinite(p[1]) &&
+                             p[0] >= 0 && p[1] <= 1440 && p[1] > p[0])
+                .sort((x, y) => x[0] - y[0]);
+              // A pair that survives none of those tests is not a closed day, it is a broken
+              // payload, and storing null would silently shut a shop that meant to be open.
+              if (!clean.length && raw.length) { unreadable.push(k + ": " + JSON.stringify(raw)); continue; }
+              weekly[k] = clean.length ? clean : null;
+              continue;
+            }
+            const v = String(raw ?? "").trim();
             if (!v || /^(closed|off|shut)$/i.test(v)) { weekly[k] = null; continue; }
             const r = hoursFromText(v);
             if (!r) { unreadable.push(k + ": " + v); continue; }

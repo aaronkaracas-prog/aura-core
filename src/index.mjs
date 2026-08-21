@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.13.0-2026-08-21-one-act-one-path";
+const BUILD = "aura-core-v7.14.0-2026-08-21-a-warning-with-buttons";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -24757,6 +24757,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           })(),
           // What she read and what they told her - kept, moved out of the way.
           understanding: understanding || null,
+          // The Hours field on Your page rendered EMPTY, because the stored value is an object
+          // and the field only accepted a string - so a shop that had set their hours saw a
+          // blank box and could reasonably conclude they had not.
+          hours_lines: (() => {
+            const h = [...chain].reverse().find(c => c?.event === "HOURS");
+            return h ? hoursLines(h.data) : null;
+          })(),
           your_page: "https://openforbusiness.world/b/" + pick,
           // Gate One, read from their chain rather than from a subscription table. A business that has
           // never paid sees its record; one that has paid gets the tools.
@@ -50305,6 +50312,16 @@ export class PublicEntry extends WorkerEntrypoint {
         // outcome - and Claude had built it as a boolean on a row instead.
         // The shop takes it however they take money today; we record that it happened. That is the
         // whole SecureSpend-at-launch decision, and it costs us nothing to be honest about.
+        case "seat_hours": {
+          // An artist's own shifts, read from their edge. The console showed a shop their
+          // roster with no way to see when anybody actually works - so the one thing a shop
+          // asks about a person every day was the one thing not on the screen.
+          // Read-only: SEAT HOURS with no payload returns what is stored.
+          if (!a.artist) return { ok: false, error: "NO_ARTIST" };
+          const r = await run("SEAT HOURS " + biz + " " + a.artist);
+          return { ok: !!r?.ok, reads_as: r?.reads_as || null, hours: r?.hours || null,
+            say: r?.ok ? null : (r?.error || "Could not read their hours.") };
+        }
         case "deposit_taken": {
           // ══ TWO FACTS, NOT ONE (2026-08-18) ═══════════════════════════════════════════════
           // PROVEN: `PTA_OUTCOME PAID` alone left `PTA_DUE ALL` still showing the $150 owed. A

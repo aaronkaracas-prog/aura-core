@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.11.0-2026-08-21-hours-a-customer-can-read";
+const BUILD = "aura-core-v7.12.0-2026-08-21-a-block-is-not-a-customer";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -21426,8 +21426,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           rating: dp.rating, reviews_count: dp.reviews_count, open_now: dp.open_now,
           // Their own hours when Google has none - the chain is a source, not a fallback of last resort.
           utc_offset_minutes: dp.utc_offset_minutes ?? null,
+          // ══ AND THE PUBLIC PAGE, WHICH IS WHERE IT MATTERED (fixed 2026-08-21) ═════════
+          // `JSON.stringify(own.hours)` - the last resort in this ternary - is what a customer
+          // actually saw: {"weekly":{"mon":[[660,1140]]...},"edited_by":"the owner"...}.
+          // `hoursLines` turns that into "Monday 11:00-19:00", one line a day, which is the
+          // shape Google returns too, so the page renders both the same way.
           hours: dp.hours || (own && own.hours
-            ? (Array.isArray(own.hours) ? own.hours : [String(own.hours.open || own.hours.hours || JSON.stringify(own.hours))])
+            ? (Array.isArray(own.hours) ? own.hours
+               : (hoursLines(own.hours) || [String(own.hours.open || own.hours.hours || "")]).filter(Boolean))
             : null),
           photos: dp.photos, maps_url: dp.maps_url,
           about: (understanding && understanding.what_it_is) || dp.about ||
@@ -24620,6 +24626,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 // plans a day around five. Cancelled stays in LIST on purpose - it happened -
                 // but it is not something coming.
                 if (String(c.status || "").toUpperCase() === "CANCELLED") continue;
+                // A BLOCK IS NOT SOMEBODY COMING IN. Its `from_id` is the artist, so Tomas's
+                // five-hour hold listed Tomas as his own customer and counted as a booking
+                // ahead. It belongs on the calendar, not in "who is coming".
+                if (c.kind === "block") continue;
                 if (c.when && c.when > now) soon.push({ uid: r.id, when: c.when, who: r.who || null,
                   customer: r.from_id || null,
                   artist: c.artist || null,
@@ -24693,9 +24703,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 }
                 // Money is on the appointment once PTA_KEPT stamps it, and on the chain before
                 // that. Both are shown - held is a fact, promised is a promise.
-                if (!cancelled && (c.amount != null || c.deposit_held))
+                if (!cancelled && (c.amount != null || c.deposit_held)) {
+                  // `held_total` read 0 beside a deposit marked held, because PTA_KEPT stamps
+                  // the FACT on the appointment while the AMOUNT stays on the chain. Look it
+                  // up by the appointment it names - the promise knows what it was worth.
+                  let amt = c.amount ?? null;
+                  if (amt == null && c.deposit_held) {
+                    const promise = [...chain].reverse().find(k =>
+                      k?.data?.appointment === r.id && k.data.amount != null);
+                    if (promise) amt = promise.data.amount;
+                  }
                   money.push({ uid: r.id, who: r.who || null, when: c.when,
-                    amount: c.amount ?? null, held: !!c.deposit_held });
+                    amount: amt, held: !!c.deposit_held });
+                }
               }
               // Anything still owed on the chain, so the tab is not empty when the money has
               // only ever been a promise - which is the normal case before somebody pays.

@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.04.0-2026-08-21-name-the-right-reason";
+const BUILD = "aura-core-v7.05.0-2026-08-21-a-revoked-seat-cannot-answer";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23308,8 +23308,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             const ok = await db.prepare("SELECT 1 FROM pta_edges WHERE from_id = ? AND to_id = ? " +
               "AND edge_type = 'works_at' AND state != 'revoked'").bind(val, ap.business).first().catch(() => null);
             if (!ok) return { cmd: "APPOINTMENT", payload: { ok: false, error: "NOT_SEATED_HERE", artist: val } };
-            c.reassigned_from = c.artist; c.artist = val; c.with = val;
-            c.attendees = { ...(c.attendees || {}), [val]: "NEEDS-ACTION" };
+            // ══ THE OLD ARTIST COMES OFF THE INVITATION (fixed 2026-08-21) ════════════════
+            // Reassigning added the new artist and left the old one on `attendees`, so a booking
+            // moved from Marisol to Dev listed THREE people - and because status flips to
+            // CONFIRMED only when everyone has ACCEPTED, a ghost who no longer works there could
+            // hold the appointment TENTATIVE forever, or confirm it on their way out the door.
+            // `reassigned_from` keeps the history; the invitation lists who is actually on it.
+            const priorArtist = c.artist;
+            c.reassigned_from = priorArtist; c.artist = val; c.with = val;
+            const att = { ...(c.attendees || {}) };
+            if (priorArtist && priorArtist !== val) delete att[priorArtist];
+            att[val] = "NEEDS-ACTION";
+            c.attendees = att;
           } else if (field === "summary" || field === "description") {
             c[field] = String(val).slice(0, 800);
           } else {
@@ -23338,6 +23348,25 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const ap = await readAp(uid);
           if (!ap) return { cmd: "APPOINTMENT", payload: { ok: false, error: "NO_SUCH_APPOINTMENT", uid } };
           const c = ap.v;
+          // ══ A REVOKED SEAT CANNOT STILL ANSWER (fixed 2026-08-21) ════════════════════════
+          // MEASURED on Harbor & Bone: Marisol left the shop, the booking was REASSIGNED to Dev,
+          // and `APPOINTMENT REPLY … pta_b989… ACCEPTED` still worked - a departed artist moving
+          // a live appointment she no longer has anything to do with.
+          // `NEW` and `SET artist` both check `works_at`; REPLY checked nothing. The same gap
+          // that let a shop be ownerless: a guard on one door and not the others.
+          // The CUSTOMER is not a seat and must always be able to answer - it is their booking.
+          if (who && who !== c.customer) {
+            const seated = await db.prepare("SELECT 1 FROM pta_edges WHERE from_id = ? AND to_id = ? " +
+              "AND edge_type = 'works_at' AND state != 'revoked'")
+              .bind(who, ap.business).first().catch(() => null);
+            const isOwner = seated ? null : await db.prepare("SELECT 1 FROM pta_edges WHERE from_id = ? " +
+              "AND to_id = ? AND edge_type IN ('owns','manages') AND state != 'revoked'")
+              .bind(who, ap.business).first().catch(() => null);
+            if (!seated && !isOwner) return { cmd: "APPOINTMENT", payload: { ok: false,
+              error: "NOT_SEATED_HERE", who, uid,
+              what_to_do: "They do not work at this business, so they cannot answer for it. The " +
+                          "customer can always answer, and so can an owner." } };
+          }
           c.attendees = { ...(c.attendees || {}), [who]: ps };
           // The client accepting and the artist accepting are different facts, and the appointment is
           // only really on when nobody is still deciding.

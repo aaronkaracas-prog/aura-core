@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.12.0-2026-08-21-a-block-is-not-a-customer";
+const BUILD = "aura-core-v7.13.0-2026-08-21-one-act-one-path";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -50316,7 +50316,11 @@ export class PublicEntry extends WorkerEntrypoint {
           // commands. From the shop's side it is one act, so the one button fires both.
           const what = (a.what || "an appointment") + (a.amount ? " - " + a.amount : "");
           const paid = await run("PTA_OUTCOME " + biz + " PAID ::: deposit for " + what);
-          const kept = await run("PTA_KEPT " + biz + " ::: deposit taken, " + what);
+          // PTA_KEPT takes the appointment now (v7.07), and stamping it there is the same write
+          // `BOOKING STATE` was doing separately below - one act, one path, and the amount and
+          // the booking end up agreeing without a second command that could drift.
+          const kept = await run("PTA_KEPT " + biz + (a.booking ? " " + a.booking : "") +
+            " ::: deposit taken, " + what);
           // On the booking too, so the console's "N without a deposit held" stops counting it.
           if (a.booking) await run("BOOKING STATE " + a.booking + " confirmed deposit held");
           return { ok: !!(paid?.ok), money_recorded: !!(paid?.ok), promise_closed: !!(kept?.ok),

@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.14.0-2026-08-21-a-warning-with-buttons";
+const BUILD = "aura-core-v7.15.0-2026-08-21-a-week-you-can-type";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -161,6 +161,48 @@ function hoursLines(weekly) {
   const r = hoursReadAs(weekly);
   if (!r) return null;
   return Object.entries(r).map(([k, v]) => (DAY_NAME[k] || k) + " " + v);
+}
+
+// ══ AND BACK AGAIN (2026-08-21) ═════════════════════════════════════════════════════════════
+// The Hours field on Your page PREFILLED readable text and SAVED it as a string, into a field
+// whose stored form is {"mon":[[660,1140]]} - minutes from midnight. A shop typing "11-7" wrote
+// a string where an array belongs, and their availability would have stopped working with no
+// error anywhere. Grok: "prefill is readable; save is a lie."
+// `hoursReadAs` goes minutes -> "11:00-19:00". This goes back, so the two are one round trip.
+// Accepts what a person actually types: "11-7", "11:00-19:00", "11am-7pm", "closed", "off".
+function minutesOfClock(t) {
+  const m = String(t).trim().toLowerCase()
+    .match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/);
+  if (!m) return null;
+  let h = parseInt(m[1], 10); const mi = m[2] ? parseInt(m[2], 10) : 0;
+  if (h > 23 || mi > 59) return null;
+  if (m[3] === "pm" && h < 12) h += 12;
+  if (m[3] === "am" && h === 12) h = 0;
+  // No am/pm and an hour that cannot be morning in a shop: 1-8 means the afternoon. A tattoo
+  // shop opening at "1" means one in the afternoon, never one in the morning.
+  if (!m[3] && h >= 1 && h <= 8) h += 12;
+  return h * 60 + mi;
+}
+function hoursFromText(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return null;
+  if (/^(closed|off|shut)$/i.test(raw)) return null;
+  const out = [];
+  for (const part of raw.split(",")) {
+    const bits = part.split(/[-\u2013\u2014to]+/i).map(x => x.trim()).filter(Boolean);
+    if (bits.length !== 2) continue;
+    const a = minutesOfClock(bits[0]);
+    let b = minutesOfClock(bits[1]);
+    if (a == null || b == null) continue;
+    // "10-9" is ten in the morning until nine at night, and nobody writes "10am-9pm" on a
+    // shop door. If the end lands before the start, it meant the afternoon - the only reading
+    // that makes a working day. Twelve hours on, and only if that actually lands after the
+    // start, so "7-7" stays unreadable rather than becoming a nineteen-hour shift.
+    if (b <= a && b + 720 > a && b + 720 <= 1440) b += 720;
+    if (b <= a) continue;
+    out.push([a, b]);
+  }
+  return out.length ? out : null;
 }
 
 function repairJson(text) {
@@ -24694,8 +24736,10 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 if (c.kind === "block") continue;          // a hold has no customer
                 const cancelled = String(c.status || "").toUpperCase() === "CANCELLED";
                 if (r.from_id) {
+                  // They were minted BY THEIR PHONE NUMBER and the row could not call them.
+                  // The identity key holds it; nothing else had to be stored to know it.
                   const e = seen.get(r.from_id) ||
-                    { pta: r.from_id, name: r.who || null, visits: 0, upcoming: 0, last: null };
+                    { pta: r.from_id, name: r.who || null, phone: null, visits: 0, upcoming: 0, last: null };
                   e.visits++;
                   if (!cancelled && c.when > nowIso) e.upcoming++;
                   if (!e.last || String(c.when) > e.last) e.last = c.when;
@@ -24726,6 +24770,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                                    : Date.parse(k.ts) > Date.parse(c.ts)));
                 if (!closed) money.push({ who: null, when: c.data.due, amount: c.data.amount,
                   held: false, what: c.data.what || null, from: "promised" });
+              }
+              for (const e of seen.values()) {
+                const idr = await db.prepare("SELECT identity_key FROM pta_entities WHERE id = ?")
+                  .bind(e.pta).first().catch(() => null);
+                const k = String(idr?.identity_key || "");
+                if (k.startsWith("phone:")) e.phone = k.slice(6);
+                else if (k.startsWith("email:")) e.email = k.slice(6);
               }
               out.customers = { count: seen.size, list: [...seen.values()]
                 .sort((a, b) => String(b.last).localeCompare(String(a.last))) };
@@ -24763,6 +24814,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           hours_lines: (() => {
             const h = [...chain].reverse().find(c => c?.event === "HOURS");
             return h ? hoursLines(h.data) : null;
+          })(),
+          // Per day, keyed, so the seven rows on Your page prefill with what is stored rather
+          // than an empty box a shop reads as "I never set these".
+          hours_read: (() => {
+            const h = [...chain].reverse().find(c => c?.event === "HOURS");
+            return h ? hoursReadAs(h.data) : null;
           })(),
           your_page: "https://openforbusiness.world/b/" + pick,
           // Gate One, read from their chain rather than from a subscription table. A business that has
@@ -50312,6 +50369,31 @@ export class PublicEntry extends WorkerEntrypoint {
         // outcome - and Claude had built it as a boolean on a row instead.
         // The shop takes it however they take money today; we record that it happened. That is the
         // whole SecureSpend-at-launch decision, and it costs us nothing to be honest about.
+        case "set_hours": {
+          // One door for both, because a shop's week and an artist's week are the same shape.
+          // `days` is {mon:"11-7", tue:"closed", ...} - what the seven rows on the screen hold.
+          // Converted here, so nothing above this line has to know about minutes.
+          const days = a.days && typeof a.days === "object" ? a.days : null;
+          if (!days) return { ok: false, error: "NO_DAYS" };
+          const weekly = {};
+          const unreadable = [];
+          for (const k of ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]) {
+            if (!(k in days)) continue;
+            const v = String(days[k] ?? "").trim();
+            if (!v || /^(closed|off|shut)$/i.test(v)) { weekly[k] = null; continue; }
+            const r = hoursFromText(v);
+            if (!r) { unreadable.push(k + ": " + v); continue; }
+            weekly[k] = r;
+          }
+          if (unreadable.length) return { ok: false, error: "COULD_NOT_READ",
+            unreadable, say: "I could not read " + unreadable.join(", ") +
+              ". Try 11-7, or 11:00-19:00, or closed." };
+          const r = a.artist
+            ? await run("SEAT HOURS " + biz + " " + a.artist + " ::: " + JSON.stringify(weekly))
+            : await run("BUSINESS_EDIT " + biz + " hours ::: " + JSON.stringify(weekly));
+          return { ok: !!r?.ok, reads_as: hoursReadAs(weekly), weekly,
+            say: r?.ok ? "Saved." : (r?.error || "Could not save that.") };
+        }
         case "seat_hours": {
           // An artist's own shifts, read from their edge. The console showed a shop their
           // roster with no way to see when anybody actually works - so the one thing a shop
@@ -50338,8 +50420,9 @@ export class PublicEntry extends WorkerEntrypoint {
           // the booking end up agreeing without a second command that could drift.
           const kept = await run("PTA_KEPT " + biz + (a.booking ? " " + a.booking : "") +
             " ::: deposit taken, " + what);
-          // On the booking too, so the console's "N without a deposit held" stops counting it.
-          if (a.booking) await run("BOOKING STATE " + a.booking + " confirmed deposit held");
+          // `BOOKING STATE` was the old door and it is gone: PTA_KEPT stamps the booking itself
+          // now (v7.07), so calling both means two writers of one fact - which is the thing that
+          // has cost this codebase a calendar rewrite, a roster rewrite and an empty Customers tab.
           return { ok: !!(paid?.ok), money_recorded: !!(paid?.ok), promise_closed: !!(kept?.ok),
             say: paid?.ok ? "Recorded. The deposit is taken and the promise is closed."
                           : (paid?.error || "Could not record it.") };

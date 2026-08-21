@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.08.0-2026-08-21-from-the-service-they-signed-up-on";
+const BUILD = "aura-core-v7.08.1-2026-08-21-declared-where-it-is-read";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -21540,7 +21540,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // the page afterwards was cityguide branded. Four leaks from one hardcoded host.
           // `abBrand` is now declared above, beside the pending record it also has to travel in.
           const link = "https://" + abBrand + "/confirm/" + token;
-          let sent = false, how = null;
+          // ══ DECLARED WHERE IT IS READ (fixed 2026-08-21, it broke signup) ═══════════════
+          // `abSentFrom` was declared with `let` INSIDE the try that sends, and read in the
+          // return statement OUTSIDE it - "abSentFrom is not defined", and ADD_BUSINESS START
+          // failed for every shop. `node --check` passes; only running it finds this.
+          // EIGHTH time this exact shape has appeared in this file. It sits beside `sent` and
+          // `how` now, which are the other two values the send produces and the reply reports.
+          let sent = false, how = null, abSentFrom = null;
           try {
             // ══ ONE LINE, BECAUSE THE PARSER READS ONE LINE ═══════════════════════════════
             // EMAIL_SEND parses "<to> <subject> | <body>" off a single line. The body here carried
@@ -21555,7 +21561,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             let er = await processCommand("EMAIL_SEND " + email + " FROM noreply@" + abBrand +
               " " + abMail, env, true);
             let ep = (er && er.payload) ? er.payload : er;
-            let abSentFrom = "noreply@" + abBrand;
+            abSentFrom = "noreply@" + abBrand;
             if (!ep?.ok) {
               er = await processCommand("EMAIL_SEND " + email + " " + abMail, env, true);
               ep = (er && er.payload) ? er.payload : er;

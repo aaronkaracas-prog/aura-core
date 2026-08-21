@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.06.0-2026-08-21-say-which-check-refused";
+const BUILD = "aura-core-v7.07.0-2026-08-21-the-deposit-stamps-the-booking";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -28880,8 +28880,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (cleanPhone.length < 7) return { cmd: "PTA_PHONE", payload: { ok: false,
         error: "PHONE_TOO_SHORT", given: rawPhone, digits: cleanPhone.length,
         what_to_do: "That is not enough digits to be a phone number - it looks like a fragment " +
-                    "(an area code, or a number split by spaces). Pass it with no spaces: " +
-                    "PTA_PHONE 8285550192 Priya Raman" } };
+                    "(an area code, or a number split by spaces). Pass it with no spaces, " +
+                    "digits only." } };
       const callerName = rest.slice(rest.indexOf(rawPhone) + rawPhone.length).trim() || "Caller";
       // resolve-or-create the PTA (auto-dedups on identity_key = phone:<clean>)
       let phEntity = null, phMode = null;
@@ -38226,7 +38226,17 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       //   PTA_KEPT <pta_id> ::: called, he asked for another week
       if (!isOp) return { cmd: "PTA_KEPT", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const kpParts = (rest || "").split(":::");
-      const kpId = (kpParts[0] || "").trim();
+      // ══ THE APPOINTMENT WAS CARRYING A FIELD NOBODY WROTE (fixed 2026-08-21) ═══════════════
+      // Every appointment holds `deposit` and `deposit_held: false`, and NOTHING ever set them
+      // true - the real deposit lives on the chain, via PTA_DUE -> PTA_OUTCOME -> PTA_KEPT.
+      // The console's Today tab reads `deposit_held` and prints "N without a deposit held", so a
+      // shop that took $150 in cash and recorded it correctly still saw the booking listed as
+      // unpaid, forever. **A field a shop trusts, that is always false, is worse than no field.**
+      // So the promise and the appointment close together: name the appointment and it is stamped.
+      //   PTA_KEPT <pta_id> [appointment edge_...] ::: what was done
+      const kpHead = (kpParts[0] || "").trim().split(/\s+/);
+      const kpId = (kpHead[0] || "").trim();
+      const kpAppt = (kpHead[1] || "").trim();
       const kpWhat = kpParts.slice(1).join(":::").trim();
       if (!kpId) return { cmd: "PTA_KEPT", payload: { ok: false,
         error: "Usage: PTA_KEPT <pta_id> ::: what happened when you did it" } };
@@ -38254,7 +38264,26 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
         let kpIndexCleared = true, kpIndexError = null;
         try { await env.AURA_MEMORY.prepare("DELETE FROM pta_commitments WHERE entity = ?").bind(kpId).run(); }
         catch (e) { kpIndexCleared = false; kpIndexError = String(e?.message ?? e); }
+        // Stamp the booking, so the calendar and the chain agree about what is secured.
+        let kpStamped = null;
+        if (kpAppt && /^edge_[a-f0-9]{8,32}$/i.test(kpAppt)) {
+          try {
+            const row = await env.AURA_MEMORY.prepare(
+              "SELECT id, context FROM pta_edges WHERE id = ? AND edge_type = 'books'").bind(kpAppt).first();
+            if (!row) kpStamped = { ok: false, why: "NO_SUCH_APPOINTMENT", uid: kpAppt };
+            else {
+              let ac = {}; try { ac = JSON.parse(row.context || "{}"); } catch {}
+              ac.deposit_held = true;
+              ac.deposit_held_at = new Date().toISOString();
+              ac.last_modified = ac.deposit_held_at;
+              await env.AURA_MEMORY.prepare("UPDATE pta_edges SET context = ? WHERE id = ?")
+                .bind(JSON.stringify(ac), row.id).run();
+              kpStamped = { ok: true, uid: kpAppt, deposit_held: true };
+            }
+          } catch (e) { kpStamped = { ok: false, why: String(e?.message ?? e).slice(0, 160) }; }
+        }
         return { cmd: "PTA_KEPT", payload: { ok: true, entity: kpId, closed: true,
+          appointment: kpStamped || undefined,
           was_promised: open.due, late_by_hours: ev.late_by_hours, chain_length: wp.chain_length,
           index_cleared: kpIndexCleared ? undefined : false,
           index_error: kpIndexError || undefined,

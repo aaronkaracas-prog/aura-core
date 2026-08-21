@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.03.0-2026-08-21-trade-before-split";
+const BUILD = "aura-core-v7.04.0-2026-08-21-name-the-right-reason";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23108,7 +23108,23 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const oap = (openAv && openAv.payload) ? openAv.payload : openAv;
         const oDay = (oap?.open_days || []).find(x => x.date === wantDate);
         const openThen = oDay && (oDay.slots || []).some(sl => sl.at === target.toISOString());
-        return { ok: false, why: openThen ? "TIME_TAKEN" : "SHOP_IS_SHUT" };
+        if (openThen) return { ok: false, why: "TIME_TAKEN" };
+        // ══ THE SHOP BEING OPEN IS NOT THE ARTIST BEING IN (fixed 2026-08-21) ══════════════
+        // MEASURED: booking Dev on a Tuesday he does not work returned SHOP_IS_SHUT. The shop
+        // was open noon to eight and Marisol was working it. An owner reading "the shop is shut"
+        // goes and edits hours that were never wrong.
+        // Everything above this line asked with `with:<artist>`, so "no slot" meant "not HIM".
+        // Ask once more WITHOUT the artist: if the shop has that slot, the shop is open and the
+        // person is off - a different fact, and the one the owner needs.
+        if (who) {
+          const shopAv = await processCommand("AVAILABILITY " + bizId + " days:" +
+            Math.min(Math.max(need, 1), 60) + " open_only:1", env, true);
+          const sap = (shopAv && shopAv.payload) ? shopAv.payload : shopAv;
+          const sDay = (sap?.open_days || []).find(x => x.date === wantDate);
+          if (sDay && (sDay.slots || []).some(sl => sl.at === target.toISOString()))
+            return { ok: false, why: "ARTIST_NOT_WORKING", who };
+        }
+        return { ok: false, why: "SHOP_IS_SHUT" };
       };
       const readAp = async (uid) => {
         const r = await db.prepare("SELECT id, from_id, to_id, context, state FROM pta_edges WHERE id = ?")
@@ -23165,9 +23181,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const hs = await hoursSay(biz, start, mins, f.artist || null);
           if (!hs.ok) return { cmd: "APPOINTMENT", payload: { ok: false, error: hs.why,
             asked_for: new Date(start).toISOString(), business: biz, detail: hs.detail || undefined,
-            what_to_do: hs.why === "SHOP_IS_SHUT"
-              ? "That is outside their hours or already taken. AVAILABILITY " + biz + " lists what is open."
-              : "Their hours could not be read, so this was not checked against them." } };
+            // Every refusal said one of two things, and one of them was never true. TIME_TAKEN
+            // answered "their hours could not be read" - a leftover from a different failure -
+            // on a shop whose hours had just been read correctly to reach this line.
+            artist: hs.who || undefined,
+            what_to_do:
+              hs.why === "ARTIST_NOT_WORKING"
+                ? "The shop is open then, but that artist is not working. AVAILABILITY " + biz +
+                  " with:" + (hs.who || "<artist>") + " lists the times they are in."
+              : hs.why === "TIME_TAKEN"
+                ? "The shop is open then and somebody already has that time. AVAILABILITY " +
+                  biz + " lists what is still free."
+                : "That is outside their opening hours. AVAILABILITY " + biz + " lists what is open." } };
           // Two appointments cannot hold the same chair. The check is on the artist when one is
           // named, on the shop when nobody is - which is what a walk-in actually blocks.
           const clash = await (async () => {
@@ -28797,7 +28822,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const rawPhone = (args[0] || "").trim();
       if (!rawPhone) return { cmd: "PTA_PHONE", payload: { ok: false, error: "Usage: PTA_PHONE <phonenumber> [name]" } };
       const cleanPhone = rawPhone.replace(/\D/g, "");
+      // ══ AN AREA CODE IS NOT A PERSON (fixed 2026-08-21) ═══════════════════════════════════
+      // MEASURED: `PTA_PHONE (828) 555-0192 Priya Raman` minted a human being whose entire
+      // identity was "828". `args[0]` is one whitespace token, so "(828)" was the number and
+      // "555-0192 Priya Raman" was the name - and the only guard was "are there ANY digits".
+      // THE SESSION KEY IS THE REAL DAMAGE: `phone_828` went into `sessions`, and aura-comms
+      // resolves an inbound caller through exactly that row. Every caller in western North
+      // Carolina would have landed on one stranger's PTA.
+      // Seven digits is a local number; anything shorter is a fragment, not a person.
       if (!cleanPhone) return { cmd: "PTA_PHONE", payload: { ok: false, error: "No digits in phone number" } };
+      if (cleanPhone.length < 7) return { cmd: "PTA_PHONE", payload: { ok: false,
+        error: "PHONE_TOO_SHORT", given: rawPhone, digits: cleanPhone.length,
+        what_to_do: "That is not enough digits to be a phone number - it looks like a fragment " +
+                    "(an area code, or a number split by spaces). Pass it with no spaces: " +
+                    "PTA_PHONE 8285550192 Priya Raman" } };
       const callerName = rest.slice(rest.indexOf(rawPhone) + rawPhone.length).trim() || "Caller";
       // resolve-or-create the PTA (auto-dedups on identity_key = phone:<clean>)
       let phEntity = null, phMode = null;
@@ -38273,7 +38311,16 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
             const kept = chain.some(k => k && k.event === "KEPT" && k.data &&
               (k.data.promised === c.data.due || Date.parse(k.ts) > Date.parse(c.ts)));
             if (kept) continue;
+            // ══ A SHOP ASKING WHAT IT IS OWED WAS HANDED A TIMESTAMP (fixed 2026-08-21) ══════
+            // MEASURED: `{"due":"...","amount":150,"what":"Deposit - Priya Raman..."}` went onto
+            // the chain intact, and PTA_DUE returned the date twice - once as `due`, once as
+            // `said` - and never the 150 or what it was for. The amount was never lost; it was
+            // never read. Whatever the promise carried comes back with it.
             const item = { entity: e.id, name: e.name || null, due: c.data.due,
+                           amount: c.data.amount ?? null,
+                           what: c.data.what || c.data.about || null,
+                           appointment: c.data.appointment || null,
+                           customer: c.data.customer || null,
                            said: c.data.said || c.data.due_said || null, recorded: c.ts };
             if (!live) { voided.push({ ...item, why: "the grant that authorised this is not active - " +
               "the commitment is void, not overdue. They withdrew; that ends what we owe them." }); continue; }

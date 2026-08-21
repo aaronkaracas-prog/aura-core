@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.08.1-2026-08-21-declared-where-it-is-read";
+const BUILD = "aura-core-v7.09.0-2026-08-21-the-customer-owns-their-booking";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23350,6 +23350,47 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             // CONFIRMED only when everyone has ACCEPTED, a ghost who no longer works there could
             // hold the appointment TENTATIVE forever, or confirm it on their way out the door.
             // `reassigned_from` keeps the history; the invitation lists who is actually on it.
+            // ══ A GUARD ON ONE DOOR AND NOT THE OTHERS, AGAIN (fixed 2026-08-21) ══════════
+            // `SET artist` checked that the new person is SEATED and stopped there. It never
+            // asked whether they are working at that time, or whether they already have it.
+            // MEASURED on Slack Tide: Marguerite's MONDAY booking was reassigned to Tomas, who
+            // does not work Mondays, and it was allowed. The shop would have found out when
+            // nobody turned up.
+            // `NEW` already answers both questions - so ask them the same way rather than
+            // writing a second version of the check.
+            {
+              const rBiz = ap.business || c.business;
+              const rStart = new Date(c.start);
+              const rEnd = new Date(rStart.getTime() + (Number(c.minutes) || 120) * 60000);
+              // The same `hoursSay` NEW uses, asked about the NEW artist.
+              const hs2 = await hoursSay(rBiz, rStart, Number(c.minutes) || 120, val);
+              if (!hs2.ok) return { cmd: "APPOINTMENT", payload: { ok: false,
+                error: hs2.why, uid, artist: val, asked_for: c.start,
+                detail: hs2.detail || undefined, grid_starts: hs2.grid_starts || undefined,
+                what_to_do: hs2.why === "ARTIST_NOT_WORKING"
+                  ? "That artist is not working then, so the booking cannot move to them. " +
+                    "AVAILABILITY " + rBiz + " with:" + val + " lists the times they are in."
+                  : "That time does not suit them. AVAILABILITY " + rBiz + " with:" + val +
+                    " lists what is open." } };
+              // And they must not already have that window - the same overlap test the start
+              // branch runs, asked about the artist we are moving TO.
+              try {
+                const others = await env.AURA_MEMORY.prepare(
+                  "SELECT id, context FROM pta_edges WHERE to_id = ? AND edge_type = 'booking' " +
+                  "AND state != 'revoked' AND id != ?").bind(rBiz, uid).all();
+                for (const o of (others?.results || [])) {
+                  let oc = {}; try { oc = JSON.parse(o.context || "{}"); } catch {}
+                  if (oc.status === "CANCELLED") continue;
+                  if (oc.artist && oc.artist !== val) continue;
+                  const os = Date.parse(oc.start || oc.when || "");
+                  const oe = Date.parse(oc.end || "") || (os + (Number(oc.minutes) || 120) * 60000);
+                  if (isFinite(os) && rStart.getTime() < oe && rEnd.getTime() > os)
+                    return { cmd: "APPOINTMENT", payload: { ok: false, error: "TIME_TAKEN",
+                      uid, artist: val, clashes_with: o.id,
+                      what_to_do: "That artist already has that time." } };
+                }
+              } catch {}
+            }
             const priorArtist = c.artist;
             c.reassigned_from = priorArtist; c.artist = val; c.with = val;
             const att = { ...(c.attendees || {}) };
@@ -23391,7 +23432,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // `NEW` and `SET artist` both check `works_at`; REPLY checked nothing. The same gap
           // that let a shop be ownerless: a guard on one door and not the others.
           // The CUSTOMER is not a seat and must always be able to answer - it is their booking.
-          if (who && who !== c.customer) {
+          // ══ AND I CHECKED THE WRONG OBJECT (fixed 2026-08-21) ═════════════════════════════
+          // This read `c.customer` - a field inside the appointment's JSON blob, which is only
+          // populated on some paths. The customer of record is the EDGE's `from_id`, which
+          // `readAp` returns as `ap.customer`. So the exemption never matched and EVERY customer
+          // got NOT_SEATED_HERE trying to confirm their own booking - the single most common
+          // action in the product, blocked by a guard I shipped yesterday.
+          // MEASURED on Slack Tide: Marguerite refused on her own appointment.
+          const apCustomer = ap.customer || c.customer || null;
+          if (who && who !== apCustomer) {
             const seated = await db.prepare("SELECT 1 FROM pta_edges WHERE from_id = ? AND to_id = ? " +
               "AND edge_type = 'works_at' AND state != 'revoked'")
               .bind(who, ap.business).first().catch(() => null);

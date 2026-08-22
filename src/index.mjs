@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.18.0-2026-08-22-cut-a-key-not-remove-the-lock";
+const BUILD = "aura-core-v7.19.0-2026-08-22-read-what-the-edit-wrote";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -24664,10 +24664,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // another; it edits ITS PAGE, and everything on the page is editable in place.
         // Designs is gone from every nav. The gallery lives inside Your page.
         const NAV = {
-          tattoo_shop: ["Today", "Appointments", "Artists", "Customers", "Deposits", "Your page"],
-          restaurant:  ["Today", "Front of house", "Kitchen", "Menu", "Reservations", "Staff", "Your page"],
-          salon:       ["Today", "Appointments", "Stylists", "Customers", "Deposits", "Your page"],
-          _default:    ["Today", "Appointments", "Customers", "Your page"],
+          // ══ A PAGE IS WHAT A DIRECTORY SELLS (2026-08-22) ══════════════════════════════════
+          // "Your page" was the name while this was a listing with an edit button on it. Aaron:
+          // "they're not running a page, they're running their entire business." That tab holds
+          // their QR, their gallery, their hours and their contact details - the shop itself, not
+          // a description of it. The word was quietly setting the ceiling on what it could become.
+          tattoo_shop: ["Today", "Appointments", "Artists", "Customers", "Deposits", "Your business"],
+          restaurant:  ["Today", "Front of house", "Kitchen", "Menu", "Reservations", "Staff", "Your business"],
+          salon:       ["Today", "Appointments", "Stylists", "Customers", "Deposits", "Your business"],
+          _default:    ["Today", "Appointments", "Customers", "Your business"],
         };
         let type = null, understanding = null, chain = [];
         try {
@@ -24715,14 +24720,47 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           name: list.find(b => b.id === pick)?.name || null,
           business_type: type,
           nav: NAV[type] || NAV._default,
-          // ══ THE CONSOLE OPENS WITH WHAT SHE KNOWS ═════════════════════════════════════════
-          // Two understandings land on a chain: one from reading the site, one from the conversation.
-          // Taking only the latest meant a shop whose last event was a conversational note lost
-          // everything the crawl found. Merge them, site first, conversation over the top.
-          about: understanding?.what_it_is || null,
+          // ══ WRITTEN TO ONE EVENT, READ FROM ANOTHER (fixed 2026-08-22) ═══════════════════════
+          //
+          // MEASURED, and by the shop's own owner: Aaron opened the console, saw NO ADDRESS, typed
+          // one in, and it saved. The public page immediately showed the new address. The console
+          // still showed nothing. Same shop, same fact, two surfaces disagreeing - and the one that
+          // was wrong is the one the owner edits it on.
+          //
+          // `BUSINESS_EDIT phone|address|email` writes a CONTACT event. `about` writes SERVICE.
+          // ADD_BUSINESS CONFIRM writes the signup's address and phone as CONTACT too. And the
+          // console read all of them off `understanding`, which is built from UNDERSTANDING events
+          // and nothing else - so a fact could be written correctly, stored correctly, rendered
+          // correctly to the public, and be invisible in the one place it is edited.
+          //
+          // Resolved here, once, in the order that makes an EDIT WIN: the newest CONTACT or SERVICE
+          // event is the owner speaking most recently about their own shop, so it beats whatever a
+          // crawl understood. Understanding is the fallback, not the source.
+          // Grok found this from the outside without a single click, which is the whole argument
+          // for pointing him at source rather than at buttons.
+          // ══ AND MERGE THEM, DO NOT TAKE THE LAST ONE ════════════════════════════════════════
+          // Caught by testing this fix before shipping it: `BUSINESS_EDIT address` writes a CONTACT
+          // event containing ONLY an address. Reading just the newest CONTACT therefore made the
+          // PHONE disappear the moment somebody edited their address - the identical failure, one
+          // field over, introduced by the patch for it.
+          // Merged oldest first with later non-null values winning, which is exactly what the
+          // UNDERSTANDING reducer twenty lines up already does. Same problem, same answer, and now
+          // there is one shape for "fold a chain into a current view" instead of two.
+          ...(() => {
+            const fold = (ev) => chain
+              .filter(c => c?.event === ev && c.data)
+              .reduce((a, c) => ({ ...a, ...Object.fromEntries(
+                Object.entries(c.data).filter(([, v]) => v != null && v !== "")) }), {});
+            const ct = fold("CONTACT"), sv = fold("SERVICE");
+            return {
+              about: sv.offers || understanding?.what_it_is || null,
+              phone: ct.phone || understanding?.phone || null,
+              email: ct.email || understanding?.email || null,
+              where: ct.address || understanding?.where || null,
+            };
+          })(),
           offerings: understanding?.offerings || null,
           people: understanding?.people || null,
-          where: understanding?.where || null,
           since: understanding?.since || null,
           notable: understanding?.notable || null,
           learned: understanding?.found || null,

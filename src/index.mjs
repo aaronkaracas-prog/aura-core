@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.21.0-2026-08-22-a-deposit-lands-where-it-is-read";
+const BUILD = "aura-core-v7.22.0-2026-08-22-a-cancelled-booking-is-not-a-visit";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -24928,9 +24928,20 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                   // The identity key holds it; nothing else had to be stored to know it.
                   const e = seen.get(r.from_id) ||
                     { pta: r.from_id, name: r.who || null, phone: null, visits: 0, upcoming: 0, last: null };
-                  e.visits++;
-                  if (!cancelled && c.when > nowIso) e.upcoming++;
-                  if (!e.last || String(c.when) > e.last) e.last = c.when;
+                  // ══ A CANCELLED BOOKING IS NOT A VISIT (fixed 2026-08-22) ═══════════════
+                  // `cancelled` is worked out one line up and used for `upcoming` and for the
+                  // money list - but not here. So every booking a client ever called off still
+                  // counted, and `last` could point at one that never happened.
+                  // MEASURED: a test client with three rows, two of them cancelled and none of
+                  // them in the past, read as "3 bookings" with a `last` on a cancelled date.
+                  // A shop reading that row sees a regular who has never sat in the chair, and
+                  // the one number they would use to decide whether to hold a slot for somebody
+                  // is the one that lies.
+                  if (!cancelled) {
+                    e.visits++;
+                    if (!e.last || String(c.when) > e.last) e.last = c.when;
+                    if (c.when > nowIso) e.upcoming++;
+                  }
                   seen.set(r.from_id, e);
                 }
                 // Money is on the appointment once PTA_KEPT stamps it, and on the chain before

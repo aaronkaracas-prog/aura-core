@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.24.0-2026-08-22-nobody-can-book-you-yet";
+const BUILD = "aura-core-v7.25.0-2026-08-22-the-door-asks-what-the-calendar-answered";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23318,32 +23318,56 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // Ask far enough ahead to actually contain the date. 60 is the command's own ceiling.
         const need = Math.ceil((target.getTime() - Date.now()) / 86400000) + 1;
         if (need > 60) return { ok: true, unchecked: "beyond the 60-day window this can see" };
-        const av = await processCommand("AVAILABILITY " + bizId + (who ? " with:" + who : "") + " days:" +
-          Math.min(Math.max(need, 1), 60), env, true);
+        // ══ ASK ABOUT THE SITTING THEY ACTUALLY BOOKED (fixed 2026-08-22) ══════════════════
+        // This took `mins` and never passed it on, so every check ran against AVAILABILITY's
+        // DEFAULT two-hour grid no matter how long the appointment was.
+        // MEASURED: a three-hour sleeve. AVAILABILITY with slot:180 offered 2:00pm, the artist
+        // works 11 to 7, and booking that exact time came back ARTIST_NOT_WORKING - because a
+        // 180-minute grid starts at 11:00, 2:00 and 5:00 while the 120-minute grid this asked
+        // for starts at 11:00, 1:00, 3:00 and 5:00. Two grids, one question.
+        // The calendar offering a time that the booking door then refuses is the worst version
+        // of the two-readers disease: the customer picks a slot the shop showed them and is
+        // told it does not exist.
+        const slotMins = Math.max(15, Number(mins) || 120);
+        const ask = (extra) => "AVAILABILITY " + bizId + (who ? " with:" + who : "") +
+          " days:" + Math.min(Math.max(need, 1), 60) + " slot:" + slotMins + (extra || "");
+        const av = await processCommand(ask(""), env, true);
         const avp = (av && av.payload) ? av.payload : av;
         if (!avp?.ok) return { ok: false, why: "HOURS_UNKNOWN", detail: avp?.error || null };
         // OUTSIDE THE WINDOW IS NOT CLOSED. Now that AVAILABILITY states the window it actually
         // examined, this can tell "they are shut" from "nobody looked" instead of guessing.
-        const wantDate = target.toISOString().slice(0, 10);
+        // ══ DO NOT DECODE THE ZONE HERE - MATCH THE INSTANT (fixed 2026-08-22) ═════════════
+        // This looked the day up with `target.toISOString().slice(0,10)`, a UTC date, against
+        // `open_days[].date`, which is the LOCAL date at the business. For a shop in Portland
+        // every appointment from 5:00pm on is already tomorrow in UTC, so the lookup missed and
+        // legitimately open evenings answered "nothing is open that day at all".
+        // The fix is NOT to convert the date here. AVAILABILITY's own banner is explicit -
+        // "AVAILABILITY is the only reader of a business's zone in the whole codebase and it
+        // stays that way", because three doors interpreting TZ means three DST bugs. Adding an
+        // Intl decode to this function would have been the third door.
+        // So this one stops needing a date at all: slots come back as ISO INSTANTS, which are
+        // unambiguous in any zone. Match the instant across every day AVAILABILITY returned and
+        // there is nothing left to convert.
+        const wantAt = target.toISOString();
+        const hasAt = (p) => (p?.open_days || []).some(d =>
+          (d.slots || []).some(sl => sl.at === wantAt));
+        // The window check stays deliberately coarse - it exists only to tell "nobody looked" from
+        // "they are shut", and a day either side costs nothing because `need` already adds one.
         const win = avp.window;
-        if (win && (wantDate < win.from || wantDate > win.to)) {
+        if (win && (target < new Date(win.from + "T00:00:00Z") ||
+                    target > new Date(win.to + "T23:59:59Z"))) {
           return { ok: true, unchecked: "outside the window that was examined (" + win.from + " to " + win.to + ")" };
         }
-        const day = (avp.open_days || []).find(x => x.date === wantDate);
         // ══ SHUT AND TAKEN ARE DIFFERENT ANSWERS ═══════════════════════════════════════════
         // AVAILABILITY returns only FREE slots, so a missing slot means EITHER closed OR already
         // booked - and this reported both as SHOP_IS_SHUT. A client told "they are not open then"
         // about a time the business is plainly open goes away confused.
         // `open_only` re-asks WITHOUT occupancy: if the slot exists there, they ARE open and the
         // reason is that somebody has it. The clash check then names who.
-        const fits = day && (day.slots || []).some(sl => sl.at === target.toISOString());
-        if (fits) return { ok: true };
-        const openAv = await processCommand("AVAILABILITY " + bizId + (who ? " with:" + who : "") +
-          " days:" + Math.min(Math.max(need, 1), 60) + " open_only:1", env, true);
+        if (hasAt(avp)) return { ok: true };
+        const openAv = await processCommand(ask(" open_only:1"), env, true);
         const oap = (openAv && openAv.payload) ? openAv.payload : openAv;
-        const oDay = (oap?.open_days || []).find(x => x.date === wantDate);
-        const openThen = oDay && (oDay.slots || []).some(sl => sl.at === target.toISOString());
-        if (openThen) return { ok: false, why: "TIME_TAKEN" };
+        if (hasAt(oap)) return { ok: false, why: "TIME_TAKEN" };
         // ══ THE SHOP BEING OPEN IS NOT THE ARTIST BEING IN (fixed 2026-08-21) ══════════════
         // MEASURED: booking Dev on a Tuesday he does not work returned SHOP_IS_SHUT. The shop
         // was open noon to eight and Marisol was working it. An owner reading "the shop is shut"
@@ -23352,11 +23376,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // Ask once more WITHOUT the artist: if the shop has that slot, the shop is open and the
         // person is off - a different fact, and the one the owner needs.
         if (who) {
+          // Without `with:`, but with the SAME grid - otherwise "the shop has it and you do not"
+          // could be answered off a different set of start times than the question was asked on.
           const shopAv = await processCommand("AVAILABILITY " + bizId + " days:" +
-            Math.min(Math.max(need, 1), 60) + " open_only:1", env, true);
+            Math.min(Math.max(need, 1), 60) + " slot:" + slotMins + " open_only:1", env, true);
           const sap = (shopAv && shopAv.payload) ? shopAv.payload : shopAv;
-          const sDay = (sap?.open_days || []).find(x => x.date === wantDate);
-          if (sDay && (sDay.slots || []).some(sl => sl.at === target.toISOString()))
+          if (hasAt(sap))
             return { ok: false, why: "ARTIST_NOT_WORKING", who,
                      detail: "the shop has that slot; this artist does not" };
         }
@@ -23369,7 +23394,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // The answer is not to loosen a check. It is to say which one refused, so the next
         // question is asked of the right thing. A refusal that misnames its reason sends
         // somebody to edit hours that were never wrong.
-        const gridStarts = (oDay?.slots || day?.slots || []).map(sl => sl.at);
+        // The nearest starts to suggest: whatever that day does offer, found by the instant's own
+        // day-of rather than by a date we would have had to compute.
+        const near = (oap?.open_days || avp.open_days || []).find(d =>
+          (d.slots || []).some(sl => Math.abs(new Date(sl.at) - target) < 86400000));
+        const gridStarts = (near?.slots || []).map(sl => sl.at);
         const detail = gridStarts.length
           ? "that day is open but bookings start on the hour grid - nearest starts are " +
             gridStarts.slice(0, 4).join(", ")

@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.23.0-2026-08-22-confirming-your-email-signs-you-in";
+const BUILD = "aura-core-v7.24.0-2026-08-22-nobody-can-book-you-yet";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -24938,6 +24938,30 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             if (owedNow.length) t.needs_you.push({ kind: "owed",
               headline: owedNow.length + " promise" + (owedNow.length === 1 ? "" : "s") + " due",
               said: owedNow.slice(-3).map(c => c.data.said).filter(Boolean) });
+            // ══ NO TIME ZONE MEANS NO BOOKINGS, AND NOBODY SAID SO (fixed 2026-08-22) ═══════
+            //
+            // MEASURED on a clean signup: a shop in Portland, Oregon completed the whole front
+            // door - email, confirm, owner, trade, nav, hours - and every AVAILABILITY call came
+            // back NO_TIMEZONE. It could not offer one slot, and the console showed a normal,
+            // healthy, empty shop. The owner would have waited for bookings that could never
+            // arrive.
+            //
+            // WHY IT HAPPENS, and it is not a bug in the guesser: `zoneFromAddress` deliberately
+            // refuses twelve SPLIT states - FL ID IN KS KY MI ND NE OR SD TN TX - because guessing
+            // Pacific for a shop in eastern Oregon puts every appointment an hour out, and an hour
+            // out is worse than absent. That refusal is right. Staying quiet about it is not.
+            // Roughly a quarter of US addresses land in those twelve states.
+            //
+            // So it goes to the FRONT of the list, above bookings and money, because until it is
+            // answered none of the rest can happen.
+            const tzEvent = [...chain].reverse().find(c => c?.event === "TIMEZONE");
+            const tzNow = tzEvent?.data?.timezone || null;
+            if (!tzNow) t.needs_you.unshift({ kind: "no_timezone",
+              headline: "Nobody can book you yet",
+              what_to_do: "Your address is in a state that spans two time zones, so we will not " +
+                "guess which one you are in - an hour out is worse than asking. Set it once and " +
+                "it is yours.",
+              blocking: true });
             t.nothing_pending = !t.needs_you.length;
             return t;
           })(),
@@ -25071,6 +25095,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // parsing our own output back on the other side: a SECOND reader of the week, in the
           // one place we just removed the first one.
           // The stored object is already right here. Send it. `hours_read` stays for display.
+          // The zone itself, so the console can show it and offer to change it rather than
+          // making the owner discover it through a failed booking.
+          timezone: (() => {
+            const t = [...chain].reverse().find(c => c?.event === "TIMEZONE");
+            return t?.data?.timezone || null;
+          })(),
           hours_weekly: (() => {
             const h = [...chain].reverse().find(c => c?.event === "HOURS");
             const w = h && h.data ? h.data.weekly : null;

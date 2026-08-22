@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.17.0-2026-08-21-the-slider-is-the-value";
+const BUILD = "aura-core-v7.18.0-2026-08-22-cut-a-key-not-remove-the-lock";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22786,6 +22786,109 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       } catch (e) {
         return { cmd: "INVITE_SEAT", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
       }
+    }
+
+    case "SESSION": {
+      // ══ CUT A KEY, DO NOT REMOVE THE LOCK (2026-08-22) ════════════════════════════════════════
+      //
+      // The problem this solves: an outside reviewer with a browser cannot get into a console.
+      // Passkeys need a real authenticator - a fingerprint sensor, a Windows Hello chip, a phone -
+      // and an automated browser has none, so WebAuthn is not merely inconvenient for them, it is
+      // impossible. The only existing answer was `config:build:key`, and arming that sets
+      // `mine = true` for ANY request to /admin with no session at all, on every domain the doorway
+      // serves. It also means the reviewer can never hit a permission failure, so the entire class
+      // of bug most worth an outside pair of eyes becomes invisible to them.
+      //
+      // So: a REAL session for a REAL identity, with a lifetime stated out loud.
+      //   SESSION MINT <pta> [hours]   default 8, ceiling 72 - prints the console URLs to send
+      //   SESSION LIST                 who is signed in right now, and how they got in
+      //   SESSION KILL <session|ALL>   ends it early
+      //
+      // Why this is not just the build key with extra steps:
+      //  - It resolves through `_whoIs` to a genuine PTA, so every ownership check does real work.
+      //    A reviewer given the owner's session sees exactly what the owner sees and nothing more.
+      //  - It is operator-only, so `RUN` is the only door and there is no URL that mints one.
+      //  - It expires by itself, and one command ends it. The build key stays armed until somebody
+      //    remembers a second command.
+      //  - LIST makes it auditable at a glance, which a bypass never is.
+      if (!isOp) return { cmd: "SESSION", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const seParts = (rest || "").trim().split(/\s+/).filter(Boolean);
+      const seSub = String(seParts[0] || "").toUpperCase();
+
+      if (seSub === "MINT") {
+        const sePta = String(seParts[1] || "").toLowerCase();
+        if (!/^pta_[a-f0-9]{6,}$/.test(sePta)) return { cmd: "SESSION", payload: { ok: false,
+          error: "Usage: SESSION MINT <pta_id> [hours]",
+          what_to_do: "The pta must be a real identity - an owner, or anyone else you want to be." } };
+        const seHours = Math.min(Math.max(Number(seParts[2]) || 8, 1), 72);
+        const sePe = new PublicEntry({}, env);
+        const seS = await sePe._mintSession(sePta, "operator mint", seHours * 3600);
+        if (!seS?.ok) return { cmd: "SESSION", payload: { ok: false, error: seS?.error || "COULD_NOT_MINT",
+          what_to_do: "No entity with that id. PTA_GET " + sePta + " to check." } };
+        // The URL is the deliverable, not the session id. Every business this identity OWNS gets a
+        // ready link - `?s=` is parked as a cookie by the doorway, so one open is all it takes and
+        // nothing has to carry the session around afterwards.
+        let seCons = [];
+        try {
+          const seOwn = await env.AURA_MEMORY.prepare(
+            "SELECT e.id, e.name, e.slug FROM pta_edges g JOIN pta_entities e ON e.id = g.to_id " +
+            "WHERE g.from_id = ? AND g.edge_type = 'owns' AND g.state != 'revoked'").bind(sePta).all();
+          seCons = (seOwn?.results || []).filter(r => r.slug).map(r => ({
+            business: r.name, id: r.id,
+            console: "https://" + r.slug + ".openforbusiness.world/admin?s=" + seS.session,
+            public: "https://" + r.slug + ".openforbusiness.world" }));
+        } catch {}
+        console.warn("[SESSION MINT] " + sePta + " for " + seHours + "h - operator issued.");
+        return { cmd: "SESSION", payload: { ok: true, session: seS.session, pta: sePta,
+          name: seS.name || null, hours: seHours,
+          expires_at: new Date(Date.now() + seHours * 3600000).toISOString(),
+          consoles: seCons.length ? seCons : undefined,
+          note: seCons.length
+            ? "Send the console link. Opening it parks the session as a cookie for 24 hours."
+            : "This identity owns no business with a slug, so there is no console to open. " +
+              "The session is still valid for anything else that identity can do.",
+          ends_it: "SESSION KILL " + seS.session } };
+      }
+
+      if (seSub === "LIST") {
+        const seKeys = await env.AURA_KV.list({ prefix: "session:" }).catch(() => null);
+        const seOut = [];
+        for (const k of (seKeys?.keys || [])) {
+          let rec = null;
+          try { rec = JSON.parse((await env.AURA_KV.get(k.name)) || "null"); } catch {}
+          if (!rec) continue;
+          const seAge = Math.round((Date.now() - Number(rec.created || 0)) / 60000);
+          seOut.push({ session: k.name.replace(/^session:/, ""), pta: rec.pta,
+            name: rec.name || null, how: rec.how || null,
+            minutes_old: isFinite(seAge) ? seAge : null,
+            lifetime_minutes: Math.round((Number(rec.ttl) || 900) / 60),
+            refreshed: !!rec.refreshed });
+        }
+        return { cmd: "SESSION", payload: { ok: true, count: seOut.length, sessions: seOut,
+          note: "Every way in, in one place. A session minted by hand says how: \"operator mint\"." } };
+      }
+
+      if (seSub === "KILL") {
+        const seWhich = String(seParts[1] || "").trim();
+        if (/^ALL$/i.test(seWhich)) {
+          const seKeys = await env.AURA_KV.list({ prefix: "session:" }).catch(() => null);
+          let seN = 0;
+          for (const k of (seKeys?.keys || [])) { try { await env.AURA_KV.delete(k.name); seN++; } catch {} }
+          return { cmd: "SESSION", payload: { ok: true, killed: seN,
+            note: "Everyone is signed out, including you. Sign in again on your own device." } };
+        }
+        if (!/^[a-f0-9]{8,128}$/i.test(seWhich)) return { cmd: "SESSION", payload: { ok: false,
+          error: "Usage: SESSION KILL <session_id>  |  SESSION KILL ALL" } };
+        const seHad = await env.AURA_KV.get("session:" + seWhich);
+        if (!seHad) return { cmd: "SESSION", payload: { ok: false, error: "NO_SUCH_SESSION",
+          what_to_do: "It may have expired already. SESSION LIST shows what is live." } };
+        try { await env.AURA_KV.delete("session:" + seWhich); } catch {}
+        return { cmd: "SESSION", payload: { ok: true, killed: 1, session: seWhich,
+          note: "Gone. The next request carrying it is signed out." } };
+      }
+
+      return { cmd: "SESSION", payload: { ok: false,
+        error: "Usage: SESSION MINT <pta> [hours]  |  SESSION LIST  |  SESSION KILL <session|ALL>" } };
     }
 
     case "AVAILABILITY": {
@@ -49244,6 +49347,25 @@ export class PublicEntry extends WorkerEntrypoint {
       if (!raw) return buildKey ? bkIdentity() : null;
       const sess = JSON.parse(raw);
       if (!(sess && sess.pta)) return buildKey ? bkIdentity() : null;
+      // ══ NOTHING WAS ACTUALLY REFRESHING THE SESSION (fixed 2026-08-22) ═══════════════════
+      // `_mintSession` has always said "the doorway refreshes it" and no code anywhere did. The
+      // record expires 900 seconds after it was MINTED, however busy the person is - so the
+      // 24-hour cookie the doorway parks ends up pointing at a record that is already gone, and
+      // an owner filling in a booking slowly is signed out mid-form with no explanation.
+      // Sliding window: past the halfway mark, a use pushes the expiry out by the full lifetime.
+      // Only past halfway, because KV rate-limits writes to one per key per second and a console
+      // fires several calls at once - refreshing on EVERY read would be a write storm on the one
+      // key every request needs.
+      // Short-lived is still the point: this extends an ACTIVE session and lets an idle one die.
+      try {
+        const ttl = Math.min(Math.max(Number(sess.ttl) || 900, 60), 3 * 86400);
+        const age = (Date.now() - Number(sess.created || 0)) / 1000;
+        if (isFinite(age) && age > ttl / 2) {
+          await this.env.AURA_KV.put("session:" + sessionId,
+            JSON.stringify({ ...sess, ttl, created: Date.now(), refreshed: true }),
+            { expirationTtl: ttl });
+        }
+      } catch {}
       return sess;
     } catch { return null; }
   }
@@ -49565,17 +49687,26 @@ export class PublicEntry extends WorkerEntrypoint {
   // Session Credentials (Chrome 146 GA on Windows, April 2026, W3C spec): the browser keeps a
   // non-exportable key in the TPM or Secure Enclave and must prove possession before a refresh is
   // issued, so a stolen cookie is useless on another machine. That needs the two endpoints below.
-  async _mintSession(pta, how) {
+  // ══ A SESSION CARRIES ITS OWN WINDOW (2026-08-22) ══════════════════════════════════════════
+  // `ttl` was hardcoded at 900 here and written nowhere, so `_whoIs` had no way to know how long
+  // this session was ever meant to last and could not extend it correctly. It rides in the record
+  // now. Default unchanged - every existing caller passes two arguments and gets fifteen minutes.
+  async _mintSession(pta, how, ttlSeconds) {
     const env = this.env;
     const ent = await env.AURA_MEMORY.prepare("SELECT id, name, identity_key FROM pta_entities WHERE id = ?").bind(pta).first();
     if (!ent) return { ok: false, error: "NO_SUCH_ENTITY" };
+    // Cloudflare's own floor for expirationTtl is 60s; the ceiling here is three days, which is
+    // long enough for a review pass and short enough that a forgotten one dies on its own.
+    const ttl = Math.min(Math.max(Number(ttlSeconds) || 900, 60), 3 * 86400);
     const sid = Array.from(crypto.getRandomValues(new Uint8Array(32))).map((b) => b.toString(16).padStart(2, "0")).join("");
     await env.AURA_KV.put("session:" + sid, JSON.stringify({
-      pta, name: ent.name, identity: ent.identity_key, how, created: Date.now(),
-    }), { expirationTtl: 900 });   // FIFTEEN MINUTES, not thirty days
+      pta, name: ent.name, identity: ent.identity_key, how, created: Date.now(), ttl,
+    }), { expirationTtl: ttl });
     return { ok: true, session: sid, pta, name: ent.name, how,
-      expires_in: 900,
-      note: "Short-lived by design. The doorway refreshes it; a stolen cookie is worth minutes, not a month." };
+      expires_in: ttl,
+      note: ttl === 900
+        ? "Short-lived by design, and it now slides: every use past the halfway mark extends it."
+        : "Lifetime set deliberately. SESSION KILL " + sid.slice(0, 12) + "... ends it early." };
   }
 
   // Read another entity's record AS the session's PTA. This is the first public path where a refusal

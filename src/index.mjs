@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.19.0-2026-08-22-read-what-the-edit-wrote";
+const BUILD = "aura-core-v7.20.0-2026-08-22-people-keep-their-surnames";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -24390,7 +24390,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const identity = contact
             ? contact.toLowerCase()
             : "staff:" + seBiz + ":" + name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-          const pc = await processCommand("PTA_ENTITY CREATE person " + name + " identity:" + identity, env, true);
+          // ══ A PERSON KEPT ONLY THEIR FIRST NAME (fixed 2026-08-22) ═══════════════════════
+          // MEASURED: `SEAT ADD <shop> Marisol Vega` stored "Marisol". `PTA_ENTITY CREATE` reads
+          // the name as ONE whitespace-delimited token, and the fix for that - quoting it at the
+          // door - was applied to BUSINESSES when the store filled up with entities called House,
+          // Black and Lincoln. People never got it. Every artist with a surname has been seated
+          // under their first name alone.
+          // What hid it: the reply below echoed `name`, the text we were HANDED, so it answered
+          // "Marisol Vega" while the row said "Marisol". A receipt that reports the request instead
+          // of the result cannot show you a write that went wrong.
+          // Quotes stripped from the name first - the reader's pattern ends at the first closing
+          // quote, so a name containing one would truncate all over again.
+          const safeName = name.replace(/"/g, "").trim();
+          const pc = await processCommand("PTA_ENTITY CREATE person \"" + safeName + "\" identity:" + identity, env, true);
           const pp = (pc && pc.payload) ? pc.payload : pc;
           if (!pp?.ok || !pp.entity?.id) return { cmd: "SEAT", payload: { ok: false,
             error: "COULD_NOT_CREATE_PERSON", detail: pp?.error || pp,
@@ -24398,9 +24410,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               ? "That contact already identifies something else - use a contact of their own."
               : undefined } };
           const person = pp.entity.id;
+          // ══ REPORT THE ROW, NOT THE REQUEST (2026-08-22) ═══════════════════════════════
+          // Every reply below said `name` - the string we were handed. So when the write
+          // truncated "Marisol Vega" to "Marisol", the answer still read "Marisol Vega" and
+          // the only way to see the truth was a separate SEAT LIST. A command that reports
+          // what it was asked for cannot tell you it did something else.
+          const storedName = pp.entity.name || safeName;
           const existing = (await readSeats()).find(x => x.pta === person);
           if (existing) return { cmd: "SEAT", payload: { ok: true, already_seated: true,
-            business: biz.name, person, name, edge_id: existing.edge_id,
+            business: biz.name, person, name: storedName, edge_id: existing.edge_id,
             billing: bill((await readSeats()).length),
             note: "Already seated here - nothing changed and nothing was charged twice." } };
           const edgeId = "edge_" + crypto.randomUUID().replace(/-/g, "").slice(0, 16);
@@ -24440,7 +24458,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             } catch (e) { inviteSent = { sent: false, why: String(e?.message ?? e).slice(0, 90) }; }
           }
           const seats = await readSeats();
-          return { cmd: "SEAT", payload: { ok: true, business: biz.name, person, name,
+          return { cmd: "SEAT", payload: { ok: true, business: biz.name, person, name: storedName,
             edge_id: edgeId, count: seats.length, billing: bill(seats.length),
             // ══ A SEAT WITH NO CONTACT IS SOMEBODY NOBODY CAN REACH (2026-08-18) ════════════
             // MEASURED on the first full signup: `SEAT ADD <shop> Maria` minted a PTA, billed a
@@ -50339,7 +50357,11 @@ export class PublicEntry extends WorkerEntrypoint {
         say: "I need a name, a way to reach you, and a time." };
 
       // Them, as an entity of their own - keyed on their contact, so booking twice is one person.
-      const who = await processCommand("PTA_ENTITY CREATE person " + name + " identity:" +
+      // Quoted for the same reason a seat is: unquoted, `PTA_ENTITY CREATE` takes one whitespace
+      // token and every client who books becomes their first name. This is the customer-facing
+      // half of the bug found on SEAT ADD - a shop's own client list, first names only.
+      const who = await processCommand("PTA_ENTITY CREATE person \"" + name.replace(/"/g, "").trim() +
+        "\" identity:" +
         (contact.includes("@") ? contact.toLowerCase() : "phone:" + contact.replace(/[^0-9+]/g, "")),
         this.env, true);
       const wp = (who && who.payload) ? who.payload : who;
@@ -50554,7 +50576,8 @@ export class PublicEntry extends WorkerEntrypoint {
           if (!a.name) return { ok: false, error: "NEED_NAME" };
           const id = c ? (c.includes("@") ? c.toLowerCase() : "phone:" + c.replace(/[^0-9+]/g, ""))
                        : "walkin:" + biz + ":" + String(a.name).toLowerCase().replace(/[^a-z0-9]+/g, "-");
-          return await run("PTA_ENTITY CREATE person " + a.name + " identity:" + id);
+          return await run("PTA_ENTITY CREATE person \"" +
+            String(a.name).replace(/"/g, "").trim() + "\" identity:" + id);
         }
         case "seat_add":    return await run("SEAT ADD " + biz + " " + a.name +
                                 (a.contact ? " " + (a.contact.includes("@") ? "email:" : "phone:") + a.contact : ""));

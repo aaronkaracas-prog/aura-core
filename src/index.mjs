@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.20.0-2026-08-22-people-keep-their-surnames";
+const BUILD = "aura-core-v7.21.0-2026-08-22-a-deposit-lands-where-it-is-read";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23451,7 +23451,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             description: String(f.description || f.notes || "").slice(0, 800),
             organizer: biz, artist: f.artist || null,
             attendees: isBlock ? {} : { [f.customer]: "NEEDS-ACTION", ...(f.artist ? { [f.artist]: "NEEDS-ACTION" } : {}) },
-            deposit: !isBlock && f.deposit != null ? Number(f.deposit) : null, deposit_held: false,
+            // ══ WRITTEN AS `deposit`, READ AS `amount` (fixed 2026-08-22) ══════════════════
+            // MEASURED: a booking created with {"deposit":90} stored fine and appeared NOWHERE.
+            // Three readers ask for `c.amount` - the Deposits tab, Today's "without a deposit
+            // held" count, and SCHEDULE - and nothing ever wrote it onto a booking. The chain's
+            // own promises use `data.amount` too. So `amount` was the name everywhere except at
+            // the one place that put the number there.
+            // The fourth writer/reader mismatch found tonight, and the same shape as hours,
+            // contact facts and the customer id: a fact stored under one name and looked for
+            // under another. `deposit` stays as the INPUT field - it is the right word for a
+            // caller to type - and it lands in the column everything reads.
+            amount: !isBlock && f.deposit != null ? Number(f.deposit)
+                  : (!isBlock && f.amount != null ? Number(f.amount) : null),
+            deposit_held: false,
             // the old field, so nothing that reads `when` breaks while both shapes exist
             when: start.toISOString(), booking_state: isBlock ? "blocked" : "requested",
           };

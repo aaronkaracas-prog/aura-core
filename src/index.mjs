@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.22.0-2026-08-22-a-cancelled-booking-is-not-a-visit";
+const BUILD = "aura-core-v7.23.0-2026-08-22-confirming-your-email-signs-you-in";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -21799,9 +21799,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               // and Claude added three more writers without checking - the same failure as
               // DEPOSIT_RULES, one scale smaller. This one exists purely so the address is findable
               // by the resolver INVITE_SEAT uses, which looks for ANY chain event with an email.
+              // ══ AND `said` IS SHOWN TO THE OWNER (2026-08-22) ═══════════════════════════
+              // `CONSOLE` surfaces every chain event carrying `said` as a conversation line,
+              // so the owner's console read a message from Aura that said "the address this
+              // shop signed up with". That is a note-to-self about why a row exists, printed
+              // at a business owner as though she had spoken to them.
+              // Dropped. The event still does its job - INVITE_SEAT's resolver looks for any
+              // chain event with an email on it, and that is unchanged.
               await processCommand("PTA_REMEMBER " + ing.id + " CONTEXT " + JSON.stringify({
-                email: pend.email, said: "the address this shop signed up with",
-                event_type: "CONTEXT" }), env, true);
+                email: pend.email, event_type: "CONTEXT" }), env, true);
             } catch {}
             const SITE_TYPE = { "tattooparlors.world": "tattoo_shop" };
             const bt = SITE_TYPE[String(pend.site || "").trim()] || null;
@@ -21843,11 +21849,32 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             }
           } catch {}
           try { await env.AURA_KV.delete("addbiz:" + token); } catch {}
+          // ══ A CONFIRMED OWNER HAD NO WAY IN (fixed 2026-08-22) ══════════════════════════════
+          // MEASURED end to end on a clean store: signup, email, confirm, owner minted, grant
+          // accepted - and then nothing. "Your shop is listed" and no route to the console. An
+          // ARTIST gets /join/<token>, which mints a session and registers a passkey; the OWNER,
+          // the one person who actually needs the console, was never issued anything. That hole
+          // is why `config:build:key` existed, and why an operator had to mint a session by hand
+          // for anybody to see their own shop.
+          // They just proved they hold that address by clicking a link sent to it - which is the
+          // same proof a seat invite rests on. So they get a session on the spot, the doorway
+          // parks it as a cookie, and the next thing they do is register a passkey on their own
+          // device. Short-lived and sliding, exactly like every other session.
+          let ownerSession = null;
+          if (ownerPta) {
+            try {
+              const ms = await new PublicEntry({}, env)._mintSession(ownerPta, "confirmed their email at signup");
+              if (ms?.ok) ownerSession = ms.session;
+            } catch {}
+          }
           return { cmd: "ADD_BUSINESS", payload: { ok: true, mode: "added", name: pend.name,
             owner: ownerPta || null,
             owner_note: ownerPta ? undefined
               : "NOBODY OWNS THIS - the owner could not be created, so no one can open its console.", pta: ing.id,
             door: "https://openforbusiness.world/b/" + ing.id,
+            // The doorway reads this, sets the cookie and does not pass it to the page.
+            session: ownerSession || undefined,
+            console: ownerSession ? "https://openforbusiness.world/admin" : undefined,
             what_to_say: "Confirmed. Your business is listed.",
             note: "Email only. Nothing has been consented to beyond what you typed - remembering " +
               "anything more still needs a grant." } };
@@ -24428,6 +24455,22 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // the only way to see the truth was a separate SEAT LIST. A command that reports
           // what it was asked for cannot tell you it did something else.
           const storedName = pp.entity.name || safeName;
+          // ══ MATCHED SOMEBODY, OR MADE SOMEBODY? (2026-08-22) ══════════════════════════
+          // `PTA_ENTITY CREATE` answers `mode: "existing"` when the contact given already
+          // identifies a person, and this threw that away - so seating reported success
+          // identically whether it minted a new artist or attached a seat to somebody who
+          // was already in the system under that address.
+          // MEASURED: an artist typed in with the OWNER's email seated the owner. Nothing was
+          // wrong with the write - one human, one entity, keyed on a contact they hold, is the
+          // whole point of the identity layer. What was wrong is that the shop was never told.
+          // Mistype a client's address into that box and you have quietly seated the wrong
+          // human, and two people fused into one entity cannot be separated afterwards.
+          const wasExisting = pp.mode === "existing";
+          const matchedNote = wasExisting
+            ? "This did not create anybody. That contact already identified " +
+              (storedName || "somebody") + ", so THEY now hold a seat here. If you meant a " +
+              "different person, remove this seat and add them with a contact of their own."
+            : null;
           const existing = (await readSeats()).find(x => x.pta === person);
           if (existing) return { cmd: "SEAT", payload: { ok: true, already_seated: true,
             business: biz.name, person, name: storedName, edge_id: existing.edge_id,
@@ -24471,6 +24514,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           }
           const seats = await readSeats();
           return { cmd: "SEAT", payload: { ok: true, business: biz.name, person, name: storedName,
+            matched_existing: wasExisting || undefined, careful: matchedNote || undefined,
             edge_id: edgeId, count: seats.length, billing: bill(seats.length),
             // ══ A SEAT WITH NO CONTACT IS SOMEBODY NOBODY CAN REACH (2026-08-18) ════════════
             // MEASURED on the first full signup: `SEAT ADD <shop> Maria` minted a PTA, billed a

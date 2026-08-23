@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.28.0-2026-08-23-daily-first-in-the-nav";
+const BUILD = "aura-core-v7.29.0-2026-08-23-design-it-then-find-somebody";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -50105,6 +50105,163 @@ export class PublicEntry extends WorkerEntrypoint {
   // ALL 33,694 ARE LISTED, not only the enriched ones - a real directory on day one. And EVERY ONE
   // HAS A QR FROM LAUNCH, before any payment: the code is DERIVED from the business, never issued.
   // Paying does not create it, it changes what the code opens and who controls it.
+  // ══ MYTATTOO — THE CONSUMER SIDE OF THE CIRCLE (2026-08-23) ═══════════════════════════════
+  //
+  // A person who wants a tattoo talks it through, sees it, changes it until it is right, then
+  // picks a shop. If that shop is already on the platform they book. If it is NOT, the shop hears
+  // "somebody designed a piece and wants YOU to do it" - which is a far better first contact than
+  // a cold sales call, and it is the whole reason the crawl exists.
+  //
+  // NO SESSION. A stranger is talking; the PTA appears when the image is made, because SHOW_IT
+  // births every image as a doorway PTA already. That is not new work - it is the law this
+  // codebase has held since the image engine was written.
+  //
+  // NO GATE YET, ON PURPOSE. Aaron: free and unlimited until the whole loop is walked front to
+  // back. The meter goes in AFTER it is proven, and the seams for it are marked below rather
+  // than half-built - a paywall wired into an unproven flow is two things to debug at once.
+  async design(action, body) {
+    const b = body || {};
+    const env = this.env;
+    try {
+      // ── TALK. Free, and it stays free even when the rest is metered: a conversation costs
+      // fractions of a cent and it is the whole reason somebody trusts the thing that follows.
+      // She is drawing the idea OUT of them, not writing prompts at them.
+      if (action === "talk") {
+        const said = String(b.said || "").trim().slice(0, 2000);
+        if (!said) return { ok: false, error: "NOTHING_SAID" };
+        const hist = Array.isArray(b.history) ? b.history.slice(-12) : [];
+        const r = await callBrain({
+          system:
+            "You are Aura, helping somebody work out the tattoo they want. You are not a prompt " +
+            "engineer and you never talk about prompts, models or images as technology.\n\n" +
+            "HOW YOU HELP: a tattoo is permanent and most people arrive with a feeling rather than " +
+            "a picture. Draw it out. Ask about placement, size, what it is FOR, whether they want " +
+            "linework or colour or black and grey, whether it should read from across a room or " +
+            "reward being close. One question at a time, never a list.\n\n" +
+            "WHEN THEY HAVE ENOUGH: say so plainly and offer to show them. Do not drag it out - " +
+            "two or three exchanges is usually enough, and somebody who arrives knowing exactly " +
+            "what they want should be shown it immediately.\n\n" +
+            "NEVER invent that you have already made something. You have not drawn anything yet.\n" +
+            "Keep replies short - three sentences at most. This is a phone.",
+          messages: [...hist.map(h => ({ role: h.role === "aura" ? "assistant" : "user",
+                                         content: String(h.said || "").slice(0, 1500) })),
+                     { role: "user", content: said }],
+          max_tokens: 400
+        }, env);
+        if (!r?.ok) return { ok: false, error: "COULD_NOT_ANSWER", detail: r?.error || null };
+        // A separate, cheap read of "are they ready" - kept apart from her reply so she never
+        // has to emit machine syntax in the middle of a human sentence.
+        let ready = null;
+        try {
+          const g = await callBrain({
+            system: "Read the conversation. If the person has described a tattoo concretely enough " +
+              "to draw, reply with ONLY a single line describing it as a tattoo design - subject, " +
+              "style, and any placement that changes the composition. No preamble, no quotes. If " +
+              "they have NOT said enough yet, reply with exactly: NOT_YET",
+            messages: [...hist.map(h => ({ role: h.role === "aura" ? "assistant" : "user",
+                                           content: String(h.said || "").slice(0, 1500) })),
+                       { role: "user", content: said }],
+            max_tokens: 120
+          }, env);
+          const t = String(g?.text || "").trim();
+          if (g?.ok && t && !/^NOT_YET/i.test(t)) ready = t.slice(0, 400);
+        } catch {}
+        return { ok: true, said: r.text, ready_to_draw: ready };
+      }
+
+      // ── MAKE. The first version. SHOW_IT births it as a PTA, so from this moment the design
+      // has an identity of its own that follows the person rather than the shop.
+      if (action === "make") {
+        const subject = String(b.subject || "").trim().slice(0, 600);
+        if (!subject) return { ok: false, error: "NOTHING_TO_DRAW" };
+        // [METER SEAM] first paid moment, when there is a meter.
+        const r = await processCommand("SHOW_IT " + JSON.stringify({
+          subject: subject + ". Tattoo design, clean linework, high contrast, on a plain " +
+                   "background, no skin, no body, no photograph - the artwork only.",
+          context: "a tattoo somebody is designing for themselves: " + subject,
+          name: subject.slice(0, 60)
+        }), env, true);
+        const p = (r && r.payload) ? r.payload : r;
+        if (!p?.ok) return { ok: false, error: p?.error || "COULD_NOT_DRAW" };
+        return { ok: true, design: p.entity_id || p.id, image: p.image_url,
+          subject, version: 1, cached: !!p.cached };
+      }
+
+      // ── EVOLVE. What everybody converged on: the change STACKS on the last version rather
+      // than restarting. `IMAGE EVOLVE` already builds the new subject as parent + change and
+      // keeps the lineage, so this is a door onto behaviour that was already right.
+      if (action === "evolve") {
+        const id = String(b.design || "").trim();
+        const change = String(b.change || "").trim().slice(0, 400);
+        if (!id || !change) return { ok: false, error: "NEED_DESIGN_AND_CHANGE" };
+        // [METER SEAM] one try, when there is a meter. An identical change costs nothing to
+        // serve - the image cache answers it - so it should not cost a try either.
+        const r = await processCommand("IMAGE EVOLVE " + id + " " +
+          JSON.stringify({ prompt: change }), env, true);
+        const p = (r && r.payload) ? r.payload : r;
+        if (!p?.ok) return { ok: false, error: p?.error || "COULD_NOT_CHANGE",
+          say: "That change did not take. Try saying it a different way." };
+        return { ok: true, design: p.child, image: p.image_url, changed: change,
+          from: p.parent };
+      }
+
+      // ── LIFE. Every version, in order. The person keeps their whole lineage; a shop that
+      // takes the booking can see how it got there.
+      if (action === "life") {
+        const id = String(b.design || "").trim();
+        if (!id) return { ok: false, error: "NEED_DESIGN" };
+        const r = await processCommand("IMAGE LIFE " + id, env, true);
+        const p = (r && r.payload) ? r.payload : r;
+        if (!p?.ok) return { ok: false, error: p?.error || "NO_SUCH_DESIGN" };
+        return { ok: true, design: id, image: p.image?.image_url || null,
+          versions: p.event_count || 0, life: p.life || [], lineage: p.lineage || null };
+      }
+
+      // ── SHOPS. The existing crawl, unchanged. `claimed` is the fork: a shop that is on the
+      // platform gets booked; one that is not gets told somebody wants them.
+      if (action === "shops") {
+        if (b.city) return await this.tattooCity(String(b.city));
+        return await this.tattooNear(b.lat, b.lng, b.radius_km || 40);
+      }
+
+      // ── INTEREST. The reason the crawl exists. Somebody made a thing and chose a shop; the
+      // shop finds out. This does NOT sign them up and does not pretend they have a listing -
+      // it records the interest and hands back what the shop should be told.
+      if (action === "interest") {
+        const shop = String(b.shop || "").trim();
+        const id = String(b.design || "").trim();
+        if (!shop) return { ok: false, error: "NEED_SHOP" };
+        const row = await env.AURA_MEMORY.prepare(
+          "SELECT id, name, locality, region, email, email_found, phone, claimed_at " +
+          "FROM cg_business WHERE id = ? LIMIT 1").bind(shop).first();
+        if (!row) return { ok: false, error: "NO_SUCH_SHOP" };
+        const who = String(b.name || "").trim().slice(0, 80) || "Somebody";
+        const note = who + " designed a tattoo on mytattoo.world and wants " +
+          (row.name || "your shop") + " to do it.";
+        try {
+          await env.AURA_KV.put("mt:interest:" + shop + ":" + Date.now(),
+            JSON.stringify({ shop, design: id || null, who, contact: String(b.contact || "").slice(0, 120),
+              at: new Date().toISOString(), claimed: !!row.claimed_at }),
+            { expirationTtl: 90 * 24 * 3600 });
+        } catch {}
+        return { ok: true, shop: row.name, claimed: !!row.claimed_at,
+          where: [row.locality, row.region].filter(Boolean).join(", "),
+          // Claimed: they can be booked right now. Unclaimed: this is the first contact, and it
+          // is a warm one - a real person with a real design who already picked them.
+          next: row.claimed_at ? "book" : "invite",
+          reachable: !!(row.email || row.email_found || row.phone),
+          say: row.claimed_at
+            ? "They are on the platform - you can ask for a time."
+            : "They are not set up yet. We will let them know somebody designed a piece for them.",
+          note };
+      }
+
+      return { ok: false, error: "Unknown action. Use talk | make | evolve | life | shops | interest." };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
   async tattooNear(lat, lng, radiusKm) {
     try {
       const la = Number(lat), ln = Number(lng);

@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.29.0-2026-08-23-design-it-then-find-somebody";
+const BUILD = "aura-core-v7.30.0-2026-08-23-an-image-lives-where-you-are";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -13490,11 +13490,13 @@ async function successionGate(env) {
       // Plain mode: every image is born a PTA by default (the law). Accept either a bare string
       // ("a dog on a beach") or a JSON object {subject, context?, name?} - parse it so the JSON never
       // leaks into the human-readable context line.
-      let subject = after, ctx = null, nm = null, viaP = null;
+      let subject = after, ctx = null, nm = null, viaP = null, hostP = null;
       if (/^\s*\{/.test(after)) {
-        try { const p = JSON.parse(after); if (p && p.subject) { subject = String(p.subject); ctx = p.context || null; nm = p.name || null; viaP = p.via || null; } } catch (e) {}
+        try { const p = JSON.parse(after); if (p && p.subject) { subject = String(p.subject); ctx = p.context || null; nm = p.name || null; viaP = p.via || null; hostP = p.host || null; } } catch (e) {}
       }
-      const r = await showIt(subject, env, { source: "show_it_cmd", context: ctx || subject, name: nm, via: viaP });
+      // `host` says whose surface this image belongs to, so the URL it hands back is on the
+      // domain the person is actually using rather than a brand they have never heard of.
+      const r = await showIt(subject, env, { source: "show_it_cmd", context: ctx || subject, name: nm, via: viaP, host: hostP });
       return { cmd: "SHOW_IT", payload: r };
     }
 
@@ -48508,6 +48510,25 @@ async function pollVideoJobs(env) {
 }
 
 
+// ══ WHERE AN IMAGE LIVES (fixed 2026-08-23) ═══════════════════════════════════════════════
+// MEASURED: the first tattoo ever designed came back with `https://auras.guide/image/...` and
+// the browser answered DNS_PROBE_FINISHED_NXDOMAIN. The bytes were fine - stored, servable, and
+// visible on the workers.dev address - but auras.guide has NO DNS RECORD, so every image URL
+// this system has ever handed out points at nothing.
+// It was written as a literal in 55 places, which is why one dead domain took every image with
+// it. Now there is ONE answer to "where does an image live", it is configurable, and the default
+// is a domain that actually resolves.
+// It also fixes something that was wrong even when auras.guide worked: a tattoo designed on
+// mytattoo.world should not hand somebody an auras.guide link. This file already says it -
+// "one shop, one brand… consumers never see the business layer" - and an image is no different.
+// Callers that know whose surface they are on pass `host`; everything else gets the default.
+const imageHost = async (env, host) => {
+  const h = String(host || "").trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  if (h) return h;
+  const cfg = await env.AURA_KV.get("config:image:host").catch(() => null);
+  return (cfg && cfg.trim()) || "openforbusiness.world";
+};
+
 async function auraGenerateImage(prompt, env, opts = {}) {
   // AGNOSTIC + POLICY-DRIVEN. showIt states intent ("make an image"); AIMARGIN's POLICY decides who fulfills
   // it and at what quality. The operator declares INTENT once - config:policy:image = cheapest | balanced |
@@ -48558,7 +48579,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
           await env.AURA_KV.put(mk, JSON.stringify(rec), { expirationTtl: 30 * 24 * 3600 }).catch(() => {});
         } catch {}
         console.log("[IMG-CACHE] HIT " + hit.id + " - served free (saved $" + (hit.cost_usd ?? 0) + ")");
-        return { ok: true, id: hit.id, image_url: "https://auras.guide/image/" + hit.id, prompt: p.slice(0, 200), model, quality, tokens: 0, cost_usd: 0, cached: true };
+        return { ok: true, id: hit.id, image_url: "https://" + (await imageHost(env, opts.host)) + "/image/" + hit.id, prompt: p.slice(0, 200), model, quality, tokens: 0, cost_usd: 0, cached: true };
       }
     }
   } catch {}
@@ -48730,7 +48751,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
   if (env.AURA_IMAGES) { try { await env.AURA_IMAGES.put(`${id}.png`, bytes, { httpMetadata: { contentType: "image/png" } }); } catch {} }
   await env.AURA_KV.put(`image:${id}`, b64).catch(() => {});
-  const meta = { id, prompt: p.slice(0, 1000), created: new Date().toISOString(), entity: opts.entity || null, source: opts.source || "showit", model, quality, tokens, cost_usd: costUsd, url: `https://auras.guide/image/${id}` };
+  const meta = { id, prompt: p.slice(0, 1000), created: new Date().toISOString(), entity: opts.entity || null, source: opts.source || "showit", model, quality, tokens, cost_usd: costUsd, url: `https://${await imageHost(env, opts.host)}/image/${id}` };
   await env.AURA_KV.put(`imagemeta:${id}`, JSON.stringify(meta)).catch(() => {});
   if (cacheKey) { try { await env.AURA_KV.put(cacheKey, JSON.stringify({ id, cost_usd: costUsd, at: new Date().toISOString() }), { expirationTtl: 30 * 24 * 3600 }).catch(() => {}); } catch {} }
   try { await env.AURA_MEMORY.prepare("INSERT INTO events (session_id, ts, type, body, entity_id, channel, summary) VALUES (?, ?, ?, ?, ?, ?, ?)").bind("image_gen", Date.now(), "image_created", JSON.stringify(meta), meta.entity || "system", "image", p.slice(0, 120)).run(); } catch {}
@@ -48774,9 +48795,9 @@ async function showIt(subject, env, opts = {}) {
   const want = (subject || "").trim();
   if (!want) return { ok: false, error: "nothing to show" };
   const prompt = opts.raw ? want : `${want}. High quality, visually striking, well-composed, detailed.`;
-  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null });
+  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null });
   if (!result || !result.ok) return { ok: false, error: result ? result.error : "generation failed" };
-  const out = { ok: true, id: result.id, image_url: result.image_url || `https://auras.guide/image/${result.id}`, showed: want };
+  const out = { ok: true, id: result.id, image_url: result.image_url || `https://${await imageHost(env, opts.host)}/image/${result.id}`, showed: want };
   // THE IMAGE IS A LIVING SMART FILE. Register it through the generic Smart File engine as
   // filetype:"image" - it gets the same identity, timeline, lineage, and attributed contributors any
   // file gets. Image is just one filetype; the engine is universal.
@@ -50175,11 +50196,14 @@ export class PublicEntry extends WorkerEntrypoint {
         const subject = String(b.subject || "").trim().slice(0, 600);
         if (!subject) return { ok: false, error: "NOTHING_TO_DRAW" };
         // [METER SEAM] first paid moment, when there is a meter.
+        // The image is served by the domain they are standing on. A tattoo designed here should
+        // never hand somebody a link to a different brand - the same rule the shop pages follow.
         const r = await processCommand("SHOW_IT " + JSON.stringify({
           subject: subject + ". Tattoo design, clean linework, high contrast, on a plain " +
                    "background, no skin, no body, no photograph - the artwork only.",
           context: "a tattoo somebody is designing for themselves: " + subject,
-          name: subject.slice(0, 60)
+          name: subject.slice(0, 60),
+          host: "mytattoo.world"
         }), env, true);
         const p = (r && r.payload) ? r.payload : r;
         if (!p?.ok) return { ok: false, error: p?.error || "COULD_NOT_DRAW" };

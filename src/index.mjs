@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.25.0-2026-08-22-the-door-asks-what-the-calendar-answered";
+const BUILD = "aura-core-v7.26.0-2026-08-23-the-booking-is-the-promise";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -32596,8 +32596,35 @@ Be concise. This update will be compared against the next update to show drift o
             removed_so_far: { entities: ents, edges, history: hist, kv_keys: kv },
             note: "Partial. Re-run PTA_WIPE CONFIRM - it is idempotent." } };
         }
-        return { cmd: "PTA_WIPE", payload: { ok: true, removed: { entities: ents, edges, history: hist, kv_keys: kv },
+        // ══ A WIPE THAT LEAVES THE DOORS OPEN IS HALF A WIPE (fixed 2026-08-23) ═══════════════
+        // MEASURED: after a wipe, SESSION LIST still held five sessions naming deleted entities,
+        // one of them eighteen days old. A browser carrying any of those cookies was signed in as
+        // somebody who no longer existed - which is how a whole morning of UI testing was done
+        // against a console that could read nothing and change nothing.
+        // Deleting every person and leaving every key to the building is not a clean store. Any
+        // session naming a PTA that is gone goes with it; the ones for kept identities survive, so
+        // the operator does not sign themselves out by tidying up.
+        let sessionsCleared = 0;
+        try {
+          let sc = null;
+          while (true) {
+            const sl = await env.AURA_KV.list({ prefix: "session:", limit: 1000, cursor: sc || undefined });
+            for (const k of (sl?.keys || [])) {
+              let rec = null;
+              try { rec = JSON.parse((await env.AURA_KV.get(k.name)) || "null"); } catch {}
+              if (!rec?.pta) { await env.AURA_KV.delete(k.name).catch(() => {}); sessionsCleared++; continue; }
+              if (keepIds.includes(rec.pta)) continue;
+              await env.AURA_KV.delete(k.name).catch(() => {}); sessionsCleared++;
+            }
+            if (!sl || sl.list_complete || !sl.cursor) break;
+            sc = sl.cursor;
+          }
+        } catch {}
+        return { cmd: "PTA_WIPE", payload: { ok: true,
+          removed: { entities: ents, edges, history: hist, kv_keys: kv, sessions: sessionsCleared },
           kept: keepIds.length ? keepIds : "nothing",
+          sessions_note: "Sessions naming a deleted identity were closed. Anyone holding one is " +
+            "signed out, which is what deleting them means.",
           note: "The graph is clear. The identity pepper is UNTOUCHED - it is a system secret, not a "
               + "person, and regenerating it would orphan any surviving hashed row.",
           next: "PTA_TEST to confirm the machinery still works on an empty graph." } };
@@ -38844,9 +38871,37 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           const r = await env.AURA_MEMORY.prepare("SELECT entity, due, said FROM pta_commitments WHERE entity = ?").bind(kpId).first();
           if (r) open = { entity: r.entity, due: r.due, said: r.said };
         } catch {}
+        // ══ THE BOOKING IS THE PROMISE (fixed 2026-08-23) ═══════════════════════════════════
+        // MEASURED in the console: a shop pressed "Mark taken", got "Recorded", and the deposit
+        // stayed `not held`. `deposit_taken` runs PTA_OUTCOME then PTA_KEPT - and PTA_KEPT refused
+        // NOTHING_OWED, because the stamping code below sits PAST this return. The money half
+        // succeeded, the reply said ok, and the flag never moved.
+        // The backend test passed only because the SCRIPT wrote a chain commitment with
+        // PTA_REMEMBER first. The console never does that, and never will - a shop taking $90 in
+        // cash does not first record a promise to itself.
+        // A booking that carries an amount and is not yet held IS an open obligation. Naming it is
+        // naming the promise. So it stands in for the chain commitment when there is none, and the
+        // bare `PTA_KEPT <pta>` case keeps its refusal exactly as it was - a kept promise recorded
+        // against no promise is still a false entry.
+        let kpViaBooking = false;
+        if (!open && kpAppt && /^edge_[a-f0-9]{8,32}$/i.test(kpAppt)) {
+          try {
+            const bRow = await env.AURA_MEMORY.prepare(
+              "SELECT context FROM pta_edges WHERE id = ? AND edge_type = 'books'").bind(kpAppt).first();
+            if (bRow) {
+              let bc = {}; try { bc = JSON.parse(bRow.context || "{}"); } catch {}
+              if (bc.amount != null && !bc.deposit_held) {
+                kpViaBooking = true;
+                open = { entity: kpId, due: bc.start || bc.when || new Date().toISOString(),
+                         said: "a deposit of " + bc.amount + " on this booking" };
+              }
+            }
+          } catch {}
+        }
         if (!open) return { cmd: "PTA_KEPT", payload: { ok: false, error: "NOTHING_OWED", entity: kpId,
-          what_to_do: "There is no open commitment to this entity. Nothing was closed - a kept promise " +
-            "recorded against no promise would be a false entry in their record." } };
+          what_to_do: "There is no open commitment to this entity, and no unheld deposit on the " +
+            "appointment named. Nothing was closed - a kept promise recorded against no promise " +
+            "would be a false entry in their record." } };
         const ev = { kept: true, promised: open.due, promised_said: open.said || null,
                      what_happened: kpWhat || null, kept_at: new Date().toISOString(),
                      late_by_hours: Math.max(0, Math.round((Date.now() - Date.parse(open.due)) / 36e5)) };
@@ -38888,8 +38943,12 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           index_note: kpIndexCleared ? undefined
             : "The chain records it kept, so nothing will report it owed - but the index row remains " +
               "and every scan will open this chain for nothing until it is cleared.",
-          note: "Written to their chain and removed from what is owed. Both halves stay in the record - " +
-            "what was promised and what was done." } };
+          closed_what: kpViaBooking ? "the deposit on the booking" : "an open commitment on the chain",
+          note: kpViaBooking
+            ? "The booking held an unheld deposit, so that was the promise. Stamped and written to " +
+              "their chain - what was owed and what was done, both in the record."
+            : "Written to their chain and removed from what is owed. Both halves stay in the record - " +
+              "what was promised and what was done." } };
       } catch (e) {
         return { cmd: "PTA_KEPT", payload: { ok: false, error: "Kept failed: " + (e && e.message ? e.message : String(e)) } };
       }
@@ -49539,6 +49598,21 @@ export class PublicEntry extends WorkerEntrypoint {
       // fires several calls at once - refreshing on EVERY read would be a write storm on the one
       // key every request needs.
       // Short-lived is still the point: this extends an ACTIVE session and lets an idle one die.
+      // ══ A SESSION CANNOT OUTLIVE THE PERSON IT NAMES (fixed 2026-08-23) ══════════════════
+      // MEASURED via SESSION LIST: eight sessions, five of them naming entities that PTA_WIPE had
+      // deleted - one eighteen days old - and every one of them still resolved here. A browser
+      // holding that cookie was signed in as somebody who no longer exists, so it owned nothing
+      // and every action was refused for the wrong reason.
+      // The same shape as an artist who left still being able to answer a booking: a guard on the
+      // door that mints, and none on the door that reads.
+      try {
+        const alive = await this.env.AURA_MEMORY
+          .prepare("SELECT 1 FROM pta_entities WHERE id = ?").bind(sess.pta).first();
+        if (!alive) {
+          try { await this.env.AURA_KV.delete("session:" + sessionId); } catch {}
+          return buildKey ? bkIdentity() : null;
+        }
+      } catch {}
       try {
         const ttl = Math.min(Math.max(Number(sess.ttl) || 900, 60), 3 * 86400);
         const age = (Date.now() - Number(sess.created || 0)) / 1000;
@@ -50668,8 +50742,17 @@ export class PublicEntry extends WorkerEntrypoint {
   async act(sessionId, slug, what, args) {
     try {
       const view = await this.console_(sessionId, slug);
+      // ══ SAY WHICH DOOR IS SHUT (fixed 2026-08-23) ══════════════════════════════════════════
+      // `console_` refuses NOT_SIGNED_IN for a dead session and NO_SUCH_BUSINESS for a bad slug,
+      // and this flattened all of it into "that is not a business you can change".
+      // MEASURED: a browser carrying a session for an identity that PTA_WIPE had deleted. Reads
+      // returned nothing, the page kept showing what it had loaded earlier, and every button said
+      // the shop was not theirs. It cost most of a morning, because the message named the wrong
+      // problem and the screen looked healthy.
+      if (view?.error === "NOT_SIGNED_IN") return { ok: false, error: "NOT_SIGNED_IN",
+        say: "You are signed out. Sign in again to change anything." };
       if (!view?.ok || !view.showing) return { ok: false, error: "NOT_YOURS",
-        say: "That is not a business you can change." };
+        say: "That is not a business you can change.", why: view?.error || undefined };
       const biz = view.showing;
       const a = args || {};
       const run = async (cmd) => {
@@ -50800,9 +50883,18 @@ export class PublicEntry extends WorkerEntrypoint {
           // `BOOKING STATE` was the old door and it is gone: PTA_KEPT stamps the booking itself
           // now (v7.07), so calling both means two writers of one fact - which is the thing that
           // has cost this codebase a calendar rewrite, a roster rewrite and an empty Customers tab.
-          return { ok: !!(paid?.ok), money_recorded: !!(paid?.ok), promise_closed: !!(kept?.ok),
-            say: paid?.ok ? "Recorded. The deposit is taken and the promise is closed."
-                          : (paid?.error || "Could not record it.") };
+          // ══ HALF AN ACT IS NOT AN ACT (fixed 2026-08-23) ═════════════════════════════════
+          // This reported ok from the MONEY half alone. So when the stamping half refused, the
+          // shop was told "Recorded. The deposit is taken" and the row still read `not held`.
+          // A confirmation that only checks the easy half is worse than an error, because the
+          // shop stops looking.
+          const stamped = !!(kept?.ok && kept?.appointment?.ok !== false);
+          return { ok: !!(paid?.ok) && stamped,
+            money_recorded: !!(paid?.ok), promise_closed: !!(kept?.ok), booking_stamped: stamped,
+            say: (paid?.ok && stamped) ? "Recorded. The deposit is taken and the booking says so."
+               : !paid?.ok ? (paid?.error || "Could not record it.")
+               : "The payment was recorded but the booking was not stamped - it will still show as " +
+                 "not held. " + (kept?.what_to_do || kept?.error || "") };
         }
         // "Stop texting me" is context, not a lever. PTA_HEARD: "nobody should ever type
         // PTA_REVOKE... why wouldn't I just keep the PTA there with context of how it stopped?"

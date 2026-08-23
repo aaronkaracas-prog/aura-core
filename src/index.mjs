@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.26.0-2026-08-23-the-booking-is-the-promise";
+const BUILD = "aura-core-v7.27.0-2026-08-23-read-the-booking-back-to-them";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -50701,8 +50701,34 @@ export class PublicEntry extends WorkerEntrypoint {
         told.shop_emailed = reached;
         told.shop_unreachable = ids.length - reached;
       } catch {}
+      // ══ A RECEIPT WITH NOTHING ON IT (fixed 2026-08-23) ══════════════════════════════════
+      // The confirmation screen said "Asked for. Booked. They will confirm shortly." and stopped.
+      // A client who had just typed their name, their number, a date, a time and what they wanted
+      // was shown NONE of it back - so the one moment they need to check they got it right, they
+      // cannot. Aaron: "it needs to give all the information that they just submitted."
+      // Every shape of this - a restaurant, a barber, an airline - reads the booking back. Nothing
+      // new is looked up that we did not already have; it is all here and was simply not returned.
+      let artistName = null;
+      if (f.with) {
+        try {
+          const aRow = await this.env.AURA_MEMORY
+            .prepare("SELECT name FROM pta_entities WHERE id = ? LIMIT 1").bind(String(f.with)).first();
+          artistName = aRow?.name || null;
+        } catch {}
+      }
       return { ok: true, booking: rp.booking, when: rp.when, pta: wp.entity.id,
         notes_kept, told,
+        // What they asked for, read back to them.
+        business: sp.name || null,
+        artist: artistName,
+        when_local: localWhen || null,
+        minutes: rp.minutes || null,
+        your_name: name,
+        your_contact: contact,
+        wants: String(f.notes || f.service || "").slice(0, 500) || null,
+        // Whether anybody was actually told, so "they will confirm" is not a guess. A client who
+        // gets no email should know the shop still has it, rather than assuming it vanished.
+        emailed_you: told?.client === true || told?.client === "sent" || false,
         say: "Booked. They will confirm shortly.",
         note: "This is yours as much as theirs - the record follows you, not the shop." };
     } catch (e) {

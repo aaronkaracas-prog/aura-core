@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.27.0-2026-08-23-read-the-booking-back-to-them";
+const BUILD = "aura-core-v7.28.0-2026-08-23-daily-first-in-the-nav";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -24772,9 +24772,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // "they're not running a page, they're running their entire business." That tab holds
           // their QR, their gallery, their hours and their contact details - the shop itself, not
           // a description of it. The word was quietly setting the ceiling on what it could become.
-          tattoo_shop: ["Today", "Appointments", "Artists", "Customers", "Deposits", "Your business"],
-          restaurant:  ["Today", "Front of house", "Kitchen", "Menu", "Reservations", "Staff", "Your business"],
-          salon:       ["Today", "Appointments", "Stylists", "Customers", "Deposits", "Your business"],
+          // ══ ORDER IS THE PHONE LAYOUT (2026-08-23) ═════════════════════════════════════════
+          // On a phone the console shows the FIRST FIVE of this list as the bottom bar and puts the
+          // rest behind the shop icon. That rule is POSITIONAL on purpose - the last bottom bar was
+          // ripped out of this codebase because it was a SECOND list that drifted out of step with
+          // the rail. One list, ordered daily-first, two shapes; adding a seventh section later
+          // needs no console change at all.
+          // The industry ceiling is five thumb targets, and "Your business" - the QR, the gallery,
+          // the address - is a shop's own record rather than somewhere they flip to, so it goes
+          // last and lives behind the icon, where every phone app of this shape keeps it.
+          tattoo_shop: ["Today", "Appointments", "Customers", "Deposits", "Artists", "Your business"],
+          restaurant:  ["Today", "Front of house", "Reservations", "Kitchen", "Menu", "Staff", "Your business"],
+          salon:       ["Today", "Appointments", "Customers", "Deposits", "Stylists", "Your business"],
           _default:    ["Today", "Appointments", "Customers", "Your business"],
         };
         let type = null, understanding = null, chain = [];

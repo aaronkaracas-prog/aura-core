@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.49.0-2026-08-24-fills-the-frame";
+const BUILD = "aura-core-v7.50.0-2026-08-24-she-looks-before-she-shows";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22946,9 +22946,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // retrieval gets tested from the prompt against live providers. The product path is
       // `design wall`, which is session-gated and cached; this one is neither.
       if (!isOp) return { cmd: "WALL", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
-      const wq = (rest || "").trim();
-      if (!wq) return { cmd: "WALL", payload: { ok: false, error: "Usage: WALL <what to look for>" } };
-      const wr = await findReference(wq, env, { count: 6 });
+      let wq = (rest || "").trim();
+      if (!wq) return { cmd: "WALL", payload: { ok: false, error: "Usage: WALL [RAW] <what to look for>" } };
+      // RAW shows what the model returned before she looked at any of it - so the judge can be
+      // compared against its own input rather than against a memory of an earlier run.
+      const wRaw = /^RAW\s+/i.test(wq);
+      if (wRaw) wq = wq.replace(/^RAW\s+/i, "").trim();
+      const wr = await findReference(wq, env, { count: 6, judge: !wRaw });
       return { cmd: "WALL", payload: wr };
     }
 
@@ -49085,8 +49089,90 @@ async function findReference(query, env, opts = {}) {
         model: route.model, ms: Date.now() - t0,
         // What came back, so a shape change is diagnosable in one run instead of six.
         got_chars: text.length, got_sample: text.slice(0, 200) };
-      return { ok: true, query: q, found: picked, said: said || null, provider: "grok",
-        model: route.model, dropped: found.length - picked.length || undefined,
+      // ══ SHE LOOKS AT THEM BEFORE SHE SHOWS THEM (2026-08-24) ═══════════════════════════
+      //
+      // Aaron: "we already built this mechanism." He is right, and the objection I raised against
+      // it was against a design nobody built. The crawl does NOT ask a small model to judge a
+      // photograph. It runs TWO stages: `seeMedia` reports what is in each picture in one
+      // sentence, and then a REAL model reads the numbered descriptions and returns
+      // {"keep":[numbers]} - keeping examples of the work, dropping the logo, the storefront, the
+      // flyer. The small model observes; the judge decides. That is the same shape here.
+      //
+      // AND THE FRAMING TEST IS ARITHMETIC, NOT TASTE. Moondream's `detect` returns a bounding
+      // box - measured yesterday at x 0.07-0.79, y 0.23-0.77 on the koi. Box area over frame area
+      // IS "how much of the picture is the tattoo". A wide environmental shot scores low without
+      // anybody judging anything, which is exactly the gap Grok kept naming and the one thing a
+      // prompt cannot reliably fix.
+      //
+      // DEGRADES HONESTLY: if the eyes or the judge fail, the unfiltered wall is returned rather
+      // than an empty one. A wall of six adequate photographs beats a blank screen.
+      let judged = picked, why = null;
+      if (opts.judge !== false && picked.length > 1) {
+        try {
+          const looks = [];
+          for (const cand of picked.slice(0, 10)) {
+            // The measurement first - it is 4 output tokens and settles framing outright.
+            let fill = null;
+            try {
+              const box = await seeMedia({ url: cand.image, task: "detect", target: "tattoo",
+                max_tokens: 40 }, env);
+              const b = box.ok && Array.isArray(box.box) ? box.box[0] : null;
+              if (b && b.x_max != null) fill = Math.round(((b.x_max - b.x_min) * (b.y_max - b.y_min)) * 100);
+            } catch {}
+            // Then what it actually is.
+            let saw = null;
+            try {
+              const d = await seeMedia({ url: cand.image, max_tokens: 80,
+                prompt: "What does this photograph show? Say whether it is a tattoo on real human " +
+                        "skin, what the subject and style are, and whether the photo is sharp and " +
+                        "well lit or blurry, dark, or taken from far away." }, env);
+              if (d.ok) saw = d.saw;
+            } catch {}
+            looks.push({ ...cand, fill, saw });
+          }
+
+          const described = looks.filter(l => l.saw);
+          if (described.length > 1) {
+            const jr = await callBrain({
+              system:
+                "Someone looked at each photograph and wrote down what it shows. Below are those " +
+                "descriptions, numbered. Each also has `fills` - the percentage of the picture " +
+                "the tattoo actually occupies, measured, not guessed.\n\n" +
+                'Return ONLY JSON: {"keep":[numbers]}\n\n' +
+                "Keep the photographs somebody choosing a tattoo would want to look at: a real " +
+                "tattoo on real skin, in focus, well lit, with the design clearly visible.\n" +
+                "Leave out drawings and flash on paper, stock or AI images, anything blurry or " +
+                "dark, and wide shots where the tattoo is small in the frame - `fills` under " +
+                "about 20 is usually that.\n" +
+                "Order the ones you keep best first.\n" +
+                "Fewer is better than wrong, but keep at least three if three are usable.",
+              user: described.map((l, i) =>
+                (i + 1) + ". [fills " + (l.fill == null ? "unknown" : l.fill) + "] " + l.saw).join("\n"),
+              max_tokens: 300 }, env);
+            if (jr?.ok) {
+              let kj = jr.text;
+              if (typeof kj === "string") { try { kj = JSON.parse(kj); } catch { kj = repairJson(kj); } }
+              kj = unwrapSchema(kj);
+              const keep = [];
+              for (const n of (Array.isArray(kj?.keep) ? kj.keep : []))
+                if (Number.isInteger(n) && n >= 1 && n <= described.length) keep.push(described[n - 1]);
+              if (keep.length >= 2) {
+                judged = keep.slice(0, want);
+                why = { looked: described.length, kept: judged.length, judge: jr.model,
+                        // What was seen and what happened to it - so a bad wall is diagnosable
+                        // without re-running anything.
+                        saw: looks.map(l => (keep.includes(l) ? "KEEP " : "drop ") +
+                          "[" + (l.fill == null ? "?" : l.fill) + "%] " +
+                          String(l.saw || "no description").slice(0, 80)) };
+              }
+            }
+          }
+        } catch {}
+      }
+
+      return { ok: true, query: q, found: judged.map(({ fill, saw, ...rest }) => rest),
+        said: said || null, provider: "grok", model: route.model,
+        dropped: found.length - judged.length || undefined, why,
         ms: Date.now() - t0 };
     }
 

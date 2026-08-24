@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.32.0-2026-08-23-the-doorway-asks-by-name";
+const BUILD = "aura-core-v7.33.0-2026-08-24-evolve-keeps-the-same-fish";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -13468,11 +13468,34 @@ async function successionGate(env) {
         const gate = await enforceFileAction(env, ent, p.by || null, "derive");
         if (!gate.allowed) return { cmd: "IMAGE", payload: { ok: false, error: "permission denied: " + gate.reason, action: "derive", who: p.by || null } };
         let meta = {}; try { meta = JSON.parse(ent.metadata || "{}"); } catch {}
+        // ══ SEND THE PARENT, NOT A LONGER SENTENCE (fixed 2026-08-24) ══════════════════════
+        // This concatenated the parent's subject with the change and drew from scratch. The
+        // parent's pixels never left the building, so a koi asked to have bolder lines came back
+        // a DIFFERENT koi - and the Smart File graph dutifully recorded it as a child of the
+        // first. Perfect lineage over an artifact that had changed identity.
+        // Now the parent image rides along as a reference and the prompt is the DELTA alone,
+        // which is what every provider's edit path is built for. The full description still goes
+        // on the record so the next evolve has something to read.
+        // If the parent has no URL - an older row from before the file engine - it falls back to
+        // the old behaviour rather than refusing. A worse image beats a dead command.
+        const parentUrl = meta.url || meta.image_url || null;
         const evolvedSubject = (meta.subject ? meta.subject + ". " : "") + p.prompt;
-        const r = await showIt(evolvedSubject, env, { source: "image_evolve", parent: ent.id, creator: p.by && /^(pta_|ent_)/.test(p.by) ? p.by : null, context: p.prompt });
+        const r = parentUrl
+          ? await showIt(p.prompt, env, { source: "image_evolve", parent: ent.id,
+              creator: p.by && /^(pta_|ent_)/.test(p.by) ? p.by : null, context: p.prompt,
+              refs: [parentUrl], subject: evolvedSubject })
+          : await showIt(evolvedSubject, env, { source: "image_evolve", parent: ent.id,
+              creator: p.by && /^(pta_|ent_)/.test(p.by) ? p.by : null, context: p.prompt });
         if (!r || !r.ok) return { cmd: "IMAGE", payload: { ok: false, error: r ? r.error : "evolution failed" } };
         await smartFileAdd(env, ent, { by: p.by || "anonymous", context: `Spawned a new version: ${p.prompt}`, kind: "spawned_child" });
-        return { cmd: "IMAGE", payload: { ok: true, parent: ent.id, child: r.entity_id, child_image_id: r.id, image_url: r.image_url, doorway: r.doorway || null, evolved_with: p.prompt } };
+        return { cmd: "IMAGE", payload: { ok: true, parent: ent.id, child: r.entity_id, child_image_id: r.id,
+          image_url: r.image_url, doorway: r.doorway || null, evolved_with: p.prompt,
+          // Says out loud whether the parent's pixels were actually used. Without this the two
+          // cases look identical in the reply and only the picture tells you - which is how this
+          // went unnoticed in the first place.
+          kept_the_original: !!parentUrl,
+          note: parentUrl ? undefined
+            : "The parent had no stored image, so this was redrawn from text and may not match it." } };
       }
       return { cmd: "IMAGE", payload: { ok: false, error: "Unknown sub-command. Use ADD | LIFE | EVOLVE." } };
     }
@@ -48562,9 +48585,14 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // be OURS, in OUR KV. Key = model + quality + size + prompt (everything that changes the pixels). On a
   // hit we serve the stored image for $0.00 and never call a provider. THIS is how ShowIt lets everyone
   // make images while the cost is absorbed ONCE, not per user.
+  // ══ THE REFERENCES ARE PART OF THE IMAGE (2026-08-24) ═══════════════════════════════════
+  // `refs` are source images sent WITH the prompt for an edit. The cache key must include them or
+  // two different people asking "put this on my arm" with the same words would collide and each be
+  // served the other person's body. That is the most dangerous line in this change.
+  const refs = Array.isArray(opts.refs) ? opts.refs.filter(u => typeof u === "string" && u).slice(0, 6) : [];
   let cacheKey = null;
   try {
-    const sig = model + "|" + quality + "|1024x1024|" + p;
+    const sig = model + "|" + quality + "|1024x1024|" + refs.join("|") + "|" + p;
     const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(sig));
     cacheKey = "imgcache:" + Array.from(new Uint8Array(buf)).slice(0, 12).map((x) => x.toString(16).padStart(2, "0")).join("");
     const hitRaw = await env.AURA_KV.get(cacheKey);
@@ -48616,12 +48644,28 @@ async function auraGenerateImage(prompt, env, opts = {}) {
     } else if (/^grok-imagine/i.test(model)) {
       // xAI Grok image (Aurora). OpenAI-compatible /images/generations at api.x.ai, key XAI_API_KEY.
       // xAI does NOT support quality/size/style on images - sending them errors - so we omit them here.
+      //
+      // ══ WITH REFERENCES IT IS AN EDIT, NOT A GENERATION (2026-08-24) ══════════════════════
+      // MEASURED, and confirmed independently from source by Grok: IMAGE EVOLVE rebuilt a TEXT
+      // prompt (parent subject + the change) and drew again from scratch. The parent's PIXELS were
+      // never sent. So the Smart File graph recorded the handoff perfectly - child, lineage,
+      // contributor, all correct - while the artwork changed identity underneath it.
+      // Grok's phrase for what that produces: "a bibliography of near-misses."
+      // Every major provider already supports image-to-image. The gap was never the market, it was
+      // this call. With refs present it goes to /images/edits and the parent rides along.
       let key = await getSecret(env, "xai");
       if (!key) throw new Error("no xAI key");
-      const r = await pfetch(env, "xai", "core:image", "https://api.x.ai/v1/images/generations", {
+      const isEdit = refs.length > 0;
+      const r = await pfetch(env, "xai", "core:image",
+        "https://api.x.ai/v1/images/" + (isEdit ? "edits" : "generations"), {
         method: "POST",
         headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
-        body: JSON.stringify({ model, prompt: p, n: 1, response_format: "b64_json" })
+        body: JSON.stringify(isEdit
+          // Field name from xAI's SDK parameters (image_urls for multi, image_url for one). If the
+          // REST body differs, the error below carries xAI's own message rather than a blank image -
+          // one run names the right field instead of a week of guessing.
+          ? { model, prompt: p, image_urls: refs, n: 1, response_format: "b64_json" }
+          : { model, prompt: p, n: 1, response_format: "b64_json" })
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d?.error?.message || JSON.stringify(d).slice(0, 300));
@@ -48797,15 +48841,24 @@ async function auraGenerateImage(prompt, env, opts = {}) {
 async function showIt(subject, env, opts = {}) {
   const want = (subject || "").trim();
   if (!want) return { ok: false, error: "nothing to show" };
-  const prompt = opts.raw ? want : `${want}. High quality, visually striking, well-composed, detailed.`;
-  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null });
+  // ══ AN EDIT IS TOLD WHAT TO CHANGE, NOT RE-TOLD EVERYTHING (2026-08-24) ═══════════════════
+  // With references present, `want` is the CHANGE ("make the linework bolder"), not a fresh
+  // description of the whole piece - and the flourish suffix is dropped, because "high quality,
+  // visually striking" appended to a delta is instruction the edit does not need and can act on.
+  // `opts.subject` carries the full description forward for the RECORD, so the child's stored
+  // subject still describes the whole piece and the next evolve reads something meaningful.
+  const refs = Array.isArray(opts.refs) ? opts.refs.filter(Boolean) : [];
+  const prompt = (opts.raw || refs.length) ? want : `${want}. High quality, visually striking, well-composed, detailed.`;
+  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null, refs });
   if (!result || !result.ok) return { ok: false, error: result ? result.error : "generation failed" };
-  const out = { ok: true, id: result.id, image_url: result.image_url || `https://${await imageHost(env, opts.host)}/image/${result.id}`, showed: want };
+  const record = (opts.subject || want).trim();
+  const out = { ok: true, id: result.id, image_url: result.image_url || `https://${await imageHost(env, opts.host)}/image/${result.id}`, showed: want,
+    from_refs: refs.length || undefined };
   // THE IMAGE IS A LIVING SMART FILE. Register it through the generic Smart File engine as
   // filetype:"image" - it gets the same identity, timeline, lineage, and attributed contributors any
   // file gets. Image is just one filetype; the engine is universal.
   try {
-    const reg = await registerSmartFile(env, { id: result.id, filetype: "image", name: want.slice(0, 80), url: out.image_url, subject: want, source: opts.source || null, creator: opts.creator || opts.entity || null, parent: opts.parent || null, context: want, access: "public" });
+    const reg = await registerSmartFile(env, { id: result.id, filetype: "image", name: record.slice(0, 80), url: out.image_url, subject: record, source: opts.source || null, creator: opts.creator || opts.entity || null, parent: opts.parent || null, context: want, access: "public" });
     if (reg && reg.ok) out.entity_id = reg.entity_id;
   } catch (e) {}
   // THE LAW: every image Aura generates is BORN a PTA. The image is the relationship - a tap on it

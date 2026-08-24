@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.45.0-2026-08-24-a-lead-is-not-yet-a-pta";
+const BUILD = "aura-core-v7.46.0-2026-08-24-the-shop-actually-hears-about-it";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -50880,21 +50880,68 @@ export class PublicEntry extends WorkerEntrypoint {
         const who = String(b.name || "").trim().slice(0, 80) || "Somebody";
         const note = who + " designed a tattoo on mytattoo.world and wants " +
           (row.name || "your shop") + " to do it.";
+        // The design travels with the message - a shop opening an email about a piece they cannot
+        // see has been told nothing.
+        let designImg = null, dMeta = null;
+        if (id) {
+          try {
+            const dRow = await env.AURA_MEMORY.prepare(
+              "SELECT metadata FROM pta_entities WHERE id = ?").bind(id).first();
+            if (dRow) { dMeta = JSON.parse(dRow.metadata || "{}"); designImg = dMeta.url || dMeta.image_url || null; }
+          } catch {}
+        }
         try {
           await env.AURA_KV.put("mt:interest:" + shop + ":" + Date.now(),
-            JSON.stringify({ shop, design: id || null, who, contact: String(b.contact || "").slice(0, 120),
+            JSON.stringify({ shop, design: id || null, who: me, name: who,
+              contact: String(b.contact || "").slice(0, 120),
               at: new Date().toISOString(), claimed: !!row.claimed_at }),
             { expirationTtl: 90 * 24 * 3600 });
         } catch {}
+
+        // ══ THE PROMISE HAS TO BE KEPT, OR NOT MADE (2026-08-24) ═══════════════════════════
+        // This wrote a record and returned "we will let them know" - and nothing was ever sent.
+        // That sentence is the hinge of the whole business: a real person designed a piece and
+        // asked for THIS shop by name, which is a better first contact than any advertisement, and
+        // it was being promised to the customer and delivered to nobody.
+        // `REACH_OUT` already does this exact thing - thin lead, tokened doorway, email, and the
+        // tap IS the consent. Writing a second outreach beside it would be the same mistake twice.
+        // The reply now says what actually happened, not what was intended: `told` is only true if
+        // Cloudflare accepted the send.
+        let told = false, reachErr = null;
+        const shopEmail = row.email || row.email_found || null;
+        if (!row.claimed_at && shopEmail) {
+          try {
+            const rr = await processCommand("REACH_OUT " + JSON.stringify({
+              email: shopEmail,
+              name: row.name || null,
+              via: "mytattoo",
+              context: who + " designed a tattoo on mytattoo.world and asked for " +
+                (row.name || "your shop") + " by name" + (dMeta && dMeta.subject ? " - " + String(dMeta.subject).slice(0, 120) : ""),
+              image: designImg || null,
+              dest: "/claim"
+            }), env, true);
+            const rp = (rr && rr.payload) ? rr.payload : rr;
+            told = !!(rp?.ok && rp?.emailed?.ok);
+            if (!told) reachErr = rp?.emailed?.error || rp?.error || "no send";
+          } catch (e) { reachErr = String((e && e.message) || e).slice(0, 120); }
+        }
         return { ok: true, shop: row.name, claimed: !!row.claimed_at,
           where: [row.locality, row.region].filter(Boolean).join(", "),
           // Claimed: they can be booked right now. Unclaimed: this is the first contact, and it
           // is a warm one - a real person with a real design who already picked them.
           next: row.claimed_at ? "book" : "invite",
           reachable: !!(row.email || row.email_found || row.phone),
+          // What actually happened, in the words the person should hear. No "we will let them know"
+          // over a send that never left.
+          told,
           say: row.claimed_at
             ? "They are on the platform - you can ask for a time."
-            : "They are not set up yet. We will let them know somebody designed a piece for them.",
+            : told
+              ? "They are not set up yet, so I have written to them with your design."
+              : shopEmail
+                ? "They are not set up yet. I could not reach them just now - your design is saved and they will see it if they claim their page."
+                : "They are not set up yet and I do not have a way to contact them. Your design is saved, and it is waiting if they ever claim their page.",
+          could_not_reach: told ? undefined : (reachErr || (shopEmail ? null : "no email on file")),
           note };
       }
 

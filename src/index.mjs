@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.33.0-2026-08-24-evolve-keeps-the-same-fish";
+const BUILD = "aura-core-v7.34.0-2026-08-24-the-field-is-image";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -13493,8 +13493,15 @@ async function successionGate(env) {
           // Says out loud whether the parent's pixels were actually used. Without this the two
           // cases look identical in the reply and only the picture tells you - which is how this
           // went unnoticed in the first place.
-          kept_the_original: !!parentUrl,
-          note: parentUrl ? undefined
+          // ══ REPORT WHAT WE DID, NOT WHAT WE HOPE (2026-08-24) ════════════════════════
+          // This said `kept_the_original: true` when all it knew was that a field had been put in
+          // the request - and it said it over a picture of a canyon. xAI's response carries NO
+          // signal that references were used; a dropped one and a real edit are identical in the
+          // JSON. So the name says exactly what is known and nothing more.
+          sent_the_parent: !!parentUrl,
+          note: parentUrl
+            ? "The parent image was sent as a reference. The provider does not report whether it " +
+              "used it, so compare the two pictures rather than trusting this reply."
             : "The parent had no stored image, so this was redrawn from text and may not match it." } };
       }
       return { cmd: "IMAGE", payload: { ok: false, error: "Unknown sub-command. Use ADD | LIFE | EVOLVE." } };
@@ -48660,11 +48667,20 @@ async function auraGenerateImage(prompt, env, opts = {}) {
         "https://api.x.ai/v1/images/" + (isEdit ? "edits" : "generations"), {
         method: "POST",
         headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
+        // ══ THE FIELD IS `image`, AND GUESSING IT COST A CANYON (fixed 2026-08-24) ══════════
+        // First attempt sent `image_urls: [...]` - xAI's SDK parameter name, which I turned into an
+        // HTTP body. It is not a field the REST endpoint reads. The call returned 200, ignored the
+        // reference entirely, and drew the prompt as a scene: "make the linework much bolder and
+        // remove the water" produced A DRY CANYON RIVERBED. No error, because nothing was wrong
+        // with the request - it just did not contain an image.
+        // From xAI's REST docs: JSON, not multipart (they explicitly do not support the OpenAI
+        // SDK's multipart images.edit). One source is `image: {url, type:"image_url"}`; up to three
+        // is `images: [...]`. A data URI or a Files API file_id works in the same slot.
         body: JSON.stringify(isEdit
-          // Field name from xAI's SDK parameters (image_urls for multi, image_url for one). If the
-          // REST body differs, the error below carries xAI's own message rather than a blank image -
-          // one run names the right field instead of a week of guessing.
-          ? { model, prompt: p, image_urls: refs, n: 1, response_format: "b64_json" }
+          ? { model, prompt: p, n: 1, response_format: "b64_json",
+              ...(refs.length === 1
+                ? { image: { type: "image_url", url: refs[0] } }
+                : { images: refs.slice(0, 3).map(u => ({ type: "image_url", url: u })) }) }
           : { model, prompt: p, n: 1, response_format: "b64_json" })
       });
       const d = await r.json();
@@ -48847,8 +48863,18 @@ async function showIt(subject, env, opts = {}) {
   // visually striking" appended to a delta is instruction the edit does not need and can act on.
   // `opts.subject` carries the full description forward for the RECORD, so the child's stored
   // subject still describes the whole piece and the next evolve reads something meaningful.
+  // ══ A DROPPED REFERENCE MUST DEGRADE TOWARD THE THING (2026-08-24) ═══════════════════════
+  // The first version sent the DELTA ALONE when references were present - correct for an edit, and
+  // catastrophic when the reference does not arrive. "Remove the water" with no image is a valid
+  // instruction for any picture, and the model drew a dry canyon.
+  // The provider gives no signal that a reference was used, so silent ignore is a permanent
+  // possibility rather than a bug to be fixed once. The prompt therefore carries the SUBJECT as
+  // well: with the reference it reads as an edit to that subject, and without it, it still draws
+  // the right thing slightly differently. Failure lands on "a different koi", never on "a canyon".
   const refs = Array.isArray(opts.refs) ? opts.refs.filter(Boolean) : [];
-  const prompt = (opts.raw || refs.length) ? want : `${want}. High quality, visually striking, well-composed, detailed.`;
+  const prompt = refs.length
+    ? (opts.subject ? `${opts.subject.trim()}. ${want}` : want)
+    : (opts.raw ? want : `${want}. High quality, visually striking, well-composed, detailed.`);
   const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null, refs });
   if (!result || !result.ok) return { ok: false, error: result ? result.error : "generation failed" };
   const record = (opts.subject || want).trim();

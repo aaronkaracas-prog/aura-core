@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.35.0-2026-08-24-put-it-on-me";
+const BUILD = "aura-core-v7.36.0-2026-08-24-one-pair-of-eyes";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -16928,17 +16928,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const verdicts = [];
           for (const c of shortlist) {
             try {
-              const ir = await fetch(c.u, { cf: { cacheTtl: 3600 } });
-              if (!ir.ok) { failed++; continue; }
-              const buf = await ir.arrayBuffer();
-              bytes += buf.byteLength;
-              if (buf.byteLength > 4_000_000) { failed++; continue; }
-              const vr = await env.AI.run(srdVis, {
-                image: [...new Uint8Array(buf)],
-                prompt: "Describe what this photograph shows, in one short sentence.",
-                max_tokens: 60 });
-              const saw = String(vr?.description || vr?.response || "").trim();
-              verdicts.push({ ...c, saw });
+              // Was an inline fetch + env.AI.run here. Same work, one reader now - see `seeMedia`.
+              // Behaviour is unchanged: same model, same prompt, same 4MB cap, same answer.
+              const vr = await seeMedia({ url: c.u, model: srdVis,
+                prompt: "Describe what this photograph shows, in one short sentence." }, env);
+              if (!vr.ok) { failed++; continue; }
+              bytes += vr.bytes || 0;
+              verdicts.push({ ...c, saw: vr.saw });
             } catch { failed++; }
           }
           // WHAT THE WORK LOOKS LIKE IS THE BUSINESS'S OWN QUESTION, so she answers it about
@@ -17027,20 +17023,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const seen = [];
           for (const c of cands) {
             try {
-              const ir = await fetch(c.u, { cf: { cacheTtl: 3600 } });
-              if (!ir.ok) { failed++; seen.push({ ...c, saw: "FETCH " + ir.status }); continue; }
-              const buf = await ir.arrayBuffer();
-              bytesTotal += buf.byteLength;
-              // 4MB is well past anything a shop puts on a page; a surprise 40MB TIFF should
-              // not take the whole run down with it.
-              if (buf.byteLength > 4_000_000) { failed++; seen.push({ ...c, saw: "TOO BIG" }); continue; }
-              const vr = await env.AI.run(srdVis, {
-                image: [...new Uint8Array(buf)],
+              // Same extraction as above. The 4MB cap and the fetch now live in `seeMedia`; this
+              // keeps its own per-image bookkeeping because LOOK reports what it saw AND what it
+              // could not, which is half the value of the command.
+              const vr = await seeMedia({ url: c.u, model: srdVis,
                 prompt: "What is the main subject of this photograph? Answer in one short " +
-                        "sentence. If it shows a tattoo on skin, say so plainly.",
-                max_tokens: 60 });
-              seen.push({ ...c, u: c.u.slice(-60),
-                          saw: String(vr?.description || vr?.response || "").trim().slice(0, 200) });
+                        "sentence. If it shows a tattoo on skin, say so plainly." }, env);
+              bytesTotal += vr.bytes || 0;
+              if (!vr.ok) { failed++; seen.push({ ...c, u: c.u.slice(-60), saw: vr.error }); continue; }
+              seen.push({ ...c, u: c.u.slice(-60), saw: String(vr.saw).slice(0, 200) });
             } catch (e) { failed++; seen.push({ ...c, u: c.u.slice(-60),
                           saw: "ERR " + String(e?.message ?? e).slice(0, 80) }); }
           }
@@ -22863,6 +22854,32 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       } catch (e) {
         return { cmd: "INVITE_SEAT", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
       }
+    }
+
+    case "SEE": {
+      // ══ AN OPERATOR PROBE, NOT THE PRODUCT DOOR ═══════════════════════════════════════════════
+      // `processCommand` is operator-gated, so a stranger designing a tattoo can never reach this.
+      // The product path is `seeMedia` called directly from the design RPC. This exists so the
+      // bake-off - llava vs Llama-3.2-Vision vs Moondream on real arm photos - can be run from the
+      // prompt against real URLs on the live wire, rather than judged from a reading of the code.
+      //
+      //   SEE <url> [EYES <model>] [<question...>]
+      //
+      // Naming it plainly: if this ever becomes what the product calls, it is being used wrong.
+      if (!isOp) return { cmd: "SEE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      let seeRest = (rest || "").trim();
+      const seeEyesM = seeRest.match(/(^|\s)EYES\s+(\S+)/i);
+      const seeModel = seeEyesM ? seeEyesM[2] : null;
+      if (seeEyesM) seeRest = seeRest.replace(/(^|\s)EYES\s+\S+/i, " ").trim();
+      const seeUrlM = seeRest.match(/https?:\/\/\S+/);
+      if (!seeUrlM) return { cmd: "SEE", payload: { ok: false,
+        error: "Usage: SEE <url> [EYES <model>] [what you want to know]" } };
+      const seeUrl = seeUrlM[0];
+      const seeAsk = seeRest.replace(seeUrl, " ").trim();
+      const seen = await seeMedia({ url: seeUrl, model: seeModel,
+        prompt: seeAsk || undefined, max_tokens: seeAsk ? 200 : 60 }, env);
+      return { cmd: "SEE", payload: { ...seen, url: seeUrl,
+        asked: seeAsk || "Describe what this photograph shows, in one short sentence." } };
     }
 
     case "SESSION": {
@@ -48579,6 +48596,96 @@ const imageHost = async (env, host) => {
   const cfg = await env.AURA_KV.get("config:image:host").catch(() => null);
   return (cfg && cfg.trim()) || "auras.guide";
 };
+
+// ══ SEEING — ONE FUNCTION, EVERY CALLER (2026-08-24) ══════════════════════════════════════
+//
+// Aura has been able to see for weeks and nobody could reach it. The crawl fetches an image,
+// hands the bytes to `env.AI.run`, and gets back a sentence - twice, in two places, with the same
+// 4MB cap and the same `description || response` read, differing only in the prompt. It worked so
+// well inside SITE_READING that a whole session concluded "there is no vision in aura-core" after
+// grepping for `media_type`, which is Anthropic's shape and not the one being used.
+//
+// So this is an EXTRACTION, not a new engine. Both crawl call sites become callers. The consumer
+// tattoo flow becomes a third. One reader for "what is in this picture" - the same rule that put
+// the image host in one place and the week's five writer/reader bugs to bed.
+//
+// PROVIDER BRANCHING LIVES HERE, and that is the point. `env.AI.run(model, {image: [...bytes]})`
+// is Workers-AI-only; Claude and Gemini take entirely different transports. If callers wrote that
+// call themselves, promoting the default eyes later would mean rewriting every one of them - which
+// is precisely the trap `image_urls` sprang. Callers get a stable answer and never learn the wire.
+//
+// THE DEFAULT IS NOT BEING CHANGED IN THIS PASS. llava-1.5-7b is what the crawl has been using and
+// it stays, so "did the extraction break the crawl?" is a question that can be answered on its own.
+// The bake-off against real skin comes after, as its own change.
+const DEFAULT_EYES = "@cf/llava-hf/llava-1.5-7b-hf";
+const EYES_MAX_BYTES = 4_000_000;   // a surprise 40MB TIFF should not take a whole run down
+
+async function seeMedia(opts, env) {
+  const t0 = Date.now();
+  const o = opts || {};
+  const prompt = String(o.prompt || "Describe what this photograph shows, in one short sentence.");
+  const cap = Math.max(16, Math.min(1024, Number(o.max_tokens) || 60));
+  try {
+    const model = String(o.model || (await env.AURA_KV.get("config:eyes:model").catch(() => null)) || DEFAULT_EYES).trim();
+
+    // The bytes, however they arrive. A URL is fetched; raw bytes are used as they are; a data URI
+    // is decoded. All three end in the same place, so a caller with a photo in hand and a caller
+    // with a link both work without either knowing what the other does.
+    let bytes = o.bytes || null;
+    if (!bytes && o.data_uri) {
+      const b64 = String(o.data_uri).replace(/^data:[^,]+,/, "");
+      const bin = atob(b64);
+      bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    }
+    if (!bytes && o.url) {
+      const ir = await fetch(String(o.url), { cf: { cacheTtl: 3600 } });
+      if (!ir.ok) return { ok: false, error: "FETCH_" + ir.status, model, ms: Date.now() - t0 };
+      const buf = await ir.arrayBuffer();
+      if (buf.byteLength > EYES_MAX_BYTES) return { ok: false, error: "TOO_BIG",
+        bytes: buf.byteLength, model, ms: Date.now() - t0 };
+      bytes = new Uint8Array(buf);
+    }
+    if (!bytes) return { ok: false, error: "NOTHING_TO_LOOK_AT", model, ms: Date.now() - t0 };
+    if (bytes.length > EYES_MAX_BYTES) return { ok: false, error: "TOO_BIG",
+      bytes: bytes.length, model, ms: Date.now() - t0 };
+
+    // ── Workers AI. The binding is already there; no key, no provider, no new bill.
+    if (/^@cf\//.test(model)) {
+      const vr = await env.AI.run(model, { image: [...bytes], prompt, max_tokens: cap });
+      const saw = String(vr?.description || vr?.response || "").trim();
+      if (!saw) return { ok: false, error: "SAW_NOTHING", model, bytes: bytes.length, ms: Date.now() - t0 };
+      return { ok: true, saw, model, bytes: bytes.length, ms: Date.now() - t0 };
+    }
+
+    // ── Anthropic. Image content blocks in the same message as the question.
+    if (/^claude/i.test(model)) {
+      const key = await getSecret(env, "anthropic");
+      if (!key) return { ok: false, error: "NO_ANTHROPIC_KEY", model, ms: Date.now() - t0 };
+      let bin = "";
+      for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+      const r = await brainFetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({ model, max_tokens: cap, messages: [{ role: "user", content: [
+          { type: "image", source: { type: "base64", media_type: o.media_type || "image/jpeg", data: btoa(bin) } },
+          { type: "text", text: prompt } ] }] }),
+      }, env);
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) return { ok: false, error: d?.error?.message || ("http " + r.status), model, ms: Date.now() - t0 };
+      const saw = (d?.content || []).filter(b => b?.type === "text").map(b => b.text).join("").trim();
+      return saw ? { ok: true, saw, model, bytes: bytes.length, ms: Date.now() - t0 }
+                 : { ok: false, error: "SAW_NOTHING", model, ms: Date.now() - t0 };
+    }
+
+    // Anything else is a model nobody has wired yet. Say so rather than quietly returning nothing -
+    // a silent blind spot is how "she cannot see" went unnoticed for weeks.
+    return { ok: false, error: "NO_EYES_FOR_MODEL", model, ms: Date.now() - t0,
+      what_to_do: "Only @cf/* (Workers AI) and claude* are wired. Set config:eyes:model to one of those." };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e).slice(0, 200), ms: Date.now() - t0 };
+  }
+}
 
 async function auraGenerateImage(prompt, env, opts = {}) {
   // AGNOSTIC + POLICY-DRIVEN. showIt states intent ("make an image"); AIMARGIN's POLICY decides who fulfills

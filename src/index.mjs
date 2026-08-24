@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.47.0-2026-08-24-show-them-the-wall";
+const BUILD = "aura-core-v7.48.0-2026-08-24-a-wall-worth-looking-at";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -48954,7 +48954,17 @@ async function findReference(query, env, opts = {}) {
   try {
     // Who is answering right now. Not "which vendor did we sign" - which model the policy and the
     // pins resolve to at this moment.
-    const route = await _brainRoute(env, opts.model || null);
+    //
+    // ══ THE WALL IS ITS OWN LANE ═══════════════════════════════════════════════════════════
+    // MEASURED: 113 seconds on `WALL cool dragon tattoo`, 65-73s on the others - on
+    // grok-build-0.1, the cheapest text rung, doing a web search AND composing prose about six
+    // photographs. Nobody taps a chip and waits two minutes; on a phone that is a closed tab.
+    // Searching the web and answering a question are different WORK, so the wall gets its own
+    // pin - `config:wall:model` - resolved the same way every other lane is, through the same
+    // router. Unset, it follows the text policy exactly as before, so this changes nothing until
+    // somebody sets it. The cache still means only the first person per category ever waits.
+    const wallPin = opts.model || (await env.AURA_KV.get("config:wall:model").catch(() => null));
+    const route = await _brainRoute(env, (wallPin && wallPin.trim()) || null);
 
     if (route.provider === "grok") {
       const key = await getSecret(env, "xai");
@@ -48966,9 +48976,24 @@ async function findReference(query, env, opts = {}) {
         headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
         body: JSON.stringify({
           model: route.model,
-          input: "Find " + want + " real photographs of " + q + " - actual tattoos on actual " +
-                 "people, photographed, not drawings and not stock art. Show each image and say " +
-                 "in one short line what makes it different from the others.",
+          // ══ WHAT A GOOD PHOTO IS, SAID OUT LOUD ═══════════════════════════════════════
+          // "cool dragon tattoo" came back with a celebrity news photo, a YouTube thumbnail at
+          // sddefault resolution and a Getty stock shot from GQ. "koi fish tattoo" came back with
+          // a tattoo magazine and two shops. Same code, same model - the difference is only what
+          // the QUERY ranks for, and a bare noun ranks listicles and gossip.
+          // So the ask names the standard: portfolio photography, healed work on skin, and the
+          // specific kinds of thing that keep turning up and are useless to somebody choosing a
+          // tattoo. This costs nothing and it is where most of the quality comes from.
+          input: "Find " + want + " HIGH-QUALITY real photographs of " + q + ".\n\n" +
+                 "What I want: professional tattoo portfolio photographs - healed or fresh work " +
+                 "on actual human skin, well lit, the tattoo clearly visible and filling most of " +
+                 "the frame. Prefer tattoo studio and artist portfolio sites, tattoo magazines, " +
+                 "and photographs people have posted of their own work.\n\n" +
+                 "Do NOT include: AI-generated images, drawings, flash sheets or designs on paper, " +
+                 "stock photography, YouTube video thumbnails, celebrity or news photographs, " +
+                 "listicle header graphics, or low-resolution crops.\n\n" +
+                 "Show each image, and after each one write ONE short line saying what makes it " +
+                 "different from the others - style, placement, colour.",
           tools: [{ type: "web_search", enable_image_search: true }]
         })
       });
@@ -48998,25 +49023,54 @@ async function findReference(query, env, opts = {}) {
         } catch { return ""; }
       })();
 
+      // ══ URLS CONTAIN PARENTHESES ═══════════════════════════════════════════════════════
+      // The first version stopped at the first `)`, which cut a PopSugar URL in half at
+      // `filters:format_auto(` - a dead image on the page, and the severed tail leaked into her
+      // prose mid-sentence. Markdown link syntax and URL syntax disagree about brackets, so the
+      // depth has to be counted rather than matched.
       const found = [];
       const seen = new Set();
-      const re = /!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g;
+      const re = /!\[([^\]]*)\]\(/g;
       let m;
-      while ((m = re.exec(text)) && found.length < want) {
-        const url = m[2];
+      while ((m = re.exec(text)) && found.length < want * 3) {
+        let i = re.lastIndex, depth = 1, url = "";
+        while (i < text.length && depth > 0) {
+          const ch = text[i];
+          if (ch === "(") depth++;
+          else if (ch === ")") { depth--; if (!depth) break; }
+          else if (ch === "\n" || ch === " ") break;   // a link never spans a line
+          url += ch;
+          i++;
+        }
+        re.lastIndex = i + 1;
+        if (!/^https?:\/\//i.test(url)) continue;
         if (seen.has(url)) continue;
         seen.add(url);
-        let host = null; try { host = new URL(url).hostname.replace(/^www\./, ""); } catch {}
+        let host = null; try { host = new URL(url).hostname.replace(/^www\./, ""); } catch { continue; }
         found.push({ image: url, title: (m[1] || "").slice(0, 120) || null, source: host });
       }
+
+      // ══ DROP THE ONES NOBODY CAN USE ═══════════════════════════════════════════════════
+      // A YouTube thumbnail, a Getty photo on a magazine, a celebrity story - these rank well and
+      // are worthless to somebody deciding what to put on their body. Only ever applied when
+      // enough good ones remain, because six mediocre photographs still beat two.
+      const JUNK = /(ytimg\.com|youtube\.com|gettyimages|shutterstock|istockphoto|adobe\.com|dreamstime|alamy|123rf|depositphotos|pinimg\.com\/\d+x)/i;
+      const NEWSY = /(gq-magazine|vogue|cosmopolitan|elle\.|buzzfeed|dailymail|people\.com|preview\.ph|lemon8|popsugar)/i;
+      const clean = found.filter(f => !JUNK.test(f.image) && !NEWSY.test(f.image + " " + (f.source || "")));
+      const picked = (clean.length >= Math.min(4, want) ? clean : found).slice(0, want);
       // The prose with the embeds stripped out - what she can say about the wall.
-      const said = text.replace(re, "").replace(/\n{3,}/g, "\n\n").trim().slice(0, 900);
-      if (!found.length) return { ok: false, error: "NO_IMAGES_CAME_BACK", provider: "grok",
+      // Strip every embed from the prose - including the ones that were filtered out, or their
+      // captions would describe pictures that are no longer on the wall.
+      let said = text;
+      for (const f of found) said = said.split("![").map((seg, i) => i === 0 ? seg : seg).join("![");
+      said = said.replace(/!\[[^\]]*\]\([^\n]*?\)/g, "").replace(/\n{3,}/g, "\n\n").trim().slice(0, 900);
+      if (!picked.length) return { ok: false, error: "NO_IMAGES_CAME_BACK", provider: "grok",
         model: route.model, ms: Date.now() - t0,
         // What came back, so a shape change is diagnosable in one run instead of six.
         got_chars: text.length, got_sample: text.slice(0, 200) };
-      return { ok: true, query: q, found, said: said || null, provider: "grok",
-        model: route.model, ms: Date.now() - t0 };
+      return { ok: true, query: q, found: picked, said: said || null, provider: "grok",
+        model: route.model, dropped: found.length - picked.length || undefined,
+        ms: Date.now() - t0 };
     }
 
     // Any other provider: say so rather than returning an empty wall, which would read as

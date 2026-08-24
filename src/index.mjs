@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.51.0-2026-08-24-the-judge-was-the-floor-rung";
+const BUILD = "aura-core-v7.52.0-2026-08-24-the-judge-orders-it-does-not-ration";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -49157,8 +49157,11 @@ async function findReference(query, env, opts = {}) {
                 "clearer photograph. `fills` is necessary, not sufficient: a tightly cropped " +
                 "mediocre piece beats nothing, but a slightly wider shot of outstanding work beats " +
                 "it.\n" +
-                "Order the ones you keep best first.\n" +
-                "Fewer is better than wrong, but keep at least three if three are usable.",
+                "YOU ARE ORDERING, NOT RATIONING. Anything you leave out still may be shown " +
+                "further down the wall, so there is no cost to being generous and a real cost to " +
+                "being stingy: put the ones that would make somebody stop scrolling at the top, " +
+                "in order, and include every one that is genuinely worth looking at.\n" +
+                "Only leave a number out entirely if it is not usable at all.",
               user: described.map((l, i) =>
                 (i + 1) + ". [fills " + (l.fill == null ? "unknown" : l.fill) + "] " + l.saw).join("\n"),
               // ══ THE DECIDER WAS THE CHEAPEST MODEL IN THE SYSTEM ═══════════════════════
@@ -49176,13 +49179,22 @@ async function findReference(query, env, opts = {}) {
               for (const n of (Array.isArray(kj?.keep) ? kj.keep : []))
                 if (Number.isInteger(n) && n >= 1 && n <= described.length) keep.push(described[n - 1]);
               if (keep.length >= 2) {
-                judged = keep.slice(0, want);
-                why = { looked: described.length, kept: judged.length, judge: jr.model,
+                // ══ THE JUDGE MAY IMPROVE THE LIST, NEVER SHORTEN IT ═══════════════════════
+                // MEASURED: a RAW set of five good portfolio sources came back as three after
+                // judging, and the three were not better. A selector that returns fewer and weaker
+                // than its own input has subtracted value - and every fix before this one was a
+                // prompt, which is a hope. This is a guarantee: keep the judge's ORDER, then
+                // backfill from the model's own ranking until the wall is full again.
+                // The judge decides what goes FIRST. It does not decide how much you get to see.
+                const backfill = picked.filter(x => !keep.includes(x));
+                judged = keep.concat(backfill).slice(0, want);
+                why = { looked: described.length, kept: keep.length,
+                        backfilled: judged.length - keep.length || undefined, judge: jr.model,
                         // What was seen and what happened to it - so a bad wall is diagnosable
                         // without re-running anything.
                         // Readable at a glance: verdict, framing, host, then the description with
                         // any stray JSON flattened out of it.
-                        saw: looks.map(l => (keep.includes(l) ? "KEEP " : "drop ") +
+                        saw: looks.map(l => (keep.includes(l) ? "FIRST" : judged.includes(l) ? "after" : "drop ") + " " +
                           String(l.fill == null ? "  ?" : String(l.fill).padStart(3)) + "%  " +
                           String(l.source || "").slice(0, 22).padEnd(22) + "  " +
                           String(l.saw || "no description")
@@ -49190,7 +49202,12 @@ async function findReference(query, env, opts = {}) {
               }
             }
           }
-        } catch {}
+        } catch (e) {
+          // NOT SWALLOWED. `why: null` with a short wall is indistinguishable from a judge that
+          // ran and chose badly - and that ambiguity cost a whole test cycle today. If looking
+          // fails, the unjudged wall still goes out, but the reason travels with it.
+          why = { error: String((e && e.message) || e).slice(0, 160), judged: false };
+        }
       }
 
       return { ok: true, query: q, found: judged.map(({ fill, saw, ...rest }) => rest),

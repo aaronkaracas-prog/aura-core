@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.50.0-2026-08-24-she-looks-before-she-shows";
+const BUILD = "aura-core-v7.51.0-2026-08-24-the-judge-was-the-floor-rung";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -49122,10 +49122,15 @@ async function findReference(query, env, opts = {}) {
             // Then what it actually is.
             let saw = null;
             try {
+              // ONE SENTENCE, NOT JSON. Asked three things at once, Moondream answered in
+              // structured JSON - and the judge then read `{\n "tattoo_on_skin": true,\n "subject"`
+              // and nothing else useful. It could not discriminate because it could not read.
+              // A description is prose; the measurement is already a number and does not need to be
+              // repeated in words.
               const d = await seeMedia({ url: cand.image, max_tokens: 80,
-                prompt: "What does this photograph show? Say whether it is a tattoo on real human " +
-                        "skin, what the subject and style are, and whether the photo is sharp and " +
-                        "well lit or blurry, dark, or taken from far away." }, env);
+                prompt: "Describe this photograph in ONE plain sentence: what it shows, whether " +
+                        "the tattoo is on real skin, its style, and whether the picture is sharp " +
+                        "and well lit or blurry, dark or distant. No JSON, no lists." }, env);
               if (d.ok) saw = d.saw;
             } catch {}
             looks.push({ ...cand, fill, saw });
@@ -49139,15 +49144,29 @@ async function findReference(query, env, opts = {}) {
                 "descriptions, numbered. Each also has `fills` - the percentage of the picture " +
                 "the tattoo actually occupies, measured, not guessed.\n\n" +
                 'Return ONLY JSON: {"keep":[numbers]}\n\n' +
-                "Keep the photographs somebody choosing a tattoo would want to look at: a real " +
-                "tattoo on real skin, in focus, well lit, with the design clearly visible.\n" +
-                "Leave out drawings and flash on paper, stock or AI images, anything blurry or " +
-                "dark, and wide shots where the tattoo is small in the frame - `fills` under " +
-                "about 20 is usually that.\n" +
+                "You are choosing what somebody sees when they say 'show me a dragon tattoo'. " +
+                "They are picking something to wear for the rest of their life, so the bar is not " +
+                "'is this a tattoo' - it is 'would this make somebody stop and say I want that'.\n\n" +
+                "KEEP: strong, well-executed work photographed the way an artist photographs their " +
+                "own portfolio - the tattoo dominant and sharp, the design reading clearly, good " +
+                "light. Traditional, Japanese, blackwork and real realism photograph best.\n" +
+                "LEAVE OUT: drawings, flash on paper, stock or AI images, blog headers and listicle " +
+                "graphics, anything blurry or dark, and wide shots where the tattoo is small - " +
+                "`fills` under about 20 is usually that.\n" +
+                "Between two that both qualify, keep the one with the stronger design and the " +
+                "clearer photograph. `fills` is necessary, not sufficient: a tightly cropped " +
+                "mediocre piece beats nothing, but a slightly wider shot of outstanding work beats " +
+                "it.\n" +
                 "Order the ones you keep best first.\n" +
                 "Fewer is better than wrong, but keep at least three if three are usable.",
               user: described.map((l, i) =>
                 (i + 1) + ". [fills " + (l.fill == null ? "unknown" : l.fill) + "] " + l.saw).join("\n"),
+              // ══ THE DECIDER WAS THE CHEAPEST MODEL IN THE SYSTEM ═══════════════════════
+              // MEASURED: `judge: grok-build-0.1` while the wall itself ran on grok-4.3. The lane
+              // was set for RETRIEVAL and `callBrain` fell through to `config:brain:model` for the
+              // JUDGEMENT - so the picking was done by the floor rung while the searching used the
+              // better model. Choosing which six photographs somebody sees is the harder half.
+              model: route.model,
               max_tokens: 300 }, env);
             if (jr?.ok) {
               let kj = jr.text;
@@ -49161,9 +49180,13 @@ async function findReference(query, env, opts = {}) {
                 why = { looked: described.length, kept: judged.length, judge: jr.model,
                         // What was seen and what happened to it - so a bad wall is diagnosable
                         // without re-running anything.
+                        // Readable at a glance: verdict, framing, host, then the description with
+                        // any stray JSON flattened out of it.
                         saw: looks.map(l => (keep.includes(l) ? "KEEP " : "drop ") +
-                          "[" + (l.fill == null ? "?" : l.fill) + "%] " +
-                          String(l.saw || "no description").slice(0, 80)) };
+                          String(l.fill == null ? "  ?" : String(l.fill).padStart(3)) + "%  " +
+                          String(l.source || "").slice(0, 22).padEnd(22) + "  " +
+                          String(l.saw || "no description")
+                            .replace(/[\n{}"]/g, " ").replace(/\s+/g, " ").trim().slice(0, 90)) };
               }
             }
           }

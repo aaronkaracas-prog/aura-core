@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.52.0-2026-08-24-the-judge-orders-it-does-not-ration";
+const BUILD = "aura-core-v7.53.0-2026-08-24-trust-the-retrieval";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22950,9 +22950,12 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       if (!wq) return { cmd: "WALL", payload: { ok: false, error: "Usage: WALL [RAW] <what to look for>" } };
       // RAW shows what the model returned before she looked at any of it - so the judge can be
       // compared against its own input rather than against a memory of an earlier run.
+      // RAW is now the default, so the flag that matters is the other one.
       const wRaw = /^RAW\s+/i.test(wq);
       if (wRaw) wq = wq.replace(/^RAW\s+/i, "").trim();
-      const wr = await findReference(wq, env, { count: 6, judge: !wRaw });
+      const wJudge = /^JUDGE\s+/i.test(wq);
+      if (wJudge) wq = wq.replace(/^JUDGE\s+/i, "").trim();
+      const wr = await findReference(wq, env, { count: 6, judge: wJudge });
       return { cmd: "WALL", payload: wr };
     }
 
@@ -49106,8 +49109,28 @@ async function findReference(query, env, opts = {}) {
       //
       // DEGRADES HONESTLY: if the eyes or the judge fail, the unfiltered wall is returned rather
       // than an empty one. A wall of six adequate photographs beats a blank screen.
+      // ══ THE JUDGE IS OFF BY DEFAULT, AND THE MEASUREMENT IS WHY (2026-08-24) ═══════════
+      //
+      // Four comparisons today, RAW against judged, same query, same minutes. RAW returned Apollo
+      // Tattoo, iNKPPL, Slave to the Needle, Black Hat, Heritage, Visions - studios and a
+      // magazine. Judged returned a listicle twice and the same studio photo twice. Every single
+      // run, the judged wall was equal or worse, and always slower.
+      //
+      // The reason is structural, not a prompt that needs another turn: a 2B vision model
+      // describing a photograph in one sentence, judged by a text model THAT NEVER SEES THE
+      // PICTURE, cannot rank photographs better than the model that found them. The retrieval
+      // model looked at these images. The judge only reads sentences about them.
+      //
+      // Aaron's target has been the same all day and it is the right one: ask any strong model
+      // outside for four good dragon tattoos and you get four good ones, first try. Our RAW
+      // already does that. So trust the retrieval, exactly as he does outside.
+      //
+      // THE CODE STAYS, off by a switch, because it is the right shape for a DIFFERENT job: when
+      // his own crawled portfolios are indexed, a judge over known-good work is selection among
+      // good things rather than an attempt to out-rank a search. `WALL JUDGE <query>` runs it.
+      const wantJudge = opts.judge === true;
       let judged = picked, why = null;
-      if (opts.judge !== false && picked.length > 1) {
+      if (wantJudge && picked.length > 1) {
         try {
           const looks = [];
           for (const cand of picked.slice(0, 10)) {
@@ -49186,15 +49209,28 @@ async function findReference(query, env, opts = {}) {
                 // prompt, which is a hope. This is a guarantee: keep the judge's ORDER, then
                 // backfill from the model's own ranking until the wall is full again.
                 // The judge decides what goes FIRST. It does not decide how much you get to see.
-                const backfill = picked.filter(x => !keep.includes(x));
-                judged = keep.concat(backfill).slice(0, want);
+                // ══ THE DUPLICATE ═══════════════════════════════════════════════════════════
+                // `looks.push({...cand, fill, saw})` makes NEW objects, so `keep.includes(x)`
+                // compared them against the originals in `picked` and never matched - the backfill
+                // then re-added everything the judge had already kept. Every judged wall today
+                // came back with duplicates in it and I read past them four times.
+                // Identity is the URL. Compare that.
+                const keptUrls = new Set(keep.map(k => k.image));
+                const backfill = picked.filter(x => !keptUrls.has(x.image));
+                const merged = [];
+                for (const it of keep.concat(backfill)) {
+                  if (merged.some(m => m.image === it.image)) continue;
+                  merged.push(it);
+                }
+                judged = merged.slice(0, want);
                 why = { looked: described.length, kept: keep.length,
                         backfilled: judged.length - keep.length || undefined, judge: jr.model,
                         // What was seen and what happened to it - so a bad wall is diagnosable
                         // without re-running anything.
                         // Readable at a glance: verdict, framing, host, then the description with
                         // any stray JSON flattened out of it.
-                        saw: looks.map(l => (keep.includes(l) ? "FIRST" : judged.includes(l) ? "after" : "drop ") + " " +
+                        saw: looks.map(l => (keep.some(k => k.image === l.image) ? "FIRST"
+                          : judged.some(j => j.image === l.image) ? "after" : "drop ") + " " +
                           String(l.fill == null ? "  ?" : String(l.fill).padStart(3)) + "%  " +
                           String(l.source || "").slice(0, 22).padEnd(22) + "  " +
                           String(l.saw || "no description")

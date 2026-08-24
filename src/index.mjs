@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.53.0-2026-08-24-trust-the-retrieval";
+const BUILD = "aura-core-v7.54.0-2026-08-24-the-subject-is-not-negotiable";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -48991,21 +48991,30 @@ async function findReference(query, env, opts = {}) {
           // So the ask names the standard: portfolio photography, healed work on skin, and the
           // specific kinds of thing that keep turning up and are useless to somebody choosing a
           // tattoo. This costs nothing and it is where most of the quality comes from.
-          input: "Find " + want + " HIGH-QUALITY real photographs of " + q + ".\n\n" +
-                 "What I want: photographs that look like an ARTIST'S PORTFOLIO SHOT. The tattoo " +
-                 "FILLS MOST OF THE FRAME, is in sharp focus, evenly lit, and is unmistakably the " +
-                 "subject of the picture. Healed work or a clean fresh studio photograph.\n\n" +
-                 "Prefer strong, well-executed work that photographs well - traditional, Japanese, " +
-                 "blackwork, or realism - on arms, forearms, shoulders, chest or back. Prefer " +
-                 "tattoo studio and artist portfolio sites and tattoo magazines.\n\n" +
-                 "AVOID wide environmental shots where the person and the room take up most of the " +
-                 "picture, partial or cropped views where you cannot see the whole design, casual " +
-                 "phone snapshots in poor light, and anything blurry or small in frame.\n\n" +
-                 "Do NOT include: AI-generated images, drawings, flash sheets or designs on paper, " +
-                 "stock photography, YouTube video thumbnails, celebrity or news photographs, " +
-                 "listicle header graphics, or low-resolution crops.\n\n" +
+          // ══ THE SUBJECT IS THE QUERY. EVERYTHING ELSE IS A TIE-BREAK ══════════════════
+          // MEASURED: `WALL a car` returned an owl, a dragon, a mandala, a scorpion and two
+          // portraits - zero cars. The cause was THIS PROMPT: it said "prefer traditional,
+          // Japanese, blackwork, or realism", and the model went and found one of each. My
+          // description of what a good tattoo looks like had become the search.
+          // So the subject is stated first, alone, as a hard requirement; the quality language is
+          // demoted to how to CHOOSE AMONG pictures that already show the right thing, and names
+          // no styles at all. A style list inside a subject search is a second query competing
+          // with the first, and the prettier one wins.
+          input: "Find " + want + " real photographs of tattoos of: " + q + "\n\n" +
+                 "THE SUBJECT IS NOT NEGOTIABLE. Every photograph must show a tattoo of " + q +
+                 " as the clear main subject of the design. If somebody asks for a car, every " +
+                 "picture has a car in it. Do not substitute a more common or better-photographed " +
+                 "subject - a beautiful photograph of the wrong thing is a failure.\n\n" +
+                 "Among photographs that DO show it, prefer the ones an artist would put in their " +
+                 "portfolio: the tattoo fills most of the frame, sharp, evenly lit, well executed, " +
+                 "on real skin. Prefer tattoo studio and artist sites and tattoo magazines.\n\n" +
+                 "Avoid drawings and designs on paper, stock and AI images, YouTube thumbnails, " +
+                 "celebrity and news photographs, listicle header graphics, wide shots where the " +
+                 "tattoo is small in frame, and anything blurry or dark.\n\n" +
+                 "If you genuinely cannot find " + want + " good ones of this subject, return " +
+                 "fewer and say so. Do not pad with other subjects.\n\n" +
                  "Show each image, and after each one write ONE short line saying what makes it " +
-                 "different from the others - style, placement, colour.",
+                 "different from the others.",
           tools: [{ type: "web_search", enable_image_search: true }]
         })
       });
@@ -51106,7 +51115,7 @@ export class PublicEntry extends WorkerEntrypoint {
             return { ok: true, query: q, found: c.found, said: c.said, cached: true };
           }
         } catch {}
-        const r = await findReference("tattoo " + q, env, { count: 6 });
+        const r = await findReference(q, env, { count: 6 });   // their words, unchanged - the prompt already says "tattoos of:"
         if (!r.ok) return { ok: false, error: r.error,
           say: "I could not pull examples just now - tell me more about what you want and I will " +
                "draw something instead." };

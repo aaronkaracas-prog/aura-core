@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.44.0-2026-08-24-a-human-before-anything-else";
+const BUILD = "aura-core-v7.45.0-2026-08-24-a-lead-is-not-yet-a-pta";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -50583,6 +50583,9 @@ export class PublicEntry extends WorkerEntrypoint {
         const who = await this._whoIs(String(b.session));
         if (who?.pta) me = who.pta;
       }
+      // The stage travels with the person, so a caller always knows whether they are talking to a
+      // contacted lead or a consented PTA.
+      const stage = me ? (/^pta_/.test(me) ? "pta" : "contacted") : null;
       if (action !== "hello" && !me) return { ok: false, error: "NO_SESSION",
         say: "Let me get us started.", start_over: true,
         what_to_do: "Call hello first - nothing here happens without a person." };
@@ -50622,6 +50625,18 @@ export class PublicEntry extends WorkerEntrypoint {
         const sess = await pe._mintSession(door.lead_id, "mytattoo", 30 * 24 * 3600);
         return { ok: true, who: door.lead_id, session: sess?.session || null,
           doorway: door.doorway,
+          // ══ A LEAD IS NOT YET A PTA, AND THE WORD MATTERS ══════════════════════════════
+          // `who` is an `ent_` - a person node that exists, owns what they make, and roots a
+          // lineage. It is NOT a `pta_`: no Durable Object, no chain, no consent record. PTA_CREATE
+          // refuses without a verified email or phone on purpose, because arriving by choice IS the
+          // consent and minting one for an anonymous visitor would be inventing agreement nobody
+          // gave.
+          // Saying so out loud so nothing downstream reads a lead as a consented identity - that
+          // difference is the entire point of this layer, and a field that blurs it is exactly the
+          // shape of bug this system keeps paying for.
+          stage: "contacted",
+          becomes_pta_when: "they say who they are - the doorway fuses this node into a full PTA, " +
+            "so nothing they made first is orphaned",
           say: "What are we designing?",
           // The jobs people actually arrive with, not a menu of features. A blank box is the
           // documented way to freeze somebody; these are doors, and their own words override any
@@ -50752,7 +50767,7 @@ export class PublicEntry extends WorkerEntrypoint {
         const p2 = (r && r.payload) ? r.payload : r;
         if (!p2?.ok) return { ok: false, error: p2?.error || "COULD_NOT_IMPORT",
           say: "That photo did not come through. Try again in better light." };
-        return { ok: true, design: p2.entity, image: p2.image_url, saw: p2.saw,
+        return { ok: true, design: p2.entity, image: p2.image_url, saw: p2.saw, owner: me, stage,
           // What she saw, turned into something to answer rather than a report to read.
           say: p2.saw
             ? "Here is what I see. Do you want to cover it, build around it, or change it?"

@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.39.0-2026-08-24-our-own-bytes-never-leave";
+const BUILD = "aura-core-v7.40.0-2026-08-24-the-diagnostic-was-lying-too";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -48697,7 +48697,12 @@ async function seeMedia(opts, env) {
     if (/moondream/i.test(model)) {
       // The URL goes straight through when there is one: no fetch, no 4MB ceiling, no base64.
       // Cheaper and less to go wrong than shipping the bytes twice.
-      const src = o.url && /^https:\/\//i.test(String(o.url)) ? String(o.url)
+      // `wantsUrl` - NOT "is o.url an https link". Those came apart on an own-domain image: the URL
+      // was https, so the link went out instead of the bytes, and the request carried a 42-character
+      // string where a data URI should have been. `image_chars: 42` is what exposed it, while
+      // `image_kind` cheerfully reported "data_uri" because it read a different flag.
+      // Two names for one decision is the same disease as two readers for one fact.
+      const src = wantsUrl ? String(o.url)
                 : o.data_uri ? String(o.data_uri)
                 : (() => {
                     let bin = "";
@@ -48732,7 +48737,8 @@ async function seeMedia(opts, env) {
         ran = String((e && e.message) || e).slice(0, 300);
       }
       if (ran) return { ok: false, error: ran, model, task, ms: Date.now() - t0,
-        sent: Object.keys(body).join(","), image_kind: wantsUrl ? "https_url" : "data_uri",
+        sent: Object.keys(body).join(","),
+        image_kind: /^data:/.test(String(body.image || "")) ? "data_uri" : "https_url",
         image_chars: String(body.image || "").length };
       // Coordinates ride back in their own field so a caller that asked for a box gets one, and a
       // caller that asked a question is unaffected. Stable return either way.
@@ -48740,7 +48746,8 @@ async function seeMedia(opts, env) {
       const saw = String(vr?.answer || vr?.caption || "").trim()
                || (box && box.length ? JSON.stringify(box).slice(0, 500) : "");
       if (!saw) return { ok: false, error: "SAW_NOTHING", model, task, ms: Date.now() - t0,
-        sent: Object.keys(body).join(","), image_kind: wantsUrl ? "https_url" : "data_uri",
+        sent: Object.keys(body).join(","),
+        image_kind: /^data:/.test(String(body.image || "")) ? "data_uri" : "https_url",
         image_chars: String(body.image || "").length,
         got: Object.keys(vr || {}).join(",") || "nothing",
         // The shape of what came back, minus anything large - enough to see whether it is a stream

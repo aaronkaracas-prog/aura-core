@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.36.0-2026-08-24-one-pair-of-eyes";
+const BUILD = "aura-core-v7.37.0-2026-08-24-three-models-three-shapes";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22871,12 +22871,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const seeEyesM = seeRest.match(/(^|\s)EYES\s+(\S+)/i);
       const seeModel = seeEyesM ? seeEyesM[2] : null;
       if (seeEyesM) seeRest = seeRest.replace(/(^|\s)EYES\s+\S+/i, " ").trim();
+      // TASK reaches Moondream's other three modes from the prompt - most importantly `detect`,
+      // which answers "where and how big" with a box instead of a sentence.
+      //   SEE <url> EYES @cf/moondream/moondream3.1-9B-A2B TASK detect tattoo
+      const seeTaskM = seeRest.match(/(^|\s)TASK\s+(query|caption|point|detect)\b/i);
+      const seeTask = seeTaskM ? seeTaskM[2].toLowerCase() : null;
+      if (seeTaskM) seeRest = seeRest.replace(/(^|\s)TASK\s+\S+/i, " ").trim();
       const seeUrlM = seeRest.match(/https?:\/\/\S+/);
       if (!seeUrlM) return { cmd: "SEE", payload: { ok: false,
         error: "Usage: SEE <url> [EYES <model>] [what you want to know]" } };
       const seeUrl = seeUrlM[0];
       const seeAsk = seeRest.replace(seeUrl, " ").trim();
-      const seen = await seeMedia({ url: seeUrl, model: seeModel,
+      const seen = await seeMedia({ url: seeUrl, model: seeModel, task: seeTask || undefined,
+        object: (seeTask === "point" || seeTask === "detect") ? (seeAsk || "tattoo") : undefined,
         prompt: seeAsk || undefined, max_tokens: seeAsk ? 200 : 60 }, env);
       return { cmd: "SEE", payload: { ...seen, url: seeUrl,
         asked: seeAsk || "Describe what this photograph shows, in one short sentence." } };
@@ -48628,6 +48635,13 @@ async function seeMedia(opts, env) {
   try {
     const model = String(o.model || (await env.AURA_KV.get("config:eyes:model").catch(() => null)) || DEFAULT_EYES).trim();
 
+    // ══ SOME MODELS NEVER NEED THE BYTES ════════════════════════════════════════════════════
+    // Moondream takes a URL string. Fetching the image first would download it for nothing, and
+    // would impose a 4MB ceiling that model does not have. So the fetch is DECIDED AFTER the model
+    // is known, not before - which is the whole reason this function exists instead of the call
+    // being written out at every site.
+    const wantsUrl = /moondream/i.test(model) && o.url && /^https:\/\//i.test(String(o.url));
+
     // The bytes, however they arrive. A URL is fetched; raw bytes are used as they are; a data URI
     // is decoded. All three end in the same place, so a caller with a photo in hand and a caller
     // with a link both work without either knowing what the other does.
@@ -48638,7 +48652,7 @@ async function seeMedia(opts, env) {
       bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     }
-    if (!bytes && o.url) {
+    if (!bytes && o.url && !wantsUrl) {
       const ir = await fetch(String(o.url), { cf: { cacheTtl: 3600 } });
       if (!ir.ok) return { ok: false, error: "FETCH_" + ir.status, model, ms: Date.now() - t0 };
       const buf = await ir.arrayBuffer();
@@ -48646,11 +48660,67 @@ async function seeMedia(opts, env) {
         bytes: buf.byteLength, model, ms: Date.now() - t0 };
       bytes = new Uint8Array(buf);
     }
-    if (!bytes) return { ok: false, error: "NOTHING_TO_LOOK_AT", model, ms: Date.now() - t0 };
-    if (bytes.length > EYES_MAX_BYTES) return { ok: false, error: "TOO_BIG",
+    if (!bytes && !wantsUrl) return { ok: false, error: "NOTHING_TO_LOOK_AT", model, ms: Date.now() - t0 };
+    if (bytes && bytes.length > EYES_MAX_BYTES) return { ok: false, error: "TOO_BIG",
       bytes: bytes.length, model, ms: Date.now() - t0 };
 
-    // ── Workers AI. The binding is already there; no key, no provider, no new bill.
+    // ── Moondream. NOT a byte array - its schema takes `image` as a STRING: a public HTTPS URL or
+    // a base64 data URI. Sending it bytes returns "Type mismatch of '/image'", which is how this
+    // was found. It also has FOUR tasks where llava has one:
+    //   query   - ask anything about the picture
+    //   caption - short | normal | long description
+    //   point   - coordinates of a named thing
+    //   detect  - a BOUNDING BOX around a named thing
+    // `detect` is the reason this model is here. A cover-up is not "there is a rose on your arm",
+    // it is "the old piece is HERE and THIS BIG, so anything covering it must be at least this
+    // large and this dark". That is geometry, and a sentence cannot answer it. llava has no
+    // equivalent - it writes a caption, and a caption has no obligation to be right about
+    // anything in particular, which is how a skull became a flower.
+    if (/moondream/i.test(model)) {
+      // The URL goes straight through when there is one: no fetch, no 4MB ceiling, no base64.
+      // Cheaper and less to go wrong than shipping the bytes twice.
+      const src = o.url && /^https:\/\//i.test(String(o.url)) ? String(o.url)
+                : o.data_uri ? String(o.data_uri)
+                : (() => {
+                    let bin = "";
+                    for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+                    return "data:" + (o.media_type || "image/jpeg") + ";base64," + btoa(bin);
+                  })();
+      const task = String(o.task || "query").toLowerCase();
+      const body = { image: src, task };
+      if (task === "query") body.prompt = prompt;
+      else if (task === "caption") body.length = o.length || "normal";
+      else body.object = o.object || prompt;   // point / detect name the thing they are looking for
+      const vr = await env.AI.run(model, body);
+      // Coordinates ride back in their own field so a caller that asked for a box gets one, and a
+      // caller that asked a question is unaffected. Stable return either way.
+      const box = vr?.objects || vr?.boxes || vr?.points || null;
+      const saw = String(vr?.answer || vr?.caption || vr?.description || vr?.response || "").trim()
+               || (box ? JSON.stringify(box).slice(0, 400) : "");
+      if (!saw) return { ok: false, error: "SAW_NOTHING", model, task, ms: Date.now() - t0 };
+      return { ok: true, saw, box: box || undefined, task, model,
+               bytes: bytes ? bytes.length : undefined, from: wantsUrl ? "url" : "bytes",
+               ms: Date.now() - t0 };
+    }
+
+    // ── Llama Vision and other message-part multimodal models on Workers AI. Structured content
+    // parts in a messages array - a third shape again, and the reason this branching is here
+    // rather than in every caller.
+    // Needs a ONE-TIME licence acceptance on the account before it will answer at all.
+    if (/^@cf\/.*vision|llama-4|gemma|mistral-small|kimi/i.test(model)) {
+      const vr = await env.AI.run(model, { max_tokens: cap, messages: [{ role: "user", content: [
+        { type: "image_url", image_url: { url: o.url && /^https:\/\//i.test(String(o.url))
+            ? String(o.url)
+            : (() => { let bin = ""; for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+                       return "data:" + (o.media_type || "image/jpeg") + ";base64," + btoa(bin); })() } },
+        { type: "text", text: prompt } ] }] });
+      const saw = String(vr?.response || vr?.description || "").trim();
+      if (!saw) return { ok: false, error: "SAW_NOTHING", model, bytes: bytes.length, ms: Date.now() - t0 };
+      return { ok: true, saw, model, bytes: bytes.length, ms: Date.now() - t0 };
+    }
+
+    // ── llava and the rest of the classic Workers AI image-to-text shape: raw bytes.
+    // The binding is already there; no key, no provider, no new bill.
     if (/^@cf\//.test(model)) {
       const vr = await env.AI.run(model, { image: [...bytes], prompt, max_tokens: cap });
       const saw = String(vr?.description || vr?.response || "").trim();

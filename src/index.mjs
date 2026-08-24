@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.48.0-2026-08-24-a-wall-worth-looking-at";
+const BUILD = "aura-core-v7.49.0-2026-08-24-fills-the-frame";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -48985,10 +48985,15 @@ async function findReference(query, env, opts = {}) {
           // specific kinds of thing that keep turning up and are useless to somebody choosing a
           // tattoo. This costs nothing and it is where most of the quality comes from.
           input: "Find " + want + " HIGH-QUALITY real photographs of " + q + ".\n\n" +
-                 "What I want: professional tattoo portfolio photographs - healed or fresh work " +
-                 "on actual human skin, well lit, the tattoo clearly visible and filling most of " +
-                 "the frame. Prefer tattoo studio and artist portfolio sites, tattoo magazines, " +
-                 "and photographs people have posted of their own work.\n\n" +
+                 "What I want: photographs that look like an ARTIST'S PORTFOLIO SHOT. The tattoo " +
+                 "FILLS MOST OF THE FRAME, is in sharp focus, evenly lit, and is unmistakably the " +
+                 "subject of the picture. Healed work or a clean fresh studio photograph.\n\n" +
+                 "Prefer strong, well-executed work that photographs well - traditional, Japanese, " +
+                 "blackwork, or realism - on arms, forearms, shoulders, chest or back. Prefer " +
+                 "tattoo studio and artist portfolio sites and tattoo magazines.\n\n" +
+                 "AVOID wide environmental shots where the person and the room take up most of the " +
+                 "picture, partial or cropped views where you cannot see the whole design, casual " +
+                 "phone snapshots in poor light, and anything blurry or small in frame.\n\n" +
                  "Do NOT include: AI-generated images, drawings, flash sheets or designs on paper, " +
                  "stock photography, YouTube video thumbnails, celebrity or news photographs, " +
                  "listicle header graphics, or low-resolution crops.\n\n" +
@@ -49057,7 +49062,19 @@ async function findReference(query, env, opts = {}) {
       const JUNK = /(ytimg\.com|youtube\.com|gettyimages|shutterstock|istockphoto|adobe\.com|dreamstime|alamy|123rf|depositphotos|pinimg\.com\/\d+x)/i;
       const NEWSY = /(gq-magazine|vogue|cosmopolitan|elle\.|buzzfeed|dailymail|people\.com|preview\.ph|lemon8|popsugar)/i;
       const clean = found.filter(f => !JUNK.test(f.image) && !NEWSY.test(f.image + " " + (f.source || "")));
-      const picked = (clean.length >= Math.min(4, want) ? clean : found).slice(0, want);
+
+      // ══ A NUDGE TOWARD THE HOSTS THAT KEEP EARNING IT ═══════════════════════════════════
+      // A SOFT ranking preference, never an allow-list: a shop nobody has heard of can post the
+      // best dragon on the internet and a hard list would bury it. It only reorders what the model
+      // already chose. `.../portfolio/`, `/gallery/` and artist-name paths signal the same thing a
+      // magazine domain does - somebody chose this photograph to represent their work.
+      const GOOD = /(inkppl|things?-?ink|tattoodo|tattoolife|tattoo[a-z0-9-]*\.(com|co\.uk|net|studio)|portfolio|gallery)/i;
+      const ranked = clean.slice().sort((a, b) => {
+        const sa = GOOD.test(a.image + " " + (a.source || "")) ? 1 : 0;
+        const sb = GOOD.test(b.image + " " + (b.source || "")) ? 1 : 0;
+        return sb - sa;   // stable otherwise, so the model's own order survives inside each group
+      });
+      const picked = (ranked.length >= Math.min(4, want) ? ranked : found).slice(0, want);
       // The prose with the embeds stripped out - what she can say about the wall.
       // Strip every embed from the prose - including the ones that were filtered out, or their
       // captions would describe pictures that are no longer on the wall.

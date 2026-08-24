@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.34.0-2026-08-24-the-field-is-image";
+const BUILD = "aura-core-v7.35.0-2026-08-24-put-it-on-me";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -13520,13 +13520,31 @@ async function successionGate(env) {
       // Plain mode: every image is born a PTA by default (the law). Accept either a bare string
       // ("a dog on a beach") or a JSON object {subject, context?, name?} - parse it so the JSON never
       // leaks into the human-readable context line.
+      // ══ EVERY FIELD THE CALLER SENDS MUST BE READ OR REFUSED (2026-08-24) ═══════════════════
+      // This parsed subject/context/name/via/host and silently dropped everything else. Caught while
+      // wiring "put it on my body": that call passes `refs` (the body photo and the design), `raw`
+      // and `parent`, and all three would have vanished here - producing a picture drawn from the
+      // placement INSTRUCTIONS with no images attached. The same failure that drew a canyon, one
+      // layer further in.
+      // A parser that ignores what it does not recognise turns a wiring mistake into a plausible
+      // wrong answer, which is the most expensive kind.
       let subject = after, ctx = null, nm = null, viaP = null, hostP = null;
+      let refsP = null, rawP = false, parentP = null, creatorP = null;
       if (/^\s*\{/.test(after)) {
-        try { const p = JSON.parse(after); if (p && p.subject) { subject = String(p.subject); ctx = p.context || null; nm = p.name || null; viaP = p.via || null; hostP = p.host || null; } } catch (e) {}
+        try {
+          const p = JSON.parse(after);
+          if (p && p.subject) {
+            subject = String(p.subject); ctx = p.context || null; nm = p.name || null;
+            viaP = p.via || null; hostP = p.host || null;
+            refsP = Array.isArray(p.refs) ? p.refs.filter(Boolean) : null;
+            rawP = p.raw === true; parentP = p.parent || null; creatorP = p.creator || null;
+          }
+        } catch (e) {}
       }
       // `host` says whose surface this image belongs to, so the URL it hands back is on the
       // domain the person is actually using rather than a brand they have never heard of.
-      const r = await showIt(subject, env, { source: "show_it_cmd", context: ctx || subject, name: nm, via: viaP, host: hostP });
+      const r = await showIt(subject, env, { source: "show_it_cmd", context: ctx || subject, name: nm,
+        via: viaP, host: hostP, refs: refsP || undefined, raw: rawP, parent: parentP, creator: creatorP });
       return { cmd: "SHOW_IT", payload: r };
     }
 
@@ -50308,6 +50326,79 @@ export class PublicEntry extends WorkerEntrypoint {
           say: "That change did not take. Try saying it a different way." };
         return { ok: true, design: p.child, image: p.image_url, changed: change,
           from: p.parent };
+      }
+
+      // ── ON ME. The tattoo leaves the white canvas and goes on their actual body.
+      //
+      // This is section 10 of the asset document - "SEE IT - PUT IT ON ME" - and it is the first
+      // thing here that takes an image IN rather than only putting one out.
+      //
+      // WHY NOT `PORTFOLIO ADD`, WHICH ALREADY TAKES IMAGES: because that files a picture as an
+      // artist's WORK - permanent, public, attributed, on their chain. A photograph of somebody's
+      // arm is not a piece of work and must not become one. Same reason it does not need a session:
+      // a stranger designing a tattoo has no account and should not need one to see it on herself.
+      //
+      // SO: the photo becomes an ordinary image in the same store every generated image already
+      // uses - no second storage path - with an UNGUESSABLE id, registered as a Smart File with
+      // access "controlled" so nobody else can derive from it. The id IS the capability; that is
+      // what lets xAI fetch it, and it is worth saying plainly rather than dressing up.
+      // It is deleted as soon as the composite exists. The design is permanent; the body is not.
+      if (action === "onme") {
+        const id = String(b.design || "").trim();
+        if (!id) return { ok: false, error: "NEED_DESIGN" };
+        const raw = String(b.photo || "");
+        if (!raw) return { ok: false, error: "NEED_PHOTO",
+          say: "Take a photo of where you want it - the arm, the shoulder, wherever." };
+        // The design's own image, from the graph rather than from the caller - so nobody can ask
+        // for a composite of an image they did not make.
+        const dRow = await env.AURA_MEMORY.prepare(
+          "SELECT metadata FROM pta_entities WHERE id = ? AND type IN ('file','image')").bind(id).first();
+        if (!dRow) return { ok: false, error: "NO_SUCH_DESIGN" };
+        let dMeta = {}; try { dMeta = JSON.parse(dRow.metadata || "{}"); } catch {}
+        const designUrl = dMeta.url || dMeta.image_url || null;
+        if (!designUrl) return { ok: false, error: "DESIGN_HAS_NO_IMAGE" };
+
+        let bytes;
+        try {
+          const b64 = raw.replace(/^data:[^,]+,/, "");
+          const bin = atob(b64);
+          bytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        } catch { return { ok: false, error: "BAD_PHOTO" }; }
+        // Same ceiling PORTFOLIO ADD uses, and for the same reason - a phone photo is well under it.
+        if (bytes.length > 6 * 1024 * 1024) return { ok: false, error: "TOO_BIG",
+          say: "That photo is over six megabytes. A normal phone picture is well under it." };
+
+        // 32 hex characters of randomness. Not sequential, not derived from anything about them.
+        const bodyId = "img_b" + Array.from(crypto.getRandomValues(new Uint8Array(16)))
+          .map(x => x.toString(16).padStart(2, "0")).join("");
+        const store = raw.replace(/^data:[^,]+,/, "");
+        // Two hours. Long enough for the composite and a retry, short enough that a photo of
+        // somebody's body is not sitting on a URL for a week.
+        await env.AURA_KV.put("image:" + bodyId, store, { expirationTtl: 2 * 3600 });
+        const bodyUrl = "https://" + (await imageHost(env)) + "/image/" + bodyId;
+
+        // Two references: the body first, the design second. xAI takes up to three, so a style
+        // reference could join them later without changing this shape.
+        const r = await processCommand("SHOW_IT " + JSON.stringify({
+          subject: "Place the tattoo design from the second image onto the skin in the first image. " +
+            "Follow the contour of the body, match the lighting and perspective of the photograph, " +
+            "and make the ink sit UNDER the skin like a real healed tattoo - not a sticker, not a " +
+            "flat overlay. Keep the person, the pose and the background exactly as they are.",
+          context: "seeing a tattoo on their own body",
+          name: "on me",
+          raw: true,
+          refs: [bodyUrl, designUrl],
+          parent: id
+        }), env, true);
+        const p2 = (r && r.payload) ? r.payload : r;
+        // The photo goes as soon as it has been used, whether or not the composite worked.
+        try { await env.AURA_KV.delete("image:" + bodyId); } catch {}
+        if (!p2?.ok) return { ok: false, error: p2?.error || "COULD_NOT_PLACE",
+          say: "That did not come out. Try a clearer photo of the area, in good light." };
+        return { ok: true, on_me: p2.entity_id, image: p2.image_url, design: id,
+          note: "Your photo was used to make this and then deleted. Only the picture remains, and " +
+            "it is yours." };
       }
 
       // ── LIFE. Every version, in order. The person keeps their whole lineage; a shop that

@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.42.0-2026-08-24-always-send-the-bytes";
+const BUILD = "aura-core-v7.43.0-2026-08-24-a-photo-from-outside-becomes-theirs";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -13448,7 +13448,92 @@ async function successionGate(env) {
       const db = env.AURA_MEMORY;
       const sub = (args[0] || "").toUpperCase();
       const ref = (args[1] || "").trim();
-      if (!sub || !ref) return { cmd: "IMAGE", payload: { ok: false, error: "Usage: IMAGE ADD|LIFE|EVOLVE <image_id|entity_id> {...}" } };
+      if (!sub || !ref) return { cmd: "IMAGE", payload: { ok: false, error: "Usage: IMAGE ADD|IMPORT|LIFE|EVOLVE <image_id|entity_id|url> {...}" } };
+
+      // ══ AN IMAGE FROM OUTSIDE, BECOMING ONE OF THEIRS (2026-08-24) ══════════════════════════
+      //
+      //   IMAGE IMPORT <https url> {"by":"<pta>","context":"the piece on my shoulder"}
+      //
+      // ABOVE the resolve on purpose: every other subcommand takes an image that already exists, and
+      // this one takes a URL. Placed below, `resolveSmartFile` would answer "No living image for:
+      // https://..." before this ran - correct for ADD, nonsense for IMPORT.
+      //
+      // Everything this engine could evolve, Aura had drawn herself, so every parent was already in
+      // the graph with a URL on our own domain. A photograph of a tattoo somebody ALREADY HAS had no
+      // way in - which meant the entire cover-up and addition half of the product had no starting
+      // point. This is that door.
+      //
+      // It lands EXACTLY where a generated image lands: same store, same `imagemeta` shape, same
+      // Smart File registration. EVOLVE, LIFE, SEE and the doorway all work on it unchanged, and the
+      // reference is served from our own domain - which matters, because xAI's editor has to fetch
+      // it and external CDNs have already been measured refusing us.
+      //
+      // OWNED BY WHOEVER IMPORTED IT, access "controlled". Aura's own images are born public so
+      // anyone can derive; that is the collaboration layer. A picture of somebody's arm is not that.
+      // The source being public on the open web changes nothing about who owns the entity after.
+      //
+      // IT NEVER EXPIRES. The first instinct was a two-hour session file and it was wrong: an arm
+      // photo that starts a design is not a preview, it is the root of a permanent tree under that
+      // PTA. Keeping the record while expiring the pixels would leave IMAGE LIFE pointing at a
+      // parent that no longer resolves - a lineage that lies.
+      if (sub === "IMPORT") {
+        let ip = {}; try { const tail = rest.slice(rest.indexOf(ref) + ref.length).trim(); ip = tail ? JSON.parse(tail) : {}; }
+        catch (e) { return { cmd: "IMAGE", payload: { ok: false,
+          error: 'Usage: IMAGE IMPORT <https url> {"by?":"<pta>","context?":"the piece on my shoulder"}' } }; }
+        if (!/^https?:\/\//i.test(ref)) return { cmd: "IMAGE", payload: { ok: false,
+          error: "IMAGE IMPORT takes an https URL." } };
+        const iBy = (ip.by && /^(pta_|ent_)/.test(ip.by)) ? ip.by : null;
+
+        // Fetch ONCE, here, into our own store. Never leave a caller pointing at somebody else's
+        // CDN: it can disappear, it can refuse a fetcher, and it is not theirs.
+        let iBytes = null, iType = "image/jpeg";
+        try {
+          const ir = await fetch(ref, { cf: { cacheTtl: 3600 } });
+          if (!ir.ok) return { cmd: "IMAGE", payload: { ok: false, error: "FETCH_" + ir.status, url: ref } };
+          iType = (ir.headers.get("content-type") || "image/jpeg").split(";")[0];
+          const ibuf = await ir.arrayBuffer();
+          if (ibuf.byteLength > 12 * 1024 * 1024) return { cmd: "IMAGE", payload: { ok: false,
+            error: "TOO_BIG", bytes: ibuf.byteLength } };
+          iBytes = new Uint8Array(ibuf);
+        } catch (e) {
+          return { cmd: "IMAGE", payload: { ok: false, error: "COULD_NOT_FETCH",
+            detail: String((e && e.message) || e).slice(0, 160), url: ref } };
+        }
+
+        const iId = "img_i" + Array.from(crypto.getRandomValues(new Uint8Array(10)))
+          .map(x => x.toString(16).padStart(2, "0")).join("");
+        let iBin = "";
+        for (let i = 0; i < iBytes.length; i += 8192) iBin += String.fromCharCode.apply(null, iBytes.subarray(i, i + 8192));
+        if (env.AURA_IMAGES) { try { await env.AURA_IMAGES.put(iId + ".png", iBytes, { httpMetadata: { contentType: iType } }); } catch {} }
+        await env.AURA_KV.put("image:" + iId, btoa(iBin));
+        const iUrl = "https://" + (await imageHost(env)) + "/image/" + iId;
+
+        // She looks at it on the way in, so the record says what it IS rather than only where it
+        // came from. That description is what a conversation about covering it starts from.
+        let iSaw = null;
+        if (ip.look !== false) {
+          const sm = await seeMedia({ bytes: iBytes, media_type: iType, max_tokens: 200,
+            prompt: "Describe this tattoo: subject, style, where on the body, and the condition of " +
+                    "the ink. If it is not a tattoo, say what it is instead." }, env);
+          if (sm.ok) iSaw = sm.saw;
+        }
+
+        await env.AURA_KV.put("imagemeta:" + iId, JSON.stringify({ id: iId,
+          prompt: ip.context || iSaw || "imported image", created: new Date().toISOString(),
+          entity: iBy, source: "import", imported_from: ref, content_type: iType, url: iUrl })).catch(() => {});
+
+        const iReg = await registerSmartFile(env, { id: iId, filetype: "image",
+          name: (ip.context || iSaw || "imported image").slice(0, 80), url: iUrl,
+          subject: ip.context || iSaw || "an imported image", source: "import",
+          creator: iBy, parent: null, context: ip.context || null, access: "controlled" });
+
+        return { cmd: "IMAGE", payload: { ok: true, id: iId, entity: (iReg && iReg.entity_id) || null,
+          image_url: iUrl, imported_from: ref, bytes: iBytes.length, content_type: iType,
+          saw: iSaw, owner: iBy, access: "controlled",
+          note: "It is theirs now, on our own domain, and it does not expire. Evolve it, look at " +
+            "it, or trace its life - it behaves like any other image from here." } };
+      }
+
       const ent = await resolveSmartFile(db, ref);
       if (!ent) return { cmd: "IMAGE", payload: { ok: false, error: "No living image for: " + ref } };
       const payloadStr = rest.slice(rest.indexOf(ref) + ref.length).trim();

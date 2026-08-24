@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.46.0-2026-08-24-the-shop-actually-hears-about-it";
+const BUILD = "aura-core-v7.47.0-2026-08-24-show-them-the-wall";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22939,6 +22939,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       } catch (e) {
         return { cmd: "INVITE_SEAT", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
       }
+    }
+
+    case "WALL": {
+      // Operator probe for the reference wall, same role SEE plays for the eyes: this is how the
+      // retrieval gets tested from the prompt against live providers. The product path is
+      // `design wall`, which is session-gated and cached; this one is neither.
+      if (!isOp) return { cmd: "WALL", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const wq = (rest || "").trim();
+      if (!wq) return { cmd: "WALL", payload: { ok: false, error: "Usage: WALL <what to look for>" } };
+      const wr = await findReference(wq, env, { count: 6 });
+      return { cmd: "WALL", payload: wr };
     }
 
     case "SEE": {
@@ -48909,6 +48920,116 @@ async function seeMedia(opts, env) {
   }
 }
 
+// ══ FINDING REAL WORK — THE WALL (2026-08-24) ═════════════════════════════════════════════
+//
+// Somebody says "show me dragon tattoos" and needs to SEE some. Not a description, not a
+// generated one - real ink on real arms, so they can point at one and start from there. A shop
+// has a wall of flash for exactly this reason, and it is why people who cannot name a style can
+// still walk in and get the right tattoo.
+//
+// WHY THIS TOOK AN HOUR TO GET RIGHT, recorded so it does not take another one:
+// Aaron asked Claude in a chat window for dragon tattoos and had four real photos in a second,
+// then asked why Aura could not. The answer is that a harness had handed Claude an image-search
+// tool and nobody had handed Aura one. It was never hard. What was hard was that I went shopping
+// for a VENDOR - Tavily, then Brave, then a months-long Cloudflare index - while he said, four
+// times, "Aura is whatever model I point her at."
+//
+// THE CORRECTION, which is his architecture and not a compromise: AIMARGIN decides who answers.
+// `_brainRoute` is the one place that knows. So this asks it, then uses whatever retrieval THAT
+// provider already ships. Grok's Agent Tools API has `enable_image_search` and he already pays
+// xAI. If the policy moves to OpenAI or Google tomorrow, this follows it - no vendor to remove,
+// nothing to re-sign, and the wall does not go dark.
+//
+// EVERY CALL GOES THROUGH `pfetch` with its own caller label. An unmetered provider call is
+// invisible to AIMARGIN, and this file's most expensive lesson is that a measurement which fails
+// quietly cannot be told from one that never ran.
+//
+// NEVER INVENTED. This SELECTS what exists; generation happens later, after they have pointed at
+// something, and that is already built.
+async function findReference(query, env, opts = {}) {
+  const t0 = Date.now();
+  const q = String(query || "").trim();
+  if (!q) return { ok: false, error: "NOTHING_TO_LOOK_FOR" };
+  const want = Math.min(Math.max(Number(opts.count) || 6, 1), 12);
+  try {
+    // Who is answering right now. Not "which vendor did we sign" - which model the policy and the
+    // pins resolve to at this moment.
+    const route = await _brainRoute(env, opts.model || null);
+
+    if (route.provider === "grok") {
+      const key = await getSecret(env, "xai");
+      if (!key) return { ok: false, error: "NO_XAI_KEY", provider: route.provider };
+      // The Agent Tools API on /v1/responses. NOT /chat/completions, and NOT the old
+      // `search_parameters` shape - xAI retired that on 2026-01-12 and it now answers 410 Gone.
+      const r = await pfetch(env, "xai", "core:wall", "https://api.x.ai/v1/responses", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: route.model,
+          input: "Find " + want + " real photographs of " + q + " - actual tattoos on actual " +
+                 "people, photographed, not drawings and not stock art. Show each image and say " +
+                 "in one short line what makes it different from the others.",
+          tools: [{ type: "web_search", enable_image_search: true }]
+        })
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) return { ok: false, error: d?.error?.message || ("http " + r.status),
+        provider: "grok", ms: Date.now() - t0 };
+
+      // Grok returns images as MARKDOWN EMBEDS inside its prose - ![alt](url) - not as an array.
+      // Fragile to parse, and worth it: the words between the pictures are why each one is there,
+      // which is the difference between a wall and a grid.
+      const text = (() => {
+        try {
+          const out = d.output || d.choices || [];
+          const parts = [];
+          const walk = (n) => {
+            if (!n) return;
+            if (typeof n === "string") { parts.push(n); return; }
+            if (Array.isArray(n)) { n.forEach(walk); return; }
+            if (typeof n === "object") {
+              if (typeof n.text === "string") parts.push(n.text);
+              if (n.content) walk(n.content);
+              if (n.message) walk(n.message);
+            }
+          };
+          walk(out);
+          return parts.join("\n");
+        } catch { return ""; }
+      })();
+
+      const found = [];
+      const seen = new Set();
+      const re = /!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g;
+      let m;
+      while ((m = re.exec(text)) && found.length < want) {
+        const url = m[2];
+        if (seen.has(url)) continue;
+        seen.add(url);
+        let host = null; try { host = new URL(url).hostname.replace(/^www\./, ""); } catch {}
+        found.push({ image: url, title: (m[1] || "").slice(0, 120) || null, source: host });
+      }
+      // The prose with the embeds stripped out - what she can say about the wall.
+      const said = text.replace(re, "").replace(/\n{3,}/g, "\n\n").trim().slice(0, 900);
+      if (!found.length) return { ok: false, error: "NO_IMAGES_CAME_BACK", provider: "grok",
+        model: route.model, ms: Date.now() - t0,
+        // What came back, so a shape change is diagnosable in one run instead of six.
+        got_chars: text.length, got_sample: text.slice(0, 200) };
+      return { ok: true, query: q, found, said: said || null, provider: "grok",
+        model: route.model, ms: Date.now() - t0 };
+    }
+
+    // Any other provider: say so rather than returning an empty wall, which would read as
+    // "there are no dragon tattoos" and is the worst possible lie for this product.
+    return { ok: false, error: "NO_IMAGE_SEARCH_FOR_PROVIDER", provider: route.provider,
+      model: route.model, ms: Date.now() - t0,
+      what_to_do: "Only the Grok lane has native image retrieval wired. Point the text policy at " +
+        "Grok, or add that provider's retrieval here - the callers do not change either way." };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e).slice(0, 200), ms: Date.now() - t0 };
+  }
+}
+
 async function auraGenerateImage(prompt, env, opts = {}) {
   // AGNOSTIC + POLICY-DRIVEN. showIt states intent ("make an image"); AIMARGIN's POLICY decides who fulfills
   // it and at what quality. The operator declares INTENT once - config:policy:image = cheapest | balanced |
@@ -50729,6 +50850,39 @@ export class PublicEntry extends WorkerEntrypoint {
           say: "That change did not take. Try saying it a different way." };
         return { ok: true, design: p.child, image: p.image_url, changed: change,
           from: p.parent };
+      }
+
+      // ── WALL. Show them real work, so they can point instead of describe.
+      //
+      // The thing a shop's wall of flash does, and the reason somebody who cannot say
+      // "neo-traditional" can still walk out with the right tattoo. People do not lack taste, they
+      // lack the words - so showing beats asking, every time.
+      //
+      // CACHED BY CATEGORY, NOT BY PERSON. "Dragon tattoo" is the same wall for everybody who asks
+      // for one; only what they do next is theirs. So it is one retrieval per category, kept for a
+      // month, and free for everyone after the first. That is the whole cost answer.
+      if (action === "wall") {
+        const q = String(b.query || b.said || "").trim().slice(0, 120);
+        if (!q) return { ok: false, error: "NOTHING_TO_SHOW",
+          say: "Tell me what you are thinking about and I will show you some." };
+        const ck = "wall:" + q.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+        try {
+          const hit = await env.AURA_KV.get(ck);
+          if (hit) {
+            const c = JSON.parse(hit);
+            return { ok: true, query: q, found: c.found, said: c.said, cached: true };
+          }
+        } catch {}
+        const r = await findReference("tattoo " + q, env, { count: 6 });
+        if (!r.ok) return { ok: false, error: r.error,
+          say: "I could not pull examples just now - tell me more about what you want and I will " +
+               "draw something instead." };
+        try {
+          await env.AURA_KV.put(ck, JSON.stringify({ found: r.found, said: r.said }),
+            { expirationTtl: 30 * 24 * 3600 });
+        } catch {}
+        return { ok: true, query: q, found: r.found, said: r.said, cached: false,
+          note: "Point at one and I will make it yours." };
       }
 
       // ── SHOW ME. A photo of what they ALREADY have - the start of a cover-up or an addition.

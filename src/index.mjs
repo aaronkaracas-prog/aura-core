@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.30.0-2026-08-23-an-image-lives-where-you-are";
+const BUILD = "aura-core-v7.31.0-2026-08-23-one-store-one-address";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -48510,23 +48510,26 @@ async function pollVideoJobs(env) {
 }
 
 
-// ══ WHERE AN IMAGE LIVES (fixed 2026-08-23) ═══════════════════════════════════════════════
-// MEASURED: the first tattoo ever designed came back with `https://auras.guide/image/...` and
-// the browser answered DNS_PROBE_FINISHED_NXDOMAIN. The bytes were fine - stored, servable, and
-// visible on the workers.dev address - but auras.guide has NO DNS RECORD, so every image URL
-// this system has ever handed out points at nothing.
-// It was written as a literal in 55 places, which is why one dead domain took every image with
-// it. Now there is ONE answer to "where does an image live", it is configurable, and the default
-// is a domain that actually resolves.
-// It also fixes something that was wrong even when auras.guide worked: a tattoo designed on
-// mytattoo.world should not hand somebody an auras.guide link. This file already says it -
-// "one shop, one brand… consumers never see the business layer" - and an image is no different.
-// Callers that know whose surface they are on pass `host`; everything else gets the default.
+// ══ ONE STORE, ONE ADDRESS (2026-08-23) ═══════════════════════════════════════════════════
+// There is ONE image engine, and there is ONE place images are served from. Not one per asset,
+// not one per doorway - the asset is a LENS on the same engine, never a copy of it. That is the
+// architecture of this whole system and it is written in Aura's own operator context: "the PTA
+// defines the world; the world is the lens. Same you, different lens."
+//
+// The first version of this fix got that backwards. It made the host follow whichever surface a
+// person was standing on, so mytattoo.world would serve its own images - which sounds tidy and is
+// actually 500 copies of a thing that should be one, plus 500 ways for it to break. It also could
+// not have worked: the doorway binds aura-core as a WorkerEntrypoint, so a fetch to it never
+// reaches the `/image/` route on the default export at all.
+//
+// So: one host, named ONCE instead of written as a literal in 55 places. Changing where images
+// live is now a KV key rather than an edit. `host` remains accepted for the day a caller genuinely
+// needs to override it, and nothing in the product passes one.
 const imageHost = async (env, host) => {
   const h = String(host || "").trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
   if (h) return h;
   const cfg = await env.AURA_KV.get("config:image:host").catch(() => null);
-  return (cfg && cfg.trim()) || "openforbusiness.world";
+  return (cfg && cfg.trim()) || "auras.guide";
 };
 
 async function auraGenerateImage(prompt, env, opts = {}) {
@@ -50196,14 +50199,13 @@ export class PublicEntry extends WorkerEntrypoint {
         const subject = String(b.subject || "").trim().slice(0, 600);
         if (!subject) return { ok: false, error: "NOTHING_TO_DRAW" };
         // [METER SEAM] first paid moment, when there is a meter.
-        // The image is served by the domain they are standing on. A tattoo designed here should
-        // never hand somebody a link to a different brand - the same rule the shop pages follow.
+        // No host override. One image engine, one store, one address - the tattoo-ness of this
+        // lives in the prompt and the entity, not in the URL.
         const r = await processCommand("SHOW_IT " + JSON.stringify({
           subject: subject + ". Tattoo design, clean linework, high contrast, on a plain " +
                    "background, no skin, no body, no photograph - the artwork only.",
           context: "a tattoo somebody is designing for themselves: " + subject,
-          name: subject.slice(0, 60),
-          host: "mytattoo.world"
+          name: subject.slice(0, 60)
         }), env, true);
         const p = (r && r.payload) ? r.payload : r;
         if (!p?.ok) return { ok: false, error: p?.error || "COULD_NOT_DRAW" };

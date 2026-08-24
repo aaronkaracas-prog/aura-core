@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.41.0-2026-08-24-she-can-see-skin";
+const BUILD = "aura-core-v7.42.0-2026-08-24-always-send-the-bytes";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -48646,10 +48646,16 @@ async function seeMedia(opts, env) {
     // have been even if it had worked.
     const ownImg = String(o.url || "").match(/^https?:\/\/[^/]+\/image\/([A-Za-z0-9_-]{4,80})(?:\.png)?$/);
 
-    // Moondream takes a URL string rather than bytes, so for an EXTERNAL image there is nothing to
-    // download - the fetch is decided AFTER the model is known. For one of ours we read KV instead
-    // and hand it a data URI, because the model host cannot reach a URL that only resolves here.
-    const wantsUrl = /moondream/i.test(model) && o.url && /^https:\/\//i.test(String(o.url)) && !ownImg;
+    // ══ ALWAYS SEND THE BYTES (measured 2026-08-24) ═════════════════════════════════════════
+    // Moondream's schema says `image` accepts a public HTTPS URL. In practice, through this
+    // binding, it does not: the SAME request with the SAME parameters returns a full answer with a
+    // data URI and "8008: Internal server error" with a link. Squarespace, our own domain, every
+    // host tried - the only variable that changed the outcome was data URI versus URL.
+    // That is only knowable because there was a working call to compare against; before one
+    // existed, six failures in a row looked like the model and were all mine.
+    // So nothing is ever handed a link. We fetch, we send bytes, and the 4MB ceiling applies to
+    // this model like every other.
+    const wantsUrl = false;
 
     // The bytes, however they arrive. A URL is fetched; raw bytes are used as they are; a data URI
     // is decoded. All three end in the same place, so a caller with a photo in hand and a caller

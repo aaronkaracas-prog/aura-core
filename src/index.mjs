@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.38.0-2026-08-24-stream-was-the-silence";
+const BUILD = "aura-core-v7.39.0-2026-08-24-our-own-bytes-never-leave";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -48635,12 +48635,21 @@ async function seeMedia(opts, env) {
   try {
     const model = String(o.model || (await env.AURA_KV.get("config:eyes:model").catch(() => null)) || DEFAULT_EYES).trim();
 
-    // ══ SOME MODELS NEVER NEED THE BYTES ════════════════════════════════════════════════════
-    // Moondream takes a URL string. Fetching the image first would download it for nothing, and
-    // would impose a 4MB ceiling that model does not have. So the fetch is DECIDED AFTER the model
-    // is known, not before - which is the whole reason this function exists instead of the call
-    // being written out at every site.
-    const wantsUrl = /moondream/i.test(model) && o.url && /^https:\/\//i.test(String(o.url));
+    // ══ NEVER FETCH OUR OWN DOMAIN FROM INSIDE THE WORKER (fixed 2026-08-24) ═══════════════
+    // MEASURED: `FETCH_522` after 19.6 seconds on `auras.guide/image/<id>`. Once auras.guide was
+    // routed to aura-core, a fetch from aura-core to that hostname goes OUT to the edge and comes
+    // straight back to aura-core - the worker calling itself. It stalls and the edge reports an
+    // origin timeout, where the origin is itself.
+    // That is a consequence of the routing change, not a vision problem, and it would bite anything
+    // else in this file that reaches for its own domain over HTTP.
+    // The bytes are in KV. Read them. No network, no loop, and faster than the round trip would
+    // have been even if it had worked.
+    const ownImg = String(o.url || "").match(/^https?:\/\/[^/]+\/image\/([A-Za-z0-9_-]{4,80})(?:\.png)?$/);
+
+    // Moondream takes a URL string rather than bytes, so for an EXTERNAL image there is nothing to
+    // download - the fetch is decided AFTER the model is known. For one of ours we read KV instead
+    // and hand it a data URI, because the model host cannot reach a URL that only resolves here.
+    const wantsUrl = /moondream/i.test(model) && o.url && /^https:\/\//i.test(String(o.url)) && !ownImg;
 
     // The bytes, however they arrive. A URL is fetched; raw bytes are used as they are; a data URI
     // is decoded. All three end in the same place, so a caller with a photo in hand and a caller
@@ -48651,6 +48660,15 @@ async function seeMedia(opts, env) {
       const bin = atob(b64);
       bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    }
+    // Ours: straight out of the store the image route reads, no HTTP at all.
+    if (!bytes && ownImg) {
+      const b64own = await env.AURA_KV.get("image:" + ownImg[1]).catch(() => null);
+      if (b64own) {
+        const bin = atob(b64own);
+        bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      }
     }
     if (!bytes && o.url && !wantsUrl) {
       const ir = await fetch(String(o.url), { cf: { cacheTtl: 3600 } });
@@ -48701,16 +48719,33 @@ async function seeMedia(opts, env) {
       if (task === "query") { body.question = prompt; body.max_tokens = cap; }
       else if (task === "caption") { body.caption_length = o.caption_length || "normal"; body.max_tokens = cap; }
       else { body.target = o.target || o.object || prompt; body.max_objects = Math.min(500, Number(o.max_objects) || 20); }
-      const vr = await env.AI.run(model, body);
+      // ══ SAY WHAT WAS SENT AND WHAT CAME BACK ═══════════════════════════════════════════
+      // Four attempts at this model produced four failures, every one of them MINE - wrong field
+      // names, then a stream nobody consumed, then an external URL its host could not reach. None
+      // of that was evidence about the model, and it was nearly declared dead on the strength of
+      // it. So when it fails now, the reply carries the keys that were sent and the keys that came
+      // back - never the base64 - and the next decision is made on data instead of a fifth guess.
+      let vr = null, ran = null;
+      try {
+        vr = await env.AI.run(model, body);
+      } catch (e) {
+        ran = String((e && e.message) || e).slice(0, 300);
+      }
+      if (ran) return { ok: false, error: ran, model, task, ms: Date.now() - t0,
+        sent: Object.keys(body).join(","), image_kind: wantsUrl ? "https_url" : "data_uri",
+        image_chars: String(body.image || "").length };
       // Coordinates ride back in their own field so a caller that asked for a box gets one, and a
       // caller that asked a question is unaffected. Stable return either way.
       const box = vr?.objects || vr?.points || null;
       const saw = String(vr?.answer || vr?.caption || "").trim()
                || (box && box.length ? JSON.stringify(box).slice(0, 500) : "");
       if (!saw) return { ok: false, error: "SAW_NOTHING", model, task, ms: Date.now() - t0,
-        // Say what actually came back rather than reporting a blank. A silent empty answer is what
-        // made this take four runs to spot.
-        got: Object.keys(vr || {}).join(",") || "nothing" };
+        sent: Object.keys(body).join(","), image_kind: wantsUrl ? "https_url" : "data_uri",
+        image_chars: String(body.image || "").length,
+        got: Object.keys(vr || {}).join(",") || "nothing",
+        // The shape of what came back, minus anything large - enough to see whether it is a stream
+        // handle, an error envelope, or a real answer under a name nobody expected.
+        got_sample: JSON.stringify(vr || {}).slice(0, 300) };
       return { ok: true, saw, box: box || undefined, task, model,
                bytes: bytes ? bytes.length : undefined, from: wantsUrl ? "url" : "bytes",
                ms: Date.now() - t0 };

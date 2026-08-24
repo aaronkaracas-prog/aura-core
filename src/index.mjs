@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.43.0-2026-08-24-a-photo-from-outside-becomes-theirs";
+const BUILD = "aura-core-v7.44.0-2026-08-24-a-human-before-anything-else";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -50573,6 +50573,63 @@ export class PublicEntry extends WorkerEntrypoint {
     const b = body || {};
     const env = this.env;
     try {
+      // ══ WHO IS THIS (2026-08-24) ═══════════════════════════════════════════════════════════
+      // Every action except `hello` needs a person, because everything they do belongs to somebody:
+      // the photo they attach, the design that comes out of it, the whole lineage after. An owner
+      // resolved at the end - "we will attach identity when they sign in" - means an orphaned file
+      // and a tree with no root, which is exactly the shape this system exists to prevent.
+      let me = null;
+      if (b.session) {
+        const who = await this._whoIs(String(b.session));
+        if (who?.pta) me = who.pta;
+      }
+      if (action !== "hello" && !me) return { ok: false, error: "NO_SESSION",
+        say: "Let me get us started.", start_over: true,
+        what_to_do: "Call hello first - nothing here happens without a person." };
+      // ══ HELLO — A HUMAN EXISTS BEFORE ANYTHING ELSE DOES (2026-08-24) ═══════════════════════
+      //
+      // Aaron's rule, and it is the spine of the whole system: nobody touches this world without a
+      // PTA. Not "one is created when they buy something", not "the artifact carries identity until
+      // a person shows up" - a person node exists from the first second or there is no conversation.
+      //
+      // I had this backwards. `design talk` started a stranger with no node at all, on the theory
+      // that the photo would hold identity until they signed in. That is the doorway pattern for an
+      // IMAGE - something Aura made, which gets claimed later - generalised to a human being. People
+      // are not claimed artifacts. Business is not a second species either: a business is a human
+      // with structure hung on them, on this same person spine.
+      //
+      // Nothing new is invented here. `mintDoorway` already births a person as `state:"contacted"`
+      // with an identity key when one is known, and the /d/ crossing FUSES a verified identity onto
+      // that node rather than replacing it - which is why signing in with Google this morning said
+      // "You're connected, Aaron Karacas" instead of minting a stranger. What was missing was only
+      // the inbound case: every existing path to a person came from Aura reaching OUT.
+      //
+      // Contacted is enough to talk and to design. Verification is an UPGRADE, taken when they want
+      // to keep it, share it, or book - never a gate on the first sentence.
+      if (action === "hello") {
+        const door = await mintDoorway(env, {
+          context: "designing a tattoo on mytattoo.world",
+          via: "mytattoo",
+          identity: b.identity || null,     // if they arrived from an email or a shop's QR
+          name: b.name || null,
+          dest: "/design"
+        });
+        if (!door?.ok) return { ok: false, error: "COULD_NOT_START",
+          say: "Something went wrong opening this. Try again in a moment." };
+        const pe = new PublicEntry({}, env);
+        // Thirty days. A tattoo is thought about for weeks, and losing the thread because a session
+        // expired overnight would throw away the one thing this product is for.
+        const sess = await pe._mintSession(door.lead_id, "mytattoo", 30 * 24 * 3600);
+        return { ok: true, who: door.lead_id, session: sess?.session || null,
+          doorway: door.doorway,
+          say: "What are we designing?",
+          // The jobs people actually arrive with, not a menu of features. A blank box is the
+          // documented way to freeze somebody; these are doors, and their own words override any
+          // of them the moment they type.
+          chips: ["Something new", "Cover up what I have", "Add to a piece I have",
+                  "A memorial", "I am not sure yet"] };
+      }
+
       // ── TALK. Free, and it stays free even when the rest is metered: a conversation costs
       // fractions of a cent and it is the whole reason somebody trusts the thing that follows.
       // She is drawing the idea OUT of them, not writing prompts at them.
@@ -50631,7 +50688,9 @@ export class PublicEntry extends WorkerEntrypoint {
           subject: subject + ". Tattoo design, clean linework, high contrast, on a plain " +
                    "background, no skin, no body, no photograph - the artwork only.",
           context: "a tattoo somebody is designing for themselves: " + subject,
-          name: subject.slice(0, 60)
+          name: subject.slice(0, 60),
+          // Theirs from the moment it is drawn.
+          creator: me
         }), env, true);
         const p = (r && r.payload) ? r.payload : r;
         if (!p?.ok) return { ok: false, error: p?.error || "COULD_NOT_DRAW" };
@@ -50649,12 +50708,55 @@ export class PublicEntry extends WorkerEntrypoint {
         // [METER SEAM] one try, when there is a meter. An identical change costs nothing to
         // serve - the image cache answers it - so it should not cost a try either.
         const r = await processCommand("IMAGE EVOLVE " + id + " " +
-          JSON.stringify({ prompt: change }), env, true);
+          JSON.stringify({ prompt: change, by: me }), env, true);
         const p = (r && r.payload) ? r.payload : r;
         if (!p?.ok) return { ok: false, error: p?.error || "COULD_NOT_CHANGE",
           say: "That change did not take. Try saying it a different way." };
         return { ok: true, design: p.child, image: p.image_url, changed: change,
           from: p.parent };
+      }
+
+      // ── SHOW ME. A photo of what they ALREADY have - the start of a cover-up or an addition.
+      //
+      // The other direction through this product, and the one the asset document leads with: most
+      // people arrive with ink they want changed, not a blank canvas. So the photo is not an
+      // accessory to a design, it is the ROOT of one.
+      //
+      // It goes through `IMAGE IMPORT`, which means it lands exactly where every other image lands
+      // and is permanent from the moment it arrives - not a two-hour preview. An arm photo that
+      // starts a design is the first node of a tree, and a tree whose root expires is a lie.
+      //
+      // `by` is null on purpose. A stranger has no PTA yet, and one is not invented for them here:
+      // the file gets its own identity now, and the PERSON attaches when they cross a doorway. That
+      // is the same order the whole system already works in.
+      if (action === "import") {
+        const photo = String(b.photo || "").trim();
+        const url = String(b.url || "").trim();
+        // A data URI has to become something the import path can fetch, and the import path takes a
+        // URL. Rather than a second storage route, the bytes go in first and the import reads them
+        // back - one way in, even when it costs an extra hop.
+        let from = url;
+        if (!from && /^data:image\//i.test(photo)) {
+          const tmp = "img_u" + Array.from(crypto.getRandomValues(new Uint8Array(10)))
+            .map(x => x.toString(16).padStart(2, "0")).join("");
+          await env.AURA_KV.put("image:" + tmp, photo.replace(/^data:[^,]+,/, ""));
+          from = "https://" + (await imageHost(env)) + "/image/" + tmp;
+        }
+        if (!from) return { ok: false, error: "NEED_PHOTO",
+          say: "Send a photo of the piece and I will take a look." };
+        // Owned by the SESSION's person, never by an id the caller passed in. A body a caller can
+        // name is a body a caller can claim.
+        const r = await processCommand("IMAGE IMPORT " + from + " " + JSON.stringify({
+          by: me, context: b.context || null
+        }), env, true);
+        const p2 = (r && r.payload) ? r.payload : r;
+        if (!p2?.ok) return { ok: false, error: p2?.error || "COULD_NOT_IMPORT",
+          say: "That photo did not come through. Try again in better light." };
+        return { ok: true, design: p2.entity, image: p2.image_url, saw: p2.saw,
+          // What she saw, turned into something to answer rather than a report to read.
+          say: p2.saw
+            ? "Here is what I see. Do you want to cover it, build around it, or change it?"
+            : "Got it. What would you like to do with it?" };
       }
 
       // ── ON ME. The tattoo leaves the white canvas and goes on their actual body.

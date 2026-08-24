@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.37.0-2026-08-24-three-models-three-shapes";
+const BUILD = "aura-core-v7.38.0-2026-08-24-stream-was-the-silence";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22883,7 +22883,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const seeUrl = seeUrlM[0];
       const seeAsk = seeRest.replace(seeUrl, " ").trim();
       const seen = await seeMedia({ url: seeUrl, model: seeModel, task: seeTask || undefined,
-        object: (seeTask === "point" || seeTask === "detect") ? (seeAsk || "tattoo") : undefined,
+        target: (seeTask === "point" || seeTask === "detect") ? (seeAsk || "tattoo") : undefined,
         prompt: seeAsk || undefined, max_tokens: seeAsk ? 200 : 60 }, env);
       return { cmd: "SEE", payload: { ...seen, url: seeUrl,
         asked: seeAsk || "Describe what this photograph shows, in one short sentence." } };
@@ -48686,18 +48686,31 @@ async function seeMedia(opts, env) {
                     for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
                     return "data:" + (o.media_type || "image/jpeg") + ";base64," + btoa(bin);
                   })();
+      // ══ THE PARAMETER NAMES ARE ITS OWN, AND stream DEFAULTS TO TRUE ═══════════════════
+      // Four wrong guesses in one call, all of them silent. From the model's published schema:
+      //   question       - the query text.  NOT `prompt`
+      //   caption_length - short|normal|long. NOT `length`
+      //   target         - the thing point/detect looks for. NOT `object`
+      //   stream         - DEFAULTS TO TRUE for query and caption
+      // The last one is what produced four fast, empty answers: a stream came back, not an object,
+      // so every field read was blank and the call still reported success. Guessing field names off
+      // an SDK or a memory has now cost this project a canyon and an afternoon; the schema is
+      // published and takes a minute to read.
       const task = String(o.task || "query").toLowerCase();
-      const body = { image: src, task };
-      if (task === "query") body.prompt = prompt;
-      else if (task === "caption") body.length = o.length || "normal";
-      else body.object = o.object || prompt;   // point / detect name the thing they are looking for
+      const body = { image: src, task, stream: false };
+      if (task === "query") { body.question = prompt; body.max_tokens = cap; }
+      else if (task === "caption") { body.caption_length = o.caption_length || "normal"; body.max_tokens = cap; }
+      else { body.target = o.target || o.object || prompt; body.max_objects = Math.min(500, Number(o.max_objects) || 20); }
       const vr = await env.AI.run(model, body);
       // Coordinates ride back in their own field so a caller that asked for a box gets one, and a
       // caller that asked a question is unaffected. Stable return either way.
-      const box = vr?.objects || vr?.boxes || vr?.points || null;
-      const saw = String(vr?.answer || vr?.caption || vr?.description || vr?.response || "").trim()
-               || (box ? JSON.stringify(box).slice(0, 400) : "");
-      if (!saw) return { ok: false, error: "SAW_NOTHING", model, task, ms: Date.now() - t0 };
+      const box = vr?.objects || vr?.points || null;
+      const saw = String(vr?.answer || vr?.caption || "").trim()
+               || (box && box.length ? JSON.stringify(box).slice(0, 500) : "");
+      if (!saw) return { ok: false, error: "SAW_NOTHING", model, task, ms: Date.now() - t0,
+        // Say what actually came back rather than reporting a blank. A silent empty answer is what
+        // made this take four runs to spot.
+        got: Object.keys(vr || {}).join(",") || "nothing" };
       return { ok: true, saw, box: box || undefined, task, model,
                bytes: bytes ? bytes.length : undefined, from: wantsUrl ? "url" : "bytes",
                ms: Date.now() - t0 };

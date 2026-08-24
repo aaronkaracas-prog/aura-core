@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.31.0-2026-08-23-one-store-one-address";
+const BUILD = "aura-core-v7.32.0-2026-08-23-the-doorway-asks-by-name";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -50283,6 +50283,54 @@ export class PublicEntry extends WorkerEntrypoint {
       }
 
       return { ok: false, error: "Unknown action. Use talk | make | evolve | life | shops | interest." };
+    } catch (e) {
+      return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
+    }
+  }
+
+  // ══ THE DOORWAY ASKS FOR IMAGES BY NAME (2026-08-23) ══════════════════════════════════════
+  //
+  // MEASURED: every image URL this system hands out is `auras.guide/image/<id>`. That domain
+  // routes to aura-host, aura-host has no image route, and the koi came back 404 - after an apex
+  // A record was found missing and added, which fixed DNS and revealed this second problem
+  // underneath it.
+  //
+  // WHY THIS SHAPE AND NOT A SHORTCUT. Two shortcuts were tried and both were wrong:
+  //   - aura-host proxying with `env.AURA_CORE.fetch()` - it CANNOT work. The binding is scoped
+  //     to this entrypoint, so a fetch never reaches the default export where /image/ lives.
+  //   - aura-host reading `image:<id>` straight from KV - it would work, and aura-host's own
+  //     config forbids it in writing: that binding is "read the page: keys, read-only in
+  //     practice", and "adding a binding to this file is undoing the reason this worker exists,
+  //     and it will not look like a mistake at the time."
+  // The rule that file states is the answer: anything the doorway needs, it asks the private side
+  // for BY NAME. This is that name. The doorway gains no new reach - one more method, nothing
+  // else - and every domain in the portfolio can serve every image, because they all route to
+  // the doorway already. One store, one engine, many front doors.
+  //
+  // Returns base64 rather than an ArrayBuffer. RPC will carry bytes, but base64 is certain across
+  // a service binding and this is the wrong week to find out which by watching an image fail to
+  // load. The cost is a third more bytes on an internal hop that never leaves Cloudflare.
+  async image(id) {
+    try {
+      const key = String(id || "").replace(/\.png$/i, "").trim();
+      if (!/^[A-Za-z0-9_-]{4,80}$/.test(key)) return { ok: false, error: "BAD_ID" };
+      // R2 first, exactly as this worker's own /image/ route does - so there is one answer to
+      // "where do the bytes live" and not a second one that can drift from it.
+      if (this.env.AURA_IMAGES) {
+        const obj = await this.env.AURA_IMAGES.get(key + ".png").catch(() => null);
+        if (obj) {
+          const buf = await obj.arrayBuffer();
+          const bytes = new Uint8Array(buf);
+          let bin = "";
+          for (let i = 0; i < bytes.length; i += 8192) {
+            bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+          }
+          return { ok: true, id: key, b64: btoa(bin), type: "image/png", from: "r2" };
+        }
+      }
+      const b64 = await this.env.AURA_KV.get("image:" + key).catch(() => null);
+      if (!b64) return { ok: false, error: "NOT_FOUND", id: key };
+      return { ok: true, id: key, b64, type: "image/png", from: "kv" };
     } catch (e) {
       return { ok: false, error: String((e && e.message) || e).slice(0, 200) };
     }

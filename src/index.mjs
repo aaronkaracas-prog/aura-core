@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.40.0-2026-08-24-the-diagnostic-was-lying-too";
+const BUILD = "aura-core-v7.41.0-2026-08-24-she-can-see-skin";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -48740,10 +48740,14 @@ async function seeMedia(opts, env) {
         sent: Object.keys(body).join(","),
         image_kind: /^data:/.test(String(body.image || "")) ? "data_uri" : "https_url",
         image_chars: String(body.image || "").length };
+      // The answer is nested under `result` - `{result:{answer, caption, objects, points, metrics}}`.
+      // Both shapes are read because the binding has been seen to return either, and reading one
+      // level too shallow is what made a WORKING model look like six consecutive failures.
+      const mr = vr?.result || vr || {};
       // Coordinates ride back in their own field so a caller that asked for a box gets one, and a
       // caller that asked a question is unaffected. Stable return either way.
-      const box = vr?.objects || vr?.points || null;
-      const saw = String(vr?.answer || vr?.caption || "").trim()
+      const box = mr.objects || mr.points || null;
+      const saw = String(mr.answer || mr.caption || "").trim()
                || (box && box.length ? JSON.stringify(box).slice(0, 500) : "");
       if (!saw) return { ok: false, error: "SAW_NOTHING", model, task, ms: Date.now() - t0,
         sent: Object.keys(body).join(","),
@@ -48755,6 +48759,8 @@ async function seeMedia(opts, env) {
         got_sample: JSON.stringify(vr || {}).slice(0, 300) };
       return { ok: true, saw, box: box || undefined, task, model,
                bytes: bytes ? bytes.length : undefined, from: wantsUrl ? "url" : "bytes",
+               // What it cost, from the model's own metrics rather than an estimate.
+               tokens: mr.metrics ? { in: mr.metrics.input_tokens, out: mr.metrics.output_tokens } : undefined,
                ms: Date.now() - t0 };
     }
 

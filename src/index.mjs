@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.59.0-2026-08-24-the-first-image-gets-them-too";
+const BUILD = "aura-core-v7.60.0-2026-08-24-work-arrives-at-the-shop";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22939,6 +22939,82 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       } catch (e) {
         return { cmd: "INVITE_SEAT", payload: { ok: false, error: String((e && e.message) || e).slice(0, 160) } };
       }
+    }
+
+    case "REQUESTS": {
+      // ══ THE FAR END OF THE WIRE (2026-08-24) ═══════════════════════════════════════════════
+      //
+      //   REQUESTS <shop>                          what is waiting
+      //   REQUESTS <shop> ACCEPT <req> <when>      accept and put it in the book
+      //   REQUESTS <shop> DECLINE <req>            it goes back to matching, not to nothing
+      //
+      // A shop opening this sees WORK, not mail: who, what they designed, the brief, and one
+      // action. Everything after `ACCEPT` is the booking machinery that already passed forty-three
+      // assertions - deposits, both-parties confirm, reassignment, cancellation, ICS. Nothing in it
+      // changes. The only thing a request is missing is a TIME, because the artist decides that,
+      // and supplying it is the whole adapter.
+      if (!isOp) return { cmd: "REQUESTS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
+      const rqArgs = (rest || "").trim().split(/\s+/).filter(Boolean);
+      const rqShop = rqArgs[0];
+      if (!rqShop) return { cmd: "REQUESTS", payload: { ok: false,
+        error: "Usage: REQUESTS <shop> [ACCEPT <req_id> <when> | DECLINE <req_id>]" } };
+      const rqAct = (rqArgs[1] || "").toUpperCase();
+
+      const rqLoad = async (rid) => {
+        try { return JSON.parse(await env.AURA_KV.get("req:" + rqShop + ":" + rid) || "null"); }
+        catch { return null; }
+      };
+      const rqSave = async (r) => env.AURA_KV.put("req:" + rqShop + ":" + r.id, JSON.stringify(r),
+        { expirationTtl: 180 * 24 * 3600 });
+
+      if (rqAct === "ACCEPT" || rqAct === "DECLINE") {
+        const rid = rqArgs[2];
+        const req = rid ? await rqLoad(rid) : null;
+        if (!req) return { cmd: "REQUESTS", payload: { ok: false, error: "NO_SUCH_REQUEST", id: rid || null } };
+
+        if (rqAct === "DECLINE") {
+          req.status = "declined"; req.closed = new Date().toISOString();
+          await rqSave(req);
+          // The project belongs to the PERSON, so a decline returns it to matching rather than
+          // ending their journey. Aura can offer them three others whose work fits.
+          return { cmd: "REQUESTS", payload: { ok: true, id: req.id, status: "declined",
+            person: req.person,
+            what_to_do: "The project is still theirs. Match them to another shop." } };
+        }
+
+        const when = rqArgs.slice(3).join(" ").trim();
+        if (!when) return { cmd: "REQUESTS", payload: { ok: false,
+          error: "Usage: REQUESTS <shop> ACCEPT <req_id> <when>  (an ISO time, or 'Sat 2pm')" } };
+        // THE ADAPTER, in full: an accepted request plus a proposed time is an appointment. The
+        // booking side needs nothing new.
+        const ap = await processCommand("APPOINTMENT NEW " + rqShop + " ::: " + JSON.stringify({
+          customer: req.person, name: req.name || null, contact: req.contact || null,
+          artist: req.artist || null, start: when,
+          note: "From mytattoo.world - " + (req.brief || "a design they made") +
+                (req.image ? " - " + req.image : "")
+        }), env, true);
+        const app = (ap && ap.payload) ? ap.payload : ap;
+        req.status = app?.ok ? "accepted" : "accept_failed";
+        req.proposed = when;
+        req.booking = app?.ok ? (app.booking || app.id || null) : null;
+        await rqSave(req);
+        return { cmd: "REQUESTS", payload: { ok: !!app?.ok, id: req.id, status: req.status,
+          booking: req.booking, appointment: app,
+          say: app?.ok ? "In the book. They will hear from you." : "Could not book that time." } };
+      }
+
+      // The list. What is waiting, newest first.
+      let rqIdx = [];
+      try { rqIdx = JSON.parse(await env.AURA_KV.get("reqs:" + rqShop) || "[]"); } catch {}
+      const rqOut = [];
+      for (const rid of rqIdx.slice(0, 40)) {
+        const r = await rqLoad(rid);
+        if (r) rqOut.push({ id: r.id, who: r.name, status: r.status, brief: r.brief,
+          image: r.image, artist: r.artist, contact: r.contact, created: r.created,
+          booking: r.booking || undefined });
+      }
+      return { cmd: "REQUESTS", payload: { ok: true, shop: rqShop, waiting: rqOut.filter(r => r.status === "sent").length,
+        requests: rqOut } };
     }
 
     case "WALL": {
@@ -51505,11 +51581,43 @@ export class PublicEntry extends WorkerEntrypoint {
           } catch {}
         }
         try {
-          await env.AURA_KV.put("mt:interest:" + shop + ":" + Date.now(),
-            JSON.stringify({ shop, design: id || null, who: me, name: who,
-              contact: String(b.contact || "").slice(0, 120),
-              at: new Date().toISOString(), claimed: !!row.claimed_at }),
-            { expirationTtl: 90 * 24 * 3600 });
+          // ══ WORK ARRIVING AT A BUSINESS, NOT A NOTE IN A DRAWER (2026-08-24) ═══════════
+          //
+          // This wrote a record nothing on the shop side ever read, and sent an email. So the whole
+          // business model - a real person designed a piece and asked for YOU by name - arrived as
+          // a message a shop could ignore, with no place in their day where it shows up as work.
+          // A wire not connected at the far end.
+          //
+          // ONE OBJECT, IDENTICAL FOR CLAIMED AND UNCLAIMED SHOPS. That is the point. Today the
+          // two diverge - a claimed shop gets a booking path, an unclaimed one gets an email into
+          // the void. Now an unclaimed shop's request WAITS, and the moment they claim their page
+          // it is already in their console. Thirty-three thousand cold listings become thirty-three
+          // thousand inboxes with work already in them.
+          //
+          // The email becomes a NOTIFICATION ABOUT this object rather than the object itself.
+          // Notification is not the system of record.
+          const reqId = "req_" + Array.from(crypto.getRandomValues(new Uint8Array(8)))
+            .map(x => x.toString(16).padStart(2, "0")).join("");
+          await env.AURA_KV.put("req:" + shop + ":" + reqId, JSON.stringify({
+            id: reqId, shop, person: me, name: who,
+            design: id || null, image: designImg || null,
+            // What they settled, in their words - this is the half that makes it a project rather
+            // than "how much for this".
+            brief: dMeta && dMeta.subject ? String(dMeta.subject).slice(0, 400) : null,
+            contact: String(b.contact || "").slice(0, 120) || null,
+            artist: String(b.artist || "").slice(0, 80) || null,
+            status: "sent",
+            created: new Date().toISOString(),
+            // No time yet, and that is correct - the artist proposes it. That is the only field
+            // standing between this and APPOINTMENT NEW, which already handles everything after.
+            proposed: null, booking: null
+          }), { expirationTtl: 180 * 24 * 3600 });
+          // The index a console reads, so listing does not need a KV scan.
+          const idxKey = "reqs:" + shop;
+          let idx = [];
+          try { idx = JSON.parse(await env.AURA_KV.get(idxKey) || "[]"); } catch {}
+          idx.unshift(reqId);
+          await env.AURA_KV.put(idxKey, JSON.stringify(idx.slice(0, 200)));
         } catch {}
 
         // ══ THE PROMISE HAS TO BE KEPT, OR NOT MADE (2026-08-24) ═══════════════════════════

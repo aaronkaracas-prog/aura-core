@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.64.0-2026-08-25-the-address-is-in-the-chain";
+const BUILD = "aura-core-v7.66.0-2026-08-25-the-first-thing-a-shop-reads";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -18762,7 +18762,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           const ctx = String(ro.context).replace(/[<>]/g, "");
           const imgSrc = imageUrl || "https://auras.guide/brand/butterfly";
           const html = `<div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:520px;margin:0 auto;color:#222;line-height:1.5">` +
-            `<p>${greet} â€” I'm Aura. I noticed ${ctx}.</p>` +
+            `<p>${greet} - I'm Aura. I noticed ${ctx}.</p>` +
             `<a href="${door.doorway}" style="display:block;text-decoration:none"><img src="${imgSrc}" alt="From Aura â€” tap to connect" width="480" style="width:100%;max-width:480px;border-radius:14px;display:block;margin:14px 0;border:0"></a>` +
             `<p style="opacity:.75;font-size:14px">Tap the image to connect with me.</p>` +
             `<p style="opacity:.5;font-size:12px">Or open: <a href="${door.doorway}">${door.doorway}</a></p></div>`;
@@ -25066,7 +25066,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // The industry ceiling is five thumb targets, and "Your business" - the QR, the gallery,
           // the address - is a shop's own record rather than somewhere they flip to, so it goes
           // last and lives behind the icon, where every phone app of this shape keeps it.
-          tattoo_shop: ["Today", "Appointments", "Customers", "Deposits", "Artists", "Your business"],
+          // "New work" sits SECOND, after Today. Somebody designed a piece and asked for this shop
+          // by name - that is the best lead a tattooist will ever get, and it was arriving in a
+          // queue with no screen. A promise made to a customer ("I have written to them with your
+          // design") that the shop cannot see is a promise broken quietly.
+          tattoo_shop: ["Today", "New work", "Appointments", "Customers", "Deposits", "Artists", "Your business"],
           restaurant:  ["Today", "Front of house", "Reservations", "Kitchen", "Menu", "Staff", "Your business"],
           salon:       ["Today", "Appointments", "Customers", "Deposits", "Stylists", "Your business"],
           _default:    ["Today", "Appointments", "Customers", "Your business"],
@@ -25117,6 +25121,40 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           name: list.find(b => b.id === pick)?.name || null,
           business_type: type,
           nav: NAV[type] || NAV._default,
+          // ══ THE WORK THAT ARRIVED WHILE THEY WERE OUT (2026-08-25) ══════════════════════════
+          // Somebody designed a tattoo and asked for THIS shop by name. That request has been
+          // landing in a queue with no screen - so the customer was told "I have written to them
+          // with your design" and the shop had no way to see it. A promise broken quietly.
+          // Read straight from the same store `REQUESTS` reads, so there is one record and not a
+          // console copy that drifts.
+          new_work: await (async () => {
+            try {
+              const idx = JSON.parse(await env.AURA_KV.get("reqs:" + pick) || "[]");
+              // A shop that claimed a crawled listing has requests filed under the OLD id - they
+              // were sent before it had a PTA, which is the entire point of the model.
+              let alt = [];
+              try {
+                const cr = await env.AURA_MEMORY.prepare(
+                  "SELECT id FROM cg_business WHERE pta = ? LIMIT 1").bind(pick).first();
+                if (cr?.id) alt = JSON.parse(await env.AURA_KV.get("reqs:" + cr.id) || "[]");
+              } catch {}
+              const seen = new Set(), out = [];
+              for (const rid of [...idx, ...alt].slice(0, 40)) {
+                if (seen.has(rid)) continue; seen.add(rid);
+                let r = null;
+                try { r = JSON.parse(await env.AURA_KV.get("req:" + pick + ":" + rid) || "null"); } catch {}
+                if (!r) { try {
+                  const cr2 = await env.AURA_MEMORY.prepare(
+                    "SELECT id FROM cg_business WHERE pta = ? LIMIT 1").bind(pick).first();
+                  if (cr2?.id) r = JSON.parse(await env.AURA_KV.get("req:" + cr2.id + ":" + rid) || "null");
+                } catch {} }
+                if (r) out.push({ id: r.id, who: r.name, brief: r.brief, image: r.image,
+                  contact: r.contact, artist: r.artist, status: r.status,
+                  created: r.created, booking: r.booking || null });
+              }
+              return out;
+            } catch { return []; }
+          })(),
           // ══ WRITTEN TO ONE EVENT, READ FROM ANOTHER (fixed 2026-08-22) ═══════════════════════
           //
           // MEASURED, and by the shop's own owner: Aaron opened the console, saw NO ADDRESS, typed
@@ -51684,6 +51722,14 @@ export class PublicEntry extends WorkerEntrypoint {
         const who = String(b.name || "").trim().slice(0, 80) || "Somebody";
         const note = who + " designed a tattoo on mytattoo.world and wants " +
           (row.name || "your shop") + " to do it.";
+        // Cut at a word boundary, never mid-word - and prefer what the PERSON said over anything
+        // written for a model.
+        const briefText = (() => {
+          const t = String(b.brief || "").trim();
+          if (!t) return null;
+          return t.length <= 220 ? t : t.slice(0, 220).replace(/\s+\S*$/, "") + "...";
+        })();
+        const contactText = String(b.contact || "").trim().slice(0, 120) || null;
         // The design travels with the message - a shop opening an email about a piece they cannot
         // see has been told nothing.
         let designImg = null, dMeta = null;
@@ -51765,8 +51811,18 @@ export class PublicEntry extends WorkerEntrypoint {
               email: shopEmail,
               name: row.name || null,
               via: "mytattoo",
+              // ══ THE SENTENCE A SHOP READS FIRST ══════════════════════════════════════════
+              // This quoted `dMeta.subject` - the IMAGE GENERATION PROMPT - cut at 120 characters,
+              // so a tattooist opened their first message from Aura and read "...The ink is vibrant
+              // and detailed, with shading an." Truncated mid-word, and describing a REFERENCE
+              // PHOTO rather than what the customer wants.
+              // The customer's own brief was sitting right there and was not the one being sent.
+              // And their contact goes in, because "somebody wants this" without a way to reach
+              // them is a lead the shop cannot act on.
               context: who + " designed a tattoo on mytattoo.world and asked for " +
-                (row.name || "your shop") + " by name" + (dMeta && dMeta.subject ? " - " + String(dMeta.subject).slice(0, 120) : ""),
+                (row.name || "your shop") + " by name" +
+                (briefText ? ". What they want: " + briefText : "") +
+                (contactText ? ". Reach them at " + contactText : ""),
               image: designImg || null,
               dest: "/claim"
             }), env, true);
@@ -53230,7 +53286,7 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
         `<div style="max-width:460px">` +
         (img ? `<img src="${img}" alt="" style="width:100%;max-width:360px;border-radius:16px;box-shadow:0 8px 40px rgba(150,70,255,.35);margin-bottom:20px">` : `<img src="https://auras.guide/brand/butterfly" width="64" height="64" style="margin-bottom:10px">`) +
         `<h1 style="font-weight:300;letter-spacing:.04em;font-size:22px">${safeName ? "Hi " + safeName + " â€” I'm Aura." : "Hi â€” I'm Aura."}</h1>` +
-        `<p style="opacity:.8;line-height:1.5;font-size:15px">I noticed ${safeCtx}. Tell me who you are and we're connected â€” I'll remember, so we never start over.</p>` +
+        `<p style="opacity:.8;line-height:1.5;font-size:15px">I noticed ${safeCtx}. Tell me who you are and we're connected - I'll remember, so we never start over.</p>` +
         `<a href="/auth/google/start?dest=${back}" style="display:block;margin:18px auto 10px;max-width:300px;background:#fff;color:#222;text-decoration:none;padding:13px;border-radius:10px;font-weight:600">Continue with Google</a>` +
         `<a href="/auth/email/start?dest=${back}" style="display:block;margin:10px auto;max-width:300px;background:transparent;color:#cbb6ff;text-decoration:none;padding:12px;border-radius:10px;border:1px solid rgba(150,70,255,.4)">Continue with email</a>` +
         `<a href="/auth/phone/start?dest=${back}" style="display:block;margin:10px auto;max-width:300px;background:transparent;color:#cbb6ff;text-decoration:none;padding:12px;border-radius:10px;border:1px solid rgba(150,70,255,.4)">Continue with phone</a>` +

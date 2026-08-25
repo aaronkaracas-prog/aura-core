@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.60.0-2026-08-24-work-arrives-at-the-shop";
+const BUILD = "aura-core-v7.61.0-2026-08-25-waiting-on-claim";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22987,6 +22987,27 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           error: "Usage: REQUESTS <shop> ACCEPT <req_id> <when>  (an ISO time, or 'Sat 2pm')" } };
         // THE ADAPTER, in full: an accepted request plus a proposed time is an appointment. The
         // booking side needs nothing new.
+        // ══ AN UNCLAIMED SHOP HAS NO CALENDAR ═══════════════════════════════════════════
+        // MEASURED: accepting for an unclaimed listing returned HOURS_UNKNOWN with the advice
+        // "that is outside their opening hours" and the detail NO_SUCH_BUSINESS. The two disagreed,
+        // and the advice would send somebody looking at hours that do not exist.
+        // The request is still valid and still waiting - what is missing is the shop, not the time.
+        // This is the whole business model in one branch: the work arrives BEFORE they sign up, and
+        // it is here when they do.
+        try {
+          const claimRow = await env.AURA_MEMORY.prepare(
+            "SELECT claimed_at, name FROM cg_business WHERE id = ? LIMIT 1").bind(rqShop).first();
+          if (claimRow && !claimRow.claimed_at) {
+            req.status = "waiting_on_claim"; req.proposed = when;
+            await rqSave(req);
+            return { cmd: "REQUESTS", payload: { ok: false, id: req.id, status: req.status,
+              error: "SHOP_NOT_SET_UP", shop: claimRow.name || rqShop,
+              say: "This shop has not claimed their page yet, so there is no calendar to book into. " +
+                   "The request is saved and will be waiting the moment they set up.",
+              what_to_do: "Claim the page first, then accept this again." } };
+          }
+        } catch {}
+
         const ap = await processCommand("APPOINTMENT NEW " + rqShop + " ::: " + JSON.stringify({
           customer: req.person, name: req.name || null, contact: req.contact || null,
           artist: req.artist || null, start: when,
@@ -49058,7 +49079,12 @@ async function nextChips(env, design, change) {
     if (typeof cj === "string") { try { cj = JSON.parse(cj); } catch { cj = repairJson(cj); } }
     cj = unwrapSchema(cj);
     const arr = Array.isArray(cj?.chips) ? cj.chips : [];
-    const clean = arr.map(x => String(x || "").trim().slice(0, 28)).filter(Boolean).slice(0, 4);
+    // Trim to a word boundary - "Cleaner linework simpler des" is what a hard character cut
+    // produces, and it reads as a bug because it is one.
+    const clean = arr.map(x => {
+      const t = String(x || "").trim();
+      return t.length <= 28 ? t : t.slice(0, 28).replace(/\s+\S*$/, "");
+    }).filter(Boolean).slice(0, 4);
     return clean.length >= 2 ? clean : null;
   } catch { return null; }
 }
@@ -51603,7 +51629,15 @@ export class PublicEntry extends WorkerEntrypoint {
             design: id || null, image: designImg || null,
             // What they settled, in their words - this is the half that makes it a project rather
             // than "how much for this".
-            brief: dMeta && dMeta.subject ? String(dMeta.subject).slice(0, 400) : null,
+            // WHAT THE PERSON WANTS, not what we told an image model. The first version put the
+            // generation prompt here, so a shop opened the request and read "clean linework, high
+            // contrast, on a plain background, no skin, no body... take the STYLE and FEELING of
+            // the reference image" - engineering instructions, addressed to nobody.
+            // `talk` already produces the real one and it is passed in.
+            brief: String(b.brief || "").trim().slice(0, 400) ||
+                   (dMeta && dMeta.subject
+                     ? String(dMeta.subject).split(/\.\s*Tattoo design,/)[0].slice(0, 400)
+                     : null),
             contact: String(b.contact || "").slice(0, 120) || null,
             artist: String(b.artist || "").slice(0, 80) || null,
             status: "sent",

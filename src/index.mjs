@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.54.0-2026-08-24-the-subject-is-not-negotiable";
+const BUILD = "aura-core-v7.55.0-2026-08-24-inspired-by-not-a-copy-of";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -48957,7 +48957,10 @@ async function findReference(query, env, opts = {}) {
   const t0 = Date.now();
   const q = String(query || "").trim();
   if (!q) return { ok: false, error: "NOTHING_TO_LOOK_FOR" };
-  const want = Math.min(Math.max(Number(opts.count) || 6, 1), 12);
+  // Four fills a two-column grid on a phone with nothing left over. Five leaves an orphan in the
+  // corner, which reads as a mistake even when the fifth picture is good.
+  let want = Math.min(Math.max(Number(opts.count) || 4, 2), 12);
+  if (want % 2) want += 1;
   try {
     // Who is answering right now. Not "which vendor did we sign" - which model the policy and the
     // pins resolve to at this moment.
@@ -49138,7 +49141,69 @@ async function findReference(query, env, opts = {}) {
       // his own crawled portfolios are indexed, a judge over known-good work is selection among
       // good things rather than an attempt to out-rank a search. `WALL JUDGE <query>` runs it.
       const wantJudge = opts.judge === true;
+      // ══ IS IT A REAL TATTOO OF THE THING THEY ASKED FOR ═══════════════════════════════
+      //
+      // A "a cat" wall came back with a cartoon cat graphic, a photograph of an actual cat, and a
+      // rose. Two of five were not tattoos and one was not a cat - and on a small wall that is the
+      // difference between "these are great" and "she cannot tell what she is looking at".
+      //
+      // THIS IS NOT THE JUDGE THAT WAS TURNED OFF. That one was asked to rank photographs by
+      // quality, which it could not do without seeing them. This asks one FACTUAL question the
+      // eyes are demonstrably good at - is this ink on skin, and is it the subject requested - and
+      // nothing about whether it is beautiful. Ranking stays with the model that found them.
+      //
+      // AND IT FILTERS SILENTLY. Showing somebody a cartoon and then apologising for it breaks the
+      // moment; the moment is "here are a few good ones, tap one".
       let judged = picked, why = null;
+      if (opts.verify !== false && picked.length > 1) {
+        try {
+          const seen = [];
+          for (const c of picked.slice(0, 8)) {
+            try {
+              const d = await seeMedia({ url: c.image, max_tokens: 60,
+                prompt: "In one short sentence: is this a photograph of a tattoo on real human " +
+                        "skin, and what is the tattoo OF? If it is a drawing, a graphic, a poster " +
+                        "or a photo of something that is not a tattoo, say that instead." }, env);
+              seen.push({ ...c, saw: d.ok ? d.saw : null });
+            } catch { seen.push({ ...c, saw: null }); }
+          }
+          const described = seen.filter(x => x.saw);
+          if (described.length > 1) {
+            const vr = await callBrain({
+              system:
+                "Each numbered line describes a picture. Somebody asked to see tattoos of: " + q +
+                "\n\n" + 'Return ONLY JSON: {"keep":[numbers]}\n\n' +
+                "Keep a number ONLY if the description says it is a tattoo on real skin AND the " +
+                "tattoo is of " + q + ".\n" +
+                "Leave out drawings, graphics, posters, logos, designs on paper, and photographs " +
+                "of the real thing rather than a tattoo of it.\n" +
+                "Leave out tattoos of a different subject, however good they look.\n" +
+                "This is a factual check, not a judgement of quality. If it is a real tattoo of " +
+                "the right thing, keep it.",
+              user: described.map((x, i) => (i + 1) + ". " + x.saw).join("\n"),
+              model: route.model, max_tokens: 200 }, env);
+            if (vr?.ok) {
+              let kj = vr.text;
+              if (typeof kj === "string") { try { kj = JSON.parse(kj); } catch { kj = repairJson(kj); } }
+              kj = unwrapSchema(kj);
+              const keepUrls = new Set();
+              for (const n of (Array.isArray(kj?.keep) ? kj.keep : []))
+                if (Number.isInteger(n) && n >= 1 && n <= described.length) keepUrls.add(described[n - 1].image);
+              const kept = picked.filter(x => keepUrls.has(x.image));
+              // Never leave an orphan, and never return nothing - if it threw out almost
+              // everything it is more likely wrong than the wall is.
+              if (kept.length >= 2) {
+                judged = kept.slice(0, kept.length % 2 ? kept.length - 1 : kept.length);
+                why = { checked: described.length, kept: judged.length,
+                        dropped: seen.filter(x => !keepUrls.has(x.image))
+                          .map(x => (x.source || "?") + ": " + String(x.saw || "no description").slice(0, 70)) };
+              }
+            }
+          }
+        } catch (e) {
+          why = { error: String((e && e.message) || e).slice(0, 140), verified: false };
+        }
+      }
       if (wantJudge && picked.length > 1) {
         try {
           const looks = [];
@@ -51062,18 +51127,31 @@ export class PublicEntry extends WorkerEntrypoint {
         // [METER SEAM] first paid moment, when there is a meter.
         // No host override. One image engine, one store, one address - the tattoo-ness of this
         // lives in the prompt and the entity, not in the URL.
+        // ══ INSPIRED BY, NOT A COPY OF (2026-08-24) ═══════════════════════════════════════
+        // When they tap a picture on the wall they are choosing a REFERENCE, not adopting somebody
+        // else's finished tattoo. Evolving the stranger's photograph would hand them a modified
+        // copy of another artist's work - wrong ownership, and a worse creative starting point
+        // than a fresh drawing that takes the idea and makes it theirs.
+        // So the reference rides along as a style and subject cue and the result is an ORIGINAL,
+        // born under their PTA with its own lineage. `refs` already flows through SHOW_IT into the
+        // image engine; this only gives the consumer door a way to pass one.
+        const ref = String(b.ref || "").trim();
         const r = await processCommand("SHOW_IT " + JSON.stringify({
           subject: subject + ". Tattoo design, clean linework, high contrast, on a plain " +
-                   "background, no skin, no body, no photograph - the artwork only.",
+                   "background, no skin, no body, no photograph - the artwork only." +
+                   (ref ? " Take the STYLE and FEELING of the reference image - the linework, the " +
+                          "shading, the way it sits - but draw a NEW original piece rather than " +
+                          "copying it." : ""),
           context: "a tattoo somebody is designing for themselves: " + subject,
           name: subject.slice(0, 60),
+          ...(ref ? { refs: [ref] } : {}),
           // Theirs from the moment it is drawn.
           creator: me
         }), env, true);
         const p = (r && r.payload) ? r.payload : r;
         if (!p?.ok) return { ok: false, error: p?.error || "COULD_NOT_DRAW" };
         return { ok: true, design: p.entity_id || p.id, image: p.image_url,
-          subject, version: 1, cached: !!p.cached };
+          subject, version: 1, cached: !!p.cached, from_reference: ref || undefined };
       }
 
       // ── EVOLVE. What everybody converged on: the change STACKS on the last version rather

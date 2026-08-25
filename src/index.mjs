@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.63.0-2026-08-25-the-link-goes-both-ways";
+const BUILD = "aura-core-v7.64.0-2026-08-25-the-address-is-in-the-chain";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -49141,6 +49141,25 @@ async function resolveShop(env, given) {
             pEmail = md.email || md.contact_email || md.best_email || null;
           }
         } catch {}
+        // ══ THE ADDRESS IS IN THE CHAIN, NOT THE METADATA ═══════════════════════════════════
+        // MEASURED: `told: false, could_not_reach: "no email on file"` for a shop that plainly has
+        // one. A business PTA registers its email as a hashed IDENTITY - `hashIdentity("email:"+v)`
+        // - so it matches without being readable, which is the point. The readable half lives in
+        // the chain, and the booking notifier has resolved it this way for months: ANY chain event
+        // carrying an email, because a booking, an invite or a signup all carry the same address.
+        // Copying that logic rather than reusing it would be a fourth reader of one fact; this is
+        // the same three steps in the same order, and the last one is the one that works.
+        if (!pEmail) {
+          try {
+            const stub = env.PTA_DO.get(env.PTA_DO.idFromName(id));
+            const r2 = await stub.fetch(new Request("http://do", { method: "POST",
+              body: JSON.stringify({ method: "getState", params: [] }) }));
+            const j2 = await r2.json();
+            const hit = [...((j2?.pta?.chain) || [])].reverse().find(x => x?.data?.email);
+            pEmail = hit?.data?.email || null;
+            if (!pName) pName = j2?.pta?.name || null;
+          } catch {}
+        }
         return { key: id, pta: id, row: null, claimed: true, crawled: false,
                  name: pName, email: pEmail };
       }

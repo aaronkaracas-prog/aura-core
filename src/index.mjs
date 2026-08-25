@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.66.0-2026-08-25-the-first-thing-a-shop-reads";
+const BUILD = "aura-core-v7.67.0-2026-08-25-clean-on-both-screens";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -51821,7 +51821,10 @@ export class PublicEntry extends WorkerEntrypoint {
               // them is a lead the shop cannot act on.
               context: who + " designed a tattoo on mytattoo.world and asked for " +
                 (row.name || "your shop") + " by name" +
-                (briefText ? ". What they want: " + briefText : "") +
+                // The brief usually ends in a full stop of its own, so adding one produced
+                // "...on the back.. Reach them at" - a small thing that reads as carelessness in
+                // the first sentence a business ever gets from you.
+                (briefText ? ". What they want: " + briefText.replace(/[.\s]+$/, "") : "") +
                 (contactText ? ". Reach them at " + contactText : ""),
               image: designImg || null,
               dest: "/claim"
@@ -53285,7 +53288,7 @@ if('serviceWorker' in navigator){var hadController=!!navigator.serviceWorker.con
         `<body style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0a0613;color:#cbb6ff;min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:28px">` +
         `<div style="max-width:460px">` +
         (img ? `<img src="${img}" alt="" style="width:100%;max-width:360px;border-radius:16px;box-shadow:0 8px 40px rgba(150,70,255,.35);margin-bottom:20px">` : `<img src="https://auras.guide/brand/butterfly" width="64" height="64" style="margin-bottom:10px">`) +
-        `<h1 style="font-weight:300;letter-spacing:.04em;font-size:22px">${safeName ? "Hi " + safeName + " â€” I'm Aura." : "Hi â€” I'm Aura."}</h1>` +
+        `<h1 style="font-weight:300;letter-spacing:.04em;font-size:22px">${safeName ? "Hi " + safeName + " - I'm Aura." : "Hi - I'm Aura."}</h1>` +
         `<p style="opacity:.8;line-height:1.5;font-size:15px">I noticed ${safeCtx}. Tell me who you are and we're connected - I'll remember, so we never start over.</p>` +
         `<a href="/auth/google/start?dest=${back}" style="display:block;margin:18px auto 10px;max-width:300px;background:#fff;color:#222;text-decoration:none;padding:13px;border-radius:10px;font-weight:600">Continue with Google</a>` +
         `<a href="/auth/email/start?dest=${back}" style="display:block;margin:10px auto;max-width:300px;background:transparent;color:#cbb6ff;text-decoration:none;padding:12px;border-radius:10px;border:1px solid rgba(150,70,255,.4)">Continue with email</a>` +

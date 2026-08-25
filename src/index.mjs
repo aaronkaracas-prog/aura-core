@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.58.0-2026-08-24-she-knows-what-she-is-making";
+const BUILD = "aura-core-v7.59.0-2026-08-24-the-first-image-gets-them-too";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -48953,6 +48953,40 @@ async function seeMedia(opts, env) {
 //
 // NEVER INVENTED. This SELECTS what exists; generation happens later, after they have pointed at
 // something, and that is already built.
+// ══ WHAT TO TRY NEXT, FOR THIS PICTURE ═══════════════════════════════════════════════════════
+// The chips under an image are the steering wheel. With nothing useful there, a person invents
+// their own direction - and what got invented was a kitchen, which is not a place anybody gets
+// tattooed.
+// THIS WAS ONLY WIRED TO `evolve`, so the FIRST image - the one that matters most, the moment
+// somebody sees their idea for the first time - always fell back to a static menu. That is the
+// "sometimes generic" everybody kept noticing: not sometimes, always, on version one.
+// One writer, both callers.
+async function nextChips(env, design, change) {
+  try {
+    const nr = await callBrain({
+      model: (await env.AURA_KV.get("config:talk:model").catch(() => null)) || undefined,
+      system:
+        "Somebody is designing a tattoo with you and is looking at it right now.\n" +
+        'Offer FOUR things to try next, as JSON: {"chips":["...","...","...","..."]}\n\n' +
+        "Each is at most four words, phrased the way they would say it, and specific to THIS " +
+        "design - not a generic menu. Do not offer colour if it already has colour, or black and " +
+        "grey if it is already black and grey.\n" +
+        "ALWAYS make one of them a way back toward a tattoo somebody could actually wear - " +
+        "cleaner linework, tighter for the arm, simpler, more like a tattoo. People wander off and " +
+        "that is fine; the way back should never be more than one tap away.",
+      user: "The design: " + String(design || "").slice(0, 400) +
+            (change ? "\nThe change just made: " + String(change).slice(0, 200) : "\nThis is the first version."),
+      max_tokens: 160 }, env);
+    if (!nr?.ok) return null;
+    let cj = nr.text;
+    if (typeof cj === "string") { try { cj = JSON.parse(cj); } catch { cj = repairJson(cj); } }
+    cj = unwrapSchema(cj);
+    const arr = Array.isArray(cj?.chips) ? cj.chips : [];
+    const clean = arr.map(x => String(x || "").trim().slice(0, 28)).filter(Boolean).slice(0, 4);
+    return clean.length >= 2 ? clean : null;
+  } catch { return null; }
+}
+
 async function findReference(query, env, opts = {}) {
   const t0 = Date.now();
   const q = String(query || "").trim();
@@ -51226,7 +51260,10 @@ export class PublicEntry extends WorkerEntrypoint {
         const p = (r && r.payload) ? r.payload : r;
         if (!p?.ok) return { ok: false, error: p?.error || "COULD_NOT_DRAW" };
         return { ok: true, design: p.entity_id || p.id, image: p.image_url,
-          subject, version: 1, cached: !!p.cached, from_reference: ref || undefined };
+          subject, version: 1, cached: !!p.cached, from_reference: ref || undefined,
+          // The first image needs these MOST - it is the moment somebody sees their idea for the
+          // first time and decides whether this thing is worth staying for.
+          next: await nextChips(env, subject, null) };
       }
 
       // ── EVOLVE. What everybody converged on: the change STACKS on the last version rather
@@ -51269,34 +51306,7 @@ export class PublicEntry extends WorkerEntrypoint {
         if (!p?.ok) return { ok: false, error: p?.error || "COULD_NOT_CHANGE",
           say: "That change did not take. Try saying it a different way." };
 
-        // What to offer next, written for THE IMAGE SHE JUST MADE rather than a static list.
-        // The chips are the steering wheel: with nothing useful under the picture, a person
-        // invents their own direction, and what gets invented is a kitchen. One of them always
-        // points home - a door back to a tattoo, never a wall against wandering off.
-        let next = null;
-        try {
-          const nr = await callBrain({
-            model: (await env.AURA_KV.get("config:talk:model").catch(() => null)) || undefined,
-            system:
-              "Somebody is designing a tattoo with you and has just seen a new version of it.\n" +
-              "Offer them FOUR things to try next, as JSON: {\"chips\":[\"...\",\"...\",\"...\",\"...\"]}\n\n" +
-              "Each is at most four words, something they would actually say, and specific to THIS " +
-              "image - not a generic menu. Do not offer colour if it is already colour, or black " +
-              "and grey if it is already black and grey.\n" +
-              "ALWAYS make one of them a way back toward a tattoo somebody could actually wear - " +
-              "cleaner linework, tighter for the arm, simpler, more like a tattoo. People wander " +
-              "and that is fine; the way back should never be more than one tap away.",
-            user: "The design: " + (brief || change) + "\nThe change just made: " + change,
-            max_tokens: 160 }, env);
-          if (nr?.ok) {
-            let cj = nr.text;
-            if (typeof cj === "string") { try { cj = JSON.parse(cj); } catch { cj = repairJson(cj); } }
-            cj = unwrapSchema(cj);
-            const arr = Array.isArray(cj?.chips) ? cj.chips : [];
-            const clean = arr.map(x => String(x || "").trim().slice(0, 28)).filter(Boolean).slice(0, 4);
-            if (clean.length >= 2) next = clean;
-          }
-        } catch {}
+        const next = await nextChips(env, brief || change, change);
 
         return { ok: true, design: p.child, image: p.image_url, changed: change,
           from: p.parent, next };

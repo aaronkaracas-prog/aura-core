@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.57.0-2026-08-24-two-calls-one-wait";
+const BUILD = "aura-core-v7.58.0-2026-08-24-she-knows-what-she-is-making";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -51158,7 +51158,40 @@ export class PublicEntry extends WorkerEntrypoint {
           // Anything else - NOT_YET, or a model that ignored the shape - means keep talking, which
           // is the safe default and the one that was right before today.
         }
-        return { ok: true, said: r.text, ready_to_draw: ready, show_me: show };
+        // ══ THE BRIEF — FACTS, NOT TURNS ═══════════════════════════════════════════════════
+        // "One leg." "Green eyes." "It's for my mum." Those are FACTS about what is being made,
+        // and they lived in a conversation window that scrolls - so somebody had to keep repeating
+        // that his dog has one leg.
+        // CORRECTIONS REPLACE, THEY DO NOT STACK. "Three legs" then "no, one leg" must leave ONE
+        // fact behind. A brief that accumulates both is worse than no brief at all - the same
+        // shape as a calibration that scales its own output, which this file has already paid for
+        // once.
+        let brief = null;
+        if (ready || b.brief) {
+          try {
+            const br = await callBrain({
+              model: talkModel,
+              system:
+                "Keep a short brief of the tattoo being designed - the facts that are still true.\n\n" +
+                "Return ONLY the brief, one paragraph, at most 60 words. No preamble.\n\n" +
+                "RULES:\n" +
+                "- Include only what the PERSON has settled: subject, style, colour, placement, " +
+                "size, who or what it is for, and any specific detail they insisted on.\n" +
+                "- A CORRECTION REPLACES what it corrects. If they said three legs and then said " +
+                "one leg, the brief says one leg and never mentions three.\n" +
+                "- Leave out anything they have not decided, and anything you suggested that they " +
+                "did not take up.\n" +
+                "- Leave out the conversation itself. This describes the tattoo, not the chat.",
+              messages: [
+                ...(b.brief ? [{ role: "assistant", content: "Brief so far: " + String(b.brief).slice(0, 400) }] : []),
+                ...hist.map(h => ({ role: h.role === "aura" ? "assistant" : "user",
+                                    content: String(h.said || "").slice(0, 1500) })),
+                { role: "user", content: said }],
+              max_tokens: 140 }, env);
+            if (br?.ok && br.text) brief = String(br.text).trim().slice(0, 400);
+          } catch {}
+        }
+        return { ok: true, said: r.text, ready_to_draw: ready, show_me: show, brief };
       }
 
       // ── MAKE. The first version. SHOW_IT births it as a PTA, so from this moment the design
@@ -51203,15 +51236,70 @@ export class PublicEntry extends WorkerEntrypoint {
         const id = String(b.design || "").trim();
         const change = String(b.change || "").trim().slice(0, 400);
         if (!id || !change) return { ok: false, error: "NEED_DESIGN_AND_CHANGE" };
+
+        // ══ SHE KNOWS WHAT SHE IS MAKING (2026-08-24) ═══════════════════════════════════════
+        //
+        // `talk` has a job description - a tattoo is permanent, most people arrive with a feeling
+        // rather than a picture, draw it out. This had NONE. It took an id and a string and passed
+        // them through, so nothing in the system knew that "put them on a kitchen counter" was a
+        // step away from the thing the person came for. Six changes later the image was a lovely
+        // photograph of a kitchen and the tattoo had quietly gone.
+        //
+        // That is not a lack of intelligence, it is a lack of BRIEFING. She was clever in the room
+        // where somebody told her what the room was for.
+        //
+        // Two things travel with every change now. THE BRIEF - the facts they have locked in, so
+        // "put them on a counter" cannot silently drop "he only has one leg". And THE JOB - this
+        // ends as something an artist can put on skin.
+        //
+        // NOT A LOCK. Aaron: "you have to let people play." The best image of the day came from
+        // somebody steering hard away from the default, and a hard rule would have blocked it. So
+        // the change they asked for is always obeyed exactly; the brief only stops the things they
+        // never un-asked for from evaporating.
+        const brief = String(b.brief || "").trim().slice(0, 400);
+        const composed = brief
+          ? change + "\n\nStill true from before, unless this change contradicts it: " + brief
+          : change;
+
         // [METER SEAM] one try, when there is a meter. An identical change costs nothing to
         // serve - the image cache answers it - so it should not cost a try either.
         const r = await processCommand("IMAGE EVOLVE " + id + " " +
-          JSON.stringify({ prompt: change, by: me }), env, true);
+          JSON.stringify({ prompt: composed, by: me }), env, true);
         const p = (r && r.payload) ? r.payload : r;
         if (!p?.ok) return { ok: false, error: p?.error || "COULD_NOT_CHANGE",
           say: "That change did not take. Try saying it a different way." };
+
+        // What to offer next, written for THE IMAGE SHE JUST MADE rather than a static list.
+        // The chips are the steering wheel: with nothing useful under the picture, a person
+        // invents their own direction, and what gets invented is a kitchen. One of them always
+        // points home - a door back to a tattoo, never a wall against wandering off.
+        let next = null;
+        try {
+          const nr = await callBrain({
+            model: (await env.AURA_KV.get("config:talk:model").catch(() => null)) || undefined,
+            system:
+              "Somebody is designing a tattoo with you and has just seen a new version of it.\n" +
+              "Offer them FOUR things to try next, as JSON: {\"chips\":[\"...\",\"...\",\"...\",\"...\"]}\n\n" +
+              "Each is at most four words, something they would actually say, and specific to THIS " +
+              "image - not a generic menu. Do not offer colour if it is already colour, or black " +
+              "and grey if it is already black and grey.\n" +
+              "ALWAYS make one of them a way back toward a tattoo somebody could actually wear - " +
+              "cleaner linework, tighter for the arm, simpler, more like a tattoo. People wander " +
+              "and that is fine; the way back should never be more than one tap away.",
+            user: "The design: " + (brief || change) + "\nThe change just made: " + change,
+            max_tokens: 160 }, env);
+          if (nr?.ok) {
+            let cj = nr.text;
+            if (typeof cj === "string") { try { cj = JSON.parse(cj); } catch { cj = repairJson(cj); } }
+            cj = unwrapSchema(cj);
+            const arr = Array.isArray(cj?.chips) ? cj.chips : [];
+            const clean = arr.map(x => String(x || "").trim().slice(0, 28)).filter(Boolean).slice(0, 4);
+            if (clean.length >= 2) next = clean;
+          }
+        } catch {}
+
         return { ok: true, design: p.child, image: p.image_url, changed: change,
-          from: p.parent };
+          from: p.parent, next };
       }
 
       // ── WALL. Show them real work, so they can point instead of describe.

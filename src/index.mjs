@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.62.0-2026-08-25-one-shop-two-names";
+const BUILD = "aura-core-v7.63.0-2026-08-25-the-link-goes-both-ways";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23024,7 +23024,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const app = (ap && ap.payload) ? ap.payload : ap;
         req.status = app?.ok ? "accepted" : "accept_failed";
         req.proposed = when;
-        req.booking = app?.ok ? (app.booking || app.id || null) : null;
+        // MEASURED: the appointment came back `uid: edge_59dd9b8efc9a4e14` and this read
+        // `booking || id`, so the request said "accepted" and had no idea which appointment it
+        // became. A link that exists in one direction only is half a link.
+        req.booking = app?.ok ? (app.uid || app.booking || app.id || null) : null;
+        req.when = app?.ok ? (app.start || when) : null;
         await rqSave(req);
         return { cmd: "REQUESTS", payload: { ok: !!app?.ok, id: req.id, status: req.status,
           booking: req.booking, appointment: app,
@@ -49122,14 +49126,32 @@ async function resolveShop(env, given) {
         "FROM cg_business WHERE pta = ? LIMIT 1").bind(id).first();
       // Signed up, never crawled: the PTA is the only name it has, and it is a real business with
       // a real calendar. Say so rather than pretending it does not exist.
-      if (!row) return { key: id, pta: id, row: null, claimed: true, crawled: false };
+      if (!row) {
+        // Signed up, never crawled. Everything about them lives on the PTA - including the name to
+        // put in a message and the address to send it to. A nameless stub meant a shop that came to
+        // Aaron directly got "wants your shop to do it" and no notification at all, while a crawled
+        // stranger got their name and an email. Backwards, again.
+        let pName = null, pEmail = null;
+        try {
+          const pe = await env.AURA_MEMORY.prepare(
+            "SELECT name, metadata FROM pta_entities WHERE id = ? LIMIT 1").bind(id).first();
+          if (pe) {
+            pName = pe.name || null;
+            let md = {}; try { md = JSON.parse(pe.metadata || "{}"); } catch {}
+            pEmail = md.email || md.contact_email || md.best_email || null;
+          }
+        } catch {}
+        return { key: id, pta: id, row: null, claimed: true, crawled: false,
+                 name: pName, email: pEmail };
+      }
       return { key: row.id, pta: id, row, claimed: !!row.claimed_at, crawled: true };
     }
     const row = await env.AURA_MEMORY.prepare(
       "SELECT id, name, locality, region, email, email_found, phone, claimed_at, pta " +
       "FROM cg_business WHERE id = ? LIMIT 1").bind(id).first();
     if (!row) return null;
-    return { key: row.id, pta: row.pta || null, row, claimed: !!row.claimed_at, crawled: true };
+    return { key: row.id, pta: row.pta || null, row, claimed: !!row.claimed_at, crawled: true,
+             name: row.name || null, email: row.email || row.email_found || null };
   } catch { return null; }
 }
 
@@ -51637,7 +51659,9 @@ export class PublicEntry extends WorkerEntrypoint {
         // unreachable here while a crawled stranger worked.
         const found = await resolveShop(env, shop);
         if (!found) return { ok: false, error: "NO_SUCH_SHOP" };
-        const row = found.row || { id: found.key, name: null, claimed_at: found.claimed ? "signed-up" : null };
+        const row = found.row || { id: found.key, name: found.name || null,
+          email: found.email || null, locality: null, region: null,
+          claimed_at: found.claimed ? "signed-up" : null };
         const who = String(b.name || "").trim().slice(0, 80) || "Somebody";
         const note = who + " designed a tattoo on mytattoo.world and wants " +
           (row.name || "your shop") + " to do it.";
@@ -51711,9 +51735,12 @@ export class PublicEntry extends WorkerEntrypoint {
         // tap IS the consent. Writing a second outreach beside it would be the same mistake twice.
         // The reply now says what actually happened, not what was intended: `told` is only true if
         // Cloudflare accepted the send.
+        // A CLAIMED SHOP WAS NEVER TOLD ANYTHING. The send was gated on `!claimed_at`, reasoning
+        // that a shop on the platform would see it in their console - but a queue nobody is told
+        // about is a queue nobody opens. Both get a message now.
         let told = false, reachErr = null;
-        const shopEmail = row.email || row.email_found || null;
-        if (!row.claimed_at && shopEmail) {
+        const shopEmail = found.email || row.email || row.email_found || null;
+        if (shopEmail) {
           try {
             const rr = await processCommand("REACH_OUT " + JSON.stringify({
               email: shopEmail,

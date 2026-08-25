@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.55.0-2026-08-24-inspired-by-not-a-copy-of";
+const BUILD = "aura-core-v7.56.0-2026-08-24-she-answers-first";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -51101,22 +51101,50 @@ export class PublicEntry extends WorkerEntrypoint {
         if (!r?.ok) return { ok: false, error: "COULD_NOT_ANSWER", detail: r?.error || null };
         // A separate, cheap read of "are they ready" - kept apart from her reply so she never
         // has to emit machine syntax in the middle of a human sentence.
-        let ready = null;
+        let ready = null, show = null;
         try {
           const g = await callBrain({
-            system: "Read the conversation. If the person has described a tattoo concretely enough " +
-              "to draw, reply with ONLY a single line describing it as a tattoo design - subject, " +
-              "style, and any placement that changes the composition. No preamble, no quotes. If " +
-              "they have NOT said enough yet, reply with exactly: NOT_YET",
+            // ══ SHE DECIDES WHEN TO SHOW, NOT AN IF-STATEMENT (2026-08-24) ═══════════════
+            // The page had been made to send every typed sentence straight to a picture search,
+            // which meant somebody who wrote "my mum passed away and she loved cats" was answered
+            // with "I can't find a picture of yours on the internet". A grieving person got a
+            // vending machine, and the conversation that was already here never ran at all.
+            // Showing real work is a good move at the right moment - and knowing WHICH moment is
+            // exactly the judgement a model has and a regex does not. So this one cheap read now
+            // has three answers instead of two, and she picks.
+            system: "Read the conversation and decide what should happen next. Reply with ONE line, " +
+              "in one of exactly three shapes and nothing else:\n\n" +
+              "DRAW: <one line describing the tattoo - subject, style, placement that changes the " +
+              "composition>\n" +
+              "   Use this when they have described it concretely enough to draw, or have asked " +
+              "to see it.\n\n" +
+              "SHOW: <two to five words naming the subject to look for>\n" +
+              "   Use this when they have named something they want but have not settled the " +
+              "details, and seeing real work on real people would move them along faster than " +
+              "another question. A cat, a dragon, a rose. NEVER use SHOW for something personal " +
+              "that no search could find - their own pet, a relative, somebody's handwriting - " +
+              "and never immediately after somebody has told you something sad. Talk to them " +
+              "first.\n\n" +
+              "NOT_YET\n" +
+              "   Use this when the conversation itself is the right next step - they are working " +
+              "out what they want, or they have just said something that deserves a human " +
+              "response before anything is shown to them.",
             messages: [...hist.map(h => ({ role: h.role === "aura" ? "assistant" : "user",
                                            content: String(h.said || "").slice(0, 1500) })),
                        { role: "user", content: said }],
             max_tokens: 120
           }, env);
           const t = String(g?.text || "").trim();
-          if (g?.ok && t && !/^NOT_YET/i.test(t)) ready = t.slice(0, 400);
+          if (g?.ok && t) {
+            const mDraw = t.match(/^DRAW:\s*(.+)$/is);
+            const mShow = t.match(/^SHOW:\s*(.+)$/is);
+            if (mDraw) ready = mDraw[1].trim().slice(0, 400);
+            else if (mShow) show = mShow[1].trim().replace(/[."]+$/, "").slice(0, 80);
+            // Anything else - NOT_YET or a model that ignored the shape - means keep talking,
+            // which is the safe default and the one that was always right before today.
+          }
         } catch {}
-        return { ok: true, said: r.text, ready_to_draw: ready };
+        return { ok: true, said: r.text, ready_to_draw: ready, show_me: show };
       }
 
       // ── MAKE. The first version. SHOW_IT births it as a PTA, so from this moment the design

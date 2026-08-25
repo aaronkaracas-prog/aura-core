@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.61.0-2026-08-25-waiting-on-claim";
+const BUILD = "aura-core-v7.62.0-2026-08-25-one-shop-two-names";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -22955,9 +22955,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // and supplying it is the whole adapter.
       if (!isOp) return { cmd: "REQUESTS", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const rqArgs = (rest || "").trim().split(/\s+/).filter(Boolean);
-      const rqShop = rqArgs[0];
-      if (!rqShop) return { cmd: "REQUESTS", payload: { ok: false,
+      const rqGiven = rqArgs[0];
+      if (!rqGiven) return { cmd: "REQUESTS", payload: { ok: false,
         error: "Usage: REQUESTS <shop> [ACCEPT <req_id> <when> | DECLINE <req_id>]" } };
+      // Either name. A shop that claims its page starts thinking of itself by its PTA, and its
+      // requests were filed under the crawl id months earlier - both have to find them.
+      const rqFound = await resolveShop(env, rqGiven);
+      const rqShop = rqFound ? rqFound.key : rqGiven;
       const rqAct = (rqArgs[1] || "").toUpperCase();
 
       const rqLoad = async (rid) => {
@@ -22995,8 +22999,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // This is the whole business model in one branch: the work arrives BEFORE they sign up, and
         // it is here when they do.
         try {
-          const claimRow = await env.AURA_MEMORY.prepare(
-            "SELECT claimed_at, name FROM cg_business WHERE id = ? LIMIT 1").bind(rqShop).first();
+          const claimRow = rqFound && rqFound.row
+            ? { claimed_at: rqFound.row.claimed_at, name: rqFound.row.name }
+            : (rqFound && !rqFound.crawled ? { claimed_at: "signed-up", name: null } : null);
           if (claimRow && !claimRow.claimed_at) {
             req.status = "waiting_on_claim"; req.proposed = when;
             await rqSave(req);
@@ -23008,7 +23013,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           }
         } catch {}
 
-        const ap = await processCommand("APPOINTMENT NEW " + rqShop + " ::: " + JSON.stringify({
+        // The calendar lives on the PTA, not on the crawl row.
+        const bookAs = (rqFound && rqFound.pta) || req.pta || rqShop;
+        const ap = await processCommand("APPOINTMENT NEW " + bookAs + " ::: " + JSON.stringify({
           customer: req.person, name: req.name || null, contact: req.contact || null,
           artist: req.artist || null, start: when,
           note: "From mytattoo.world - " + (req.brief || "a design they made") +
@@ -49089,6 +49096,43 @@ async function nextChips(env, design, change) {
   } catch { return null; }
 }
 
+// ══ ONE SHOP, TWO NAMES (2026-08-25) ═════════════════════════════════════════════════════════
+//
+// A shop exists twice in this world. As a `cg_business` UUID if it was crawled, and as a `pta_` if
+// it signed up. `interest` and `REQUESTS` keyed on the first; the booking machinery keys on the
+// second. A claim links them - `UPDATE cg_business SET pta = ?, claimed_at = ?` - so a CLAIMED
+// crawl row works fine.
+//
+// BUT NOTHING EVER INSERTS INTO cg_business. Verified: zero INSERTs in the whole file. So a shop
+// that came to Aaron directly and signed up has no crawl row at all, and `interest` answered
+// NO_SUCH_SHOP for a business that is fully set up and taking bookings - while a shop that has
+// never heard of him worked perfectly. Backwards, and the kind of split that costs a week once
+// requests exist under two schemes.
+//
+// So: give either name, get both. And the REQUEST IS ALWAYS FILED UNDER THE CRAWL ID WHEN ONE
+// EXISTS, because that id is what survives a claim - a request filed today against an unclaimed
+// listing is still there, under the same key, the day they take their page.
+async function resolveShop(env, given) {
+  const id = String(given || "").trim();
+  if (!id) return null;
+  try {
+    if (/^pta_/.test(id)) {
+      const row = await env.AURA_MEMORY.prepare(
+        "SELECT id, name, locality, region, email, email_found, phone, claimed_at, pta " +
+        "FROM cg_business WHERE pta = ? LIMIT 1").bind(id).first();
+      // Signed up, never crawled: the PTA is the only name it has, and it is a real business with
+      // a real calendar. Say so rather than pretending it does not exist.
+      if (!row) return { key: id, pta: id, row: null, claimed: true, crawled: false };
+      return { key: row.id, pta: id, row, claimed: !!row.claimed_at, crawled: true };
+    }
+    const row = await env.AURA_MEMORY.prepare(
+      "SELECT id, name, locality, region, email, email_found, phone, claimed_at, pta " +
+      "FROM cg_business WHERE id = ? LIMIT 1").bind(id).first();
+    if (!row) return null;
+    return { key: row.id, pta: row.pta || null, row, claimed: !!row.claimed_at, crawled: true };
+  } catch { return null; }
+}
+
 async function findReference(query, env, opts = {}) {
   const t0 = Date.now();
   const q = String(query || "").trim();
@@ -51589,10 +51633,11 @@ export class PublicEntry extends WorkerEntrypoint {
         const shop = String(b.shop || "").trim();
         const id = String(b.design || "").trim();
         if (!shop) return { ok: false, error: "NEED_SHOP" };
-        const row = await env.AURA_MEMORY.prepare(
-          "SELECT id, name, locality, region, email, email_found, phone, claimed_at " +
-          "FROM cg_business WHERE id = ? LIMIT 1").bind(shop).first();
-        if (!row) return { ok: false, error: "NO_SUCH_SHOP" };
+        // Either name works - see `resolveShop`. A shop that signed up directly used to be
+        // unreachable here while a crawled stranger worked.
+        const found = await resolveShop(env, shop);
+        if (!found) return { ok: false, error: "NO_SUCH_SHOP" };
+        const row = found.row || { id: found.key, name: null, claimed_at: found.claimed ? "signed-up" : null };
         const who = String(b.name || "").trim().slice(0, 80) || "Somebody";
         const note = who + " designed a tattoo on mytattoo.world and wants " +
           (row.name || "your shop") + " to do it.";
@@ -51624,8 +51669,11 @@ export class PublicEntry extends WorkerEntrypoint {
           // Notification is not the system of record.
           const reqId = "req_" + Array.from(crypto.getRandomValues(new Uint8Array(8)))
             .map(x => x.toString(16).padStart(2, "0")).join("");
-          await env.AURA_KV.put("req:" + shop + ":" + reqId, JSON.stringify({
-            id: reqId, shop, person: me, name: who,
+          // Keyed on the RESOLVED id, never on what the caller typed - otherwise the same shop
+          // files under two keys and a console reading one never sees the other.
+          const shopKey = found.key;
+          await env.AURA_KV.put("req:" + shopKey + ":" + reqId, JSON.stringify({
+            id: reqId, shop: shopKey, pta: found.pta || null, person: me, name: who,
             design: id || null, image: designImg || null,
             // What they settled, in their words - this is the half that makes it a project rather
             // than "how much for this".
@@ -51647,7 +51695,7 @@ export class PublicEntry extends WorkerEntrypoint {
             proposed: null, booking: null
           }), { expirationTtl: 180 * 24 * 3600 });
           // The index a console reads, so listing does not need a KV scan.
-          const idxKey = "reqs:" + shop;
+          const idxKey = "reqs:" + shopKey;
           let idx = [];
           try { idx = JSON.parse(await env.AURA_KV.get(idxKey) || "[]"); } catch {}
           idx.unshift(reqId);

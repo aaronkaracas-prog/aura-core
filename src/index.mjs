@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.67.0-2026-08-25-clean-on-both-screens";
+const BUILD = "aura-core-v7.68.0-2026-08-25-tattoo-intent-is-an-object";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -51350,7 +51350,7 @@ export class PublicEntry extends WorkerEntrypoint {
         // changes.
         const talkPin = (await env.AURA_KV.get("config:talk:model").catch(() => null)) || null;
         const talkModel = talkPin && talkPin.trim() ? talkPin.trim() : undefined;
-        const [r, g] = await Promise.all([
+        const [r, g, iRes] = await Promise.all([
         callBrain({
           model: talkModel,
           system:
@@ -51404,6 +51404,52 @@ export class PublicEntry extends WorkerEntrypoint {
                                            content: String(h.said || "").slice(0, 1500) })),
                        { role: "user", content: said }],
             max_tokens: 120
+          }, env).catch(() => null),
+          // ══ THE THIRD READ: THE FACTS, AS FIELDS ═════════════════════════════════════════
+          // Beside her reply rather than after it. It reads the same conversation the other two
+          // read and depends on neither, so it costs no extra wait.
+          // She is told the SHAPE and told to leave out what she does not know. A model that
+          // guesses a placement nobody mentioned would tick a stage the person never answered,
+          // and they would never be asked - which is worse than asking twice.
+          callBrain({
+            model: talkModel,
+            system:
+              "Read the conversation and return the FACTS about the tattoo being designed, as JSON.\n\n" +
+              "Return ONLY the JSON object. No preamble, no markdown fence.\n\n" +
+              "{\n" +
+              '  "subject": "what the tattoo is OF, in their words - a labrador, a japanese dragon, ' +
+              'Clifford the Big Red Dog surfing in Malibu",\n' +
+              '  "subject_path": ["animals","dogs","labrador"],\n' +
+              '  "job": "new | cover | add | rework",\n' +
+              '  "style": "japanese | realism | fine line | black and grey | traditional | ...",\n' +
+              '  "placement": "where on the body, in their words - full back, inner forearm",\n' +
+              '  "size": "large, about 14 inches, small",\n' +
+              '  "colour": "full_colour | black_and_grey | muted",\n' +
+              '  "orientation": "vertical | diagonal | horizontal | wrap_around",\n' +
+              '  "flow": "static | ascending | descending | dynamic",\n' +
+              '  "mood": "fierce | majestic | mystical | protective | calm",\n' +
+              '  "detail": "bold | balanced | intricate | ultra",\n' +
+              '  "elements": ["cherry blossoms","waves"],\n' +
+              '  "meaning": "why they are getting it - who it is for, what happened",\n' +
+              '  "brief": "one paragraph, at most 60 words, describing the tattoo for a tattoo artist to read"\n' +
+              "}\n\n" +
+              "RULES:\n" +
+              "- OMIT ANY FIELD THEY HAVE NOT SETTLED. Do not guess and do not fill a field with " +
+              "a sensible default. An empty field means she asks; a wrong one means she never does.\n" +
+              "- A CORRECTION REPLACES what it corrects. Three legs then one leg is ONE leg, and " +
+              "three is never mentioned again.\n" +
+              "- Leave out anything YOU suggested that they did not take up.\n" +
+              "- `subject_path` only when they arrived through the categories. Omit it when they " +
+              "simply said what they wanted.\n" +
+              "- `meaning` is the most important field at the far end. If they told you somebody " +
+              "died, or who it is for, or what they have been through, it goes here in plain words.\n" +
+              "- `brief` describes the TATTOO, never the conversation.",
+            messages: [
+              ...(b.brief ? [{ role: "assistant", content: "Brief so far: " + String(b.brief).slice(0, 400) }] : []),
+              ...hist.map(h => ({ role: h.role === "aura" ? "assistant" : "user",
+                                  content: String(h.said || "").slice(0, 1500) })),
+              { role: "user", content: said }],
+            max_tokens: 500
           }, env).catch(() => null)
         ]);
         if (!r?.ok) return { ok: false, error: "COULD_NOT_ANSWER", detail: r?.error || null };
@@ -51425,32 +51471,97 @@ export class PublicEntry extends WorkerEntrypoint {
         // fact behind. A brief that accumulates both is worse than no brief at all - the same
         // shape as a calibration that scales its own output, which this file has already paid for
         // once.
-        let brief = null;
-        if (ready || b.brief) {
-          try {
-            const br = await callBrain({
-              model: talkModel,
-              system:
-                "Keep a short brief of the tattoo being designed - the facts that are still true.\n\n" +
-                "Return ONLY the brief, one paragraph, at most 60 words. No preamble.\n\n" +
-                "RULES:\n" +
-                "- Include only what the PERSON has settled: subject, style, colour, placement, " +
-                "size, who or what it is for, and any specific detail they insisted on.\n" +
-                "- A CORRECTION REPLACES what it corrects. If they said three legs and then said " +
-                "one leg, the brief says one leg and never mentions three.\n" +
-                "- Leave out anything they have not decided, and anything you suggested that they " +
-                "did not take up.\n" +
-                "- Leave out the conversation itself. This describes the tattoo, not the chat.",
-              messages: [
-                ...(b.brief ? [{ role: "assistant", content: "Brief so far: " + String(b.brief).slice(0, 400) }] : []),
-                ...hist.map(h => ({ role: h.role === "aura" ? "assistant" : "user",
-                                    content: String(h.said || "").slice(0, 1500) })),
-                { role: "user", content: said }],
-              max_tokens: 140 }, env);
-            if (br?.ok && br.text) brief = String(br.text).trim().slice(0, 400);
-          } catch {}
-        }
-        return { ok: true, said: r.text, ready_to_draw: ready, show_me: show, brief };
+        //
+        // ══ AND NOW IT IS AN OBJECT, NOT A PARAGRAPH (2026-08-25) ══════════════════════════
+        //
+        // THE CHECKLIST IS A KEYBOARD. Tapping Animals -> Dogs -> Labrador is the same sentence as
+        // typing "labrador"; tapping Japanese is typing "japanese". Both doors say the same thing
+        // and both have to land in the same place. A 60-word paragraph cannot be that place:
+        //   - you cannot tick a checkbox into a paragraph
+        //   - you cannot show a stage as already resolved
+        //   - you cannot let somebody tap a chip and change ONE fact
+        //   - you cannot hand an artist structured intent
+        // So the fields are canonical and the paragraph is a VIEW of them. Both come back from one
+        // call, because asking twice would let them disagree - and two readers of one fact is the
+        // most expensive recurring bug in this codebase.
+        //
+        // ADDITIVE ON PURPOSE. `make`, `evolve` and `interest` still receive `brief` as the same
+        // prose string they receive today. Nothing reads `intent` yet. If the JSON fails entirely
+        // the reply falls back to the raw text as prose, which is exactly the old behaviour.
+        //
+        // IT RUNS ON EVERY TURN NOW, AND IN PARALLEL. It used to fire only once she was ready to
+        // draw, and SEQUENTIALLY after the other two - so the fields did not exist while somebody
+        // was still deciding (which is precisely when the screens need them), and it added its own
+        // latency to every ready turn. The three calls do not depend on each other; they all read
+        // the same conversation. So they go together.
+        //
+        // MEANING IS A FIELD, and it is the one that matters most at the far end. A brief that
+        // says "dragon, japanese, full back, large" has thrown away the only thing that lets an
+        // artist open with "I'm sorry about your mum - sit down" instead of "what are you after".
+        let brief = null, intent = null;
+        try {
+          const it = iRes;
+          if (it?.ok && it.text) {
+            let parsed = null;
+            try { parsed = JSON.parse(it.text); }
+            // `repairJson` RETURNS A PARSED OBJECT, not a string - wrapping it in JSON.parse
+            // stringifies it to "[object Object]" and throws, which silently killed both repair
+            // paths and left every fenced or truncated reply with no fields at all. Caught by the
+            // test, not by reading.
+            catch { try { parsed = repairJson(it.text); } catch {} }
+            if (parsed) parsed = unwrapSchema(parsed);
+            if (parsed && typeof parsed === "object") {
+              // One value per field, trimmed and capped. A model that answers a field with an
+              // object or an array where a string belongs has destroyed six correct names on two
+              // live businesses before - coerce at the boundary, or drop it.
+              const str = (v, n) => (typeof v === "string" && v.trim()) ? v.trim().slice(0, n) : null;
+              const one = (v, allowed) => {
+                const s = str(v, 40); if (!s) return null;
+                const k = s.toLowerCase().replace(/[\s_-]+/g, "_");
+                return allowed.includes(k) ? k : null;
+              };
+              intent = {
+                // WHAT THEY ARE HERE FOR. Cover-up and add-to start from their own photo, which
+                // is a different opening move, so this is worth knowing early.
+                job:         one(parsed.job, ["new", "cover", "add", "rework"]),
+                // THE ONLY REQUIRED FIELD. Everything else is optional and she only stops for
+                // what she does not already have.
+                subject:     str(parsed.subject, 200),
+                // Where they are in the tree, when they got here by tapping rather than typing:
+                // ["animals","dogs","labrador"]. Null when they typed - and that is fine, the
+                // subject is the fact and the path is only how they reached it.
+                subject_path: Array.isArray(parsed.subject_path)
+                  ? parsed.subject_path.map(x => str(x, 40)).filter(Boolean).slice(0, 4) : null,
+                style:       str(parsed.style, 60),
+                placement:   str(parsed.placement, 60),
+                size:        str(parsed.size, 40),
+                colour:      one(parsed.colour ?? parsed.color, ["full_colour", "full_color", "black_and_grey", "black_and_gray", "muted"]),
+                orientation: one(parsed.orientation, ["vertical", "diagonal", "horizontal", "wrap_around"]),
+                flow:        one(parsed.flow, ["static", "ascending", "descending", "dynamic"]),
+                mood:        one(parsed.mood, ["fierce", "majestic", "mystical", "protective", "calm"]),
+                detail:      one(parsed.detail, ["bold", "balanced", "intricate", "ultra"]),
+                elements:    Array.isArray(parsed.elements)
+                  ? parsed.elements.map(x => str(x, 40)).filter(Boolean).slice(0, 6) : null,
+                meaning:     str(parsed.meaning, 300)
+              };
+              // The paragraph, from the same answer. A shop reads this; the fields are for us.
+              brief = str(parsed.brief, 400);
+              // WHAT IS STILL MISSING, computed here so one place decides it. The screens read
+              // this to know which stage to stop at, and she reads it to know what to ask. It is
+              // DERIVED, never stored - a stored copy would drift from the fields the moment one
+              // changed.
+              const order = ["subject", "style", "placement", "size", "colour", "orientation",
+                             "flow", "mood", "detail", "elements"];
+              intent.resolved = order.filter(k => intent[k] != null &&
+                (!Array.isArray(intent[k]) || intent[k].length));
+              intent.missing = order.filter(k => !intent.resolved.includes(k));
+            }
+            // JSON failed completely: use what came back as the paragraph, which is what this
+            // returned before today. A worse answer beats a dead field.
+            if (!brief) brief = String(it.text).trim().slice(0, 400);
+          }
+        } catch {}
+        return { ok: true, said: r.text, ready_to_draw: ready, show_me: show, brief, intent };
       }
 
       // ── MAKE. The first version. SHOW_IT births it as a PTA, so from this moment the design

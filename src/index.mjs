@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.56.0-2026-08-24-she-answers-first";
+const BUILD = "aura-core-v7.57.0-2026-08-24-two-calls-one-wait";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -51080,7 +51080,20 @@ export class PublicEntry extends WorkerEntrypoint {
         const said = String(b.said || "").trim().slice(0, 2000);
         if (!said) return { ok: false, error: "NOTHING_SAID" };
         const hist = Array.isArray(b.history) ? b.history.slice(-12) : [];
-        const r = await callBrain({
+        // ══ TWO CALLS, ONE WAIT (2026-08-24) ═══════════════════════════════════════════════
+        // MEASURED: about a minute for a reply. `talk` makes two model calls - her answer, then a
+        // cheap read of whether they are ready - and they ran ONE AFTER THE OTHER, on the floor
+        // rung, which is the same model that took 109 seconds on the wall before it got its own
+        // lane. Two sequential calls on the slowest model is a minute of somebody staring at a
+        // screen, and it takes longer to ANSWER than it does to draw.
+        // They do not depend on each other: both read the same conversation. So they go together,
+        // and `config:talk:model` gives the lane a faster model without a deploy. Unset, nothing
+        // changes.
+        const talkPin = (await env.AURA_KV.get("config:talk:model").catch(() => null)) || null;
+        const talkModel = talkPin && talkPin.trim() ? talkPin.trim() : undefined;
+        const [r, g] = await Promise.all([
+        callBrain({
+          model: talkModel,
           system:
             "You are Aura, helping somebody work out the tattoo they want. You are not a prompt " +
             "engineer and you never talk about prompts, models or images as technology.\n\n" +
@@ -51097,13 +51110,12 @@ export class PublicEntry extends WorkerEntrypoint {
                                          content: String(h.said || "").slice(0, 1500) })),
                      { role: "user", content: said }],
           max_tokens: 400
-        }, env);
-        if (!r?.ok) return { ok: false, error: "COULD_NOT_ANSWER", detail: r?.error || null };
-        // A separate, cheap read of "are they ready" - kept apart from her reply so she never
-        // has to emit machine syntax in the middle of a human sentence.
-        let ready = null, show = null;
-        try {
-          const g = await callBrain({
+        }, env),
+        callBrain({
+          model: talkModel,
+          // A separate, cheap read of "are they ready" - kept apart from her reply so she
+          // never has to emit machine syntax in the middle of a human sentence. Runs BESIDE
+          // her answer rather than after it.
             // ══ SHE DECIDES WHEN TO SHOW, NOT AN IF-STATEMENT (2026-08-24) ═══════════════
             // The page had been made to send every typed sentence straight to a picture search,
             // which meant somebody who wrote "my mum passed away and she loved cats" was answered
@@ -51133,17 +51145,19 @@ export class PublicEntry extends WorkerEntrypoint {
                                            content: String(h.said || "").slice(0, 1500) })),
                        { role: "user", content: said }],
             max_tokens: 120
-          }, env);
-          const t = String(g?.text || "").trim();
-          if (g?.ok && t) {
-            const mDraw = t.match(/^DRAW:\s*(.+)$/is);
-            const mShow = t.match(/^SHOW:\s*(.+)$/is);
-            if (mDraw) ready = mDraw[1].trim().slice(0, 400);
-            else if (mShow) show = mShow[1].trim().replace(/[."]+$/, "").slice(0, 80);
-            // Anything else - NOT_YET or a model that ignored the shape - means keep talking,
-            // which is the safe default and the one that was always right before today.
-          }
-        } catch {}
+          }, env).catch(() => null)
+        ]);
+        if (!r?.ok) return { ok: false, error: "COULD_NOT_ANSWER", detail: r?.error || null };
+        let ready = null, show = null;
+        const t = String(g?.text || "").trim();
+        if (g?.ok && t) {
+          const mDraw = t.match(/^DRAW:\s*(.+)$/is);
+          const mShow = t.match(/^SHOW:\s*(.+)$/is);
+          if (mDraw) ready = mDraw[1].trim().slice(0, 400);
+          else if (mShow) show = mShow[1].trim().replace(/[."]+$/, "").slice(0, 80);
+          // Anything else - NOT_YET, or a model that ignored the shape - means keep talking, which
+          // is the safe default and the one that was right before today.
+        }
         return { ok: true, said: r.text, ready_to_draw: ready, show_me: show };
       }
 

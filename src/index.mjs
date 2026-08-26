@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.74.0-2026-08-26-the-card-factory";
+const BUILD = "aura-core-v7.75.0-2026-08-26-layout-not-rendering";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23170,9 +23170,25 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
         // THE HOUSE LINE IS PART OF THE PROMPT, NOT JUST A REFERENCE. A reference carries the look;
         // the words stop the model wandering off the card format even when the reference is weak.
-        const CARD = ". A single subject, centred, filling the frame, on a plain dark ground. " +
-                     "Tattoo design - clean linework, high contrast, no skin, no body, no photograph, " +
-                     "the artwork only.";
+        // ══ A CARD FORMAT SPECIFIES LAYOUT. IT NEVER SPECIFIES RENDERING. ═══════════════════
+        // This said "on a plain dark ground… clean linework, high contrast… no photograph" and
+        // then the row was judged for failing to show sixteen different renderings. Every failure
+        // in the first run traces to one of those words:
+        //   - fine line, sketch, dotwork, minimalist, blackwork came back DARK ON DARK, because
+        //     the format ordered a dark ground and those languages are thin dark marks.
+        //   - traditional came back black-on-black: "clean linework, high contrast" left no room
+        //     for the bold flat COLOUR that is the whole of American traditional.
+        //   - realism, hyperrealism and black-and-grey realism came back as "the same dragon,
+        //     greyer" - because the format literally said NO PHOTOGRAPH, and photographic texture
+        //     is the entire point of those three.
+        //   - ornamental invented clouds, because nothing forbade extra motifs.
+        // The format was fighting the job. A style row exists to VARY rendering, so the format may
+        // constrain only what must be constant: what is in frame, and where.
+        // LIGHT GROUND. Real flash is on paper. Everything thin and dark reads on white; nothing
+        // in this vocabulary is white-ink, and a dark ground is a later special case if it ever is.
+        const CARD = ". A single subject, centred, filling the frame, on a plain light background. " +
+                     "No skin, no body, no border, no background scenery, no extra motifs - " +
+                     "only the subject itself.";
         const wordFor = (v, item) =>
             v === "style"       ? subject + ", " + item + " style"
           : v === "composition" ? subject + ", " + item
@@ -52276,9 +52292,19 @@ export class PublicEntry extends WorkerEntrypoint {
           }
           return parts.join(", ");
         };
-        const TAIL = ". A single subject unless stated otherwise. Tattoo design, clean linework, " +
-                     "high contrast, on a plain background, no skin, no body, no photograph - " +
-                     "the artwork only.";
+        // ══ AN OPTION TILE IS A CARD, NOT THE ARTWORK ══════════════════════════════════════
+        // These used the FINAL-ARTWORK tail - "clean linework, high contrast, no photograph" -
+        // which means somebody who has just chosen HYPERREALISM would see their composition
+        // options rendered back as clean flat linework. The next screen would undo the choice
+        // they made on the last one, and the style card would be a lie.
+        // So option tiles get the layout-only card format, exactly as the factory does. The
+        // rendering comes from the style they picked, which is already in `describe()` and now
+        // comes FIRST in the ladder.
+        // The flat stencil tail stays where it belongs: on `make`, for the artwork an artist has
+        // to work from. Flat is deliberate THERE and wrong here.
+        const TAIL = ". A single subject unless stated otherwise, centred, filling the frame, " +
+                     "on a plain light background. No skin, no body, no border, no background " +
+                     "scenery, no extra motifs - only the subject itself.";
         // ══ A FAMILY, NOT FOUR PICTURES ════════════════════════════════════════════════════
         // This generated each option independently with NO refs - four separate draws from four
         // prompt strings - so they drifted on every axis at once and the person was comparing four

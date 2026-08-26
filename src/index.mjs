@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.82.0-2026-08-26-a-style-card-is-a-tattoo";
+const BUILD = "aura-core-v7.83.0-2026-08-26-the-tree-is-data";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23058,6 +23058,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     //   CARDS GET <key>                            - the row as the page will receive it
     //   CARDS REDO <key> <item>                    - regenerate one card
     //   CARDS DROP <key> <item>                    - remove one card
+    //   CARDS DROPROW <key>                        - remove a whole row
+    //   CARDS TREE [::: {json}]                    - the subject tree, read or replace
     //   CARDS LIST [prefix]                        - what has been manufactured
     //
     // WHY THIS EXISTS. Every navigation card should be a PICTURE, not the word "Rose". Nobody
@@ -23096,6 +23098,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const cSub = (args[0] || "").toUpperCase();
       const cRest = args.slice(1).join(" ").trim();
       const HOUSE_KEY = "card:house";
+      // The tree as it stood in mt-design.html when it moved here. Only ever used to seed KV on
+      // the first read; after that KV is the truth and this is history.
+      const SEED_TREE = {"subjects":{"Portraits":["My Partner","My Child","My Children","My Parent","My Grandparent","My Friend","My Pet","Celebrity","Historical Person","Multiple People"],"Animals & Pets":["Dogs","Cats","Lions","Tigers","Wolves","Bears","Foxes","Horses","Elephants","Deer & Stags","Snakes","Sharks","Whales","Dolphins","Octopus","Panthers","Leopards","Turtles","Fish","Koi","Monkeys & Apes","Rabbits"],"Flowers & Plants":["Rose","Lotus","Peony","Cherry Blossom","Sunflower","Lily","Daisy","Orchid","Tulip","Poppy","Lavender","Hibiscus","Chrysanthemum","Iris","Magnolia","Wildflowers","Birth Flowers","Vines","Trees","Ferns"],"Dragons":["Japanese Dragon","Chinese Dragon","Western Dragon","Serpent Dragon","Wyvern","Baby Dragon","Dragon Skull"],"Skulls & Skeletons":["Human Skull","Sugar Skull","Skeleton","Skeleton Hand","Animal Skull","Cow Skull","Ram Skull","Deer Skull","Bull Skull","Grim Reaper","Pirate Skull"],"Nature & Landscapes":["Mountains","Forest","Waterfall","Desert","River","Sunset","Northern Lights","Canyon","Meadow","Volcano"],"Ocean & Marine":["Waves","Kraken","Ship","Anchor","Lighthouse","Coral","Jellyfish","Seahorse","Mermaid","Compass Rose"],"Birds":["Eagle","Owl","Raven","Swallow","Hummingbird","Phoenix","Crane","Falcon","Peacock","Sparrow","Heron","Vulture"],"Insects & Butterflies":["Butterfly","Moth","Bee","Dragonfly","Beetle","Spider","Scorpion","Ant","Ladybird"],"Mythology":["Greek","Norse","Egyptian","Roman","Celtic","Japanese","Chinese","Hindu","Aztec","Mayan","Slavic"],"Fantasy":["Wizard","Elf","Orc","Fairy","Unicorn","Griffin","Castle","Sword & Sorcery","Dark Fantasy"],"Religious & Spiritual":["Cross","Praying Hands","Madonna","Buddha","Om","Hamsa","Star of David","Rosary","Sacred Heart","Mandala"],"Angels & Demons":["Angel","Archangel","Angel Wings","Fallen Angel","Demon","Devil","Baphomet","Cherub"],"Symbols":["Compass","Anchor","Arrow","Moon and Sun","Mandala","Runes","Infinity","Semicolon","Ouroboros","Triquetra","Evil Eye"],"Zodiac & Astrology":["Aries","Taurus","Gemini","Cancer","Leo","Virgo","Libra","Scorpio","Sagittarius","Capricorn","Aquarius","Pisces","Star Chart","Constellation"],"Space & Universe":["Moon","Sun","Planets","Galaxy","Astronaut","Rocket","Solar System","Black Hole","Meteor","Stars"],"Lettering & Quotes":["A Word","A Quote","A Name","A Date","Roman Numerals","Their Handwriting","Script","Old English","Another Language"],"Memorials":["Name and Dates","Portrait","Angel Wings","Their Handwriting","Something They Loved","Birth Flower","Semicolon","Paw Print"],"Family":["Names","Portrait","Tree of Life","Handprints","Birth Flowers","Matching Piece","Family Crest","Children"],"Love & Relationships":["Heart","Anchor","Infinity","Lock and Key","Matching Piece","Their Name","Wedding Date","Rings"],"Music":["Notes","Instrument","Lyrics","Vinyl","Headphones","Sound Wave","Band","Piano Keys"],"Movies & TV":["A Character","A Quote","A Symbol","A Scene","A Logo"],"Anime & Manga":["A Character","A Symbol","A Quote","A Scene","A Creature"],"Comics & Superheroes":["A Hero","A Villain","A Logo","A Panel","A Quote"],"Gaming":["A Character","A Symbol","A Weapon","A Logo","A Scene","Pixel Art","Controller"],"Sports":["A Team","A Ball","Boxing","Martial Arts","Surfing","Skating","Cycling","Climbing","Running"],"Cars & Motorcycles":["Muscle Car","Classic Car","Motorcycle","Engine","Piston","Steering Wheel","Race Car","Truck"],"Travel & Places":["A City Skyline","A Map","A Country","Coordinates","Aeroplane","Passport Stamp","A Landmark"],"Culture & Heritage":["Irish","Scottish","Italian","Mexican","Polynesian","Maori","African","Native American","Japanese","Indian","Filipino","Greek"],"History":["A Figure","A War","An Era","A Ship","A Weapon","An Artefact"],"Warriors":["Samurai","Viking","Knight","Spartan","Gladiator","Ninja","Archer","Shieldmaiden"],"Horror":["A Monster","A Villain","Haunted House","Zombie","Vampire","Werewolf","A Scene"],"Gothic & Dark Art":["Gothic Architecture","Dark Portrait","Occult","Bats","Ravens","Candles","Thorns"],"Food & Drink":["Coffee","A Fruit","Pizza","Sushi","Chilli","A Bottle","Cocktail","Honey"],"Objects & Things":["A Clock","A Key","A Camera","A Book","A Lantern","A Feather","Playing Cards","Dice","A Knife"],"Architecture & Cityscapes":["A Skyline","A Building","A Bridge","A Cathedral","A Doorway","Ruins"],"Science":["DNA","Atom","Chemistry","Anatomy","A Formula","Microscope","Brain","Heart"],"Technology & Future":["Circuit","Robot","Cyberpunk","Biomechanical","A Machine","Glitch"],"Abstract & Conceptual":["Shapes","Line Work","Negative Space","Surreal","Double Exposure","Fragments"],"Geometric & Patterns":["Sacred Geometry","Mandala","Ornamental","Dotwork","Tribal","Blackwork Pattern"],"Humor & Fun":["Something Silly","A Joke","A Cartoon","An Ironic Piece"],"Matching Tattoos":["With a Partner","With a Friend","With Family","Siblings","A Group"],"Personal Story":["Something I Went Through","A Turning Point","Recovery","An Achievement","A Place That Matters"],"Something Completely Original":["Tell Aura"]},"specific":{"Dogs":["Golden Retriever","Labrador Retriever","German Shepherd","French Bulldog","Bulldog","Pit Bull","Husky","Rottweiler","Doberman","Poodle","Labradoodle","Goldendoodle","Dachshund","Chihuahua","Border Collie","Australian Shepherd","Corgi","Boxer","Beagle","Great Dane","Shih Tzu","Pomeranian","Cane Corso","Belgian Malinois","Mixed Breed"],"Cats":["House Cat","Black Cat","Tabby","Siamese","Maine Coon","Persian","Bengal","Sphynx","Calico","Tuxedo Cat"],"Horses":["Mustang","Arabian","Thoroughbred","Clydesdale","Stallion","Mare and Foal"],"Snakes":["Cobra","Python","Rattlesnake","Viper","Boa","Coral Snake"],"Sharks":["Great White","Hammerhead","Tiger Shark","Whale Shark"],"Fish":["Koi","Bass","Trout","Marlin","Angelfish","Piranha"],"Greek":["Zeus","Poseidon","Hades","Athena","Aphrodite","Apollo","Artemis","Ares","Hermes","Medusa","Hercules","Achilles","Atlas","Icarus","Pegasus","Cerberus","Minotaur","Sirens"],"Norse":["Odin","Thor","Loki","Freya","Fenrir","Jormungandr","Valkyrie","Yggdrasil","Mjolnir","Ravens of Odin"],"Egyptian":["Anubis","Ra","Horus","Isis","Osiris","Bastet","Sphinx","Scarab","Ankh","Eye of Horus"],"Celtic":["Celtic Knot","Claddagh","Tree of Life","Triquetra","Celtic Cross","Green Man"],"Japanese":["Oni","Hannya","Kitsune","Tengu","Samurai","Geisha","Koi","Foo Dog"],"Roman":["Caesar","Romulus","Legionary","Colosseum","SPQR"],"Chinese":["Foo Dog","Qilin","Monkey King","Phoenix","Jade Emperor"],"Hindu":["Ganesha","Shiva","Krishna","Hanuman","Lakshmi","Om"],"Aztec":["Quetzalcoatl","Sun Stone","Eagle Warrior","Jaguar Warrior"],"Mayan":["Kukulkan","Calendar","Jaguar God","Temple"],"Muscle Car":["Mustang","Camaro","Charger","Challenger","Corvette","Chevelle","GTO"],"Motorcycle":["Harley","Chopper","Cafe Racer","Sport Bike","Bobber","Vintage"],"A Team":["Football","Basketball","Baseball","Hockey","Soccer","Rugby"]}};
       const rowKey = (k) => "card:row:" + String(k).toLowerCase().replace(/[^a-z0-9:_-]+/g, "-").slice(0, 100);
       const slugOf = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
 
@@ -23307,6 +23312,65 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const l = await env.AURA_KV.list({ prefix: pre, limit: 200 }).catch(() => ({ keys: [] }));
         return { cmd: "CARDS", payload: { ok: true, count: l.keys.length,
           rows: l.keys.map((k) => k.name.replace("card:row:", "")) } };
+      }
+
+      // ══ DROPROW — REMOVE A WHOLE ROW ═════════════════════════════════════════════════════
+      // A row could only ever be OVERWRITTEN, never removed. So a comparison row (`style:rose:v2`),
+      // an abandoned attempt, a retired subject - every one of them sits in KV forever, turns up
+      // in every prefix sheet, and can be matched by a lookup that was aiming at something else.
+      // One command, and it names what it removed rather than reporting a silent success.
+      // The IMAGES are not touched. They are content-addressed and shared - two rows can point at
+      // the same picture, and deleting a row is a statement about the ROW.
+      // ══ TREE — THE SUBJECT TREE, IN KV ═══════════════════════════════════════════════════
+      //   CARDS TREE                - what is there, and how big a build it implies
+      //   CARDS TREE ::: {json}     - replace it
+      //
+      // It lived inside mt-design.html, which meant a runner could not walk it (a workflow cannot
+      // read a JavaScript object out of an HTML page) and adding one dog breed was a page deploy.
+      // Here it is data: the page renders it, the builder walks it, and a new breed is one write.
+      // SEEDED FROM THE PAGE on first read so nothing has to be retyped and the two cannot start
+      // out disagreeing.
+      if (cSub === "TREE") {
+        const TREE_KEY = "card:tree";
+        const cut3 = cRest.indexOf(":::");
+        if (cut3 >= 0) {
+          let t = null;
+          try { t = JSON.parse(cRest.slice(cut3 + 3).trim()); }
+          catch { try { t = repairJson(cRest.slice(cut3 + 3).trim()); } catch {} }
+          if (!t || !t.subjects) return { cmd: "CARDS", payload: { ok: false, error: "BAD_TREE",
+            note: 'Needs {"subjects":{"Category":["Kind",...]},"specific":{"Kind":["Leaf",...]}}' } };
+          await env.AURA_KV.put(TREE_KEY, JSON.stringify(t));
+          return { cmd: "CARDS", payload: { ok: true, replaced: true,
+            categories: Object.keys(t.subjects).length } };
+        }
+        let tree = await env.AURA_KV.get(TREE_KEY, "json").catch(() => null);
+        let seeded = false;
+        if (!tree) { tree = SEED_TREE; await env.AURA_KV.put(TREE_KEY, JSON.stringify(tree)); seeded = true; }
+        // THE COUNT IS THE POINT. A leaf is one CARDS SUBJECT run - a style wall plus a
+        // composition wall, ~27 cards. On Flux that is free but UNMETERED: env.AI.run() is a
+        // binding call, so it never passes the meter and nothing counts the neurons. The daily
+        // allocation is 10,000. This number is how you find out you are over it BEFORE a builder
+        // runs for six hours discovering it by being throttled.
+        let leaves = 0;
+        for (const kinds of Object.values(tree.subjects || {}))
+          for (const kind of kinds) leaves += (tree.specific && tree.specific[kind]) ? tree.specific[kind].length : 1;
+        return { cmd: "CARDS", payload: { ok: true, seeded,
+          categories: Object.keys(tree.subjects || {}).length,
+          kinds: Object.values(tree.subjects || {}).reduce((n, v) => n + v.length, 0),
+          leaves, cards_if_built: leaves * 27,
+          note: "One leaf is one CARDS SUBJECT run, about 27 cards. " + (leaves * 27) +
+                " cards against a 10,000/day Workers AI allocation that nothing is counting - " +
+                "build a category at a time, not the tree." } };
+      }
+
+      if (cSub === "DROPROW") {
+        const key = rowKey(cRest.trim());
+        const row = await env.AURA_KV.get(key, "json").catch(() => null);
+        if (!row) return { cmd: "CARDS", payload: { ok: false, error: "NO_SUCH_ROW", key: cRest.trim() || null } };
+        await env.AURA_KV.delete(key);
+        return { cmd: "CARDS", payload: { ok: true, dropped: row.key, cards: row.items.length,
+          note: "The row is gone. The images it pointed at are not deleted - they are shared and " +
+                "content-addressed, so another row may be using the same picture." } };
       }
 
       if (cSub === "DROP") {
@@ -23567,7 +23631,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
 
       return { cmd: "CARDS", payload: { ok: false,
-        error: "Sub-commands: SUBJECT, HOUSE, ROW, REDO, DROP, SHEET, GET, LIST" } };
+        error: "Sub-commands: SUBJECT, HOUSE, ROW, REDO, DROP, DROPROW, TREE, SHEET, GET, LIST" } };
     }
 
     case "WALL": {

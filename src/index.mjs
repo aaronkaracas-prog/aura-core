@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.69.0-2026-08-25-the-checklist";
+const BUILD = "aura-core-v7.70.0-2026-08-26-form-character-style";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -51435,9 +51435,9 @@ export class PublicEntry extends WorkerEntrypoint {
               '  "placement": "where on the body, in their words - full back, inner forearm",\n' +
               '  "size": "large, about 14 inches, small",\n' +
               '  "colour": "full_colour | black_and_grey | muted",\n' +
-              '  "orientation": "vertical | diagonal | horizontal | wrap_around",\n' +
-              '  "flow": "static | ascending | descending | dynamic",\n' +
-              '  "mood": "fierce | majestic | mystical | protective | calm",\n' +
+              '  "form": "what version of it they are picturing - head portrait, head and chest, ' +
+              'full body sitting, coiled, flying, single bloom, a bouquet",\n' +
+              '  "character": "what it should feel like - happy, loving, fierce, majestic, delicate, menacing",\n' +
               '  "detail": "bold | balanced | intricate | ultra",\n' +
               '  "elements": ["cherry blossoms","waves"],\n' +
               '  "meaning": "why they are getting it - who it is for, what happened",\n' +
@@ -51546,9 +51546,13 @@ export class PublicEntry extends WorkerEntrypoint {
                 placement:   str(parsed.placement, 60),
                 size:        str(parsed.size, 40),
                 colour:      one(parsed.colour ?? parsed.color, ["full_colour", "full_color", "black_and_grey", "black_and_gray", "muted"]),
-                orientation: one(parsed.orientation, ["vertical", "diagonal", "horizontal", "wrap_around"]),
-                flow:        one(parsed.flow, ["static", "ascending", "descending", "dynamic"]),
-                mood:        one(parsed.mood, ["fierce", "majestic", "mystical", "protective", "calm"]),
+                // FORM and CHARACTER are FREE STRINGS, not enums. Their vocabulary is generated
+                // per subject and cached, so there is no fixed list to validate against - and a
+                // person who says "head and chest" or "goofy" must have that survive verbatim.
+                // Validating them against a table would silently drop the ones we did not think
+                // of, which is the whole reason they are contextual in the first place.
+                form:        str(parsed.form, 60),
+                character:   str(parsed.character, 60),
                 detail:      one(parsed.detail, ["bold", "balanced", "intricate", "ultra"]),
                 elements:    Array.isArray(parsed.elements)
                   ? parsed.elements.map(x => str(x, 40)).filter(Boolean).slice(0, 6) : null,
@@ -51560,8 +51564,11 @@ export class PublicEntry extends WorkerEntrypoint {
               // this to know which stage to stop at, and she reads it to know what to ask. It is
               // DERIVED, never stored - a stored copy would drift from the fields the moment one
               // changed.
-              const order = ["subject", "style", "placement", "size", "colour", "orientation",
-                             "flow", "mood", "detail", "elements"];
+              // The design ladder, and only it. Placement and size are read out of a sentence
+              // when somebody offers them, but they are NOT design stages any more - they are
+              // on-body decisions made after the artwork exists - so they do not count toward
+              // what is resolved or missing here.
+              const order = ["subject", "form", "character", "style", "colour", "detail"];
               intent.resolved = order.filter(k => intent[k] != null &&
                 (!Array.isArray(intent[k]) || intent[k].length));
               intent.missing = order.filter(k => !intent.resolved.includes(k));
@@ -51723,57 +51730,68 @@ export class PublicEntry extends WorkerEntrypoint {
           if (Array.isArray(v)) return v.length > 0;
           return v != null && String(v).trim() !== "";
         };
-        // THE STAGES, in the order Aaron's screens ask them. `subject` first because nothing can
-        // be drawn without it; `elements` last because it is the only one that adds rather than
-        // decides. `meaning` is deliberately NOT a stage - she asks for it in conversation, and a
-        // tattoo without one is not unfinished.
+        // ══ THE LADDER (rebuilt 2026-08-26) ═══════════════════════════════════════════════
+        // WHAT CHANGED AND WHY. This asked subject -> style -> placement -> size -> ... and the
+        // prototype showed it plainly: somebody tapped "golden retriever" and was immediately
+        // asked WHAT STYLE, before anything knew what the picture was OF. A head portrait and a
+        // full-body running dog are different tattoos, and style is a meaningless question until
+        // you know which one is being styled.
+        //
+        //   FORM      - what version of this thing are you picturing? head / full body / coiled
+        //   CHARACTER - what does it feel like? happy / fierce / soulful / delicate
+        //   STYLE     - LAST, because it is how the resolved thing gets rendered
+        //
+        // PLACEMENT AND SIZE ARE GONE FROM HERE. They are not design decisions, they are
+        // on-body decisions, and they belong after the artwork exists - which is what Aaron said
+        // about placement hours before this document arrived. A ladder that asks where it goes
+        // before it knows what it is has the order backwards.
+        //
+        // FORM AND CHARACTER ARE CONTEXTUAL. A dog's forms are not a dragon's forms and neither
+        // are a rose's. Their options are generated FROM THE RESOLVED SUBJECT and cached, rather
+        // than hand-written across 44 categories - see `_ladderOpts` below. Everything else on
+        // this list is universal: fierce means fierce whatever it is.
         const STAGES = [
-          { field: "subject",     ask: "What is it going to be?",              opts: null },
-          { field: "style",       ask: "What style?",
-            opts: ["japanese", "realism", "fine line", "black and grey", "traditional", "neo-traditional", "watercolour", "minimalist"] },
-          { field: "placement",   ask: "Where on you?",
-            opts: ["full back", "upper back", "chest", "forearm", "upper arm", "ribs", "shoulder", "thigh"] },
-          { field: "size",        ask: "How big?",
-            opts: ["small", "medium", "large", "full coverage"] },
-          { field: "colour",      ask: "Colour, or black and grey?",
+          { field: "subject",   ask: "What is it going to be?",     opts: null },
+          { field: "form",      ask: "How do you picture it?",      opts: "contextual" },
+          { field: "character", ask: "What should it feel like?",   opts: "contextual" },
+          { field: "style",     ask: "What style?",
+            opts: ["japanese", "realism", "hyperrealism", "black and grey realism", "fine line",
+                   "traditional", "neo-traditional", "blackwork", "illustrative", "watercolour",
+                   "geometric", "minimalist", "dotwork", "ornamental", "sketch", "etching"] },
+          { field: "colour",    ask: "Colour, or black and grey?",
             opts: ["full colour", "black and grey", "muted colour"] },
-          { field: "orientation", ask: "How should it sit?",
-            opts: ["vertical", "diagonal", "horizontal", "wrapping around"] },
-          { field: "flow",        ask: "Which way does it move?",
-            opts: ["still", "rising", "descending", "twisting"] },
-          { field: "mood",        ask: "What should it feel like?",
-            opts: ["fierce", "majestic", "mystical", "protective", "calm"] },
-          { field: "detail",      ask: "How much detail?",
+          { field: "detail",    ask: "How much detail?",
             opts: ["bold and simple", "balanced", "intricate", "very fine"] }
         ];
-        const stage = STAGES.find(s => !has(s.field)) || null;
+        // `let`, not `const`: a contextual stage whose options come back empty is SKIPPED and
+        // this is reassigned to the next one. Assigning to a const throws TypeError at runtime
+        // and `node --check` passes it cleanly - the same shape that has bitten this file seven
+        // times.
+        let stage = STAGES.find(s => !has(s.field)) || null;
 
         // ── CANONICAL. Everything that decides the pixels, in a fixed order, from a fixed list.
         // Unknown keys are ignored rather than appended, because a field arriving in a different
         // order or a stray key would produce a different string for the same tattoo and quietly
         // turn a free cache hit into a paid generation.
-        const ORDER = ["subject", "style", "placement", "size", "colour", "orientation", "flow", "mood", "detail", "elements"];
+        const ORDER = ["subject", "form", "character", "style", "colour", "detail", "placement", "size", "elements"];
         const say = (k, v) => {
           const t = Array.isArray(v) ? v.join(" and ") : String(v);
           const s = t.trim().toLowerCase();
           if (!s) return null;
           if (k === "subject")     return s;
+          // FORM comes back as a phrase from the contextual list - "head and chest", "coiled
+          // around itself" - so it is spoken as-is rather than wrapped in a preposition that
+          // would only fit some of them.
+          if (k === "form")        return s;
+          if (k === "character")   return s;
           if (k === "style")       return s + " style";
+          if (k === "colour")      return s;
+          if (k === "detail")      return s + " linework";
+          // Placement and size are no longer ASKED here, but a person who says "on my forearm"
+          // still has it read out of their sentence, and it still belongs in the picture and in
+          // the brief the artist reads.
           if (k === "placement")   return "on the " + s;
           if (k === "size")        return s;
-          if (k === "colour")      return s;
-          if (k === "orientation") {
-            // The chip says "vertical" because that is what a person taps. The PROMPT has to read
-            // like English or the model gets "running wrapping around", which is what this
-            // produced before the test printed it out loud.
-            const O = { "vertical": "running vertically", "diagonal": "running diagonally",
-                        "horizontal": "running horizontally", "wrapping around": "wrapping around the body",
-                        "wrap around": "wrapping around the body", "wrap_around": "wrapping around the body" };
-            return O[s] || s;
-          }
-          if (k === "flow")        return s;
-          if (k === "mood")        return s;
-          if (k === "detail")      return s + " linework";
           if (k === "elements")    return "with " + s;
           return s;
         };
@@ -51814,13 +51832,95 @@ export class PublicEntry extends WorkerEntrypoint {
             next: await nextChips(env, subject, null) };
         }
 
+        // ── CONTEXTUAL OPTIONS. A dog's forms are not a dragon's forms.
+        // Hand-writing these across 44 categories, their subcategories and their breeds is
+        // thousands of entries, every one a guess about a subject nobody here knows - and it is
+        // wrong the first time somebody picks Belgian Malinois. So they are asked for ONCE per
+        // subject, cached under that subject forever, and reused by everybody after.
+        //
+        // WHAT IS NOT DONE THIS WAY: the subject tree itself. Dog breeds are stable knowledge and
+        // stay canonical in the page - we do not want a model reinventing what a dog is every
+        // time. Only "given this subject, what visual decisions remain" is generated, because
+        // that is the question that genuinely varies.
+        //
+        // 6-12, NOT ALWAYS 10. A subject with six honest forms should return six. Filler options
+        // generated to hit a number are worse than no option - somebody has to read every one.
+        const ladderOpts = async (field, subject) => {
+          const slug = String(subject).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+          const ck = "ladder:" + field + ":" + slug;
+          // Cached, and no TTL - same reasoning as the image cache. The good ways to compose a
+          // golden retriever are not news.
+          try {
+            const hit = await env.AURA_KV.get(ck, "json");
+            if (hit && Array.isArray(hit) && hit.length) return hit;
+          } catch {}
+          const q = field === "form"
+            ? "Someone is designing a tattoo of: " + subject + "\n\n" +
+              "List the distinct WAYS THIS IS COMPOSED as a tattoo - what version of it are they " +
+              "picturing. For a dog that is things like head portrait, head and chest, full body " +
+              "sitting, running, side profile. For a dragon, coiled, flying, ascending, just the " +
+              "head. For a flower, single bloom, stem and bloom, a bouquet, a vine."
+            : "Someone is designing a tattoo of: " + subject + "\n\n" +
+              "List the distinct CHARACTERS or FEELINGS this tattoo could have. For a dog that is " +
+              "things like happy, loving, playful, calm, proud, soulful. For a dragon, fierce, " +
+              "majestic, protective, ancient, wise. For a flower, delicate, romantic, wild, dark.";
+          try {
+            const br = await callBrain({
+              model: talkModel,
+              system: q + "\n\n" +
+                "Return ONLY a JSON array of strings, lowercase, two to four words each.\n" +
+                "BETWEEN SIX AND TWELVE. Return SIX if this subject honestly only has six - a " +
+                "filler option is worse than a short list, because somebody has to read every one.\n" +
+                "They must be VISUALLY DISTINCT - two that would produce the same picture are one.\n" +
+                "Nothing about style, colour, linework, placement or size. Those are asked elsewhere.\n" +
+                "No numbering, no explanation, no markdown fence.",
+              messages: [{ role: "user", content: subject }],
+              max_tokens: 300 }, env);
+            let arr = null;
+            if (br?.ok && br.text) {
+              try { arr = JSON.parse(br.text); } catch { try { arr = repairJson(br.text); } catch {} }
+              if (arr && !Array.isArray(arr)) arr = unwrapSchema(arr);
+            }
+            if (Array.isArray(arr)) {
+              const clean = arr.map(x => (typeof x === "string" ? x.trim().toLowerCase() : null))
+                .filter(x => x && x.length <= 40).filter((x, i, a) => a.indexOf(x) === i).slice(0, 12);
+              if (clean.length >= 3) {
+                try { await env.AURA_KV.put(ck, JSON.stringify(clean)); } catch {}
+                return clean;
+              }
+            }
+          } catch {}
+          return null;
+        };
+
+        // Contextual stages ask for their options; universal stages already have them. If the
+        // contextual lookup comes back empty the stage is SKIPPED rather than asked with nothing
+        // under it - a question with no answers is worse than a question not asked.
+        let choices = stage.opts;
+        if (choices === "contextual") {
+          choices = await ladderOpts(stage.field, inc.subject);
+          if (!choices || !choices.length) {
+            const after = STAGES.slice(STAGES.indexOf(stage) + 1).find(s => !has(s.field));
+            if (!after) return { ok: true, done: false, stage: stage.field, ask: stage.ask,
+              options: [], skipped: true,
+              say: "Tell me how you picture it and I will draw it." };
+            stage = after;
+            choices = stage.opts === "contextual"
+              ? (await ladderOpts(stage.field, inc.subject) || [])
+              : stage.opts;
+            if (!choices.length) return { ok: true, done: false, stage: stage.field, ask: stage.ask,
+              options: [], skipped: true, say: "Tell me and I will draw it." };
+          }
+        }
+
         // ── A QUESTION, AND FOUR PICTURES OF THEIR OWN TATTOO ANSWERING IT FOUR WAYS.
-        // Four, because four fills a two-column grid on a phone with nothing left over - the same
-        // reason `findReference` rounds to an even number. More than four is a catalogue nobody
-        // reads; fewer is not a choice.
+        // Four DRAWN, because four fills a two-column grid on a phone with nothing left over -
+        // the same reason `findReference` rounds to an even number. The rest of the list rides
+        // along as words in `more`, so a subject with eleven honest forms does not lose seven of
+        // them; the page can show them as plain chips beside the pictures.
         // In parallel: they are independent, and Cloudflare's six-connection limit applies only
         // while waiting for response headers, so four at once is well inside it.
-        const picks = stage.opts.slice(0, 4);
+        const picks = choices.slice(0, 4);
         const tiles = await Promise.all(picks.map(async (opt) => {
           const subject = describe({ [stage.field]: opt }).slice(0, 600);
           try {
@@ -51834,7 +51934,9 @@ export class PublicEntry extends WorkerEntrypoint {
 
         return { ok: true, done: false, stage: stage.field, ask: stage.ask,
           options: tiles,
-          more: stage.opts.length > picks.length ? stage.opts.slice(picks.length) : [],
+          // The options the pictures did not cover, as words. A subject with eleven honest
+          // forms must not silently lose seven of them because the grid holds four.
+          more: choices.length > picks.length ? choices.slice(picks.length) : [],
           resolved: ORDER.filter(k => has(k)),
           so_far: describe(null),
           say: "Or just tell me - anything you say beats a box." };

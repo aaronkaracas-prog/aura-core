@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.81.0-2026-08-26-does-this-decision-still-matter";
+const BUILD = "aura-core-v7.82.0-2026-08-26-a-style-card-is-a-tattoo";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23152,7 +23152,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const sRow = await runOne("style:" + slug2(name) + " ::: " + JSON.stringify({
           label: "What style?", subject: name, variable: "style", hold: "pose",
           items: Array.isArray(o.styles) ? o.styles : VOCAB.style }));
-        done.push({ row: "style:" + slug2(name), ok: !!sRow?.ok, drew: sRow?.drew ?? 0, failed: sRow?.failed ?? 0 });
+        done.push({ row: "style:" + slug2(name), ok: !!sRow?.ok, drew: sRow?.drew ?? 0,
+          failed: sRow?.failed ?? 0, failures: sRow?.failures || null });
         // The composition wall only when a style is named, because a composition row with no style
         // in its words has nothing holding the language - and that is the whole of its hold.
         if (style && comps && comps.length) {
@@ -23160,7 +23161,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             label: "How do you want to see it?", subject: name + ", " + style + " style",
             variable: "composition", hold: "language", items: comps }));
           done.push({ row: "composition:" + slug2(name) + ":" + slug2(style),
-            ok: !!cRow?.ok, drew: cRow?.drew ?? 0, failed: cRow?.failed ?? 0 });
+            ok: !!cRow?.ok, drew: cRow?.drew ?? 0, failed: cRow?.failed ?? 0,
+            failures: cRow?.failures || null });
         }
         const sheet = await processCommand("CARDS SHEET " + slug2(name), env, true);
         const sp = (sheet && sheet.payload) ? sheet.payload : sheet;
@@ -23173,8 +23175,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             urls.push(dd.row + " / " + it.label + "  ->  " +
               (it.img ? "https://auras.guide/image/" + it.img : "NEVER DREW"));
         }
+        const holes = done.reduce((n, d) => n + (d.failed || 0), 0);
         return { cmd: "CARDS", payload: { ok: true, subject: name, rows: done,
           drew: done.reduce((n, d) => n + d.drew, 0),
+          // A hole in the wall is the one thing that must not be reported as a success. It sits at
+          // the TOP of the reply, not buried in a per-row count, because a catalogue manufactured
+          // at scale with quiet gaps is worse than one that refused to build.
+          failed: holes,
           sheet: sp?.url || null, urls,
           note: style && comps ? "Style wall holds pose, composition wall holds language. Open the sheet on a phone."
                                : "Style wall only. Add {\"style\":\"...\",\"compositions\":[...]} for the composition wall." } };
@@ -23436,9 +23443,30 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // constrain only what must be constant: what is in frame, and where.
         // LIGHT GROUND. Real flash is on paper. Everything thin and dark reads on white; nothing
         // in this vocabulary is white-ink, and a dark ground is a later special case if it ever is.
-        const CARD = ". A single subject, centred, filling the frame, on a plain light background. " +
-                     "No skin, no body, no border, no background scenery, no extra motifs - " +
-                     "only the subject itself.";
+        // ══ A STYLE CARD MUST SAY IT IS A TATTOO. A COMPOSITION CARD MUST NOT. ═══════════════
+        //
+        // MEASURED on the rose wall: japanese, realism, hyperrealism, neo-traditional, minimalist
+        // and dotwork all came back as STOCK PHOTOGRAPHS OF A ROSE. The dog wall got away with the
+        // same format because a dog has less photographic gravity than a flower does; on a rose
+        // nothing in the prompt was fighting the model's default, so the default won.
+        // A style row exists to teach a tattoo LANGUAGE, and a photograph teaches none of them.
+        //
+        // AND THE OPPOSITE IS TRUE ONE ROW DOWN, which is why this is per-variable and not global.
+        // Aaron on the composition row: a photograph is the CLEAREST way to ask "which picture of
+        // the dog?" - the person has already chosen the style, the card does not need to restate
+        // it, and a real dog is recognised faster than a stylised one. Forcing "tattoo" into that
+        // row would make twelve good cards muddier and re-argue a decision already made.
+        //
+        // Still layout-only about everything else. The card format never dictates linework,
+        // contrast or colour - that is the style's job, and dictating it is what killed the first
+        // dark row.
+        const CARD = variable === "style"
+          ? ". As a tattoo, in that tattoo style. A single subject, centred, filling the frame, " +
+            "on a plain light background. No skin, no body, no border, no background scenery, " +
+            "no extra motifs - only the subject itself."
+          : ". A single subject, centred, filling the frame, on a plain light background. " +
+            "No skin, no body, no border, no background scenery, no extra motifs - " +
+            "only the subject itself.";
         // A `say` REPLACES the label in the prompt entirely - it is not appended, because
         // "traditional, bold american traditional…" leaves the misleading word in the sentence.
         const wordFor = (v, it) => {
@@ -23448,14 +23476,28 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                : subject + ", " + w;
         };
 
+        // ONE RETRY. Four of fifteen rose cards came back empty on Flux - roughly a quarter of the
+        // wall, and a card that never drew leaves a hole a person would tap into. A generation
+        // that fails once usually succeeds on a second attempt; a generation that fails twice is
+        // a real failure and gets recorded as one. Free on Flux, and half a cent elsewhere, which
+        // is a better price than a gap in the catalogue.
+        // The retry deliberately does NOT change the prompt: an identical prompt that succeeded
+        // is a cache hit next time, and a reworded one would quietly be a different card.
         const draw = async (it, parentImg) => {
           const refs = [];
           if (useRefs && house) refs.push("https://auras.guide/image/" + house);
           if (useRefs && parentImg) refs.push("https://auras.guide/image/" + parentImg);
-          const gi = await auraGenerateImage(wordFor(variable, it) + CARD, env,
-            { source: "card", refs }).catch(() => null);
           const base = { id: it.id, label: it.label, say: it.say || null };
-          return gi?.ok ? { ...base, img: gi.id || null, cached: !!gi.cached } : { ...base, img: null };
+          let why = null;
+          for (let n = 0; n < 2; n++) {
+            const gi = await auraGenerateImage(wordFor(variable, it) + CARD, env,
+              { source: "card", refs }).catch((e) => ({ ok: false, error: String(e && e.message || e) }));
+            if (gi?.ok && gi.id) return { ...base, img: gi.id, cached: !!gi.cached, tries: n + 1 };
+            why = gi?.error || "no image returned";
+          }
+          // The reason it failed rides with the card, so a hole in the wall explains itself
+          // instead of being something to go and reproduce.
+          return { ...base, img: null, why: String(why).slice(0, 160) };
         };
 
         if (cSub === "REDO") {
@@ -23507,10 +23549,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           house: useRefs ? (house || null) : null,
           items: out, made_at: new Date().toISOString() };
         await env.AURA_KV.put(key, JSON.stringify(row));
-        const missed = out.filter((x) => !x.img).length;
+        const gone = out.filter((x) => !x.img);
+        const missed = gone.length;
         return { cmd: "CARDS", payload: { ok: true, ...row,
           urls: out.map((x) => x.label + "  ->  " + (x.img ? "https://auras.guide/image/" + x.img : "FAILED")),
           drew: out.length - missed, failed: missed,
+          // Named, with the reason. A count alone means going back to the sheet to find out which.
+          failures: missed ? gone.map((x) => x.id + ": " + (x.why || "unknown")) : null,
           cached: out.filter((x) => x.cached).length,
           note: hold === "pose"
             ? "Holding POSE: card one is the parent and every other card is it with the language changed."

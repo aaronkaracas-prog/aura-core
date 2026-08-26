@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.77.0-2026-08-26-hold-pose-or-hold-language";
+const BUILD = "aura-core-v7.78.0-2026-08-26-the-row-is-the-stage";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23053,6 +23053,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     //
     //   CARDS HOUSE <image_id>                     - set the look every card inherits
     //   CARDS ROW <key> ::: {json}                 - manufacture a row of cards
+    //   CARDS SHEET <key>                          - the whole row on one screen, to judge it
     //   CARDS GET <key>                            - the row as the page will receive it
     //   CARDS REDO <key> <item>                    - regenerate one card
     //   CARDS DROP <key> <item>                    - remove one card
@@ -23110,6 +23111,61 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         await env.AURA_KV.put(HOUSE_KEY, hid);
         return { cmd: "CARDS", payload: { ok: true, house: hid, url: "https://auras.guide/image/" + hid,
           note: "Set. Cards already manufactured keep the look they were made with - CARDS REDO remakes one." } };
+      }
+
+      // ══ SHEET — THE WHOLE ROW ON ONE SCREEN ═══════════════════════════════════════════════
+      // Judging a row means judging it as a ROW: twelve cards side by side, captioned, in the
+      // order a person will see them. Opening twelve browser tabs and holding them in your head
+      // is not the same test, and it is how a card that reads fine alone but wrong beside its
+      // neighbour gets blessed. This is a contact sheet - the way flash gets laid out on a table.
+      // It writes a plain KV page that aura-host already serves, so it costs nothing and produces
+      // one URL to look at or to hand somebody else.
+      if (cSub === "SHEET") {
+        const k = rowKey(args[1] || "");
+        const row = await env.AURA_KV.get(k, "json").catch(() => null);
+        if (!row) return { cmd: "CARDS", payload: { ok: false, error: "NO_SUCH_ROW", key: args[1] || null } };
+        const esc = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) =>
+          ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+        const missing = row.items.filter((x) => !x.img).length;
+        const html =
+          '<!doctype html><html lang=en><head><meta charset=utf-8>' +
+          '<meta name=viewport content="width=device-width,initial-scale=1">' +
+          "<title>" + esc(row.key) + "</title><style>" +
+          "*{margin:0;padding:0;box-sizing:border-box}" +
+          "body{background:#0b0d12;color:#e9edf5;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:20px}" +
+          "h1{font-size:1.1rem;font-weight:800;letter-spacing:-.01em}" +
+          ".sub{color:#94a3b8;font-size:.82rem;margin:.3rem 0 1.2rem}" +
+          ".sub b{color:#e9edf5;font-weight:600}" +
+          ".g{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}" +
+          "figure{background:#141a28;border:1px solid rgba(148,163,184,.16);border-radius:12px;overflow:hidden}" +
+          "figure img{width:100%;aspect-ratio:1;object-fit:cover;display:block;background:#0f172a}" +
+          "figcaption{padding:.5rem .6rem}" +
+          "figcaption b{display:block;font-size:.9rem}" +
+          "figcaption span{display:block;color:#64748b;font-size:.74rem;margin-top:.15rem}" +
+          ".gone{padding:2.4rem .6rem;text-align:center;color:#fca5a5;font-size:.8rem}" +
+          "</style></head><body>" +
+          "<h1>" + esc(row.label || row.key) + "</h1>" +
+          '<p class=sub><b>' + esc(row.subject) + "</b> &middot; varying <b>" + esc(row.variable) +
+          "</b> &middot; holding <b>" + esc(row.hold || "?") + "</b> &middot; " + row.items.length + " cards" +
+          (missing ? " &middot; <b>" + missing + " never drew</b>" : "") +
+          " &middot; " + esc(String(row.made_at || "").slice(0, 16)) + "</p><div class=g>" +
+          row.items.map((it) =>
+            "<figure>" +
+            (it.img ? '<img loading=lazy src="https://auras.guide/image/' + esc(it.img) + '">'
+                    : '<div class=gone>never drew</div>') +
+            "<figcaption><b>" + esc(it.label || it.id) + "</b>" +
+            (it.say ? "<span>" + esc(it.say) + "</span>" : "") +
+            "</figcaption></figure>").join("") +
+          "</div></body></html>";
+        // The row key contains colons ("composition:japanese-dragon:japanese"). Colons are legal
+        // in a URL path but they are the kind of legal that breaks somewhere - a proxy, a
+        // browser, a copy-paste. The page path is flattened; the row key is unchanged.
+        const page = "sheet/" + row.key.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "");
+        await env.AURA_KV.put("page:auras.guide/" + page, html);
+        return { cmd: "CARDS", payload: { ok: true, key: row.key, cards: row.items.length,
+          never_drew: missing, url: "https://auras.guide/" + page,
+          note: "The whole row on one screen, in order. Judge it as a row - a card that reads fine " +
+                "alone can read wrong beside its neighbour." } };
       }
 
       if (cSub === "GET") {
@@ -23325,7 +23381,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
 
       return { cmd: "CARDS", payload: { ok: false,
-        error: "Sub-commands: HOUSE, ROW, REDO, DROP, GET, LIST" } };
+        error: "Sub-commands: HOUSE, ROW, REDO, DROP, SHEET, GET, LIST" } };
     }
 
     case "WALL": {
@@ -52248,26 +52304,39 @@ export class PublicEntry extends WorkerEntrypoint {
         // Rows are looked up narrowest-first: this subject in this style, then this subject, then
         // the bare variable. So a hand-blessed golden-retriever composition row wins over the
         // generic one, and the generic one still catches everything else.
-        const withCards = async (field, intent, opts) => {
+        // ══ A MANUFACTURED ROW IS THE ANSWER, NOT A DECORATION ON ONE ═════════════════════
+        //
+        // The first version of this asked the model for the options and THEN tried to hang
+        // manufactured pictures on whatever came back. That cannot work and would have looked
+        // like the factory failing: the row on disk has ids somebody typed - "wrapped around",
+        // "s-curve", "in motion" - and a model asked the same question freshly returns "wrapping
+        // around the body", "dynamic", "curved". Nothing matches, no picture appears, and a model
+        // call was spent to produce a worse list than the one already sitting in KV.
+        //
+        // So when a row exists it IS the stage: its items are the options, its label is the
+        // question, and no model runs at all. That is the entire point of prebuilding - the
+        // normal road should cost one KV read.
+        //
+        // NARROWEST FIRST. `composition:golden-retriever:hyperrealism` beats
+        // `composition:golden-retriever` beats `composition`. So a row hand-blessed for one
+        // subject in one style wins where it exists, and the general row still catches the rest.
+        const cardRow = async (field, intent) => {
           const slug = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
           const keys = [];
           if (intent.subject && intent.style) keys.push(field + ":" + slug(intent.subject) + ":" + slug(intent.style));
           if (intent.subject) keys.push(field + ":" + slug(intent.subject));
           keys.push(field);
-          let row = null;
           for (const k of keys) {
-            row = await env.AURA_KV.get("card:row:" + k, "json").catch(() => null);
-            if (row && Array.isArray(row.items) && row.items.length) break;
-            row = null;
+            const row = await env.AURA_KV.get("card:row:" + k, "json").catch(() => null);
+            if (row && Array.isArray(row.items) && row.items.length) return row;
           }
-          const byId = {};
-          if (row) for (const it of row.items) if (it.img) byId[String(it.id).toLowerCase()] = it.img;
-          return opts.map(o => {
-            const img = byId[String(o).toLowerCase()];
-            return img ? { value: o, label: o, image: "https://auras.guide/image/" + img, card: true }
-                       : { value: o, label: o };
-          });
+          return null;
         };
+        // A row's items become the option list. A card with no picture is still a tappable word -
+        // a half-made row is better than no row, and never a broken tile.
+        const fromRow = (row) => row.items.map((it) => it.img
+          ? { value: it.id, label: it.label || it.id, image: "https://auras.guide/image/" + it.img, card: true }
+          : { value: it.id, label: it.label || it.id });
 
         // ── WALK THE LADDER UNTIL A STAGE HAS SOMETHING TO SHOW.
         // Three outcomes per contextual stage and they are NOT the same thing:
@@ -52278,8 +52347,12 @@ export class PublicEntry extends WorkerEntrypoint {
         //             "tell me what it should feel like" - that is the friction the buttons exist
         //             to remove, and a silent skip is what let four dogs run through a field with
         //             no composition ever chosen.
-        let choices = null, label = null;
+        let choices = null, label = null, built = null;
         while (stage) {
+          // The manufactured row is checked FIRST, before the written vocabulary and before any
+          // model call, because a blessed row is the best answer available for that stage.
+          const made = await cardRow(stage.field, inc);
+          if (made) { built = fromRow(made); label = made.label || stage.ask; break; }
           if (stage.opts !== "contextual") { choices = stage.opts; label = stage.ask; break; }
           const got = await ladderOpts(stage.field, inc.subject);
           if (!got || got.failed) return { ok: false, error: "OPTIONS_UNAVAILABLE", stage: stage.field,
@@ -52325,7 +52398,8 @@ export class PublicEntry extends WorkerEntrypoint {
         // twenty-four images to design one tattoo. Somebody who reads "head and chest" and taps
         // it costs nothing at all.
         return { ok: true, done: false, stage: stage.field, ask: label,
-          options: await withCards(stage.field, inc, choices),
+          options: built || choices.map((o) => ({ value: o, label: o })),
+          made: !!built,
           resolved: ORDER.filter(k => has(k)),
           so_far: describe(null),
           say: "Tap one - or tell me something different." };

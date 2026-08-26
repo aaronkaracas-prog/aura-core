@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.71.0-2026-08-26-composition-expression-style";
+const BUILD = "aura-core-v7.72.0-2026-08-26-words-first-pictures-behind";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -51812,8 +51812,13 @@ export class PublicEntry extends WorkerEntrypoint {
         };
         // The same tail `make` uses. Not a second definition - if these two ever disagree, the
         // tiles stop looking like the thing they are choosing.
-        const TAIL = ". Tattoo design, clean linework, high contrast, on a plain background, " +
-                     "no skin, no body, no photograph - the artwork only.";
+        // A SINGLE SUBJECT IS THE DEFAULT. "Dogs" is how somebody navigated here, never what they
+        // are getting - and the composition list is where plurality lives when it is a real
+        // choice ("three roses", "with another dog"). Without this the model reads a bare subject
+        // as a scene and draws several.
+        const TAIL = ". A single subject unless stated otherwise. Tattoo design, clean linework, " +
+                     "high contrast, on a plain background, no skin, no body, no photograph - " +
+                     "the artwork only.";
 
         if (!has("subject")) return { ok: true, done: false, stage: "subject",
           ask: STAGES[0].ask, options: [], needs_words: true,
@@ -51882,6 +51887,7 @@ export class PublicEntry extends WorkerEntrypoint {
               "aggressive, calm, spiritual, dark.\n" +
               "A skull: menacing, dark, eerie, aggressive, gothic, elegant, weathered, ancient, " +
               "broken, macabre, peaceful, playful.";
+          let lastErr = null, lastText = null, lastModel = null;
           for (let attempt = 0; attempt < 2; attempt++) {
             try {
               const br = await callBrain({
@@ -51905,6 +51911,9 @@ export class PublicEntry extends WorkerEntrypoint {
                   "not use this to avoid a real decision. Almost every living thing has both.",
                 messages: [{ role: "user", content: String(subject) }],
                 max_tokens: 400 }, env);
+              lastModel = br?.model || null;
+              lastText = br?.text ? String(br.text).slice(0, 400) : null;
+              if (!br?.ok) lastErr = br?.error || br?.why || "callBrain returned not-ok";
               let o = null;
               if (br?.ok && br.text) {
                 try { o = JSON.parse(br.text); } catch { try { o = repairJson(br.text); } catch {} }
@@ -51926,11 +51935,15 @@ export class PublicEntry extends WorkerEntrypoint {
                   return rec;
                 }
               }
-            } catch {}
+            } catch (e) { lastErr = String(e && e.message || e).slice(0, 200); }
           }
           // Twice, and nothing usable. NOT cached, and the caller must not treat this as "skip" -
           // an unanswered composition is why four dogs ran through a field.
-          return null;
+          // THE FAILURE CARRIES WHAT WAS SENT AND WHAT CAME BACK. Six identical Moondream failures
+          // once looked like a broken model for a whole session; the moment the error included the
+          // request and the reply it was one run. A bare "could not put those choices together"
+          // costs another round trip to Aaron and another walk of the site.
+          return { failed: true, why: lastErr, saw: lastText, model: lastModel };
         };
 
         // ── WALK THE LADDER UNTIL A STAGE HAS SOMETHING TO SHOW.
@@ -51946,8 +51959,9 @@ export class PublicEntry extends WorkerEntrypoint {
         while (stage) {
           if (stage.opts !== "contextual") { choices = stage.opts; label = stage.ask; break; }
           const got = await ladderOpts(stage.field, inc.subject);
-          if (!got) return { ok: false, error: "OPTIONS_UNAVAILABLE", stage: stage.field,
-            say: "Give me a second and ask me again - I could not put those choices together." };
+          if (!got || got.failed) return { ok: false, error: "OPTIONS_UNAVAILABLE", stage: stage.field,
+            say: "Give me a second and ask me again - I could not put those choices together.",
+            why: got && got.why, saw: got && got.saw, model: got && got.model };
           if (got.na) {
             stage = STAGES.slice(STAGES.indexOf(stage) + 1).find(x => !has(x.field)) || null;
             continue;
@@ -51972,33 +51986,74 @@ export class PublicEntry extends WorkerEntrypoint {
             next: await nextChips(env, subject, null) };
         }
 
-        // ── A QUESTION, AND FOUR PICTURES OF THEIR OWN TATTOO ANSWERING IT FOUR WAYS.
-        // Four DRAWN, because four fills a two-column grid on a phone with nothing left over -
-        // the same reason `findReference` rounds to an even number. The rest of the list rides
-        // along as words in `more`, so a subject with eleven honest forms does not lose seven of
-        // them; the page can show them as plain chips beside the pictures.
-        // In parallel: they are independent, and Cloudflare's six-connection limit applies only
-        // while waiting for response headers, so four at once is well inside it.
-        const picks = choices.slice(0, 4);
-        const tiles = await Promise.all(picks.map(async (opt) => {
-          const subject = describe({ [stage.field]: opt }).slice(0, 600);
-          try {
-            const gi = await auraGenerateImage(subject + TAIL, env, { source: "tattoo_option" });
-            if (gi?.ok) return { value: opt, label: opt, image: gi.image_url, cached: !!gi.cached };
-          } catch {}
-          // A tile that would not draw is dropped, never rendered as a broken square. The question
-          // is still answerable - they can say the word, and `talk` will hear it.
-          return { value: opt, label: opt, image: null };
-        }));
-
+        // ══ THE ANSWER COMES BACK AS WORDS, NOT AS PICTURES ════════════════════════════════
+        //
+        // This used to generate four images BEFORE returning anything, so every question cost
+        // 30-50 seconds and a failed lookup cost 50 seconds and then an error. Somebody tapping
+        // "Golden Retriever" sat looking at a spinner and then a apology.
+        //
+        // The choices are WORDS. "Head portrait", "sitting", "running" - a person recognises
+        // those instantly and taps. Pictures make them nicer, they do not make them work, and
+        // Aaron said it directly: get the tree right first, thumbnails come later. So `next` is
+        // now FAST and TEXT ONLY, and the pictures are a separate call the page can make
+        // afterwards - or never, if they have already tapped.
+        //
+        // THIS IS ALSO MOST OF THE MONEY. Four generations per question across six questions is
+        // twenty-four images to design one tattoo. Somebody who reads "head and chest" and taps
+        // it costs nothing at all.
         return { ok: true, done: false, stage: stage.field, ask: label,
-          options: tiles,
-          // The options the pictures did not cover, as words. A subject with eleven honest
-          // forms must not silently lose seven of them because the grid holds four.
-          more: choices.length > picks.length ? choices.slice(picks.length) : [],
+          options: choices.map(o => ({ value: o, label: o })),
           resolved: ORDER.filter(k => has(k)),
           so_far: describe(null),
-          say: "Or just tell me - anything you say beats a box." };
+          say: "Tap one - or tell me something different." };
+      }
+
+      // ══ TILES — THE PICTURES FOR A QUESTION ALREADY ASKED ══════════════════════════════════
+      // Separate from `next` on purpose, so the choices appear the instant they are known and the
+      // pictures arrive behind them. The page calls this with the field and the values it is
+      // showing; every image is cached on the exact prompt, so the second person to reach this
+      // question pays nothing.
+      if (action === "tiles") {
+        const inc = (b.intent && typeof b.intent === "object") ? b.intent : {};
+        const field = String(b.stage || "").trim();
+        const vals = Array.isArray(b.options) ? b.options.slice(0, 4).map(String) : [];
+        if (!field || !vals.length || !inc.subject) return { ok: false, error: "NEED_FIELD_AND_OPTIONS" };
+        const ORDER = ["subject", "composition", "character", "style", "colour", "detail", "placement", "size", "elements"];
+        const say = (k, v) => {
+          const t = Array.isArray(v) ? v.join(" and ") : String(v);
+          const s2 = t.trim().toLowerCase();
+          if (!s2) return null;
+          if (k === "style")  return s2 + " style";
+          if (k === "detail") return s2 + " linework";
+          if (k === "placement") return "on the " + s2;
+          if (k === "elements")  return "with " + s2;
+          return s2;
+        };
+        // The SAME serialisation `next` uses. If these two ever disagree the tiles stop being
+        // pictures of the thing being chosen, and every one of them costs money to be wrong.
+        const describe = (over) => {
+          const merged = { ...inc, ...(over || {}) };
+          const parts = [];
+          for (const k of ORDER) {
+            const v = merged[k];
+            if (v == null || (Array.isArray(v) && !v.length) || String(v).trim() === "") continue;
+            const line = say(k, v);
+            if (line) parts.push(line);
+          }
+          return parts.join(", ");
+        };
+        const TAIL = ". A single subject unless stated otherwise. Tattoo design, clean linework, " +
+                     "high contrast, on a plain background, no skin, no body, no photograph - " +
+                     "the artwork only.";
+        const out = await Promise.all(vals.map(async (opt) => {
+          try {
+            const gi = await auraGenerateImage(describe({ [field]: opt }).slice(0, 600) + TAIL, env,
+              { source: "tattoo_option" });
+            if (gi?.ok) return { value: opt, image: gi.image_url, cached: !!gi.cached };
+          } catch {}
+          return { value: opt, image: null };
+        }));
+        return { ok: true, stage: field, tiles: out };
       }
 
       // ── SHOW ME. A photo of what they ALREADY have - the start of a cover-up or an addition.

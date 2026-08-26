@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.72.0-2026-08-26-words-first-pictures-behind";
+const BUILD = "aura-core-v7.73.0-2026-08-26-ladder-model-fix";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -51887,11 +51887,18 @@ export class PublicEntry extends WorkerEntrypoint {
               "aggressive, calm, spiritual, dark.\n" +
               "A skull: menacing, dark, eerie, aggressive, gothic, elegant, weathered, ancient, " +
               "broken, macabre, peaceful, playful.";
+          // `talkModel` lives inside the `talk` action and does not exist here. Referencing it
+          // threw ReferenceError on every call, `node --check` passed the file cleanly, and the
+          // whole ladder failed with an apology - eighth time this exact shape has appeared in
+          // this codebase. It cost one walk of the live site to find, and only because the error
+          // now carries what came back.
+          const pin = (await env.AURA_KV.get("config:talk:model").catch(() => null)) || null;
+          const ladderModel = pin && pin.trim() ? pin.trim() : undefined;
           let lastErr = null, lastText = null, lastModel = null;
           for (let attempt = 0; attempt < 2; attempt++) {
             try {
               const br = await callBrain({
-                model: talkModel,
+                model: ladderModel,
                 system:
                   "Somebody is designing a tattoo. Give them the choices for one decision.\n\n" +
                   "THE DECISION: " + brief + "\n\n" +

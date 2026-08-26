@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.70.0-2026-08-26-form-character-style";
+const BUILD = "aura-core-v7.71.0-2026-08-26-composition-expression-style";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -51435,7 +51435,7 @@ export class PublicEntry extends WorkerEntrypoint {
               '  "placement": "where on the body, in their words - full back, inner forearm",\n' +
               '  "size": "large, about 14 inches, small",\n' +
               '  "colour": "full_colour | black_and_grey | muted",\n' +
-              '  "form": "what version of it they are picturing - head portrait, head and chest, ' +
+              '  "composition": "what the picture is OF - head portrait, head and chest, ' +
               'full body sitting, coiled, flying, single bloom, a bouquet",\n' +
               '  "character": "what it should feel like - happy, loving, fierce, majestic, delicate, menacing",\n' +
               '  "detail": "bold | balanced | intricate | ultra",\n' +
@@ -51551,7 +51551,7 @@ export class PublicEntry extends WorkerEntrypoint {
                 // person who says "head and chest" or "goofy" must have that survive verbatim.
                 // Validating them against a table would silently drop the ones we did not think
                 // of, which is the whole reason they are contextual in the first place.
-                form:        str(parsed.form, 60),
+                composition: str(parsed.composition, 60),
                 character:   str(parsed.character, 60),
                 detail:      one(parsed.detail, ["bold", "balanced", "intricate", "ultra"]),
                 elements:    Array.isArray(parsed.elements)
@@ -51568,7 +51568,7 @@ export class PublicEntry extends WorkerEntrypoint {
               // when somebody offers them, but they are NOT design stages any more - they are
               // on-body decisions made after the artwork exists - so they do not count toward
               // what is resolved or missing here.
-              const order = ["subject", "form", "character", "style", "colour", "detail"];
+              const order = ["subject", "composition", "character", "style", "colour", "detail"];
               intent.resolved = order.filter(k => intent[k] != null &&
                 (!Array.isArray(intent[k]) || intent[k].length));
               intent.missing = order.filter(k => !intent.resolved.includes(k));
@@ -51752,8 +51752,12 @@ export class PublicEntry extends WorkerEntrypoint {
         // this list is universal: fierce means fierce whatever it is.
         const STAGES = [
           { field: "subject",   ask: "What is it going to be?",     opts: null },
-          { field: "form",      ask: "How do you picture it?",      opts: "contextual" },
-          { field: "character", ask: "What should it feel like?",   opts: "contextual" },
+          // The `ask` here is only a fallback. The REAL question comes back with the options,
+          // fitted to the subject - "What expression?" for a dog, "What kind of dragon?" for a
+          // dragon, "What arrangement?" for roses. "What should it feel like" is exactly the
+          // abstract question the buttons exist to replace, and it must never reach a screen.
+          { field: "composition", ask: "How do you want to see it?", opts: "contextual" },
+          { field: "character",   ask: "What kind?",                 opts: "contextual" },
           { field: "style",     ask: "What style?",
             opts: ["japanese", "realism", "hyperrealism", "black and grey realism", "fine line",
                    "traditional", "neo-traditional", "blackwork", "illustrative", "watercolour",
@@ -51773,7 +51777,7 @@ export class PublicEntry extends WorkerEntrypoint {
         // Unknown keys are ignored rather than appended, because a field arriving in a different
         // order or a stray key would produce a different string for the same tattoo and quietly
         // turn a free cache hit into a paid generation.
-        const ORDER = ["subject", "form", "character", "style", "colour", "detail", "placement", "size", "elements"];
+        const ORDER = ["subject", "composition", "character", "style", "colour", "detail", "placement", "size", "elements"];
         const say = (k, v) => {
           const t = Array.isArray(v) ? v.join(" and ") : String(v);
           const s = t.trim().toLowerCase();
@@ -51782,7 +51786,7 @@ export class PublicEntry extends WorkerEntrypoint {
           // FORM comes back as a phrase from the contextual list - "head and chest", "coiled
           // around itself" - so it is spoken as-is rather than wrapped in a preposition that
           // would only fit some of them.
-          if (k === "form")        return s;
+          if (k === "composition") return s;
           if (k === "character")   return s;
           if (k === "style")       return s + " style";
           if (k === "colour")      return s;
@@ -51815,23 +51819,6 @@ export class PublicEntry extends WorkerEntrypoint {
           ask: STAGES[0].ask, options: [], needs_words: true,
           say: "Tell me what you want it to be and I will show you." };
 
-        // ── NOTHING LEFT TO ASK. Their tattoo, drawn from the whole answer, owned by them.
-        if (!stage) {
-          const subject = describe(null).slice(0, 600);
-          const r = await processCommand("SHOW_IT " + JSON.stringify({
-            subject: subject + TAIL,
-            context: "a tattoo somebody is designing for themselves: " + subject,
-            name: String(inc.subject || "tattoo").slice(0, 60),
-            creator: me
-          }), env, true);
-          const p = (r && r.payload) ? r.payload : r;
-          if (!p?.ok) return { ok: false, error: p?.error || "COULD_NOT_DRAW" };
-          return { ok: true, done: true, design: p.entity_id || p.id, image: p.image_url,
-            subject, cached: !!p.cached,
-            say: "Here it is. Tell me anything you want changed and I will change it.",
-            next: await nextChips(env, subject, null) };
-        }
-
         // ── CONTEXTUAL OPTIONS. A dog's forms are not a dragon's forms.
         // Hand-writing these across 44 categories, their subcategories and their breeds is
         // thousands of entries, every one a guess about a subject nobody here knows - and it is
@@ -51845,72 +51832,144 @@ export class PublicEntry extends WorkerEntrypoint {
         //
         // 6-12, NOT ALWAYS 10. A subject with six honest forms should return six. Filler options
         // generated to hit a number are worse than no option - somebody has to read every one.
+        // ── CONTEXTUAL OPTIONS. A dog's compositions are not a rose's compositions.
+        // Hand-writing these across 44 categories, their kinds and their breeds is thousands of
+        // entries, every one a guess about a subject nobody here knows - and it is wrong the first
+        // time somebody picks Belgian Malinois. So they are asked for ONCE per subject, cached
+        // under that subject forever, and reused by everybody after.
+        //
+        // WHAT IS NOT DONE THIS WAY: the tree itself. Categories, kinds and breeds are stable
+        // knowledge and stay written down - we do not want a model reinventing what a dog is on
+        // every visit. Only "given THIS subject, what visual decisions remain" is generated,
+        // because that is the question that genuinely varies.
+        //
+        // ══ NOT APPLICABLE IS AN ANSWER. EMPTY IS A BUG. ═══════════════════════════════════
+        // These are two different things and the old code treated them as one - it skipped a
+        // stage whenever the list came back empty, which is how a golden retriever reached the
+        // style question with no composition at all and four dogs ran through a field.
+        //   - "n/a"  : she looked at the subject and decided this dimension does not change the
+        //              design. Lettering has no expression. That is a DECISION, it is cached, and
+        //              the stage is legitimately skipped.
+        //   - empty  : the call failed, or came back as junk. That is a FAILURE. It is never
+        //              cached, and it is never quietly skipped.
+        // COUNT LIVES INSIDE COMPOSITION. A rose's compositions ARE single bloom, three roses, a
+        // dozen, a vine - quantity genuinely changes the picture there. A dog's are head portrait,
+        // full body, with another dog. So nobody is ever asked "how many?" as an abstract question,
+        // and ONE is the default everywhere. A plural navigation label - "Dogs" - is how somebody
+        // got here, never what they are getting.
         const ladderOpts = async (field, subject) => {
           const slug = String(subject).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
-          const ck = "ladder:" + field + ":" + slug;
-          // Cached, and no TTL - same reasoning as the image cache. The good ways to compose a
-          // golden retriever are not news.
+          const ck = "ladder2:" + field + ":" + slug;
           try {
             const hit = await env.AURA_KV.get(ck, "json");
-            if (hit && Array.isArray(hit) && hit.length) return hit;
+            if (hit && (hit.na === true || (Array.isArray(hit.opts) && hit.opts.length))) return hit;
           } catch {}
-          const q = field === "form"
-            ? "Someone is designing a tattoo of: " + subject + "\n\n" +
-              "List the distinct WAYS THIS IS COMPOSED as a tattoo - what version of it are they " +
-              "picturing. For a dog that is things like head portrait, head and chest, full body " +
-              "sitting, running, side profile. For a dragon, coiled, flying, ascending, just the " +
-              "head. For a flower, single bloom, stem and bloom, a bouquet, a vine."
-            : "Someone is designing a tattoo of: " + subject + "\n\n" +
-              "List the distinct CHARACTERS or FEELINGS this tattoo could have. For a dog that is " +
-              "things like happy, loving, playful, calm, proud, soulful. For a dragon, fierce, " +
-              "majestic, protective, ancient, wise. For a flower, delicate, romantic, wild, dark.";
-          try {
-            const br = await callBrain({
-              model: talkModel,
-              system: q + "\n\n" +
-                "Return ONLY a JSON array of strings, lowercase, two to four words each.\n" +
-                "BETWEEN SIX AND TWELVE. Return SIX if this subject honestly only has six - a " +
-                "filler option is worse than a short list, because somebody has to read every one.\n" +
-                "They must be VISUALLY DISTINCT - two that would produce the same picture are one.\n" +
-                "Nothing about style, colour, linework, placement or size. Those are asked elsewhere.\n" +
-                "No numbering, no explanation, no markdown fence.",
-              messages: [{ role: "user", content: subject }],
-              max_tokens: 300 }, env);
-            let arr = null;
-            if (br?.ok && br.text) {
-              try { arr = JSON.parse(br.text); } catch { try { arr = repairJson(br.text); } catch {} }
-              if (arr && !Array.isArray(arr)) arr = unwrapSchema(arr);
-            }
-            if (Array.isArray(arr)) {
-              const clean = arr.map(x => (typeof x === "string" ? x.trim().toLowerCase() : null))
-                .filter(x => x && x.length <= 40).filter((x, i, a) => a.indexOf(x) === i).slice(0, 12);
-              if (clean.length >= 3) {
-                try { await env.AURA_KV.put(ck, JSON.stringify(clean)); } catch {}
-                return clean;
+          const brief = field === "composition"
+            ? "WHAT THE PICTURE IS OF - the framing and arrangement.\n" +
+              "A dog: head portrait, face close-up, head and chest, full body sitting, standing, " +
+              "lying down, running, playing, side profile, three-quarter view, with another dog, " +
+              "with their owner, paw print.\n" +
+              "A rose: single bloom, two roses, three roses, a bouquet, a cluster, long stem, a " +
+              "vine, wrapping arrangement, a floral frame, scattered petals.\n" +
+              "A dragon: just the head, full dragon, coiled, flying, ascending, descending, " +
+              "wrapped around, facing forward, side view.\n" +
+              "NOTE HOW QUANTITY BELONGS HERE when it changes the picture - three roses is a real " +
+              "composition, and ONE is the default when it is not offered."
+            : "WHAT IT LOOKS LIKE OR FEELS LIKE - the expression or character.\n" +
+              "A dog: happy, playful, calm, loving, gentle, proud, serious, alert, soulful, " +
+              "curious, goofy, protective, sleeping, peaceful.\n" +
+              "A dragon: fierce, powerful, protective, majestic, wise, mystical, ancient, regal, " +
+              "aggressive, calm, spiritual, dark.\n" +
+              "A skull: menacing, dark, eerie, aggressive, gothic, elegant, weathered, ancient, " +
+              "broken, macabre, peaceful, playful.";
+          for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+              const br = await callBrain({
+                model: talkModel,
+                system:
+                  "Somebody is designing a tattoo. Give them the choices for one decision.\n\n" +
+                  "THE DECISION: " + brief + "\n\n" +
+                  'Return ONLY JSON: {"label":"...","options":["...","..."]}\n\n' +
+                  "`label` is the question a person reads, in plain words, fitted to THIS subject - " +
+                  '"What expression?" for a dog, "What kind of dragon?" for a dragon, "What ' +
+                  'arrangement?" for roses. Never abstract. Never "what should it feel like".\n\n' +
+                  "`options` are SIX TO FOURTEEN things they would recognise instantly and click. " +
+                  "Lowercase, one to four words. VISUALLY DISTINCT - two that would draw the same " +
+                  "picture are one. Return six if this subject honestly has six; filler is worse " +
+                  "than a short list because somebody reads every one.\n\n" +
+                  "Nothing about style, colour, linework, placement or size - those are asked " +
+                  "elsewhere and repeating them here wastes the person's time.\n\n" +
+                  'IF THIS DECISION GENUINELY DOES NOT APPLY to this subject, return exactly ' +
+                  '{"na":true}. A word in lettering has no expression. A geometric pattern has no ' +
+                  "character. Say so rather than inventing a choice that does not matter - but do " +
+                  "not use this to avoid a real decision. Almost every living thing has both.",
+                messages: [{ role: "user", content: String(subject) }],
+                max_tokens: 400 }, env);
+              let o = null;
+              if (br?.ok && br.text) {
+                try { o = JSON.parse(br.text); } catch { try { o = repairJson(br.text); } catch {} }
+                if (o) o = unwrapSchema(o);
               }
-            }
-          } catch {}
+              if (o && o.na === true) {
+                const rec = { na: true };
+                try { await env.AURA_KV.put(ck, JSON.stringify(rec)); } catch {}
+                return rec;
+              }
+              if (o && Array.isArray(o.options)) {
+                const opts = o.options.map(x => (typeof x === "string" ? x.trim().toLowerCase() : null))
+                  .filter(x => x && x.length <= 40).filter((x, i, a) => a.indexOf(x) === i).slice(0, 14);
+                if (opts.length >= 4) {
+                  const rec = { label: (typeof o.label === "string" && o.label.trim())
+                    ? o.label.trim().slice(0, 80)
+                    : (field === "composition" ? "How do you want to see it?" : "What kind?"), opts };
+                  try { await env.AURA_KV.put(ck, JSON.stringify(rec)); } catch {}
+                  return rec;
+                }
+              }
+            } catch {}
+          }
+          // Twice, and nothing usable. NOT cached, and the caller must not treat this as "skip" -
+          // an unanswered composition is why four dogs ran through a field.
           return null;
         };
 
-        // Contextual stages ask for their options; universal stages already have them. If the
-        // contextual lookup comes back empty the stage is SKIPPED rather than asked with nothing
-        // under it - a question with no answers is worse than a question not asked.
-        let choices = stage.opts;
-        if (choices === "contextual") {
-          choices = await ladderOpts(stage.field, inc.subject);
-          if (!choices || !choices.length) {
-            const after = STAGES.slice(STAGES.indexOf(stage) + 1).find(s => !has(s.field));
-            if (!after) return { ok: true, done: false, stage: stage.field, ask: stage.ask,
-              options: [], skipped: true,
-              say: "Tell me how you picture it and I will draw it." };
-            stage = after;
-            choices = stage.opts === "contextual"
-              ? (await ladderOpts(stage.field, inc.subject) || [])
-              : stage.opts;
-            if (!choices.length) return { ok: true, done: false, stage: stage.field, ask: stage.ask,
-              options: [], skipped: true, say: "Tell me and I will draw it." };
+        // ── WALK THE LADDER UNTIL A STAGE HAS SOMETHING TO SHOW.
+        // Three outcomes per contextual stage and they are NOT the same thing:
+        //   options -> ask it
+        //   n/a     -> she decided this dimension does not change this design. Skip and move on.
+        //             Cached, so it is decided once for lettering and never asked again.
+        //   failure -> STOP. Say so. Never skip, never render an empty screen, never fall back to
+        //             "tell me what it should feel like" - that is the friction the buttons exist
+        //             to remove, and a silent skip is what let four dogs run through a field with
+        //             no composition ever chosen.
+        let choices = null, label = null;
+        while (stage) {
+          if (stage.opts !== "contextual") { choices = stage.opts; label = stage.ask; break; }
+          const got = await ladderOpts(stage.field, inc.subject);
+          if (!got) return { ok: false, error: "OPTIONS_UNAVAILABLE", stage: stage.field,
+            say: "Give me a second and ask me again - I could not put those choices together." };
+          if (got.na) {
+            stage = STAGES.slice(STAGES.indexOf(stage) + 1).find(x => !has(x.field)) || null;
+            continue;
           }
+          choices = got.opts; label = got.label; break;
+        }
+
+        // Every applicable stage answered. Their tattoo, drawn from the whole of it, owned by them.
+        if (!stage) {
+          const subject = describe(null).slice(0, 600);
+          const r = await processCommand("SHOW_IT " + JSON.stringify({
+            subject: subject + TAIL,
+            context: "a tattoo somebody is designing for themselves: " + subject,
+            name: String(inc.subject || "tattoo").slice(0, 60),
+            creator: me
+          }), env, true);
+          const p2 = (r && r.payload) ? r.payload : r;
+          if (!p2?.ok) return { ok: false, error: p2?.error || "COULD_NOT_DRAW" };
+          return { ok: true, done: true, design: p2.entity_id || p2.id, image: p2.image_url,
+            subject, cached: !!p2.cached,
+            say: "Here it is. Tell me anything you want changed and I will change it.",
+            next: await nextChips(env, subject, null) };
         }
 
         // ── A QUESTION, AND FOUR PICTURES OF THEIR OWN TATTOO ANSWERING IT FOUR WAYS.
@@ -51932,7 +51991,7 @@ export class PublicEntry extends WorkerEntrypoint {
           return { value: opt, label: opt, image: null };
         }));
 
-        return { ok: true, done: false, stage: stage.field, ask: stage.ask,
+        return { ok: true, done: false, stage: stage.field, ask: label,
           options: tiles,
           // The options the pictures did not cover, as words. A subject with eleven honest
           // forms must not silently lose seven of them because the grid holds four.

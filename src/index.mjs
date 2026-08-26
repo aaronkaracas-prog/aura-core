@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.78.0-2026-08-26-the-row-is-the-stage";
+const BUILD = "aura-core-v7.79.0-2026-08-26-the-standard-run";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23051,6 +23051,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
     // ══ CARDS — THE VISUAL FACTORY AND THE CARD REGISTRY ══════════════════════════════════════
     //
+    //   CARDS SUBJECT <name> ::: {json}            - the standard run: both walls + a sheet
     //   CARDS HOUSE <image_id>                     - set the look every card inherits
     //   CARDS ROW <key> ::: {json}                 - manufacture a row of cards
     //   CARDS SHEET <key>                          - the whole row on one screen, to judge it
@@ -23097,6 +23098,78 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const HOUSE_KEY = "card:house";
       const rowKey = (k) => "card:row:" + String(k).toLowerCase().replace(/[^a-z0-9:_-]+/g, "-").slice(0, 100);
 
+      // ══ VOCAB — THE WORDS THE FACTORY USES, LEARNED ONCE ══════════════════════════════════
+      // The style words are the same for every subject and several of them needed a description
+      // before they would render: "traditional" beside a japanese dragon reads as traditional
+      // JAPANESE unless told otherwise, and geometric never landed at all with a house reference
+      // attached. Those findings cost sixteen cards and four redos to earn. They live here so the
+      // next subject inherits them instead of re-earning them.
+      // Editable without a deploy: CARDS VOCAB style ::: [ ... ]
+      const VOCAB = {
+        style: [
+          "japanese", "realism", "hyperrealism", "black and grey realism", "fine line",
+          { id: "traditional", say: "bold american traditional tattoo - thick black outlines, flat solid primary colour, red and yellow and green only, no shading, no gradients" },
+          "neo-traditional", "blackwork", "illustrative", "watercolour", "minimalist", "dotwork",
+          { id: "ornamental", say: "ornamental filigree line language - repeating decorative scrollwork and lace patterning worked into the form, no added scenery" },
+          "sketch", "etching"
+        ]
+      };
+
+      // ══ SUBJECT — THE STANDARD RUN ════════════════════════════════════════════════════════
+      //   CARDS SUBJECT <name> ::: {"style":"japanese","compositions":[...]}
+      //
+      // Everything learned on the japanese dragon, as one command. It manufactures the two walls
+      // a subject needs, each with the hold that was proven correct for it:
+      //   STYLE wall       - holds POSE. House reference on. The subject stays put, the language
+      //                      changes. Fifteen of sixteen landed this way.
+      //   COMPOSITION wall - holds LANGUAGE. No reference at all, style carried in the words.
+      //                      With a parent attached, ten of twelve poses came back identical.
+      // Then one sheet URL covering both.
+      //
+      // WHY A RUNNER AND NOT A SCRIPT AAARON PASTES: the two rows differ in hold, in whether a
+      // reference is used, in how the subject string is built, and in the key they are stored
+      // under. Four chances to get it subtly wrong per subject, times forty subjects. The
+      // knowledge belongs in the command.
+      if (cSub === "SUBJECT") {
+        const cut2 = cRest.indexOf(":::");
+        const name = (cut2 < 0 ? cRest : cRest.slice(0, cut2)).trim().toLowerCase();
+        let o = {};
+        if (cut2 >= 0) { try { o = JSON.parse(cRest.slice(cut2 + 3).trim()); }
+                         catch { try { o = repairJson(cRest.slice(cut2 + 3).trim()) || {}; } catch {} } }
+        if (!name) return { cmd: "CARDS", payload: { ok: false,
+          error: 'Usage: CARDS SUBJECT <name> ::: {"style":"japanese","compositions":["head portrait",...]}' } };
+        const slug2 = (x) => String(x).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+        const style = String(o.style || "").toLowerCase().trim();
+        const comps = Array.isArray(o.compositions) ? o.compositions : null;
+        const runOne = async (payload) => {
+          const r = await processCommand("CARDS ROW " + payload, env, true);
+          return (r && r.payload) ? r.payload : r;
+        };
+        const done = [];
+        // The style wall first, always - it is the row every later row inherits its language from,
+        // and the ladder asks it first for the same reason.
+        const sRow = await runOne("style:" + slug2(name) + " ::: " + JSON.stringify({
+          label: "What style?", subject: name, variable: "style", hold: "pose",
+          items: Array.isArray(o.styles) ? o.styles : VOCAB.style }));
+        done.push({ row: "style:" + slug2(name), ok: !!sRow?.ok, drew: sRow?.drew ?? 0, failed: sRow?.failed ?? 0 });
+        // The composition wall only when a style is named, because a composition row with no style
+        // in its words has nothing holding the language - and that is the whole of its hold.
+        if (style && comps && comps.length) {
+          const cRow = await runOne("composition:" + slug2(name) + ":" + slug2(style) + " ::: " + JSON.stringify({
+            label: "How do you want to see it?", subject: name + ", " + style + " style",
+            variable: "composition", hold: "language", items: comps }));
+          done.push({ row: "composition:" + slug2(name) + ":" + slug2(style),
+            ok: !!cRow?.ok, drew: cRow?.drew ?? 0, failed: cRow?.failed ?? 0 });
+        }
+        const sheet = await processCommand("CARDS SHEET " + slug2(name), env, true);
+        const sp = (sheet && sheet.payload) ? sheet.payload : sheet;
+        return { cmd: "CARDS", payload: { ok: true, subject: name, rows: done,
+          drew: done.reduce((n, d) => n + d.drew, 0),
+          sheet: sp?.url || null,
+          note: style && comps ? "Style wall holds pose, composition wall holds language. Open the sheet on a phone."
+                               : "Style wall only. Add {\"style\":\"...\",\"compositions\":[...]} for the composition wall." } };
+      }
+
       if (cSub === "HOUSE") {
         const hid = args[1];
         if (!hid) {
@@ -23121,51 +23194,72 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // It writes a plain KV page that aura-host already serves, so it costs nothing and produces
       // one URL to look at or to hand somebody else.
       if (cSub === "SHEET") {
-        const k = rowKey(args[1] || "");
-        const row = await env.AURA_KV.get(k, "json").catch(() => null);
-        if (!row) return { cmd: "CARDS", payload: { ok: false, error: "NO_SUCH_ROW", key: args[1] || null } };
+        // ONE KEY OR A PREFIX. `CARDS SHEET style` shows one row; `CARDS SHEET japanese-dragon`
+        // shows every row that mentions it - the whole wall for a subject, in the order a person
+        // walks it, on one phone screen. That is the view that decides whether a subject is done.
+        const want = String(args.slice(1).join(" ") || "").toLowerCase().trim();
+        if (!want) return { cmd: "CARDS", payload: { ok: false, error: "Usage: CARDS SHEET <key or subject>" } };
+        let rows = [];
+        const one = await env.AURA_KV.get(rowKey(want), "json").catch(() => null);
+        if (one) rows = [one];
+        else {
+          const l = await env.AURA_KV.list({ prefix: "card:row:", limit: 500 }).catch(() => ({ keys: [] }));
+          const hit = l.keys.filter((k) => k.name.includes(want.replace(/[^a-z0-9]+/g, "-")));
+          for (const k of hit) {
+            const r = await env.AURA_KV.get(k.name, "json").catch(() => null);
+            if (r && Array.isArray(r.items) && r.items.length) rows.push(r);
+          }
+          // The ladder's own order, so the sheet reads the way the product walks.
+          const RANK = { subject: 0, style: 1, composition: 2, character: 3, colour: 4, detail: 5 };
+          rows.sort((x, y) => (RANK[x.variable] ?? 9) - (RANK[y.variable] ?? 9));
+        }
+        if (!rows.length) return { cmd: "CARDS", payload: { ok: false, error: "NOTHING_MADE", looked_for: want } };
+
         const esc = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) =>
           ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-        const missing = row.items.filter((x) => !x.img).length;
-        const html =
-          '<!doctype html><html lang=en><head><meta charset=utf-8>' +
-          '<meta name=viewport content="width=device-width,initial-scale=1">' +
-          "<title>" + esc(row.key) + "</title><style>" +
-          "*{margin:0;padding:0;box-sizing:border-box}" +
-          "body{background:#0b0d12;color:#e9edf5;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:20px}" +
-          "h1{font-size:1.1rem;font-weight:800;letter-spacing:-.01em}" +
-          ".sub{color:#94a3b8;font-size:.82rem;margin:.3rem 0 1.2rem}" +
-          ".sub b{color:#e9edf5;font-weight:600}" +
-          ".g{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}" +
-          "figure{background:#141a28;border:1px solid rgba(148,163,184,.16);border-radius:12px;overflow:hidden}" +
-          "figure img{width:100%;aspect-ratio:1;object-fit:cover;display:block;background:#0f172a}" +
-          "figcaption{padding:.5rem .6rem}" +
-          "figcaption b{display:block;font-size:.9rem}" +
-          "figcaption span{display:block;color:#64748b;font-size:.74rem;margin-top:.15rem}" +
-          ".gone{padding:2.4rem .6rem;text-align:center;color:#fca5a5;font-size:.8rem}" +
-          "</style></head><body>" +
-          "<h1>" + esc(row.label || row.key) + "</h1>" +
+        const gone = rows.reduce((n, r) => n + r.items.filter((x) => !x.img).length, 0);
+        const cards = rows.reduce((n, r) => n + r.items.length, 0);
+        const body = rows.map((row) =>
+          "<section><h2>" + esc(row.label || row.key) + "</h2>" +
           '<p class=sub><b>' + esc(row.subject) + "</b> &middot; varying <b>" + esc(row.variable) +
-          "</b> &middot; holding <b>" + esc(row.hold || "?") + "</b> &middot; " + row.items.length + " cards" +
-          (missing ? " &middot; <b>" + missing + " never drew</b>" : "") +
-          " &middot; " + esc(String(row.made_at || "").slice(0, 16)) + "</p><div class=g>" +
-          row.items.map((it) =>
+          "</b> &middot; holding <b>" + esc(row.hold || "?") + "</b> &middot; " + row.items.length + " cards</p>" +
+          "<div class=g>" + row.items.map((it) =>
             "<figure>" +
             (it.img ? '<img loading=lazy src="https://auras.guide/image/' + esc(it.img) + '">'
                     : '<div class=gone>never drew</div>') +
             "<figcaption><b>" + esc(it.label || it.id) + "</b>" +
             (it.say ? "<span>" + esc(it.say) + "</span>" : "") +
-            "</figcaption></figure>").join("") +
-          "</div></body></html>";
-        // The row key contains colons ("composition:japanese-dragon:japanese"). Colons are legal
-        // in a URL path but they are the kind of legal that breaks somewhere - a proxy, a
-        // browser, a copy-paste. The page path is flattened; the row key is unchanged.
-        const page = "sheet/" + row.key.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "");
+            "</figcaption></figure>").join("") + "</div></section>").join("");
+        const html =
+          '<!doctype html><html lang=en><head><meta charset=utf-8>' +
+          '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+          "<title>" + esc(want) + "</title><style>" +
+          "*{margin:0;padding:0;box-sizing:border-box}" +
+          "body{background:#0b0d12;color:#e9edf5;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px}" +
+          "h1{font-size:1.05rem;font-weight:800}" +
+          "h2{font-size:.72rem;text-transform:uppercase;letter-spacing:.09em;color:#94a3b8;margin:1.6rem 0 .3rem;font-weight:700}" +
+          ".top{color:#64748b;font-size:.78rem;margin:.25rem 0 .5rem}" +
+          ".sub{color:#64748b;font-size:.74rem;margin-bottom:.6rem}" +
+          ".sub b{color:#cbd5e1;font-weight:600}" +
+          // TWO COLUMNS ON A PHONE. A row judged one card at a time is not judged as a row, and a
+          // single column makes a phone do exactly that.
+          ".g{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}" +
+          "figure{background:#141a28;border:1px solid rgba(148,163,184,.16);border-radius:12px;overflow:hidden}" +
+          "figure img{width:100%;aspect-ratio:1;object-fit:cover;display:block;background:#0f172a}" +
+          "figcaption{padding:.45rem .55rem}" +
+          "figcaption b{display:block;font-size:.85rem}" +
+          "figcaption span{display:block;color:#64748b;font-size:.7rem;margin-top:.15rem}" +
+          ".gone{padding:2.2rem .6rem;text-align:center;color:#fca5a5;font-size:.78rem}" +
+          "</style></head><body><h1>" + esc(want) + "</h1><p class=top>" +
+          rows.length + (rows.length === 1 ? " row" : " rows") + " &middot; " + cards + " cards" +
+          (gone ? " &middot; <b style=color:#fca5a5>" + gone + " never drew</b>" : "") + "</p>" +
+          body + "</body></html>";
+        const page = "sheet/" + want.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "");
         await env.AURA_KV.put("page:auras.guide/" + page, html);
-        return { cmd: "CARDS", payload: { ok: true, key: row.key, cards: row.items.length,
-          never_drew: missing, url: "https://auras.guide/" + page,
-          note: "The whole row on one screen, in order. Judge it as a row - a card that reads fine " +
-                "alone can read wrong beside its neighbour." } };
+        return { cmd: "CARDS", payload: { ok: true, rows: rows.map((r) => r.key), cards,
+          never_drew: gone, url: "https://auras.guide/" + page,
+          note: "Open it on a phone. Judge each row as a ROW - a card that reads fine alone can " +
+                "read wrong beside its neighbour, and that is the failure a single card never shows." } };
       }
 
       if (cSub === "GET") {
@@ -23182,12 +23276,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
 
       if (cSub === "DROP") {
-        const key = rowKey(args[1] || ""), item = (args[2] || "").toLowerCase();
+        // `args[2]` took ONE word, so "wrapped around" arrived as "wrapped" and every multi-word
+        // id was undroppable. REDO was fixed for exactly this last deploy and DROP was not - one
+        // door mended, the other left open, which is the most expensive recurring mistake in this
+        // file. Everything after the key is the id.
+        const dHead = cRest.trim().split(/\s+/);
+        const key = rowKey(dHead[0] || ""), item = dHead.slice(1).join(" ").toLowerCase();
         const row = await env.AURA_KV.get(key, "json").catch(() => null);
         if (!row) return { cmd: "CARDS", payload: { ok: false, error: "NO_SUCH_ROW" } };
         const before = row.items.length;
         row.items = row.items.filter((x) => x.id !== item);
-        if (row.items.length === before) return { cmd: "CARDS", payload: { ok: false, error: "NO_SUCH_CARD", item } };
+        if (row.items.length === before) return { cmd: "CARDS", payload: { ok: false, error: "NO_SUCH_CARD",
+          item, has: row.items.map((x) => x.id) } };
         await env.AURA_KV.put(key, JSON.stringify(row));
         return { cmd: "CARDS", payload: { ok: true, dropped: item, left: row.items.length } };
       }
@@ -23381,7 +23481,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
 
       return { cmd: "CARDS", payload: { ok: false,
-        error: "Sub-commands: HOUSE, ROW, REDO, DROP, SHEET, GET, LIST" } };
+        error: "Sub-commands: SUBJECT, HOUSE, ROW, REDO, DROP, SHEET, GET, LIST" } };
     }
 
     case "WALL": {

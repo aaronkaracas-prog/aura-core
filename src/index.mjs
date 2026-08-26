@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.75.0-2026-08-26-layout-not-rendering";
+const BUILD = "aura-core-v7.76.0-2026-08-26-a-card-can-carry-words";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23140,12 +23140,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // ROW  <key> ::: {"label":"What style?","subject":"japanese dragon","variable":"style",
         //                 "items":["japanese","realism",...],"parent":"<image_id>"}
         // REDO <key> <item>   - remake one card with the row's own settings
-        let key, spec = null, only = null;
+        let key, spec = null, only = null, cardSay = null;
         if (cSub === "REDO") {
-          key = rowKey(args[1] || ""); only = (args[2] || "").toLowerCase();
+          // CARDS REDO <key> <item> [::: what it should look like]
+          // The item id can contain spaces ("black and grey realism"), so everything between the
+          // key and the ::: is the id.
+          const cut = cRest.indexOf(":::");
+          const head = (cut < 0 ? cRest : cRest.slice(0, cut)).trim().split(/\s+/);
+          if (cut >= 0) cardSay = cRest.slice(cut + 3).trim() || null;
+          key = rowKey(head[0] || ""); only = head.slice(1).join(" ").toLowerCase();
           spec = await env.AURA_KV.get(key, "json").catch(() => null);
-          if (!spec) return { cmd: "CARDS", payload: { ok: false, error: "NO_SUCH_ROW" } };
-          if (!only) return { cmd: "CARDS", payload: { ok: false, error: "Usage: CARDS REDO <key> <item>" } };
+          if (!spec) return { cmd: "CARDS", payload: { ok: false, error: "NO_SUCH_ROW", key: head[0] || null } };
+          if (!only) return { cmd: "CARDS", payload: { ok: false,
+            error: "Usage: CARDS REDO <key> <item> ::: what it should look like" } };
         } else {
           const cut = cRest.indexOf(":::");
           if (cut < 0) return { cmd: "CARDS", payload: { ok: false,
@@ -23158,7 +23165,27 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
         const variable = String(spec.variable || "").toLowerCase().trim();
         const subject  = String(spec.subject || "").toLowerCase().trim();
-        const items    = Array.isArray(spec.items) ? spec.items.map(String) : [];
+        // ══ SOME WORDS ARE NOT ENOUGH VOCABULARY ═══════════════════════════════════════════
+        // The first good row failed on exactly three cards and they share a cause: the label
+        // alone did not tell the model enough.
+        //   - "traditional" beside a japanese dragon reads as traditional JAPANESE, not the bold
+        //     flat primaries and thick outlines of American traditional.
+        //   - "geometric" and "ornamental" are adjectives a model can apply faintly and still
+        //     claim to have obeyed - both came back as the japanese card with a wash over it.
+        // The cards that passed - watercolour, neo-traditional, sketch, minimalist - are words
+        // with unmistakable rendering attached. So an item may be a bare string OR
+        //   {"id":"traditional","say":"bold american traditional - thick black outlines, flat
+        //    primary colour, limited palette"}
+        // The id is what the person taps and what the registry keys on; `say` is what the model
+        // is told. Where they differ, the label stays clean and the prompt does the work.
+        const items = (Array.isArray(spec.items) ? spec.items : []).map((x) =>
+          (x && typeof x === "object")
+            ? { id: String(x.id || x.label || "").toLowerCase(), label: String(x.label || x.id || ""),
+                say: x.say ? String(x.say) : null }
+            : { id: String(x ?? "").toLowerCase(), label: String(x ?? ""), say: null })
+          // `String(null)` is "null" - a four-letter id that survives a truthiness filter and
+          // manufactures a card labelled "null". Coerce nullish to empty BEFORE the filter.
+          .filter((x) => x.id && x.id !== "null" && x.id !== "undefined");
         if (!variable || !subject || !items.length)
           return { cmd: "CARDS", payload: { ok: false, error: "NEED_SUBJECT_VARIABLE_ITEMS" } };
 
@@ -23189,33 +23216,46 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const CARD = ". A single subject, centred, filling the frame, on a plain light background. " +
                      "No skin, no body, no border, no background scenery, no extra motifs - " +
                      "only the subject itself.";
-        const wordFor = (v, item) =>
-            v === "style"       ? subject + ", " + item + " style"
-          : v === "composition" ? subject + ", " + item
-          : v === "character"   ? subject + ", " + item
-          : v === "colour"      ? subject + ", " + item
-          : v === "subject"     ? item
-          : subject + ", " + item;
+        // A `say` REPLACES the label in the prompt entirely - it is not appended, because
+        // "traditional, bold american traditional…" leaves the misleading word in the sentence.
+        const wordFor = (v, it) => {
+          const w = it.say || it.label;
+          return v === "style"   ? subject + ", " + w + (it.say ? "" : " style")
+               : v === "subject" ? w
+               : subject + ", " + w;
+        };
 
-        const draw = async (item) => {
+        const draw = async (it, parentImg) => {
           const refs = [];
           if (house) refs.push("https://auras.guide/image/" + house);
-          if (holdsLook && parent) refs.push("https://auras.guide/image/" + parent);
-          const gi = await auraGenerateImage(wordFor(variable, item) + CARD, env,
+          if (holdsLook && parentImg) refs.push("https://auras.guide/image/" + parentImg);
+          const gi = await auraGenerateImage(wordFor(variable, it) + CARD, env,
             { source: "card", refs }).catch(() => null);
-          return gi?.ok ? { id: String(item).toLowerCase(), label: String(item),
-            img: gi.id || null, cached: !!gi.cached } : { id: String(item).toLowerCase(), label: String(item), img: null };
+          const base = { id: it.id, label: it.label, say: it.say || null };
+          return gi?.ok ? { ...base, img: gi.id || null, cached: !!gi.cached } : { ...base, img: null };
         };
 
         if (cSub === "REDO") {
-          parent = spec.parent || null;
-          const made = await draw(only);
           const idx = spec.items.findIndex((x) => x.id === only);
-          if (idx < 0) return { cmd: "CARDS", payload: { ok: false, error: "NO_SUCH_CARD", item: only } };
+          if (idx < 0) return { cmd: "CARDS", payload: { ok: false, error: "NO_SUCH_CARD", item: only,
+            has: spec.items.map((x) => x.id) } };
+          // REDO WITH NO NEW WORDS IS A CACHE HIT. The prompt would be byte-identical to the one
+          // that produced the card being replaced, so the same picture comes back and the command
+          // silently does nothing. If the card was wrong, something has to be different.
+          const newSay = cardSay || spec.items[idx].say || null;
+          if (!newSay) return { cmd: "CARDS", payload: { ok: false, error: "REDO_NEEDS_WORDS",
+            item: only,
+            note: 'The same prompt returns the same cached picture. Say what it should look like: ' +
+                  'CARDS REDO ' + key.replace("card:row:", "") + ' ' + only + ' ::: bold american ' +
+                  'traditional, thick black outlines, flat primary colour' } };
+          // The parent matters here too: on a family row, a replacement drawn without it is the
+          // one card that does not match the rest.
+          const made = await draw({ ...spec.items[idx], say: newSay }, holdsLook ? spec.parent : null);
           spec.items[idx] = made;
           spec.made_at = new Date().toISOString();
           await env.AURA_KV.put(key, JSON.stringify(spec));
-          return { cmd: "CARDS", payload: { ok: true, key: key.replace("card:row:", ""), redone: made } };
+          return { cmd: "CARDS", payload: { ok: true, key: key.replace("card:row:", ""), redone: made,
+            url: made.img ? "https://auras.guide/image/" + made.img : null } };
         }
 
         // THE FIRST CARD BECOMES THE FAMILY PARENT when the row holds the look. That is what makes
@@ -23224,7 +23264,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // and a dog through ear-up and ear-down.
         const out = [];
         if (holdsLook && !parent) {
-          const first = await draw(items[0]);
+          const first = await draw(items[0], null);
           out.push(first);
           if (first.img) parent = first.img;
         }
@@ -23232,7 +23272,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // In batches of four: independent calls, and Cloudflare's six-connection ceiling applies
         // only while waiting for response headers.
         for (let i = 0; i < rest.length; i += 4) {
-          const batch = await Promise.all(rest.slice(i, i + 4).map(draw));
+          const batch = await Promise.all(rest.slice(i, i + 4).map((it) => draw(it, parent)));
           out.push(...batch);
         }
 

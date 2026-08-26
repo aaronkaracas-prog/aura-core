@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.73.0-2026-08-26-ladder-model-fix";
+const BUILD = "aura-core-v7.74.0-2026-08-26-the-card-factory";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23047,6 +23047,196 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
       return { cmd: "REQUESTS", payload: { ok: true, shop: rqShop, waiting: rqOut.filter(r => r.status === "sent").length,
         requests: rqOut } };
+    }
+
+    // ══ CARDS — THE VISUAL FACTORY AND THE CARD REGISTRY ══════════════════════════════════════
+    //
+    //   CARDS HOUSE <image_id>                     - set the look every card inherits
+    //   CARDS ROW <key> ::: {json}                 - manufacture a row of cards
+    //   CARDS GET <key>                            - the row as the page will receive it
+    //   CARDS REDO <key> <item>                    - regenerate one card
+    //   CARDS DROP <key> <item>                    - remove one card
+    //   CARDS LIST [prefix]                        - what has been manufactured
+    //
+    // WHY THIS EXISTS. Every navigation card should be a PICTURE, not the word "Rose". Nobody
+    // knows what neo-traditional means; they know it when they see it. That is the whole product:
+    // see, recognise, tap.
+    //
+    // CONSISTENCY IS THE PROBLEM, AND IT HAS ONE MECHANISM. Three thousand images generated
+    // independently look like three thousand images. They look like a PRODUCT when they share a
+    // house look, and that comes from ONE BLESSED REFERENCE passed as a `ref` on every card -
+    // not from a prompt describing the look, because prompts drift. `refs` is already in the
+    // image cache key, so a card manufactured twice is free the second time.
+    //
+    // TWO REFERENCES, TWO JOBS, AND THEY ARE NOT THE SAME (this is the Adobe split - style
+    // reference and structure reference are different concepts and conflating them is why the
+    // early screens contaminated):
+    //   HOUSE  - the look of a CARD. Ground, framing, weight, lighting. Every card, everywhere,
+    //            so the wall reads as one thing.
+    //   PARENT - the thing held CONSTANT inside one row, so only the demonstrated variable moves.
+    //
+    // AND THE ONE PLACE PARENT MUST NOT BE USED: a STYLE row. The whole point of that row is that
+    // the style changes; passing a parent drags the parent's style along and every card comes
+    // back looking like card one. So a style row rides on HOUSE ALONE - framing held, language
+    // free. Every other row locks the look and moves one thing.
+    //
+    // WHY NOT `FACT`. FACT is the right SHAPE - supersession, history, what is true now - and the
+    // wrong door. Every FACT SET writes a memory and bumps `state:knowledge:rev`, which
+    // re-renders aura-think's prompt. Three thousand card registrations would be three thousand
+    // memories about pictures and three thousand cold prompt renders. The catalogue is not
+    // something Aura needs to KNOW; it is something the page needs to LOOK UP. Its own keyspace,
+    // superseding the same way, with none of the side effects.
+    //
+    // THE ROW IS THE CONTRACT, NOT THE HTML. The page never holds card markup - it asks for a row
+    // and renders what comes back. That is what makes the identical payload portable into an MCP
+    // App inside ChatGPT or Claude later without a second build, and it costs nothing to do now.
+    case "CARDS": {
+      const cSub = (args[0] || "").toUpperCase();
+      const cRest = args.slice(1).join(" ").trim();
+      const HOUSE_KEY = "card:house";
+      const rowKey = (k) => "card:row:" + String(k).toLowerCase().replace(/[^a-z0-9:_-]+/g, "-").slice(0, 100);
+
+      if (cSub === "HOUSE") {
+        const hid = args[1];
+        if (!hid) {
+          const cur = await env.AURA_KV.get(HOUSE_KEY);
+          return { cmd: "CARDS", payload: { ok: true, house: cur || null,
+            note: cur ? "Every card generated from now on inherits this look."
+                      : "No house look set. CARDS HOUSE <image_id> sets it - every card inherits it." } };
+        }
+        const meta = await env.AURA_KV.get("imagemeta:" + hid, "json").catch(() => null);
+        if (!meta) return { cmd: "CARDS", payload: { ok: false, error: "NO_SUCH_IMAGE", id: hid,
+          note: "The house look has to be an image that exists. SHOW_IT one first, look at it, then set it." } };
+        await env.AURA_KV.put(HOUSE_KEY, hid);
+        return { cmd: "CARDS", payload: { ok: true, house: hid, url: "https://auras.guide/image/" + hid,
+          note: "Set. Cards already manufactured keep the look they were made with - CARDS REDO remakes one." } };
+      }
+
+      if (cSub === "GET") {
+        const row = await env.AURA_KV.get(rowKey(args[1] || ""), "json").catch(() => null);
+        if (!row) return { cmd: "CARDS", payload: { ok: false, error: "NO_SUCH_ROW", key: args[1] || null } };
+        return { cmd: "CARDS", payload: { ok: true, ...row } };
+      }
+
+      if (cSub === "LIST") {
+        const pre = "card:row:" + (args[1] ? String(args[1]).toLowerCase() : "");
+        const l = await env.AURA_KV.list({ prefix: pre, limit: 200 }).catch(() => ({ keys: [] }));
+        return { cmd: "CARDS", payload: { ok: true, count: l.keys.length,
+          rows: l.keys.map((k) => k.name.replace("card:row:", "")) } };
+      }
+
+      if (cSub === "DROP") {
+        const key = rowKey(args[1] || ""), item = (args[2] || "").toLowerCase();
+        const row = await env.AURA_KV.get(key, "json").catch(() => null);
+        if (!row) return { cmd: "CARDS", payload: { ok: false, error: "NO_SUCH_ROW" } };
+        const before = row.items.length;
+        row.items = row.items.filter((x) => x.id !== item);
+        if (row.items.length === before) return { cmd: "CARDS", payload: { ok: false, error: "NO_SUCH_CARD", item } };
+        await env.AURA_KV.put(key, JSON.stringify(row));
+        return { cmd: "CARDS", payload: { ok: true, dropped: item, left: row.items.length } };
+      }
+
+      if (cSub === "ROW" || cSub === "REDO") {
+        // ROW  <key> ::: {"label":"What style?","subject":"japanese dragon","variable":"style",
+        //                 "items":["japanese","realism",...],"parent":"<image_id>"}
+        // REDO <key> <item>   - remake one card with the row's own settings
+        let key, spec = null, only = null;
+        if (cSub === "REDO") {
+          key = rowKey(args[1] || ""); only = (args[2] || "").toLowerCase();
+          spec = await env.AURA_KV.get(key, "json").catch(() => null);
+          if (!spec) return { cmd: "CARDS", payload: { ok: false, error: "NO_SUCH_ROW" } };
+          if (!only) return { cmd: "CARDS", payload: { ok: false, error: "Usage: CARDS REDO <key> <item>" } };
+        } else {
+          const cut = cRest.indexOf(":::");
+          if (cut < 0) return { cmd: "CARDS", payload: { ok: false,
+            error: 'Usage: CARDS ROW <key> ::: {"label":"..","subject":"..","variable":"..","items":[..]}' } };
+          key = rowKey(cRest.slice(0, cut).trim());
+          try { spec = JSON.parse(cRest.slice(cut + 3).trim()); }
+          catch { try { spec = repairJson(cRest.slice(cut + 3).trim()); } catch {} }
+          if (!spec || typeof spec !== "object") return { cmd: "CARDS", payload: { ok: false, error: "BAD_JSON" } };
+        }
+
+        const variable = String(spec.variable || "").toLowerCase().trim();
+        const subject  = String(spec.subject || "").toLowerCase().trim();
+        const items    = Array.isArray(spec.items) ? spec.items.map(String) : [];
+        if (!variable || !subject || !items.length)
+          return { cmd: "CARDS", payload: { ok: false, error: "NEED_SUBJECT_VARIABLE_ITEMS" } };
+
+        const house = await env.AURA_KV.get(HOUSE_KEY);
+        // A STYLE row rides on the house look alone. Anything else locks the look with a parent
+        // and moves exactly one thing - see the note at the top of this command.
+        const holdsLook = variable !== "style";
+        let parent = spec.parent || null;
+
+        // THE HOUSE LINE IS PART OF THE PROMPT, NOT JUST A REFERENCE. A reference carries the look;
+        // the words stop the model wandering off the card format even when the reference is weak.
+        const CARD = ". A single subject, centred, filling the frame, on a plain dark ground. " +
+                     "Tattoo design - clean linework, high contrast, no skin, no body, no photograph, " +
+                     "the artwork only.";
+        const wordFor = (v, item) =>
+            v === "style"       ? subject + ", " + item + " style"
+          : v === "composition" ? subject + ", " + item
+          : v === "character"   ? subject + ", " + item
+          : v === "colour"      ? subject + ", " + item
+          : v === "subject"     ? item
+          : subject + ", " + item;
+
+        const draw = async (item) => {
+          const refs = [];
+          if (house) refs.push("https://auras.guide/image/" + house);
+          if (holdsLook && parent) refs.push("https://auras.guide/image/" + parent);
+          const gi = await auraGenerateImage(wordFor(variable, item) + CARD, env,
+            { source: "card", refs }).catch(() => null);
+          return gi?.ok ? { id: String(item).toLowerCase(), label: String(item),
+            img: gi.id || null, cached: !!gi.cached } : { id: String(item).toLowerCase(), label: String(item), img: null };
+        };
+
+        if (cSub === "REDO") {
+          parent = spec.parent || null;
+          const made = await draw(only);
+          const idx = spec.items.findIndex((x) => x.id === only);
+          if (idx < 0) return { cmd: "CARDS", payload: { ok: false, error: "NO_SUCH_CARD", item: only } };
+          spec.items[idx] = made;
+          spec.made_at = new Date().toISOString();
+          await env.AURA_KV.put(key, JSON.stringify(spec));
+          return { cmd: "CARDS", payload: { ok: true, key: key.replace("card:row:", ""), redone: made } };
+        }
+
+        // THE FIRST CARD BECOMES THE FAMILY PARENT when the row holds the look. That is what makes
+        // it a family rather than a pile: card two onward are the same picture with one thing
+        // changed, which is the mechanism that held a dragon together through four orientations
+        // and a dog through ear-up and ear-down.
+        const out = [];
+        if (holdsLook && !parent) {
+          const first = await draw(items[0]);
+          out.push(first);
+          if (first.img) parent = first.img;
+        }
+        const rest = out.length ? items.slice(1) : items;
+        // In batches of four: independent calls, and Cloudflare's six-connection ceiling applies
+        // only while waiting for response headers.
+        for (let i = 0; i < rest.length; i += 4) {
+          const batch = await Promise.all(rest.slice(i, i + 4).map(draw));
+          out.push(...batch);
+        }
+
+        const row = { key: key.replace("card:row:", ""), type: "row",
+          label: String(spec.label || "").slice(0, 80) || null,
+          subject, variable, parent: parent || null, house: house || null,
+          items: out, made_at: new Date().toISOString() };
+        await env.AURA_KV.put(key, JSON.stringify(row));
+        const missed = out.filter((x) => !x.img).length;
+        return { cmd: "CARDS", payload: { ok: true, ...row,
+          urls: out.map((x) => x.label + "  ->  " + (x.img ? "https://auras.guide/image/" + x.img : "FAILED")),
+          drew: out.length - missed, failed: missed,
+          cached: out.filter((x) => x.cached).length,
+          note: holdsLook
+            ? "Family: card one is the parent, the rest are it with one thing changed."
+            : "Style row: house look only. A parent here would drag its own style onto every card." } };
+      }
+
+      return { cmd: "CARDS", payload: { ok: false,
+        error: "Sub-commands: HOUSE, ROW, REDO, DROP, GET, LIST" } };
     }
 
     case "WALL": {
@@ -51568,7 +51758,7 @@ export class PublicEntry extends WorkerEntrypoint {
               // when somebody offers them, but they are NOT design stages any more - they are
               // on-body decisions made after the artwork exists - so they do not count toward
               // what is resolved or missing here.
-              const order = ["subject", "composition", "character", "style", "colour", "detail"];
+              const order = ["subject", "style", "composition", "character", "colour", "detail"];
               intent.resolved = order.filter(k => intent[k] != null &&
                 (!Array.isArray(intent[k]) || intent[k].length));
               intent.missing = order.filter(k => !intent.resolved.includes(k));
@@ -51756,12 +51946,20 @@ export class PublicEntry extends WorkerEntrypoint {
           // fitted to the subject - "What expression?" for a dog, "What kind of dragon?" for a
           // dragon, "What arrangement?" for roses. "What should it feel like" is exactly the
           // abstract question the buttons exist to replace, and it must never reach a screen.
-          { field: "composition", ask: "How do you want to see it?", opts: "contextual" },
-          { field: "character",   ask: "What kind?",                 opts: "contextual" },
+          // ══ STYLE MOVED AHEAD OF COMPOSITION (2026-08-26) ═════════════════════════════════
+          // Aaron walked it and said it plainly: "once I chose the style it worked perfect."
+          // Style is the big visual fork - hyperrealism vs fine line vs traditional changes the
+          // entire language of the picture, while happy vs soulful is an adjustment INSIDE a
+          // language already chosen. Asking the small question first is why every screen before
+          // style rendered in no particular language and none of them looked like a tattoo.
+          // It also means every row AFTER style can carry the chosen style as a reference, so the
+          // composition cards are already in the language they picked.
           { field: "style",     ask: "What style?",
             opts: ["japanese", "realism", "hyperrealism", "black and grey realism", "fine line",
                    "traditional", "neo-traditional", "blackwork", "illustrative", "watercolour",
                    "geometric", "minimalist", "dotwork", "ornamental", "sketch", "etching"] },
+          { field: "composition", ask: "How do you want to see it?", opts: "contextual" },
+          { field: "character",   ask: "What kind?",                 opts: "contextual" },
           { field: "colour",    ask: "Colour, or black and grey?",
             opts: ["full colour", "black and grey", "muted colour"] },
           { field: "detail",    ask: "How much detail?",
@@ -51777,7 +51975,7 @@ export class PublicEntry extends WorkerEntrypoint {
         // Unknown keys are ignored rather than appended, because a field arriving in a different
         // order or a stray key would produce a different string for the same tattoo and quietly
         // turn a free cache hit into a paid generation.
-        const ORDER = ["subject", "composition", "character", "style", "colour", "detail", "placement", "size", "elements"];
+        const ORDER = ["subject", "style", "composition", "character", "colour", "detail", "placement", "size", "elements"];
         const say = (k, v) => {
           const t = Array.isArray(v) ? v.join(" and ") : String(v);
           const s = t.trim().toLowerCase();
@@ -51953,6 +52151,35 @@ export class PublicEntry extends WorkerEntrypoint {
           return { failed: true, why: lastErr, saw: lastText, model: lastModel };
         };
 
+        // ── A MANUFACTURED CARD BEATS A WORD, AND COSTS NOTHING TO FIND OUT.
+        // The page asks for a stage; if the factory has already made that row, the pictures come
+        // back attached to the words on the FIRST paint - no generation, one KV read. If it has
+        // not, the words still work and `tiles` fills pictures behind them as before. The page
+        // never holds a URL and never knows which happened.
+        // Rows are looked up narrowest-first: this subject in this style, then this subject, then
+        // the bare variable. So a hand-blessed golden-retriever composition row wins over the
+        // generic one, and the generic one still catches everything else.
+        const withCards = async (field, intent, opts) => {
+          const slug = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+          const keys = [];
+          if (intent.subject && intent.style) keys.push(field + ":" + slug(intent.subject) + ":" + slug(intent.style));
+          if (intent.subject) keys.push(field + ":" + slug(intent.subject));
+          keys.push(field);
+          let row = null;
+          for (const k of keys) {
+            row = await env.AURA_KV.get("card:row:" + k, "json").catch(() => null);
+            if (row && Array.isArray(row.items) && row.items.length) break;
+            row = null;
+          }
+          const byId = {};
+          if (row) for (const it of row.items) if (it.img) byId[String(it.id).toLowerCase()] = it.img;
+          return opts.map(o => {
+            const img = byId[String(o).toLowerCase()];
+            return img ? { value: o, label: o, image: "https://auras.guide/image/" + img, card: true }
+                       : { value: o, label: o };
+          });
+        };
+
         // ── WALK THE LADDER UNTIL A STAGE HAS SOMETHING TO SHOW.
         // Three outcomes per contextual stage and they are NOT the same thing:
         //   options -> ask it
@@ -52009,7 +52236,7 @@ export class PublicEntry extends WorkerEntrypoint {
         // twenty-four images to design one tattoo. Somebody who reads "head and chest" and taps
         // it costs nothing at all.
         return { ok: true, done: false, stage: stage.field, ask: label,
-          options: choices.map(o => ({ value: o, label: o })),
+          options: await withCards(stage.field, inc, choices),
           resolved: ORDER.filter(k => has(k)),
           so_far: describe(null),
           say: "Tap one - or tell me something different." };
@@ -52025,7 +52252,7 @@ export class PublicEntry extends WorkerEntrypoint {
         const field = String(b.stage || "").trim();
         const vals = Array.isArray(b.options) ? b.options.slice(0, 4).map(String) : [];
         if (!field || !vals.length || !inc.subject) return { ok: false, error: "NEED_FIELD_AND_OPTIONS" };
-        const ORDER = ["subject", "composition", "character", "style", "colour", "detail", "placement", "size", "elements"];
+        const ORDER = ["subject", "style", "composition", "character", "colour", "detail", "placement", "size", "elements"];
         const say = (k, v) => {
           const t = Array.isArray(v) ? v.join(" and ") : String(v);
           const s2 = t.trim().toLowerCase();
@@ -52052,15 +52279,41 @@ export class PublicEntry extends WorkerEntrypoint {
         const TAIL = ". A single subject unless stated otherwise. Tattoo design, clean linework, " +
                      "high contrast, on a plain background, no skin, no body, no photograph - " +
                      "the artwork only.";
-        const out = await Promise.all(vals.map(async (opt) => {
+        // ══ A FAMILY, NOT FOUR PICTURES ════════════════════════════════════════════════════
+        // This generated each option independently with NO refs - four separate draws from four
+        // prompt strings - so they drifted on every axis at once and the person was comparing four
+        // different dogs instead of one decision. That is the contamination visible in the early
+        // screens, and it was one missing argument.
+        // Now: the HOUSE look on every card, and for every row except style, the FIRST card
+        // becomes the parent that the rest are drawn from. Same picture, one thing changed - the
+        // mechanism that held a dragon through four orientations and a dog through ear-up and
+        // ear-down. `refs` is in the cache key, so a repeat is still free.
+        // STYLE IS THE EXCEPTION and it is not a small one: a parent would drag its own style onto
+        // every card, and the entire purpose of that row is that the style changes.
+        const house = await env.AURA_KV.get("card:house").catch(() => null);
+        const houseUrl = house ? "https://auras.guide/image/" + house : null;
+        const holdsLook = field !== "style";
+        const drawOne = async (opt, parentUrl) => {
+          const refs = [];
+          if (houseUrl) refs.push(houseUrl);
+          if (parentUrl) refs.push(parentUrl);
           try {
             const gi = await auraGenerateImage(describe({ [field]: opt }).slice(0, 600) + TAIL, env,
-              { source: "tattoo_option" });
+              { source: "tattoo_option", refs });
             if (gi?.ok) return { value: opt, image: gi.image_url, cached: !!gi.cached };
           } catch {}
           return { value: opt, image: null };
-        }));
-        return { ok: true, stage: field, tiles: out };
+        };
+        const out = [];
+        let parentUrl = null;
+        if (holdsLook) {
+          const first = await drawOne(vals[0], null);
+          out.push(first);
+          parentUrl = first.image || null;
+        }
+        const rest = out.length ? vals.slice(1) : vals;
+        out.push(...await Promise.all(rest.map((o) => drawOne(o, parentUrl))));
+        return { ok: true, stage: field, tiles: out, family: !!parentUrl };
       }
 
       // ── SHOW ME. A photo of what they ALREADY have - the start of a cover-up or an addition.

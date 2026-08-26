@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.68.0-2026-08-25-tattoo-intent-is-an-object";
+const BUILD = "aura-core-v7.69.0-2026-08-25-the-checklist";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -49850,7 +49850,17 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   await env.AURA_KV.put(`image:${id}`, b64).catch(() => {});
   const meta = { id, prompt: p.slice(0, 1000), created: new Date().toISOString(), entity: opts.entity || null, source: opts.source || "showit", model, quality, tokens, cost_usd: costUsd, url: `https://${await imageHost(env, opts.host)}/image/${id}` };
   await env.AURA_KV.put(`imagemeta:${id}`, JSON.stringify(meta)).catch(() => {});
-  if (cacheKey) { try { await env.AURA_KV.put(cacheKey, JSON.stringify({ id, cost_usd: costUsd, at: new Date().toISOString() }), { expirationTtl: 30 * 24 * 3600 }).catch(() => {}); } catch {} }
+  // ══ THE CACHE DOES NOT EXPIRE (2026-08-25) ═════════════════════════════════════════════════
+  // This was 30 days, which meant a combination nobody picked for a month had to be paid for
+  // again. Wrong for a catalogue: "dragon tattoo", "labrador tattoo", every checklist tile is
+  // FURNITURE, and furniture does not need re-buying because the room was empty for a while.
+  // Aaron: "these definitely will never expire… it'll be available and it's literally, here's
+  // your artwork, we already handed it to them."
+  // The image itself never expired either - `image:<id>` and `imagemeta:<id>` are both written
+  // without a TTL - so all the expiry ever did was throw away the POINTER to a picture that was
+  // still sitting there. The lookup below already re-checks `imagemeta:` and misses cleanly if
+  // the image is genuinely gone, so nothing is served from a dangling key.
+  if (cacheKey) { try { await env.AURA_KV.put(cacheKey, JSON.stringify({ id, cost_usd: costUsd, at: new Date().toISOString() })).catch(() => {}); } catch {} }
   try { await env.AURA_MEMORY.prepare("INSERT INTO events (session_id, ts, type, body, entity_id, channel, summary) VALUES (?, ?, ?, ?, ?, ?, ?)").bind("image_gen", Date.now(), "image_created", JSON.stringify(meta), meta.entity || "system", "image", p.slice(0, 120)).run(); } catch {}
   // The paid path recorded a per-image ledger but never touched meter:spend, so four images at $0.002
   // each were invisible to every spend number in the system. Text was counted; images were not.
@@ -51674,11 +51684,160 @@ export class PublicEntry extends WorkerEntrypoint {
           say: "I could not pull examples just now - tell me more about what you want and I will " +
                "draw something instead." };
         try {
-          await env.AURA_KV.put(ck, JSON.stringify({ found: r.found, said: r.said }),
-            { expirationTtl: 30 * 24 * 3600 });
+          // No TTL, same reason as the image cache. "Labrador tattoo" is not news; the six good
+          // photographs of one are as good in a year as they are today, and the only thing an
+          // expiry bought was paying a second time for the same six.
+          await env.AURA_KV.put(ck, JSON.stringify({ found: r.found, said: r.said }));
         } catch {}
         return { ok: true, query: q, found: r.found, said: r.said, cached: false,
           note: "Point at one and I will make it yours." };
+      }
+
+      // ══ NEXT — THE CHECKLIST. THE ONE PIECE THAT WAS NOT BUILT. ════════════════════════════
+      //
+      // Every engine under this already existed and was proven: `talk` writes the facts, `wall`
+      // brings the world, `make` draws, `evolve` re-poses, the image cache makes a repeat free.
+      // What did not exist was anything that knew WHAT SCREEN COMES NEXT. Ten actions on this RPC
+      // and not one of them answered it, so the page called separate doors in whatever order it
+      // felt like. This is that order, and it is the whole of it.
+      //
+      // IT IS A CATALOGUE, NOT A WIZARD. Aaron: "they're really just guiding them through a
+      // catalog, unless they interject." Same answers give the same tattoo, and that is CORRECT -
+      // it is number 71 on the wall. The person makes it theirs by talking to her, which is
+      // `evolve`, and that version is unique to them. Nothing here has to be clever.
+      //
+      // THE TILES ARE FURNITURE, THE DESIGN IS THEIRS. Tiles go through `auraGenerateImage` - the
+      // agnostic core, no PTA birth, no lineage - because a tile is a picture of an OPTION and
+      // belongs to nobody. Their actual tattoo goes through `make`, which is SHOW_IT, which mints
+      // it under their PTA with a parent and contributors. Two doors on purpose.
+      //
+      // WHY THE PROMPT IS BUILT THE WAY IT IS: the cache keys on the exact prompt string, so the
+      // ten-thousandth person to answer japanese/whole back/full colour must produce a BYTE
+      // IDENTICAL string to the first, or every one of them pays. That is why the fields are
+      // serialised in a fixed order, lowercased and trimmed, and why nothing conversational -
+      // no name, no session, no timestamp - is ever allowed into it.
+      if (action === "next") {
+        const inc = (b.intent && typeof b.intent === "object") ? b.intent : {};
+        const has = (k) => {
+          const v = inc[k];
+          if (Array.isArray(v)) return v.length > 0;
+          return v != null && String(v).trim() !== "";
+        };
+        // THE STAGES, in the order Aaron's screens ask them. `subject` first because nothing can
+        // be drawn without it; `elements` last because it is the only one that adds rather than
+        // decides. `meaning` is deliberately NOT a stage - she asks for it in conversation, and a
+        // tattoo without one is not unfinished.
+        const STAGES = [
+          { field: "subject",     ask: "What is it going to be?",              opts: null },
+          { field: "style",       ask: "What style?",
+            opts: ["japanese", "realism", "fine line", "black and grey", "traditional", "neo-traditional", "watercolour", "minimalist"] },
+          { field: "placement",   ask: "Where on you?",
+            opts: ["full back", "upper back", "chest", "forearm", "upper arm", "ribs", "shoulder", "thigh"] },
+          { field: "size",        ask: "How big?",
+            opts: ["small", "medium", "large", "full coverage"] },
+          { field: "colour",      ask: "Colour, or black and grey?",
+            opts: ["full colour", "black and grey", "muted colour"] },
+          { field: "orientation", ask: "How should it sit?",
+            opts: ["vertical", "diagonal", "horizontal", "wrapping around"] },
+          { field: "flow",        ask: "Which way does it move?",
+            opts: ["still", "rising", "descending", "twisting"] },
+          { field: "mood",        ask: "What should it feel like?",
+            opts: ["fierce", "majestic", "mystical", "protective", "calm"] },
+          { field: "detail",      ask: "How much detail?",
+            opts: ["bold and simple", "balanced", "intricate", "very fine"] }
+        ];
+        const stage = STAGES.find(s => !has(s.field)) || null;
+
+        // ── CANONICAL. Everything that decides the pixels, in a fixed order, from a fixed list.
+        // Unknown keys are ignored rather than appended, because a field arriving in a different
+        // order or a stray key would produce a different string for the same tattoo and quietly
+        // turn a free cache hit into a paid generation.
+        const ORDER = ["subject", "style", "placement", "size", "colour", "orientation", "flow", "mood", "detail", "elements"];
+        const say = (k, v) => {
+          const t = Array.isArray(v) ? v.join(" and ") : String(v);
+          const s = t.trim().toLowerCase();
+          if (!s) return null;
+          if (k === "subject")     return s;
+          if (k === "style")       return s + " style";
+          if (k === "placement")   return "on the " + s;
+          if (k === "size")        return s;
+          if (k === "colour")      return s;
+          if (k === "orientation") {
+            // The chip says "vertical" because that is what a person taps. The PROMPT has to read
+            // like English or the model gets "running wrapping around", which is what this
+            // produced before the test printed it out loud.
+            const O = { "vertical": "running vertically", "diagonal": "running diagonally",
+                        "horizontal": "running horizontally", "wrapping around": "wrapping around the body",
+                        "wrap around": "wrapping around the body", "wrap_around": "wrapping around the body" };
+            return O[s] || s;
+          }
+          if (k === "flow")        return s;
+          if (k === "mood")        return s;
+          if (k === "detail")      return s + " linework";
+          if (k === "elements")    return "with " + s;
+          return s;
+        };
+        const describe = (over) => {
+          const merged = { ...inc, ...(over || {}) };
+          const parts = [];
+          for (const k of ORDER) {
+            const v = merged[k];
+            if (v == null || (Array.isArray(v) && !v.length) || String(v).trim() === "") continue;
+            const line = say(k, v);
+            if (line) parts.push(line);
+          }
+          return parts.join(", ");
+        };
+        // The same tail `make` uses. Not a second definition - if these two ever disagree, the
+        // tiles stop looking like the thing they are choosing.
+        const TAIL = ". Tattoo design, clean linework, high contrast, on a plain background, " +
+                     "no skin, no body, no photograph - the artwork only.";
+
+        if (!has("subject")) return { ok: true, done: false, stage: "subject",
+          ask: STAGES[0].ask, options: [], needs_words: true,
+          say: "Tell me what you want it to be and I will show you." };
+
+        // ── NOTHING LEFT TO ASK. Their tattoo, drawn from the whole answer, owned by them.
+        if (!stage) {
+          const subject = describe(null).slice(0, 600);
+          const r = await processCommand("SHOW_IT " + JSON.stringify({
+            subject: subject + TAIL,
+            context: "a tattoo somebody is designing for themselves: " + subject,
+            name: String(inc.subject || "tattoo").slice(0, 60),
+            creator: me
+          }), env, true);
+          const p = (r && r.payload) ? r.payload : r;
+          if (!p?.ok) return { ok: false, error: p?.error || "COULD_NOT_DRAW" };
+          return { ok: true, done: true, design: p.entity_id || p.id, image: p.image_url,
+            subject, cached: !!p.cached,
+            say: "Here it is. Tell me anything you want changed and I will change it.",
+            next: await nextChips(env, subject, null) };
+        }
+
+        // ── A QUESTION, AND FOUR PICTURES OF THEIR OWN TATTOO ANSWERING IT FOUR WAYS.
+        // Four, because four fills a two-column grid on a phone with nothing left over - the same
+        // reason `findReference` rounds to an even number. More than four is a catalogue nobody
+        // reads; fewer is not a choice.
+        // In parallel: they are independent, and Cloudflare's six-connection limit applies only
+        // while waiting for response headers, so four at once is well inside it.
+        const picks = stage.opts.slice(0, 4);
+        const tiles = await Promise.all(picks.map(async (opt) => {
+          const subject = describe({ [stage.field]: opt }).slice(0, 600);
+          try {
+            const gi = await auraGenerateImage(subject + TAIL, env, { source: "tattoo_option" });
+            if (gi?.ok) return { value: opt, label: opt, image: gi.image_url, cached: !!gi.cached };
+          } catch {}
+          // A tile that would not draw is dropped, never rendered as a broken square. The question
+          // is still answerable - they can say the word, and `talk` will hear it.
+          return { value: opt, label: opt, image: null };
+        }));
+
+        return { ok: true, done: false, stage: stage.field, ask: stage.ask,
+          options: tiles,
+          more: stage.opts.length > picks.length ? stage.opts.slice(picks.length) : [],
+          resolved: ORDER.filter(k => has(k)),
+          so_far: describe(null),
+          say: "Or just tell me - anything you say beats a box." };
       }
 
       // ── SHOW ME. A photo of what they ALREADY have - the start of a cover-up or an addition.

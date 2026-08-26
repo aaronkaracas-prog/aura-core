@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.80.0-2026-08-26-a-house-belongs-to-one-subject";
+const BUILD = "aura-core-v7.81.0-2026-08-26-does-this-decision-still-matter";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23164,9 +23164,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         }
         const sheet = await processCommand("CARDS SHEET " + slug2(name), env, true);
         const sp = (sheet && sheet.payload) ? sheet.payload : sheet;
+        // Every card, full size, as a flat list - the sheet is for judging a row as a row, this is
+        // for looking at one picture properly and for pasting somewhere else.
+        const urls = [];
+        for (const dd of done) {
+          const r2 = await env.AURA_KV.get(rowKey(dd.row), "json").catch(() => null);
+          if (r2) for (const it of r2.items)
+            urls.push(dd.row + " / " + it.label + "  ->  " +
+              (it.img ? "https://auras.guide/image/" + it.img : "NEVER DREW"));
+        }
         return { cmd: "CARDS", payload: { ok: true, subject: name, rows: done,
           drew: done.reduce((n, d) => n + d.drew, 0),
-          sheet: sp?.url || null,
+          sheet: sp?.url || null, urls,
           note: style && comps ? "Style wall holds pose, composition wall holds language. Open the sheet on a phone."
                                : "Style wall only. Add {\"style\":\"...\",\"compositions\":[...]} for the composition wall." } };
       }
@@ -23276,9 +23285,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
 
       if (cSub === "GET") {
-        const row = await env.AURA_KV.get(rowKey(args[1] || ""), "json").catch(() => null);
-        if (!row) return { cmd: "CARDS", payload: { ok: false, error: "NO_SUCH_ROW", key: args[1] || null } };
-        return { cmd: "CARDS", payload: { ok: true, ...row } };
+        const row = await env.AURA_KV.get(rowKey(cRest.trim()), "json").catch(() => null);
+        if (!row) return { cmd: "CARDS", payload: { ok: false, error: "NO_SUCH_ROW", key: cRest.trim() || null } };
+        // The flat list back. `CARDS ROW` always returned it and `SUBJECT` did not, so switching
+        // to the one-command run silently took away the thing Aaron uses to look at every image
+        // full size and to hand somebody else.
+        return { cmd: "CARDS", payload: { ok: true, ...row,
+          urls: row.items.map((x) => x.label + "  ->  " +
+            (x.img ? "https://auras.guide/image/" + x.img : "NEVER DREW")) } };
       }
 
       if (cSub === "LIST") {
@@ -52332,6 +52346,15 @@ export class PublicEntry extends WorkerEntrypoint {
         // full body, with another dog. So nobody is ever asked "how many?" as an abstract question,
         // and ONE is the default everywhere. A plural navigation label - "Dogs" - is how somebody
         // got here, never what they are getting.
+        // ══ ONE MODEL PIN FOR EVERY LADDER CALL, DECLARED WHERE THEY CAN ALL SEE IT ═══════════
+        // This was declared INSIDE `ladderOpts`, and the moment a second helper needed it the
+        // reference threw ReferenceError at runtime while `node --check` passed the file clean.
+        // That is the ninth appearance of this exact shape in this codebase - a name declared in
+        // one scope and read from another - and the eighth cost a walk of the live site to find.
+        // Anything two helpers share is declared above both of them.
+        const ladderPin = (await env.AURA_KV.get("config:talk:model").catch(() => null)) || null;
+        const ladderModel = ladderPin && ladderPin.trim() ? ladderPin.trim() : undefined;
+
         const ladderOpts = async (field, subject) => {
           const slug = String(subject).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
           const ck = "ladder2:" + field + ":" + slug;
@@ -52357,13 +52380,6 @@ export class PublicEntry extends WorkerEntrypoint {
               "aggressive, calm, spiritual, dark.\n" +
               "A skull: menacing, dark, eerie, aggressive, gothic, elegant, weathered, ancient, " +
               "broken, macabre, peaceful, playful.";
-          // `talkModel` lives inside the `talk` action and does not exist here. Referencing it
-          // threw ReferenceError on every call, `node --check` passed the file cleanly, and the
-          // whole ladder failed with an apology - eighth time this exact shape has appeared in
-          // this codebase. It cost one walk of the live site to find, and only because the error
-          // now carries what came back.
-          const pin = (await env.AURA_KV.get("config:talk:model").catch(() => null)) || null;
-          const ladderModel = pin && pin.trim() ? pin.trim() : undefined;
           let lastErr = null, lastText = null, lastModel = null;
           for (let attempt = 0; attempt < 2; attempt++) {
             try {
@@ -52465,6 +52481,91 @@ export class PublicEntry extends WorkerEntrypoint {
           ? { value: it.id, label: it.label || it.id, image: "https://auras.guide/image/" + it.img, card: true }
           : { value: it.id, label: it.label || it.id });
 
+        // ══ APPLIES — DOES THIS DECISION STILL CHANGE THE TATTOO? ═════════════════════════════
+        //
+        // Every stage now answers this BEFORE it asks its question, and the answer is judged
+        // against everything already locked - not against the subject alone. "Does colour apply?"
+        // depends on the style as much as the subject: black-and-grey realism has already said it.
+        // "Does detail apply?" depends on the style: minimalist and fine line define their own.
+        //
+        // WHY THIS AND NOT A CURATED LIST. Every bad card so far was patched one at a time -
+        // geometric dropped, wrapped-around dropped, japanese-on-a-retriever noticed only after
+        // fifteen were drawn. That never ends, because the next subject brings a new set. Asking
+        // up front is one mechanism instead of forty shortlists, and the answer is cached, so it
+        // costs one model call per context ever.
+        //
+        // THE TEST IS "MEANINGFUL", NOT "CONVENTIONAL". Somebody absolutely could want a golden
+        // retriever in irezumi language, and a system that quietly removes it has stopped
+        // removing nonsense and started narrowing what people are allowed to want. An option only
+        // goes when it would produce a picture indistinguishable from another option, or nothing
+        // a tattooist would recognise as a treatment at all.
+        //
+        // FOUR OUTCOMES, and only two of them show a screen:
+        //   several options -> ask, with the ones that survived
+        //   exactly one     -> resolve it silently. A question with one answer is not a question.
+        //   none / n/a      -> skip the stage entirely
+        //   failure         -> stop and say so. Never skip on a failure; a silent skip is how a
+        //                      golden retriever reached the style question with no composition.
+        const applies = async (field, intent, offered) => {
+          const locked = ["subject", "style", "composition", "character", "colour", "detail"]
+            .filter((k) => intent[k]).map((k) => k + "=" + String(intent[k]).toLowerCase());
+          const ck = "applies:" + field + ":" + locked.join("|").replace(/[^a-z0-9=|.-]+/g, "-").slice(0, 200);
+          try {
+            const hit = await env.AURA_KV.get(ck, "json");
+            if (hit && (hit.na === true || Array.isArray(hit.keep))) return hit;
+          } catch {}
+          try {
+            const br = await callBrain({
+              model: ladderModel,
+              system:
+                "Somebody is designing a tattoo. Decide whether one more decision is worth asking.\n\n" +
+                "ALREADY SETTLED:\n" + (locked.length ? locked.join("\n") : "(nothing yet)") + "\n\n" +
+                "THE DECISION: " + field + "\n" +
+                "THE OPTIONS ON OFFER:\n" + offered.join("\n") + "\n\n" +
+                'Return ONLY JSON: {"keep":["...","..."]} or {"na":true}\n\n' +
+                "KEEP an option if it would produce a VISUALLY MEANINGFUL tattoo treatment of this " +
+                "subject - something a tattooist could actually execute and a person could tell " +
+                "apart from the others.\n\n" +
+                "DROP an option ONLY if it would look the same as another option here, or if it " +
+                "would produce nothing a tattooist would recognise as a treatment.\n\n" +
+                "DO NOT DROP THINGS FOR BEING UNCONVENTIONAL. A golden retriever in japanese " +
+                "irezumi language is unusual and completely valid - somebody may want exactly " +
+                "that. You are removing nonsense, not narrowing what people are allowed to want. " +
+                "When unsure, KEEP.\n\n" +
+                'Return {"na":true} only when the WHOLE decision is already answered by what is ' +
+                "settled - black and grey realism has already answered colour; minimalist has " +
+                "already answered detail; a word in lettering has no expression.\n\n" +
+                "Copy the options back EXACTLY as written. No new options, no rewording.",
+              messages: [{ role: "user", content: JSON.stringify({ settled: locked, deciding: field }) }],
+              max_tokens: 400 }, env);
+            let o = null;
+            if (br?.ok && br.text) {
+              try { o = JSON.parse(br.text); } catch { try { o = repairJson(br.text); } catch {} }
+              if (o) o = unwrapSchema(o);
+            }
+            if (o && o.na === true) {
+              const rec = { na: true };
+              try { await env.AURA_KV.put(ck, JSON.stringify(rec)); } catch {}
+              return rec;
+            }
+            if (o && Array.isArray(o.keep)) {
+              // ONLY WHAT WAS OFFERED. A model that renames or invents an option would put a card
+              // on screen with no picture behind it and no id the registry knows.
+              const low = offered.map((x) => String(x).toLowerCase());
+              const keep = o.keep.map((x) => String(x || "").toLowerCase().trim())
+                .filter((x) => low.includes(x)).filter((x, i, a) => a.indexOf(x) === i);
+              if (keep.length) {
+                const rec = { keep };
+                try { await env.AURA_KV.put(ck, JSON.stringify(rec)); } catch {}
+                return rec;
+              }
+            }
+          } catch {}
+          // Nothing usable. NOT cached, and the caller keeps everything - a broken applicability
+          // check must never be the thing that removes a person's options.
+          return { keep: offered.map((x) => String(x).toLowerCase()), unchecked: true };
+        };
+
         // ── WALK THE LADDER UNTIL A STAGE HAS SOMETHING TO SHOW.
         // Three outcomes per contextual stage and they are NOT the same thing:
         //   options -> ask it
@@ -52475,21 +52576,57 @@ export class PublicEntry extends WorkerEntrypoint {
         //             to remove, and a silent skip is what let four dogs run through a field with
         //             no composition ever chosen.
         let choices = null, label = null, built = null;
+        // Resolved on the way past, when a stage turned out to have exactly one meaningful answer.
+        // The person never sees those - a question with one answer is not a question - but the
+        // reply reports them, because a field that filled itself must not look like a bug later.
+        const settled = {};
+        const nextStage = () => STAGES.slice(STAGES.indexOf(stage) + 1).find(x => !has(x.field)) || null;
+        // `applies` lowercases what it returns, but a consumer that DEPENDS on a producer's habit
+        // is one refactor from silently dropping every option whose case did not match. Normalise
+        // here too - a card vanishing because of a capital letter is indistinguishable from a card
+        // being correctly removed, which is the worst kind of bug this system can have.
+        const kept = (ok2, offered, idOf) => {
+          const keep = new Set((ok2.keep || []).map((x) => String(x).toLowerCase().trim()));
+          return offered.filter((o) => keep.has(String(idOf ? idOf(o) : o).toLowerCase().trim()));
+        };
         while (stage) {
           // The manufactured row is checked FIRST, before the written vocabulary and before any
           // model call, because a blessed row is the best answer available for that stage.
           const made = await cardRow(stage.field, inc);
-          if (made) { built = fromRow(made); label = made.label || stage.ask; break; }
-          if (stage.opts !== "contextual") { choices = stage.opts; label = stage.ask; break; }
+          if (made) {
+            const ok2 = await applies(stage.field, inc, made.items.map((x) => x.id));
+            if (ok2.na) { stage = nextStage(); continue; }
+            const live = kept(ok2, made.items, (x) => x.id);
+            if (!live.length) { stage = nextStage(); continue; }
+            if (live.length === 1) { inc[stage.field] = live[0].id; settled[stage.field] = live[0].id;
+                                     stage = nextStage(); continue; }
+            built = fromRow({ ...made, items: live }); label = made.label || stage.ask; break;
+          }
+          const offered = stage.opts !== "contextual" ? stage.opts : null;
+          if (offered) {
+            const ok2 = await applies(stage.field, inc, offered);
+            if (ok2.na) { stage = nextStage(); continue; }
+            const live = kept(ok2, offered);
+            if (!live.length) { stage = nextStage(); continue; }
+            if (live.length === 1) { inc[stage.field] = live[0]; settled[stage.field] = live[0];
+                                     stage = nextStage(); continue; }
+            choices = live; label = stage.ask; break;
+          }
           const got = await ladderOpts(stage.field, inc.subject);
           if (!got || got.failed) return { ok: false, error: "OPTIONS_UNAVAILABLE", stage: stage.field,
             say: "Give me a second and ask me again - I could not put those choices together.",
             why: got && got.why, saw: got && got.saw, model: got && got.model };
-          if (got.na) {
-            stage = STAGES.slice(STAGES.indexOf(stage) + 1).find(x => !has(x.field)) || null;
-            continue;
-          }
-          choices = got.opts; label = got.label; break;
+          if (got.na) { stage = nextStage(); continue; }
+          // A generated list gets the same treatment as a written one. `ladderOpts` already asks
+          // whether the DIMENSION applies; this asks whether each OPTION still means something now
+          // that a style is locked - a question that could not be asked when the list was built.
+          const ok3 = await applies(stage.field, inc, got.opts);
+          if (ok3.na) { stage = nextStage(); continue; }
+          const live3 = kept(ok3, got.opts);
+          if (!live3.length) { stage = nextStage(); continue; }
+          if (live3.length === 1) { inc[stage.field] = live3[0]; settled[stage.field] = live3[0];
+                                    stage = nextStage(); continue; }
+          choices = live3; label = got.label; break;
         }
 
         // Every applicable stage answered. Their tattoo, drawn from the whole of it, owned by them.
@@ -52505,6 +52642,7 @@ export class PublicEntry extends WorkerEntrypoint {
           if (!p2?.ok) return { ok: false, error: p2?.error || "COULD_NOT_DRAW" };
           return { ok: true, done: true, design: p2.entity_id || p2.id, image: p2.image_url,
             subject, cached: !!p2.cached,
+            settled: Object.keys(settled).length ? settled : null,
             say: "Here it is. Tell me anything you want changed and I will change it.",
             next: await nextChips(env, subject, null) };
         }
@@ -52527,6 +52665,8 @@ export class PublicEntry extends WorkerEntrypoint {
         return { ok: true, done: false, stage: stage.field, ask: label,
           options: built || choices.map((o) => ({ value: o, label: o })),
           made: !!built,
+          // Stages that had exactly one meaningful answer and filled themselves on the way here.
+          settled: Object.keys(settled).length ? settled : null,
           resolved: ORDER.filter(k => has(k)),
           so_far: describe(null),
           say: "Tap one - or tell me something different." };

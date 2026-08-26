@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.79.0-2026-08-26-the-standard-run";
+const BUILD = "aura-core-v7.80.0-2026-08-26-a-house-belongs-to-one-subject";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23097,6 +23097,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const cRest = args.slice(1).join(" ").trim();
       const HOUSE_KEY = "card:house";
       const rowKey = (k) => "card:row:" + String(k).toLowerCase().replace(/[^a-z0-9:_-]+/g, "-").slice(0, 100);
+      const slugOf = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
 
       // ══ VOCAB — THE WORDS THE FACTORY USES, LEARNED ONCE ══════════════════════════════════
       // The style words are the same for every subject and several of them needed a description
@@ -23170,20 +23171,32 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                                : "Style wall only. Add {\"style\":\"...\",\"compositions\":[...]} for the composition wall." } };
       }
 
+      // CARDS HOUSE <subject> [<image_id>]
+      // Per subject, never global - a house image of a dragon put a dragon's body into fifteen
+      // golden retriever cards. Optional: with none set, card one of the row is drawn with no
+      // reference and becomes the parent, which is what a house was ever for.
       if (cSub === "HOUSE") {
-        const hid = args[1];
-        if (!hid) {
-          const cur = await env.AURA_KV.get(HOUSE_KEY);
-          return { cmd: "CARDS", payload: { ok: true, house: cur || null,
-            note: cur ? "Every card generated from now on inherits this look."
-                      : "No house look set. CARDS HOUSE <image_id> sets it - every card inherits it." } };
+        const parts2 = cRest.trim().split(/\s+/);
+        const maybeId = parts2[parts2.length - 1] || "";
+        const looksLikeId = /^img_[a-z0-9]+$/i.test(maybeId);
+        const subj = slugOf(looksLikeId ? parts2.slice(0, -1).join(" ") : cRest);
+        if (!subj) return { cmd: "CARDS", payload: { ok: false,
+          error: "Usage: CARDS HOUSE <subject> [<image_id>]",
+          note: "A house look belongs to ONE subject. A dragon's house put a dragon's body into " +
+                "fifteen golden retriever cards." } };
+        if (!looksLikeId) {
+          const cur = await env.AURA_KV.get(HOUSE_KEY + ":" + subj).catch(() => null);
+          return { cmd: "CARDS", payload: { ok: true, subject: subj, house: cur || null,
+            url: cur ? "https://auras.guide/image/" + cur : null,
+            note: cur ? "Cards for this subject inherit this one."
+                      : "None set for this subject - card one of each row becomes its own parent." } };
         }
-        const meta = await env.AURA_KV.get("imagemeta:" + hid, "json").catch(() => null);
-        if (!meta) return { cmd: "CARDS", payload: { ok: false, error: "NO_SUCH_IMAGE", id: hid,
-          note: "The house look has to be an image that exists. SHOW_IT one first, look at it, then set it." } };
-        await env.AURA_KV.put(HOUSE_KEY, hid);
-        return { cmd: "CARDS", payload: { ok: true, house: hid, url: "https://auras.guide/image/" + hid,
-          note: "Set. Cards already manufactured keep the look they were made with - CARDS REDO remakes one." } };
+        const meta = await env.AURA_KV.get("imagemeta:" + maybeId, "json").catch(() => null);
+        if (!meta) return { cmd: "CARDS", payload: { ok: false, error: "NO_SUCH_IMAGE", id: maybeId } };
+        await env.AURA_KV.put(HOUSE_KEY + ":" + subj, maybeId);
+        return { cmd: "CARDS", payload: { ok: true, subject: subj, house: maybeId,
+          url: "https://auras.guide/image/" + maybeId,
+          note: "Set for " + subj + " only. Rows already made keep what they were made with." } };
       }
 
       // ══ SHEET — THE WHOLE ROW ON ONE SCREEN ═══════════════════════════════════════════════
@@ -23345,7 +23358,21 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (!variable || !subject || !items.length)
           return { cmd: "CARDS", payload: { ok: false, error: "NEED_SUBJECT_VARIABLE_ITEMS" } };
 
-        const house = await env.AURA_KV.get(HOUSE_KEY);
+        // ══ A HOUSE IMAGE CANNOT BE GLOBAL. IT SMUGGLES ITS OWN SUBJECT. ══════════════════
+        // MEASURED on the golden retriever wall: fifteen style cards, and nearly every one came
+        // back as a DOG'S HEAD ON A DRAGON'S BODY. The house was a japanese dragon. On the dragon
+        // subject that was invisible, because the house WAS the subject; the moment the subject
+        // changed, the reference put its own body into every card.
+        // Third time the same lesson: a reference carries EVERYTHING in it. It held pose on the
+        // style wall (wanted), held pose on the composition wall (not wanted), refused to be
+        // re-shaped for geometric (not wanted), and now carries the subject across subjects.
+        // So the house is PER SUBJECT. A blessed card for THIS subject is used; a blessed card for
+        // some other subject is never touched. With none, card one of the row is drawn with no
+        // reference at all and becomes the parent - which is the family mechanism anyway, and the
+        // only version of it that cannot borrow a body.
+        // Cross-subject consistency of ground and framing comes from the CARD FORMAT WORDS, which
+        // is what words are good at and what images are bad at.
+        const house = await env.AURA_KV.get(HOUSE_KEY + ":" + slugOf(subject)).catch(() => null);
         // ══ A REFERENCE CARRIES POSE AND LANGUAGE TOGETHER, AND YOU CANNOT TAKE ONLY ONE ═══
         //
         // MEASURED, TWICE, IN OPPOSITE DIRECTIONS:
@@ -52569,7 +52596,12 @@ export class PublicEntry extends WorkerEntrypoint {
         // So refs are only used where the row is varying the language, not the arrangement.
         const HOLD = { style: "pose", subject: "pose" };
         const hold = HOLD[field] || "language";
-        const house = await env.AURA_KV.get("card:house").catch(() => null);
+        // PER SUBJECT, never global. A global house of a japanese dragon put a dragon's body into
+        // fifteen golden retriever cards - a reference carries its subject, not just its framing.
+        // With none blessed for this subject, the first tile is drawn with no reference and
+        // becomes the parent for the rest.
+        const hSlug = String(inc.subject || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+        const house = hSlug ? await env.AURA_KV.get("card:house:" + hSlug).catch(() => null) : null;
         const houseUrl = (hold === "pose" && house) ? "https://auras.guide/image/" + house : null;
         const holdsLook = hold === "pose";
         const drawOne = async (opt, parentUrl) => {

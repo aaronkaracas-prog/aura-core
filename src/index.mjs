@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.76.0-2026-08-26-a-card-can-carry-words";
+const BUILD = "aura-core-v7.77.0-2026-08-26-hold-pose-or-hold-language";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23190,9 +23190,35 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           return { cmd: "CARDS", payload: { ok: false, error: "NEED_SUBJECT_VARIABLE_ITEMS" } };
 
         const house = await env.AURA_KV.get(HOUSE_KEY);
-        // A STYLE row rides on the house look alone. Anything else locks the look with a parent
-        // and moves exactly one thing - see the note at the top of this command.
-        const holdsLook = variable !== "style";
+        // ══ A REFERENCE CARRIES POSE AND LANGUAGE TOGETHER, AND YOU CANNOT TAKE ONLY ONE ═══
+        //
+        // MEASURED, TWICE, IN OPPOSITE DIRECTIONS:
+        //   STYLE row - the house ref held the pose while the language changed. Fifteen of
+        //     sixteen cards landed. Exactly what was wanted.
+        //   GEOMETRIC card - four attempts, four failures. "Low-poly faceted body" means DO NOT
+        //     BE THAT SHAPE, and a reference full of curved organic scales pulls straight back
+        //     against it. The words were obeyed in the background, where the ref was silent, and
+        //     ignored in the body, where it was loudest. The one version that ever taught the
+        //     word was made with no ref at all.
+        //   COMPOSITION row - the same force, wanted the other way round. The parent locked the
+        //     pose so hard that ten of twelve labels changed nothing: ascending, descending,
+        //     flying, circular and s-curve all came back as the parent's coil. Only "head
+        //     portrait" and "facing forward" moved, because a crop is not a pose.
+        //
+        // So the question is never "is this a style row." It is WHICH AXIS IS THIS ROW VARYING,
+        // and a reference must not be allowed to hold that axis:
+        //   hold: "pose"     - refs on. The arrangement stays put, the language changes. (style)
+        //   hold: "language" - refs OFF, and the language goes in the WORDS instead. The pose is
+        //                      free to move. (composition, and anything that re-poses)
+        //   hold: "nothing"  - no refs at all. For a style that rebuilds the subject's geometry -
+        //                      geometric, low-poly, cubist, abstract - where any reference of the
+        //                      normal subject is an argument against the point of the card.
+        // Default by variable, overridable per row, because the row knows its own job.
+        const HOLD = { style: "pose", subject: "pose" };
+        const hold = String(spec.hold || HOLD[variable] || "language").toLowerCase();
+        const useRefs = hold === "pose";
+        // Kept as the old name so the row payload does not change shape for readers.
+        const holdsLook = false;
         let parent = spec.parent || null;
 
         // THE HOUSE LINE IS PART OF THE PROMPT, NOT JUST A REFERENCE. A reference carries the look;
@@ -23227,8 +23253,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
         const draw = async (it, parentImg) => {
           const refs = [];
-          if (house) refs.push("https://auras.guide/image/" + house);
-          if (holdsLook && parentImg) refs.push("https://auras.guide/image/" + parentImg);
+          if (useRefs && house) refs.push("https://auras.guide/image/" + house);
+          if (useRefs && parentImg) refs.push("https://auras.guide/image/" + parentImg);
           const gi = await auraGenerateImage(wordFor(variable, it) + CARD, env,
             { source: "card", refs }).catch(() => null);
           const base = { id: it.id, label: it.label, say: it.say || null };
@@ -23250,7 +23276,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                   'traditional, thick black outlines, flat primary colour' } };
           // The parent matters here too: on a family row, a replacement drawn without it is the
           // one card that does not match the rest.
-          const made = await draw({ ...spec.items[idx], say: newSay }, holdsLook ? spec.parent : null);
+          // A redo obeys the row's own hold. Replacing a composition card with the pose-parent
+          // still attached is a redo that fails the same way the first attempt did.
+          const made = await draw({ ...spec.items[idx], say: newSay }, useRefs ? spec.parent : null);
           spec.items[idx] = made;
           spec.made_at = new Date().toISOString();
           await env.AURA_KV.put(key, JSON.stringify(spec));
@@ -23263,7 +23291,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // changed, which is the mechanism that held a dragon together through four orientations
         // and a dog through ear-up and ear-down.
         const out = [];
-        if (holdsLook && !parent) {
+        if (useRefs && !parent) {
           const first = await draw(items[0], null);
           out.push(first);
           if (first.img) parent = first.img;
@@ -23278,7 +23306,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
         const row = { key: key.replace("card:row:", ""), type: "row",
           label: String(spec.label || "").slice(0, 80) || null,
-          subject, variable, parent: parent || null, house: house || null,
+          subject, variable, hold, parent: (useRefs ? parent : null) || null,
+          house: useRefs ? (house || null) : null,
           items: out, made_at: new Date().toISOString() };
         await env.AURA_KV.put(key, JSON.stringify(row));
         const missed = out.filter((x) => !x.img).length;
@@ -23286,9 +23315,13 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           urls: out.map((x) => x.label + "  ->  " + (x.img ? "https://auras.guide/image/" + x.img : "FAILED")),
           drew: out.length - missed, failed: missed,
           cached: out.filter((x) => x.cached).length,
-          note: holdsLook
-            ? "Family: card one is the parent, the rest are it with one thing changed."
-            : "Style row: house look only. A parent here would drag its own style onto every card." } };
+          note: hold === "pose"
+            ? "Holding POSE: card one is the parent and every other card is it with the language changed."
+            : hold === "language"
+            ? "Holding LANGUAGE: no reference image, because a reference would hold the pose too - " +
+              "and this row exists to change the pose. The language is carried by the words."
+            : "No reference at all: this row changes the subject's own geometry, and any picture " +
+              "of the normal subject argues against it." } };
       }
 
       return { cmd: "CARDS", payload: { ok: false,
@@ -52356,9 +52389,15 @@ export class PublicEntry extends WorkerEntrypoint {
         // ear-down. `refs` is in the cache key, so a repeat is still free.
         // STYLE IS THE EXCEPTION and it is not a small one: a parent would drag its own style onto
         // every card, and the entire purpose of that row is that the style changes.
+        // Same rule as the factory, and it was measured the same way: a reference holds POSE and
+        // LANGUAGE together. A style row wants pose held. A composition row wants pose FREE - and
+        // with a parent attached, ten of twelve composition labels came back as the parent's coil.
+        // So refs are only used where the row is varying the language, not the arrangement.
+        const HOLD = { style: "pose", subject: "pose" };
+        const hold = HOLD[field] || "language";
         const house = await env.AURA_KV.get("card:house").catch(() => null);
-        const houseUrl = house ? "https://auras.guide/image/" + house : null;
-        const holdsLook = field !== "style";
+        const houseUrl = (hold === "pose" && house) ? "https://auras.guide/image/" + house : null;
+        const holdsLook = hold === "pose";
         const drawOne = async (opt, parentUrl) => {
           const refs = [];
           if (houseUrl) refs.push(houseUrl);

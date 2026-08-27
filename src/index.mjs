@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.98.0-2026-08-27-cheapest-that-can-do-the-job";
+const BUILD = "aura-core-v7.99.0-2026-08-27-gpt-image-2-holds-the-cat";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -13674,6 +13674,10 @@ async function successionGate(env) {
         await smartFileAdd(env, ent, { by: p.by || "anonymous", context: `Spawned a new version: ${p.prompt}`, kind: "spawned_child" });
         return { cmd: "IMAGE", payload: { ok: true, parent: ent.id, child: r.entity_id, child_image_id: r.id,
           image_url: r.image_url, doorway: r.doorway || null, evolved_with: p.prompt,
+          // WHICH MODEL, AND WHAT IT COST. Four models were compared on one cat today and every
+          // one of them had to be identified by remembering which pin was set. `SHOW_IT` reports
+          // this; the reply somebody actually reads when an edit misbehaves did not.
+          model: r.model || null, cost_usd: r.cost_usd,
           // Says out loud whether the parent's pixels were actually used. Without this the two
           // cases look identical in the reply and only the picture tells you - which is how this
           // went unnoticed in the first place.
@@ -50760,8 +50764,17 @@ async function auraGenerateImage(prompt, env, opts = {}) {
     // Verified 2026-08-27: gpt-image, gemini/nano-banana and flux KONTEXT edit; flux schnell,
     // ideogram and the plain SD line do not. Within the models that CAN, cheapest still wins -
     // mini held identity as well as full gpt-image-1 at a fraction of the price.
-    // NOTE: gpt-image-1 deprecates 2026-10-23. This is a config string for exactly that reason.
-    edit:     { model: "gpt-image-1-mini",              quality: "medium" },
+    // MEASURED 2026-08-27, four models, same parent, same instruction ("add a small mouse beside
+    // the cat"):
+    //   gpt-image-2      SAME CAT. Stripes, closed eyes, whiskers, white ground all preserved,
+    //                    mouse drawn in the same hand. 26s.
+    //   gpt-image-1-mini close, but the ground went white -> cream and the linework thickened.
+    //   gpt-image-1      a different cat entirely, pencil-shaded.
+    //   gemini/nano      put the tattoo ON A LEG - reimagined the picture rather than editing it,
+    //                    despite the reputation for character consistency. Fast and wrong.
+    // gpt-image-2 is also the successor to gpt-image-1, which deprecates 2026-10-23, so this is
+    // the one to build on rather than a stopgap. Still a config string: the market moves weekly.
+    edit:     { model: "gpt-image-2",                   quality: "medium" },
   };
   // The models that can take a picture and change it. Everything else, however cheap, will draw
   // something new and call it an edit.

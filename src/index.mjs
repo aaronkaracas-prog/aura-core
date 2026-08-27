@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.88.0-2026-08-27-build-it-all-and-know-what-broke";
+const BUILD = "aura-core-v7.89.0-2026-08-27-the-page-can-see-the-cards";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -53216,6 +53216,25 @@ export class PublicEntry extends WorkerEntrypoint {
       // pictures arrive behind them. The page calls this with the field and the values it is
       // showing; every image is cached on the exact prompt, so the second person to reach this
       // question pays nothing.
+      // ══ ROW — A MANUFACTURED ROW, BY KEY ═══════════════════════════════════════════════════
+      // The factory has built pickers - "which dog?", twenty-five breeds as pictures - and the
+      // page had no way to ask for one. The tree screens were rendering twenty-five words while
+      // twenty-five photographs sat in KV.
+      // `next` serves the LADDER, where the engine decides what comes next. This serves a row the
+      // page already knows the name of, which is what a tree screen has: it knows it is showing
+      // dogs. One KV read, no model, no generation, and a miss is a normal answer rather than an
+      // error - the page falls back to words and nothing breaks.
+      if (action === "row") {
+        const key = String(b.key || "").toLowerCase().replace(/[^a-z0-9:_-]+/g, "-").slice(0, 100);
+        if (!key) return { ok: false, error: "NEED_KEY" };
+        const row = await env.AURA_KV.get("card:row:" + key, "json").catch(() => null);
+        if (!row || !Array.isArray(row.items) || !row.items.length) return { ok: true, row: null };
+        return { ok: true, row: { key: row.key, type: "row", label: row.label || null,
+          subject: row.subject || null, variable: row.variable || null,
+          items: row.items.map((it) => ({ value: it.id, label: it.label || it.id,
+            image: it.img ? "https://auras.guide/image/" + it.img : null })) } };
+      }
+
       if (action === "tiles") {
         const inc = (b.intent && typeof b.intent === "object") ? b.intent : {};
         const field = String(b.stage || "").trim();

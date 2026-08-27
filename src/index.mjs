@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.92.0-2026-08-27-the-library";
+const BUILD = "aura-core-v7.93.0-2026-08-27-one-piece-ten-versions";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -53489,19 +53489,56 @@ export class PublicEntry extends WorkerEntrypoint {
         const p3 = (r && r.payload) ? r.payload : r;
         if (!p3?.ok) return { ok: false, error: p3?.error || "COULD_NOT_READ" };
         const byId = {}; for (const f of p3.files) byId[f.id] = f;
+
+        // ══ LINEAGE IS A CHAIN, NOT ONE LEVEL ═══════════════════════════════════════════════
+        // MEASURED on a real library: a photograph of an arm, then +colour, then +a race car,
+        // then EIGHT siblings off that. Collecting only DIRECT children would hang those eight off
+        // the third link - and since that link is not a root, they would disappear from the screen
+        // entirely. One card and one version, where the person has one piece and ten.
+        // So a version belongs to whatever ROOT it descends from, however many steps away.
+        const rootOf = (f) => {
+          let cur = f, hops = 0;
+          while (cur.parent && byId[cur.parent] && hops++ < 50) cur = byId[cur.parent];
+          return cur;             // a parent that is missing or not theirs makes this the root
+        };
+        // The name is the piece's own words, not the whole prompt history. Every version here was
+        // titled "the piece on my upper arm. add rich colour throughout, and a rose blooming off t"
+        // - the accumulated prompt, truncated mid-word. A library is the screen somebody comes back
+        // to; it should say what the thing IS.
+        const titleOf = (t) => {
+          const first = String(t || "").split(/\.\s+/)[0].trim();
+          return (first || String(t || "")).slice(0, 70);
+        };
+        // What a version CHANGED, rather than everything it inherited. Each evolve appends its
+        // instruction to the parent's subject, so the difference is the tail.
+        const changeOf = (child, parent) => {
+          const c = String(child.subject || ""), p2 = String(parent.subject || "");
+          let t = (c.startsWith(p2) ? c.slice(p2.length) : c).replace(/^[.,\s]+/, "");
+          // The words somebody actually typed carry housekeeping the model needed and a person
+          // does not: "remove the purple race car completely, and instead add a koi fish - keep
+          // everything else exactly as it is" is one idea, and the idea is the koi.
+          t = t.replace(/\s*[-,]\s*keep everything else.*$/i, "")
+               .replace(/^.*?\b(?:and )?instead add\s+/i, "")
+               .replace(/^(?:please\s+)?(?:can you\s+)?(?:add|make it|make|change (?:it )?to|put)\s+/i, "")
+               .replace(/\s{2,}/g, " ").trim();
+          if (!t) return null;
+          return (t[0].toUpperCase() + t.slice(1)).slice(0, 80);
+        };
+
         const pieces = [];
         for (const f of p3.files) {
-          if (f.parent && byId[f.parent]) continue;         // a version, shown under its piece
-          const versions = p3.files.filter((v) => v.parent === f.id)
+          if (rootOf(f) !== f) continue;                    // a version, shown under its piece
+          const versions = p3.files.filter((v) => v !== f && rootOf(v) === f)
             .sort((a2, b2) => String(a2.made).localeCompare(String(b2.made)));
-          pieces.push({ design: f.id, subject: f.subject || f.name,
+          pieces.push({ design: f.id, subject: titleOf(f.subject || f.name),
             image: f.url || null, made: f.made,
             // Where it came from: something they designed here, or a photograph of one they
             // already wear. The library holds both and should say which.
             how: f.source === "import" ? "worn" : "made",
             posted: !!f.posted, doorway: f.doorway || null,
             versions: versions.length,
-            history: versions.map((v) => ({ design: v.id, image: v.url || null, made: v.made })) });
+            history: versions.map((v) => ({ design: v.id, image: v.url || null, made: v.made,
+              change: changeOf(v, byId[v.parent] || f) })) });
         }
         return { ok: true, count: pieces.length, pieces,
           say: pieces.length ? null : "Nothing here yet. Design one, or show me one you already have." };

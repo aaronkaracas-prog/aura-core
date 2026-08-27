@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.83.0-2026-08-26-the-tree-is-data";
+const BUILD = "aura-core-v7.84.0-2026-08-26-the-builder";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23051,6 +23051,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
     // ══ CARDS — THE VISUAL FACTORY AND THE CARD REGISTRY ══════════════════════════════════════
     //
+    //   CARDS BUILD <category>                     - manufacture a whole category, durably
     //   CARDS SUBJECT <name> ::: {json}            - the standard run: both walls + a sheet
     //   CARDS HOUSE <image_id>                     - set the look every card inherits
     //   CARDS ROW <key> ::: {json}                 - manufacture a row of cards
@@ -23330,6 +23331,50 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // Here it is data: the page renders it, the builder walks it, and a new breed is one write.
       // SEEDED FROM THE PAGE on first read so nothing has to be retyped and the two cannot start
       // out disagreeing.
+      // ══ BUILD — MANUFACTURE A CATEGORY ═══════════════════════════════════════════════════
+      //   CARDS BUILD <category> [::: {"style":"...","max_leaves":25}]   - start it
+      //   CARDS BUILD STATUS <instance_id>                               - watch it
+      //
+      // Hands the work to GRID_CRAWL_WORKFLOW in `cards` mode - the durable machinery that already
+      // sleeps free, survives a redeploy and runs for hours. Not a second workflow beside a working
+      // one.
+      // ONE CATEGORY AT A TIME, DELIBERATELY. The whole tree is 532 leaves and 14,364 cards against
+      // a 10,000/day Workers AI allocation that nothing is counting. A fire-and-forget that runs
+      // for three days would find that out by being throttled; you point this at Flowers today and
+      // Animals tomorrow, and the cap stops it before it becomes a surprise.
+      if (cSub === "BUILD") {
+        if (!env.GRID_CRAWL_WORKFLOW) return { cmd: "CARDS", payload: { ok: false,
+          error: "NO_WORKFLOW_BINDING",
+          what_to_do: "GRID_CRAWL_WORKFLOW must be bound in aura-core's wrangler config." } };
+        if ((args[1] || "").toUpperCase() === "STATUS") {
+          const id = args[2];
+          if (!id) return { cmd: "CARDS", payload: { ok: false, error: "Usage: CARDS BUILD STATUS <instance_id>" } };
+          try {
+            const inst = await env.GRID_CRAWL_WORKFLOW.get(id);
+            const st = await inst.status();
+            return { cmd: "CARDS", payload: { ok: true, id, status: st?.status || null, output: st?.output || null } };
+          } catch (e) {
+            return { cmd: "CARDS", payload: { ok: false, error: "NO_SUCH_RUN", id,
+              why: String(e && e.message || e).slice(0, 160) } };
+          }
+        }
+        const cut4 = cRest.indexOf(":::");
+        const category = (cut4 < 0 ? cRest : cRest.slice(0, cut4)).trim();
+        let opt = {};
+        if (cut4 >= 0) { try { opt = JSON.parse(cRest.slice(cut4 + 3).trim()); }
+                         catch { try { opt = repairJson(cRest.slice(cut4 + 3).trim()) || {}; } catch {} } }
+        if (!category) return { cmd: "CARDS", payload: { ok: false,
+          error: 'Usage: CARDS BUILD <category> [::: {"style":"neo-traditional","max_leaves":25}]',
+          note: "CARDS TREE lists the categories and what a full build would cost." } };
+        const inst = await env.GRID_CRAWL_WORKFLOW.create({ params: {
+          mode: "cards", category, style: opt.style || null,
+          max_leaves: Number(opt.max_leaves) || 25 } });
+        return { cmd: "CARDS", payload: { ok: true, started: inst.id, category,
+          watch: 'RUN "CARDS BUILD STATUS ' + inst.id + '"',
+          note: "It runs on its own - a leaf is about 27 cards and forty seconds. Check back rather " +
+                "than waiting, and the sheet URL is in the output when it finishes." } };
+      }
+
       if (cSub === "TREE") {
         const TREE_KEY = "card:tree";
         const cut3 = cRest.indexOf(":::");
@@ -23351,14 +23396,26 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // binding call, so it never passes the meter and nothing counts the neurons. The daily
         // allocation is 10,000. This number is how you find out you are over it BEFORE a builder
         // runs for six hours discovering it by being throttled.
-        let leaves = 0;
+        // COUNTED THE WAY THE BUILDER BUILDS, which is not the same as counting the tree. Nineteen
+        // kinds appear under more than one category - `A Character` under three - and they key on
+        // the LABEL, so they are one row and one job however many places they hang. A count that
+        // ignores that reports 532 while the builder plans 471, and two numbers for one fact is
+        // how somebody ends up trusting the wrong one.
+        const seenLeaf = new Set(), seenPick = new Set();
         for (const kinds of Object.values(tree.subjects || {}))
-          for (const kind of kinds) leaves += (tree.specific && tree.specific[kind]) ? tree.specific[kind].length : 1;
+          for (const kind of kinds) {
+            const kids = tree.specific && tree.specific[kind];
+            if (kids && kids.length) {
+              seenPick.add(String(kind).toLowerCase());
+              for (const leaf of kids) seenLeaf.add(String(leaf).toLowerCase());
+            } else seenLeaf.add(String(kind).toLowerCase());
+          }
+        const leaves = seenLeaf.size, pickers = seenPick.size;
         return { cmd: "CARDS", payload: { ok: true, seeded,
           categories: Object.keys(tree.subjects || {}).length,
           kinds: Object.values(tree.subjects || {}).reduce((n, v) => n + v.length, 0),
-          leaves, cards_if_built: leaves * 27,
-          note: "One leaf is one CARDS SUBJECT run, about 27 cards. " + (leaves * 27) +
+          leaves, pickers, jobs: leaves + pickers, cards_if_built: leaves * 27 + pickers * 12,
+          note: "One leaf is one CARDS SUBJECT run, about 27 cards. " + (leaves * 27 + pickers * 12) +
                 " cards against a 10,000/day Workers AI allocation that nothing is counting - " +
                 "build a category at a time, not the tree." } };
       }
@@ -23631,7 +23688,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
 
       return { cmd: "CARDS", payload: { ok: false,
-        error: "Sub-commands: SUBJECT, HOUSE, ROW, REDO, DROP, DROPROW, TREE, SHEET, GET, LIST" } };
+        error: "Sub-commands: BUILD, SUBJECT, HOUSE, ROW, REDO, DROP, DROPROW, TREE, SHEET, GET, LIST" } };
     }
 
     case "WALL": {
@@ -51216,6 +51273,115 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
       }
       return { ok: true, mode: "enrich", shops: ids.length, enriched: done, failed,
                unreachable: unreached, trouble };
+    }
+
+    // ══ CARDS IS A THIRD MODE, FOR THE SAME REASON ENRICH IS A SECOND ONE ══════════════════════
+    // Manufacturing one category is roughly 20 leaves at ~27 cards, and a card takes ~14 seconds -
+    // two hours of generation. That does not fit in a Worker invocation, and the durable machinery
+    // for exactly this already exists here: sleeps free, resumes after a redeploy, keeps going with
+    // nobody watching. A second workflow beside a working one is the most expensive recurring
+    // mistake in this codebase, so this is a mode.
+    //
+    // LEAVES ONLY, AND THAT RULE COST FIFTEEN IMAGES TO LEARN. A style wall needs a subject
+    // specific enough to STAY STILL. Built for "dogs", every card came back a different breed -
+    // fifteen cards, fifteen dogs, and a person comparing dogs instead of styles. "Golden
+    // retriever" holds; "dogs" is a category and a category cannot hold a picture. So a kind with
+    // children never gets a wall - it gets a PICKER of its children, and the walls live one level
+    // down.
+    //
+    // SKIPS WHAT EXISTS, so a re-run is safe and nearly free. The only cost of running it twice
+    // is the KV reads.
+    if (String(event.payload?.mode || "") === "cards") {
+      const only = String(event.payload?.category || "").trim();
+      const style = String(event.payload?.style || "").trim();
+      const cap = Math.min(Number(event.payload?.max_leaves) || 25, 200);
+      const tree = await step.do("tree", async () => {
+        const r = await processCommand("CARDS TREE", this.env, true);
+        return (r && r.payload) ? r.payload : r;
+      });
+      const t = await this.env.AURA_KV.get("card:tree", "json").catch(() => null);
+      if (!t?.subjects) return { ok: false, error: "NO_TREE", note: "Run CARDS TREE once to seed it." };
+
+      // Plan every job before drawing anything, so the run reports what it INTENDS and a resume
+      // does not re-decide. A kind with children yields a picker at that kind plus a wall per
+      // child; a kind without children is itself a leaf.
+      // ══ A LABEL CAN LIVE UNDER TWO CATEGORIES, AND THE KEY DOES NOT KNOW THAT ═════════════
+      // MEASURED on the real tree: nineteen kinds appear more than once. `A Character` is under
+      // Movies & TV, Anime & Manga AND Gaming; `Japanese` is under Mythology (Oni, Hannya,
+      // Kitsune) and again under Culture & Heritage. Every one of them keys on the LABEL, so
+      // whichever built first would win and all the others would silently serve its wall.
+      // Planning them once is the honest floor - it stops the duplicate work and stops a later
+      // run overwriting an earlier one with a different parent. It does NOT fix the taxonomy: two
+      // different things sharing one name still share one row, and that is Aaron's call, so the
+      // collisions are REPORTED rather than quietly resolved.
+      const jobs = [];
+      const planned = new Set(), collided = {};
+      const push = (job, cat) => {
+        const k = job.kind + ":" + String(job.subject).toLowerCase();
+        if (planned.has(k)) { (collided[job.subject] = collided[job.subject] || []).push(cat); return; }
+        planned.add(k); jobs.push(job);
+      };
+      for (const [cat, kinds] of Object.entries(t.subjects)) {
+        if (only && cat.toLowerCase() !== only.toLowerCase()) continue;
+        for (const kind of kinds) {
+          const kids = t.specific && t.specific[kind];
+          if (kids && kids.length) {
+            push({ kind: "picker", subject: kind, items: kids }, cat);
+            for (const leaf of kids) push({ kind: "leaf", subject: leaf }, cat);
+          } else {
+            push({ kind: "leaf", subject: kind }, cat);
+          }
+        }
+      }
+      if (!jobs.length) return { ok: false, error: "NOTHING_TO_BUILD", category: only || null,
+        note: "No category by that name in the tree." };
+
+      const slug = (x) => String(x).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      const built = [], skipped = [], broke = [];
+      let n = 0;
+      for (const job of jobs) {
+        if (n >= cap) break;
+        const key = job.kind === "picker" ? "card:row:subject:" + slug(job.subject)
+                                          : "card:row:style:" + slug(job.subject);
+        const have = await this.env.AURA_KV.get(key, "json").catch(() => null);
+        if (have && Array.isArray(have.items) && have.items.length) { skipped.push(job.subject); continue; }
+        n++;
+        const r = await step.do("build-" + n, async () => {
+          if (job.kind === "picker") {
+            // A picker holds POSE: the framing must be identical or the person is comparing
+            // photographs instead of breeds. Proven at 25 cards on dogs.
+            const payload = "subject:" + slug(job.subject) + " ::: " + JSON.stringify({
+              label: "Which " + String(job.subject).toLowerCase().replace(/s$/, "") + "?",
+              subject: String(job.subject).toLowerCase().replace(/s$/, ""),
+              variable: "subject", hold: "pose", items: job.items });
+            const x = await processCommand("CARDS ROW " + payload, this.env, true);
+            return (x && x.payload) ? x.payload : x;
+          }
+          const x = await processCommand("CARDS SUBJECT " + job.subject +
+            (style ? " ::: " + JSON.stringify({ style }) : ""), this.env, true);
+          return (x && x.payload) ? x.payload : x;
+        });
+        // A HOLE IS NOT A SUCCESS. `ok:true` only ever meant the command did not throw - the same
+        // lesson the enrich mode above learned when a dead domain reported `enriched: 1`.
+        if (r?.ok && !(r.failed > 0)) built.push(job.subject);
+        else if (r?.ok) broke.push({ subject: job.subject, holes: r.failed, why: r.failures || null });
+        else broke.push({ subject: job.subject, why: r?.error || "unknown" });
+        await step.sleep("gap-" + n, "2 seconds");
+      }
+
+      const sheet = await step.do("sheet", async () => {
+        const r = await processCommand("CARDS SHEET " + (only ? slug(only) : slug(jobs[0].subject)), this.env, true);
+        return (r && r.payload) ? r.payload : r;
+      });
+      return { ok: true, mode: "cards", category: only || "(everything)",
+        planned: jobs.length, built: built.length, skipped: skipped.length,
+        // Names that live under more than one category and therefore share one row. Not an error -
+        // a decision somebody has to make about the tree, surfaced instead of buried.
+        shared_names: Object.keys(collided).length
+          ? Object.entries(collided).map(([k, v]) => k + " (also under " + v.join(", ") + ")") : null,
+        with_holes: broke.length, trouble: broke.slice(0, 20),
+        stopped_at_cap: n >= cap ? cap : null,
+        sheet: sheet?.url || null, tree_size: tree?.leaves || null };
     }
 
     const vertical = String(event.payload?.vertical || "").trim();

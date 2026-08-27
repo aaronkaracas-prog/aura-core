@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.93.0-2026-08-27-one-piece-ten-versions";
+const BUILD = "aura-core-v7.94.0-2026-08-27-called-what-it-is";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -53505,9 +53505,28 @@ export class PublicEntry extends WorkerEntrypoint {
         // titled "the piece on my upper arm. add rich colour throughout, and a rose blooming off t"
         // - the accumulated prompt, truncated mid-word. A library is the screen somebody comes back
         // to; it should say what the thing IS.
+        // ══ A PIECE IS CALLED WHAT IT IS ═════════════════════════════════════════════════════
+        // Two shapes of subject arrive here and they break differently.
+        //   IMPORTED - a sentence somebody typed: "the piece on my upper arm". Split on the full
+        //              stop and it reads correctly.
+        //   DESIGNED - the whole brief, comma-joined: "golden retriever, hyperrealism style, head
+        //              and chest, happy, full colour, intricate linework". No full stop at all, so
+        //              splitting on one returned the lot and the card read "golden retriever, hyp…"
+        // The thing they chose is the FIRST CLAUSE either way. Everything after it is how it was
+        // rendered, which the piece screen can show and a tile should not.
         const titleOf = (t) => {
-          const first = String(t || "").split(/\.\s+/)[0].trim();
-          return (first || String(t || "")).slice(0, 70);
+          const raw = String(t || "").trim();
+          const first = (raw.split(/\.\s+/)[0] || raw).split(",")[0].trim();
+          const out = first || raw;
+          // Capitalised because it is a name on a card, not a prompt fragment.
+          return (out ? out[0].toUpperCase() + out.slice(1) : out).slice(0, 70);
+        };
+        // What it was rendered AS - the clauses the title dropped. A tile says "Golden Retriever";
+        // this is what lets it also say "hyperrealism, head and chest" instead of just "Designed".
+        const madeOf = (t) => {
+          const parts = String(t || "").split(",").slice(1)
+            .map((x) => x.replace(/\b(style|linework)\b/gi, "").trim()).filter(Boolean);
+          return parts.length ? parts.slice(0, 3).join(", ").slice(0, 60) : null;
         };
         // What a version CHANGED, rather than everything it inherited. Each evolve appends its
         // instruction to the parent's subject, so the difference is the tail.
@@ -53531,6 +53550,8 @@ export class PublicEntry extends WorkerEntrypoint {
           const versions = p3.files.filter((v) => v !== f && rootOf(v) === f)
             .sort((a2, b2) => String(a2.made).localeCompare(String(b2.made)));
           pieces.push({ design: f.id, subject: titleOf(f.subject || f.name),
+            // The rendering, kept separate from the name, so a card can say both.
+            made_as: f.source === "import" ? null : madeOf(f.subject || f.name),
             image: f.url || null, made: f.made,
             // Where it came from: something they designed here, or a photograph of one they
             // already wear. The library holds both and should say which.

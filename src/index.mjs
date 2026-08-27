@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.84.0-2026-08-26-the-builder";
+const BUILD = "aura-core-v7.85.0-2026-08-27-a-row-knows-its-category";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23157,6 +23157,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // and the ladder asks it first for the same reason.
         const sRow = await runOne("style:" + slug2(name) + " ::: " + JSON.stringify({
           label: "What style?", subject: name, variable: "style", hold: "pose",
+          category: o.category || null,
           items: Array.isArray(o.styles) ? o.styles : VOCAB.style }));
         done.push({ row: "style:" + slug2(name), ok: !!sRow?.ok, drew: sRow?.drew ?? 0,
           failed: sRow?.failed ?? 0, failures: sRow?.failures || null });
@@ -23165,7 +23166,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (style && comps && comps.length) {
           const cRow = await runOne("composition:" + slug2(name) + ":" + slug2(style) + " ::: " + JSON.stringify({
             label: "How do you want to see it?", subject: name + ", " + style + " style",
-            variable: "composition", hold: "language", items: comps }));
+            variable: "composition", hold: "language", category: o.category || null, items: comps }));
           done.push({ row: "composition:" + slug2(name) + ":" + slug2(style),
             ok: !!cRow?.ok, drew: cRow?.drew ?? 0, failed: cRow?.failed ?? 0,
             failures: cRow?.failures || null });
@@ -23182,8 +23183,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               (it.img ? "https://auras.guide/image/" + it.img : "NEVER DREW"));
         }
         const holes = done.reduce((n, d) => n + (d.failed || 0), 0);
+        // THE REASON HAS TO SURVIVE THE TRIP. A row collects why each card failed; this dropped it
+        // and reported `why: null` up two levels, so a hole was visible and unexplainable - which
+        // is the difference between one fix and another walk of the site. Same lesson as the
+        // failure that carried what was sent AND what came back.
+        const allWhy = done.flatMap((d) => d.failures || []);
         return { cmd: "CARDS", payload: { ok: true, subject: name, rows: done,
           drew: done.reduce((n, d) => n + d.drew, 0),
+          failures: allWhy.length ? allWhy : null,
           // A hole in the wall is the one thing that must not be reported as a success. It sits at
           // the TOP of the reply, not buried in a per-row count, because a catalogue manufactured
           // at scale with quiet gaps is worse than one that refused to build.
@@ -23238,15 +23245,26 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const one = await env.AURA_KV.get(rowKey(want), "json").catch(() => null);
         if (one) rows = [one];
         else {
-          const l = await env.AURA_KV.list({ prefix: "card:row:", limit: 500 }).catch(() => ({ keys: [] }));
-          const hit = l.keys.filter((k) => k.name.includes(want.replace(/[^a-z0-9]+/g, "-")));
-          for (const k of hit) {
+          // TWO WAYS TO MATCH, because a row's KEY carries its subject and a row's CATEGORY is a
+          // fact about where it hangs. "peony" finds by key; "flowers-plants" finds by category,
+          // and only the second gives a whole-category sheet - which is the review loop.
+          const l = await env.AURA_KV.list({ prefix: "card:row:", limit: 1000 }).catch(() => ({ keys: [] }));
+          const slugWant = want.replace(/[^a-z0-9]+/g, "-");
+          for (const k of l.keys) {
+            const byKey = k.name.includes(slugWant);
             const r = await env.AURA_KV.get(k.name, "json").catch(() => null);
-            if (r && Array.isArray(r.items) && r.items.length) rows.push(r);
+            if (!r || !Array.isArray(r.items) || !r.items.length) continue;
+            const byCat = r.category &&
+              String(r.category).toLowerCase().replace(/[^a-z0-9]+/g, "-") === slugWant;
+            if (byKey || byCat) rows.push(r);
           }
           // The ladder's own order, so the sheet reads the way the product walks.
+          // Grouped by SUBJECT first, then the ladder within it. On a category sheet that means
+          // peony's picker, wall and compositions sit together instead of every style row in the
+          // category being stacked away from the compositions it belongs to.
           const RANK = { subject: 0, style: 1, composition: 2, character: 3, colour: 4, detail: 5 };
-          rows.sort((x, y) => (RANK[x.variable] ?? 9) - (RANK[y.variable] ?? 9));
+          rows.sort((x, y) => String(x.subject).localeCompare(String(y.subject)) ||
+                              (RANK[x.variable] ?? 9) - (RANK[y.variable] ?? 9));
         }
         if (!rows.length) return { cmd: "CARDS", payload: { ok: false, error: "NOTHING_MADE", looked_for: want } };
 
@@ -23255,7 +23273,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const gone = rows.reduce((n, r) => n + r.items.filter((x) => !x.img).length, 0);
         const cards = rows.reduce((n, r) => n + r.items.length, 0);
         const body = rows.map((row) =>
-          "<section><h2>" + esc(row.label || row.key) + "</h2>" +
+          "<section><h2>" + esc(row.subject || row.key) + " &middot; " +
+          esc(row.label || row.variable) + "</h2>" +
           '<p class=sub><b>' + esc(row.subject) + "</b> &middot; varying <b>" + esc(row.variable) +
           "</b> &middot; holding <b>" + esc(row.hold || "?") + "</b> &middot; " + row.items.length + " cards</p>" +
           "<div class=g>" + row.items.map((it) =>
@@ -23666,6 +23685,11 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
         const row = { key: key.replace("card:row:", ""), type: "row",
           label: String(spec.label || "").slice(0, 80) || null,
+          // WHICH CATEGORY THIS BELONGS TO. Without it a category sheet cannot exist: rows key on
+          // the SUBJECT ("style:peony"), so asking for "flowers-plants" matched nothing and the
+          // builder returned sheet:null - the review loop it was built to produce. A row has to
+          // carry its own place in the tree; a prefix over subject names can never infer it.
+          category: spec.category ? String(spec.category).slice(0, 60) : null,
           subject, variable, hold, parent: (useRefs ? parent : null) || null,
           house: useRefs ? (house || null) : null,
           items: out, made_at: new Date().toISOString() };
@@ -51326,10 +51350,10 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
         for (const kind of kinds) {
           const kids = t.specific && t.specific[kind];
           if (kids && kids.length) {
-            push({ kind: "picker", subject: kind, items: kids }, cat);
-            for (const leaf of kids) push({ kind: "leaf", subject: leaf }, cat);
+            push({ kind: "picker", subject: kind, items: kids, cat }, cat);
+            for (const leaf of kids) push({ kind: "leaf", subject: leaf, cat }, cat);
           } else {
-            push({ kind: "leaf", subject: kind }, cat);
+            push({ kind: "leaf", subject: kind, cat }, cat);
           }
         }
       }
@@ -51353,24 +51377,27 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
             const payload = "subject:" + slug(job.subject) + " ::: " + JSON.stringify({
               label: "Which " + String(job.subject).toLowerCase().replace(/s$/, "") + "?",
               subject: String(job.subject).toLowerCase().replace(/s$/, ""),
-              variable: "subject", hold: "pose", items: job.items });
+              variable: "subject", hold: "pose", category: job.cat, items: job.items });
             const x = await processCommand("CARDS ROW " + payload, this.env, true);
             return (x && x.payload) ? x.payload : x;
           }
-          const x = await processCommand("CARDS SUBJECT " + job.subject +
-            (style ? " ::: " + JSON.stringify({ style }) : ""), this.env, true);
+          const x = await processCommand("CARDS SUBJECT " + job.subject + " ::: " +
+            JSON.stringify({ ...(style ? { style } : {}), category: job.cat }), this.env, true);
           return (x && x.payload) ? x.payload : x;
         });
         // A HOLE IS NOT A SUCCESS. `ok:true` only ever meant the command did not throw - the same
         // lesson the enrich mode above learned when a dead domain reported `enriched: 1`.
         if (r?.ok && !(r.failed > 0)) built.push(job.subject);
-        else if (r?.ok) broke.push({ subject: job.subject, holes: r.failed, why: r.failures || null });
+        else if (r?.ok) broke.push({ subject: job.subject, holes: r.failed,
+          why: (r.failures || []).slice(0, 4) });
         else broke.push({ subject: job.subject, why: r?.error || "unknown" });
         await step.sleep("gap-" + n, "2 seconds");
       }
 
+      // Ask for the CATEGORY, which rows now record. Asking for the slug of the category name
+      // used to match nothing at all - rows key on the subject - and the run returned sheet:null.
       const sheet = await step.do("sheet", async () => {
-        const r = await processCommand("CARDS SHEET " + (only ? slug(only) : slug(jobs[0].subject)), this.env, true);
+        const r = await processCommand("CARDS SHEET " + (only || jobs[0].cat || jobs[0].subject), this.env, true);
         return (r && r.payload) ? r.payload : r;
       });
       return { ok: true, mode: "cards", category: only || "(everything)",

@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.99.0-2026-08-27-gpt-image-2-holds-the-cat";
+const BUILD = "aura-core-v8.0.0-2026-08-27-a-blank-card-is-a-failure";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23619,6 +23619,19 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                         String(r.key || "").toLowerCase().includes(want))) continue;
           const why = [];
           const imgs = r.items.filter((x) => x.img).map((x) => x.img);
+          // ══ A CARD THAT DREW NOTHING STILL COUNTS AS DRAWN ═════════════════════════════════
+          // Blanks written before the size check exist in the catalogue as successes: an id, a
+          // row entry, zero holes. Nothing will ever repair them, because nothing thinks they are
+          // broken. R2 knows the truth - a real card is tens of kilobytes, and anything under half
+          // a kilobyte is an empty file with a name.
+          if (env.AURA_IMAGES) {
+            const blank = [];
+            for (const im of imgs) {
+              const h = await env.AURA_IMAGES.head(im + ".png").catch(() => null);
+              if (h && h.size < 512) blank.push(im);
+            }
+            if (blank.length) why.push(blank.length + " blank image" + (blank.length > 1 ? "s" : ""));
+          }
           const uniq = new Set(imgs);
           if (imgs.length && uniq.size < imgs.length) {
             // The same picture under two labels. Always wrong, and always visible from here.
@@ -23707,7 +23720,15 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const key = rowKey(cRest.trim());
         const row = await env.AURA_KV.get(key, "json").catch(() => null);
         if (!row) return { cmd: "CARDS", payload: { ok: false, error: "NO_SUCH_ROW", key: cRest.trim() || null } };
-        const holes = row.items.filter((x) => !x.img);
+        // A blank counts as a hole. It was stored as a success, so `!x.img` alone would skip it
+        // forever - the one failure the repair path could not see.
+        const holes = [];
+        for (const it of row.items) {
+          if (!it.img) { holes.push(it); continue; }
+          if (!env.AURA_IMAGES) continue;
+          const h = await env.AURA_IMAGES.head(it.img + ".png").catch(() => null);
+          if (h && h.size < 512) holes.push(it);
+        }
         if (!holes.length) return { cmd: "CARDS", payload: { ok: true, key: row.key, patched: 0,
           note: "Nothing to fix - every card in this row has a picture." } };
         const useRefs = (row.hold || "language") === "pose";
@@ -50835,7 +50856,21 @@ async function auraGenerateImage(prompt, env, opts = {}) {
     if (hitRaw) {
       const hit = JSON.parse(hitRaw);
       const still = await env.AURA_KV.get("imagemeta:" + hit.id).catch(() => null);
-      if (still) {
+      // ══ A CACHED BLANK IS SERVED FOREVER ═══════════════════════════════════════════════════
+      // Blanks written before the size check are in this cache as successes. An identical prompt -
+      // which is exactly what a repair sends - is a HIT, so the empty file comes straight back and
+      // the repair reports success having changed nothing.
+      // Checked HERE because this is where the key lives. Rebuilding it in the repair path would be
+      // a second reader of one fact, and every time this file has done that the two have drifted.
+      let cachedBlank = false;
+      if (still && env.AURA_IMAGES) {
+        const h = await env.AURA_IMAGES.head(hit.id + ".png").catch(() => null);
+        if (h && h.size < 512) {
+          cachedBlank = true;
+          await env.AURA_KV.delete(cacheKey).catch(() => {});   // never serve it again
+        }
+      }
+      if (still && !cachedBlank) {
         try {
           const day = new Date().toISOString().slice(0, 10);
           const mk = "meter:images:" + day;
@@ -51096,7 +51131,28 @@ async function auraGenerateImage(prompt, env, opts = {}) {
     await env.AURA_KV.put(mk, JSON.stringify(rec), { expirationTtl: 30 * 24 * 3600 }).catch(() => {});
   } catch {}
 
+  // ══ A SUCCESS WITH NO PIXELS IN IT ═══════════════════════════════════════════════════════
+  // MEASURED on the live cat wall: Black Cat and Calico rendered as EMPTY WHITE SQUARES. Not
+  // "never drew" - the row recorded an id and a success, the sheet counted zero holes, and the
+  // only way to know was to look at the page.
+  // Nothing between the provider's reply and this line asked whether `b64` was an image. A 200
+  // carrying an empty or truncated payload decodes to zero bytes, gets written to R2 and KV, and
+  // becomes a card. The whole failure-reporting chain built this week - retries, reasons, holes,
+  // SUSPECT - is downstream of a check that never happened.
+  //
+  // A PNG BEGINS WITH A KNOWN EIGHT BYTES. Anything shorter than a few hundred is not a picture
+  // whatever its header says; anything that does not start with that signature is not a PNG. Both
+  // are cheap to check and neither can be argued with.
   const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  const PNG_SIG = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+  const JPG_SIG = [0xFF, 0xD8, 0xFF];
+  const looksPng = bytes.length > 8 && PNG_SIG.every((v, i) => bytes[i] === v);
+  const looksJpg = bytes.length > 3 && JPG_SIG.every((v, i) => bytes[i] === v);
+  if (bytes.length < 512 || !(looksPng || looksJpg)) {
+    // Thrown, not stored. A blank card is worse than a missing one: the missing one is reported,
+    // retried and patched, and the blank one is a hole somebody taps into.
+    throw new Error("provider returned " + bytes.length + " bytes that are not an image (" + model + ")");
+  }
   if (env.AURA_IMAGES) { try { await env.AURA_IMAGES.put(`${id}.png`, bytes, { httpMetadata: { contentType: "image/png" } }); } catch {} }
   await env.AURA_KV.put(`image:${id}`, b64).catch(() => {});
   const meta = { id, prompt: p.slice(0, 1000), created: new Date().toISOString(), entity: opts.entity || null, source: opts.source || "showit", model, quality, tokens, cost_usd: costUsd, url: `https://${await imageHost(env, opts.host)}/image/${id}` };

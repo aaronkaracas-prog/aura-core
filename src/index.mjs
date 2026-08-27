@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v8.3.0-2026-08-27-she-draws-the-lettering";
+const BUILD = "aura-core-v8.4.0-2026-08-27-coordinates-not-wishes";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -53840,6 +53840,22 @@ export class PublicEntry extends WorkerEntrypoint {
       // problem the model does not have.
       // The font and the placement are WORDS she already understands. The picker exists so the
       // person can see a face before naming it.
+      // ══ LETTER — A SPEC, NOT A WISH ═══════════════════════════════════════════════════════
+      //   design letter  { design, say, font, box:{x,y,w,rot,arc}, over? }
+      //
+      // MEASURED, twice, on a live walk: "CHANGE TO OLD ENGLISH FONT" came back "That change did
+      // not take." A font change after the fact is the operation the model is WORST at, and the one
+      // people will do most - so it cannot be the thing that costs a generation each time.
+      //
+      // THE FIX IS NOT A BETTER PROMPT, IT IS A PRECISE ONE. Aaron's framing, and it is the right
+      // one: told exactly where to put the words and at what angle and size, the model does it.
+      // Told "somewhere sensible", it invents a banner. So the page lets somebody place the words
+      // with their finger - free, instant, as many font changes as they like - and what comes out
+      // is COORDINATES. Those become a sentence a model cannot misread.
+      //
+      // The overlay is not a preview of the output and must never be described as one - the model
+      // redraws the lettering rather than compositing it. It is the tool for SAYING PRECISELY WHAT
+      // YOU WANT, and once the instruction is unambiguous the drift stops mattering.
       if (action === "letter") {
         const design = String(b.design || "").trim();
         const say = String(b.say || "").slice(0, 120).trim();
@@ -53848,37 +53864,62 @@ export class PublicEntry extends WorkerEntrypoint {
         const own = await processCommand("FILE MINE " + me, env, true);
         const mine = ((own?.payload?.files) || []).find((f) => f.id === design);
         if (!mine) return { ok: false, error: "NOT_YOURS", say: "That is not one of yours." };
-        const WHERE = { above: "above the artwork, sitting on its own",
-          below: "below the artwork, sitting on its own",
-          arch: "arced around the outside of the artwork, following its contour",
-          wrap: "wrapping around the composition like a band, continuing round the form",
-          banner: "on a ribbon or banner crossing the artwork, the ribbon passing behind and in front of the subject",
-          weave: "with the lettering itself travelling behind and in front of parts of the artwork",
-          inside: "inside the artwork, using the negative space already there",
-          "part of": "with the letters becoming part of the artwork itself - forming stems, branches or flourishes" };
-        const where = WHERE[String(b.where || "").toLowerCase()] ||
-          "in a natural place for a tattoo of this shape";
+
+        // ── THE NUMBERS BECOME ENGLISH ────────────────────────────────────────────────────
+        // Percentages, not pixels: the artwork is square and the page may render it at any size,
+        // so a pixel from a phone means nothing to a model. A position, a width, an angle and a
+        // curve is everything needed to place a line of type, and it is all the drag produces.
+        const box = (b.box && typeof b.box === "object") ? b.box : null;
+        // `Number(null)` is 0, not NaN - so a missing coordinate would become "0% down" and pin the
+        // lettering to the very top edge instead of falling back. Nullish first, then the number.
+        const pct = (v, d) => {
+          if (v === null || v === undefined || v === "") return d;
+          const n = Number(v);
+          return isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : d;
+        };
+        let where;
+        if (box) {
+          const x = pct(box.x, 50), y = pct(box.y, 15), w = pct(box.w, 70);
+          const rot = Math.max(-45, Math.min(45, Math.round(Number(box.rot) || 0)));
+          const arc = Math.max(-90, Math.min(90, Math.round(Number(box.arc) || 0)));
+          const across = x < 34 ? "the left" : x > 66 ? "the right" : "the centre";
+          const down   = y < 25 ? "the top" : y > 70 ? "the bottom" : "the middle";
+          where = "centred at " + x + "% across and " + y + "% down the image (towards " + down +
+            (across === "the centre" ? "" : ", " + across) + "), spanning about " + w +
+            "% of the width" +
+            (arc ? ", arced " + (arc > 0 ? "upward like a rainbow" : "downward like a smile") +
+                   " with a curve of about " + Math.abs(arc) + " degrees" : ", on a straight line") +
+            (rot ? ", tilted " + Math.abs(rot) + " degrees " + (rot > 0 ? "clockwise" : "anticlockwise") : "");
+          // Over, behind, or through - the one thing a position cannot express, because it is a
+          // relationship rather than a place.
+          const rel = String(b.over || "over").toLowerCase();
+          where += rel === "behind" ? ". The lettering passes BEHIND the subject where they overlap"
+                 : rel === "through" ? ". The lettering weaves behind and in front of parts of the artwork"
+                 : ". The lettering sits in front where it overlaps the artwork";
+        } else {
+          where = "in a natural place for a tattoo of this shape";
+        }
+
         // ══ THE MODEL REACHES FOR A RIBBON ════════════════════════════════════════════════
         // MEASURED: asked to put lettering on a golden retriever, it invented a red banner across
         // the dog's collar. Nobody asked for one. It is the default a tattoo model falls into and
         // it has to be refused BY NAME - "blend it in" is not read as "and do not add a scroll".
-        // Unless of course they picked the banner, which is a real treatment and theirs to choose.
-        const noBanner = String(b.where || "").toLowerCase() === "banner" ? "" :
-          " Do not add a banner, ribbon, scroll, plaque or collar to hold the words unless the " +
-          "artwork already has one.";
+        const noBanner = String(b.over || "").toLowerCase() === "banner" ? "" :
+          " Do not add a banner, ribbon, scroll, plaque or collar to hold the words.";
         const r = await showIt(
-          'Add the words "' + say + '" to this tattoo, ' + where + ", in " +
-          (b.font || "script") + " lettering. Spell it exactly as written. " +
-          "Draw the lettering as part of the tattoo, in the same hand as the artwork." + noBanner,
+          'Add the words "' + say + '" to this tattoo in ' + (b.font || "script") + " lettering, " +
+          where + ". Spell it exactly as written. Draw the lettering as part of the tattoo, in the " +
+          "same hand as the artwork." + noBanner,
           env, { source: "letter", parent: design, entity: me, session: b.session,
                  refs: [mine.url], raw: true });
         if (!r?.ok) return { ok: false, error: r?.error || "COULD_NOT_LETTER" };
         return { ok: true, design: r.entity_id || r.id, image: r.image_url,
-          said: say, font: b.font || "script", where: b.where || null,
+          said: say, font: b.font || "script", placed: !!box,
+          // The instruction that was actually sent. When lettering lands wrong, the question is
+          // always "what did it get told" - and that has to be readable, not reconstructed.
+          spec: where,
           model: r.model || null, cost_usd: r.cost_usd,
           say: "Here it is. Tell me anything you want moved or changed.",
-          // A model draws letters rather than typesetting them. It gets it right far more often
-          // than not - and the one thing nobody can fix after skin is a misspelling.
           check: "Read the words before you take this to a shop." };
       }
 

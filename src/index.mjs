@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.95.0-2026-08-27-placement-is-not-the-picture";
+const BUILD = "aura-core-v7.96.0-2026-08-27-a-tap-costs-nothing";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -50756,7 +50756,27 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // then to near-free Cloudflare Flux as the ultimate floor. A margin engine never defaults to the priciest.
   const rawModel = (await env.AURA_KV.get("config:image:model").catch(() => null));
   const rawQuality = (await env.AURA_KV.get("config:image:quality").catch(() => null));
-  const model = ((rawModel && rawModel.trim()) || resolved.model || "@cf/black-forest-labs/flux-1-schnell").trim();
+  let model = ((rawModel && rawModel.trim()) || resolved.model || "@cf/black-forest-labs/flux-1-schnell").trim();
+
+  // ══ A DRAW WITH A REFERENCE NEEDS A MODEL THAT CAN SEE IT ═════════════════════════════════
+  // MEASURED on a live walk: `config:image:model` was pinned to Flux for the catalogue, which is
+  // correct - independent cards, free, and it draws them well. But FLUX IS TEXT-TO-IMAGE ONLY.
+  // The `@cf/` branch below sends `{ prompt }` and nothing else, so a reference is dropped in
+  // silence. An IMAGE EVOLVE stopped being an edit and became a redraw from a sentence: somebody
+  // asked for a mouse beside their cat and got a different cat with a mouse; asked for the eyes
+  // open and got neither.
+  // The Smart File graph recorded all of it perfectly - parent, child, lineage - while the artwork
+  // changed identity underneath. The same failure this file already fixed once for xAI, arriving
+  // through a config key instead of through code.
+  //
+  // SO THE JOB PICKS THE MODEL, NOT THE PIN. With refs present, a model that cannot accept them is
+  // the wrong tool whatever the catalogue is set to. Overridable, because the day a Workers AI
+  // model does image-to-image this should follow the pin again.
+  const CAN_EDIT = /^(gpt-image|dall-e-3|grok-imagine|gemini|imagen)/i;
+  if (Array.isArray(opts.refs) && opts.refs.length && !CAN_EDIT.test(model)) {
+    const editPin = (await env.AURA_KV.get("config:image:editmodel").catch(() => null));
+    model = (editPin && editPin.trim()) ? editPin.trim() : "gpt-image-1-mini";
+  }
   const quality = ((rawQuality && rawQuality.trim()) || resolved.quality || "low").trim();
   const p = String(prompt).slice(0, 4000);
 
@@ -50810,11 +50830,41 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       let key = await getSecret(env, "openai");
       if (key && key.startsWith("{")) { try { key = JSON.parse(key).api_key; } catch {} }
       if (!key) throw new Error("no OpenAI key");
-      const r = await pfetch(env, "openai", "core:image", "https://api.openai.com/v1/images/generations", {
-        method: "POST",
-        headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
-        body: JSON.stringify({ model, prompt: p, n: 1, size: "1024x1024", quality })
-      });
+      // ══ WITH A REFERENCE IT IS AN EDIT, AND THE ENDPOINT IS DIFFERENT ═══════════════════
+      // `/images/generations` takes a prompt and nothing else. Posting a reference to it does not
+      // fail - the field is ignored and a fresh picture comes back, which is the SILENT version of
+      // the Flux problem and the harder one to notice.
+      // `/images/edits` takes the parent as an actual file, and it is multipart, not JSON - so the
+      // body has to be a FormData with the image fetched and attached. The same shape this file
+      // already learned for xAI, where guessing the field name cost a canyon.
+      const oRefs = Array.isArray(opts.refs) ? opts.refs.filter(Boolean).slice(0, 4) : [];
+      let r;
+      if (oRefs.length) {
+        const fd = new FormData();
+        fd.append("model", model);
+        fd.append("prompt", p);
+        fd.append("n", "1");
+        fd.append("size", "1024x1024");
+        // The parent's PIXELS. Fetched, not linked - the endpoint reads a file, and a URL in this
+        // field is the same silent no-op as sending it to /generations.
+        for (let i = 0; i < oRefs.length; i++) {
+          const ir = await fetch(oRefs[i]);
+          if (!ir.ok) continue;
+          const blob = await ir.blob();
+          fd.append(oRefs.length > 1 ? "image[]" : "image", blob, "parent" + i + ".png");
+        }
+        r = await pfetch(env, "openai", "core:image", "https://api.openai.com/v1/images/edits", {
+          method: "POST",
+          headers: { "Authorization": "Bearer " + key },   // no content-type: FormData sets its own
+          body: fd
+        });
+      } else {
+        r = await pfetch(env, "openai", "core:image", "https://api.openai.com/v1/images/generations", {
+          method: "POST",
+          headers: { "Authorization": "Bearer " + key, "Content-Type": "application/json" },
+          body: JSON.stringify({ model, prompt: p, n: 1, size: "1024x1024", quality })
+        });
+      }
       const d = await r.json();
       if (!r.ok) throw new Error(d?.error?.message || JSON.stringify(d).slice(0, 300));
       const item = d?.data?.[0] || {};
@@ -53382,18 +53432,23 @@ export class PublicEntry extends WorkerEntrypoint {
           return offered.filter((o) => keep.has(String(idOf ? idOf(o) : o).toLowerCase().trim()));
         };
         while (stage) {
-          // The manufactured row is checked FIRST, before the written vocabulary and before any
-          // model call, because a blessed row is the best answer available for that stage.
+          // ══ A TAP MUST NOT CALL A MODEL ═══════════════════════════════════════════════════
+          // This ran `applies` on every stage of every walk. Cached per context, so the second
+          // person down an identical path was free - but somebody exploring hits combinations
+          // nobody has hit, so EVERY TAP was a model call. Aaron, correctly: "I'm literally just
+          // clicking a piece of software - why is AI involved at all?"
+          // It should not be. Whether colour still means anything given black-and-grey realism is
+          // a property OF THE CATALOGUE, not of the person tapping. A MANUFACTURED ROW IS ALREADY
+          // THAT ANSWER: the factory asked `ladderOptions` what applies to this subject before it
+          // drew a single card, and a row that exists is a row that applied. Re-asking at walk time
+          // is asking a settled question and charging somebody to hear it again.
           const made = await cardRow(stage.field, inc);
           if (made) {
-            const ok2 = await applies(stage.field, inc, made.items.map((x) => x.id));
-            if (ok2.na) { stage = nextStage(); continue; }
-            const live = kept(ok2, made.items, (x) => x.id);
-            if (!live.length) { stage = nextStage(); continue; }
-            if (live.length === 1) { inc[stage.field] = live[0].id; settled[stage.field] = live[0].id;
-                                     stage = nextStage(); continue; }
-            built = fromRow({ ...made, items: live }); label = made.label || stage.ask; break;
+            built = fromRow(made); label = made.label || stage.ask; break;
           }
+          // A WRITTEN vocabulary with no manufactured row behind it. This is the only place the
+          // question is genuinely open at walk time - nothing has been decided about this subject
+          // yet - so the check earns its call here and the answer is cached for everyone after.
           const offered = stage.opts !== "contextual" ? stage.opts : null;
           if (offered) {
             const ok2 = await applies(stage.field, inc, offered);
@@ -53409,16 +53464,9 @@ export class PublicEntry extends WorkerEntrypoint {
             say: "Give me a second and ask me again - I could not put those choices together.",
             why: got && got.why, saw: got && got.saw, model: got && got.model };
           if (got.na) { stage = nextStage(); continue; }
-          // A generated list gets the same treatment as a written one. `ladderOpts` already asks
-          // whether the DIMENSION applies; this asks whether each OPTION still means something now
-          // that a style is locked - a question that could not be asked when the list was built.
-          const ok3 = await applies(stage.field, inc, got.opts);
-          if (ok3.na) { stage = nextStage(); continue; }
-          const live3 = kept(ok3, got.opts);
-          if (!live3.length) { stage = nextStage(); continue; }
-          if (live3.length === 1) { inc[stage.field] = live3[0]; settled[stage.field] = live3[0];
-                                    stage = nextStage(); continue; }
-          choices = live3; label = got.label; break;
+          // `ladderOptions` already asked whether this dimension applies to this subject, and
+          // cached the answer. A second check would be the same question with more words.
+          choices = got.opts; label = got.label; break;
         }
 
         // Every applicable stage answered. Their tattoo, drawn from the whole of it, owned by them.

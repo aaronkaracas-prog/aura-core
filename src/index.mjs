@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.90.0-2026-08-27-every-row-after-style-is-ink";
+const BUILD = "aura-core-v7.91.0-2026-08-27-the-builder-builds-every-row";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23221,16 +23221,38 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           items: Array.isArray(o.styles) ? o.styles : VOCAB.style }));
         done.push({ row: "style:" + slug2(name), ok: !!sRow?.ok, drew: sRow?.drew ?? 0,
           failed: sRow?.failed ?? 0, failures: sRow?.failures || null });
-        // The composition wall only when a style is named, because a composition row with no style
-        // in its words has nothing holding the language - and that is the whole of its hold.
-        if (style && comps && comps.length) {
-          const cRow = await runOne("composition:" + slug2(name) + ":" + slug2(style) + " ::: " + JSON.stringify({
-            label: "How do you want to see it?", subject: name + ", " + style + " style",
-            variable: "composition", hold: "language", category: o.category || null,
-            style, items: comps }));
-          done.push({ row: "composition:" + slug2(name) + ":" + slug2(style),
-            ok: !!cRow?.ok, drew: cRow?.drew ?? 0, failed: cRow?.failed ?? 0,
-            failures: cRow?.failures || null });
+        // ══ THE ROWS THE BUILDER HAS NEVER MADE ══════════════════════════════════════════════
+        // This required a `compositions` list to be handed in, and the runner never handed one in.
+        // So across 471 leaves the factory built a style wall and stopped - and every composition
+        // and character row in the product has been generated LIVE, on the first person down that
+        // path, which is the thirty-second wait the factory exists to remove.
+        //
+        // They could never be a fixed list: a rose's arrangements are single bloom, three roses, a
+        // bouquet, a vine; a dog's are head portrait, sitting, running. That is exactly what
+        // `ladderOptions` produces - per subject, cached, and already what the live walk uses. So
+        // the builder asks the same generator rather than being fed an answer.
+        //
+        // AND "NOT APPLICABLE" IS AN ANSWER. Lettering has no expression. A row is only built when
+        // the generator says the dimension means something for this subject - the same judgement
+        // the live ladder makes, made once at build time instead of per visitor.
+        const pin = (await env.AURA_KV.get("config:talk:model").catch(() => null)) || null;
+        const lm = pin && pin.trim() ? pin.trim() : undefined;
+        for (const field of ["composition", "character"]) {
+          if (!style) break;   // with no style there is nothing holding the language
+          const got = await ladderOptions(env, field, name, lm).catch(() => null);
+          if (!got || got.failed || got.na || !Array.isArray(got.opts) || !got.opts.length) {
+            done.push({ row: field + ":" + slug2(name) + ":" + slug2(style), skipped: true,
+              why: got?.na ? "not applicable to this subject" : "no options" });
+            continue;
+          }
+          const key = field + ":" + slug2(name) + ":" + slug2(style);
+          const rRow = await runOne(key + " ::: " + JSON.stringify({
+            label: got.label || (field === "composition" ? "How do you want to see it?" : "What kind?"),
+            subject: name, variable: field, hold: "language",
+            category: o.category || null, style,
+            items: (field === "composition" && Array.isArray(comps) && comps.length) ? comps : got.opts }));
+          done.push({ row: key, ok: !!rRow?.ok, drew: rRow?.drew ?? 0,
+            failed: rRow?.failed ?? 0, failures: rRow?.failures || null });
         }
         const sheet = await processCommand("CARDS SHEET " + slug2(name), env, true);
         const sp = (sheet && sheet.payload) ? sheet.payload : sheet;
@@ -23586,18 +23608,24 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (!holes.length) return { cmd: "CARDS", payload: { ok: true, key: row.key, patched: 0,
           note: "Nothing to fix - every card in this row has a picture." } };
         const useRefs = (row.hold || "language") === "pose";
-        const CARD = row.variable === "style"
-          ? ". As a tattoo, in that tattoo style. A single subject, centred, filling the frame, " +
-            "on a plain light background. No skin, no body, no border, no background scenery, " +
-            "no extra motifs - only the subject itself."
-          : ". A single subject, centred, filling the frame, on a plain light background. " +
-            "No skin, no body, no border, no background scenery, no extra motifs - " +
-            "only the subject itself.";
+        // ══ THE SAME FORMAT AS THE FACTORY, BECAUSE A PATCH IS A CARD ═════════════════════════
+        // This carried its own copy of the card format and its own `wordFor`, and when the factory
+        // learned that every row after style is INK and carries the chosen style, this did not.
+        // So repairing a hole in a composition row would have put a photograph back into a row of
+        // tattoos - the original bug, re-entering through the repair door.
+        // Two copies of one rule is the shape this file has paid for more than any other. Same
+        // words here as there, and the style comes off the ROW, which records it.
+        const pStyle = String(row.style || (String(row.key).match(/^[a-z]+:[^:]+:(.+)$/) || [])[1] || "")
+          .replace(/-/g, " ").toLowerCase().trim();
+        const LAYOUT = " A single subject, centred, filling the frame, on a plain light " +
+                       "background. No skin, no body, no border, no background scenery, " +
+                       "no extra motifs - only the subject itself.";
+        const CARD = row.variable === "subject" ? "." + LAYOUT : ". As a tattoo." + LAYOUT;
         const wordFor = (it) => {
           const w = it.say || it.label;
-          return row.variable === "style"   ? row.subject + ", " + w + (it.say ? "" : " style")
-               : row.variable === "subject" ? w
-               : row.subject + ", " + w;
+          if (row.variable === "style")   return row.subject + ", " + w + (it.say ? "" : " style");
+          if (row.variable === "subject") return w;
+          return row.subject + ", " + w + (pStyle ? ", " + pStyle + " style" : "");
         };
         const refs = [];
         if (useRefs && row.house) refs.push("https://auras.guide/image/" + row.house);
@@ -23950,7 +23978,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           // builder returned sheet:null - the review loop it was built to produce. A row has to
           // carry its own place in the tree; a prefix over subject names can never infer it.
           category: spec.category ? String(spec.category).slice(0, 60) : null,
-          subject, variable, hold, parent: (useRefs ? parent : null) || null,
+          subject, variable, hold, style: styleWord || null,
+          parent: (useRefs ? parent : null) || null,
           house: useRefs ? (house || null) : null,
           items: out, made_at: new Date().toISOString() };
         await env.AURA_KV.put(key, JSON.stringify(row));
@@ -50523,6 +50552,90 @@ async function findReference(query, env, opts = {}) {
   }
 }
 
+async function ladderOptions(env, field, subject, ladderModel) {
+  const slug = String(subject).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+  const ck = "ladder2:" + field + ":" + slug;
+  try {
+    const hit = await env.AURA_KV.get(ck, "json");
+    if (hit && (hit.na === true || (Array.isArray(hit.opts) && hit.opts.length))) return hit;
+  } catch {}
+  const brief = field === "composition"
+    ? "WHAT THE PICTURE IS OF - the framing and arrangement.\n" +
+      "A dog: head portrait, face close-up, head and chest, full body sitting, standing, " +
+      "lying down, running, playing, side profile, three-quarter view, with another dog, " +
+      "with their owner, paw print.\n" +
+      "A rose: single bloom, two roses, three roses, a bouquet, a cluster, long stem, a " +
+      "vine, wrapping arrangement, a floral frame, scattered petals.\n" +
+      "A dragon: just the head, full dragon, coiled, flying, ascending, descending, " +
+      "wrapped around, facing forward, side view.\n" +
+      "NOTE HOW QUANTITY BELONGS HERE when it changes the picture - three roses is a real " +
+      "composition, and ONE is the default when it is not offered."
+    : "WHAT IT LOOKS LIKE OR FEELS LIKE - the expression or character.\n" +
+      "A dog: happy, playful, calm, loving, gentle, proud, serious, alert, soulful, " +
+      "curious, goofy, protective, sleeping, peaceful.\n" +
+      "A dragon: fierce, powerful, protective, majestic, wise, mystical, ancient, regal, " +
+      "aggressive, calm, spiritual, dark.\n" +
+      "A skull: menacing, dark, eerie, aggressive, gothic, elegant, weathered, ancient, " +
+      "broken, macabre, peaceful, playful.";
+  let lastErr = null, lastText = null, lastModel = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const br = await callBrain({
+        model: ladderModel,
+        system:
+          "Somebody is designing a tattoo. Give them the choices for one decision.\n\n" +
+          "THE DECISION: " + brief + "\n\n" +
+          'Return ONLY JSON: {"label":"...","options":["...","..."]}\n\n' +
+          "`label` is the question a person reads, in plain words, fitted to THIS subject - " +
+          '"What expression?" for a dog, "What kind of dragon?" for a dragon, "What ' +
+          'arrangement?" for roses. Never abstract. Never "what should it feel like".\n\n' +
+          "`options` are SIX TO FOURTEEN things they would recognise instantly and click. " +
+          "Lowercase, one to four words. VISUALLY DISTINCT - two that would draw the same " +
+          "picture are one. Return six if this subject honestly has six; filler is worse " +
+          "than a short list because somebody reads every one.\n\n" +
+          "Nothing about style, colour, linework, placement or size - those are asked " +
+          "elsewhere and repeating them here wastes the person's time.\n\n" +
+          'IF THIS DECISION GENUINELY DOES NOT APPLY to this subject, return exactly ' +
+          '{"na":true}. A word in lettering has no expression. A geometric pattern has no ' +
+          "character. Say so rather than inventing a choice that does not matter - but do " +
+          "not use this to avoid a real decision. Almost every living thing has both.",
+        messages: [{ role: "user", content: String(subject) }],
+        max_tokens: 400 }, env);
+      lastModel = br?.model || null;
+      lastText = br?.text ? String(br.text).slice(0, 400) : null;
+      if (!br?.ok) lastErr = br?.error || br?.why || "callBrain returned not-ok";
+      let o = null;
+      if (br?.ok && br.text) {
+        try { o = JSON.parse(br.text); } catch { try { o = repairJson(br.text); } catch {} }
+        if (o) o = unwrapSchema(o);
+      }
+      if (o && o.na === true) {
+        const rec = { na: true };
+        try { await env.AURA_KV.put(ck, JSON.stringify(rec)); } catch {}
+        return rec;
+      }
+      if (o && Array.isArray(o.options)) {
+        const opts = o.options.map(x => (typeof x === "string" ? x.trim().toLowerCase() : null))
+          .filter(x => x && x.length <= 40).filter((x, i, a) => a.indexOf(x) === i).slice(0, 14);
+        if (opts.length >= 4) {
+          const rec = { label: (typeof o.label === "string" && o.label.trim())
+            ? o.label.trim().slice(0, 80)
+            : (field === "composition" ? "How do you want to see it?" : "What kind?"), opts };
+          try { await env.AURA_KV.put(ck, JSON.stringify(rec)); } catch {}
+          return rec;
+        }
+      }
+    } catch (e) { lastErr = String(e && e.message || e).slice(0, 200); }
+  }
+  // Twice, and nothing usable. NOT cached, and the caller must not treat this as "skip" -
+  // an unanswered composition is why four dogs ran through a field.
+  // THE FAILURE CARRIES WHAT WAS SENT AND WHAT CAME BACK. Six identical Moondream failures
+  // once looked like a broken model for a whole session; the moment the error included the
+  // request and the reply it was one run. A bare "could not put those choices together"
+  // costs another round trip to Aaron and another walk of the site.
+  return { failed: true, why: lastErr, saw: lastText, model: lastModel };
+}
+
 async function auraGenerateImage(prompt, env, opts = {}) {
   // AGNOSTIC + POLICY-DRIVEN. showIt states intent ("make an image"); AIMARGIN's POLICY decides who fulfills
   // it and at what quality. The operator declares INTENT once - config:policy:image = cheapest | balanced |
@@ -53007,89 +53120,15 @@ export class PublicEntry extends WorkerEntrypoint {
         const ladderPin = (await env.AURA_KV.get("config:talk:model").catch(() => null)) || null;
         const ladderModel = ladderPin && ladderPin.trim() ? ladderPin.trim() : undefined;
 
-        const ladderOpts = async (field, subject) => {
-          const slug = String(subject).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
-          const ck = "ladder2:" + field + ":" + slug;
-          try {
-            const hit = await env.AURA_KV.get(ck, "json");
-            if (hit && (hit.na === true || (Array.isArray(hit.opts) && hit.opts.length))) return hit;
-          } catch {}
-          const brief = field === "composition"
-            ? "WHAT THE PICTURE IS OF - the framing and arrangement.\n" +
-              "A dog: head portrait, face close-up, head and chest, full body sitting, standing, " +
-              "lying down, running, playing, side profile, three-quarter view, with another dog, " +
-              "with their owner, paw print.\n" +
-              "A rose: single bloom, two roses, three roses, a bouquet, a cluster, long stem, a " +
-              "vine, wrapping arrangement, a floral frame, scattered petals.\n" +
-              "A dragon: just the head, full dragon, coiled, flying, ascending, descending, " +
-              "wrapped around, facing forward, side view.\n" +
-              "NOTE HOW QUANTITY BELONGS HERE when it changes the picture - three roses is a real " +
-              "composition, and ONE is the default when it is not offered."
-            : "WHAT IT LOOKS LIKE OR FEELS LIKE - the expression or character.\n" +
-              "A dog: happy, playful, calm, loving, gentle, proud, serious, alert, soulful, " +
-              "curious, goofy, protective, sleeping, peaceful.\n" +
-              "A dragon: fierce, powerful, protective, majestic, wise, mystical, ancient, regal, " +
-              "aggressive, calm, spiritual, dark.\n" +
-              "A skull: menacing, dark, eerie, aggressive, gothic, elegant, weathered, ancient, " +
-              "broken, macabre, peaceful, playful.";
-          let lastErr = null, lastText = null, lastModel = null;
-          for (let attempt = 0; attempt < 2; attempt++) {
-            try {
-              const br = await callBrain({
-                model: ladderModel,
-                system:
-                  "Somebody is designing a tattoo. Give them the choices for one decision.\n\n" +
-                  "THE DECISION: " + brief + "\n\n" +
-                  'Return ONLY JSON: {"label":"...","options":["...","..."]}\n\n' +
-                  "`label` is the question a person reads, in plain words, fitted to THIS subject - " +
-                  '"What expression?" for a dog, "What kind of dragon?" for a dragon, "What ' +
-                  'arrangement?" for roses. Never abstract. Never "what should it feel like".\n\n' +
-                  "`options` are SIX TO FOURTEEN things they would recognise instantly and click. " +
-                  "Lowercase, one to four words. VISUALLY DISTINCT - two that would draw the same " +
-                  "picture are one. Return six if this subject honestly has six; filler is worse " +
-                  "than a short list because somebody reads every one.\n\n" +
-                  "Nothing about style, colour, linework, placement or size - those are asked " +
-                  "elsewhere and repeating them here wastes the person's time.\n\n" +
-                  'IF THIS DECISION GENUINELY DOES NOT APPLY to this subject, return exactly ' +
-                  '{"na":true}. A word in lettering has no expression. A geometric pattern has no ' +
-                  "character. Say so rather than inventing a choice that does not matter - but do " +
-                  "not use this to avoid a real decision. Almost every living thing has both.",
-                messages: [{ role: "user", content: String(subject) }],
-                max_tokens: 400 }, env);
-              lastModel = br?.model || null;
-              lastText = br?.text ? String(br.text).slice(0, 400) : null;
-              if (!br?.ok) lastErr = br?.error || br?.why || "callBrain returned not-ok";
-              let o = null;
-              if (br?.ok && br.text) {
-                try { o = JSON.parse(br.text); } catch { try { o = repairJson(br.text); } catch {} }
-                if (o) o = unwrapSchema(o);
-              }
-              if (o && o.na === true) {
-                const rec = { na: true };
-                try { await env.AURA_KV.put(ck, JSON.stringify(rec)); } catch {}
-                return rec;
-              }
-              if (o && Array.isArray(o.options)) {
-                const opts = o.options.map(x => (typeof x === "string" ? x.trim().toLowerCase() : null))
-                  .filter(x => x && x.length <= 40).filter((x, i, a) => a.indexOf(x) === i).slice(0, 14);
-                if (opts.length >= 4) {
-                  const rec = { label: (typeof o.label === "string" && o.label.trim())
-                    ? o.label.trim().slice(0, 80)
-                    : (field === "composition" ? "How do you want to see it?" : "What kind?"), opts };
-                  try { await env.AURA_KV.put(ck, JSON.stringify(rec)); } catch {}
-                  return rec;
-                }
-              }
-            } catch (e) { lastErr = String(e && e.message || e).slice(0, 200); }
-          }
-          // Twice, and nothing usable. NOT cached, and the caller must not treat this as "skip" -
-          // an unanswered composition is why four dogs ran through a field.
-          // THE FAILURE CARRIES WHAT WAS SENT AND WHAT CAME BACK. Six identical Moondream failures
-          // once looked like a broken model for a whole session; the moment the error included the
-          // request and the reply it was one run. A bare "could not put those choices together"
-          // costs another round trip to Aaron and another walk of the site.
-          return { failed: true, why: lastErr, saw: lastText, model: lastModel };
-        };
+        // ══ ONE GENERATOR, TWO CALLERS ═══════════════════════════════════════════════════════
+        // This used to be defined here, inside the design RPC, which meant the FACTORY could not
+        // reach it - and so the builder has never manufactured a composition or character row.
+        // Not once, across 471 leaves. Every one of those rows has been generated live, on the
+        // first person to walk that path, which is the thirty-second wait the factory exists to
+        // remove.
+        // Hoisted to module scope and called from both. A second copy for the builder would have
+        // been the same mistake this file has paid for more than any other.
+        const ladderOpts = (field, subject) => ladderOptions(env, field, subject, ladderModel);
 
         // ── A MANUFACTURED CARD BEATS A WORD, AND COSTS NOTHING TO FIND OUT.
         // The page asks for a stage; if the factory has already made that row, the pictures come

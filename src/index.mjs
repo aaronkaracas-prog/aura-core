@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v8.0.0-2026-08-27-a-blank-card-is-a-failure";
+const BUILD = "aura-core-v8.1.0-2026-08-27-words-are-type-not-drawing";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -50937,6 +50937,14 @@ async function auraGenerateImage(prompt, env, opts = {}) {
             if (b) { const bin = atob(b); const u = new Uint8Array(bin.length);
                      for (let n = 0; n < bin.length; n++) u[n] = bin.charCodeAt(n); bytes = u.buffer; }
           }
+          if (!bytes && /^data:/i.test(String(oRefs[i]))) {
+            // A reference we built in memory rather than one we stored. `fetch` does not read a
+            // data URL in a Worker, so it would silently drop and the model would be left guessing
+            // at the very thing the reference exists to remove.
+            const m2 = String(oRefs[i]).match(/^data:([^;,]+);base64,(.+)$/i);
+            if (m2) { const bin = atob(m2[2]); const u = new Uint8Array(bin.length);
+                      for (let n = 0; n < bin.length; n++) u[n] = bin.charCodeAt(n); bytes = u.buffer; }
+          }
           if (!bytes && !own) {
             // Somebody else's picture - the only case that legitimately goes over the wire.
             const ir = await fetch(oRefs[i]).catch(() => null);
@@ -53759,6 +53767,120 @@ export class PublicEntry extends WorkerEntrypoint {
         return p4?.ok ? { ok: true, design: id, posted: !!p4.posted,
           say: action === "share" ? "Shared." : "Taken back." }
           : { ok: false, error: p4?.error || "COULD_NOT_SHARE" };
+      }
+
+      // ══ WORDS — LETTERING IS TYPE, NOT A DRAWING ═══════════════════════════════════════════
+      //   design words   { say, font?, on? }
+      //
+      // A tattoo model asked for "Aaron loves his mom" will usually spell it right and sometimes
+      // will not, and a MISSPELLED TATTOO is the worst failure this product can produce - worse
+      // than a blank card, worse than a different cat. So words alone are not generated at all:
+      // they are SET IN A REAL TYPEFACE, as SVG. Perfectly spelled by construction, sharp at any
+      // size, instant, and free. Twenty styles of the same word cost nothing and take no time.
+      //
+      // THE MODEL ONLY GETS INVOLVED WHEN THE WORDS MEET ARTWORK - arced under a portrait, wrapped
+      // in a banner, behind the subject, woven into the design. A typeface can be curved but it
+      // cannot be drawn behind a dog. That case sends TWO references (the artwork and the rendered
+      // lettering) so the model has the letters in front of it and only has to place them.
+      //
+      // Aaron's own framing: a tattooist looks up a font, that is all this is. The difference is
+      // the person sees their own words in twenty hands before choosing.
+      if (action === "words") {
+        const say = String(b.say || "").slice(0, 120).trim();
+        if (!say) return { ok: false, error: "NEED_WORDS", say: "What should it say?" };
+        // Google Fonts, chosen for licence as much as looks: free for commercial use, which a
+        // product SERVING a typeface to thousands of people needs and a shop tracing one does not.
+        const FONTS = [
+          { id: "old english",   family: "UnifrakturMaguntia", weight: 400 },
+          { id: "blackletter",   family: "Pirata One",         weight: 400 },
+          { id: "script",        family: "Great Vibes",        weight: 400 },
+          { id: "handwritten",   family: "Caveat",             weight: 600 },
+          { id: "signature",     family: "Mrs Saint Delafield",weight: 400 },
+          { id: "calligraphy",   family: "Tangerine",          weight: 700 },
+          { id: "fine line",     family: "Cormorant Garamond", weight: 300 },
+          { id: "traditional",   family: "Alfa Slab One",      weight: 400 },
+          { id: "western",       family: "Rye",                weight: 400 },
+          { id: "typewriter",    family: "Special Elite",      weight: 400 },
+          { id: "serif",         family: "Playfair Display",   weight: 700 },
+          { id: "minimal",       family: "Josefin Sans",       weight: 300 },
+          { id: "art deco",      family: "Poiret One",         weight: 400 },
+          { id: "gothic",        family: "Metal Mania",        weight: 400 },
+          { id: "graffiti",      family: "Rubik Puddles",      weight: 400 },
+          { id: "stencil",       family: "Stardos Stencil",    weight: 700 },
+          { id: "celtic",        family: "Uncial Antiqua",     weight: 400 },
+          { id: "horror",        family: "Nosifer",            weight: 400 },
+        ];
+        const esc = (t) => String(t).replace(/[&<>"]/g, (c) =>
+          ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+        // An SVG with the font imported by URL. It renders in the page, in the sheet, and can be
+        // handed to the model as a reference - the same picture in all three places.
+        const svg = (f) => '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 260">' +
+          '<defs><style>@import url(https://fonts.googleapis.com/css2?family=' +
+          encodeURIComponent(f.family).replace(/%20/g, "+") + ':wght@' + f.weight +
+          '&amp;display=swap);</style></defs>' +
+          '<rect width="800" height="260" fill="#faf7f2"/>' +
+          '<text x="400" y="150" text-anchor="middle" font-size="86" fill="#111" ' +
+          'font-family="' + esc(f.family) + '" font-weight="' + f.weight + '">' + esc(say) + '</text></svg>';
+        const want = String(b.font || "").toLowerCase().trim();
+        if (want) {
+          const f = FONTS.find((x) => x.id === want);
+          if (!f) return { ok: false, error: "NO_SUCH_FONT", has: FONTS.map((x) => x.id) };
+          return { ok: true, say, font: f.id, family: f.family, svg: svg(f) };
+        }
+        // The whole wall. No model, no cost, no wait - the same word in every hand at once.
+        return { ok: true, say, ask: "How should it look?",
+          options: FONTS.map((f) => ({ value: f.id, label: f.id, family: f.family, svg: svg(f) })),
+          note: "Set in real type, so it is spelled the way you typed it." };
+      }
+
+      // ══ LETTER — PUT THE WORDS ON THE TATTOO ═══════════════════════════════════════════════
+      //   design letter  { design, say, font, where? }
+      //
+      // The one place the model touches lettering, because this is the part type cannot do: arced
+      // under a portrait, inside a banner, behind the subject, woven into the artwork.
+      // TWO REFERENCES GO IN - the tattoo, and the words already set in the chosen typeface. The
+      // model is not being asked to spell anything; the letters are in front of it and the job is
+      // placement and blending. That is the difference between "usually right" and right.
+      if (action === "letter") {
+        const design = String(b.design || "").trim();
+        const say = String(b.say || "").slice(0, 120).trim();
+        if (!design || !say) return { ok: false, error: "NEED_DESIGN_AND_WORDS" };
+        // Their own piece only. The same check the library and sharing use.
+        const own = await processCommand("FILE MINE " + me, env, true);
+        const mine = ((own?.payload?.files) || []).find((f) => f.id === design);
+        if (!mine) return { ok: false, error: "NOT_YOURS", say: "That is not one of yours." };
+        // ══ THE TYPE HAS TO BE RASTERISED, AND ONLY THE PAGE CAN DO IT ═══════════════════════
+        // The plan was to set the words here and send them as a second reference. A Worker cannot
+        // rasterise SVG, and every image API takes PNG or JPEG - so the reference would have been
+        // REJECTED, silently, and the model left to spell from words alone. Exactly the failure the
+        // reference existed to prevent.
+        // The page is already displaying that SVG, and a canvas turns it into a PNG in one line. So
+        // the page sends `lettering` as a data URL and this decodes it.
+        // WITHOUT IT, THE JOB STILL RUNS - the words go in the prompt and gpt-image-2 usually
+        // spells them correctly. Usually is not good enough for skin, which is why the reply says
+        // which of the two happened.
+        const lettering = String(b.lettering || "");
+        const hasType = /^data:image\/(png|jpe?g|webp);base64,/i.test(lettering);
+        const where = String(b.where || "").trim() ||
+          "in a natural place for a tattoo of this shape";
+        const prompt = hasType
+          ? "Add the lettering from the second image to the tattoo in the first image, " + where +
+            '. The words read exactly "' + say + '" - keep that spelling and that lettering style. ' +
+            "Blend it into the artwork as one tattoo, not a caption placed on top."
+          : 'Add the words "' + say + '" to this tattoo, ' + where + ", in " +
+            (b.font || "script") + " lettering. Spell it exactly as written. " +
+            "Blend it into the artwork as one tattoo, not a caption placed on top.";
+        const r = await showIt(prompt,
+          env, { source: "letter", parent: design, entity: me, session: b.session,
+                 refs: hasType ? [mine.url, lettering] : [mine.url], raw: true });
+        if (!r?.ok) return { ok: false, error: r?.error || "COULD_NOT_LETTER" };
+        return { ok: true, design: r.entity_id || r.id, image: r.image_url,
+          said: say, font: b.font || "script", from_type: hasType,
+          model: r.model || null, cost_usd: r.cost_usd,
+          say: "Here it is. Tell me anything you want moved or changed.",
+          // A model draws letters, it does not typeset them - so the spelling is far more likely to
+          // be right with the words in front of it, and still worth a person's eyes before skin.
+          check: "Read the words before you take this to a shop." };
       }
 
       if (action === "row") {

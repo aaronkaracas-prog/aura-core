@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.97.0-2026-08-27-the-parent-comes-off-the-shelf";
+const BUILD = "aura-core-v7.98.0-2026-08-27-cheapest-that-can-do-the-job";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -42006,6 +42006,8 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
       const lanes = {
         text:  await kvg("config:policy:text", "cheapest"),
         image: await kvg("config:policy:image", "cheapest"),
+        // Editing is its own lane, because "cheapest" that cannot take a reference is not cheap.
+        edit:  await kvg("config:policy:edit",  "edit"),
         core:  await kvg("config:policy:core", "cheapest"),
         video: await kvg("config:policy:video", "cheapest"),
         style: await kvg("config:policy:style", "photoreal"),
@@ -50749,16 +50751,41 @@ async function auraGenerateImage(prompt, env, opts = {}) {
     cheapest: { model: "grok-imagine-image",            quality: "low"  },
     balanced: { model: "gpt-image-1-mini",              quality: "low"  },
     quality:  { model: "gemini-3.1-flash-lite-image",   quality: "high" },
+    // ══ EDITING IS A DIFFERENT CAPABILITY, NOT A HIGHER TIER ═══════════════════════════════
+    // MEASURED today, four ways, on the same cat. GENERATION is commoditised - Flux, Grok, GPT and
+    // Meta produced pictures nobody could tell apart, which is why `cheapest` is right and free is
+    // right. But asked to ADD A MOUSE to an existing picture, Flux returned a DIFFERENT CAT: it has
+    // no edit endpoint at all, so a reference is dropped and the instruction becomes a fresh
+    // drawing. Not lower quality - a missing feature.
+    // Verified 2026-08-27: gpt-image, gemini/nano-banana and flux KONTEXT edit; flux schnell,
+    // ideogram and the plain SD line do not. Within the models that CAN, cheapest still wins -
+    // mini held identity as well as full gpt-image-1 at a fraction of the price.
+    // NOTE: gpt-image-1 deprecates 2026-10-23. This is a config string for exactly that reason.
+    edit:     { model: "gpt-image-1-mini",              quality: "medium" },
   };
-  const policyName = ((await env.AURA_KV.get("config:policy:image").catch(() => null)) || "cheapest").trim();
-  const resolved = IMAGE_POLICY[policyName] || IMAGE_POLICY.cheapest;
+  // The models that can take a picture and change it. Everything else, however cheap, will draw
+  // something new and call it an edit.
+  const CAN_EDIT = /^(gpt-image|dall-e-3|grok-imagine|gemini|nano-banana|imagen|flux[.-]?\d*[-.]?kontext)/i;
+  // THE JOB PICKS THE LANE. A draw with references is an edit whatever the operator's image policy
+  // says, because "cheapest" that cannot do the job is not cheap - it is a picture you pay for and
+  // then pay again to replace.
+  const isEdit = Array.isArray(opts.refs) && opts.refs.filter(Boolean).length > 0;
+  const policyName = ((await env.AURA_KV.get(isEdit ? "config:policy:edit" : "config:policy:image")
+    .catch(() => null)) || (isEdit ? "edit" : "cheapest")).trim();
+  const resolved = IMAGE_POLICY[policyName] || (isEdit ? IMAGE_POLICY.edit : IMAGE_POLICY.cheapest);
   // raw overrides win over policy (explicit pin beats declared intent); else fall back to the policy's pick,
   // then to near-free Cloudflare Flux as the ultimate floor. A margin engine never defaults to the priciest.
-  const rawModel = (await env.AURA_KV.get("config:image:model").catch(() => null));
-  const rawQuality = (await env.AURA_KV.get("config:image:quality").catch(() => null));
+  // ══ A PIN FOR THE CATALOGUE MUST NOT SILENTLY BREAK EDITING ══════════════════════════════
+  // MEASURED: `config:image:model` was pinned to Flux so the catalogue would build free - correct,
+  // and exactly what a power-user override is for. But the pin sat above the policy for EVERY job,
+  // so it silently took over editing too, and an evolve stopped being an edit. Two keys switched
+  // off the margin engine and I spent an afternoon looking for a model bug.
+  // A pin still wins for its own lane. It does not win a lane it cannot serve.
+  const rawModel = (await env.AURA_KV.get(isEdit ? "config:edit:model" : "config:image:model").catch(() => null));
+  const rawQuality = (await env.AURA_KV.get(isEdit ? "config:edit:quality" : "config:image:quality").catch(() => null));
   let model = ((rawModel && rawModel.trim()) || resolved.model || "@cf/black-forest-labs/flux-1-schnell").trim();
 
-  // ══ A DRAW WITH A REFERENCE NEEDS A MODEL THAT CAN SEE IT ═════════════════════════════════
+  // ══ AND A LAST GUARD, BECAUSE A WRONG PIN IS STILL POSSIBLE ═══════════════════════════════
   // MEASURED on a live walk: `config:image:model` was pinned to Flux for the catalogue, which is
   // correct - independent cards, free, and it draws them well. But FLUX IS TEXT-TO-IMAGE ONLY.
   // The `@cf/` branch below sends `{ prompt }` and nothing else, so a reference is dropped in
@@ -50772,11 +50799,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // SO THE JOB PICKS THE MODEL, NOT THE PIN. With refs present, a model that cannot accept them is
   // the wrong tool whatever the catalogue is set to. Overridable, because the day a Workers AI
   // model does image-to-image this should follow the pin again.
-  const CAN_EDIT = /^(gpt-image|dall-e-3|grok-imagine|gemini|imagen)/i;
-  if (Array.isArray(opts.refs) && opts.refs.length && !CAN_EDIT.test(model)) {
-    const editPin = (await env.AURA_KV.get("config:image:editmodel").catch(() => null));
-    model = (editPin && editPin.trim()) ? editPin.trim() : "gpt-image-1-mini";
-  }
+  if (isEdit && !CAN_EDIT.test(model)) model = IMAGE_POLICY.edit.model;
   const quality = ((rawQuality && rawQuality.trim()) || resolved.quality || "low").trim();
   const p = String(prompt).slice(0, 4000);
 
@@ -50911,7 +50934,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       // this call. With refs present it goes to /images/edits and the parent rides along.
       let key = await getSecret(env, "xai");
       if (!key) throw new Error("no xAI key");
-      const isEdit = refs.length > 0;
+      // Same fact as `isEdit` above, deliberately not re-declared - one name, one meaning.
       const r = await pfetch(env, "xai", "core:image",
         "https://api.x.ai/v1/images/" + (isEdit ? "edits" : "generations"), {
         method: "POST",

@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.94.0-2026-08-27-called-what-it-is";
+const BUILD = "aura-core-v7.95.0-2026-08-27-placement-is-not-the-picture";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -52772,8 +52772,6 @@ export class PublicEntry extends WorkerEntrypoint {
               '  "subject_path": ["animals","dogs","labrador"],\n' +
               '  "job": "new | cover | add | rework",\n' +
               '  "style": "japanese | realism | fine line | black and grey | traditional | ...",\n' +
-              '  "placement": "where on the body, in their words - full back, inner forearm",\n' +
-              '  "size": "large, about 14 inches, small",\n' +
               '  "colour": "full_colour | black_and_grey | muted",\n' +
               '  "composition": "what the picture is OF - head portrait, head and chest, ' +
               'full body sitting, coiled, flying, single bloom, a bouquet",\n' +
@@ -53125,7 +53123,16 @@ export class PublicEntry extends WorkerEntrypoint {
         // Unknown keys are ignored rather than appended, because a field arriving in a different
         // order or a stray key would produce a different string for the same tattoo and quietly
         // turn a free cache hit into a paid generation.
-        const ORDER = ["subject", "style", "composition", "character", "colour", "detail", "placement", "size", "elements"];
+        // ══ PLACEMENT AND SIZE NEVER TOUCH THE DRAWING ═══════════════════════════════════════
+        // MEASURED: somebody typed "add a mouse next to the cat", she asked "where should the cat
+        // and mouse sit on your body?", and every render after that came back as A PHOTOGRAPH OF A
+        // FOREARM instead of flat artwork. Two cards in a real library, both on skin.
+        // Placement stopped being a ladder stage days ago, but three leftovers kept it alive: talk
+        // fished for it, this list carried it, and `describe` turned it into "on the forearm".
+        // The FIELD stays - a shop's brief genuinely wants "inner forearm", and the artist needs
+        // it. It just has no business in the picture. Where it goes on a body is answered AFTER the
+        // design exists, by the on-body viewer, which is what that viewer is for.
+        const ORDER = ["subject", "style", "composition", "character", "colour", "detail", "elements"];
         const say = (k, v) => {
           const t = Array.isArray(v) ? v.join(" and ") : String(v);
           const s = t.trim().toLowerCase();
@@ -53139,11 +53146,6 @@ export class PublicEntry extends WorkerEntrypoint {
           if (k === "style")       return s + " style";
           if (k === "colour")      return s;
           if (k === "detail")      return s + " linework";
-          // Placement and size are no longer ASKED here, but a person who says "on my forearm"
-          // still has it read out of their sentence, and it still belongs in the picture and in
-          // the brief the artist reads.
-          if (k === "placement")   return "on the " + s;
-          if (k === "size")        return s;
           if (k === "elements")    return "with " + s;
           return s;
         };
@@ -53601,14 +53603,22 @@ export class PublicEntry extends WorkerEntrypoint {
         const field = String(b.stage || "").trim();
         const vals = Array.isArray(b.options) ? b.options.slice(0, 4).map(String) : [];
         if (!field || !vals.length || !inc.subject) return { ok: false, error: "NEED_FIELD_AND_OPTIONS" };
-        const ORDER = ["subject", "style", "composition", "character", "colour", "detail", "placement", "size", "elements"];
+        // ══ PLACEMENT AND SIZE NEVER TOUCH THE DRAWING ═══════════════════════════════════════
+        // MEASURED: somebody typed "add a mouse next to the cat", she asked "where should the cat
+        // and mouse sit on your body?", and every render after that came back as A PHOTOGRAPH OF A
+        // FOREARM instead of flat artwork. Two cards in a real library, both on skin.
+        // Placement stopped being a ladder stage days ago, but three leftovers kept it alive: talk
+        // fished for it, this list carried it, and `describe` turned it into "on the forearm".
+        // The FIELD stays - a shop's brief genuinely wants "inner forearm", and the artist needs
+        // it. It just has no business in the picture. Where it goes on a body is answered AFTER the
+        // design exists, by the on-body viewer, which is what that viewer is for.
+        const ORDER = ["subject", "style", "composition", "character", "colour", "detail", "elements"];
         const say = (k, v) => {
           const t = Array.isArray(v) ? v.join(" and ") : String(v);
           const s2 = t.trim().toLowerCase();
           if (!s2) return null;
           if (k === "style")  return s2 + " style";
           if (k === "detail") return s2 + " linework";
-          if (k === "placement") return "on the " + s2;
           if (k === "elements")  return "with " + s2;
           return s2;
         };

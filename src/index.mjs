@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v8.2.0-2026-08-27-the-type-fits-and-no-ribbon";
+const BUILD = "aura-core-v8.3.0-2026-08-27-she-draws-the-lettering";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -53769,25 +53769,22 @@ export class PublicEntry extends WorkerEntrypoint {
           : { ok: false, error: p4?.error || "COULD_NOT_SHARE" };
       }
 
-      // ══ WORDS — LETTERING IS TYPE, NOT A DRAWING ═══════════════════════════════════════════
-      //   design words   { say, font?, on? }
+      // ══ WORDS — THE FACES, AND HOW THEY SIT ═══════════════════════════════════════════════
+      //   design words   -> the vocabulary. No model, no cost, no arguments.
       //
-      // A tattoo model asked for "Aaron loves his mom" will usually spell it right and sometimes
-      // will not, and a MISSPELLED TATTOO is the worst failure this product can produce - worse
-      // than a blank card, worse than a different cat. So words alone are not generated at all:
-      // they are SET IN A REAL TYPEFACE, as SVG. Perfectly spelled by construction, sharp at any
-      // size, instant, and free. Twenty styles of the same word cost nothing and take no time.
+      // WHAT THIS USED TO BE, AND WHY IT IS NOT ANY MORE. It set the words as SVG and handed the
+      // picture to the model as a second reference, so the letterforms could not drift. MEASURED
+      // on a live walk: tapping a face changed nothing, and TYPING "change font to old english"
+      // changed everything - she drew it in old english, arced over the dog's head, woven into the
+      // fur. Better than anything a pasted layer would have produced.
+      // So the rendering pipeline was solving a problem that does not exist. The face is a WORD
+      // she understands, and the picker exists so somebody who does not know what "blackletter"
+      // means can see it and point. Recognition over recollection, same as every other wall here.
       //
-      // THE MODEL ONLY GETS INVOLVED WHEN THE WORDS MEET ARTWORK - arced under a portrait, wrapped
-      // in a banner, behind the subject, woven into the design. A typeface can be curved but it
-      // cannot be drawn behind a dog. That case sends TWO references (the artwork and the rendered
-      // lettering) so the model has the letters in front of it and only has to place them.
-      //
-      // Aaron's own framing: a tattooist looks up a font, that is all this is. The difference is
-      // the person sees their own words in twenty hands before choosing.
+      // AND THE PREVIEW IS THE BROWSER'S JOB. The page has the fonts; live text in eighteen faces
+      // as somebody types is CSS, not a round trip. This hands over the list and gets out of the
+      // way.
       if (action === "words") {
-        const say = String(b.say || "").slice(0, 120).trim();
-        if (!say) return { ok: false, error: "NEED_WORDS", say: "What should it say?" };
         // Google Fonts, chosen for licence as much as looks: free for commercial use, which a
         // product SERVING a typeface to thousands of people needs and a shop tracing one does not.
         const FONTS = [
@@ -53810,49 +53807,39 @@ export class PublicEntry extends WorkerEntrypoint {
           { id: "celtic",        family: "Uncial Antiqua",     weight: 400 },
           { id: "horror",        family: "Nosifer",            weight: 400 },
         ];
-        const esc = (t) => String(t).replace(/[&<>"]/g, (c) =>
-          ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-        // An SVG with the font imported by URL. It renders in the page, in the sheet, and can be
-        // handed to the model as a reference - the same picture in all three places.
-        // ══ THE TYPE HAS TO FIT ═════════════════════════════════════════════════════════════
-        // A fixed 86px is right for "Buddy" and wrong for "MY NAME IS BOZO KARACAS", which ran off
-        // both ends of the box - and a font wall whose whole job is showing somebody their own
-        // words cannot crop them.
-        // Scaled to the length, floored so a very long line stays legible rather than vanishing,
-        // and `textLength` makes the browser do the final fitting whatever the face's real metrics
-        // turn out to be - a blackletter and a condensed sans are not the same width at the same
-        // size, and guessing per family would be a table that rots.
-        const n = Math.max(1, say.length);
-        const size = Math.max(26, Math.min(96, Math.round(1500 / n)));
-        const svg = (f) => '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 260">' +
-          '<defs><style>@import url(https://fonts.googleapis.com/css2?family=' +
-          encodeURIComponent(f.family).replace(/%20/g, "+") + ':wght@' + f.weight +
-          '&amp;display=swap);</style></defs>' +
-          '<rect width="800" height="260" fill="#faf7f2"/>' +
-          '<text x="400" y="' + (130 + Math.round(size / 3)) + '" text-anchor="middle" ' +
-          'font-size="' + size + '" fill="#111" textLength="' + (n > 16 ? 720 : "") + '" ' +
-          'lengthAdjust="spacingAndGlyphs" ' +
-          'font-family="' + esc(f.family) + '" font-weight="' + f.weight + '">' + esc(say) + '</text></svg>';
-        const want = String(b.font || "").toLowerCase().trim();
-        if (want) {
-          const f = FONTS.find((x) => x.id === want);
-          if (!f) return { ok: false, error: "NO_SUCH_FONT", has: FONTS.map((x) => x.id) };
-          return { ok: true, say, font: f.id, family: f.family, svg: svg(f) };
-        }
-        // The whole wall. No model, no cost, no wait - the same word in every hand at once.
-        return { ok: true, say, ask: "How should it look?",
-          options: FONTS.map((f) => ({ value: f.id, label: f.id, family: f.family, svg: svg(f) })),
-          note: "Set in real type, so it is spelled the way you typed it." };
+        // ══ WHERE THE WORDS GO ══════════════════════════════════════════════════════════════
+        // Eight, because a person choosing between forty placements is not choosing. Each is a
+        // real tattoo treatment with its own instruction - and the last three are RELATIONSHIPS
+        // rather than positions, which is exactly what dragging a text layer with a finger could
+        // never have expressed.
+        const WHERE = [
+          { id: "above",    say: "above the artwork, sitting on its own" },
+          { id: "below",    say: "below the artwork, sitting on its own" },
+          { id: "arch",     say: "arced around the outside of the artwork, following its contour" },
+          { id: "wrap",     say: "wrapping around the composition like a band, continuing round the form" },
+          { id: "banner",   say: "on a ribbon or banner crossing the artwork, the ribbon passing behind and in front of the subject" },
+          { id: "weave",    say: "with the lettering itself travelling behind and in front of parts of the artwork - no banner" },
+          { id: "inside",   say: "inside the artwork, using the negative space already there" },
+          { id: "part of",  say: "with the letters becoming part of the artwork itself - forming stems, branches or flourishes" },
+        ];
+        return { ok: true,
+          fonts: FONTS.map((f) => ({ value: f.id, label: f.id, family: f.family, weight: f.weight,
+            // The page imports these itself and previews live as somebody types.
+            css: "https://fonts.googleapis.com/css2?family=" +
+                 encodeURIComponent(f.family).replace(/%20/g, "+") + ":wght@" + f.weight + "&display=swap" })),
+          placements: WHERE.map((w) => ({ value: w.id, label: w.id, say: w.say })),
+          note: "The faces are for choosing. She draws the lettering herself." };
       }
 
-      // ══ LETTER — PUT THE WORDS ON THE TATTOO ═══════════════════════════════════════════════
-      //   design letter  { design, say, font, where? }
+      // ══ LETTER — SHE DRAWS THE WORDS INTO THE PIECE ═══════════════════════════════════════
+      //   design letter  { design, say, font, where }
       //
-      // The one place the model touches lettering, because this is the part type cannot do: arced
-      // under a portrait, inside a banner, behind the subject, woven into the artwork.
-      // TWO REFERENCES GO IN - the tattoo, and the words already set in the chosen typeface. The
-      // model is not being asked to spell anything; the letters are in front of it and the job is
-      // placement and blending. That is the difference between "usually right" and right.
+      // No rasterising, no second reference, no canvas. MEASURED: typing "change font to old
+      // english" produced old english, arced over the dog's head and woven into the fur - and a
+      // pasted text layer could never have done that. The whole rendering pipeline was solving a
+      // problem the model does not have.
+      // The font and the placement are WORDS she already understands. The picker exists so the
+      // person can see a face before naming it.
       if (action === "letter") {
         const design = String(b.design || "").trim();
         const say = String(b.say || "").slice(0, 120).trim();
@@ -53861,44 +53848,37 @@ export class PublicEntry extends WorkerEntrypoint {
         const own = await processCommand("FILE MINE " + me, env, true);
         const mine = ((own?.payload?.files) || []).find((f) => f.id === design);
         if (!mine) return { ok: false, error: "NOT_YOURS", say: "That is not one of yours." };
-        // ══ THE TYPE HAS TO BE RASTERISED, AND ONLY THE PAGE CAN DO IT ═══════════════════════
-        // The plan was to set the words here and send them as a second reference. A Worker cannot
-        // rasterise SVG, and every image API takes PNG or JPEG - so the reference would have been
-        // REJECTED, silently, and the model left to spell from words alone. Exactly the failure the
-        // reference existed to prevent.
-        // The page is already displaying that SVG, and a canvas turns it into a PNG in one line. So
-        // the page sends `lettering` as a data URL and this decodes it.
-        // WITHOUT IT, THE JOB STILL RUNS - the words go in the prompt and gpt-image-2 usually
-        // spells them correctly. Usually is not good enough for skin, which is why the reply says
-        // which of the two happened.
-        // ══ THE MODEL REACHES FOR A RIBBON ══════════════════════════════════════════════════
-        // MEASURED: asked to put lettering on a golden retriever, it invented a red banner across
-        // the dog's collar and set the words in its own face. Nobody asked for a banner. It is the
-        // default a tattoo model falls into, and it has to be refused by name - a general
-        // instruction to "blend it in" is not read as "and do not add a scroll".
-        const NO_BANNER = "Do not add a banner, ribbon, scroll, plaque or collar to hold the words " +
-          "unless the artwork already has one. Blend the lettering into the artwork as one tattoo, " +
-          "not a caption placed on top.";
-        const lettering = String(b.lettering || "");
-        const hasType = /^data:image\/(png|jpe?g|webp);base64,/i.test(lettering);
-        const where = String(b.where || "").trim() ||
+        const WHERE = { above: "above the artwork, sitting on its own",
+          below: "below the artwork, sitting on its own",
+          arch: "arced around the outside of the artwork, following its contour",
+          wrap: "wrapping around the composition like a band, continuing round the form",
+          banner: "on a ribbon or banner crossing the artwork, the ribbon passing behind and in front of the subject",
+          weave: "with the lettering itself travelling behind and in front of parts of the artwork",
+          inside: "inside the artwork, using the negative space already there",
+          "part of": "with the letters becoming part of the artwork itself - forming stems, branches or flourishes" };
+        const where = WHERE[String(b.where || "").toLowerCase()] ||
           "in a natural place for a tattoo of this shape";
-        const prompt = hasType
-          ? "Add the lettering from the second image to the tattoo in the first image, " + where +
-            '. The words read exactly "' + say + '" - keep that spelling AND THAT EXACT LETTERING ' +
-            "STYLE, matching the letterforms in the second image. " + NO_BANNER
-          : 'Add the words "' + say + '" to this tattoo, ' + where + ", in " +
-            (b.font || "script") + " lettering. Spell it exactly as written. " + NO_BANNER;
-        const r = await showIt(prompt,
+        // ══ THE MODEL REACHES FOR A RIBBON ════════════════════════════════════════════════
+        // MEASURED: asked to put lettering on a golden retriever, it invented a red banner across
+        // the dog's collar. Nobody asked for one. It is the default a tattoo model falls into and
+        // it has to be refused BY NAME - "blend it in" is not read as "and do not add a scroll".
+        // Unless of course they picked the banner, which is a real treatment and theirs to choose.
+        const noBanner = String(b.where || "").toLowerCase() === "banner" ? "" :
+          " Do not add a banner, ribbon, scroll, plaque or collar to hold the words unless the " +
+          "artwork already has one.";
+        const r = await showIt(
+          'Add the words "' + say + '" to this tattoo, ' + where + ", in " +
+          (b.font || "script") + " lettering. Spell it exactly as written. " +
+          "Draw the lettering as part of the tattoo, in the same hand as the artwork." + noBanner,
           env, { source: "letter", parent: design, entity: me, session: b.session,
-                 refs: hasType ? [mine.url, lettering] : [mine.url], raw: true });
+                 refs: [mine.url], raw: true });
         if (!r?.ok) return { ok: false, error: r?.error || "COULD_NOT_LETTER" };
         return { ok: true, design: r.entity_id || r.id, image: r.image_url,
-          said: say, font: b.font || "script", from_type: hasType,
+          said: say, font: b.font || "script", where: b.where || null,
           model: r.model || null, cost_usd: r.cost_usd,
           say: "Here it is. Tell me anything you want moved or changed.",
-          // A model draws letters, it does not typeset them - so the spelling is far more likely to
-          // be right with the words in front of it, and still worth a person's eyes before skin.
+          // A model draws letters rather than typesetting them. It gets it right far more often
+          // than not - and the one thing nobody can fix after skin is a misspelling.
           check: "Read the words before you take this to a shop." };
       }
 

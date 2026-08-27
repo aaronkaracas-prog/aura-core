@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v8.1.0-2026-08-27-words-are-type-not-drawing";
+const BUILD = "aura-core-v8.2.0-2026-08-27-the-type-fits-and-no-ribbon";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -53814,12 +53814,24 @@ export class PublicEntry extends WorkerEntrypoint {
           ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
         // An SVG with the font imported by URL. It renders in the page, in the sheet, and can be
         // handed to the model as a reference - the same picture in all three places.
+        // ══ THE TYPE HAS TO FIT ═════════════════════════════════════════════════════════════
+        // A fixed 86px is right for "Buddy" and wrong for "MY NAME IS BOZO KARACAS", which ran off
+        // both ends of the box - and a font wall whose whole job is showing somebody their own
+        // words cannot crop them.
+        // Scaled to the length, floored so a very long line stays legible rather than vanishing,
+        // and `textLength` makes the browser do the final fitting whatever the face's real metrics
+        // turn out to be - a blackletter and a condensed sans are not the same width at the same
+        // size, and guessing per family would be a table that rots.
+        const n = Math.max(1, say.length);
+        const size = Math.max(26, Math.min(96, Math.round(1500 / n)));
         const svg = (f) => '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 260">' +
           '<defs><style>@import url(https://fonts.googleapis.com/css2?family=' +
           encodeURIComponent(f.family).replace(/%20/g, "+") + ':wght@' + f.weight +
           '&amp;display=swap);</style></defs>' +
           '<rect width="800" height="260" fill="#faf7f2"/>' +
-          '<text x="400" y="150" text-anchor="middle" font-size="86" fill="#111" ' +
+          '<text x="400" y="' + (130 + Math.round(size / 3)) + '" text-anchor="middle" ' +
+          'font-size="' + size + '" fill="#111" textLength="' + (n > 16 ? 720 : "") + '" ' +
+          'lengthAdjust="spacingAndGlyphs" ' +
           'font-family="' + esc(f.family) + '" font-weight="' + f.weight + '">' + esc(say) + '</text></svg>';
         const want = String(b.font || "").toLowerCase().trim();
         if (want) {
@@ -53859,17 +53871,24 @@ export class PublicEntry extends WorkerEntrypoint {
         // WITHOUT IT, THE JOB STILL RUNS - the words go in the prompt and gpt-image-2 usually
         // spells them correctly. Usually is not good enough for skin, which is why the reply says
         // which of the two happened.
+        // ══ THE MODEL REACHES FOR A RIBBON ══════════════════════════════════════════════════
+        // MEASURED: asked to put lettering on a golden retriever, it invented a red banner across
+        // the dog's collar and set the words in its own face. Nobody asked for a banner. It is the
+        // default a tattoo model falls into, and it has to be refused by name - a general
+        // instruction to "blend it in" is not read as "and do not add a scroll".
+        const NO_BANNER = "Do not add a banner, ribbon, scroll, plaque or collar to hold the words " +
+          "unless the artwork already has one. Blend the lettering into the artwork as one tattoo, " +
+          "not a caption placed on top.";
         const lettering = String(b.lettering || "");
         const hasType = /^data:image\/(png|jpe?g|webp);base64,/i.test(lettering);
         const where = String(b.where || "").trim() ||
           "in a natural place for a tattoo of this shape";
         const prompt = hasType
           ? "Add the lettering from the second image to the tattoo in the first image, " + where +
-            '. The words read exactly "' + say + '" - keep that spelling and that lettering style. ' +
-            "Blend it into the artwork as one tattoo, not a caption placed on top."
+            '. The words read exactly "' + say + '" - keep that spelling AND THAT EXACT LETTERING ' +
+            "STYLE, matching the letterforms in the second image. " + NO_BANNER
           : 'Add the words "' + say + '" to this tattoo, ' + where + ", in " +
-            (b.font || "script") + " lettering. Spell it exactly as written. " +
-            "Blend it into the artwork as one tattoo, not a caption placed on top.";
+            (b.font || "script") + " lettering. Spell it exactly as written. " + NO_BANNER;
         const r = await showIt(prompt,
           env, { source: "letter", parent: design, entity: me, session: b.session,
                  refs: hasType ? [mine.url, lettering] : [mine.url], raw: true });

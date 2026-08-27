@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.96.0-2026-08-27-a-tap-costs-nothing";
+const BUILD = "aura-core-v7.97.0-2026-08-27-the-parent-comes-off-the-shelf";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -50845,14 +50845,40 @@ async function auraGenerateImage(prompt, env, opts = {}) {
         fd.append("prompt", p);
         fd.append("n", "1");
         fd.append("size", "1024x1024");
-        // The parent's PIXELS. Fetched, not linked - the endpoint reads a file, and a URL in this
-        // field is the same silent no-op as sending it to /generations.
+        // ══ OUR OWN IMAGES COME OFF THE SHELF, NOT OVER THE WIRE ═══════════════════════════
+        // MEASURED: this fetched `auras.guide/image/<id>` - aura-core reaching back into its OWN
+        // zone, through aura-host, through RPC, to bytes it already has bound. It failed, and the
+        // `continue` below meant NO IMAGE WAS ATTACHED AND NOTHING SAID SO. OpenAI answered
+        // "Missing required parameter: 'image'" - a correct complaint about a request I built
+        // wrong, twenty-three seconds after it started.
+        // Every image in this system is in R2 as `<id>.png`. Read it there.
+        let attached = 0;
         for (let i = 0; i < oRefs.length; i++) {
-          const ir = await fetch(oRefs[i]);
-          if (!ir.ok) continue;
-          const blob = await ir.blob();
-          fd.append(oRefs.length > 1 ? "image[]" : "image", blob, "parent" + i + ".png");
+          let bytes = null;
+          const own = String(oRefs[i]).match(/\/image\/(img_[a-z0-9]+)/i);
+          if (own && env.AURA_IMAGES) {
+            const obj = await env.AURA_IMAGES.get(own[1] + ".png").catch(() => null);
+            if (obj) bytes = await obj.arrayBuffer();
+          }
+          if (!bytes && own) {
+            // Older images predate the bucket and live only in KV, base64.
+            const b = await env.AURA_KV.get("image:" + own[1]).catch(() => null);
+            if (b) { const bin = atob(b); const u = new Uint8Array(bin.length);
+                     for (let n = 0; n < bin.length; n++) u[n] = bin.charCodeAt(n); bytes = u.buffer; }
+          }
+          if (!bytes && !own) {
+            // Somebody else's picture - the only case that legitimately goes over the wire.
+            const ir = await fetch(oRefs[i]).catch(() => null);
+            if (ir && ir.ok) bytes = await ir.arrayBuffer();
+          }
+          if (!bytes) continue;
+          fd.append(oRefs.length > 1 ? "image[]" : "image",
+            new Blob([bytes], { type: "image/png" }), "parent" + i + ".png");
+          attached++;
         }
+        // AN EDIT WITH NO PARENT IS NOT AN EDIT. Silently sending the request anyway is how a
+        // "mouse beside the cat" came back as a different cat - the failure has to be the failure.
+        if (!attached) throw new Error("could not read the parent image to edit: " + oRefs[0]);
         r = await pfetch(env, "openai", "core:image", "https://api.openai.com/v1/images/edits", {
           method: "POST",
           headers: { "Authorization": "Bearer " + key },   // no content-type: FormData sets its own
@@ -51111,7 +51137,15 @@ async function showIt(subject, env, opts = {}) {
   const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null, refs });
   if (!result || !result.ok) return { ok: false, error: result ? result.error : "generation failed" };
   const record = (opts.subject || want).trim();
+  // ══ SAY WHAT DREW IT ═══════════════════════════════════════════════════════════════════════
+  // Aaron had to ASK which model made a picture, and the only way to answer was to reason from a
+  // config key. That is the same defect as a failure with no reason: the reply does not carry the
+  // fact somebody needs. With three models in play - one for the catalogue, one for edits, one for
+  // the pin - and a routing rule that overrides the pin, "which one drew this" stops being obvious
+  // and starts being a guess.
   const out = { ok: true, id: result.id, image_url: result.image_url || `https://${await imageHost(env, opts.host)}/image/${result.id}`, showed: want,
+    model: result.model || null, cost_usd: result.cost_usd,
+    edited: refs.length ? true : undefined,
     from_refs: refs.length || undefined };
   // THE IMAGE IS A LIVING SMART FILE. Register it through the generic Smart File engine as
   // filetype:"image" - it gets the same identity, timeline, lineage, and attributed contributors any

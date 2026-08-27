@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.87.0-2026-08-27-say-it-differently";
+const BUILD = "aura-core-v7.88.0-2026-08-27-build-it-all-and-know-what-broke";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23051,7 +23051,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
 
     // ══ CARDS — THE VISUAL FACTORY AND THE CARD REGISTRY ══════════════════════════════════════
     //
-    //   CARDS BUILD <category>                     - manufacture a whole category, durably
+    //   CARDS BUILD <category|ALL>                 - manufacture a whole category, durably
+    //   CARDS STATE [REBUILD]                      - what is built, broken, and left
     //   CARDS SUBJECT <name> ::: {json}            - the standard run: both walls + a sheet
     //   CARDS HOUSE <image_id>                     - set the look every card inherits
     //   CARDS ROW <key> ::: {json}                 - manufacture a row of cards
@@ -23117,6 +23118,35 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // error deserves the same prompt again - that is what a retry is for. A filter does not.
       // The rephrase is deliberately dull: name the thing as an illustration and drop the loaded
       // words, because the goal is to get past a classifier, not to make a different card.
+      // ══ THE INDEX — WHAT THE BUILDER HAS TO ASK AND KV CANNOT ANSWER ════════════════════════
+      // KV serves one row by exact key beautifully and cannot answer a QUESTION about the set:
+      // "which of 471 leaves are incomplete", "what did the last run leave behind", "which cards
+      // never drew". Answering that today means listing every key - and `KV.list` caps out, so at
+      // 44 categories the answer silently truncates and reports a clean catalogue that is not one.
+      //
+      // Same three-store split the crawl already uses and for the same reasons: QUERY in D1, SERVE
+      // from KV, store the bulk in R2. The live walk never touches this table - it stays one edge
+      // read - so an index that is stale or missing can never break what a person sees.
+      // DERIVED, NEVER THE TRUTH. If the two ever disagree, KV wins and this gets rebuilt from it.
+      const indexRow = async (row) => {
+        const d1 = env.AURA_MEMORY;
+        if (!d1 || !row) return;
+        try {
+          await d1.prepare("CREATE TABLE IF NOT EXISTS card_rows (" +
+            "key TEXT PRIMARY KEY, category TEXT, subject TEXT, variable TEXT, style TEXT, " +
+            "hold TEXT, cards INTEGER, holes INTEGER, made_at TEXT)").run();
+          const holes = row.items.filter((x) => !x.img).length;
+          const style = (String(row.key).match(/^composition:[^:]+:(.+)$/) || [])[1] || null;
+          await d1.prepare("INSERT INTO card_rows (key, category, subject, variable, style, hold, " +
+            "cards, holes, made_at) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(key) DO UPDATE SET " +
+            "category=excluded.category, subject=excluded.subject, variable=excluded.variable, " +
+            "style=excluded.style, hold=excluded.hold, cards=excluded.cards, holes=excluded.holes, " +
+            "made_at=excluded.made_at")
+            .bind(row.key, row.category || null, row.subject || null, row.variable || null,
+                  style, row.hold || null, row.items.length, holes, row.made_at || null).run();
+        } catch {}   // an index that fails must never fail the row it describes
+      };
+
       const looksFiltered = (why) => /nsfw|content policy|safety|8007|moderation|blocked/i.test(String(why || ""));
       const softer = (prompt) => "A botanical or decorative illustration. " +
         String(prompt).replace(/\b(nude|naked|sexy|erotic|seductive|sensual|provocative|intimate|exposed|bare)\b/gi, "")
@@ -23400,7 +23430,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (cut4 >= 0) { try { opt = JSON.parse(cRest.slice(cut4 + 3).trim()); }
                          catch { try { opt = repairJson(cRest.slice(cut4 + 3).trim()) || {}; } catch {} } }
         if (!category) return { cmd: "CARDS", payload: { ok: false,
-          error: 'Usage: CARDS BUILD <category> [::: {"style":"neo-traditional","max_leaves":25}]',
+          error: 'Usage: CARDS BUILD <category|ALL|cat,cat> [::: {"style":"neo-traditional","max_leaves":600}]',
           note: "CARDS TREE lists the categories and what a full build would cost." } };
         const inst = await env.GRID_CRAWL_WORKFLOW.create({ params: {
           mode: "cards", category, style: opt.style || null,
@@ -23419,6 +23449,66 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // looked at and approved. A repair should touch only what is broken.
       // It reuses the row's OWN settings - the same subject, variable, hold, parent and `say` -
       // so a patched card is made the way its siblings were, not the way a fresh row would be.
+      // ══ STATE — THE QUESTION KV CANNOT ANSWER ═══════════════════════════════════════════════
+      //   CARDS STATE            - what is built, what is broken, what is left
+      //   CARDS STATE REBUILD    - re-derive the index from KV (it is derived, never the truth)
+      if (cSub === "STATE") {
+        const d1 = env.AURA_MEMORY;
+        if (!d1) return { cmd: "CARDS", payload: { ok: false, error: "NO_D1" } };
+        if ((args[1] || "").toUpperCase() === "REBUILD") {
+          // KV is the truth. This walks it and re-derives the table - for rows made before the
+          // index existed, or any time the two could have drifted.
+          let cursor = null, n = 0;
+          for (let page = 0; page < 20; page++) {
+            const l = await env.AURA_KV.list({ prefix: "card:row:", limit: 1000, cursor }).catch(() => null);
+            if (!l) break;
+            for (const k of l.keys) {
+              const r = await env.AURA_KV.get(k.name, "json").catch(() => null);
+              if (r && Array.isArray(r.items)) { await indexRow(r); n++; }
+            }
+            if (l.list_complete || !l.cursor) break;
+            cursor = l.cursor;
+          }
+          return { cmd: "CARDS", payload: { ok: true, rebuilt: n } };
+        }
+        try {
+          await d1.prepare("CREATE TABLE IF NOT EXISTS card_rows (" +
+            "key TEXT PRIMARY KEY, category TEXT, subject TEXT, variable TEXT, style TEXT, " +
+            "hold TEXT, cards INTEGER, holes INTEGER, made_at TEXT)").run();
+          const tot = await d1.prepare("SELECT COUNT(*) c, SUM(cards) cards, SUM(holes) holes FROM card_rows").first();
+          const byCat = await d1.prepare("SELECT COALESCE(category,'(untagged)') cat, COUNT(*) rows, " +
+            "SUM(cards) cards, SUM(holes) holes FROM card_rows GROUP BY 1 ORDER BY 1").all();
+          const broken = await d1.prepare("SELECT key, subject, holes FROM card_rows WHERE holes > 0 " +
+            "ORDER BY holes DESC LIMIT 40").all();
+          const tree = await env.AURA_KV.get("card:tree", "json").catch(() => null);
+          let leaves = 0;
+          if (tree?.subjects) {
+            const seen = new Set();
+            for (const kinds of Object.values(tree.subjects))
+              for (const kind of kinds) {
+                const kids = tree.specific && tree.specific[kind];
+                if (kids && kids.length) for (const l of kids) seen.add(String(l).toLowerCase());
+                else seen.add(String(kind).toLowerCase());
+              }
+            leaves = seen.size;
+          }
+          const doneLeaves = await d1.prepare("SELECT COUNT(*) c FROM card_rows WHERE variable='style' AND holes=0").first();
+          return { cmd: "CARDS", payload: { ok: true,
+            rows: tot?.c || 0, cards: tot?.cards || 0, holes: tot?.holes || 0,
+            leaves_total: leaves, leaves_done: doneLeaves?.c || 0,
+            leaves_left: Math.max(0, leaves - (doneLeaves?.c || 0)),
+            by_category: (byCat?.results || []).map((r) =>
+              r.cat + ": " + r.rows + " rows, " + r.cards + " cards" + (r.holes ? ", " + r.holes + " holes" : "")),
+            broken: (broken?.results || []).map((r) => r.key + " (" + r.holes + ")"),
+            note: (tot?.c || 0) === 0
+              ? "Empty - run CARDS STATE REBUILD to derive it from what is already in KV."
+              : "Derived from KV. If the two disagree, KV wins - REBUILD re-derives it." } };
+        } catch (e) {
+          return { cmd: "CARDS", payload: { ok: false, error: "QUERY_FAILED",
+            why: String(e && e.message || e).slice(0, 200) } };
+        }
+      }
+
       if (cSub === "PATCH") {
         const key = rowKey(cRest.trim());
         const row = await env.AURA_KV.get(key, "json").catch(() => null);
@@ -23463,6 +23553,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         }
         row.made_at = new Date().toISOString();
         await env.AURA_KV.put(key, JSON.stringify(row));
+        await indexRow(row);
         return { cmd: "CARDS", payload: { ok: true, key: row.key, patched: fixed.length,
           fixed, still_broken: still.length ? still : null,
           urls: fixed.map((id) => id + "  ->  https://auras.guide/image/" +
@@ -23522,6 +23613,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const row = await env.AURA_KV.get(key, "json").catch(() => null);
         if (!row) return { cmd: "CARDS", payload: { ok: false, error: "NO_SUCH_ROW", key: cRest.trim() || null } };
         await env.AURA_KV.delete(key);
+        try { await env.AURA_MEMORY?.prepare("DELETE FROM card_rows WHERE key = ?").bind(row.key).run(); } catch {}
         return { cmd: "CARDS", payload: { ok: true, dropped: row.key, cards: row.items.length,
           note: "The row is gone. The images it pointed at are not deleted - they are shared and " +
                 "content-addressed, so another row may be using the same picture." } };
@@ -23746,6 +23838,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           spec.items[idx] = made;
           spec.made_at = new Date().toISOString();
           await env.AURA_KV.put(key, JSON.stringify(spec));
+          await indexRow(spec);
           return { cmd: "CARDS", payload: { ok: true, key: key.replace("card:row:", ""), redone: made,
             url: made.img ? "https://auras.guide/image/" + made.img : null } };
         }
@@ -23779,6 +23872,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           house: useRefs ? (house || null) : null,
           items: out, made_at: new Date().toISOString() };
         await env.AURA_KV.put(key, JSON.stringify(row));
+        await indexRow(row);
         const gone = out.filter((x) => !x.img);
         const missed = gone.length;
         return { cmd: "CARDS", payload: { ok: true, ...row,
@@ -23797,7 +23891,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
 
       return { cmd: "CARDS", payload: { ok: false,
-        error: "Sub-commands: BUILD, SUBJECT, HOUSE, ROW, REDO, PATCH, DROP, DROPROW, TREE, SHEET, GET, LIST" } };
+        error: "Sub-commands: BUILD, STATE, SUBJECT, HOUSE, ROW, REDO, PATCH, DROP, DROPROW, TREE, SHEET, GET, LIST" } };
     }
 
     case "WALL": {
@@ -51403,7 +51497,7 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
     if (String(event.payload?.mode || "") === "cards") {
       const only = String(event.payload?.category || "").trim();
       const style = String(event.payload?.style || "").trim();
-      const cap = Math.min(Number(event.payload?.max_leaves) || 25, 200);
+      const cap = Math.min(Number(event.payload?.max_leaves) || 25, 600);
       const tree = await step.do("tree", async () => {
         const r = await processCommand("CARDS TREE", this.env, true);
         return (r && r.payload) ? r.payload : r;
@@ -51423,6 +51517,9 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
       // run overwriting an earlier one with a different parent. It does NOT fix the taxonomy: two
       // different things sharing one name still share one row, and that is Aaron's call, so the
       // collisions are REPORTED rather than quietly resolved.
+      // ALL, one category, or a comma-separated list. Forty-two commands is not a plan.
+      const wanted = only && only.toUpperCase() !== "ALL"
+        ? only.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean) : null;
       const jobs = [];
       const planned = new Set(), collided = {};
       const push = (job, cat) => {
@@ -51431,7 +51528,7 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
         planned.add(k); jobs.push(job);
       };
       for (const [cat, kinds] of Object.entries(t.subjects)) {
-        if (only && cat.toLowerCase() !== only.toLowerCase()) continue;
+        if (wanted && !wanted.includes(cat.toLowerCase())) continue;
         for (const kind of kinds) {
           const kids = t.specific && t.specific[kind];
           if (kids && kids.length) {
@@ -51448,6 +51545,14 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
       const slug = (x) => String(x).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
       const built = [], skipped = [], broke = [];
       let n = 0;
+      // ══ THE BRAKE ═══════════════════════════════════════════════════════════════════════════
+      // Workers AI allows 10,000 neurons a day and NOTHING COUNTS THEM - `env.AI.run()` is a
+      // binding call that never passes the meter. A night-long run WILL cross that line, and the
+      // only symptom we would ever see is generations starting to fail.
+      // So if several subjects in a row come back broken, stop. A builder that keeps going for six
+      // hours writing empty rows is worse than one that stops after three: it fills the catalogue
+      // with holes that look like content problems and are not.
+      let consecutiveBad = 0, halted = null;
       const patched = [];
       for (const job of jobs) {
         if (n >= cap) break;
@@ -51504,16 +51609,28 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
         });
         // A HOLE IS NOT A SUCCESS. `ok:true` only ever meant the command did not throw - the same
         // lesson the enrich mode above learned when a dead domain reported `enriched: 1`.
-        if (r?.ok && !(r.failed > 0)) built.push(job.subject);
-        else if (r?.ok) broke.push({ subject: job.subject, holes: r.failed,
-          why: (r.failures || []).slice(0, 4) });
-        else broke.push({ subject: job.subject, why: r?.error || "unknown" });
+        if (r?.ok && !(r.failed > 0)) { built.push(job.subject); consecutiveBad = 0; }
+        else if (r?.ok) { broke.push({ subject: job.subject, holes: r.failed,
+          why: (r.failures || []).slice(0, 4) }); consecutiveBad++; }
+        else { broke.push({ subject: job.subject, why: r?.error || "unknown" }); consecutiveBad++; }
+        // Three subjects in a row failing is not a content problem - a filter hits one card, not
+        // eighty-one. That shape means the ceiling or the provider, and continuing only
+        // manufactures holes.
+        if (consecutiveBad >= 3) {
+          halted = "Three subjects in a row came back broken - that is the provider or the daily " +
+                   "allocation, not content. Stopped rather than filling the catalogue with holes. " +
+                   "Re-run later and it resumes where it left off.";
+          break;
+        }
         await step.sleep("gap-" + n, "2 seconds");
       }
 
       // Ask for the CATEGORY, which rows now record. Asking for the slug of the category name
       // used to match nothing at all - rows key on the subject - and the run returned sheet:null.
-      const sheet = await step.do("sheet", async () => {
+      // No sheet for a whole-tree run - one page of twelve thousand cards helps nobody, and
+      // CARDS SHEET <category> gives a readable one per category afterwards.
+      const wholeTree = !only || only.toUpperCase() === "ALL" || only.includes(",");
+      const sheet = wholeTree ? null : await step.do("sheet", async () => {
         const r = await processCommand("CARDS SHEET " + (only || jobs[0].cat || jobs[0].subject), this.env, true);
         return (r && r.payload) ? r.payload : r;
       });
@@ -51527,7 +51644,7 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
         shared_names: Object.keys(collided).length
           ? Object.entries(collided).map(([k, v]) => k + " (also under " + v.join(", ") + ")") : null,
         with_holes: broke.length, trouble: broke.slice(0, 20),
-        stopped_at_cap: n >= cap ? cap : null,
+        stopped_at_cap: n >= cap ? cap : null, halted,
         sheet: sheet?.url || null, tree_size: tree?.leaves || null };
     }
 

@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.85.0-2026-08-27-a-row-knows-its-category";
+const BUILD = "aura-core-v7.86.0-2026-08-27-a-hole-means-not-finished";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23058,6 +23058,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
     //   CARDS SHEET <key>                          - the whole row on one screen, to judge it
     //   CARDS GET <key>                            - the row as the page will receive it
     //   CARDS REDO <key> <item>                    - regenerate one card
+    //   CARDS PATCH <key>                          - fill only the holes, leave the rest
     //   CARDS DROP <key> <item>                    - remove one card
     //   CARDS DROPROW <key>                        - remove a whole row
     //   CARDS TREE [::: {json}]                    - the subject tree, read or replace
@@ -23394,6 +23395,63 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
                 "than waiting, and the sheet URL is in the output when it finishes." } };
       }
 
+      // ══ PATCH — FILL THE HOLES IN A ROW, AND NOTHING ELSE ════════════════════════════════
+      //   CARDS PATCH <key>
+      //
+      // Orchid drew twelve cards and three grey rectangles. Rebuilding the row would redraw all
+      // fifteen to fix three, and would also replace twelve pictures somebody may already have
+      // looked at and approved. A repair should touch only what is broken.
+      // It reuses the row's OWN settings - the same subject, variable, hold, parent and `say` -
+      // so a patched card is made the way its siblings were, not the way a fresh row would be.
+      if (cSub === "PATCH") {
+        const key = rowKey(cRest.trim());
+        const row = await env.AURA_KV.get(key, "json").catch(() => null);
+        if (!row) return { cmd: "CARDS", payload: { ok: false, error: "NO_SUCH_ROW", key: cRest.trim() || null } };
+        const holes = row.items.filter((x) => !x.img);
+        if (!holes.length) return { cmd: "CARDS", payload: { ok: true, key: row.key, patched: 0,
+          note: "Nothing to fix - every card in this row has a picture." } };
+        const useRefs = (row.hold || "language") === "pose";
+        const CARD = row.variable === "style"
+          ? ". As a tattoo, in that tattoo style. A single subject, centred, filling the frame, " +
+            "on a plain light background. No skin, no body, no border, no background scenery, " +
+            "no extra motifs - only the subject itself."
+          : ". A single subject, centred, filling the frame, on a plain light background. " +
+            "No skin, no body, no border, no background scenery, no extra motifs - " +
+            "only the subject itself.";
+        const wordFor = (it) => {
+          const w = it.say || it.label;
+          return row.variable === "style"   ? row.subject + ", " + w + (it.say ? "" : " style")
+               : row.variable === "subject" ? w
+               : row.subject + ", " + w;
+        };
+        const refs = [];
+        if (useRefs && row.house) refs.push("https://auras.guide/image/" + row.house);
+        if (useRefs && row.parent) refs.push("https://auras.guide/image/" + row.parent);
+        const fixed = [], still = [];
+        for (const hole of holes) {
+          let got = null, why = null;
+          for (let n = 0; n < 2; n++) {
+            const gi = await auraGenerateImage(wordFor(hole) + CARD, env, { source: "card", refs })
+              .catch((e) => ({ ok: false, error: String(e && e.message || e) }));
+            if (gi?.ok && gi.id) { got = gi.id; break; }
+            why = gi?.error || "no image returned";
+          }
+          const idx = row.items.findIndex((x) => x.id === hole.id);
+          if (got) { row.items[idx] = { ...row.items[idx], img: got, why: undefined }; fixed.push(hole.id); }
+          else { row.items[idx] = { ...row.items[idx], why: String(why).slice(0, 160) };
+                 still.push(hole.id + ": " + why); }
+        }
+        row.made_at = new Date().toISOString();
+        await env.AURA_KV.put(key, JSON.stringify(row));
+        return { cmd: "CARDS", payload: { ok: true, key: row.key, patched: fixed.length,
+          fixed, still_broken: still.length ? still : null,
+          urls: fixed.map((id) => id + "  ->  https://auras.guide/image/" +
+            row.items.find((x) => x.id === id).img),
+          note: still.length
+            ? "Some cards still refuse. A word usually fixes it: CARDS REDO " + row.key + " <card> ::: <what it should look like>"
+            : "Row is whole." } };
+      }
+
       if (cSub === "TREE") {
         const TREE_KEY = "card:tree";
         const cut3 = cRest.indexOf(":::");
@@ -23712,7 +23770,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
 
       return { cmd: "CARDS", payload: { ok: false,
-        error: "Sub-commands: BUILD, SUBJECT, HOUSE, ROW, REDO, DROP, DROPROW, TREE, SHEET, GET, LIST" } };
+        error: "Sub-commands: BUILD, SUBJECT, HOUSE, ROW, REDO, PATCH, DROP, DROPROW, TREE, SHEET, GET, LIST" } };
     }
 
     case "WALL": {
@@ -51363,12 +51421,44 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
       const slug = (x) => String(x).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
       const built = [], skipped = [], broke = [];
       let n = 0;
+      const patched = [];
       for (const job of jobs) {
         if (n >= cap) break;
-        const key = job.kind === "picker" ? "card:row:subject:" + slug(job.subject)
-                                          : "card:row:style:" + slug(job.subject);
-        const have = await this.env.AURA_KV.get(key, "json").catch(() => null);
-        if (have && Array.isArray(have.items) && have.items.length) { skipped.push(job.subject); continue; }
+        // ══ "HAS A ROW" IS NOT "IS FINISHED" ═══════════════════════════════════════════════
+        // MEASURED: the second Flowers run skipped all twenty and repaired nothing, because Peony
+        // and Orchid HAD style walls - with holes in them. A subject with three grey rectangles was
+        // being reported as built, so the builder could never repair anything and running it twice
+        // gave the same broken catalogue.
+        // Exactly the shape of `enriched: 1` on a dead domain: existence standing in for success.
+        //
+        // AND IT ONLY LOOKED AT THE STYLE WALL. A subject with a style row and no composition row
+        // counted as done. Both are checked now.
+        const styleKey = job.kind === "picker" ? "card:row:subject:" + slug(job.subject)
+                                               : "card:row:style:" + slug(job.subject);
+        const compKey = (job.kind === "leaf" && style)
+          ? "card:row:composition:" + slug(job.subject) + ":" + slug(style) : null;
+        const whole = async (k) => {
+          if (!k) return true;
+          const r = await this.env.AURA_KV.get(k, "json").catch(() => null);
+          if (!r || !Array.isArray(r.items) || !r.items.length) return false;
+          return !r.items.some((x) => !x.img);   // a hole means not finished
+        };
+        const sOK = await whole(styleKey), cOK = await whole(compKey);
+        if (sOK && cOK) { skipped.push(job.subject); continue; }
+        // A row that EXISTS but has holes gets patched, not rebuilt - repairing three cards should
+        // not redraw twelve that somebody may already have approved.
+        const existing = await this.env.AURA_KV.get(styleKey, "json").catch(() => null);
+        if (existing && Array.isArray(existing.items) && existing.items.length && !sOK) {
+          n++;
+          const pr = await step.do("patch-" + n, async () => {
+            const x = await processCommand("CARDS PATCH " + styleKey.replace("card:row:", ""), this.env, true);
+            return (x && x.payload) ? x.payload : x;
+          });
+          if (pr?.ok) patched.push(job.subject + " (+" + (pr.patched || 0) + ")");
+          if (pr?.still_broken) broke.push({ subject: job.subject, holes: pr.still_broken.length,
+            why: pr.still_broken.slice(0, 4) });
+          if (cOK) { await step.sleep("gap-" + n, "2 seconds"); continue; }
+        }
         n++;
         const r = await step.do("build-" + n, async () => {
           if (job.kind === "picker") {
@@ -51402,6 +51492,9 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
       });
       return { ok: true, mode: "cards", category: only || "(everything)",
         planned: jobs.length, built: built.length, skipped: skipped.length,
+        // Repaired rather than rebuilt - a re-run now fixes what is broken instead of reporting
+        // everything as already done.
+        patched: patched.length ? patched : null,
         // Names that live under more than one category and therefore share one row. Not an error -
         // a decision somebody has to make about the tree, surfaced instead of buried.
         shared_names: Object.keys(collided).length

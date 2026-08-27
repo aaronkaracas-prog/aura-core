@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.89.0-2026-08-27-the-page-can-see-the-cards";
+const BUILD = "aura-core-v7.90.0-2026-08-27-every-row-after-style-is-ink";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23107,6 +23107,17 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       const rowKey = (k) => "card:row:" + String(k).toLowerCase().replace(/[^a-z0-9:_-]+/g, "-").slice(0, 100);
       const slugOf = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
 
+      // ══ THE FORMAT VERSION ══════════════════════════════════════════════════════════════════
+      // Bump this whenever the PROMPT SHAPE changes - the card format, what a row inherits, the
+      // vocabulary. A row records the version it was made under, so a rebuild can tell a row that
+      // is merely OLD from one that is WRONG, and only remake the wrong ones.
+      // Without it, the only way to force a rebuild after a format change is deleting rows by
+      // hand, and there is no way at all to know which generation a row came from.
+      //   1  original: every non-style row layout-only. Composition, character and colour came
+      //      back as stock photographs - a pet app in the middle of a tattoo journey.
+      //   2  every row after style is drawn AS A TATTOO and carries the chosen style in its words.
+      const CARD_FORMAT = 2;
+
       // ══ A CONTENT FILTER CANNOT BE BEATEN BY SAYING THE SAME THING AGAIN ═════════════════════
       // MEASURED: "orchid, fine line style" came back `8007: Input prompt contains NSFW content`
       // - a false positive on a flower. The retry re-sent the IDENTICAL prompt, which is the one
@@ -23134,16 +23145,18 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         try {
           await d1.prepare("CREATE TABLE IF NOT EXISTS card_rows (" +
             "key TEXT PRIMARY KEY, category TEXT, subject TEXT, variable TEXT, style TEXT, " +
-            "hold TEXT, cards INTEGER, holes INTEGER, made_at TEXT)").run();
+            "hold TEXT, cards INTEGER, holes INTEGER, made_at TEXT, fmt INTEGER)").run();
+          try { await d1.prepare("ALTER TABLE card_rows ADD COLUMN fmt INTEGER").run(); } catch {}
           const holes = row.items.filter((x) => !x.img).length;
           const style = (String(row.key).match(/^composition:[^:]+:(.+)$/) || [])[1] || null;
           await d1.prepare("INSERT INTO card_rows (key, category, subject, variable, style, hold, " +
-            "cards, holes, made_at) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(key) DO UPDATE SET " +
+            "cards, holes, made_at, fmt) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(key) DO UPDATE SET " +
             "category=excluded.category, subject=excluded.subject, variable=excluded.variable, " +
             "style=excluded.style, hold=excluded.hold, cards=excluded.cards, holes=excluded.holes, " +
-            "made_at=excluded.made_at")
+            "made_at=excluded.made_at, fmt=excluded.fmt")
             .bind(row.key, row.category || null, row.subject || null, row.variable || null,
-                  style, row.hold || null, row.items.length, holes, row.made_at || null).run();
+                  style, row.hold || null, row.items.length, holes, row.made_at || null,
+                  row.fmt || 1).run();
         } catch {}   // an index that fails must never fail the row it describes
       };
 
@@ -23213,7 +23226,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         if (style && comps && comps.length) {
           const cRow = await runOne("composition:" + slug2(name) + ":" + slug2(style) + " ::: " + JSON.stringify({
             label: "How do you want to see it?", subject: name + ", " + style + " style",
-            variable: "composition", hold: "language", category: o.category || null, items: comps }));
+            variable: "composition", hold: "language", category: o.category || null,
+            style, items: comps }));
           done.push({ row: "composition:" + slug2(name) + ":" + slug2(style),
             ok: !!cRow?.ok, drew: cRow?.drew ?? 0, failed: cRow?.failed ?? 0,
             failures: cRow?.failures || null });
@@ -23452,6 +23466,54 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       // ══ STATE — THE QUESTION KV CANNOT ANSWER ═══════════════════════════════════════════════
       //   CARDS STATE            - what is built, what is broken, what is left
       //   CARDS STATE REBUILD    - re-derive the index from KV (it is derived, never the truth)
+      // The current format version, so the workflow can ask rather than carry its own copy - two
+      // constants for one fact is how a rebuild silently stops rebuilding.
+      if (cSub === "FMT") return { cmd: "CARDS", payload: { ok: true, fmt: CARD_FORMAT } };
+
+      // ══ SUSPECT — REVIEW BY EXCEPTION, NOT BY INVENTORY ═════════════════════════════════════
+      //   CARDS SUSPECT [category]
+      //
+      // 471 subjects at five minutes each is forty hours of somebody's eyes, and the format will
+      // change twice before they finish. That is not a discipline problem, it is arithmetic.
+      // But a bad row is usually bad in a way a machine can see. Two shapes cover almost all of
+      // what has actually gone wrong:
+      //   TWINS  - several cards in a row point at the SAME IMAGE. Identical prompts produce an
+      //            identical cache key, so two options that mean the same thing to the model come
+      //            back as literally one picture. That is the Goldendoodle detail row.
+      //   THIN   - a row that lost most of its cards, or has almost none.
+      // It cannot see that a bouquet card shows one rose - nothing can, short of looking. What it
+      // CAN do is cut the pile from 471 to the handful worth looking at.
+      if (cSub === "SUSPECT") {
+        const want = String(cRest || "").toLowerCase().trim();
+        const l = await env.AURA_KV.list({ prefix: "card:row:", limit: 1000 }).catch(() => ({ keys: [] }));
+        const out = [];
+        for (const k of l.keys) {
+          const r = await env.AURA_KV.get(k.name, "json").catch(() => null);
+          if (!r || !Array.isArray(r.items) || !r.items.length) continue;
+          if (want && !(String(r.category || "").toLowerCase().includes(want) ||
+                        String(r.key || "").toLowerCase().includes(want))) continue;
+          const why = [];
+          const imgs = r.items.filter((x) => x.img).map((x) => x.img);
+          const uniq = new Set(imgs);
+          if (imgs.length && uniq.size < imgs.length) {
+            // The same picture under two labels. Always wrong, and always visible from here.
+            why.push((imgs.length - uniq.size) + " duplicate image" + (imgs.length - uniq.size > 1 ? "s" : ""));
+          }
+          const holes = r.items.length - imgs.length;
+          if (holes) why.push(holes + " never drew");
+          if (r.items.length < 4) why.push("only " + r.items.length + " cards");
+          if ((r.fmt || 1) < CARD_FORMAT) why.push("old format (v" + (r.fmt || 1) + ")");
+          if (why.length) out.push({ key: r.key, subject: r.subject || null,
+            category: r.category || null, why: why.join(", ") });
+        }
+        return { cmd: "CARDS", payload: { ok: true, checked: l.keys.length, suspect: out.length,
+          rows: out.slice(0, 60).map((x) => x.key + "  -  " + x.why),
+          note: out.length
+            ? "Look at these rather than the catalogue. CARDS SHEET <key> opens one."
+            : "Nothing obviously wrong. That is not the same as everything being right - it means " +
+              "nothing is duplicated, empty or out of date." } };
+      }
+
       if (cSub === "STATE") {
         const d1 = env.AURA_MEMORY;
         if (!d1) return { cmd: "CARDS", payload: { ok: false, error: "NO_D1" } };
@@ -23480,6 +23542,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
             "SUM(cards) cards, SUM(holes) holes FROM card_rows GROUP BY 1 ORDER BY 1").all();
           const broken = await d1.prepare("SELECT key, subject, holes FROM card_rows WHERE holes > 0 " +
             "ORDER BY holes DESC LIMIT 40").all();
+          const oldFmt = await d1.prepare("SELECT COUNT(*) c FROM card_rows WHERE COALESCE(fmt,1) < ?")
+            .bind(CARD_FORMAT).first().catch(() => null);
           const tree = await env.AURA_KV.get("card:tree", "json").catch(() => null);
           let leaves = 0;
           if (tree?.subjects) {
@@ -23492,9 +23556,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
               }
             leaves = seen.size;
           }
-          const doneLeaves = await d1.prepare("SELECT COUNT(*) c FROM card_rows WHERE variable='style' AND holes=0").first();
+          const doneLeaves = await d1.prepare("SELECT COUNT(*) c FROM card_rows WHERE variable='style' " +
+            "AND holes=0 AND COALESCE(fmt,1) >= ?").bind(CARD_FORMAT).first();
           return { cmd: "CARDS", payload: { ok: true,
             rows: tot?.c || 0, cards: tot?.cards || 0, holes: tot?.holes || 0,
+            format: CARD_FORMAT,
+            // Rows made before the current format. Not broken - drawn the old way, and a rebuild
+            // will remake them.
+            out_of_date: oldFmt?.c || 0,
             leaves_total: leaves, leaves_done: doneLeaves?.c || 0,
             leaves_left: Math.max(0, leaves - (doneLeaves?.c || 0)),
             by_category: (byCat?.results || []).map((r) =>
@@ -23753,37 +23822,50 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // constrain only what must be constant: what is in frame, and where.
         // LIGHT GROUND. Real flash is on paper. Everything thin and dark reads on white; nothing
         // in this vocabulary is white-ink, and a dark ground is a later special case if it ever is.
-        // ══ A STYLE CARD MUST SAY IT IS A TATTOO. A COMPOSITION CARD MUST NOT. ═══════════════
+        // ══ EVERY ROW AFTER STYLE INHERITS THE STYLE ═════════════════════════════════════════
         //
-        // MEASURED on the rose wall: japanese, realism, hyperrealism, neo-traditional, minimalist
-        // and dotwork all came back as STOCK PHOTOGRAPHS OF A ROSE. The dog wall got away with the
-        // same format because a dog has less photographic gravity than a flower does; on a rose
-        // nothing in the prompt was fighting the model's default, so the default won.
-        // A style row exists to teach a tattoo LANGUAGE, and a photograph teaches none of them.
+        // WHAT WAS HERE, AND WHY IT WAS HALF RIGHT. Aaron said a photograph is the clearest way to
+        // ask "which picture of the dog?" - and it is, because the person has already chosen the
+        // style and a real dog is recognised faster than a stylised one. So I made every row that
+        // is not STYLE layout-only, with no tattoo language at all.
         //
-        // AND THE OPPOSITE IS TRUE ONE ROW DOWN, which is why this is per-variable and not global.
-        // Aaron on the composition row: a photograph is the CLEAREST way to ask "which picture of
-        // the dog?" - the person has already chosen the style, the card does not need to restate
-        // it, and a real dog is recognised faster than a stylised one. Forcing "tattoo" into that
-        // row would make twelve good cards muddier and re-argue a decision already made.
+        // WALKED ON A PHONE, THAT IS A PET APP. Rose: the style wall is fifteen honest tattoos,
+        // then arrangement, kind-of-rose and colour are all FLORIST STOCK PHOTOGRAPHS, and then
+        // detail snaps back to ink. Four screens of a different product in the middle of the
+        // journey, and the person who just chose hyperrealism sees no hyperrealism anywhere.
         //
-        // Still layout-only about everything else. The card format never dictates linework,
-        // contrast or colour - that is the style's job, and dictating it is what killed the first
-        // dark row.
-        const CARD = variable === "style"
-          ? ". As a tattoo, in that tattoo style. A single subject, centred, filling the frame, " +
-            "on a plain light background. No skin, no body, no border, no background scenery, " +
-            "no extra motifs - only the subject itself."
-          : ". A single subject, centred, filling the frame, on a plain light background. " +
-            "No skin, no body, no border, no background scenery, no extra motifs - " +
-            "only the subject itself.";
+        // THE LINE IS NOT STYLE-VS-EVERYTHING-ELSE. It is BEFORE style and AFTER style. Style now
+        // comes second in the ladder, so by the time any other row is asked, the language is
+        // already settled - and every card after it should be in that language. The clarity Aaron
+        // wanted comes from the framing being identical and one thing changing, not from the card
+        // abandoning the style.
+        //
+        // The picker is the one genuine exception and it stays: "which dog?" is asked BEFORE any
+        // style exists, so there is nothing to inherit, and a photograph of a breed is exactly
+        // right for recognising your own dog.
+        //
+        // Still layout-only about everything else. The format never dictates linework, contrast or
+        // colour - that is the style's job, and dictating it is what killed the very first row.
+        const LAYOUT = " A single subject, centred, filling the frame, on a plain light " +
+                       "background. No skin, no body, no border, no background scenery, " +
+                       "no extra motifs - only the subject itself.";
+        const CARD = variable === "subject"
+          ? "." + LAYOUT                                   // the picker: no style exists yet
+          : ". As a tattoo." + LAYOUT;                     // everything else is ink
+
         // A `say` REPLACES the label in the prompt entirely - it is not appended, because
         // "traditional, bold american traditional…" leaves the misleading word in the sentence.
+        //
+        // AND A ROW AFTER STYLE CARRIES THE STYLE IN ITS WORDS. With refs off (a language-holding
+        // row uses none), the words are the only thing holding the language - which is why the
+        // arrangement row drifted to photographs even with "as a tattoo" available. `spec.style`
+        // is passed down by the runner; without it a row is still correct, just less anchored.
+        const styleWord = String(spec.style || "").toLowerCase().trim();
         const wordFor = (v, it) => {
           const w = it.say || it.label;
-          return v === "style"   ? subject + ", " + w + (it.say ? "" : " style")
-               : v === "subject" ? w
-               : subject + ", " + w;
+          if (v === "style")   return subject + ", " + w + (it.say ? "" : " style");
+          if (v === "subject") return w;
+          return subject + ", " + w + (styleWord ? ", " + styleWord + " style" : "");
         };
 
         // ONE RETRY. Four of fifteen rose cards came back empty on Flux - roughly a quarter of the
@@ -23861,7 +23943,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           out.push(...batch);
         }
 
-        const row = { key: key.replace("card:row:", ""), type: "row",
+        const row = { key: key.replace("card:row:", ""), type: "row", fmt: CARD_FORMAT,
           label: String(spec.label || "").slice(0, 80) || null,
           // WHICH CATEGORY THIS BELONGS TO. Without it a category sheet cannot exist: rows key on
           // the SUBJECT ("style:peony"), so asking for "flowers-plants" matched nothing and the
@@ -23891,7 +23973,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
       }
 
       return { cmd: "CARDS", payload: { ok: false,
-        error: "Sub-commands: BUILD, STATE, SUBJECT, HOUSE, ROW, REDO, PATCH, DROP, DROPROW, TREE, SHEET, GET, LIST" } };
+        error: "Sub-commands: BUILD, STATE, FMT, SUSPECT, SUBJECT, HOUSE, ROW, REDO, PATCH, DROP, DROPROW, TREE, SHEET, GET, LIST" } };
     }
 
     case "WALL": {
@@ -51498,6 +51580,23 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
       const only = String(event.payload?.category || "").trim();
       const style = String(event.payload?.style || "").trim();
       const cap = Math.min(Number(event.payload?.max_leaves) || 25, 600);
+      // ══ SUBREQUESTS ARE PER INVOCATION, AND `step.do` DOES NOT RESET THEM ══════════════════
+      // MEASURED, twice, identically: both overnight runs died at
+      //   "Too many API requests by single Worker invocation"
+      // - the first at 42 subjects in 11 minutes, the second at the same place. I assumed each
+      // `step.do` was its own invocation. It is not. Cloudflare allows 1,000 subrequests per
+      // INVOCATION, one subject is ~27 image calls plus KV reads, and a two-second sleep is not
+      // long enough to force a new one. So the run was never going to finish, however long it was
+      // left, and the "10,000 neurons a day" theory was wrong.
+      // A LONG SLEEP RESTARTS THE INVOCATION and the counter with it. Every REST_EVERY subjects it
+      // takes a minute off - which costs nothing on a run measured in hours and is the difference
+      // between finishing and not.
+      const REST_EVERY = 20, REST = "60 seconds";
+      // What "current" means, asked once. A row older than this is rebuilt rather than skipped.
+      const fmtNow = await (async () => {
+        const r = await processCommand("CARDS FMT", this.env, true);
+        return (r?.payload?.fmt) || 1;
+      })();
       const tree = await step.do("tree", async () => {
         const r = await processCommand("CARDS TREE", this.env, true);
         return (r && r.payload) ? r.payload : r;
@@ -51569,18 +51668,25 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
                                                : "card:row:style:" + slug(job.subject);
         const compKey = (job.kind === "leaf" && style)
           ? "card:row:composition:" + slug(job.subject) + ":" + slug(style) : null;
+        // A row is finished when it has every card AND was made under the current format. An
+        // out-of-date row is not broken - it is a photograph where a tattoo belongs - so it must
+        // be REBUILT, not patched, and the skip must not treat it as done.
         const whole = async (k) => {
           if (!k) return true;
           const r = await this.env.AURA_KV.get(k, "json").catch(() => null);
           if (!r || !Array.isArray(r.items) || !r.items.length) return false;
-          return !r.items.some((x) => !x.img);   // a hole means not finished
+          if ((r.fmt || 1) < fmtNow) return false;     // old format = remake
+          return !r.items.some((x) => !x.img);         // a hole means not finished
         };
         const sOK = await whole(styleKey), cOK = await whole(compKey);
         if (sOK && cOK) { skipped.push(job.subject); continue; }
         // A row that EXISTS but has holes gets patched, not rebuilt - repairing three cards should
         // not redraw twelve that somebody may already have approved.
         const existing = await this.env.AURA_KV.get(styleKey, "json").catch(() => null);
-        if (existing && Array.isArray(existing.items) && existing.items.length && !sOK) {
+        // PATCH only fills holes - it cannot fix a row drawn in the wrong format. An out-of-date
+        // row goes through the full build so every card is remade.
+        const stale = existing && (existing.fmt || 1) < fmtNow;
+        if (existing && Array.isArray(existing.items) && existing.items.length && !sOK && !stale) {
           n++;
           const pr = await step.do("patch-" + n, async () => {
             const x = await processCommand("CARDS PATCH " + styleKey.replace("card:row:", ""), this.env, true);
@@ -51589,7 +51695,11 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
           if (pr?.ok) patched.push(job.subject + " (+" + (pr.patched || 0) + ")");
           if (pr?.still_broken) broke.push({ subject: job.subject, holes: pr.still_broken.length,
             why: pr.still_broken.slice(0, 4) });
-          if (cOK) { await step.sleep("gap-" + n, "2 seconds"); continue; }
+          if (cOK) {
+            if (n % REST_EVERY === 0) await step.sleep("rest-" + n, REST);
+            else await step.sleep("gap-" + n, "2 seconds");
+            continue;
+          }
         }
         n++;
         const r = await step.do("build-" + n, async () => {
@@ -51622,7 +51732,10 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
                    "Re-run later and it resumes where it left off.";
           break;
         }
-        await step.sleep("gap-" + n, "2 seconds");
+        // A short gap between subjects, and a REAL rest every REST_EVERY - the short one is
+        // politeness to the provider, the long one is what resets the subrequest budget.
+        if (n % REST_EVERY === 0) await step.sleep("rest-" + n, REST);
+        else await step.sleep("gap-" + n, "2 seconds");
       }
 
       // Ask for the CATEGORY, which rows now record. Asking for the slug of the category name
@@ -53274,9 +53387,15 @@ export class PublicEntry extends WorkerEntrypoint {
         // comes FIRST in the ladder.
         // The flat stencil tail stays where it belongs: on `make`, for the artwork an artist has
         // to work from. Flat is deliberate THERE and wrong here.
-        const TAIL = ". A single subject unless stated otherwise, centred, filling the frame, " +
-                     "on a plain light background. No skin, no body, no border, no background " +
-                     "scenery, no extra motifs - only the subject itself.";
+        // Same rule as the factory: a row asked AFTER the style is settled is drawn in that style.
+        // This was layout-only, so somebody who chose hyperrealism saw their composition options
+        // as stock photographs - the screen after the choice quietly undoing the choice.
+        // The picker is the exception, because it is asked before any style exists.
+        const TAIL = (field === "subject"
+          ? ". A single subject unless stated otherwise, centred, filling the frame, "
+          : ". As a tattoo. A single subject unless stated otherwise, centred, filling the frame, ") +
+          "on a plain light background. No skin, no body, no border, no background " +
+          "scenery, no extra motifs - only the subject itself.";
         // ══ A FAMILY, NOT FOUR PICTURES ════════════════════════════════════════════════════
         // This generated each option independently with NO refs - four separate draws from four
         // prompt strings - so they drifted on every axis at once and the person was comparing four

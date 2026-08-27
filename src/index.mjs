@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v7.91.0-2026-08-27-the-builder-builds-every-row";
+const BUILD = "aura-core-v7.92.0-2026-08-27-the-library";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -13292,9 +13292,108 @@ async function successionGate(env) {
       //   FILE ADD <ref> {by?, context}                                - someone contributes/acts on it
       //   FILE LIFE <ref>                                              - read its whole life
       //   FILE VERSION <ref> {url, by?, note}                          - register a new version (lineage)
+      //   FILE MINE <pta> [filetype]                                   - everything that person has
+      //   FILE POST <ref> ::: {doorway, say}                           - share it from a doorway
+      //   FILE UNPOST <ref>                                            - take it back
+      //   FILE FEED [doorway]                                          - what has been shared
       if (!isOp) return { cmd: "FILE", payload: { ok: false, error: "OPERATOR_REQUIRED" } };
       const db = env.AURA_MEMORY;
       const sub = (args[0] || "").toUpperCase();
+      // ══ MINE — EVERYTHING A PERSON HAS ═══════════════════════════════════════════════════════
+      //   FILE MINE <pta> [<filetype>]
+      //
+      // The library. Not a new object and not a gallery system: a Smart File already records who
+      // created it, when, what of, and what it came from - and `registerSmartFile` writes a
+      // `created` edge from the person to every file they make. This reads that edge.
+      //
+      // ONE LIBRARY, TWO DOORS IN. A tattoo somebody DESIGNED here and a tattoo they PHOTOGRAPHED
+      // off their own arm are the same object with the same owner - `make` and `IMAGE IMPORT` both
+      // pass the person as creator. So "what I made" and "what I am wearing" were never two
+      // systems; they are one query, and that is why this is a few lines rather than a feature.
+      //
+      // NOTHING HERE KNOWS WHAT A TATTOO IS. A stylist's cut, a mechanic's repair, a life somebody
+      // is proud of - same query, different doorway.
+      if (sub === "MINE") {
+        const who = args[1];
+        if (!who || !/^(pta_|ent_)/.test(who)) return { cmd: "FILE", payload: { ok: false,
+          error: "Usage: FILE MINE <pta_ or ent_ id> [filetype]" } };
+        const want = (args[2] || "").toLowerCase();
+        const rows = await db.prepare(
+          "SELECT e.id, e.name, e.metadata, e.created_at FROM pta_edges g " +
+          "JOIN pta_entities e ON e.id = g.to_id " +
+          "WHERE g.from_id = ? AND g.edge_type = 'created' AND e.type = 'file' " +
+          "ORDER BY e.created_at DESC LIMIT 200").bind(who).all().catch(() => ({ results: [] }));
+        const out = [];
+        for (const r of (rows.results || [])) {
+          let m = {}; try { m = JSON.parse(r.metadata || "{}"); } catch {}
+          if (want && String(m.filetype || "").toLowerCase() !== want) continue;
+          out.push({ id: r.id, name: r.name, subject: m.subject || null,
+            filetype: m.filetype || null, url: m.url || null, source: m.source || null,
+            // A child is a VERSION of something, not a separate piece. The page groups by parent so
+            // somebody sees their tattoo with its versions, not eleven loose pictures.
+            parent: m.parent || null, posted: m.posted || null, doorway: m.doorway || null,
+            made: r.created_at });
+        }
+        const roots = out.filter((x) => !x.parent);
+        return { cmd: "FILE", payload: { ok: true, who, count: out.length,
+          pieces: roots.length, files: out,
+          note: roots.length === out.length ? null
+            : (out.length - roots.length) + " of these are versions of another piece." } };
+      }
+
+      // ══ POST / UNPOST / FEED — SHARING IS A FLAG, NOT A SECOND SYSTEM ═══════════════════════
+      //   FILE POST <ref> ::: {"doorway":"mytattoo.world","say":"..."}
+      //   FILE UNPOST <ref>
+      //   FILE FEED [doorway]
+      //
+      // A person's library is PRIVATE. Sharing marks one file and records WHICH DOORWAY it came
+      // from - the tattoo asset, a stylist asset, life-is-amazing - so a feed is a query over a
+      // flag rather than a copy somewhere else. The file never moves and never duplicates: one
+      // master, one owner, one lineage, seen from wherever it was shared.
+      //
+      // AND IT IS REVERSIBLE, which is the whole reason it is a flag. Taking a piece back off a
+      // feed must not cost somebody the piece, its versions or its meaning.
+      if (sub === "POST" || sub === "UNPOST") {
+        const ent = await resolveSmartFile(db, args[1]);
+        if (!ent) return { cmd: "FILE", payload: { ok: false, error: "NO_SUCH_FILE", ref: args[1] || null } };
+        let m = {}; try { m = JSON.parse(ent.metadata || "{}"); } catch {}
+        if (sub === "UNPOST") { m.posted = null; m.doorway = null; m.say = null; }
+        else {
+          const cut = rest.indexOf(":::");
+          let o = {};
+          if (cut >= 0) { try { o = JSON.parse(rest.slice(cut + 3).trim()); }
+                          catch { try { o = repairJson(rest.slice(cut + 3).trim()) || {}; } catch {} } }
+          m.posted = new Date().toISOString();
+          m.doorway = String(o.doorway || "").slice(0, 60) || null;
+          m.say = o.say ? String(o.say).slice(0, 300) : null;
+        }
+        await db.prepare("UPDATE pta_entities SET metadata = ?, updated_at = ? WHERE id = ?")
+          .bind(JSON.stringify(m), new Date().toISOString(), ent.id).run();
+        return { cmd: "FILE", payload: { ok: true, id: ent.id,
+          posted: m.posted || null, doorway: m.doorway || null,
+          note: sub === "POST" ? "Shared. The file did not move - it is flagged, and it can be taken back."
+                               : "Taken back. The piece, its versions and its meaning are untouched." } };
+      }
+
+      if (sub === "FEED") {
+        const door = (args[1] || "").toLowerCase();
+        const rows = await db.prepare(
+          "SELECT id, name, metadata, updated_at FROM pta_entities WHERE type = 'file' " +
+          "AND metadata LIKE ? ORDER BY updated_at DESC LIMIT 300")
+          .bind('%"posted":"%').all().catch(() => ({ results: [] }));
+        const out = [];
+        for (const r of (rows.results || [])) {
+          let m = {}; try { m = JSON.parse(r.metadata || "{}"); } catch {}
+          if (!m.posted) continue;
+          if (door && String(m.doorway || "").toLowerCase() !== door) continue;
+          out.push({ id: r.id, subject: m.subject || r.name, url: m.url || null,
+            say: m.say || null, doorway: m.doorway || null, by: m.created_by || null,
+            posted: m.posted });
+        }
+        out.sort((x, y) => String(y.posted).localeCompare(String(x.posted)));
+        return { cmd: "FILE", payload: { ok: true, doorway: door || "(all)",
+          count: out.length, feed: out.slice(0, 100) } };
+      }
       if (sub === "REGISTER") {
         let p; try { p = JSON.parse(rest.slice(rest.indexOf(sub) + sub.length).trim()); } catch (e) { return { cmd: "FILE", payload: { ok: false, error: 'Usage: FILE REGISTER {"filetype":"pdf","name":"Contract","url":"https://...","subject?":"...","by?":"<pta>"}' } }; }
         if (!p || !p.filetype) return { cmd: "FILE", payload: { ok: false, error: "filetype is required (pdf, doc, video, image, contract, ...)" } };
@@ -53376,6 +53475,58 @@ export class PublicEntry extends WorkerEntrypoint {
       // page already knows the name of, which is what a tree screen has: it knows it is showing
       // dogs. One KV read, no model, no generation, and a miss is a normal answer rather than an
       // error - the page falls back to words and nothing breaks.
+      // ══ MINE — THE LIBRARY, FOR THE PERSON WHOSE IT IS ═════════════════════════════════════
+      // `FILE MINE` is operator-gated, as everything in that engine is. A person looking at their
+      // own tattoos is not an operator, so this is their door - and it can only ever return THEIR
+      // files, because the session decides whose id is asked for. There is no parameter to pass a
+      // stranger's id, which is what makes it safe to expose.
+      //
+      // GROUPED BY PIECE. A child file is a VERSION, not a separate tattoo. Somebody who evolved a
+      // design five times has ONE piece with five versions, and a library that showed five tiles
+      // would be lying about what they own.
+      if (action === "mine") {
+        const r = await processCommand("FILE MINE " + me, env, true);
+        const p3 = (r && r.payload) ? r.payload : r;
+        if (!p3?.ok) return { ok: false, error: p3?.error || "COULD_NOT_READ" };
+        const byId = {}; for (const f of p3.files) byId[f.id] = f;
+        const pieces = [];
+        for (const f of p3.files) {
+          if (f.parent && byId[f.parent]) continue;         // a version, shown under its piece
+          const versions = p3.files.filter((v) => v.parent === f.id)
+            .sort((a2, b2) => String(a2.made).localeCompare(String(b2.made)));
+          pieces.push({ design: f.id, subject: f.subject || f.name,
+            image: f.url || null, made: f.made,
+            // Where it came from: something they designed here, or a photograph of one they
+            // already wear. The library holds both and should say which.
+            how: f.source === "import" ? "worn" : "made",
+            posted: !!f.posted, doorway: f.doorway || null,
+            versions: versions.length,
+            history: versions.map((v) => ({ design: v.id, image: v.url || null, made: v.made })) });
+        }
+        return { ok: true, count: pieces.length, pieces,
+          say: pieces.length ? null : "Nothing here yet. Design one, or show me one you already have." };
+      }
+
+      // Share a piece from this doorway, or take it back. The person can only ever act on their
+      // own file: the id is checked against what `FILE MINE` returns for THEIR session.
+      if (action === "share" || action === "unshare") {
+        const id = String(b.design || "").trim();
+        if (!id) return { ok: false, error: "NEED_DESIGN" };
+        const own = await processCommand("FILE MINE " + me, env, true);
+        const mineIds = new Set(((own?.payload?.files) || []).map((f) => f.id));
+        if (!mineIds.has(id)) return { ok: false, error: "NOT_YOURS",
+          say: "That is not one of yours to share." };
+        const cmd = action === "share"
+          ? "FILE POST " + id + " ::: " + JSON.stringify({ doorway: "mytattoo.world",
+              say: b.say ? String(b.say).slice(0, 300) : null })
+          : "FILE UNPOST " + id;
+        const r = await processCommand(cmd, env, true);
+        const p4 = (r && r.payload) ? r.payload : r;
+        return p4?.ok ? { ok: true, design: id, posted: !!p4.posted,
+          say: action === "share" ? "Shared." : "Taken back." }
+          : { ok: false, error: p4?.error || "COULD_NOT_SHARE" };
+      }
+
       if (action === "row") {
         const key = String(b.key || "").toLowerCase().replace(/[^a-z0-9:_-]+/g, "-").slice(0, 100);
         if (!key) return { ok: false, error: "NEED_KEY" };

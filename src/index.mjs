@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.0.0-2026-08-28-the-leaf-declares-what-is-left";
+const BUILD = "aura-core-v9.1.0-2026-08-28-the-leaf-draws-itself";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -50795,7 +50795,7 @@ function tatSay(field, value, extra) {
 // a modifier to a picture that is already chosen. So when a choice states a quantity IT LEADS
 // and the subject rides inside it, and a state joins that same opening clause rather than
 // arriving three sentences later where the style's own default beats it.
-function tatBuildAsk(subjectLabel, order, intent, extras) {
+function tatBuildAsk(subjectLabel, order, intent, extras, leafSay) {
   const said = [];
   const skip = {};
   let subjectSaid = false;
@@ -50816,15 +50816,22 @@ function tatBuildAsk(subjectLabel, order, intent, extras) {
       said.push(sub && !namesIt ? lead + ", of " + plural : lead);
       skip[multiKey] = true; subjectSaid = true;
       const stateKey = order.find((k) => k !== multiKey && val(k) && TAT_STATE.test(k));
-      if (stateKey) {
-        const st = tatSay(stateKey, intent[stateKey], extras && extras[stateKey]);
-        // The state phrase was written for ONE of the thing, so inside a group it is quoted
-        // whole and scoped by a lead-in rather than reworded into worse English.
-        if (st) { said[0] = said[0] + ". Every one of them is like this: " + st; skip[stateKey] = true; }
-      }
+      const st = stateKey ? tatSay(stateKey, intent[stateKey], extras && extras[stateKey])
+                          : (leafSay || null);
+      // The state phrase was written for ONE of the thing, so inside a group it is quoted
+      // whole and scoped by a lead-in rather than reworded into worse English.
+      if (st) { said[0] = said[0] + ". Every one of them is like this: " + st;
+                if (stateKey) skip[stateKey] = true; }
     }
   }
-  if (!subjectSaid && sub) said.push(sub.toLowerCase());
+  // ══ THE LEAF'S OWN CLAUSE BEATS ITS LABEL ════════════════════════════════════════════════
+  // MEASURED on the first live walk: every style tile for "withered rose" came back a HEALTHY
+  // OPEN BLOOM. The leaf label said withered and the pictures ignored it - because "withered
+  // rose" is an ADJECTIVE on a noun the model already has a strong prior for, and the style's
+  // own default (a flash rose is an open flower) beat it every time.
+  // Same lesson as the bouquet, one layer up: a word is a hint, a clause is an instruction. So
+  // the leaf declares HOW TO DRAW ITSELF and that clause leads instead of the label.
+  if (!subjectSaid) { if (leafSay) said.push(leafSay); else if (sub) said.push(sub.toLowerCase()); }
   for (const k of order) {
     if (skip[k]) continue;
     if (!val(k)) continue;
@@ -50864,7 +50871,8 @@ async function tatLeafProfile(env, leafLabel, model) {
           "at a specific thing. The catalog has already established WHAT the tattoo is.\n\n" +
           "Say what the catalog has already answered, and what visual decisions genuinely remain " +
           "FOR THIS PARTICULAR THING.\n\n" +
-          'Return ONLY JSON: {"resolved":{"key":"value"},"steps":[{"id":"...","ask":"..."}],"needs_upload":false}\n\n' +
+          'Return ONLY JSON: {"resolved":{"key":"value"},"say":"..."|null,' +
+          '"steps":[{"id":"...","ask":"..."}],"needs_upload":false}\n\n' +
           "`resolved` is what the name itself already states. \"Withered Rose\" resolves " +
           'subject=rose and state=withered. "Golden Retriever" resolves subject=dog and ' +
           'breed=golden retriever. "Japanese Dragon" resolves subject=dragon and ' +
@@ -50873,7 +50881,12 @@ async function tatLeafProfile(env, leafLabel, model) {
           "would naturally answer them. `id` is one or two lowercase words naming the decision " +
           "(crop, pose, expression, arrangement, representation). `ask` is the question a person " +
           "reads, in plain words fitted to THIS thing - \"How do you want to see it?\", " +
-          "\"What expression?\", \"Which Capricorn?\".\n\n" +
+          '"What expression?", "Which Capricorn?".\n\n' +
+          "Also return `say`: ONE CLAUSE saying how to draw THIS thing, which an image model " +
+          "cannot skip past. Only when the name carries something a model would otherwise " +
+          'ignore. "Withered Rose" -> "a dying rose, petals drooping and curling under, visibly ' +
+          'dead, not an open bloom". "Golden Retriever" needs none - return null. A name is a ' +
+          "hint; a clause is an instruction, and the difference is whether the picture obeys.\n\n" +
           "RULES, AND THE THIRD ONE IS THE WHOLE POINT:\n" +
           "1. NEVER ask something the name already answered. A withered rose is not asked " +
           "whether it is alive. A dragon and phoenix is not asked what it is paired with.\n" +
@@ -50882,6 +50895,11 @@ async function tatLeafProfile(env, leafLabel, model) {
           "3. RETURNING ZERO STEPS IS A CORRECT AND COMMON ANSWER. Do not invent a decision to " +
           "make this subject look structurally like other subjects. A pose on a symbol, an " +
           "expression on an object, a crop on a glyph - those are the exact mistake.\n" +
+          "3b. BUT A GENUINELY DIFFERENT VERSION OF THE THING IS A REAL STEP, and missing one " +
+          "is as wrong as inventing one. Where people mean materially different pictures by the " +
+          "same name, ask which: a zodiac sign is drawn as the glyph, as the animal, or as the " +
+          "constellation, and those are three different tattoos. Same for a saint drawn as a " +
+          "portrait or as a symbol. That is not a pose - it is which thing they mean.\n" +
           "4. NOTHING about style, colour, linework, placement or size. Those are asked of every " +
           "subject separately and repeating them here wastes somebody's time.\n" +
           "5. `needs_upload` is true ONLY when the subject must come from the person's own " +
@@ -50904,6 +50922,7 @@ async function tatLeafProfile(env, leafLabel, model) {
         // everything and a leaf offering its own version would ask twice.
         const clean = steps.filter((x) => !/^(style|colour|color|detail|placement|size)$/.test(x.id));
         const rec = { resolved: (o.resolved && typeof o.resolved === "object") ? o.resolved : {},
+                      say: (typeof o.say === "string" && o.say.trim()) ? o.say.trim().slice(0, 220) : null,
                       steps: clean, needs_upload: o.needs_upload === true };
         try { await env.AURA_KV.put(key, JSON.stringify(rec)); } catch {}
         return rec;
@@ -50985,13 +51004,16 @@ async function tatWall(env, leafLabel, step, ask, model) {
 // NO REFERENCE IMAGE, DELIBERATELY. A reference carries pose, language AND SUBJECT: a dragon
 // house image put dragon bodies on fifteen golden retrievers. These walls exist to vary one
 // thing, and the words carry it.
-async function tatDraw(env, subjectLabel, step, wall, styleWord, host) {
+async function tatDraw(env, subjectLabel, step, wall, styleWord, host, leafSay, budgetMs) {
   const key = "wall:v1:" + tatSlug(subjectLabel) + ":" + tatSlug(step);
   const opts = wall.opts;
   const need = opts.filter((o) => !o.img);
   if (!need.length) return wall;
   const one = async (o) => {
-    const words = subjectLabel + ", " + (o.say || o.id) +
+    // The leaf's own clause leads here too, for the same reason it leads in the sentence: a
+    // wall of healthy roses under a leaf called "withered rose" taught the person the wrong
+    // thing and then taught the prompt the same wrong thing.
+    const words = (leafSay || subjectLabel) + ", " + (o.say || o.id) +
       (styleWord ? ", " + styleWord + " style" : "");
     try {
       const gi = await auraGenerateImage(words + cardFormat(step, o.say || o.id), env,
@@ -51002,9 +51024,19 @@ async function tatDraw(env, subjectLabel, step, wall, styleWord, host) {
       o.why = String(gi?.error || "no image returned").slice(0, 140);
     } catch (e) { o.why = String(e && e.message || e).slice(0, 140); }
   };
-  // Four at a time. Cloudflare allows six simultaneous connections and only while waiting for
-  // response headers, so batches are the fast shape and a wall is not one long queue.
+  // ══ A WALL MUST NOT OUTLAST THE DOORWAY ══════════════════════════════════════════════════
+  // MEASURED on the first cold Capricorn: the call came back with NOTHING - no stage, no ask,
+  // no options - and the page would have painted a blank screen. Sixteen tiles at four in
+  // flight is longer than the 40s ceiling `/_design` allows, so the whole request died and took
+  // the words with it.
+  // So drawing is time-boxed. Whatever is drawn when the budget runs out is what comes back,
+  // the rest stay tappable words, and the NEXT call picks up exactly where this one stopped -
+  // `need` is recomputed from what has no image yet, so nothing is ever drawn twice.
+  // A partly-drawn wall is a working screen. A blank one is a failure.
+  const t0 = Date.now();
+  const budget = typeof budgetMs === "number" ? budgetMs : 18000;
   for (let i = 0; i < need.length; i += 4) {
+    if (Date.now() - t0 > budget) break;
     await Promise.all(need.slice(i, i + 4).map(one));
   }
   try { await env.AURA_KV.put(key, JSON.stringify(wall)); } catch {}
@@ -53850,20 +53882,23 @@ export class PublicEntry extends WorkerEntrypoint {
           // each tile's own prompt, and the ids are written back onto the wall, so the next
           // person down this path does one KV read and no image work at all.
           const styleWord = stepId === "style" ? null : (styleStr || null);
-          wall = await tatDraw(env, leaf, stepId, wall, styleWord, null);
+          wall = await tatDraw(env, leaf, stepId, wall, styleWord, null, prof.say || null, 18000);
           const pictured = wall.opts.filter((o) => o.img).length;
           const holes = wall.opts.filter((o) => !o.img);
 
           // AN EMPTY WALL IS A FAILURE. A partly-drawn one is not - the tiles that drew are
-          // tappable and the rest are still readable words.
+          // tappable and the rest are still readable words, and the next call finishes them.
           if (!wall.opts.length) return { ok: false, error: "EMPTY_WALL", stage: stepId,
             say: "I could not put that screen together - ask me again." };
+          // `filling` tells the page this screen is still being drawn, so it can come back for
+          // the rest rather than treating a half-pictured wall as finished.
+          const filling = pictured < wall.opts.length;
 
           return { ok: true, done: false, stage: stepId, ask: wall.ask || stepAsk,
             options: wall.opts.map((o) => o.img
               ? { value: o.id, label: o.id, image: "https://auras.guide/image/" + o.img }
               : { value: o.id, label: o.id }),
-            made: pictured === wall.opts.length,
+            made: pictured === wall.opts.length, filling, of: wall.opts.length,
             pictured, holes: holes.length ? holes.map((o) => o.id + ": " + (o.why || "unknown")) : null,
             resolved: order.filter((k) => has(k)),
             leaf_resolved: prof.resolved || null,
@@ -53887,7 +53922,7 @@ export class PublicEntry extends WorkerEntrypoint {
             }
           } catch {}
         }
-        const ask = tatBuildAsk(leaf, order, inc, extras);
+        const ask = tatBuildAsk(leaf, order, inc, extras, prof.say || null);
         // EVERY CHOICE MUST SURVIVE. Per field, not per label - a phrase legitimately rewords
         // the tile's own words, so scanning the prompt for them would fail on a correct string.
         const lost = order.filter((k) => has(k) && !tatSay(k, inc[k], extras[k]));

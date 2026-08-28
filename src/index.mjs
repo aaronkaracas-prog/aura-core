@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.5.0-2026-08-28-four-slots-part-gates-pose";
+const BUILD = "aura-core-v9.6.0-2026-08-28-twelve-styles-photo-recognition";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -50869,39 +50869,67 @@ const TAT_STATE = /(state|condition|expression|feel|mood|character|emotion)/i;
 // gets wrong unaided: drawing a PHOTOGRAPH when asked for realism, and adding colour when asked
 // for black and grey. A style phrase describes LINE and FORM and never claims the colour field;
 // they argued with each other once and the model picked one at random.
+// ══ THE TWELVE ════════════════════════════════════════════════════════════════════════════
+// Taken from what the industry actually names in 2026, not invented here. Every one appears on
+// multiple independent style guides; nothing on this list draws the same tile as anything else.
+//
+// COLOUR IS INSIDE THE STYLE AND IS NOT A SEPARATE WALL. Blackwork and black-and-grey are two
+// different styles in every real guide, not one style with a switch on it. Asking somebody for a
+// style and then asking their colour is asking the same question twice, and that second question
+// was mine - it is the six-axis form growing a limb back.
+//
+// WHAT WAS CUT AND WHY: hyperrealism and micro-realism draw the same tile as realism - three
+// names for one picture. Dotwork, sketch and etching appear on no industry list at all; they were
+// invented in this file, which is the exact thing this catalog exists to stop.
 const TAT_PHRASE = {
   style: {
-    "realism": "realism tattoo artwork - rendered as an ink drawing, not a photograph",
-    "hyperrealism": "hyperrealism tattoo artwork - extreme fine detail, still an ink drawing and not a photograph",
-    "black and grey realism": "black and grey realism tattoo artwork - ink shading only, no colour, not a photograph",
-    "traditional": "bold american traditional tattoo - thick black outlines, flat solid fills, no gradients",
-    "neo-traditional": "neo-traditional tattoo - bold outlines with depth and rich shading",
+    "traditional": "american traditional tattoo - thick black outlines, flat solid colour, bold and simple",
+    "neo-traditional": "neo-traditional tattoo - bold outlines with rich saturated colour, depth and decorative detail",
     "japanese": "japanese irezumi tattoo - bold outline, flowing linework, heavy black shading",
-    "fine line": "fine line tattoo - thin single-weight linework, minimal shading",
-    "blackwork": "blackwork tattoo - solid black shapes and heavy contrast",
-    "dotwork": "dotwork tattoo - stippled shading built from dots, no solid line fill",
-    "watercolour": "watercolour tattoo - soft washes and paint bleed",
-    "minimalist": "minimalist tattoo - the simplest lines that still read",
-    "ornamental": "ornamental tattoo - decorative filigree and repeating pattern worked into the form",
-    "sketch": "sketch-style tattoo - loose pencil-like construction lines",
-    "etching": "etching-style tattoo - engraved cross-hatched linework",
-    "illustrative": "illustrative tattoo - clean drawn illustration",
-    "geometric": "geometric tattoo - built from clean geometric construction",
-    "celtic": "celtic tattoo - interlaced knotwork",
-  },
-  colour: {
-    "full colour": "in full colour",
-    "black and grey": "in black and grey ink only, with no colour anywhere",
-    "muted colour": "in muted, desaturated colour",
+    "realism": "realism tattoo - lifelike rendering with full tonal shading, drawn in ink rather than photographed",
+    "black and grey": "black and grey tattoo - diluted black ink only, smooth gradients and soft shading, no colour anywhere",
+    "fine line": "fine line tattoo - thin single-needle linework, delicate and sparse, minimal shading",
+    "minimalist": "minimalist tattoo - the fewest lines that still read, generous negative space",
+    "blackwork": "blackwork tattoo - solid black fills and bold graphic shapes, high contrast, no grey shading",
+    "ornamental": "ornamental tattoo - decorative filigree, lace and repeating pattern worked into the form",
+    "geometric": "geometric tattoo - built from clean geometric construction and repeated shapes",
+    "illustrative": "illustrative tattoo - a clean drawn illustration, storybook linework with colour",
+    "watercolour": "watercolour tattoo - soft painterly washes and colour bleed, no hard outline",
   },
 };
 
-// The sixteen. Style is a LANGUAGE, not a property of the thing, so this list is the same for
-// every subject in the tree and is never generated per leaf.
-const TAT_STYLES = ["japanese", "realism", "hyperrealism", "black and grey realism", "fine line",
-  "traditional", "neo-traditional", "blackwork", "illustrative", "watercolour", "geometric",
-  "minimalist", "dotwork", "ornamental", "sketch", "etching"];
-const TAT_COLOURS = ["full colour", "black and grey", "muted colour"];
+const TAT_STYLES = ["traditional", "neo-traditional", "japanese", "realism", "black and grey",
+  "fine line", "minimalist", "blackwork", "ornamental", "geometric", "illustrative", "watercolour"];
+
+// ══ CROP IS FOUR, FIXED, AND NOT WRITTEN BY A MODEL ═══════════════════════════════════════
+// MEASURED: asked to write this wall itself, the model returned "full body, sitting, lying down,
+// head only, head and chest, front half, close up face, rear view" - eight options of which two
+// were POSES, duplicated on the pose wall directly below it. How much of a thing you see is the
+// same four choices for a dog, a dragon, a saint or a rose, so it is written here once.
+//
+// `body` is what opens the pose wall behind it. A face has no pose.
+const TAT_CROP = [
+  { id: "face", say: "the face filling the frame, head only, cropped at the neck", body: false },
+  { id: "bust", say: "head and upper chest only, cut off below the shoulders", body: false },
+  { id: "half body", say: "the upper half of the body, cut off cleanly at the middle", body: false },
+  { id: "full body", say: "the complete figure from head to tail with all of it visible", body: true },
+];
+
+// ══ TWO FRAMES, AND THE DIFFERENCE IS THE WHOLE CATALOG ═══════════════════════════════════
+// MEASURED on one sheet, side by side: seven poses drawn photoreal were unmistakably golden
+// retrievers. The SAME seven poses, same words, drawn in neo-traditional, were line-drawing
+// whippets. A bold-outline drawing of a golden and of a whippet are nearly the same drawing -
+// stylisation destroys breed.
+//
+// So a RECOGNITION wall - crop, pose, expression - is photographs. You are identifying a thing,
+// and a photograph is the only tile that lets you. The STYLE wall is drawings, because a drawing
+// is the thing being chosen there. The final piece is neither of these; it goes through SHOW_IT.
+const TAT_FRAME_PHOTO =
+  ". A clear reference photograph, one subject, centred, filling the frame, sharp focus, " +
+  "plain light background, no people, no text, no border.";
+const TAT_FRAME_INK =
+  ". Tattoo design, clean linework, high contrast, on a plain background, " +
+  "no skin, no body, no photograph - the artwork only.";
 
 // A choice becomes a sentence. Three places to look, most specific first:
 //   1. the phrase the wall generator wrote for THIS option - "a bouquet, several stems gathered
@@ -50974,10 +51002,12 @@ function tatBuildAsk(subjectLabel, order, intent, extras, leafSay) {
   // A plural category label once drew four dogs running through a field, which is why the
   // singular default exists. A choice that states a quantity HAS stated otherwise, and
   // repeating the default after it is an argument the default wins.
-  const tail = (multiKey ? ". " : ". A single subject unless stated otherwise. ") +
-    "Tattoo design, clean linework, high contrast, on a plain background, " +
-    "no skin, no body, no photograph - the artwork only.";
-  return said.join(". ") + tail;
+  // The ink frame is written in ONE place and read here and by the style wall. It existed in two
+  // copies for about ten minutes and a test caught it - which is the entire reason the test that
+  // counts copies exists, because the card format once existed in three and only one of them had
+  // learned the plural rule.
+  return said.join(". ") +
+    (multiKey ? "" : ". A single subject unless stated otherwise") + TAT_FRAME_INK;
 }
 
 // ══ THE LEAF DECLARES WHAT IS LEFT ════════════════════════════════════════════════════════
@@ -51046,7 +51076,15 @@ async function tatLeafProfile(env, leafLabel, model) {
         // A model deciding whether to write the clause is a model deciding whether the picture
         // obeys. So when the name resolved anything beyond the bare subject, the clause is ASKED
         // FOR ON ITS OWN and the answer is not optional.
-        const extra = Object.keys(resolved).filter((k) => k !== "subject");
+        // ══ A CLAUSE IS FOR A STATE, NEVER FOR A BREED ═══════════════════════════════════
+        // MEASURED: "golden retriever" resolved breed=golden retriever, which tripped the clause,
+        // and the clause came back as the KENNEL STANDARD - broad rounded head, long pendulous
+        // ears, deep chest, tail carried level and feathered. Flux read that paragraph and drew a
+        // GOAT. The clause exists for a name carrying something a model would otherwise ignore,
+        // like `withered`. A breed name is not that - the model already knows it perfectly, and
+        // describing it can only make the picture worse.
+        const extra = Object.keys(resolved).filter((k) =>
+          k !== "subject" && /state|condition|status|age|damage|variant/i.test(k));
         if (!say && extra.length) {
           try {
             const br2 = await callBrain({
@@ -51061,7 +51099,10 @@ async function tatLeafProfile(env, leafLabel, model) {
                 "SPELL OUT WHAT IS VISIBLY DIFFERENT. \"Withered Rose\" is not \"a withered " +
                 "rose\"; it is \"a dead rose, head hanging down, petals brown and collapsed and " +
                 "curling under, dry and shrivelled, not an open bloom\".\n\n" +
-                "Say nothing about style, colour, linework, placement or size.",
+                "Describe only the STATE. Never describe the thing itself - its breed, species, " +
+                "anatomy or proportions are already known and a paragraph about them makes the " +
+                "picture worse, not better. Say nothing about style, colour, linework, " +
+                "placement or size.",
               messages: [{ role: "user", content: String(leafLabel) }],
               max_tokens: 160 }, env);
             if (br2?.ok && br2.text) {
@@ -51152,16 +51193,6 @@ async function tatWall(env, leafLabel, step, ask, model, guide) {
   return { failed: true, why: lastErr, saw: lastText };
 }
 
-// The part wall is the only one that answers a question about ITSELF: each option says whether
-// it shows the whole thing, because that is what opens or closes the pose wall behind it. Asked
-// of the wall rather than guessed from the label, since "bust", "torso" and "full figure" are
-// not a list anyone can enumerate ahead of 46 categories.
-const TAT_PART_GUIDE =
-  'Return ONLY JSON: {"options":[{"id":"...","say":"...","body":true|false}]}\n\n' +
-  "TWO TO FOUR options for how much of this thing is shown. `body` is true when that option " +
-  "shows the whole thing and it could therefore be posed - a full body, a whole figure, the " +
-  "complete creature. `body` is false for a head, a face, a bust, a single bloom, a glyph.";
-
 // ══ DRAW THE WALL THEY ARE STANDING ON ════════════════════════════════════════════════════
 // Not the universe. This wall, on THIS PATH, now.
 //
@@ -51186,8 +51217,16 @@ async function tatShoot(env, shotKey, head, ctxPhrases, step, wall, shot, budget
   shot.imgs = shot.imgs || {};
   if (!need.length) return shot;
   const one = async (o) => {
-    const words = [head].concat(ctxPhrases, [o.say || o.id]).filter(Boolean).join(", ");
-    const full = words + cardFormat(step, o.say || o.id);
+    // A RECOGNITION WALL IS PHOTOGRAPHS, THE STYLE WALL IS DRAWINGS. Measured side by side on
+    // one sheet: photoreal poses were unmistakably golden retrievers, and the same seven poses in
+    // neo-traditional were whippets. Stylisation destroys breed, so a wall you identify a thing
+    // on cannot be stylised. On a recognition wall the locked style is deliberately left OUT of
+    // the prompt for exactly that reason.
+    const ink = step === "style";
+    const words = ink
+      ? [head].concat(ctxPhrases, [o.say || o.id]).filter(Boolean).join(", ")
+      : [head, o.say || o.id].filter(Boolean).join(", ");
+    const full = words + (ink ? TAT_FRAME_INK : TAT_FRAME_PHOTO);
     // A failure must carry what was sent and what came back. So must a SUCCESS that looks wrong:
     // "the pictures ignore the pose" is unanswerable without the string that drew them, and
     // reconstructing it from the label is guessing.
@@ -54014,55 +54053,42 @@ export class PublicEntry extends WorkerEntrypoint {
         // screen onward. Put style last - as this did until now - and every earlier wall is drawn
         // in a default nobody chose, which is a lying tile wearing a quieter disguise.
         //
-        // PART GATES POSE. A head has no pose. So the pose wall exists only when the part they
-        // picked shows the whole thing, and the part wall itself says which options those are.
-        // FACE GATES EXPRESSION. A rose has no expression; a cat does, and gets cat words rather
-        // than a dog's. The gate is structural, so no per-category exception list exists to drift.
+        // CROP GATES POSE. A head has no pose, so the pose wall exists only when they picked an
+        // option that shows the whole thing. FACE GATES EXPRESSION - a rose has no expression, a
+        // cat does and gets cat words rather than a dog's. Both gates are structural, so there is
+        // no per-category exception list for me to maintain and get wrong.
+        //
+        // THERE IS NO COLOUR WALL. Colour lives INSIDE the style - blackwork and black-and-grey
+        // are two different styles in every real guide, not one style with a switch. Asking for a
+        // style and then asking for a colour is asking the same question twice, and that second
+        // question was mine.
         const styleStr = String(inc.style || "").toLowerCase();
-        const styleSaysColour = /black and grey|blackwork/.test(styleStr);
-
-        let bodyChosen = false;
-        if (prof.part && has("part")) {
-          try {
-            const pw = await env.AURA_KV.get("wall:v1:" + tatSlug(leaf) + ":part", "json");
-            const o = (pw && Array.isArray(pw.opts))
-              ? pw.opts.find((x) => x.id === String(inc.part).trim().toLowerCase()) : null;
-            bodyChosen = !!(o && o.body);
-          } catch {}
-        }
+        const cropOpt = has("crop")
+          ? TAT_CROP.find((x) => x.id === String(inc.crop).trim().toLowerCase()) : null;
         const order = ["style"]
-          .concat(prof.part ? ["part"] : [])
-          .concat(bodyChosen ? ["pose"] : [])
-          .concat(prof.face ? ["expression"] : [])
-          .concat(styleSaysColour ? [] : ["colour"]);
+          .concat(prof.part ? ["crop"] : [])
+          .concat(cropOpt && cropOpt.body ? ["pose"] : [])
+          .concat(prof.face ? ["expression"] : []);
 
         // ── WHICH SCREEN ARE WE ON. The first slot in the order nobody has answered.
-        const ASKS = { part: "How much of it?", pose: "How do you want it posed?",
-                       expression: "What expression?", style: "What style?",
-                       colour: "Colour, or black and grey?" };
+        const ASKS = { crop: "Head or body?", pose: "How do you want it posed?",
+                       expression: "What expression?", style: "What should the ink look like?" };
         let stepId = order.find((k) => !has(k)) || null;
         let stepAsk = stepId ? ASKS[stepId] : null;
-        let fixed = stepId === "style" ? TAT_STYLES : (stepId === "colour" ? TAT_COLOURS : null);
+        let fixed = stepId === "style" ? TAT_STYLES.map((id) => ({ id, say: TAT_PHRASE.style[id] }))
+                  : (stepId === "crop" ? TAT_CROP : null);
 
         // ══ A SCREEN TO SHOW ══════════════════════════════════════════════════════════════
         if (stepId) {
           const wKey = "wall:v1:" + tatSlug(leaf) + ":" + tatSlug(stepId);
           let wall = null;
           if (fixed) {
-            // The fixed vocabulary needs no model - it is the same sixteen names for every
-            // subject in the tree. Only the PICTURES are per-subject, and they are minted the
-            // same way everything else is.
-            try { wall = await env.AURA_KV.get(wKey, "json"); } catch {}
-            if (!wall || !Array.isArray(wall.opts) || !wall.opts.length) {
-              wall = { step: stepId, ask: stepAsk,
-                opts: fixed.map((id) => {
-                  const say = (TAT_PHRASE[stepId] || {})[id];
-                  return say ? { id, say } : { id };
-                }) };
-            }
+            // The fixed vocabulary needs no model - style is the same twelve for every subject in
+            // the catalog, and how much of a thing you see is the same four. Only the PICTURES are
+            // per-subject, and they are minted exactly the way everything else is.
+            wall = { step: stepId, ask: stepAsk, opts: fixed.map((o) => ({ ...o })) };
           } else {
-            wall = await tatWall(env, leaf, stepId, stepAsk, walkModel,
-              stepId === "part" ? TAT_PART_GUIDE : null);
+            wall = await tatWall(env, leaf, stepId, stepAsk, walkModel, null);
             if (wall.failed) return { ok: false, error: "WALL_UNAVAILABLE", stage: stepId,
               say: "Give me a second and ask me again - I could not put those choices together.",
               why: wall.why, saw: wall.saw };

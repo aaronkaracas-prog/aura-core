@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v8.9.0-2026-08-28-state-rides-with-quantity";
+const BUILD = "aura-core-v9.0.0-2026-08-28-the-leaf-declares-what-is-left";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -50700,6 +50700,317 @@ async function findReference(query, env, opts = {}) {
   }
 }
 
+// ══════════════════════════════════════════════════════════════════════════════════════════
+// THE CATALOG WALK (2026-08-28)
+//
+// The tree gets somebody to a THING. This finishes it. Two rules decide everything here:
+//
+//   IDENTITY IS THE TREE. DEPICTION IS AFTER IT.
+//   A leaf declares what it already answered and what is genuinely left FOR ITSELF.
+//
+// So "Withered Rose" arrives with its state resolved and is never asked whether it is alive,
+// and a zodiac glyph is never asked to pose. That is not a guard against a bad list - there is
+// no path by which one subject can inherit another's steps, because nothing is looked up by
+// anything except this leaf's own key.
+//
+// Every option on every screen is a PICTURE. A word is what a tile shows while it is still
+// being drawn or when the drawing failed - a degraded state, never the product. A screen of
+// words is the shop interview this thing exists to replace.
+// ══════════════════════════════════════════════════════════════════════════════════════════
+
+// One slug, used by every key in this walk. Declared here because four helpers share it, and
+// a name declared in one scope and read from another passes `node --check` and throws live.
+function tatSlug(x) {
+  return String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 70);
+}
+
+// A stated quantity drops the singular default. Written once - three copies of this rule
+// disagreed with each other and one of them turned every bouquet into a single flower.
+const TAT_PLURAL = /\b(bouquet|cluster|bundle|two|three|four|several|many|multiple|pair|group|wreath|frame|scattered|vine|climbing|arrangement|with (another|owner|their))\b/i;
+
+// A step whose answer is a STATE rides in the opening clause beside a quantity. Measured: the
+// bouquet led and won, the wilt sat three sentences down and lost to the style's own default.
+const TAT_STATE = /(state|condition|expression|feel|mood|character|emotion)/i;
+
+// The fixed vocabulary - the two things asked of every subject, plus the corrections a model
+// gets wrong unaided: drawing a PHOTOGRAPH when asked for realism, and adding colour when asked
+// for black and grey. A style phrase describes LINE and FORM and never claims the colour field;
+// they argued with each other once and the model picked one at random.
+const TAT_PHRASE = {
+  style: {
+    "realism": "realism tattoo artwork - rendered as an ink drawing, not a photograph",
+    "hyperrealism": "hyperrealism tattoo artwork - extreme fine detail, still an ink drawing and not a photograph",
+    "black and grey realism": "black and grey realism tattoo artwork - ink shading only, no colour, not a photograph",
+    "traditional": "bold american traditional tattoo - thick black outlines, flat solid fills, no gradients",
+    "neo-traditional": "neo-traditional tattoo - bold outlines with depth and rich shading",
+    "japanese": "japanese irezumi tattoo - bold outline, flowing linework, heavy black shading",
+    "fine line": "fine line tattoo - thin single-weight linework, minimal shading",
+    "blackwork": "blackwork tattoo - solid black shapes and heavy contrast",
+    "dotwork": "dotwork tattoo - stippled shading built from dots, no solid line fill",
+    "watercolour": "watercolour tattoo - soft washes and paint bleed",
+    "minimalist": "minimalist tattoo - the simplest lines that still read",
+    "ornamental": "ornamental tattoo - decorative filigree and repeating pattern worked into the form",
+    "sketch": "sketch-style tattoo - loose pencil-like construction lines",
+    "etching": "etching-style tattoo - engraved cross-hatched linework",
+    "illustrative": "illustrative tattoo - clean drawn illustration",
+    "geometric": "geometric tattoo - built from clean geometric construction",
+    "celtic": "celtic tattoo - interlaced knotwork",
+  },
+  colour: {
+    "full colour": "in full colour",
+    "black and grey": "in black and grey ink only, with no colour anywhere",
+    "muted colour": "in muted, desaturated colour",
+  },
+};
+
+// The sixteen. Style is a LANGUAGE, not a property of the thing, so this list is the same for
+// every subject in the tree and is never generated per leaf.
+const TAT_STYLES = ["japanese", "realism", "hyperrealism", "black and grey realism", "fine line",
+  "traditional", "neo-traditional", "blackwork", "illustrative", "watercolour", "geometric",
+  "minimalist", "dotwork", "ornamental", "sketch", "etching"];
+const TAT_COLOURS = ["full colour", "black and grey", "muted colour"];
+
+// A choice becomes a sentence. Three places to look, most specific first:
+//   1. the phrase the wall generator wrote for THIS option - "a bouquet, several stems gathered
+//      together, not a single bloom". The one that fixes the failure that started all of this.
+//   2. the written table, for the fixed vocabulary.
+//   3. the plain choice, so an option nobody wrote a phrase for is still SPOKEN, never dropped.
+function tatSay(field, value, extra) {
+  const v = String(Array.isArray(value) ? value.join(" and ") : value || "").trim().toLowerCase();
+  if (!v) return null;
+  if (extra && extra[v]) return extra[v];
+  const t = (TAT_PHRASE[field] || {})[v];
+  if (t) return t;
+  if (field === "style") return v + " style tattoo";
+  return v;
+}
+
+// ══ ONE WRITER OF THE SENTENCE ════════════════════════════════════════════════════════════
+// `next` when it is done and `make` both come through here. Two writers of one prompt is the
+// disease this file has paid for more than any other bug: the card format existed in three
+// copies and only one of them learned the plural rule.
+//
+// THE FIRST NOUN SETS THE PICTURE. Measured four times: a prompt opening with "rose." has
+// already decided on one bloom, three-quarter view, a few leaves - and everything after it is
+// a modifier to a picture that is already chosen. So when a choice states a quantity IT LEADS
+// and the subject rides inside it, and a state joins that same opening clause rather than
+// arriving three sentences later where the style's own default beats it.
+function tatBuildAsk(subjectLabel, order, intent, extras) {
+  const said = [];
+  const skip = {};
+  let subjectSaid = false;
+  const sub = String(subjectLabel || "").trim();
+  const val = (k) => {
+    const v = intent[k];
+    if (v == null) return "";
+    return String(Array.isArray(v) ? v.join(" and ") : v).trim();
+  };
+  const multiKey = order.find((k) => val(k) && TAT_PLURAL.test(val(k)));
+  if (multiKey) {
+    const lead = tatSay(multiKey, intent[multiKey], extras && extras[multiKey]);
+    if (lead) {
+      const plural = sub && !/s$/i.test(sub) ? sub + "s" : sub;
+      // The phrase often already names the subject - "three roses" - and appending it again
+      // gives "three roses, of roses".
+      const namesIt = sub && new RegExp("\\b" + sub.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "s?\\b", "i").test(lead);
+      said.push(sub && !namesIt ? lead + ", of " + plural : lead);
+      skip[multiKey] = true; subjectSaid = true;
+      const stateKey = order.find((k) => k !== multiKey && val(k) && TAT_STATE.test(k));
+      if (stateKey) {
+        const st = tatSay(stateKey, intent[stateKey], extras && extras[stateKey]);
+        // The state phrase was written for ONE of the thing, so inside a group it is quoted
+        // whole and scoped by a lead-in rather than reworded into worse English.
+        if (st) { said[0] = said[0] + ". Every one of them is like this: " + st; skip[stateKey] = true; }
+      }
+    }
+  }
+  if (!subjectSaid && sub) said.push(sub.toLowerCase());
+  for (const k of order) {
+    if (skip[k]) continue;
+    if (!val(k)) continue;
+    const line = tatSay(k, intent[k], extras && extras[k]);
+    if (line) said.push(line);
+  }
+  // A plural category label once drew four dogs running through a field, which is why the
+  // singular default exists. A choice that states a quantity HAS stated otherwise, and
+  // repeating the default after it is an argument the default wins.
+  const tail = (multiKey ? ". " : ". A single subject unless stated otherwise. ") +
+    "Tattoo design, clean linework, high contrast, on a plain background, " +
+    "no skin, no body, no photograph - the artwork only.";
+  return said.join(". ") + tail;
+}
+
+// ══ THE LEAF DECLARES WHAT IS LEFT ════════════════════════════════════════════════════════
+// Asked once per leaf, cached on that leaf forever. Not authored by hand across 471 leaves -
+// that would be one person deciding what every subject is, which is the failure this replaces -
+// and not re-asked per walk, which would let a subject's shape drift between two people.
+//
+// A FAILURE IS NEVER A SKIP. An unanswered profile returns failed and the caller stops and says
+// so. Silently skipping is how a golden retriever once reached the style question with no
+// composition at all.
+async function tatLeafProfile(env, leafLabel, model) {
+  const key = "leaf:v1:" + tatSlug(leafLabel);
+  try {
+    const hit = await env.AURA_KV.get(key, "json");
+    if (hit && Array.isArray(hit.steps)) return hit;
+  } catch {}
+  let lastErr = null, lastText = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const br = await callBrain({
+        model,
+        system:
+          "Somebody is designing a tattoo. They have tapped through a visual catalog and arrived " +
+          "at a specific thing. The catalog has already established WHAT the tattoo is.\n\n" +
+          "Say what the catalog has already answered, and what visual decisions genuinely remain " +
+          "FOR THIS PARTICULAR THING.\n\n" +
+          'Return ONLY JSON: {"resolved":{"key":"value"},"steps":[{"id":"...","ask":"..."}],"needs_upload":false}\n\n' +
+          "`resolved` is what the name itself already states. \"Withered Rose\" resolves " +
+          'subject=rose and state=withered. "Golden Retriever" resolves subject=dog and ' +
+          'breed=golden retriever. "Japanese Dragon" resolves subject=dragon and ' +
+          "tradition=japanese.\n\n" +
+          "`steps` are the decisions still open, ZERO TO FOUR of them, in the order a person " +
+          "would naturally answer them. `id` is one or two lowercase words naming the decision " +
+          "(crop, pose, expression, arrangement, representation). `ask` is the question a person " +
+          "reads, in plain words fitted to THIS thing - \"How do you want to see it?\", " +
+          "\"What expression?\", \"Which Capricorn?\".\n\n" +
+          "RULES, AND THE THIRD ONE IS THE WHOLE POINT:\n" +
+          "1. NEVER ask something the name already answered. A withered rose is not asked " +
+          "whether it is alive. A dragon and phoenix is not asked what it is paired with.\n" +
+          "2. Only ask what genuinely changes the PICTURE of this thing. A dog has a pose and an " +
+          "expression. A zodiac glyph has neither. A compass has almost nothing.\n" +
+          "3. RETURNING ZERO STEPS IS A CORRECT AND COMMON ANSWER. Do not invent a decision to " +
+          "make this subject look structurally like other subjects. A pose on a symbol, an " +
+          "expression on an object, a crop on a glyph - those are the exact mistake.\n" +
+          "4. NOTHING about style, colour, linework, placement or size. Those are asked of every " +
+          "subject separately and repeating them here wastes somebody's time.\n" +
+          "5. `needs_upload` is true ONLY when the subject must come from the person's own " +
+          "material - their own pet, a relative's face, somebody's handwriting or signature. " +
+          "There is no catalog of somebody's mother's signature.",
+        messages: [{ role: "user", content: String(leafLabel) }],
+        max_tokens: 400 }, env);
+      lastText = br?.text ? String(br.text).slice(0, 400) : null;
+      if (!br?.ok) { lastErr = br?.error || br?.why || "callBrain returned not-ok"; continue; }
+      let o = null;
+      try { o = JSON.parse(br.text); } catch { try { o = repairJson(br.text); } catch {} }
+      if (o) o = unwrapSchema(o);
+      if (o && typeof o === "object") {
+        const steps = Array.isArray(o.steps) ? o.steps.map((x) => {
+          const id = String((x && (x.id || x.label)) || "").trim().toLowerCase().slice(0, 24);
+          if (!id) return null;
+          return { id, ask: String((x && x.ask) || "").trim().slice(0, 80) || "Which one?" };
+        }).filter(Boolean).filter((x, i, a) => a.findIndex((y) => y.id === x.id) === i).slice(0, 4) : [];
+        // A step that is really style or colour in disguise is dropped - those are asked of
+        // everything and a leaf offering its own version would ask twice.
+        const clean = steps.filter((x) => !/^(style|colour|color|detail|placement|size)$/.test(x.id));
+        const rec = { resolved: (o.resolved && typeof o.resolved === "object") ? o.resolved : {},
+                      steps: clean, needs_upload: o.needs_upload === true };
+        try { await env.AURA_KV.put(key, JSON.stringify(rec)); } catch {}
+        return rec;
+      }
+    } catch (e) { lastErr = String(e && e.message || e).slice(0, 200); }
+  }
+  // Twice, and nothing usable. NOT cached. The failure carries what was sent and what came
+  // back, because `why: null` cost a whole session once.
+  return { failed: true, why: lastErr, saw: lastText };
+}
+
+// ══ THE WALL FOR ONE STEP ═════════════════════════════════════════════════════════════════
+// Asked once per leaf per step, cached on that pair. Nothing here reads manufactured stock and
+// nothing falls through to another subject - which is why a zodiac sign cannot be handed a
+// dragon's pictures. There is no fallback key to inherit.
+//
+// Each option carries HOW TO DRAW IT. "bouquet" is a hint; "a bouquet, several stems gathered
+// together, not a single bloom" is an instruction, and the difference is a whole session.
+async function tatWall(env, leafLabel, step, ask, model) {
+  const key = "wall:v1:" + tatSlug(leafLabel) + ":" + tatSlug(step);
+  try {
+    const hit = await env.AURA_KV.get(key, "json");
+    if (hit && Array.isArray(hit.opts) && hit.opts.length) return hit;
+  } catch {}
+  let lastErr = null, lastText = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const br = await callBrain({
+        model,
+        system:
+          "Somebody is designing a tattoo of: " + String(leafLabel) + "\n" +
+          "They are choosing: " + String(step) + "\n" +
+          "The question on screen is: " + String(ask) + "\n\n" +
+          'Return ONLY JSON: {"options":[{"id":"...","say":"..."}]}\n\n' +
+          "SIX TO TWELVE options somebody would recognise instantly and tap. `id` is one to " +
+          "four lowercase words - the label they read. VISUALLY DISTINCT: two that would draw " +
+          "the same picture are one option. Return six if this honestly has six; filler is " +
+          "worse than a short list because somebody reads every one.\n\n" +
+          "`say` is HOW TO DRAW IT - one clause an image model cannot skip past. " +
+          '"bouquet" -> "a bouquet, several stems gathered together, not a single bloom". ' +
+          '"head and chest" -> "head and upper chest only, cut off below the shoulders". ' +
+          '"wilting" -> "petals drooping and curling, visibly dying".\n\n' +
+          "Never restate the subject in `say`, and say nothing about style, colour, linework, " +
+          "placement or size - those are asked separately.",
+        messages: [{ role: "user", content: String(leafLabel) + " / " + String(step) }],
+        max_tokens: 500 }, env);
+      lastText = br?.text ? String(br.text).slice(0, 400) : null;
+      if (!br?.ok) { lastErr = br?.error || br?.why || "callBrain returned not-ok"; continue; }
+      let o = null;
+      try { o = JSON.parse(br.text); } catch { try { o = repairJson(br.text); } catch {} }
+      if (o) o = unwrapSchema(o);
+      const list = o && Array.isArray(o.options) ? o.options : null;
+      if (list) {
+        const opts = list.map((x) => {
+          if (typeof x === "string") return { id: x.trim().toLowerCase().slice(0, 40) };
+          if (x && typeof x === "object") {
+            const id = String(x.id || x.label || "").trim().toLowerCase().slice(0, 40);
+            if (!id) return null;
+            return x.say ? { id, say: String(x.say).slice(0, 200) } : { id };
+          }
+          return null;
+        }).filter(Boolean).filter((x, i, a) => a.findIndex((y) => y.id === x.id) === i).slice(0, 12);
+        if (opts.length >= 2) {
+          const rec = { step, ask, opts };
+          try { await env.AURA_KV.put(key, JSON.stringify(rec)); } catch {}
+          return rec;
+        }
+      }
+    } catch (e) { lastErr = String(e && e.message || e).slice(0, 200); }
+  }
+  return { failed: true, why: lastErr, saw: lastText };
+}
+
+// ══ DRAW THE WALL THEY ARE STANDING ON ════════════════════════════════════════════════════
+// Not the universe. This wall, now, for this leaf. Every picture is content-addressed on its
+// own prompt, so the second person down the same path pays nothing - and the ids are written
+// back onto the wall record, so they do not even reach the image engine to find that out.
+//
+// NO REFERENCE IMAGE, DELIBERATELY. A reference carries pose, language AND SUBJECT: a dragon
+// house image put dragon bodies on fifteen golden retrievers. These walls exist to vary one
+// thing, and the words carry it.
+async function tatDraw(env, subjectLabel, step, wall, styleWord, host) {
+  const key = "wall:v1:" + tatSlug(subjectLabel) + ":" + tatSlug(step);
+  const opts = wall.opts;
+  const need = opts.filter((o) => !o.img);
+  if (!need.length) return wall;
+  const one = async (o) => {
+    const words = subjectLabel + ", " + (o.say || o.id) +
+      (styleWord ? ", " + styleWord + " style" : "");
+    try {
+      const gi = await auraGenerateImage(words + cardFormat(step, o.say || o.id), env,
+        { source: "tattoo_option", host });
+      if (gi?.ok && gi.id) { o.img = gi.id; o.cached = !!gi.cached; return; }
+      // A success with no pixels is not a success, and the reason rides with the tile so a
+      // hole in the wall explains itself instead of being something to reproduce.
+      o.why = String(gi?.error || "no image returned").slice(0, 140);
+    } catch (e) { o.why = String(e && e.message || e).slice(0, 140); }
+  };
+  // Four at a time. Cloudflare allows six simultaneous connections and only while waiting for
+  // response headers, so batches are the fast shape and a wall is not one long queue.
+  for (let i = 0; i < need.length; i += 4) {
+    await Promise.all(need.slice(i, i + 4).map(one));
+  }
+  try { await env.AURA_KV.put(key, JSON.stringify(wall)); } catch {}
+  return wall;
+}
+
 async function ladderOptions(env, field, subject, ladderModel) {
   const slug = String(subject).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
   const ck = "ladder2:" + field + ":" + slug;
@@ -53304,9 +53615,14 @@ export class PublicEntry extends WorkerEntrypoint {
         // born under their PTA with its own lineage. `refs` already flows through SHOW_IT into the
         // image engine; this only gives the consumer door a way to pass one.
         const ref = String(b.ref || "").trim();
+        // ══ ONE WRITER OF THE SENTENCE (2026-08-28) ══════════════════════════════════════
+        // This had its own tail: no phrase table, no plural rule, no choice check. A walk that
+        // finished here instead of through `next` was back on the comma list that produced one
+        // rose four times. It now comes through `tatBuildAsk` like everything else - nothing is
+        // locked on this path, so there are no phrases to look up, but the PLURAL rule and the
+        // flat-artwork tail are now written in one place instead of two.
         const r = await processCommand("SHOW_IT " + JSON.stringify({
-          subject: subject + ". Tattoo design, clean linework, high contrast, on a plain " +
-                   "background, no skin, no body, no photograph - the artwork only." +
+          subject: tatBuildAsk(subject, [], {}, null) +
                    (ref ? " Take the STYLE and FEELING of the reference image - the linework, the " +
                           "shading, the way it sits - but draw a NEW original piece rather than " +
                           "copying it." : ""),
@@ -53429,6 +53745,21 @@ export class PublicEntry extends WorkerEntrypoint {
       // IDENTICAL string to the first, or every one of them pays. That is why the fields are
       // serialised in a fixed order, lowercased and trimmed, and why nothing conversational -
       // no name, no session, no timestamp - is ever allowed into it.
+      // ══ NEXT — THE CATALOG WALK ═════════════════════════════════════════════════════════
+      //
+      // WHAT THIS REPLACED AND WHY. This used to hold a hardcoded six-entry list - subject,
+      // style, composition, character, colour, detail - asked of every subject in the tree.
+      // That list is an ANIMAL stack. Expression is a dog question. Pose is a dog question. A
+      // holiday has neither and a zodiac sign has neither, and forcing all six onto everything
+      // is exactly what produced a zodiac sign being offered "leaping" and "head only".
+      //
+      // Now the LEAF says what is left. "Withered Rose" arrives with its state already answered
+      // and is never asked about it again. A glyph arrives with nothing left and goes straight
+      // to style. A golden retriever arrives with a crop, a pose and an expression open.
+      //
+      // AND EVERY OPTION IS A PICTURE. A word on a tile is what shows while it is still being
+      // drawn or when the drawing failed - a degraded state, never the product. A screen of
+      // words is the shop-counter interview this whole thing exists to replace.
       if (action === "next") {
         const inc = (b.intent && typeof b.intent === "object") ? b.intent : {};
         const has = (k) => {
@@ -53436,490 +53767,151 @@ export class PublicEntry extends WorkerEntrypoint {
           if (Array.isArray(v)) return v.length > 0;
           return v != null && String(v).trim() !== "";
         };
-        // ══ THE LADDER (rebuilt 2026-08-26) ═══════════════════════════════════════════════
-        // WHAT CHANGED AND WHY. This asked subject -> style -> placement -> size -> ... and the
-        // prototype showed it plainly: somebody tapped "golden retriever" and was immediately
-        // asked WHAT STYLE, before anything knew what the picture was OF. A head portrait and a
-        // full-body running dog are different tattoos, and style is a meaningless question until
-        // you know which one is being styled.
-        //
-        //   FORM      - what version of this thing are you picturing? head / full body / coiled
-        //   CHARACTER - what does it feel like? happy / fierce / soulful / delicate
-        //   STYLE     - LAST, because it is how the resolved thing gets rendered
-        //
-        // PLACEMENT AND SIZE ARE GONE FROM HERE. They are not design decisions, they are
-        // on-body decisions, and they belong after the artwork exists - which is what Aaron said
-        // about placement hours before this document arrived. A ladder that asks where it goes
-        // before it knows what it is has the order backwards.
-        //
-        // FORM AND CHARACTER ARE CONTEXTUAL. A dog's forms are not a dragon's forms and neither
-        // are a rose's. Their options are generated FROM THE RESOLVED SUBJECT and cached, rather
-        // than hand-written across 44 categories - see `_ladderOpts` below. Everything else on
-        // this list is universal: fierce means fierce whatever it is.
-        const STAGES = [
-          { field: "subject",   ask: "What is it going to be?",     opts: null },
-          // The `ask` here is only a fallback. The REAL question comes back with the options,
-          // fitted to the subject - "What expression?" for a dog, "What kind of dragon?" for a
-          // dragon, "What arrangement?" for roses. "What should it feel like" is exactly the
-          // abstract question the buttons exist to replace, and it must never reach a screen.
-          // ══ STYLE MOVED AHEAD OF COMPOSITION (2026-08-26) ═════════════════════════════════
-          // Aaron walked it and said it plainly: "once I chose the style it worked perfect."
-          // Style is the big visual fork - hyperrealism vs fine line vs traditional changes the
-          // entire language of the picture, while happy vs soulful is an adjustment INSIDE a
-          // language already chosen. Asking the small question first is why every screen before
-          // style rendered in no particular language and none of them looked like a tattoo.
-          // It also means every row AFTER style can carry the chosen style as a reference, so the
-          // composition cards are already in the language they picked.
-          { field: "style",     ask: "What style?",
-            opts: ["japanese", "realism", "hyperrealism", "black and grey realism", "fine line",
-                   "traditional", "neo-traditional", "blackwork", "illustrative", "watercolour",
-                   "geometric", "minimalist", "dotwork", "ornamental", "sketch", "etching"] },
-          { field: "composition", ask: "How do you want to see it?", opts: "contextual" },
-          { field: "character",   ask: "What kind?",                 opts: "contextual" },
-          { field: "colour",    ask: "Colour, or black and grey?",
-            opts: ["full colour", "black and grey", "muted colour"] },
-          { field: "detail",    ask: "How much detail?",
-            opts: ["bold and simple", "balanced", "intricate", "very fine"] }
-        ];
-        // `let`, not `const`: a contextual stage whose options come back empty is SKIPPED and
-        // this is reassigned to the next one. Assigning to a const throws TypeError at runtime
-        // and `node --check` passes it cleanly - the same shape that has bitten this file seven
-        // times.
-        let stage = STAGES.find(s => !has(s.field)) || null;
-
-        // ── CANONICAL. Everything that decides the pixels, in a fixed order, from a fixed list.
-        // Unknown keys are ignored rather than appended, because a field arriving in a different
-        // order or a stray key would produce a different string for the same tattoo and quietly
-        // turn a free cache hit into a paid generation.
-        // ══ PLACEMENT AND SIZE NEVER TOUCH THE DRAWING ═══════════════════════════════════════
-        // MEASURED: somebody typed "add a mouse next to the cat", she asked "where should the cat
-        // and mouse sit on your body?", and every render after that came back as A PHOTOGRAPH OF A
-        // FOREARM instead of flat artwork. Two cards in a real library, both on skin.
-        // Placement stopped being a ladder stage days ago, but three leftovers kept it alive: talk
-        // fished for it, this list carried it, and `describe` turned it into "on the forearm".
-        // The FIELD stays - a shop's brief genuinely wants "inner forearm", and the artist needs
-        // it. It just has no business in the picture. Where it goes on a body is answered AFTER the
-        // design exists, by the on-body viewer, which is what that viewer is for.
-        const ORDER = ["subject", "style", "composition", "character", "colour", "detail", "elements"];
-        const say = (k, v) => {
-          const t = Array.isArray(v) ? v.join(" and ") : String(v);
-          const s = t.trim().toLowerCase();
-          if (!s) return null;
-          if (k === "subject")     return s;
-          // FORM comes back as a phrase from the contextual list - "head and chest", "coiled
-          // around itself" - so it is spoken as-is rather than wrapped in a preposition that
-          // would only fit some of them.
-          if (k === "composition") return s;
-          if (k === "character")   return s;
-          if (k === "style")       return s + " style";
-          if (k === "colour")      return s;
-          if (k === "detail")      return s + " linework";
-          if (k === "elements")    return "with " + s;
-          return s;
-        };
-        const describe = (over) => {
-          const merged = { ...inc, ...(over || {}) };
-          const parts = [];
-          for (const k of ORDER) {
-            const v = merged[k];
-            if (v == null || (Array.isArray(v) && !v.length) || String(v).trim() === "") continue;
-            const line = say(k, v);
-            if (line) parts.push(line);
-          }
-          return parts.join(", ");
-        };
-        // The same tail `make` uses. Not a second definition - if these two ever disagree, the
-        // tiles stop looking like the thing they are choosing.
-        // A SINGLE SUBJECT IS THE DEFAULT. "Dogs" is how somebody navigated here, never what they
-        // are getting - and the composition list is where plurality lives when it is a real
-        // choice ("three roses", "with another dog"). Without this the model reads a bare subject
-        // as a scene and draws several.
-        // ══ THE TAIL MUST NOT ARGUE WITH THE CHOICE ══════════════════════════════════════════
-        // MEASURED three times on the same chips: "a bouquet, several stems gathered together, not
-        // a single bloom" reached the model and one rose came back. The phrase was right and the
-        // prompt still lost, because the TAIL said "A single subject unless stated otherwise" AFTER
-        // it - so the last word on quantity was ONE.
-        // That line exists for a real reason: a plural category label ("Dogs") once produced four
-        // dogs running through a field. But a composition that states a quantity HAS stated
-        // otherwise, and repeating the default after it is an argument the default wins.
-        // So the singular default is dropped the moment a choice implies more than one.
-        const PLURAL = /\b(bouquet|cluster|two|three|four|several|many|multiple|pair|group|wreath|frame|scattered|vine|climbing|arrangement|with (another|owner|their))\b/i;
-        const multi = ["composition", "character", "elements"].some((k) => has(k) && PLURAL.test(String(inc[k])));
-        const TAIL = (multi ? ". " : ". A single subject unless stated otherwise. ") +
-                     "Tattoo design, clean linework, high contrast, on a plain background, " +
-                     "no skin, no body, no photograph - the artwork only.";
+        // ══ ONE MODEL PIN, DECLARED WHERE EVERY HELPER CAN SEE IT ═════════════════════════
+        // This was declared inside a helper once and the moment a second one needed it the
+        // reference threw ReferenceError at runtime while `node --check` passed the file clean.
+        // That is the ninth appearance of that shape in this codebase.
+        const walkPin = (await env.AURA_KV.get("config:talk:model").catch(() => null)) || null;
+        const walkModel = walkPin && walkPin.trim() ? walkPin.trim() : undefined;
 
         if (!has("subject")) return { ok: true, done: false, stage: "subject",
-          ask: STAGES[0].ask, options: [], needs_words: true,
+          ask: "What is it going to be?", options: [], needs_words: true,
           say: "Tell me what you want it to be and I will show you." };
 
-        // ── CONTEXTUAL OPTIONS. A dog's forms are not a dragon's forms.
-        // Hand-writing these across 44 categories, their subcategories and their breeds is
-        // thousands of entries, every one a guess about a subject nobody here knows - and it is
-        // wrong the first time somebody picks Belgian Malinois. So they are asked for ONCE per
-        // subject, cached under that subject forever, and reused by everybody after.
-        //
-        // WHAT IS NOT DONE THIS WAY: the subject tree itself. Dog breeds are stable knowledge and
-        // stay canonical in the page - we do not want a model reinventing what a dog is every
-        // time. Only "given this subject, what visual decisions remain" is generated, because
-        // that is the question that genuinely varies.
-        //
-        // 6-12, NOT ALWAYS 10. A subject with six honest forms should return six. Filler options
-        // generated to hit a number are worse than no option - somebody has to read every one.
-        // ── CONTEXTUAL OPTIONS. A dog's compositions are not a rose's compositions.
-        // Hand-writing these across 44 categories, their kinds and their breeds is thousands of
-        // entries, every one a guess about a subject nobody here knows - and it is wrong the first
-        // time somebody picks Belgian Malinois. So they are asked for ONCE per subject, cached
-        // under that subject forever, and reused by everybody after.
-        //
-        // WHAT IS NOT DONE THIS WAY: the tree itself. Categories, kinds and breeds are stable
-        // knowledge and stay written down - we do not want a model reinventing what a dog is on
-        // every visit. Only "given THIS subject, what visual decisions remain" is generated,
-        // because that is the question that genuinely varies.
-        //
-        // ══ NOT APPLICABLE IS AN ANSWER. EMPTY IS A BUG. ═══════════════════════════════════
-        // These are two different things and the old code treated them as one - it skipped a
-        // stage whenever the list came back empty, which is how a golden retriever reached the
-        // style question with no composition at all and four dogs ran through a field.
-        //   - "n/a"  : she looked at the subject and decided this dimension does not change the
-        //              design. Lettering has no expression. That is a DECISION, it is cached, and
-        //              the stage is legitimately skipped.
-        //   - empty  : the call failed, or came back as junk. That is a FAILURE. It is never
-        //              cached, and it is never quietly skipped.
-        // COUNT LIVES INSIDE COMPOSITION. A rose's compositions ARE single bloom, three roses, a
-        // dozen, a vine - quantity genuinely changes the picture there. A dog's are head portrait,
-        // full body, with another dog. So nobody is ever asked "how many?" as an abstract question,
-        // and ONE is the default everywhere. A plural navigation label - "Dogs" - is how somebody
-        // got here, never what they are getting.
-        // ══ ONE MODEL PIN FOR EVERY LADDER CALL, DECLARED WHERE THEY CAN ALL SEE IT ═══════════
-        // This was declared INSIDE `ladderOpts`, and the moment a second helper needed it the
-        // reference threw ReferenceError at runtime while `node --check` passed the file clean.
-        // That is the ninth appearance of this exact shape in this codebase - a name declared in
-        // one scope and read from another - and the eighth cost a walk of the live site to find.
-        // Anything two helpers share is declared above both of them.
-        const ladderPin = (await env.AURA_KV.get("config:talk:model").catch(() => null)) || null;
-        const ladderModel = ladderPin && ladderPin.trim() ? ladderPin.trim() : undefined;
+        const leaf = String(inc.subject).trim().slice(0, 80);
+        const prof = await tatLeafProfile(env, leaf, walkModel);
+        // A FAILURE IS NEVER A SKIP. A silent skip is how a subject once reached the style
+        // question with nothing chosen about what the picture was of.
+        if (prof.failed) return { ok: false, error: "PROFILE_UNAVAILABLE", stage: "subject",
+          say: "Give me a second and ask me again - I could not work out what to ask you about that.",
+          why: prof.why, saw: prof.saw };
 
-        // ══ ONE GENERATOR, TWO CALLERS ═══════════════════════════════════════════════════════
-        // This used to be defined here, inside the design RPC, which meant the FACTORY could not
-        // reach it - and so the builder has never manufactured a composition or character row.
-        // Not once, across 471 leaves. Every one of those rows has been generated live, on the
-        // first person to walk that path, which is the thirty-second wait the factory exists to
-        // remove.
-        // Hoisted to module scope and called from both. A second copy for the builder would have
-        // been the same mistake this file has paid for more than any other.
-        const ladderOpts = (field, subject) => ladderOptions(env, field, subject, ladderModel);
-
-        // ── A MANUFACTURED CARD BEATS A WORD, AND COSTS NOTHING TO FIND OUT.
-        // The page asks for a stage; if the factory has already made that row, the pictures come
-        // back attached to the words on the FIRST paint - no generation, one KV read. If it has
-        // not, the words still work and `tiles` fills pictures behind them as before. The page
-        // never holds a URL and never knows which happened.
-        // Rows are looked up narrowest-first: this subject in this style, then this subject, then
-        // the bare variable. So a hand-blessed golden-retriever composition row wins over the
-        // generic one, and the generic one still catches everything else.
-        // ══ A MANUFACTURED ROW IS THE ANSWER, NOT A DECORATION ON ONE ═════════════════════
-        //
-        // The first version of this asked the model for the options and THEN tried to hang
-        // manufactured pictures on whatever came back. That cannot work and would have looked
-        // like the factory failing: the row on disk has ids somebody typed - "wrapped around",
-        // "s-curve", "in motion" - and a model asked the same question freshly returns "wrapping
-        // around the body", "dynamic", "curved". Nothing matches, no picture appears, and a model
-        // call was spent to produce a worse list than the one already sitting in KV.
-        //
-        // So when a row exists it IS the stage: its items are the options, its label is the
-        // question, and no model runs at all. That is the entire point of prebuilding - the
-        // normal road should cost one KV read.
-        //
-        // NARROWEST FIRST. `composition:golden-retriever:hyperrealism` beats
-        // `composition:golden-retriever` beats `composition`. So a row hand-blessed for one
-        // subject in one style wins where it exists, and the general row still catches the rest.
-        const cardRow = async (field, intent) => {
-          const slug = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-          const keys = [];
-          if (intent.subject && intent.style) keys.push(field + ":" + slug(intent.subject) + ":" + slug(intent.style));
-          if (intent.subject) keys.push(field + ":" + slug(intent.subject));
-          keys.push(field);
-          for (const k of keys) {
-            const row = await env.AURA_KV.get("card:row:" + k, "json").catch(() => null);
-            if (row && Array.isArray(row.items) && row.items.length) return row;
-          }
-          return null;
-        };
-        // A row's items become the option list. A card with no picture is still a tappable word -
-        // a half-made row is better than no row, and never a broken tile.
-        const fromRow = (row) => row.items.map((it) => it.img
-          ? { value: it.id, label: it.label || it.id, image: "https://auras.guide/image/" + it.img, card: true }
-          : { value: it.id, label: it.label || it.id });
-
-        // ══ APPLIES — DOES THIS DECISION STILL CHANGE THE TATTOO? ═════════════════════════════
-        //
-        // Every stage now answers this BEFORE it asks its question, and the answer is judged
-        // against everything already locked - not against the subject alone. "Does colour apply?"
-        // depends on the style as much as the subject: black-and-grey realism has already said it.
-        // "Does detail apply?" depends on the style: minimalist and fine line define their own.
-        //
-        // WHY THIS AND NOT A CURATED LIST. Every bad card so far was patched one at a time -
-        // geometric dropped, wrapped-around dropped, japanese-on-a-retriever noticed only after
-        // fifteen were drawn. That never ends, because the next subject brings a new set. Asking
-        // up front is one mechanism instead of forty shortlists, and the answer is cached, so it
-        // costs one model call per context ever.
-        //
-        // THE TEST IS "MEANINGFUL", NOT "CONVENTIONAL". Somebody absolutely could want a golden
-        // retriever in irezumi language, and a system that quietly removes it has stopped
-        // removing nonsense and started narrowing what people are allowed to want. An option only
-        // goes when it would produce a picture indistinguishable from another option, or nothing
-        // a tattooist would recognise as a treatment at all.
-        //
-        // FOUR OUTCOMES, and only two of them show a screen:
-        //   several options -> ask, with the ones that survived
-        //   exactly one     -> resolve it silently. A question with one answer is not a question.
-        //   none / n/a      -> skip the stage entirely
-        //   failure         -> stop and say so. Never skip on a failure; a silent skip is how a
-        //                      golden retriever reached the style question with no composition.
-        const applies = async (field, intent, offered) => {
-          const locked = ["subject", "style", "composition", "character", "colour", "detail"]
-            .filter((k) => intent[k]).map((k) => k + "=" + String(intent[k]).toLowerCase());
-          const ck = "applies:" + field + ":" + locked.join("|").replace(/[^a-z0-9=|.-]+/g, "-").slice(0, 200);
-          try {
-            const hit = await env.AURA_KV.get(ck, "json");
-            if (hit && (hit.na === true || Array.isArray(hit.keep))) return hit;
-          } catch {}
-          try {
-            const br = await callBrain({
-              model: ladderModel,
-              system:
-                "Somebody is designing a tattoo. Decide whether one more decision is worth asking.\n\n" +
-                "ALREADY SETTLED:\n" + (locked.length ? locked.join("\n") : "(nothing yet)") + "\n\n" +
-                "THE DECISION: " + field + "\n" +
-                "THE OPTIONS ON OFFER:\n" + offered.join("\n") + "\n\n" +
-                'Return ONLY JSON: {"keep":["...","..."]} or {"na":true}\n\n' +
-                "KEEP an option if it would produce a VISUALLY MEANINGFUL tattoo treatment of this " +
-                "subject - something a tattooist could actually execute and a person could tell " +
-                "apart from the others.\n\n" +
-                "DROP an option ONLY if it would look the same as another option here, or if it " +
-                "would produce nothing a tattooist would recognise as a treatment.\n\n" +
-                "DO NOT DROP THINGS FOR BEING UNCONVENTIONAL. A golden retriever in japanese " +
-                "irezumi language is unusual and completely valid - somebody may want exactly " +
-                "that. You are removing nonsense, not narrowing what people are allowed to want. " +
-                "When unsure, KEEP.\n\n" +
-                'Return {"na":true} only when the WHOLE decision is already answered by what is ' +
-                "settled - black and grey realism has already answered colour; minimalist has " +
-                "already answered detail; a word in lettering has no expression.\n\n" +
-                "Copy the options back EXACTLY as written. No new options, no rewording.",
-              messages: [{ role: "user", content: JSON.stringify({ settled: locked, deciding: field }) }],
-              max_tokens: 400 }, env);
-            let o = null;
-            if (br?.ok && br.text) {
-              try { o = JSON.parse(br.text); } catch { try { o = repairJson(br.text); } catch {} }
-              if (o) o = unwrapSchema(o);
-            }
-            if (o && o.na === true) {
-              const rec = { na: true };
-              try { await env.AURA_KV.put(ck, JSON.stringify(rec)); } catch {}
-              return rec;
-            }
-            if (o && Array.isArray(o.keep)) {
-              // ONLY WHAT WAS OFFERED. A model that renames or invents an option would put a card
-              // on screen with no picture behind it and no id the registry knows.
-              const low = offered.map((x) => String(x).toLowerCase());
-              const keep = o.keep.map((x) => String(x || "").toLowerCase().trim())
-                .filter((x) => low.includes(x)).filter((x, i, a) => a.indexOf(x) === i);
-              if (keep.length) {
-                const rec = { keep };
-                try { await env.AURA_KV.put(ck, JSON.stringify(rec)); } catch {}
-                return rec;
-              }
-            }
-          } catch {}
-          // Nothing usable. NOT cached, and the caller keeps everything - a broken applicability
-          // check must never be the thing that removes a person's options.
-          return { keep: offered.map((x) => String(x).toLowerCase()), unchecked: true };
-        };
-
-        // ── WALK THE LADDER UNTIL A STAGE HAS SOMETHING TO SHOW.
-        // Three outcomes per contextual stage and they are NOT the same thing:
-        //   options -> ask it
-        //   n/a     -> she decided this dimension does not change this design. Skip and move on.
-        //             Cached, so it is decided once for lettering and never asked again.
-        //   failure -> STOP. Say so. Never skip, never render an empty screen, never fall back to
-        //             "tell me what it should feel like" - that is the friction the buttons exist
-        //             to remove, and a silent skip is what let four dogs run through a field with
-        //             no composition ever chosen.
-        let choices = null, label = null, built = null;
-        // Resolved on the way past, when a stage turned out to have exactly one meaningful answer.
-        // The person never sees those - a question with one answer is not a question - but the
-        // reply reports them, because a field that filled itself must not look like a bug later.
-        const settled = {};
-        const nextStage = () => STAGES.slice(STAGES.indexOf(stage) + 1).find(x => !has(x.field)) || null;
-        // `applies` lowercases what it returns, but a consumer that DEPENDS on a producer's habit
-        // is one refactor from silently dropping every option whose case did not match. Normalise
-        // here too - a card vanishing because of a capital letter is indistinguishable from a card
-        // being correctly removed, which is the worst kind of bug this system can have.
-        const kept = (ok2, offered, idOf) => {
-          const keep = new Set((ok2.keep || []).map((x) => String(x).toLowerCase().trim()));
-          return offered.filter((o) => keep.has(String(idOf ? idOf(o) : o).toLowerCase().trim()));
-        };
-        while (stage) {
-          // ══ A TAP MUST NOT CALL A MODEL ═══════════════════════════════════════════════════
-          // This ran `applies` on every stage of every walk. Cached per context, so the second
-          // person down an identical path was free - but somebody exploring hits combinations
-          // nobody has hit, so EVERY TAP was a model call. Aaron, correctly: "I'm literally just
-          // clicking a piece of software - why is AI involved at all?"
-          // It should not be. Whether colour still means anything given black-and-grey realism is
-          // a property OF THE CATALOGUE, not of the person tapping. A MANUFACTURED ROW IS ALREADY
-          // THAT ANSWER: the factory asked `ladderOptions` what applies to this subject before it
-          // drew a single card, and a row that exists is a row that applied. Re-asking at walk time
-          // is asking a settled question and charging somebody to hear it again.
-          const made = await cardRow(stage.field, inc);
-          if (made) {
-            built = fromRow(made); label = made.label || stage.ask; break;
-          }
-          // A WRITTEN vocabulary with no manufactured row behind it. This is the only place the
-          // question is genuinely open at walk time - nothing has been decided about this subject
-          // yet - so the check earns its call here and the answer is cached for everyone after.
-          const offered = stage.opts !== "contextual" ? stage.opts : null;
-          if (offered) {
-            const ok2 = await applies(stage.field, inc, offered);
-            if (ok2.na) { stage = nextStage(); continue; }
-            const live = kept(ok2, offered);
-            if (!live.length) { stage = nextStage(); continue; }
-            if (live.length === 1) { inc[stage.field] = live[0]; settled[stage.field] = live[0];
-                                     stage = nextStage(); continue; }
-            choices = live; label = stage.ask; break;
-          }
-          const got = await ladderOpts(stage.field, inc.subject);
-          if (!got || got.failed) return { ok: false, error: "OPTIONS_UNAVAILABLE", stage: stage.field,
-            say: "Give me a second and ask me again - I could not put those choices together.",
-            why: got && got.why, saw: got && got.saw, model: got && got.model };
-          if (got.na) { stage = nextStage(); continue; }
-          // `ladderOptions` already asked whether this dimension applies to this subject, and
-          // cached the answer. A second check would be the same question with more words.
-          choices = got.opts; label = got.label; break;
+        // ── THE PERSONAL DOOR. There is no catalog of somebody's mother's signature, so the
+        // subject has to come from them. It rejoins style and creation completely unchanged.
+        if (prof.needs_upload && !has("photo") && !String(b.photo || "").trim()) {
+          return { ok: true, done: false, stage: "upload", needs_upload: true, options: [],
+            ask: "Show me the one you mean.",
+            say: "This one has to come from you - upload a photo and I will work from that." };
         }
 
-        // ══ EVERY APPLICABLE STAGE ANSWERED — NOW SAY IT PROPERLY ═════════════════════════
-        // `describe()` joins the choices with commas, which is right for the CAPTION a person
-        // reads and wrong for the instruction a model obeys. "bouquet" inside a comma list is a
-        // word to skip past; "a bouquet - several stems gathered, not a single bloom" is not.
-        // Each locked field becomes its own sentence from the written table. Nothing decides
-        // anything, so nothing can be lost - and the same choices always produce the same string,
-        // which is what makes a repeat free and two identical walks identical.
-        if (!stage) {
-          const subject = describe(null).slice(0, 600);   // what the person reads
-          // The phrases the generator wrote for THIS subject, fetched from the same cache the
-          // options came from. One KV read per contextual field, and only at the moment of
-          // drawing - the walk itself never touches them.
-          const phraseFor = async (k) => {
-            if (k !== "composition" && k !== "character") return null;
-            const slug = String(inc.subject || "").toLowerCase()
-              .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
-            const rec = await env.AURA_KV.get("ladder2:" + k + ":" + slug, "json").catch(() => null);
-            return rec && rec.phrases ? rec.phrases : null;
-          };
-          const compExtra = await phraseFor("composition");
-          const charExtra = await phraseFor("character");
+        // ── THE ORDER. What the leaf declared, then the two things asked of everything.
+        // Style is a LANGUAGE and applies to every subject; colour applies unless the style has
+        // already answered it, which is a fact about the words and needs no model to decide.
+        const styleStr = String(inc.style || "").toLowerCase();
+        const styleSaysColour = /black and grey|blackwork/.test(styleStr);
+        const leafOrder = prof.steps.map((x) => x.id);
+        const order = leafOrder.concat(styleSaysColour ? ["style"] : ["style", "colour"]);
 
-          // ══ THE FIRST NOUN SETS THE PICTURE ══════════════════════════════════════════════
-          // MEASURED four times: "a bouquet, several stems gathered together, not a single bloom"
-          // reached the model and one rose came back every time. Dropping the contradicting tail
-          // helped and was not enough, because the prompt still OPENED with "rose." - and a model
-          // reading that has already decided on one bloom, three-quarter view, a few leaves.
-          // Everything after it is a modifier to a picture that is already chosen.
-          // So when the composition states a quantity, IT LEADS and the subject rides inside it.
-          // The exception goes first; the default never gets to speak.
-          const said = [];
-          let skip = null;
-          if (multi && has("composition")) {
-            const lead = asked("composition", inc.composition, compExtra);
-            if (lead) {
-              const sub = String(inc.subject || "").trim();
-              // "a bouquet, several stems gathered together, not a single bloom, of roses"
-              const plural = sub && !/s$/i.test(sub) ? sub + "s" : sub;
-              // The phrase often already names the subject - "three roses", "a winding vine with
-              // roses" - and appending it again gives "three roses, of roses". Only added when the
-              // opener does not already say it.
-              const namesIt = sub && new RegExp("\\b" + sub.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "s?\\b", "i").test(lead);
-              said.push(sub && !namesIt ? lead + ", of " + plural : lead);
-              skip = { subject: true, composition: true };
-              // ══ STATE RIDES WITH QUANTITY, OR IT LOSES ═══════════════════════════════════
-              // MEASURED: leading with the bouquet produced a bouquet - the first real win - and
-              // the roses were still in peak bloom. Quantity went first and won; state sat three
-              // sentences down and lost to the style's own default, which for neo-traditional
-              // flash IS the open flower.
-              // The same rule twice: an exception that is not in the opening clause is a modifier
-              // to a picture already decided. So character joins the opener, and is not stated
-              // again afterwards - one statement of state, in front.
-              const st = asked("character", inc.character, charExtra);
-              if (has("character") && st) {
-                // The state phrase was written for ONE of the thing - "a dying rose, head hanging
-                // down, petals collapsed" - and inside a bouquet that reads as a contradiction:
-                // several stems, one dying rose. Rewriting it word by word produced worse English
-                // than leaving it alone, so it is quoted whole and scoped by a lead-in instead.
-                said[0] = said[0] + ". Every stem in it is like this: " + st;
-                skip.character = true;
-              }
+        // ── WHICH SCREEN ARE WE ON. The first thing in the order nobody has answered.
+        let stepId = null, stepAsk = null, fixed = null;
+        const openLeafStep = prof.steps.find((x) => !has(x.id));
+        if (openLeafStep) { stepId = openLeafStep.id; stepAsk = openLeafStep.ask; }
+        else if (!has("style")) { stepId = "style"; stepAsk = "What style?"; fixed = TAT_STYLES; }
+        else if (!has("colour") && !styleSaysColour) {
+          stepId = "colour"; stepAsk = "Colour, or black and grey?"; fixed = TAT_COLOURS; }
+
+        // ══ A SCREEN TO SHOW ══════════════════════════════════════════════════════════════
+        if (stepId) {
+          const wKey = "wall:v1:" + tatSlug(leaf) + ":" + tatSlug(stepId);
+          let wall = null;
+          if (fixed) {
+            // The fixed vocabulary needs no model - it is the same sixteen names for every
+            // subject in the tree. Only the PICTURES are per-subject, and they are minted the
+            // same way everything else is.
+            try { wall = await env.AURA_KV.get(wKey, "json"); } catch {}
+            if (!wall || !Array.isArray(wall.opts) || !wall.opts.length) {
+              wall = { step: stepId, ask: stepAsk,
+                opts: fixed.map((id) => {
+                  const say = (TAT_PHRASE[stepId] || {})[id];
+                  return say ? { id, say } : { id };
+                }) };
             }
+          } else {
+            wall = await tatWall(env, leaf, stepId, stepAsk, walkModel);
+            if (wall.failed) return { ok: false, error: "WALL_UNAVAILABLE", stage: stepId,
+              say: "Give me a second and ask me again - I could not put those choices together.",
+              why: wall.why, saw: wall.saw };
           }
-          for (const k of ORDER) {
-            if (!has(k)) continue;
-            if (skip && skip[k]) continue;
-            const line = asked(k, inc[k], k === "composition" ? compExtra : k === "character" ? charExtra : null);
-            if (line) said.push(line);
+
+          // A question with one answer is not a question. It fills itself, the person never
+          // sees it, and the reply reports it so a field that filled itself does not look like
+          // a bug later.
+          if (wall.opts.length === 1) {
+            const only = wall.opts[0].id;
+            inc[stepId] = only;
+            const again = await this.design("next", { ...b, intent: inc });
+            if (again && typeof again === "object") {
+              again.settled = { ...(again.settled || {}), [stepId]: only };
+            }
+            return again;
           }
-          // TAIL already opens with a full stop, so joining with one produced "throughout.." - small,
-          // and exactly the kind of thing that ends up in a prompt nobody reads twice.
-          const ask = said.join(". ") + TAIL;
-          // ── EVERY CHOICE MUST SURVIVE ──────────────────────────────────────────────────
-          // The check is per FIELD, not per label: "head and chest" becomes "head and upper chest
-          // only", so scanning the prompt for the tile's own words would fail on a correct string.
-          // What has to be true is that each locked field contributed a sentence.
-          const missing = ORDER.filter((k) => has(k) && !asked(k, inc[k]));
-          if (missing.length) return { ok: false, error: "CHOICE_LOST", missing,
-            say: "Something you picked did not make it into the drawing - I have stopped rather " +
-                 "than draw the wrong thing." };
-          const r = await processCommand("SHOW_IT " + JSON.stringify({
-            subject: ask,
-            context: "a tattoo somebody is designing for themselves: " + subject,
-            name: String(inc.subject || "tattoo").slice(0, 60),
-            creator: me
-          }), env, true);
-          const p2 = (r && r.payload) ? r.payload : r;
-          if (!p2?.ok) return { ok: false, error: p2?.error || "COULD_NOT_DRAW" };
-          return { ok: true, done: true, design: p2.entity_id || p2.id, image: p2.image_url,
-            subject, cached: !!p2.cached,
-            // What she was actually told. When a drawing misses something the first question is
-            // always what it got asked for, and reconstructing it from the caption is guessing.
-            ask,
-            model: p2.model || null, cost_usd: p2.cost_usd,
-            settled: Object.keys(settled).length ? settled : null,
-            say: "Here it is. Tell me anything you want changed and I will change it.",
-            next: await nextChips(env, subject, null) };
+
+          // DRAW THE WALL THEY ARE STANDING ON. Not the universe - this one, now. Cached on
+          // each tile's own prompt, and the ids are written back onto the wall, so the next
+          // person down this path does one KV read and no image work at all.
+          const styleWord = stepId === "style" ? null : (styleStr || null);
+          wall = await tatDraw(env, leaf, stepId, wall, styleWord, null);
+          const pictured = wall.opts.filter((o) => o.img).length;
+          const holes = wall.opts.filter((o) => !o.img);
+
+          // AN EMPTY WALL IS A FAILURE. A partly-drawn one is not - the tiles that drew are
+          // tappable and the rest are still readable words.
+          if (!wall.opts.length) return { ok: false, error: "EMPTY_WALL", stage: stepId,
+            say: "I could not put that screen together - ask me again." };
+
+          return { ok: true, done: false, stage: stepId, ask: wall.ask || stepAsk,
+            options: wall.opts.map((o) => o.img
+              ? { value: o.id, label: o.id, image: "https://auras.guide/image/" + o.img }
+              : { value: o.id, label: o.id }),
+            made: pictured === wall.opts.length,
+            pictured, holes: holes.length ? holes.map((o) => o.id + ": " + (o.why || "unknown")) : null,
+            resolved: order.filter((k) => has(k)),
+            leaf_resolved: prof.resolved || null,
+            so_far: [leaf].concat(order.filter((k) => has(k)).map((k) => String(inc[k]))).join(", "),
+            say: "Tap one - or tell me something different." };
         }
 
-        // ══ THE ANSWER COMES BACK AS WORDS, NOT AS PICTURES ════════════════════════════════
-        //
-        // This used to generate four images BEFORE returning anything, so every question cost
-        // 30-50 seconds and a failed lookup cost 50 seconds and then an error. Somebody tapping
-        // "Golden Retriever" sat looking at a spinner and then a apology.
-        //
-        // The choices are WORDS. "Head portrait", "sitting", "running" - a person recognises
-        // those instantly and taps. Pictures make them nicer, they do not make them work, and
-        // Aaron said it directly: get the tree right first, thumbnails come later. So `next` is
-        // now FAST and TEXT ONLY, and the pictures are a separate call the page can make
-        // afterwards - or never, if they have already tapped.
-        //
-        // THIS IS ALSO MOST OF THE MONEY. Four generations per question across six questions is
-        // twenty-four images to design one tattoo. Somebody who reads "head and chest" and taps
-        // it costs nothing at all.
-        return { ok: true, done: false, stage: stage.field, ask: label,
-          options: built || choices.map((o) => ({ value: o, label: o })),
-          made: !!built,
-          // Stages that had exactly one meaningful answer and filled themselves on the way here.
-          settled: Object.keys(settled).length ? settled : null,
-          resolved: ORDER.filter(k => has(k)),
-          so_far: describe(null),
-          say: "Tap one - or tell me something different." };
+        // ══ EVERY SCREEN ANSWERED — NOW SAY IT PROPERLY ═══════════════════════════════════
+        // The phrases the wall generators wrote for THIS leaf, read at the moment of drawing.
+        // The walk itself never touches them.
+        const extras = {};
+        for (const k of order) {
+          if (!has(k)) continue;
+          if (k === "style" || k === "colour") continue;
+          try {
+            const rec = await env.AURA_KV.get("wall:v1:" + tatSlug(leaf) + ":" + tatSlug(k), "json");
+            if (rec && Array.isArray(rec.opts)) {
+              const m = {};
+              for (const o of rec.opts) if (o.say) m[o.id] = o.say;
+              if (Object.keys(m).length) extras[k] = m;
+            }
+          } catch {}
+        }
+        const ask = tatBuildAsk(leaf, order, inc, extras);
+        // EVERY CHOICE MUST SURVIVE. Per field, not per label - a phrase legitimately rewords
+        // the tile's own words, so scanning the prompt for them would fail on a correct string.
+        const lost = order.filter((k) => has(k) && !tatSay(k, inc[k], extras[k]));
+        if (lost.length) return { ok: false, error: "CHOICE_LOST", missing: lost,
+          say: "Something you picked did not make it into the drawing - I have stopped rather " +
+               "than draw the wrong thing." };
+        const caption = [leaf].concat(order.filter((k) => has(k)).map((k) => String(inc[k]))).join(", ");
+        const r = await processCommand("SHOW_IT " + JSON.stringify({
+          subject: ask,
+          context: "a tattoo somebody is designing for themselves: " + caption,
+          name: leaf.slice(0, 60),
+          creator: me
+        }), env, true);
+        const p2 = (r && r.payload) ? r.payload : r;
+        if (!p2?.ok) return { ok: false, error: p2?.error || "COULD_NOT_DRAW" };
+        return { ok: true, done: true, design: p2.entity_id || p2.id, image: p2.image_url,
+          subject: caption, cached: !!p2.cached,
+          // What she was actually told. When a drawing misses something the first question is
+          // always what it got asked for, and reconstructing it from the caption is guessing.
+          ask,
+          model: p2.model || null, cost_usd: p2.cost_usd,
+          leaf_resolved: prof.resolved || null,
+          say: "Here it is. Tell me anything you want changed and I will change it.",
+          next: await nextChips(env, caption, null) };
       }
 
       // ══ TILES — THE PICTURES FOR A QUESTION ALREADY ASKED ══════════════════════════════════
@@ -54210,7 +54202,30 @@ export class PublicEntry extends WorkerEntrypoint {
             image: it.img ? "https://auras.guide/image/" + it.img : null })) } };
       }
 
+      // ══ TILES — NOW A READER, NOT A SECOND GENERATOR (2026-08-28) ══════════════════════
+      // `next` returns pictures on the wall itself, so this endpoint drawing four MORE from a
+      // different builder would be a second writer of the same screen AND a second bill for
+      // pictures that already exist. The page still calls it after every `next`; it now answers
+      // from the wall that `next` just wrote, and generates nothing.
+      // Left alive rather than deleted because the page posts it and a 404 there would look
+      // like a broken screen - the same reason `make` stays.
       if (action === "tiles") {
+        const inc0 = (b.intent && typeof b.intent === "object") ? b.intent : {};
+        const f0 = String(b.stage || "").trim();
+        if (!f0 || !inc0.subject) return { ok: false, error: "NEED_FIELD_AND_OPTIONS" };
+        try {
+          const rec = await env.AURA_KV.get(
+            "wall:v1:" + tatSlug(String(inc0.subject)) + ":" + tatSlug(f0), "json");
+          if (rec && Array.isArray(rec.opts)) {
+            return { ok: true, stage: f0, from_wall: true,
+              tiles: rec.opts.map((o) => ({ value: o.id,
+                image: o.img ? "https://auras.guide/image/" + o.img : null })) };
+          }
+        } catch {}
+        return { ok: true, stage: f0, from_wall: true, tiles: [] };
+      }
+
+      if (action === "tiles_legacy") {
         const inc = (b.intent && typeof b.intent === "object") ? b.intent : {};
         const field = String(b.stage || "").trim();
         const vals = Array.isArray(b.options) ? b.options.slice(0, 4).map(String) : [];

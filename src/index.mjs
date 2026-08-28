@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.1.0-2026-08-28-the-leaf-draws-itself";
+const BUILD = "aura-core-v9.2.0-2026-08-28-the-clause-is-not-optional";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5338,6 +5338,96 @@ async function processCommand(line, env, isOp) {
       }));
       const data = await res.json();
       return jsonReply({ ok: true, reply: data.reply });
+    }
+
+    // ══ SHEET — ONE SCREEN, THE WHOLE SUBJECT ════════════════════════════════════════════════
+    // Aaron reviews on a phone and can upload a fixed number of screenshots per session, so
+    // sixteen tiles judged sixteen images at a time is not a review - it is a queue. And a row
+    // judged one card at a time is not judged as a ROW: a tile that reads fine alone reads wrong
+    // beside its neighbour, which is the failure a single card never shows.
+    //
+    // Every wall this subject has, in the order it is walked, on one page. It reads the walk's
+    // own store and nothing else, so what is on the sheet is exactly what a person would see.
+    // The leaf's declared clause is printed at the top, because when the pictures look wrong the
+    // first question is always what they were told to be.
+    case "SHEET": {
+      const want = String(rest || "").trim();
+      if (!want) return { cmd: "SHEET", payload: { ok: false,
+        error: 'Usage: SHEET <subject>   e.g.  SHEET withered rose' } };
+      const slug = tatSlug(want);
+      const prof = await env.AURA_KV.get("leaf:v1:" + slug, "json").catch(() => null);
+      const l = await env.AURA_KV.list({ prefix: "wall:v1:" + slug + ":", limit: 100 })
+        .catch(() => ({ keys: [] }));
+      const walls = [];
+      for (const k of (l.keys || [])) {
+        const w = await env.AURA_KV.get(k.name, "json").catch(() => null);
+        if (w && Array.isArray(w.opts) && w.opts.length) walls.push(w);
+      }
+      if (!walls.length && !prof) return { cmd: "SHEET", payload: { ok: false,
+        error: "NOTHING_WALKED", looked_for: want,
+        what_to_do: "Walk it once - a wall is drawn by somebody standing on it, never in advance." } };
+      // The order a person meets them: what the leaf declared, then style, then colour.
+      const order = (prof && Array.isArray(prof.steps) ? prof.steps.map((x) => x.id) : [])
+        .concat(["style", "colour"]);
+      walls.sort((x, y) => {
+        const ix = order.indexOf(x.step), iy = order.indexOf(y.step);
+        return (ix < 0 ? 99 : ix) - (iy < 0 ? 99 : iy);
+      });
+      const esc = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+      const tiles = walls.reduce((n, w) => n + w.opts.length, 0);
+      const gone = walls.reduce((n, w) => n + w.opts.filter((o) => !o.img).length, 0);
+      const head =
+        (prof ? '<p class=res>' + Object.keys(prof.resolved || {}).map((k) =>
+          "<b>" + esc(k) + "</b> " + esc(String(prof.resolved[k]))).join(" &middot; ") + "</p>" +
+          (prof.say ? '<p class=say>' + esc(prof.say) + "</p>"
+                    : '<p class=nosay>this leaf declared NO clause - the tiles were drawn from the bare name</p>')
+        : '<p class=nosay>no profile stored for this leaf</p>');
+      const body = walls.map((w) =>
+        "<section><h2>" + esc(w.step) + "</h2>" +
+        "<p class=sub>" + esc(w.ask || "") + " &middot; " + w.opts.length + " tiles</p>" +
+        (w.drew ? '<p class=drew>' + esc(w.drew) + "</p>" : "") +
+        "<div class=g>" + w.opts.map((o) =>
+          "<figure>" +
+          (o.img ? '<img loading=lazy src="https://auras.guide/image/' + esc(o.img) + '">'
+                 : '<div class=gone>' + esc(o.why || "never drew") + "</div>") +
+          "<figcaption><b>" + esc(o.id) + "</b>" +
+          (o.say ? "<span>" + esc(o.say) + "</span>" : "") +
+          "</figcaption></figure>").join("") + "</div></section>").join("");
+      const html =
+        '<!doctype html><html lang=en><head><meta charset=utf-8>' +
+        '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+        "<title>" + esc(want) + "</title><style>" +
+        "*{margin:0;padding:0;box-sizing:border-box}" +
+        "body{background:#0b0d12;color:#e9edf5;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px}" +
+        "h1{font-size:1.05rem;font-weight:800}" +
+        "h2{font-size:.72rem;text-transform:uppercase;letter-spacing:.09em;color:#94a3b8;margin:1.5rem 0 .25rem;font-weight:700}" +
+        ".top{color:#64748b;font-size:.78rem;margin:.25rem 0 .6rem}" +
+        ".res{font-size:.78rem;color:#94a3b8;margin:.3rem 0}.res b{color:#e9edf5}" +
+        ".say{font-size:.78rem;color:#86efac;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.25);border-radius:8px;padding:.5rem .6rem;margin:.4rem 0 .2rem}" +
+        ".nosay{font-size:.78rem;color:#fca5a5;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.28);border-radius:8px;padding:.5rem .6rem;margin:.4rem 0 .2rem}" +
+        ".drew{font-size:.68rem;color:#64748b;font-family:ui-monospace,monospace;margin:0 0 .5rem;word-break:break-word}" +
+        ".sub{color:#64748b;font-size:.74rem;margin-bottom:.35rem}" +
+        // TWO COLUMNS ON A PHONE. One column makes the phone judge a row one card at a time,
+        // which is the thing this page exists to stop.
+        ".g{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}" +
+        "figure{background:#141a28;border:1px solid rgba(148,163,184,.16);border-radius:12px;overflow:hidden}" +
+        "figure img{width:100%;aspect-ratio:1;object-fit:cover;display:block;background:#0f172a}" +
+        "figcaption{padding:.45rem .55rem}figcaption b{display:block;font-size:.85rem}" +
+        "figcaption span{display:block;color:#64748b;font-size:.7rem;margin-top:.15rem}" +
+        ".gone{padding:2.2rem .6rem;text-align:center;color:#fca5a5;font-size:.72rem}" +
+        "</style></head><body><h1>" + esc(want) + "</h1><p class=top>" +
+        walls.length + (walls.length === 1 ? " wall" : " walls") + " &middot; " + tiles + " tiles" +
+        (gone ? ' &middot; <b style=color:#fca5a5>' + gone + " never drew</b>" : "") + "</p>" +
+        head + body + "</body></html>";
+      const page = "sheet/" + slug;
+      await env.AURA_KV.put("page:auras.guide/" + page, html);
+      return { cmd: "SHEET", payload: { ok: true, url: "https://auras.guide/" + page,
+        walls: walls.map((w) => w.step), tiles, never_drew: gone,
+        leaf_say: (prof && prof.say) || null,
+        resolved: (prof && prof.resolved) || null,
+        note: "One screen. Judge each wall as a WALL - a tile that reads fine alone can read " +
+              "wrong beside its neighbour." } };
     }
 
     case "PING":
@@ -50921,9 +51011,45 @@ async function tatLeafProfile(env, leafLabel, model) {
         // A step that is really style or colour in disguise is dropped - those are asked of
         // everything and a leaf offering its own version would ask twice.
         const clean = steps.filter((x) => !/^(style|colour|color|detail|placement|size)$/.test(x.id));
-        const rec = { resolved: (o.resolved && typeof o.resolved === "object") ? o.resolved : {},
-                      say: (typeof o.say === "string" && o.say.trim()) ? o.say.trim().slice(0, 220) : null,
-                      steps: clean, needs_upload: o.needs_upload === true };
+        const resolved = (o.resolved && typeof o.resolved === "object") ? o.resolved : {};
+        let say = (typeof o.say === "string" && o.say.trim()) ? o.say.trim().slice(0, 220) : null;
+        // ══ THE CLAUSE IS NOT OPTIONAL WHEN THE NAME CARRIES SOMETHING ═════════════════════
+        // MEASURED, twice, on "withered rose": the profile resolved state=withered correctly and
+        // returned NO `say`, so the tile prompt fell back to the bare label - and sixteen healthy
+        // open roses came back. Deleting the wall and reminting changed the ids and not one pixel,
+        // because the drawing never had the words.
+        // A model deciding whether to write the clause is a model deciding whether the picture
+        // obeys. So when the name resolved anything beyond the bare subject, the clause is ASKED
+        // FOR ON ITS OWN and the answer is not optional.
+        const extra = Object.keys(resolved).filter((k) => k !== "subject");
+        if (!say && extra.length) {
+          try {
+            const br2 = await callBrain({
+              model,
+              system:
+                "Write ONE CLAUSE telling an image model how to draw this exact thing, so it " +
+                "cannot skip past what makes it different.\n\n" +
+                "Return ONLY the clause. No JSON, no quotes, no preamble.\n\n" +
+                "The name already establishes: " +
+                extra.map((k) => k + " = " + String(resolved[k])).join(", ") + "\n\n" +
+                "That difference is the whole point and a single adjective will be ignored - " +
+                "SPELL OUT WHAT IS VISIBLY DIFFERENT. \"Withered Rose\" is not \"a withered " +
+                "rose\"; it is \"a dead rose, head hanging down, petals brown and collapsed and " +
+                "curling under, dry and shrivelled, not an open bloom\".\n\n" +
+                "Say nothing about style, colour, linework, placement or size.",
+              messages: [{ role: "user", content: String(leafLabel) }],
+              max_tokens: 160 }, env);
+            if (br2?.ok && br2.text) {
+              const t = String(br2.text).replace(/^["'\s]+|["'\s]+$/g, "").slice(0, 220);
+              if (t && t.length > 8) say = t;
+            }
+          } catch {}
+          // Still nothing. Say it bluntly rather than silently dropping it - a weak clause that
+          // reaches the model beats a perfect one that does not.
+          if (!say) say = String(leafLabel) + " - " +
+            extra.map((k) => "the " + k + " is " + String(resolved[k]) + " and it must be plainly visible").join(", ");
+        }
+        const rec = { resolved, say, steps: clean, needs_upload: o.needs_upload === true };
         try { await env.AURA_KV.put(key, JSON.stringify(rec)); } catch {}
         return rec;
       }
@@ -51015,6 +51141,10 @@ async function tatDraw(env, subjectLabel, step, wall, styleWord, host, leafSay, 
     // thing and then taught the prompt the same wrong thing.
     const words = (leafSay || subjectLabel) + ", " + (o.say || o.id) +
       (styleWord ? ", " + styleWord + " style" : "");
+    // A failure must carry what was sent and what came back. So must a SUCCESS that looks
+    // wrong: "the pictures ignore the state" is unanswerable without the string that drew
+    // them, and reconstructing it from the label is guessing.
+    if (!wall.drew) wall.drew = words;
     try {
       const gi = await auraGenerateImage(words + cardFormat(step, o.say || o.id), env,
         { source: "tattoo_option", host });
@@ -53899,6 +54029,10 @@ export class PublicEntry extends WorkerEntrypoint {
               ? { value: o.id, label: o.id, image: "https://auras.guide/image/" + o.img }
               : { value: o.id, label: o.id }),
             made: pictured === wall.opts.length, filling, of: wall.opts.length,
+            // The clause the leaf declared, and the exact string that drew the first tile.
+            // `pictured: 16` says tiles exist; it does not say they match the leaf, and only
+            // these two make that judgeable instead of inferred.
+            leaf_say: prof.say || null, drew: wall.drew || null,
             pictured, holes: holes.length ? holes.map((o) => o.id + ": " + (o.why || "unknown")) : null,
             resolved: order.filter((k) => has(k)),
             leaf_resolved: prof.resolved || null,

@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v8.7.0-2026-08-28-the-tail-must-not-argue";
+const BUILD = "aura-core-v8.8.0-2026-08-28-the-exception-leads";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23748,10 +23748,8 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         // words here as there, and the style comes off the ROW, which records it.
         const pStyle = String(row.style || (String(row.key).match(/^[a-z]+:[^:]+:(.+)$/) || [])[1] || "")
           .replace(/-/g, " ").toLowerCase().trim();
-        const LAYOUT = " A single subject, centred, filling the frame, on a plain light " +
-                       "background. No skin, no body, no border, no background scenery, " +
-                       "no extra motifs - only the subject itself.";
-        const CARD = row.variable === "subject" ? "." + LAYOUT : ". As a tattoo." + LAYOUT;
+        // One format, shared with the factory and the live tiles. A patch drawn under a different
+        // sentence from the row it is repairing is the one card in the row that does not match.
         const wordFor = (it) => {
           const w = it.say || it.label;
           if (row.variable === "style")   return row.subject + ", " + w + (it.say ? "" : " style");
@@ -23764,7 +23762,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         const fixed = [], still = [];
         for (const hole of holes) {
           let got = null, why = null;
-          const firstP = wordFor(hole) + CARD;
+          const firstP = wordFor(hole) + cardFormat(row.variable, hole.say || hole.label || hole.id);
           for (let n = 0; n < 3; n++) {
             // Same rule as the factory: try again, then try DIFFERENTLY, but only if the refusal
             // was a filter. A patch that re-sends a filtered prompt cannot ever succeed.
@@ -24005,12 +24003,9 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
         //
         // Still layout-only about everything else. The format never dictates linework, contrast or
         // colour - that is the style's job, and dictating it is what killed the very first row.
-        const LAYOUT = " A single subject, centred, filling the frame, on a plain light " +
-                       "background. No skin, no body, no border, no background scenery, " +
-                       "no extra motifs - only the subject itself.";
-        const CARD = variable === "subject"
-          ? "." + LAYOUT                                   // the picker: no style exists yet
-          : ". As a tattoo." + LAYOUT;                     // everything else is ink
+        // One format, shared with PATCH and the live tiles - see `cardFormat`. The local copy that
+        // used to live here is deleted rather than left unused: it is the exact sentence that turned
+        // a bouquet into one rose, and an unread copy of a rule is the one somebody edits next.
 
         // A `say` REPLACES the label in the prompt entirely - it is not appended, because
         // "traditional, bold american traditional…" leaves the misleading word in the sentence.
@@ -24040,7 +24035,7 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           if (useRefs && parentImg) refs.push("https://auras.guide/image/" + parentImg);
           const base = { id: it.id, label: it.label, say: it.say || null };
           let why = null;
-          const first = wordFor(variable, it) + CARD;
+          const first = wordFor(variable, it) + cardFormat(variable, it.say || it.label || it.id);
           for (let n = 0; n < 3; n++) {
             // Attempts 1 and 2 are the same prompt - a transient failure deserves that. Attempt 3
             // only happens if the refusal was a content filter, and it rephrases, because the same
@@ -50812,6 +50807,23 @@ async function ladderOptions(env, field, subject, ladderModel) {
   return { failed: true, why: lastErr, saw: lastText, model: lastModel };
 }
 
+// ══ THE CARD FORMAT, IN ONE PLACE ═══════════════════════════════════════════════════════════
+// This sentence existed in THREE copies - the factory, PATCH, and the live tile path - and only
+// one of them learned that a stated quantity must drop the singular default. So `next` stopped
+// arguing with "bouquet" while the catalogue carried on drawing one flower, and the chooser taught
+// the lesson the final drawing then repeated.
+// A rule written three times is a rule that will disagree with itself. Written once.
+const CARD_PLURAL = /\b(bouquet|cluster|two|three|four|several|many|multiple|pair|group|wreath|frame|scattered|vine|climbing|arrangement|with (another|owner|their))\b/i;
+function cardFormat(variable, value) {
+  // A picker is asked before any style exists, so it stays a photograph. Everything else is ink.
+  const head = variable === "subject" ? "." : ". As a tattoo.";
+  // "A single subject" is what stops a plural category label drawing four dogs. It is also what
+  // turns a bouquet into one rose, so a value that states a quantity is exempt.
+  const one = CARD_PLURAL.test(String(value || "")) ? " " : " A single subject, ";
+  return head + one + "centred, filling the frame, on a plain light background. " +
+    "No skin, no body, no border, no background scenery, no extra motifs - only the subject itself.";
+}
+
 async function auraGenerateImage(prompt, env, opts = {}) {
   // AGNOSTIC + POLICY-DRIVEN. showIt states intent ("make an image"); AIMARGIN's POLICY decides who fulfills
   // it and at what quality. The operator declares INTENT once - config:policy:image = cheapest | balanced |
@@ -53241,6 +53253,14 @@ export class PublicEntry extends WorkerEntrypoint {
         return v;
       };
 
+      // ══ MAKE — A RAW SENTENCE, NOT THE LADDER'S DOOR ══════════════════════════════════════
+      // This draws whatever string it is handed. It has no phrase table, no plural rule and no
+      // choice check - so a walk that finished here instead of through `next` would be back on the
+      // comma list that produced one rose four times.
+      // NOTHING CALLS IT TODAY: the page finishes through `next`, which assembles the ask properly.
+      // It stays for the case it was written for - somebody typing a whole tattoo in one sentence,
+      // where there are no choices to lose - and it says so, loudly, rather than sitting here
+      // looking like an alternative route to the same place.
       if (action === "make") {
         const subject = String(b.subject || "").trim().slice(0, 600);
         if (!subject) return { ok: false, error: "NOTHING_TO_DRAW" };
@@ -53762,17 +53782,40 @@ export class PublicEntry extends WorkerEntrypoint {
           // The phrases the generator wrote for THIS subject, fetched from the same cache the
           // options came from. One KV read per contextual field, and only at the moment of
           // drawing - the walk itself never touches them.
+          const phraseFor = async (k) => {
+            if (k !== "composition" && k !== "character") return null;
+            const slug = String(inc.subject || "").toLowerCase()
+              .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+            const rec = await env.AURA_KV.get("ladder2:" + k + ":" + slug, "json").catch(() => null);
+            return rec && rec.phrases ? rec.phrases : null;
+          };
+          const compExtra = await phraseFor("composition");
+          const charExtra = await phraseFor("character");
+
+          // ══ THE FIRST NOUN SETS THE PICTURE ══════════════════════════════════════════════
+          // MEASURED four times: "a bouquet, several stems gathered together, not a single bloom"
+          // reached the model and one rose came back every time. Dropping the contradicting tail
+          // helped and was not enough, because the prompt still OPENED with "rose." - and a model
+          // reading that has already decided on one bloom, three-quarter view, a few leaves.
+          // Everything after it is a modifier to a picture that is already chosen.
+          // So when the composition states a quantity, IT LEADS and the subject rides inside it.
+          // The exception goes first; the default never gets to speak.
           const said = [];
+          let skip = null;
+          if (multi && has("composition")) {
+            const lead = asked("composition", inc.composition, compExtra);
+            if (lead) {
+              const sub = String(inc.subject || "").trim();
+              // "a bouquet, several stems gathered together, not a single bloom, of roses"
+              const plural = sub && !/s$/i.test(sub) ? sub + "s" : sub;
+              said.push(sub ? lead + ", of " + plural : lead);
+              skip = { subject: true, composition: true };
+            }
+          }
           for (const k of ORDER) {
             if (!has(k)) continue;
-            let extra = null;
-            if (k === "composition" || k === "character") {
-              const slug = String(inc.subject || "").toLowerCase()
-                .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
-              const rec = await env.AURA_KV.get("ladder2:" + k + ":" + slug, "json").catch(() => null);
-              extra = rec && rec.phrases ? rec.phrases : null;
-            }
-            const line = asked(k, inc[k], extra);
+            if (skip && skip[k]) continue;
+            const line = asked(k, inc[k], k === "composition" ? compExtra : k === "character" ? charExtra : null);
             if (line) said.push(line);
           }
           // TAIL already opens with a full stop, so joining with one produced "throughout.." - small,
@@ -54169,11 +54212,9 @@ export class PublicEntry extends WorkerEntrypoint {
         // This was layout-only, so somebody who chose hyperrealism saw their composition options
         // as stock photographs - the screen after the choice quietly undoing the choice.
         // The picker is the exception, because it is asked before any style exists.
-        const TAIL = (field === "subject"
-          ? ". A single subject unless stated otherwise, centred, filling the frame, "
-          : ". As a tattoo. A single subject unless stated otherwise, centred, filling the frame, ") +
-          "on a plain light background. No skin, no body, no border, no background " +
-          "scenery, no extra motifs - only the subject itself.";
+        // One format, shared with the factory and PATCH - see `cardFormat`. This was the third
+        // copy, and the one that kept drawing a bouquet as a single flower after `next` had
+        // stopped doing so.
         // ══ A FAMILY, NOT FOUR PICTURES ════════════════════════════════════════════════════
         // This generated each option independently with NO refs - four separate draws from four
         // prompt strings - so they drifted on every axis at once and the person was comparing four
@@ -54204,7 +54245,8 @@ export class PublicEntry extends WorkerEntrypoint {
           if (houseUrl) refs.push(houseUrl);
           if (parentUrl) refs.push(parentUrl);
           try {
-            const gi = await auraGenerateImage(describe({ [field]: opt }).slice(0, 600) + TAIL, env,
+            const gi = await auraGenerateImage(
+              describe({ [field]: opt }).slice(0, 600) + cardFormat(field, opt), env,
               { source: "tattoo_option", refs });
             if (gi?.ok) return { value: opt, image: gi.image_url, cached: !!gi.cached };
           } catch {}

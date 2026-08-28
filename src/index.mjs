@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.7.0-2026-08-28-one-branch-of-the-fork";
+const BUILD = "aura-core-v9.8.0-2026-08-28-the-sheet-shows-live-paths";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5370,14 +5370,27 @@ async function processCommand(line, env, isOp) {
       }
       const ls = await env.AURA_KV.list({ prefix: "shot:v1:" + slug + ":", limit: 200 })
         .catch(() => ({ keys: [] }));
-      // Only the walls the walk actually has. Earlier versions wrote `part:*` walls whose tiles
-      // are still in KV; showing them makes a sheet look broken and invites reminting pictures
-      // for a screen nobody will ever see again. They are left in place, just not displayed.
+      // ══ ONLY PATHS THE WALK CAN STILL PRODUCE ════════════════════════════════════════
+      // Filtering on the STEP was not enough and the goats stayed on the sheet: a wall written
+      // when the field was called `part` still has step "pose", so it passed. The dead thing is
+      // in the PATH, not the step name.
+      // Every live path starts with the style, because style is the first wall - so a ctx of
+      // `bare` or `pose-sitting` is from a walk shape that no longer exists. And any ctx holding
+      // `part-` is from before the field was renamed to crop.
+      // Nothing is deleted. Those tiles stay in KV, they just stop being shown and stop inviting
+      // somebody to remint a wall nobody will ever see again.
       const LIVE = new Set(["style", "crop", "pose", "expression"]);
+      const livePath = (ctx) => {
+        const c = String(ctx || "");
+        if (c.includes("part-")) return false;
+        return c === "bare_style" || c === "style" || /^style-/.test(c) || c === "bare_first";
+      };
       const walls = [];
       for (const k of (ls.keys || [])) {
         const sh = await env.AURA_KV.get(k.name, "json").catch(() => null);
         if (!sh || !sh.step || !LIVE.has(sh.step)) continue;
+        // The style wall itself is the only live wall with nothing locked before it.
+        if (!(sh.step === "style" && String(sh.ctx || "") === "bare") && !livePath(sh.ctx)) continue;
         const w = words[sh.step];
         if (!w || !Array.isArray(w.opts)) continue;
         walls.push({ step: sh.step, ask: w.ask, ctx: sh.ctx || "bare", drew: sh.drew || null,
@@ -5412,8 +5425,13 @@ async function processCommand(line, env, isOp) {
       const head =
         (prof ? '<p class=res>' + Object.keys(prof.resolved || {}).map((k) =>
           "<b>" + esc(k) + "</b> " + esc(String(prof.resolved[k]))).join(" &middot; ") + "</p>" +
+          // A clause is only expected when the NAME carries a state. A breed needs none - the
+          // model knows a golden retriever perfectly and describing it drew a goat. So this is
+          // only an alarm when a state was resolved and no clause came with it.
           (prof.say ? '<p class=say>' + esc(prof.say) + "</p>"
-                    : '<p class=nosay>this leaf declared NO clause - the tiles were drawn from the bare name</p>')
+            : (Object.keys(prof.resolved || {}).some((k) => /state|condition|status|age|damage|variant/i.test(k))
+              ? '<p class=nosay>a state was resolved but NO clause was written - the tiles were drawn from the bare name</p>'
+              : '<p class=res>no clause needed - the name carries no state</p>'))
         : '<p class=nosay>no profile stored for this leaf</p>');
       const body = walls.map((w) =>
         "<section><h2>" + esc(w.step) + "</h2>" +

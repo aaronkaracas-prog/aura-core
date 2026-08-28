@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v8.8.0-2026-08-28-the-exception-leads";
+const BUILD = "aura-core-v8.9.0-2026-08-28-state-rides-with-quantity";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -24075,6 +24075,26 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           spec.made_at = new Date().toISOString();
           await env.AURA_KV.put(key, JSON.stringify(spec));
           await indexRow(spec);
+          // ══ THE WORDS THAT WORKED MUST BE THE WORDS THAT DRAW ═══════════════════════════
+          // MEASURED: "wilting" was redone four times until the tile finally showed a dying rose -
+          // and the final drawing kept using the ORIGINAL wording, because a REDO writes the card's
+          // `say` and never touched the options cache. Two stores, two wordings, and the better one
+          // was not the one that drew.
+          // Proving a phrase on a tile is only worth doing if the prompt inherits it. Written back
+          // to the same key the generator wrote, not a third store.
+          if (newSay && (spec.variable === "composition" || spec.variable === "character")) {
+            const subj = String(spec.subject || "").toLowerCase()
+              .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+            const lk = "ladder2:" + spec.variable + ":" + subj;
+            try {
+              const rec = await env.AURA_KV.get(lk, "json");
+              if (rec && Array.isArray(rec.opts)) {
+                rec.phrases = rec.phrases || {};
+                rec.phrases[only] = newSay;
+                await env.AURA_KV.put(lk, JSON.stringify(rec));
+              }
+            } catch {}
+          }
           return { cmd: "CARDS", payload: { ok: true, key: key.replace("card:row:", ""), redone: made,
             url: made.img ? "https://auras.guide/image/" + made.img : null } };
         }
@@ -53257,10 +53277,18 @@ export class PublicEntry extends WorkerEntrypoint {
       // This draws whatever string it is handed. It has no phrase table, no plural rule and no
       // choice check - so a walk that finished here instead of through `next` would be back on the
       // comma list that produced one rose four times.
-      // NOTHING CALLS IT TODAY: the page finishes through `next`, which assembles the ask properly.
-      // It stays for the case it was written for - somebody typing a whole tattoo in one sentence,
-      // where there are no choices to lose - and it says so, loudly, rather than sitting here
-      // looking like an alternative route to the same place.
+      // I WROTE "NOTHING CALLS IT TODAY" HERE AND IT WAS FALSE. mt-design.html posts `make` from
+      // two places - tapping a picture on the wall, and describing a tattoo in one sentence. I
+      // checked the WORKER for callers, found none, and wrote a fact about a file this worker
+      // cannot see. That is the same stale-comment failure that has cost this codebase more than
+      // any other bug, committed in the act of documenting it.
+      //
+      // WHAT IS ACTUALLY TRUE: this is the door for the paths with NO LOCKED CHOICES - a sentence
+      // somebody typed, or a picture they pointed at. There is nothing to lose because nothing was
+      // chosen from a list. The ladder finishes through `next`, which assembles the ask from the
+      // phrase table.
+      // THEY MUST SHARE ONE BUILDER. Two writers of one prompt is the disease; right now `asked()`
+      // sits a few hundred lines from here and this ignores it. Not yet done.
       if (action === "make") {
         const subject = String(b.subject || "").trim().slice(0, 600);
         if (!subject) return { ok: false, error: "NOTHING_TO_DRAW" };
@@ -53808,8 +53836,29 @@ export class PublicEntry extends WorkerEntrypoint {
               const sub = String(inc.subject || "").trim();
               // "a bouquet, several stems gathered together, not a single bloom, of roses"
               const plural = sub && !/s$/i.test(sub) ? sub + "s" : sub;
-              said.push(sub ? lead + ", of " + plural : lead);
+              // The phrase often already names the subject - "three roses", "a winding vine with
+              // roses" - and appending it again gives "three roses, of roses". Only added when the
+              // opener does not already say it.
+              const namesIt = sub && new RegExp("\\b" + sub.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "s?\\b", "i").test(lead);
+              said.push(sub && !namesIt ? lead + ", of " + plural : lead);
               skip = { subject: true, composition: true };
+              // ══ STATE RIDES WITH QUANTITY, OR IT LOSES ═══════════════════════════════════
+              // MEASURED: leading with the bouquet produced a bouquet - the first real win - and
+              // the roses were still in peak bloom. Quantity went first and won; state sat three
+              // sentences down and lost to the style's own default, which for neo-traditional
+              // flash IS the open flower.
+              // The same rule twice: an exception that is not in the opening clause is a modifier
+              // to a picture already decided. So character joins the opener, and is not stated
+              // again afterwards - one statement of state, in front.
+              const st = asked("character", inc.character, charExtra);
+              if (has("character") && st) {
+                // The state phrase was written for ONE of the thing - "a dying rose, head hanging
+                // down, petals collapsed" - and inside a bouquet that reads as a contradiction:
+                // several stems, one dying rose. Rewriting it word by word produced worse English
+                // than leaving it alone, so it is quoted whole and scoped by a lead-in instead.
+                said[0] = said[0] + ". Every stem in it is like this: " + st;
+                skip.character = true;
+              }
             }
           }
           for (const k of ORDER) {

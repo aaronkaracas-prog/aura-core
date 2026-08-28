@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.2.0-2026-08-28-the-clause-is-not-optional";
+const BUILD = "aura-core-v9.4.0-2026-08-28-a-tile-shows-what-they-chose";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5356,12 +5356,39 @@ async function processCommand(line, env, isOp) {
         error: 'Usage: SHEET <subject>   e.g.  SHEET withered rose' } };
       const slug = tatSlug(want);
       const prof = await env.AURA_KV.get("leaf:v1:" + slug, "json").catch(() => null);
-      const l = await env.AURA_KV.list({ prefix: "wall:v1:" + slug + ":", limit: 100 })
+      // ══ THE WORDS AND THE PICTURES LIVE APART, SO THE SHEET JOINS THEM ══════════════════
+      // A wall's options are the same whatever the person already chose; its PICTURES are not.
+      // So the sheet is one section per SHOT - per path actually walked - and each one names the
+      // path it belongs to. Two poses of the same dog produce two expression sections, which is
+      // the truth about what exists and exactly what a single merged section would hide.
+      const words = {};
+      const lw = await env.AURA_KV.list({ prefix: "wall:v1:" + slug + ":", limit: 100 })
+        .catch(() => ({ keys: [] }));
+      for (const k of (lw.keys || [])) {
+        const w = await env.AURA_KV.get(k.name, "json").catch(() => null);
+        if (w && Array.isArray(w.opts) && w.opts.length) words[w.step] = w;
+      }
+      const ls = await env.AURA_KV.list({ prefix: "shot:v1:" + slug + ":", limit: 200 })
         .catch(() => ({ keys: [] }));
       const walls = [];
-      for (const k of (l.keys || [])) {
-        const w = await env.AURA_KV.get(k.name, "json").catch(() => null);
-        if (w && Array.isArray(w.opts) && w.opts.length) walls.push(w);
+      for (const k of (ls.keys || [])) {
+        const sh = await env.AURA_KV.get(k.name, "json").catch(() => null);
+        if (!sh || !sh.step) continue;
+        const w = words[sh.step];
+        if (!w || !Array.isArray(w.opts)) continue;
+        walls.push({ step: sh.step, ask: w.ask, ctx: sh.ctx || "bare", drew: sh.drew || null,
+          opts: w.opts.map((o) => {
+            const hit = (sh.imgs && sh.imgs[o.id]) || {};
+            return { id: o.id, say: o.say, img: hit.img || null, why: hit.why || null };
+          }) });
+      }
+      // A wall whose words exist but which nobody has walked yet is still worth showing - it is
+      // the difference between "not made" and "made and empty".
+      for (const st of Object.keys(words)) {
+        if (!walls.some((w) => w.step === st)) {
+          walls.push({ step: st, ask: words[st].ask, ctx: "not walked yet", drew: null,
+            opts: words[st].opts.map((o) => ({ id: o.id, say: o.say, img: null, why: "not walked yet" })) });
+        }
       }
       if (!walls.length && !prof) return { cmd: "SHEET", payload: { ok: false,
         error: "NOTHING_WALKED", looked_for: want,
@@ -5385,11 +5412,18 @@ async function processCommand(line, env, isOp) {
         : '<p class=nosay>no profile stored for this leaf</p>');
       const body = walls.map((w) =>
         "<section><h2>" + esc(w.step) + "</h2>" +
-        "<p class=sub>" + esc(w.ask || "") + " &middot; " + w.opts.length + " tiles</p>" +
+        "<p class=sub>" + esc(w.ask || "") + " &middot; " + w.opts.length + " tiles &middot; " +
+        "<b>" + esc(w.ctx) + "</b></p>" +
         (w.drew ? '<p class=drew>' + esc(w.drew) + "</p>" : "") +
         "<div class=g>" + w.opts.map((o) =>
           "<figure>" +
-          (o.img ? '<img loading=lazy src="https://auras.guide/image/' + esc(o.img) + '">'
+          // ══ A TILE MUST BE REACHABLE, NOT JUST VISIBLE ═══════════════════════════════════
+          // The old flat `label -> url` list was how Aaron opened one image full size and handed
+          // it to somebody else. A page of thumbnails took that away: you can SEE sixteen and
+          // reach none of them. Every tile is now its own link, and the same list comes back in
+          // the reply for pasting.
+          (o.img ? '<a href="https://auras.guide/image/' + esc(o.img) + '" target=_blank>' +
+                   '<img loading=lazy src="https://auras.guide/image/' + esc(o.img) + '"></a>'
                  : '<div class=gone>' + esc(o.why || "never drew") + "</div>") +
           "<figcaption><b>" + esc(o.id) + "</b>" +
           (o.say ? "<span>" + esc(o.say) + "</span>" : "") +
@@ -5423,9 +5457,18 @@ async function processCommand(line, env, isOp) {
       const page = "sheet/" + slug;
       await env.AURA_KV.put("page:auras.guide/" + page, html);
       return { cmd: "SHEET", payload: { ok: true, url: "https://auras.guide/" + page,
-        walls: walls.map((w) => w.step), tiles, never_drew: gone,
+        walls: walls.map((w) => w.step + " [" + w.ctx + "]"), tiles, never_drew: gone,
         leaf_say: (prof && prof.say) || null,
         resolved: (prof && prof.resolved) || null,
+        // The flat list, one line per tile, grouped by wall. This is the thing that gets pasted
+        // to somebody who cannot open the page - and the reason a tile that never drew says so
+        // here too rather than being absent, which reads as a shorter wall instead of a hole.
+        urls: walls.reduce((acc, w) => acc.concat(
+          w.opts.map((o) => w.step + " [" + w.ctx + "] / " + o.id + "  ->  " +
+            (o.img ? "https://auras.guide/image/" + o.img : "NEVER DREW: " + (o.why || "unknown")))), []),
+        // What each wall was actually told to draw. When the pictures look wrong the first
+        // question is always what they were asked for.
+        drew: walls.map((w) => w.step + " [" + w.ctx + "]: " + (w.drew || "?")),
         note: "One screen. Judge each wall as a WALL - a tile that reads fine alone can read " +
               "wrong beside its neighbour." } };
     }
@@ -51123,54 +51166,61 @@ async function tatWall(env, leafLabel, step, ask, model) {
 }
 
 // ══ DRAW THE WALL THEY ARE STANDING ON ════════════════════════════════════════════════════
-// Not the universe. This wall, now, for this leaf. Every picture is content-addressed on its
-// own prompt, so the second person down the same path pays nothing - and the ids are written
-// back onto the wall record, so they do not even reach the image engine to find that out.
+// Not the universe. This wall, on THIS PATH, now.
+//
+// ══ A TILE MUST SHOW WHAT THEY ALREADY CHOSE (2026-08-28) ═════════════════════════════════
+// MEASURED on the first full walk: somebody tapped "sitting", and the expression wall came back
+// as six HEAD PORTRAITS. The stored prompt proved it - "golden retriever, mouth open in a broad
+// smile..." with no `sitting` anywhere. Every choice locked before that screen was dropped on
+// the floor, so a person picks a face off six pictures that are not the dog they are building,
+// and the style wall after it would have ignored both.
+// That is a lying tile, which is the exact failure this whole walk was rebuilt to remove. A tile
+// carries EVERY step answered before it.
+//
+// SO THE PICTURES ARE KEYED ON THE PATH AND THE WORDS ARE NOT. The six expressions of a dog are
+// the same six whatever it is doing - one model call, ever. The six PICTURES of those
+// expressions differ per pose, so they hang on their own key. Words once, pixels per path.
 //
 // NO REFERENCE IMAGE, DELIBERATELY. A reference carries pose, language AND SUBJECT: a dragon
-// house image put dragon bodies on fifteen golden retrievers. These walls exist to vary one
-// thing, and the words carry it.
-async function tatDraw(env, subjectLabel, step, wall, styleWord, host, leafSay, budgetMs) {
-  const key = "wall:v1:" + tatSlug(subjectLabel) + ":" + tatSlug(step);
-  const opts = wall.opts;
-  const need = opts.filter((o) => !o.img);
-  if (!need.length) return wall;
+// house image put dragon bodies on fifteen golden retrievers. These walls vary one thing and the
+// words carry it.
+async function tatShoot(env, shotKey, head, ctxPhrases, step, wall, shot, budgetMs) {
+  const need = wall.opts.filter((o) => !(shot.imgs && shot.imgs[o.id] && shot.imgs[o.id].img));
+  shot.imgs = shot.imgs || {};
+  if (!need.length) return shot;
   const one = async (o) => {
-    // The leaf's own clause leads here too, for the same reason it leads in the sentence: a
-    // wall of healthy roses under a leaf called "withered rose" taught the person the wrong
-    // thing and then taught the prompt the same wrong thing.
-    const words = (leafSay || subjectLabel) + ", " + (o.say || o.id) +
-      (styleWord ? ", " + styleWord + " style" : "");
-    // A failure must carry what was sent and what came back. So must a SUCCESS that looks
-    // wrong: "the pictures ignore the state" is unanswerable without the string that drew
-    // them, and reconstructing it from the label is guessing.
-    if (!wall.drew) wall.drew = words;
+    const words = [head].concat(ctxPhrases, [o.say || o.id]).filter(Boolean).join(", ");
+    const full = words + cardFormat(step, o.say || o.id);
+    // A failure must carry what was sent and what came back. So must a SUCCESS that looks wrong:
+    // "the pictures ignore the pose" is unanswerable without the string that drew them, and
+    // reconstructing it from the label is guessing.
+    if (!shot.drew) shot.drew = full;
     try {
-      const gi = await auraGenerateImage(words + cardFormat(step, o.say || o.id), env,
-        { source: "tattoo_option", host });
-      if (gi?.ok && gi.id) { o.img = gi.id; o.cached = !!gi.cached; return; }
-      // A success with no pixels is not a success, and the reason rides with the tile so a
-      // hole in the wall explains itself instead of being something to reproduce.
-      o.why = String(gi?.error || "no image returned").slice(0, 140);
-    } catch (e) { o.why = String(e && e.message || e).slice(0, 140); }
+      const gi = await auraGenerateImage(full, env, { source: "tattoo_option" });
+      if (gi?.ok && gi.id) { shot.imgs[o.id] = { img: gi.id, cached: !!gi.cached }; return; }
+      // A success with no pixels is not a success, and the reason rides with the tile so a hole
+      // in the wall explains itself instead of being something to go and reproduce.
+      shot.imgs[o.id] = { img: null, why: String(gi?.error || "no image returned").slice(0, 140) };
+    } catch (e) {
+      shot.imgs[o.id] = { img: null, why: String(e && e.message || e).slice(0, 140) };
+    }
   };
   // ══ A WALL MUST NOT OUTLAST THE DOORWAY ══════════════════════════════════════════════════
-  // MEASURED on the first cold Capricorn: the call came back with NOTHING - no stage, no ask,
-  // no options - and the page would have painted a blank screen. Sixteen tiles at four in
-  // flight is longer than the 40s ceiling `/_design` allows, so the whole request died and took
-  // the words with it.
-  // So drawing is time-boxed. Whatever is drawn when the budget runs out is what comes back,
-  // the rest stay tappable words, and the NEXT call picks up exactly where this one stopped -
-  // `need` is recomputed from what has no image yet, so nothing is ever drawn twice.
-  // A partly-drawn wall is a working screen. A blank one is a failure.
+  // MEASURED: the first cold Capricorn came back with NOTHING - no stage, no ask, no options -
+  // and the page would have painted a blank screen. Sixteen tiles at four in flight is longer
+  // than the 40s ceiling `/_design` allows, so the whole request died and took the words with it.
+  // Whatever is drawn when the budget runs out comes back, the rest stay tappable words, and the
+  // next call resumes from what has no image yet - nothing is ever drawn twice.
   const t0 = Date.now();
   const budget = typeof budgetMs === "number" ? budgetMs : 18000;
+  // Four at a time. Cloudflare allows six simultaneous connections and only while waiting for
+  // response headers, so batches are the fast shape and a wall is not one long queue.
   for (let i = 0; i < need.length; i += 4) {
     if (Date.now() - t0 > budget) break;
     await Promise.all(need.slice(i, i + 4).map(one));
   }
-  try { await env.AURA_KV.put(key, JSON.stringify(wall)); } catch {}
-  return wall;
+  try { await env.AURA_KV.put(shotKey, JSON.stringify(shot)); } catch {}
+  return shot;
 }
 
 async function ladderOptions(env, field, subject, ladderModel) {
@@ -54008,13 +54058,38 @@ export class PublicEntry extends WorkerEntrypoint {
             return again;
           }
 
-          // DRAW THE WALL THEY ARE STANDING ON. Not the universe - this one, now. Cached on
-          // each tile's own prompt, and the ids are written back onto the wall, so the next
-          // person down this path does one KV read and no image work at all.
-          const styleWord = stepId === "style" ? null : (styleStr || null);
-          wall = await tatDraw(env, leaf, stepId, wall, styleWord, null, prof.say || null, 18000);
-          const pictured = wall.opts.filter((o) => o.img).length;
-          const holes = wall.opts.filter((o) => !o.img);
+          // ══ THE PATH THIS SCREEN HANGS ON ══════════════════════════════════════════════
+          // Everything answered BEFORE this step, in the order it was answered. That is what the
+          // tiles have to show, and it is what their key hangs on - so two people who chose a
+          // different pose get different expression pictures and neither is served the other's.
+          const before = order.slice(0, order.indexOf(stepId)).filter((k) => has(k));
+          const ctxPhrases = [];
+          for (const k of before) {
+            let ex = null;
+            if (k !== "style" && k !== "colour") {
+              try {
+                const rec = await env.AURA_KV.get(
+                  "wall:v1:" + tatSlug(leaf) + ":" + tatSlug(k), "json");
+                if (rec && Array.isArray(rec.opts)) {
+                  const m = {}; for (const o of rec.opts) if (o.say) m[o.id] = o.say;
+                  if (Object.keys(m).length) ex = m;
+                }
+              } catch {}
+            }
+            const line = tatSay(k, inc[k], ex);
+            if (line) ctxPhrases.push(line);
+          }
+          const ctxSlug = before.length
+            ? before.map((k) => tatSlug(k) + "-" + tatSlug(String(inc[k]))).join("__").slice(0, 140)
+            : "bare";
+          const shotKey = "shot:v1:" + tatSlug(leaf) + ":" + tatSlug(stepId) + ":" + ctxSlug;
+          let shot = null;
+          try { shot = await env.AURA_KV.get(shotKey, "json"); } catch {}
+          if (!shot || typeof shot !== "object") shot = { leaf, step: stepId, ctx: ctxSlug, imgs: {} };
+          shot = await tatShoot(env, shotKey, prof.say || leaf, ctxPhrases, stepId, wall, shot, 18000);
+          const shotOf = (o) => (shot.imgs && shot.imgs[o.id]) || {};
+          const pictured = wall.opts.filter((o) => shotOf(o).img).length;
+          const holes = wall.opts.filter((o) => !shotOf(o).img);
 
           // AN EMPTY WALL IS A FAILURE. A partly-drawn one is not - the tiles that drew are
           // tappable and the rest are still readable words, and the next call finishes them.
@@ -54025,15 +54100,18 @@ export class PublicEntry extends WorkerEntrypoint {
           const filling = pictured < wall.opts.length;
 
           return { ok: true, done: false, stage: stepId, ask: wall.ask || stepAsk,
-            options: wall.opts.map((o) => o.img
-              ? { value: o.id, label: o.id, image: "https://auras.guide/image/" + o.img }
+            options: wall.opts.map((o) => shotOf(o).img
+              ? { value: o.id, label: o.id, image: "https://auras.guide/image/" + shotOf(o).img }
               : { value: o.id, label: o.id }),
             made: pictured === wall.opts.length, filling, of: wall.opts.length,
             // The clause the leaf declared, and the exact string that drew the first tile.
             // `pictured: 16` says tiles exist; it does not say they match the leaf, and only
             // these two make that judgeable instead of inferred.
-            leaf_say: prof.say || null, drew: wall.drew || null,
-            pictured, holes: holes.length ? holes.map((o) => o.id + ": " + (o.why || "unknown")) : null,
+            leaf_say: prof.say || null, drew: shot.drew || null,
+            pictured, holes: holes.length ? holes.map((o) => o.id + ": " + (shotOf(o).why || "unknown")) : null,
+            // The path these pictures were drawn for. Two people on different poses get
+            // different expression tiles, and this says which set is on screen.
+            path: ctxSlug,
             resolved: order.filter((k) => has(k)),
             leaf_resolved: prof.resolved || null,
             so_far: [leaf].concat(order.filter((k) => has(k)).map((k) => String(inc[k]))).join(", "),

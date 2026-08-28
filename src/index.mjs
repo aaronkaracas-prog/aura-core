@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v8.5.0-2026-08-27-every-choice-said-properly";
+const BUILD = "aura-core-v8.6.0-2026-08-28-a-reference-is-not-always-an-edit";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -50683,7 +50683,14 @@ async function ladderOptions(env, field, subject, ladderModel) {
   const ck = "ladder2:" + field + ":" + slug;
   try {
     const hit = await env.AURA_KV.get(ck, "json");
-    if (hit && (hit.na === true || (Array.isArray(hit.opts) && hit.opts.length))) return hit;
+    // ══ A ROW WITHOUT PHRASES IS OUT OF DATE ═════════════════════════════════════════════════
+    // MEASURED: rose's composition row was rebuilt and the prompt still read a bare "bouquet."
+    // Dropping the CARD row does not touch the OPTIONS cache - two different keys - so this hit
+    // and returned the old list before the generator could write anything.
+    // A row from before the phrases existed is not wrong, it is INCOMPLETE, and the way to tell is
+    // that it has options and no `phrases`. Regenerating one costs a single cheap call.
+    if (hit && hit.na === true) return hit;
+    if (hit && Array.isArray(hit.opts) && hit.opts.length && hit.phrases) return hit;
   } catch {}
   const brief = field === "composition"
     ? "WHAT THE PICTURE IS OF - the framing and arrangement.\n" +
@@ -50831,7 +50838,19 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // THE JOB PICKS THE LANE. A draw with references is an edit whatever the operator's image policy
   // says, because "cheapest" that cannot do the job is not cheap - it is a picture you pay for and
   // then pay again to replace.
-  const isEdit = Array.isArray(opts.refs) && opts.refs.filter(Boolean).length > 0;
+  // ══ A REFERENCE IS NOT ALWAYS AN EDIT ════════════════════════════════════════════════════
+  // MEASURED: the whole catalogue started drawing on gpt-image-2 and hit a rate limit. A STYLE row
+  // holds pose, so it passes the house image and the family parent as refs - and "refs present"
+  // was being read as "this is an edit", sending free cards to a four-cent model.
+  // The two are genuinely different jobs. CHANGING somebody's tattoo - evolve, lettering, on-body -
+  // must preserve what is already there, and only a model that can edit will do that. DRAWING A
+  // NEW CARD in the vein of a reference is still a generation; Flux takes the hint or ignores it,
+  // and either way the card is free and fine.
+  // So the CALLER says which it is. Anything that does not is a generation, which is the safe
+  // default: the worst case is a card that ignored its reference, not a bill.
+  const EDIT_SOURCES = new Set(["image_evolve", "letter", "onme", "design_evolve"]);
+  const isEdit = Array.isArray(opts.refs) && opts.refs.filter(Boolean).length > 0
+    && (opts.edit === true || EDIT_SOURCES.has(String(opts.source || "")));
   const policyName = ((await env.AURA_KV.get(isEdit ? "config:policy:edit" : "config:policy:image")
     .catch(() => null)) || (isEdit ? "edit" : "cheapest")).trim();
   const resolved = IMAGE_POLICY[policyName] || (isEdit ? IMAGE_POLICY.edit : IMAGE_POLICY.cheapest);
@@ -53157,13 +53176,19 @@ export class PublicEntry extends WorkerEntrypoint {
           "realism": "realism tattoo artwork - rendered as an ink drawing, not a photograph",
           "hyperrealism": "hyperrealism tattoo artwork - extreme fine detail, still an ink drawing and not a photograph",
           "black and grey realism": "black and grey realism tattoo artwork - ink shading only, no colour, not a photograph",
-          "traditional": "bold american traditional tattoo - thick black outlines, flat solid primary colour, no gradients",
-          "neo-traditional": "neo-traditional tattoo - bold outlines with richer colour and depth",
+          "traditional": "bold american traditional tattoo - thick black outlines, flat solid fills, no gradients",
+          // ══ A STYLE PHRASE MUST NOT CLAIM THE COLOUR FIELD ═══════════════════════════════
+          // MEASURED in a live prompt: "bold outlines with richer colour and depth" followed
+          // immediately by "in black and grey ink only, with no colour anywhere". The table was
+          // arguing with itself, and a model handed both picks one.
+          // Colour is its own choice. A style phrase describes LINE and FORM and says nothing
+          // about colour, because the person answers that separately.
+          "neo-traditional": "neo-traditional tattoo - bold outlines with depth and rich shading",
           "japanese": "japanese irezumi tattoo - bold outline, flowing linework, heavy black shading",
           "fine line": "fine line tattoo - thin single-weight linework, minimal shading",
           "blackwork": "blackwork tattoo - solid black shapes and heavy contrast",
           "dotwork": "dotwork tattoo - stippled shading built from dots, no solid line fill",
-          "watercolour": "watercolour tattoo - soft colour washes and paint bleed",
+          "watercolour": "watercolour tattoo - soft washes and paint bleed",
           "minimalist": "minimalist tattoo - the simplest lines that still read",
           "ornamental": "ornamental tattoo - decorative filigree and repeating pattern worked into the form",
           "sketch": "sketch-style tattoo - loose pencil-like construction lines",
@@ -53724,7 +53749,9 @@ export class PublicEntry extends WorkerEntrypoint {
             const line = asked(k, inc[k], extra);
             if (line) said.push(line);
           }
-          const ask = said.join(". ") + "." + TAIL;
+          // TAIL already opens with a full stop, so joining with one produced "throughout.." - small,
+          // and exactly the kind of thing that ends up in a prompt nobody reads twice.
+          const ask = said.join(". ") + TAIL;
           // ── EVERY CHOICE MUST SURVIVE ──────────────────────────────────────────────────
           // The check is per FIELD, not per label: "head and chest" becomes "head and upper chest
           // only", so scanning the prompt for the tile's own words would fail on a correct string.
@@ -54273,6 +54300,10 @@ export class PublicEntry extends WorkerEntrypoint {
           name: "on me",
           raw: true,
           refs: [bodyUrl, designUrl],
+          // THIS IS AN EDIT, and it has to say so. It changes a photograph of a person - keeping
+          // them, their pose and their background - which only a model that can edit will do.
+          // Left unsaid it would fall through to a generation and redraw the person.
+          source: "onme",
           parent: id
         }), env, true);
         const p2 = (r && r.payload) ? r.payload : r;

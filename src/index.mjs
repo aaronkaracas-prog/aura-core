@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.6.0-2026-08-28-twelve-styles-photo-recognition";
+const BUILD = "aura-core-v9.7.0-2026-08-28-one-branch-of-the-fork";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5370,10 +5370,14 @@ async function processCommand(line, env, isOp) {
       }
       const ls = await env.AURA_KV.list({ prefix: "shot:v1:" + slug + ":", limit: 200 })
         .catch(() => ({ keys: [] }));
+      // Only the walls the walk actually has. Earlier versions wrote `part:*` walls whose tiles
+      // are still in KV; showing them makes a sheet look broken and invites reminting pictures
+      // for a screen nobody will ever see again. They are left in place, just not displayed.
+      const LIVE = new Set(["style", "crop", "pose", "expression"]);
       const walls = [];
       for (const k of (ls.keys || [])) {
         const sh = await env.AURA_KV.get(k.name, "json").catch(() => null);
-        if (!sh || !sh.step) continue;
+        if (!sh || !sh.step || !LIVE.has(sh.step)) continue;
         const w = words[sh.step];
         if (!w || !Array.isArray(w.opts)) continue;
         walls.push({ step: sh.step, ask: w.ask, ctx: sh.ctx || "bare", drew: sh.drew || null,
@@ -5385,6 +5389,7 @@ async function processCommand(line, env, isOp) {
       // A wall whose words exist but which nobody has walked yet is still worth showing - it is
       // the difference between "not made" and "made and empty".
       for (const st of Object.keys(words)) {
+        if (!LIVE.has(st)) continue;
         if (!walls.some((w) => w.step === st)) {
           walls.push({ step: st, ask: words[st].ask, ctx: "not walked yet", drew: null,
             opts: words[st].opts.map((o) => ({ id: o.id, say: o.say, img: null, why: "not walked yet" })) });
@@ -5395,7 +5400,7 @@ async function processCommand(line, env, isOp) {
         what_to_do: "Walk it once - a wall is drawn by somebody standing on it, never in advance." } };
       // The order a person meets them: what the leaf declared, then style, then colour.
       // The order a person meets them - the same four slots for every subject in the catalog.
-      const order = ["style", "part", "pose", "expression", "colour"];
+      const order = ["style", "crop", "pose", "expression"];
       walls.sort((x, y) => {
         const ix = order.indexOf(x.step), iy = order.indexOf(y.step);
         return (ix < 0 ? 99 : ix) - (iy < 0 ? 99 : iy);
@@ -50926,7 +50931,10 @@ const TAT_CROP = [
 // is the thing being chosen there. The final piece is neither of these; it goes through SHOW_IT.
 const TAT_FRAME_PHOTO =
   ". A clear reference photograph, one subject, centred, filling the frame, sharp focus, " +
-  "plain light background, no people, no text, no border.";
+  "plain light background, no people, no border. No letters, no words, no caption, no banner, " +
+  "no watermark, no signature anywhere in the image.";
+// "no text" alone was not enough - one full-body tile came back with a garbled banner reading
+// "Jolden Reeg rete" across it. An image model needs the failure named in the forms it produces.
 const TAT_FRAME_INK =
   ". Tattoo design, clean linework, high contrast, on a plain background, " +
   "no skin, no body, no photograph - the artwork only.";
@@ -51223,9 +51231,13 @@ async function tatShoot(env, shotKey, head, ctxPhrases, step, wall, shot, budget
     // on cannot be stylised. On a recognition wall the locked style is deliberately left OUT of
     // the prompt for exactly that reason.
     const ink = step === "style";
-    const words = ink
-      ? [head].concat(ctxPhrases, [o.say || o.id]).filter(Boolean).join(", ")
-      : [head, o.say || o.id].filter(Boolean).join(", ");
+    // ONLY THE STYLE IS DROPPED FROM A PHOTO TILE, NOT THE WHOLE PATH. Dropping everything meant
+    // a pose tile never heard "full body" and an expression tile never heard "face" - and the
+    // prompt for a bust became indistinguishable from a face except for one clause the model was
+    // free to ignore, which is exactly what it did.
+    const keep = ink ? ctxPhrases : ctxPhrases.filter((x) => !x.startsWith("__style__"));
+    const words = [head].concat(keep.map((x) => x.replace(/^__style__/, "")), [o.say || o.id])
+      .filter(Boolean).join(", ");
     const full = words + (ink ? TAT_FRAME_INK : TAT_FRAME_PHOTO);
     // A failure must carry what was sent and what came back. So must a SUCCESS that looks wrong:
     // "the pictures ignore the pose" is unanswerable without the string that drew them, and
@@ -54048,10 +54060,14 @@ export class PublicEntry extends WorkerEntrypoint {
         // screen, and why nothing was ever the same shape twice. Every subject in all 46
         // categories now walks the same slots and only the WORDS inside them differ.
         //
-        // STYLE IS SECOND, AND THAT IS THE LOAD-BEARING PART. Once it is locked every wall after
-        // it is drawn in that style, so the person is looking at their own tattoo from the second
-        // screen onward. Put style last - as this did until now - and every earlier wall is drawn
-        // in a default nobody chose, which is a lying tile wearing a quieter disguise.
+        // STYLE IS ASKED FIRST BUT IS DELIBERATELY NOT DRAWN INTO THE WALLS THAT FOLLOW.
+        // The original theory here was the opposite - lock style early so every later wall is
+        // "already their tattoo". Measured on one sheet, that theory is wrong: seven poses drawn
+        // photoreal were unmistakably golden retrievers and the SAME seven in neo-traditional
+        // were whippets, because a bold-outline drawing of a golden and of a whippet are nearly
+        // the same drawing. Style is asked first because it leads the SENTENCE; the recognition
+        // walls stay photographs so a person can still tell what they are tapping.
+        // Do not "align" this back to the old theory. The goats came from the old theory.
         //
         // CROP GATES POSE. A head has no pose, so the pose wall exists only when they picked an
         // option that shows the whole thing. FACE GATES EXPRESSION - a rose has no expression, a
@@ -54068,7 +54084,11 @@ export class PublicEntry extends WorkerEntrypoint {
         const order = ["style"]
           .concat(prof.part ? ["crop"] : [])
           .concat(cropOpt && cropOpt.body ? ["pose"] : [])
-          .concat(prof.face ? ["expression"] : []);
+          // THE FORK HAS TWO BRANCHES AND YOU WALK ONE. A full body gets a pose; a head gets an
+          // expression. This was `prof.face` alone, which bolted expression onto the END of the
+          // body path - so a full-body dog was posed and THEN asked to make a face, which is a
+          // fourth wall on a walk that is supposed to be three.
+          .concat(prof.face && !(cropOpt && cropOpt.body) ? ["expression"] : []);
 
         // ── WHICH SCREEN ARE WE ON. The first slot in the order nobody has answered.
         const ASKS = { crop: "Head or body?", pose: "How do you want it posed?",
@@ -54126,7 +54146,9 @@ export class PublicEntry extends WorkerEntrypoint {
               } catch {}
             }
             const line = tatSay(k, inc[k], ex);
-            if (line) ctxPhrases.push(line);
+            // Tagged rather than positional: a recognition wall drops the style and keeps
+            // everything else, and finding it by index breaks the first time the order changes.
+            if (line) ctxPhrases.push(k === "style" ? "__style__" + line : line);
           }
           const ctxSlug = before.length
             ? before.map((k) => tatSlug(k) + "-" + tatSlug(String(inc[k]))).join("__").slice(0, 140)
@@ -54183,6 +54205,7 @@ export class PublicEntry extends WorkerEntrypoint {
             }
           } catch {}
         }
+        // The tag is a wall-drawing concern and never reaches the sentence.
         const ask = tatBuildAsk(leaf, order, inc, extras, prof.say || null);
         // EVERY CHOICE MUST SURVIVE. Per field, not per label - a phrase legitimately rewords
         // the tile's own words, so scanning the prompt for them would fail on a correct string.

@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.9.0-2026-08-28-a-dragon-is-a-silhouette";
+const BUILD = "aura-core-v9.10.0-2026-08-28-one-face-per-leaf";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5340,6 +5340,117 @@ async function processCommand(line, env, isOp) {
       return jsonReply({ ok: true, reply: data.reply });
     }
 
+    // ══ FACES — START OR CHECK THE IDENTITY PASS ═════════════════════════════════════════════
+    // Hands the work to the Workflow that already exists rather than looping here: a category is
+    // dozens of leaves and a Worker invocation cannot hold that, which is the same reason ENRICH
+    // and CARDS are modes of it.
+    case "FACES": {
+      const arg = String(rest || "").trim();
+      if (!env.GRID_CRAWL_WORKFLOW) return { cmd: "FACES", payload: { ok: false,
+        error: "NO_WORKFLOW_BINDING",
+        what_to_do: "GRID_CRAWL_WORKFLOW must be bound in aura-core's wrangler config." } };
+      // An id checks a run; a name starts one.
+      if (/^[0-9a-f-]{20,}$/i.test(arg)) {
+        try {
+          const inst = await env.GRID_CRAWL_WORKFLOW.get(arg);
+          const st = await inst.status();
+          return { cmd: "FACES", payload: { ok: true, id: arg, status: st?.status || null,
+            output: st?.output || null, error: st?.error || null } };
+        } catch (e) { return { cmd: "FACES", payload: { ok: false, id: arg,
+          error: String(e && e.message || e) } }; }
+      }
+      if (!arg) return { cmd: "FACES", payload: { ok: false,
+        error: 'Usage: FACES <kind|category>  or  FACES <run-id> to check one',
+        example: "FACES Dogs" } };
+      const force = /\s--force\s*$/.test(arg);
+      const cat = arg.replace(/\s--force\s*$/, "").trim();
+      const inst = await env.GRID_CRAWL_WORKFLOW.create({ params: {
+        mode: "faces", category: cat, force } });
+      return { cmd: "FACES", payload: { ok: true, started: cat, id: inst.id,
+        check: 'RUN "FACES ' + inst.id + '"',
+        then: 'RUN "SHEET ' + cat + '"',
+        note: "One face per leaf. Sleeps between leaves and rests every 20 - a category takes " +
+              "minutes, not seconds, and it survives a redeploy." } };
+    }
+
+    // ══ SIGN — A KIND THAT HAS BEEN LOOKED AT ════════════════════════════════════════════════
+    // The review state, so a fresh session can ask what is done instead of Aaron re-explaining.
+    // It records a judgement, nothing more - signing does not lock a tile or stop a rebuild.
+    case "SIGN": {
+      const arg = String(rest || "").trim();
+      if (!arg) {
+        const l = await env.AURA_KV.list({ prefix: "signed:", limit: 200 }).catch(() => ({ keys: [] }));
+        const out = [];
+        for (const k of (l.keys || [])) {
+          const v = await env.AURA_KV.get(k.name).catch(() => null);
+          out.push(k.name.replace("signed:", "") + "  " + (v || ""));
+        }
+        return { cmd: "SIGN", payload: { ok: true, signed: out,
+          usage: 'SIGN <kind>  to mark one as reviewed' } };
+      }
+      const at = new Date().toISOString().slice(0, 10);
+      await env.AURA_KV.put("signed:" + tatSlug(arg), at);
+      return { cmd: "SIGN", payload: { ok: true, kind: arg, signed: at } };
+    }
+
+    // ══ FACE — ONE TILE, ONE LEAF, FOR REVIEW ════════════════════════════════════════════════
+    // The identity pass. Not the catalogue - the SAMPLE somebody judges before the catalogue is
+    // trusted. Aaron judged all of dogs off a wall of breed faces this afternoon and never looked
+    // at a style wall to do it, so the face is what identity means here.
+    //
+    // ONE TILE PER LEAF, NOT TWENTY-FOUR. A full subject is 24 tiles; twenty-five breeds is 600
+    // pictures to answer a question twenty-five pictures answer. The deep pass comes after a kind
+    // is signed, not before.
+    //
+    // IT WRITES TO ITS OWN KEY AND TOUCHES NO WALK STATE. The face prompt deliberately carries no
+    // style - that is the fix that stopped stylised tiles turning goldens into whippets - so the
+    // picture is identical whichever style a person walks through, and a live walk gets it back
+    // from the prompt cache for nothing. Review state and walk state stay apart, which is why a
+    // bad tile here is `DELKV face:v1:<leaf>` and not a wall rebuild.
+    case "FACE": {
+      const leaf = String(rest || "").trim();
+      if (!leaf) return { cmd: "FACE", payload: { ok: false,
+        error: 'Usage: FACE <leaf>   e.g.  FACE golden retriever' } };
+      const force = /\s--force\s*$/.test(leaf);
+      const name = leaf.replace(/\s--force\s*$/, "").trim();
+      const fKey = "face:v1:" + tatSlug(name);
+      if (!force) {
+        const hit = await env.AURA_KV.get(fKey, "json").catch(() => null);
+        // A tile that EXISTS is not the same as a tile that DREW. A record with no image is a
+        // hole, and skipping it would be existence standing in for success - the same shape as
+        // `enriched: 1` on a dead domain.
+        if (hit && hit.img) return { cmd: "FACE", payload: { ok: true, leaf: name, skipped: true,
+          img: hit.img, url: "https://auras.guide/image/" + hit.img } };
+      }
+      const pin = (await env.AURA_KV.get("config:talk:model").catch(() => null)) || null;
+      const prof = await tatLeafProfile(env, name, (pin && pin.trim()) ? pin.trim() : undefined);
+      if (prof.failed) return { cmd: "FACE", payload: { ok: false, leaf: name,
+        error: "PROFILE_UNAVAILABLE", why: prof.why, saw: prof.saw } };
+      // A leaf with no crop wall has no face to mint. That is a correct answer for a glyph or a
+      // symbol, not a failure - it is reported so the sheet can say why the tile is absent.
+      if (!prof.part) {
+        const rec = { leaf: name, img: null, why: "no crop wall - this leaf has no face to show",
+                      resolved: prof.resolved || null, at: new Date().toISOString() };
+        await env.AURA_KV.put(fKey, JSON.stringify(rec));
+        return { cmd: "FACE", payload: { ok: true, leaf: name, no_face: true, why: rec.why } };
+      }
+      const kind = String((prof.resolved && prof.resolved.subject) || name).trim();
+      const frame = TAT_PHOTO_KIND.test(kind) ? TAT_FRAME_PHOTO : TAT_FRAME_SHAPE(name);
+      const face = TAT_CROP[0];
+      const words = [(prof.say || name), face.say].filter(Boolean).join(", ") + frame;
+      let rec = { leaf: name, img: null, why: null, drew: words, kind,
+                  resolved: prof.resolved || null, at: new Date().toISOString() };
+      try {
+        const gi = await auraGenerateImage(words, env, { source: "tattoo_option" });
+        if (gi?.ok && gi.id) { rec.img = gi.id; rec.cached = !!gi.cached; rec.cost_usd = gi.cost_usd || 0; }
+        else rec.why = String(gi?.error || "no image returned").slice(0, 160);
+      } catch (e) { rec.why = String(e && e.message || e).slice(0, 160); }
+      await env.AURA_KV.put(fKey, JSON.stringify(rec));
+      return { cmd: "FACE", payload: { ok: !!rec.img, leaf: name, img: rec.img,
+        url: rec.img ? "https://auras.guide/image/" + rec.img : null,
+        why: rec.why, kind, cached: !!rec.cached, cost_usd: rec.cost_usd || 0, drew: words } };
+    }
+
     // ══ SHEET — ONE SCREEN, THE WHOLE SUBJECT ════════════════════════════════════════════════
     // Aaron reviews on a phone and can upload a fixed number of screenshots per session, so
     // sixteen tiles judged sixteen images at a time is not a review - it is a queue. And a row
@@ -5354,6 +5465,66 @@ async function processCommand(line, env, isOp) {
       const want = String(rest || "").trim();
       if (!want) return { cmd: "SHEET", payload: { ok: false,
         error: 'Usage: SHEET <subject>   e.g.  SHEET withered rose' } };
+      // ══ A KIND SHEET IS A DIFFERENT PAGE FROM A SUBJECT SHEET ════════════════════════════
+      // `SHEET golden retriever` is one leaf's walls. `SHEET dogs` is twenty-five leaves' FACES -
+      // the identity pass, one tile each, which is the page a reviewer actually judges a category
+      // on. Same command because a person types the name they are thinking of, not the shape of
+      // the page they want.
+      const tree = await env.AURA_KV.get("card:tree", "json").catch(() => null);
+      const kindKey = tree && tree.specific
+        ? Object.keys(tree.specific).find((k) => tatSlug(k) === tatSlug(want)) : null;
+      if (kindKey) {
+        const leaves = tree.specific[kindKey] || [];
+        const rows = [];
+        for (const leaf of leaves) {
+          const f = await env.AURA_KV.get("face:v1:" + tatSlug(leaf), "json").catch(() => null);
+          // A leaf nobody has run is not a leaf that failed. Three states, not two.
+          rows.push({ leaf, img: (f && f.img) || null,
+            why: f ? (f.why || null) : "not run yet", drew: (f && f.drew) || null });
+        }
+        const escK = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) =>
+          ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+        const drew = rows.filter((r) => r.img).length;
+        const htmlK =
+          '<!doctype html><html lang=en><head><meta charset=utf-8>' +
+          '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+          "<title>" + escK(kindKey) + "</title><style>" +
+          "*{margin:0;padding:0;box-sizing:border-box}" +
+          "body{background:#0b0d12;color:#e9edf5;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px}" +
+          "h1{font-size:1.05rem;font-weight:800}" +
+          ".top{color:#64748b;font-size:.78rem;margin:.25rem 0 1rem}" +
+          // BIGGER TILES THAN A SUBJECT SHEET, DELIBERATELY. This page gets judged from ONE
+          // screenshot, so a tile too small to tell a labradoodle from a goldendoodle makes the
+          // whole pass worthless.
+          ".g{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}" +
+          "figure{background:#141a28;border:1px solid rgba(148,163,184,.16);border-radius:12px;overflow:hidden}" +
+          "figure img{width:100%;aspect-ratio:1;object-fit:cover;display:block;background:#0f172a}" +
+          "figcaption{padding:.5rem .6rem;font-size:.9rem}" +
+          ".gone{padding:3.2rem .6rem;text-align:center;color:#fca5a5;font-size:.72rem}" +
+          ".cold{padding:3.2rem .6rem;text-align:center;color:#64748b;font-size:.72rem}" +
+          "</style></head><body><h1>" + escK(kindKey) + "</h1><p class=top>" +
+          rows.length + " leaves &middot; " + drew + " drawn" +
+          (drew < rows.length ? ' &middot; <b style=color:#fca5a5>' + (rows.length - drew) + " missing</b>" : "") +
+          "</p><div class=g>" + rows.map((r) =>
+            "<figure>" +
+            (r.img ? '<a href="https://auras.guide/image/' + escK(r.img) + '" target=_blank>' +
+                     '<img loading=lazy src="https://auras.guide/image/' + escK(r.img) + '"></a>'
+                   : '<div class="' + (r.why === "not run yet" ? "cold" : "gone") + '">' +
+                     escK(r.why || "never drew") + "</div>") +
+            "<figcaption>" + escK(r.leaf) + "</figcaption></figure>").join("") +
+          "</div></body></html>";
+        const pageK = "sheet/" + tatSlug(kindKey);
+        await env.AURA_KV.put("page:auras.guide/" + pageK, htmlK);
+        const signed = await env.AURA_KV.get("signed:" + tatSlug(kindKey)).catch(() => null);
+        return { cmd: "SHEET", payload: { ok: true, kind: kindKey,
+          url: "https://auras.guide/" + pageK, leaves: rows.length, drawn: drew,
+          missing: rows.length - drew, signed: signed || null,
+          urls: rows.map((r) => r.leaf + "  ->  " +
+            (r.img ? "https://auras.guide/image/" + r.img : "NO IMAGE: " + (r.why || "unknown"))),
+          note: "Identity pass - one face per leaf. Flag as `<leaf> | face | <why>`. " +
+                "A bad tile is DELKV face:v1:<leaf>, then re-run FACE." } };
+      }
+
       const slug = tatSlug(want);
       const prof = await env.AURA_KV.get("leaf:v1:" + slug, "json").catch(() => null);
       // ══ THE WORDS AND THE PICTURES LIVE APART, SO THE SHEET JOINS THEM ══════════════════
@@ -52664,6 +52835,91 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
       }
       return { ok: true, mode: "enrich", shops: ids.length, enriched: done, failed,
                unreachable: unreached, trouble };
+    }
+
+    // ══ FACES IS A FOURTH MODE — THE IDENTITY PASS ═════════════════════════════════════════════
+    // One tile per leaf, for review. Not the catalogue: the SAMPLE somebody judges before the
+    // catalogue is trusted.
+    //
+    // THIS IS A MODE AND NOT A SECOND WORKFLOW, AND NOT A SCRIPT ON A LAPTOP. The durable
+    // machinery here already sleeps for free, resumes after a redeploy and runs for hours with
+    // nobody watching - and it already carries three lessons this run would otherwise learn the
+    // hard way: the subrequest ceiling is per INVOCATION so a long sleep is what resets it, a
+    // brake is needed because Workers AI neurons are uncounted, and a row that EXISTS is not a
+    // row that WORKED.
+    // A build that runs off one person's machine also puts the catalogue's construction somewhere
+    // Aura cannot see - no archive, no meter attribution, no way to answer how it was built.
+    if (String(event.payload?.mode || "") === "faces") {
+      const only = String(event.payload?.category || "").trim();
+      const cap = Math.min(Number(event.payload?.max_leaves) || 40, 600);
+      const force = event.payload?.force === true;
+      const t = await this.env.AURA_KV.get("card:tree", "json").catch(() => null);
+      if (!t?.subjects) return { ok: false, error: "NO_TREE", note: "Run CARDS TREE once to seed it." };
+
+      // LEAVES ONLY, NEVER A KIND. That rule cost fifteen images to learn on the old builder: a
+      // wall built for "dogs" came back fifteen different breeds, because a category cannot hold
+      // a picture. "Golden retriever" holds still; "dogs" does not.
+      // A label can live under two categories - nineteen kinds do - and every key is the label,
+      // so the same leaf is planned once and the collision is REPORTED rather than quietly
+      // resolved. Two different things sharing one name is a taxonomy question, and that is
+      // Aaron's call, not this loop's.
+      const wanted = only && only.toUpperCase() !== "ALL"
+        ? only.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean) : null;
+      const leaves = []; const seen = new Set(); const collided = {};
+      const hit = (name) => wanted && (wanted.includes(String(name).toLowerCase()));
+      for (const [cat, kinds] of Object.entries(t.subjects)) {
+        for (const kind of kinds) {
+          const kids = (t.specific && t.specific[kind]) || null;
+          const take = !wanted || hit(cat) || hit(kind);
+          if (!take) continue;
+          const list = (kids && kids.length) ? kids : [kind];
+          for (const leaf of list) {
+            const k = String(leaf).toLowerCase();
+            if (seen.has(k)) { (collided[leaf] = collided[leaf] || []).push(cat); continue; }
+            seen.add(k); leaves.push(leaf);
+          }
+        }
+      }
+      if (!leaves.length) return { ok: false, error: "NOTHING_TO_RUN", category: only || null,
+        note: "No category or kind by that name in the tree." };
+
+      const REST_EVERY = 20, REST = "60 seconds";
+      const drawn = [], skipped = [], noFace = [], broke = [];
+      let n = 0, consecutiveBad = 0, halted = null;
+      for (const leaf of leaves) {
+        if (n >= cap) break;
+        n++;
+        const r = await step.do("face-" + n, async () => {
+          const x = await processCommand("FACE " + leaf + (force ? " --force" : ""), this.env, true);
+          return (x && x.payload) ? x.payload : x;
+        });
+        if (r?.skipped) { skipped.push(leaf); consecutiveBad = 0; }
+        else if (r?.no_face) { noFace.push(leaf); consecutiveBad = 0; }
+        else if (r?.ok && r.img) { drawn.push(leaf); consecutiveBad = 0; }
+        else {
+          broke.push({ leaf, why: (r?.why || r?.error || "unknown") });
+          consecutiveBad++;
+          // THE BRAKE. Workers AI allows 10,000 neurons a day and nothing counts them, so the
+          // only symptom of crossing that line is generations quietly starting to fail. A builder
+          // that keeps going for hours writing empty records is worse than one that stops after
+          // three: it fills the sheet with holes that look like content problems and are not.
+          if (consecutiveBad >= 3) { halted = "three failures in a row - stopped rather than fill the sheet with holes"; break; }
+        }
+        // A LONG SLEEP RESTARTS THE INVOCATION AND THE SUBREQUEST COUNTER WITH IT. `step.do` does
+        // not - two overnight runs died at the same place before that was understood.
+        if (n % REST_EVERY === 0) await step.sleep("rest-" + n, REST);
+        else await step.sleep("gap-" + n, "2 seconds");
+      }
+      return { ok: true, mode: "faces", category: only || "ALL",
+        leaves: leaves.length, attempted: n,
+        drew: drawn.length, skipped: skipped.length, no_face: noFace.length,
+        failed: broke.length, halted,
+        // What it did NOT do, named. A batch that quietly becomes a shorter batch is a sample
+        // somebody reviews without knowing it is incomplete.
+        trouble: broke.slice(0, 20), no_face_leaves: noFace.slice(0, 20),
+        collisions: Object.keys(collided).length ? collided : null,
+        remaining: Math.max(0, leaves.length - n),
+        next: "SHEET " + (only || "<kind>") };
     }
 
     // ══ CARDS IS A THIRD MODE, FOR THE SAME REASON ENRICH IS A SECOND ONE ══════════════════════

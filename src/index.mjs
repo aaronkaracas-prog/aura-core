@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v8.6.0-2026-08-28-a-reference-is-not-always-an-edit";
+const BUILD = "aura-core-v8.7.0-2026-08-28-the-tail-must-not-argue";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -23730,7 +23730,14 @@ ${blocks.filter(b => !b.includes("c-crisis")).join("\n")}
           if (h && h.size < 512) holes.push(it);
         }
         if (!holes.length) return { cmd: "CARDS", payload: { ok: true, key: row.key, patched: 0,
-          note: "Nothing to fix - every card in this row has a picture." } };
+          cards: row.items.length, made_at: row.made_at || null,
+          // WHAT IT ACTUALLY CHECKED, AND WHEN THE ROW WAS MADE. "Nothing to fix" after four cards
+          // failed a minute earlier reads as a contradiction - and it was not one: a later build
+          // had already refilled them. Saying what was inspected turns a bare green into a fact
+          // somebody can reconcile against what they just watched happen.
+          note: "Nothing to fix - all " + row.items.length + " cards in this row have a picture, " +
+                "as of " + String(row.made_at || "unknown").slice(0, 19) + ". If a build reported " +
+                "failures after that, they were filled by a later pass." } };
         const useRefs = (row.hold || "language") === "pose";
         // ══ THE SAME FORMAT AS THE FACTORY, BECAUSE A PATCH IS A CARD ═════════════════════════
         // This carried its own copy of the card format and its own `wordFor`, and when the factory
@@ -50704,6 +50711,14 @@ async function ladderOptions(env, field, subject, ladderModel) {
       "NOTE HOW QUANTITY BELONGS HERE when it changes the picture - three roses is a real " +
       "composition, and ONE is the default when it is not offered."
     : "WHAT IT LOOKS LIKE OR FEELS LIKE - the expression or character.\n" +
+      // MEASURED: rose's character row came back as single bloom, bouquet, bud, wilting, thorny
+      // stem, climbing vine, wreath, scattered - four of those are ARRANGEMENTS, and two pointed at
+      // the very same images as the composition row. Two screens asking one question.
+      // The line is: composition is HOW MANY and WHICH VIEW, character is WHAT STATE IT IS IN.
+      "NEVER an arrangement, a count, a crop or a view - those belong to the previous question " +
+      "and repeating them here gives somebody the same screen twice. For a rose that means " +
+      "blooming, tight bud, half open, wilting, freshly cut - NOT bouquet, three roses, a wreath " +
+      "or scattered petals. For a dog: happy, alert, sleeping - NOT head portrait or with owner.\n" +
       "A dog: happy, playful, calm, loving, gentle, proud, serious, alert, soulful, " +
       "curious, goofy, protective, sleeping, peaceful.\n" +
       "A dragon: fierce, powerful, protective, majestic, wise, mystical, ancient, regal, " +
@@ -53471,9 +53486,20 @@ export class PublicEntry extends WorkerEntrypoint {
         // are getting - and the composition list is where plurality lives when it is a real
         // choice ("three roses", "with another dog"). Without this the model reads a bare subject
         // as a scene and draws several.
-        const TAIL = ". A single subject unless stated otherwise. Tattoo design, clean linework, " +
-                     "high contrast, on a plain background, no skin, no body, no photograph - " +
-                     "the artwork only.";
+        // ══ THE TAIL MUST NOT ARGUE WITH THE CHOICE ══════════════════════════════════════════
+        // MEASURED three times on the same chips: "a bouquet, several stems gathered together, not
+        // a single bloom" reached the model and one rose came back. The phrase was right and the
+        // prompt still lost, because the TAIL said "A single subject unless stated otherwise" AFTER
+        // it - so the last word on quantity was ONE.
+        // That line exists for a real reason: a plural category label ("Dogs") once produced four
+        // dogs running through a field. But a composition that states a quantity HAS stated
+        // otherwise, and repeating the default after it is an argument the default wins.
+        // So the singular default is dropped the moment a choice implies more than one.
+        const PLURAL = /\b(bouquet|cluster|two|three|four|several|many|multiple|pair|group|wreath|frame|scattered|vine|climbing|arrangement|with (another|owner|their))\b/i;
+        const multi = ["composition", "character", "elements"].some((k) => has(k) && PLURAL.test(String(inc[k])));
+        const TAIL = (multi ? ". " : ". A single subject unless stated otherwise. ") +
+                     "Tattoo design, clean linework, high contrast, on a plain background, " +
+                     "no skin, no body, no photograph - the artwork only.";
 
         if (!has("subject")) return { ok: true, done: false, stage: "subject",
           ask: STAGES[0].ask, options: [], needs_words: true,

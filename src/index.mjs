@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.8.0-2026-08-28-the-sheet-shows-live-paths";
+const BUILD = "aura-core-v9.9.0-2026-08-28-a-dragon-is-a-silhouette";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -50953,6 +50953,30 @@ const TAT_FRAME_PHOTO =
   "no watermark, no signature anywhere in the image.";
 // "no text" alone was not enough - one full-body tile came back with a garbled banner reading
 // "Jolden Reeg rete" across it. An image model needs the failure named in the forms it produces.
+// ══ A DRAGON HAS NEVER BEEN PHOTOGRAPHED ═════════════════════════════════════════════════
+// MEASURED: the dragon pose wall asked for "a clear reference photograph" of a japanese dragon.
+// No such photograph exists, so Flux ignored the instruction and drew flash anyway - and once it
+// is inventing a drawing, the COMPOSITION becomes its choice too. Coiled read fine, because a
+// closed circle is unmistakable. Figure eight did not: it drew a dragon that happens to curve
+// rather than a dragon SHAPED LIKE AN EIGHT.
+//
+// A dog is recognised by fur and face. A dragon is recognised by the line its body takes. Same
+// wall, different thing being recognised, so the frame has to differ.
+//
+// WHICH FRAME IS A FACT ABOUT THE WORD, NOT A QUESTION FOR A MODEL. The leaf profile already
+// returns `resolved.subject` - dog, dragon, rose - and that is enough. Asking a model a THIRD
+// yes/no about each leaf is how six axes came back the first time: every question it can answer
+// is a question it can answer wrong.
+// Anything not on this list gets the shape plate, because the failure modes are not symmetric -
+// a flat graphic of a real dog still reads, while a "photograph" of something unphotographable
+// is uncontrolled flash.
+const TAT_PHOTO_KIND = /^(dog|cat|animal|pet|bird|horse|fish|insect|butterfly|snake|shark|wolf|bear|deer|person|human|portrait|man|woman|child|flower|plant|tree|fern|vine|leaf)$/i;
+
+const TAT_FRAME_SHAPE = (leaf) =>
+  ". A flat graphic of ONE " + leaf + " on a plain light ground. The body path is the entire " +
+  "picture, high contrast, filling the frame. No clouds, no waves, no scenery, no extra " +
+  "subjects, no letters, no words, no caption, no watermark.";
+
 const TAT_FRAME_INK =
   ". Tattoo design, clean linework, high contrast, on a plain background, " +
   "no skin, no body, no photograph - the artwork only.";
@@ -51178,8 +51202,11 @@ async function tatWall(env, leafLabel, step, ask, model, guide) {
           (guide || 'Return ONLY JSON: {"options":[{"id":"...","say":"..."}]}') + "\n\n" +
           "SIX TO TWELVE options somebody would recognise instantly and tap. `id` is one to " +
           "four lowercase words - the label they read. VISUALLY DISTINCT: two that would draw " +
-          "the same picture are one option. Return six if this honestly has six; filler is " +
-          "worse than a short list because somebody reads every one.\n\n" +
+          "the same picture are one option. The test is a THUMBNAIL - at the size of a phone " +
+          "tile the outline alone must differ, because that is all somebody sees before they " +
+          "tap. Two words for one silhouette are one option, however different the words are. " +
+          "Return six if this honestly has six; filler is worse than a short list because " +
+          "somebody reads every one.\n\n" +
           "`say` is HOW TO DRAW IT - one clause an image model cannot skip past. " +
           '"bouquet" -> "a bouquet, several stems gathered together, not a single bloom". ' +
           '"head and chest" -> "head and upper chest only, cut off below the shoulders". ' +
@@ -51238,7 +51265,7 @@ async function tatWall(env, leafLabel, step, ask, model, guide) {
 // NO REFERENCE IMAGE, DELIBERATELY. A reference carries pose, language AND SUBJECT: a dragon
 // house image put dragon bodies on fifteen golden retrievers. These walls vary one thing and the
 // words carry it.
-async function tatShoot(env, shotKey, head, ctxPhrases, step, wall, shot, budgetMs) {
+async function tatShoot(env, shotKey, head, ctxPhrases, step, wall, shot, budgetMs, recogFrame) {
   const need = wall.opts.filter((o) => !(shot.imgs && shot.imgs[o.id] && shot.imgs[o.id].img));
   shot.imgs = shot.imgs || {};
   if (!need.length) return shot;
@@ -51256,7 +51283,7 @@ async function tatShoot(env, shotKey, head, ctxPhrases, step, wall, shot, budget
     const keep = ink ? ctxPhrases : ctxPhrases.filter((x) => !x.startsWith("__style__"));
     const words = [head].concat(keep.map((x) => x.replace(/^__style__/, "")), [o.say || o.id])
       .filter(Boolean).join(", ");
-    const full = words + (ink ? TAT_FRAME_INK : TAT_FRAME_PHOTO);
+    const full = words + (ink ? TAT_FRAME_INK : recogFrame);
     // A failure must carry what was sent and what came back. So must a SUCCESS that looks wrong:
     // "the pictures ignore the pose" is unanswerable without the string that drew them, and
     // reconstructing it from the label is guessing.
@@ -54175,7 +54202,12 @@ export class PublicEntry extends WorkerEntrypoint {
           let shot = null;
           try { shot = await env.AURA_KV.get(shotKey, "json"); } catch {}
           if (!shot || typeof shot !== "object") shot = { leaf, step: stepId, ctx: ctxSlug, imgs: {} };
-          shot = await tatShoot(env, shotKey, prof.say || leaf, ctxPhrases, stepId, wall, shot, 18000);
+          // The kind decides the recognition frame. A dog gets a photograph; a dragon gets a
+          // shape plate where the silhouette IS the subject.
+          const kind = String((prof.resolved && prof.resolved.subject) || leaf).trim();
+          const recogFrame = TAT_PHOTO_KIND.test(kind) ? TAT_FRAME_PHOTO : TAT_FRAME_SHAPE(leaf);
+          shot = await tatShoot(env, shotKey, prof.say || leaf, ctxPhrases, stepId, wall, shot,
+            18000, recogFrame);
           const shotOf = (o) => (shot.imgs && shot.imgs[o.id]) || {};
           const pictured = wall.opts.filter((o) => shotOf(o).img).length;
           const holes = wall.opts.filter((o) => !shotOf(o).img);

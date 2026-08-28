@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v8.4.0-2026-08-27-coordinates-not-wishes";
+const BUILD = "aura-core-v8.5.0-2026-08-27-every-choice-said-properly";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -50711,7 +50711,15 @@ async function ladderOptions(env, field, subject, ladderModel) {
         system:
           "Somebody is designing a tattoo. Give them the choices for one decision.\n\n" +
           "THE DECISION: " + brief + "\n\n" +
-          'Return ONLY JSON: {"label":"...","options":["...","..."]}\n\n' +
+          // ══ EACH OPTION CARRIES HOW TO DRAW IT ═══════════════════════════════════════════
+          // MEASURED: somebody picked "bouquet" and got one rose, twice. The word travelled all the
+          // way to the model and was skipped past, because "bouquet" beside "rose" is a hint and
+          // "several stems gathered together, not a single bloom" is an instruction.
+          // The fixed vocabulary - styles, colours, detail - has a written phrase table. These are
+          // generated per subject, thousands of them, and nobody is going to write phrases by hand
+          // for all of them. So the same call that invents the option writes how to draw it, once,
+          // cached with the row, and every walk after is free.
+          'Return ONLY JSON: {"label":"...","options":[{"id":"...","say":"..."}]}\n\n' +
           "`label` is the question a person reads, in plain words, fitted to THIS subject - " +
           '"What expression?" for a dog, "What kind of dragon?" for a dragon, "What ' +
           'arrangement?" for roses. Never abstract. Never "what should it feel like".\n\n' +
@@ -50719,6 +50727,11 @@ async function ladderOptions(env, field, subject, ladderModel) {
           "Lowercase, one to four words. VISUALLY DISTINCT - two that would draw the same " +
           "picture are one. Return six if this subject honestly has six; filler is worse " +
           "than a short list because somebody reads every one.\n\n" +
+          "`id` is the short label a person taps. `say` is HOW TO DRAW IT - one clause an image " +
+          "model cannot skip past. \"bouquet\" -> \"a bouquet, several stems gathered together, " +
+          "not a single bloom\". \"wilting\" -> \"petals drooping and curling, visibly dying\". " +
+          "\"head and chest\" -> \"head and upper chest only, cut off below the shoulders\". " +
+          "Never restate the subject or the style in `say` - only this one thing.\n\n" +
           "Nothing about style, colour, linework, placement or size - those are asked " +
           "elsewhere and repeating them here wastes the person's time.\n\n" +
           'IF THIS DECISION GENUINELY DOES NOT APPLY to this subject, return exactly ' +
@@ -50741,12 +50754,27 @@ async function ladderOptions(env, field, subject, ladderModel) {
         return rec;
       }
       if (o && Array.isArray(o.options)) {
-        const opts = o.options.map(x => (typeof x === "string" ? x.trim().toLowerCase() : null))
-          .filter(x => x && x.length <= 40).filter((x, i, a) => a.indexOf(x) === i).slice(0, 14);
+        // ══ BOTH SHAPES, BECAUSE ONE OF THEM IS THE PAST ═══════════════════════════════════
+        // Options used to be plain strings and are now {id, say}. Rows already in KV hold strings,
+        // and a model that ignores the object shape returns strings too. Discarding a non-string -
+        // which is what this did - would have emptied the row and failed the whole stage.
+        // `opts` stays a list of ids so every existing reader keeps working; `phrases` carries the
+        // how-to-draw-it alongside, and its absence is a weaker prompt rather than a broken one.
+        const phrases = {};
+        const opts = o.options.map((x) => {
+          if (typeof x === "string") return x.trim().toLowerCase();
+          if (x && typeof x === "object") {
+            const id = String(x.id || x.label || "").trim().toLowerCase();
+            if (id && x.say) phrases[id] = String(x.say).slice(0, 200);
+            return id;
+          }
+          return null;
+        }).filter(x => x && x.length <= 40).filter((x, i, a) => a.indexOf(x) === i).slice(0, 14);
         if (opts.length >= 4) {
           const rec = { label: (typeof o.label === "string" && o.label.trim())
             ? o.label.trim().slice(0, 80)
-            : (field === "composition" ? "How do you want to see it?" : "What kind?"), opts };
+            : (field === "composition" ? "How do you want to see it?" : "What kind?"), opts,
+            phrases: Object.keys(phrases).length ? phrases : undefined };
           try { await env.AURA_KV.put(ck, JSON.stringify(rec)); } catch {}
           return rec;
         }
@@ -53105,6 +53133,74 @@ export class PublicEntry extends WorkerEntrypoint {
 
       // ── MAKE. The first version. SHOW_IT births it as a PTA, so from this moment the design
       // has an identity of its own that follows the person rather than the shop.
+      // ══ THE ASK — WHAT SHE IS ACTUALLY TOLD TO DRAW ═══════════════════════════════════════
+      //
+      // MEASURED: somebody picked "bouquet" and got one rose. Twice. The brief travelled perfectly
+      // - the caption on screen read `rose, hyperrealism style, bouquet, wilting, black and grey,
+      // intricate linework` - and the model drew one flower anyway. A comma list is a DATABASE ROW,
+      // and a word inside one is easy to skip past.
+      //
+      // WHY NOT ASK A MODEL TO WRITE THE BRIEF. That was my instinct and Aaron was right to refuse
+      // it: by the last tap every decision is already made, so a paraphraser cannot ADD anything -
+      // it can only lose something. This file has paid for that class of bug more than once.
+      //
+      // SO EACH CHOICE IS SAID PROPERLY, AS ITS OWN SENTENCE, from a written table. Deterministic,
+      // free, and it cannot drop a word because nothing is deciding anything. A tile label is
+      // written to be legible at 150px; this is written to be OBEYED.
+      // Anything without an entry is still said - the fallback is the plain choice - so a
+      // contextual option nobody has written a phrase for is never silently dropped.
+      const PHRASE = {
+        // Rendering. The style word carries most of the language; these correct the two things a
+        // model gets wrong on its own: drawing a PHOTOGRAPH when asked for realism, and adding
+        // colour when asked for black and grey.
+        style: {
+          "realism": "realism tattoo artwork - rendered as an ink drawing, not a photograph",
+          "hyperrealism": "hyperrealism tattoo artwork - extreme fine detail, still an ink drawing and not a photograph",
+          "black and grey realism": "black and grey realism tattoo artwork - ink shading only, no colour, not a photograph",
+          "traditional": "bold american traditional tattoo - thick black outlines, flat solid primary colour, no gradients",
+          "neo-traditional": "neo-traditional tattoo - bold outlines with richer colour and depth",
+          "japanese": "japanese irezumi tattoo - bold outline, flowing linework, heavy black shading",
+          "fine line": "fine line tattoo - thin single-weight linework, minimal shading",
+          "blackwork": "blackwork tattoo - solid black shapes and heavy contrast",
+          "dotwork": "dotwork tattoo - stippled shading built from dots, no solid line fill",
+          "watercolour": "watercolour tattoo - soft colour washes and paint bleed",
+          "minimalist": "minimalist tattoo - the simplest lines that still read",
+          "ornamental": "ornamental tattoo - decorative filigree and repeating pattern worked into the form",
+          "sketch": "sketch-style tattoo - loose pencil-like construction lines",
+          "etching": "etching-style tattoo - engraved cross-hatched linework",
+          "illustrative": "illustrative tattoo - clean drawn illustration",
+          "celtic": "celtic tattoo - interlaced knotwork",
+        },
+        colour: {
+          "full colour": "in full colour",
+          "black and grey": "in black and grey ink only, with no colour anywhere",
+          "muted colour": "in muted, desaturated colour",
+        },
+        detail: {
+          "bold and simple": "bold and simple - heavy line weight, few details, readable small",
+          "balanced": "balanced detail",
+          "intricate": "intricate - dense detail throughout",
+          "very fine": "very fine detail - delicate linework throughout",
+        },
+      };
+      // A choice becomes a sentence. Three places to look, in order of how specific they are:
+      //   1. a phrase the OPTION GENERATOR wrote for this subject - "a bouquet, several stems
+      //      gathered together, not a single bloom". The most specific, and the one that fixes the
+      //      failure that started this.
+      //   2. the written table above, for the fixed vocabulary.
+      //   3. the plain choice, so an option nobody has a phrase for is still SPOKEN rather than
+      //      silently dropped.
+      const asked = (field, value, extra) => {
+        const v = String(Array.isArray(value) ? value.join(" and ") : value || "").trim().toLowerCase();
+        if (!v) return null;
+        if (extra && extra[v]) return extra[v];
+        const t = (PHRASE[field] || {})[v];
+        if (t) return t;
+        if (field === "style")  return v + " style tattoo";
+        if (field === "detail") return v + " linework";
+        return v;
+      };
+
       if (action === "make") {
         const subject = String(b.subject || "").trim().slice(0, 600);
         if (!subject) return { ok: false, error: "NOTHING_TO_DRAW" };
@@ -53603,11 +53699,42 @@ export class PublicEntry extends WorkerEntrypoint {
           choices = got.opts; label = got.label; break;
         }
 
-        // Every applicable stage answered. Their tattoo, drawn from the whole of it, owned by them.
+        // ══ EVERY APPLICABLE STAGE ANSWERED — NOW SAY IT PROPERLY ═════════════════════════
+        // `describe()` joins the choices with commas, which is right for the CAPTION a person
+        // reads and wrong for the instruction a model obeys. "bouquet" inside a comma list is a
+        // word to skip past; "a bouquet - several stems gathered, not a single bloom" is not.
+        // Each locked field becomes its own sentence from the written table. Nothing decides
+        // anything, so nothing can be lost - and the same choices always produce the same string,
+        // which is what makes a repeat free and two identical walks identical.
         if (!stage) {
-          const subject = describe(null).slice(0, 600);
+          const subject = describe(null).slice(0, 600);   // what the person reads
+          // The phrases the generator wrote for THIS subject, fetched from the same cache the
+          // options came from. One KV read per contextual field, and only at the moment of
+          // drawing - the walk itself never touches them.
+          const said = [];
+          for (const k of ORDER) {
+            if (!has(k)) continue;
+            let extra = null;
+            if (k === "composition" || k === "character") {
+              const slug = String(inc.subject || "").toLowerCase()
+                .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+              const rec = await env.AURA_KV.get("ladder2:" + k + ":" + slug, "json").catch(() => null);
+              extra = rec && rec.phrases ? rec.phrases : null;
+            }
+            const line = asked(k, inc[k], extra);
+            if (line) said.push(line);
+          }
+          const ask = said.join(". ") + "." + TAIL;
+          // ── EVERY CHOICE MUST SURVIVE ──────────────────────────────────────────────────
+          // The check is per FIELD, not per label: "head and chest" becomes "head and upper chest
+          // only", so scanning the prompt for the tile's own words would fail on a correct string.
+          // What has to be true is that each locked field contributed a sentence.
+          const missing = ORDER.filter((k) => has(k) && !asked(k, inc[k]));
+          if (missing.length) return { ok: false, error: "CHOICE_LOST", missing,
+            say: "Something you picked did not make it into the drawing - I have stopped rather " +
+                 "than draw the wrong thing." };
           const r = await processCommand("SHOW_IT " + JSON.stringify({
-            subject: subject + TAIL,
+            subject: ask,
             context: "a tattoo somebody is designing for themselves: " + subject,
             name: String(inc.subject || "tattoo").slice(0, 60),
             creator: me
@@ -53616,6 +53743,10 @@ export class PublicEntry extends WorkerEntrypoint {
           if (!p2?.ok) return { ok: false, error: p2?.error || "COULD_NOT_DRAW" };
           return { ok: true, done: true, design: p2.entity_id || p2.id, image: p2.image_url,
             subject, cached: !!p2.cached,
+            // What she was actually told. When a drawing misses something the first question is
+            // always what it got asked for, and reconstructing it from the caption is guessing.
+            ask,
+            model: p2.model || null, cost_usd: p2.cost_usd,
             settled: Object.keys(settled).length ? settled : null,
             say: "Here it is. Tell me anything you want changed and I will change it.",
             next: await nextChips(env, subject, null) };

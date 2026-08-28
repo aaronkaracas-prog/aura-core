@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.4.0-2026-08-28-a-tile-shows-what-they-chose";
+const BUILD = "aura-core-v9.5.0-2026-08-28-four-slots-part-gates-pose";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5394,8 +5394,8 @@ async function processCommand(line, env, isOp) {
         error: "NOTHING_WALKED", looked_for: want,
         what_to_do: "Walk it once - a wall is drawn by somebody standing on it, never in advance." } };
       // The order a person meets them: what the leaf declared, then style, then colour.
-      const order = (prof && Array.isArray(prof.steps) ? prof.steps.map((x) => x.id) : [])
-        .concat(["style", "colour"]);
+      // The order a person meets them - the same four slots for every subject in the catalog.
+      const order = ["style", "part", "pose", "expression", "colour"];
       walls.sort((x, y) => {
         const ix = order.indexOf(x.step), iy = order.indexOf(y.step);
         return (ix < 0 ? 99 : ix) - (iy < 0 ? 99 : iy);
@@ -50992,7 +50992,7 @@ async function tatLeafProfile(env, leafLabel, model) {
   const key = "leaf:v1:" + tatSlug(leafLabel);
   try {
     const hit = await env.AURA_KV.get(key, "json");
-    if (hit && Array.isArray(hit.steps)) return hit;
+    if (hit && typeof hit.part === "boolean") return hit;
   } catch {}
   let lastErr = null, lastText = null;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -51005,37 +51005,27 @@ async function tatLeafProfile(env, leafLabel, model) {
           "Say what the catalog has already answered, and what visual decisions genuinely remain " +
           "FOR THIS PARTICULAR THING.\n\n" +
           'Return ONLY JSON: {"resolved":{"key":"value"},"say":"..."|null,' +
-          '"steps":[{"id":"...","ask":"..."}],"needs_upload":false}\n\n' +
+          '"part":true|false,"face":true|false,"needs_upload":false}\n\n' +
           "`resolved` is what the name itself already states. \"Withered Rose\" resolves " +
           'subject=rose and state=withered. "Golden Retriever" resolves subject=dog and ' +
           'breed=golden retriever. "Japanese Dragon" resolves subject=dragon and ' +
           "tradition=japanese.\n\n" +
-          "`steps` are the decisions still open, ZERO TO FOUR of them, in the order a person " +
-          "would naturally answer them. `id` is one or two lowercase words naming the decision " +
-          "(crop, pose, expression, arrangement, representation). `ask` is the question a person " +
-          "reads, in plain words fitted to THIS thing - \"How do you want to see it?\", " +
-          '"What expression?", "Which Capricorn?".\n\n' +
-          "Also return `say`: ONE CLAUSE saying how to draw THIS thing, which an image model " +
-          "cannot skip past. Only when the name carries something a model would otherwise " +
-          'ignore. "Withered Rose" -> "a dying rose, petals drooping and curling under, visibly ' +
-          'dead, not an open bloom". "Golden Retriever" needs none - return null. A name is a ' +
-          "hint; a clause is an instruction, and the difference is whether the picture obeys.\n\n" +
+          "`part` is true when there is more than one sensible amount of this thing to draw - a " +
+          "head or the whole animal, a glyph or the constellation, one bloom or the whole stem. " +
+          "It is false when the thing has only one sensible framing, like a compass or an " +
+          "anchor.\n\n" +
+          "`face` is true when this thing has a face capable of an expression. A dog, a cat, a " +
+          "person, a skull. Not a rose, not a compass, not a zodiac glyph.\n\n" +
           "RULES, AND THE THIRD ONE IS THE WHOLE POINT:\n" +
-          "1. NEVER ask something the name already answered. A withered rose is not asked " +
-          "whether it is alive. A dragon and phoenix is not asked what it is paired with.\n" +
-          "2. Only ask what genuinely changes the PICTURE of this thing. A dog has a pose and an " +
-          "expression. A zodiac glyph has neither. A compass has almost nothing.\n" +
-          "3. RETURNING ZERO STEPS IS A CORRECT AND COMMON ANSWER. Do not invent a decision to " +
-          "make this subject look structurally like other subjects. A pose on a symbol, an " +
-          "expression on an object, a crop on a glyph - those are the exact mistake.\n" +
-          "3b. BUT A GENUINELY DIFFERENT VERSION OF THE THING IS A REAL STEP, and missing one " +
-          "is as wrong as inventing one. Where people mean materially different pictures by the " +
-          "same name, ask which: a zodiac sign is drawn as the glyph, as the animal, or as the " +
-          "constellation, and those are three different tattoos. Same for a saint drawn as a " +
-          "portrait or as a symbol. That is not a pose - it is which thing they mean.\n" +
-          "4. NOTHING about style, colour, linework, placement or size. Those are asked of every " +
-          "subject separately and repeating them here wastes somebody's time.\n" +
-          "5. `needs_upload` is true ONLY when the subject must come from the person's own " +
+          "1. NEVER answer a question the name already answered. A withered rose has stated its " +
+          "state. A japanese dragon has stated its tradition.\n" +
+          "2. These two flags are the ONLY decisions you make. Style and colour are asked of " +
+          "every subject separately - never mention them.\n" +
+          "3. BOTH FLAGS FALSE IS A CORRECT AND COMMON ANSWER. A glyph, a symbol, a simple " +
+          "object goes straight from style to colour and is finished in three taps. Do not turn " +
+          "a flag on to make this subject look structurally like other subjects - a pose on a " +
+          "symbol or an expression on an object is the exact mistake.\n" +
+          "4. `needs_upload` is true ONLY when the subject must come from the person's own " +
           "material - their own pet, a relative's face, somebody's handwriting or signature. " +
           "There is no catalog of somebody's mother's signature.",
         messages: [{ role: "user", content: String(leafLabel) }],
@@ -51046,14 +51036,6 @@ async function tatLeafProfile(env, leafLabel, model) {
       try { o = JSON.parse(br.text); } catch { try { o = repairJson(br.text); } catch {} }
       if (o) o = unwrapSchema(o);
       if (o && typeof o === "object") {
-        const steps = Array.isArray(o.steps) ? o.steps.map((x) => {
-          const id = String((x && (x.id || x.label)) || "").trim().toLowerCase().slice(0, 24);
-          if (!id) return null;
-          return { id, ask: String((x && x.ask) || "").trim().slice(0, 80) || "Which one?" };
-        }).filter(Boolean).filter((x, i, a) => a.findIndex((y) => y.id === x.id) === i).slice(0, 4) : [];
-        // A step that is really style or colour in disguise is dropped - those are asked of
-        // everything and a leaf offering its own version would ask twice.
-        const clean = steps.filter((x) => !/^(style|colour|color|detail|placement|size)$/.test(x.id));
         const resolved = (o.resolved && typeof o.resolved === "object") ? o.resolved : {};
         let say = (typeof o.say === "string" && o.say.trim()) ? o.say.trim().slice(0, 220) : null;
         // ══ THE CLAUSE IS NOT OPTIONAL WHEN THE NAME CARRIES SOMETHING ═════════════════════
@@ -51092,7 +51074,8 @@ async function tatLeafProfile(env, leafLabel, model) {
           if (!say) say = String(leafLabel) + " - " +
             extra.map((k) => "the " + k + " is " + String(resolved[k]) + " and it must be plainly visible").join(", ");
         }
-        const rec = { resolved, say, steps: clean, needs_upload: o.needs_upload === true };
+        const rec = { resolved, say, part: o.part === true, face: o.face === true,
+                      needs_upload: o.needs_upload === true };
         try { await env.AURA_KV.put(key, JSON.stringify(rec)); } catch {}
         return rec;
       }
@@ -51110,7 +51093,7 @@ async function tatLeafProfile(env, leafLabel, model) {
 //
 // Each option carries HOW TO DRAW IT. "bouquet" is a hint; "a bouquet, several stems gathered
 // together, not a single bloom" is an instruction, and the difference is a whole session.
-async function tatWall(env, leafLabel, step, ask, model) {
+async function tatWall(env, leafLabel, step, ask, model, guide) {
   const key = "wall:v1:" + tatSlug(leafLabel) + ":" + tatSlug(step);
   try {
     const hit = await env.AURA_KV.get(key, "json");
@@ -51125,7 +51108,7 @@ async function tatWall(env, leafLabel, step, ask, model) {
           "Somebody is designing a tattoo of: " + String(leafLabel) + "\n" +
           "They are choosing: " + String(step) + "\n" +
           "The question on screen is: " + String(ask) + "\n\n" +
-          'Return ONLY JSON: {"options":[{"id":"...","say":"..."}]}\n\n' +
+          (guide || 'Return ONLY JSON: {"options":[{"id":"...","say":"..."}]}') + "\n\n" +
           "SIX TO TWELVE options somebody would recognise instantly and tap. `id` is one to " +
           "four lowercase words - the label they read. VISUALLY DISTINCT: two that would draw " +
           "the same picture are one option. Return six if this honestly has six; filler is " +
@@ -51150,7 +51133,11 @@ async function tatWall(env, leafLabel, step, ask, model) {
           if (x && typeof x === "object") {
             const id = String(x.id || x.label || "").trim().toLowerCase().slice(0, 40);
             if (!id) return null;
-            return x.say ? { id, say: String(x.say).slice(0, 200) } : { id };
+            const o = x.say ? { id, say: String(x.say).slice(0, 200) } : { id };
+            // Only the PART wall carries this, and it is what decides whether a pose wall
+            // exists at all. A head has no pose; a whole animal does.
+            if (typeof x.body === "boolean") o.body = x.body;
+            return o;
           }
           return null;
         }).filter(Boolean).filter((x, i, a) => a.findIndex((y) => y.id === x.id) === i).slice(0, 12);
@@ -51164,6 +51151,16 @@ async function tatWall(env, leafLabel, step, ask, model) {
   }
   return { failed: true, why: lastErr, saw: lastText };
 }
+
+// The part wall is the only one that answers a question about ITSELF: each option says whether
+// it shows the whole thing, because that is what opens or closes the pose wall behind it. Asked
+// of the wall rather than guessed from the label, since "bust", "torso" and "full figure" are
+// not a list anyone can enumerate ahead of 46 categories.
+const TAT_PART_GUIDE =
+  'Return ONLY JSON: {"options":[{"id":"...","say":"...","body":true|false}]}\n\n' +
+  "TWO TO FOUR options for how much of this thing is shown. `body` is true when that option " +
+  "shows the whole thing and it could therefore be posed - a full body, a whole figure, the " +
+  "complete creature. `body` is false for a head, a face, a bust, a single bloom, a glyph.";
 
 // ══ DRAW THE WALL THEY ARE STANDING ON ════════════════════════════════════════════════════
 // Not the universe. This wall, on THIS PATH, now.
@@ -54006,21 +54003,46 @@ export class PublicEntry extends WorkerEntrypoint {
             say: "This one has to come from you - upload a photo and I will work from that." };
         }
 
-        // ── THE ORDER. What the leaf declared, then the two things asked of everything.
-        // Style is a LANGUAGE and applies to every subject; colour applies unless the style has
-        // already answered it, which is a fact about the words and needs no model to decide.
+        // ══ FOUR SLOTS, FIXED ORDER, TWO OF THEM GATED (2026-08-28) ══════════════════════
+        // This replaced a free-form step list the leaf wrote for itself. That list is why a dog
+        // came out five walls deep and a Capricorn three, why tail-up-tail-down became its own
+        // screen, and why nothing was ever the same shape twice. Every subject in all 46
+        // categories now walks the same slots and only the WORDS inside them differ.
+        //
+        // STYLE IS SECOND, AND THAT IS THE LOAD-BEARING PART. Once it is locked every wall after
+        // it is drawn in that style, so the person is looking at their own tattoo from the second
+        // screen onward. Put style last - as this did until now - and every earlier wall is drawn
+        // in a default nobody chose, which is a lying tile wearing a quieter disguise.
+        //
+        // PART GATES POSE. A head has no pose. So the pose wall exists only when the part they
+        // picked shows the whole thing, and the part wall itself says which options those are.
+        // FACE GATES EXPRESSION. A rose has no expression; a cat does, and gets cat words rather
+        // than a dog's. The gate is structural, so no per-category exception list exists to drift.
         const styleStr = String(inc.style || "").toLowerCase();
         const styleSaysColour = /black and grey|blackwork/.test(styleStr);
-        const leafOrder = prof.steps.map((x) => x.id);
-        const order = leafOrder.concat(styleSaysColour ? ["style"] : ["style", "colour"]);
 
-        // ── WHICH SCREEN ARE WE ON. The first thing in the order nobody has answered.
-        let stepId = null, stepAsk = null, fixed = null;
-        const openLeafStep = prof.steps.find((x) => !has(x.id));
-        if (openLeafStep) { stepId = openLeafStep.id; stepAsk = openLeafStep.ask; }
-        else if (!has("style")) { stepId = "style"; stepAsk = "What style?"; fixed = TAT_STYLES; }
-        else if (!has("colour") && !styleSaysColour) {
-          stepId = "colour"; stepAsk = "Colour, or black and grey?"; fixed = TAT_COLOURS; }
+        let bodyChosen = false;
+        if (prof.part && has("part")) {
+          try {
+            const pw = await env.AURA_KV.get("wall:v1:" + tatSlug(leaf) + ":part", "json");
+            const o = (pw && Array.isArray(pw.opts))
+              ? pw.opts.find((x) => x.id === String(inc.part).trim().toLowerCase()) : null;
+            bodyChosen = !!(o && o.body);
+          } catch {}
+        }
+        const order = ["style"]
+          .concat(prof.part ? ["part"] : [])
+          .concat(bodyChosen ? ["pose"] : [])
+          .concat(prof.face ? ["expression"] : [])
+          .concat(styleSaysColour ? [] : ["colour"]);
+
+        // ── WHICH SCREEN ARE WE ON. The first slot in the order nobody has answered.
+        const ASKS = { part: "How much of it?", pose: "How do you want it posed?",
+                       expression: "What expression?", style: "What style?",
+                       colour: "Colour, or black and grey?" };
+        let stepId = order.find((k) => !has(k)) || null;
+        let stepAsk = stepId ? ASKS[stepId] : null;
+        let fixed = stepId === "style" ? TAT_STYLES : (stepId === "colour" ? TAT_COLOURS : null);
 
         // ══ A SCREEN TO SHOW ══════════════════════════════════════════════════════════════
         if (stepId) {
@@ -54039,7 +54061,8 @@ export class PublicEntry extends WorkerEntrypoint {
                 }) };
             }
           } else {
-            wall = await tatWall(env, leaf, stepId, stepAsk, walkModel);
+            wall = await tatWall(env, leaf, stepId, stepAsk, walkModel,
+              stepId === "part" ? TAT_PART_GUIDE : null);
             if (wall.failed) return { ok: false, error: "WALL_UNAVAILABLE", stage: stepId,
               say: "Give me a second and ask me again - I could not put those choices together.",
               why: wall.why, saw: wall.saw };

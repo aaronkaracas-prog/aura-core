@@ -82,7 +82,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.29.0-2026-08-29-the-stencil-is-arithmetic";
+const BUILD = "aura-core-v9.30.0-2026-08-29-not-every-image-is-in-the-graph";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5522,11 +5522,27 @@ async function processCommand(line, env, isOp) {
       // rest, and a bare id falls through to "unknown sub-command". This resolves a smart file by
       // entity id, image id or identity key, which is what every other image path uses.
       const readFile = async (ref) => {
-        const ent = await resolveSmartFile(db, String(ref || "").trim());
-        if (!ent) return null;
-        let meta = {}; try { meta = JSON.parse(ent.metadata || "{}"); } catch {}
-        return { id: ent.id, url: meta.url || null, source: meta.source || null,
-                 parent: meta.parent || null, subject: meta.subject || null };
+        const key = String(ref || "").trim();
+        const ent = await resolveSmartFile(db, key);
+        if (ent) {
+          let meta = {}; try { meta = JSON.parse(ent.metadata || "{}"); } catch {}
+          return { id: ent.id, url: meta.url || null, source: meta.source || null,
+                   parent: meta.parent || null, subject: meta.subject || null };
+        }
+        // ══ NOT EVERY IMAGE IS IN THE FILE GRAPH ══════════════════════════════════════════
+        // MEASURED: a wall tile came back NO_SUCH_DESIGN. Only `showIt` registers a smart file -
+        // `tatShoot` calls auraGenerateImage directly, so every catalogue tile exists as
+        // `imagemeta:<id>` and R2 bytes with no entry in the graph at all.
+        // That is fine for a tile nobody needs lineage for, and it is not a reason to refuse to
+        // flatten one. `imagemeta` carries the url and the source, which is everything this needs;
+        // it has no parent, which only matters for a lettered piece, and those DO go through
+        // showIt and ARE registered.
+        try {
+          const im = await env.AURA_KV.get("imagemeta:" + key, "json");
+          if (im && im.url) return { id: key, url: im.url, source: im.source || null,
+                                     parent: null, subject: im.prompt || null };
+        } catch {}
+        return null;
       };
       let file = await readFile(id);
       if (!file || !file.url) return { cmd: "STENCIL", payload: { ok: false,

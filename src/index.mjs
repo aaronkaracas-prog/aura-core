@@ -82,7 +82,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.32.0-2026-08-29-the-key-is-the-image-id";
+const BUILD = "aura-core-v9.33.0-2026-08-29-defaults-that-actually-worked";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5618,11 +5618,20 @@ async function processCommand(line, env, isOp) {
         model: "photon-wasm (no model call)", cost_usd: 0,
         size: flat.width + "x" + flat.height,
         settings: flat.settings,
-        // A binary image has no mid-tones. Any survivors mean the cutoff did not take, and grey
-        // is static on thermal paper rather than a line.
+        // `clean` means BINARY, not USABLE. Zero mid-tones says the cutoff took; it says nothing
+        // about whether the outline survived it. A shattered stencil is still "clean". The only
+        // review is laying it over the piece.
         mid_tones: flat.mid_tones,
         clean: flat.mid_tones === 0,
-        tune: 'SETKV stencil:thresh 128 | stencil:blur 2 | stencil:weight 1 | stencil:invert true',
+        // ══ THIS LINE USED TO BE A LIE ═════════════════════════════════════════════════
+        // It was a hardcoded string saying "blur 2, invert true" while the run beside it used
+        // blur 1 and invert false. Output that contradicts the run it is printed next to is
+        // worse than no output - somebody follows it and changes a setting that was already
+        // right. It now prints what is actually in force.
+        tune: "SETKV stencil:thresh " + flat.settings.thresh +
+              " | SETKV stencil:blur " + flat.settings.blur +
+              " | SETKV stencil:weight " + flat.settings.weight +
+              " | SETKV stencil:invert " + (flat.settings.invert ? "false" : "true"),
         note: "Flattened from the piece WITHOUT wording. Same pixels, fill removed - lay it over " +
               "the piece and the contours cannot have moved." } };
     }
@@ -51964,8 +51973,13 @@ async function tatStencilBytes(env, srcUrl, srcId) {
     const n = v == null ? NaN : Number(v);
     return Number.isFinite(n) ? n : d;
   };
-  const thresh = Math.max(0, Math.min(255, await num("stencil:thresh", 128)));
-  const blur   = Math.max(0, Math.min(20,  await num("stencil:blur", 2)));
+  // ══ THE DEFAULTS ARE THE SETTINGS THAT WORKED ═══════════════════════════════════════════
+  // These were 128 and 2, picked before anything had been run. The signed stencil was produced at
+  // 100 and 1, and a blur of 2 shatters the outline on the same source - it softens the line past
+  // the cutoff so the threshold drops pieces of it.
+  // A code default that nobody has ever seen work is a trap for whoever clears the KV key.
+  const thresh = Math.max(0, Math.min(255, await num("stencil:thresh", 100)));
+  const blur   = Math.max(0, Math.min(20,  await num("stencil:blur", 1)));
   const weight = Math.max(0, Math.min(8,   await num("stencil:weight", 1)));
   const inv    = String(await env.AURA_KV.get("stencil:invert").catch(() => "") || "") === "true";
 

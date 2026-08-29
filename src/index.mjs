@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.17.0-2026-08-29-frames-live-in-kv";
+const BUILD = "aura-core-v9.18.0-2026-08-29-the-leaf-knows-its-parent";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5421,11 +5421,18 @@ async function processCommand(line, env, isOp) {
       if (!arg) return { cmd: "FACES", payload: { ok: false,
         error: 'Usage: FACES <kind|category>  or  FACES <run-id> to check one',
         example: "FACES Dogs" } };
-      const force = /\s--force\s*$/.test(arg);
-      const cat = arg.replace(/\s--force\s*$/, "").trim();
+      const force = /\s--force\b/.test(arg);
+      // A whole category is far more than one kind - Animals & Pets alone is over a hundred
+      // leaves - and the default cap of 40 would stop a third of the way through without
+      // saying anything useful. `--all` lifts it; a bare number sets it.
+      const all = /\s--all\b/.test(arg);
+      const numM = arg.match(/\s--max\s+(\d+)/);
+      const cat = arg.replace(/\s--force\b/g, "").replace(/\s--all\b/g, "")
+        .replace(/\s--max\s+\d+/g, "").trim();
+      const maxLeaves = numM ? Number(numM[1]) : (all ? 600 : 40);
       const inst = await env.GRID_CRAWL_WORKFLOW.create({ params: {
-        mode: "faces", category: cat, force } });
-      return { cmd: "FACES", payload: { ok: true, started: cat, id: inst.id,
+        mode: "faces", category: cat, force, max_leaves: maxLeaves } });
+      return { cmd: "FACES", payload: { ok: true, started: cat, id: inst.id, max_leaves: maxLeaves,
         check: 'RUN "FACES ' + inst.id + '"',
         then: 'RUN "SHEET ' + cat + '"',
         note: "One face per leaf. Sleeps between leaves and rests every 20 - a category takes " +
@@ -5482,7 +5489,8 @@ async function processCommand(line, env, isOp) {
           img: hit.img, url: "https://auras.guide/image/" + hit.img } };
       }
       const pin = (await env.AURA_KV.get("config:talk:model").catch(() => null)) || null;
-      const prof = await tatLeafProfile(env, name, (pin && pin.trim()) ? pin.trim() : undefined);
+      const parent = await tatParentOf(env, name);
+      const prof = await tatLeafProfile(env, name, (pin && pin.trim()) ? pin.trim() : undefined, parent);
       if (prof.failed) return { cmd: "FACE", payload: { ok: false, leaf: name,
         error: "PROFILE_UNAVAILABLE", why: prof.why, saw: prof.saw } };
       // A leaf with no crop wall has no face to mint. That is a correct answer for a glyph or a
@@ -5495,12 +5503,15 @@ async function processCommand(line, env, isOp) {
         return { cmd: "FACE", payload: { ok: true, leaf: name, no_face: true, why: rec.why } };
       }
       const kind = String((prof.resolved && prof.resolved.subject) || name).trim();
+      // ══ THE FRAME IS THE WHOLE FRAMING ════════════════════════════════════════════════
+      // This used to prepend the face-crop clause for anything non-reptile, on top of whatever
+      // the frame said. The moment frame:mammal was set to "full body", every tile asked for
+      // "head only, cropped at the neck, full body" - a prompt arguing with itself, which is why
+      // cats and horses came back as head shots after being told full body.
+      // One string decides it now. Head or body is a KV edit, per kind, with nothing hardcoded
+      // underneath it to contradict.
       const frame = await tatFrameFor(env, kind, name);
-      // A reptile's identity tile is not a face crop, so it must not carry the face clause
-      // either - "cropped at the neck" is the instruction that made six snakes one picture.
-      const reptile = await tatIsReptile(env, kind);
-      const words = [tatName(name, prof.resolved), reptile ? null : TAT_CROP[0].say]
-        .filter(Boolean).join(", ") + frame;
+      const words = tatName(name, prof.resolved) + frame;
       let rec = { leaf: name, img: null, why: null, drew: words, kind,
                   spoken: tatName(name, prof.resolved),
                   resolved: prof.resolved || null, at: new Date().toISOString() };
@@ -51182,7 +51193,10 @@ const TAT_CROP = [
 // So a RECOGNITION wall - crop, pose, expression - is photographs. You are identifying a thing,
 // and a photograph is the only tile that lets you. The STYLE wall is drawings, because a drawing
 // is the thing being chosen there. The final piece is neither of these; it goes through SHOW_IT.
+// Carries its own framing, because nothing prepends one any more. A cleared frame:mammal must
+// still produce the head shot this file has always produced.
 const TAT_FRAME_PHOTO =
+  ", the face filling the frame, head only, cropped at the neck" +
   ". A clear reference photograph, one subject, centred, filling the frame, sharp focus, " +
   "plain light background, no people, no border. No letters, no words, no caption, no banner, " +
   "no watermark, no signature anywhere in the image.";
@@ -51306,18 +51320,6 @@ async function tatFrameFor(env, kind, leaf) {
   return sf ? sf.replace(/\{leaf\}/g, leaf) : TAT_FRAME_SHAPE(leaf);
 }
 
-// Whether a kind is a reptile decides one more thing than the frame: a reptile tile must not
-// carry the face-crop clause, because "cropped at the neck" is what turned six snakes into one
-// picture. Same override, same fallback.
-async function tatIsReptile(env, kind) {
-  try {
-    const csv = await env.AURA_KV.get("kind:reptile");
-    if (csv) return csv.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean)
-      .includes(String(kind).toLowerCase());
-  } catch {}
-  return TAT_REPTILE_KIND.test(kind);
-}
-
 function tatName(leaf, resolved) {
   const name = String(leaf || "").trim();
   if (!name) return "";
@@ -51402,8 +51404,31 @@ function tatBuildAsk(subjectLabel, order, intent, extras, leafSay) {
 // A FAILURE IS NEVER A SKIP. An unanswered profile returns failed and the caller stops and says
 // so. Silently skipping is how a golden retriever once reached the style question with no
 // composition at all.
-async function tatLeafProfile(env, leafLabel, model) {
-  const key = "leaf:v1:" + tatSlug(leafLabel);
+// ══ THE TREE ALREADY KNOWS THE PARENT. LOOK IT UP. ═══════════════════════════════════════
+// Nothing needs to pass this in, which matters: a hand-typed `FACE bengal` must resolve the same
+// way the workflow does, or the review pass and the product disagree.
+async function tatParentOf(env, leaf) {
+  try {
+    const t = await env.AURA_KV.get("card:tree", "json");
+    if (!t?.specific) return null;
+    const n = String(leaf || "").trim().toLowerCase();
+    for (const [kind, leaves] of Object.entries(t.specific)) {
+      if ((leaves || []).some((x) => String(x).trim().toLowerCase() === n)) return kind;
+    }
+  } catch {}
+  return null;
+}
+
+// ══ A LEAF ASKED ABOUT ALONE IS A DIFFERENT WORD ═════════════════════════════════════════
+// MEASURED: "Bengal" resolved `{subject: tiger, breed: bengal}` and the tile came back a tiger.
+// It is not wrong - a Bengal IS a tiger if nobody tells you it was reached under Cats. Same for
+// Mustang under Horses, Persian, Calico, Sphynx, Viper, Boa. The tree walked Cats -> Bengal and
+// the profile was handed the last word only.
+//
+// So the parent goes in, and the cache key carries it - a Bengal under Cats and a Bengal
+// somewhere else are two different subjects and must not share an answer.
+async function tatLeafProfile(env, leafLabel, model, parent) {
+  const key = "leaf:v1:" + tatSlug(leafLabel) + (parent ? ":" + tatSlug(parent) : "");
   try {
     const hit = await env.AURA_KV.get(key, "json");
     if (hit && typeof hit.part === "boolean") return hit;
@@ -51414,6 +51439,8 @@ async function tatLeafProfile(env, leafLabel, model) {
       const br = await callBrain({
         model,
         system:
+          (parent ? "In the catalog, this was reached under: " + parent + ". That is what it is - " +
+            "resolve it as one of those and nothing else.\n\n" : "") +
           "Somebody is designing a tattoo. They have tapped through a visual catalog and arrived " +
           "at a specific thing. The catalog has already established WHAT the tattoo is.\n\n" +
           "Say what the catalog has already answered, and what visual decisions genuinely remain " +
@@ -54503,7 +54530,10 @@ export class PublicEntry extends WorkerEntrypoint {
           say: "Tell me what you want it to be and I will show you." };
 
         const leaf = String(inc.subject).trim().slice(0, 80);
-        const prof = await tatLeafProfile(env, leaf, walkModel);
+        // The walk looks the parent up the same way the identity pass does, so a Bengal is a cat
+        // in the product and not only on the review sheet.
+        const leafParent = await tatParentOf(env, leaf);
+        const prof = await tatLeafProfile(env, leaf, walkModel, leafParent);
         // A FAILURE IS NEVER A SKIP. A silent skip is how a subject once reached the style
         // question with nothing chosen about what the picture was of.
         if (prof.failed) return { ok: false, error: "PROFILE_UNAVAILABLE", stage: "subject",

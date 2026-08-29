@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.18.0-2026-08-29-the-leaf-knows-its-parent";
+const BUILD = "aura-core-v9.19.0-2026-08-29-category-sheet-and-8007-retry";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5520,10 +5520,33 @@ async function processCommand(line, env, isOp) {
         if (gi?.ok && gi.id) { rec.img = gi.id; rec.cached = !!gi.cached; rec.cost_usd = gi.cost_usd || 0; }
         else rec.why = String(gi?.error || "no image returned").slice(0, 160);
       } catch (e) { rec.why = String(e && e.message || e).slice(0, 160); }
+
+      // ══ 8007 IS NOT A CONTENT PROBLEM ════════════════════════════════════════════════════
+      // Six tiles lost to it so far: a hairless cat, a corgi, a coral snake, a king cobra, a
+      // zodiac glyph, a rearing dragon. Nothing they share is unsafe - it is Cloudflare's filter
+      // firing on ordinary words, and it fires identically every retry, so the tile is a
+      // permanent hole and somebody has to notice and re-route it by hand.
+      // Every one of them drew first time on the other provider. So: refuse once, try there once,
+      // and record that it happened. Half a cent, and the loop stops needing a human in it.
+      if (!rec.img && /\b8007\b|NSFW/i.test(String(rec.why || ""))) {
+        const alt = (await env.AURA_KV.get("config:image:fallback").catch(() => null))
+          || "gpt-image-1-mini";
+        try {
+          const gi2 = await auraGenerateImage(words, env, { source: "tattoo_option", model: alt });
+          if (gi2?.ok && gi2.id) {
+            rec.img = gi2.id; rec.cached = !!gi2.cached; rec.cost_usd = gi2.cost_usd || 0;
+            // The refusal rides with the tile rather than being erased by the retry - a kind
+            // where half the tiles needed a second provider is a fact worth being able to see.
+            rec.refused_by_primary = rec.why; rec.drew_on = alt; rec.why = null;
+          } else rec.retry_why = String(gi2?.error || "no image returned").slice(0, 160);
+        } catch (e) { rec.retry_why = String(e && e.message || e).slice(0, 160); }
+      }
       await env.AURA_KV.put(fKey, JSON.stringify(rec));
       return { cmd: "FACE", payload: { ok: !!rec.img, leaf: name, img: rec.img,
         url: rec.img ? "https://auras.guide/image/" + rec.img : null,
-        why: rec.why, kind, cached: !!rec.cached, cost_usd: rec.cost_usd || 0, drew: words } };
+        why: rec.why, kind, cached: !!rec.cached, cost_usd: rec.cost_usd || 0, drew: words,
+        drew_on: rec.drew_on || null, refused_by_primary: rec.refused_by_primary || null,
+        retry_why: rec.retry_why || null } };
     }
 
     // ══ SHEET — ONE SCREEN, THE WHOLE SUBJECT ════════════════════════════════════════════════
@@ -5540,6 +5563,69 @@ async function processCommand(line, env, isOp) {
       const want = String(rest || "").trim();
       if (!want) return { cmd: "SHEET", payload: { ok: false,
         error: 'Usage: SHEET <subject>   e.g.  SHEET withered rose' } };
+      // ══ A CATEGORY SHEET IS EVERY KIND UNDER IT, ON ONE PAGE ═════════════════════════════
+      // `SHEET Cats` is ten leaves. `SHEET Animals & Pets` is twenty-two kinds and well over a
+      // hundred - and asking somebody to open twenty-two pages to judge one category is asking
+      // them not to judge it. Same renderer, one heading per kind.
+      const tree0 = await env.AURA_KV.get("card:tree", "json").catch(() => null);
+      const catKey = tree0 && tree0.subjects
+        ? Object.keys(tree0.subjects).find((k) => tatSlug(k) === tatSlug(want)) : null;
+      if (catKey) {
+        const escC = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) =>
+          ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+        const kinds = tree0.subjects[catKey] || [];
+        const blocks = []; let total = 0, drewN = 0, coldN = 0;
+        for (const kind of kinds) {
+          // A kind with no third level IS the leaf - "Koi" has no breeds and is one tile.
+          const leaves = (tree0.specific && tree0.specific[kind] && tree0.specific[kind].length)
+            ? tree0.specific[kind] : [kind];
+          const rows = [];
+          for (const leaf of leaves) {
+            const fr = await env.AURA_KV.get("face:v1:" + tatSlug(leaf), "json").catch(() => null);
+            const st = fr ? (fr.img ? "drew" : "failed") : "cold";
+            total++; if (st === "drew") drewN++; if (st === "cold") coldN++;
+            rows.push({ leaf, img: (fr && fr.img) || null,
+              why: fr ? (fr.why || null) : "not run yet" });
+          }
+          blocks.push({ kind, rows });
+        }
+        const htmlC =
+          '<!doctype html><html lang=en><head><meta charset=utf-8>' +
+          '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+          "<title>" + escC(catKey) + "</title><style>" +
+          "*{margin:0;padding:0;box-sizing:border-box}" +
+          "body{background:#0b0d12;color:#e9edf5;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px}" +
+          "h1{font-size:1.15rem;font-weight:800}" +
+          "h2{font-size:.72rem;text-transform:uppercase;letter-spacing:.09em;color:#94a3b8;margin:1.6rem 0 .5rem;font-weight:700}" +
+          ".top{color:#64748b;font-size:.8rem;margin:.3rem 0 .4rem}" +
+          ".g{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}" +
+          "figure{background:#141a28;border:1px solid rgba(148,163,184,.16);border-radius:12px;overflow:hidden}" +
+          "figure img{width:100%;aspect-ratio:1;object-fit:cover;display:block;background:#0f172a}" +
+          "figcaption{padding:.45rem .55rem;font-size:.85rem}" +
+          ".gone{padding:2.8rem .6rem;text-align:center;color:#fca5a5;font-size:.7rem}" +
+          ".cold{padding:2.8rem .6rem;text-align:center;color:#64748b;font-size:.7rem}" +
+          "</style></head><body><h1>" + escC(catKey) + "</h1><p class=top>" +
+          kinds.length + " kinds &middot; " + total + " leaves &middot; " + drewN + " drawn" +
+          (coldN ? " &middot; " + coldN + " not run yet" : "") +
+          ((total - drewN - coldN) ? ' &middot; <b style=color:#fca5a5>' + (total - drewN - coldN) + " failed</b>" : "") +
+          "</p>" + blocks.map((b) =>
+            "<h2>" + escC(b.kind) + "</h2><div class=g>" + b.rows.map((r) =>
+              "<figure>" +
+              (r.img ? '<a href="https://auras.guide/image/' + escC(r.img) + '" target=_blank>' +
+                       '<img loading=lazy src="https://auras.guide/image/' + escC(r.img) + '"></a>'
+                     : '<div class="' + (r.why === "not run yet" ? "cold" : "gone") + '">' +
+                       escC(r.why || "never drew") + "</div>") +
+              "<figcaption>" + escC(r.leaf) + "</figcaption></figure>").join("") + "</div>").join("") +
+          "</body></html>";
+        const pageC = "sheet/" + tatSlug(catKey);
+        await env.AURA_KV.put("page:auras.guide/" + pageC, htmlC);
+        return { cmd: "SHEET", payload: { ok: true, category: catKey,
+          url: "https://auras.guide/" + pageC,
+          kinds: kinds.length, leaves: total, drawn: drewN, not_run: coldN,
+          failed: total - drewN - coldN,
+          note: "Every kind under this category, one page. Flag as `<leaf> | face | <why>`." } };
+      }
+
       // ══ A KIND SHEET IS A DIFFERENT PAGE FROM A SUBJECT SHEET ════════════════════════════
       // `SHEET golden retriever` is one leaf's walls. `SHEET dogs` is twenty-five leaves' FACES -
       // the identity pass, one tile each, which is the page a reviewer actually judges a category
@@ -51888,7 +51974,13 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // A pin still wins for its own lane. It does not win a lane it cannot serve.
   const rawModel = (await env.AURA_KV.get(isEdit ? "config:edit:model" : "config:image:model").catch(() => null));
   const rawQuality = (await env.AURA_KV.get(isEdit ? "config:edit:quality" : "config:image:quality").catch(() => null));
-  let model = ((rawModel && rawModel.trim()) || resolved.model || "@cf/black-forest-labs/flux-1-schnell").trim();
+  // ══ A CALLER MAY NAME THE MODEL FOR ONE CALL ═════════════════════════════════════════════
+  // Above the pin, because it is narrower than the pin: this is one job saying "the configured
+  // model just refused this, try the other one", not an operator changing the lane. It is used by
+  // the 8007 retry and nothing else. Flipping the KV pin to do the same thing would race with
+  // every other request in flight - which is a real bug, not a hypothetical.
+  let model = ((opts.model && String(opts.model).trim()) ||
+    (rawModel && rawModel.trim()) || resolved.model || "@cf/black-forest-labs/flux-1-schnell").trim();
 
   // ══ AND A LAST GUARD, BECAUSE A WRONG PIN IS STILL POSSIBLE ═══════════════════════════════
   // MEASURED on a live walk: `config:image:model` was pinned to Flux for the catalogue, which is

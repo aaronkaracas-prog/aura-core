@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.22.0-2026-08-29-no-crop-wall-is-not-no-picture";
+const BUILD = "aura-core-v9.23.0-2026-08-29-style-lives-at-the-end";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -54743,10 +54743,19 @@ export class PublicEntry extends WorkerEntrypoint {
         // are two different styles in every real guide, not one style with a switch. Asking for a
         // style and then asking for a colour is asking the same question twice, and that second
         // question was mine.
+        // A style may still arrive from the end screen, and when it does it still leads the
+        // sentence. It is simply never a screen the walk puts in front of anybody.
         const styleStr = String(inc.style || "").toLowerCase();
         const cropOpt = has("crop")
           ? TAT_CROP.find((x) => x.id === String(inc.crop).trim().toLowerCase()) : null;
-        const order = ["style"]
+        // ══ STYLE IS NOT IN THE WALK ══════════════════════════════════════════════════════
+        // It was first, for a good reason at the time: whatever leads the sentence should be
+        // chosen first. But the walk is a CATALOGUE - a person finding the thing they mean - and
+        // a style is not a thing, it is what happens to the thing afterwards. Asking for it up
+        // front makes somebody choose a language for a tattoo they have not seen yet.
+        // So the walk is the subject and how it is framed, and style lives entirely at the end,
+        // on the piece, where they can try all twelve against something real.
+        const order = []
           .concat(prof.part ? ["crop"] : [])
           .concat(cropOpt && cropOpt.body ? ["pose"] : [])
           // THE FORK HAS TWO BRANCHES AND YOU WALK ONE. A full body gets a pose; a head gets an
@@ -54757,11 +54766,10 @@ export class PublicEntry extends WorkerEntrypoint {
 
         // ── WHICH SCREEN ARE WE ON. The first slot in the order nobody has answered.
         const ASKS = { crop: "Head or body?", pose: "How do you want it posed?",
-                       expression: "What expression?", style: "What should the ink look like?" };
+                       expression: "What expression?" };
         let stepId = order.find((k) => !has(k)) || null;
         let stepAsk = stepId ? ASKS[stepId] : null;
-        let fixed = stepId === "style" ? TAT_STYLES.map((id) => ({ id, say: TAT_PHRASE.style[id] }))
-                  : (stepId === "crop" ? TAT_CROP : null);
+        let fixed = stepId === "crop" ? TAT_CROP : null;
 
         // ══ A SCREEN TO SHOW ══════════════════════════════════════════════════════════════
         if (stepId) {
@@ -54862,10 +54870,16 @@ export class PublicEntry extends WorkerEntrypoint {
         }
 
         // ══ EVERY SCREEN ANSWERED — NOW SAY IT PROPERLY ═══════════════════════════════════
+        // ══ SCREENS AND SENTENCE ARE TWO DIFFERENT LISTS NOW ══════════════════════════════
+        // They were one array, which was fine while style was a screen. It is not a screen any
+        // more - it belongs to the end, on the piece - but it still LEADS THE SENTENCE when it is
+        // set. Leave them as one list and a style chosen at the end never reaches the drawing:
+        // the piece comes out as "golden retriever, full body, lying" with no language at all.
+        const said = order.concat(has("style") ? ["style"] : []);
         // The phrases the wall generators wrote for THIS leaf, read at the moment of drawing.
         // The walk itself never touches them.
         const extras = {};
-        for (const k of order) {
+        for (const k of said) {
           if (!has(k)) continue;
           if (k === "style" || k === "colour") continue;
           try {
@@ -54878,14 +54892,14 @@ export class PublicEntry extends WorkerEntrypoint {
           } catch {}
         }
         // The tag is a wall-drawing concern and never reaches the sentence.
-        const ask = tatBuildAsk(tatName(leaf, prof.resolved), order, inc, extras, prof.say || null);
+        const ask = tatBuildAsk(tatName(leaf, prof.resolved), said, inc, extras, prof.say || null);
         // EVERY CHOICE MUST SURVIVE. Per field, not per label - a phrase legitimately rewords
         // the tile's own words, so scanning the prompt for them would fail on a correct string.
-        const lost = order.filter((k) => has(k) && !tatSay(k, inc[k], extras[k]));
+        const lost = said.filter((k) => has(k) && !tatSay(k, inc[k], extras[k]));
         if (lost.length) return { ok: false, error: "CHOICE_LOST", missing: lost,
           say: "Something you picked did not make it into the drawing - I have stopped rather " +
                "than draw the wrong thing." };
-        const caption = [leaf].concat(order.filter((k) => has(k)).map((k) => String(inc[k]))).join(", ");
+        const caption = [leaf].concat(said.filter((k) => has(k)).map((k) => String(inc[k]))).join(", ");
         const r = await processCommand("SHOW_IT " + JSON.stringify({
           subject: ask,
           context: "a tattoo somebody is designing for themselves: " + caption,

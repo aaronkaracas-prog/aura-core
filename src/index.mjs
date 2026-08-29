@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.26.0-2026-08-29-eight-ways-to-letter-it";
+const BUILD = "aura-core-v9.27.0-2026-08-29-the-stencil-has-no-words";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5492,6 +5492,62 @@ async function processCommand(line, env, isOp) {
       const at = new Date().toISOString().slice(0, 10);
       await env.AURA_KV.put("signed:" + tatSlug(arg), at);
       return { cmd: "SIGN", payload: { ok: true, kind: arg, signed: at } };
+    }
+
+    // ══ STENCIL — WHAT THE ARTIST ACTUALLY TRANSFERS ═════════════════════════════════════════
+    // A shop needs two files, not one. The final design says what it should LOOK like; the stencil
+    // is the line map that goes on the skin. An artist shades from the reference and traces from
+    // the stencil, and one file cannot be both.
+    //
+    // IT IS TAKEN FROM THE UNLETTERED PIECE, ALWAYS, EVEN WHEN WORDING EXISTS. An artist letters
+    // by hand and will not accept our type baked into a transfer - a stencil with words in the
+    // linework is the one deliverable a parlour would throw away. So when the design handed in is
+    // a lettered child, this walks BACK UP the lineage to the parent that has no words on it.
+    // Nothing about the request says which is which, so it has to be found rather than assumed.
+    case "STENCIL": {
+      const id = String(rest || "").trim();
+      if (!id) return { cmd: "STENCIL", payload: { ok: false,
+        error: "Usage: STENCIL <design id>", note: "The id of a finished piece." } };
+      const db = env.AURA_MEMORY;
+      // The real reader. `FILE <id>` is not a thing - FILE takes REGISTER, MINE, VERSION and the
+      // rest, and a bare id falls through to "unknown sub-command". This resolves a smart file by
+      // entity id, image id or identity key, which is what every other image path uses.
+      const readFile = async (ref) => {
+        const ent = await resolveSmartFile(db, String(ref || "").trim());
+        if (!ent) return null;
+        let meta = {}; try { meta = JSON.parse(ent.metadata || "{}"); } catch {}
+        return { id: ent.id, url: meta.url || null, source: meta.source || null,
+                 parent: meta.parent || null, subject: meta.subject || null };
+      };
+      let file = await readFile(id);
+      if (!file || !file.url) return { cmd: "STENCIL", payload: { ok: false,
+        error: "NO_SUCH_DESIGN", asked: id,
+        what_to_do: "Pass the design id a walk returned, or an image id." } };
+      // ── WALK BACK TO THE PIECE WITHOUT WORDS ──────────────────────────────────────────────
+      // Bounded, because a lineage that loops would hang here forever and a design six evolves
+      // deep is still only six hops from its origin.
+      let src = file, hops = 0; const walked = [];
+      while (src && String(src.source || "") === "letter" && src.parent && hops < 6) {
+        const up = await readFile(src.parent);
+        if (!up || !up.url) break;
+        walked.push(src.id);
+        src = up; hops++;
+      }
+      const r = await showIt(
+        "Convert this tattoo artwork into a STENCIL for transfer. Clean black outlines on white, " +
+        "the key landmarks and the boundaries between light and shadow only. No shading, no " +
+        "solid fills, no grey, no colour. Dots and dashed lines where tone changes, not finished " +
+        "rendering. Keep the proportions and the pose exactly as they are.",
+        env, { source: "stencil", parent: src.id || id, raw: true, refs: [src.url] });
+      if (!r?.ok) return { cmd: "STENCIL", payload: { ok: false, error: r?.error || "COULD_NOT_TRACE",
+        traced_from: src.url || null } };
+      return { cmd: "STENCIL", payload: { ok: true, stencil: r.entity_id || r.id,
+        image: r.image_url, traced_from: src.url,
+        // Which file it actually traced, and how far back it had to go. When a stencil comes out
+        // with words in it, this is the line that says why.
+        lettered_skipped: walked.length ? walked : null, hops,
+        model: r.model || null, cost_usd: r.cost_usd,
+        note: "Traced from the piece WITHOUT wording. An artist letters by hand." } };
     }
 
     // ══ WORDS — ONE DESIGN, EVERY LETTERING PLACEMENT, ONE PAGE ══════════════════════════════
@@ -52281,7 +52337,9 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // and either way the card is free and fine.
   // So the CALLER says which it is. Anything that does not is a generation, which is the safe
   // default: the worst case is a card that ignored its reference, not a bill.
-  const EDIT_SOURCES = new Set(["image_evolve", "letter", "onme", "design_evolve"]);
+  // A stencil is an EDIT - it traces the finished artwork. Drawn from a sentence instead it
+  // would be a different dog in outline, which is worse than no stencil at all.
+  const EDIT_SOURCES = new Set(["image_evolve", "letter", "onme", "design_evolve", "stencil"]);
   const isEdit = Array.isArray(opts.refs) && opts.refs.filter(Boolean).length > 0
     && (opts.edit === true || EDIT_SOURCES.has(String(opts.source || "")));
   const policyName = ((await env.AURA_KV.get(isEdit ? "config:policy:edit" : "config:policy:image")

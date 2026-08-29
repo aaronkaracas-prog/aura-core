@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.12.0-2026-08-28-a-reptile-reads-from-the-body";
+const BUILD = "aura-core-v9.13.0-2026-08-28-the-whole-snake";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -51161,10 +51161,18 @@ const TAT_PHOTO_KIND = /^(dog|cat|animal|pet|bird|horse|fish|insect|butterfly|sn
 // so the frame is chosen by kind the way the shape plate is - never hand-picked per leaf.
 const TAT_REPTILE_KIND = /^(snake|serpent|lizard|gecko|iguana|chameleon|turtle|tortoise|crocodile|alligator|reptile|komodo|dragon lizard)$/i;
 
+// MEASURED TWICE. The first snakes sheet was six head crops and every one was the same wedge -
+// correct species, unreadable at tile size. The second asked for "head and enough of the body"
+// and gave five snake heads with a little neck. Both were half-measures around a MAMMAL habit:
+// crop to the face, because that is how you recognise a dog.
+// Nobody recognises a snake by its face. Cobra is the hood, rattlesnake is the rattle, python is
+// the pattern, coral is the banding, boa is the bulk - every one of them is a WHOLE ANIMAL fact.
+// So there is no crop here at all. The entire creature, coiled, on white, the way a field guide
+// or a reference sheet shows a species.
 const TAT_FRAME_REPTILE =
-  ". Head and enough of the body that the animal reads, one subject, plain light ground, " +
-  "sharp focus, a clear reference photograph. No people, no border, no letters, no words, " +
-  "no caption, no watermark.";
+  ". The whole animal, coiled, in full view from head to tail, one subject on a plain white " +
+  "background, sharp focus, a clear reference photograph. Not cropped. No people, no hands, " +
+  "no border, no letters, no words, no caption, no watermark.";
 
 const TAT_FRAME_SHAPE = (leaf) =>
   ". A flat graphic of ONE " + leaf + " on a plain light ground. The body path is the entire " +

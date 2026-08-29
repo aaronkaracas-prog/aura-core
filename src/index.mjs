@@ -50,7 +50,11 @@ import QRCode from "qrcode-svg";
 // It exists in this file for exactly one job - the stencil. A model cannot guarantee that the
 // output registers on top of the input; a threshold can, because every pixel is either side of a
 // cutoff and nothing moves.
-import { PhotonImage, grayscale, gaussian_blur, threshold as photonThreshold, invert as photonInvert }
+import { PhotonImage, grayscale, gaussian_blur, threshold as photonThreshold, invert as photonInvert,
+         normalize as photonNormalize, adjust_contrast as photonContrast,
+         edge_detection as photonEdges, laplace as photonLaplace,
+         dither as photonDither, halftone as photonHalftone,
+         grayscale_human_corrected as photonGrayHuman }
   from "@cf-wasm/photon";
 
 // The relying party ID is the DOMAIN a passkey is bound to, and it is why passkeys are phishing-proof:
@@ -82,7 +86,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.33.0-2026-08-29-defaults-that-actually-worked";
+const BUILD = "aura-core-v9.34.0-2026-08-29-every-direction-one-image-goes";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5501,6 +5505,95 @@ async function processCommand(line, env, isOp) {
       const at = new Date().toISOString().slice(0, 10);
       await env.AURA_KV.put("signed:" + tatSlug(arg), at);
       return { cmd: "SIGN", payload: { ok: true, kind: arg, signed: at } };
+    }
+
+    // ══ VARIANTS — EVERY DIRECTION ONE IMAGE CAN GO, FREE ═══════════════════════════════════
+    // One locked piece in, twelve deterministic results out, on one page. No model, no prompt,
+    // no cost, and nothing can drift because every recipe is arithmetic on the same pixels.
+    //
+    // This exists because the question kept being argued instead of answered. "Can I take the
+    // colour to black and white? To line art?" is a question a sheet settles in ninety seconds.
+    case "VARIANTS": {
+      const vid = String(rest || "").trim();
+      if (!vid) return { cmd: "VARIANTS", payload: { ok: false,
+        error: "Usage: VARIANTS <image id>",
+        note: "Any image id. Twelve filtered versions on one page, free." } };
+      // Read the bytes locally. A Worker fetching its own zone returned 522 - measured twice.
+      let src = null;
+      const vb64 = await env.AURA_KV.get("image:" + vid).catch(() => null);
+      if (vb64) {
+        const bin = atob(vb64);
+        src = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) src[i] = bin.charCodeAt(i);
+      }
+      if (!src) return { cmd: "VARIANTS", payload: { ok: false, error: "NOT_IN_KV", asked: vid,
+        what_to_do: "Pass an img_ id that this system created." } };
+
+      const vhost = await imageHost(env);
+      const made = [];
+      for (const [name, why, fn] of TAT_RECIPES) {
+        const one = { name, why, image: null, error: null };
+        try {
+          const im = PhotonImage.new_from_byteslice(src);
+          fn(im);
+          const bytes = im.get_bytes();
+          const nid = "img_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+          let b = ""; for (let i = 0; i < bytes.length; i += 8192) {
+            b += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+          }
+          await env.AURA_KV.put("image:" + nid, btoa(b)).catch(() => {});
+          await env.AURA_KV.put("imagemeta:" + nid, JSON.stringify({
+            id: nid, prompt: name + " of " + vid, created: new Date().toISOString(),
+            source: "variant", model: "photon-wasm", tokens: 0, cost_usd: 0,
+            url: "https://" + vhost + "/image/" + nid })).catch(() => {});
+          one.image = "https://" + vhost + "/image/" + nid;
+          try { im.free(); } catch {}
+        } catch (e) {
+          // A recipe that throws is named, not hidden. sobel_global throws "unreachable" in this
+          // build, which is exactly how it was found.
+          one.error = String(e && e.message || e).slice(0, 90);
+        }
+        made.push(one);
+      }
+      const escV = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+      const okN = made.filter((m) => m.image).length;
+      const htmlV =
+        '<!doctype html><html lang=en><head><meta charset=utf-8>' +
+        '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+        "<title>variants</title><style>" +
+        "*{margin:0;padding:0;box-sizing:border-box}" +
+        "body{background:#0b0d12;color:#e9edf5;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px}" +
+        "h1{font-size:1.15rem;font-weight:800}" +
+        ".top{color:#64748b;font-size:.8rem;margin:.3rem 0 1rem}" +
+        ".g{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}" +
+        "figure{background:#141a28;border:1px solid rgba(148,163,184,.16);border-radius:12px;overflow:hidden}" +
+        "figure img{width:100%;aspect-ratio:1;object-fit:contain;display:block;background:#fff}" +
+        "figcaption{padding:.5rem .6rem}" +
+        "figcaption b{display:block;font-size:.9rem}" +
+        "figcaption span{display:block;color:#64748b;font-size:.75rem;margin-top:.1rem}" +
+        ".gone{padding:3rem .6rem;text-align:center;color:#fca5a5;font-size:.72rem}" +
+        "</style></head><body><h1>every direction, no model</h1><p class=top>" +
+        escV(vid) + " &middot; " + okN + " of " + made.length + " &middot; $0.00</p><div class=g>" +
+        // The original first, so every filter is judged against what it came from.
+        '<figure><a href="https://' + vhost + "/image/" + escV(vid) + '" target=_blank>' +
+        '<img src="https://' + vhost + "/image/" + escV(vid) + '"></a>' +
+        "<figcaption><b>the piece</b><span>what they locked</span></figcaption></figure>" +
+        made.map((m) =>
+          "<figure>" +
+          (m.image ? '<a href="' + escV(m.image) + '" target=_blank><img loading=lazy src="' +
+                     escV(m.image) + '"></a>'
+                   : '<div class=gone>' + escV(m.error || "did not run") + "</div>") +
+          "<figcaption><b>" + escV(m.name) + "</b><span>" + escV(m.why) +
+          "</span></figcaption></figure>").join("") +
+        "</div></body></html>";
+      const pageV = "variants/" + vid;
+      await env.AURA_KV.put("page:auras.guide/" + pageV, htmlV);
+      return { cmd: "VARIANTS", payload: { ok: true, source: vid,
+        url: "https://auras.guide/" + pageV, made: okN, of: made.length, cost_usd: 0,
+        urls: made.map((m) => m.name + "  ->  " + (m.image || "FAILED: " + m.error)),
+        note: "Every one is arithmetic on the same pixels - no model, no drift, no cost. " +
+              "Lay any of them over the piece and the contours cannot have moved." } };
     }
 
     // ══ STENCIL — WHAT THE ARTIST ACTUALLY TRANSFERS ═════════════════════════════════════════
@@ -51921,6 +52014,33 @@ function tatThicken(image, r) {
   }
   return new PhotonImage(dst, w, h);
 }
+
+// ══ EVERY DIRECTION ONE IMAGE CAN GO, WITHOUT A MODEL ════════════════════════════════════
+// MEASURED, each one run against a stand-in with a hard outline and a soft interior wash - which
+// is what a shaded drawing actually is. An earlier test used a smooth gradient with no edges in
+// it at all, so edge detection correctly found nothing and I wrongly concluded a filter cannot
+// find a line. It can: edge detection finds where TONE CHANGES, which is where an artist would
+// have drawn one.
+//
+// `sobel_global` is deliberately absent. It throws "unreachable" in this build - tested, not
+// assumed - and a recipe that crashes is worse than one that is missing.
+//
+// Every one of these is arithmetic on the same pixels. No prompt, no model, no drift, no cost.
+const TAT_RECIPES = [
+  ["black and white",   "the same drawing without colour",           (i) => { grayscale(i); }],
+  ["black and white 2", "greyscale weighted for how an eye sees it", (i) => { photonGrayHuman(i); }],
+  ["punchy",            "greyscale with the tonal range stretched",  (i) => { grayscale(i); photonNormalize(i); }],
+  ["high contrast",     "shading pushed toward black and white",     (i) => { grayscale(i); photonContrast(i, 80); }],
+  ["silhouette",        "one cutoff - solid shape, no interior",     (i) => { grayscale(i); photonThreshold(i, 160); }],
+  ["stencil",           "the transfer recipe - outline kept, wash dropped",
+                                                                     (i) => { grayscale(i); gaussian_blur(i, 1); photonThreshold(i, 100); }],
+  ["line art",          "edges only - where the tone changes",       (i) => { grayscale(i); photonEdges(i); photonInvert(i); }],
+  ["line art fine",     "thinner edges, more detail kept",           (i) => { grayscale(i); photonLaplace(i); photonInvert(i); }],
+  ["line art clean",    "edges with the greys cut out",              (i) => { grayscale(i); photonEdges(i); photonThreshold(i, 200); photonInvert(i); }],
+  ["dotwork",           "tone rebuilt as dots",                      (i) => { grayscale(i); photonDither(i, 2); }],
+  ["halftone",          "newsprint screen",                          (i) => { photonHalftone(i); }],
+  ["inverted",          "the negative",                              (i) => { grayscale(i); photonInvert(i); }],
+];
 
 // ══ THE STENCIL PIPELINE ═════════════════════════════════════════════════════════════════
 // Same bytes in, same bytes out, every time. No prompt, no model, no chance for the mouth to

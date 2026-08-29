@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.16.0-2026-08-29-black-ground";
+const BUILD = "aura-core-v9.17.0-2026-08-29-frames-live-in-kv";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5340,6 +5340,23 @@ async function processCommand(line, env, isOp) {
       return jsonReply({ ok: true, reply: data.reply });
     }
 
+    // ══ FRAMES — WHAT IS ACTUALLY IN FORCE ═══════════════════════════════════════════════════
+    // A KV override and a code fallback that disagree is invisible until a sheet looks wrong, so
+    // this says which one is winning for each frame rather than leaving it to be inferred.
+    case "FRAMES": {
+      const keys = ["frame:mammal", "frame:reptile", "frame:shape", "kind:photo", "kind:reptile"];
+      const out = {};
+      for (const k of keys) {
+        const v = await env.AURA_KV.get(k).catch(() => null);
+        out[k] = v ? { from: "kv", value: v } : { from: "code (no override set)", value: null };
+      }
+      return { cmd: "FRAMES", payload: { ok: true, in_force: out,
+        code_defaults: { "frame:mammal": TAT_FRAME_PHOTO, "frame:reptile": TAT_FRAME_REPTILE,
+                         "frame:shape": TAT_FRAME_SHAPE("{leaf}") },
+        set: 'SETKV frame:reptile ", full body, black background"',
+        clear: "DELKV frame:reptile   (falls back to the code default)" } };
+    }
+
     // ══ LEAVES — EDIT WHAT LIVES UNDER A KIND ════════════════════════════════════════════════
     // The first command that changes the TAXONOMY rather than the code. Everything else built
     // today decides how a leaf is drawn; this decides which leaves exist.
@@ -5478,10 +5495,10 @@ async function processCommand(line, env, isOp) {
         return { cmd: "FACE", payload: { ok: true, leaf: name, no_face: true, why: rec.why } };
       }
       const kind = String((prof.resolved && prof.resolved.subject) || name).trim();
-      const frame = tatFrame(kind, name);
+      const frame = await tatFrameFor(env, kind, name);
       // A reptile's identity tile is not a face crop, so it must not carry the face clause
       // either - "cropped at the neck" is the instruction that made six snakes one picture.
-      const reptile = TAT_REPTILE_KIND.test(kind);
+      const reptile = await tatIsReptile(env, kind);
       const words = [tatName(name, prof.resolved), reptile ? null : TAT_CROP[0].say]
         .filter(Boolean).join(", ") + frame;
       let rec = { leaf: name, img: null, why: null, drew: words, kind,
@@ -51261,12 +51278,44 @@ function tatSay(field, value, extra) {
 //
 // So a leaf is spoken with what the tree already resolved about it. Redundant where the label
 // already says it - "golden retriever dog" reads fine - and decisive where it does not.
-// One chooser. FACE and the walk both read it, so a frame cannot be right in the identity pass
-// and wrong on the crop wall - which is exactly the shape of bug this file has paid for most.
-function tatFrame(kind, leaf) {
-  if (TAT_REPTILE_KIND.test(kind)) return TAT_FRAME_REPTILE;
-  if (TAT_PHOTO_KIND.test(kind)) return TAT_FRAME_PHOTO;
-  return TAT_FRAME_SHAPE(leaf);
+// ══ THE FRAMES LIVE IN KV, NOT IN THIS FILE ══════════════════════════════════════════════
+// These are one-line strings that get tuned constantly - white ground to black, a clause added,
+// a clause taken back out. Every one of those edits was costing a full deploy of a 4.4MB worker
+// to change a background colour: the diff was one word and the blast radius LOOKED enormous
+// every time, which is its own kind of danger.
+// So they read from KV first and fall back to the constants above. A background change is now
+// one SETKV, instant and reversible, with nothing rebuilt and nothing redeployed.
+//
+// The constants stay as the floor. A cleared key does not break the walk - it just goes back to
+// what this file says, which is the behaviour anyone reading the code would expect.
+//   frame:mammal   frame:reptile   frame:shape   kind:photo   kind:reptile
+// frame:shape may contain {leaf} - it is the only one that names its subject.
+async function tatFrameFor(env, kind, leaf) {
+  const get = async (k) => { try { return await env.AURA_KV.get(k); } catch { return null; } };
+  const [rept, phot, mam, rf, sf] = await Promise.all([
+    get("kind:reptile"), get("kind:photo"), get("frame:mammal"),
+    get("frame:reptile"), get("frame:shape")]);
+  const listed = (csv) => csv
+    ? csv.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean).includes(String(kind).toLowerCase())
+    : null;
+  const isRept = listed(rept); const isPhot = listed(phot);
+  if (isRept === true || (isRept === null && TAT_REPTILE_KIND.test(kind)))
+    return rf || TAT_FRAME_REPTILE;
+  if (isPhot === true || (isPhot === null && TAT_PHOTO_KIND.test(kind)))
+    return mam || TAT_FRAME_PHOTO;
+  return sf ? sf.replace(/\{leaf\}/g, leaf) : TAT_FRAME_SHAPE(leaf);
+}
+
+// Whether a kind is a reptile decides one more thing than the frame: a reptile tile must not
+// carry the face-crop clause, because "cropped at the neck" is what turned six snakes into one
+// picture. Same override, same fallback.
+async function tatIsReptile(env, kind) {
+  try {
+    const csv = await env.AURA_KV.get("kind:reptile");
+    if (csv) return csv.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean)
+      .includes(String(kind).toLowerCase());
+  } catch {}
+  return TAT_REPTILE_KIND.test(kind);
 }
 
 function tatName(leaf, resolved) {
@@ -54575,7 +54624,7 @@ export class PublicEntry extends WorkerEntrypoint {
           // The kind decides the recognition frame. A dog gets a photograph; a dragon gets a
           // shape plate where the silhouette IS the subject.
           const kind = String((prof.resolved && prof.resolved.subject) || leaf).trim();
-          const recogFrame = tatFrame(kind, leaf);
+          const recogFrame = await tatFrameFor(env, kind, leaf);
           // The same missing word, in the walk. A boxer's crop wall was drawing a prizefighter
           // for exactly the reason the identity pass found - the label alone reached the model.
           shot = await tatShoot(env, shotKey, prof.say || tatName(leaf, prof.resolved), ctxPhrases,

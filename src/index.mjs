@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.24.0-2026-08-29-the-tail-stops-arguing";
+const BUILD = "aura-core-v9.25.0-2026-08-29-artwork-not-skin";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -51342,10 +51342,14 @@ const TAT_PHRASE = {
   style: {
     "traditional": "american traditional tattoo - thick black outlines, flat solid colour, bold and simple",
     "neo-traditional": "neo-traditional tattoo - bold outlines with rich saturated colour, depth and decorative detail",
-    "japanese": "japanese irezumi tattoo - bold outline, flowing linework, heavy black shading",
+    // This drew a bare thin outline on two sheets - the phrase named the tradition and never
+    // described it. What makes irezumi read is the WEIGHT: thick outlines, large solid blacks.
+    "japanese": "japanese irezumi tattoo - very thick bold black outlines, large areas of solid black shading, strong dark contrast",
     "realism": "realism tattoo - lifelike rendering with full tonal shading, drawn in ink rather than photographed",
     "black and grey": "black and grey tattoo - diluted black ink only, smooth gradients and soft shading, no colour anywhere",
-    "fine line": "fine line tattoo - thin single-needle linework, delicate and sparse, minimal shading",
+    // Minimalist collapsed into this one - they came back as the same picture - so it carries
+    // both: thin, sparse, and only what is needed to read.
+    "fine line": "fine line tattoo - thin single-needle linework, delicate and sparse, the fewest lines that still read, no shading",
     "minimalist": "minimalist tattoo - the fewest lines that still read, generous negative space",
     "blackwork": "blackwork tattoo - solid black fills and bold graphic shapes, high contrast, no grey shading",
     "ornamental": "ornamental tattoo - decorative filigree, lace and repeating pattern worked into the form",
@@ -51360,9 +51364,14 @@ const TAT_PHRASE = {
   },
 };
 
+// MEASURED on one sheet: japanese, fine line, minimalist and geometric all came back as the same
+// thin black outline. Fine line and minimalist genuinely collapse - one stays, and it is fine
+// line because it is the name a shop uses. Geometric drew nothing geometric at all, twice, and a
+// style the model cannot render is worse than one that is missing.
+// Japanese stays: it is a real tradition people ask for by name, and the fix there is the phrase.
 const TAT_STYLES = ["traditional", "neo-traditional", "japanese", "realism", "color realism",
-  "black and grey", "fine line", "minimalist", "blackwork", "new school", "ornamental",
-  "geometric", "illustrative", "watercolour"];
+  "black and grey", "fine line", "blackwork", "new school", "ornamental",
+  "illustrative", "watercolour"];
 
 // ══ CROP IS FOUR, FIXED, AND NOT WRITTEN BY A MODEL ═══════════════════════════════════════
 // MEASURED: asked to write this wall itself, the model returned "full body, sitting, lying down,
@@ -51461,9 +51470,18 @@ const TAT_FRAME_SHAPE = (leaf) =>
 // This tail was written when every design was a flat stencil, and it stopped being true the day
 // twelve styles arrived. The style already says what it should LOOK like. The tail now says only
 // what is in the frame - which is the one thing no style should have to repeat.
+// ══ THE ARTWORK, NOT A PHOTO OF SOMEBODY WEARING IT ══════════════════════════════════════
+// MEASURED across two finish sheets: tiles kept coming back as a design ON AN ARM. It happens on
+// the STYLE tiles specifically, and the reason is in the phrase - "american traditional TATTOO",
+// "japanese irezumi TATTOO" pull hard toward photographs of real tattoos, and a real tattoo comes
+// with skin attached.
+// "no skin, no body" was already there and was being dropped. So the frame now says what it IS
+// before it says what it is not: FLAT ARTWORK ON PAPER. A positive instruction survives where a
+// negative one gets ignored - the same lesson as "not an open bloom" on the withered rose.
 const TAT_FRAME_INK =
-  ". Tattoo design on a plain background, " +
-  "no skin, no body, no photograph - the artwork only.";
+  ". Flat tattoo artwork on white paper, like a design sheet in a studio. " +
+  "The drawing alone, centred, nothing else in frame. " +
+  "Not on skin, not on a person, not a photograph of a tattoo.";
 
 // A choice becomes a sentence. Three places to look, most specific first:
 //   1. the phrase the wall generator wrote for THIS option - "a bouquet, several stems gathered
@@ -54570,63 +54588,15 @@ export class PublicEntry extends WorkerEntrypoint {
       // written to be legible at 150px; this is written to be OBEYED.
       // Anything without an entry is still said - the fallback is the plain choice - so a
       // contextual option nobody has written a phrase for is never silently dropped.
-      const PHRASE = {
-        // Rendering. The style word carries most of the language; these correct the two things a
-        // model gets wrong on its own: drawing a PHOTOGRAPH when asked for realism, and adding
-        // colour when asked for black and grey.
-        style: {
-          "realism": "realism tattoo artwork - rendered as an ink drawing, not a photograph",
-          "hyperrealism": "hyperrealism tattoo artwork - extreme fine detail, still an ink drawing and not a photograph",
-          "black and grey realism": "black and grey realism tattoo artwork - ink shading only, no colour, not a photograph",
-          "traditional": "bold american traditional tattoo - thick black outlines, flat solid fills, no gradients",
-          // ══ A STYLE PHRASE MUST NOT CLAIM THE COLOUR FIELD ═══════════════════════════════
-          // MEASURED in a live prompt: "bold outlines with richer colour and depth" followed
-          // immediately by "in black and grey ink only, with no colour anywhere". The table was
-          // arguing with itself, and a model handed both picks one.
-          // Colour is its own choice. A style phrase describes LINE and FORM and says nothing
-          // about colour, because the person answers that separately.
-          "neo-traditional": "neo-traditional tattoo - bold outlines with depth and rich shading",
-          "japanese": "japanese irezumi tattoo - bold outline, flowing linework, heavy black shading",
-          "fine line": "fine line tattoo - thin single-weight linework, minimal shading",
-          "blackwork": "blackwork tattoo - solid black shapes and heavy contrast",
-          "dotwork": "dotwork tattoo - stippled shading built from dots, no solid line fill",
-          "watercolour": "watercolour tattoo - soft washes and paint bleed",
-          "minimalist": "minimalist tattoo - the simplest lines that still read",
-          "ornamental": "ornamental tattoo - decorative filigree and repeating pattern worked into the form",
-          "sketch": "sketch-style tattoo - loose pencil-like construction lines",
-          "etching": "etching-style tattoo - engraved cross-hatched linework",
-          "illustrative": "illustrative tattoo - clean drawn illustration",
-          "celtic": "celtic tattoo - interlaced knotwork",
-        },
-        colour: {
-          "full colour": "in full colour",
-          "black and grey": "in black and grey ink only, with no colour anywhere",
-          "muted colour": "in muted, desaturated colour",
-        },
-        detail: {
-          "bold and simple": "bold and simple - heavy line weight, few details, readable small",
-          "balanced": "balanced detail",
-          "intricate": "intricate - dense detail throughout",
-          "very fine": "very fine detail - delicate linework throughout",
-        },
-      };
-      // A choice becomes a sentence. Three places to look, in order of how specific they are:
-      //   1. a phrase the OPTION GENERATOR wrote for this subject - "a bouquet, several stems
-      //      gathered together, not a single bloom". The most specific, and the one that fixes the
-      //      failure that started this.
-      //   2. the written table above, for the fixed vocabulary.
-      //   3. the plain choice, so an option nobody has a phrase for is still SPOKEN rather than
-      //      silently dropped.
-      const asked = (field, value, extra) => {
-        const v = String(Array.isArray(value) ? value.join(" and ") : value || "").trim().toLowerCase();
-        if (!v) return null;
-        if (extra && extra[v]) return extra[v];
-        const t = (PHRASE[field] || {})[v];
-        if (t) return t;
-        if (field === "style")  return v + " style tattoo";
-        if (field === "detail") return v + " linework";
-        return v;
-      };
+      // ══ A SECOND PHRASE TABLE LIVED HERE AND IS GONE ══════════════════════════════════════
+      // PHRASE and asked() were the walk's original sentence writer. When `make` and `next` were
+      // pointed at the shared tatBuildAsk, nothing called them any more - but the TABLE stayed,
+      // holding its own copy of every style phrase.
+      // It had already drifted: this copy still carried dotwork, sketch, etching and celtic, all
+      // removed from the live list, and its japanese and fine line phrases were a version behind.
+      // "A rule written twice will disagree with itself" is the most expensive lesson in this
+      // file, and a dead copy is the quietest way for it to happen - nobody edits what nobody
+      // calls, until somebody does.
 
       // ══ MAKE — A RAW SENTENCE, NOT THE LADDER'S DOOR ══════════════════════════════════════
       // This draws whatever string it is handed. It has no phrase table, no plural rule and no

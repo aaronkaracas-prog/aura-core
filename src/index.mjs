@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.27.0-2026-08-29-the-stencil-has-no-words";
+const BUILD = "aura-core-v9.28.0-2026-08-29-refuse-rather-than-trace-words";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5533,12 +5533,30 @@ async function processCommand(line, env, isOp) {
         walked.push(src.id);
         src = up; hops++;
       }
+      // ══ REFUSE RATHER THAN PRODUCE A PLAUSIBLE WRONG FILE ═══════════════════════════════
+      // The parent chain is the right way home and it is not always there - a design handed in
+      // from the page, or anything made before lettering recorded its parent, has nothing to
+      // climb. The record still says what it is: a lettered image's subject literally begins
+      // "Add the words".
+      // So when it looks lettered and there was nowhere to climb to, this STOPS. A missing
+      // stencil is a command somebody runs again. A stencil with type traced into the linework
+      // looks correct, reaches an artist, and is the one file a parlour throws away.
+      const looksLettered = String(src.source || "") === "letter" ||
+        /^\s*add the words\b/i.test(String(src.subject || ""));
+      if (looksLettered) return { cmd: "STENCIL", payload: { ok: false, error: "STILL_LETTERED",
+        traced_nothing: true, design: src.id, source: src.source || null,
+        subject: String(src.subject || "").slice(0, 90),
+        why: "This is a lettered version and it has no parent recorded, so there is no wordless " +
+             "piece to trace. Refusing rather than tracing the words into the stencil.",
+        what_to_do: "Pass the design id from before wording was added." } };
+
       const r = await showIt(
         "Convert this tattoo artwork into a STENCIL for transfer. Clean black outlines on white, " +
         "the key landmarks and the boundaries between light and shadow only. No shading, no " +
         "solid fills, no grey, no colour. Dots and dashed lines where tone changes, not finished " +
         "rendering. Keep the proportions and the pose exactly as they are.",
-        env, { source: "stencil", parent: src.id || id, raw: true, refs: [src.url] });
+        env, { source: "stencil", parent: src.id || id, raw: true, refs: [src.url],
+               subject: "stencil of " + (src.subject || id) });
       if (!r?.ok) return { cmd: "STENCIL", payload: { ok: false, error: r?.error || "COULD_NOT_TRACE",
         traced_from: src.url || null } };
       return { cmd: "STENCIL", payload: { ok: true, stencil: r.entity_id || r.id,
@@ -5606,7 +5624,13 @@ async function processCommand(line, env, isOp) {
             'Add the words "' + say + '" to this tattoo in ' + (font || "old english") +
             " lettering, " + where + ". Spell it exactly as written. Draw the lettering as part " +
             "of the tattoo, in the same hand as the artwork." + noBanner,
-            env, { source: "letter", refs: [base.image], raw: true });
+            // ══ A LETTERED PIECE IS A CHILD, AND MUST SAY SO ═══════════════════════════════
+            // MEASURED: every tile from the first WORDS run came back with `parents: []`. The
+            // lineage was never written because this call passed refs and a source and no PARENT
+            // - so a stencil taken from a lettered piece had nothing to climb back to and traced
+            // the words straight into the transfer. showIt has always accepted this; I never
+            // passed it.
+            env, { source: "letter", refs: [base.image], raw: true, parent: base.design || null });
           if (r?.ok) { one.image = r.image_url || null; one.cost_usd = r.cost_usd || 0; }
           else one.why = String(r?.error || "no image returned").slice(0, 140);
         } catch (e) { one.why = String(e && e.message || e).slice(0, 140); }
@@ -51791,7 +51815,9 @@ async function tatFinish(env, subject, locks, style) {
       name: (subject + " " + style).slice(0, 60)
     }), env, true);
     const p2 = (r && r.payload) ? r.payload : r;
-    if (p2?.ok) out.image = p2.image_url || null;
+    // The id, not just the url - a caller that wants to record this as a parent needs something
+    // to point at, and WORDS does.
+    if (p2?.ok) { out.image = p2.image_url || null; out.design = p2.entity_id || p2.id || null; }
     else out.why = String(p2?.error || "no image returned").slice(0, 140);
   } catch (e) { out.why = String(e && e.message || e).slice(0, 140); }
   return out;

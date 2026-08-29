@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.23.0-2026-08-29-style-lives-at-the-end";
+const BUILD = "aura-core-v9.24.0-2026-08-29-the-tail-stops-arguing";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5492,6 +5492,68 @@ async function processCommand(line, env, isOp) {
       const at = new Date().toISOString().slice(0, 10);
       await env.AURA_KV.put("signed:" + tatSlug(arg), at);
       return { cmd: "SIGN", payload: { ok: true, kind: arg, signed: at } };
+    }
+
+    // ══ FINISHES — ONE DESIGN, EVERY STYLE, ONE PAGE ═════════════════════════════════════════
+    // Judging a finish one browser tab at a time is not judging it. A style reads by CONTRAST -
+    // black and grey only looks like black and grey next to a colour one, and the failure that
+    // sent this sheet into existence (realism drawing as blackwork) was invisible until two of
+    // them sat side by side.
+    //
+    // It walks the SAME locked sentence through every style, so what changes between tiles is the
+    // style and nothing else. Same machinery as the real walk - no second path to drift.
+    case "FINISHES": {
+      const raw = String(rest || "").trim();
+      const [subjRaw, lockRaw] = raw.split("::");
+      const subject = String(subjRaw || "").trim();
+      if (!subject) return { cmd: "FINISHES", payload: { ok: false,
+        error: 'Usage: FINISHES <subject> :: crop=face, expression=smiling',
+        note: "The locks are whatever the walk asked for. Run it once in the browser to see them." } };
+      const locks = {};
+      for (const part of String(lockRaw || "").split(",")) {
+        const [k, v] = part.split("=");
+        if (k && v) locks[k.trim().toLowerCase()] = v.trim();
+      }
+      const done = [];
+      for (const style of TAT_STYLES) {
+        const r = await tatFinish(env, subject, locks, style);
+        done.push(r);
+      }
+      const escF = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+      const lockLine = Object.keys(locks).map((k) => k + " " + locks[k]).join(" &middot; ");
+      const drewN = done.filter((d) => d.image).length;
+      const htmlF =
+        '<!doctype html><html lang=en><head><meta charset=utf-8>' +
+        '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+        "<title>" + escF(subject) + "</title><style>" +
+        "*{margin:0;padding:0;box-sizing:border-box}" +
+        "body{background:#0b0d12;color:#e9edf5;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px}" +
+        "h1{font-size:1.15rem;font-weight:800}" +
+        ".top{color:#64748b;font-size:.8rem;margin:.3rem 0 1rem}" +
+        ".g{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}" +
+        "figure{background:#141a28;border:1px solid rgba(148,163,184,.16);border-radius:12px;overflow:hidden}" +
+        // WHITE BEHIND THE ART, NOT THE PAGE COLOUR. These are drawn on a plain light ground and
+        // a dark tile makes a black-heavy style look like it bled off the edge.
+        "figure img{width:100%;aspect-ratio:1;object-fit:contain;display:block;background:#fff}" +
+        "figcaption{padding:.5rem .6rem;font-size:.9rem}" +
+        ".gone{padding:3rem .6rem;text-align:center;color:#fca5a5;font-size:.72rem}" +
+        "</style></head><body><h1>" + escF(subject) + "</h1><p class=top>" +
+        escF(lockLine) + " &middot; " + drewN + " of " + done.length + " finishes</p><div class=g>" +
+        done.map((d) =>
+          "<figure>" +
+          (d.image ? '<a href="' + escF(d.image) + '" target=_blank><img loading=lazy src="' +
+                     escF(d.image) + '"></a>'
+                   : '<div class=gone>' + escF(d.why || "never drew") + "</div>") +
+          "<figcaption>" + escF(d.style) + "</figcaption></figure>").join("") +
+        "</div></body></html>";
+      const pageF = "finish/" + tatSlug(subject);
+      await env.AURA_KV.put("page:auras.guide/" + pageF, htmlF);
+      return { cmd: "FINISHES", payload: { ok: true, subject, locks,
+        url: "https://auras.guide/" + pageF, drew: drewN, of: done.length,
+        urls: done.map((d) => d.style + "  ->  " + (d.image || "NO IMAGE: " + (d.why || "unknown"))),
+        // The sentence for one of them, so a wrong sheet can be read rather than guessed at.
+        example_ask: (done.find((d) => d.ask) || {}).ask || null } };
     }
 
     // ══ FACE — ONE TILE, ONE LEAF, FOR REVIEW ════════════════════════════════════════════════
@@ -51289,12 +51351,18 @@ const TAT_PHRASE = {
     "ornamental": "ornamental tattoo - decorative filigree, lace and repeating pattern worked into the form",
     "geometric": "geometric tattoo - built from clean geometric construction and repeated shapes",
     "illustrative": "illustrative tattoo - a clean drawn illustration, storybook linework with colour",
+    // Both of these were reaching the model as "<name> style tattoo" and nothing else, so color
+    // realism was indistinguishable from realism and new school from traditional. A style with no
+    // phrase is a style the model has to guess at.
+    "color realism": "colour realism tattoo - lifelike rendering in full saturated colour, soft shading, no hard outlines",
+    "new school": "new school tattoo - bold cartoon exaggeration, thick outlines, bright saturated colour, oversized features",
     "watercolour": "watercolour tattoo - soft painterly washes and colour bleed, no hard outline",
   },
 };
 
-const TAT_STYLES = ["traditional", "neo-traditional", "japanese", "realism", "black and grey",
-  "fine line", "minimalist", "blackwork", "ornamental", "geometric", "illustrative", "watercolour"];
+const TAT_STYLES = ["traditional", "neo-traditional", "japanese", "realism", "color realism",
+  "black and grey", "fine line", "minimalist", "blackwork", "new school", "ornamental",
+  "geometric", "illustrative", "watercolour"];
 
 // ══ CROP IS FOUR, FIXED, AND NOT WRITTEN BY A MODEL ═══════════════════════════════════════
 // MEASURED: asked to write this wall itself, the model returned "full body, sitting, lying down,
@@ -51380,8 +51448,21 @@ const TAT_FRAME_SHAPE = (leaf) =>
   "picture, high contrast, filling the frame. No clouds, no waves, no scenery, no extra " +
   "subjects, no letters, no words, no caption, no watermark.";
 
+// ══ THE TAIL SAYS WHAT IS IN FRAME, NOT WHAT IT LOOKS LIKE ═══════════════════════════════
+// MEASURED on six finishes of one dog: realism came back as heavy blackwork, black and grey came
+// back as a thin outline WITH A PINK TONGUE, and only watercolour read correctly. The sentences
+// were right - the tail was arguing with them.
+//   "realism - lifelike rendering with FULL TONAL SHADING ... clean linework, HIGH CONTRAST"
+//   "black and grey - SMOOTH GRADIENTS ... CLEAN LINEWORK"
+//   "watercolour - NO HARD OUTLINE ... CLEAN LINEWORK"
+// Four of six contradicted, and a model resolving a contradiction picks one and drops the other.
+// Same failure as "coiled" fighting "the posture that shows the species" on the snakes.
+//
+// This tail was written when every design was a flat stencil, and it stopped being true the day
+// twelve styles arrived. The style already says what it should LOOK like. The tail now says only
+// what is in the frame - which is the one thing no style should have to repeat.
 const TAT_FRAME_INK =
-  ". Tattoo design, clean linework, high contrast, on a plain background, " +
+  ". Tattoo design on a plain background, " +
   "no skin, no body, no photograph - the artwork only.";
 
 // A choice becomes a sentence. Three places to look, most specific first:
@@ -51497,6 +51578,47 @@ function tatName(leaf, resolved) {
   if (!k || n === k || n === k + "s") return tatSingular(name);
   if (n.includes(k)) return tatSingular(name);
   return tatSingular(name) + " " + k;
+}
+
+// ══ ONE DESIGN, ONE STYLE — THE SAME SENTENCE THE WALK WRITES ════════════════════════════
+// FINISHES needs a finished design per style. It must NOT assemble that itself: two writers of
+// one prompt is the failure this file has paid for more than any other, and a comparison sheet
+// built by a second writer would be comparing the writer, not the styles.
+// So it reads the same profile, the same wall phrases, and calls the same tatBuildAsk. The only
+// thing that varies between tiles is the style.
+async function tatFinish(env, subject, locks, style) {
+  const out = { style, image: null, ask: null, why: null };
+  try {
+    const pin = (await env.AURA_KV.get("config:talk:model").catch(() => null)) || null;
+    const parent = await tatParentOf(env, subject);
+    const prof = await tatLeafProfile(env, subject, (pin && pin.trim()) ? pin.trim() : undefined, parent);
+    if (prof.failed) { out.why = "profile: " + (prof.why || "unavailable"); return out; }
+    const intent = { ...locks, style };
+    const order = Object.keys(locks).concat(["style"]);
+    // The phrases the wall generators wrote for THIS leaf - the same lookup the walk does, so a
+    // tile says "mouth open in a wide grin" and not the bare label.
+    const extras = {};
+    for (const k of Object.keys(locks)) {
+      try {
+        const rec = await env.AURA_KV.get("wall:v1:" + tatSlug(subject) + ":" + tatSlug(k), "json");
+        if (rec && Array.isArray(rec.opts)) {
+          const m = {};
+          for (const o of rec.opts) if (o.say) m[o.id] = o.say;
+          if (Object.keys(m).length) extras[k] = m;
+        }
+      } catch {}
+    }
+    out.ask = tatBuildAsk(tatName(subject, prof.resolved), order, intent, extras, prof.say || null);
+    const r = await processCommand("SHOW_IT " + JSON.stringify({
+      subject: out.ask,
+      context: "a tattoo somebody is designing for themselves: " + subject + ", " + style,
+      name: (subject + " " + style).slice(0, 60)
+    }), env, true);
+    const p2 = (r && r.payload) ? r.payload : r;
+    if (p2?.ok) out.image = p2.image_url || null;
+    else out.why = String(p2?.error || "no image returned").slice(0, 140);
+  } catch (e) { out.why = String(e && e.message || e).slice(0, 140); }
+  return out;
 }
 
 // ══ ONE WRITER OF THE SENTENCE ════════════════════════════════════════════════════════════

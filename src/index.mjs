@@ -82,7 +82,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.30.0-2026-08-29-not-every-image-is-in-the-graph";
+const BUILD = "aura-core-v9.31.0-2026-08-29-the-bytes-are-already-local";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5581,7 +5581,7 @@ async function processCommand(line, env, isOp) {
       // throws it out if the contours miss, so a generative pass cannot do this job at all -
       // not because it draws badly, but because it cannot promise the geometry stayed put.
       let flat;
-      try { flat = await tatStencilBytes(env, src.url); }
+      try { flat = await tatStencilBytes(env, src.url, src.id); }
       catch (e) { return { cmd: "STENCIL", payload: { ok: false, error: "COULD_NOT_FLATTEN",
         why: String(e && e.message || e).slice(0, 160), traced_from: src.url } }; }
 
@@ -51927,10 +51927,29 @@ function tatThicken(image, r) {
 // DELIBERATELY NOT sobel/edge_detection FIRST. That draws every fur clump and every shadow
 // boundary - a fur map, not a contour. Shops do not transfer every hair. Edge detection is a
 // SECOND recipe for photo-realism sources, and it is not this one.
-async function tatStencilBytes(env, srcUrl) {
-  const res = await fetch(srcUrl);
-  if (!res.ok) throw new Error("could not fetch the piece: HTTP " + res.status);
-  const inBytes = new Uint8Array(await res.arrayBuffer());
+async function tatStencilBytes(env, srcUrl, srcId) {
+  // ══ READ THE BYTES LOCALLY, NEVER OVER HTTP ══════════════════════════════════════════════
+  // MEASURED: fetching https://auras.guide/image/<id> from inside the Worker returned HTTP 522
+  // after 20 seconds. A Worker calling its OWN zone goes back out through Cloudflare and can
+  // stall - and this Worker has no AURA_IMAGES binding either, so R2 is not a route from here.
+  // The bytes are already local: every image is written to KV as base64 under `image:<id>` at
+  // the moment it is created. That read cannot time out and cannot loop.
+  let inBytes = null;
+  if (srcId) {
+    const b64 = await env.AURA_KV.get("image:" + srcId).catch(() => null);
+    if (b64) {
+      const bin = atob(b64);
+      inBytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) inBytes[i] = bin.charCodeAt(i);
+    }
+  }
+  // Only if it is genuinely not in KV - an older image, or one stored elsewhere - is the
+  // network tried at all, and then it is the exception rather than the path.
+  if (!inBytes) {
+    const res = await fetch(srcUrl);
+    if (!res.ok) throw new Error("not in KV and could not fetch it: HTTP " + res.status);
+    inBytes = new Uint8Array(await res.arrayBuffer());
+  }
   const num = async (k, d) => {
     const v = await env.AURA_KV.get(k).catch(() => null);
     const n = v == null ? NaN : Number(v);

@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.19.0-2026-08-29-category-sheet-and-8007-retry";
+const BUILD = "aura-core-v9.20.0-2026-08-29-one-of-the-thing";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -51406,6 +51406,39 @@ async function tatFrameFor(env, kind, leaf) {
   return sf ? sf.replace(/\{leaf\}/g, leaf) : TAT_FRAME_SHAPE(leaf);
 }
 
+// ══ ONE OF THE THING, NOT SOME OF THEM ═══════════════════════════════════════════════════
+// MEASURED across a whole category: Wolves came back a two-headed cartoon, Lions a two-headed
+// lion, Tigers two bodies fused, Panthers a logo silhouette, Dolphins and Monkeys & Apes clipart.
+// Seven of sixteen flags, all of them PLURAL leaves.
+//
+// The tree stores kinds as plurals - Wolves, Lions, Sharks - and a kind with no third level
+// becomes its own leaf, so "wolves, full body, black background, photograph" is what reached the
+// model. It drew what it was asked for: more than one wolf, fused, because a single frame cannot
+// hold a pack. And "dolphins" as a phrase lives mostly on graphics and logos in training data,
+// which is where the clipart came from too.
+//
+// A leaf under a kind is already singular - Bengal, Corgi, King Cobra - so this only touches the
+// bare-kind case, which is exactly the case that broke.
+// Irregulars first, because "wolves" -> "wolve" would be worse than leaving it alone.
+const TAT_PLURAL_FIX = {
+  wolves: "wolf", leaves: "leaf", knives: "knife", lives: "life", elves: "elf",
+  mice: "mouse", geese: "goose", feet: "foot", teeth: "tooth", children: "child",
+  people: "person", men: "man", women: "woman", oxen: "ox", dice: "die",
+  octopus: "octopus", species: "species", fish: "fish", deer: "deer", sheep: "sheep",
+  moose: "moose", koi: "koi", bass: "bass", squid: "squid", bison: "bison",
+};
+function tatSingular(word) {
+  const w = String(word || "").trim();
+  const lower = w.toLowerCase();
+  if (TAT_PLURAL_FIX[lower]) return TAT_PLURAL_FIX[lower];
+  // -ies -> -y (butterflies), -ses/-xes/-zes/-ches/-shes -> drop -es (foxes, dishes),
+  // then plain -s. Never strip from a word ending -ss (bass, glass) or shorter than four.
+  if (/[^aeiou]ies$/i.test(w)) return w.slice(0, -3) + "y";
+  if (/(s|x|z|ch|sh)es$/i.test(w)) return w.slice(0, -2);
+  if (/[^s]s$/i.test(w) && w.length > 3) return w.slice(0, -1);
+  return w;
+}
+
 function tatName(leaf, resolved) {
   const name = String(leaf || "").trim();
   if (!name) return "";
@@ -51414,8 +51447,10 @@ function tatName(leaf, resolved) {
   // Already said, in either direction: "dogs" under a leaf called "golden retriever" adds
   // nothing, and a leaf that IS its kind must not become "rose rose".
   const n = name.toLowerCase(), k = kind.toLowerCase().replace(/s$/, "");
-  if (!k || n === k || n.includes(k)) return name;
-  return name + " " + k;
+  // The leaf IS its kind - a bare "Wolves" or "Lions" with nothing under it. Say one of them.
+  if (!k || n === k || n === k + "s") return tatSingular(name);
+  if (n.includes(k)) return tatSingular(name);
+  return tatSingular(name) + " " + k;
 }
 
 // ══ ONE WRITER OF THE SENTENCE ════════════════════════════════════════════════════════════

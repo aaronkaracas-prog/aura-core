@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.25.0-2026-08-29-artwork-not-skin";
+const BUILD = "aura-core-v9.26.0-2026-08-29-eight-ways-to-letter-it";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5492,6 +5492,108 @@ async function processCommand(line, env, isOp) {
       const at = new Date().toISOString().slice(0, 10);
       await env.AURA_KV.put("signed:" + tatSlug(arg), at);
       return { cmd: "SIGN", payload: { ok: true, kind: arg, signed: at } };
+    }
+
+    // ══ WORDS — ONE DESIGN, EVERY LETTERING PLACEMENT, ONE PAGE ══════════════════════════════
+    // The same idea as FINISHES, for the other half of a tattoo. A person adding a name or a date
+    // does not know where it should go until they see it there, and eight placements described in
+    // words are eight words - shown on their own piece they are eight different tattoos.
+    //
+    // THIS IS AN EDIT LANE, NOT A DRAW LANE, AND THAT IS NOT A CHOICE. Lettering has to reference
+    // the finished artwork or the dog changes underneath the words. Flux is text-to-image only -
+    // it drops a reference in silence and redraws from the sentence - so every one of these runs
+    // on the edit model whatever the catalogue pin says. Eight placements is eight paid edits and
+    // that is the honest price of the feature.
+    //
+    // The placements are the ones a shop actually uses, not invented: arched over, arched under,
+    // both, straight beneath, wrapped to the shape, on a banner, around the body, down the side.
+    case "WORDS": {
+      const raw = String(rest || "");
+      const [head, sayRaw] = raw.split(":::");
+      const [subjRaw, lockRaw] = String(head || "").split("::");
+      const subject = String(subjRaw || "").trim();
+      const say = String(sayRaw || "").trim().slice(0, 120);
+      if (!subject || !say) return { cmd: "WORDS", payload: { ok: false,
+        error: 'Usage: WORDS <subject> :: crop=full body, pose=sitting ::: the words',
+        example: 'WORDS golden retriever :: crop=full body, pose=sitting side ::: my mom loves me' } };
+      const font = (raw.match(/font=([a-z0-9 -]+)/i) || [])[1];
+      const locks = {};
+      for (const part of String(lockRaw || "").split(",")) {
+        const [k, v] = part.split("=");
+        if (k && v && k.trim().toLowerCase() !== "font") locks[k.trim().toLowerCase()] = v.trim();
+      }
+      // The base piece first, in one finish. Every placement letters THE SAME image, so what
+      // varies between tiles is where the words sit and nothing else.
+      const base = await tatFinish(env, subject, locks, "black and grey");
+      if (!base.image) return { cmd: "WORDS", payload: { ok: false, error: "NO_BASE",
+        why: base.why, what_to_do: "The piece has to draw before it can be lettered." } };
+      const PLACES = [
+        ["arched over", "arched in a curve ABOVE the artwork, following the top edge"],
+        ["arched under", "arched in a curve BELOW the artwork, following the bottom edge"],
+        ["over and under", "split in two - the first half arched above the artwork, the second half arched below it"],
+        ["straight beneath", "on a single straight line directly beneath the artwork, centred"],
+        ["wrapped to the shape", "curved to follow the natural outline of the artwork itself"],
+        ["on a banner", "on a ribbon banner that crosses the lower part of the artwork"],
+        ["around the body", "curving around the outside of the subject, following its silhouette"],
+        ["down the side", "running vertically down the right-hand side of the artwork"],
+      ];
+      const out = [];
+      for (const [id, where] of PLACES) {
+        const one = { place: id, image: null, why: null };
+        try {
+          // A banner is the model's favourite invention and has to be refused BY NAME - it once
+          // put a red scroll across a golden's collar unasked. Except, of course, on the tile
+          // where a banner is the point.
+          const noBanner = id === "on a banner" ? "" :
+            " Do not add a banner, ribbon, scroll, plaque or collar to hold the words.";
+          const r = await showIt(
+            'Add the words "' + say + '" to this tattoo in ' + (font || "old english") +
+            " lettering, " + where + ". Spell it exactly as written. Draw the lettering as part " +
+            "of the tattoo, in the same hand as the artwork." + noBanner,
+            env, { source: "letter", refs: [base.image], raw: true });
+          if (r?.ok) { one.image = r.image_url || null; one.cost_usd = r.cost_usd || 0; }
+          else one.why = String(r?.error || "no image returned").slice(0, 140);
+        } catch (e) { one.why = String(e && e.message || e).slice(0, 140); }
+        out.push(one);
+      }
+      const escW = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+      const drewW = out.filter((o) => o.image).length;
+      const spent = out.reduce((n, o) => n + (o.cost_usd || 0), 0);
+      const htmlW =
+        '<!doctype html><html lang=en><head><meta charset=utf-8>' +
+        '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+        "<title>" + escW(subject) + "</title><style>" +
+        "*{margin:0;padding:0;box-sizing:border-box}" +
+        "body{background:#0b0d12;color:#e9edf5;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px}" +
+        "h1{font-size:1.15rem;font-weight:800}" +
+        ".top{color:#64748b;font-size:.8rem;margin:.3rem 0 1rem}" +
+        ".g{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}" +
+        "figure{background:#141a28;border:1px solid rgba(148,163,184,.16);border-radius:12px;overflow:hidden}" +
+        "figure img{width:100%;aspect-ratio:1;object-fit:contain;display:block;background:#fff}" +
+        "figcaption{padding:.5rem .6rem;font-size:.9rem}" +
+        ".gone{padding:3rem .6rem;text-align:center;color:#fca5a5;font-size:.72rem}" +
+        "</style></head><body><h1>&ldquo;" + escW(say) + "&rdquo; on a " + escW(subject) +
+        "</h1><p class=top>" + escW(font || "old english") + " &middot; " + drewW + " of " +
+        out.length + " placements</p><div class=g>" +
+        // The piece before any lettering, first, so every tile has something to be judged against.
+        '<figure><a href="' + escW(base.image) + '" target=_blank><img src="' + escW(base.image) +
+        '"></a><figcaption>no lettering</figcaption></figure>' +
+        out.map((o) =>
+          "<figure>" +
+          (o.image ? '<a href="' + escW(o.image) + '" target=_blank><img loading=lazy src="' +
+                     escW(o.image) + '"></a>'
+                   : '<div class=gone>' + escW(o.why || "never drew") + "</div>") +
+          "<figcaption>" + escW(o.place) + "</figcaption></figure>").join("") +
+        "</div></body></html>";
+      const pageW = "words/" + tatSlug(subject);
+      await env.AURA_KV.put("page:auras.guide/" + pageW, htmlW);
+      return { cmd: "WORDS", payload: { ok: true, subject, say, font: font || "old english",
+        url: "https://auras.guide/" + pageW, base: base.image,
+        drew: drewW, of: out.length, cost_usd: Math.round(spent * 10000) / 10000,
+        urls: out.map((o) => o.place + "  ->  " + (o.image || "NO IMAGE: " + (o.why || "unknown"))),
+        note: "Lettering is an EDIT - these run on the edit model, not the catalogue pin. " +
+              "Read the words on every tile before judging placement." } };
     }
 
     // ══ FINISHES — ONE DESIGN, EVERY STYLE, ONE PAGE ═════════════════════════════════════════

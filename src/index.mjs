@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.10.0-2026-08-28-one-face-per-leaf";
+const BUILD = "aura-core-v9.11.0-2026-08-28-say-the-kind-out-loud";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5430,6 +5430,7 @@ async function processCommand(line, env, isOp) {
       // symbol, not a failure - it is reported so the sheet can say why the tile is absent.
       if (!prof.part) {
         const rec = { leaf: name, img: null, why: "no crop wall - this leaf has no face to show",
+                      spoken: tatName(name, prof.resolved),
                       resolved: prof.resolved || null, at: new Date().toISOString() };
         await env.AURA_KV.put(fKey, JSON.stringify(rec));
         return { cmd: "FACE", payload: { ok: true, leaf: name, no_face: true, why: rec.why } };
@@ -5437,8 +5438,9 @@ async function processCommand(line, env, isOp) {
       const kind = String((prof.resolved && prof.resolved.subject) || name).trim();
       const frame = TAT_PHOTO_KIND.test(kind) ? TAT_FRAME_PHOTO : TAT_FRAME_SHAPE(name);
       const face = TAT_CROP[0];
-      const words = [(prof.say || name), face.say].filter(Boolean).join(", ") + frame;
+      const words = [tatName(name, prof.resolved), face.say].filter(Boolean).join(", ") + frame;
       let rec = { leaf: name, img: null, why: null, drew: words, kind,
+                  spoken: tatName(name, prof.resolved),
                   resolved: prof.resolved || null, at: new Date().toISOString() };
       try {
         const gi = await auraGenerateImage(words, env, { source: "tattoo_option" });
@@ -51167,6 +51169,37 @@ function tatSay(field, value, extra) {
   return v;
 }
 
+// ══ SAY THE THING SO IT CANNOT BE MISHEARD ═══════════════════════════════════════════════
+// MEASURED on the first identity pass: 22 of 25 dog breeds drew correctly and three did not -
+// BOXER came back as a prizefighter's face on a dog, GREAT DANE and LABRADOR as generic hounds.
+// The prompt was the bare leaf label. The word "dog" never appeared in it.
+//
+// The system KNEW. The tree walked Animals & Pets -> Dogs -> Boxer, and the profile resolved
+// `{subject: dog, breed: boxer}`. That context sat in the breadcrumb, in the tree, in the
+// profile record - everywhere except in the one string the image model actually reads.
+//
+// It survived a whole day of me reading these prompts aloud because every subject I checked was
+// self-naming: "golden retriever" contains retriever, "japanese dragon" contains dragon,
+// "withered rose" contains rose. The three that could expose it were the only three that did.
+//
+// AND IT IS NOT A DOG PROBLEM. Sphynx is a monument, calico is a fabric, bengal and persian are
+// places, mustang is a car, python is a language, boa is a scarf, viper is a Dodge, bass is a
+// fish. Most of the cat, horse and snake lists would have failed the same way.
+//
+// So a leaf is spoken with what the tree already resolved about it. Redundant where the label
+// already says it - "golden retriever dog" reads fine - and decisive where it does not.
+function tatName(leaf, resolved) {
+  const name = String(leaf || "").trim();
+  if (!name) return "";
+  const kind = String((resolved && resolved.subject) || "").trim();
+  if (!kind) return name;
+  // Already said, in either direction: "dogs" under a leaf called "golden retriever" adds
+  // nothing, and a leaf that IS its kind must not become "rose rose".
+  const n = name.toLowerCase(), k = kind.toLowerCase().replace(/s$/, "");
+  if (!k || n === k || n.includes(k)) return name;
+  return name + " " + k;
+}
+
 // ══ ONE WRITER OF THE SENTENCE ════════════════════════════════════════════════════════════
 // `next` when it is done and `make` both come through here. Two writers of one prompt is the
 // disease this file has paid for more than any other bug: the card format existed in three
@@ -54462,8 +54495,10 @@ export class PublicEntry extends WorkerEntrypoint {
           // shape plate where the silhouette IS the subject.
           const kind = String((prof.resolved && prof.resolved.subject) || leaf).trim();
           const recogFrame = TAT_PHOTO_KIND.test(kind) ? TAT_FRAME_PHOTO : TAT_FRAME_SHAPE(leaf);
-          shot = await tatShoot(env, shotKey, prof.say || leaf, ctxPhrases, stepId, wall, shot,
-            18000, recogFrame);
+          // The same missing word, in the walk. A boxer's crop wall was drawing a prizefighter
+          // for exactly the reason the identity pass found - the label alone reached the model.
+          shot = await tatShoot(env, shotKey, prof.say || tatName(leaf, prof.resolved), ctxPhrases,
+            stepId, wall, shot, 18000, recogFrame);
           const shotOf = (o) => (shot.imgs && shot.imgs[o.id]) || {};
           const pictured = wall.opts.filter((o) => shotOf(o).img).length;
           const holes = wall.opts.filter((o) => !shotOf(o).img);
@@ -54512,7 +54547,7 @@ export class PublicEntry extends WorkerEntrypoint {
           } catch {}
         }
         // The tag is a wall-drawing concern and never reaches the sentence.
-        const ask = tatBuildAsk(leaf, order, inc, extras, prof.say || null);
+        const ask = tatBuildAsk(tatName(leaf, prof.resolved), order, inc, extras, prof.say || null);
         // EVERY CHOICE MUST SURVIVE. Per field, not per label - a phrase legitimately rewords
         // the tile's own words, so scanning the prompt for them would fail on a correct string.
         const lost = order.filter((k) => has(k) && !tatSay(k, inc[k], extras[k]));

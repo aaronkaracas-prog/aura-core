@@ -82,7 +82,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.31.0-2026-08-29-the-bytes-are-already-local";
+const BUILD = "aura-core-v9.32.0-2026-08-29-the-key-is-the-image-id";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -51934,13 +51934,22 @@ async function tatStencilBytes(env, srcUrl, srcId) {
   // stall - and this Worker has no AURA_IMAGES binding either, so R2 is not a route from here.
   // The bytes are already local: every image is written to KV as base64 under `image:<id>` at
   // the moment it is created. That read cannot time out and cannot loop.
+  // ══ THE KV KEY IS THE IMAGE ID, NOT THE ENTITY ID ═══════════════════════════════════════
+  // MEASURED: this fell through to the network and hit 522 again. `resolveSmartFile` returns the
+  // ENTITY id - ent_xxxx - and images are stored under their IMAGE id, img_xxxx. So the lookup
+  // was `image:ent_...`, which has never existed.
+  // The image id is in the url the record already carries. Take it from there, and fall back to
+  // whatever the caller passed, which is an img_ id when somebody types one by hand.
+  const fromUrl = String(srcUrl || "").match(/\/image\/([A-Za-z0-9_-]+)/);
+  const keys = [fromUrl && fromUrl[1], srcId].filter(Boolean);
   let inBytes = null;
-  if (srcId) {
-    const b64 = await env.AURA_KV.get("image:" + srcId).catch(() => null);
+  for (const k of keys) {
+    const b64 = await env.AURA_KV.get("image:" + k).catch(() => null);
     if (b64) {
       const bin = atob(b64);
       inBytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) inBytes[i] = bin.charCodeAt(i);
+      break;
     }
   }
   // Only if it is genuinely not in KV - an older image, or one stored elsewhere - is the

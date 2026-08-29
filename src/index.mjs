@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.14.0-2026-08-29-say-it-plainly";
+const BUILD = "aura-core-v9.15.0-2026-08-29-leaves-edits-the-tree";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5338,6 +5338,48 @@ async function processCommand(line, env, isOp) {
       }));
       const data = await res.json();
       return jsonReply({ ok: true, reply: data.reply });
+    }
+
+    // ══ LEAVES — EDIT WHAT LIVES UNDER A KIND ════════════════════════════════════════════════
+    // The first command that changes the TAXONOMY rather than the code. Everything else built
+    // today decides how a leaf is drawn; this decides which leaves exist.
+    //
+    // It writes `card:tree.specific[<kind>]` and nothing else - the categories and the kinds are
+    // untouched, so a bad list is one command to put back rather than a reseed.
+    // Old leaves keep their face records under their own keys. Nothing is deleted: a name that
+    // leaves the tree simply stops being listed, and if it comes back its tile is still there.
+    case "LEAVES": {
+      const raw = String(rest || "").trim();
+      if (!raw) return { cmd: "LEAVES", payload: { ok: false,
+        error: 'Usage: LEAVES <kind> :: name, name, name    or    LEAVES <kind> to read one' } };
+      const t = await env.AURA_KV.get("card:tree", "json").catch(() => null);
+      if (!t?.subjects) return { cmd: "LEAVES", payload: { ok: false, error: "NO_TREE",
+        what_to_do: "Run CARDS TREE once to seed it." } };
+      const [head, tail] = raw.split("::");
+      const want = String(head || "").trim();
+      const known = Object.keys(t.specific || {}).find((k) => tatSlug(k) === tatSlug(want));
+      const inTree = Object.values(t.subjects).some((ks) => ks.some((k) => tatSlug(k) === tatSlug(want)));
+      // A kind that is not in the tree at all is a typo, not a new kind. Creating one silently is
+      // how a category ends up with a leaf nobody can reach from the walk.
+      if (!inTree) return { cmd: "LEAVES", payload: { ok: false, error: "NO_SUCH_KIND", asked: want,
+        what_to_do: "The kind must already exist under a category. This edits its leaves, it does not create kinds." } };
+      const kindName = known || Object.values(t.subjects).flat().find((k) => tatSlug(k) === tatSlug(want));
+      if (tail == null) return { cmd: "LEAVES", payload: { ok: true, kind: kindName,
+        leaves: (t.specific && t.specific[kindName]) || [],
+        count: ((t.specific && t.specific[kindName]) || []).length,
+        note: "This kind has no third level - the kind itself is the leaf." } };
+      const list = String(tail).split(",").map((x) => x.trim()).filter(Boolean)
+        .filter((x, i, a) => a.findIndex((y) => y.toLowerCase() === x.toLowerCase()) === i);
+      if (!list.length) return { cmd: "LEAVES", payload: { ok: false, error: "EMPTY_LIST" } };
+      const before = (t.specific && t.specific[kindName]) || [];
+      t.specific = t.specific || {};
+      t.specific[kindName] = list;
+      await env.AURA_KV.put("card:tree", JSON.stringify(t));
+      return { cmd: "LEAVES", payload: { ok: true, kind: kindName, count: list.length,
+        was: before.length, leaves: list,
+        dropped: before.filter((x) => !list.some((y) => y.toLowerCase() === x.toLowerCase())),
+        added: list.filter((x) => !before.some((y) => y.toLowerCase() === x.toLowerCase())),
+        next: 'RUN "FACES ' + kindName + '"' } };
     }
 
     // ══ FACES — START OR CHECK THE IDENTITY PASS ═════════════════════════════════════════════

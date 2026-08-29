@@ -1,4 +1,44 @@
 ﻿import puppeteer from "@cloudflare/puppeteer";
+// ══ PHOTON — DETERMINISTIC PIXELS, BOUND IN, NO PROVIDER (2026-08-29) ═══════════════════════
+// A Rust image library compiled to WebAssembly. `@cf-wasm/photon/workerd` loads its own .wasm on
+// import, so there is no [wasm_modules] block in wrangler.toml and no manual init. It is an npm
+// dependency and NOT a vendor: no account, no key, no network call, no bill - it runs inside this
+// isolate. `npm install @cf-wasm/photon` must have run or the BUILD fails (loudly, before deploy).
+// NAMESPACE, not named imports: a named import of a function this package does not export is a
+// build error that takes every command in this file down. A namespace degrades to one bad reply.
+import * as photon from "@cf-wasm/photon/workerd";
+
+// ══ PHOTON HAS NO DILATE, SO THIS IS WRITTEN RATHER THAN CALLED ═════════════════════════════
+// Its function list is convolutions, monochrome, channels, transform, filters, text, watermark
+// and blending - no morphological operator anywhere in it. A thermal head cannot burn a hair-thin
+// line, so a stencil needs its black grown by a pixel or two after the cut.
+// SEPARABLE: a horizontal pass then a vertical one is the same square structuring element as the
+// naive neighbourhood loop for a fraction of the work. MEASURED at 56ms for radius 2 on a
+// 1024x1024 sheet. Operates on RGBA where black is ink and white is paper.
+function stencilThicken(px, w, h, r) {
+  const n = w * h;
+  const dark = new Uint8Array(n);
+  for (let i = 0; i < n; i++) dark[i] = px[i * 4] < 128 ? 1 : 0;
+  const tmp = new Uint8Array(n);
+  for (let y = 0; y < h; y++) {
+    const row = y * w;
+    for (let x = 0; x < w; x++) {
+      let v = 0;
+      for (let k = -r; k <= r && !v; k++) { const xx = x + k; if (xx >= 0 && xx < w && dark[row + xx]) v = 1; }
+      tmp[row + x] = v;
+    }
+  }
+  const out = new Uint8Array(n);
+  for (let x = 0; x < w; x++) {
+    for (let y = 0; y < h; y++) {
+      let v = 0;
+      for (let k = -r; k <= r && !v; k++) { const yy = y + k; if (yy >= 0 && yy < h && tmp[yy * w + x]) v = 1; }
+      out[y * w + x] = v;
+    }
+  }
+  for (let i = 0; i < n; i++) { const c = out[i] ? 0 : 255, o = i * 4; px[o] = c; px[o + 1] = c; px[o + 2] = c; px[o + 3] = 255; }
+  return px;
+}
 /**
  * aura-core â€“ Aura Brain
  * Clean command interpreter + KV ops + LLM routing
@@ -73,7 +113,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.28.0-2026-08-29-refuse-rather-than-trace-words";
+const BUILD = "aura-core-v9.29.0-2026-08-29-stencil-is-arithmetic";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5499,15 +5539,53 @@ async function processCommand(line, env, isOp) {
     // is the line map that goes on the skin. An artist shades from the reference and traces from
     // the stencil, and one file cannot be both.
     //
+    // ══ THIS IS ARITHMETIC NOW, NOT A MODEL (2026-08-29) ══════════════════════════════════════
+    // It used to hand the piece to an image model with "convert this artwork into a STENCIL".
+    // MEASURED: the piece showed a golden retriever with its mouth CLOSED and the stencil came
+    // back with its mouth OPEN. Asked to trace, a generative model DRAWS - it cannot promise
+    // registration, and a stencil whose contours do not sit on top of the piece is the one file a
+    // parlour throws away and traces by hand instead.
+    //
+    // Photon is a Rust image library compiled to WebAssembly and bound INTO this worker. No
+    // provider, no key, no network call, no bill. Threshold is arithmetic: every pixel lands on one
+    // side of a cutoff and NOTHING MOVES, so the geometry cannot drift by construction. That is the
+    // only property that matters here and it is the one a model could never give.
+    //
+    // NOT EDGE DETECTION, AND THAT IS DELIBERATE. Sobel on a shaded drawing finds every fur clump
+    // and every shadow boundary - a fur map. A shop transfers a contour. Grayscale, soften, cut,
+    // thicken; the boring recipe first, and the interesting ones only if it fails.
+    //
+    // ══ THE CUTOFF IS THE WHOLE PRODUCT, AND IT IS A DIAL ═════════════════════════════════════
+    // MEASURED on a synthetic shaded blob before this shipped: interior shading at value 104, an
+    // outline at 20. A cutoff of 160 filled the entire shape solid black; a cutoff of 100 left the
+    // outline alone. The SAME PIPELINE is a stencil or a silhouette depending on one number, and
+    // which number depends on how the piece was shaded - so a colour-realism render and a fine-line
+    // render will not want the same one.
+    // `black_pct` is in the reply for exactly that reason: how much of the sheet is ink. It turns
+    // "too hairy" and "lines gone" into a figure that can be read instead of squinted at. On the
+    // test blob, usable outlines sat between 1% and 7%; past 15% it was a filled shape.
+    //
     // IT IS TAKEN FROM THE UNLETTERED PIECE, ALWAYS, EVEN WHEN WORDING EXISTS. An artist letters
     // by hand and will not accept our type baked into a transfer - a stencil with words in the
     // linework is the one deliverable a parlour would throw away. So when the design handed in is
     // a lettered child, this walks BACK UP the lineage to the parent that has no words on it.
     // Nothing about the request says which is which, so it has to be found rather than assumed.
     case "STENCIL": {
-      const id = String(rest || "").trim();
+      const rawArg = String(rest || "").trim();
+      // ══ A SWEEP IS ONE COMMAND, NOT TWO ═════════════════════════════════════════════════════
+      // KV is still where the settings LIVE - that is what makes retuning free of a deploy. But
+      // hunting a cutoff means running the same piece six times, and a SETKV between every run is
+      // six extra commands to mistype. An inline value overrides KV for that ONE run and is never
+      // written anywhere; the reply says which source each number came from, so a sweep can never
+      // be mistaken for a settings change.
+      const inline = (k) => {
+        const m = rawArg.match(new RegExp("\\b" + k + "\\s*=\\s*(\\d+)\\b", "i"));
+        return m ? Number(m[1]) : null;
+      };
+      const id = rawArg.replace(/\b(thresh|blur|weight|invert)\s*=\s*\d+\b/gi, "").trim();
       if (!id) return { cmd: "STENCIL", payload: { ok: false,
-        error: "Usage: STENCIL <design id>", note: "The id of a finished piece." } };
+        error: "Usage: STENCIL <design id>  [thresh=128 blur=1 weight=1 invert=0]",
+        note: "The id of a finished piece. Numbers are optional and override KV for one run." } };
       const db = env.AURA_MEMORY;
       // The real reader. `FILE <id>` is not a thing - FILE takes REGISTER, MINE, VERSION and the
       // rest, and a bare id falls through to "unknown sub-command". This resolves a smart file by
@@ -5550,22 +5628,161 @@ async function processCommand(line, env, isOp) {
              "piece to trace. Refusing rather than tracing the words into the stencil.",
         what_to_do: "Pass the design id from before wording was added." } };
 
-      const r = await showIt(
-        "Convert this tattoo artwork into a STENCIL for transfer. Clean black outlines on white, " +
-        "the key landmarks and the boundaries between light and shadow only. No shading, no " +
-        "solid fills, no grey, no colour. Dots and dashed lines where tone changes, not finished " +
-        "rendering. Keep the proportions and the pose exactly as they are.",
-        env, { source: "stencil", parent: src.id || id, raw: true, refs: [src.url],
-               subject: "stencil of " + (src.subject || id) });
-      if (!r?.ok) return { cmd: "STENCIL", payload: { ok: false, error: r?.error || "COULD_NOT_TRACE",
-        traced_from: src.url || null } };
-      return { cmd: "STENCIL", payload: { ok: true, stencil: r.entity_id || r.id,
-        image: r.image_url, traced_from: src.url,
-        // Which file it actually traced, and how far back it had to go. When a stencil comes out
-        // with words in it, this is the line that says why.
+      // ══ THE LIBRARY HAS TO BE THERE, AND SAYING SO BEATS A STACK TRACE ═════════════════════
+      // Imported as a NAMESPACE on purpose. A named import of a function this package does not
+      // export is a BUILD failure that takes the whole worker with it - every command in this
+      // file, not just this one. A namespace cannot fail that way, so a wrong name becomes a
+      // sentence in one reply instead of a dead deploy.
+      const need = ["PhotonImage", "grayscale", "threshold", "gaussian_blur"];
+      const missing = need.filter((n) => typeof photon[n] !== "function");
+      if (missing.length) return { cmd: "STENCIL", payload: { ok: false, error: "PHOTON_MISSING",
+        missing, what_to_do: "npm install @cf-wasm/photon in the aura-core folder, then redeploy." } };
+
+      // ── THE FOUR DIALS ────────────────────────────────────────────────────────────────────
+      const kvNum = async (key, dflt) => {
+        const v = await env.AURA_KV.get(key).catch(() => null);
+        const n = (v == null || String(v).trim() === "") ? NaN : Number(String(v).trim());
+        return Number.isFinite(n) ? n : dflt;
+      };
+      const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, Math.round(n)));
+      const iT = inline("thresh"), iB = inline("blur"), iW = inline("weight"), iI = inline("invert");
+      // Weight is capped at 4 because this dilates in JS and a radius is a real cost; measured at
+      // 56ms for radius 2 on a 1024x1024 sheet, which is nothing, and it grows with the radius.
+      const thresh = clamp(iT != null ? iT : await kvNum("stencil:thresh", 128), 0, 255);
+      const blur   = clamp(iB != null ? iB : await kvNum("stencil:blur", 1), 0, 20);
+      const weight = clamp(iW != null ? iW : await kvNum("stencil:weight", 1), 0, 4);
+      const invert = clamp(iI != null ? iI : await kvNum("stencil:invert", 0), 0, 1);
+      const dials = {
+        thresh: { value: thresh, from: iT != null ? "inline" : "kv/default" },
+        blur:   { value: blur,   from: iB != null ? "inline" : "kv/default" },
+        weight: { value: weight, from: iW != null ? "inline" : "kv/default" },
+        invert: { value: invert, from: iI != null ? "inline" : "kv/default" },
+      };
+
+      // ══ OUR OWN IMAGES COME OFF THE SHELF, NOT OVER THE WIRE ═══════════════════════════════
+      // The same rule the edit path already follows. Fetching `auras.guide/image/<id>` would be
+      // aura-core reaching back into its own zone, through aura-host, through RPC, for bytes it
+      // already has bound. R2 first, KV base64 for images that predate the bucket, and the wire
+      // only for a reference that genuinely lives somewhere else.
+      let inBytes = null, readFrom = null;
+      const own = String(src.url).match(/\/image\/(img_[a-z0-9]+)/i);
+      if (own && env.AURA_IMAGES) {
+        const obj = await env.AURA_IMAGES.get(own[1] + ".png").catch(() => null);
+        if (obj) { inBytes = new Uint8Array(await obj.arrayBuffer()); readFrom = "r2"; }
+      }
+      if (!inBytes && own) {
+        const b = await env.AURA_KV.get("image:" + own[1]).catch(() => null);
+        if (b) { const bin = atob(b); const u = new Uint8Array(bin.length);
+                 for (let n = 0; n < bin.length; n++) u[n] = bin.charCodeAt(n);
+                 inBytes = u; readFrom = "kv"; }
+      }
+      if (!inBytes) {
+        try {
+          const r = await fetch(src.url);
+          if (r.ok) { inBytes = new Uint8Array(await r.arrayBuffer()); readFrom = "fetch"; }
+        } catch {}
+      }
+      if (!inBytes || !inBytes.length) return { cmd: "STENCIL", payload: { ok: false,
+        error: "NO_PIXELS", traced_from: src.url,
+        what_to_do: "The piece has no bytes in R2, KV or at its url." } };
+      // A Worker isolate has ~128MB and a decoded image is width*height*4 bytes of raw pixels
+      // whatever it compressed to. Refusing a huge input is cheaper than being killed by the
+      // runtime, which reports nothing useful.
+      if (inBytes.length > 8 * 1024 * 1024) return { cmd: "STENCIL", payload: { ok: false,
+        error: "TOO_BIG", bytes: inBytes.length,
+        what_to_do: "Stencil a piece under 8MB - the isolate has a 128MB ceiling once it decodes." } };
+
+      // ══ THE PIPE ══════════════════════════════════════════════════════════════════════════
+      // grayscale -> soften -> cut -> thicken -> (invert). Every step is deterministic: the same
+      // bytes and the same four numbers produce the same sheet, today and next year.
+      let outBytes = null, w = 0, h = 0, blackPct = null, thickenMs = 0, thickenWhy = null;
+      let pImg = null, pOut = null;
+      try {
+        pImg = photon.PhotonImage.new_from_byteslice(inBytes);
+        w = pImg.get_width(); h = pImg.get_height();
+        photon.grayscale(pImg);
+        if (blur > 0) photon.gaussian_blur(pImg, blur);
+        photon.threshold(pImg, thresh);
+        let px = pImg.get_raw_pixels();
+        // ── THICKEN ────────────────────────────────────────────────────────────────────────
+        // PHOTON HAS NO DILATE. Its function list is convolutions, monochrome, channels,
+        // transform, filters, text, watermark and blending - there is no morphological operator
+        // anywhere in it, so this is written here rather than called. Said out loud because the
+        // last time a helper was invented mid-fix in this file it was caught by `node --check`
+        // and not by the person who wrote it.
+        // Separable: a horizontal pass then a vertical one is the same square structuring element
+        // as the naive loop at a fraction of the work.
+        if (weight > 0) {
+          const t0 = Date.now();
+          try { px = stencilThicken(px, w, h, weight); }
+          catch (e) { thickenWhy = String((e && e.message) || e).slice(0, 120); }
+          thickenMs = Date.now() - t0;
+        }
+        // A thermal head burns BLACK on WHITE. If a piece ever comes back the other way round
+        // this flips it without touching the geometry.
+        if (invert) {
+          for (let i = 0; i < px.length; i += 4) {
+            const v = 255 - px[i]; px[i] = v; px[i + 1] = v; px[i + 2] = v; px[i + 3] = 255;
+          }
+        }
+        // How much of the sheet is ink. The number that replaces squinting.
+        let black = 0;
+        for (let i = 0; i < px.length; i += 4) if (px[i] < 128) black++;
+        blackPct = Math.round((black / (w * h)) * 10000) / 100;
+        pOut = new photon.PhotonImage(px, w, h);
+        outBytes = pOut.get_bytes();
+      } catch (e) {
+        return { cmd: "STENCIL", payload: { ok: false, error: "PHOTON_FAILED",
+          why: String((e && e.message) || e).slice(0, 200), traced_from: src.url, dials } };
+      } finally {
+        try { if (pImg) pImg.free(); } catch {}
+        try { if (pOut) pOut.free(); } catch {}
+      }
+      const PNG_OK = outBytes && outBytes.length > 512 &&
+        outBytes[0] === 0x89 && outBytes[1] === 0x50 && outBytes[2] === 0x4E && outBytes[3] === 0x47;
+      if (!PNG_OK) return { cmd: "STENCIL", payload: { ok: false, error: "NOT_A_PNG",
+        bytes: outBytes ? outBytes.length : 0, dials,
+        what_to_do: "The pipeline produced something that is not an image. Nothing was stored." } };
+
+      // ══ STORED THE SAME WAY EVERY OTHER IMAGE IS ══════════════════════════════════════════
+      // R2 under `<id>.png`, the base64 in KV, `imagemeta:` for the pointer, and a Smart File
+      // registered with the PIECE as its parent so the lineage says what this was traced from.
+      // NOT born a PTA: a stencil is a production file for an artist, not a relationship somebody
+      // taps into. `showIt` mints a doorway for artwork; this deliberately does not.
+      const sid = "img_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      let b64 = ""; { let s = ""; for (let i = 0; i < outBytes.length; i++) s += String.fromCharCode(outBytes[i]); b64 = btoa(s); }
+      const host = await imageHost(env, null);
+      const sUrl = "https://" + host + "/image/" + sid;
+      if (env.AURA_IMAGES) { try { await env.AURA_IMAGES.put(sid + ".png", outBytes, { httpMetadata: { contentType: "image/png" } }); } catch {} }
+      await env.AURA_KV.put("image:" + sid, b64).catch(() => {});
+      const subject = "stencil of " + String(src.subject || src.id || id).slice(0, 90);
+      await env.AURA_KV.put("imagemeta:" + sid, JSON.stringify({ id: sid, prompt: null,
+        created: new Date().toISOString(), source: "stencil", model: "photon",
+        traced_from: src.url, dials, black_pct: blackPct, cost_usd: 0, url: sUrl })).catch(() => {});
+      let entityId = null;
+      try {
+        const reg = await registerSmartFile(env, { id: sid, filetype: "image",
+          name: subject.slice(0, 80), url: sUrl, subject, source: "stencil",
+          creator: null, parent: src.id || null, context: "stencil traced by photon",
+          access: "public" });
+        if (reg && reg.ok) entityId = reg.entity_id;
+      } catch {}
+
+      return { cmd: "STENCIL", payload: { ok: true,
+        stencil: entityId || sid, image_id: sid, image: sUrl,
+        traced_from: src.url, source_id: src.id || null, read_from: readFrom,
+        size: w + "x" + h, dials, black_pct: blackPct,
+        // The reading that decides the next run. Nothing here is a verdict - it is the ink on the
+        // sheet, and the overlay is still the only test.
+        reads_as: blackPct == null ? null
+          : blackPct < 0.8 ? "almost nothing - lower thresh or raise weight"
+          : blackPct < 12 ? "outline - overlay it on the piece"
+          : "mostly filled - lower thresh",
+        thicken_ms: thickenMs, thicken_failed: thickenWhy,
         lettered_skipped: walked.length ? walked : null, hops,
-        model: r.model || null, cost_usd: r.cost_usd,
-        note: "Traced from the piece WITHOUT wording. An artist letters by hand." } };
+        model: null, cost_usd: 0,
+        note: "Photon, not a model. Same bytes in, same bytes out - the geometry cannot have " +
+              "moved. Traced from the piece WITHOUT wording; an artist letters by hand." } };
     }
 
     // ══ WORDS — ONE DESIGN, EVERY LETTERING PLACEMENT, ONE PAGE ══════════════════════════════
@@ -52363,9 +52580,10 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // and either way the card is free and fine.
   // So the CALLER says which it is. Anything that does not is a generation, which is the safe
   // default: the worst case is a card that ignored its reference, not a bill.
-  // A stencil is an EDIT - it traces the finished artwork. Drawn from a sentence instead it
-  // would be a different dog in outline, which is worse than no stencil at all.
-  const EDIT_SOURCES = new Set(["image_evolve", "letter", "onme", "design_evolve", "stencil"]);
+  // "stencil" WAS in this set, back when STENCIL asked gpt-image-2 to trace the piece. It does not
+  // call a model at all any more - Photon does it with arithmetic - so leaving it here would be a
+  // claim about a path that no longer exists.
+  const EDIT_SOURCES = new Set(["image_evolve", "letter", "onme", "design_evolve"]);
   const isEdit = Array.isArray(opts.refs) && opts.refs.filter(Boolean).length > 0
     && (opts.edit === true || EDIT_SOURCES.has(String(opts.source || "")));
   const policyName = ((await env.AURA_KV.get(isEdit ? "config:policy:edit" : "config:policy:image")

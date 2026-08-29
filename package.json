@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.20.0",
+    "@cf-wasm/photon": "^0.4.0",
     "@cloudflare/puppeteer": "^1.1.0",
     "@simplewebauthn/server": "^13.3.2",
     "qrcode-svg": "^1.1.0"

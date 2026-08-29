@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.11.0-2026-08-28-say-the-kind-out-loud";
+const BUILD = "aura-core-v9.12.0-2026-08-28-a-reptile-reads-from-the-body";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5436,9 +5436,12 @@ async function processCommand(line, env, isOp) {
         return { cmd: "FACE", payload: { ok: true, leaf: name, no_face: true, why: rec.why } };
       }
       const kind = String((prof.resolved && prof.resolved.subject) || name).trim();
-      const frame = TAT_PHOTO_KIND.test(kind) ? TAT_FRAME_PHOTO : TAT_FRAME_SHAPE(name);
-      const face = TAT_CROP[0];
-      const words = [tatName(name, prof.resolved), face.say].filter(Boolean).join(", ") + frame;
+      const frame = tatFrame(kind, name);
+      // A reptile's identity tile is not a face crop, so it must not carry the face clause
+      // either - "cropped at the neck" is the instruction that made six snakes one picture.
+      const reptile = TAT_REPTILE_KIND.test(kind);
+      const words = [tatName(name, prof.resolved), reptile ? null : TAT_CROP[0].say]
+        .filter(Boolean).join(", ") + frame;
       let rec = { leaf: name, img: null, why: null, drew: words, kind,
                   spoken: tatName(name, prof.resolved),
                   resolved: prof.resolved || null, at: new Date().toISOString() };
@@ -51145,6 +51148,24 @@ const TAT_FRAME_PHOTO =
 // is uncontrolled flash.
 const TAT_PHOTO_KIND = /^(dog|cat|animal|pet|bird|horse|fish|insect|butterfly|snake|shark|wolf|bear|deer|person|human|portrait|man|woman|child|flower|plant|tree|fern|vine|leaf)$/i;
 
+// ══ A REPTILE IS NOT IDENTIFIED BY ITS FACE ══════════════════════════════════════════════
+// MEASURED on the first snakes sheet: six leaves, six correct snakes, and six near-identical
+// wedge-shaped heads. Cobra is the HOOD. Rattlesnake is the RATTLE. Python is the pattern and the
+// bulk of the coil. Boa is the body. Crop to the face and every one of them is the same picture -
+// not a wrong animal, a wrong VIEW, and at tile size you cannot tell them apart.
+//
+// Same failure as the Great Dane one layer up: the crop threw away the thing that identifies it.
+// There the fix was a word. Here it is the frame.
+//
+// THIS IS A CLASS, NOT A SNAKE EXCEPTION. Lizards, turtles and crocodiles all read from the body,
+// so the frame is chosen by kind the way the shape plate is - never hand-picked per leaf.
+const TAT_REPTILE_KIND = /^(snake|serpent|lizard|gecko|iguana|chameleon|turtle|tortoise|crocodile|alligator|reptile|komodo|dragon lizard)$/i;
+
+const TAT_FRAME_REPTILE =
+  ". Head and enough of the body that the animal reads, one subject, plain light ground, " +
+  "sharp focus, a clear reference photograph. No people, no border, no letters, no words, " +
+  "no caption, no watermark.";
+
 const TAT_FRAME_SHAPE = (leaf) =>
   ". A flat graphic of ONE " + leaf + " on a plain light ground. The body path is the entire " +
   "picture, high contrast, filling the frame. No clouds, no waves, no scenery, no extra " +
@@ -51188,6 +51209,14 @@ function tatSay(field, value, extra) {
 //
 // So a leaf is spoken with what the tree already resolved about it. Redundant where the label
 // already says it - "golden retriever dog" reads fine - and decisive where it does not.
+// One chooser. FACE and the walk both read it, so a frame cannot be right in the identity pass
+// and wrong on the crop wall - which is exactly the shape of bug this file has paid for most.
+function tatFrame(kind, leaf) {
+  if (TAT_REPTILE_KIND.test(kind)) return TAT_FRAME_REPTILE;
+  if (TAT_PHOTO_KIND.test(kind)) return TAT_FRAME_PHOTO;
+  return TAT_FRAME_SHAPE(leaf);
+}
+
 function tatName(leaf, resolved) {
   const name = String(leaf || "").trim();
   if (!name) return "";
@@ -54494,7 +54523,7 @@ export class PublicEntry extends WorkerEntrypoint {
           // The kind decides the recognition frame. A dog gets a photograph; a dragon gets a
           // shape plate where the silhouette IS the subject.
           const kind = String((prof.resolved && prof.resolved.subject) || leaf).trim();
-          const recogFrame = TAT_PHOTO_KIND.test(kind) ? TAT_FRAME_PHOTO : TAT_FRAME_SHAPE(leaf);
+          const recogFrame = tatFrame(kind, leaf);
           // The same missing word, in the walk. A boxer's crop wall was drawing a prizefighter
           // for exactly the reason the identity pass found - the label alone reached the model.
           shot = await tatShoot(env, shotKey, prof.say || tatName(leaf, prof.resolved), ctxPhrases,

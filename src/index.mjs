@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.20.0-2026-08-29-one-of-the-thing";
+const BUILD = "aura-core-v9.21.0-2026-08-29-rename-the-kind-not-the-prompt";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5338,6 +5338,41 @@ async function processCommand(line, env, isOp) {
       }));
       const data = await res.json();
       return jsonReply({ ok: true, reply: data.reply });
+    }
+
+    // ══ KIND — RENAME A KIND IN THE TREE ═════════════════════════════════════════════════════
+    // "Panthers" drew a spotted leopard, and Flux was right: a leopard IS a panther. The label was
+    // the problem - nobody browsing for a panther wants a leopard, they have Leopards for that.
+    //
+    // FIXED IN THE TREE, NOT IN THE PROMPT. A per-leaf override would sit somewhere out of sight
+    // and have to be remembered; renaming means the label a person taps and the words the model
+    // gets are the same string, which is the rule that fixed Bengal and boxer.
+    // The old face record is left alone - if the name comes back, so does its tile.
+    case "KIND": {
+      const raw = String(rest || "").trim();
+      const [fromRaw, toRaw] = raw.split("::");
+      const from = String(fromRaw || "").trim(), to = String(toRaw || "").trim();
+      if (!from || !to) return { cmd: "KIND", payload: { ok: false,
+        error: 'Usage: KIND <old name> :: <new name>    e.g.  KIND Panthers :: Black Panther' } };
+      const t = await env.AURA_KV.get("card:tree", "json").catch(() => null);
+      if (!t?.subjects) return { cmd: "KIND", payload: { ok: false, error: "NO_TREE" } };
+      let found = null, inCats = [];
+      for (const [cat, kinds] of Object.entries(t.subjects)) {
+        const i = kinds.findIndex((k) => tatSlug(k) === tatSlug(from));
+        if (i >= 0) { found = kinds[i]; kinds[i] = to; inCats.push(cat); }
+      }
+      if (!found) return { cmd: "KIND", payload: { ok: false, error: "NO_SUCH_KIND", asked: from } };
+      // A kind can sit under more than one category - nineteen do - so every occurrence is
+      // renamed and all of them are reported. Silently renaming one would split the tree.
+      if (t.specific && t.specific[found]) {
+        t.specific[to] = t.specific[found];
+        delete t.specific[found];
+      }
+      await env.AURA_KV.put("card:tree", JSON.stringify(t));
+      return { cmd: "KIND", payload: { ok: true, was: found, now: to, in_categories: inCats,
+        leaves_moved: (t.specific && t.specific[to] ? t.specific[to].length : 0),
+        note: "The old face record is untouched. Run FACE on the new name to mint its tile.",
+        next: 'RUN "FACE ' + to + '"' } };
     }
 
     // ══ FRAMES — WHAT IS ACTUALLY IN FORCE ═══════════════════════════════════════════════════
@@ -51395,13 +51430,19 @@ async function tatFrameFor(env, kind, leaf) {
   const [rept, phot, mam, rf, sf] = await Promise.all([
     get("kind:reptile"), get("kind:photo"), get("frame:mammal"),
     get("frame:reptile"), get("frame:shape")]);
-  const listed = (csv) => csv
-    ? csv.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean).includes(String(kind).toLowerCase())
-    : null;
+  // ══ THE LOOKUP SINGULARISES, SO THE LIST DOES NOT HAVE TO CARRY BOTH ═════════════════════
+  // MEASURED: the singular fix changed how a LEAF is spoken but not `resolved.subject`, which is
+  // what picks the frame. So "wolf" reached the model while the frame lookup still saw "wolves",
+  // missed `kind:photo`, and fell through to the shape plate - six animals came back as clipart.
+  // Listing every plural by hand would work until the first one nobody thought of.
+  const has = (csv, k) => csv.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean).includes(k);
+  const kLower = String(kind).toLowerCase();
+  const kSing = tatSingular(kLower).toLowerCase();
+  const listed = (csv) => csv ? (has(csv, kLower) || has(csv, kSing)) : null;
   const isRept = listed(rept); const isPhot = listed(phot);
-  if (isRept === true || (isRept === null && TAT_REPTILE_KIND.test(kind)))
+  if (isRept === true || (isRept === null && (TAT_REPTILE_KIND.test(kind) || TAT_REPTILE_KIND.test(kSing))))
     return rf || TAT_FRAME_REPTILE;
-  if (isPhot === true || (isPhot === null && TAT_PHOTO_KIND.test(kind)))
+  if (isPhot === true || (isPhot === null && (TAT_PHOTO_KIND.test(kind) || TAT_PHOTO_KIND.test(kSing))))
     return mam || TAT_FRAME_PHOTO;
   return sf ? sf.replace(/\{leaf\}/g, leaf) : TAT_FRAME_SHAPE(leaf);
 }

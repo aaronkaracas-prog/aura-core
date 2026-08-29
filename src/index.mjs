@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.15.0-2026-08-29-leaves-edits-the-tree";
+const BUILD = "aura-core-v9.16.0-2026-08-29-black-ground";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -51216,7 +51216,7 @@ const TAT_REPTILE_KIND = /^(snake|serpent|lizard|gecko|iguana|chameleon|turtle|t
 //
 // So: the subject, the whole animal, no background. Nothing else until a sheet proves something
 // is missing - and then the question is which existing clause is wrong, not which new one to add.
-const TAT_FRAME_REPTILE = ", full body, no background";
+const TAT_FRAME_REPTILE = ", full body, black background";
 
 const TAT_FRAME_SHAPE = (leaf) =>
   ". A flat graphic of ONE " + leaf + " on a plain light ground. The body path is the entire " +

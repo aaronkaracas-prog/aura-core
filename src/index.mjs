@@ -73,7 +73,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.21.0-2026-08-29-rename-the-kind-not-the-prompt";
+const BUILD = "aura-core-v9.22.0-2026-08-29-no-crop-wall-is-not-no-picture";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5496,8 +5496,12 @@ async function processCommand(line, env, isOp) {
 
     // ══ FACE — ONE TILE, ONE LEAF, FOR REVIEW ════════════════════════════════════════════════
     // The identity pass. Not the catalogue - the SAMPLE somebody judges before the catalogue is
-    // trusted. Aaron judged all of dogs off a wall of breed faces this afternoon and never looked
-    // at a style wall to do it, so the face is what identity means here.
+    // trusted. Aaron judged all of dogs off a wall of breed faces and never looked at a style wall
+    // to do it, so recognition is what this tile is for.
+    //
+    // The name is historical: this drew a FACE crop when only dogs had been walked. It is now
+    // whatever the frame for that kind says - a full body on black for most animals, a whole
+    // coiled snake for a reptile - and for a leaf with no crop wall at all it is simply the thing.
     //
     // ONE TILE PER LEAF, NOT TWENTY-FOUR. A full subject is 24 tiles; twenty-five breeds is 600
     // pictures to answer a question twenty-five pictures answer. The deep pass comes after a kind
@@ -5528,15 +5532,16 @@ async function processCommand(line, env, isOp) {
       const prof = await tatLeafProfile(env, name, (pin && pin.trim()) ? pin.trim() : undefined, parent);
       if (prof.failed) return { cmd: "FACE", payload: { ok: false, leaf: name,
         error: "PROFILE_UNAVAILABLE", why: prof.why, saw: prof.saw } };
-      // A leaf with no crop wall has no face to mint. That is a correct answer for a glyph or a
-      // symbol, not a failure - it is reported so the sheet can say why the tile is absent.
-      if (!prof.part) {
-        const rec = { leaf: name, img: null, why: "no crop wall - this leaf has no face to show",
-                      spoken: tatName(name, prof.resolved),
-                      resolved: prof.resolved || null, at: new Date().toISOString() };
-        await env.AURA_KV.put(fKey, JSON.stringify(rec));
-        return { cmd: "FACE", payload: { ok: true, leaf: name, no_face: true, why: rec.why } };
-      }
+      // ══ NO CROP WALL IS NOT NO PICTURE ══════════════════════════════════════════════════
+      // This used to stop here and store an empty record. The reasoning was that the identity
+      // tile IS the face - the first option off the crop wall - so a leaf with no crop wall had
+      // nothing to take.
+      // MEASURED on an octopus: `part: false, face: false`, both correct - an octopus has no
+      // head-or-body choice worth offering and no expression - and the sheet showed a blank for
+      // one of the most tattooed subjects there is. Same for a compass, an anchor, a glyph.
+      // The crop clause was only ever there because a DOG needed one. A picture of the thing
+      // needs no framing decision to exist, so when there is no crop wall the leaf and the frame
+      // are the whole prompt.
       const kind = String((prof.resolved && prof.resolved.subject) || name).trim();
       // ══ THE FRAME IS THE WHOLE FRAMING ════════════════════════════════════════════════
       // This used to prepend the face-crop clause for anything non-reptile, on top of whatever
@@ -53242,7 +53247,7 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
         note: "No category or kind by that name in the tree." };
 
       const REST_EVERY = 20, REST = "60 seconds";
-      const drawn = [], skipped = [], noFace = [], broke = [];
+      const drawn = [], skipped = [], broke = [];
       let n = 0, consecutiveBad = 0, halted = null;
       for (const leaf of leaves) {
         if (n >= cap) break;
@@ -53252,7 +53257,6 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
           return (x && x.payload) ? x.payload : x;
         });
         if (r?.skipped) { skipped.push(leaf); consecutiveBad = 0; }
-        else if (r?.no_face) { noFace.push(leaf); consecutiveBad = 0; }
         else if (r?.ok && r.img) { drawn.push(leaf); consecutiveBad = 0; }
         else {
           broke.push({ leaf, why: (r?.why || r?.error || "unknown") });
@@ -53270,11 +53274,10 @@ export class GridCrawlWorkflow extends WorkflowEntrypoint {
       }
       return { ok: true, mode: "faces", category: only || "ALL",
         leaves: leaves.length, attempted: n,
-        drew: drawn.length, skipped: skipped.length, no_face: noFace.length,
-        failed: broke.length, halted,
+        drew: drawn.length, skipped: skipped.length, failed: broke.length, halted,
         // What it did NOT do, named. A batch that quietly becomes a shorter batch is a sample
         // somebody reviews without knowing it is incomplete.
-        trouble: broke.slice(0, 20), no_face_leaves: noFace.slice(0, 20),
+        trouble: broke.slice(0, 20),
         collisions: Object.keys(collided).length ? collided : null,
         remaining: Math.max(0, leaves.length - n),
         next: "SHEET " + (only || "<kind>") };

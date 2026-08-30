@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.42.0-2026-08-30-types-then-poses";
+const BUILD = "aura-core-v9.43.0-2026-08-30-a-category-is-a-shape-too";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5524,11 +5524,23 @@ async function processCommand(line, env, isOp) {
         error: "Usage: TYPES <kind>   e.g.  TYPES Dragons" } };
       const model = mM ? mM[1] : "@cf/black-forest-labs/flux-2-klein-9b";
       const tree = await env.AURA_KV.get("card:tree", "json").catch(() => null);
-      const kKey = tree && tree.specific
-        ? Object.keys(tree.specific).find((k) => tatSlug(k) === tatSlug(kind)) : null;
+      // ══ THE TREE HAS TWO SHAPES AND BOTH ARE REAL ═══════════════════════════════════════
+      // `Dogs` is a KIND under Animals & Pets, so its breeds live in `specific`.
+      // `Dragons` is a CATEGORY, so its types live in `subjects` - and looking only in `specific`
+      // reported NO_SUCH_KIND for a category that plainly exists. That was a bug in the command,
+      // not a defect in the tree, and restructuring the tree to suit the command would have been
+      // the wrong repair.
+      let kKey = null, leaves = [];
+      if (tree && tree.specific) {
+        kKey = Object.keys(tree.specific).find((k) => tatSlug(k) === tatSlug(kind)) || null;
+        if (kKey) leaves = tree.specific[kKey] || [];
+      }
+      if (!kKey && tree && tree.subjects) {
+        kKey = Object.keys(tree.subjects).find((k) => tatSlug(k) === tatSlug(kind)) || null;
+        if (kKey) leaves = tree.subjects[kKey] || [];
+      }
       if (!kKey) return { cmd: "TYPES", payload: { ok: false, error: "NO_SUCH_KIND", asked: kind,
-        what_to_do: "The kind must be in the tree with leaves under it. LEAVES <kind> sets them." } };
-      const leaves = tree.specific[kKey] || [];
+        what_to_do: "Not found as a kind or as a category. Check the name against CARDS TREE." } };
       if (!leaves.length) return { cmd: "TYPES", payload: { ok: false, error: "NO_LEAVES", kind: kKey } };
 
       const made = [];

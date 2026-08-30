@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.43.0-2026-08-30-a-category-is-a-shape-too";
+const BUILD = "aura-core-v9.44.0-2026-08-30-alive-or-a-design";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5701,27 +5701,44 @@ async function processCommand(line, env, isOp) {
         error: "Usage: TWENTY <what>   e.g.  TWENTY japanese dragon coiled into a circle",
         note: "Twenty of the same design, one per seed. Pick one, then style it." } };
       const n = nM ? Math.max(1, Math.min(40, Number(nM[1]))) : 20;
+      // ══ A SYMBOL IS NOT DOING ANYTHING ═══════════════════════════════════════════════════
+      // MEASURED: POSES on "leo" drew a lion cub, a housecat and A MAN CROUCHING ON THE FLOOR.
+      // Two things went wrong and both matter. The word alone is ambiguous - Leo is a name before
+      // it is a sign - and a zodiac sign has no poses to be in, so the generator invented some.
+      //
+      // The split this settles: things that are ALIVE have types and poses. Things that are
+      // DESIGNS have neither - they have TREATMENTS, twenty ways of drawing one idea. Same
+      // generator, different question, and the subject line has to say what the thing is.
       // Klein is the measured default: it drew, styled and evolved correctly at roughly $0.002 a
       // tile on the sheets, which is the cheapest thing that also holds a subject.
       const model = mM ? mM[1] : "@cf/black-forest-labs/flux-2-klein-9b";
       const prompt = what + ". A clean isolated tattoo design on a plain white background, " +
         "no scenery, no words.";
 
+      const pinT = (await env.AURA_KV.get("config:wall:model").catch(() => null)) || undefined;
+      const wallT = await tatWall(env, what, "treatment",
+        "Twenty different ways an artist could draw this ONE design. Vary the composition, the " +
+        "arrangement, the ornament and the framing - NOT the subject and NOT a pose. This thing " +
+        "is a design, not a creature: it is not standing, walking or doing anything.",
+        pinT, null);
+      const treatments = (wallT && Array.isArray(wallT.opts) ? wallT.opts : []).slice(0, n);
+      if (!treatments.length) return { cmd: "TWENTY", payload: { ok: false, error: "NO_TREATMENTS",
+        why: (wallT && wallT.why) || "the generator returned nothing" } };
+
       const made = [];
       let spend = 0;
-      for (let i = 0; i < n; i++) {
-        const one = { seed: 1000 + i * 7919, image: null, why: null, cost_usd: null };
+      for (const t of treatments) {
+        const one = { treatment: t.id, say: t.say || null, image: null, why: null, cost_usd: null };
         try {
-          const r = await showIt(prompt, env, { model, raw: true, seed: one.seed,
-            source: "twenty", subject: what });
+          const r = await showIt(what + ", " + (t.say || t.id) +
+            ". Full colour, highly detailed, on a plain white background.",
+            env, { model, raw: true, source: "twenty", subject: what + " " + t.id });
           if (r?.ok) { one.image = r.image_url; one.cost_usd = r.cost_usd; one.cached = !!r.cached;
                        spend += (r.cost_usd || 0); }
           else one.why = String(r?.error || "did not draw").slice(0, 120);
         } catch (e) { one.why = String(e && e.message || e).slice(0, 120); }
         made.push(one);
       }
-      // Twenty identical pictures would mean the seed never reached the model - the failure this
-      // is most likely to have, and the one that looks like success.
       const distinct = new Set(made.filter((m) => m.image).map((m) => m.image)).size;
 
       const eT = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) =>
@@ -5738,7 +5755,8 @@ async function processCommand(line, env, isOp) {
         ".g{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}" +
         "figure{background:#141a28;border:1px solid rgba(148,163,184,.16);border-radius:10px;overflow:hidden}" +
         "figure img{width:100%;aspect-ratio:1;object-fit:contain;display:block;background:#fff}" +
-        "figcaption{padding:.35rem .5rem;font-size:.72rem;color:#94a3b8}" +
+        "figcaption{padding:.4rem .5rem}figcaption b{display:block;font-size:.85rem}" +
+        "figcaption span{display:block;color:#64748b;font-size:.7rem}" +
         ".gone{padding:2.6rem .5rem;text-align:center;color:#fca5a5;font-size:.7rem}" +
         "</style></head><body><h1>" + eT(what) + "</h1><p class=top>" +
         okT + " of " + made.length + " &middot; " + distinct + " different &middot; $" +
@@ -5748,17 +5766,19 @@ async function processCommand(line, env, isOp) {
           (m.image ? '<a href="' + eT(m.image) + '" target=_blank><img loading=lazy src="' +
                      eT(m.image) + '"></a>'
                    : '<div class=gone>' + eT(m.why || "—") + "</div>") +
-          "<figcaption>seed " + m.seed + "</figcaption></figure>").join("") +
+          "<figcaption><b>" + eT(m.treatment) + "</b><span>" + eT(m.say || "") +
+          "</span></figcaption></figure>").join("") +
         "</div></body></html>";
       const pageT = "twenty/" + tatSlug(what).slice(0, 60);
       await env.AURA_KV.put("page:auras.guide/" + pageT, htmlT);
       return { cmd: "TWENTY", payload: { ok: true, what, model, n: made.length,
         url: "https://auras.guide/" + pageT,
         drew: okT, distinct, cost_usd: Math.round(spend * 10000) / 10000,
-        urls: made.map((m) => "seed " + m.seed + "  ->  " + (m.image || "FAILED: " + m.why)),
+        urls: made.map((m) => m.treatment + "  ->  " + (m.image || "FAILED: " + m.why)),
         note: distinct < okT
-          ? "WARNING: " + (okT - distinct) + " tiles are the same picture - the seed is not reaching the model."
-          : "Every tile is the same sentence with a different seed. Pick one, then STYLES it." } };
+          ? "WARNING: " + (okT - distinct) + " tiles are the same picture."
+          : "Treatments, not poses - for things that are designs rather than creatures. " +
+            "POSES is the one for anything alive." } };
     }
 
     // ══ SEEIT — CREATE, STYLE AND EVOLVE, EVERY MODEL, ONE PAGE ═════════════════════════════

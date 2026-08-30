@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.51.0-2026-08-30-types-skips-doorways";
+const BUILD = "aura-core-v9.52.0-2026-08-30-tap-the-wrong-ones";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5530,6 +5530,112 @@ async function processCommand(line, env, isOp) {
         note: types && drawn != null && drawn < types
           ? "Signed, but " + (types - drawn) + " of " + types + " have no tile yet."
           : "Signed." } };
+    }
+
+    // ══ REDO — THROW A TILE AWAY AND DRAW IT AGAIN ══════════════════════════════════════════
+    // The cache is keyed on the prompt, so redrawing the same leaf returns the SAME wrong picture
+    // forever. A random seed is in that key, so passing one is what makes a second attempt a
+    // second attempt rather than a replay.
+    // REDO Lion, Tiger, Wolf   - comma separated, as many as the review page collected.
+    case "REDO": {
+      const names = String(rest || "").split(",").map((x) => x.trim()).filter(Boolean);
+      if (!names.length) return { cmd: "REDO", payload: { ok: false,
+        error: "Usage: REDO <name>, <name>, ...", note: "Tick the bad tiles on /review and paste what it gives you." } };
+      const model = "@cf/black-forest-labs/flux-2-klein-9b";
+      const out = [];
+      for (const nm of names) {
+        const one = { name: nm, image: null, why: null };
+        try {
+          await env.AURA_KV.delete("face:v1:" + tatSlug(nm)).catch(() => {});
+          const r = await showIt(nm + ". Full colour, highly detailed, on a plain white background.",
+            env, { model, raw: true, source: "redo", subject: nm,
+                   seed: Math.floor(Math.random() * 900000) + 1000 });
+          if (r?.ok) {
+            one.image = r.image_url;
+            await env.AURA_KV.put("face:v1:" + tatSlug(nm), JSON.stringify({
+              id: r.id, url: r.image_url, at: new Date().toISOString(), by: "REDO", model
+            })).catch(() => {});
+          } else one.why = String(r?.error || "did not draw").slice(0, 120);
+        } catch (e) { one.why = String(e && e.message || e).slice(0, 120); }
+        out.push(one);
+      }
+      return { cmd: "REDO", payload: { ok: true, count: out.length,
+        results: out.map((o) => o.name + "  ->  " + (o.image || "FAILED: " + o.why)),
+        note: "Drawn with a fresh seed, so it is a new picture and not the cached one. " +
+              "Re-run REVIEW to see them in place." } };
+    }
+
+    // ══ REVIEW — EVERY TILE ON ONE PAGE, TICK THE WRONG ONES ════════════════════════════════
+    // Judging 540 tiles one sheet at a time is the bottleneck now that drawing is solved. This is
+    // the whole catalogue on one page at a size where a goat among the cats is obvious.
+    //
+    // NO SERVER ROUTE. Ticking a tile is local to the page and produces a REDO command to paste.
+    // A button that mutated data would need a public endpoint on the doorway, and the doorway
+    // deliberately holds nothing and can call only five named methods - adding a sixth so a review
+    // page can delete images is exactly the change that file warns against.
+    case "REVIEW": {
+      const only = String(rest || "").trim();
+      const tree = await env.AURA_KV.get("card:tree", "json").catch(() => null);
+      if (!tree) return { cmd: "REVIEW", payload: { ok: false, error: "NO_TREE" } };
+      const groups = [];
+      let shown = 0;
+      const cats = Object.keys(tree.subjects || {})
+        .filter((c) => !only || tatSlug(c) === tatSlug(only));
+      for (const c of cats) {
+        const items = [];
+        for (const lf of (tree.subjects[c] || [])) {
+          const own = tree.specific && tree.specific[Object.keys(tree.specific)
+            .find((k) => tatSlug(k) === tatSlug(lf)) || ""];
+          const list = (own && own.length) ? own : [lf];
+          for (const nm of list) {
+            const raw = await env.AURA_KV.get("face:v1:" + tatSlug(nm)).catch(() => null);
+            if (!raw) continue;
+            let rec = null; try { rec = JSON.parse(raw); } catch {}
+            if (rec && rec.url) { items.push({ name: nm, url: rec.url }); shown++; }
+          }
+        }
+        if (items.length) groups.push({ category: c, items });
+      }
+      const eR = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (x) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[x]));
+      const htmlR =
+        '<!doctype html><html lang=en><head><meta charset=utf-8>' +
+        '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+        "<title>review</title><style>" +
+        "*{margin:0;padding:0;box-sizing:border-box}" +
+        "body{background:#0b0d12;color:#e9edf5;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px 16px 120px}" +
+        "h1{font-size:1.2rem;font-weight:800}h2{font-size:.9rem;margin:1.3rem 0 .4rem;color:#93c5fd}" +
+        ".top{color:#64748b;font-size:.8rem;margin:.3rem 0 .6rem}" +
+        ".g{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:7px}" +
+        "figure{background:#141a28;border:2px solid transparent;border-radius:9px;overflow:hidden;cursor:pointer}" +
+        "figure.bad{border-color:#ef4444;opacity:.55}" +
+        "figure img{width:100%;aspect-ratio:1;object-fit:contain;display:block;background:#fff}" +
+        "figcaption{padding:.3rem .4rem;font-size:.7rem;color:#94a3b8}" +
+        "#bar{position:fixed;left:0;right:0;bottom:0;background:#0f1626;border-top:1px solid rgba(148,163,184,.25);padding:10px 14px}" +
+        "#bar b{color:#fca5a5}" +
+        "#cmd{width:100%;margin-top:6px;background:#0b0d12;color:#e9edf5;border:1px solid rgba(148,163,184,.3);border-radius:6px;padding:7px;font:12px ui-monospace,monospace}" +
+        "</style></head><body><h1>review</h1><p class=top>" + shown +
+        " tiles &middot; tap any that is wrong &middot; the command appears at the bottom</p>" +
+        groups.map((g) => "<h2>" + eR(g.category) + "</h2><div class=g>" +
+          g.items.map((it) =>
+            '<figure data-n="' + eR(it.name) + '"><img loading=lazy src="' + eR(it.url) +
+            '"><figcaption>' + eR(it.name) + "</figcaption></figure>").join("") +
+          "</div>").join("") +
+        '<div id=bar><span><b id=n>0</b> marked wrong</span>' +
+        '<input id=cmd readonly value="tap a tile to begin"></div>' +
+        "<script>(function(){var bad=[];" +
+        "document.addEventListener('click',function(e){var fg=e.target.closest('figure');" +
+        "if(!fg)return;var n=fg.getAttribute('data-n');var i=bad.indexOf(n);" +
+        "if(i<0){bad.push(n);fg.classList.add('bad');}else{bad.splice(i,1);fg.classList.remove('bad');}" +
+        "document.getElementById('n').textContent=bad.length;" +
+        "document.getElementById('cmd').value=bad.length?'RUN \\'REDO '+bad.join(', ')+'\\'':'tap a tile to begin';" +
+        "});})();</" + "script></body></html>";
+      const pageR = "review" + (only ? "/" + tatSlug(only) : "");
+      await env.AURA_KV.put("page:auras.guide/" + pageR, htmlR);
+      return { cmd: "REVIEW", payload: { ok: true, url: "https://auras.guide/" + pageR,
+        tiles: shown, categories: groups.length,
+        note: "Tap any tile that is wrong. The box at the bottom builds the REDO command - " +
+              "paste it here and re-run REVIEW." } };
     }
 
     // ══ LIBRARY — ONE PAGE THAT SHOWS THE WHOLE CATALOGUE ═══════════════════════════════════

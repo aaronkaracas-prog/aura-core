@@ -86,7 +86,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.35.0-2026-08-29-the-image-is-the-subject";
+const BUILD = "aura-core-v9.36.0-2026-08-30-black-forest-direct";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -52965,6 +52965,69 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       imgUsage = d?.usage || null;   // provider's OWN token report for this image - ground truth, no guess
       b64 = item.b64_json || null;
       if (!b64 && item.url) { const ir = await fetch(item.url); const ab = await ir.arrayBuffer(); b64 = btoa(String.fromCharCode(...new Uint8Array(ab))); }
+    } else if (/^flux-2/i.test(model)) {
+      // ══ BLACK FOREST LABS, AND IT IS SHAPED DIFFERENTLY FROM THE OTHER FOUR ═══════════════
+      // Every other branch here is one request in, an image out. BFL is ASYNCHRONOUS: the POST
+      // returns a `polling_url` and the picture arrives later, as a URL that EXPIRES IN TEN
+      // MINUTES. So this submits, polls, and downloads the bytes before they vanish - three steps
+      // where the others have one. Writing it like the others would return an id and no picture.
+      //
+      // The key is a wrangler secret on this worker, so it is read from env directly with getSecret
+      // as the fallback - the same shape the secret sweep left in place for the families that have
+      // no KV copy.
+      const bflKey = env.BFL_API_KEY || await getSecret(env, "bfl");
+      if (!bflKey) throw new Error("no Black Forest key (BFL_API_KEY)");
+      // Preview endpoints are BFL's own recommendation as the place to start; a pinned name is for
+      // reproducibility, which is not what a catalogue needs.
+      const bflBody = { prompt: p, width: 1024, height: 1024 };
+      // ══ A REFERENCE IS `input_image`, ON THE SAME ENDPOINT ════════════════════════════════
+      // There is no separate edit route on FLUX.2 - the reference rides along with the generation.
+      // Guessing this field name is what cost a canyon on xAI, so it is taken from BFL's own docs
+      // rather than inferred from another provider's SDK.
+      if (isEdit) {
+        const bRefs = (Array.isArray(opts.refs) ? opts.refs.filter(Boolean) : []).slice(0, 4);
+        for (let i = 0; i < bRefs.length; i++) {
+          bflBody[i === 0 ? "input_image" : "input_image_" + (i + 1)] = bRefs[i];
+        }
+        if (!bRefs.length) throw new Error("edit asked for with no reference image");
+      }
+      const sub = await pfetch(env, "bfl", "core:image", "https://api.bfl.ai/v1/" + model, {
+        method: "POST",
+        headers: { "x-key": bflKey, "Content-Type": "application/json", "accept": "application/json" },
+        body: JSON.stringify(bflBody)
+      });
+      const subJson = await sub.json();
+      if (!sub.ok) throw new Error(subJson?.detail || JSON.stringify(subJson).slice(0, 300));
+      // ALWAYS the returned polling_url. BFL's docs say not to rebuild it, because the global
+      // endpoint hands back a REGIONAL one and a reconstructed URL asks the wrong region.
+      const poll = subJson?.polling_url;
+      if (!poll) throw new Error("no polling_url in reply: " + JSON.stringify(subJson).slice(0, 200));
+      let sample = null, lastStatus = null;
+      // Bounded. A Worker cannot wait forever and a poll with no ceiling is a hung request rather
+      // than a failure anybody can read.
+      for (let i = 0; i < 60; i++) {
+        await new Promise((res) => setTimeout(res, 1000));
+        const pr = await fetch(poll, { headers: { "x-key": bflKey, "accept": "application/json" } });
+        const pj = await pr.json().catch(() => ({}));
+        lastStatus = pj?.status || null;
+        if (lastStatus === "Ready") { sample = pj?.result?.sample || null; break; }
+        // Moderation is a real outcome here and it is NOT a crash - it is the model refusing, and
+        // it has to say so rather than time out and look like a network problem.
+        if (["Error", "Failed", "Request Moderated", "Content Moderated"].includes(lastStatus)) {
+          throw new Error("BFL returned " + lastStatus +
+            (pj?.details ? ": " + JSON.stringify(pj.details).slice(0, 160) : ""));
+        }
+      }
+      if (!sample) throw new Error("BFL did not finish in 60s (last status: " + lastStatus + ")");
+      // Ten minutes to live, so the bytes are taken now and the URL is never stored.
+      const dl = await fetch(sample);
+      if (!dl.ok) throw new Error("could not download the result: HTTP " + dl.status);
+      const ab = await dl.arrayBuffer();
+      const u8 = new Uint8Array(ab);
+      let bs = ""; for (let i = 0; i < u8.length; i += 8192) {
+        bs += String.fromCharCode.apply(null, u8.subarray(i, i + 8192));
+      }
+      b64 = btoa(bs);
     } else if (/^grok-imagine/i.test(model)) {
       // xAI Grok image (Aurora). OpenAI-compatible /images/generations at api.x.ai, key XAI_API_KEY.
       // xAI does NOT support quality/size/style on images - sending them errors - so we omit them here.
@@ -53110,6 +53173,29 @@ async function auraGenerateImage(prompt, env, opts = {}) {
         // An unpriced @cf model must not read as free. Say the number is unknown.
         costUsd = null;
       }
+    }
+    // ══ BLACK FOREST IS PRICED PER MEGAPIXEL, NOT PER IMAGE ═══════════════════════════════
+    // BFL's published starting rates, per megapixel of OUTPUT: klein 4b $0.014, klein 9b $0.015,
+    // pro $0.03, flex $0.05, max $0.07. Editing is dearer than text-to-image because the INPUT
+    // images are billed too - pro editing starts at $0.045 - so an edit here is estimated at the
+    // higher rate rather than the cheaper one.
+    // 1024x1024 is 1.048 megapixels, which is what every call in this file asks for.
+    // NAMED AS AN ESTIMATE, NOT A MEASUREMENT: BFL does not return a cost field, so unlike the
+    // OpenAI path there is no provider usage object to price from. If the BFL dashboard disagrees
+    // with this line, the dashboard is right.
+    if (/^flux-2/i.test(model)) {
+      const MP = 1.048576;
+      const BFL_RATE = {
+        "flux-2-klein-4b": 0.014, "flux-2-klein-4b-preview": 0.014,
+        "flux-2-klein-9b": 0.015, "flux-2-klein-9b-preview": 0.015,
+        "flux-2-pro": 0.030,      "flux-2-pro-preview": 0.030,
+        "flux-2-flex": 0.050,     "flux-2-flex-preview": 0.050,
+        "flux-2-max": 0.070,      "flux-2-max-preview": 0.070,
+      };
+      const base = BFL_RATE[model];
+      // An unpriced model must not read as free - that is how images cost nothing in AIMARGIN for
+      // a week while money left the account.
+      costUsd = base == null ? null : +((base * MP * (isEdit ? 1.5 : 1)).toFixed(6));
     }
   } catch {}
   // Rolling per-day image meter (the TREASURY for images), same shape as the text meter.

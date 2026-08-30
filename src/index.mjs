@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.40.0-2026-08-30-twenty-of-the-same-thing";
+const BUILD = "aura-core-v9.41.0-2026-08-30-poses-not-seeds";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5506,6 +5506,92 @@ async function processCommand(line, env, isOp) {
       const at = new Date().toISOString().slice(0, 10);
       await env.AURA_KV.put("signed:" + tatSlug(arg), at);
       return { cmd: "SIGN", payload: { ok: true, kind: arg, signed: at } };
+    }
+
+    // ══ POSES — THE SAME SUBJECT, DOING DIFFERENT THINGS ════════════════════════════════════
+    // MEASURED: TWENTY varied the SEED and produced fifteen drawings of one ouroboros ring. Seed
+    // changes the rendering, not the composition - so it is the wrong axis for a shelf somebody
+    // browses. What a person picks between is standing, roaring, diving, coiled, breathing fire.
+    //
+    // THOSE WORDS ARE ALREADY WRITTEN PER SUBJECT. `tatWall` is the generator that gave dogs
+    // sitting / lying / play bow and gave dragons coiled / s-curve / spiralling, and it caches
+    // per leaf. Writing a second pose-writer here would be the same rule in two places, which is
+    // the most expensive habit in this file.
+    //
+    // POSES <subject>                  ten poses, drawn on the default model
+    // POSES <subject> --n 6
+    // POSES <subject> --model <m>
+    case "POSES": {
+      const raw = String(rest || "").trim();
+      const nM = raw.match(/--n\s+(\d+)/i);
+      const mM = raw.match(/--model\s+(\S+)/i);
+      const what = raw.replace(/--n\s+\d+/i, "").replace(/--model\s+\S+/i, "").trim();
+      if (!what) return { cmd: "POSES", payload: { ok: false,
+        error: "Usage: POSES <subject>   e.g.  POSES japanese dragon" } };
+      const n = nM ? Math.max(1, Math.min(20, Number(nM[1]))) : 10;
+      const model = mM ? mM[1] : "@cf/black-forest-labs/flux-2-klein-9b";
+      const pin = (await env.AURA_KV.get("config:wall:model").catch(() => null)) || undefined;
+
+      const wall = await tatWall(env, what, "pose", "How do you want it posed?", pin, null);
+      if (!wall || !Array.isArray(wall.opts) || !wall.opts.length) {
+        return { cmd: "POSES", payload: { ok: false, error: "NO_POSES",
+          why: (wall && wall.why) || "the wall generator returned nothing" } };
+      }
+      const picks = wall.opts.slice(0, n);
+
+      const made = [];
+      let spend = 0;
+      for (const o of picks) {
+        const one = { pose: o.id, say: o.say || null, image: null, why: null, cost_usd: null };
+        try {
+          // The subject and the frame are fixed; only the pose clause moves. Same discipline as
+          // the walk - the picture owns what it is, the clause owns what it is doing.
+          const r = await showIt(what + ", " + (o.say || o.id) +
+            ". Full colour, highly detailed, on a plain white background.",
+            env, { model, raw: true, source: "poses", subject: what + " " + o.id });
+          if (r?.ok) { one.image = r.image_url; one.cost_usd = r.cost_usd; one.cached = !!r.cached;
+                       spend += (r.cost_usd || 0); }
+          else one.why = String(r?.error || "did not draw").slice(0, 120);
+        } catch (e) { one.why = String(e && e.message || e).slice(0, 120); }
+        made.push(one);
+      }
+
+      const eP = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+      const okP = made.filter((m) => m.image).length;
+      const htmlP =
+        '<!doctype html><html lang=en><head><meta charset=utf-8>' +
+        '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+        "<title>" + eP(what) + "</title><style>" +
+        "*{margin:0;padding:0;box-sizing:border-box}" +
+        "body{background:#0b0d12;color:#e9edf5;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px}" +
+        "h1{font-size:1.15rem;font-weight:800}" +
+        ".top{color:#64748b;font-size:.8rem;margin:.3rem 0 1rem}" +
+        ".g{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}" +
+        "figure{background:#141a28;border:1px solid rgba(148,163,184,.16);border-radius:10px;overflow:hidden}" +
+        "figure img{width:100%;aspect-ratio:1;object-fit:contain;display:block;background:#fff}" +
+        "figcaption{padding:.4rem .5rem}figcaption b{display:block;font-size:.85rem}" +
+        "figcaption span{display:block;color:#64748b;font-size:.7rem}" +
+        ".gone{padding:2.6rem .5rem;text-align:center;color:#fca5a5;font-size:.7rem}" +
+        "</style></head><body><h1>" + eP(what) + "</h1><p class=top>" +
+        okP + " of " + made.length + " poses &middot; $" +
+        (Math.round(spend * 10000) / 10000) + " &middot; " + eP(model) + "</p><div class=g>" +
+        made.map((m) =>
+          "<figure>" +
+          (m.image ? '<a href="' + eP(m.image) + '" target=_blank><img loading=lazy src="' +
+                     eP(m.image) + '"></a>'
+                   : '<div class=gone>' + eP(m.why || "—") + "</div>") +
+          "<figcaption><b>" + eP(m.pose) + "</b><span>" + eP(m.say || "") +
+          "</span></figcaption></figure>").join("") +
+        "</div></body></html>";
+      const pageP = "poses/" + tatSlug(what).slice(0, 60);
+      await env.AURA_KV.put("page:auras.guide/" + pageP, htmlP);
+      return { cmd: "POSES", payload: { ok: true, subject: what, model,
+        url: "https://auras.guide/" + pageP,
+        drew: okP, of: made.length, cost_usd: Math.round(spend * 10000) / 10000,
+        poses: made.map((m) => m.pose + "  ->  " + (m.image || "FAILED: " + m.why)),
+        note: "Poses are written per subject by the same generator the walk uses, and cached. " +
+              "Re-running is free for the words and only pays for pictures it has not drawn." } };
     }
 
     // ══ TWENTY — THE SAME DESIGN, TWENTY WAYS ═══════════════════════════════════════════════

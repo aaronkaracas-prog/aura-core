@@ -86,7 +86,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.34.0-2026-08-29-every-direction-one-image-goes";
+const BUILD = "aura-core-v9.35.0-2026-08-29-the-image-is-the-subject";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5505,6 +5505,87 @@ async function processCommand(line, env, isOp) {
       const at = new Date().toISOString().slice(0, 10);
       await env.AURA_KV.put("signed:" + tatSlug(arg), at);
       return { cmd: "SIGN", payload: { ok: true, kind: arg, signed: at } };
+    }
+
+    // ══ STYLES — THE SAME PIECE IN EVERY TATTOO LANGUAGE ════════════════════════════════════
+    // One locked design in, fifteen renderings of THAT design out. Not fifteen new drawings of
+    // the same subject - the reference is what holds the pose, and the prompt only says how to
+    // draw it. Same rule works on a dog, a dragon, a rose or a car with no word of it changing,
+    // because the picture already owns what it is.
+    //
+    // `--only` renders one card. That is how this gets used in the product: draw the default,
+    // then draw a style when somebody taps it, rather than paying for fifteen nobody looks at.
+    case "STYLES": {
+      const raw = String(rest || "").trim();
+      const onlyM = raw.match(/--only\s+(.+)$/i);
+      const want = onlyM ? onlyM[1].trim().toLowerCase() : null;
+      const sid0 = raw.replace(/--only\s+.+$/i, "").trim();
+      if (!sid0) return { cmd: "STYLES", payload: { ok: false,
+        error: "Usage: STYLES <image id>   or   STYLES <image id> --only japanese irezumi",
+        styles: TAT_STYLE_CARDS.map((c) => c[0]) } };
+
+      const srcUrl = "https://" + (await imageHost(env)) + "/image/" + sid0;
+      const cards = want
+        ? TAT_STYLE_CARDS.filter((c) => c[0].toLowerCase() === want ||
+                                        c[0].toLowerCase().includes(want))
+        : TAT_STYLE_CARDS;
+      if (!cards.length) return { cmd: "STYLES", payload: { ok: false, error: "NO_SUCH_STYLE",
+        asked: want, styles: TAT_STYLE_CARDS.map((c) => c[0]) } };
+
+      const out = [];
+      for (const [name, how] of cards) {
+        const one = { style: name, image: null, why: null, cost_usd: 0 };
+        try {
+          const r = await showIt(TAT_SOURCE_LOCK + how, env,
+            { source: "style_transfer", refs: [srcUrl], parent: sid0, raw: true,
+              subject: name + " of " + sid0 });
+          if (r?.ok) { one.image = r.image_url || null; one.cost_usd = r.cost_usd || 0;
+                       one.cached = !!r.cached; }
+          else one.why = String(r?.error || "no image returned").slice(0, 140);
+        } catch (e) { one.why = String(e && e.message || e).slice(0, 140); }
+        out.push(one);
+      }
+
+      const escS = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+      const okS = out.filter((o) => o.image).length;
+      const spentS = out.reduce((n, o) => n + (o.cost_usd || 0), 0);
+      const htmlS =
+        '<!doctype html><html lang=en><head><meta charset=utf-8>' +
+        '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+        "<title>styles</title><style>" +
+        "*{margin:0;padding:0;box-sizing:border-box}" +
+        "body{background:#0b0d12;color:#e9edf5;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px}" +
+        "h1{font-size:1.15rem;font-weight:800}" +
+        ".top{color:#64748b;font-size:.8rem;margin:.3rem 0 1rem}" +
+        ".g{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}" +
+        "figure{background:#141a28;border:1px solid rgba(148,163,184,.16);border-radius:12px;overflow:hidden}" +
+        "figure img{width:100%;aspect-ratio:1;object-fit:contain;display:block;background:#fff}" +
+        "figcaption{padding:.5rem .6rem;font-size:.9rem}" +
+        ".src{border-color:rgba(251,191,36,.5)}" +
+        ".gone{padding:3rem .6rem;text-align:center;color:#fca5a5;font-size:.72rem}" +
+        "</style></head><body><h1>same piece, every language</h1><p class=top>" +
+        escS(sid0) + " &middot; " + okS + " of " + out.length + " &middot; $" +
+        (Math.round(spentS * 1000) / 1000) + "</p><div class=g>" +
+        // The source first and marked, because the only question that matters is whether each
+        // card is still THIS piece.
+        '<figure class=src><a href="' + escS(srcUrl) + '" target=_blank><img src="' +
+        escS(srcUrl) + '"></a><figcaption><b>the piece</b></figcaption></figure>' +
+        out.map((o) =>
+          "<figure>" +
+          (o.image ? '<a href="' + escS(o.image) + '" target=_blank><img loading=lazy src="' +
+                     escS(o.image) + '"></a>'
+                   : '<div class=gone>' + escS(o.why || "did not draw") + "</div>") +
+          "<figcaption>" + escS(o.style) + "</figcaption></figure>").join("") +
+        "</div></body></html>";
+      const pageS = "styles/" + sid0;
+      await env.AURA_KV.put("page:auras.guide/" + pageS, htmlS);
+      return { cmd: "STYLES", payload: { ok: true, source: sid0, from: srcUrl,
+        url: "https://auras.guide/" + pageS, drew: okS, of: out.length,
+        cost_usd: Math.round(spentS * 1000) / 1000,
+        urls: out.map((o) => o.style + "  ->  " + (o.image || "FAILED: " + o.why)),
+        note: "Image-to-image. The reference holds the pose; the prompt only says how to draw. " +
+              "Judge each card by whether it is still THIS piece." } };
     }
 
     // ══ VARIANTS — EVERY DIRECTION ONE IMAGE CAN GO, FREE ═══════════════════════════════════
@@ -52015,6 +52096,41 @@ function tatThicken(image, r) {
   return new PhotonImage(dst, w, h);
 }
 
+// ══ THE IMAGE IS THE SUBJECT. THE PROMPT IS ONLY THE LANGUAGE. ═══════════════════════════
+// The style wall used to REBUILD from the sentence - "golden retriever dog, full body, sitting,
+// japanese irezumi tattoo..." - which is a fresh text-to-image draw every time. That is why
+// fifteen tiles were fifteen slightly different dogs: nothing held the pose.
+//
+// These run image-to-image instead. The locked piece goes in as the reference and the prompt
+// says only HOW TO DRAW, never WHAT. So the same rule works on a dog, a dragon, a rose or a car
+// without a word of it changing - the picture already owns what it is.
+//
+// This forces the edit lane. Flux drops a reference in silence and would redraw from the text,
+// so there is no cheap version of this and pretending otherwise would just bring the dogs back.
+const TAT_SOURCE_LOCK =
+  "Use the provided image as the authoritative visual source. Preserve the recognisable subject, " +
+  "pose, expression, orientation, crop, proportions, arrangement and overall composition exactly. " +
+  "Transform only the artistic rendering into the style described. Output a clean isolated tattoo " +
+  "design on a plain light background. ";
+
+const TAT_STYLE_CARDS = [
+  ["photorealism", "Render with extremely realistic detail, lifelike dimensionality, realistic texture, natural depth, precise highlights and shadows and refined tonal transitions. Fur, skin, scales, feathers, metal, petals or fabric should keep convincing realistic texture. As close to photographic reality as tattoo artwork reasonably appears."],
+  ["black and grey realism", "Render in professional black-and-grey realism tattoo language: realistic dimensional structure, deep blacks, smooth grey gradients, controlled midtones, soft grey washes, realistic highlights and refined shading. Build form through value and contrast rather than heavy graphic outlines."],
+  ["color realism", "Render with realistic form and texture, natural dimensional shading, sophisticated colour transitions, controlled saturation, realistic highlights and shadows and photographic depth. Use colour to reinforce realism and dimensionality."],
+  ["micro realism", "Render through the refined language of micro-realism: extremely precise miniature detail, delicate realistic shading, fine tonal transitions, controlled micro-contrast, restrained dark values and highly economical realistic texture. Prioritise clarity and visual efficiency."],
+  ["fine line", "Render primarily through extremely thin, precise, elegant linework: delicate contours, restrained internal lines, light line-weight variation, selective fine stippling, generous negative space and minimal soft shading. Let linework rather than tonal mass define the subject."],
+  ["minimalist", "Reduce to the essential recognisable visual information: simplified contours, economical shapes, minimal internal detail, intentional negative space, restrained linework and little or no shading. Remove complexity while keeping the identity and pose."],
+  ["american traditional", "Render in classic American Traditional construction: heavy confident black outlines, simplified readable shapes, strong black areas, bold silhouette, solid colour fills, a classic limited palette, simple intentional shading and high contrast. Simplify realistic complexity into bold tattooable forms."],
+  ["neo-traditional", "Render with strong outlines, expressive varied line weights, sophisticated dimensional shading, rich saturated colour, deep contrast, stylised forms, refined internal detail and an illustrative decorative quality. Keep traditional readability while allowing greater detail and colour complexity."],
+  ["japanese irezumi", "Redraw through traditional Japanese tattoo language: bold confident outlines, flowing rhythmic contours, simplified powerful forms, strong intentional black areas, traditional shading and controlled traditional colour. Reinterpret fur, scales, feathers, hair or petals through Japanese tattoo shape and line language. It should look interpreted by a Japanese tattoo artist, not decorated with Japanese imagery."],
+  ["illustrative", "Render with confident hand-drawn linework, intentional illustrative contours, expressive internal drawing, balanced line and shading, artistic texture and selective cross-hatching. Let the artist's drawn interpretation stay visibly present."],
+  ["blackwork", "Render through strong black ink: bold graphic shapes, intentional solid-black areas, high contrast, expressive black linework, negative-space separation and a powerful graphic silhouette. Build the subject from the relationship between solid black, line and open space - not greyscale realism."],
+  ["new school", "Render with exaggerated proportions, dynamic shapes, expressive features, bold outlines, dramatic curves, intense saturated colour, exaggerated highlights, cartoon-influenced dimensional shading and playful controlled distortion, while keeping enough of the source identity to stay clearly connected to it."],
+  ["watercolour", "Render through watercolour language: translucent pigment washes, layered transparent colour, natural pigment variation, soft transitions, bleeding, painterly tonal variation, selective crisp details and intentionally incomplete edges where form dissolves. Let watercolour behaviour construct the subject rather than decorate it."],
+  ["sketch", "Render with expressive hand-drawn construction: visible construction lines, loose exploratory strokes, overlapping marks, variable line pressure, gestural drawing, selective dark finished contours, cross-hatching and unfinished artistic edges. Keep the evidence of the drawing process as part of the finish."],
+  ["cartoon", "Translate into clear animated language: simplified forms, clean readable outlines, simplified internal detail, expressive features, controlled exaggeration, clear silhouettes, clean colour fills and polished cartoon construction, keeping the recognisable identity, pose and expression of the source."],
+];
+
 // ══ EVERY DIRECTION ONE IMAGE CAN GO, WITHOUT A MODEL ════════════════════════════════════
 // MEASURED, each one run against a stand-in with a hard outline and a soft interior wash - which
 // is what a shaded drawing actually is. An earlier test used a smooth gradient with no edges in
@@ -52664,7 +52780,11 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // default: the worst case is a card that ignored its reference, not a bill.
   // A stencil is an EDIT - it traces the finished artwork. Drawn from a sentence instead it
   // would be a different dog in outline, which is worse than no stencil at all.
-  const EDIT_SOURCES = new Set(["image_evolve", "letter", "onme", "design_evolve", "stencil"]);
+  // `style_transfer` is an EDIT and must be registered here or the reference is silently dropped
+  // and the model redraws from the sentence - which is exactly the fifteen-different-dogs problem
+  // this whole path exists to fix.
+  const EDIT_SOURCES = new Set(["image_evolve", "letter", "onme", "design_evolve", "stencil",
+                                "style_transfer"]);
   const isEdit = Array.isArray(opts.refs) && opts.refs.filter(Boolean).length > 0
     && (opts.edit === true || EDIT_SOURCES.has(String(opts.source || "")));
   const policyName = ((await env.AURA_KV.get(isEdit ? "config:policy:edit" : "config:policy:image")

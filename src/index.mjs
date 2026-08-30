@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.50.0-2026-08-30-doorways-not-new-tiles";
+const BUILD = "aura-core-v9.51.0-2026-08-30-types-skips-doorways";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5679,9 +5679,22 @@ async function processCommand(line, env, isOp) {
         what_to_do: "Not found as a kind or as a category. Check the name against CARDS TREE." } };
       if (!leaves.length) return { cmd: "TYPES", payload: { ok: false, error: "NO_LEAVES", kind: kKey } };
 
+      // ══ A DOORWAY IS NOT A SUBJECT ═══════════════════════════════════════════════════════
+      // MEASURED: this drew "Dogs" as a picture of several dogs and "Cats" as several cats, while
+      // 25 breeds and 10 cats sat already drawn underneath. Nobody browses to a picture of dogs -
+      // they tap Dogs and expect the breeds.
+      // A leaf that has its OWN leaves is a doorway. Rose and Lotus have none, so they are things
+      // and they draw. Dogs has 25, so it is skipped and its sheet is offered instead.
+      const doorways = [];
+      const things = [];
+      for (const lf of leaves) {
+        const own = tree.specific && tree.specific[Object.keys(tree.specific)
+          .find((k) => tatSlug(k) === tatSlug(lf)) || ""];
+        if (own && own.length) doorways.push(lf); else things.push(lf);
+      }
       const made = [];
       let spend = 0;
-      for (const leaf of leaves) {
+      for (const leaf of things) {
         const one = { type: leaf, image: null, why: null, cost_usd: null };
         try {
           const r = await showIt(leaf +
@@ -5718,8 +5731,12 @@ async function processCommand(line, env, isOp) {
         "figure img{width:100%;aspect-ratio:1;object-fit:contain;display:block;background:#fff}" +
         "figcaption{padding:.45rem .55rem;font-size:.9rem}" +
         ".gone{padding:2.8rem .5rem;text-align:center;color:#fca5a5;font-size:.7rem}" +
+        ".door{padding:2.4rem .5rem;text-align:center;color:#93c5fd;font-size:.9rem;background:#0f1626}" +
+        ".door small{color:#64748b;font-size:.7rem}" +
         "</style></head><body><h1>" + eY(kKey) + "</h1><p class=top>" +
-        okY + " of " + made.length + " types &middot; $" +
+        okY + " of " + made.length + " types" +
+        (doorways.length ? " &middot; " + doorways.length + " open their own sheet" : "") +
+        " &middot; $" +
         (Math.round(spend * 10000) / 10000) + " &middot; " + eY(model) + "</p><div class=g>" +
         made.map((m) =>
           "<figure>" +
@@ -5727,12 +5744,22 @@ async function processCommand(line, env, isOp) {
                      eY(m.image) + '"></a>'
                    : '<div class=gone>' + eY(m.why || "—") + "</div>") +
           "<figcaption>" + eY(m.type) + "</figcaption></figure>").join("") +
+        // The doorways are listed as links, not drawn. They already have their leaves.
+        doorways.map((d) =>
+          '<figure><a href="/sheet/' + eY(tatSlug(d)) + '"><div class=door>' + eY(d) +
+          "<br><small>open</small></div></a><figcaption>" + eY(d) +
+          "</figcaption></figure>").join("") +
         "</div></body></html>";
       const pageY = "types/" + tatSlug(kKey);
       await env.AURA_KV.put("page:auras.guide/" + pageY, htmlY);
       return { cmd: "TYPES", payload: { ok: true, kind: kKey, model,
         url: "https://auras.guide/" + pageY,
         drew: okY, of: made.length, cost_usd: Math.round(spend * 10000) / 10000,
+        doorways: doorways.length ? doorways : undefined,
+        doorway_note: doorways.length
+          ? "These have their own leaves and were NOT drawn - a plural tile is not a subject. " +
+            "SHEET <kind> shows what is under each."
+          : undefined,
         types: made.map((m) => m.type + "  ->  " + (m.image || "FAILED: " + m.why)),
         note: "Same look as POSES - full colour on white, no frame chooser. " +
               "Judge which types read as their own thing, then POSES the ones that do." } };

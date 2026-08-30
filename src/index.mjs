@@ -86,7 +86,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.37.0-2026-08-30-one-prompt-every-model";
+const BUILD = "aura-core-v9.38.0-2026-08-30-the-meter-stops-guessing";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5505,6 +5505,135 @@ async function processCommand(line, env, isOp) {
       const at = new Date().toISOString().slice(0, 10);
       await env.AURA_KV.put("signed:" + tatSlug(arg), at);
       return { cmd: "SIGN", payload: { ok: true, kind: arg, signed: at } };
+    }
+
+    // ══ SEEIT — CREATE, STYLE AND EVOLVE, EVERY MODEL, ONE PAGE ═════════════════════════════
+    // The whole question in one command: can this model DRAW the thing, keep it through fifteen
+    // languages, and then change something about it without changing the animal.
+    //
+    // Fresh subjects only. Re-using a source that has already been styled returns the previous
+    // model's cards from the prompt cache in twenty seconds for nothing, which has been mistaken
+    // for a result three times today - so a cache hit here is an ABORT, not a row.
+    //
+    // SEEIT <subject>                 - full: create + 15 styles + 3 evolve hops, per model
+    // SEEIT <subject> --styles 3      - fewer style cards
+    // SEEIT <subject> --models a,b    - name the models
+    case "SEEIT": {
+      const raw = String(rest || "").trim();
+      const nM = raw.match(/--styles\s+(\d+)/i);
+      const mM = raw.match(/--models\s+([^\s].*?)(?:\s--|$)/i);
+      const subject = raw.replace(/--styles\s+\d+/i, "").replace(/--models\s+[^\s].*?(?=\s--|$)/i, "").trim();
+      if (!subject) return { cmd: "SEEIT", payload: { ok: false,
+        error: 'Usage: SEEIT <subject>   e.g.  SEEIT a golden retriever sitting, full body',
+        note: "Creates the subject on every model, then styles and evolves each one." } };
+      const nStyles = nM ? Math.max(1, Math.min(15, Number(nM[1]))) : 15;
+      const MODELS = mM ? mM[1].split(",").map((x) => x.trim()).filter(Boolean)
+        : ["@cf/black-forest-labs/flux-1-schnell",
+           "@cf/black-forest-labs/flux-2-klein-9b",
+           "gpt-image-1-mini"];
+      // Three hops, each an edit of the one before - not three separate draws. That is the only
+      // way to see whether the animal survives being changed.
+      const HOPS = ["put it on a dog bed", "give it a green ball in its mouth",
+                    "add a small bird flying above its head"];
+      const cards = TAT_STYLE_CARDS.slice(0, nStyles);
+      const drawPrompt = subject +
+        ". A clean isolated tattoo design on a plain white background, no scenery, no words.";
+
+      const rows = [];
+      let spend = 0;
+      for (const model of MODELS) {
+        const row = { model, create: null, styles: [], evolves: [], error: null,
+                      cost_usd: 0, seconds: 0, sources: [] };
+        const t0 = Date.now();
+        try {
+          const c = await showIt(drawPrompt, env, { model, raw: true, source: "seeit",
+                                                    subject: "seeit create" });
+          if (!c?.ok) { row.error = String(c?.error || "create failed").slice(0, 140); rows.push(row); continue; }
+          // A create that came from cache means this subject has been drawn before on this model,
+          // and everything downstream would be the old run wearing a new label.
+          if (c.cached) { row.error = "CACHED - this subject has been drawn on this model before. " +
+            "Use a subject that has never been run, or the sheet is the previous result."; rows.push(row); continue; }
+          row.create = { image: c.image_url, cost_usd: c.cost_usd, cost_source: c.cost_source };
+          row.cost_usd += (c.cost_usd || 0);
+          const srcUrl = c.image_url;
+
+          const canEdit = !model.startsWith("@cf/black-forest-labs/flux-1-schnell");
+          if (canEdit) {
+            for (const [name, how] of cards) {
+              const r = await showIt(TAT_SOURCE_LOCK + how, env,
+                { model, refs: [srcUrl], source: "style_transfer", raw: true, subject: name });
+              row.styles.push({ style: name, image: r?.ok ? r.image_url : null,
+                                cost_usd: r?.cost_usd ?? null, why: r?.ok ? null : String(r?.error || "").slice(0, 90) });
+              row.cost_usd += (r?.cost_usd || 0);
+            }
+            // Each hop edits the OUTPUT of the hop before it.
+            let prev = srcUrl;
+            for (const hop of HOPS) {
+              const r = await showIt(TAT_SOURCE_LOCK + "Keep the subject exactly as it is and " + hop + ".",
+                env, { model, refs: [prev], source: "image_evolve", raw: true, subject: hop });
+              row.evolves.push({ hop, image: r?.ok ? r.image_url : null,
+                                 cost_usd: r?.cost_usd ?? null, why: r?.ok ? null : String(r?.error || "").slice(0, 90) });
+              row.cost_usd += (r?.cost_usd || 0);
+              if (r?.ok && r.image_url) prev = r.image_url;
+            }
+          }
+        } catch (e) { row.error = String(e && e.message || e).slice(0, 140); }
+        row.seconds = Math.round((Date.now() - t0) / 100) / 10;
+        row.cost_usd = Math.round(row.cost_usd * 100000) / 100000;
+        spend += row.cost_usd;
+        rows.push(row);
+      }
+
+      const eS = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+      const cell = (o, label) => "<figure>" +
+        (o && o.image ? '<a href="' + eS(o.image) + '" target=_blank><img loading=lazy src="' +
+                        eS(o.image) + '"></a>'
+                      : '<div class=gone>' + eS((o && o.why) || "—") + "</div>") +
+        "<figcaption>" + eS(label) + "</figcaption></figure>";
+      const htmlSI =
+        '<!doctype html><html lang=en><head><meta charset=utf-8>' +
+        '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+        "<title>see it</title><style>" +
+        "*{margin:0;padding:0;box-sizing:border-box}" +
+        "body{background:#0b0d12;color:#e9edf5;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px}" +
+        "h1{font-size:1.15rem;font-weight:800}h2{font-size:.95rem;margin:1.4rem 0 .2rem}" +
+        ".top,.sub{color:#64748b;font-size:.78rem}.sub{margin-bottom:.5rem}" +
+        ".r{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}" +
+        "figure{background:#141a28;border:1px solid rgba(148,163,184,.16);border-radius:10px;overflow:hidden}" +
+        "figure img{width:100%;aspect-ratio:1;object-fit:contain;display:block;background:#fff}" +
+        "figcaption{padding:.35rem .5rem;font-size:.75rem}" +
+        ".mk{border-color:rgba(251,191,36,.55)}" +
+        ".gone{padding:2.2rem .4rem;text-align:center;color:#fca5a5;font-size:.68rem}" +
+        ".err{color:#fca5a5;font-size:.8rem;margin:.3rem 0}" +
+        "</style></head><body><h1>" + eS(subject) + "</h1><p class=top>" +
+        rows.length + " models &middot; " + nStyles + " styles &middot; 3 evolve hops &middot; $" +
+        (Math.round(spend * 1000) / 1000) + "</p>" +
+        rows.map((r) =>
+          "<h2>" + eS(r.model) + "</h2><p class=sub>$" + r.cost_usd + " &middot; " + r.seconds + "s" +
+          (r.create && r.create.cost_source ? " &middot; " + eS(r.create.cost_source) : "") + "</p>" +
+          (r.error ? '<p class=err>' + eS(r.error) + "</p>" : "") +
+          '<div class=r>' +
+          (r.create ? '<figure class=mk><a href="' + eS(r.create.image) + '" target=_blank>' +
+                      '<img src="' + eS(r.create.image) + '"></a><figcaption>created</figcaption></figure>' : "") +
+          r.styles.map((x) => cell(x, x.style)).join("") +
+          r.evolves.map((x) => cell(x, x.hop)).join("") +
+          "</div>").join("") +
+        "</body></html>";
+      const pageSI = "seeit/" + tatSlug(subject).slice(0, 60);
+      await env.AURA_KV.put("page:auras.guide/" + pageSI, htmlSI);
+      return { cmd: "SEEIT", payload: { ok: true, subject,
+        url: "https://auras.guide/" + pageSI,
+        styles: nStyles, models: MODELS,
+        cost_usd: Math.round(spend * 1000) / 1000,
+        rows: rows.map((r) => ({ model: r.model, created: !!r.create,
+          styles: r.styles.filter((x) => x.image).length + "/" + r.styles.length,
+          evolves: r.evolves.filter((x) => x.image).length + "/" + r.evolves.length,
+          cost_usd: r.cost_usd, seconds: r.seconds,
+          cost_source: r.create ? r.create.cost_source : null, error: r.error })),
+        note: "Every model named per call - no pin. A cached create aborts that row rather than " +
+              "returning the previous model's work. Cost is priced from the provider's own usage " +
+              "where it gives one, and from the published formula where it does not." } };
     }
 
     // ══ BAKEOFF — ONE PROMPT, EVERY MODEL, ONE SHEET ════════════════════════════════════════
@@ -53220,6 +53349,9 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // and the whole meter write would have failed silently - the exact shape of failure this file
   // keeps finding. node --check does not catch scope, only syntax.
   let neurons = null;
+  // Where the number came from, carried all the way out. A figure priced from a provider's own
+  // usage object and one guessed from a table must never look the same in a ledger.
+  let costSource = "rate table (inferred)";
   try {
     // ══ THESE WERE 10x LOW AND IT WAS MEASURED, NOT ARGUED (2026-07-31) ═══════════════════════════
     // grok-imagine-image read $0.002 with the comment "the floor we proved". It was never proved - it
@@ -53253,6 +53385,36 @@ async function auraGenerateImage(prompt, env, opts = {}) {
     };
     const mkey = Object.keys(RATE).find((k) => model.toLowerCase().startsWith(k));
     if (mkey) costUsd = RATE[mkey][quality] ?? RATE[mkey].medium ?? null;
+
+    // ══ OPENAI HANDS BACK THE ANSWER. STOP GUESSING IT. ══════════════════════════════════════
+    // MEASURED against the console: the table charged $3.18 for a day whose actual output tokens
+    // were 24,747. At OpenAI's published $30 per million that is $0.74. The table was 4x high and
+    // every comparison made with it today was wrong by that factor.
+    //
+    // OpenAI bills images as TOKENS, not per image - their pricing page carries no per-image
+    // figure at all. `imgUsage` is their own report for the call that just happened, and it has
+    // been captured and then discarded in favour of a row marked `// inferred`.
+    // Their published rates, from developers.openai.com/api/docs/pricing:
+    //   image output $30/M · image input $8/M · cached input $2/M · text input $5/M
+    // Batch is exactly half, and is not used here - this is the standard tier.
+    //
+    // This is the difference between a meter and a table. The table stays underneath for models
+    // that report nothing, and its rows are still labelled honestly as inferred.
+    if (imgUsage && /^(gpt-image|chatgpt-image)/i.test(model)) {
+      const OUT_M = 30.00, IN_IMG_M = 8.00, IN_CACHED_M = 2.00, IN_TXT_M = 5.00;
+      const outTok = imgUsage.output_tokens ?? 0;
+      const det = imgUsage.input_tokens_details || {};
+      const inImg = det.image_tokens ?? 0;
+      const inTxt = det.text_tokens ?? 0;
+      const inCached = imgUsage.input_tokens_cached ?? det.cached_tokens ?? 0;
+      // If the breakdown is absent, everything that is not text is treated as image input - the
+      // dearer of the two, so an unknown split is never reported cheaper than it was.
+      const inTotal = imgUsage.input_tokens ?? 0;
+      const inImgFinal = inImg || Math.max(0, inTotal - inTxt - inCached);
+      const priced = (outTok * OUT_M + inImgFinal * IN_IMG_M +
+                      inCached * IN_CACHED_M + inTxt * IN_TXT_M) / 1e6;
+      if (outTok > 0 || inTotal > 0) { costUsd = +priced.toFixed(6); costSource = "provider usage"; }
+    }
     // ══ THE @cf/ PATH BILLED NOTHING AND RECORDED NOTHING (found live 2026-07-31) ═══════════════
     // Pointing config:image:model at flux-1-schnell took an image from $0.02 to fractions of a cent -
     // and made it INVISIBLE. env.AI.run() is a BINDING call, not a fetch, so it never passes through
@@ -53282,6 +53444,23 @@ async function auraGenerateImage(prompt, env, opts = {}) {
         "@cf/leonardo/lucid-origin": { tile: 636.00, step: 12.00, tiles: 4, steps: 4 },
         "@cf/leonardo/phoenix-1.0": { tile: 530.00, step: 10.00, tiles: 4, steps: 4 },
       };
+      // ══ KLEIN 9B IS BILLED PER MEGAPIXEL, NOT PER TILE ═══════════════════════════════════
+      // From Cloudflare's own pricing page, updated 2026-08-28:
+      //   flux-2-klein-9b  1363.64 neurons per first MP · 181.82 per subsequent MP
+      //                    · 181.82 per INPUT image MP
+      // A tile-and-step constant cannot express that, and pricing it as one made an edit read the
+      // same as a draw. An edit sends a reference, and the reference is billed.
+      if (model === "@cf/black-forest-labs/flux-2-klein-9b") {
+        const outMP = 1.048576;                       // 1024x1024
+        const inMP = isEdit ? 1.048576 * Math.max(1, (opts.refs || []).length) : 0;
+        neurons = +(1363.64 * 1 + 181.82 * Math.max(0, outMP - 1) + 181.82 * inMP).toFixed(2);
+        costUsd = +((neurons / 1000) * 0.011).toFixed(8);
+      } else if (model === "@cf/black-forest-labs/flux-2-klein-4b") {
+        // 5.37 neurons per INPUT 512 tile · 26.05 per OUTPUT 512 tile. 1024x1024 is 4 tiles.
+        const outTiles = 4, inTiles = isEdit ? 4 * Math.max(1, (opts.refs || []).length) : 0;
+        neurons = +(26.05 * outTiles + 5.37 * inTiles).toFixed(2);
+        costUsd = +((neurons / 1000) * 0.011).toFixed(8);
+      } else {
       const cf = CF_NEURONS[model];
       if (cf) {
         neurons = +(cf.tile * cf.tiles + cf.step * cf.steps).toFixed(2);
@@ -53290,6 +53469,8 @@ async function auraGenerateImage(prompt, env, opts = {}) {
         // An unpriced @cf model must not read as free. Say the number is unknown.
         costUsd = null;
       }
+      }
+      if (neurons != null) costSource = "cloudflare formula";
     }
     // ══ BLACK FOREST IS PRICED PER MEGAPIXEL, NOT PER IMAGE ═══════════════════════════════
     // BFL's published starting rates, per megapixel of OUTPUT: klein 4b $0.014, klein 9b $0.015,
@@ -53313,6 +53494,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       // An unpriced model must not read as free - that is how images cost nothing in AIMARGIN for
       // a week while money left the account.
       costUsd = base == null ? null : +((base * MP * (isEdit ? 1.5 : 1)).toFixed(6));
+      costSource = "bfl list price (estimate - they return no usage)";
     }
   } catch {}
   // Rolling per-day image meter (the TREASURY for images), same shape as the text meter.
@@ -53399,7 +53581,8 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       });
     } catch (e) { try { console.warn("[IMG] egress write failed: " + (e && e.message)); } catch {} }
   }
-  return { ok: true, id, image_url: meta.url, prompt: meta.prompt, model, quality, tokens, cost_usd: costUsd };
+  return { ok: true, id, image_url: meta.url, prompt: meta.prompt, model, quality, tokens,
+           cost_usd: costUsd, cost_source: costSource, neurons };
 }
 
 // SHOW IT â€” Aura's universal visual verb. Everywhere she lives, when a moment is better shown
@@ -53442,6 +53625,8 @@ async function showIt(subject, env, opts = {}) {
   // and starts being a guess.
   const out = { ok: true, id: result.id, image_url: result.image_url || `https://${await imageHost(env, opts.host)}/image/${result.id}`, showed: want,
     model: result.model || null, cost_usd: result.cost_usd,
+    // A priced-from-usage figure and a guessed one must not look the same downstream either.
+    cost_source: result.cost_source || null, neurons: result.neurons ?? null,
     edited: refs.length ? true : undefined,
     from_refs: refs.length || undefined };
   // THE IMAGE IS A LIVING SMART FILE. Register it through the generic Smart File engine as

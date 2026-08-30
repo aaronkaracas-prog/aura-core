@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.41.0-2026-08-30-poses-not-seeds";
+const BUILD = "aura-core-v9.42.0-2026-08-30-types-then-poses";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5506,6 +5506,79 @@ async function processCommand(line, env, isOp) {
       const at = new Date().toISOString().slice(0, 10);
       await env.AURA_KV.put("signed:" + tatSlug(arg), at);
       return { cmd: "SIGN", payload: { ok: true, kind: arg, signed: at } };
+    }
+
+    // ══ TYPES — EVERY KIND UNDER A CATEGORY, IN THE GOOD LOOK ═══════════════════════════════
+    // FACES draws the same leaves through the FRAME CHOOSER, and a dragon is on neither kind list
+    // so it lands on the shape plate - a flat black graphic on a light ground. Correct for judging
+    // a silhouette, wrong for a shelf somebody browses.
+    //
+    // This uses the prompt POSES uses and Aaron approved: full colour, highly detailed, plain
+    // white background. No frame chooser, no crop clause, nothing that made the dragons black.
+    // Types first, then POSES off whichever types earn one.
+    case "TYPES": {
+      const raw = String(rest || "").trim();
+      const mM = raw.match(/--model\s+(\S+)/i);
+      const kind = raw.replace(/--model\s+\S+/i, "").trim();
+      if (!kind) return { cmd: "TYPES", payload: { ok: false,
+        error: "Usage: TYPES <kind>   e.g.  TYPES Dragons" } };
+      const model = mM ? mM[1] : "@cf/black-forest-labs/flux-2-klein-9b";
+      const tree = await env.AURA_KV.get("card:tree", "json").catch(() => null);
+      const kKey = tree && tree.specific
+        ? Object.keys(tree.specific).find((k) => tatSlug(k) === tatSlug(kind)) : null;
+      if (!kKey) return { cmd: "TYPES", payload: { ok: false, error: "NO_SUCH_KIND", asked: kind,
+        what_to_do: "The kind must be in the tree with leaves under it. LEAVES <kind> sets them." } };
+      const leaves = tree.specific[kKey] || [];
+      if (!leaves.length) return { cmd: "TYPES", payload: { ok: false, error: "NO_LEAVES", kind: kKey } };
+
+      const made = [];
+      let spend = 0;
+      for (const leaf of leaves) {
+        const one = { type: leaf, image: null, why: null, cost_usd: null };
+        try {
+          const r = await showIt(leaf +
+            ". Full colour, highly detailed, on a plain white background.",
+            env, { model, raw: true, source: "types", subject: leaf });
+          if (r?.ok) { one.image = r.image_url; one.cost_usd = r.cost_usd; one.cached = !!r.cached;
+                       spend += (r.cost_usd || 0); }
+          else one.why = String(r?.error || "did not draw").slice(0, 120);
+        } catch (e) { one.why = String(e && e.message || e).slice(0, 120); }
+        made.push(one);
+      }
+      const eY = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+      const okY = made.filter((m) => m.image).length;
+      const htmlY =
+        '<!doctype html><html lang=en><head><meta charset=utf-8>' +
+        '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+        "<title>" + eY(kKey) + "</title><style>" +
+        "*{margin:0;padding:0;box-sizing:border-box}" +
+        "body{background:#0b0d12;color:#e9edf5;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px}" +
+        "h1{font-size:1.15rem;font-weight:800}" +
+        ".top{color:#64748b;font-size:.8rem;margin:.3rem 0 1rem}" +
+        ".g{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}" +
+        "figure{background:#141a28;border:1px solid rgba(148,163,184,.16);border-radius:10px;overflow:hidden}" +
+        "figure img{width:100%;aspect-ratio:1;object-fit:contain;display:block;background:#fff}" +
+        "figcaption{padding:.45rem .55rem;font-size:.9rem}" +
+        ".gone{padding:2.8rem .5rem;text-align:center;color:#fca5a5;font-size:.7rem}" +
+        "</style></head><body><h1>" + eY(kKey) + "</h1><p class=top>" +
+        okY + " of " + made.length + " types &middot; $" +
+        (Math.round(spend * 10000) / 10000) + " &middot; " + eY(model) + "</p><div class=g>" +
+        made.map((m) =>
+          "<figure>" +
+          (m.image ? '<a href="' + eY(m.image) + '" target=_blank><img loading=lazy src="' +
+                     eY(m.image) + '"></a>'
+                   : '<div class=gone>' + eY(m.why || "—") + "</div>") +
+          "<figcaption>" + eY(m.type) + "</figcaption></figure>").join("") +
+        "</div></body></html>";
+      const pageY = "types/" + tatSlug(kKey);
+      await env.AURA_KV.put("page:auras.guide/" + pageY, htmlY);
+      return { cmd: "TYPES", payload: { ok: true, kind: kKey, model,
+        url: "https://auras.guide/" + pageY,
+        drew: okY, of: made.length, cost_usd: Math.round(spend * 10000) / 10000,
+        types: made.map((m) => m.type + "  ->  " + (m.image || "FAILED: " + m.why)),
+        note: "Same look as POSES - full colour on white, no frame chooser. " +
+              "Judge which types read as their own thing, then POSES the ones that do." } };
     }
 
     // ══ POSES — THE SAME SUBJECT, DOING DIFFERENT THINGS ════════════════════════════════════

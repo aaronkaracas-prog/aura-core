@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.44.0-2026-08-30-alive-or-a-design";
+const BUILD = "aura-core-v9.45.0-2026-08-30-transient-means-try-again";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -53487,10 +53487,38 @@ async function auraGenerateImage(prompt, env, opts = {}) {
           // label of one, which is the failure that produced "a bibliography of near-misses".
           if (!attached) throw new Error("could not read any reference image for the edit");
         }
-        const fr = new Response(form);
-        out = await env.AI.run(model, {
-          multipart: { body: fr.body, contentType: fr.headers.get("content-type") },
-        });
+        // ══ 3043 IS TRANSIENT AND IT IS 17% OF EVERY RUN ═════════════════════════════════
+        // MEASURED across six runs on four subjects: 12 failures in 72 tiles, all
+        // `3043: Internal server error`, all on Cloudflare's side. Not moderation (that is a
+        // Request Moderated), not the prompt (the same tile succeeds on a re-run), not size.
+        // At catalogue scale - 536 things - a 17% hole rate is roughly 1,600 tiles somebody has
+        // to notice and re-run by hand, which is the difference between a batch and a chore.
+        //
+        // A transient error is the one kind worth retrying: the same call often works on the
+        // second attempt, unlike 8007, which refuses identically forever. Two attempts, a short
+        // pause between them, and the reason is kept if both fail.
+        // A FormData body is a stream and cannot be replayed, so the form is rebuilt per attempt.
+        const runOnce = async () => {
+          if (!wantsMultipart) return await env.AI.run(model, { prompt: p });
+          const f2 = new FormData();
+          for (const [k, v] of form.entries()) f2.append(k, v);
+          const r2 = new Response(f2);
+          return await env.AI.run(model, {
+            multipart: { body: r2.body, contentType: r2.headers.get("content-type") },
+          });
+        };
+        let lastCfErr = null;
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try { out = await runOnce(); lastCfErr = null; break; }
+          catch (e) {
+            lastCfErr = e;
+            // Only a transient server error is worth a second attempt. A refusal or a bad request
+            // would fail the same way three times and just cost three times as long.
+            if (!/\b3043\b|internal server error/i.test(String(e && e.message || e))) throw e;
+            if (attempt < 2) await new Promise((res) => setTimeout(res, 800 * (attempt + 1)));
+          }
+        }
+        if (lastCfErr) throw lastCfErr;
       } else {
         out = await env.AI.run(model, { prompt: p });
       }

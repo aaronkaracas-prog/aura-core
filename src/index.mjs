@@ -54,7 +54,8 @@ import { PhotonImage, grayscale, gaussian_blur, threshold as photonThreshold, in
          normalize as photonNormalize, adjust_contrast as photonContrast,
          edge_detection as photonEdges, laplace as photonLaplace,
          dither as photonDither, halftone as photonHalftone,
-         grayscale_human_corrected as photonGrayHuman }
+         grayscale_human_corrected as photonGrayHuman,
+         resize as photonResize, SamplingFilter as PhotonSampling }
   from "@cf-wasm/photon";
 
 // The relying party ID is the DOMAIN a passkey is bound to, and it is why passkeys are phishing-proof:
@@ -86,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.38.0-2026-08-30-the-meter-stops-guessing";
+const BUILD = "aura-core-v9.39.0-2026-08-30-klein-speaks-multipart";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5522,10 +5523,21 @@ async function processCommand(line, env, isOp) {
       const raw = String(rest || "").trim();
       const nM = raw.match(/--styles\s+(\d+)/i);
       const mM = raw.match(/--models\s+([^\s].*?)(?:\s--|$)/i);
-      const subject = raw.replace(/--styles\s+\d+/i, "").replace(/--models\s+[^\s].*?(?=\s--|$)/i, "").trim();
-      if (!subject) return { cmd: "SEEIT", payload: { ok: false,
+      const subject = raw.replace(/--styles\s+\d+/i, "")
+        .replace(/--models\s+[^\s].*?(?=\s--|$)/i, "")
+        .replace(/--source\s+img_[A-Za-z0-9_-]+/i, "").trim();
+      if (!subject && !givenSrc) return { cmd: "SEEIT", payload: { ok: false,
         error: 'Usage: SEEIT <subject>   e.g.  SEEIT a golden retriever sitting, full body',
         note: "Creates the subject on every model, then styles and evolves each one." } };
+      // ══ ONE SOURCE, OR THE COMPARISON IS CONFOUNDED ═══════════════════════════════════════
+      // The first run let every model draw its OWN source and then style it. So mini's cards
+      // looked thin because MINI'S CREATE was thin - not because mini styles badly - and schnell
+      // drew the best source of the three and was never allowed to use it.
+      // Two variables moved at once, which means the sheet measured nothing.
+      // Given a source id, every model styles THE SAME PICTURE and the only thing that varies is
+      // the model.
+      const srcM = raw.match(/--source\s+(img_[A-Za-z0-9_-]+)/i);
+      const givenSrc = srcM ? srcM[1] : null;
       const nStyles = nM ? Math.max(1, Math.min(15, Number(nM[1]))) : 15;
       const MODELS = mM ? mM[1].split(",").map((x) => x.trim()).filter(Boolean)
         : ["@cf/black-forest-labs/flux-1-schnell",
@@ -5546,18 +5558,29 @@ async function processCommand(line, env, isOp) {
                       cost_usd: 0, seconds: 0, sources: [] };
         const t0 = Date.now();
         try {
-          const c = await showIt(drawPrompt, env, { model, raw: true, source: "seeit",
-                                                    subject: "seeit create" });
-          if (!c?.ok) { row.error = String(c?.error || "create failed").slice(0, 140); rows.push(row); continue; }
-          // A create that came from cache means this subject has been drawn before on this model,
-          // and everything downstream would be the old run wearing a new label.
-          if (c.cached) { row.error = "CACHED - this subject has been drawn on this model before. " +
-            "Use a subject that has never been run, or the sheet is the previous result."; rows.push(row); continue; }
-          row.create = { image: c.image_url, cost_usd: c.cost_usd, cost_source: c.cost_source };
-          row.cost_usd += (c.cost_usd || 0);
-          const srcUrl = c.image_url;
+          let srcUrl;
+          if (givenSrc) {
+            // The source is Aaron's, already approved. Nothing is drawn and nothing is charged
+            // for it - the row is purely what this model does WITH that picture.
+            srcUrl = "https://" + (await imageHost(env)) + "/image/" + givenSrc;
+            row.create = { image: srcUrl, cost_usd: 0, cost_source: "supplied, not drawn" };
+          } else {
+            const c = await showIt(drawPrompt, env, { model, raw: true, source: "seeit",
+                                                      subject: "seeit create" });
+            if (!c?.ok) { row.error = String(c?.error || "create failed").slice(0, 140); rows.push(row); continue; }
+            // A create that came from cache means this subject has been drawn before on this model,
+            // and everything downstream would be the old run wearing a new label.
+            if (c.cached) { row.error = "CACHED - this subject has been drawn on this model before. " +
+              "Use a subject that has never been run, or the sheet is the previous result."; rows.push(row); continue; }
+            row.create = { image: c.image_url, cost_usd: c.cost_usd, cost_source: c.cost_source };
+            row.cost_usd += (c.cost_usd || 0);
+            srcUrl = c.image_url;
+          }
 
+          // schnell has no edit endpoint. With a supplied source it has no job at all, and saying
+          // so is better than a row of empty cells.
           const canEdit = !model.startsWith("@cf/black-forest-labs/flux-1-schnell");
+          if (!canEdit && givenSrc) row.error = "cannot edit - this model is text-to-image only";
           if (canEdit) {
             for (const [name, how] of cards) {
               const r = await showIt(TAT_SOURCE_LOCK + how, env,
@@ -53127,7 +53150,67 @@ async function auraGenerateImage(prompt, env, opts = {}) {
     if (model.startsWith("@cf/")) {
       // Cloudflare Workers AI - near-free, no external key, already bound as env.AI. flux-1-schnell returns
       // { image: <base64> }; stream/byte variants return raw bytes - handle both.
-      const out = await env.AI.run(model, { prompt: p });
+      // ══ THE FLUX.2 MODELS ON WORKERS AI WANT MULTIPART, NOT JSON ═════════════════════════
+      // MEASURED three times: `5006: required properties at '/' are 'multipart'`. From
+      // Cloudflare's own changelog for klein-9b: "this image model uses multipart form data
+      // inputs, EVEN IF YOU JUST HAVE A PROMPT."
+      //
+      // Four details from their code sample that guessing would have missed:
+      //  · FormData does not expose its serialized body or boundary. It has to be passed through
+      //    a Response so the boundary is generated - without it the server cannot parse a field.
+      //  · Reference images must be named input_image_0..input_image_3, by index. Up to four.
+      //  · Every input image must be UNDER 512x512. A full-size reference is refused.
+      //  · `steps` is fixed at 4 on the distilled models and cannot be set.
+      const wantsMultipart = /flux-2/.test(model);
+      let out;
+      if (wantsMultipart) {
+        const form = new FormData();
+        form.append("prompt", p);
+        form.append("width", "1024");
+        form.append("height", "1024");
+        if (isEdit) {
+          const cfRefs = (Array.isArray(opts.refs) ? opts.refs.filter(Boolean) : []).slice(0, 4);
+          let attached = 0;
+          for (let i = 0; i < cfRefs.length; i++) {
+            try {
+              const ir = await fetch(cfRefs[i]);
+              if (!ir.ok) continue;
+              const ab = await ir.arrayBuffer();
+              // ══ CLOUDFLARE REFUSES A REFERENCE 512 OR LARGER ═══════════════════════════
+              // Their changelog, verbatim: "All input images must be smaller than 512x512."
+              // Every image this system makes is 1024, so without this EVERY Klein edit would be
+              // refused - and the refusal would read as a model problem rather than a size one.
+              // Photon is already here for the stencil work, so the resize costs nothing and is
+              // deterministic.
+              let bytes = new Uint8Array(ab);
+              try {
+                const pi = PhotonImage.new_from_byteslice(bytes);
+                if (pi.get_width() >= 512 || pi.get_height() >= 512) {
+                  const scale = 480 / Math.max(pi.get_width(), pi.get_height());
+                  const small = photonResize(pi,
+                    Math.max(1, Math.round(pi.get_width() * scale)),
+                    Math.max(1, Math.round(pi.get_height() * scale)),
+                    PhotonSampling.Lanczos3);
+                  bytes = small.get_bytes();
+                  try { small.free(); } catch {}
+                }
+                try { pi.free(); } catch {}
+              } catch {}
+              form.append("input_image_" + i, new Blob([bytes], { type: "image/png" }), "ref" + i + ".png");
+              attached++;
+            } catch {}
+          }
+          // An edit with no reference attached is not an edit - it is a fresh draw wearing the
+          // label of one, which is the failure that produced "a bibliography of near-misses".
+          if (!attached) throw new Error("could not read any reference image for the edit");
+        }
+        const fr = new Response(form);
+        out = await env.AI.run(model, {
+          multipart: { body: fr.body, contentType: fr.headers.get("content-type") },
+        });
+      } else {
+        out = await env.AI.run(model, { prompt: p });
+      }
       if (out && out.image) b64 = out.image;
       else if (out instanceof ReadableStream) { const ab = await new Response(out).arrayBuffer(); b64 = btoa(String.fromCharCode(...new Uint8Array(ab))); }
       else if (out instanceof ArrayBuffer) { b64 = btoa(String.fromCharCode(...new Uint8Array(out))); }

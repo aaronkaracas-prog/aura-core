@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.47.0-2026-08-30-one-page-for-all-of-it";
+const BUILD = "aura-core-v9.48.0-2026-08-30-clickable-library";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5586,6 +5586,7 @@ async function processCommand(line, env, isOp) {
         "th{text-align:left;color:#64748b;font-weight:600;font-size:.72rem;text-transform:uppercase;padding:.4rem .5rem;border-bottom:1px solid rgba(148,163,184,.2)}" +
         "td{padding:.45rem .5rem;border-bottom:1px solid rgba(148,163,184,.09);vertical-align:top}" +
         "td a{color:#93c5fd;text-decoration:none}td a:hover{text-decoration:underline}" +
+        ".ks a{color:#7c8da8}" +
         ".full{color:#4ade80}.part{color:#fbbf24}.none{color:#64748b}" +
         ".sg{color:#4ade80;font-size:.72rem}" +
         ".ks{color:#64748b;font-size:.72rem}" +
@@ -5594,8 +5595,14 @@ async function processCommand(line, env, isOp) {
         rows.filter((r) => r.signed).length + " signed</p>" +
         "<table><tr><th>category</th><th>drawn</th><th>signed</th><th>sheet</th></tr>" +
         rows.map((r) =>
-          "<tr><td>" + eL(r.category) + '<div class=ks>' +
-          eL(r.kinds.slice(0, 6).join(" &middot; ")) + (r.kinds.length > 6 ? " &hellip;" : "") +
+          // ══ ESCAPE THE PARTS, NOT THE JOINED STRING ═══════════════════════════════════
+          // This escaped AFTER inserting the separator, so the & in &middot; became &amp; and the
+          // entity rendered as literal text. Escape each name, then join with the entity.
+          "<tr><td>" + '<a href="/types/' + eL(tatSlug(r.category)) + '">' + eL(r.category) +
+          "</a><div class=ks>" +
+          r.kinds.slice(0, 6).map((k) =>
+            '<a href="/poses/' + eL(tatSlug(k)) + '">' + eL(k) + "</a>").join(" &middot; ") +
+          (r.kinds.length > 6 ? " &hellip;" : "") +
           "</div></td>" +
           '<td class="' + (r.drawn === 0 ? "none" : r.drawn >= r.things ? "full" : "part") + '">' +
           r.drawn + " / " + r.things + "</td>" +

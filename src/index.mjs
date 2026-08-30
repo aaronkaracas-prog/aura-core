@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.45.0-2026-08-30-transient-means-try-again";
+const BUILD = "aura-core-v9.46.0-2026-08-30-a-page-is-not-a-catalogue";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5504,8 +5504,32 @@ async function processCommand(line, env, isOp) {
           usage: 'SIGN <kind>  to mark one as reviewed' } };
       }
       const at = new Date().toISOString().slice(0, 10);
-      await env.AURA_KV.put("signed:" + tatSlug(arg), at);
-      return { cmd: "SIGN", payload: { ok: true, kind: arg, signed: at } };
+      // ══ WHAT WAS SIGNED, NOT JUST WHEN ═══════════════════════════════════════════════════
+      // A date alone cannot answer "is this category done" after the tree changes. Recording the
+      // counts means a fresh session can see that Dragons was signed at 7 types and now has 8,
+      // and that the signature is stale rather than missing.
+      let types = null, drawn = null;
+      try {
+        const tr = await env.AURA_KV.get("card:tree", "json");
+        const key = tr && ((tr.specific && Object.keys(tr.specific).find((k) => tatSlug(k) === tatSlug(arg))) ||
+                           (tr.subjects && Object.keys(tr.subjects).find((k) => tatSlug(k) === tatSlug(arg))));
+        const leaves = key ? ((tr.specific && tr.specific[key]) || (tr.subjects && tr.subjects[key]) || []) : [];
+        types = leaves.length || null;
+        if (leaves.length) {
+          let n = 0;
+          for (const lf of leaves) {
+            const hit = await env.AURA_KV.get("face:v1:" + tatSlug(lf)).catch(() => null);
+            if (hit) n++;
+          }
+          drawn = n;
+        }
+      } catch {}
+      await env.AURA_KV.put("signed:" + tatSlug(arg),
+        JSON.stringify({ at, types, drawn })).catch(() => {});
+      return { cmd: "SIGN", payload: { ok: true, kind: arg, signed: at, types, drawn,
+        note: types && drawn != null && drawn < types
+          ? "Signed, but " + (types - drawn) + " of " + types + " have no tile yet."
+          : "Signed." } };
     }
 
     // ══ TYPES — EVERY KIND UNDER A CATEGORY, IN THE GOOD LOOK ═══════════════════════════════
@@ -5552,7 +5576,16 @@ async function processCommand(line, env, isOp) {
             ". Full colour, highly detailed, on a plain white background.",
             env, { model, raw: true, source: "types", subject: leaf });
           if (r?.ok) { one.image = r.image_url; one.cost_usd = r.cost_usd; one.cached = !!r.cached;
-                       spend += (r.cost_usd || 0); }
+                       spend += (r.cost_usd || 0); one.id = r.id || null;
+            // ══ A PAGE IS NOT A CATALOGUE ══════════════════════════════════════════════
+            // Until now this wrote an HTML page and the images, and nothing that maps a LEAF to
+            // its TILE. FACE has always written face:v1:<leaf>; TYPES, POSES and TWENTY did not,
+            // so a category could be fully drawn and the walk would still show nothing.
+            // Same key shape as FACE so one reader finds either.
+            await env.AURA_KV.put("face:v1:" + tatSlug(leaf),
+              JSON.stringify({ id: r.id, url: r.image_url, at: new Date().toISOString(),
+                               by: "TYPES", model })).catch(() => {});
+          }
           else one.why = String(r?.error || "did not draw").slice(0, 120);
         } catch (e) { one.why = String(e && e.message || e).slice(0, 120); }
         made.push(one);
@@ -5635,7 +5668,14 @@ async function processCommand(line, env, isOp) {
             ". Full colour, highly detailed, on a plain white background.",
             env, { model, raw: true, source: "poses", subject: what + " " + o.id });
           if (r?.ok) { one.image = r.image_url; one.cost_usd = r.cost_usd; one.cached = !!r.cached;
-                       spend += (r.cost_usd || 0); }
+                       spend += (r.cost_usd || 0);
+            // The walk reads a tile per option as shot:v1:<leaf>:<step>:<path>. Writing the same
+            // key here means a pose drawn by this command is the pose the walk shows - not a
+            // second copy of the same picture under a different name.
+            await env.AURA_KV.put("shot:v1:" + tatSlug(what) + ":pose:" + tatSlug(o.id),
+              JSON.stringify({ id: r.id, url: r.image_url, say: o.say || null,
+                               at: new Date().toISOString(), by: "POSES", model })).catch(() => {});
+          }
           else one.why = String(r?.error || "did not draw").slice(0, 120);
         } catch (e) { one.why = String(e && e.message || e).slice(0, 120); }
         made.push(one);
@@ -5737,6 +5777,13 @@ async function processCommand(line, env, isOp) {
                        spend += (r.cost_usd || 0); }
           else one.why = String(r?.error || "did not draw").slice(0, 120);
         } catch (e) { one.why = String(e && e.message || e).slice(0, 120); }
+        if (one.image) {
+          // Treatments are a wall too - same shape, different step, so the walk can offer them
+          // wherever a design has no poses.
+          await env.AURA_KV.put("shot:v1:" + tatSlug(what) + ":treatment:" + tatSlug(t.id),
+            JSON.stringify({ id: one.id || null, url: one.image, say: t.say || null,
+                             at: new Date().toISOString(), by: "TWENTY", model })).catch(() => {});
+        }
         made.push(one);
       }
       const distinct = new Set(made.filter((m) => m.image).map((m) => m.image)).size;

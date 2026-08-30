@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.49.0-2026-08-30-no-dead-links";
+const BUILD = "aura-core-v9.50.0-2026-08-30-doorways-not-new-tiles";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5576,10 +5576,17 @@ async function processCommand(line, env, isOp) {
         } catch {}
         allThings += things; allDrawn += drawn;
         // Which kinds have a poses sheet, so those links are live and the rest are plain text.
+        // ══ LINK TO THE TILES THAT EXIST, NOT TO A NEW SHEET ════════════════════════════════
+        // MEASURED: TYPES on a CATEGORY drew a generic "Dogs" tile and a generic "Cats" tile -
+        // 22 images, 32 cents - when 25 breeds and 10 cats were already drawn and sitting there.
+        // A category's kinds are not things to draw; they are doorways to leaves already drawn.
+        // SHEET is the reader for that and has been all along.
         const kindSheets = {};
         for (const k of leaves.slice(0, 6)) {
-          kindSheets[k] = !!(await env.AURA_KV.get("page:auras.guide/poses/" + tatSlug(k))
-            .catch(() => null));
+          kindSheets[k] = (await env.AURA_KV.get("page:auras.guide/sheet/" + tatSlug(k))
+            .catch(() => null)) ? "sheet"
+            : (await env.AURA_KV.get("page:auras.guide/poses/" + tatSlug(k)).catch(() => null))
+              ? "poses" : null;
         }
         rows.push({ category: c, things, drawn, signed, kinds: leaves, hasSheet, kindSheets });
       }
@@ -5615,7 +5622,7 @@ async function processCommand(line, env, isOp) {
                       : eL(r.category)) +
           "<div class=ks>" +
           r.kinds.slice(0, 6).map((k) => r.kindSheets[k]
-            ? '<a href="/poses/' + eL(tatSlug(k)) + '">' + eL(k) + "</a>"
+            ? '<a href="/' + r.kindSheets[k] + "/" + eL(tatSlug(k)) + '">' + eL(k) + "</a>"
             : eL(k)).join(" &middot; ") +
           (r.kinds.length > 6 ? " &hellip;" : "") +
           "</div></td>" +

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.39.0-2026-08-30-klein-speaks-multipart";
+const BUILD = "aura-core-v9.40.0-2026-08-30-twenty-of-the-same-thing";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5506,6 +5506,88 @@ async function processCommand(line, env, isOp) {
       const at = new Date().toISOString().slice(0, 10);
       await env.AURA_KV.put("signed:" + tatSlug(arg), at);
       return { cmd: "SIGN", payload: { ok: true, kind: arg, signed: at } };
+    }
+
+    // ══ TWENTY — THE SAME DESIGN, TWENTY WAYS ═══════════════════════════════════════════════
+    // The shelf. A person does not want to describe a dragon, they want to look at twenty and
+    // point at one. Every tile is the SAME sentence with a different seed, so the subject and the
+    // composition are fixed and only the drawing changes.
+    //
+    // WHY A SEED AND NOT TWENTY WRITTEN PROMPTS. An authored variation list has to be written per
+    // subject - twenty phrases for dragons, twenty more for roses, twenty for skulls - and that
+    // is the card factory this project already threw away once. A seed needs nothing written and
+    // behaves identically on any subject.
+    //
+    // TWENTY <what>              e.g.  TWENTY japanese dragon coiled into a circle
+    // TWENTY <what> --n 8        fewer
+    // TWENTY <what> --model <m>  something other than the Cloudflare default
+    case "TWENTY": {
+      const raw = String(rest || "").trim();
+      const nM = raw.match(/--n\s+(\d+)/i);
+      const mM = raw.match(/--model\s+(\S+)/i);
+      const what = raw.replace(/--n\s+\d+/i, "").replace(/--model\s+\S+/i, "").trim();
+      if (!what) return { cmd: "TWENTY", payload: { ok: false,
+        error: "Usage: TWENTY <what>   e.g.  TWENTY japanese dragon coiled into a circle",
+        note: "Twenty of the same design, one per seed. Pick one, then style it." } };
+      const n = nM ? Math.max(1, Math.min(40, Number(nM[1]))) : 20;
+      // Klein is the measured default: it drew, styled and evolved correctly at roughly $0.002 a
+      // tile on the sheets, which is the cheapest thing that also holds a subject.
+      const model = mM ? mM[1] : "@cf/black-forest-labs/flux-2-klein-9b";
+      const prompt = what + ". A clean isolated tattoo design on a plain white background, " +
+        "no scenery, no words.";
+
+      const made = [];
+      let spend = 0;
+      for (let i = 0; i < n; i++) {
+        const one = { seed: 1000 + i * 7919, image: null, why: null, cost_usd: null };
+        try {
+          const r = await showIt(prompt, env, { model, raw: true, seed: one.seed,
+            source: "twenty", subject: what });
+          if (r?.ok) { one.image = r.image_url; one.cost_usd = r.cost_usd; one.cached = !!r.cached;
+                       spend += (r.cost_usd || 0); }
+          else one.why = String(r?.error || "did not draw").slice(0, 120);
+        } catch (e) { one.why = String(e && e.message || e).slice(0, 120); }
+        made.push(one);
+      }
+      // Twenty identical pictures would mean the seed never reached the model - the failure this
+      // is most likely to have, and the one that looks like success.
+      const distinct = new Set(made.filter((m) => m.image).map((m) => m.image)).size;
+
+      const eT = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+      const okT = made.filter((m) => m.image).length;
+      const htmlT =
+        '<!doctype html><html lang=en><head><meta charset=utf-8>' +
+        '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+        "<title>" + eT(what) + "</title><style>" +
+        "*{margin:0;padding:0;box-sizing:border-box}" +
+        "body{background:#0b0d12;color:#e9edf5;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px}" +
+        "h1{font-size:1.15rem;font-weight:800}" +
+        ".top{color:#64748b;font-size:.8rem;margin:.3rem 0 1rem}" +
+        ".g{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}" +
+        "figure{background:#141a28;border:1px solid rgba(148,163,184,.16);border-radius:10px;overflow:hidden}" +
+        "figure img{width:100%;aspect-ratio:1;object-fit:contain;display:block;background:#fff}" +
+        "figcaption{padding:.35rem .5rem;font-size:.72rem;color:#94a3b8}" +
+        ".gone{padding:2.6rem .5rem;text-align:center;color:#fca5a5;font-size:.7rem}" +
+        "</style></head><body><h1>" + eT(what) + "</h1><p class=top>" +
+        okT + " of " + made.length + " &middot; " + distinct + " different &middot; $" +
+        (Math.round(spend * 10000) / 10000) + "</p><div class=g>" +
+        made.map((m) =>
+          "<figure>" +
+          (m.image ? '<a href="' + eT(m.image) + '" target=_blank><img loading=lazy src="' +
+                     eT(m.image) + '"></a>'
+                   : '<div class=gone>' + eT(m.why || "—") + "</div>") +
+          "<figcaption>seed " + m.seed + "</figcaption></figure>").join("") +
+        "</div></body></html>";
+      const pageT = "twenty/" + tatSlug(what).slice(0, 60);
+      await env.AURA_KV.put("page:auras.guide/" + pageT, htmlT);
+      return { cmd: "TWENTY", payload: { ok: true, what, model, n: made.length,
+        url: "https://auras.guide/" + pageT,
+        drew: okT, distinct, cost_usd: Math.round(spend * 10000) / 10000,
+        urls: made.map((m) => "seed " + m.seed + "  ->  " + (m.image || "FAILED: " + m.why)),
+        note: distinct < okT
+          ? "WARNING: " + (okT - distinct) + " tiles are the same picture - the seed is not reaching the model."
+          : "Every tile is the same sentence with a different seed. Pick one, then STYLES it." } };
     }
 
     // ══ SEEIT — CREATE, STYLE AND EVOLVE, EVERY MODEL, ONE PAGE ═════════════════════════════
@@ -53107,7 +53189,12 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   const refs = Array.isArray(opts.refs) ? opts.refs.filter(u => typeof u === "string" && u).slice(0, 6) : [];
   let cacheKey = null;
   try {
-    const sig = model + "|" + quality + "|1024x1024|" + refs.join("|") + "|" + p;
+    // ══ A SEED IS PART OF WHAT WAS ASKED FOR ═════════════════════════════════════════════════
+    // Twenty variations of one design are twenty calls with the SAME prompt and different seeds.
+    // Without the seed in this key they would all be one cache entry and the caller would get the
+    // same picture twenty times, reported as twenty successes.
+    const sig = model + "|" + quality + "|1024x1024|" + refs.join("|") + "|" +
+                (opts.seed != null ? "seed" + opts.seed + "|" : "") + p;
     const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(sig));
     cacheKey = "imgcache:" + Array.from(new Uint8Array(buf)).slice(0, 12).map((x) => x.toString(16).padStart(2, "0")).join("");
     const hitRaw = await env.AURA_KV.get(cacheKey);
@@ -53168,6 +53255,11 @@ async function auraGenerateImage(prompt, env, opts = {}) {
         form.append("prompt", p);
         form.append("width", "1024");
         form.append("height", "1024");
+        // Documented on Cloudflare's model page as `seed (integer) - Seed for reproducibility`.
+        // It is how twenty different dragons come out of one sentence: the words stay fixed and
+        // the noise the model starts from changes. No authored variation list, no second model
+        // call, and it works the same on a rose or a skull.
+        if (opts.seed != null) form.append("seed", String(opts.seed));
         if (isEdit) {
           const cfRefs = (Array.isArray(opts.refs) ? opts.refs.filter(Boolean) : []).slice(0, 4);
           let attached = 0;
@@ -53697,7 +53789,7 @@ async function showIt(subject, env, opts = {}) {
   // discarded here and got whatever the KV pin said, which means a "comparison" would have run the
   // same model three times and looked like a result.
   // An explicit list is the right shape, so the fix is to list it, not to spread opts.
-  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null, refs, model: opts.model || null, edit: opts.edit === true ? true : undefined });
+  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null, refs, model: opts.model || null, edit: opts.edit === true ? true : undefined, seed: opts.seed ?? null });
   if (!result || !result.ok) return { ok: false, error: result ? result.error : "generation failed" };
   const record = (opts.subject || want).trim();
   // ══ SAY WHAT DREW IT ═══════════════════════════════════════════════════════════════════════

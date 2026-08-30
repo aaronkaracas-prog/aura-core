@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.48.0-2026-08-30-clickable-library";
+const BUILD = "aura-core-v9.49.0-2026-08-30-no-dead-links";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5563,13 +5563,25 @@ async function processCommand(line, env, isOp) {
             .find((k) => tatSlug(k) === tatSlug(lf))]) || null;
           return n + (sub && sub.length ? sub.length : 1);
         }, 0);
+        // ══ ONLY LINK TO A PAGE THAT EXISTS ═════════════════════════════════════════════════
+        // MEASURED: every row linked to /types/<slug> whether or not TYPES had ever been run for
+        // it, so Animals & Pets - 81 tiles drawn - led to a blank page. A dead link on an index is
+        // worse than no link: it reads as "this is broken" rather than "this has not been made".
+        const hasSheet = !!(await env.AURA_KV.get("page:auras.guide/types/" + tatSlug(c))
+          .catch(() => null));
         let signed = null;
         try {
           const raw = await env.AURA_KV.get("signed:" + tatSlug(c));
           if (raw) { try { signed = JSON.parse(raw).at; } catch { signed = raw; } }
         } catch {}
         allThings += things; allDrawn += drawn;
-        rows.push({ category: c, things, drawn, signed, kinds: leaves });
+        // Which kinds have a poses sheet, so those links are live and the rest are plain text.
+        const kindSheets = {};
+        for (const k of leaves.slice(0, 6)) {
+          kindSheets[k] = !!(await env.AURA_KV.get("page:auras.guide/poses/" + tatSlug(k))
+            .catch(() => null));
+        }
+        rows.push({ category: c, things, drawn, signed, kinds: leaves, hasSheet, kindSheets });
       }
 
       const eL = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (x) =>
@@ -5598,16 +5610,21 @@ async function processCommand(line, env, isOp) {
           // ══ ESCAPE THE PARTS, NOT THE JOINED STRING ═══════════════════════════════════
           // This escaped AFTER inserting the separator, so the & in &middot; became &amp; and the
           // entity rendered as literal text. Escape each name, then join with the entity.
-          "<tr><td>" + '<a href="/types/' + eL(tatSlug(r.category)) + '">' + eL(r.category) +
-          "</a><div class=ks>" +
-          r.kinds.slice(0, 6).map((k) =>
-            '<a href="/poses/' + eL(tatSlug(k)) + '">' + eL(k) + "</a>").join(" &middot; ") +
+          "<tr><td>" +
+          (r.hasSheet ? '<a href="/types/' + eL(tatSlug(r.category)) + '">' + eL(r.category) + "</a>"
+                      : eL(r.category)) +
+          "<div class=ks>" +
+          r.kinds.slice(0, 6).map((k) => r.kindSheets[k]
+            ? '<a href="/poses/' + eL(tatSlug(k)) + '">' + eL(k) + "</a>"
+            : eL(k)).join(" &middot; ") +
           (r.kinds.length > 6 ? " &hellip;" : "") +
           "</div></td>" +
           '<td class="' + (r.drawn === 0 ? "none" : r.drawn >= r.things ? "full" : "part") + '">' +
           r.drawn + " / " + r.things + "</td>" +
           "<td class=sg>" + (r.signed ? eL(r.signed) : "") + "</td>" +
-          '<td><a href="/types/' + eL(tatSlug(r.category)) + '">types</a></td></tr>').join("") +
+          "<td>" + (r.hasSheet
+          ? '<a href="/types/' + eL(tatSlug(r.category)) + '">types</a>'
+          : '<span class=none>not built</span>') + "</td></tr>").join("") +
         "</table></body></html>";
       await env.AURA_KV.put("page:auras.guide/library", htmlL);
       return { cmd: "LIBRARY", payload: { ok: true, url: "https://auras.guide/library",

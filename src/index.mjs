@@ -86,7 +86,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.36.0-2026-08-30-black-forest-direct";
+const BUILD = "aura-core-v9.37.0-2026-08-30-one-prompt-every-model";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5505,6 +5505,123 @@ async function processCommand(line, env, isOp) {
       const at = new Date().toISOString().slice(0, 10);
       await env.AURA_KV.put("signed:" + tatSlug(arg), at);
       return { cmd: "SIGN", payload: { ok: true, kind: arg, signed: at } };
+    }
+
+    // ══ BAKEOFF — ONE PROMPT, EVERY MODEL, ONE SHEET ════════════════════════════════════════
+    // Comparing models by running them on different days, on different subjects, through different
+    // KV pins is how a whole session ends without an answer. A pin also has to PROPAGATE, and a run
+    // started too soon reads the old value and quietly repeats the previous model - which is
+    // exactly what happened twice.
+    //
+    // So this names the model PER CALL. `opts.model` beats the pin and beats the policy, nothing is
+    // written to KV, nothing has to be restored, and no run can be reading a stale value. Every
+    // model gets the identical prompt and the identical reference in the same minute.
+    //
+    // BAKEOFF <image-id>                 - style transfer, one card per model
+    // BAKEOFF <image-id> --style cartoon - a different style
+    // BAKEOFF --draw <prompt>            - text-to-image instead, no reference
+    case "BAKEOFF": {
+      const raw = String(rest || "").trim();
+      const drawM = raw.match(/^--draw\s+(.+)$/i);
+      const styleM = raw.match(/--style\s+([a-z0-9 -]+)/i);
+      const wantStyle = styleM ? styleM[1].trim().toLowerCase() : "black and grey realism";
+      const srcId = drawM ? null : raw.replace(/--style\s+[a-z0-9 -]+/i, "").trim();
+      if (!drawM && !srcId) return { cmd: "BAKEOFF", payload: { ok: false,
+        error: "Usage: BAKEOFF <image id>   or   BAKEOFF --draw <prompt>",
+        note: "Same prompt, every model, one page. Models are named per call - no pins, nothing to restore." } };
+
+      // The three in play. Flux-1 is what the catalogue runs on, gpt-image-2 is what every edit has
+      // cost today, Klein is the candidate.
+      const RUNNERS = [
+        ["@cf/black-forest-labs/flux-1-schnell", "Flux-1 schnell", "Cloudflare, the catalogue model"],
+        ["gpt-image-2",                          "gpt-image-2",    "OpenAI, what edits cost today"],
+        ["flux-2-klein-9b-preview",              "Klein 9B",       "Black Forest, the candidate"],
+      ];
+
+      let prompt, refs = [], src = null;
+      if (drawM) {
+        prompt = drawM[1].trim();
+      } else {
+        const card = TAT_STYLE_CARDS.find((c) => c[0].toLowerCase() === wantStyle ||
+                                                 c[0].toLowerCase().includes(wantStyle));
+        if (!card) return { cmd: "BAKEOFF", payload: { ok: false, error: "NO_SUCH_STYLE",
+          asked: wantStyle, styles: TAT_STYLE_CARDS.map((c) => c[0]) } };
+        src = "https://" + (await imageHost(env)) + "/image/" + srcId;
+        prompt = TAT_SOURCE_LOCK + card[1];
+        refs = [src];
+      }
+
+      const runs = [];
+      for (const [model, label, why] of RUNNERS) {
+        const one = { model, label, why, image: null, error: null, cost_usd: null, ms: null, cached: false };
+        const t0 = Date.now();
+        try {
+          // Flux-1 has no edit endpoint at all - a reference is dropped in silence and it redraws
+          // from the text. Sending one anyway would compare a redraw against two edits and call it
+          // a style test. It gets the prompt without the reference, and the sheet says so.
+          const isCf = model.startsWith("@cf/");
+          const r = await showIt(prompt, env, {
+            source: refs.length && !isCf ? "style_transfer" : "bakeoff",
+            refs: (refs.length && !isCf) ? refs : undefined,
+            model, raw: true, subject: label + " bakeoff",
+          });
+          one.ms = Date.now() - t0;
+          if (r?.ok) { one.image = r.image_url || null; one.cost_usd = r.cost_usd;
+                       one.cached = !!r.cached; one.no_ref = isCf && refs.length > 0; }
+          else one.error = String(r?.error || "no image returned").slice(0, 150);
+        } catch (e) { one.ms = Date.now() - t0; one.error = String(e && e.message || e).slice(0, 150); }
+        runs.push(one);
+      }
+
+      const escB = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+      const money = (n) => n == null ? "not priced" : "$" + (Math.round(n * 100000) / 100000);
+      const htmlB =
+        '<!doctype html><html lang=en><head><meta charset=utf-8>' +
+        '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+        "<title>bakeoff</title><style>" +
+        "*{margin:0;padding:0;box-sizing:border-box}" +
+        "body{background:#0b0d12;color:#e9edf5;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px}" +
+        "h1{font-size:1.15rem;font-weight:800}" +
+        ".top{color:#64748b;font-size:.8rem;margin:.3rem 0 1rem}" +
+        ".g{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}" +
+        "figure{background:#141a28;border:1px solid rgba(148,163,184,.16);border-radius:12px;overflow:hidden}" +
+        "figure img{width:100%;aspect-ratio:1;object-fit:contain;display:block;background:#fff}" +
+        "figcaption{padding:.55rem .65rem}" +
+        "figcaption b{display:block;font-size:.95rem}" +
+        "figcaption .w{display:block;color:#64748b;font-size:.75rem}" +
+        "figcaption .n{display:block;font-size:.8rem;margin-top:.35rem}" +
+        ".src{border-color:rgba(251,191,36,.5)}" +
+        ".warn{color:#fbbf24;font-size:.72rem;display:block;margin-top:.2rem}" +
+        ".gone{padding:3rem .6rem;text-align:center;color:#fca5a5;font-size:.72rem}" +
+        "</style></head><body><h1>same prompt, every model</h1><p class=top>" +
+        (drawM ? "text to image" : escB(wantStyle) + " &middot; " + escB(srcId)) +
+        "</p><div class=g>" +
+        (src ? '<figure class=src><a href="' + escB(src) + '" target=_blank><img src="' + escB(src) +
+               '"></a><figcaption><b>the piece</b><span class=w>what every model was given</span>' +
+               "</figcaption></figure>" : "") +
+        runs.map((r) =>
+          "<figure>" +
+          (r.image ? '<a href="' + escB(r.image) + '" target=_blank><img loading=lazy src="' +
+                     escB(r.image) + '"></a>'
+                   : '<div class=gone>' + escB(r.error || "did not draw") + "</div>") +
+          "<figcaption><b>" + escB(r.label) + "</b><span class=w>" + escB(r.why) + "</span>" +
+          "<span class=n>" + money(r.cost_usd) + " &middot; " +
+          (r.ms == null ? "?" : (Math.round(r.ms / 100) / 10) + "s") +
+          (r.cached ? " &middot; from cache" : "") + "</span>" +
+          (r.no_ref ? '<span class=warn>no reference - this model cannot edit, so it redrew from the text</span>' : "") +
+          "</figcaption></figure>").join("") +
+        "</div></body></html>";
+      const pageB = "bakeoff/" + (srcId || "draw-" + Date.now().toString(36));
+      await env.AURA_KV.put("page:auras.guide/" + pageB, htmlB);
+      return { cmd: "BAKEOFF", payload: { ok: true,
+        url: "https://auras.guide/" + pageB,
+        style: drawM ? null : wantStyle, source: srcId || null, prompt: prompt.slice(0, 200),
+        results: runs.map((r) => ({ label: r.label, model: r.model, image: r.image,
+          cost_usd: r.cost_usd, seconds: r.ms == null ? null : Math.round(r.ms / 100) / 10,
+          cached: r.cached, no_reference: !!r.no_ref, error: r.error })),
+        note: "Model named per call - no KV pin, nothing to restore, no stale read. " +
+              "Flux-1 has no edit endpoint, so on a style run it gets the prompt without the reference." } };
     }
 
     // ══ STYLES — THE SAME PIECE IN EVERY TATTOO LANGUAGE ════════════════════════════════════
@@ -53309,7 +53426,12 @@ async function showIt(subject, env, opts = {}) {
   const prompt = refs.length
     ? (opts.subject ? `${opts.subject.trim()}. ${want}` : want)
     : (opts.raw ? want : `${want}. High quality, visually striking, well-composed, detailed.`);
-  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null, refs });
+  // ══ THE OPTIONS ARE LISTED, SO ANYTHING UNLISTED IS SILENTLY DROPPED ═══════════════════════
+  // `model` was not in this object. Callers passing one - the 8007 retry, the bakeoff - had it
+  // discarded here and got whatever the KV pin said, which means a "comparison" would have run the
+  // same model three times and looked like a result.
+  // An explicit list is the right shape, so the fix is to list it, not to spread opts.
+  const result = await auraGenerateImage(prompt, env, { source: opts.source || "show_it", entity: opts.entity || null, session: opts.session || null, host: opts.host || null, refs, model: opts.model || null, edit: opts.edit === true ? true : undefined });
   if (!result || !result.ok) return { ok: false, error: result ? result.error : "generation failed" };
   const record = (opts.subject || want).trim();
   // ══ SAY WHAT DREW IT ═══════════════════════════════════════════════════════════════════════

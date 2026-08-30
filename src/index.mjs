@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.46.0-2026-08-30-a-page-is-not-a-catalogue";
+const BUILD = "aura-core-v9.47.0-2026-08-30-one-page-for-all-of-it";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5530,6 +5530,87 @@ async function processCommand(line, env, isOp) {
         note: types && drawn != null && drawn < types
           ? "Signed, but " + (types - drawn) + " of " + types + " have no tile yet."
           : "Signed." } };
+    }
+
+    // ══ LIBRARY — ONE PAGE THAT SHOWS THE WHOLE CATALOGUE ═══════════════════════════════════
+    // TYPES, POSES and TWENTY each write their own sheet, which is right for judging one thing and
+    // useless for judging 44 categories. Without an index a full run produces ~4,800 images and no
+    // way to walk them - the review becomes the bottleneck, not the drawing.
+    //
+    // This reads the tree and the records those commands write, so it reports what is ACTUALLY
+    // drawn rather than what was asked for. A category that failed halfway shows as half drawn.
+    case "LIBRARY": {
+      const tree = await env.AURA_KV.get("card:tree", "json").catch(() => null);
+      if (!tree) return { cmd: "LIBRARY", payload: { ok: false, error: "NO_TREE" } };
+      const cats = Object.keys(tree.subjects || {});
+      const rows = [];
+      let allThings = 0, allDrawn = 0;
+      for (const c of cats) {
+        const leaves = tree.subjects[c] || [];
+        let drawn = 0;
+        for (const lf of leaves) {
+          // A kind with its own leaves counts those instead - Dogs is 25 breeds, not one tile.
+          const sub = (tree.specific && tree.specific[Object.keys(tree.specific)
+            .find((k) => tatSlug(k) === tatSlug(lf))]) || null;
+          if (sub && sub.length) {
+            for (const s2 of sub) {
+              if (await env.AURA_KV.get("face:v1:" + tatSlug(s2)).catch(() => null)) drawn++;
+            }
+          } else if (await env.AURA_KV.get("face:v1:" + tatSlug(lf)).catch(() => null)) drawn++;
+        }
+        const things = leaves.reduce((n, lf) => {
+          const sub = (tree.specific && tree.specific[Object.keys(tree.specific)
+            .find((k) => tatSlug(k) === tatSlug(lf))]) || null;
+          return n + (sub && sub.length ? sub.length : 1);
+        }, 0);
+        let signed = null;
+        try {
+          const raw = await env.AURA_KV.get("signed:" + tatSlug(c));
+          if (raw) { try { signed = JSON.parse(raw).at; } catch { signed = raw; } }
+        } catch {}
+        allThings += things; allDrawn += drawn;
+        rows.push({ category: c, things, drawn, signed, kinds: leaves });
+      }
+
+      const eL = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (x) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[x]));
+      const htmlL =
+        '<!doctype html><html lang=en><head><meta charset=utf-8>' +
+        '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+        "<title>library</title><style>" +
+        "*{margin:0;padding:0;box-sizing:border-box}" +
+        "body{background:#0b0d12;color:#e9edf5;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px}" +
+        "h1{font-size:1.2rem;font-weight:800}" +
+        ".top{color:#64748b;font-size:.82rem;margin:.3rem 0 1rem}" +
+        "table{width:100%;border-collapse:collapse;font-size:.85rem}" +
+        "th{text-align:left;color:#64748b;font-weight:600;font-size:.72rem;text-transform:uppercase;padding:.4rem .5rem;border-bottom:1px solid rgba(148,163,184,.2)}" +
+        "td{padding:.45rem .5rem;border-bottom:1px solid rgba(148,163,184,.09);vertical-align:top}" +
+        "td a{color:#93c5fd;text-decoration:none}td a:hover{text-decoration:underline}" +
+        ".full{color:#4ade80}.part{color:#fbbf24}.none{color:#64748b}" +
+        ".sg{color:#4ade80;font-size:.72rem}" +
+        ".ks{color:#64748b;font-size:.72rem}" +
+        "</style></head><body><h1>the library</h1><p class=top>" +
+        allDrawn + " of " + allThings + " drawn &middot; " + rows.length + " categories &middot; " +
+        rows.filter((r) => r.signed).length + " signed</p>" +
+        "<table><tr><th>category</th><th>drawn</th><th>signed</th><th>sheet</th></tr>" +
+        rows.map((r) =>
+          "<tr><td>" + eL(r.category) + '<div class=ks>' +
+          eL(r.kinds.slice(0, 6).join(" &middot; ")) + (r.kinds.length > 6 ? " &hellip;" : "") +
+          "</div></td>" +
+          '<td class="' + (r.drawn === 0 ? "none" : r.drawn >= r.things ? "full" : "part") + '">' +
+          r.drawn + " / " + r.things + "</td>" +
+          "<td class=sg>" + (r.signed ? eL(r.signed) : "") + "</td>" +
+          '<td><a href="/types/' + eL(tatSlug(r.category)) + '">types</a></td></tr>').join("") +
+        "</table></body></html>";
+      await env.AURA_KV.put("page:auras.guide/library", htmlL);
+      return { cmd: "LIBRARY", payload: { ok: true, url: "https://auras.guide/library",
+        categories: rows.length, things: allThings, drawn: allDrawn,
+        signed: rows.filter((r) => r.signed).length,
+        empty: rows.filter((r) => r.drawn === 0).map((r) => r.category),
+        partial: rows.filter((r) => r.drawn > 0 && r.drawn < r.things)
+          .map((r) => r.category + " " + r.drawn + "/" + r.things),
+        note: "Counted from the tiles that exist, not from what was asked for. " +
+              "A category that failed halfway reads as half drawn." } };
     }
 
     // ══ TYPES — EVERY KIND UNDER A CATEGORY, IN THE GOOD LOOK ═══════════════════════════════

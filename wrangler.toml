@@ -31,7 +31,19 @@ index_name = "aura-vectors"
 binding = "AI"
 
 [triggers]
-crons = ["*/1 * * * *"]
+# ══ EVERY MINUTE WAS COSTING MORE THAN THE CATALOGUE ═════════════════════════════════════════
+# MEASURED on the Cloudflare bill, 23 days: 670,500 neurons of image work cost $3.97, and the
+# IDLE system cost nearly as much again - $2.06 of Dynamic Workers and $1.00 of KV reads across
+# 11.2 MILLION reads. `wrangler tail` on an untouched system showed four things firing every
+# minute: this cron, two PublicEntry.ping calls two seconds after it, and a Durable Object alarm.
+# Nothing errored. Nothing was queued - AIMARGIN reports schedule:due_queue and workflow:due_queue
+# both at 0. It was draining empty queues 43,200 times a month.
+#
+# FREQUENCY, NOT EXISTENCE. drainSchedule SENDS EMAIL and drainWorkflows RUNS COMMANDS - the
+# machinery is what makes anything scheduled happen at all, so removing the trigger would mean a
+# future scheduled item silently never fires. Fifteen minutes keeps every capability and removes
+# 93% of the invocations. One line back if minute precision is ever needed.
+crons = ["*/15 * * * *"]
 
 [[services]]
 binding = "AURA_OPS"

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.54.0-2026-08-31-a-name-needs-its-parent";
+const BUILD = "aura-core-v9.55.0-2026-08-31-one-page-any-mix";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5582,29 +5582,64 @@ async function processCommand(line, env, isOp) {
     // A button that mutated data would need a public endpoint on the doorway, and the doorway
     // deliberately holds nothing and can call only five named methods - adding a sixth so a review
     // page can delete images is exactly the change that file warns against.
+    // ══ ONE PAGE, WHATEVER YOU NAME, IN ANY MIX ═════════════════════════════════════════════
+    // MEASURED, on a human: `REVIEW <category>` took only CATEGORIES, so judging nine KINDS after a
+    // re-run meant nine separate /types/ pages - and Aaron tiled four Chrome windows side by side to
+    // get four of them into a single screenshot. His words: "that's ridiculous."
+    // He can send a limited number of images per session, so the number of SCREENS a check needs is
+    // a real budget, not a convenience. A check that costs four windows does not get run twice.
+    //   REVIEW                                        every category
+    //   REVIEW Animals & Pets                         one category
+    //   REVIEW Muscle Car, Motorcycle, Zodiac         any mix of kinds and categories, one page
+    // A KIND is now a first-class target, so the thing a TYPES run just drew is the thing REVIEW can
+    // show. Names are matched by slug, so punctuation and case do not matter.
     case "REVIEW": {
       const only = String(rest || "").trim();
       const tree = await env.AURA_KV.get("card:tree", "json").catch(() => null);
       if (!tree) return { cmd: "REVIEW", payload: { ok: false, error: "NO_TREE" } };
       const groups = [];
       let shown = 0;
-      const cats = Object.keys(tree.subjects || {})
-        .filter((c) => !only || tatSlug(c) === tatSlug(only));
-      for (const c of cats) {
-        const items = [];
-        for (const lf of (tree.subjects[c] || [])) {
-          const own = tree.specific && tree.specific[Object.keys(tree.specific)
-            .find((k) => tatSlug(k) === tatSlug(lf)) || ""];
-          const list = (own && own.length) ? own : [lf];
-          for (const nm of list) {
-            const raw = await env.AURA_KV.get("face:v1:" + tatSlug(nm)).catch(() => null);
-            if (!raw) continue;
-            let rec = null; try { rec = JSON.parse(raw); } catch {}
-            const ru = tatFaceUrl(rec);
-            if (ru) { items.push({ name: nm, url: ru }); shown++; }
-          }
+      const wanted = only ? only.split(",").map((x) => x.trim()).filter(Boolean) : [];
+      const missed = [];
+
+      // Resolve each name to a block of leaves. A category expands its kinds (a doorway becomes its
+      // breeds); a kind expands its own leaves; a kind with no leaves is one tile.
+      const blocksR = [];
+      if (!wanted.length) {
+        for (const c of Object.keys(tree.subjects || {})) blocksR.push({ label: c, cat: c });
+      } else {
+        for (const w of wanted) {
+          const cKey = Object.keys(tree.subjects || {}).find((k) => tatSlug(k) === tatSlug(w));
+          if (cKey) { blocksR.push({ label: cKey, cat: cKey }); continue; }
+          const kKeyR = Object.keys(tree.specific || {}).find((k) => tatSlug(k) === tatSlug(w));
+          if (kKeyR) { blocksR.push({ label: kKeyR, leaves: tree.specific[kKeyR] || [] }); continue; }
+          // A bare leaf somewhere in the tree is still worth showing on its own.
+          const bare = Object.values(tree.subjects || {}).flat()
+            .find((k) => tatSlug(k) === tatSlug(w));
+          if (bare) { blocksR.push({ label: bare, leaves: [bare] }); continue; }
+          // Named and not found is reported, never silently dropped - a typo that returns a page
+          // with one section missing reads as "those tiles do not exist".
+          missed.push(w);
         }
-        if (items.length) groups.push({ category: c, items });
+      }
+
+      for (const blk of blocksR) {
+        const items = [];
+        const leafList = blk.cat
+          ? (tree.subjects[blk.cat] || []).flatMap((lf) => {
+              const own = tree.specific && tree.specific[Object.keys(tree.specific)
+                .find((k) => tatSlug(k) === tatSlug(lf)) || ""];
+              return (own && own.length) ? own : [lf];
+            })
+          : (blk.leaves || []);
+        for (const nm of leafList) {
+          const raw = await env.AURA_KV.get("face:v1:" + tatSlug(nm)).catch(() => null);
+          if (!raw) continue;
+          let rec = null; try { rec = JSON.parse(raw); } catch {}
+          const ru = tatFaceUrl(rec);
+          if (ru) { items.push({ name: nm, url: ru }); shown++; }
+        }
+        if (items.length) groups.push({ category: blk.label, items });
       }
       const eR = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (x) =>
         ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[x]));
@@ -5689,10 +5724,17 @@ async function processCommand(line, env, isOp) {
         "Array.prototype.forEach.call(document.querySelectorAll('figure.bad'),function(f){f.classList.remove('bad')});" +
         "document.body.classList.remove('only');$('only').classList.remove('on');};" +
         "})();</" + "script></body></html>";
-      const pageR = "review" + (only ? "/" + tatSlug(only) : "");
+      // One name keeps its own address, so `REVIEW Animals & Pets` still lands on the same page and
+      // its saved marks survive. A multi-name request gets a stable address derived from the names,
+      // so re-running the same set returns to the same marks rather than a fresh list.
+      const pageR = "review" + (!only ? ""
+        : wanted.length === 1 ? "/" + tatSlug(only)
+        : "/set-" + tatSlug(wanted.map((w) => tatSlug(w).slice(0, 6)).join("-")).slice(0, 60));
       await env.AURA_KV.put("page:auras.guide/" + pageR, htmlR);
       return { cmd: "REVIEW", payload: { ok: true, url: "https://auras.guide/" + pageR,
         tiles: shown, categories: groups.length,
+        showing: groups.map((g) => g.category + " " + g.items.length),
+        not_found: missed.length ? missed : undefined,
         note: "Tap any tile that is wrong. Marks survive a reload, so the sweep can be done in " +
               "sittings. `flagged only` shows just what you marked - that is how a hunch becomes " +
               "a rule. `copy` takes the REDO command in one tap." } };

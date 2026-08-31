@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.53.0-2026-08-30-both-shapes-one-reader";
+const BUILD = "aura-core-v9.54.0-2026-08-31-a-name-needs-its-parent";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5544,10 +5544,16 @@ async function processCommand(line, env, isOp) {
       const model = "@cf/black-forest-labs/flux-2-klein-9b";
       const out = [];
       for (const nm of names) {
-        const one = { name: nm, image: null, why: null };
+        const one = { name: nm, image: null, why: null, drew: null };
         try {
           await env.AURA_KV.delete("face:v1:" + tatSlug(nm)).catch(() => {});
-          const r = await showIt(nm + ". Full colour, highly detailed, on a plain white background.",
+          // A tile tapped as wrong is very often wrong BECAUSE the name was ambiguous, so a redraw
+          // with the identical prompt is the one thing least likely to help. Same dial as TYPES.
+          const ctxR = await tatContextFor(env, nm);
+          const askR = nm + (ctxR ? ", " + ctxR : "") +
+            ". Full colour, highly detailed, on a plain white background.";
+          one.drew = askR;
+          const r = await showIt(askR,
             env, { model, raw: true, source: "redo", subject: nm,
                    seed: Math.floor(Math.random() * 900000) + 1000 });
           if (r?.ok) {
@@ -5561,6 +5567,9 @@ async function processCommand(line, env, isOp) {
       }
       return { cmd: "REDO", payload: { ok: true, count: out.length,
         results: out.map((o) => o.name + "  ->  " + (o.image || "FAILED: " + o.why)),
+        // What it was actually asked for. When a redraw comes back wrong again, this is the first
+        // thing to read - and it is the difference between a bad model and a bad prompt.
+        asked: out.map((o) => o.name + "  ::  " + (o.drew || "-")),
         note: "Drawn with a fresh seed, so it is a new picture and not the cached one. " +
               "Re-run REVIEW to see them in place." } };
     }
@@ -5851,10 +5860,13 @@ async function processCommand(line, env, isOp) {
       }
       const made = [];
       let spend = 0;
+      // TYPES already knows the parent - it is the thing being drawn. One read, not one per leaf.
+      const ctxY = (await env.AURA_KV.get("context:" + tatSlug(kKey)).catch(() => null)) || null;
+      const ctxYs = ctxY && String(ctxY).trim() ? String(ctxY).trim() : null;
       for (const leaf of things) {
         const one = { type: leaf, image: null, why: null, cost_usd: null };
         try {
-          const r = await showIt(leaf +
+          const r = await showIt(leaf + (ctxYs ? ", " + ctxYs : "") +
             ". Full colour, highly detailed, on a plain white background.",
             env, { model, raw: true, source: "types", subject: leaf });
           if (r?.ok) { one.image = r.image_url; one.cost_usd = r.cost_usd; one.cached = !!r.cached;
@@ -5912,6 +5924,11 @@ async function processCommand(line, env, isOp) {
       return { cmd: "TYPES", payload: { ok: true, kind: kKey, model,
         url: "https://auras.guide/" + pageY,
         drew: okY, of: made.length, cost_usd: Math.round(spend * 10000) / 10000,
+        context: ctxYs,
+        context_note: ctxYs
+          ? "Every prompt carried this, so a name like Charger cannot collapse to the wrong thing."
+          : "No context set for this kind. If a name here is ambiguous: SETKV context:" +
+            tatSlug(kKey) + " \"a <what it is>\"  then re-run.",
         doorways: doorways.length ? doorways : undefined,
         doorway_note: doorways.length
           ? "These have their own leaves and were NOT drawn - a plural tile is not a subject. " +
@@ -53221,6 +53238,41 @@ function tatBuildAsk(subjectLabel, order, intent, extras, leafSay) {
 // ══ THE TREE ALREADY KNOWS THE PARENT. LOOK IT UP. ═══════════════════════════════════════
 // Nothing needs to pass this in, which matters: a hand-typed `FACE bengal` must resolve the same
 // way the workflow does, or the review pass and the product disagree.
+// ══ A LEAF NAME ALONE IS THE WRONG WORD, AND TYPES NEVER KNEW THAT ═══════════════════════════
+// The lesson is already in this file, above `tatLeafProfile`: "Bengal" alone resolves to a tiger,
+// so FACE passes the parent in. TYPES never did - its prompt has always been the bare leaf plus a
+// framing clause. MEASURED on the live catalogue, 2026-08-30:
+//   Charger    -> a black electronic phone charger      Cancer  -> a brain
+//   Challenger -> a person in a racing suit             Leo     -> a man in a blue shirt
+//   Bobber     -> a metal cylinder                      Notes   -> an orange lily
+//   Vintage    -> a man's face                          Tribal  -> a Native American man
+// Nineteen tiles in five categories, one cause: the model was handed a word with no parent.
+//
+// THE CONTEXT IS A KV DIAL, NOT A CONSTANT, and that is what makes this affordable. The prompt is
+// part of the image cache key, so changing it for every leaf would redraw all 471 tiles at 1.5c
+// each. A context set only where a name is ambiguous means the tiles that are already right keep
+// their exact prompt, hit the cache, and cost nothing. Same shape as `frame:*` - one dial per
+// kind, editable without a deploy.
+//   SETKV context:muscle-car "a muscle car"     ->  "Charger, a muscle car. Full colour, ..."
+// Looks under `specific` first, then the categories, so it works for a breed and for a bare leaf.
+async function tatContextFor(env, leaf) {
+  try {
+    const t = await env.AURA_KV.get("card:tree", "json");
+    if (!t) return null;
+    const n = tatSlug(leaf);
+    let owner = null;
+    for (const [kind, leaves] of Object.entries(t.specific || {}))
+      if ((leaves || []).some((x) => tatSlug(x) === n)) { owner = kind; break; }
+    if (!owner)
+      for (const [cat, kinds] of Object.entries(t.subjects || {}))
+        if ((kinds || []).some((x) => tatSlug(x) === n)) { owner = cat; break; }
+    if (!owner) return null;
+    const c = await env.AURA_KV.get("context:" + tatSlug(owner)).catch(() => null);
+    return c && String(c).trim() ? String(c).trim() : null;
+  } catch {}
+  return null;
+}
+
 async function tatParentOf(env, leaf) {
   try {
     const t = await env.AURA_KV.get("card:tree", "json");

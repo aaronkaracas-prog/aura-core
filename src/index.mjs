@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.52.0-2026-08-30-tap-the-wrong-ones";
+const BUILD = "aura-core-v9.53.0-2026-08-30-both-shapes-one-reader";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5591,7 +5591,8 @@ async function processCommand(line, env, isOp) {
             const raw = await env.AURA_KV.get("face:v1:" + tatSlug(nm)).catch(() => null);
             if (!raw) continue;
             let rec = null; try { rec = JSON.parse(raw); } catch {}
-            if (rec && rec.url) { items.push({ name: nm, url: rec.url }); shown++; }
+            const ru = tatFaceUrl(rec);
+            if (ru) { items.push({ name: nm, url: ru }); shown++; }
           }
         }
         if (items.length) groups.push({ category: c, items });
@@ -5614,6 +5615,16 @@ async function processCommand(line, env, isOp) {
         "#bar{position:fixed;left:0;right:0;bottom:0;background:#0f1626;border-top:1px solid rgba(148,163,184,.25);padding:10px 14px}" +
         "#bar b{color:#fca5a5}" +
         "#cmd{width:100%;margin-top:6px;background:#0b0d12;color:#e9edf5;border:1px solid rgba(148,163,184,.3);border-radius:6px;padding:7px;font:12px ui-monospace,monospace}" +
+        ".btns{float:right;display:flex;gap:6px}" +
+        ".btns button{background:#1e293b;color:#e9edf5;border:1px solid rgba(148,163,184,.3);border-radius:6px;padding:4px 10px;font-size:.75rem;cursor:pointer}" +
+        ".btns button.on{background:#b45309;border-color:#b45309}" +
+        // ══ FLAGGED-ONLY IS A CSS CLASS, NOT A REBUILD ═══════════════════════════════════
+        // Rebuilding the grid to filter it would drop the scroll position and re-request every
+        // image. One class on <body> hides what is not marked; the headings collapse with the
+        // :not(:has(...)) rule so a category with nothing flagged does not leave a bare title.
+        "body.only figure:not(.bad){display:none}" +
+        "body.only h2:not(:has(+ .g figure.bad)){display:none}" +
+        "body.only .g:not(:has(figure.bad)){display:none}" +
         "</style></head><body><h1>review</h1><p class=top>" + shown +
         " tiles &middot; tap any that is wrong &middot; the command appears at the bottom</p>" +
         groups.map((g) => "<h2>" + eR(g.category) + "</h2><div class=g>" +
@@ -5622,20 +5633,60 @@ async function processCommand(line, env, isOp) {
             '"><figcaption>' + eR(it.name) + "</figcaption></figure>").join("") +
           "</div>").join("") +
         '<div id=bar><span><b id=n>0</b> marked wrong</span>' +
+        '<span class=btns><button id=only>flagged only</button>' +
+        '<button id=copy>copy</button><button id=clear>clear</button></span>' +
         '<input id=cmd readonly value="tap a tile to begin"></div>' +
-        "<script>(function(){var bad=[];" +
-        "document.addEventListener('click',function(e){var fg=e.target.closest('figure');" +
+        // ══ A MARK THAT DIES ON RELOAD IS NOT A SWEEP ═══════════════════════════════════
+        // The marks lived in a bare `var bad=[]`, so a refresh, a back button or a phone locking
+        // itself threw away every tap. Judging 450 tiles in one unbroken sitting on a phone is
+        // not a real ask, so the list is kept in localStorage under the page path - the whole
+        // catalogue and one category get their own lists and cannot overwrite each other.
+        // STILL NO SERVER ROUTE. This is the browser remembering, not the doorway learning to
+        // write. Nothing here fetches anything.
+        "<script>(function(){" +
+        "var K='mtreview:'+location.pathname;var bad=[];" +
+        "try{bad=JSON.parse(localStorage.getItem(K)||'[]')||[];}catch(e){bad=[];}" +
+        "var $=function(i){return document.getElementById(i)};" +
+        "function save(){try{localStorage.setItem(K,JSON.stringify(bad));}catch(e){}}" +
+        "function paint(){" +
+        "$('n').textContent=bad.length;" +
+        "$('cmd').value=bad.length?'RUN \\'REDO '+bad.join(', ')+'\\'':'tap a tile to begin';" +
+        "}" +
+        "Array.prototype.forEach.call(document.querySelectorAll('figure'),function(fg){" +
+        "if(bad.indexOf(fg.getAttribute('data-n'))>=0)fg.classList.add('bad');});" +
+        "paint();" +
+        "document.addEventListener('click',function(e){" +
+        "if(e.target.closest('#bar'))return;" +
+        "var fg=e.target.closest('figure');" +
         "if(!fg)return;var n=fg.getAttribute('data-n');var i=bad.indexOf(n);" +
         "if(i<0){bad.push(n);fg.classList.add('bad');}else{bad.splice(i,1);fg.classList.remove('bad');}" +
-        "document.getElementById('n').textContent=bad.length;" +
-        "document.getElementById('cmd').value=bad.length?'RUN \\'REDO '+bad.join(', ')+'\\'':'tap a tile to begin';" +
-        "});})();</" + "script></body></html>";
+        "save();paint();});" +
+        // The one gesture that turns a hunch into a rule: everything marked, on one screen,
+        // so three annoyances and a real pattern can be told apart.
+        "$('only').onclick=function(){document.body.classList.toggle('only');" +
+        "this.classList.toggle('on');};" +
+        // Selecting text out of a readonly input on a phone is the one place friction is fatal -
+        // this block is the handoff to Grok and it has to leave in one tap.
+        "$('copy').onclick=function(){var v=$('cmd').value;if(!bad.length)return;" +
+        "var b=this;var done=function(){b.textContent='copied';setTimeout(function(){b.textContent='copy'},1200)};" +
+        "if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(v).then(done,function(){" +
+        "$('cmd').removeAttribute('readonly');$('cmd').select();document.execCommand('copy');" +
+        "$('cmd').setAttribute('readonly','readonly');done();});}" +
+        "else{$('cmd').removeAttribute('readonly');$('cmd').select();document.execCommand('copy');" +
+        "$('cmd').setAttribute('readonly','readonly');done();}};" +
+        "$('clear').onclick=function(){if(!bad.length)return;" +
+        "if(!confirm('Clear all '+bad.length+' marks on this page?'))return;" +
+        "bad=[];save();paint();" +
+        "Array.prototype.forEach.call(document.querySelectorAll('figure.bad'),function(f){f.classList.remove('bad')});" +
+        "document.body.classList.remove('only');$('only').classList.remove('on');};" +
+        "})();</" + "script></body></html>";
       const pageR = "review" + (only ? "/" + tatSlug(only) : "");
       await env.AURA_KV.put("page:auras.guide/" + pageR, htmlR);
       return { cmd: "REVIEW", payload: { ok: true, url: "https://auras.guide/" + pageR,
         tiles: shown, categories: groups.length,
-        note: "Tap any tile that is wrong. The box at the bottom builds the REDO command - " +
-              "paste it here and re-run REVIEW." } };
+        note: "Tap any tile that is wrong. Marks survive a reload, so the sweep can be done in " +
+              "sittings. `flagged only` shows just what you marked - that is how a hunch becomes " +
+              "a rule. `copy` takes the REDO command in one tap." } };
     }
 
     // ══ LIBRARY — ONE PAGE THAT SHOWS THE WHOLE CATALOGUE ═══════════════════════════════════
@@ -6942,9 +6993,11 @@ async function processCommand(line, env, isOp) {
           const rows = [];
           for (const leaf of leaves) {
             const fr = await env.AURA_KV.get("face:v1:" + tatSlug(leaf), "json").catch(() => null);
-            const st = fr ? (fr.img ? "drew" : "failed") : "cold";
+            // Either record shape. Reading `fr.img` alone called every TYPES tile a failure.
+            const fu = tatFaceUrl(fr);
+            const st = fr ? (fu ? "drew" : "failed") : "cold";
             total++; if (st === "drew") drewN++; if (st === "cold") coldN++;
-            rows.push({ leaf, img: (fr && fr.img) || null,
+            rows.push({ leaf, url: fu,
               why: fr ? (fr.why || null) : "not run yet" });
           }
           blocks.push({ kind, rows });
@@ -6971,8 +7024,8 @@ async function processCommand(line, env, isOp) {
           "</p>" + blocks.map((b) =>
             "<h2>" + escC(b.kind) + "</h2><div class=g>" + b.rows.map((r) =>
               "<figure>" +
-              (r.img ? '<a href="https://auras.guide/image/' + escC(r.img) + '" target=_blank>' +
-                       '<img loading=lazy src="https://auras.guide/image/' + escC(r.img) + '"></a>'
+              (r.url ? '<a href="' + escC(r.url) + '" target=_blank>' +
+                       '<img loading=lazy src="' + escC(r.url) + '"></a>'
                      : '<div class="' + (r.why === "not run yet" ? "cold" : "gone") + '">' +
                        escC(r.why || "never drew") + "</div>") +
               "<figcaption>" + escC(r.leaf) + "</figcaption></figure>").join("") + "</div>").join("") +
@@ -7000,12 +7053,12 @@ async function processCommand(line, env, isOp) {
         for (const leaf of leaves) {
           const f = await env.AURA_KV.get("face:v1:" + tatSlug(leaf), "json").catch(() => null);
           // A leaf nobody has run is not a leaf that failed. Three states, not two.
-          rows.push({ leaf, img: (f && f.img) || null,
+          rows.push({ leaf, url: tatFaceUrl(f),
             why: f ? (f.why || null) : "not run yet", drew: (f && f.drew) || null });
         }
         const escK = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) =>
           ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-        const drew = rows.filter((r) => r.img).length;
+        const drew = rows.filter((r) => r.url).length;
         const htmlK =
           '<!doctype html><html lang=en><head><meta charset=utf-8>' +
           '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
@@ -7028,8 +7081,8 @@ async function processCommand(line, env, isOp) {
           (drew < rows.length ? ' &middot; <b style=color:#fca5a5>' + (rows.length - drew) + " missing</b>" : "") +
           "</p><div class=g>" + rows.map((r) =>
             "<figure>" +
-            (r.img ? '<a href="https://auras.guide/image/' + escK(r.img) + '" target=_blank>' +
-                     '<img loading=lazy src="https://auras.guide/image/' + escK(r.img) + '"></a>'
+            (r.url ? '<a href="' + escK(r.url) + '" target=_blank>' +
+                     '<img loading=lazy src="' + escK(r.url) + '"></a>'
                    : '<div class="' + (r.why === "not run yet" ? "cold" : "gone") + '">' +
                      escK(r.why || "never drew") + "</div>") +
             "<figcaption>" + escK(r.leaf) + "</figcaption></figure>").join("") +
@@ -7041,7 +7094,7 @@ async function processCommand(line, env, isOp) {
           url: "https://auras.guide/" + pageK, leaves: rows.length, drawn: drew,
           missing: rows.length - drew, signed: signed || null,
           urls: rows.map((r) => r.leaf + "  ->  " +
-            (r.img ? "https://auras.guide/image/" + r.img : "NO IMAGE: " + (r.why || "unknown"))),
+            (r.url ? r.url : "NO IMAGE: " + (r.why || "unknown"))),
           note: "Identity pass - one face per leaf. Flag as `<leaf> | face | <why>`. " +
                 "A bad tile is DELKV face:v1:<leaf>, then re-run FACE." } };
       }
@@ -52570,6 +52623,27 @@ async function findReference(query, env, opts = {}) {
 // a name declared in one scope and read from another passes `node --check` and throws live.
 function tatSlug(x) {
   return String(x || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 70);
+}
+
+// ══ ONE FACE RECORD, TWO SHAPES, AND EVERY READER SAW ONLY ONE ═══════════════════════════════
+// MEASURED 2026-08-30 on the live catalogue. `face:v1:<leaf>` is written by two commands that
+// never agreed on a field name:
+//   FACE          -> { leaf, img, why, drew, kind }   `img` is an IMAGE ID
+//   TYPES / REDO  -> { id, url, at, by, model }       `url` is a FULL URL, and there is no `img`
+// SHEET read `img`. REVIEW read `url`. So each was blind to everything the other command drew,
+// and neither failed loudly - the blind tiles were silently skipped or reported as failures.
+// Proof, from one page: `SHEET Muscle Car` reported 1 drawn and 6 missing, printing "never drew"
+// in red under Charger, Challenger and Corvette - all three of which are in KV and drew fine.
+// And `SHEET Snakes` reported 0 of 14 on the same day `SIGN` recorded 14 drawn.
+// THE WRITERS ARE NOT CHANGED AND THE RECORDS ARE NOT MIGRATED. Converging the writers would
+// need a migration pass over 540 records and would leave the bug live until it ran. Teaching the
+// readers both shapes fixes the catalogue that already exists, in one deploy, at no cost.
+// Returns a URL or null. Null means "no picture", which is the only thing a reader has to know.
+function tatFaceUrl(rec) {
+  if (!rec || typeof rec !== "object") return null;
+  if (rec.url) return String(rec.url);
+  if (rec.img) return "https://auras.guide/image/" + String(rec.img);
+  return null;
 }
 
 // A stated quantity drops the singular default. Written once - three copies of this rule

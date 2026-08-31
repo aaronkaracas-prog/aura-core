@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.59.0-2026-08-31-the-name-is-not-the-spec";
+const BUILD = "aura-core-v9.60.0-2026-08-31-open-it-without-marking-it";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5758,8 +5758,17 @@ async function processCommand(line, env, isOp) {
         "h1{font-size:1.2rem;font-weight:800}h2{font-size:.9rem;margin:1.3rem 0 .4rem;color:#93c5fd}" +
         ".top{color:#64748b;font-size:.8rem;margin:.3rem 0 .6rem}" +
         ".g{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:7px}" +
-        "figure{background:#141a28;border:2px solid transparent;border-radius:9px;overflow:hidden;cursor:pointer}" +
+        "figure{position:relative;background:#141a28;border:2px solid transparent;border-radius:9px;overflow:hidden;cursor:pointer}" +
         "figure.bad{border-color:#ef4444;opacity:.55}" +
+        // ══ TAPPING MARKS IT WRONG, SO OPENING IT NEEDS ITS OWN TARGET ═══════════════════
+        // The tile's whole job is the one-tap mark, so the image cannot also be a link - the
+        // two gestures would be the same gesture. A corner button is unambiguous and, at 30px,
+        // is a comfortable thumb target on a phone without eating the tile it sits on.
+        // 0.55 opacity until hovered so twenty of them do not compete with the artwork.
+        "figure a.big{position:absolute;top:5px;right:5px;width:30px;height:30px;border-radius:7px;" +
+          "background:rgba(11,13,18,.72);color:#e9edf5;font-size:15px;line-height:30px;text-align:center;" +
+          "text-decoration:none;opacity:.55;z-index:2}" +
+        "figure a.big:hover{opacity:1;background:#0b0d12}" +
         "figure img{width:100%;aspect-ratio:1;object-fit:contain;display:block;background:#fff}" +
         "figcaption{padding:.3rem .4rem;font-size:.7rem;color:#94a3b8}" +
         "#bar{position:fixed;left:0;right:0;bottom:0;background:#0f1626;border-top:1px solid rgba(148,163,184,.25);padding:10px 14px}" +
@@ -5779,7 +5788,9 @@ async function processCommand(line, env, isOp) {
         " tiles &middot; tap any that is wrong &middot; the command appears at the bottom</p>" +
         groups.map((g) => "<h2>" + eR(g.category) + "</h2><div class=g>" +
           g.items.map((it) =>
-            '<figure data-n="' + eR(it.name) + '"><img loading=lazy src="' + eR(it.url) +
+            '<figure data-n="' + eR(it.name) + '"><a class=big target=_blank rel=noopener ' +
+            'title="open full size" href="' + eR(it.url) + '">&#9974;</a>' +
+            '<img loading=lazy src="' + eR(it.url) +
             '"><figcaption>' + eR(it.name) + "</figcaption></figure>").join("") +
           "</div>").join("") +
         '<div id=bar><span><b id=n>0</b> marked wrong</span>' +
@@ -5807,6 +5818,8 @@ async function processCommand(line, env, isOp) {
         "paint();" +
         "document.addEventListener('click',function(e){" +
         "if(e.target.closest('#bar'))return;" +
+        // Without this the open button would also toggle the tile it sits on.
+        "if(e.target.closest('a.big'))return;" +
         "var fg=e.target.closest('figure');" +
         "if(!fg)return;var n=fg.getAttribute('data-n');var i=bad.indexOf(n);" +
         "if(i<0){bad.push(n);fg.classList.add('bad');}else{bad.splice(i,1);fg.classList.remove('bad');}" +

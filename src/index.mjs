@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.58.0-2026-08-31-what-it-is-and-how-its-drawn";
+const BUILD = "aura-core-v9.59.0-2026-08-31-the-name-is-not-the-spec";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5652,7 +5652,8 @@ async function processCommand(line, env, isOp) {
           // REDO gets a bare leaf name, so the render dial is looked up on its OWNER, not the leaf.
           const ownR = await tatOwnerOf(env, nm);
           const rndR = ownR ? await tatRenderFor(env, ownR) : null;
-          const askR = nm + (ctxR ? ", " + ctxR : "") + (rndR || TAT_RENDER_DEFAULT);
+          const bldR = await tatBuildFor(env, nm);
+          const askR = (bldR || nm) + (ctxR ? ", " + ctxR : "") + (rndR || TAT_RENDER_DEFAULT);
           one.drew = askR;
           const r = await showIt(askR,
             env, { model, raw: true, source: "redo", subject: nm,
@@ -6013,9 +6014,12 @@ async function processCommand(line, env, isOp) {
       // One read for the kind being drawn, same as the context. Null means "keep the default".
       const rndY = await tatRenderFor(env, kKey);
       for (const leaf of things) {
-        const one = { type: leaf, image: null, why: null, cost_usd: null };
+        const one = { type: leaf, image: null, why: null, cost_usd: null, built: false };
         try {
-          const r = await showIt(leaf + (ctxYs ? ", " + ctxYs : "") +
+          // The build definition stands in for the name; the name still keys the record.
+          const bldY = await tatBuildFor(env, leaf);
+          one.built = !!bldY;
+          const r = await showIt((bldY || leaf) + (ctxYs ? ", " + ctxYs : "") +
             (rndY || TAT_RENDER_DEFAULT),
             env, { model, raw: true, source: "types", subject: leaf });
           if (r?.ok) { one.image = r.image_url; one.cost_usd = r.cost_usd; one.cached = !!r.cached;
@@ -6074,6 +6078,7 @@ async function processCommand(line, env, isOp) {
         url: "https://auras.guide/" + pageY,
         drew: okY, of: made.length, cost_usd: Math.round(spend * 10000) / 10000,
         context: ctxYs, render: rndY ? rndY.slice(2) : "(default: full colour)",
+        built: made.filter((m) => m.built).map((m) => m.type),
         context_note: ctxYs
           ? "Every prompt carried this, so a name like Charger cannot collapse to the wrong thing."
           : "No context set for this kind. If a name here is ambiguous: SETKV context:" +
@@ -53441,6 +53446,23 @@ function tatBuildAsk(subjectLabel, order, intent, extras, leafSay) {
 // A kind with no `render:` key keeps the exact default suffix, byte for byte - so nothing already
 // drawn changes prompt, hits a different cache key, or costs anything to leave alone.
 const TAT_RENDER_DEFAULT = ". Full colour, highly detailed, on a plain white background.";
+
+// ══ THE NAME IS A LABEL, NOT A SPECIFICATION ═════════════════════════════════════════════════
+// MEASURED 2026-08-31 on six STRIP constructions. The envelope held - all six came back wide, short,
+// flat and horizontal. The CONSTRUCTIONS did not: `Triple Strand` drew a braid, `Distributed-Drop
+// Band` drew a plain filigree border with no drops, `Central-Jewel Band` drew no dominant jewel.
+// Two or three words cannot carry a spatial definition, and lengthening the name is not available -
+// the leaf name is ALSO the customer-facing caption and the KV key every record hangs off.
+// So `build:<leaf>` holds the spatial definition and REPLACES the leaf name IN THE PROMPT ONLY.
+//   leaf name   Distributed-Drop Band        <- what the customer reads, what KV is keyed on
+//   build:...   one thin continuous horizontal chain spanning the full width, with eight
+//               separate ornamental pendants hanging downward at evenly spaced intervals
+// No build key means the prompt is byte-identical to before, so nothing already drawn moves.
+// Fourth and last dial: context = envelope, build = structure, render = treatment, name = name.
+async function tatBuildFor(env, leaf) {
+  const b = await env.AURA_KV.get("build:" + tatSlug(leaf)).catch(() => null);
+  return b && String(b).trim() ? String(b).trim() : null;
+}
 async function tatRenderFor(env, kindOrLeaf) {
   const r = await env.AURA_KV.get("render:" + tatSlug(kindOrLeaf)).catch(() => null);
   if (r && String(r).trim()) return ". " + String(r).trim();

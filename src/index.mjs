@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.56.0-2026-08-31-categories-can-be-made";
+const BUILD = "aura-core-v9.57.0-2026-08-31-the-wall-matches-the-tile";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5638,7 +5638,14 @@ async function processCommand(line, env, isOp) {
       for (const nm of names) {
         const one = { name: nm, image: null, why: null, drew: null };
         try {
-          await env.AURA_KV.delete("face:v1:" + tatSlug(nm)).catch(() => {});
+          // ══ A FAILED RETRY USED TO DESTROY THE TILE YOU ALREADY HAD ═══════════════════════
+          // This deleted `face:v1:<leaf>` FIRST and drew SECOND. When the draw refused - and on a
+          // stochastic output filter it refuses often - the record was already gone, so a tile that
+          // had a perfectly good picture five minutes earlier came back empty.
+          // MEASURED: three good pin-up tiles were lost that way in one command, and REVIEW fell
+          // from 25 to 22. Trying to improve something must never be able to lose it.
+          // The delete is not needed to bust the cache either - the fresh seed below is part of the
+          // cache key, so a redraw is a new picture whether or not the old record exists.
           // A tile tapped as wrong is very often wrong BECAUSE the name was ambiguous, so a redraw
           // with the identical prompt is the one thing least likely to help. Same dial as TYPES.
           const ctxR = await tatContextFor(env, nm);
@@ -5650,15 +5657,19 @@ async function processCommand(line, env, isOp) {
                    seed: Math.floor(Math.random() * 900000) + 1000 });
           if (r?.ok) {
             one.image = r.image_url;
+            // Only now, with a picture in hand, does the old record go - and it goes by being
+            // overwritten, which is one operation rather than a delete with a gap after it.
             await env.AURA_KV.put("face:v1:" + tatSlug(nm), JSON.stringify({
               id: r.id, url: r.image_url, at: new Date().toISOString(), by: "REDO", model
             })).catch(() => {});
-          } else one.why = String(r?.error || "did not draw").slice(0, 120);
+          } else { one.why = String(r?.error || "did not draw").slice(0, 120); one.kept = true; }
         } catch (e) { one.why = String(e && e.message || e).slice(0, 120); }
         out.push(one);
       }
       return { cmd: "REDO", payload: { ok: true, count: out.length,
-        results: out.map((o) => o.name + "  ->  " + (o.image || "FAILED: " + o.why)),
+        results: out.map((o) => o.name + "  ->  " +
+          (o.image || "FAILED (existing tile kept): " + o.why)),
+        kept: out.filter((o) => o.kept).length || undefined,
         // What it was actually asked for. When a redraw comes back wrong again, this is the first
         // thing to read - and it is the difference between a bad model and a bad prompt.
         asked: out.map((o) => o.name + "  ::  " + (o.drew || "-")),
@@ -6106,12 +6117,23 @@ async function processCommand(line, env, isOp) {
 
       const made = [];
       let spend = 0;
+      // ══ THE POSE WALL DREW A DIFFERENT MEDIUM FROM THE TILE IT BELONGS TO ═════════════════
+      // MEASURED 2026-08-31. `context:` was wired into TYPES and REDO and NOT into POSES, so the
+      // browse tile for "Pin-Up Reclining Inside a Champagne Coupe" came back as a pin-up
+      // ILLUSTRATION and its pose wall came back as PHOTOGRAPHS of women in a glass. Same subject,
+      // same command chain, two different media - because a prompt that never names a medium lets
+      // the model pick one, and it picks differently for a noun than for a noun plus a pose.
+      // It also drove the refusals: photoreal swimwear is exactly what an output classifier flags,
+      // and the illustrated version of the same subjects cleared 21 of 25.
+      // A wall that does not match the tile it hangs under is not a composition step, it is a
+      // second catalogue.
+      const ctxP = await tatContextFor(env, what);
       for (const o of picks) {
         const one = { pose: o.id, say: o.say || null, image: null, why: null, cost_usd: null };
         try {
-          // The subject and the frame are fixed; only the pose clause moves. Same discipline as
-          // the walk - the picture owns what it is, the clause owns what it is doing.
-          const r = await showIt(what + ", " + (o.say || o.id) +
+          // The subject, the context and the frame are fixed; only the pose clause moves. Same
+          // discipline as the walk - the picture owns what it is, the clause owns what it is doing.
+          const r = await showIt(what + (ctxP ? ", " + ctxP : "") + ", " + (o.say || o.id) +
             ". Full colour, highly detailed, on a plain white background.",
             env, { model, raw: true, source: "poses", subject: what + " " + o.id });
           if (r?.ok) { one.image = r.image_url; one.cost_usd = r.cost_usd; one.cached = !!r.cached;
@@ -6152,7 +6174,13 @@ async function processCommand(line, env, isOp) {
           "<figure>" +
           (m.image ? '<a href="' + eP(m.image) + '" target=_blank><img loading=lazy src="' +
                      eP(m.image) + '"></a>'
-                   : '<div class=gone>' + eP(m.why || "—") + "</div>") +
+                   // ══ A PAGE DOES NOT SHOW A PROVIDER'S ERROR TO A PERSON ═══════════════
+                   // This printed the raw failure as the card's body, so a pose wall read
+                   // `image generation failed (@cf/black-forest-labs/flux-2-klein-9b): 3030:
+                   // Your output has been flagged` in the middle of the grid. Every other page
+                   // in this file prints "never drew" and keeps the detail in the reply, where
+                   // the person who can act on it is looking. This is the last one that didn't.
+                   : '<div class=gone>never drew</div>') +
           "<figcaption><b>" + eP(m.pose) + "</b><span>" + eP(m.say || "") +
           "</span></figcaption></figure>").join("") +
         "</div></body></html>";
@@ -54059,14 +54087,32 @@ async function auraGenerateImage(prompt, env, opts = {}) {
             multipart: { body: r2.body, contentType: r2.headers.get("content-type") },
           });
         };
+        // ══ 3030 IS NOT A VERDICT ON THE REQUEST, IT IS A ROLL OF THE DICE ═══════════════
+        // This retried 3043 three times and NEVER retried 3030, on the reasoning that a content
+        // refusal is about the prompt and would refuse identically forever.
+        // MEASURED 2026-08-31, over four rounds on the pin-up wall, with `asked` in the REDO reply
+        // proving the prompt was BYTE-IDENTICAL every time: six of ten 3030s cleared on the second
+        // attempt; Sailor cleared on its third; Horror on its second; Witch on its second.
+        // The wording of the error is the giveaway - "Your OUTPUT has been flagged". The model
+        // draws, and a classifier judges the PICTURE. Two seeds, two pictures, two verdicts.
+        // So it gets ONE extra attempt, not three: a prompt that genuinely cannot pass should not
+        // cost three round trips every time it is asked for, and one retry already recovers most
+        // of them. A prompt that fails twice is a naming problem, and that is a human decision.
+        const cfTransient = /\b3043\b|internal server error/i;
+        const cfFlagged = /\b3030\b|output has been flagged/i;
         let lastCfErr = null;
         for (let attempt = 0; attempt < 3; attempt++) {
           try { out = await runOnce(); lastCfErr = null; break; }
           catch (e) {
             lastCfErr = e;
-            // Only a transient server error is worth a second attempt. A refusal or a bad request
-            // would fail the same way three times and just cost three times as long.
-            if (!/\b3043\b|internal server error/i.test(String(e && e.message || e))) throw e;
+            const msg = String(e && e.message || e);
+            // A bad request or an unknown error still fails immediately - retrying those would
+            // fail the same way three times and just cost three times as long.
+            const isTransient = cfTransient.test(msg);
+            const isFlagged = cfFlagged.test(msg);
+            if (!isTransient && !isFlagged) throw e;
+            // The flagged case gets exactly one more roll; the transient case keeps its three.
+            if (isFlagged && attempt >= 1) throw e;
             if (attempt < 2) await new Promise((res) => setTimeout(res, 800 * (attempt + 1)));
           }
         }

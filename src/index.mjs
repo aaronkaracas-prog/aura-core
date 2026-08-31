@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.57.0-2026-08-31-the-wall-matches-the-tile";
+const BUILD = "aura-core-v9.58.0-2026-08-31-what-it-is-and-how-its-drawn";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5649,8 +5649,10 @@ async function processCommand(line, env, isOp) {
           // A tile tapped as wrong is very often wrong BECAUSE the name was ambiguous, so a redraw
           // with the identical prompt is the one thing least likely to help. Same dial as TYPES.
           const ctxR = await tatContextFor(env, nm);
-          const askR = nm + (ctxR ? ", " + ctxR : "") +
-            ". Full colour, highly detailed, on a plain white background.";
+          // REDO gets a bare leaf name, so the render dial is looked up on its OWNER, not the leaf.
+          const ownR = await tatOwnerOf(env, nm);
+          const rndR = ownR ? await tatRenderFor(env, ownR) : null;
+          const askR = nm + (ctxR ? ", " + ctxR : "") + (rndR || TAT_RENDER_DEFAULT);
           one.drew = askR;
           const r = await showIt(askR,
             env, { model, raw: true, source: "redo", subject: nm,
@@ -6008,11 +6010,13 @@ async function processCommand(line, env, isOp) {
       // TYPES already knows the parent - it is the thing being drawn. One read, not one per leaf.
       const ctxY = (await env.AURA_KV.get("context:" + tatSlug(kKey)).catch(() => null)) || null;
       const ctxYs = ctxY && String(ctxY).trim() ? String(ctxY).trim() : null;
+      // One read for the kind being drawn, same as the context. Null means "keep the default".
+      const rndY = await tatRenderFor(env, kKey);
       for (const leaf of things) {
         const one = { type: leaf, image: null, why: null, cost_usd: null };
         try {
           const r = await showIt(leaf + (ctxYs ? ", " + ctxYs : "") +
-            ". Full colour, highly detailed, on a plain white background.",
+            (rndY || TAT_RENDER_DEFAULT),
             env, { model, raw: true, source: "types", subject: leaf });
           if (r?.ok) { one.image = r.image_url; one.cost_usd = r.cost_usd; one.cached = !!r.cached;
                        spend += (r.cost_usd || 0); one.id = r.id || null;
@@ -6069,7 +6073,7 @@ async function processCommand(line, env, isOp) {
       return { cmd: "TYPES", payload: { ok: true, kind: kKey, model,
         url: "https://auras.guide/" + pageY,
         drew: okY, of: made.length, cost_usd: Math.round(spend * 10000) / 10000,
-        context: ctxYs,
+        context: ctxYs, render: rndY ? rndY.slice(2) : "(default: full colour)",
         context_note: ctxYs
           ? "Every prompt carried this, so a name like Charger cannot collapse to the wrong thing."
           : "No context set for this kind. If a name here is ambiguous: SETKV context:" +
@@ -6128,13 +6132,15 @@ async function processCommand(line, env, isOp) {
       // A wall that does not match the tile it hangs under is not a composition step, it is a
       // second catalogue.
       const ctxP = await tatContextFor(env, what);
+      const ownP = await tatOwnerOf(env, what);
+      const rndP = ownP ? await tatRenderFor(env, ownP) : null;
       for (const o of picks) {
         const one = { pose: o.id, say: o.say || null, image: null, why: null, cost_usd: null };
         try {
           // The subject, the context and the frame are fixed; only the pose clause moves. Same
           // discipline as the walk - the picture owns what it is, the clause owns what it is doing.
           const r = await showIt(what + (ctxP ? ", " + ctxP : "") + ", " + (o.say || o.id) +
-            ". Full colour, highly detailed, on a plain white background.",
+            (rndP || TAT_RENDER_DEFAULT),
             env, { model, raw: true, source: "poses", subject: what + " " + o.id });
           if (r?.ok) { one.image = r.image_url; one.cost_usd = r.cost_usd; one.cached = !!r.cached;
                        spend += (r.cost_usd || 0);
@@ -6242,11 +6248,17 @@ async function processCommand(line, env, isOp) {
 
       const made = [];
       let spend = 0;
+      // TWENTY draws the same subject twenty ways, so it needs the same two dials the others use -
+      // otherwise a treatment wall comes back in a different medium from the tile it belongs to,
+      // which is exactly what POSES did before it was wired up.
+      const ctxT = await tatContextFor(env, what);
+      const ownT = await tatOwnerOf(env, what);
+      const rndT = ownT ? await tatRenderFor(env, ownT) : null;
       for (const t of treatments) {
         const one = { treatment: t.id, say: t.say || null, image: null, why: null, cost_usd: null };
         try {
-          const r = await showIt(what + ", " + (t.say || t.id) +
-            ". Full colour, highly detailed, on a plain white background.",
+          const r = await showIt(what + (ctxT ? ", " + ctxT : "") + ", " + (t.say || t.id) +
+            (rndT || TAT_RENDER_DEFAULT),
             env, { model, raw: true, source: "twenty", subject: what + " " + t.id });
           if (r?.ok) { one.image = r.image_url; one.cost_usd = r.cost_usd; one.cached = !!r.cached;
                        spend += (r.cost_usd || 0); }
@@ -53417,22 +53429,45 @@ function tatBuildAsk(subjectLabel, order, intent, extras, leafSay) {
 // kind, editable without a deploy.
 //   SETKV context:muscle-car "a muscle car"     ->  "Charger, a muscle car. Full colour, ..."
 // Looks under `specific` first, then the categories, so it works for a breed and for a bare leaf.
-async function tatContextFor(env, leaf) {
+// ══ WHAT IT IS AND HOW IT IS DRAWN ARE TWO DIFFERENT DIALS ═══════════════════════════════════
+// Every prompt has ended with a hardcoded `Full colour, highly detailed, on a plain white
+// background.` since TYPES was written. For a photographic catalogue that is the right default and
+// it should stay. For a catalogue of TATTOO STENCILS it is a contradiction inside one sentence -
+// MEASURED 2026-08-31: `...black linework on white paper. Full colour, highly detailed...` returned
+// a band of coloured gemstones. The context lost to the suffix roughly half the time.
+// So `render:<kind>` REPLACES that suffix. `context:<kind>` still says what the thing is.
+//   context:strip  a flat ornamental tattoo stencil laid out straight and unwrapped
+//   render:strip   Black linework only, no colour, no shading, on plain white.
+// A kind with no `render:` key keeps the exact default suffix, byte for byte - so nothing already
+// drawn changes prompt, hits a different cache key, or costs anything to leave alone.
+const TAT_RENDER_DEFAULT = ". Full colour, highly detailed, on a plain white background.";
+async function tatRenderFor(env, kindOrLeaf) {
+  const r = await env.AURA_KV.get("render:" + tatSlug(kindOrLeaf)).catch(() => null);
+  if (r && String(r).trim()) return ". " + String(r).trim();
+  return null;
+}
+
+// Which kind or category owns this leaf. Nearest parent wins - `specific` before `subjects` - so
+// Mustang under Horses beats Mustang under Muscle Car. Extracted because BOTH dials need it and
+// a second inline copy is how the two would drift apart.
+async function tatOwnerOf(env, leaf) {
   try {
     const t = await env.AURA_KV.get("card:tree", "json");
     if (!t) return null;
     const n = tatSlug(leaf);
-    let owner = null;
     for (const [kind, leaves] of Object.entries(t.specific || {}))
-      if ((leaves || []).some((x) => tatSlug(x) === n)) { owner = kind; break; }
-    if (!owner)
-      for (const [cat, kinds] of Object.entries(t.subjects || {}))
-        if ((kinds || []).some((x) => tatSlug(x) === n)) { owner = cat; break; }
-    if (!owner) return null;
-    const c = await env.AURA_KV.get("context:" + tatSlug(owner)).catch(() => null);
-    return c && String(c).trim() ? String(c).trim() : null;
+      if ((leaves || []).some((x) => tatSlug(x) === n)) return kind;
+    for (const [cat, kinds] of Object.entries(t.subjects || {}))
+      if ((kinds || []).some((x) => tatSlug(x) === n)) return cat;
   } catch {}
   return null;
+}
+
+async function tatContextFor(env, leaf) {
+  const owner = await tatOwnerOf(env, leaf);
+  if (!owner) return null;
+  const c = await env.AURA_KV.get("context:" + tatSlug(owner)).catch(() => null);
+  return c && String(c).trim() ? String(c).trim() : null;
 }
 
 async function tatParentOf(env, leaf) {

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.55.0-2026-08-31-one-page-any-mix";
+const BUILD = "aura-core-v9.56.0-2026-08-31-categories-can-be-made";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5446,6 +5446,98 @@ async function processCommand(line, env, isOp) {
         dropped: before.filter((x) => !list.some((y) => y.toLowerCase() === x.toLowerCase())),
         added: list.filter((x) => !before.some((y) => y.toLowerCase() === x.toLowerCase())),
         next: 'RUN "FACES ' + kindName + '"' } };
+    }
+
+    // ══ CATEGORY — THE HALF OF THE TAXONOMY NOTHING COULD EDIT ═══════════════════════════════
+    //   CATEGORY                        every category and how many kinds it holds
+    //   CATEGORY <name>                 read one
+    //   CATEGORY <name> :: a, b, c      set its kinds - creates the category if it is new
+    //   CATEGORY <name> :: DROP         remove the category (its kinds keep their own records)
+    //
+    // `LEAVES` writes `specific[kind]`. `KIND` renames. NOTHING wrote `subjects` - so a new
+    // category could not be added and a kind could not be added to an existing one. That gap is
+    // why Celtic Dragon was never added, and why five categories a real audit says are missing
+    // could only have been created by overwriting the whole tree by hand.
+    //
+    // ══ THE COLLISION GUARD, AND WHY IT WARNS RATHER THAN REFUSES ═══════════════════════════
+    // Every tile is keyed by SLUG ALONE - `face:v1:angel`. MEASURED on this tree: 540 leaf slots
+    // collapse to 479 distinct slugs, and two of those collisions are real damage - `mustang` was
+    // a horse under Horses and a Ford under Muscle Car sharing one picture, and `heart` is a
+    // valentine and an anatomical heart. A pin-up wall containing "Angel", "Mermaid", "Fantasy",
+    // "Horror" and "Hot Rod" would have added five more on the day it was created.
+    // But shared names are sometimes CORRECT - `Greek` is deliberately a kind under both Mythology
+    // and Culture & Heritage - so a hard refusal would block legitimate structure. It reports what
+    // it would collide with and writes nothing; FORCE writes anyway. Deliberate, and it leaves a
+    // trace, which is the same shape as the SETKV override.
+    case "CATEGORY": {
+      const rawC = String(rest || "").trim();
+      const tC = await env.AURA_KV.get("card:tree", "json").catch(() => null);
+      if (!tC?.subjects) return { cmd: "CATEGORY", payload: { ok: false, error: "NO_TREE" } };
+
+      if (!rawC) return { cmd: "CATEGORY", payload: { ok: true,
+        count: Object.keys(tC.subjects).length,
+        categories: Object.keys(tC.subjects).map((c) => c + " (" + (tC.subjects[c] || []).length + ")"),
+        usage: "CATEGORY <name> :: kind, kind, kind   |   CATEGORY <name> :: DROP" } };
+
+      const forceC = /(^|\s)FORCE(\s|$)/i.test(rawC);
+      const bodyC = rawC.replace(/(^|\s)FORCE(\s|$)/i, " ").trim();
+      const [headC, tailC] = bodyC.split("::");
+      const wantC = String(headC || "").trim();
+      const existing = Object.keys(tC.subjects).find((k) => tatSlug(k) === tatSlug(wantC)) || null;
+
+      if (tailC == null) {
+        if (!existing) return { cmd: "CATEGORY", payload: { ok: false, error: "NO_SUCH_CATEGORY",
+          asked: wantC, what_to_do: "CATEGORY " + wantC + " :: kind, kind  creates it." } };
+        return { cmd: "CATEGORY", payload: { ok: true, category: existing,
+          kinds: tC.subjects[existing] || [], count: (tC.subjects[existing] || []).length } };
+      }
+
+      const bodyT = String(tailC).trim();
+      if (/^DROP$/i.test(bodyT)) {
+        if (!existing) return { cmd: "CATEGORY", payload: { ok: false, error: "NO_SUCH_CATEGORY", asked: wantC } };
+        const wasK = tC.subjects[existing] || [];
+        delete tC.subjects[existing];
+        await env.AURA_KV.put("card:tree", JSON.stringify(tC));
+        return { cmd: "CATEGORY", payload: { ok: true, dropped: existing, held: wasK.length,
+          note: "The kinds and their face records are untouched - only the category is gone. " +
+                "Re-creating it with the same names brings every tile straight back." } };
+      }
+
+      const listC = bodyT.split(",").map((x) => x.trim()).filter(Boolean)
+        .filter((x, i, arr) => arr.findIndex((y) => tatSlug(y) === tatSlug(x)) === i);
+      if (!listC.length) return { cmd: "CATEGORY", payload: { ok: false, error: "EMPTY_LIST",
+        what_to_do: "Use  CATEGORY " + wantC + " :: DROP  to remove a category." } };
+
+      // Every slug already in the tree, and where it lives - so a collision names its other home.
+      const whereC = {};
+      for (const [c, ks] of Object.entries(tC.subjects)) {
+        if (existing && c === existing) continue;
+        for (const k of (ks || [])) if (!whereC[tatSlug(k)]) whereC[tatSlug(k)] = c;
+      }
+      for (const [k, ls] of Object.entries(tC.specific || {}))
+        for (const l of (ls || [])) if (!whereC[tatSlug(l)]) whereC[tatSlug(l)] = k;
+
+      const collides = listC.filter((x) => whereC[tatSlug(x)])
+        .map((x) => x + " -> already under " + whereC[tatSlug(x)]);
+      if (collides.length && !forceC) {
+        return { cmd: "CATEGORY", payload: { ok: false, error: "SLUG_COLLISION",
+          category: existing || wantC, collides, wrote: false,
+          why: "A tile is keyed by name alone, so these would share one picture with the leaf " +
+               "they collide with - the same defect that put a horse in the muscle car sheet.",
+          what_to_do: "Rename them (Pin-Up Angel, not Angel), or repeat the command with FORCE " +
+                      "if the shared name is deliberate the way Greek is." } };
+      }
+
+      const beforeC = existing ? (tC.subjects[existing] || []) : [];
+      const nameC = existing || wantC;
+      tC.subjects[nameC] = listC;
+      await env.AURA_KV.put("card:tree", JSON.stringify(tC));
+      return { cmd: "CATEGORY", payload: { ok: true, category: nameC,
+        created: !existing, count: listC.length, was: beforeC.length, kinds: listC,
+        dropped: beforeC.filter((x) => !listC.some((y) => tatSlug(y) === tatSlug(x))),
+        added: listC.filter((x) => !beforeC.some((y) => tatSlug(y) === tatSlug(x))),
+        collided_but_forced: collides.length ? collides : undefined,
+        next: 'RUN "TYPES ' + nameC + '"' } };
     }
 
     // ══ FACES — START OR CHECK THE IDENTITY PASS ═════════════════════════════════════════════

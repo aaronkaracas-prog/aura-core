@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.65.0-2026-09-01-tag-it-and-drop-it";
+const BUILD = "aura-core-v9.67.0-2026-09-01-the-paste-rebuilds-the-page";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5884,6 +5884,92 @@ async function processCommand(line, env, isOp) {
     //   DROP shot:v1:koi:style:bare traditional   -> one option, the other eleven untouched
     //   DROP shot:v1:koi:style:bare               -> the whole set, all of it refills
     //   DROP face:v1:koi                          -> the tile itself
+    // ══ SHOT — REDRAW ONE PICTURE, NOW ══════════════════════════════════════════════════════
+    // DROP takes a picture out and the next walk puts it back. That is right for a stale wall and
+    // wrong for the moment you are LOOKING at a bad tile and want it fixed. Everything needed to
+    // redraw one option is already on disk: the leaf profile says what the thing is, the wall
+    // record holds the option phrases, and the key itself carries the path that was taken to get
+    // there. So this rebuilds exactly the prompt the walk would have built, removes the named
+    // options so they read as holes, and lets tatShoot fill them - the same code path, the same
+    // frame rules, no second implementation to drift.
+    //   SHOT shot:v1:rabbits:style:bare realism, blackwork
+    case "SHOT": {
+      const argS = String(rest || "").trim();
+      const spS = argS.indexOf(" ");
+      const keyS = (spS < 0 ? argS : argS.slice(0, spS)).trim();
+      const optsS = (spS < 0 ? "" : argS.slice(spS + 1)).split(",").map((x) => x.trim()).filter(Boolean);
+      if (!/^shot:v1:/.test(keyS)) return { cmd: "SHOT", payload: { ok: false, error: "NOT_A_SHOT_KEY",
+        asked: keyS, what_to_do: 'SHOT shot:v1:<leaf>:<step>:<path> <option, option>' } };
+      const shotS = await env.AURA_KV.get(keyS, "json").catch(() => null);
+      if (!shotS) return { cmd: "SHOT", payload: { ok: false, error: "NO_SUCH_RECORD", asked: keyS } };
+      const bitsS = keyS.split(":");
+      const leafSlug = bitsS[2], stepS = bitsS[3], ctxS = bitsS.slice(4).join(":") || "bare";
+      const profS = await env.AURA_KV.get("leaf:v1:" + leafSlug, "json").catch(() => null);
+      if (!profS) return { cmd: "SHOT", payload: { ok: false, error: "NO_LEAF_PROFILE",
+        asked: leafSlug, why: "The walk writes this the first time a leaf is opened." } };
+      const leafS = shotS.leaf || profS.leaf || leafSlug;
+
+      // The options for this step: the fixed vocabularies are code, everything else was written
+      // once by the wall generator and stored. Never re-invented here.
+      let wallS = null;
+      if (stepS === "crop") wallS = { opts: TAT_CROP.map((o) => ({ ...o })) };
+      else if (stepS === "style") wallS = { opts: TAT_STYLES.map((id) => ({ id, say: tatSay("style", id) })) };
+      else {
+        const wr = await env.AURA_KV.get("wall:v1:" + leafSlug + ":" + tatSlug(stepS), "json").catch(() => null);
+        if (wr && Array.isArray(wr.opts)) wallS = { opts: wr.opts };
+      }
+      if (!wallS || !wallS.opts.length) return { cmd: "SHOT", payload: { ok: false,
+        error: "NO_WALL", step: stepS, what_to_do: "DROP the record instead; the walk rebuilds it." } };
+
+      // The path this set was drawn for, said the way the walk says it - so a pose tile still
+      // hears "full body" and a bust does not come out identical to a face.
+      const ctxPhrases = [];
+      if (ctxS !== "bare") {
+        for (const part of ctxS.split("__")) {
+          const dash = part.indexOf("-");
+          if (dash < 0) continue;
+          const fld = part.slice(0, dash), val = part.slice(dash + 1).replace(/-/g, " ");
+          let extra = null;
+          if (fld !== "style" && fld !== "colour") {
+            const pr = await env.AURA_KV.get("wall:v1:" + leafSlug + ":" + fld, "json").catch(() => null);
+            if (pr && Array.isArray(pr.opts)) {
+              const m = {}; for (const o of pr.opts) if (o.say) m[o.id] = o.say;
+              if (Object.keys(m).length) extra = m;
+            }
+          }
+          const line = tatSay(fld, val, extra);
+          if (line) ctxPhrases.push(fld === "style" ? "__style__" + line : line);
+        }
+      }
+
+      // Named options become holes. No names given means every option in the record is redrawn.
+      shotS.imgs = shotS.imgs || {};
+      const cleared = [];
+      const want = optsS.length ? optsS : Object.keys(shotS.imgs);
+      for (const o of want) {
+        const hit = Object.keys(shotS.imgs).find((x) => tatSlug(x) === tatSlug(o));
+        if (hit) { delete shotS.imgs[hit]; cleared.push(hit); }
+        else if (wallS.opts.some((x) => tatSlug(x.id) === tatSlug(o))) cleared.push(o);
+      }
+      if (!cleared.length) return { cmd: "SHOT", payload: { ok: false, error: "NO_SUCH_OPTION",
+        asked: optsS, options: wallS.opts.map((o) => o.id) } };
+
+      const kindS = String((profS.resolved && profS.resolved.subject) || leafS).trim();
+      const frameS = await tatFrameFor(env, kindS, leafS);
+      const headS = profS.say || tatName(leafS, profS.resolved);
+      const outS = await tatShoot(env, keyS, headS, ctxPhrases, stepS, wallS, shotS, 22000, frameS);
+      const drewS = cleared.filter((o) => {
+        const h = Object.keys(outS.imgs || {}).find((x) => tatSlug(x) === tatSlug(o));
+        return h && outS.imgs[h] && outS.imgs[h].img;
+      });
+      return { cmd: "SHOT", payload: { ok: true, key: keyS, leaf: leafS, step: stepS, path: ctxS,
+        asked: cleared, drew: drewS.length, of: cleared.length,
+        still_missing: cleared.filter((o) => !drewS.includes(o)),
+        prompt: outS.drew || null,
+        note: "Redrawn with the context and render set today. Re-run WALK to see them - the page " +
+              "is a stored snapshot, not a live view." } };
+    }
+
     case "DROP": {
       const argD = String(rest || "").trim();
       if (!argD) return { cmd: "DROP", payload: { ok: false, error: "NOTHING_ASKED",
@@ -6097,7 +6183,7 @@ async function processCommand(line, env, isOp) {
       // Two chips where there are two choices, one where there is one.
       const cell = (t, a, src, name, sub2) =>
         "<figure data-t=" + t + " data-a=\"" + eW(a) + "\"><img loading=lazy src='" + eW(src) +
-        "'>" + (t === "redo" ? "<b class=r>R</b><b class=d>D</b>" : "<b class=d>&times;</b>") +
+        "'><b class=r>R</b><b class=d>D</b>" +
         "<figcaption>" + eW(name) + "<br><i>" + eW(sub2) + "</i></figcaption></figure>";
       const htmlW =
         '<!doctype html><html lang=en><head><meta charset=utf-8>' +
@@ -6143,7 +6229,7 @@ async function processCommand(line, env, isOp) {
         "<div id=bar><div class=t><span><b id=cnt>0</b> tagged</span>" +
         "<span><button id=go>go</button> <button id=clr>clear</button></span></div>" +
         "<pre id=out>R redraws a tile \u00b7 D or \u00d7 drops it so it comes back</pre></div>" +
-        "<script>" + WALK_TAG_JS.replace("__KEY__", tatSlug(catW)) + "</script>" +
+        "<script>" + WALK_TAG_JS.replace("__KEY__", tatSlug(catW)).replace("__CAT__", eW(catW)) + "</script>" +
         "</body></html>";
       await env.AURA_KV.put("page:auras.guide/walk/" + tatSlug(catW), htmlW);
       return { cmd: "WALK", payload: { ok: true,
@@ -53756,18 +53842,23 @@ function tatBuildAsk(subjectLabel, order, intent, extras, leafSay) {
 const WALK_TAG_JS = [
   "(function(){var K='tag:__KEY__',T={};",
   "try{T=JSON.parse(localStorage.getItem(K)||'{}')}catch(e){}",
-  "function build(){var R=[],D=[];",
+  "function build(){var R=[],S=[],D=[];",
   "document.querySelectorAll('figure[data-a]').forEach(function(f){",
   "var a=f.dataset.a,v=T[a];if(!v)return;",
-  "if(f.dataset.t==='redo'&&v==='r'){R.push(a)}else{D.push(a)}});",
+  "if(v==='r'){(f.dataset.t==='redo'?R:S).push(a)}else{D.push(a)}});",
   "var o=[];if(R.length)o.push('RUN \"REDO '+R.join(', ')+'\"');",
-  "D.forEach(function(a){o.push('RUN \"DROP '+a+'\"')});return o}",
+  "S.forEach(function(a){o.push('RUN \"SHOT '+a+'\"')});",
+  "D.forEach(function(a){o.push('RUN \"DROP '+a+'\"')});",
+  // The page is a stored snapshot, so a fix you just pasted is invisible until it is rebuilt.
+  // Ending the block with its own WALK means the last line of the paste redraws the page - one
+  // copy, one paste, and what you are looking at is what is actually there.
+  "if(o.length)o.push('RUN \"WALK __CAT__\"');return o}",
   "function paint(){document.querySelectorAll('figure[data-a]').forEach(function(f){",
   "var v=T[f.dataset.a];",
   "var br=f.querySelector('b.r');if(br)br.classList.toggle('on',v==='r');",
   "f.querySelector('b.d').classList.toggle('on',v==='d')});",
   "var o=build();document.getElementById('cnt').textContent=Object.keys(T).length;",
-  "document.getElementById('out').textContent=o.length?o.join('\\n'):'R redraws a tile \u00b7 D or \u00d7 drops it so it comes back'}",
+  "document.getElementById('out').textContent=o.length?o.join('\\n'):'R redraws now \u00b7 D deletes'}",
   "document.addEventListener('click',function(e){",
   "if(e.target.id==='go'){var t=document.getElementById('out').textContent;",
   "if(navigator.clipboard)navigator.clipboard.writeText(t);",

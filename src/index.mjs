@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.72.0-2026-09-01-a-copied-sweep-is-finished";
+const BUILD = "aura-core-v9.73.0-2026-09-01-fill-the-first-screen";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5893,6 +5893,84 @@ async function processCommand(line, env, isOp) {
     // options so they read as holes, and lets tatShoot fill them - the same code path, the same
     // frame rules, no second implementation to drift.
     //   SHOT shot:v1:rabbits:style:bare realism, blackwork
+    // ══ FILL — THE FIRST SCREEN OF EVERY LEAF IN A KIND ═════════════════════════════════════
+    // MEASURED from the key shapes: the walk is a TREE, not a line. Style is chosen first and
+    // every later step is stored per style path, then crop forks into pose (a body) or expression
+    // (a head). One leaf filled to the bottom is roughly 440 images, so the whole catalogue is
+    // ~700,000 and was never pre-buildable. What IS worth pre-building is the FIRST screen - the
+    // style wall - because every single visitor to a leaf sees it and nobody should wait for it.
+    // Everything deeper is one person's chosen path and belongs on demand.
+    //
+    // It only ever fills HOLES: tatShoot skips any option that already has an image, so this can
+    // never overwrite a picture that already exists. Safe to re-run.
+    //   FILL Dogs        -> the style wall for every breed under Dogs
+    //   FILL Dogs 3      -> the first three only, to look before committing
+    case "FILL": {
+      const argF = String(rest || "").trim();
+      const mF = argF.match(/^(.*?)(?:\s+(\d+))?$/);
+      const nameF = (mF && mF[1] ? mF[1] : argF).trim();
+      const capF = mF && mF[2] ? Math.max(1, parseInt(mF[2], 10)) : 0;
+      if (!nameF) return { cmd: "FILL", payload: { ok: false, error: "NOTHING_ASKED",
+        what_to_do: 'FILL <kind or category> [how many]' } };
+      const treeF = await env.AURA_KV.get("card:tree", "json").catch(() => null);
+      if (!treeF) return { cmd: "FILL", payload: { ok: false, error: "NO_TREE" } };
+      const subF = treeF.subjects || {}, spF = treeF.specific || {};
+
+      // A kind with leaves fills its leaves. A category fills every leaf under it. A kind with no
+      // leaves - Eagle, A Clock - is itself the thing someone lands on, so it fills as one.
+      const kindHit = Object.keys(spF).find((k) => tatSlug(k) === tatSlug(nameF));
+      const catHit = Object.keys(subF).find((c) => tatSlug(c) === tatSlug(nameF));
+      let leaves = [], parentOf = {};
+      if (kindHit) { leaves = spF[kindHit].slice(); for (const l of leaves) parentOf[l] = kindHit; }
+      else if (catHit) {
+        for (const k of (subF[catHit] || [])) {
+          const sub = Object.keys(spF).find((x) => tatSlug(x) === tatSlug(k));
+          if (sub && spF[sub].length) for (const l of spF[sub]) { leaves.push(l); parentOf[l] = sub; }
+          else { leaves.push(k); parentOf[k] = catHit; }
+        }
+      } else {
+        const bare = Object.keys(subF).find((c) => (subF[c] || [])
+          .some((k) => tatSlug(k) === tatSlug(nameF)));
+        if (!bare) return { cmd: "FILL", payload: { ok: false, error: "NO_SUCH_KIND",
+          asked: nameF, what_to_do: 'RUN "WALK" to see the names.' } };
+        const real = (subF[bare] || []).find((k) => tatSlug(k) === tatSlug(nameF));
+        leaves = [real]; parentOf[real] = bare;
+      }
+      if (capF) leaves = leaves.slice(0, capF);
+
+      const doneF = [], skipF = [], failF = [];
+      let drewF = 0, spendF = 0;
+      for (const lf of leaves) {
+        const keyF = "shot:v1:" + tatSlug(lf) + ":style:bare";
+        let shotF = await env.AURA_KV.get(keyF, "json").catch(() => null);
+        if (!shotF || typeof shotF !== "object") shotF = { leaf: lf, step: "style", ctx: "bare", imgs: {} };
+        const wallF = { opts: TAT_STYLES.map((id) => ({ id, say: tatSay("style", id) })) };
+        const holes = wallF.opts.filter((o) => !(shotF.imgs && shotF.imgs[o.id] && shotF.imgs[o.id].img));
+        if (!holes.length) { skipF.push(lf); continue; }
+        // The profile is what tells the prompt this is a DOG and not a boxer. Written once per
+        // leaf and reused, so an unopened leaf costs one small model call the first time.
+        let profF = null;
+        try { profF = await tatLeafProfile(env, lf, undefined, parentOf[lf]); } catch {}
+        if (!profF) { failF.push(lf + ": no profile"); continue; }
+        const kindF = String((profF.resolved && profF.resolved.subject) || lf).trim();
+        const frameF = await tatFrameFor(env, kindF, lf);
+        const headF = profF.say || tatName(lf, profF.resolved);
+        shotF.drew = null;
+        const outF = await tatShoot(env, keyF, headF, [], "style", wallF, shotF, 22000, frameF);
+        const made = wallF.opts.filter((o) => outF.imgs && outF.imgs[o.id] && outF.imgs[o.id].img).length;
+        const gained = made - (wallF.opts.length - holes.length);
+        drewF += gained; spendF += gained * 0.0151;
+        doneF.push(lf + ": " + gained + "/" + holes.length);
+      }
+      return { cmd: "FILL", payload: { ok: true, asked: nameF,
+        leaves: leaves.length, drew: drewF,
+        cost_usd: Math.round(spendF * 10000) / 10000,
+        already_full: skipF.length, filled: doneF, skipped: skipF.slice(0, 20),
+        failed: failF.length ? failF : undefined,
+        note: "Only holes were drawn - nothing that already existed was touched. This is the " +
+              "FIRST screen only; crop, pose and expression stay on demand." } };
+    }
+
     case "SHOT": {
       const argS = String(rest || "").trim();
       const spS = argS.indexOf(" ");

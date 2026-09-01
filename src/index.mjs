@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.68.0-2026-09-01-a-command-is-not-page-text";
+const BUILD = "aura-core-v9.69.0-2026-09-01-copy-that-actually-copies";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6208,7 +6208,7 @@ async function processCommand(line, env, isOp) {
         "#bar{position:fixed;left:0;right:0;bottom:0;background:#0b0d12;border-top:1px solid #1a1f2e;padding:10px 16px}" +
         "#bar .t{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}" +
         "#bar button{background:#1a1f2e;color:#e9edf5;border:0;border-radius:6px;padding:5px 12px;font:inherit;cursor:pointer}" +
-        "#out{background:#141a28;border-radius:6px;padding:8px 10px;font:11px/1.4 ui-monospace,monospace;" +
+        "#out{background:#141a28;border-radius:6px;padding:8px 10px;font:11px/1.4 ui-monospace,monospace;user-select:all;" +
           "color:#c7cede;white-space:pre-wrap;word-break:break-all;max-height:110px;overflow:auto}" +
         "</style></head><body>" +
         "<p class=sub><a href='/walk'>&larr; walk</a></p>" +
@@ -53861,9 +53861,19 @@ const WALK_TAG_JS = [
   "var o=build();document.getElementById('cnt').textContent=Object.keys(T).length;",
   "document.getElementById('out').textContent=o.length?o.join('\\n'):'R redraws now \u00b7 D deletes'}",
   "document.addEventListener('click',function(e){",
-  "if(e.target.id==='go'){var t=document.getElementById('out').textContent;",
-  "if(navigator.clipboard)navigator.clipboard.writeText(t);",
-  "e.target.textContent='copied';setTimeout(function(){e.target.textContent='go'},900);return}",
+  // ══ CLIPBOARD FAILS QUIETLY, SO NEVER RELY ON IT ALONE ═══════════════════════════════
+  // navigator.clipboard is unavailable on an insecure origin and can reject without throwing,
+  // which reads as "the button does nothing". The textarea fallback works everywhere, and
+  // selecting the block afterwards means a manual copy is one keystroke even if both fail.
+  "if(e.target.id==='go'){var t=document.getElementById('out').textContent,d=0;",
+  "try{if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t);d=1}}catch(x){}",
+  "if(!d){try{var ta=document.createElement('textarea');ta.value=t;",
+  "ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);",
+  "ta.select();d=document.execCommand('copy');document.body.removeChild(ta)}catch(x){}}",
+  "var r=document.createRange();r.selectNodeContents(document.getElementById('out'));",
+  "var sel=window.getSelection();sel.removeAllRanges();sel.addRange(r);",
+  "e.target.textContent=d?'copied':'select + Ctrl-C';",
+  "setTimeout(function(){e.target.textContent='go'},1400);return}",
   "if(e.target.id==='clr'){T={};localStorage.setItem(K,'{}');paint();return}",
   "var b=e.target.closest('figure b');if(!b)return;",
   "var f=b.closest('figure[data-a]'),a=f.dataset.a,w=b.classList.contains('r')?'r':'d';",

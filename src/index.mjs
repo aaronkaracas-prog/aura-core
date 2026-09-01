@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.64.0-2026-09-01-all-of-it-on-one-page";
+const BUILD = "aura-core-v9.65.0-2026-09-01-tag-it-and-drop-it";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5875,6 +5875,48 @@ async function processCommand(line, env, isOp) {
     //   WALK                -> every category, its kinds, counts, and which are complete
     //   WALK <category>     -> that category in full: every kind, every leaf, every tile,
     //                          and a mark on anything with no tile or no variation wall
+    // ══ DROP — TAKE ONE PICTURE OUT SO IT COMES BACK RIGHT ══════════════════════════════════
+    // A shot record holds one image per option along one path. tatShoot only ever draws the
+    // options that have NO image - it fills holes - so removing one entry is not a delete, it is
+    // a request for a redraw: the next walk down that path refills it using whatever context and
+    // render are set TODAY. That is how a wall drawn under an old style gets replaced without
+    // paying to redraw anything.
+    //   DROP shot:v1:koi:style:bare traditional   -> one option, the other eleven untouched
+    //   DROP shot:v1:koi:style:bare               -> the whole set, all of it refills
+    //   DROP face:v1:koi                          -> the tile itself
+    case "DROP": {
+      const argD = String(rest || "").trim();
+      if (!argD) return { cmd: "DROP", payload: { ok: false, error: "NOTHING_ASKED",
+        what_to_do: 'DROP <key> [option]. The walk page writes these for you.' } };
+      const spD = argD.indexOf(" ");
+      const keyD = (spD < 0 ? argD : argD.slice(0, spD)).trim();
+      const optD = spD < 0 ? "" : argD.slice(spD + 1).trim();
+      if (!/^(shot|face|wall):/.test(keyD)) return { cmd: "DROP", payload: { ok: false,
+        error: "NOT_A_PICTURE_KEY", asked: keyD,
+        why: "DROP only touches shot:, face: and wall: records, never the tree." } };
+      if (!optD) {
+        const had = await env.AURA_KV.get(keyD).catch(() => null);
+        if (!had) return { cmd: "DROP", payload: { ok: false, error: "NO_SUCH_KEY", asked: keyD } };
+        await env.AURA_KV.delete(keyD);
+        return { cmd: "DROP", payload: { ok: true, key: keyD, dropped: "the whole record",
+          note: keyD.startsWith("shot:")
+            ? "It refills on the next walk down that path, in the style set today."
+            : "Gone. Nothing refills a face record automatically - REDO it when you want it back." } };
+      }
+      const recD = await env.AURA_KV.get(keyD, "json").catch(() => null);
+      if (!recD || !recD.imgs) return { cmd: "DROP", payload: { ok: false, error: "NO_SUCH_RECORD",
+        asked: keyD, what_to_do: "Drop the whole key, or check the name on the walk page." } };
+      const hitD = Object.keys(recD.imgs).find((o) => tatSlug(o) === tatSlug(optD));
+      if (!hitD) return { cmd: "DROP", payload: { ok: false, error: "NO_SUCH_OPTION",
+        asked: optD, key: keyD, options: Object.keys(recD.imgs) } };
+      delete recD.imgs[hitD];
+      await env.AURA_KV.put(keyD, JSON.stringify(recD));
+      return { cmd: "DROP", payload: { ok: true, key: keyD, dropped: hitD,
+        left: Object.keys(recD.imgs).length,
+        note: "That one option is now a hole. The next walk down this path draws it again with " +
+              "the context and render set today - the rest are untouched and cost nothing." } };
+    }
+
     case "WALK": {
       const treeW = await env.AURA_KV.get("card:tree", "json").catch(() => null);
       if (!treeW) return { cmd: "WALK", payload: { ok: false, error: "NO_TREE" } };
@@ -6032,7 +6074,7 @@ async function processCommand(line, env, isOp) {
             if (r && r.imgs) for (const o of Object.keys(r.imgs)) {
               const im = r.imgs[o]; if (im && im.img) imgs.push({ opt: o, img: im.img });
             }
-            return { step: bits[3] || "", path: bits.slice(4).join(":") || "bare", imgs };
+            return { key: kn, step: bits[3] || "", path: bits.slice(4).join(":") || "bare", imgs };
           }));
           return { name: n, url, walls, sets: recs.filter((x) => x.imgs.length),
             shots: keys.length, isKind: !sub.length };
@@ -6043,33 +6085,45 @@ async function processCommand(line, env, isOp) {
       const missing = secs.flatMap((s) => s.items.filter((i) => !i.url).map((i) => i.name));
       const noWall = secs.flatMap((s) => s.items.filter((i) => i.url && !i.walls.length && !i.shots).map((i) => i.name));
       const shotTotal = secs.reduce((n, s) => n + s.items.reduce((m, i) => m + i.shots, 0), 0);
+      // ══ ONE GRID PER KIND, TAG AS YOU SCROLL ═════════════════════════════════════════════
+      // A leaf with twelve pictures and a leaf with none each took a full band, so Fish was six
+      // stacked rows to show eighteen images. The kind is the unit worth scanning; the leaf is a
+      // caption. And every picture carries what it would take to FIX it: a tile is a REDO, a shot
+      // picture is one option inside one record. R redraws, D deletes, and one button at the end
+      // turns the whole sweep into commands - because judging a wall and then retyping twenty
+      // names is where the judgement gets lost.
+      // A tile can be redrawn now (REDO) or removed (DROP) - two different things. A shot
+      // picture has only one action: drop it and it comes back, because tatShoot refills holes.
+      // Two chips where there are two choices, one where there is one.
+      const cell = (t, a, src, name, sub2) =>
+        "<figure data-t=" + t + " data-a=\"" + eW(a) + "\"><img loading=lazy src='" + eW(src) +
+        "'>" + (t === "redo" ? "<b class=r>R</b><b class=d>D</b>" : "<b class=d>&times;</b>") +
+        "<figcaption>" + eW(name) + "<br><i>" + eW(sub2) + "</i></figcaption></figure>";
       const htmlW =
         '<!doctype html><html lang=en><head><meta charset=utf-8>' +
         '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
         "<title>" + eW(catW) + "</title><style>" +
         "*{margin:0;padding:0;box-sizing:border-box}" +
-        "body{background:#0b0d12;color:#e9edf5;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px}" +
+        "body{background:#0b0d12;color:#e9edf5;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px 16px 120px}" +
         "h1{font-size:20px}p.sub{color:#8b93a7;font-size:12px;margin-bottom:18px}" +
-        "a{color:#8b93a7}h2{font-size:13px;color:#7aa2ff;margin:20px 0 8px;font-weight:600}" +
+        "a{color:#8b93a7}h2{font-size:13px;color:#7aa2ff;margin:18px 0 8px;font-weight:600}" +
         "h2 span{color:#5a6478;font-weight:400}" +
-        ".g{display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:8px}" +
+        ".g{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}" +
         "figure{position:relative;background:#141a28;border-radius:8px;overflow:hidden}" +
         "figure img{width:100%;aspect-ratio:1;object-fit:cover;display:block}" +
-        "figure.gap{border:1px dashed #ef4444;min-height:108px}" +
-        "figcaption{padding:5px 6px;font-size:10px;line-height:1.3;color:#c7cede}" +
-        // A leaf with a tile and no wall still LOOKS finished in every other view. Marking it is
-        // the whole point: it is the third screen that will make the customer wait.
-        ".w{position:absolute;top:4px;right:4px;background:rgba(11,13,18,.8);color:#4ade80;" +
-          "font-size:9px;padding:2px 5px;border-radius:5px}" +
-        ".w.no{color:#fbbf24}" +
-        "figure[data-n]{cursor:pointer}figure.bad{outline:2px solid #ef4444;opacity:.5}" +
-        ".leaf{margin:0 0 14px}h3{font-size:11px;color:#c7cede;margin:0 0 5px;font-weight:500}" +
-        "h3 span{color:#5a6478}" +
-        "#bar{position:sticky;bottom:0;background:#0b0d12;border-top:1px solid #1a1f2e;" +
-          "padding:10px 0 6px;margin-top:20px;display:flex;justify-content:space-between;align-items:center}" +
-        "#bar button{background:#1a1f2e;color:#e9edf5;border:0;border-radius:6px;padding:5px 10px;font:inherit;cursor:pointer}" +
+        "figure.gap{border:1px dashed #ef4444;min-height:104px}" +
+        "figcaption{padding:4px 6px;font-size:10px;line-height:1.3;color:#c7cede}" +
+        "figcaption i{color:#5a6478;font-style:normal}" +
+        "figure b{position:absolute;top:4px;width:20px;height:20px;border-radius:5px;" +
+          "background:rgba(11,13,18,.72);color:#8b93a7;font:600 10px/20px system-ui;" +
+          "text-align:center;cursor:pointer;z-index:2}" +
+        "figure b.r{right:28px}figure b.d{right:4px}" +
+        "figure b.on{background:#7aa2ff;color:#0b0d12}figure b.d.on{background:#ef4444;color:#fff}" +
+        "#bar{position:fixed;left:0;right:0;bottom:0;background:#0b0d12;border-top:1px solid #1a1f2e;padding:10px 16px}" +
+        "#bar .t{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}" +
+        "#bar button{background:#1a1f2e;color:#e9edf5;border:0;border-radius:6px;padding:5px 12px;font:inherit;cursor:pointer}" +
         "#out{background:#141a28;border-radius:6px;padding:8px 10px;font:11px/1.4 ui-monospace,monospace;" +
-          "color:#c7cede;white-space:pre-wrap;word-break:break-word;margin-bottom:10px}" +
+          "color:#c7cede;white-space:pre-wrap;word-break:break-all;max-height:110px;overflow:auto}" +
         "</style></head><body>" +
         "<p class=sub><a href='/walk'>&larr; walk</a></p>" +
         "<h1>" + eW(catW) + "</h1><p class=sub>" +
@@ -6079,40 +6133,17 @@ async function processCommand(line, env, isOp) {
         secs.map((s) =>
           "<h2>" + eW(s.kind) + (s.leaves ? " <span>" + s.leaves + "</span>" : "") + "</h2><div class=g>" +
           s.items.map((i) =>
-            "<div class=leaf><h3>" + eW(i.name) +
-            (i.sets.length ? " <span>" + i.sets.reduce((n, x) => n + x.imgs.length, 0) + "</span>" : "") +
-            "</h3><div class=g>" +
-            (i.url
-              ? "<figure data-n=\"" + eW(i.name) + "\"><img loading=lazy src='" + eW(i.url) +
-                "'><figcaption>tile</figcaption></figure>"
-              : "<figure class=gap><figcaption>no tile</figcaption></figure>") +
+            (i.url ? cell("redo", i.name, i.url, i.name, "tile")
+                   : "<figure class=gap><figcaption>" + eW(i.name) + "<br><i>no tile</i></figcaption></figure>") +
             i.sets.map((x) => x.imgs.map((m) =>
-              "<figure data-n=\"" + eW(i.name) + "\"><img loading=lazy src='https://auras.guide/image/" +
-              eW(m.img) + "'><figcaption>" + eW(x.step) + " " + eW(m.opt) + "</figcaption></figure>"
-            ).join("")).join("") +
-            "</div></div>"
+              cell("shot", x.key + " " + m.opt, "https://auras.guide/image/" + m.img,
+                   i.name, x.step + " " + m.opt)
+            ).join("")).join("")
           ).join("") + "</div>").join("") +
-        // ══ FLAG IT WHERE YOU SEE IT ═══════════════════════════════════════════════════════
-        // Same one-tap mark as REVIEW, for the same reason: judging a wall and then retyping
-        // twenty names into a REDO is where the judgement gets lost. Marks survive a reload so
-        // the sweep can be done in sittings, and `copy` hands back a command ready to paste.
-        "<div id=bar><span><b id=cnt>0</b> marked</span>" +
-        "<span><button id=copy>copy</button> <button id=clear>clear</button></span></div>" +
-        "<pre id=out>tap a tile to mark it</pre>" +
-        "<script>(function(){var K='walk:" + tatSlug(catW) + "';" +
-        "var bad=[];try{bad=JSON.parse(localStorage.getItem(K)||'[]')}catch(e){}" +
-        "function paint(){document.querySelectorAll('figure[data-n]').forEach(function(f){" +
-        "f.classList.toggle('bad',bad.indexOf(f.dataset.n)>=0)});" +
-        "document.getElementById('cnt').textContent=bad.length;" +
-        "document.getElementById('out').textContent=bad.length" +
-        "?'RUN \"REDO '+bad.join(', ')+'\"':'tap a tile to mark it'}" +
-        "document.addEventListener('click',function(e){" +
-        "if(e.target.id==='copy'){navigator.clipboard&&navigator.clipboard.writeText(" +
-        "document.getElementById('out').textContent);return}" +
-        "if(e.target.id==='clear'){bad=[];localStorage.setItem(K,'[]');paint();return}" +
-        "var f=e.target.closest('figure[data-n]');if(!f)return;" +
-        "var n=f.dataset.n,i=bad.indexOf(n);if(i<0)bad.push(n);else bad.splice(i,1);" +
-        "localStorage.setItem(K,JSON.stringify(bad));paint()});paint()})();</script>" +
+        "<div id=bar><div class=t><span><b id=cnt>0</b> tagged</span>" +
+        "<span><button id=go>go</button> <button id=clr>clear</button></span></div>" +
+        "<pre id=out>R redraws a tile \u00b7 D or \u00d7 drops it so it comes back</pre></div>" +
+        "<script>" + WALK_TAG_JS.replace("__KEY__", tatSlug(catW)) + "</script>" +
         "</body></html>";
       await env.AURA_KV.put("page:auras.guide/walk/" + tatSlug(catW), htmlW);
       return { cmd: "WALK", payload: { ok: true,
@@ -53716,6 +53747,38 @@ function tatBuildAsk(subjectLabel, order, intent, extras, leafSay) {
 //   render:strip   Black linework only, no colour, no shading, on plain white.
 // A kind with no `render:` key keeps the exact default suffix, byte for byte - so nothing already
 // drawn changes prompt, hits a different cache key, or costs anything to leave alone.
+
+// ══ THE TAGGING SCRIPT FOR A WALK PAGE ══════════════════════════════════════════════════════
+// Kept out of the page builder as one plain string so the escaping is readable. Two chips per
+// picture and one button at the end: a tile tagged R becomes a REDO, a shot picture tagged R
+// becomes a SHOT for that one option, and anything tagged D becomes a DROP. Tags live in
+// localStorage per category so a long sweep survives a reload.
+const WALK_TAG_JS = [
+  "(function(){var K='tag:__KEY__',T={};",
+  "try{T=JSON.parse(localStorage.getItem(K)||'{}')}catch(e){}",
+  "function build(){var R=[],D=[];",
+  "document.querySelectorAll('figure[data-a]').forEach(function(f){",
+  "var a=f.dataset.a,v=T[a];if(!v)return;",
+  "if(f.dataset.t==='redo'&&v==='r'){R.push(a)}else{D.push(a)}});",
+  "var o=[];if(R.length)o.push('RUN \"REDO '+R.join(', ')+'\"');",
+  "D.forEach(function(a){o.push('RUN \"DROP '+a+'\"')});return o}",
+  "function paint(){document.querySelectorAll('figure[data-a]').forEach(function(f){",
+  "var v=T[f.dataset.a];",
+  "var br=f.querySelector('b.r');if(br)br.classList.toggle('on',v==='r');",
+  "f.querySelector('b.d').classList.toggle('on',v==='d')});",
+  "var o=build();document.getElementById('cnt').textContent=Object.keys(T).length;",
+  "document.getElementById('out').textContent=o.length?o.join('\\n'):'R redraws a tile \u00b7 D or \u00d7 drops it so it comes back'}",
+  "document.addEventListener('click',function(e){",
+  "if(e.target.id==='go'){var t=document.getElementById('out').textContent;",
+  "if(navigator.clipboard)navigator.clipboard.writeText(t);",
+  "e.target.textContent='copied';setTimeout(function(){e.target.textContent='go'},900);return}",
+  "if(e.target.id==='clr'){T={};localStorage.setItem(K,'{}');paint();return}",
+  "var b=e.target.closest('figure b');if(!b)return;",
+  "var f=b.closest('figure[data-a]'),a=f.dataset.a,w=b.classList.contains('r')?'r':'d';",
+  "if(T[a]===w){delete T[a]}else{T[a]=w}",
+  "localStorage.setItem(K,JSON.stringify(T));paint()});paint()})();"
+].join("");
+
 const TAT_RENDER_DEFAULT = ". Full colour, highly detailed, on a plain white background.";
 
 // ══ THE NAME IS A LABEL, NOT A SPECIFICATION ═════════════════════════════════════════════════

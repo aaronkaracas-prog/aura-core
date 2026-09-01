@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.77.0-2026-09-01-a-sort-order-is-not-a-recommendation";
+const BUILD = "aura-core-v9.78.0-2026-09-01-everything-under-flowers-on-one-screen";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6146,11 +6146,18 @@ async function processCommand(line, env, isOp) {
         // times out before it answers - five minutes and no page. The tree already knows how
         // many things exist; whether each is drawn is the category page's job, where it is
         // forty reads instead of two thousand.
-        const rowsW = Object.keys(subjW).map((c) => {
+        // ══ ALPHABETICAL, BECAUSE YOU ARE LOOKING FOR A NAME ═════════════════════════════
+        // It was in tree order, which is the order categories happened to be created in - so
+        // finding Ocean & Marine meant reading all 56. Nobody arrives at this page thinking
+        // "the eleventh category we built".
+        const rowsW = await Promise.all(Object.keys(subjW).sort((a, b) =>
+            a.localeCompare(b, undefined, { sensitivity: "base" })).map(async (c) => {
           const kinds = subjW[c] || [];
           const things = kinds.reduce((n, k) => n + (kindLeaves(k).length || 1), 0);
-          return { category: c, kinds: kinds.length, things };
-        });
+          const cnt = await env.AURA_KV.get("walk:count:" + tatSlug(c), "json").catch(() => null);
+          return { category: c, kinds: kinds.length, things,
+                   pics: cnt ? cnt.pics : null, built: !!cnt };
+        }));
         const htmlI =
           '<!doctype html><html lang=en><head><meta charset=utf-8>' +
           '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
@@ -6166,17 +6173,28 @@ async function processCommand(line, env, isOp) {
           ".n{color:#8b93a7;text-align:right;font-variant-numeric:tabular-nums}" +
           ".full{color:#4ade80}.part{color:#fbbf24}.none{color:#ef4444}" +
           "</style></head><body>" +
-          "<h1>walk</h1><p class=sub>" + rowsW.length + " categories \u00b7 tap one to see every tile in it</p>" +
-          "<table><tr><th>category</th><th class=n>kinds</th><th class=n>things</th></tr>" +
+          "<h1>walk</h1><p class=sub>" + rowsW.length + " categories \u00b7 " +
+          rowsW.reduce((n, r) => n + (r.pics || 0), 0) + " pictures across " +
+          rowsW.filter((r) => r.built).length + " built \u00b7 tap one to see every picture in it</p>" +
+          "<table><tr><th>category</th><th class=n>kinds</th><th class=n>things</th>" +
+          "<th class=n>pictures</th></tr>" +
           rowsW.map((r) =>
             "<tr><td><a href='/walk/" + eW(tatSlug(r.category)) + "'>" + eW(r.category) +
-            "</a></td><td class=n>" + r.kinds + "</td><td class=n>" + r.things + "</td></tr>"
+            "</a></td><td class=n>" + r.kinds + "</td><td class=n>" + r.things + "</td>" +
+            // A category that has never been walked says so. "0" would be a lie about the
+            // catalogue; "not built" is the truth about this page.
+            '<td class="n ' + (r.built ? "full" : "none") + '">' +
+            (r.built ? r.pics : "not built") + "</td></tr>"
           ).join("") + "</table></body></html>";
         await env.AURA_KV.put("page:auras.guide/walk", htmlI);
         return { cmd: "WALK", payload: { ok: true, url: "https://auras.guide/walk",
           categories: rowsW.length,
           things: rowsW.reduce((n, r) => n + r.things, 0),
-          note: "Nothing was drawn. A category page only exists once WALK has been run for it." } };
+          pictures: rowsW.reduce((n, r) => n + (r.pics || 0), 0),
+          built: rowsW.filter((r) => r.built).length,
+          not_built: rowsW.filter((r) => !r.built).map((r) => r.category),
+          note: "Nothing was drawn. Alphabetical. A picture count appears once WALK has been " +
+                "run for that category - the index cannot count them itself." } };
       }
 
       // WALK <category> <leaf> - every picture banked on one leaf, grouped by the path taken.
@@ -6305,18 +6323,27 @@ async function processCommand(line, env, isOp) {
         "*{margin:0;padding:0;box-sizing:border-box}" +
         "body{background:#0b0d12;color:#e9edf5;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px 16px 120px}" +
         "h1{font-size:20px}p.sub{color:#8b93a7;font-size:12px;margin-bottom:18px}" +
-        "a{color:#8b93a7}h2{font-size:13px;color:#7aa2ff;margin:18px 0 8px;font-weight:600}" +
-        "h2 span{color:#5a6478;font-weight:400}" +
-        ".g{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}" +
+        "a{color:#8b93a7}h2{font-size:11px;color:#7aa2ff;margin:12px 0 4px;font-weight:600}" +
+        "h2 span{color:#5a6478;font-weight:400;font-size:10px}" +
+        // ══ AS MANY PICTURES ON THE SCREEN AS POSSIBLE (2026-09-01) ══════════════════════
+        // Aaron, walking Flowers and Ocean: "I want to see everything under flowers". Twenty
+        // kinds each holding one picture spent twenty full-width rows showing twenty images
+        // that fit on two. The grouping is right - you scan Ocean thinking in subjects - the
+        // SPACING was not. Tiles down from 104 to 78, gap from 8 to 5, and the kind header
+        // from a block with 18px above it to a thin line. Roughly three times the pictures per
+        // screen with nothing removed and nothing hidden behind a click.
+        ".g{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:5px}" +
         "figure{position:relative;background:#141a28;border-radius:8px;overflow:hidden}" +
         "figure img{width:100%;aspect-ratio:1;object-fit:cover;display:block}" +
-        "figure.gap{border:1px dashed #ef4444;min-height:104px}" +
-        "figcaption{padding:4px 6px;font-size:10px;line-height:1.3;color:#c7cede}" +
+        "figure.gap{border:1px dashed #ef4444;min-height:78px}" +
+        "figcaption{padding:3px 4px;font-size:9px;line-height:1.25;color:#c7cede}" +
         "figcaption i{color:#5a6478;font-style:normal}" +
-        "figure b{position:absolute;top:4px;width:20px;height:20px;border-radius:5px;" +
-          "background:rgba(11,13,18,.72);color:#8b93a7;font:600 10px/20px system-ui;" +
+        // The chips shrink with the tile but stay tappable - they are the review loop, and a
+        // chip you cannot hit on a phone is a page you cannot review on one.
+        "figure b{position:absolute;top:3px;width:18px;height:18px;border-radius:5px;" +
+          "background:rgba(11,13,18,.72);color:#8b93a7;font:600 10px/18px system-ui;" +
           "text-align:center;cursor:pointer;z-index:2}" +
-        "figure b.r{right:28px}figure b.d{right:4px}" +
+        "figure b.r{right:24px}figure b.d{right:3px}" +
         "figure b.on{background:#7aa2ff;color:#0b0d12}figure b.d.on{background:#ef4444;color:#fff}" +
         "#bar{position:fixed;left:0;right:0;bottom:0;background:#0b0d12;border-top:1px solid #1a1f2e;padding:10px 16px}" +
         "#bar .t{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}" +
@@ -6361,6 +6388,18 @@ async function processCommand(line, env, isOp) {
           .replace("__CAT__", String(catW).replace(/[\\"]/g, "")) + "</script>" +
         "</body></html>";
       await env.AURA_KV.put("page:auras.guide/walk/" + tatSlug(catW), htmlW);
+      // ══ THE INDEX CANNOT COUNT, SO THE CATEGORY COUNTS FOR IT ═════════════════════════════
+      // The index has never shown pictures because counting them there is 1,831 reads in one
+      // request - it timed out and the comment above says so. But the category page has JUST
+      // counted its own, forty reads deep, so it banks the answer on its way out. The index then
+      // reads 56 tiny keys, which is nothing.
+      // A category never walked has no key and the index says "not built" rather than "0", so a
+      // page nobody has made is never mistaken for a category with no pictures in it.
+      try {
+        await env.AURA_KV.put("walk:count:" + tatSlug(catW), JSON.stringify({
+          at: new Date().toISOString(), pics: picTotal, things: secs.reduce((n, x) => n + x.items.length, 0),
+          no_tile: missing.length, no_wall: noWall.length }));
+      } catch {}
       return { cmd: "WALK", payload: { ok: true,
         url: "https://auras.guide/walk/" + tatSlug(catW),
         category: catW, kinds: secs.length,

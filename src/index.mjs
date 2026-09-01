@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.62.0-2026-09-01-walk-and-flag-it";
+const BUILD = "aura-core-v9.63.0-2026-09-01-every-picture-you-have";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5899,6 +5899,18 @@ async function processCommand(line, env, isOp) {
           return (l.keys || []).map((k) => k.name.split(":").pop());
         } catch { return []; }
       };
+      // ══ THE PICTURES ARE NOT WHERE THE WORDS ARE ══════════════════════════════════════
+      // `wall:` holds the OPTIONS for a step - the four crops, the eight poses. `shot:` holds
+      // the PICTURES, and its key carries the whole path taken to reach them, so a person on
+      // color realism and a person on blackwork get different tiles and neither sees the
+      // other's. A leaf can therefore have no wall and still have hundreds of images banked,
+      // which is exactly how this page read as empty while the dog poses sat right there.
+      const shotsOf = async (n) => {
+        try {
+          const l = await env.AURA_KV.list({ prefix: "shot:v1:" + tatSlug(n) + ":", limit: 200 });
+          return (l.keys || []).map((k) => k.name);
+        } catch { return []; }
+      };
 
       if (!askW) {
         // ══ THE INDEX COUNTS FROM THE TREE, NOT FROM KV ═══════════════════════════════════
@@ -5939,22 +5951,83 @@ async function processCommand(line, env, isOp) {
           note: "Nothing was drawn. A category page only exists once WALK has been run for it." } };
       }
 
-      const catW = Object.keys(subjW).find((c) => tatSlug(c) === tatSlug(askW));
+      // WALK <category> <leaf> - every picture banked on one leaf, grouped by the path taken.
+      const partsW = askW.split(/\s{2,}|\s\/\s/).map((x) => x.trim()).filter(Boolean);
+      const catW = Object.keys(subjW).find((c) => tatSlug(c) === tatSlug(partsW[0] || askW));
       if (!catW) return { cmd: "WALK", payload: { ok: false, error: "NO_SUCH_CATEGORY",
         asked: askW, what_to_do: 'RUN "WALK" with no name to list them.' } };
+
+      // ══ ONE LEAF, EVERY PICTURE EVER BANKED FOR IT ═════════════════════════════════════
+      // A shot record is one STEP along one PATH: shot:v1:<leaf>:<step>:<ctx>, holding an image
+      // per option. Two people who chose differently earlier have different ctx and different
+      // pictures, which is correct and is also why a leaf can hold dozens of sets. This shows
+      // all of them at once, which is the only way to judge whether a leaf is actually good.
+      if (partsW.length > 1) {
+        const leafW = partsW.slice(1).join(" ");
+        const keysW = await shotsOf(leafW);
+        const setsW = [];
+        for (const kn of keysW) {
+          let rec = null; try { rec = await env.AURA_KV.get(kn, "json"); } catch {}
+          const bits = kn.split(":");
+          setsW.push({ key: kn, step: bits[3] || "", path: bits.slice(4).join(":") || "bare",
+            imgs: rec && rec.imgs ? rec.imgs : {} });
+        }
+        const tileW = await faceOf(leafW);
+        const htmlL2 =
+          '<!doctype html><html lang=en><head><meta charset=utf-8>' +
+          '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+          "<title>" + eW(leafW) + "</title><style>" +
+          "*{margin:0;padding:0;box-sizing:border-box}" +
+          "body{background:#0b0d12;color:#e9edf5;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px}" +
+          "h1{font-size:20px}p.sub{color:#8b93a7;font-size:12px;margin-bottom:16px}a{color:#8b93a7}" +
+          "h2{font-size:12px;color:#7aa2ff;margin:18px 0 6px;font-weight:600}" +
+          "h2 span{color:#5a6478;font-weight:400;font-size:11px}" +
+          ".g{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}" +
+          "figure{background:#141a28;border-radius:8px;overflow:hidden}" +
+          "figure img{width:100%;aspect-ratio:1;object-fit:cover;display:block}" +
+          "figcaption{padding:5px 6px;font-size:10px;color:#c7cede}" +
+          "</style></head><body>" +
+          "<p class=sub><a href='/walk'>walk</a> / <a href='/walk/" + eW(tatSlug(catW)) + "'>" +
+          eW(catW) + "</a></p><h1>" + eW(leafW) + "</h1><p class=sub>" +
+          setsW.length + " banked sets \u00b7 " +
+          setsW.reduce((n, x) => n + Object.keys(x.imgs).filter((o) => x.imgs[o] && x.imgs[o].img).length, 0) +
+          " pictures</p>" +
+          (tileW ? "<h2>tile</h2><div class=g><figure><img src='" + eW(tileW) + "'></figure></div>" : "") +
+          setsW.map((x) =>
+            "<h2>" + eW(x.step) + " <span>" + eW(x.path) + "</span></h2><div class=g>" +
+            Object.keys(x.imgs).map((o) => {
+              const im = x.imgs[o] || {};
+              return im.img
+                ? "<figure><img loading=lazy src='https://auras.guide/image/" + eW(im.img) +
+                  "'><figcaption>" + eW(o) + "</figcaption></figure>"
+                : "";
+            }).join("") + "</div>").join("") +
+          "</body></html>";
+        await env.AURA_KV.put("page:auras.guide/walk/" + tatSlug(catW) + "/" + tatSlug(leafW), htmlL2);
+        return { cmd: "WALK", payload: { ok: true,
+          url: "https://auras.guide/walk/" + tatSlug(catW) + "/" + tatSlug(leafW),
+          leaf: leafW, sets: setsW.length,
+          pictures: setsW.reduce((n, x) => n + Object.keys(x.imgs).filter((o) => x.imgs[o] && x.imgs[o].img).length, 0),
+          steps: [...new Set(setsW.map((x) => x.step))],
+          note: "Nothing was drawn. Every picture ever banked on this leaf, grouped by the path it was drawn for." } };
+      }
+
       const secs = [];
       for (const k of (subjW[catW] || [])) {
         const sub = kindLeaves(k);
         const items = [];
         if (sub.length) {
-          for (const s2 of sub) items.push({ name: s2, url: await faceOf(s2), walls: await wallsOf(s2) });
+          for (const s2 of sub) items.push({ name: s2, url: await faceOf(s2),
+            walls: await wallsOf(s2), shots: (await shotsOf(s2)).length });
         } else {
-          items.push({ name: k, url: await faceOf(k), walls: await wallsOf(k), isKind: true });
+          items.push({ name: k, url: await faceOf(k), walls: await wallsOf(k),
+            shots: (await shotsOf(k)).length, isKind: true });
         }
         secs.push({ kind: k, leaves: sub.length, items });
       }
       const missing = secs.flatMap((s) => s.items.filter((i) => !i.url).map((i) => i.name));
-      const noWall = secs.flatMap((s) => s.items.filter((i) => i.url && !i.walls.length).map((i) => i.name));
+      const noWall = secs.flatMap((s) => s.items.filter((i) => i.url && !i.walls.length && !i.shots).map((i) => i.name));
+      const shotTotal = secs.reduce((n, s) => n + s.items.reduce((m, i) => m + i.shots, 0), 0);
       const htmlW =
         '<!doctype html><html lang=en><head><meta charset=utf-8>' +
         '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
@@ -5984,14 +6057,16 @@ async function processCommand(line, env, isOp) {
         "<p class=sub><a href='/walk'>&larr; walk</a></p>" +
         "<h1>" + eW(catW) + "</h1><p class=sub>" +
         secs.length + " kinds \u00b7 " + secs.reduce((n, s) => n + s.items.length, 0) + " things \u00b7 " +
-        missing.length + " with no tile \u00b7 " + noWall.length + " with no wall</p>" +
+        missing.length + " with no tile \u00b7 " + shotTotal + " banked sets \u00b7 " +
+        noWall.length + " never opened</p>" +
         secs.map((s) =>
           "<h2>" + eW(s.kind) + (s.leaves ? " <span>" + s.leaves + "</span>" : "") + "</h2><div class=g>" +
           s.items.map((i) => i.url
             ? "<figure data-n=\"" + eW(i.name) + "\"><img loading=lazy src='" + eW(i.url) + "'>" +
-              "<span class='w" + (i.walls.length ? "" : " no") + "'>" +
-              (i.walls.length ? i.walls.join(" ") : "no wall") + "</span>" +
-              "<figcaption>" + eW(i.name) + "</figcaption></figure>"
+              "<span class='w" + (i.shots ? "" : " no") + "'>" +
+              (i.shots ? i.shots + " sets" : "never opened") + "</span>" +
+              "<figcaption><a href='/walk/" + eW(tatSlug(catW)) + "/" + eW(tatSlug(i.name)) +
+              "'>" + eW(i.name) + "</a></figcaption></figure>"
             : "<figure class=gap><figcaption>" + eW(i.name) + "</figcaption></figure>"
           ).join("") + "</div>").join("") +
         // ══ FLAG IT WHERE YOU SEE IT ═══════════════════════════════════════════════════════

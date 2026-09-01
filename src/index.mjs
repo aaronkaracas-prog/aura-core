@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.75.0-2026-09-01-stock-says-what-is-there";
+const BUILD = "aura-core-v9.76.0-2026-09-01-a-key-is-not-a-picture";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6497,6 +6497,100 @@ async function processCommand(line, env, isOp) {
     //   STOCK              every category
     //   STOCK <category>   one of them, same numbers
     case "STOCK": {
+    // ══ STOCK DEEP — OPEN THE RECORDS, BECAUSE A KEY IS NOT A PICTURE ═══════════════════════
+    // MEASURED the hour STOCK shipped: it reported Animals & Pets 81/81 while the walk page drew
+    // two red boxes. `face:v1:black-panther` existed and held `img: null, why: "Request Moderated"`.
+    // `face:v1:bass` existed and held `why: "no crop wall - this leaf has no face to show"`.
+    // One is a refusal, one is a failure, and a listing cannot tell either from a picture.
+    // So the fast pass counts RECORDS and this one counts PICTURES, through `tatFaceUrl` - the
+    // same reader the walk page uses, so the two can no longer disagree about what a tile is.
+    //
+    // ══ WHY IT RESUMES INSTEAD OF FINISHING ═══════════════════════════════════════════════
+    // 2,014 leaves is 2,014 reads and a Worker is capped at 1,000 subrequests. A single pass
+    // cannot finish, and the way it would fail - dying two-thirds through - looks exactly like a
+    // catalogue that is two-thirds full. So it takes a bite, BANKS what it learned per category,
+    // and says whether more is left. Paste the same line again until it says done.
+    // The banked record is what STOCK then reports from, so the deep numbers survive the session.
+    //
+    //   STOCK DEEP          the next bite. Repeat until `remaining` is 0.
+    //   STOCK DEEP RESET    throw the banked numbers away and start over
+    if (/^DEEP\b/i.test(String(rest || "").trim())) {
+      const treeD = await env.AURA_KV.get("card:tree", "json").catch(() => null);
+      if (!treeD?.subjects) return { cmd: "STOCK", payload: { ok: false, error: "NO_TREE" } };
+      const subD = treeD.subjects || {}, spD = treeD.specific || {};
+      const catsD = Object.keys(subD);
+
+      if (/^DEEP\s+RESET\b/i.test(String(rest || "").trim())) {
+        let gone = 0;
+        for (const c of catsD) {
+          const k = "stock:deep:" + tatSlug(c);
+          if (await env.AURA_KV.get(k).catch(() => null)) { await env.AURA_KV.delete(k).catch(() => {}); gone++; }
+        }
+        return { cmd: "STOCK", payload: { ok: true, cleared: gone,
+          next: 'RUN "STOCK DEEP"' } };
+      }
+
+      // The same slug rule the fast pass uses: first category to claim a slug owns it, so a leaf
+      // in four categories is one picture and is counted once.
+      const ownD = {};
+      const leavesOf = (c) => {
+        const out = [];
+        for (const k of (subD[c] || [])) {
+          const hit = Object.keys(spD).find((x) => tatSlug(x) === tatSlug(k));
+          const kids = hit ? (spD[hit] || []) : [];
+          for (const lf of (kids.length ? kids : [k])) out.push(lf);
+        }
+        return out;
+      };
+      for (const c of catsD) for (const lf of leavesOf(c)) {
+        const s = tatSlug(lf); if (!ownD[s]) ownD[s] = c;
+      }
+
+      // ~800 reads a run, under the 1,000 ceiling with headroom for the tree and the banking
+      // writes. A category is never split across two runs - a half-counted category banked as
+      // whole is a wrong number that looks finished, which is the failure this whole command
+      // exists to remove.
+      const BUDGET = 800;
+      let spent = 0;
+      const didD = [], skipD = [];
+      let remaining = 0;
+      for (const c of catsD) {
+        const key = "stock:deep:" + tatSlug(c);
+        const had = await env.AURA_KV.get(key).catch(() => null);
+        if (had) { skipD.push(c); continue; }
+        const mine = leavesOf(c).filter((lf) => ownD[tatSlug(lf)] === c);
+        if (spent && spent + mine.length > BUDGET) { remaining++; continue; }
+        spent += mine.length;
+        const pictures = [], empty = [], none = [];
+        for (let i = 0; i < mine.length; i += 40) {
+          await Promise.all(mine.slice(i, i + 40).map(async (lf) => {
+            const r = await env.AURA_KV.get("face:v1:" + tatSlug(lf), "json").catch(() => null);
+            if (!r) { none.push(lf); return; }
+            // One reader of one fact. tatFaceUrl knows both record shapes - FACE writes `img`,
+            // REDO and TYPES write `url` - and a record with neither is a hole whatever else
+            // it holds.
+            if (tatFaceUrl(r)) pictures.push(lf);
+            // The record already says which kind of hole it is. Carrying `why` through means a
+            // refusal ("no face to show") never gets queued for a redraw beside a real failure.
+            else empty.push(lf + (r.why ? " :: " + String(r.why).slice(0, 90) : ""));
+          }));
+        }
+        const rec = { at: new Date().toISOString(), things: mine.length,
+          pictures: pictures.length, empty, none };
+        try { await env.AURA_KV.put(key, JSON.stringify(rec)); } catch {}
+        didD.push(c + " " + pictures.length + "/" + mine.length);
+      }
+      return { cmd: "STOCK", payload: { ok: true, deep: true,
+        counted_now: didD.length, already_counted: skipD.length, remaining,
+        reads: spent, categories: didD,
+        next: remaining
+          ? 'RUN "STOCK DEEP"   -- ' + remaining + " categories still to count"
+          : 'RUN "STOCK"   -- every category counted, the report is now real',
+        note: remaining
+          ? "A bite at a time, under the 1,000-subrequest ceiling. Paste the same line again."
+          : "Done. STOCK now reports pictures, not keys." } };
+    }
+
       const treeK = await env.AURA_KV.get("card:tree", "json").catch(() => null);
       if (!treeK?.subjects) return { cmd: "STOCK", payload: { ok: false, error: "NO_TREE" } };
       const subK = treeK.subjects || {}, spK = treeK.specific || {};
@@ -6556,6 +6650,12 @@ async function processCommand(line, env, isOp) {
           const kids = hit ? (spK[hit] || []) : [];
           for (const lf of (kids.length ? kids : [k])) leavesK.push(lf);
         }
+        // ══ THE DEEP COUNT WINS WHERE IT EXISTS ═══════════════════════════════════════════
+        // A listing can only say a record is there. STOCK DEEP opened it. So where a category has
+        // been counted properly that number is used, and where it has not the listing is used and
+        // the row SAYS SO - rather than mixing two kinds of number under one heading, which is
+        // how "81 of 81" ended up next to a red box on the page.
+        const deepK = await env.AURA_KV.get("stock:deep:" + tatSlug(c), "json").catch(() => null);
         let tiles = 0, walls = 0, banked = 0, dupes = 0;
         const noTile = [];
         for (const lf of leavesK) {
@@ -6570,12 +6670,22 @@ async function processCommand(line, env, isOp) {
           if (shotK.set.has(s)) banked++;
         }
         const own = leavesK.length - dupes;
-        rowsK.push({ category: c, kinds: kinds.length, things: own, tiles, walls, banked,
-          missing: own - tiles, no_tile: noTile, shared: dupes });
+        // `empty` is a record with no picture in it - a refusal or a failure - and it is a hole
+        // exactly as much as a leaf with no record at all. Counted together as missing, listed
+        // apart because only one of the two is worth a redraw.
+        const tilesReal = deepK ? deepK.pictures : tiles;
+        const holes = deepK
+          ? (deepK.none || []).concat((deepK.empty || []).map((x) => String(x).split(" :: ")[0]))
+          : noTile;
+        rowsK.push({ category: c, kinds: kinds.length, things: own,
+          tiles: tilesReal, walls, banked, counted: deepK ? "deep" : "keys",
+          missing: own - tilesReal, no_tile: holes,
+          empty: deepK ? (deepK.empty || []) : null, shared: dupes });
       }
 
       const totThings = rowsK.reduce((n, r) => n + r.things, 0);
       const totTiles = rowsK.reduce((n, r) => n + r.tiles, 0);
+      const shallowK = rowsK.filter((r) => r.counted === "keys").map((r) => r.category);
       const totMissing = totThings - totTiles;
       // The measured per-image figure, and the platform overhead reconciled against the
       // Cloudflare dashboard on 2026-09-01 - the first time any number here was checked against
@@ -6628,8 +6738,17 @@ async function processCommand(line, env, isOp) {
         // nothing to watch. `--all` lifts the 40-leaf default.
         fill_next: workK.slice(0, 12).map((r) =>
           'RUN "FACES ' + r.category + ' --all"   ' + r.missing + " missing, ~$" + costK(r.missing)),
+        // Named, not implied. A number counted from keys is a CEILING and must not be read as a
+        // count - that confusion is the entire reason this command grew a second pass.
+        counted_from_keys: shallowK.length
+          ? shallowK.length + " categories are still counted from keys, so their tiles number is a " +
+            "CEILING and the real gap is larger. RUN \"STOCK DEEP\" until it says done."
+          : null,
+        empty_records: rowsK.filter((r) => r.empty && r.empty.length)
+          .slice(0, 8).map((r) => r.category + ": " + r.empty.slice(0, 12).join(" | ")),
         by_category: rowsK.slice().sort((a, b) => b.missing - a.missing).map((r) =>
           r.category + "  tiles " + r.tiles + "/" + r.things +
+          (r.counted === "keys" ? "?" : "") +
           "  walls " + r.walls + "  banked " + r.banked +
           (r.shared ? "  (" + r.shared + " shared slug)" : "")),
         no_tile: workK.slice(0, 8).map((r) => r.category + ": " + r.no_tile.slice(0, 20).join(", ")),
@@ -7781,8 +7900,16 @@ async function processCommand(line, env, isOp) {
         // A tile that EXISTS is not the same as a tile that DREW. A record with no image is a
         // hole, and skipping it would be existence standing in for success - the same shape as
         // `enriched: 1` on a dead domain.
-        if (hit && hit.img) return { cmd: "FACE", payload: { ok: true, leaf: name, skipped: true,
-          img: hit.img, url: "https://auras.guide/image/" + hit.img } };
+        // ══ AND `img` IS ONLY ONE OF THE TWO SHAPES (2026-09-01) ═══════════════════════════
+        // MEASURED: `face:v1:black-panther` was redrawn by REDO, which writes `{id, url, at, by}`
+        // and no `img` at all. This check saw no `img`, called it a hole, and would have redrawn
+        // it - and every other tile REDO or TYPES ever drew - at full price on the next FACES run.
+        // The comment below was right about existence not being success and wrong about how to
+        // tell: the question is whether there is a PICTURE, and tatFaceUrl is the one reader that
+        // knows both shapes. WALK already used it. Now FACE does, so a fill cannot pay twice.
+        const shown = tatFaceUrl(hit);
+        if (shown) return { cmd: "FACE", payload: { ok: true, leaf: name, skipped: true,
+          img: hit.img || hit.id || null, url: shown } };
       }
       const pin = (await env.AURA_KV.get("config:talk:model").catch(() => null)) || null;
       const parent = await tatParentOf(env, name);

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.63.0-2026-09-01-every-picture-you-have";
+const BUILD = "aura-core-v9.64.0-2026-09-01-all-of-it-on-one-page";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6016,13 +6016,28 @@ async function processCommand(line, env, isOp) {
       for (const k of (subjW[catW] || [])) {
         const sub = kindLeaves(k);
         const items = [];
-        if (sub.length) {
-          for (const s2 of sub) items.push({ name: s2, url: await faceOf(s2),
-            walls: await wallsOf(s2), shots: (await shotsOf(s2)).length });
-        } else {
-          items.push({ name: k, url: await faceOf(k), walls: await wallsOf(k),
-            shots: (await shotsOf(k)).length, isKind: true });
-        }
+        // ══ EVERY PICTURE, ON THE PAGE, NOT BEHIND A CLICK ════════════════════════════════
+        // A count of banked sets tells you a leaf has images. It does not let you JUDGE them,
+        // and judging them is the entire reason this page exists. So every shot record is
+        // opened and every picture in it is rendered inline under its leaf. Reads are batched
+        // because a category like Animals & Pets is eighty leaves deep and one-at-a-time
+        // awaits is what made LIBRARY take five minutes.
+        const names = sub.length ? sub : [k];
+        const got = await Promise.all(names.map(async (n) => {
+          const [url, walls, keys] = await Promise.all([faceOf(n), wallsOf(n), shotsOf(n)]);
+          const recs = await Promise.all(keys.map(async (kn) => {
+            let r = null; try { r = await env.AURA_KV.get(kn, "json"); } catch {}
+            const bits = kn.split(":");
+            const imgs = [];
+            if (r && r.imgs) for (const o of Object.keys(r.imgs)) {
+              const im = r.imgs[o]; if (im && im.img) imgs.push({ opt: o, img: im.img });
+            }
+            return { step: bits[3] || "", path: bits.slice(4).join(":") || "bare", imgs };
+          }));
+          return { name: n, url, walls, sets: recs.filter((x) => x.imgs.length),
+            shots: keys.length, isKind: !sub.length };
+        }));
+        for (const g of got) items.push(g);
         secs.push({ kind: k, leaves: sub.length, items });
       }
       const missing = secs.flatMap((s) => s.items.filter((i) => !i.url).map((i) => i.name));
@@ -6048,6 +6063,8 @@ async function processCommand(line, env, isOp) {
           "font-size:9px;padding:2px 5px;border-radius:5px}" +
         ".w.no{color:#fbbf24}" +
         "figure[data-n]{cursor:pointer}figure.bad{outline:2px solid #ef4444;opacity:.5}" +
+        ".leaf{margin:0 0 14px}h3{font-size:11px;color:#c7cede;margin:0 0 5px;font-weight:500}" +
+        "h3 span{color:#5a6478}" +
         "#bar{position:sticky;bottom:0;background:#0b0d12;border-top:1px solid #1a1f2e;" +
           "padding:10px 0 6px;margin-top:20px;display:flex;justify-content:space-between;align-items:center}" +
         "#bar button{background:#1a1f2e;color:#e9edf5;border:0;border-radius:6px;padding:5px 10px;font:inherit;cursor:pointer}" +
@@ -6061,13 +6078,19 @@ async function processCommand(line, env, isOp) {
         noWall.length + " never opened</p>" +
         secs.map((s) =>
           "<h2>" + eW(s.kind) + (s.leaves ? " <span>" + s.leaves + "</span>" : "") + "</h2><div class=g>" +
-          s.items.map((i) => i.url
-            ? "<figure data-n=\"" + eW(i.name) + "\"><img loading=lazy src='" + eW(i.url) + "'>" +
-              "<span class='w" + (i.shots ? "" : " no") + "'>" +
-              (i.shots ? i.shots + " sets" : "never opened") + "</span>" +
-              "<figcaption><a href='/walk/" + eW(tatSlug(catW)) + "/" + eW(tatSlug(i.name)) +
-              "'>" + eW(i.name) + "</a></figcaption></figure>"
-            : "<figure class=gap><figcaption>" + eW(i.name) + "</figcaption></figure>"
+          s.items.map((i) =>
+            "<div class=leaf><h3>" + eW(i.name) +
+            (i.sets.length ? " <span>" + i.sets.reduce((n, x) => n + x.imgs.length, 0) + "</span>" : "") +
+            "</h3><div class=g>" +
+            (i.url
+              ? "<figure data-n=\"" + eW(i.name) + "\"><img loading=lazy src='" + eW(i.url) +
+                "'><figcaption>tile</figcaption></figure>"
+              : "<figure class=gap><figcaption>no tile</figcaption></figure>") +
+            i.sets.map((x) => x.imgs.map((m) =>
+              "<figure data-n=\"" + eW(i.name) + "\"><img loading=lazy src='https://auras.guide/image/" +
+              eW(m.img) + "'><figcaption>" + eW(x.step) + " " + eW(m.opt) + "</figcaption></figure>"
+            ).join("")).join("") +
+            "</div></div>"
           ).join("") + "</div>").join("") +
         // ══ FLAG IT WHERE YOU SEE IT ═══════════════════════════════════════════════════════
         // Same one-tap mark as REVIEW, for the same reason: judging a wall and then retyping

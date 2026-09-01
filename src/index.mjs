@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.73.0-2026-09-01-fill-the-first-screen";
+const BUILD = "aura-core-v9.74.0-2026-09-01-say-which-path-it-came-from";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6334,8 +6334,13 @@ async function processCommand(line, env, isOp) {
             (i.url ? cell("redo", i.name, i.url, i.name, "tile")
                    : "<figure class=gap><figcaption>" + eW(i.name) + "<br><i>no tile</i></figcaption></figure>") +
             i.sets.map((x) => x.imgs.map((m) =>
+              // ══ THE PATH IS WHY TWO PICTURES SHARE A LABEL ═══════════════════════════════
+              // Owl showed "expression sleepy" twice and it looked like a duplicate. It is two
+              // records on two different paths - one drawn on crop-face, one on a style path -
+              // and both are correct. Without the path on the caption they are indistinguishable,
+              // and a picture you cannot identify is one you cannot decide about.
               cell("shot", x.key + " " + m.opt, "https://auras.guide/image/" + m.img,
-                   i.name, x.step + " " + m.opt)
+                   i.name, x.step + " " + m.opt + (x.path && x.path !== "bare" ? " \u00b7 " + x.path : ""))
             ).join("")).join("")
           ).join("") + "</div>").join("") +
         "<div id=bar><div class=t><span><b id=cnt>0</b> tagged</span>" +

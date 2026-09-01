@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.69.0-2026-09-01-copy-that-actually-copies";
+const BUILD = "aura-core-v9.70.0-2026-09-01-count-what-is-there";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6166,11 +6166,24 @@ async function processCommand(line, env, isOp) {
             shots: keys.length, isKind: !sub.length };
         }));
         for (const g of got) items.push(g);
-        secs.push({ kind: k, leaves: sub.length, items });
+        // Counted here rather than in the template so the header can say where the depth is.
+        const kStep = {};
+        let kPics = 0;
+        for (const it of got) {
+          if (it.url) { kPics++; kStep.tile = (kStep.tile || 0) + 1; }
+          for (const st of it.sets) {
+            kPics += st.imgs.length;
+            kStep[st.step] = (kStep[st.step] || 0) + st.imgs.length;
+          }
+        }
+        secs.push({ kind: k, leaves: sub.length, items, pics: kPics, byStep: kStep });
       }
       const missing = secs.flatMap((s) => s.items.filter((i) => !i.url).map((i) => i.name));
       const noWall = secs.flatMap((s) => s.items.filter((i) => i.url && !i.walls.length && !i.shots).map((i) => i.name));
-      const shotTotal = secs.reduce((n, s) => n + s.items.reduce((m, i) => m + i.shots, 0), 0);
+      const picTotal = secs.reduce((n, s) => n + s.pics, 0);
+      const byStep = {};
+      for (const s2 of secs) for (const k2 of Object.keys(s2.byStep))
+        byStep[k2] = (byStep[k2] || 0) + s2.byStep[k2];
       // ══ ONE GRID PER KIND, TAG AS YOU SCROLL ═════════════════════════════════════════════
       // A leaf with twelve pictures and a leaf with none each took a full band, so Fish was six
       // stacked rows to show eighteen images. The kind is the unit worth scanning; the leaf is a
@@ -6214,10 +6227,20 @@ async function processCommand(line, env, isOp) {
         "<p class=sub><a href='/walk'>&larr; walk</a></p>" +
         "<h1>" + eW(catW) + "</h1><p class=sub>" +
         secs.length + " kinds \u00b7 " + secs.reduce((n, s) => n + s.items.length, 0) + " things \u00b7 " +
-        missing.length + " with no tile \u00b7 " + shotTotal + " banked sets \u00b7 " +
+        "<b>" + picTotal + " pictures</b> \u00b7 " + missing.length + " with no tile \u00b7 " +
         noWall.length + " never opened</p>" +
+        // ══ A COUNT PER STEP, NOT JUST A TOTAL ═══════════════════════════════════════════
+        // "68 banked sets" says nothing you can act on. Twelve styles, eight poses and four
+        // crops is a picture of where the depth actually is - and where a kind is thin.
+        "<p class=sub>" + Object.keys(byStep).sort((a, b) => byStep[b] - byStep[a])
+          .map((k) => byStep[k] + " " + eW(k)).join(" \u00b7 ") + "</p>" +
         secs.map((s) =>
-          "<h2>" + eW(s.kind) + (s.leaves ? " <span>" + s.leaves + "</span>" : "") + "</h2><div class=g>" +
+          "<h2>" + eW(s.kind) + " <span>" + s.pics + " pictures" +
+          (s.leaves ? " across " + s.leaves : "") +
+          (Object.keys(s.byStep).length
+            ? " \u00b7 " + Object.keys(s.byStep).sort((a, b) => s.byStep[b] - s.byStep[a])
+                .map((k) => s.byStep[k] + " " + eW(k)).join(", ")
+            : "") + "</span></h2><div class=g>" +
           s.items.map((i) =>
             (i.url ? cell("redo", i.name, i.url, i.name, "tile")
                    : "<figure class=gap><figcaption>" + eW(i.name) + "<br><i>no tile</i></figcaption></figure>") +

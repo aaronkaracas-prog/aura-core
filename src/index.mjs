@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.60.0-2026-08-31-open-it-without-marking-it";
+const BUILD = "aura-core-v9.61.0-2026-09-01-walk-the-whole-thing";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5866,6 +5866,143 @@ async function processCommand(line, env, isOp) {
     //
     // This reads the tree and the records those commands write, so it reports what is ACTUALLY
     // drawn rather than what was asked for. A category that failed halfway shows as half drawn.
+    // ══ WALK — SEE WHAT ACTUALLY EXISTS, ONE CATEGORY AT A TIME ═════════════════════════════
+    // LIBRARY counts. TYPES shows one kind. REVIEW is for approving. None of them answers the
+    // question that matters when the catalogue is 2,000 tiles deep: what is actually THERE, all
+    // the way down, and where are the holes. Aaron cannot judge a catalogue he cannot see, and
+    // inferring it from counts is how three separate runs this session were aimed at the wrong
+    // parent. This draws nothing and costs nothing - it reads the tree and reports.
+    //   WALK                -> every category, its kinds, counts, and which are complete
+    //   WALK <category>     -> that category in full: every kind, every leaf, every tile,
+    //                          and a mark on anything with no tile or no variation wall
+    case "WALK": {
+      const treeW = await env.AURA_KV.get("card:tree", "json").catch(() => null);
+      if (!treeW) return { cmd: "WALK", payload: { ok: false, error: "NO_TREE" } };
+      const subjW = treeW.subjects || {}, specW = treeW.specific || {};
+      const askW = String(rest || "").trim();
+      const eW = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (x) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[x]));
+      // The tree stores kind names, not slugs, so match the way every other reader does.
+      const kindLeaves = (k) => {
+        const hit = Object.keys(specW).find((x) => tatSlug(x) === tatSlug(k));
+        return hit ? (specW[hit] || []) : [];
+      };
+      const faceOf = async (n) => {
+        const r = await env.AURA_KV.get("face:v1:" + tatSlug(n), "json").catch(() => null);
+        return r ? tatFaceUrl(r) : null;
+      };
+      // A leaf with a tile but no wall is a dead end on the third screen. That is the single
+      // most useful thing this page reports and it cannot be read from any existing command.
+      const wallsOf = async (n) => {
+        try {
+          const l = await env.AURA_KV.list({ prefix: "wall:v1:" + tatSlug(n) + ":", limit: 10 });
+          return (l.keys || []).map((k) => k.name.split(":").pop());
+        } catch { return []; }
+      };
+
+      if (!askW) {
+        const rowsW = [];
+        for (const c of Object.keys(subjW)) {
+          const kinds = subjW[c] || [];
+          let things = 0, drawn = 0;
+          for (const k of kinds) {
+            const sub = kindLeaves(k);
+            if (sub.length) { things += sub.length; for (const s2 of sub) if (await faceOf(s2)) drawn++; }
+            else { things += 1; if (await faceOf(k)) drawn++; }
+          }
+          rowsW.push({ category: c, kinds: kinds.length, things, drawn });
+        }
+        const htmlI =
+          '<!doctype html><html lang=en><head><meta charset=utf-8>' +
+          '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+          "<title>walk</title><style>" +
+          "*{margin:0;padding:0;box-sizing:border-box}" +
+          "body{background:#0b0d12;color:#e9edf5;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:18px}" +
+          "h1{font-size:20px;margin-bottom:4px}p.sub{color:#8b93a7;font-size:12px;margin-bottom:16px}" +
+          "a{color:#e9edf5;text-decoration:none}" +
+          "table{width:100%;border-collapse:collapse}" +
+          "td,th{padding:8px 10px;border-bottom:1px solid #1a1f2e;text-align:left;font-size:13px}" +
+          "th{color:#8b93a7;font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.05em}" +
+          "tr:hover{background:#141a28}" +
+          ".n{color:#8b93a7;text-align:right;font-variant-numeric:tabular-nums}" +
+          ".full{color:#4ade80}.part{color:#fbbf24}.none{color:#ef4444}" +
+          "</style></head><body>" +
+          "<h1>walk</h1><p class=sub>" + rowsW.length + " categories \u00b7 tap one to see every tile in it</p>" +
+          "<table><tr><th>category</th><th class=n>kinds</th><th class=n>drawn</th></tr>" +
+          rowsW.map((r) => {
+            const cls = r.drawn === 0 ? "none" : r.drawn >= r.things ? "full" : "part";
+            return "<tr><td><a href='/walk/" + eW(tatSlug(r.category)) + "'>" + eW(r.category) +
+              "</a></td><td class=n>" + r.kinds + "</td><td class='n " + cls + "'>" +
+              r.drawn + " / " + r.things + "</td></tr>";
+          }).join("") + "</table></body></html>";
+        await env.AURA_KV.put("page:auras.guide/walk", htmlI);
+        return { cmd: "WALK", payload: { ok: true, url: "https://auras.guide/walk",
+          categories: rowsW.length,
+          things: rowsW.reduce((n, r) => n + r.things, 0),
+          drawn: rowsW.reduce((n, r) => n + r.drawn, 0),
+          note: "Nothing was drawn. Tap a category on that page to walk it to the leaf." } };
+      }
+
+      const catW = Object.keys(subjW).find((c) => tatSlug(c) === tatSlug(askW));
+      if (!catW) return { cmd: "WALK", payload: { ok: false, error: "NO_SUCH_CATEGORY",
+        asked: askW, what_to_do: 'RUN "WALK" with no name to list them.' } };
+      const secs = [];
+      for (const k of (subjW[catW] || [])) {
+        const sub = kindLeaves(k);
+        const items = [];
+        if (sub.length) {
+          for (const s2 of sub) items.push({ name: s2, url: await faceOf(s2), walls: await wallsOf(s2) });
+        } else {
+          items.push({ name: k, url: await faceOf(k), walls: await wallsOf(k), isKind: true });
+        }
+        secs.push({ kind: k, leaves: sub.length, items });
+      }
+      const missing = secs.flatMap((s) => s.items.filter((i) => !i.url).map((i) => i.name));
+      const noWall = secs.flatMap((s) => s.items.filter((i) => i.url && !i.walls.length).map((i) => i.name));
+      const htmlW =
+        '<!doctype html><html lang=en><head><meta charset=utf-8>' +
+        '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+        "<title>" + eW(catW) + "</title><style>" +
+        "*{margin:0;padding:0;box-sizing:border-box}" +
+        "body{background:#0b0d12;color:#e9edf5;font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:16px}" +
+        "h1{font-size:20px}p.sub{color:#8b93a7;font-size:12px;margin-bottom:18px}" +
+        "a{color:#8b93a7}h2{font-size:13px;color:#7aa2ff;margin:20px 0 8px;font-weight:600}" +
+        "h2 span{color:#5a6478;font-weight:400}" +
+        ".g{display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:8px}" +
+        "figure{position:relative;background:#141a28;border-radius:8px;overflow:hidden}" +
+        "figure img{width:100%;aspect-ratio:1;object-fit:cover;display:block}" +
+        "figure.gap{border:1px dashed #ef4444;min-height:108px}" +
+        "figcaption{padding:5px 6px;font-size:10px;line-height:1.3;color:#c7cede}" +
+        // A leaf with a tile and no wall still LOOKS finished in every other view. Marking it is
+        // the whole point: it is the third screen that will make the customer wait.
+        ".w{position:absolute;top:4px;right:4px;background:rgba(11,13,18,.8);color:#4ade80;" +
+          "font-size:9px;padding:2px 5px;border-radius:5px}" +
+        ".w.no{color:#fbbf24}" +
+        "</style></head><body>" +
+        "<p class=sub><a href='/walk'>&larr; walk</a></p>" +
+        "<h1>" + eW(catW) + "</h1><p class=sub>" +
+        secs.length + " kinds \u00b7 " + secs.reduce((n, s) => n + s.items.length, 0) + " things \u00b7 " +
+        missing.length + " with no tile \u00b7 " + noWall.length + " with no wall</p>" +
+        secs.map((s) =>
+          "<h2>" + eW(s.kind) + (s.leaves ? " <span>" + s.leaves + "</span>" : "") + "</h2><div class=g>" +
+          s.items.map((i) => i.url
+            ? "<figure><img loading=lazy src='" + eW(i.url) + "'>" +
+              "<span class='w" + (i.walls.length ? "" : " no") + "'>" +
+              (i.walls.length ? i.walls.join(" ") : "no wall") + "</span>" +
+              "<figcaption>" + eW(i.name) + "</figcaption></figure>"
+            : "<figure class=gap><figcaption>" + eW(i.name) + "</figcaption></figure>"
+          ).join("") + "</div>").join("") +
+        "</body></html>";
+      await env.AURA_KV.put("page:auras.guide/walk/" + tatSlug(catW), htmlW);
+      return { cmd: "WALK", payload: { ok: true,
+        url: "https://auras.guide/walk/" + tatSlug(catW),
+        category: catW, kinds: secs.length,
+        things: secs.reduce((n, s) => n + s.items.length, 0),
+        no_tile: missing.length, no_wall: noWall.length,
+        missing: missing.slice(0, 40),
+        note: "Nothing was drawn. Red dashed = no tile. Amber = tile but no variation wall." } };
+    }
+
     case "LIBRARY": {
       const tree = await env.AURA_KV.get("card:tree", "json").catch(() => null);
       if (!tree) return { cmd: "LIBRARY", payload: { ok: false, error: "NO_TREE" } };

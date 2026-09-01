@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.61.0-2026-09-01-walk-the-whole-thing";
+const BUILD = "aura-core-v9.62.0-2026-09-01-walk-and-flag-it";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5901,17 +5901,16 @@ async function processCommand(line, env, isOp) {
       };
 
       if (!askW) {
-        const rowsW = [];
-        for (const c of Object.keys(subjW)) {
+        // ══ THE INDEX COUNTS FROM THE TREE, NOT FROM KV ═══════════════════════════════════
+        // MEASURED: counting drawn tiles here is 1,831 KV reads in one request and the worker
+        // times out before it answers - five minutes and no page. The tree already knows how
+        // many things exist; whether each is drawn is the category page's job, where it is
+        // forty reads instead of two thousand.
+        const rowsW = Object.keys(subjW).map((c) => {
           const kinds = subjW[c] || [];
-          let things = 0, drawn = 0;
-          for (const k of kinds) {
-            const sub = kindLeaves(k);
-            if (sub.length) { things += sub.length; for (const s2 of sub) if (await faceOf(s2)) drawn++; }
-            else { things += 1; if (await faceOf(k)) drawn++; }
-          }
-          rowsW.push({ category: c, kinds: kinds.length, things, drawn });
-        }
+          const things = kinds.reduce((n, k) => n + (kindLeaves(k).length || 1), 0);
+          return { category: c, kinds: kinds.length, things };
+        });
         const htmlI =
           '<!doctype html><html lang=en><head><meta charset=utf-8>' +
           '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
@@ -5928,19 +5927,16 @@ async function processCommand(line, env, isOp) {
           ".full{color:#4ade80}.part{color:#fbbf24}.none{color:#ef4444}" +
           "</style></head><body>" +
           "<h1>walk</h1><p class=sub>" + rowsW.length + " categories \u00b7 tap one to see every tile in it</p>" +
-          "<table><tr><th>category</th><th class=n>kinds</th><th class=n>drawn</th></tr>" +
-          rowsW.map((r) => {
-            const cls = r.drawn === 0 ? "none" : r.drawn >= r.things ? "full" : "part";
-            return "<tr><td><a href='/walk/" + eW(tatSlug(r.category)) + "'>" + eW(r.category) +
-              "</a></td><td class=n>" + r.kinds + "</td><td class='n " + cls + "'>" +
-              r.drawn + " / " + r.things + "</td></tr>";
-          }).join("") + "</table></body></html>";
+          "<table><tr><th>category</th><th class=n>kinds</th><th class=n>things</th></tr>" +
+          rowsW.map((r) =>
+            "<tr><td><a href='/walk/" + eW(tatSlug(r.category)) + "'>" + eW(r.category) +
+            "</a></td><td class=n>" + r.kinds + "</td><td class=n>" + r.things + "</td></tr>"
+          ).join("") + "</table></body></html>";
         await env.AURA_KV.put("page:auras.guide/walk", htmlI);
         return { cmd: "WALK", payload: { ok: true, url: "https://auras.guide/walk",
           categories: rowsW.length,
           things: rowsW.reduce((n, r) => n + r.things, 0),
-          drawn: rowsW.reduce((n, r) => n + r.drawn, 0),
-          note: "Nothing was drawn. Tap a category on that page to walk it to the leaf." } };
+          note: "Nothing was drawn. A category page only exists once WALK has been run for it." } };
       }
 
       const catW = Object.keys(subjW).find((c) => tatSlug(c) === tatSlug(askW));
@@ -5978,6 +5974,12 @@ async function processCommand(line, env, isOp) {
         ".w{position:absolute;top:4px;right:4px;background:rgba(11,13,18,.8);color:#4ade80;" +
           "font-size:9px;padding:2px 5px;border-radius:5px}" +
         ".w.no{color:#fbbf24}" +
+        "figure[data-n]{cursor:pointer}figure.bad{outline:2px solid #ef4444;opacity:.5}" +
+        "#bar{position:sticky;bottom:0;background:#0b0d12;border-top:1px solid #1a1f2e;" +
+          "padding:10px 0 6px;margin-top:20px;display:flex;justify-content:space-between;align-items:center}" +
+        "#bar button{background:#1a1f2e;color:#e9edf5;border:0;border-radius:6px;padding:5px 10px;font:inherit;cursor:pointer}" +
+        "#out{background:#141a28;border-radius:6px;padding:8px 10px;font:11px/1.4 ui-monospace,monospace;" +
+          "color:#c7cede;white-space:pre-wrap;word-break:break-word;margin-bottom:10px}" +
         "</style></head><body>" +
         "<p class=sub><a href='/walk'>&larr; walk</a></p>" +
         "<h1>" + eW(catW) + "</h1><p class=sub>" +
@@ -5986,12 +5988,33 @@ async function processCommand(line, env, isOp) {
         secs.map((s) =>
           "<h2>" + eW(s.kind) + (s.leaves ? " <span>" + s.leaves + "</span>" : "") + "</h2><div class=g>" +
           s.items.map((i) => i.url
-            ? "<figure><img loading=lazy src='" + eW(i.url) + "'>" +
+            ? "<figure data-n=\"" + eW(i.name) + "\"><img loading=lazy src='" + eW(i.url) + "'>" +
               "<span class='w" + (i.walls.length ? "" : " no") + "'>" +
               (i.walls.length ? i.walls.join(" ") : "no wall") + "</span>" +
               "<figcaption>" + eW(i.name) + "</figcaption></figure>"
             : "<figure class=gap><figcaption>" + eW(i.name) + "</figcaption></figure>"
           ).join("") + "</div>").join("") +
+        // ══ FLAG IT WHERE YOU SEE IT ═══════════════════════════════════════════════════════
+        // Same one-tap mark as REVIEW, for the same reason: judging a wall and then retyping
+        // twenty names into a REDO is where the judgement gets lost. Marks survive a reload so
+        // the sweep can be done in sittings, and `copy` hands back a command ready to paste.
+        "<div id=bar><span><b id=cnt>0</b> marked</span>" +
+        "<span><button id=copy>copy</button> <button id=clear>clear</button></span></div>" +
+        "<pre id=out>tap a tile to mark it</pre>" +
+        "<script>(function(){var K='walk:" + tatSlug(catW) + "';" +
+        "var bad=[];try{bad=JSON.parse(localStorage.getItem(K)||'[]')}catch(e){}" +
+        "function paint(){document.querySelectorAll('figure[data-n]').forEach(function(f){" +
+        "f.classList.toggle('bad',bad.indexOf(f.dataset.n)>=0)});" +
+        "document.getElementById('cnt').textContent=bad.length;" +
+        "document.getElementById('out').textContent=bad.length" +
+        "?'RUN \"REDO '+bad.join(', ')+'\"':'tap a tile to mark it'}" +
+        "document.addEventListener('click',function(e){" +
+        "if(e.target.id==='copy'){navigator.clipboard&&navigator.clipboard.writeText(" +
+        "document.getElementById('out').textContent);return}" +
+        "if(e.target.id==='clear'){bad=[];localStorage.setItem(K,'[]');paint();return}" +
+        "var f=e.target.closest('figure[data-n]');if(!f)return;" +
+        "var n=f.dataset.n,i=bad.indexOf(n);if(i<0)bad.push(n);else bad.splice(i,1);" +
+        "localStorage.setItem(K,JSON.stringify(bad));paint()});paint()})();</script>" +
         "</body></html>";
       await env.AURA_KV.put("page:auras.guide/walk/" + tatSlug(catW), htmlW);
       return { cmd: "WALK", payload: { ok: true,

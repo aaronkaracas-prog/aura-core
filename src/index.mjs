@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.78.0-2026-09-01-everything-under-flowers-on-one-screen";
+const BUILD = "aura-core-v9.79.0-2026-09-01-a-word-list-cannot-cover-the-catalogue";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5953,7 +5953,7 @@ async function processCommand(line, env, isOp) {
         try { profF = await tatLeafProfile(env, lf, undefined, parentOf[lf]); } catch {}
         if (!profF) { failF.push(lf + ": no profile"); continue; }
         const kindF = String((profF.resolved && profF.resolved.subject) || lf).trim();
-        const frameF = await tatFrameFor(env, kindF, lf);
+        const frameF = await tatFrameFor(env, kindF, lf, "style");
         const headF = profF.say || tatName(lf, profF.resolved);
         shotF.drew = null;
         const outF = await tatShoot(env, keyF, headF, [], "style", wallF, shotF, 22000, frameF);
@@ -6044,7 +6044,7 @@ async function processCommand(line, env, isOp) {
         asked: optsS, options: wallS.opts.map((o) => o.id) } };
 
       const kindS = String((profS.resolved && profS.resolved.subject) || leafS).trim();
-      const frameS = await tatFrameFor(env, kindS, leafS);
+      const frameS = await tatFrameFor(env, kindS, leafS, stepS);
       const headS = profS.say || tatName(leafS, profS.resolved);
       // tatShoot records `drew` only the FIRST time a record is ever drawn, so reporting it back
       // reports the oldest prompt on the record - a redraw of "black and grey" answered with the
@@ -53959,26 +53959,84 @@ function tatSay(field, value, extra) {
 // what this file says, which is the behaviour anyone reading the code would expect.
 //   frame:mammal   frame:reptile   frame:shape   kind:photo   kind:reptile
 // frame:shape may contain {leaf} - it is the only one that names its subject.
-async function tatFrameFor(env, kind, leaf) {
+// ══ A WORD LIST CANNOT COVER 2,014 LEAVES (2026-09-01) ═══════════════════════════════════
+// MEASURED on the live UI: somebody walked Flowers & Plants -> Sunflower and the crop wall came
+// back FLAT VECTOR CLIPART - four cartoon sunflowers where photographs belong.
+// `kind:photo` holds 37 words and it holds `flower`. Sunflower's profile resolves
+// `{subject: "sunflower"}`. Exact match, so `sunflower` is not `flower`, no match on either list,
+// and it fell through to the shape plate.
+//
+// AND IT IS NOT A FLOWER PROBLEM. A leaf UNDER a kind resolves to the kind - Golden Retriever
+// resolves subject=dog, which is listed, which is why every dog has always worked. A leaf that IS
+// its own kind resolves to ITSELF: Lotus, Peony, Lily, Daisy, Cherry Blossom, Koi, Waves, Kraken,
+// Lighthouse. Twenty kinds in Flowers, ten in Ocean, one picture each and never opened - that
+// whole shape of the catalogue was one lookup miss.
+//
+// Adding words is what this file already tried: 37 of them, and the next unlisted subject fails
+// the same way silently. So the lookup gets the two things it was missing.
+//   SUBSTRING, not exact  - "sunflower" contains "flower". A word list of CLASSES should match a
+//                           subject that is one, and singularisation already proved the exact
+//                           match too brittle once.
+//   THE OWNER, then the CATEGORY - the tree already knows Sunflower sits under Flowers & Plants,
+//                           which contains both `flower` and `plant`. tatOwnerOf resolves that
+//                           nearest-parent-first and the `context:` dial already relies on it, so
+//                           this reuses the existing resolver rather than growing a second one.
+//
+// SUBSTRING IS DIRECTIONAL AND THAT MATTERS: the listed word must appear IN the subject, never the
+// reverse. `flower` in `sunflower` is a match; a list entry `sunflower` would not match a subject
+// `flower`. The list holds classes and the subject is the specific thing.
+// Guarded at 3 characters so a short entry cannot match half the catalogue by accident.
+async function tatFrameFor(env, kind, leaf, step) {
   const get = async (k) => { try { return await env.AURA_KV.get(k); } catch { return null; } };
-  const [rept, phot, mam, rf, sf] = await Promise.all([
+  const [rept, phot, mam, rf, sf, bare] = await Promise.all([
     get("kind:reptile"), get("kind:photo"), get("frame:mammal"),
-    get("frame:reptile"), get("frame:shape")]);
+    get("frame:reptile"), get("frame:shape"), get("frame:crop")]);
   // ══ THE LOOKUP SINGULARISES, SO THE LIST DOES NOT HAVE TO CARRY BOTH ═════════════════════
   // MEASURED: the singular fix changed how a LEAF is spoken but not `resolved.subject`, which is
   // what picks the frame. So "wolf" reached the model while the frame lookup still saw "wolves",
   // missed `kind:photo`, and fell through to the shape plate - six animals came back as clipart.
   // Listing every plural by hand would work until the first one nobody thought of.
-  const has = (csv, k) => csv.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean).includes(k);
-  const kLower = String(kind).toLowerCase();
+  const words = (csv) => String(csv || "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
+  const hit = (csv, k) => !!k && words(csv).some((w) =>
+    w === k || (w.length >= 3 && k.includes(w)));
+  const kLower = String(kind || "").toLowerCase();
   const kSing = tatSingular(kLower).toLowerCase();
-  const listed = (csv) => csv ? (has(csv, kLower) || has(csv, kSing)) : null;
-  const isRept = listed(rept); const isPhot = listed(phot);
+  // Nearest parent first, then the category above it. Only consulted when the subject itself did
+  // not resolve - a leaf that names its own class is answered by its own name and never walks up.
+  let owner = null, cat = null;
+  const climb = async () => {
+    if (owner !== null || cat !== null) return;
+    owner = (await tatOwnerOf(env, leaf).catch(() => null)) || "";
+    cat = owner ? ((await tatOwnerOf(env, owner).catch(() => null)) || "") : "";
+  };
+  const listed = async (csv) => {
+    if (!csv) return null;
+    if (hit(csv, kLower) || hit(csv, kSing)) return true;
+    await climb();
+    if (hit(csv, String(owner).toLowerCase()) || hit(csv, String(cat).toLowerCase())) return true;
+    return false;
+  };
+  const isRept = await listed(rept); const isPhot = await listed(phot);
+  // ══ THE FRAME MUST NOT NAME A CROP ON THE CROP WALL (2026-09-01) ═════════════════════════
+  // The live `frame:mammal` reads ", full body, black background, photograph". On a CROP wall the
+  // option's own clause says "the face filling the frame, head only" and this contradicts it two
+  // clauses later - so three of the four crop options are overridden by the frame and bust, half
+  // body and face come back looking alike. That is the rabbit prompt from the handoff:
+  //   `rabbit, face, ... full body, black background, photograph`
+  // The clause is not wrong, it is in the wrong place. Every wall EXCEPT crop has its framing
+  // already answered - a pose or expression tile carries the chosen crop in its path - and a bare
+  // tile has nothing, which is what the clause was written for.
+  // `frame:crop` is the dial for the crop wall alone, and it is deliberately the same photographic
+  // instruction with no crop named. Unset, it derives from whatever frame won by stripping the
+  // leading framing clause, so a cleared key degrades to today's behaviour rather than to nothing.
+  const stripCrop = (fr) => String(fr || "").replace(
+    /^,\s*(the face filling the frame[^.]*|full body|head only[^.]*|the complete figure[^.]*)\s*(?=[,.]|$)/i, "");
+  const forStep = (fr) => (String(step || "") === "crop" ? (bare || stripCrop(fr)) : fr);
   if (isRept === true || (isRept === null && (TAT_REPTILE_KIND.test(kind) || TAT_REPTILE_KIND.test(kSing))))
-    return rf || TAT_FRAME_REPTILE;
+    return forStep(rf || TAT_FRAME_REPTILE);
   if (isPhot === true || (isPhot === null && (TAT_PHOTO_KIND.test(kind) || TAT_PHOTO_KIND.test(kSing))))
-    return mam || TAT_FRAME_PHOTO;
-  return sf ? sf.replace(/\{leaf\}/g, leaf) : TAT_FRAME_SHAPE(leaf);
+    return forStep(mam || TAT_FRAME_PHOTO);
+  return forStep(sf ? sf.replace(/\{leaf\}/g, leaf) : TAT_FRAME_SHAPE(leaf));
 }
 
 // ══ ONE OF THE THING, NOT SOME OF THEM ═══════════════════════════════════════════════════
@@ -57926,7 +57984,7 @@ export class PublicEntry extends WorkerEntrypoint {
           // The kind decides the recognition frame. A dog gets a photograph; a dragon gets a
           // shape plate where the silhouette IS the subject.
           const kind = String((prof.resolved && prof.resolved.subject) || leaf).trim();
-          const recogFrame = await tatFrameFor(env, kind, leaf);
+          const recogFrame = await tatFrameFor(env, kind, leaf, stepId);
           // The same missing word, in the walk. A boxer's crop wall was drawing a prizefighter
           // for exactly the reason the identity pass found - the label alone reached the model.
           shot = await tatShoot(env, shotKey, prof.say || tatName(leaf, prof.resolved), ctxPhrases,

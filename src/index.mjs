@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.76.0-2026-09-01-a-key-is-not-a-picture";
+const BUILD = "aura-core-v9.77.0-2026-09-01-a-sort-order-is-not-a-recommendation";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6482,10 +6482,15 @@ async function processCommand(line, env, isOp) {
     // reads, which is also why it has never been run twice in a session.
     //
     // ══ LIST THE PREFIX, DO NOT READ THE LEAVES ═══════════════════════════════════════════
-    // The obvious build is one KV get per leaf. That is 1,693 gets in a single request and a
-    // Worker is capped at 1,000 subrequests - so the obvious build cannot finish, and it would
-    // fail somewhere past the two-thirds mark rather than saying so. LIBRARY is the slow half of
-    // that same mistake.
+    // The obvious build is one KV get per leaf - 2,000 gets in a single request, which is slow
+    // however many the platform allows. LIBRARY is the slow half of that same mistake and takes
+    // five minutes doing it sequentially.
+    // NOT because of a 1,000-subrequest cap: that was removed 2026-02-11 and paid Workers now
+    // default to 10,000, raisable to 10 million. This command was first built on the old number,
+    // stated as fact and never checked. The listing is still the right shape - one subrequest
+    // buys 1,000 keys - but the reason is speed, not a ceiling.
+    // A caveat the file already carries elsewhere: the faces Workflow MEASURED a real invocation
+    // wall at roughly 1,100 subrequests, twice. That measurement stands whatever the docs say.
     // A prefix LIST returns 1,000 keys per call and costs one subrequest for all of them. Every
     // question here - which leaves have a tile, a wall, banked pictures - is "does this key
     // exist", and existence is what a listing already tells you. So three listings replace two
@@ -6505,12 +6510,20 @@ async function processCommand(line, env, isOp) {
     // So the fast pass counts RECORDS and this one counts PICTURES, through `tatFaceUrl` - the
     // same reader the walk page uses, so the two can no longer disagree about what a tile is.
     //
-    // ══ WHY IT RESUMES INSTEAD OF FINISHING ═══════════════════════════════════════════════
-    // 2,014 leaves is 2,014 reads and a Worker is capped at 1,000 subrequests. A single pass
-    // cannot finish, and the way it would fail - dying two-thirds through - looks exactly like a
-    // catalogue that is two-thirds full. So it takes a bite, BANKS what it learned per category,
-    // and says whether more is left. Paste the same line again until it says done.
-    // The banked record is what STOCK then reports from, so the deep numbers survive the session.
+    // ══ WHY IT RESUMES, AND THE REASON IT WAS FIRST GIVEN WAS WRONG ═══════════════════════
+    // This was built because "a Worker is capped at 1,000 subrequests". CHECKED against
+    // Cloudflare's own changelog after Grok challenged it: that cap was REMOVED on 2026-02-11.
+    // Paid Workers now default to 10,000 subrequests per invocation, raisable to 10 million via
+    // `limits.subrequests` in wrangler config, and subrequests to internal services like KV match
+    // that configured limit. All 2,014 reads would have run in one pass.
+    // A number nobody verified shaped a design. Written down so the next reader inherits the
+    // correction rather than the belief.
+    //
+    // IT STILL RESUMES, FOR THE REASONS THAT ARE REAL: 2,014 reads is wall-clock time inside one
+    // request, and KV is eventually consistent - two runs seconds apart re-counted the same five
+    // categories because the first run's writes were not visible yet. A bite that BANKS what it
+    // learned per category survives both. Paste the same line until it says done.
+    // The banked record is what STOCK then reports from, so the deep numbers outlive the session.
     //
     //   STOCK DEEP          the next bite. Repeat until `remaining` is 0.
     //   STOCK DEEP RESET    throw the banked numbers away and start over
@@ -6587,7 +6600,8 @@ async function processCommand(line, env, isOp) {
           ? 'RUN "STOCK DEEP"   -- ' + remaining + " categories still to count"
           : 'RUN "STOCK"   -- every category counted, the report is now real',
         note: remaining
-          ? "A bite at a time, under the 1,000-subrequest ceiling. Paste the same line again."
+          ? "A bite at a time - for wall-clock time and KV consistency, NOT for a subrequest cap. " +
+            "Leave a few seconds between runs or the next one re-counts what this one just banked."
           : "Done. STOCK now reports pictures, not keys." } };
     }
 
@@ -6692,9 +6706,32 @@ async function processCommand(line, env, isOp) {
       // a bill rather than against this file's own arithmetic.
       const costK = (n) => Math.round(n * 0.0151 * 1.3 * 100) / 100;
 
+      // ══ A WORKLIST SORTED BY SIZE PUT THE NEVER-FILL CATEGORIES ON TOP ════════════════════
+      // MEASURED 2026-09-01: the first three lines of this list were Portraits, Lettering & Quotes
+      // and Comics and Legends - three things in the catalogue that must NEVER be filled. It was a
+      // sort order reading as a recommendation, and a future session pasting the top of it would
+      // draw ten "My Grandparent" tiles and eight tiles of text a model cannot spell.
+      //
+      // THREE KINDS OF LEAF THAT ARE NOT WORK:
+      //   BY REQUEST  - My Child, A Turning Point, With a Partner. Conversations, not rows. There
+      //                 is no catalogue of somebody's grandparent and nothing to pre-draw.
+      //   TEXT        - A Word, A Date, Roman Numerals, Their Handwriting. The model cannot spell;
+      //                 these need typesetting, not drawing.
+      //   BLOCKED     - named Marvel/DC characters and the legends the filter refuses on brand
+      //                 association. Proven, repeatedly, across three sessions.
+      // Held in KV so the lists can change without a deploy - same pattern as frame:, context:
+      // and render:. A category on neither list is fillable and is what this ranks.
+      const skipRaw = await env.AURA_KV.get("fill:skip").catch(() => null);
+      const SKIP_DEFAULT = "Portraits,Memorials,Family,Personal Story,Matching Tattoos," +
+        "Humor & Fun,Love & Relationships,Lettering & Quotes,Something Completely Original," +
+        "Movies & TV,Anime & Manga,Comics & Superheroes,Gaming,Comics and Legends";
+      const skipSet = new Set(String(skipRaw || SKIP_DEFAULT).split(",")
+        .map((x) => tatSlug(x)).filter(Boolean));
+      const notWork = rowsK.filter((r) => r.missing > 0 && skipSet.has(tatSlug(r.category)));
       // Sorted by what is missing, because that is the order the work gets done in. A category
       // that is finished should fall to the bottom and stay there.
-      const workK = rowsK.filter((r) => r.missing > 0).sort((a, b) => b.missing - a.missing);
+      const workK = rowsK.filter((r) => r.missing > 0 && !skipSet.has(tatSlug(r.category)))
+        .sort((a, b) => b.missing - a.missing);
 
       const eK = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (x) =>
         ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[x]));
@@ -6736,8 +6773,17 @@ async function processCommand(line, env, isOp) {
         // The worklist, already runnable. FACES hands the job to the Workflow, which sleeps
         // between leaves and survives a redeploy - so a whole category is one paste and then
         // nothing to watch. `--all` lifts the 40-leaf default.
-        fill_next: workK.slice(0, 12).map((r) =>
-          'RUN "FACES ' + r.category + ' --all"   ' + r.missing + " missing, ~$" + costK(r.missing)),
+        fill_next: workK.length
+          ? workK.slice(0, 12).map((r) =>
+              'RUN "FACES ' + r.category + ' --all"   ' + r.missing + " missing, ~$" + costK(r.missing))
+          : ["Nothing to fill. Every category that should have tiles has them."],
+        // Named out loud, so an empty fill_next reads as FINISHED rather than broken, and so the
+        // gap between `missing` and what is actually work never has to be rediscovered.
+        not_work: notWork.length
+          ? notWork.sort((a, b) => b.missing - a.missing).map((r) =>
+              r.category + " " + r.missing + " - by request, text or blocked. Do not fill.")
+          : null,
+        missing_worth_filling: workK.reduce((n, r) => n + r.missing, 0),
         // Named, not implied. A number counted from keys is a CEILING and must not be read as a
         // count - that confusion is the entire reason this command grew a second pass.
         counted_from_keys: shallowK.length

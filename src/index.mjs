@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.74.0-2026-09-01-say-which-path-it-came-from";
+const BUILD = "aura-core-v9.75.0-2026-09-01-stock-says-what-is-there";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5968,7 +5968,18 @@ async function processCommand(line, env, isOp) {
         already_full: skipF.length, filled: doneF, skipped: skipF.slice(0, 20),
         failed: failF.length ? failF : undefined,
         note: "Only holes were drawn - nothing that already existed was touched. This is the " +
-              "FIRST screen only; crop, pose and expression stay on demand." } };
+              "FIRST screen only; crop, pose and expression stay on demand.",
+        // ══ READ THIS BEFORE SPENDING ANYTHING HERE (2026-09-01) ═════════════════════════
+        // TRACED, not assumed: nothing in the customer walk reads `shot:v1:<leaf>:style:bare`.
+        // `design("next")` finishes by calling SHOW_IT and drawing ONE piece, and the style rail
+        // on that piece re-runs `next` with the style field flipped. So these pictures are
+        // unreachable twice over - no reader, and the prompt tatShoot builds does not match the
+        // prompt SHOW_IT builds, so they cannot be served out of the image cache either.
+        // The command is left exactly as it was. It is the right shape for a REVIEW sheet and
+        // that is what it now says it is.
+        reachable_by_the_walk: false,
+        instead: 'The browse layer is what gets pre-built. RUN "STOCK" - it prints the ' +
+                 'runnable FACES line for every category, with the real name already in it.' } };
     }
 
     case "SHOT": {
@@ -6462,6 +6473,179 @@ async function processCommand(line, env, isOp) {
           .map((r) => r.category + " " + r.drawn + "/" + r.things),
         note: "Counted from the tiles that exist, not from what was asked for. " +
               "A category that failed halfway reads as half drawn." } };
+    }
+
+    // ══ STOCK — WHAT IS ACTUALLY IN THE CATALOGUE, WHOLE TREE, ONE PASS ═════════════════════
+    // The question nothing could answer: across all 56 categories, which leaves have a browse
+    // tile and which do not. SIGN answers it for one kind. WALK <category> answers it for one
+    // category. LIBRARY answers it for all of them and takes five minutes doing 1,831 SEQUENTIAL
+    // reads, which is also why it has never been run twice in a session.
+    //
+    // ══ LIST THE PREFIX, DO NOT READ THE LEAVES ═══════════════════════════════════════════
+    // The obvious build is one KV get per leaf. That is 1,693 gets in a single request and a
+    // Worker is capped at 1,000 subrequests - so the obvious build cannot finish, and it would
+    // fail somewhere past the two-thirds mark rather than saying so. LIBRARY is the slow half of
+    // that same mistake.
+    // A prefix LIST returns 1,000 keys per call and costs one subrequest for all of them. Every
+    // question here - which leaves have a tile, a wall, banked pictures - is "does this key
+    // exist", and existence is what a listing already tells you. So three listings replace two
+    // thousand reads, and the whole tree is answered in well under a second.
+    //
+    // READ ONLY. Nothing is written except the page at the end, nothing is drawn, no model is
+    // called. Running this cannot cost anything and cannot damage anything.
+    //
+    //   STOCK              every category
+    //   STOCK <category>   one of them, same numbers
+    case "STOCK": {
+      const treeK = await env.AURA_KV.get("card:tree", "json").catch(() => null);
+      if (!treeK?.subjects) return { cmd: "STOCK", payload: { ok: false, error: "NO_TREE" } };
+      const subK = treeK.subjects || {}, spK = treeK.specific || {};
+      const askK = String(rest || "").trim();
+      const onlyK = askK ? Object.keys(subK).find((c) => tatSlug(c) === tatSlug(askK)) : null;
+      if (askK && !onlyK) return { cmd: "STOCK", payload: { ok: false, error: "NO_SUCH_CATEGORY",
+        asked: askK, what_to_do: 'RUN "STOCK" with no name for the whole catalogue.' } };
+
+      // Every key under a prefix, paged. The cap is a guard against a runaway prefix, and when it
+      // trips it is REPORTED - a truncated listing that silently reads as "these leaves have no
+      // tile" would send FACES out to redraw pictures that already exist, which is the one
+      // expensive way this command could be wrong.
+      // ══ COMPLETE MEANS THE API SAID SO ═══════════════════════════════════════════════════
+      // This is the file's first paginated listing - every other one takes a single page with a
+      // limit - so completeness is PROVEN rather than assumed. `truncated` starts true and is
+      // only cleared when a page comes back with `list_complete`. If the field is ever missing,
+      // absent or the shape changes, this degrades to "I read one page and cannot promise it was
+      // all of them", which is the answer that keeps FACES from redrawing tiles that exist.
+      const slugsUnder = async (prefix, at) => {
+        const out = new Set(); let cursor = null, pages = 0, truncated = true;
+        for (;;) {
+          pages++;
+          const l = await env.AURA_KV.list({ prefix, limit: 1000, cursor: cursor || undefined })
+            .catch(() => null);
+          if (!l) break;
+          for (const k of (l.keys || [])) {
+            const bits = String(k.name).split(":");
+            if (bits[at]) out.add(bits[at]);
+          }
+          if (l.list_complete === true) { truncated = false; break; }
+          if (!l.cursor) break;
+          cursor = l.cursor;
+          if (pages >= 12) break;
+        }
+        return { set: out, truncated, pages };
+      };
+      const [faceK, wallK, shotK] = await Promise.all([
+        slugsUnder("face:v1:", 2),
+        slugsUnder("wall:v1:", 2),
+        slugsUnder("shot:v1:", 2),
+      ]);
+
+      // ══ THE TREE HAS MORE LEAF SLOTS THAN IT HAS NAMES ════════════════════════════════════
+      // Every record is keyed by SLUG alone, so `mustang` under Horses and `mustang` under Muscle
+      // Car are ONE picture wearing two labels. Counting slots would report both as drawn and
+      // both as costing money to fix. The first occurrence owns the slug; every later one is
+      // named as a collision rather than quietly counted twice.
+      const ownerOfSlug = {};
+      const rowsK = [];
+      const collisionsK = {};
+      for (const c of Object.keys(subK)) {
+        if (onlyK && c !== onlyK) continue;
+        const kinds = subK[c] || [];
+        const leavesK = [];
+        for (const k of kinds) {
+          const hit = Object.keys(spK).find((x) => tatSlug(x) === tatSlug(k));
+          const kids = hit ? (spK[hit] || []) : [];
+          for (const lf of (kids.length ? kids : [k])) leavesK.push(lf);
+        }
+        let tiles = 0, walls = 0, banked = 0, dupes = 0;
+        const noTile = [];
+        for (const lf of leavesK) {
+          const s = tatSlug(lf);
+          if (ownerOfSlug[s] && ownerOfSlug[s] !== c) {
+            (collisionsK[lf] = collisionsK[lf] || [ownerOfSlug[s]]).push(c);
+            dupes++; continue;
+          }
+          ownerOfSlug[s] = ownerOfSlug[s] || c;
+          if (faceK.set.has(s)) tiles++; else noTile.push(lf);
+          if (wallK.set.has(s)) walls++;
+          if (shotK.set.has(s)) banked++;
+        }
+        const own = leavesK.length - dupes;
+        rowsK.push({ category: c, kinds: kinds.length, things: own, tiles, walls, banked,
+          missing: own - tiles, no_tile: noTile, shared: dupes });
+      }
+
+      const totThings = rowsK.reduce((n, r) => n + r.things, 0);
+      const totTiles = rowsK.reduce((n, r) => n + r.tiles, 0);
+      const totMissing = totThings - totTiles;
+      // The measured per-image figure, and the platform overhead reconciled against the
+      // Cloudflare dashboard on 2026-09-01 - the first time any number here was checked against
+      // a bill rather than against this file's own arithmetic.
+      const costK = (n) => Math.round(n * 0.0151 * 1.3 * 100) / 100;
+
+      // Sorted by what is missing, because that is the order the work gets done in. A category
+      // that is finished should fall to the bottom and stay there.
+      const workK = rowsK.filter((r) => r.missing > 0).sort((a, b) => b.missing - a.missing);
+
+      const eK = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (x) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[x]));
+      const htmlK =
+        '<!doctype html><html lang=en><head><meta charset=utf-8>' +
+        '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+        "<title>stock</title><style>" +
+        "*{margin:0;padding:0;box-sizing:border-box}" +
+        "body{background:#0b0d12;color:#e9edf5;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:18px}" +
+        "h1{font-size:20px;margin-bottom:4px}p.sub{color:#8b93a7;font-size:12px;margin-bottom:16px}" +
+        "a{color:#e9edf5;text-decoration:none}" +
+        "table{width:100%;border-collapse:collapse}" +
+        "td,th{padding:7px 9px;border-bottom:1px solid #1a1f2e;text-align:left;font-size:13px;vertical-align:top}" +
+        "th{color:#8b93a7;font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.05em}" +
+        "tr:hover{background:#141a28}" +
+        ".n{color:#8b93a7;text-align:right;font-variant-numeric:tabular-nums}" +
+        ".full{color:#4ade80}.part{color:#fbbf24}.none{color:#ef4444}" +
+        ".m{color:#5a6478;font-size:11px;line-height:1.5}" +
+        "code{background:#141a28;color:#7aa2ff;padding:2px 6px;border-radius:4px;font-size:12px}" +
+        "</style></head><body>" +
+        "<h1>stock</h1><p class=sub>" + totTiles + " of " + totThings + " leaves have a browse tile \u00b7 " +
+        totMissing + " missing \u00b7 about $" + costK(totMissing) + " to finish</p>" +
+        "<table><tr><th>category</th><th class=n>things</th><th class=n>tiles</th>" +
+        "<th class=n>walls</th><th class=n>banked</th><th class=n>to&nbsp;fill</th></tr>" +
+        rowsK.slice().sort((a, b) => b.missing - a.missing).map((r) =>
+          "<tr><td><a href='/walk/" + eK(tatSlug(r.category)) + "'>" + eK(r.category) + "</a>" +
+          (r.no_tile.length ? "<div class=m>" + r.no_tile.slice(0, 14).map(eK).join(" \u00b7 ") +
+            (r.no_tile.length > 14 ? " \u2026" : "") + "</div>" : "") +
+          "</td><td class=n>" + r.things + "</td>" +
+          '<td class="n ' + (r.missing === 0 ? "full" : r.tiles === 0 ? "none" : "part") + '">' +
+          r.tiles + "</td><td class=n>" + r.walls + "</td><td class=n>" + r.banked + "</td>" +
+          "<td class=n>" + (r.missing || "") + "</td></tr>").join("") +
+        "</table></body></html>";
+      try { await env.AURA_KV.put("page:auras.guide/stock", htmlK); } catch {}
+
+      return { cmd: "STOCK", payload: { ok: true, url: "https://auras.guide/stock",
+        categories: rowsK.length, things: totThings, tiles: totTiles, missing: totMissing,
+        cost_to_finish_usd: costK(totMissing),
+        // The worklist, already runnable. FACES hands the job to the Workflow, which sleeps
+        // between leaves and survives a redeploy - so a whole category is one paste and then
+        // nothing to watch. `--all` lifts the 40-leaf default.
+        fill_next: workK.slice(0, 12).map((r) =>
+          'RUN "FACES ' + r.category + ' --all"   ' + r.missing + " missing, ~$" + costK(r.missing)),
+        by_category: rowsK.slice().sort((a, b) => b.missing - a.missing).map((r) =>
+          r.category + "  tiles " + r.tiles + "/" + r.things +
+          "  walls " + r.walls + "  banked " + r.banked +
+          (r.shared ? "  (" + r.shared + " shared slug)" : "")),
+        no_tile: workK.slice(0, 8).map((r) => r.category + ": " + r.no_tile.slice(0, 20).join(", ")),
+        // Two names, one picture. Not fixed here - which of them keeps the slug is a taxonomy
+        // question and Aaron's call, not this command's.
+        shared_slugs: Object.keys(collisionsK).length
+          ? Object.keys(collisionsK).slice(0, 20).map((k) => k + " in " + collisionsK[k].join(" + "))
+          : null,
+        read: { face_keys: faceK.set.size, wall_keys: wallK.set.size, shot_keys: shotK.set.size,
+                pages: faceK.pages + wallK.pages + shotK.pages },
+        truncated: (faceK.truncated || wallK.truncated || shotK.truncated)
+          ? "A listing did not report itself complete, so these counts are a FLOOR - tiles may exist that are not counted here. Do not run FACES off a truncated count."
+          : null,
+        note: "Read only - nothing drawn, nothing charged. `tiles` is the browse layer, which is " +
+              "what gets pre-built. `walls` and `banked` are what a walk has already generated on " +
+              "demand and never has to pay for again." } };
     }
 
     // ══ TYPES — EVERY KIND UNDER A CATEGORY, IN THE GOOD LOOK ═══════════════════════════════

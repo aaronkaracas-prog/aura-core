@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.70.0-2026-09-01-count-what-is-there";
+const BUILD = "aura-core-v9.71.0-2026-09-01-report-the-prompt-you-used";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5957,6 +5957,11 @@ async function processCommand(line, env, isOp) {
       const kindS = String((profS.resolved && profS.resolved.subject) || leafS).trim();
       const frameS = await tatFrameFor(env, kindS, leafS);
       const headS = profS.say || tatName(leafS, profS.resolved);
+      // tatShoot records `drew` only the FIRST time a record is ever drawn, so reporting it back
+      // reports the oldest prompt on the record - a redraw of "black and grey" answered with the
+      // string that drew "traditional" months earlier. Clearing it makes the field mean what it
+      // says: the prompt that drew THIS picture.
+      shotS.drew = null;
       const outS = await tatShoot(env, keyS, headS, ctxPhrases, stepS, wallS, shotS, 22000, frameS);
       const drewS = cleared.filter((o) => {
         const h = Object.keys(outS.imgs || {}).find((x) => tatSlug(x) === tatSlug(o));
@@ -5964,7 +5969,13 @@ async function processCommand(line, env, isOp) {
       });
       return { cmd: "SHOT", payload: { ok: true, key: keyS, leaf: leafS, step: stepS, path: ctxS,
         asked: cleared, drew: drewS.length, of: cleared.length,
-        still_missing: cleared.filter((o) => !drewS.includes(o)),
+        // A count of failures is not a diagnosis. tatShoot stores the reason per option and it is
+        // the difference between "the filter refused this" and "Cloudflare had a bad minute".
+        still_missing: cleared.filter((o) => !drewS.includes(o)).map((o) => {
+          const h = Object.keys(outS.imgs || {}).find((x) => tatSlug(x) === tatSlug(o));
+          const w = h && outS.imgs[h] ? outS.imgs[h].why : null;
+          return w ? o + ": " + String(w).slice(0, 120) : o;
+        }),
         prompt: outS.drew || null,
         note: "Redrawn with the context and render set today. Re-run WALK to see them - the page " +
               "is a stored snapshot, not a live view." } };

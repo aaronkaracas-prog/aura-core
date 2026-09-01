@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.71.0-2026-09-01-report-the-prompt-you-used";
+const BUILD = "aura-core-v9.72.0-2026-09-01-a-copied-sweep-is-finished";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -53906,6 +53906,11 @@ const WALK_TAG_JS = [
   "ta.select();d=document.execCommand('copy');document.body.removeChild(ta)}catch(x){}}",
   "var r=document.createRange();r.selectNodeContents(document.getElementById('out'));",
   "var sel=window.getSelection();sel.removeAllRanges();sel.addRange(r);",
+  // ══ A COPIED SWEEP IS A FINISHED SWEEP ═══════════════════════════════════════════════
+  // Tags persisted after go, so coming back to the page meant every picture was still lit and
+  // the block still held commands already run. Clearing on a successful copy makes the page
+  // honest: what is tagged is what has not been dealt with yet.
+  "if(d){T={};localStorage.setItem(K,'{}');paint()}",
   "e.target.textContent=d?'copied':'select + Ctrl-C';",
   "setTimeout(function(){e.target.textContent='go'},1400);return}",
   "if(e.target.id==='clr'){T={};localStorage.setItem(K,'{}');paint();return}",

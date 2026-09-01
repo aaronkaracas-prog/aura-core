@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.67.0-2026-09-01-the-paste-rebuilds-the-page";
+const BUILD = "aura-core-v9.68.0-2026-09-01-a-command-is-not-page-text";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6229,7 +6229,8 @@ async function processCommand(line, env, isOp) {
         "<div id=bar><div class=t><span><b id=cnt>0</b> tagged</span>" +
         "<span><button id=go>go</button> <button id=clr>clear</button></span></div>" +
         "<pre id=out>R redraws a tile \u00b7 D or \u00d7 drops it so it comes back</pre></div>" +
-        "<script>" + WALK_TAG_JS.replace("__KEY__", tatSlug(catW)).replace("__CAT__", eW(catW)) + "</script>" +
+        "<script>" + WALK_TAG_JS.replace("__KEY__", tatSlug(catW))
+          .replace("__CAT__", String(catW).replace(/[\\"]/g, "")) + "</script>" +
         "</body></html>";
       await env.AURA_KV.put("page:auras.guide/walk/" + tatSlug(catW), htmlW);
       return { cmd: "WALK", payload: { ok: true,

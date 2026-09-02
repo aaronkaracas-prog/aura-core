@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.91.0-2026-09-02-a-category-is-not-one-request";
+const BUILD = "aura-core-v9.92.0-2026-09-02-say-goes-into-the-prompt";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -54995,6 +54995,22 @@ async function tatLeafProfile(env, leafLabel, model, parent) {
           'subject=rose and state=withered. "Golden Retriever" resolves subject=dog and ' +
           'breed=golden retriever. "Japanese Dragon" resolves subject=dragon and ' +
           "tradition=japanese.\n\n" +
+          // ══ `say` WAS IN THE SCHEMA AND EXPLAINED NOWHERE (fixed 2026-09-02) ═══════════════
+          // Every other field got a paragraph. This one appeared in the JSON shape and was never
+          // defined, so the model invented a purpose - and what it invented was a note to whoever
+          // reads the record: "The catalog has already answered it is a rose. Visual decisions
+          // remaining..." All twenty flowers came back that way.
+          // `say` GOES INTO THE IMAGE PROMPT. That sentence would have been handed to a model as
+          // a description of the thing to draw. It survived only because a rose carries itself;
+          // on "Withered Rose" the clause IS the difference between a healthy flower and a dead
+          // one, and commentary there would have drawn nothing of the sort.
+          "`say` is the DRAWING CLAUSE - words that go straight into an image prompt, describing " +
+          "what makes this thing look the way it does. \"Withered Rose\" -> \"petals curled and " +
+          "browning at the edges, stem drooping\". \"Baby Dragon\" -> \"small and rounded with " +
+          "oversized eyes and stubby wings\".\n" +
+          "NEVER write about the catalog, the decisions, or what has been answered. Nobody reads " +
+          "this - a model DRAWS it. If the bare name already draws the right picture, `say` is " +
+          "null, and null is the common answer.\n\n" +
           "`part` is true when there is more than one sensible amount of this thing to draw - a " +
           "head or the whole animal, a glyph or the constellation, one bloom or the whole stem. " +
           "It is false when the thing has only one sensible framing, like a compass or an " +

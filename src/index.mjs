@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.82.0-2026-09-01-three-copies-of-one-page-and-no-way-to-tell";
+const BUILD = "aura-core-v9.83.0-2026-09-01-the-pin-was-never-honoured";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -55139,7 +55139,23 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   };
   // The models that can take a picture and change it. Everything else, however cheap, will draw
   // something new and call it an edit.
-  const CAN_EDIT = /^(gpt-image|dall-e-3|grok-imagine|gemini|nano-banana|imagen|flux[.-]?\d*[-.]?kontext)/i;
+  // ══ THE DAY ARRIVED AND THIS LIST DID NOT MOVE (2026-09-01) ══════════════════════════════
+  // The guard below says: "Overridable, because the day a Workers AI model does image-to-image
+  // this should follow the pin again." That day is here and this regex never learned it.
+  // `@cf/black-forest-labs/flux-2-klein-9b` DOES image-to-image, in this very file: the multipart
+  // branch attaches `input_image_0..3`, resizes each under Cloudflare's 512px reference ceiling
+  // with Photon, and is commented from their own changelog. It works.
+  // But the model string starts `@cf/`, so nothing here matched, so EVERY edit was silently
+  // rerouted to gpt-image-2 no matter what `config:edit:model` said. Aaron's pin has read
+  // `@cf/black-forest-labs/flux-2-klein-9b` the whole time and has never once been honoured.
+  // MEASURED, and I got it wrong first: a STYLES card came back `cost_usd: 0.015` and I called it
+  // Klein, because Klein's published rate is coincidentally $0.015 per megapixel. The next two
+  // came back 0.022 - same command, same source, different price. That is gpt-image-2 billing by
+  // output size, not a flat Cloudflare rate. A number that matches your expectation is not a
+  // measurement.
+  // The `@cf/` prefix is matched explicitly rather than by family name, because that is the form
+  // the binding actually uses.
+  const CAN_EDIT = /^(gpt-image|dall-e-3|grok-imagine|gemini|nano-banana|imagen|flux[.-]?\d*[-.]?kontext|@cf\/[^/]+\/flux-2)/i;
   // THE JOB PICKS THE LANE. A draw with references is an edit whatever the operator's image policy
   // says, because "cheapest" that cannot do the job is not cheap - it is a picture you pay for and
   // then pay again to replace.
@@ -57924,7 +57940,20 @@ export class PublicEntry extends WorkerEntrypoint {
                       TAT_STYLE_CARDS.find((c) => c[0].toLowerCase().includes(fname));
         if (!fcard) return { ok: false, error: "NO_SUCH_STYLE", asked: fname,
           styles: TAT_STYLE_CARDS.map((c) => c[0]) };
-        const fUrl = "https://" + (await imageHost(env)) + "/image/" + fid;
+        // ══ THE DESIGN ID IS NOT AN IMAGE ID (2026-09-01) ═══════════════════════════════
+        // MEASURED, from the live UI once the error was finally rendered:
+        //   could not read the parent image to edit:
+        //   https://auras.guide/image/ent_35c336994b5c4e32
+        // `SHOW_IT` mints the piece as a PTA ENTITY, so `S.design` holds `ent_...` - and building
+        // `/image/<that>` points at nothing. STYLES worked all evening because Aaron handed it an
+        // `img_...` id off a shot record; the walk has never had one.
+        // The page is DISPLAYING the picture, so it already knows the URL. It sends that. A URL
+        // the browser has successfully loaded cannot be a URL the edit lane fails to read.
+        // The id is still accepted as a fallback, so nothing that already calls this breaks.
+        const fRaw = String(b.from_url || b.image || "").trim();
+        const fUrl = /^https?:\/\//i.test(fRaw)
+          ? fRaw
+          : "https://" + (await imageHost(env)) + "/image/" + fid;
         try {
           const fr = await showIt(TAT_SOURCE_LOCK + fcard[1], env,
             { source: "style_transfer", refs: [fUrl], parent: fid, raw: true, by: me,

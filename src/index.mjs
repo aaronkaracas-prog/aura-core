@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.87.0-2026-09-01-a-flower-has-no-bust";
+const BUILD = "aura-core-v9.88.0-2026-09-01-nothing-but-a-walk-could-reprofile";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6512,6 +6512,86 @@ async function processCommand(line, env, isOp) {
           .map((r) => r.category + " " + r.drawn + "/" + r.things),
         note: "Counted from the tiles that exist, not from what was asked for. " +
               "A category that failed halfway reads as half drawn." } };
+    }
+
+    // ══ PROFILE — READ, RE-READ, OR RE-PROFILE A LEAF, WITHOUT WALKING IT ═══════════════════
+    // The profile decides which walls a leaf opens: crop, pose, expression, treatment. It is
+    // written by `tatLeafProfile` and NOTHING BUT A WALK CALLS THAT. So the flags could only ever
+    // be changed by somebody clicking through the customer UI - which is exactly how Aaron has
+    // said he does not want to work, and which is why `arrange` shipped and could not be applied
+    // to a single existing leaf.
+    // MEASURED tonight: `SIGN Tulip` stamps a date and touches nothing. `WALK ... / Tulip` reads
+    // the profile and does not write one. Two commands that looked like they would re-profile and
+    // neither does. This is the one that does.
+    //
+    //   PROFILE Tulip           show the flags, re-profiling only if the record is stale
+    //   PROFILE Tulip --force   re-profile whatever is there
+    //   PROFILE Flowers & Plants --all         every leaf in a category
+    //   PROFILE Flowers & Plants --all --force every leaf, redone
+    //
+    // ══ THIS IS A TEXT CALL, NOT A PICTURE ═══════════════════════════════════════════════════
+    // One small model call per leaf and nothing is drawn. A whole category is cents, not dollars,
+    // and it draws nothing that has to be looked at afterwards.
+    case "PROFILE": {
+      const rawG = String(rest || "").trim();
+      const forceG = /--force\b/i.test(rawG);
+      const allG = /--all\b/i.test(rawG);
+      const nameG = rawG.replace(/--force\b/ig, "").replace(/--all\b/ig, "").trim();
+      if (!nameG) return { cmd: "PROFILE", payload: { ok: false,
+        error: "Usage: PROFILE <leaf>   ·   PROFILE <category> --all   ·   add --force to redo" } };
+
+      const treeG = await env.AURA_KV.get("card:tree", "json").catch(() => null);
+      if (!treeG?.subjects) return { cmd: "PROFILE", payload: { ok: false, error: "NO_TREE" } };
+
+      // The leaves to do, and the PARENT each was reached under - because the profile key carries
+      // it and the parent is what tells the model that a `koi` under Fish is a fish.
+      const jobsG = [];
+      if (allG) {
+        const catG = Object.keys(treeG.subjects).find((c) => tatSlug(c) === tatSlug(nameG));
+        if (!catG) return { cmd: "PROFILE", payload: { ok: false, error: "NO_SUCH_CATEGORY",
+          asked: nameG, what_to_do: 'RUN "WALK" to see the category names.' } };
+        for (const k of (treeG.subjects[catG] || [])) {
+          const hit = Object.keys(treeG.specific || {}).find((x) => tatSlug(x) === tatSlug(k));
+          const kids = hit ? (treeG.specific[hit] || []) : [];
+          if (kids.length) for (const lf of kids) jobsG.push({ leaf: lf, parent: k });
+          else jobsG.push({ leaf: k, parent: catG });
+        }
+      } else {
+        jobsG.push({ leaf: nameG, parent: await tatOwnerOf(env, nameG) || undefined });
+      }
+
+      const outG = [], skippedG = [];
+      let calls = 0;
+      for (const j of jobsG) {
+        const keyG = "leaf:v1:" + tatSlug(j.leaf) + (j.parent ? ":" + tatSlug(j.parent) : "");
+        const had = await env.AURA_KV.get(keyG, "json").catch(() => null);
+        const fresh = had && typeof had.part === "boolean" && typeof had.arrange === "boolean";
+        if (fresh && !forceG) {
+          skippedG.push(j.leaf + "  " + profWord(had));
+          continue;
+        }
+        // --force means the cached answer must not be returned, and tatLeafProfile returns it
+        // when it is complete. Clearing the key first is the only way to make it think again.
+        if (forceG) { try { await env.AURA_KV.delete(keyG); } catch {} }
+        let p2 = null;
+        try { p2 = await tatLeafProfile(env, j.leaf, undefined, j.parent); } catch (e) {
+          outG.push(j.leaf + "  FAILED: " + String(e && e.message || e).slice(0, 80)); continue;
+        }
+        calls++;
+        outG.push(j.leaf + "  " + (p2 ? profWord(p2) : "no profile came back"));
+        // ══ A CATEGORY IS 20 TO 260 LEAVES AND EACH ONE IS A MODEL CALL ═══════════════════
+        // 40 is roughly a minute of wall clock, which is inside one request. Past that this
+        // returns what it did and says what is left, rather than dying mid-run and banking half
+        // a category with no record of where it stopped.
+        if (calls >= 40) break;
+      }
+      const leftG = jobsG.length - outG.length - skippedG.length;
+      return { cmd: "PROFILE", payload: { ok: true,
+        leaves: jobsG.length, profiled: calls, already_done: skippedG.length, remaining: leftG,
+        done: outG, unchanged: skippedG.slice(0, 40),
+        next: leftG > 0 ? 'RUN "PROFILE ' + nameG + ' --all"   -- ' + leftG + " left" : null,
+        note: "A profile decides which walls a leaf opens. `arrange` means it is asked how it is " +
+              "ARRANGED - one stem, a bouquet, a wreath - and never how much of it to crop." } };
     }
 
     // ══ COUNT — HOW MANY, AND IN HOW MANY SHAPES ════════════════════════════════════════════
@@ -54818,6 +54898,19 @@ async function tatParentOf(env, leaf) {
 //
 // So the parent goes in, and the cache key carries it - a Bengal under Cats and a Bengal
 // somewhere else are two different subjects and must not share an answer.
+// The flags in the order they are asked, as words rather than four booleans. `PROFILE` prints one
+// of these per leaf and a category run is meant to be read down a column.
+function profWord(p) {
+  if (!p) return "-";
+  const on = [];
+  if (p.arrange) on.push("arrange");
+  if (p.part) on.push("crop");
+  if (p.face) on.push("face");
+  if (p.needs_upload) on.push("needs-upload");
+  return (on.length ? on.join("+") : "nothing before style") +
+    (p.say ? "   \u00b7 " + String(p.say).slice(0, 60) : "");
+}
+
 async function tatLeafProfile(env, leafLabel, model, parent) {
   const key = "leaf:v1:" + tatSlug(leafLabel) + (parent ? ":" + tatSlug(parent) : "");
   try {

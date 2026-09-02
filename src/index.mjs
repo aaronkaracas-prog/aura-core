@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.95.0-2026-09-02-part-means-it-has-a-body";
+const BUILD = "aura-core-v9.96.0-2026-09-02-internal-error-is-not-a-reason";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5571,8 +5571,25 @@ async function processCommand(line, env, isOp) {
       const cat = arg.replace(/\s--force\b/g, "").replace(/\s--all\b/g, "")
         .replace(/\s--max\s+\d+/g, "").trim();
       const maxLeaves = numM ? Number(numM[1]) : (all ? 600 : 40);
-      const inst = await env.GRID_CRAWL_WORKFLOW.create({ params: {
-        mode: "faces", category: cat, force, max_leaves: maxLeaves } });
+      // ══ AN UNGUARDED create() BECOMES "internal error" AND NOTHING ELSE ═══════════════════
+      // MEASURED 2026-09-02: `FACES Anime Masks` returned `{"ok":false,"error":"internal error"}`
+      // in 159ms - too fast to have started anything, and with no reason attached. Every other
+      // failure path in this command says what happened; this one threw straight past the handler.
+      // Workflows refuse for real and knowable reasons - a duplicate instance name, too many
+      // instances already running, a binding that resolved but is not deployable - and every one
+      // of them is actionable ONLY if it reaches the person who typed the command.
+      let inst = null;
+      try {
+        inst = await env.GRID_CRAWL_WORKFLOW.create({ params: {
+          mode: "faces", category: cat, force, max_leaves: maxLeaves } });
+      } catch (e) {
+        return { cmd: "FACES", payload: { ok: false, error: "COULD_NOT_START",
+          why: String(e && e.message || e).slice(0, 300),
+          asked: cat, max_leaves: maxLeaves,
+          what_to_do: "Cloudflare limits how many Workflow instances run at once, and old FACES " +
+                      "runs sleep for long stretches rather than ending. Check with " +
+                      'RUN "FACES <run-id>" on a previous run, or wait for them to finish.' } };
+      }
       return { cmd: "FACES", payload: { ok: true, started: cat, id: inst.id, max_leaves: maxLeaves,
         check: 'RUN "FACES ' + inst.id + '"',
         then: 'RUN "SHEET ' + cat + '"',

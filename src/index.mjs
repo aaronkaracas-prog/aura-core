@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.94.0-2026-09-02-pose-and-expression-not-one-or-the-other";
+const BUILD = "aura-core-v9.95.0-2026-09-02-part-means-it-has-a-body";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -55028,17 +55028,30 @@ async function tatLeafProfile(env, leafLabel, model, parent) {
           "NEVER write about the catalog, the decisions, or what has been answered. Nobody reads " +
           "this - a model DRAWS it. If the bare name already draws the right picture, `say` is " +
           "null, and null is the common answer.\n\n" +
-          "`part` is true when there is more than one sensible amount of this thing to draw - a " +
-          "head or the whole animal, a glyph or the constellation, one bloom or the whole stem. " +
-          "It is false when the thing has only one sensible framing, like a compass or an " +
-          "anchor.\n\n" +
+          // ══ `part` MEANT TWO THINGS AND I SPLIT ONLY ONE OF THEM OFF (fixed 2026-09-02) ═══
+          // It was defined as "more than one sensible amount of this thing to draw" - which is
+          // ALSO what head_is_the_piece now asks. So the new flag's wording ("the amount of them
+          // to show is not an interesting question") read as a definition of part, and the model
+          // dutifully answered part:false for a dragon. `part` gates the POSE wall, so the flag
+          // added to enable poses removed them. MEASURED: Japanese Dragon went from crop+face to
+          // face; My Partner, a portrait, lost its crop.
+          // `part` now means one thing only - THERE IS A BODY - and that is what a pose needs.
+          "`part` is true when this thing HAS A BODY that can be arranged in space - standing, " +
+          "flying, coiled, leaping. A dragon, a dog, an eagle, a person, a mermaid: all true. " +
+          "A skull, a compass, a glyph, a single flower bloom: false, there is nothing to pose.\n" +
+          "It is about having a body, NOT about how much of it to show - that is " +
+          "`head_is_the_piece` and it is a different question.\n" +
+          "A body it has but cannot move - a tree, a mountain - is still false: there is no pose " +
+          "to choose.\n\n" +
           "`face` is true when this thing has a face capable of an expression. A dog, a cat, a " +
           "person, a skull. Not a rose, not a compass, not a zodiac glyph.\n\n" +
-          "`head_is_the_piece` is true when somebody choosing this would be choosing HOW MUCH of " +
-          "it to show - a portrait, a memorial face, a skull. There, \"head only\" IS the tattoo. " +
-          "It is FALSE for anything with a body that moves: a dragon, a dog, an eagle, a wolf. " +
-          "Those are asked how they are POSED and then what their FACE is doing, both, and the " +
-          "amount of them to show is not an interesting question.\n\n" +
+          "`head_is_the_piece` is true when the HEAD ALONE is a tattoo somebody would want - a " +
+          "portrait, a memorial face, a bust. Those get asked how much to show before anything " +
+          "else. It is false for a dragon, a dog, an eagle: their head is part of them, not a " +
+          "piece on its own.\n" +
+          "THIS DOES NOT AFFECT `part`. A dragon has a body, so `part` is TRUE; " +
+          "`head_is_the_piece` is false. The two are separate questions and a dragon answers " +
+          "yes to one and no to the other.\n\n" +
           "`arrange` is true when the interesting question is HOW MANY and LAID OUT HOW, rather " +
           "than how much of one to show. A tulip can be a single stem, three in a row, a bouquet, " +
           "a wreath, crossed stems - and NONE of those is a crop of the others. Flowers, plants, " +

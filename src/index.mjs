@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.86.0-2026-09-01-a-default-nobody-chose";
+const BUILD = "aura-core-v9.87.0-2026-09-01-a-flower-has-no-bust";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -54822,7 +54822,13 @@ async function tatLeafProfile(env, leafLabel, model, parent) {
   const key = "leaf:v1:" + tatSlug(leafLabel) + (parent ? ":" + tatSlug(parent) : "");
   try {
     const hit = await env.AURA_KV.get(key, "json");
-    if (hit && typeof hit.part === "boolean") return hit;
+    // ══ A PROFILE MISSING THE NEW FLAG IS NOT A PROFILE ═════════════════════════════════════
+    // 200 leaves were profiled before `arrange` existed. Returning those unchanged would mean
+    // every flower already touched keeps getting a crop wall forever, and the fix would only
+    // apply to leaves nobody had walked yet - which is the worst possible split.
+    // Requiring the flag re-profiles an old record the next time its leaf is actually used. That
+    // is one cheap text call, paid only when somebody is there to see the result.
+    if (hit && typeof hit.part === "boolean" && typeof hit.arrange === "boolean") return hit;
   } catch {}
   let lastErr = null, lastText = null;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -54837,7 +54843,8 @@ async function tatLeafProfile(env, leafLabel, model, parent) {
           "Say what the catalog has already answered, and what visual decisions genuinely remain " +
           "FOR THIS PARTICULAR THING.\n\n" +
           'Return ONLY JSON: {"resolved":{"key":"value"},"say":"..."|null,' +
-          '"part":true|false,"face":true|false,"needs_upload":false}\n\n' +
+          '"part":true|false,"face":true|false,"arrange":true|false,' +
+          '"needs_upload":false}\n\n' +
           "`resolved` is what the name itself already states. \"Withered Rose\" resolves " +
           'subject=rose and state=withered. "Golden Retriever" resolves subject=dog and ' +
           'breed=golden retriever. "Japanese Dragon" resolves subject=dragon and ' +
@@ -54848,12 +54855,21 @@ async function tatLeafProfile(env, leafLabel, model, parent) {
           "anchor.\n\n" +
           "`face` is true when this thing has a face capable of an expression. A dog, a cat, a " +
           "person, a skull. Not a rose, not a compass, not a zodiac glyph.\n\n" +
+          "`arrange` is true when the interesting question is HOW MANY and LAID OUT HOW, rather " +
+          "than how much of one to show. A tulip can be a single stem, three in a row, a bouquet, " +
+          "a wreath, crossed stems - and NONE of those is a crop of the others. Flowers, plants, " +
+          "leaves, feathers, stars, small repeated objects. It is false for a dog: three dogs is " +
+          "not a way of drawing a dog.\n\n" +
+          "`arrange` AND `part` ARE ALTERNATIVES, NOT BOTH. If the real question is how many, say " +
+          "arrange and leave part false. MEASURED: a tulip with part=true was offered `face`, " +
+          "`bust`, `half body` and `full body`, and the face card came back as a tulip on a " +
+          "woman's neck. A flower has no bust.\n\n" +
           "RULES, AND THE THIRD ONE IS THE WHOLE POINT:\n" +
           "1. NEVER answer a question the name already answered. A withered rose has stated its " +
           "state. A japanese dragon has stated its tradition.\n" +
-          "2. These two flags are the ONLY decisions you make. Style and colour are asked of " +
+          "2. These three flags are the ONLY decisions you make. Style and colour are asked of " +
           "every subject separately - never mention them.\n" +
-          "3. BOTH FLAGS FALSE IS A CORRECT AND COMMON ANSWER. A glyph, a symbol, a simple " +
+          "3. ALL FLAGS FALSE IS A CORRECT AND COMMON ANSWER. A glyph, a symbol, a simple " +
           "object goes straight from style to colour and is finished in three taps. Do not turn " +
           "a flag on to make this subject look structurally like other subjects - a pose on a " +
           "symbol or an expression on an object is the exact mistake.\n" +
@@ -58285,8 +58301,18 @@ export class PublicEntry extends WorkerEntrypoint {
         // front makes somebody choose a language for a tattoo they have not seen yet.
         // So the walk is the subject and how it is framed, and style lives entirely at the end,
         // on the piece, where they can try all twelve against something real.
+        // ══ A FLOWER IS ARRANGED, NOT CROPPED (2026-09-01) ════════════════════════════════
+        // The four crop options are fixed and identical for every subject - face, bust, half body,
+        // full body. Correct for anything with a head; nonsense for a tulip, and MEASURED as
+        // nonsense: the face card drew a tulip growing out of a woman's neck.
+        // The right question for a flower already existed and was already banked - single stem,
+        // bouquet, wreath, crossed pair, arching stem - as a `treatment` wall. It just had no way
+        // into the walk, because the walk only knew how to ask about crops.
+        // `arrange` and `part` are alternatives. Arrange wins where both somehow arrive, because
+        // a wrong crop wall is the failure that has actually happened.
         const order = []
-          .concat(prof.part ? ["crop"] : [])
+          .concat(prof.arrange ? ["treatment"] : [])
+          .concat(prof.part && !prof.arrange ? ["crop"] : [])
           .concat(cropOpt && cropOpt.body ? ["pose"] : [])
           // THE FORK HAS TWO BRANCHES AND YOU WALK ONE. A full body gets a pose; a head gets an
           // expression. This was `prof.face` alone, which bolted expression onto the END of the
@@ -58296,7 +58322,8 @@ export class PublicEntry extends WorkerEntrypoint {
 
         // ── WHICH SCREEN ARE WE ON. The first slot in the order nobody has answered.
         const ASKS = { crop: "Head or body?", pose: "How do you want it posed?",
-                       expression: "What expression?" };
+                       expression: "What expression?",
+                       treatment: "How should it be arranged?" };
         let stepId = order.find((k) => !has(k)) || null;
         let stepAsk = stepId ? ASKS[stepId] : null;
         let fixed = stepId === "crop" ? TAT_CROP : null;

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.97.0-2026-09-02-one-tile-one-tile-one-tile";
+const BUILD = "aura-core-v9.98.0-2026-09-02-a-worker-fetching-its-own-zone";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -55676,10 +55676,38 @@ async function auraGenerateImage(prompt, env, opts = {}) {
         if (isEdit) {
           const cfRefs = (Array.isArray(opts.refs) ? opts.refs.filter(Boolean) : []).slice(0, 4);
           let attached = 0;
+          // ══ A WORKER FETCHING ITS OWN ZONE (fixed 2026-09-02) ══════════════════════════════
+          // MEASURED: every STYLES card came back "could not read any reference image for the
+          // edit", cost $0, on images that load fine in a browser. `fetch(https://auras.guide/
+          // image/<id>)` from inside a Worker is a request back out to the edge for a hostname
+          // this account serves - which Cloudflare does not route the way an outside visitor's
+          // request is routed.
+          // Why it appeared today and not before: until v9.83, CAN_EDIT rerouted every edit to
+          // gpt-image-2, which sends the reference as a URL for the provider to fetch. Honouring
+          // Aaron's Klein pin moved edits onto this multipart branch for the first time, and this
+          // branch has to read the bytes itself.
+          // AURA_MEDIA is a service binding - worker to worker, no public hop. The plain fetch
+          // stays as the fallback for any reference that is genuinely external.
+          const refWhy = [];
+          const readRef = async (u) => {
+            if (env.AURA_MEDIA && /auras\.guide|\/image\//i.test(String(u))) {
+              try {
+                const r = await env.AURA_MEDIA.fetch(new Request(u));
+                if (r && r.ok) return r;
+                refWhy.push("binding " + (r ? r.status : "no response"));
+              } catch (e) { refWhy.push("binding threw: " + String(e && e.message || e).slice(0, 60)); }
+            }
+            try {
+              const r = await fetch(u);
+              if (r && r.ok) return r;
+              refWhy.push("fetch " + (r ? r.status : "no response"));
+            } catch (e) { refWhy.push("fetch threw: " + String(e && e.message || e).slice(0, 60)); }
+            return null;
+          };
           for (let i = 0; i < cfRefs.length; i++) {
             try {
-              const ir = await fetch(cfRefs[i]);
-              if (!ir.ok) continue;
+              const ir = await readRef(cfRefs[i]);
+              if (!ir) continue;
               const ab = await ir.arrayBuffer();
               // ══ CLOUDFLARE REFUSES A REFERENCE 512 OR LARGER ═══════════════════════════
               // Their changelog, verbatim: "All input images must be smaller than 512x512."
@@ -55707,7 +55735,11 @@ async function auraGenerateImage(prompt, env, opts = {}) {
           }
           // An edit with no reference attached is not an edit - it is a fresh draw wearing the
           // label of one, which is the failure that produced "a bibliography of near-misses".
-          if (!attached) throw new Error("could not read any reference image for the edit");
+          // The reason, not just the fact. Every swallowed `catch {}` in this loop cost a
+          // debugging round trip; a failure that names the status is one paste instead of three.
+          if (!attached) throw new Error("could not read any reference image for the edit" +
+            (refWhy.length ? " [" + refWhy.slice(0, 4).join("; ") + "]" : "") +
+            " [tried " + cfRefs.length + ": " + cfRefs.slice(0, 2).join(" ") + "]");
         }
         // ══ 3043 IS TRANSIENT AND IT IS 17% OF EVERY RUN ═════════════════════════════════
         // MEASURED across six runs on four subjects: 12 failures in 72 tiles, all

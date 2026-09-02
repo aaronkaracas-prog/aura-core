@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.81.0-2026-09-01-the-rail-transforms-the-piece-it-does-not-redraw-it";
+const BUILD = "aura-core-v9.82.0-2026-09-01-three-copies-of-one-page-and-no-way-to-tell";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6512,6 +6512,130 @@ async function processCommand(line, env, isOp) {
           .map((r) => r.category + " " + r.drawn + "/" + r.things),
         note: "Counted from the tiles that exist, not from what was asked for. " +
               "A category that failed halfway reads as half drawn." } };
+    }
+
+    // ══ PAGES — WHICH COPY OF A PAGE IS ACTUALLY SERVED ═════════════════════════════════════
+    // MEASURED, 2026-09-01, and it cost about an hour: the mytattoo design page exists THREE
+    // times in KV - `page:mytattoo.world/`, `page:mytattoo.world/design` and
+    // `page:mytattoo.world/_shell_mt_design`. Four correct edits were written to two of them, the
+    // browser was loading the third, and nothing on either side reported a problem. Every write
+    // said "Writing the contents of..." and succeeded. The screen never changed.
+    //
+    // ══ WHY THE THIRD ONE WINS, FROM aura-host ═══════════════════════════════════════════════
+    // aura-host tries the DIRECT key first - `page:<hostname><path>` - and only falls through to
+    // a shell when that misses. So a leftover direct key silently shadows the shell that the
+    // domain is actually built on, and the shell branch for mytattoo reads:
+    //     const which = /^design(\/|$)/i.test(rawSeg) ? "_shell_mt_design" : "_shell_mt_design";
+    // Both arms of that ternary are the same string - one page was meant to serve every path.
+    //
+    // This does not delete anything. It makes the situation VISIBLE: same fingerprint means the
+    // copies agree, different fingerprints mean one of them is stale and somebody is editing the
+    // wrong one. That is the whole failure, and it is a single read to see.
+    //
+    //   PAGES                every page key, grouped by host
+    //   PAGES mytattoo       one host
+    case "PAGES": {
+      const askP = String(rest || "").trim().toLowerCase();
+      const prefixP = "page:" + (askP || "");
+      const keysP = []; let curP = null, pagesP = 0, moreP = false;
+      for (;;) {
+        const l = await env.AURA_KV.list({ prefix: prefixP, limit: 1000,
+          cursor: curP || undefined }).catch(() => null);
+        if (!l) break;
+        for (const k of (l.keys || [])) keysP.push(k.name);
+        if (l.list_complete === true) break;
+        if (!l.cursor) break;
+        curP = l.cursor;
+        if (++pagesP >= 4) { moreP = true; break; }
+      }
+      if (!keysP.length) return { cmd: "PAGES", payload: { ok: true, keys: 0,
+        note: askP ? "No page key starts with page:" + askP : "No page keys at all." } };
+
+      // ══ READING EVERY PAGE ON 501 DOMAINS IS NOT A THING TO DO BY ACCIDENT ═══════════════
+      // A fingerprint needs the body, and a body is a real read. Bare PAGES lists and counts;
+      // naming a host is what opts into reading them. 400 is well inside any limit and is more
+      // than any one domain has.
+      const READ_CAP = 400;
+      const willRead = askP && keysP.length <= READ_CAP;
+
+      // FNV-1a. Not security - two identical pages must produce the same eight characters and two
+      // different ones must not. Sync, so no await per key beyond the read itself.
+      const fp = (s) => {
+        let h = 0x811c9dc5;
+        for (let i = 0; i < s.length; i++) {
+          h ^= s.charCodeAt(i);
+          h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+        }
+        return ("0000000" + h.toString(16)).slice(-8);
+      };
+
+      const rowsP = [];
+      if (willRead) {
+        for (let i = 0; i < keysP.length; i += 25) {
+          await Promise.all(keysP.slice(i, i + 25).map(async (k) => {
+            const body = await env.AURA_KV.get(k).catch(() => null);
+            rowsP.push({ key: k, bytes: body ? body.length : 0,
+              fp: body ? fp(body) : null,
+              // The <title> is what tells a human that three keys are the same PAGE even when
+              // their fingerprints differ - which is exactly the drifted case worth catching.
+              title: body ? ((body.match(/<title>([^<]{0,60})/i) || [])[1] || "").trim() : null });
+          }));
+        }
+      } else {
+        for (const k of keysP) rowsP.push({ key: k, bytes: null, fp: null, title: null });
+      }
+      rowsP.sort((a, b) => a.key.localeCompare(b.key));
+
+      // ══ WHICH ONE SERVES, BY aura-host's OWN RULE ════════════════════════════════════════
+      // Direct key first, shell only on a miss. So for any host, `page:<host>/` is what a bare
+      // visit gets, and every `_shell_` key is REACHABLE ONLY WHERE NO DIRECT KEY EXISTS.
+      // Named rather than inferred, because inferring it is what took an hour.
+      const hostsP = {};
+      for (const r of rowsP) {
+        const rest2 = r.key.slice(5);
+        const h = rest2.split("/")[0];
+        (hostsP[h] = hostsP[h] || []).push(r);
+      }
+      const same = {};
+      for (const r of rowsP) if (r.fp) (same[r.fp] = same[r.fp] || []).push(r.key);
+      const dupes = Object.keys(same).filter((f) => same[f].length > 1)
+        .map((f) => same[f].length + " identical: " + same[f].join(" = "));
+
+      // Two keys that are the same PAGE by title but a different fingerprint. This is the one
+      // that matters: it means an edit landed on one copy and not the other.
+      const drift = [];
+      for (const h of Object.keys(hostsP)) {
+        const byTitle = {};
+        for (const r of hostsP[h]) if (r.title) (byTitle[r.title] = byTitle[r.title] || []).push(r);
+        for (const t of Object.keys(byTitle)) {
+          const set = byTitle[t];
+          const fps = [...new Set(set.map((r) => r.fp))];
+          if (set.length > 1 && fps.length > 1)
+            drift.push('"' + t + '" on ' + h + " exists " + set.length + " times in " +
+              fps.length + " DIFFERENT versions: " +
+              set.map((r) => r.key.slice(5 + h.length) + " (" + r.fp + ", " + r.bytes + "b)").join(" · "));
+        }
+      }
+
+      return { cmd: "PAGES", payload: { ok: true, keys: keysP.length,
+        read: willRead ? rowsP.length : 0,
+        hosts: Object.keys(hostsP).sort().map((h) => h + "  " + hostsP[h].length + " keys" +
+          (willRead ? "  serves bare visit: " +
+            (hostsP[h].some((r) => r.key === "page:" + h + "/") ? "page:" + h + "/  (a direct key, " +
+              "which SHADOWS any shell)" : "no direct key - a shell serves it") : "")),
+        pages: willRead ? rowsP.map((r) =>
+          r.key + "   " + r.bytes + "b   " + r.fp + (r.title ? "   " + r.title : "")) : rowsP.map((r) => r.key),
+        // The two findings worth acting on, named rather than left to be spotted in a list.
+        identical_copies: dupes.length ? dupes : null,
+        DRIFTED: drift.length ? drift : null,
+        truncated: moreP ? "Hit the listing cap - narrow it with a host name." : null,
+        note: willRead
+          ? (drift.length
+              ? "DRIFT FOUND. The same page exists more than once with different content, so an " +
+                "edit to one copy does nothing to the copy being served. aura-host tries the " +
+                "DIRECT key first and only falls back to a _shell_ key when it misses."
+              : "Every duplicate is identical. Nothing is shadowing anything with stale content.")
+          : "Names only. Add a host - PAGES mytattoo - to read the bodies and fingerprint them." } };
     }
 
     // ══ STOCK — WHAT IS ACTUALLY IN THE CATALOGUE, WHOLE TREE, ONE PASS ═════════════════════

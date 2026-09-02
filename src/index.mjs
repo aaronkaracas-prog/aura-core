@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.96.0-2026-09-02-internal-error-is-not-a-reason";
+const BUILD = "aura-core-v9.97.0-2026-09-02-one-tile-one-tile-one-tile";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6124,7 +6124,17 @@ async function processCommand(line, env, isOp) {
       const treeW = await env.AURA_KV.get("card:tree", "json").catch(() => null);
       if (!treeW) return { cmd: "WALK", payload: { ok: false, error: "NO_TREE" } };
       const subjW = treeW.subjects || {}, specW = treeW.specific || {};
-      const askW = String(rest || "").trim();
+      // ══ SIXTEEN KINDS, ONE TILE EACH, AND A PAGE YOU CANNOT SCREENSHOT ══════════════════
+      // MEASURED on Zodiac & Astrology: 16 kinds, 39 tiles, and a header + its own grid per
+      // kind - so twelve signs fill one row and the other fifteen kinds are a column of nearly
+      // empty sections. Aaron, trying to show the whole category at once: "I need this page to
+      // collapse because I can't show you everything, it's just one tile one tile one tile."
+      // `--tight` drops the per-kind headers and renders every picture in ONE wrapping grid, so
+      // the whole category is a wall that fits a screen. The kind moves onto the tile's own
+      // caption, where it is still readable but costs no vertical space.
+      // Grouped stays the default - it is the right view for reviewing one step at a time.
+      const tightW = /\s--tight\b/i.test(" " + String(rest || ""));
+      const askW = String(rest || "").replace(/\s*--tight\b/ig, "").trim();
       const eW = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (x) =>
         ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[x]));
       // The tree stores kind names, not slugs, so match the way every other reader does.
@@ -6378,7 +6388,17 @@ async function processCommand(line, env, isOp) {
         // crops is a picture of where the depth actually is - and where a kind is thin.
         "<p class=sub>" + Object.keys(byStep).sort((a, b) => byStep[b] - byStep[a])
           .map((k) => byStep[k] + " " + eW(k)).join(" \u00b7 ") + "</p>" +
-        secs.map((s) =>
+        (tightW
+          // Every picture from every kind in a single grid. The kind rides on the caption so
+          // nothing is lost, and the eye can cross the whole category in one screen.
+          ? "<div class=g>" + secs.map((s) => s.items.map((i) =>
+              (i.url ? cell("redo", i.name, i.url, i.name, s.kind)
+                     : "<figure class=gap><figcaption>" + eW(i.name) + "<br><i>no tile</i></figcaption></figure>") +
+              i.sets.map((x) => x.imgs.map((m) =>
+                cell("shot", x.key + " " + m.opt, "https://auras.guide/image/" + m.img,
+                     i.name, x.step + " " + m.opt)).join("")).join("")
+            ).join("")).join("") + "</div>"
+          : secs.map((s) =>
           "<h2>" + eW(s.kind) + " <span>" + s.pics + " pictures" +
           (s.leaves ? " across " + s.leaves : "") +
           (Object.keys(s.byStep).length
@@ -6397,7 +6417,7 @@ async function processCommand(line, env, isOp) {
               cell("shot", x.key + " " + m.opt, "https://auras.guide/image/" + m.img,
                    i.name, x.step + " " + m.opt + (x.path && x.path !== "bare" ? " \u00b7 " + x.path : ""))
             ).join("")).join("")
-          ).join("") + "</div>").join("") +
+          ).join("") + "</div>").join("")) +
         "<div id=bar><div class=t><span><b id=cnt>0</b> tagged</span>" +
         "<span><button id=go>go</button> <button id=clr>clear</button></span></div>" +
         "<pre id=out>R redraws a tile \u00b7 D or \u00d7 drops it so it comes back</pre></div>" +
@@ -6423,7 +6443,9 @@ async function processCommand(line, env, isOp) {
         things: secs.reduce((n, s) => n + s.items.length, 0),
         no_tile: missing.length, no_wall: noWall.length,
         missing: missing.slice(0, 40),
-        note: "Nothing was drawn. Red dashed = no tile. Amber = tile but no variation wall." } };
+        view: tightW ? "tight - one grid, kind on each tile" : "grouped by kind",
+        note: "Nothing was drawn. Red dashed = no tile. Amber = tile but no variation wall." +
+              (tightW ? "" : '  Add --tight for one grid that fits a screen.') } };
     }
 
     case "LIBRARY": {

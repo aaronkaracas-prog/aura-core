@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.83.0-2026-09-01-the-pin-was-never-honoured";
+const BUILD = "aura-core-v9.84.0-2026-09-01-listkv-stops-at-fifty";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6512,6 +6512,65 @@ async function processCommand(line, env, isOp) {
           .map((r) => r.category + " " + r.drawn + "/" + r.things),
         note: "Counted from the tiles that exist, not from what was asked for. " +
               "A category that failed halfway reads as half drawn." } };
+    }
+
+    // ══ COUNT — HOW MANY, AND IN HOW MANY SHAPES ════════════════════════════════════════════
+    // LISTKV stops at 50. That is fine for "show me a few" and useless for "how many are there",
+    // which is the question behind every sizing decision made tonight - how many leaves have a
+    // profile, how many tiles exist, how big is the job. Twice I could not answer it and said so.
+    //
+    // The paginated walk already existed twice - inside STOCK and inside PAGES - and was never a
+    // command anybody could point at an arbitrary prefix. This is that, and nothing else.
+    //
+    // ══ AND IT REPORTS THE SHAPE, BECAUSE THE SHAPE IS USUALLY THE FINDING ═══════════════════
+    // MEASURED on the first 50 leaf profiles: `leaf:v1:beagle` AND `leaf:v1:beagle:dogs` both
+    // exist. The key gained a `:<parent>` suffix at some point and the old ones were never
+    // cleared, so one leaf can carry two profiles that disagree - and the profile is what decides
+    // `part`, `face`, and which frame the leaf draws with. A flat total would have hidden that
+    // completely. Counting segments surfaces it without anybody having to notice it by eye.
+    //
+    //   COUNT leaf:v1:        how many profiles, and in how many key shapes
+    //   COUNT face:v1:        how many tiles
+    //   COUNT shot:v1:        how many banked walls
+    case "COUNT": {
+      const pre = String(rest || "").trim();
+      if (!pre) return { cmd: "COUNT", payload: { ok: false,
+        error: "Usage: COUNT <prefix>   e.g.  COUNT leaf:v1:",
+        why: "LISTKV caps at 50 and cannot answer how many." } };
+      let cur = null, total = 0, pagesC = 0, capped = false;
+      const shapes = {}, samples = {};
+      for (;;) {
+        const l = await env.AURA_KV.list({ prefix: pre, limit: 1000, cursor: cur || undefined })
+          .catch(() => null);
+        if (!l) break;
+        for (const k of (l.keys || [])) {
+          total++;
+          // Segments AFTER the prefix. `leaf:v1:beagle` is one, `leaf:v1:beagle:dogs` is two -
+          // and that difference is the whole point.
+          const tail = String(k.name).slice(pre.length);
+          const n = tail.split(":").filter(Boolean).length;
+          shapes[n] = (shapes[n] || 0) + 1;
+          if (!samples[n]) samples[n] = k.name;
+        }
+        if (l.list_complete === true) break;
+        if (!l.cursor) break;
+        cur = l.cursor;
+        // 20 pages is 20,000 keys. Past that the answer is "a lot" and a narrower prefix is the
+        // right question, not a longer wait.
+        if (++pagesC >= 20) { capped = true; break; }
+      }
+      const shapeRows = Object.keys(shapes).sort((a, b) => a - b).map((n) =>
+        shapes[n] + " with " + n + " segment" + (n === "1" ? "" : "s") + "  e.g. " + samples[n]);
+      return { cmd: "COUNT", payload: { ok: true, prefix: pre, count: total,
+        shapes: shapeRows,
+        // Named rather than left to be noticed. More than one shape under one prefix is almost
+        // always two formats living side by side, which is how one thing ends up with two
+        // records that disagree.
+        mixed_shapes: shapeRows.length > 1
+          ? "More than one key shape under this prefix. That usually means a format changed and " +
+            "the old keys were never cleared - so one subject can have two records that disagree."
+          : null,
+        capped: capped ? "Stopped at 20,000. Narrow the prefix for an exact number." : null } };
     }
 
     // ══ PAGES — WHICH COPY OF A PAGE IS ACTUALLY SERVED ═════════════════════════════════════

@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.98.0-2026-09-02-a-worker-fetching-its-own-zone";
+const BUILD = "aura-core-v9.99.0-2026-09-02-b-refs-off-the-shelf-and-routing-on-a-dial";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -55528,7 +55528,25 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // measurement.
   // The `@cf/` prefix is matched explicitly rather than by family name, because that is the form
   // the binding actually uses.
-  const CAN_EDIT = /^(gpt-image|dall-e-3|grok-imagine|gemini|nano-banana|imagen|flux[.-]?\d*[-.]?kontext|@cf\/[^/]+\/flux-2)/i;
+  // ══ A CAPABILITY LIST IN CODE CANNOT LEARN (2026-09-02) ══════════════════════════════════
+  // The comment above says "the day arrived and this list did not move", and that is the whole
+  // failure: Klein gained image-to-image, this regex did not know, and every edit was rerouted
+  // for months. Correcting it took a DEPLOY, the correction moved traffic onto a branch that had
+  // never carried load, and rolling it back needed another deploy.
+  // A capability that changes when a vendor ships is data, not code. `caps:edit` holds the regex
+  // SOURCE as a string. Absent - which it is until somebody sets it - this is byte-identical to
+  // what shipped, so the dial changes where the decision can be made from and nothing else.
+  const CAN_EDIT_DEFAULT = "^(gpt-image|dall-e-3|grok-imagine|gemini|nano-banana|imagen|flux[.-]?\\d*[-.]?kontext|@cf\\/[^/]+\\/flux-2)";
+  let CAN_EDIT;
+  try {
+    const capsRaw = await env.AURA_KV.get("caps:edit").catch(() => null);
+    CAN_EDIT = new RegExp((capsRaw && capsRaw.trim()) || CAN_EDIT_DEFAULT, "i");
+  } catch {
+    // A typo in the dial must not take image generation down with it. Bad regex -> the shipped
+    // one, and the reason is logged rather than thrown.
+    console.log("[IMG-DIAL] caps:edit is not a valid regex - using the built-in list");
+    CAN_EDIT = new RegExp(CAN_EDIT_DEFAULT, "i");
+  }
   // THE JOB PICKS THE LANE. A draw with references is an edit whatever the operator's image policy
   // says, because "cheapest" that cannot do the job is not cheap - it is a picture you pay for and
   // then pay again to replace.
@@ -55547,8 +55565,16 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // `style_transfer` is an EDIT and must be registered here or the reference is silently dropped
   // and the model redraws from the sentence - which is exactly the fifteen-different-dogs problem
   // this whole path exists to fix.
-  const EDIT_SOURCES = new Set(["image_evolve", "letter", "onme", "design_evolve", "stencil",
-                                "style_transfer"]);
+  // Same reasoning as `caps:edit` above: which callers count as edits is a product decision that
+  // changes when a surface is added, not a property of this function. `caps:edit:sources` is a
+  // comma list. Absent, this is the shipped set exactly.
+  const EDIT_SOURCES_DEFAULT = ["image_evolve", "letter", "onme", "design_evolve", "stencil",
+                                "style_transfer"];
+  const editSrcRaw = await env.AURA_KV.get("caps:edit:sources").catch(() => null);
+  const EDIT_SOURCES = new Set(
+    (editSrcRaw && editSrcRaw.trim())
+      ? editSrcRaw.split(",").map((x) => x.trim()).filter(Boolean)
+      : EDIT_SOURCES_DEFAULT);
   const isEdit = Array.isArray(opts.refs) && opts.refs.filter(Boolean).length > 0
     && (opts.edit === true || EDIT_SOURCES.has(String(opts.source || "")));
   const policyName = ((await env.AURA_KV.get(isEdit ? "config:policy:edit" : "config:policy:image")
@@ -55569,8 +55595,29 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // model just refused this, try the other one", not an operator changing the lane. It is used by
   // the 8007 retry and nothing else. Flipping the KV pin to do the same thing would race with
   // every other request in flight - which is a real bug, not a hypothetical.
+  // ══ THE JOB NAMES THE MODEL, FROM OUTSIDE THE FILE (2026-09-02) ══════════════════════════
+  // Aaron: "I should be able to say this gets on this AI, this goes on this AI." There was one
+  // dial for "which model draws an image" and it governed browse tiles, wall cards and final
+  // pieces alike - so a pin set for one lane silently took over the other two.
+  // Every caller ALREADY passes `opts.source` - tattoo_option, style_transfer, stencil,
+  // image_evolve. So per-job routing needs no change at any call site: it reads
+  // `model:source:<source>`. Nothing set means nothing changes.
+  //   SETKV model:source:tattoo_option  @cf/black-forest-labs/flux-1-schnell
+  //   SETKV model:source:style_transfer @cf/black-forest-labs/flux-2-klein-9b
+  // It sits ABOVE the broad `config:image:model` pin because it is narrower - a named job beats
+  // a lane-wide default - and BELOW `opts.model`, which is one call correcting itself.
+  const srcName = String(opts.source || "").trim();
+  const sourceModel = srcName
+    ? await env.AURA_KV.get("model:source:" + srcName).catch(() => null)
+    : null;
+  // The last resort was the string "@cf/black-forest-labs/flux-1-schnell", written here where
+  // nobody could reach it - and schnell is TEXT-TO-IMAGE ONLY, so the final fallback for the whole
+  // image system was a model that cannot do half the jobs that arrive. Now a dial. Same default.
+  const fallbackModel = (await env.AURA_KV.get("model:fallback").catch(() => null))
+    || "@cf/black-forest-labs/flux-1-schnell";
   let model = ((opts.model && String(opts.model).trim()) ||
-    (rawModel && rawModel.trim()) || resolved.model || "@cf/black-forest-labs/flux-1-schnell").trim();
+    (sourceModel && sourceModel.trim()) ||
+    (rawModel && rawModel.trim()) || resolved.model || fallbackModel).trim();
 
   // ══ AND A LAST GUARD, BECAUSE A WRONG PIN IS STILL POSSIBLE ═══════════════════════════════
   // MEASURED on a live walk: `config:image:model` was pinned to Flux for the catalogue, which is
@@ -55664,79 +55711,135 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       const wantsMultipart = /flux-2/.test(model);
       let out;
       if (wantsMultipart) {
+        // `parts` is what the request is actually built from on every attempt - see runOnce
+        // below. `form` is kept only so the reference loop reads the same as Cloudflare's own
+        // sample; the bytes that go on the wire come from here.
+        const parts = [];
         const form = new FormData();
-        form.append("prompt", p);
-        form.append("width", "1024");
-        form.append("height", "1024");
+        const addPart = (k, v) => { parts.push({ k, v }); form.append(k, v); };
+        addPart("prompt", p);
+        addPart("width", "1024");
+        addPart("height", "1024");
         // Documented on Cloudflare's model page as `seed (integer) - Seed for reproducibility`.
         // It is how twenty different dragons come out of one sentence: the words stay fixed and
         // the noise the model starts from changes. No authored variation list, no second model
         // call, and it works the same on a rose or a skull.
-        if (opts.seed != null) form.append("seed", String(opts.seed));
+        if (opts.seed != null) addPart("seed", String(opts.seed));
         if (isEdit) {
           const cfRefs = (Array.isArray(opts.refs) ? opts.refs.filter(Boolean) : []).slice(0, 4);
           let attached = 0;
-          // ══ A WORKER FETCHING ITS OWN ZONE (fixed 2026-09-02) ══════════════════════════════
-          // MEASURED: every STYLES card came back "could not read any reference image for the
-          // edit", cost $0, on images that load fine in a browser. `fetch(https://auras.guide/
-          // image/<id>)` from inside a Worker is a request back out to the edge for a hostname
-          // this account serves - which Cloudflare does not route the way an outside visitor's
-          // request is routed.
-          // Why it appeared today and not before: until v9.83, CAN_EDIT rerouted every edit to
-          // gpt-image-2, which sends the reference as a URL for the provider to fetch. Honouring
-          // Aaron's Klein pin moved edits onto this multipart branch for the first time, and this
-          // branch has to read the bytes itself.
-          // AURA_MEDIA is a service binding - worker to worker, no public hop. The plain fetch
-          // stays as the fallback for any reference that is genuinely external.
+          // ══ OUR OWN IMAGES COME OFF THE SHELF (fixed properly 2026-09-02) ══════════════════
+          // THIRD TIME THIS FILE HAS LEARNED THE SAME THING. `tatStencilBytes` carries it - a
+          // Worker fetching `auras.guide/image/<id>` returned HTTP 522 after 20s - and reads
+          // `image:<id>` from KV instead. The gpt-image branch below carries it again, verbatim:
+          // "OUR OWN IMAGES COME OFF THE SHELF, NOT OVER THE WIRE." Yesterday's fix invented a
+          // FOURTH path, through the AURA_MEDIA service binding, and that made it worse:
+          //   · `/image/<id>` is served by AURA-HOST, not aura-media. aura-media has no such
+          //     route. The binding reached a worker that does not serve images.
+          //   · Whatever came back with a 200 was accepted as an image, handed to Photon, and
+          //     when Photon threw on non-image bytes the bare `catch {}` below swallowed it and
+          //     attached the garbage as image/png. Cloudflare rejected the multipart instantly -
+          //     TWO ATTEMPTS IN UNDER FIVE SECONDS, far too fast to be a model call. The symptom
+          //     moved from "could not read any reference" to `3043` and I read that as progress.
+          // AURA_IMAGES IS NOT BOUND on this worker - checked in wrangler.toml, not inferred from
+          // the fifteen `if (env.AURA_IMAGES)` guards in this file, every one of which has been
+          // silently skipping since the day it was written. KV is where the bytes actually are:
+          // line ~56205 writes `image:<id>` unguarded on every single image.
+          // MATCHED ON THE PATH, NEVER THE HOSTNAME. The finish rail sends
+          // `mytattoo.world/image/<id>`; STYLES sends `auras.guide/image/<id>`; there are 501
+          // domains and every one of them serves /image/. Keying on a hostname would have fixed
+          // STYLES and left the rail broken.
           const refWhy = [];
-          const readRef = async (u) => {
-            if (env.AURA_MEDIA && /auras\.guide|\/image\//i.test(String(u))) {
-              try {
-                const r = await env.AURA_MEDIA.fetch(new Request(u));
-                if (r && r.ok) return r;
-                refWhy.push("binding " + (r ? r.status : "no response"));
-              } catch (e) { refWhy.push("binding threw: " + String(e && e.message || e).slice(0, 60)); }
+          const readRefBytes = async (u) => {
+            const own = String(u || "").match(/\/image\/(img_[A-Za-z0-9_-]+)/i);
+            if (own) {
+              const b = await env.AURA_KV.get("image:" + own[1]).catch(() => null);
+              if (b) {
+                const bin = atob(b);
+                const arr = new Uint8Array(bin.length);
+                for (let n = 0; n < bin.length; n++) arr[n] = bin.charCodeAt(n);
+                return arr;
+              }
+              refWhy.push("kv miss image:" + own[1]);
+              // One of ours that is not in KV is a real fault, not a cue to go to the network -
+              // the network route for our own zone is the bug this block exists to remove.
+              return null;
             }
+            // Somebody else's picture - the only case that legitimately goes over the wire.
             try {
               const r = await fetch(u);
-              if (r && r.ok) return r;
+              if (r && r.ok) return new Uint8Array(await r.arrayBuffer());
               refWhy.push("fetch " + (r ? r.status : "no response"));
             } catch (e) { refWhy.push("fetch threw: " + String(e && e.message || e).slice(0, 60)); }
             return null;
           };
           for (let i = 0; i < cfRefs.length; i++) {
             try {
-              const ir = await readRef(cfRefs[i]);
-              if (!ir) continue;
-              const ab = await ir.arrayBuffer();
+              const ab = await readRefBytes(cfRefs[i]);
+              if (!ab) continue;
               // ══ CLOUDFLARE REFUSES A REFERENCE 512 OR LARGER ═══════════════════════════
               // Their changelog, verbatim: "All input images must be smaller than 512x512."
               // Every image this system makes is 1024, so without this EVERY Klein edit would be
               // refused - and the refusal would read as a model problem rather than a size one.
               // Photon is already here for the stencil work, so the resize costs nothing and is
               // deterministic.
-              let bytes = new Uint8Array(ab);
+              let bytes = ab;
+              // ══ THE SIGNATURE, BECAUSE THE FILENAME LIES ═══════════════════════════════════
+              // Every image is stored as `<id>.png` and served as image/png, but the writer at
+              // ~56199 accepts a JPEG signature too - so a `.png` in this system is PNG *or*
+              // JPEG. Read the bytes, not the label.
+              const sigPng = bytes.length > 8 && bytes[0] === 0x89 && bytes[1] === 0x50 &&
+                             bytes[2] === 0x4E && bytes[3] === 0x47;
+              const sigJpg = bytes.length > 3 && bytes[0] === 0xFF && bytes[1] === 0xD8 &&
+                             bytes[2] === 0xFF;
+              const sawFmt = sigPng ? "png" : sigJpg ? "jpeg" : "NOT-AN-IMAGE";
+              const wasLen = bytes.length;
+              // ══ A RESIZE THAT SILENTLY DID NOT HAPPEN (2026-09-02) ═════════════════════════
+              // This whole block was wrapped in `catch {}`. If Photon threw, `bytes` stayed the
+              // ORIGINAL 1024px image - over Cloudflare's hard 512 ceiling - and was attached
+              // anyway, labelled image/png. A resize failure and a resize success were
+              // indistinguishable from the outside, which is how a wrong-worker fetch turned into
+              // an unexplainable 3043 instead of an error naming itself.
+              if (!sigPng && !sigJpg) {
+                throw new Error("reference " + i + " is not an image (" + wasLen +
+                  " bytes, starts " + Array.from(bytes.slice(0, 4))
+                    .map((b) => b.toString(16).padStart(2, "0")).join(" ") + ")");
+              }
+              let outW = null, outH = null;
               try {
                 const pi = PhotonImage.new_from_byteslice(bytes);
+                outW = pi.get_width(); outH = pi.get_height();
                 if (pi.get_width() >= 512 || pi.get_height() >= 512) {
                   const scale = 480 / Math.max(pi.get_width(), pi.get_height());
-                  const small = photonResize(pi,
-                    Math.max(1, Math.round(pi.get_width() * scale)),
-                    Math.max(1, Math.round(pi.get_height() * scale)),
-                    PhotonSampling.Lanczos3);
+                  outW = Math.max(1, Math.round(pi.get_width() * scale));
+                  outH = Math.max(1, Math.round(pi.get_height() * scale));
+                  const small = photonResize(pi, outW, outH, PhotonSampling.Lanczos3);
                   bytes = small.get_bytes();
                   try { small.free(); } catch {}
                 }
                 try { pi.free(); } catch {}
-              } catch {}
+              } catch (pe) {
+                // Loud. Cloudflare refuses anything 512 or larger, so attaching an unresized
+                // reference is a guaranteed rejection - failing here names the cause instead.
+                throw new Error("could not resize reference " + i + " (" + sawFmt + ", " +
+                  wasLen + " bytes): " + String(pe && pe.message || pe).slice(0, 80));
+              }
+              console.log("[IMG-REF] " + i + " " + sawFmt + " " + wasLen + "B -> " +
+                bytes.length + "B " + outW + "x" + outH + " src=" + String(cfRefs[i]).slice(0, 80));
+              parts.push({ k: "input_image_" + i, blob: true, bytes, filename: "ref" + i + ".png" });
               form.append("input_image_" + i, new Blob([bytes], { type: "image/png" }), "ref" + i + ".png");
               attached++;
-            } catch {}
+            } catch (re) {
+              // Was `catch {}`. Four debugging round trips came out of this one pair of braces.
+              refWhy.push("ref" + i + ": " + String(re && re.message || re).slice(0, 100));
+            }
           }
           // An edit with no reference attached is not an edit - it is a fresh draw wearing the
           // label of one, which is the failure that produced "a bibliography of near-misses".
           // The reason, not just the fact. Every swallowed `catch {}` in this loop cost a
           // debugging round trip; a failure that names the status is one paste instead of three.
+          console.log("[IMG-REF] attached " + attached + " of " + cfRefs.length +
+            (refWhy.length ? " :: " + refWhy.join(" | ") : ""));
           if (!attached) throw new Error("could not read any reference image for the edit" +
             (refWhy.length ? " [" + refWhy.slice(0, 4).join("; ") + "]" : "") +
             " [tried " + cfRefs.length + ": " + cfRefs.slice(0, 2).join(" ") + "]");
@@ -55752,10 +55855,22 @@ async function auraGenerateImage(prompt, env, opts = {}) {
         // second attempt, unlike 8007, which refuses identically forever. Two attempts, a short
         // pause between them, and the reason is kept if both fail.
         // A FormData body is a stream and cannot be replayed, so the form is rebuilt per attempt.
+        // ══ REBUILD FROM THE PARTS, NOT FROM THE FormData ═════════════════════════════════
+        // This re-iterated `form.entries()` and re-appended each value. For a text-only draw that
+        // is copying strings, which is why the whole catalogue drew fine through this same
+        // branch. An EDIT round-trips File objects through a FormData iterator - a path that had
+        // never carried a file before v9.83, and the only line that differs between the proven
+        // draw and the broken edit.
+        // `parts` is the source of truth: plain values captured once, a fresh FormData per
+        // attempt. A FormData body is a stream and cannot be replayed, so per-attempt rebuild is
+        // required either way - this just rebuilds from something that cannot degrade.
         const runOnce = async () => {
           if (!wantsMultipart) return await env.AI.run(model, { prompt: p });
           const f2 = new FormData();
-          for (const [k, v] of form.entries()) f2.append(k, v);
+          for (const pt of parts) {
+            if (pt.blob) f2.append(pt.k, new Blob([pt.bytes], { type: "image/png" }), pt.filename);
+            else f2.append(pt.k, pt.v);
+          }
           const r2 = new Response(f2);
           return await env.AI.run(model, {
             multipart: { body: r2.body, contentType: r2.headers.get("content-type") },
@@ -55780,6 +55895,20 @@ async function auraGenerateImage(prompt, env, opts = {}) {
           catch (e) {
             lastCfErr = e;
             const msg = String(e && e.message || e);
+            // ══ THE WRAPPED ERROR HID THE ONLY USEFUL SENTENCE ═══════════════════════════
+            // `3043: Internal server error` is what Cloudflare's client throws after it has
+            // already been told something more specific. Log the whole object - cause, stack
+            // and any response body hanging off it - so `wrangler tail` shows the real reason
+            // instead of a code that means "something went wrong upstream".
+            try {
+              console.log("[IMG-CF] attempt " + attempt + " " + model + " edit=" + isEdit +
+                " parts=" + parts.length + " :: " + msg);
+              if (e && e.cause) console.log("[IMG-CF] cause: " +
+                JSON.stringify(e.cause, Object.getOwnPropertyNames(e.cause)).slice(0, 600));
+              if (e && e.response && typeof e.response.text === "function") {
+                console.log("[IMG-CF] body: " + (await e.response.text()).slice(0, 600));
+              }
+            } catch {}
             // A bad request or an unknown error still fails immediately - retrying those would
             // fail the same way three times and just cost three times as long.
             const isTransient = cfTransient.test(msg);

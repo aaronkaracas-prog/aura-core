@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.85.0-2026-09-01-the-step-is-an-argument";
+const BUILD = "aura-core-v9.86.0-2026-09-01-a-default-nobody-chose";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5653,7 +5653,7 @@ async function processCommand(line, env, isOp) {
           const ownR = await tatOwnerOf(env, nm);
           const rndR = ownR ? await tatRenderFor(env, ownR) : null;
           const bldR = await tatBuildFor(env, nm);
-          const askR = (bldR || nm) + (ctxR ? ", " + ctxR : "") + (rndR || TAT_RENDER_DEFAULT);
+          const askR = (bldR || nm) + (ctxR ? ", " + ctxR : "") + (rndR || await tatRenderDefault(env));
           one.drew = askR;
           const r = await showIt(askR,
             env, { model, raw: true, source: "redo", subject: nm,
@@ -7097,7 +7097,7 @@ async function processCommand(line, env, isOp) {
           const bldY = await tatBuildFor(env, leaf);
           one.built = !!bldY;
           const r = await showIt((bldY || leaf) + (ctxYs ? ", " + ctxYs : "") +
-            (rndY || TAT_RENDER_DEFAULT),
+            (rndY || await tatRenderDefault(env)),
             env, { model, raw: true, source: "types", subject: leaf });
           if (r?.ok) { one.image = r.image_url; one.cost_usd = r.cost_usd; one.cached = !!r.cached;
                        spend += (r.cost_usd || 0); one.id = r.id || null;
@@ -7243,7 +7243,7 @@ async function processCommand(line, env, isOp) {
           // The subject, the context and the frame are fixed; only the pose clause moves. Same
           // discipline as the walk - the picture owns what it is, the clause owns what it is doing.
           const r = await showIt(what + (ctxP ? ", " + ctxP : "") + ", " + (o.say || o.id) +
-            (rndP || TAT_RENDER_DEFAULT),
+            (rndP || await tatRenderDefault(env)),
             env, { model, raw: true, source: "poses", subject: what + " " + o.id });
           if (r?.ok) { one.image = r.image_url; one.cost_usd = r.cost_usd; one.cached = !!r.cached;
                        spend += (r.cost_usd || 0);
@@ -7363,7 +7363,7 @@ async function processCommand(line, env, isOp) {
         const one = { treatment: t.id, say: t.say || null, image: null, why: null, cost_usd: null };
         try {
           const r = await showIt(what + (ctxT ? ", " + ctxT : "") + ", " + (t.say || t.id) +
-            (rndT || TAT_RENDER_DEFAULT),
+            (rndT || await tatRenderDefault(env)),
             env, { model, raw: true, source: "twenty", subject: what + " " + t.id });
           if (r?.ok) { one.image = r.image_url; one.cost_usd = r.cost_usd; one.cached = !!r.cached;
                        spend += (r.cost_usd || 0); }
@@ -54723,7 +54723,18 @@ const WALK_TAG_JS = [
   "localStorage.setItem(K,JSON.stringify(T));paint()});paint()})();"
 ].join("");
 
+// ══ A DEFAULT NOBODY CHOSE, DISAGREEING WITH EVERY DIAL THAT WAS CHOSEN ═══════════════════
+// This is what a subject gets when it has no owner and therefore no `render:` dial. It says plain
+// white. Aaron's dials say black - `render:animals-pets` is "solid pure black background", and the
+// catalogue is full of the same. So the one path nobody configured was the one path that
+// contradicted everything configured, and it only showed up when a subject failed to resolve.
+// `render:default` makes the house default a dial like every other. The constant stays as the
+// floor beneath it, because a fallback with no fallback is how a missing key becomes no prompt.
 const TAT_RENDER_DEFAULT = ". Full colour, highly detailed, on a plain white background.";
+async function tatRenderDefault(env) {
+  const d = await env.AURA_KV.get("render:default").catch(() => null);
+  return (d && String(d).trim()) ? ". " + String(d).trim() : TAT_RENDER_DEFAULT;
+}
 
 // ══ THE NAME IS A LABEL, NOT A SPECIFICATION ═════════════════════════════════════════════════
 // MEASURED 2026-08-31 on six STRIP constructions. The envelope held - all six came back wide, short,
@@ -54750,15 +54761,32 @@ async function tatRenderFor(env, kindOrLeaf) {
 // Which kind or category owns this leaf. Nearest parent wins - `specific` before `subjects` - so
 // Mustang under Horses beats Mustang under Muscle Car. Extracted because BOTH dials need it and
 // a second inline copy is how the two would drift apart.
+// ══ `dolphin` IS NOT `Dolphins`, AND EVERYTHING DOWNSTREAM WENT QUIET ══════════════════════
+// MEASURED 2026-09-01. `POSES tulip` came back on a black background - correct, Aaron's own
+// `render:flowers-plants`. `POSES dolphin` and `POSES gorilla` came back WHITE. Not a different
+// call and not a different model: the tree holds `Dolphins`, this matched slugs exactly, `dolphin`
+// missed, and with no owner there is no `render:` dial - so both fell to the hardcoded default,
+// which says plain white.
+// The frame lookup already learned this lesson today and this one had not. The singular form is
+// how a person types a subject and how the prompt should read; the tree stores the plural label.
+// Exact match still wins, so nothing that resolved before resolves differently.
 async function tatOwnerOf(env, leaf) {
   try {
     const t = await env.AURA_KV.get("card:tree", "json");
     if (!t) return null;
     const n = tatSlug(leaf);
+    const ns = tatSingular(n).toLowerCase();
+    const hit = (x) => { const xs = tatSlug(x); return xs === n || tatSingular(xs).toLowerCase() === ns; };
+    // Exact first, across the whole tree, before any singular match is considered - so a leaf
+    // that genuinely exists under its own name is never captured by a near-miss elsewhere.
     for (const [kind, leaves] of Object.entries(t.specific || {}))
       if ((leaves || []).some((x) => tatSlug(x) === n)) return kind;
     for (const [cat, kinds] of Object.entries(t.subjects || {}))
       if ((kinds || []).some((x) => tatSlug(x) === n)) return cat;
+    for (const [kind, leaves] of Object.entries(t.specific || {}))
+      if ((leaves || []).some(hit)) return kind;
+    for (const [cat, kinds] of Object.entries(t.subjects || {}))
+      if ((kinds || []).some(hit)) return cat;
   } catch {}
   return null;
 }

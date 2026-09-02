@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.93.0-2026-09-02-stale-by-quality-not-by-shape";
+const BUILD = "aura-core-v9.94.0-2026-09-02-pose-and-expression-not-one-or-the-other";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -54973,7 +54973,7 @@ function profWord(p) {
   if (!p) return "-";
   const on = [];
   if (p.arrange) on.push("arrange");
-  if (p.part) on.push("crop");
+  if (p.part) on.push(p.head_is_the_piece ? "crop" : "pose");
   if (p.face) on.push("face");
   if (p.needs_upload) on.push("needs-upload");
   return (on.length ? on.join("+") : "nothing before style") +
@@ -54990,7 +54990,8 @@ async function tatLeafProfile(env, leafLabel, model, parent) {
     // apply to leaves nobody had walked yet - which is the worst possible split.
     // Requiring the flag re-profiles an old record the next time its leaf is actually used. That
     // is one cheap text call, paid only when somebody is there to see the result.
-    if (hit && typeof hit.part === "boolean" && typeof hit.arrange === "boolean") return hit;
+    if (hit && typeof hit.part === "boolean" && typeof hit.arrange === "boolean" &&
+        typeof hit.head_is_the_piece === "boolean") return hit;
   } catch {}
   let lastErr = null, lastText = null;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -55006,7 +55007,7 @@ async function tatLeafProfile(env, leafLabel, model, parent) {
           "FOR THIS PARTICULAR THING.\n\n" +
           'Return ONLY JSON: {"resolved":{"key":"value"},"say":"..."|null,' +
           '"part":true|false,"face":true|false,"arrange":true|false,' +
-          '"needs_upload":false}\n\n' +
+          '"head_is_the_piece":true|false,"needs_upload":false}\n\n' +
           "`resolved` is what the name itself already states. \"Withered Rose\" resolves " +
           'subject=rose and state=withered. "Golden Retriever" resolves subject=dog and ' +
           'breed=golden retriever. "Japanese Dragon" resolves subject=dragon and ' +
@@ -55033,6 +55034,11 @@ async function tatLeafProfile(env, leafLabel, model, parent) {
           "anchor.\n\n" +
           "`face` is true when this thing has a face capable of an expression. A dog, a cat, a " +
           "person, a skull. Not a rose, not a compass, not a zodiac glyph.\n\n" +
+          "`head_is_the_piece` is true when somebody choosing this would be choosing HOW MUCH of " +
+          "it to show - a portrait, a memorial face, a skull. There, \"head only\" IS the tattoo. " +
+          "It is FALSE for anything with a body that moves: a dragon, a dog, an eagle, a wolf. " +
+          "Those are asked how they are POSED and then what their FACE is doing, both, and the " +
+          "amount of them to show is not an interesting question.\n\n" +
           "`arrange` is true when the interesting question is HOW MANY and LAID OUT HOW, rather " +
           "than how much of one to show. A tulip can be a single stem, three in a row, a bouquet, " +
           "a wreath, crossed stems - and NONE of those is a crop of the others. Flowers, plants, " +
@@ -55122,6 +55128,7 @@ async function tatLeafProfile(env, leafLabel, model, parent) {
         // {part:false, face:false, needs_upload:false} - no arrange key at all.
         const rec = { resolved, say, part: o.part === true, face: o.face === true,
                       arrange: o.arrange === true,
+                      head_is_the_piece: o.head_is_the_piece === true,
                       needs_upload: o.needs_upload === true };
         try { await env.AURA_KV.put(key, JSON.stringify(rec)); } catch {}
         return rec;
@@ -58498,15 +58505,33 @@ export class PublicEntry extends WorkerEntrypoint {
         // into the walk, because the walk only knew how to ask about crops.
         // `arrange` and `part` are alternatives. Arrange wins where both somehow arrive, because
         // a wrong crop wall is the failure that has actually happened.
+        // ══ POSE **AND** EXPRESSION, NOT ONE OR THE OTHER (2026-09-02) ═══════════════════════
+        // The walk asked crop first and the crop ANSWER picked the branch: a body crop got poses
+        // and never expressions, a head crop got expressions and never poses. Aaron, walking a
+        // dragon: "is it flying, is it doing this - that was fun, I picked one I like, now I get
+        // to pick expressions, let me pick the one where the dragon has its tongue out. Now
+        // generate that."
+        // Both, in order, and the piece is drawn from the two together. It is also the cheap
+        // shape: 8 poses x 8 expressions is 64 tiles nobody wants to scroll, 8 + 8 is sixteen
+        // screens and ONE drawing made at the end for the one person who asked for it.
+        //
+        // ══ CROP SURVIVES WHERE THE HEAD IS THE PIECE ═══════════════════════════════════════
+        // A portrait, a skull, a memorial face - "head only" is the design there, not a way of
+        // framing a body. `head_is_the_piece` says so; the flag exists because the answer differs
+        // per leaf and this file has spent two days learning that a hardcoded list of subjects is
+        // always wrong somewhere.
+        // A leaf that has a face and no body to pose keeps the old behaviour by falling through
+        // to expression alone - a skull cannot be posed and never asked to be.
+        const headPiece = prof.head_is_the_piece === true;
+        const canPose = prof.part === true && !prof.arrange;
         const order = []
           .concat(prof.arrange ? ["treatment"] : [])
-          .concat(prof.part && !prof.arrange ? ["crop"] : [])
-          .concat(cropOpt && cropOpt.body ? ["pose"] : [])
-          // THE FORK HAS TWO BRANCHES AND YOU WALK ONE. A full body gets a pose; a head gets an
-          // expression. This was `prof.face` alone, which bolted expression onto the END of the
-          // body path - so a full-body dog was posed and THEN asked to make a face, which is a
-          // fourth wall on a walk that is supposed to be three.
-          .concat(prof.face && !(cropOpt && cropOpt.body) ? ["expression"] : []);
+          .concat(headPiece && canPose ? ["crop"] : [])
+          // With a crop step present the old fork still applies - somebody who asked for a head
+          // is not then asked how the body is arranged.
+          .concat(canPose && (!headPiece || (cropOpt && cropOpt.body)) ? ["pose"] : [])
+          .concat(prof.face && !prof.arrange &&
+                  (!headPiece || !(cropOpt && cropOpt.body)) ? ["expression"] : []);
 
         // ── WHICH SCREEN ARE WE ON. The first slot in the order nobody has answered.
         const ASKS = { crop: "Head or body?", pose: "How do you want it posed?",

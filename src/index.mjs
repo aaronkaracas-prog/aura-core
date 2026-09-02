@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.79.0-2026-09-01-a-word-list-cannot-cover-the-catalogue";
+const BUILD = "aura-core-v9.80.0-2026-09-01-a-look-that-is-only-a-category-reaches-twenty-subjects";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -7492,18 +7492,51 @@ async function processCommand(line, env, isOp) {
     // then draw a style when somebody taps it, rather than paying for fifteen nobody looks at.
     case "STYLES": {
       const raw = String(rest || "").trim();
+      // Declared here because the usage branch below returns before the main body runs.
+      const OFFERED_HINT = "photorealism, black and grey realism, color realism, fine line, " +
+        "american traditional, neo-traditional, japanese irezumi, blackwork, liquid chrome, " +
+        "glossy sticker, embroidered patch";
       const onlyM = raw.match(/--only\s+(.+)$/i);
       const want = onlyM ? onlyM[1].trim().toLowerCase() : null;
-      const sid0 = raw.replace(/--only\s+.+$/i, "").trim();
+      const sid0 = raw.replace(/--only\s+.+$/i, "").replace(/--all\b/i, "").trim();
       if (!sid0) return { cmd: "STYLES", payload: { ok: false,
-        error: "Usage: STYLES <image id>   or   STYLES <image id> --only japanese irezumi",
-        styles: TAT_STYLE_CARDS.map((c) => c[0]) } };
+        error: "Usage: STYLES <image id>   ·   STYLES <image id> --only japanese irezumi   ·   " +
+               "STYLES <image id> --all",
+        offered: OFFERED_HINT,
+        every_card: TAT_STYLE_CARDS.map((c) => c[0]),
+        reorder: 'SETKV styles:offered "photorealism,fine line,blackwork"' } };
 
       const srcUrl = "https://" + (await imageHost(env)) + "/image/" + sid0;
+      // ══ WHICH STYLES ARE OFFERED IS A DIAL, NOT A CONSTANT (2026-09-01) ═══════════════════
+      // Three lists disagreed: TAT_STYLE_CARDS held 15, TAT_STYLES held 12, and FINISHES in
+      // mt-design.html held 14 - so a customer could flip to `geometric` and `minimalist`, both
+      // of which this file's own measurements had already rejected. Three places to edit and no
+      // way to reorder without a deploy.
+      //
+      // Aaron's list, chosen off a real sheet rather than from memory - the dragon guide with all
+      // fifteen side by side. What it removed: micro realism (black-and-grey with finer shading -
+      // the same tile), minimalist and sketch and illustrative (three names for one light line
+      // drawing), new school (cartoon again), and watercolour and cartoon by choice.
+      // Every card STAYS in the array. This governs what is OFFERED, not what exists, so nothing
+      // that was ever drawn becomes unreachable - `--only` still reaches any of the eighteen.
+      const OFFERED_DEFAULT = [
+        "photorealism", "black and grey realism", "color realism", "fine line",
+        "american traditional", "neo-traditional", "japanese irezumi", "blackwork",
+        "liquid chrome", "glossy sticker", "embroidered patch",
+      ];
+      const offRaw = await env.AURA_KV.get("styles:offered").catch(() => null);
+      const offered = String(offRaw || OFFERED_DEFAULT.join(","))
+        .split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
+      // Eighteen cards is eighteen sequential image-to-image calls at ~18s each - five minutes
+      // inside one request, which is how the first STYLES run of the night appeared to hang.
+      // The offered set is the default; --all is the deliberate way to ask for everything.
+      const wantAll = /--all\b/i.test(raw);
+      const byOffered = TAT_STYLE_CARDS.filter((c) => offered.includes(c[0].toLowerCase()))
+        .sort((a, b) => offered.indexOf(a[0].toLowerCase()) - offered.indexOf(b[0].toLowerCase()));
       const cards = want
         ? TAT_STYLE_CARDS.filter((c) => c[0].toLowerCase() === want ||
                                         c[0].toLowerCase().includes(want))
-        : TAT_STYLE_CARDS;
+        : (wantAll ? TAT_STYLE_CARDS : (byOffered.length ? byOffered : TAT_STYLE_CARDS));
       if (!cards.length) return { cmd: "STYLES", payload: { ok: false, error: "NO_SUCH_STYLE",
         asked: want, styles: TAT_STYLE_CARDS.map((c) => c[0]) } };
 
@@ -54193,6 +54226,33 @@ const TAT_STYLE_CARDS = [
   ["watercolour", "Render through watercolour language: translucent pigment washes, layered transparent colour, natural pigment variation, soft transitions, bleeding, painterly tonal variation, selective crisp details and intentionally incomplete edges where form dissolves. Let watercolour behaviour construct the subject rather than decorate it."],
   ["sketch", "Render with expressive hand-drawn construction: visible construction lines, loose exploratory strokes, overlapping marks, variable line pressure, gestural drawing, selective dark finished contours, cross-hatching and unfinished artistic edges. Keep the evidence of the drawing process as part of the finish."],
   ["cartoon", "Translate into clear animated language: simplified forms, clean readable outlines, simplified internal detail, expressive features, controlled exaggeration, clear silhouettes, clean colour fills and polished cartoon construction, keeping the recognisable identity, pose and expression of the source."],
+
+  // ══ MATERIALS, NOT STYLES (2026-09-01) ═══════════════════════════════════════════════════
+  // The fifteen above answer "how is it DRAWN". These three answer "what is it MADE OF" - the
+  // same piece as chrome, as a sticker, as a stitched patch. Aaron built each of them as a
+  // CATEGORY first, so a customer could pick the look up front, and each has sixty to a hundred
+  // tiles behind it. That worked and it stays. But a look that only exists as a category can
+  // only ever be applied to the twenty subjects somebody pre-drew - as a card it applies to
+  // whatever the person actually chose, which is the thing they came for.
+  //
+  // WORDING IS AARON'S, from the live `context:` dials that drew those tiles - not rewritten.
+  // What IS removed from each is the framing tail: "one complete object, centred and isolated on
+  // plain white, no background, no scenery, no body, no skin". TAT_SOURCE_LOCK already says
+  // exactly that, and a second copy is a second voice telling the model where to put the subject
+  // while the reference image is telling it something else.
+  //
+  // TWO OF THESE PUSH AGAINST THE LOCK AND IT IS WORTH KNOWING WHICH. Chrome asks for "flowing
+  // liquid form with drips and stretched tendrils" and patch asks for edges "soft and fuzzy like
+  // real cloth" - both are shape changes, and the lock's whole job is to hold the shape. If a
+  // tulip comes back smeared, the phrase to weaken is that one, not the lock.
+  //
+  // NOT INCLUDED, DELIBERATELY: the eleven biomech and neon kinds and the three neo-tribal ones.
+  // Their dials say "no animal, no flowers, no scenery" - they describe an abstract sigil or a
+  // machine, not a way of rendering something that already exists. Run a tulip through one and
+  // the prompt forbids the tulip. They stay categories, where 243 tiles already work.
+  ["liquid chrome", "Remake the surface as molten mirror-polished metal: a perfect reflective surface with sharp specular highlights and dark reflected shadows, smooth flowing liquid form with drips and stretched tendrils of metal, Y2K chrome aesthetic, the surface mirroring its surroundings. Silver and black only, no other colour, glossy wet metal with strong three-dimensional volume."],
+  ["glossy sticker", "Remake as a glossy vinyl sticker: printed on shiny vinyl and die-cut with a thick white border following its outline, a bright specular sheen across the glossy surface, one corner curled and peeling upward with a soft shadow cast beneath it, bold saturated cartoon colour and clean black outlines. It should read as a sticker stuck onto a surface, not as a drawing."],
+  ["embroidered patch", "Remake as an embroidered patch: stitched in coloured thread onto fabric, visible satin-stitch texture with every individual thread direction showing, raised thread sitting proud of the backing, a merrowed overlock border of dense thread running all the way around the outer edge, slightly soft and fuzzy at the edges like real cloth. An iron-on patch, not a drawing and not flat."],
 ];
 
 // ══ EVERY DIRECTION ONE IMAGE CAN GO, WITHOUT A MODEL ════════════════════════════════════

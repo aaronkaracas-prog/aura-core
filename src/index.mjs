@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.84.0-2026-09-01-listkv-stops-at-fifty";
+const BUILD = "aura-core-v9.85.0-2026-09-01-the-step-is-an-argument";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -7183,20 +7183,41 @@ async function processCommand(line, env, isOp) {
     // POSES <subject>                  ten poses, drawn on the default model
     // POSES <subject> --n 6
     // POSES <subject> --model <m>
+    // ══ THE STEP IS AN ARGUMENT, NOT A SECOND COMMAND ═══════════════════════════════════════
+    // `tatWall(env, subject, STEP, question, ...)` already took the step as a parameter and POSES
+    // was hardcoding "pose". Copying this whole block to make an EXPRESSIONS command would be a
+    // second copy of the context lookup, the frame lookup, the shot write and the page builder -
+    // and this file has spent the night paying for exactly that kind of duplication: three copies
+    // of one page, two profile key formats, three disagreeing style lists.
+    // So the command NAME picks the step and everything else is shared. `--step` is there for the
+    // ones with no command of their own yet - treatment, crop - so the next one needs no code.
+    case "EXPRESSIONS":
     case "POSES": {
       const raw = String(rest || "").trim();
       const nM = raw.match(/--n\s+(\d+)/i);
       const mM = raw.match(/--model\s+(\S+)/i);
-      const what = raw.replace(/--n\s+\d+/i, "").replace(/--model\s+\S+/i, "").trim();
-      if (!what) return { cmd: "POSES", payload: { ok: false,
-        error: "Usage: POSES <subject>   e.g.  POSES japanese dragon" } };
+      const sM = raw.match(/--step\s+([a-z]+)/i);
+      const stepP = (sM ? sM[1] : (cmd === "EXPRESSIONS" ? "expression" : "pose")).toLowerCase();
+      // The question is what the wall generator is actually answering, and it is the difference
+      // between eight arrangements and eight faces. A generic one produces a generic wall.
+      const askP2 = { pose: "How do you want it posed?",
+                      expression: "What should its face be doing?",
+                      crop: "How much of it do you want to see?",
+                      treatment: "How should it be arranged?" }[stepP] ||
+                    ("How do you want the " + stepP + "?");
+      const what = raw.replace(/--n\s+\d+/i, "").replace(/--model\s+\S+/i, "")
+        .replace(/--step\s+[a-z]+/i, "").trim();
+      if (!what) return { cmd, payload: { ok: false,
+        error: "Usage: " + cmd + " <subject>   e.g.  " + cmd + " gorilla   ·   " +
+               cmd + " gorilla --step treatment",
+        steps: ["pose", "expression", "crop", "treatment"] } };
       const n = nM ? Math.max(1, Math.min(20, Number(nM[1]))) : 10;
       const model = mM ? mM[1] : "@cf/black-forest-labs/flux-2-klein-9b";
       const pin = (await env.AURA_KV.get("config:wall:model").catch(() => null)) || undefined;
 
-      const wall = await tatWall(env, what, "pose", "How do you want it posed?", pin, null);
+      const wall = await tatWall(env, what, stepP, askP2, pin, null);
       if (!wall || !Array.isArray(wall.opts) || !wall.opts.length) {
-        return { cmd: "POSES", payload: { ok: false, error: "NO_POSES",
+        return { cmd, payload: { ok: false, error: "NOTHING_FOR_THIS_STEP", step: stepP,
           why: (wall && wall.why) || "the wall generator returned nothing" } };
       }
       const picks = wall.opts.slice(0, n);
@@ -7229,9 +7250,9 @@ async function processCommand(line, env, isOp) {
             // The walk reads a tile per option as shot:v1:<leaf>:<step>:<path>. Writing the same
             // key here means a pose drawn by this command is the pose the walk shows - not a
             // second copy of the same picture under a different name.
-            await env.AURA_KV.put("shot:v1:" + tatSlug(what) + ":pose:" + tatSlug(o.id),
+            await env.AURA_KV.put("shot:v1:" + tatSlug(what) + ":" + stepP + ":" + tatSlug(o.id),
               JSON.stringify({ id: r.id, url: r.image_url, say: o.say || null,
-                               at: new Date().toISOString(), by: "POSES", model })).catch(() => {});
+                               at: new Date().toISOString(), by: cmd, model })).catch(() => {});
           }
           else one.why = String(r?.error || "did not draw").slice(0, 120);
         } catch (e) { one.why = String(e && e.message || e).slice(0, 120); }
@@ -7272,9 +7293,11 @@ async function processCommand(line, env, isOp) {
           "<figcaption><b>" + eP(m.pose) + "</b><span>" + eP(m.say || "") +
           "</span></figcaption></figure>").join("") +
         "</div></body></html>";
-      const pageP = "poses/" + tatSlug(what).slice(0, 60);
+      // One page per subject per step, so a pose sheet and an expression sheet for the same
+      // animal do not overwrite each other.
+      const pageP = stepP + "s/" + tatSlug(what).slice(0, 60);
       await env.AURA_KV.put("page:auras.guide/" + pageP, htmlP);
-      return { cmd: "POSES", payload: { ok: true, subject: what, model,
+      return { cmd, payload: { ok: true, subject: what, step: stepP, model,
         url: "https://auras.guide/" + pageP,
         drew: okP, of: made.length, cost_usd: Math.round(spend * 10000) / 10000,
         poses: made.map((m) => m.pose + "  ->  " + (m.image || "FAILED: " + m.why)),

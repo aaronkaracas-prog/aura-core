@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.89.0-2026-09-01-a-flag-in-the-prompt-and-not-in-the-record";
+const BUILD = "aura-core-v9.90.0-2026-09-01-six-sets-zero-pictures";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -7304,6 +7304,9 @@ async function processCommand(line, env, isOp) {
 
       const made = [];
       let spend = 0;
+      // Every option lands here and the whole set is written once, after the loop - the shape
+      // tatShoot defines and the walk reads.
+      const shotAcc = {};
       // ══ THE POSE WALL DREW A DIFFERENT MEDIUM FROM THE TILE IT BELONGS TO ═════════════════
       // MEASURED 2026-08-31. `context:` was wired into TYPES and REDO and NOT into POSES, so the
       // browse tile for "Pin-Up Reclining Inside a Champagne Coupe" came back as a pin-up
@@ -7330,13 +7333,39 @@ async function processCommand(line, env, isOp) {
             // The walk reads a tile per option as shot:v1:<leaf>:<step>:<path>. Writing the same
             // key here means a pose drawn by this command is the pose the walk shows - not a
             // second copy of the same picture under a different name.
-            await env.AURA_KV.put("shot:v1:" + tatSlug(what) + ":" + stepP + ":" + tatSlug(o.id),
-              JSON.stringify({ id: r.id, url: r.image_url, say: o.say || null,
-                               at: new Date().toISOString(), by: cmd, model })).catch(() => {});
+            // ══ ONE RECORD PER STEP, NOT ONE PER OPTION (fixed 2026-09-01) ═════════════════
+            // MEASURED: `POSES lotus --step treatment` drew six good pictures and then
+            // `WALK Flowers & Plants / Lotus` reported "6 sets, 0 pictures". Every one of them
+            // was on disk and invisible.
+            // The comment above claimed writing this key made a pose "the pose the walk shows".
+            // It does not. `tatShoot` writes ONE record per (leaf, step, path) with every option
+            // inside `imgs: { <option>: { img } }`. This wrote one record PER OPTION with a flat
+            // `{id,url}`. Same prefix, different shape - so the walk read six records that each
+            // looked like a set containing nothing.
+            // Same class of failure as FILL writing to a key nothing serves, and the second time
+            // tonight. The rule is: there is one writer of a shape, and it is tatShoot.
+            //
+            // `bare` is the path, because a sheet drawn from the terminal answered no prior
+            // question. That is exactly right for a first step - a flower's treatment wall - and
+            // it is honestly NOT the pose wall a dog reaches after choosing a full-body crop,
+            // which the walk keys as `pose:crop-full-body`. A standalone sheet cannot know a path
+            // it never walked.
+            shotAcc[o.id] = { img: r.id, cached: !!r.cached };
           }
           else one.why = String(r?.error || "did not draw").slice(0, 120);
         } catch (e) { one.why = String(e && e.message || e).slice(0, 120); }
         made.push(one);
+      }
+
+      // Merged, never replaced: a second run with different options must not delete the first.
+      if (Object.keys(shotAcc).length) {
+        const shotKey = "shot:v1:" + tatSlug(what) + ":" + stepP + ":bare";
+        let prevS = null;
+        try { prevS = await env.AURA_KV.get(shotKey, "json"); } catch {}
+        const recS = (prevS && typeof prevS === "object") ? prevS : { leaf: what, step: stepP, ctx: "bare" };
+        recS.imgs = Object.assign({}, recS.imgs || {}, shotAcc);
+        recS.at = new Date().toISOString(); recS.by = cmd;
+        try { await env.AURA_KV.put(shotKey, JSON.stringify(recS)); } catch {}
       }
 
       const eP = (t) => String(t == null ? "" : t).replace(/[&<>"]/g, (c) =>

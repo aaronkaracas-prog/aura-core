@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.99.0-2026-09-02-b-refs-off-the-shelf-and-routing-on-a-dial";
+const BUILD = "aura-core-v9.100.0-2026-09-02-c-no-model-string-above-the-dials";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5650,7 +5650,17 @@ async function processCommand(line, env, isOp) {
       const names = String(rest || "").split(",").map((x) => x.trim()).filter(Boolean);
       if (!names.length) return { cmd: "REDO", payload: { ok: false,
         error: "Usage: REDO <name>, <name>, ...", note: "Tick the bad tiles on /review and paste what it gives you." } };
-      const model = "@cf/black-forest-labs/flux-2-klein-9b";
+      // ── MODEL: THE FLAG WINS, OTHERWISE THE DIALS DECIDE ─────────────────────────────
+      // This was a hardcoded "@cf/black-forest-labs/flux-2-klein-9b", passed down as
+      // `opts.model` - which sits ABOVE every dial in auraGenerateImage, because that slot
+      // exists for one call correcting itself (the 8007 retry). So the pin was read and then
+      // thrown away: `config:source:<job>:model` was set, reported, and silently outvoted at
+      // the call site. MEASURED - a REDO with the dial set to BFL still billed Cloudflare
+      // neurons at $0.01509717 and the metadata named the @cf model.
+      // null means "nothing to say", so resolution falls through to the one chain every other
+      // call site uses. An explicit --model still wins, which is a human naming a model for
+      // one run and is the only override that should beat a dial.
+      const model = null;
       const out = [];
       for (const nm of names) {
         const one = { name: nm, image: null, why: null, drew: null };
@@ -5680,7 +5690,10 @@ async function processCommand(line, env, isOp) {
             // Only now, with a picture in hand, does the old record go - and it goes by being
             // overwritten, which is one operation rather than a delete with a gap after it.
             await env.AURA_KV.put("face:v1:" + tatSlug(nm), JSON.stringify({
-              id: r.id, url: r.image_url, at: new Date().toISOString(), by: "REDO", model
+              id: r.id, url: r.image_url, at: new Date().toISOString(), by: "REDO",
+              // r.model is what actually drew it. `model` is only the request, and it is null
+              // whenever the dials are deciding - which is now the normal case.
+              model: r.model || model
             })).catch(() => {});
           } else { one.why = String(r?.error || "did not draw").slice(0, 120); one.kept = true; }
         } catch (e) { one.why = String(e && e.message || e).slice(0, 120); }
@@ -7208,7 +7221,17 @@ async function processCommand(line, env, isOp) {
       const kind = raw.replace(/--model\s+\S+/i, "").trim();
       if (!kind) return { cmd: "TYPES", payload: { ok: false,
         error: "Usage: TYPES <kind>   e.g.  TYPES Dragons" } };
-      const model = mM ? mM[1] : "@cf/black-forest-labs/flux-2-klein-9b";
+      // ── MODEL: THE FLAG WINS, OTHERWISE THE DIALS DECIDE ─────────────────────────────
+      // This was a hardcoded "@cf/black-forest-labs/flux-2-klein-9b", passed down as
+      // `opts.model` - which sits ABOVE every dial in auraGenerateImage, because that slot
+      // exists for one call correcting itself (the 8007 retry). So the pin was read and then
+      // thrown away: `config:source:<job>:model` was set, reported, and silently outvoted at
+      // the call site. MEASURED - a REDO with the dial set to BFL still billed Cloudflare
+      // neurons at $0.01509717 and the metadata named the @cf model.
+      // null means "nothing to say", so resolution falls through to the one chain every other
+      // call site uses. An explicit --model still wins, which is a human naming a model for
+      // one run and is the only override that should beat a dial.
+      const model = mM ? mM[1] : null;
       const tree = await env.AURA_KV.get("card:tree", "json").catch(() => null);
       // ══ THE TREE HAS TWO SHAPES AND BOTH ARE REAL ═══════════════════════════════════════
       // `Dogs` is a KIND under Animals & Pets, so its breeds live in `specific`.
@@ -7267,7 +7290,7 @@ async function processCommand(line, env, isOp) {
             // Same key shape as FACE so one reader finds either.
             await env.AURA_KV.put("face:v1:" + tatSlug(leaf),
               JSON.stringify({ id: r.id, url: r.image_url, at: new Date().toISOString(),
-                               by: "TYPES", model })).catch(() => {});
+                               by: "TYPES", model: r.model || model })).catch(() => {});
           }
           else one.why = String(r?.error || "did not draw").slice(0, 120);
         } catch (e) { one.why = String(e && e.message || e).slice(0, 120); }
@@ -7371,7 +7394,17 @@ async function processCommand(line, env, isOp) {
                cmd + " gorilla --step treatment",
         steps: ["pose", "expression", "crop", "treatment"] } };
       const n = nM ? Math.max(1, Math.min(20, Number(nM[1]))) : 10;
-      const model = mM ? mM[1] : "@cf/black-forest-labs/flux-2-klein-9b";
+      // ── MODEL: THE FLAG WINS, OTHERWISE THE DIALS DECIDE ─────────────────────────────
+      // This was a hardcoded "@cf/black-forest-labs/flux-2-klein-9b", passed down as
+      // `opts.model` - which sits ABOVE every dial in auraGenerateImage, because that slot
+      // exists for one call correcting itself (the 8007 retry). So the pin was read and then
+      // thrown away: `config:source:<job>:model` was set, reported, and silently outvoted at
+      // the call site. MEASURED - a REDO with the dial set to BFL still billed Cloudflare
+      // neurons at $0.01509717 and the metadata named the @cf model.
+      // null means "nothing to say", so resolution falls through to the one chain every other
+      // call site uses. An explicit --model still wins, which is a human naming a model for
+      // one run and is the only override that should beat a dial.
+      const model = mM ? mM[1] : null;
       const pin = (await env.AURA_KV.get("config:wall:model").catch(() => null)) || undefined;
 
       const wall = await tatWall(env, what, stepP, askP2, pin, null);
@@ -7525,7 +7558,17 @@ async function processCommand(line, env, isOp) {
       // generator, different question, and the subject line has to say what the thing is.
       // Klein is the measured default: it drew, styled and evolved correctly at roughly $0.002 a
       // tile on the sheets, which is the cheapest thing that also holds a subject.
-      const model = mM ? mM[1] : "@cf/black-forest-labs/flux-2-klein-9b";
+      // ── MODEL: THE FLAG WINS, OTHERWISE THE DIALS DECIDE ─────────────────────────────
+      // This was a hardcoded "@cf/black-forest-labs/flux-2-klein-9b", passed down as
+      // `opts.model` - which sits ABOVE every dial in auraGenerateImage, because that slot
+      // exists for one call correcting itself (the 8007 retry). So the pin was read and then
+      // thrown away: `config:source:<job>:model` was set, reported, and silently outvoted at
+      // the call site. MEASURED - a REDO with the dial set to BFL still billed Cloudflare
+      // neurons at $0.01509717 and the metadata named the @cf model.
+      // null means "nothing to say", so resolution falls through to the one chain every other
+      // call site uses. An explicit --model still wins, which is a human naming a model for
+      // one run and is the only override that should beat a dial.
+      const model = mM ? mM[1] : null;
       const prompt = what + ". A clean isolated tattoo design on a plain white background, " +
         "no scenery, no words.";
 
@@ -45502,6 +45545,25 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
           if (v && v.trim()) pins[k] = v.trim();
         }
       } catch {}
+      // ══ CAPABILITY IS A LEVER TOO, AND THE SCANNER CANNOT SEE IT ════════════════════════
+      // The scan above finds MODEL and PROVIDER pins. It cannot find the two dials that decide
+      // WHICH MODELS CAN EDIT and WHICH CALLERS COUNT AS AN EDIT - they are not model names, so
+      // they match no pattern, and an unlisted lever is the exact thing the scanner exists to
+      // prevent. `caps:edit` outvoting a correct pin is not hypothetical: a hardcoded version of
+      // it silently rerouted every edit to gpt-image-2 for months while `config:edit:model` read
+      // Klein and nobody could see the disagreement.
+      // Reported as SET or BUILT-IN, so "nothing overridden" is visibly different from "nothing
+      // there".
+      const capsEditRaw = await kvg("config:edit:caps", null);
+      const capsSrcRaw  = await kvg("config:edit:caps:sources", null);
+      const capabilities = {
+        edit_models: capsEditRaw ? capsEditRaw.trim() : "built-in (gpt-image, dall-e-3, grok-imagine, gemini, nano-banana, imagen, flux kontext, @cf/*/flux-2)",
+        edit_models_source: capsEditRaw ? "config:edit:caps" : "code default",
+        edit_callers: capsSrcRaw ? capsSrcRaw.trim() : "built-in (image_evolve, letter, onme, design_evolve, stencil, style_transfer)",
+        edit_callers_source: capsSrcRaw ? "config:edit:caps:sources" : "code default",
+        image_fallback: await kvg("config:image:fallback:model", "@cf/black-forest-labs/flux-1-schnell (code default)"),
+        note: "a job may also pin its own model with config:source:<source>:model - those appear in pins above",
+      };
       // ══ ONE TOTAL, FROM THE SAME FOUR LEDGERS THE BURN PATH SUMS (v4.9.670) ═══════════════
       // AIMARGIN reported meter:spend alone and called it the day's cost. The burn ledger sums FOUR -
       // text, images, video, and meter:core, which is aura-core's OWN brain (every /chat turn and the
@@ -45623,7 +45685,7 @@ async function sendMsg(){const inp=document.getElementById('chatInput');const m=
               : "no anchor recorded - GET /balance/anchor?provider=" + p + "&amount=<console figure>");
       }
 
-      return { cmd: "AIMARGIN", payload: { ok: true, day,
+      return { cmd: "AIMARGIN", payload: { ok: true, day, capabilities,
         policy: lanes,
         pins_overriding_policy: Object.fromEntries(Object.entries(pins).filter(([, v]) => v)),
         ...(!_wantDetail ? {} : { rates: await (async () => {
@@ -55539,7 +55601,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   const CAN_EDIT_DEFAULT = "^(gpt-image|dall-e-3|grok-imagine|gemini|nano-banana|imagen|flux[.-]?\\d*[-.]?kontext|@cf\\/[^/]+\\/flux-2)";
   let CAN_EDIT;
   try {
-    const capsRaw = await env.AURA_KV.get("caps:edit").catch(() => null);
+    const capsRaw = await env.AURA_KV.get("config:edit:caps").catch(() => null);
     CAN_EDIT = new RegExp((capsRaw && capsRaw.trim()) || CAN_EDIT_DEFAULT, "i");
   } catch {
     // A typo in the dial must not take image generation down with it. Bad regex -> the shipped
@@ -55570,7 +55632,7 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // comma list. Absent, this is the shipped set exactly.
   const EDIT_SOURCES_DEFAULT = ["image_evolve", "letter", "onme", "design_evolve", "stencil",
                                 "style_transfer"];
-  const editSrcRaw = await env.AURA_KV.get("caps:edit:sources").catch(() => null);
+  const editSrcRaw = await env.AURA_KV.get("config:edit:caps:sources").catch(() => null);
   const EDIT_SOURCES = new Set(
     (editSrcRaw && editSrcRaw.trim())
       ? editSrcRaw.split(",").map((x) => x.trim()).filter(Boolean)
@@ -55602,18 +55664,25 @@ async function auraGenerateImage(prompt, env, opts = {}) {
   // Every caller ALREADY passes `opts.source` - tattoo_option, style_transfer, stencil,
   // image_evolve. So per-job routing needs no change at any call site: it reads
   // `model:source:<source>`. Nothing set means nothing changes.
-  //   SETKV model:source:tattoo_option  @cf/black-forest-labs/flux-1-schnell
-  //   SETKV model:source:style_transfer @cf/black-forest-labs/flux-2-klein-9b
+  //   SETKV config:source:tattoo_option:model  @cf/black-forest-labs/flux-1-schnell
+  //   SETKV config:source:style_transfer:model @cf/black-forest-labs/flux-2-klein-9b
+  // ══ IT LIVES UNDER `config:` SO AIMARGIN CAN SEE IT ══════════════════════════════════════
+  // First draft of this used `model:source:<job>`. AIMARGIN's pin scanner lists every `config:`
+  // key matching /(:model$|:model:|:provider$)/ - written precisely so "a lever that exists
+  // cannot hide" - and it would have seen none of them. Four keys steering image routing,
+  // invisible to the one command whose job is to report the knobs. That is the exact failure
+  // the scanner was built after. The convention is not decoration; it is the discovery
+  // mechanism.
   // It sits ABOVE the broad `config:image:model` pin because it is narrower - a named job beats
   // a lane-wide default - and BELOW `opts.model`, which is one call correcting itself.
   const srcName = String(opts.source || "").trim();
   const sourceModel = srcName
-    ? await env.AURA_KV.get("model:source:" + srcName).catch(() => null)
+    ? await env.AURA_KV.get("config:source:" + srcName + ":model").catch(() => null)
     : null;
   // The last resort was the string "@cf/black-forest-labs/flux-1-schnell", written here where
   // nobody could reach it - and schnell is TEXT-TO-IMAGE ONLY, so the final fallback for the whole
   // image system was a model that cannot do half the jobs that arrive. Now a dial. Same default.
-  const fallbackModel = (await env.AURA_KV.get("model:fallback").catch(() => null))
+  const fallbackModel = (await env.AURA_KV.get("config:image:fallback:model").catch(() => null))
     || "@cf/black-forest-labs/flux-1-schnell";
   let model = ((opts.model && String(opts.model).trim()) ||
     (sourceModel && sourceModel.trim()) ||
@@ -56128,7 +56197,12 @@ async function auraGenerateImage(prompt, env, opts = {}) {
       b64 = imgPart?.inlineData?.data || imgPart?.inline_data?.data || null;
       imgUsage = d?.usageMetadata || null;
     } else {
-      throw new Error("unknown image model in config:image:model: " + model);
+      // Names the key that actually set it. This said `config:image:model` no matter which dial
+      // was responsible, so a bad `config:source:<job>:model` sent you to edit a key that was fine.
+      throw new Error("unknown image model \"" + model + "\" (set by " +
+        (opts.model ? "the caller" : sourceModel ? ("config:source:" + srcName + ":model")
+          : rawModel ? (isEdit ? "config:edit:model" : "config:image:model")
+          : "the " + policyName + " policy") + ") - no provider branch matches it");
     }
   } catch (e) { err = String(e && e.message ? e.message : e); }
   if (!b64) return { ok: false, error: "image generation failed (" + model + "): " + (err || "no image returned") };

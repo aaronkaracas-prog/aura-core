@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.92.0-2026-09-02-say-goes-into-the-prompt";
+const BUILD = "aura-core-v9.93.0-2026-09-02-stale-by-quality-not-by-shape";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6536,9 +6536,24 @@ async function processCommand(line, env, isOp) {
       const rawG = String(rest || "").trim();
       const forceG = /--force\b/i.test(rawG);
       const allG = /--all\b/i.test(rawG);
-      const nameG = rawG.replace(/--force\b/ig, "").replace(/--all\b/ig, "").trim();
+      // ══ TWO KINDS OF STALE, AND ONLY ONE OF THEM IS VISIBLE TO CODE ═════════════════════════
+      // `--force` on a category redoes what the FLAG TEST calls stale - a record missing a field.
+      // MEASURED 2026-09-02: the profiler's prompt was fixed so `say` stops coming back as
+      // commentary, and all twenty flowers were already flag-complete. So `--all --force` looked
+      // at twenty records carrying "The catalog has already answered it is a rose", found nothing
+      // structurally wrong, and did nothing - six times.
+      // The records were stale by QUALITY, which no check can see. `--redo` is the word for that:
+      // redo everything named, whatever is already there. It exists because a prompt improving is
+      // a normal event and hand-typing eighteen leaf names is not a procedure.
+      const redoG = /--redo\b/i.test(rawG);
+      const nameG = rawG.replace(/--force\b/ig, "").replace(/--all\b/ig, "")
+        .replace(/--redo\b/ig, "").trim();
       if (!nameG) return { cmd: "PROFILE", payload: { ok: false,
-        error: "Usage: PROFILE <leaf>   ·   PROFILE <category> --all   ·   add --force to redo" } };
+        error: "Usage: PROFILE <leaf>   ·   PROFILE <category> --all",
+        flags: { "--force": "redo one named leaf, or the stale ones in a category",
+                 "--redo": "redo EVERY leaf named, however complete it looks - for when the " +
+                           "profiler's prompt has improved and the old answers are bad rather " +
+                           "than missing" } } };
 
       const treeG = await env.AURA_KV.get("card:tree", "json").catch(() => null);
       if (!treeG?.subjects) return { cmd: "PROFILE", payload: { ok: false, error: "NO_TREE" } };
@@ -6580,7 +6595,7 @@ async function processCommand(line, env, isOp) {
         // 20 leaves at 30 seconds is ten minutes to rewrite records that were already correct.
         // Naming ONE leaf is a deliberate act and --force means it there; across a category it
         // means "redo the stale ones", which is what somebody re-running a category wants.
-        if (fresh && (!forceG || allG)) {
+        if (fresh && !redoG && (!forceG || allG)) {
           skippedG.push(j.leaf + "  " + profWord(had));
           continue;
         }
@@ -6589,7 +6604,7 @@ async function processCommand(line, env, isOp) {
         if (calls && Date.now() - startG > BUDGET_MS) { ranOut = true; break; }
         // --force means the cached answer must not be returned, and tatLeafProfile returns it
         // when it is complete. Clearing the key first is the only way to make it think again.
-        if (forceG) { try { await env.AURA_KV.delete(keyG); } catch {} }
+        if (forceG || redoG) { try { await env.AURA_KV.delete(keyG); } catch {} }
         let p2 = null;
         try { p2 = await tatLeafProfile(env, j.leaf, undefined, j.parent); } catch (e) {
           outG.push(j.leaf + "  FAILED: " + String(e && e.message || e).slice(0, 80)); continue;
@@ -6611,7 +6626,8 @@ async function processCommand(line, env, isOp) {
         // The same line again. Nothing is lost between runs, so this is safe to paste until the
         // count reaches zero.
         next: leftG > 0
-          ? 'RUN "PROFILE ' + nameG + (allG ? " --all" : "") + '"   -- ' + leftG + " leaves left" +
+          ? 'RUN "PROFILE ' + nameG + (allG ? " --all" : "") + (redoG ? " --redo" : "") +
+            '"   -- ' + leftG + " leaves left" +
             (ranOut ? ", stopped on the clock not on an error" : "")
           : null,
         note: "A profile decides which walls a leaf opens. `arrange` means it is asked how it is " +

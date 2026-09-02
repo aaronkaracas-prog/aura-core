@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.80.0-2026-09-01-a-look-that-is-only-a-category-reaches-twenty-subjects";
+const BUILD = "aura-core-v9.81.0-2026-09-01-the-rail-transforms-the-piece-it-does-not-redraw-it";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -57777,6 +57777,62 @@ export class PublicEntry extends WorkerEntrypoint {
       // ── EVOLVE. What everybody converged on: the change STACKS on the last version rather
       // than restarting. `IMAGE EVOLVE` already builds the new subject as parent + change and
       // keeps the lineage, so this is a door onto behaviour that was already right.
+      // ══ FLIP THE FINISH — TRANSFORM THE PIECE, DO NOT REDRAW IT ══════════════════════════
+      // MEASURED on the live UI 2026-09-01: somebody walked to a tulip and flipped through six
+      // finishes. They got SIX DIFFERENT TULIPS - one flat illustration, one pencil drawing, one
+      // shaded black-and-grey, one clipart, one stencil. Compare the golden retriever and dragon
+      // style guides, where fifteen cards are unmistakably ONE animal.
+      //
+      // The difference is the mechanism, not the wording. The rail re-ran `next` with one field
+      // changed, so every flip drew from the SENTENCE again and the model reinvented the subject
+      // each time. STYLES has always done it the other way - the piece goes in as a reference,
+      // TAT_SOURCE_LOCK says preserve the subject and composition exactly, and the card says only
+      // how to render. Proven on the tulip across eight cards including chrome, sticker and patch.
+      //
+      // THE SOURCE IS ALWAYS THE FIRST PIECE, NEVER THE LAST ONE SHOWN. Transforming a transform
+      // compounds: eleven flips would be eleven generations of drift away from what they chose.
+      // The page sends `from` - the original design - and every finish is one hop off that.
+      if (action === "finish") {
+        const fid = String(b.from || b.design || "").trim();
+        const fname = String(b.style || "").trim().toLowerCase();
+        if (!fid || !fname) return { ok: false, error: "NEED_DESIGN_AND_STYLE" };
+        const fcard = TAT_STYLE_CARDS.find((c) => c[0].toLowerCase() === fname) ||
+                      TAT_STYLE_CARDS.find((c) => c[0].toLowerCase().includes(fname));
+        if (!fcard) return { ok: false, error: "NO_SUCH_STYLE", asked: fname,
+          styles: TAT_STYLE_CARDS.map((c) => c[0]) };
+        const fUrl = "https://" + (await imageHost(env)) + "/image/" + fid;
+        try {
+          const fr = await showIt(TAT_SOURCE_LOCK + fcard[1], env,
+            { source: "style_transfer", refs: [fUrl], parent: fid, raw: true, by: me,
+              subject: fcard[0] + " of " + fid });
+          if (!fr?.ok) return { ok: false, error: fr?.error || "COULD_NOT_FINISH",
+            say: "That finish would not draw - try another." };
+          return { ok: true, done: true, design: fr.design_id || fr.id || fid,
+            image: fr.image_url || null, style: fcard[0], from: fid,
+            cached: !!fr.cached, cost_usd: fr.cost_usd || 0,
+            // The same list the sheet uses, so the page never has to carry its own copy.
+            styles: TAT_STYLE_CARDS.map((c) => c[0]) };
+        } catch (e) {
+          return { ok: false, error: String(e && e.message || e).slice(0, 140),
+            say: "That finish would not draw - try another." };
+        }
+      }
+
+      // ══ WHICH FINISHES THE PAGE OFFERS, FROM THE WORKER ══════════════════════════════════
+      // The page carried its own hardcoded list of 14 - including `geometric` and `minimalist`,
+      // which this file's own measurements had already rejected. Two lists, one deploy each, and
+      // a customer could flip to a finish the engine had thrown out. It asks now.
+      if (action === "finishes") {
+        const fRaw = await env.AURA_KV.get("styles:offered").catch(() => null);
+        const fDef = ["photorealism", "black and grey realism", "color realism", "fine line",
+          "american traditional", "neo-traditional", "japanese irezumi", "blackwork",
+          "liquid chrome", "glossy sticker", "embroidered patch"];
+        const fList = String(fRaw || fDef.join(","))
+          .split(",").map((x) => x.trim().toLowerCase()).filter(Boolean)
+          .filter((n) => TAT_STYLE_CARDS.some((c) => c[0].toLowerCase() === n));
+        return { ok: true, finishes: fList.length ? fList : fDef };
+      }
+
       if (action === "evolve") {
         const id = String(b.design || "").trim();
         const change = String(b.change || "").trim().slice(0, 400);

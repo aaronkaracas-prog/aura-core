@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.88.0-2026-09-01-nothing-but-a-walk-could-reprofile";
+const BUILD = "aura-core-v9.89.0-2026-09-01-a-flag-in-the-prompt-and-not-in-the-record";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -55026,7 +55026,17 @@ async function tatLeafProfile(env, leafLabel, model, parent) {
           if (!say) say = String(leafLabel) + " - " +
             extra.map((k) => "the " + k + " is " + String(resolved[k]) + " and it must be plainly visible").join(", ");
         }
+        // ══ A FLAG IN THE PROMPT AND NOT IN THE RECORD (fixed 2026-09-01) ═══════════════════
+        // `arrange` was added to the schema the model is shown and to the rules explaining it,
+        // and NOT to this line. So the model answered it and the answer was dropped on the floor.
+        // Worse than losing the flag: the cache check upstream requires `typeof arrange ===
+        // "boolean"` before it will return a stored profile, and a record that never has the
+        // field can never satisfy it. Every leaf would have re-profiled on EVERY touch, forever,
+        // one model call at a time, and nothing would ever have looked broken.
+        // MEASURED: `PROFILE Tulip --force` returned "nothing before style" and wrote
+        // {part:false, face:false, needs_upload:false} - no arrange key at all.
         const rec = { resolved, say, part: o.part === true, face: o.face === true,
+                      arrange: o.arrange === true,
                       needs_upload: o.needs_upload === true };
         try { await env.AURA_KV.put(key, JSON.stringify(rec)); } catch {}
         return rec;

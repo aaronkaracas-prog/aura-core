@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.90.0-2026-09-01-six-sets-zero-pictures";
+const BUILD = "aura-core-v9.91.0-2026-09-02-a-category-is-not-one-request";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6560,16 +6560,33 @@ async function processCommand(line, env, isOp) {
         jobsG.push({ leaf: nameG, parent: await tatOwnerOf(env, nameG) || undefined });
       }
 
+      // ══ A LEAF IS 20-35 SECONDS, SO A CATEGORY CANNOT BE ONE REQUEST ═══════════════════════
+      // MEASURED tonight: Tulip 26s, Rose 24s, Golden Retriever 16s, Compass 18s, Lotus 36s,
+      // Peony 32s. Flowers & Plants is 20 leaves - eight to twelve minutes. The 40-leaf cap this
+      // shipped with would have died partway through with no record of where it stopped, which is
+      // exactly the failure FILL has and STOCK DEEP was built to avoid.
+      // So it takes a bite on the clock, banks each leaf as it goes, and says what is left. Every
+      // profile written is kept whether or not the run finishes, and re-running skips them - so
+      // pasting the same line until `remaining` is 0 is the whole procedure.
+      const BUDGET_MS = 90000;
+      const startG = Date.now();
       const outG = [], skippedG = [];
-      let calls = 0;
+      let calls = 0, ranOut = false;
       for (const j of jobsG) {
         const keyG = "leaf:v1:" + tatSlug(j.leaf) + (j.parent ? ":" + tatSlug(j.parent) : "");
         const had = await env.AURA_KV.get(keyG, "json").catch(() => null);
         const fresh = had && typeof had.part === "boolean" && typeof had.arrange === "boolean";
-        if (fresh && !forceG) {
+        // ══ --force ON A CATEGORY MUST NOT REDO WHAT IS ALREADY RIGHT ═════════════════════
+        // 20 leaves at 30 seconds is ten minutes to rewrite records that were already correct.
+        // Naming ONE leaf is a deliberate act and --force means it there; across a category it
+        // means "redo the stale ones", which is what somebody re-running a category wants.
+        if (fresh && (!forceG || allG)) {
           skippedG.push(j.leaf + "  " + profWord(had));
           continue;
         }
+        // Stop before starting a leaf that would run past the budget, not after - a leaf abandoned
+        // mid-call is a model call paid for and thrown away.
+        if (calls && Date.now() - startG > BUDGET_MS) { ranOut = true; break; }
         // --force means the cached answer must not be returned, and tatLeafProfile returns it
         // when it is complete. Clearing the key first is the only way to make it think again.
         if (forceG) { try { await env.AURA_KV.delete(keyG); } catch {} }
@@ -6583,13 +6600,20 @@ async function processCommand(line, env, isOp) {
         // 40 is roughly a minute of wall clock, which is inside one request. Past that this
         // returns what it did and says what is left, rather than dying mid-run and banking half
         // a category with no record of where it stopped.
-        if (calls >= 40) break;
+        if (calls >= 40) { ranOut = true; break; }
       }
       const leftG = jobsG.length - outG.length - skippedG.length;
+      const secsG = Math.round((Date.now() - startG) / 1000);
       return { cmd: "PROFILE", payload: { ok: true,
         leaves: jobsG.length, profiled: calls, already_done: skippedG.length, remaining: leftG,
         done: outG, unchanged: skippedG.slice(0, 40),
-        next: leftG > 0 ? 'RUN "PROFILE ' + nameG + ' --all"   -- ' + leftG + " left" : null,
+        seconds: secsG,
+        // The same line again. Nothing is lost between runs, so this is safe to paste until the
+        // count reaches zero.
+        next: leftG > 0
+          ? 'RUN "PROFILE ' + nameG + (allG ? " --all" : "") + '"   -- ' + leftG + " leaves left" +
+            (ranOut ? ", stopped on the clock not on an error" : "")
+          : null,
         note: "A profile decides which walls a leaf opens. `arrange` means it is asked how it is " +
               "ARRANGED - one stem, a bouquet, a wreath - and never how much of it to crop." } };
     }

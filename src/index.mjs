@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.101.0-2026-09-03-a-the-walk-page-buttons-actually-work";
+const BUILD = "aura-core-v9.102.0-2026-09-03-b-a-gap-card-has-no-d-chip";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -54976,7 +54976,10 @@ const WALK_TAG_JS = [
   "function paint(){document.querySelectorAll('figure[data-a]').forEach(function(f){",
   "var v=T[f.dataset.a];",
   "var br=f.querySelector('b.r');if(br)br.classList.toggle('on',v==='r');",
-  "f.querySelector('b.d').classList.toggle('on',v==='d')});",
+  // A gap card has an R chip and no D chip - there is nothing to drop on a leaf with no
+  // picture. Unguarded, this threw on the first gap card and took paint() down with it,
+  // which silently killed the counter, the command block AND the go button.
+  "var bd=f.querySelector('b.d');if(bd)bd.classList.toggle('on',v==='d')});",
   "var o=build();document.getElementById('cnt').textContent=Object.keys(T).length;",
   "document.getElementById('out').textContent=o.length?o.join('\\n'):'R redraws now \u00b7 D deletes'}",
   "document.addEventListener('click',function(e){",

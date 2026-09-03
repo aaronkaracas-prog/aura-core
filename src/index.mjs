@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.120.0-2026-09-03-t-r-and-d-stop-writing-powershell";
+const BUILD = "aura-core-v9.121.0-2026-09-03-u-a-style-is-data-not-a-deploy";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -7871,10 +7871,12 @@ async function processCommand(line, env, isOp) {
            "@cf/black-forest-labs/flux-2-klein-9b",
            "gpt-image-1-mini"];
       // Three hops, each an edit of the one before - not three separate draws. That is the only
+      // Style cards, KV merged over the built-ins - see tatStyleCards.
+      const SCA = await tatStyleCards(env);
       // way to see whether the animal survives being changed.
       const HOPS = ["put it on a dog bed", "give it a green ball in its mouth",
                     "add a small bird flying above its head"];
-      const cards = TAT_STYLE_CARDS.slice(0, nStyles);
+      const cards = SCA.slice(0, nStyles);
       const drawPrompt = subject +
         ". A clean isolated tattoo design on a plain white background, no scenery, no words.";
 
@@ -8016,15 +8018,17 @@ async function processCommand(line, env, isOp) {
         ["gpt-image-2",                          "gpt-image-2",    "OpenAI, what edits cost today"],
         ["flux-2-klein-9b-preview",              "Klein 9B",       "Black Forest, the candidate"],
       ];
+      // Style cards, KV merged over the built-ins - see tatStyleCards.
+      const SCB = await tatStyleCards(env);
 
       let prompt, refs = [], src = null;
       if (drawM) {
         prompt = drawM[1].trim();
       } else {
-        const card = TAT_STYLE_CARDS.find((c) => c[0].toLowerCase() === wantStyle ||
+        const card = SCB.find((c) => c[0].toLowerCase() === wantStyle ||
                                                  c[0].toLowerCase().includes(wantStyle));
         if (!card) return { cmd: "BAKEOFF", payload: { ok: false, error: "NO_SUCH_STYLE",
-          asked: wantStyle, styles: TAT_STYLE_CARDS.map((c) => c[0]) } };
+          asked: wantStyle, styles: SCB.map((c) => c[0]) } };
         src = "https://" + (await imageHost(env)) + "/image/" + srcId;
         prompt = TAT_SOURCE_LOCK + card[1];
         refs = [src];
@@ -8124,12 +8128,12 @@ async function processCommand(line, env, isOp) {
         error: "Usage: STYLES <image id>   ·   STYLES <image id> --only japanese irezumi   ·   " +
                "STYLES <image id> --all",
         offered: OFFERED_HINT,
-        every_card: TAT_STYLE_CARDS.map((c) => c[0]),
+        every_card: SCB.map((c) => c[0]),
         reorder: 'SETKV styles:offered "photorealism,fine line,blackwork"' } };
 
       const srcUrl = "https://" + (await imageHost(env)) + "/image/" + sid0;
       // ══ WHICH STYLES ARE OFFERED IS A DIAL, NOT A CONSTANT (2026-09-01) ═══════════════════
-      // Three lists disagreed: TAT_STYLE_CARDS held 15, TAT_STYLES held 12, and FINISHES in
+      // Three lists disagreed: SCB held 15, TAT_STYLES held 12, and FINISHES in
       // mt-design.html held 14 - so a customer could flip to `geometric` and `minimalist`, both
       // of which this file's own measurements had already rejected. Three places to edit and no
       // way to reorder without a deploy.
@@ -8152,14 +8156,14 @@ async function processCommand(line, env, isOp) {
       // inside one request, which is how the first STYLES run of the night appeared to hang.
       // The offered set is the default; --all is the deliberate way to ask for everything.
       const wantAll = /--all\b/i.test(raw);
-      const byOffered = TAT_STYLE_CARDS.filter((c) => offered.includes(c[0].toLowerCase()))
+      const byOffered = SCB.filter((c) => offered.includes(c[0].toLowerCase()))
         .sort((a, b) => offered.indexOf(a[0].toLowerCase()) - offered.indexOf(b[0].toLowerCase()));
       const cards = want
-        ? TAT_STYLE_CARDS.filter((c) => c[0].toLowerCase() === want ||
+        ? SCB.filter((c) => c[0].toLowerCase() === want ||
                                         c[0].toLowerCase().includes(want))
-        : (wantAll ? TAT_STYLE_CARDS : (byOffered.length ? byOffered : TAT_STYLE_CARDS));
+        : (wantAll ? SCB : (byOffered.length ? byOffered : SCB));
       if (!cards.length) return { cmd: "STYLES", payload: { ok: false, error: "NO_SUCH_STYLE",
-        asked: want, styles: TAT_STYLE_CARDS.map((c) => c[0]) } };
+        asked: want, styles: SCB.map((c) => c[0]) } };
 
       const out = [];
       for (const [name, how] of cards) {
@@ -54920,6 +54924,36 @@ const TAT_SOURCE_LOCK =
   "Transform only the artistic rendering into the style described. Output a clean isolated tattoo " +
   "design on a plain light background. ";
 
+// ══ A STYLE IS DATA, NOT A DEPLOY (2026-09-03) ═══════════════════════════════════════════
+// The 18 cards below carry real instruction bodies and they are good. The problem is where they
+// live: adding cybersigilism, negative space, stained glass, trompe-l'oeil or any fusion means
+// editing this array and shipping the worker. Aaron has 34 templates written and a fusion
+// grammar on top of them, and none of it can reach the system without a deploy.
+// Same move as `config:source:<job>:model` and `frame:shape`: the code default stays as the
+// floor, KV overrides it, and nothing changes until somebody writes a key.
+//   SETKV style:cybersigilism <the instruction body>
+//   SETKV style:realism-x-neo-tribal <what each side contributes and how they interact>
+// `tatStyleCards` merges KV over the built-ins - a KV key with the same name REPLACES that card,
+// so a template can be improved without touching source, and a name that is not in the array
+// simply appears. Thirteen call sites read the array today; they now read this instead, so one
+// resolver keeps them from drifting the way TAT_STYLES and TAT_STYLE_CARDS already have.
+async function tatStyleCards(env) {
+  const base = TAT_STYLE_CARDS.map((c) => [c[0], c[1]]);
+  try {
+    const l = await env.AURA_KV.list({ prefix: "style:", limit: 200 });
+    for (const k of (l.keys || [])) {
+      const name = k.name.slice("style:".length).replace(/-/g, " ").trim();
+      if (!name) continue;
+      const body = await env.AURA_KV.get(k.name).catch(() => null);
+      if (!body || !String(body).trim()) continue;
+      const at = base.findIndex((c) => c[0].toLowerCase() === name.toLowerCase());
+      if (at >= 0) base[at] = [base[at][0], String(body).trim()];
+      else base.push([name, String(body).trim()]);
+    }
+  } catch {}
+  return base;
+}
+
 const TAT_STYLE_CARDS = [
   ["photorealism", "Render with extremely realistic detail, lifelike dimensionality, realistic texture, natural depth, precise highlights and shadows and refined tonal transitions. Fur, skin, scales, feathers, metal, petals or fabric should keep convincing realistic texture. As close to photographic reality as tattoo artwork reasonably appears."],
   ["black and grey realism", "Render in professional black-and-grey realism tattoo language: realistic dimensional structure, deep blacks, smooth grey gradients, controlled midtones, soft grey washes, realistic highlights and refined shading. Build form through value and contrast rather than heavy graphic outlines."],
@@ -58949,13 +58983,15 @@ export class PublicEntry extends WorkerEntrypoint {
       // compounds: eleven flips would be eleven generations of drift away from what they chose.
       // The page sends `from` - the original design - and every finish is one hop off that.
       if (action === "finish") {
+        // Style cards, KV merged over the built-ins - see tatStyleCards.
+        const SCD = await tatStyleCards(env);
         const fid = String(b.from || b.design || "").trim();
         const fname = String(b.style || "").trim().toLowerCase();
         if (!fid || !fname) return { ok: false, error: "NEED_DESIGN_AND_STYLE" };
-        const fcard = TAT_STYLE_CARDS.find((c) => c[0].toLowerCase() === fname) ||
-                      TAT_STYLE_CARDS.find((c) => c[0].toLowerCase().includes(fname));
+        const fcard = SCD.find((c) => c[0].toLowerCase() === fname) ||
+                      SCD.find((c) => c[0].toLowerCase().includes(fname));
         if (!fcard) return { ok: false, error: "NO_SUCH_STYLE", asked: fname,
-          styles: TAT_STYLE_CARDS.map((c) => c[0]) };
+          styles: SCD.map((c) => c[0]) };
         // ══ THE DESIGN ID IS NOT AN IMAGE ID (2026-09-01) ═══════════════════════════════
         // MEASURED, from the live UI once the error was finally rendered:
         //   could not read the parent image to edit:
@@ -58980,7 +59016,7 @@ export class PublicEntry extends WorkerEntrypoint {
             image: fr.image_url || null, style: fcard[0], from: fid,
             cached: !!fr.cached, cost_usd: fr.cost_usd || 0,
             // The same list the sheet uses, so the page never has to carry its own copy.
-            styles: TAT_STYLE_CARDS.map((c) => c[0]) };
+            styles: SCD.map((c) => c[0]) };
         } catch (e) {
           return { ok: false, error: String(e && e.message || e).slice(0, 140),
             say: "That finish would not draw - try another." };
@@ -58998,7 +59034,7 @@ export class PublicEntry extends WorkerEntrypoint {
           "liquid chrome", "glossy sticker", "embroidered patch"];
         const fList = String(fRaw || fDef.join(","))
           .split(",").map((x) => x.trim().toLowerCase()).filter(Boolean)
-          .filter((n) => TAT_STYLE_CARDS.some((c) => c[0].toLowerCase() === n));
+          .filter((n) => SCD.some((c) => c[0].toLowerCase() === n));
         return { ok: true, finishes: fList.length ? fList : fDef };
       }
 

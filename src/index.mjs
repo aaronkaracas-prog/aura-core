@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.121.0-2026-09-03-u-a-style-is-data-not-a-deploy";
+const BUILD = "aura-core-v9.122.0-2026-09-03-v-one-declaration-per-block";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -8116,6 +8116,13 @@ async function processCommand(line, env, isOp) {
     // `--only` renders one card. That is how this gets used in the product: draw the default,
     // then draw a style when somebody taps it, rather than paying for fifteen nobody looks at.
     case "STYLES": {
+      // ══ ONE DECLARATION PER CASE BLOCK (2026-09-03) ══════════════════════════════════
+      // MEASURED: `STYLES ... --only cybersigilism` returned "SCB is not defined". The style
+      // cards were resolved once at the top of BAKEOFF and then read from STYLES - a different
+      // case in the same switch, so the const was out of scope. A switch shares one block only
+      // for `let`/`const` hoisting rules, not for reachability: BAKEOFF returns before STYLES
+      // ever runs, so the declaration never executed.
+      const SCB2 = await tatStyleCards(env);
       const raw = String(rest || "").trim();
       // Declared here because the usage branch below returns before the main body runs.
       const OFFERED_HINT = "photorealism, black and grey realism, color realism, fine line, " +
@@ -8128,7 +8135,7 @@ async function processCommand(line, env, isOp) {
         error: "Usage: STYLES <image id>   ·   STYLES <image id> --only japanese irezumi   ·   " +
                "STYLES <image id> --all",
         offered: OFFERED_HINT,
-        every_card: SCB.map((c) => c[0]),
+        every_card: SCB2.map((c) => c[0]),
         reorder: 'SETKV styles:offered "photorealism,fine line,blackwork"' } };
 
       const srcUrl = "https://" + (await imageHost(env)) + "/image/" + sid0;
@@ -8156,14 +8163,14 @@ async function processCommand(line, env, isOp) {
       // inside one request, which is how the first STYLES run of the night appeared to hang.
       // The offered set is the default; --all is the deliberate way to ask for everything.
       const wantAll = /--all\b/i.test(raw);
-      const byOffered = SCB.filter((c) => offered.includes(c[0].toLowerCase()))
+      const byOffered = SCB2.filter((c) => offered.includes(c[0].toLowerCase()))
         .sort((a, b) => offered.indexOf(a[0].toLowerCase()) - offered.indexOf(b[0].toLowerCase()));
       const cards = want
-        ? SCB.filter((c) => c[0].toLowerCase() === want ||
+        ? SCB2.filter((c) => c[0].toLowerCase() === want ||
                                         c[0].toLowerCase().includes(want))
-        : (wantAll ? SCB : (byOffered.length ? byOffered : SCB));
+        : (wantAll ? SCB2 : (byOffered.length ? byOffered : SCB2));
       if (!cards.length) return { cmd: "STYLES", payload: { ok: false, error: "NO_SUCH_STYLE",
-        asked: want, styles: SCB.map((c) => c[0]) } };
+        asked: want, styles: SCB2.map((c) => c[0]) } };
 
       const out = [];
       for (const [name, how] of cards) {
@@ -59028,13 +59035,16 @@ export class PublicEntry extends WorkerEntrypoint {
       // which this file's own measurements had already rejected. Two lists, one deploy each, and
       // a customer could flip to a finish the engine had thrown out. It asks now.
       if (action === "finishes") {
+        // Same scope trap as STYLES: `finish` returns before this runs, so its declaration
+        // never reaches here. One per action block.
+        const SCF = await tatStyleCards(env);
         const fRaw = await env.AURA_KV.get("styles:offered").catch(() => null);
         const fDef = ["photorealism", "black and grey realism", "color realism", "fine line",
           "american traditional", "neo-traditional", "japanese irezumi", "blackwork",
           "liquid chrome", "glossy sticker", "embroidered patch"];
         const fList = String(fRaw || fDef.join(","))
           .split(",").map((x) => x.trim().toLowerCase()).filter(Boolean)
-          .filter((n) => SCD.some((c) => c[0].toLowerCase() === n));
+          .filter((n) => SCF.some((c) => c[0].toLowerCase() === n));
         return { ok: true, finishes: fList.length ? fList : fDef };
       }
 

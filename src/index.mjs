@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.112.0-2026-09-03-l-review-belongs-to-the-catalogue";
+const BUILD = "aura-core-v9.113.0-2026-09-03-m-a-bare-review-names-the-categories";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5750,7 +5750,23 @@ async function processCommand(line, env, isOp) {
       // breeds); a kind expands its own leaves; a kind with no leaves is one tile.
       const blocksR = [];
       if (!wanted.length) {
-        for (const c of Object.keys(tree.subjects || {})) blocksR.push({ label: c, cat: c });
+        // ══ A BARE `REVIEW` NEVER RETURNS, AND NEVER DID (2026-09-03) ═══════════════════════
+        // MEASURED: `RUN "REVIEW"` came back with NOTHING, twice, after minutes of waiting - the
+        // same empty-reply signature as a handler that dies before it builds a response.
+        // With no argument this pushed all 56 categories into blocksR and then did ONE SEQUENTIAL
+        // `await KV.get("face:v1:" + leaf)` per leaf - about 2,200 round trips, no batching, no
+        // time budget, no cap. The request is killed long before the loop ends, so the terminal
+        // waits on an answer that is never coming. Not hung: dead.
+        // `WALK` does this same job with Promise.all and carries the comment explaining why -
+        // "one-at-a-time awaits is what made LIBRARY take five minutes". That lesson lived in one
+        // command and never crossed to this one.
+        // So: name a category. A whole-catalogue review page is not a thing anyone can read, and
+        // WALK already builds the browsable version with tagging, fresh outlines and full-size
+        // links. Listing the categories is the useful answer to a bare REVIEW.
+        return { cmd: "REVIEW", payload: { ok: false, error: "NAME_A_CATEGORY",
+          why: "A bare REVIEW walks every leaf in the catalogue one at a time and is killed before it can answer.",
+          categories: Object.keys(tree.subjects || {}),
+          what_to_do: 'RUN "REVIEW <category>" - or RUN "WALK <category> --tight" for the browsable page.' } };
       } else {
         for (const w of wanted) {
           const cKey = Object.keys(tree.subjects || {}).find((k) => tatSlug(k) === tatSlug(w));

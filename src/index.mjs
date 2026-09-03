@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.115.0-2026-09-03-o-a-delta-is-an-edit-of-a-file";
+const BUILD = "aura-core-v9.116.0-2026-09-03-p-the-walk-page-evolves-a-tile";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6264,6 +6264,8 @@ async function processCommand(line, env, isOp) {
       // thirty minutes is marked fresh and outlined green - long enough to survive a sweep plus
       // a couple of FACES runs, short enough that yesterday's work is never lit up.
       const freshMs = 30 * 60 * 1000, nowW = Date.now();
+      const buildKeyW = await env.AURA_KV.get("config:build:key").catch(() => null);
+      const ownerPtaW = (await env.AURA_KV.get("config:owner:pta").catch(() => null) || "").trim();
       const faceOf = async (n) => {
         const r = await env.AURA_KV.get("face:v1:" + tatSlug(n), "json").catch(() => null);
         if (!r) return null;
@@ -6472,7 +6474,7 @@ async function processCommand(line, env, isOp) {
       const cell = (t, a, src, name, sub2, fresh) =>
         "<figure" + (fresh ? " class=fresh" : "") + " data-t=" + t + " data-a=\"" + eW(a) +
         "\"><a href=\"" + eW(src) + "\" target=_blank rel=noopener>" +
-        "<img loading=lazy src='" + eW(src) + "'></a><b class=r>R</b><b class=d>D</b>" +
+        "<img loading=lazy src='" + eW(src) + "'></a><b class=r>R</b><b class=e>E</b><b class=d>D</b>" +
         "<figcaption>" + eW(name) + "<br><i>" + eW(sub2) + "</i></figcaption></figure>";
       const htmlW =
         '<!doctype html><html lang=en><head><meta charset=utf-8>' +
@@ -6494,6 +6496,9 @@ async function processCommand(line, env, isOp) {
         // Drawn in the last half hour. The whole point is that you can see at a glance which
         // tiles the last sweep actually replaced, without holding the list in your head.
         ".fresh{outline:2px solid #35d07f;outline-offset:1px;border-radius:3px}" +
+        // E is a different verb from R. R redraws the CAPTION - a new stranger with the same
+        // name. E evolves THIS FILE - the design page's own loop, pointed at a grid tile.
+        "figure b.e{right:22px;background:#1d4ed8}" +
         ".fresh figcaption::after{content:\" \\2713 just drawn\";color:#35d07f}" +
         "figure{position:relative;background:#141a28;border-radius:8px;overflow:hidden}" +
         "figure img{width:100%;aspect-ratio:1;object-fit:cover;display:block}" +
@@ -6563,7 +6568,16 @@ async function processCommand(line, env, isOp) {
         // filled however many handlers end up using them.
         "<script>" + WALK_TAG_JS.replace(/__KEY__/g, tatSlug(catW))
           .replace(/__CAT__/g, String(catW).replace(/[\\\"]/g, ""))
-          .replace(/__TIGHT__/g, tightW ? " --tight" : "") + "</script>" +
+          .replace(/__TIGHT__/g, tightW ? " --tight" : "")
+          // ══ THE OPERATOR PAGE SIGNS IN THE WAY EVERY OTHER SURFACE DOES (2026-09-03) ══════
+          // `design` refuses every action but `hello` without a resolved person, and the walk page
+          // has never had one - it only ever composed text to paste. The build key is the door
+          // already built for exactly this: one KV value, absent by default, that lets a surface
+          // sign in as `<key>.<pta>`. Absent, this substitutes to an empty string and the E chip
+          // says so instead of failing silently.
+          // It is a live bypass while armed. `DELKV config:build:key` turns it genuinely off.
+          .replace(/__SESSION__/g, (buildKeyW && ownerPtaW) ? (buildKeyW + "." + ownerPtaW) : "")
+          + "</script>" +
         "</body></html>";
       // ══ AN EMPTY KIND IS A GUARANTEED WRONG-STYLE TILE (2026-09-03) ═══════════════════════
       // A kind with no leaves is its own leaf, so `tatOwnerOf` finds it in `subjects` and returns
@@ -55187,6 +55201,30 @@ const WALK_TAG_JS = [
   "e.target.textContent=rd?'copied':'select + Ctrl-C';",
   "setTimeout(function(){e.target.textContent='re-walk'},1400);return}",
   "if(e.target.id==='clr'){T={};localStorage.setItem(K,'{}');paint();return}",
+  // ══ E CALLS THE SAME LOOP THE DESIGN PAGE CALLS (2026-09-03) ══════════════════════════
+  // Not a new door. `/_design` with action `evolve` is what mytattoo already does when a customer
+  // taps a finish: parent id in as `design`, a sentence in as `change`, child image out, lineage
+  // recorded. This is that, with a grid tile as the parent.
+  // The design id is read off the tile's own image URL - the tile IS the picture, so its id is
+  // already on the page. `data-a` is the LEAF NAME and would be the wrong thing to send.
+  "if(e.target.classList&&e.target.classList.contains('e')){",
+  "var ef=e.target.closest('figure'),eim=ef.querySelector('img');",
+  "var em=(eim&&eim.src||'').match(/\\/image\\/(img_[A-Za-z0-9_-]+)/);",
+  "if(!em){alert('No image on this tile yet - draw it first.');return}",
+  "if(!'__SESSION__'){alert('No operator session. Arm config:build:key first.');return}",
+  "var ec=prompt('Change what? e.g. make it stand, give it a green ball');if(!ec)return;",
+  "e.target.textContent='...';",
+  "fetch('/_design',{method:'POST',headers:{'Content-Type':'application/json'},",
+  "body:JSON.stringify({action:'evolve',session:'__SESSION__',design:em[1],change:ec})})",
+  ".then(function(r){return r.json()}).then(function(d){",
+  "e.target.textContent='E';",
+  // The reply is rendered, never swallowed. A silent failure here is how the D chip went
+  // unnoticed for weeks.
+  "if(d&&d.ok&&d.image){eim.src=d.image;ef.classList.add('fresh');",
+  "document.getElementById('out').textContent='evolved '+em[1]+' -> '+d.design+'  ::  '+ec}",
+  "else{document.getElementById('out').textContent='evolve failed: '+((d&&(d.error||d.say))||'no reply')}",
+  "}).catch(function(x){e.target.textContent='E';",
+  "document.getElementById('out').textContent='evolve failed: '+x});return}",
   "var b=e.target.closest('figure b');if(!b)return;",
   "var f=b.closest('figure[data-a]'),a=f.dataset.a,w=b.classList.contains('r')?'r':'d';",
   "if(T[a]===w){delete T[a]}else{T[a]=w}",

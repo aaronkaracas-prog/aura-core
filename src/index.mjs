@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.109.0-2026-09-03-i-walk-all-rebuilds-every-page";
+const BUILD = "aura-core-v9.110.0-2026-09-03-j-zeus-is-not-zeu";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -54681,10 +54681,21 @@ function tatName(leaf, resolved) {
   // Already said, in either direction: "dogs" under a leaf called "golden retriever" adds
   // nothing, and a leaf that IS its kind must not become "rose rose".
   const n = name.toLowerCase(), k = kind.toLowerCase().replace(/s$/, "");
-  // The leaf IS its kind - a bare "Wolves" or "Lions" with nothing under it. Say one of them.
+  // ══ `zeus` IS NOT `zeu` (2026-09-03) ══════════════════════════════════════════════════════
+  // MEASURED: `SHOT shot:v1:zeus:style:bare black and grey` sent the model "zeu, black and grey
+  // tattoo". `tatSingular` strips a trailing s after a non-s - correct for Wolves -> Wolf, and
+  // catastrophic for any singular noun that simply ends in one. Zeus, Anubis, Osiris, Iris,
+  // Atlas, Lotus, Cactus, Pegasus, Krampus: all of them reached the model as a word that does
+  // not exist, and the picture was whatever the model guessed from a typo.
+  // That heuristic belongs in the LOOKUP, where matching `dolphin` to `Dolphins` is worth
+  // having, and nowhere near the prompt. The leaf name is what Aaron typed and what the
+  // customer reads - it goes to the model unaltered.
+  // The one case that still earns singularising is a leaf that IS its kind - a bare "Wolves"
+  // with nothing under it, where the plural would draw a pack instead of one animal. That test
+  // is exact, so it can never catch a Zeus.
   if (!k || n === k || n === k + "s") return tatSingular(name);
-  if (n.includes(k)) return tatSingular(name);
-  return tatSingular(name) + " " + k;
+  if (n.includes(k)) return name;
+  return name + " " + k;
 }
 
 // ══ ONE DESIGN, ONE STYLE — THE SAME SENTENCE THE WALK WRITES ════════════════════════════

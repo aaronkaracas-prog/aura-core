@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.106.0-2026-09-03-f-tap-a-tile-to-see-it-full-size";
+const BUILD = "aura-core-v9.107.0-2026-09-03-g-tap-a-tile-opens-a-new-tab";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6392,9 +6392,16 @@ async function processCommand(line, env, isOp) {
       // A tile can be redrawn now (REDO) or removed (DROP) - two different things. A shot
       // picture has only one action: drop it and it comes back, because tatShoot refills holes.
       // Two chips where there are two choices, one where there is one.
+      // ══ TAP THE PICTURE, OPEN THE PICTURE (2026-09-03) ═══════════════════════════════
+      // A 78px thumbnail is enough to spot a hole and nowhere near enough to judge a redraw.
+      // A plain anchor rather than an in-page overlay: it cannot be swallowed by the click
+      // handler that owns the R and D chips, and a new tab is closed and forgotten in one
+      // keystroke. The chips sit outside the anchor so tagging and looking never fight.
       const cell = (t, a, src, name, sub2, fresh) =>
-        "<figure" + (fresh ? " class=fresh" : "") + " data-t=" + t + " data-a=\"" + eW(a) + "\"><img loading=lazy src='" + eW(src) +
-        "'><b class=r>R</b><b class=d>D</b>" +
+        "<figure" + (fresh ? " class=fresh" : "") + " data-t=" + t + " data-a=\"" + eW(a) +
+        "\"><a href=\"" + eW(src) + "\" target=_blank rel=noopener>" +
+        "<img loading=lazy src='" + eW(src) + "'></a><b class=r>R</b><b class=d>D</b>" +
+        "<figcaption>" + eW(name) + "<br><i>" + eW(sub2) + "</i></figcaption></figure>";
         "<figcaption>" + eW(name) + "<br><i>" + eW(sub2) + "</i></figcaption></figure>";
       const htmlW =
         '<!doctype html><html lang=en><head><meta charset=utf-8>' +
@@ -6416,12 +6423,6 @@ async function processCommand(line, env, isOp) {
         // Drawn in the last half hour. The whole point is that you can see at a glance which
         // tiles the last sweep actually replaced, without holding the list in your head.
         ".fresh{outline:2px solid #35d07f;outline-offset:1px;border-radius:3px}" +
-        // ══ SEE THE PICTURE, NOT THE THUMBNAIL ══════════════════════════════════════════
-        // At 78px a tile is enough to spot a hole and nothing like enough to judge a
-        // redraw. Tapping the image opens it full size; the chips still tag, so judging
-        // and tagging do not fight each other.
-        "#lb{display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:99;align-items:center;justify-content:center;cursor:zoom-out}" +
-        "#lb.on{display:flex}#lb img{max-width:94vw;max-height:94vh;border-radius:6px}" +
         ".fresh figcaption::after{content:\" \\2713 just drawn\";color:#35d07f}" +
         "figure{position:relative;background:#141a28;border-radius:8px;overflow:hidden}" +
         "figure img{width:100%;aspect-ratio:1;object-fit:cover;display:block}" +
@@ -6481,7 +6482,6 @@ async function processCommand(line, env, isOp) {
                    i.name, x.step + " " + m.opt + (x.path && x.path !== "bare" ? " \u00b7 " + x.path : ""))
             ).join("")).join("")
           ).join("") + "</div>").join("")) +
-        "<div id=lb><img id=lbi src=''></div>" +
         "<div id=bar><div class=t><span><b id=cnt>0</b> tagged</span>" +
         "<span><button id=go>go</button> <button id=rw>re-walk</button> <button id=clr>clear</button></span></div>" +
         "<pre id=out>R redraws a tile \u00b7 D or \u00d7 drops it so it comes back</pre></div>" +
@@ -55030,11 +55030,6 @@ const WALK_TAG_JS = [
   "var o=build();document.getElementById('cnt').textContent=Object.keys(T).length;",
   "document.getElementById('out').textContent=o.length?o.join('\\n'):'R redraws now \u00b7 D deletes'}",
   "document.addEventListener('click',function(e){",
-  // The overlay closes on any click anywhere, including on the picture itself - one tap out.
-  "var lb=document.getElementById('lb');",
-  "if(lb.classList.contains('on')){lb.classList.remove('on');return}",
-  "if(e.target.tagName==='IMG'&&e.target.closest('figure')){",
-  "document.getElementById('lbi').src=e.target.src;lb.classList.add('on');return}",
   // ══ CLIPBOARD FAILS QUIETLY, SO NEVER RELY ON IT ALONE ═══════════════════════════════
   // navigator.clipboard is unavailable on an insecure origin and can reject without throwing,
   // which reads as "the button does nothing". The textarea fallback works everywhere, and

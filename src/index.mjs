@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.105.0-2026-09-03-e-a-re-walk-button-on-every-page";
+const BUILD = "aura-core-v9.106.0-2026-09-03-f-tap-a-tile-to-see-it-full-size";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6416,6 +6416,12 @@ async function processCommand(line, env, isOp) {
         // Drawn in the last half hour. The whole point is that you can see at a glance which
         // tiles the last sweep actually replaced, without holding the list in your head.
         ".fresh{outline:2px solid #35d07f;outline-offset:1px;border-radius:3px}" +
+        // ══ SEE THE PICTURE, NOT THE THUMBNAIL ══════════════════════════════════════════
+        // At 78px a tile is enough to spot a hole and nothing like enough to judge a
+        // redraw. Tapping the image opens it full size; the chips still tag, so judging
+        // and tagging do not fight each other.
+        "#lb{display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:99;align-items:center;justify-content:center;cursor:zoom-out}" +
+        "#lb.on{display:flex}#lb img{max-width:94vw;max-height:94vh;border-radius:6px}" +
         ".fresh figcaption::after{content:\" \\2713 just drawn\";color:#35d07f}" +
         "figure{position:relative;background:#141a28;border-radius:8px;overflow:hidden}" +
         "figure img{width:100%;aspect-ratio:1;object-fit:cover;display:block}" +
@@ -6475,12 +6481,18 @@ async function processCommand(line, env, isOp) {
                    i.name, x.step + " " + m.opt + (x.path && x.path !== "bare" ? " \u00b7 " + x.path : ""))
             ).join("")).join("")
           ).join("") + "</div>").join("")) +
+        "<div id=lb><img id=lbi src=''></div>" +
         "<div id=bar><div class=t><span><b id=cnt>0</b> tagged</span>" +
         "<span><button id=go>go</button> <button id=rw>re-walk</button> <button id=clr>clear</button></span></div>" +
         "<pre id=out>R redraws a tile \u00b7 D or \u00d7 drops it so it comes back</pre></div>" +
-        "<script>" + WALK_TAG_JS.replace("__KEY__", tatSlug(catW))
-          .replace("__CAT__", String(catW).replace(/[\\\"]/g, ""))
-          .replace("__TIGHT__", tightW ? " --tight" : "") + "</script>" +
+        // ══ .replace WITH A STRING ONLY SWAPS THE FIRST ONE (2026-09-03) ══════════════════
+        // MEASURED: the re-walk button pasted `RUN "WALK __CAT____TIGHT__"` verbatim. The
+        // placeholders appear TWICE now - once in build() and once in the re-walk handler -
+        // and a string-argument .replace does one and stops. Global regex, so every copy is
+        // filled however many handlers end up using them.
+        "<script>" + WALK_TAG_JS.replace(/__KEY__/g, tatSlug(catW))
+          .replace(/__CAT__/g, String(catW).replace(/[\\\"]/g, ""))
+          .replace(/__TIGHT__/g, tightW ? " --tight" : "") + "</script>" +
         "</body></html>";
       // ══ AN EMPTY KIND IS A GUARANTEED WRONG-STYLE TILE (2026-09-03) ═══════════════════════
       // A kind with no leaves is its own leaf, so `tatOwnerOf` finds it in `subjects` and returns
@@ -55018,6 +55030,11 @@ const WALK_TAG_JS = [
   "var o=build();document.getElementById('cnt').textContent=Object.keys(T).length;",
   "document.getElementById('out').textContent=o.length?o.join('\\n'):'R redraws now \u00b7 D deletes'}",
   "document.addEventListener('click',function(e){",
+  // The overlay closes on any click anywhere, including on the picture itself - one tap out.
+  "var lb=document.getElementById('lb');",
+  "if(lb.classList.contains('on')){lb.classList.remove('on');return}",
+  "if(e.target.tagName==='IMG'&&e.target.closest('figure')){",
+  "document.getElementById('lbi').src=e.target.src;lb.classList.add('on');return}",
   // ══ CLIPBOARD FAILS QUIETLY, SO NEVER RELY ON IT ALONE ═══════════════════════════════
   // navigator.clipboard is unavailable on an insecure origin and can reject without throwing,
   // which reads as "the button does nothing". The textarea fallback works everywhere, and

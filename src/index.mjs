@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.119.0-2026-09-03-s-workerentrypoint-needs-an-object";
+const BUILD = "aura-core-v9.120.0-2026-09-03-t-r-and-d-stop-writing-powershell";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6560,7 +6560,7 @@ async function processCommand(line, env, isOp) {
           ).join("") + "</div>").join("")) +
         "<div id=bar><div class=t><span><b id=cnt>0</b> tagged</span>" +
         "<span><button id=go>go</button> <button id=rw>re-walk</button> <button id=clr>clear</button></span></div>" +
-        "<pre id=out>R redraws a tile \u00b7 D or \u00d7 drops it so it comes back</pre></div>" +
+        "<pre id=out>R redraws \u00b7 E evolves \u00b7 D drops \u00b7 all three act now, nothing to paste</pre></div>" +
         // ══ .replace WITH A STRING ONLY SWAPS THE FIRST ONE (2026-09-03) ══════════════════
         // MEASURED: the re-walk button pasted `RUN "WALK __CAT____TIGHT__"` verbatim. The
         // placeholders appear TWICE now - once in build() and once in the re-walk handler -
@@ -55273,6 +55273,31 @@ const WALK_TAG_JS = [
   "else{document.getElementById('out').textContent='evolve failed: '+((d&&(d.error||d.say))||'no reply')}",
   "}).catch(function(x){e.target.textContent='E';",
   "document.getElementById('out').textContent='evolve failed: '+x});return}",
+  // ══ R AND D CALL THROUGH, THEY DO NOT WRITE POWERSHELL (2026-09-03) ═══════════════════
+  // These tagged a tile and composed `RUN "REDO ..."` into the block below for Aaron to copy
+  // into a terminal. E already called the real thing and changed the picture in place; two
+  // thirds of the page was still the terminal wearing a web page.
+  // Same endpoint as E, two more actions on it. `data-a` IS the leaf name here, which is what
+  // redraw and drop both take - unlike evolve, which needed the image id off the src.
+  "if(e.target.classList&&(e.target.classList.contains('r')||e.target.classList.contains('d'))){",
+  "var isD=e.target.classList.contains('d');",
+  "var cf=e.target.closest('figure[data-a]');if(!cf)return;",
+  "var cl=cf.dataset.a;",
+  "if(!'__SESSION__'){alert('No operator session. Arm config:build:key first.');return}",
+  "if(isD&&!confirm('Drop the tile for '+cl+'?'))return;",
+  "var ot=e.target.textContent;e.target.textContent='..';",
+  "fetch('/_design',{method:'POST',headers:{'Content-Type':'application/json'},",
+  "body:JSON.stringify({action:isD?'drop':'redraw',session:'__SESSION__',leaf:cl})})",
+  ".then(function(r){return r.json()}).then(function(d){",
+  "e.target.textContent=ot;",
+  // Rendered, never swallowed - the D chip failed silently for weeks before it said why.
+  "if(d&&d.ok){if(isD){cf.classList.add('gap');var gi=cf.querySelector('img');if(gi)gi.remove();",
+  "document.getElementById('out').textContent='dropped '+cl}",
+  "else{var ri=cf.querySelector('img');if(ri&&d.image)ri.src=d.image+'?t='+Date.now();",
+  "cf.classList.add('fresh');document.getElementById('out').textContent='redrew '+cl}}",
+  "else{document.getElementById('out').textContent=(isD?'drop':'redraw')+' failed: '+((d&&(d.error||d.say))||'no reply')}",
+  "}).catch(function(x){e.target.textContent=ot;",
+  "document.getElementById('out').textContent='failed: '+x});return}",
   "var b=e.target.closest('figure b');if(!b)return;",
   "var f=b.closest('figure[data-a]'),a=f.dataset.a,w=b.classList.contains('r')?'r':'d';",
   "if(T[a]===w){delete T[a]}else{T[a]=w}",
@@ -58975,6 +59000,43 @@ export class PublicEntry extends WorkerEntrypoint {
           .split(",").map((x) => x.trim().toLowerCase()).filter(Boolean)
           .filter((n) => TAT_STYLE_CARDS.some((c) => c[0].toLowerCase() === n));
         return { ok: true, finishes: fList.length ? fList : fDef };
+      }
+
+      // ══ THE OPERATOR VERBS, ON THE SAME DOOR (2026-09-03) ══════════════════════════════════
+      // The walk page's E chip calls `evolve` and the picture changes in place. R and D still
+      // wrote PowerShell into a copy block for Aaron to paste - so two thirds of the page was
+      // still the terminal wearing a web page.
+      // `redraw` and `drop` are the same two commands the block was composing, reached the same
+      // way E is. NOT a new door and NOT /cmd: they live here because `design` is the one method
+      // the walk page can already call, and adding a second surface is how a boundary stops
+      // meaning anything.
+      // GATED ON THE BUILD KEY. `_whoIs` stamps `signed_in_via: "build key"` on an operator
+      // session and never on a passkey one, so a customer on mytattoo cannot reach these even
+      // though they share the method. When Aaron runs DELKV config:build:key both verbs close
+      // with the door, which is the behaviour we want from a bypass.
+      if (action === "redraw" || action === "drop") {
+        const who = b.session ? await this._whoIs(String(b.session)) : null;
+        if (!who || who.signed_in_via !== "build key") return { ok: false, error: "OPERATOR_ONLY",
+          say: "This is an operator action.",
+          why: "Only a session opened with config:build:key may redraw or drop a catalogue tile." };
+        const leaf = String(b.leaf || "").trim();
+        if (!leaf) return { ok: false, error: "NEED_LEAF" };
+        try {
+          const cmd = action === "drop" ? ("DROP " + leaf) : ("REDO " + leaf);
+          const r = await processCommand(cmd, this.env, true);
+          const pay = (r && r.payload) || {};
+          if (!pay.ok) return { ok: false, error: pay.error || "COMMAND_FAILED", detail: pay.why || null };
+          // REDO answers with a list because it takes many names; the page sent one, so hand back
+          // the one url it drew rather than making the browser parse a sentence.
+          const url = action === "drop" ? null
+            : String((pay.results && pay.results[0]) || "").split("  ->  ")[1] || null;
+          return { ok: true, action, leaf, image: url || null,
+                   asked: (pay.asked && pay.asked[0]) || null,
+                   style_from: (pay.style_from && pay.style_from[0]) || null,
+                   dropped: action === "drop" ? (pay.key || leaf) : undefined };
+        } catch (e) {
+          return { ok: false, error: "THREW", detail: String(e && e.message || e).slice(0, 200) };
+        }
       }
 
       if (action === "evolve") {

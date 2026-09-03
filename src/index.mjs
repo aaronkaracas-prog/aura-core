@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.117.0-2026-09-03-q-answer-design-where-it-lands";
+const BUILD = "aura-core-v9.118.0-2026-09-03-r-test-design-from-the-terminal";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -18784,6 +18784,50 @@ async function successionGate(env) {
     // Removed rather than renamed. If SecureSpend wants a short alias it should be a word no
     // other product has claimed - the whole point of one flat command namespace is that the
     // second claimant loses silently, which is exactly what happened here.
+    // ══ TEST THE METHOD, NOT THE PLUMBING (2026-09-03) ══════════════════════════════════════
+    // `design` is an RPC method, so the only way to exercise it has been through a web page - and
+    // when the E chip returned DESIGN_FAILED there was no way to tell whether the fault was the
+    // route, the browser, the PublicEntry construction or `evolve` itself. Four unknowns, one
+    // error string, and a UI in the middle of every attempt.
+    // Aaron: "can this test be run on the back end via PowerShell to prove it works instead of
+    // going through a UI". Yes, and it should have existed before the chip did.
+    //   RUN 'DESIGN evolve {"design":"img_xxx","change":"make it stand"}'
+    // The session is filled in from config:build:key + config:owner:pta so the operator does not
+    // paste a credential; absent, it says so rather than returning NO_SESSION and looking broken.
+    case "DESIGN": {
+      const argD2 = String(rest || "").trim();
+      const spD2 = argD2.indexOf(" ");
+      const actD2 = (spD2 < 0 ? argD2 : argD2.slice(0, spD2)).trim();
+      const jsonD2 = spD2 < 0 ? "" : argD2.slice(spD2 + 1).trim();
+      if (!actD2) return { cmd: "DESIGN", payload: { ok: false, error: "NOTHING_ASKED",
+        what_to_do: 'DESIGN <action> {json}   e.g. DESIGN evolve {"design":"img_x","change":"make it stand"}',
+        actions: ["hello", "talk", "make", "finish", "finishes", "evolve"] } };
+      let bodyD2 = {};
+      if (jsonD2) {
+        try { bodyD2 = JSON.parse(jsonD2); }
+        catch (e) { return { cmd: "DESIGN", payload: { ok: false, error: "BAD_JSON",
+          why: String(e && e.message || e).slice(0, 120),
+          note: "PowerShell needs SINGLE quotes around the whole command when the payload has JSON." } }; }
+      }
+      const bkD2 = await env.AURA_KV.get("config:build:key").catch(() => null);
+      const opD2 = (await env.AURA_KV.get("config:owner:pta").catch(() => null) || "").trim();
+      if (!bodyD2.session) {
+        if (!bkD2 || !opD2) return { cmd: "DESIGN", payload: { ok: false, error: "NO_OPERATOR_SESSION",
+          what_to_do: "Arm config:build:key and set config:owner:pta, or pass session in the json." } };
+        bodyD2.session = bkD2 + "." + opD2;
+      }
+      try {
+        const entryD2 = new PublicEntry(null, env);
+        const outD2 = await entryD2.design(actD2, bodyD2);
+        return { cmd: "DESIGN", payload: { ok: true, action: actD2, result: outD2 } };
+      } catch (e) {
+        // The throw itself, not a wrapper. This is the line the E chip could not show.
+        return { cmd: "DESIGN", payload: { ok: false, error: "THREW",
+          detail: String(e && e.message || e).slice(0, 300),
+          stack: String(e && e.stack || "").split("\n").slice(0, 3).join(" | ").slice(0, 300) } };
+      }
+    }
+
     case "SECURESPEND": {
       // SECURESPEND â€” the cognition engine pointed at MONEY. Runs the four-layer loop
       // (Perceive -> Meaning -> Possibility -> Priority) with a financial lens on any

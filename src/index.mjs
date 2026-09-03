@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.118.0-2026-09-03-r-test-design-from-the-terminal";
+const BUILD = "aura-core-v9.119.0-2026-09-03-s-workerentrypoint-needs-an-object";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -18817,7 +18817,11 @@ async function successionGate(env) {
         bodyD2.session = bkD2 + "." + opD2;
       }
       try {
-        const entryD2 = new PublicEntry(null, env);
+        // MEASURED: `new PublicEntry(null, env)` threw "constructor parameter 1 is not of type
+        // 'Object'". WorkerEntrypoint requires a real object in the state slot - null is not one.
+        // `design` only ever reads `this.env`, so an empty object with the two ctx methods is
+        // enough and nothing in the method notices.
+        const entryD2 = new PublicEntry({ waitUntil: () => {}, passThroughOnException: () => {} }, env);
         const outD2 = await entryD2.design(actD2, bodyD2);
         return { cmd: "DESIGN", payload: { ok: true, action: actD2, result: outD2 } };
       } catch (e) {
@@ -61313,9 +61317,12 @@ export default {
       try { bodyD = await request.json(); } catch {}
       let outD = { ok: false, error: "design unavailable" };
       try {
-        // The fetch handler is `(request, env)` - there is no `ctx` here. WorkerEntrypoint only
-        // needs the state slot to exist; `design` uses `this.env` and nothing else.
-        const entry = new PublicEntry(null, env);
+        // The fetch handler is `(request, env)` - there is no `ctx` here.
+        // MEASURED: `new PublicEntry(null, env)` threw "constructor parameter 1 is not of type
+        // 'Object'". WorkerEntrypoint requires a real object in the state slot - null is not one.
+        // `design` only ever reads `this.env`, so an empty object with the two ctx methods is
+        // enough and nothing in the method notices.
+        const entry = new PublicEntry({ waitUntil: () => {}, passThroughOnException: () => {} }, env);
         outD = await entry.design(String(bodyD.action || ""), bodyD);
       } catch (e) {
         outD = { ok: false, error: "DESIGN_FAILED", detail: String((e && e.message) || e).slice(0, 300) };

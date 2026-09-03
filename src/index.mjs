@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.110.0-2026-09-03-j-zeus-is-not-zeu";
+const BUILD = "aura-core-v9.111.0-2026-09-03-k-zeus-is-not-zeu-for-real";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -54690,10 +54690,14 @@ function tatName(leaf, resolved) {
   // That heuristic belongs in the LOOKUP, where matching `dolphin` to `Dolphins` is worth
   // having, and nowhere near the prompt. The leaf name is what Aaron typed and what the
   // customer reads - it goes to the model unaltered.
-  // The one case that still earns singularising is a leaf that IS its kind - a bare "Wolves"
-  // with nothing under it, where the plural would draw a pack instead of one animal. That test
-  // is exact, so it can never catch a Zeus.
-  if (!k || n === k || n === k + "s") return tatSingular(name);
+  // The leaf IS its kind. This still called tatSingular and that is the branch a bare "Zeus"
+  // lands in: `k` has already had its own trailing s stripped two lines up, so "zeus" matches
+  // `k + "s"` and comes back "zeu". Return the name untouched.
+  // TRADEOFF, stated rather than hidden: a bare "Wolves" with nothing under it now prompts as
+  // "Wolves" and may draw a pack instead of one animal. A plural subject is a picture nobody
+  // asked for; a non-word is a picture nobody CAN ask for. If a specific leaf reads better
+  // singular, that is what `build:<leaf>` is for - a dial, not a rule applied to all 2,000.
+  if (!k || n === k || n === k + "s") return name;
   if (n.includes(k)) return name;
   return name + " " + k;
 }

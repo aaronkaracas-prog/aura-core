@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.103.0-2026-09-03-c-say-which-dial-styled-the-tile";
+const BUILD = "aura-core-v9.104.0-2026-09-03-d-green-outline-on-what-you-just-drew";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -6184,9 +6184,19 @@ async function processCommand(line, env, isOp) {
         const hit = Object.keys(specW).find((x) => tatSlug(x) === tatSlug(k));
         return hit ? (specW[hit] || []) : [];
       };
+      // ══ WHICH ONES DID I JUST REDRAW? (2026-09-03) ══════════════════════════════════════
+      // Aaron, after a sweep: "I don't want to use my brain to analyse - did that goat just turn
+      // into the proper goat". A rebuilt page looks identical whether a tile is an hour old or
+      // ten seconds old, so judging a redraw meant remembering what you clicked.
+      // The record already carries `at` and this threw it away. Anything banked in the last
+      // thirty minutes is marked fresh and outlined green - long enough to survive a sweep plus
+      // a couple of FACES runs, short enough that yesterday's work is never lit up.
+      const freshMs = 30 * 60 * 1000, nowW = Date.now();
       const faceOf = async (n) => {
         const r = await env.AURA_KV.get("face:v1:" + tatSlug(n), "json").catch(() => null);
-        return r ? tatFaceUrl(r) : null;
+        if (!r) return null;
+        const t = Date.parse(r.at || "");
+        return { url: tatFaceUrl(r), fresh: Number.isFinite(t) && (nowW - t) < freshMs };
       };
       // A leaf with a tile but no wall is a dead end on the third screen. That is the single
       // most useful thing this page reports and it cannot be read from any existing command.
@@ -6339,7 +6349,8 @@ async function processCommand(line, env, isOp) {
         // awaits is what made LIBRARY take five minutes.
         const names = sub.length ? sub : [k];
         const got = await Promise.all(names.map(async (n) => {
-          const [url, walls, keys] = await Promise.all([faceOf(n), wallsOf(n), shotsOf(n)]);
+          const [face, walls, keys] = await Promise.all([faceOf(n), wallsOf(n), shotsOf(n)]);
+          const url = face ? face.url : null;
           const recs = await Promise.all(keys.map(async (kn) => {
             let r = null; try { r = await env.AURA_KV.get(kn, "json"); } catch {}
             const bits = kn.split(":");
@@ -6349,8 +6360,8 @@ async function processCommand(line, env, isOp) {
             }
             return { key: kn, step: bits[3] || "", path: bits.slice(4).join(":") || "bare", imgs };
           }));
-          return { name: n, url, walls, sets: recs.filter((x) => x.imgs.length),
-            shots: keys.length, isKind: !sub.length };
+          return { name: n, url, fresh: !!(face && face.fresh), walls,
+            sets: recs.filter((x) => x.imgs.length), shots: keys.length, isKind: !sub.length };
         }));
         for (const g of got) items.push(g);
         // Counted here rather than in the template so the header can say where the depth is.
@@ -6381,8 +6392,8 @@ async function processCommand(line, env, isOp) {
       // A tile can be redrawn now (REDO) or removed (DROP) - two different things. A shot
       // picture has only one action: drop it and it comes back, because tatShoot refills holes.
       // Two chips where there are two choices, one where there is one.
-      const cell = (t, a, src, name, sub2) =>
-        "<figure data-t=" + t + " data-a=\"" + eW(a) + "\"><img loading=lazy src='" + eW(src) +
+      const cell = (t, a, src, name, sub2, fresh) =>
+        "<figure" + (fresh ? " class=fresh" : "") + " data-t=" + t + " data-a=\"" + eW(a) + "\"><img loading=lazy src='" + eW(src) +
         "'><b class=r>R</b><b class=d>D</b>" +
         "<figcaption>" + eW(name) + "<br><i>" + eW(sub2) + "</i></figcaption></figure>";
       const htmlW =
@@ -6402,6 +6413,10 @@ async function processCommand(line, env, isOp) {
         // from a block with 18px above it to a thin line. Roughly three times the pictures per
         // screen with nothing removed and nothing hidden behind a click.
         ".g{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:5px}" +
+        // Drawn in the last half hour. The whole point is that you can see at a glance which
+        // tiles the last sweep actually replaced, without holding the list in your head.
+        ".fresh{outline:2px solid #35d07f;outline-offset:1px;border-radius:3px}" +
+        ".fresh figcaption::after{content:\" \\2713 just drawn\";color:#35d07f}" +
         "figure{position:relative;background:#141a28;border-radius:8px;overflow:hidden}" +
         "figure img{width:100%;aspect-ratio:1;object-fit:cover;display:block}" +
         "figure.gap{border:1px dashed #ef4444;min-height:78px}" +
@@ -6434,7 +6449,7 @@ async function processCommand(line, env, isOp) {
           // Every picture from every kind in a single grid. The kind rides on the caption so
           // nothing is lost, and the eye can cross the whole category in one screen.
           ? "<div class=g>" + secs.map((s) => s.items.map((i) =>
-              (i.url ? cell("redo", i.name, i.url, i.name, s.kind)
+              (i.url ? cell("redo", i.name, i.url, i.name, s.kind, i.fresh)
                      : "<figure class=gap data-e=\"1\" data-t=redo data-a=\"" + eW(i.name) + "\"><b class=r>R</b><figcaption>" + eW(i.name) + "<br><i>no tile</i></figcaption></figure>") +
               i.sets.map((x) => x.imgs.map((m) =>
                 cell("shot", x.key + " " + m.opt, "https://auras.guide/image/" + m.img,
@@ -6448,7 +6463,7 @@ async function processCommand(line, env, isOp) {
                 .map((k) => s.byStep[k] + " " + eW(k)).join(", ")
             : "") + "</span></h2><div class=g>" +
           s.items.map((i) =>
-            (i.url ? cell("redo", i.name, i.url, i.name, "tile")
+            (i.url ? cell("redo", i.name, i.url, i.name, "tile", i.fresh)
                    : "<figure class=gap data-e=\"1\" data-t=redo data-a=\"" + eW(i.name) + "\"><b class=r>R</b><figcaption>" + eW(i.name) + "<br><i>no tile</i></figcaption></figure>") +
             i.sets.map((x) => x.imgs.map((m) =>
               // ══ THE PATH IS WHY TWO PICTURES SHARE A LABEL ═══════════════════════════════

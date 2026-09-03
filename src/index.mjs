@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.111.0-2026-09-03-k-zeus-is-not-zeu-for-real";
+const BUILD = "aura-core-v9.112.0-2026-09-03-l-review-belongs-to-the-catalogue";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -18704,7 +18704,14 @@ async function successionGate(env) {
       return { cmd: "ACT", payload: { ok: aOk, fired: true, entity: aEntity, command: aCommand, gate_verdict: aVerdict, conditions: aGate.conditions || [], result: aResult, logged_as: `action:${aSlug}:${aTs}`, ts: aTs } };
     }
 
-    case "REVIEW":
+    // ══ `REVIEW` BELONGS TO THE CATALOGUE, NOT TO SECURESPEND (2026-09-03) ══════════════════
+    // This was `case "REVIEW": case "SECURESPEND":` - an alias added here without noticing that
+    // the tattoo catalogue already owns REVIEW at the top of this switch. A switch takes the
+    // FIRST match, so the alias never once fired: every REVIEW went to the review page and this
+    // label was unreachable code that wrangler warned about on every single deploy.
+    // Removed rather than renamed. If SecureSpend wants a short alias it should be a word no
+    // other product has claimed - the whole point of one flat command namespace is that the
+    // second claimant loses silently, which is exactly what happened here.
     case "SECURESPEND": {
       // SECURESPEND â€” the cognition engine pointed at MONEY. Runs the four-layer loop
       // (Perceive -> Meaning -> Possibility -> Priority) with a financial lens on any

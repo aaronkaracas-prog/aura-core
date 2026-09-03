@@ -87,7 +87,7 @@ function rpFrom(origin) {
   } catch { return { rpID: _rp.rpID, origin: PASSKEY_ORIGIN }; }
 }
 
-const BUILD = "aura-core-v9.114.0-2026-09-03-n-twenty-writes-the-shape-walk-reads";
+const BUILD = "aura-core-v9.115.0-2026-09-03-o-a-delta-is-an-edit-of-a-file";
 // ══ ONE JSON REPAIR, HOISTED (2026-08-20) ═══════════════════════════════════════════════════
 // The same truncation-repair is written inline in FIRE_OUTLOOK, INDUSTRY_LEARN and CG_ENRICH's
 // roster reader. This is the fourth caller, so it becomes a function instead of a fourth copy -
@@ -5647,7 +5647,10 @@ async function processCommand(line, env, isOp) {
     // second attempt rather than a replay.
     // REDO Lion, Tiger, Wolf   - comma separated, as many as the review page collected.
     case "REDO": {
-      const names = String(rest || "").split(",").map((x) => x.trim()).filter(Boolean);
+      // Stripped before the comma split, or `--from abc` becomes a leaf name nobody has.
+      const fromR = tatFromFlag(rest);
+      const fromOptR = await tatFromOpts(env, fromR.id);
+      const names = String(fromR.rest || "").split(",").map((x) => x.trim()).filter(Boolean);
       if (!names.length) return { cmd: "REDO", payload: { ok: false,
         error: "Usage: REDO <name>, <name>, ...", note: "Tick the bad tiles on /review and paste what it gives you." } };
       // ── MODEL: THE FLAG WINS, OTHERWISE THE DIALS DECIDE ─────────────────────────────
@@ -5689,6 +5692,8 @@ async function processCommand(line, env, isOp) {
           one.style_from = tatStyleNote(infoR, !!ctxR);
           const r = await showIt(askR,
             env, { model, raw: true, source: "redo", subject: nm,
+                   ...(fromOptR.refs ? { refs: fromOptR.refs, parent: fromOptR.parent,
+                                         source: fromOptR.source } : {}),
                    seed: Math.floor(Math.random() * 900000) + 1000 });
           if (r?.ok) {
             one.image = r.image_url;
@@ -5711,6 +5716,9 @@ async function processCommand(line, env, isOp) {
         // What it was actually asked for. When a redraw comes back wrong again, this is the first
         // thing to read - and it is the difference between a bad model and a bad prompt.
         asked: out.map((o) => o.name + "  ::  " + (o.drew || "-")),
+        // Which machine ran. Without this a wall of strangers and a wall of children look
+        // identical in the reply, which is how "make IT dance" stayed a fresh draw unnoticed.
+        first_draw: fromOptR.first_draw, parent: fromOptR.parent || null,
         // One line per tile: which dial styled it, and a shout when it fell back to the category
         // because the kind is empty. `asked` says WHAT was sent; this says WHY it looks like that.
         style_from: out.map((o) => o.name + "  ::  " + (o.style_from || "-")),
@@ -6037,7 +6045,9 @@ async function processCommand(line, env, isOp) {
     }
 
     case "SHOT": {
-      const argS = String(rest || "").trim();
+      const fromS = tatFromFlag(rest);
+      const fromOptS = await tatFromOpts(env, fromS.id);
+      const argS = String(fromS.rest || "").trim();
       const spS = argS.indexOf(" ");
       const keyS = (spS < 0 ? argS : argS.slice(0, spS)).trim();
       const optsS = (spS < 0 ? "" : argS.slice(spS + 1)).split(",").map((x) => x.trim()).filter(Boolean);
@@ -6105,12 +6115,14 @@ async function processCommand(line, env, isOp) {
       // string that drew "traditional" months earlier. Clearing it makes the field mean what it
       // says: the prompt that drew THIS picture.
       shotS.drew = null;
-      const outS = await tatShoot(env, keyS, headS, ctxPhrases, stepS, wallS, shotS, 22000, frameS);
+      const outS = await tatShoot(env, keyS, headS, ctxPhrases, stepS, wallS, shotS, 22000, frameS, fromOptS);
       const drewS = cleared.filter((o) => {
         const h = Object.keys(outS.imgs || {}).find((x) => tatSlug(x) === tatSlug(o));
         return h && outS.imgs[h] && outS.imgs[h].img;
       });
-      return { cmd: "SHOT", payload: { ok: true, key: keyS, leaf: leafS, step: stepS, path: ctxS,
+      return { cmd: "SHOT", payload: { ok: true,
+        // Which machine ran: a first draw of the caption, or an edit of a locked file.
+        first_draw: fromOptS.first_draw, parent: fromOptS.parent || null, key: keyS, leaf: leafS, step: stepS, path: ctxS,
         asked: cleared, drew: drewS.length, of: cleared.length,
         // A count of failures is not a diagnosis. tatShoot stores the reason per option and it is
         // the difference between "the filter refused this" and "Cloudflare had a bad minute".
@@ -7503,7 +7515,9 @@ async function processCommand(line, env, isOp) {
     // ones with no command of their own yet - treatment, crop - so the next one needs no code.
     case "EXPRESSIONS":
     case "POSES": {
-      const raw = String(rest || "").trim();
+      const fromP = tatFromFlag(rest);
+      const fromOptP = await tatFromOpts(env, fromP.id);
+      const raw = String(fromP.rest || "").trim();
       const nM = raw.match(/--n\s+(\d+)/i);
       const mM = raw.match(/--model\s+(\S+)/i);
       const sM = raw.match(/--step\s+([a-z]+)/i);
@@ -7567,7 +7581,9 @@ async function processCommand(line, env, isOp) {
           // discipline as the walk - the picture owns what it is, the clause owns what it is doing.
           const r = await showIt(what + (ctxP ? ", " + ctxP : "") + ", " + (o.say || o.id) +
             (rndP || await tatRenderDefault(env)),
-            env, { model, raw: true, source: "poses", subject: what + " " + o.id });
+            env, { model, raw: true, source: "poses", subject: what + " " + o.id,
+                   ...(fromOptP.refs ? { refs: fromOptP.refs, parent: fromOptP.parent,
+                                         source: fromOptP.source } : {}) });
           if (r?.ok) { one.image = r.image_url; one.cost_usd = r.cost_usd; one.cached = !!r.cached;
                        spend += (r.cost_usd || 0);
             // The walk reads a tile per option as shot:v1:<leaf>:<step>:<path>. Writing the same
@@ -7647,6 +7663,8 @@ async function processCommand(line, env, isOp) {
       const pageP = stepP + "s/" + tatSlug(what).slice(0, 60);
       await env.AURA_KV.put("page:auras.guide/" + pageP, htmlP);
       return { cmd, payload: { ok: true, subject: what, step: stepP, model,
+        // Which machine ran: a first draw of the caption, or an edit of a locked file.
+        first_draw: fromOptP.first_draw, parent: fromOptP.parent || null,
         url: "https://auras.guide/" + pageP,
         drew: okP, of: made.length, cost_usd: Math.round(spend * 10000) / 10000,
         poses: made.map((m) => m.pose + "  ->  " + (m.image || "FAILED: " + m.why)),
@@ -7668,7 +7686,9 @@ async function processCommand(line, env, isOp) {
     // TWENTY <what> --n 8        fewer
     // TWENTY <what> --model <m>  something other than the Cloudflare default
     case "TWENTY": {
-      const raw = String(rest || "").trim();
+      const fromT = tatFromFlag(rest);
+      const fromOptT = await tatFromOpts(env, fromT.id);
+      const raw = String(fromT.rest || "").trim();
       const nM = raw.match(/--n\s+(\d+)/i);
       const mM = raw.match(/--model\s+(\S+)/i);
       const what = raw.replace(/--n\s+\d+/i, "").replace(/--model\s+\S+/i, "").trim();
@@ -7724,7 +7744,9 @@ async function processCommand(line, env, isOp) {
         try {
           const r = await showIt(what + (ctxT ? ", " + ctxT : "") + ", " + (t.say || t.id) +
             (rndT || await tatRenderDefault(env)),
-            env, { model, raw: true, source: "twenty", subject: what + " " + t.id });
+            env, { model, raw: true, source: "twenty", subject: what + " " + t.id,
+                   ...(fromOptT.refs ? { refs: fromOptT.refs, parent: fromOptT.parent,
+                                         source: fromOptT.source } : {}) });
           if (r?.ok) { one.image = r.image_url; one.cost_usd = r.cost_usd; one.cached = !!r.cached;
                        spend += (r.cost_usd || 0);
             // ══ ONE RECORD PER STEP, NOT ONE PER OPTION (ported 2026-09-03) ═══════════════
@@ -7788,6 +7810,8 @@ async function processCommand(line, env, isOp) {
       const pageT = "twenty/" + tatSlug(what).slice(0, 60);
       await env.AURA_KV.put("page:auras.guide/" + pageT, htmlT);
       return { cmd: "TWENTY", payload: { ok: true, what, model, n: made.length,
+        // Which machine ran: a first draw of the caption, or an edit of a locked file.
+        first_draw: fromOptT.first_draw, parent: fromOptT.parent || null,
         url: "https://auras.guide/" + pageT,
         drew: okT, distinct, cost_usd: Math.round(spend * 10000) / 10000,
         urls: made.map((m) => m.treatment + "  ->  " + (m.image || "FAILED: " + m.why)),
@@ -55584,7 +55608,34 @@ async function tatWall(env, leafLabel, step, ask, model, guide) {
 // NO REFERENCE IMAGE, DELIBERATELY. A reference carries pose, language AND SUBJECT: a dragon
 // house image put dragon bodies on fifteen golden retrievers. These walls vary one thing and the
 // words carry it.
-async function tatShoot(env, shotKey, head, ctxPhrases, step, wall, shot, budgetMs, recogFrame) {
+// ══ A DELTA IS AN EDIT OF A FILE, NOT A SECOND DRAWING OF A CAPTION (2026-09-03) ══════════
+// MEASURED: `refs:` is passed by style_transfer, image_evolve, letter and stencil, and by
+// NOTHING that builds the catalogue. REDO, POSES, TWENTY and the tattoo_option face path all
+// call showIt with a prompt and no parent - so "make IT dance" has always been a fresh draw of
+// the words, and the walls filled with strangers sharing a caption.
+// The engine never needed changing. auraGenerateImage has taken `refs` and `parent` all along;
+// four copy-pasted call sites simply never handed them over. This is the shared parser those
+// four sites lacked - one place that turns `--from <image-id>` into the pair the edit lane
+// already understands, so a delta list attaches to a hero the same way for a devil, a lotus or
+// a shoe. Nothing here knows what a pose is.
+// `image_evolve` deliberately, not a fifth source: it is the lane STYLES and SEEIT already ride,
+// it resolves as an edit under caps:edit, and inventing a new one is how the last five
+// namespaces started.
+function tatFromFlag(rest) {
+  const m = String(rest || "").match(/\s--from\s+([A-Za-z0-9_-]+)/i);
+  return { id: m ? m[1] : null, rest: String(rest || "").replace(/\s*--from\s+[A-Za-z0-9_-]+/ig, "").trim() };
+}
+async function tatFromOpts(env, id) {
+  if (!id) return { first_draw: true, parent: null };
+  // Same URL shape STYLES builds at ~8092. One resolver, not two.
+  return { refs: ["https://" + (await imageHost(env)) + "/image/" + id],
+           parent: id, source: "image_evolve", first_draw: false };
+}
+
+// `fromOpt` is optional and trails the signature deliberately: FILL and the walk both call this
+// with nine arguments and must keep working byte-identically. Absent, this is the first-draw
+// path exactly as it was.
+async function tatShoot(env, shotKey, head, ctxPhrases, step, wall, shot, budgetMs, recogFrame, fromOpt) {
   const need = wall.opts.filter((o) => !(shot.imgs && shot.imgs[o.id] && shot.imgs[o.id].img));
   shot.imgs = shot.imgs || {};
   if (!need.length) return shot;
@@ -55608,7 +55659,11 @@ async function tatShoot(env, shotKey, head, ctxPhrases, step, wall, shot, budget
     // reconstructing it from the label is guessing.
     if (!shot.drew) shot.drew = full;
     try {
-      const gi = await auraGenerateImage(full, env, { source: "tattoo_option" });
+      const gi = await auraGenerateImage(full, env, { source: "tattoo_option",
+        // The one line Grok's brief named: the tattoo_option path has never passed a parent, so
+        // every wall card was a fresh draw of its own caption.
+        ...(fromOpt && fromOpt.refs
+          ? { refs: fromOpt.refs, parent: fromOpt.parent, source: fromOpt.source } : {}) });
       if (gi?.ok && gi.id) { shot.imgs[o.id] = { img: gi.id, cached: !!gi.cached }; return; }
       // A success with no pixels is not a success, and the reason rides with the tile so a hole
       // in the wall explains itself instead of being something to go and reproduce.
